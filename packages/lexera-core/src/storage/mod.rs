@@ -54,6 +54,9 @@ pub trait BoardStorage: Send + Sync {
         let _ = options;
         self.search(query)
     }
+
+    /// Return all cards that have a due date across all boards.
+    fn calendar_tasks(&self) -> Vec<SearchResult>;
 }
 
 #[derive(Debug, thiserror::Error)]

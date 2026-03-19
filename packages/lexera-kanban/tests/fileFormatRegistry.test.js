@@ -145,6 +145,24 @@ describe('LexeraFileFormatRegistry', () => {
     expect(Registry.getPreviewKind('docs/report.rtf')).toBe('document');
   });
 
+  it('exposes renderer requirements, asset types, and editor kinds as plugin metadata', () => {
+    expect(Registry.getRendererRequirements('diagram.drawio')).toEqual([{ id: 'drawio' }]);
+    expect(Registry.getRendererRequirements('docs/report.rtf')).toEqual([{ id: 'soffice' }, { id: 'pdftoppm' }]);
+    expect(Registry.getRendererRequirements('tables/data.csv')).toEqual([{
+      id: 'csv-builtin',
+      label: 'Built-in CSV Renderer',
+      available: true,
+      version: null,
+      path: null,
+      details: 'No external CLI is required for CSV/TSV table rendering.'
+    }]);
+    expect(Registry.getAssetType('diagram.drawio')).toBe('diagram');
+    expect(Registry.getAssetType('docs/slides.pdf')).toBe('document');
+    expect(Registry.getEditorKind('diagram.drawio')).toBe('drawio');
+    expect(Registry.getEditorKind('notes/readme.txt')).toBe('plaintext');
+    expect(Registry.getEditorKind('tables/data.tsv')).toBe('plaintext');
+  });
+
   it('exposes export replacement support for pdf and office documents', () => {
     expect(Registry.supportsExportReplacement('slides.pdf')).toBe(true);
     expect(Registry.supportsExportReplacement('deck.pptx')).toBe(true);

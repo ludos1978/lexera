@@ -570,6 +570,56 @@ fn build_excalidraw_worker_asset_status() -> EmbeddedRendererStatus {
     }
 }
 
+fn build_drawio_renderer_status() -> EmbeddedRendererStatus {
+    build_renderer_cli_status(
+        "drawio",
+        "Draw.io CLI",
+        find_drawio_cli(),
+        &["--version"],
+        "Required for .drawio preview and SVG export rendering.",
+    )
+}
+
+fn build_soffice_renderer_status() -> EmbeddedRendererStatus {
+    build_renderer_cli_status(
+        "soffice",
+        "LibreOffice",
+        find_soffice_cli(),
+        &["--version"],
+        "Required for spreadsheet previews and office-document conversion.",
+    )
+}
+
+fn build_pdftoppm_renderer_status() -> EmbeddedRendererStatus {
+    build_renderer_cli_status(
+        "pdftoppm",
+        "Poppler pdftoppm",
+        find_pdftoppm_cli(),
+        &["-v"],
+        "Required for PDF page rendering and office-document page image extraction.",
+    )
+}
+
+fn build_mutool_renderer_status() -> EmbeddedRendererStatus {
+    build_renderer_cli_status(
+        "mutool",
+        "MuPDF mutool",
+        find_mutool_cli(),
+        &["-v"],
+        "Required for EPUB preview and export rendering.",
+    )
+}
+
+fn build_node_renderer_status() -> EmbeddedRendererStatus {
+    build_renderer_cli_status(
+        "node",
+        "Node.js",
+        find_node_cli(),
+        &["--version"],
+        "Required for raw Excalidraw rendering through the local Playwright worker.",
+    )
+}
+
 fn path_stem_lossy(path: &Path) -> String {
     path.file_stem()
         .and_then(|s| s.to_str())
@@ -1233,6 +1283,75 @@ fn render_excalidraw_file(source_path: &Path, target_path: &Path, output_format:
     Ok(())
 }
 
+type EmbeddedRenderFn = fn(&Path, &Path, u32, &str) -> Result<(), String>;
+
+struct EmbeddedRendererDefinition {
+    id: &'static str,
+    render: EmbeddedRenderFn,
+}
+
+struct EmbeddedRendererStatusDefinition {
+    build_status: fn() -> EmbeddedRendererStatus,
+}
+
+fn render_drawio_embedded(source_path: &Path, target_path: &Path, _page_number: u32, output_format: &str) -> Result<(), String> {
+    render_drawio_file(source_path, target_path, output_format)
+}
+
+fn render_excalidraw_embedded(source_path: &Path, target_path: &Path, _page_number: u32, output_format: &str) -> Result<(), String> {
+    render_excalidraw_file(source_path, target_path, output_format)
+}
+
+fn render_spreadsheet_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+    render_spreadsheet_file(source_path, target_path, page_number)
+}
+
+fn render_csv_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+    render_csv_file(source_path, target_path, page_number)
+}
+
+fn render_plaintext_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+    render_plaintext_file(source_path, target_path, page_number)
+}
+
+fn render_pdf_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+    render_pdf_page_to_png(source_path, target_path, page_number, 150)
+}
+
+fn render_document_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+    render_document_file(source_path, target_path, page_number)
+}
+
+fn render_epub_embedded(source_path: &Path, target_path: &Path, page_number: u32, _output_format: &str) -> Result<(), String> {
+    render_epub_file(source_path, target_path, page_number)
+}
+
+const EMBEDDED_RENDERERS: &[EmbeddedRendererDefinition] = &[
+    EmbeddedRendererDefinition { id: "drawio", render: render_drawio_embedded },
+    EmbeddedRendererDefinition { id: "excalidraw", render: render_excalidraw_embedded },
+    EmbeddedRendererDefinition { id: "xlsx", render: render_spreadsheet_embedded },
+    EmbeddedRendererDefinition { id: "csv", render: render_csv_embedded },
+    EmbeddedRendererDefinition { id: "tsv", render: render_csv_embedded },
+    EmbeddedRendererDefinition { id: "plaintext", render: render_plaintext_embedded },
+    EmbeddedRendererDefinition { id: "pdf", render: render_pdf_embedded },
+    EmbeddedRendererDefinition { id: "document", render: render_document_embedded },
+    EmbeddedRendererDefinition { id: "epub", render: render_epub_embedded },
+];
+
+const EMBEDDED_RENDERER_STATUSES: &[EmbeddedRendererStatusDefinition] = &[
+    EmbeddedRendererStatusDefinition { build_status: build_plantuml_renderer_status },
+    EmbeddedRendererStatusDefinition { build_status: build_drawio_renderer_status },
+    EmbeddedRendererStatusDefinition { build_status: build_soffice_renderer_status },
+    EmbeddedRendererStatusDefinition { build_status: build_pdftoppm_renderer_status },
+    EmbeddedRendererStatusDefinition { build_status: build_mutool_renderer_status },
+    EmbeddedRendererStatusDefinition { build_status: build_node_renderer_status },
+    EmbeddedRendererStatusDefinition { build_status: build_excalidraw_worker_asset_status },
+];
+
+fn find_embedded_renderer(plugin_id: &str) -> Option<&'static EmbeddedRendererDefinition> {
+    EMBEDDED_RENDERERS.iter().find(|renderer| renderer.id == plugin_id)
+}
+
 fn collect_marp_scan_dirs(dirs: &[String]) -> Vec<PathBuf> {
     let mut scan_dirs: Vec<PathBuf> = dirs.iter().map(PathBuf::from).collect();
 
@@ -1547,16 +1666,10 @@ pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<Ren
         });
     }
 
-    let render_result = match opts.plugin_id.as_str() {
-        "drawio" => render_drawio_file(&source_path, &target_path, &output_format),
-        "excalidraw" => render_excalidraw_file(&source_path, &target_path, &output_format),
-        "xlsx" => render_spreadsheet_file(&source_path, &target_path, page_number),
-        "csv" | "tsv" => render_csv_file(&source_path, &target_path, page_number),
-        "plaintext" => render_plaintext_file(&source_path, &target_path, page_number),
-        "pdf" => render_pdf_page_to_png(&source_path, &target_path, page_number, 150),
-        "document" => render_document_file(&source_path, &target_path, page_number),
-        "epub" => render_epub_file(&source_path, &target_path, page_number),
-        other => Err(format!("Unknown embedded file renderer: {}", other)),
+    let render_result = if let Some(renderer) = find_embedded_renderer(&opts.plugin_id) {
+        (renderer.render)(&source_path, &target_path, page_number, &output_format)
+    } else {
+        Err(format!("Unknown embedded file renderer: {}", opts.plugin_id))
     };
 
     match render_result {
@@ -1929,45 +2042,10 @@ pub async fn check_pandoc_available() -> CliStatus {
 /// Check availability for the local renderers used by embedded-file preview/export.
 #[tauri::command]
 pub async fn check_embedded_renderer_statuses() -> Vec<EmbeddedRendererStatus> {
-    vec![
-        build_plantuml_renderer_status(),
-        build_renderer_cli_status(
-            "drawio",
-            "Draw.io CLI",
-            find_drawio_cli(),
-            &["--version"],
-            "Required for .drawio preview and SVG export rendering.",
-        ),
-        build_renderer_cli_status(
-            "soffice",
-            "LibreOffice",
-            find_soffice_cli(),
-            &["--version"],
-            "Required for spreadsheet previews and office-document conversion.",
-        ),
-        build_renderer_cli_status(
-            "pdftoppm",
-            "Poppler pdftoppm",
-            find_pdftoppm_cli(),
-            &["-v"],
-            "Required for PDF page rendering and office-document page image extraction.",
-        ),
-        build_renderer_cli_status(
-            "mutool",
-            "MuPDF mutool",
-            find_mutool_cli(),
-            &["-v"],
-            "Required for EPUB preview and export rendering.",
-        ),
-        build_renderer_cli_status(
-            "node",
-            "Node.js",
-            find_node_cli(),
-            &["--version"],
-            "Required for raw Excalidraw rendering through the local Playwright worker.",
-        ),
-        build_excalidraw_worker_asset_status(),
-    ]
+    EMBEDDED_RENDERER_STATUSES
+        .iter()
+        .map(|status| (status.build_status)())
+        .collect()
 }
 
 /// Discover Marp themes from configured and common directories.

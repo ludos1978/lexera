@@ -571,6 +571,56 @@ impl BoardStorage for IosStorage {
 
         results
     }
+
+    fn calendar_tasks(&self) -> Vec<SearchResult> {
+        let boards = self.boards.read().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.calendar_tasks] Lock was poisoned, recovering");
+            p.into_inner()
+        });
+        let mut results = Vec::new();
+
+        for (board_id, state) in boards.iter() {
+            let board = &state.board;
+            for (flat_idx, col) in board.all_columns().iter().enumerate() {
+                for card in &col.cards {
+                    let meta = SearchCardMeta::from_card(&card.content, card.checked);
+                    if meta.due_date.is_none() {
+                        continue;
+                    }
+                    results.push(SearchResult {
+                        board_id: board_id.clone(),
+                        board_title: board.title.clone(),
+                        column_title: col.title.clone(),
+                        column_index: flat_idx,
+                        card_id: card.id.clone(),
+                        card_content: card.content.clone(),
+                        checked: card.checked,
+                        hash_tags: meta.hash_tags.clone(),
+                        temporal_tags: meta.temporal_tags.clone(),
+                        links: meta.links.clone(),
+                        due_date: meta.due_date.map(|d| d.to_string()),
+                        is_overdue: meta.is_overdue,
+                        row_index: None,
+                        stack_index: None,
+                        col_local_index: None,
+                    });
+                }
+            }
+        }
+
+        results.sort_by(|a, b| {
+            a.due_date
+                .cmp(&b.due_date)
+                .then_with(|| {
+                    a.board_title
+                        .to_ascii_lowercase()
+                        .cmp(&b.board_title.to_ascii_lowercase())
+                })
+                .then_with(|| a.column_index.cmp(&b.column_index))
+        });
+
+        results
+    }
 }
 
 #[cfg(test)]

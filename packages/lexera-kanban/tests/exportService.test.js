@@ -147,6 +147,20 @@ describe('generateExportPath', () => {
   });
 });
 
+describe('getAssetType', () => {
+  it('uses registry metadata for plugin-backed embedded file types', () => {
+    expect(ES.getAssetType('diagram.drawio')).toBe('diagram');
+    expect(ES.getAssetType('assets/scene.excalidraw.json')).toBe('diagram');
+    expect(ES.getAssetType('docs/book.epub')).toBe('document');
+    expect(ES.getAssetType('tables/report.tsv')).toBe('document');
+  });
+
+  it('keeps native media extension fallbacks for images and video', () => {
+    expect(ES.getAssetType('images/cover.png')).toBe('image');
+    expect(ES.getAssetType('videos/demo.mp4')).toBe('video');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // _transform — Phase 2 logic
 // ═══════════════════════════════════════════════════════════════════════════

@@ -8,6 +8,7 @@ use serde::Serialize;
 
 mod auth_middleware;
 mod board;
+mod calendar;
 mod capture_api;
 mod config_api;
 mod events;
@@ -50,6 +51,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   POST /boards/:boardId/convert-path        -> convert relative<->absolute path in card
 ///   POST /search/files                          -> search files across boards
 ///   GET  /search?q=term                       -> search cards
+///   GET  /calendar/tasks                      -> all cards with due dates
 ///   GET  /config/theme                        -> current theme ID
 ///   PUT  /config/theme                        -> update theme ID
 ///   GET  /events                              -> SSE stream of board changes
@@ -162,6 +164,7 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             "/boards/{board_id}/convert-path",
             axum::routing::post(file_ops::convert_path),
         )
+        .route("/calendar/tasks", get(calendar::calendar_tasks))
         .route("/events", get(events::sse_events))
         .route(
             "/config/theme",

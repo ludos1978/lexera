@@ -855,7 +855,7 @@ describe('connectSSE (with baseUrl)', () => {
     const onEvent = vi.fn();
     const es = Api.connectSSE(onEvent);
     expect(es).not.toBe(null);
-    expect(es.url).toBe('http://localhost:13080/events');
+    expect(es.url).toBe('http://localhost:13080/events?auth_token=test-bearer-token');
   });
 
   it('calls onEvent with parsed JSON on message', () => {

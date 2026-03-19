@@ -2839,6 +2839,67 @@ impl BoardStorage for LocalStorage {
     fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
         LocalStorage::search_with_options(self, query, options)
     }
+
+    fn calendar_tasks(&self) -> Vec<SearchResult> {
+        let boards = match self.boards.read() {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("[lexera.storage.calendar] Boards lock poisoned: {}", e);
+                return Vec::new();
+            }
+        };
+        let mut results = Vec::new();
+
+        for (board_id, state) in boards.iter() {
+            let col_refs = Self::collect_search_columns(&state.board);
+            for col_ref in col_refs {
+                if is_archived_or_deleted(&col_ref.column.title) {
+                    continue;
+                }
+                for card in &col_ref.column.cards {
+                    if is_archived_or_deleted(&card.content) {
+                        continue;
+                    }
+
+                    let meta = SearchCardMeta::from_card(&card.content, card.checked);
+                    if meta.due_date.is_none() {
+                        continue;
+                    }
+
+                    results.push(SearchResult {
+                        board_id: board_id.clone(),
+                        board_title: state.board.title.clone(),
+                        column_title: col_ref.column.title.clone(),
+                        column_index: col_ref.flat_index,
+                        row_index: col_ref.row_index,
+                        stack_index: col_ref.stack_index,
+                        col_local_index: col_ref.col_local_index,
+                        card_id: card.id.clone(),
+                        card_content: card.content.clone(),
+                        checked: card.checked,
+                        hash_tags: meta.hash_tags.clone(),
+                        temporal_tags: meta.temporal_tags.clone(),
+                        links: meta.links.clone(),
+                        due_date: meta.due_date.map(|d| d.to_string()),
+                        is_overdue: meta.is_overdue,
+                    });
+                }
+            }
+        }
+
+        results.sort_by(|a, b| {
+            a.due_date
+                .cmp(&b.due_date)
+                .then_with(|| {
+                    a.board_title
+                        .to_ascii_lowercase()
+                        .cmp(&b.board_title.to_ascii_lowercase())
+                })
+                .then_with(|| a.column_index.cmp(&b.column_index))
+        });
+
+        results
+    }
 }
 
 /// Simple pseudo-random 24-bit value for card ID uniqueness.

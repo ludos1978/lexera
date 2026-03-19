@@ -813,12 +813,10 @@ class ExportService {
         const lower = String(filePath || '').toLowerCase();
         const ext = ExportService.getFileExtension(lower);
         if (ext === '.md') return 'markdown';
-        if (ext === '.drawio' || ext === '.dio' || ext === '.excalidraw' || lower.indexOf('.excalidraw.json') >= 0 || lower.indexOf('.excalidraw.svg') >= 0) return 'diagram';
         const registry = ExportService.getFileFormatRegistry();
-        if (registry && typeof registry.findByFilePath === 'function') {
-            const plugin = registry.findByFilePath(filePath);
-            if (plugin && plugin.preview && plugin.preview.kind === 'diagram') return 'diagram';
-            if (plugin && (plugin.id === 'pdf' || plugin.id === 'document' || plugin.id === 'epub' || plugin.id === 'xlsx')) return 'document';
+        if (registry && typeof registry.getAssetType === 'function') {
+            const assetType = registry.getAssetType(filePath);
+            if (assetType) return assetType;
         }
         if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico', '.avif', '.heic', '.heif'].indexOf(ext) >= 0) return 'image';
         if (['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'].indexOf(ext) >= 0) return 'video';

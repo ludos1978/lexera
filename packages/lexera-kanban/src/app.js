@@ -20698,30 +20698,21 @@ const LexeraDashboard = (function () {
   }
 
   function getRendererStatusRequirementsForFile(filePath) {
-    var plugin = getFileFormatPlugin(filePath);
-    if (!plugin || !plugin.id) return [];
-    if (plugin.id === 'csv') {
-      return [{
-        id: 'csv-builtin',
-        label: 'Built-in CSV Renderer',
-        available: true,
-        version: null,
-        path: null,
-        details: 'No external CLI is required for CSV table rendering.'
-      }];
-    }
-    var neededIds = [];
-    if (plugin.id === 'drawio') neededIds = ['drawio'];
-    else if (plugin.id === 'xlsx') neededIds = ['soffice'];
-    else if (plugin.id === 'document') neededIds = ['soffice', 'pdftoppm'];
-    else if (plugin.id === 'epub') neededIds = ['mutool'];
-    else if (plugin.id === 'excalidraw') neededIds = ['node', 'excalidraw-assets'];
-    else neededIds = [];
-
+    var registry = getFileFormatRegistry();
+    var requirements = registry && typeof registry.getRendererRequirements === 'function'
+      ? registry.getRendererRequirements(filePath)
+      : [];
+    if (!Array.isArray(requirements) || requirements.length === 0) return [];
     var rowMap = getRendererStatusRowsById();
     var out = [];
-    for (var i = 0; i < neededIds.length; i++) {
-      if (rowMap[neededIds[i]]) out.push(rowMap[neededIds[i]]);
+    for (var i = 0; i < requirements.length; i++) {
+      var requirement = requirements[i];
+      if (!requirement) continue;
+      if (typeof requirement.available === 'boolean') {
+        out.push(requirement);
+        continue;
+      }
+      if (requirement.id && rowMap[requirement.id]) out.push(rowMap[requirement.id]);
     }
     return out;
   }
@@ -20783,6 +20774,11 @@ const LexeraDashboard = (function () {
   }
 
   function getSpecialFileEditorKind(filePath) {
+    var registry = getFileFormatRegistry();
+    if (registry && typeof registry.getEditorKind === 'function') {
+      var editorKind = registry.getEditorKind(filePath);
+      if (editorKind) return editorKind;
+    }
     var normalized = normalizeFilePathForDetection(filePath);
     if (!normalized) return '';
     if (normalized.endsWith('.excalidraw') || normalized.endsWith('.excalidraw.json')) return 'excalidraw';

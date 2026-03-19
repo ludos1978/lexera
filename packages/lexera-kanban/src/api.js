@@ -419,7 +419,7 @@ const LexeraApi = (function () {
 
   function connectSSE(onEvent) {
     if (!baseUrl) return null;
-    var es = new EventSource(baseUrl + '/events');
+    var es = new EventSource(appendAuthTokenQuery(baseUrl + '/events'));
     es.onmessage = function (msg) {
       try {
         onEvent(JSON.parse(msg.data));

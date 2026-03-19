@@ -1,6 +1,12 @@
 const LexeraFileFormatRegistry = (function () {
   var plugins = [];
 
+  function cloneRendererRequirement(requirement) {
+    return requirement && typeof requirement === 'object'
+      ? Object.assign({}, requirement)
+      : requirement;
+  }
+
   function normalizeFilePathForDetection(path) {
     var value = String(path || '').trim();
     if (!value) return '';
@@ -17,6 +23,9 @@ const LexeraFileFormatRegistry = (function () {
     return Object.assign({}, plugin, {
       preview: plugin.preview ? Object.assign({}, plugin.preview) : null,
       export: plugin.export ? Object.assign({}, plugin.export) : null,
+      rendererRequirements: Array.isArray(plugin.rendererRequirements)
+        ? plugin.rendererRequirements.map(cloneRendererRequirement)
+        : [],
     });
   }
 
@@ -135,6 +144,23 @@ const LexeraFileFormatRegistry = (function () {
     return !!(plugin && plugin.export && plugin.export.outputExtension);
   }
 
+  function getRendererRequirements(filePath) {
+    var plugin = findByFilePath(filePath);
+    return plugin && Array.isArray(plugin.rendererRequirements)
+      ? plugin.rendererRequirements.map(cloneRendererRequirement)
+      : [];
+  }
+
+  function getAssetType(filePath) {
+    var plugin = findByFilePath(filePath);
+    return plugin && typeof plugin.assetType === 'string' ? plugin.assetType : '';
+  }
+
+  function getEditorKind(filePath) {
+    var plugin = findByFilePath(filePath);
+    return plugin && typeof plugin.editorKind === 'string' ? plugin.editorKind : '';
+  }
+
   function buildPreviewConfig(kind, cacheFolderName, outputExtension, outputFormat, suffixBuilder) {
     return {
       kind: kind,
@@ -163,6 +189,9 @@ const LexeraFileFormatRegistry = (function () {
     id: 'drawio',
     label: 'Draw.io file',
     emoji: '&#128202;',
+    assetType: 'diagram',
+    editorKind: 'drawio',
+    rendererRequirements: [{ id: 'drawio' }],
     previewPlaceholder: 'Draw.io preview is rendered through the draw.io CLI when available.',
     preview: buildPreviewConfig('diagram', 'drawio-cache', 'png', 'png'),
     export: buildExportConfig('svg', 'svg'),
@@ -175,6 +204,9 @@ const LexeraFileFormatRegistry = (function () {
     id: 'excalidraw',
     label: 'Excalidraw file',
     emoji: '&#127912;',
+    assetType: 'diagram',
+    editorKind: 'excalidraw',
+    rendererRequirements: [{ id: 'node' }, { id: 'excalidraw-assets' }],
     previewPlaceholder: 'Excalidraw preview is rendered through the integrated export worker when available.',
     preview: buildPreviewConfig('diagram', 'excalidraw-cache', 'svg', 'svg'),
     export: buildExportConfig('svg', 'svg'),
@@ -189,6 +221,8 @@ const LexeraFileFormatRegistry = (function () {
     id: 'xlsx',
     label: 'Spreadsheet file',
     emoji: '&#128200;',
+    assetType: 'document',
+    rendererRequirements: [{ id: 'soffice' }],
     previewPlaceholder: 'Spreadsheet preview is rendered through LibreOffice into a sheet image.',
     preview: buildPreviewConfig('spreadsheet', 'xlsx-cache', 'png', 'png', pageSuffix('-s')),
     export: buildExportConfig('png', 'png', pageSuffix('-s')),
@@ -201,6 +235,16 @@ const LexeraFileFormatRegistry = (function () {
     id: 'csv',
     label: 'CSV table',
     emoji: '&#128451;',
+    assetType: 'document',
+    editorKind: 'plaintext',
+    rendererRequirements: [{
+      id: 'csv-builtin',
+      label: 'Built-in CSV Renderer',
+      available: true,
+      version: null,
+      path: null,
+      details: 'No external CLI is required for CSV/TSV table rendering.'
+    }],
     previewPlaceholder: 'CSV preview is rendered into an SVG table for board view and export compatibility.',
     preview: buildPreviewConfig('table', 'csv-cache', 'svg', 'svg', pageSuffix('-p')),
     export: buildExportConfig('svg', 'svg', pageSuffix('-p')),
@@ -213,6 +257,16 @@ const LexeraFileFormatRegistry = (function () {
     id: 'tsv',
     label: 'TSV table',
     emoji: '&#128451;',
+    assetType: 'document',
+    editorKind: 'plaintext',
+    rendererRequirements: [{
+      id: 'csv-builtin',
+      label: 'Built-in CSV Renderer',
+      available: true,
+      version: null,
+      path: null,
+      details: 'No external CLI is required for CSV/TSV table rendering.'
+    }],
     previewPlaceholder: 'TSV preview is rendered into an SVG table for board view and export compatibility.',
     preview: buildPreviewConfig('table', 'tsv-cache', 'svg', 'svg', pageSuffix('-p')),
     export: buildExportConfig('svg', 'svg', pageSuffix('-p')),
@@ -225,6 +279,8 @@ const LexeraFileFormatRegistry = (function () {
     id: 'pdf',
     label: 'PDF file',
     emoji: '&#128196;',
+    assetType: 'document',
+    rendererRequirements: [{ id: 'pdftoppm' }],
     previewPlaceholder: 'PDF preview uses the built-in viewer. Exports can render a page image for compatibility.',
     preview: {
       kind: 'pdf',
@@ -240,6 +296,8 @@ const LexeraFileFormatRegistry = (function () {
     id: 'document',
     label: 'Document file',
     emoji: '&#128196;',
+    assetType: 'document',
+    rendererRequirements: [{ id: 'soffice' }, { id: 'pdftoppm' }],
     previewPlaceholder: 'Document preview is rendered through LibreOffice and Poppler into page images.',
     preview: buildPreviewConfig('document', 'document-cache', 'png', 'png', pageSuffix('-p')),
     export: buildExportConfig('png', 'png', pageSuffix('-p')),
@@ -252,6 +310,8 @@ const LexeraFileFormatRegistry = (function () {
     id: 'epub',
     label: 'EPUB file',
     emoji: '&#128218;',
+    assetType: 'document',
+    rendererRequirements: [{ id: 'mutool' }],
     previewPlaceholder: 'EPUB preview is rendered through MuPDF into page images.',
     preview: buildPreviewConfig('epub', 'epub-cache', 'png', 'png', pageSuffix('-p')),
     export: buildExportConfig('png', 'png', pageSuffix('-p')),
@@ -264,6 +324,8 @@ const LexeraFileFormatRegistry = (function () {
     id: 'plaintext',
     label: 'Text file',
     emoji: '&#128196;',
+    assetType: 'document',
+    editorKind: 'plaintext',
     previewPlaceholder: 'Text file preview is rendered into an SVG page for board view and export compatibility.',
     preview: buildPreviewConfig('text', 'text-cache', 'svg', 'svg', pageSuffix('-p')),
     export: buildExportConfig('svg', 'svg', pageSuffix('-p')),
@@ -283,6 +345,9 @@ const LexeraFileFormatRegistry = (function () {
     getPreviewPlaceholder: getPreviewPlaceholder,
     getPreviewRenderConfig: getPreviewRenderConfig,
     getExportRenderConfig: getExportRenderConfig,
+    getRendererRequirements: getRendererRequirements,
+    getAssetType: getAssetType,
+    getEditorKind: getEditorKind,
     supportsExportReplacement: supportsExportReplacement,
     normalizeFilePathForDetection: normalizeFilePathForDetection,
   };
