@@ -2,6 +2,12 @@
 
 ## High Priority — Security & Reliability
 
+- [ ] when pressing retry render on a drawio diagram it disappears and it seems to be rendering the image (draw.io opens in the background). but it doesnt show the image afterwards. maybe its not doing a visual refresh with the image. also make sure that the cache files are stored somewhere good. 
+
+- [ ]  i want the views (kanban view or canvas view) to be able to be individual windows. when a new board is opened its opening a new tab, when i drag a tab out of the window, it creates a separate window. the tabs can be modularely placed  so the view is for example split vertically or horizontally! this is a major refactor, do a deep analysis first!
+
+- [ ] we need the be able to configure the locations of the render-applications such as the draw.io application or other command line tools such as marp, pandoc etc. the configuration should be a separate window or a tab that opens in the view area! we should separate the frontend/board configuration, backend configuration, and logging area!
+
 - [x] **Step 1: Auth tokens in AuthService** — server-generated bearer tokens replace query-param identity.
   - `tokens: HashMap<String, String>` (token → user_id) in AuthService
   - `register_user()` generates UUID v4 token, returns it

@@ -71,6 +71,9 @@ const LexeraDashboard = (function () {
   var embeddedPaneId = urlParams.get('pane') || '';
   var embeddedInitialBoardId = urlParams.get('board') || '';
   var embeddedPreferredBoardId = embeddedInitialBoardId;
+  var embeddedForcedBoardLayout = embeddedMode ? String(urlParams.get('view') || '').trim().toLowerCase() : '';
+  var WorkspaceShell = window.LexeraWorkspaceShell || null;
+  var workspaceShellEnabled = !embeddedMode && !!(WorkspaceShell && typeof WorkspaceShell.isEnabled === 'function' && WorkspaceShell.isEnabled());
   var splitViewMode = embeddedMode ? 'single' : (localStorage.getItem('lexera-split-mode') || 'single'); // single | vertical | horizontal
   var splitPaneBoards = {
     a: embeddedMode ? '' : (localStorage.getItem('lexera-split-pane-a') || ''),
@@ -586,6 +589,8 @@ const LexeraDashboard = (function () {
   }
 
   function getCurrentBoardLayout() {
+    if (embeddedForcedBoardLayout === 'canvas') return 'canvas';
+    if (embeddedForcedBoardLayout === 'kanban') return 'kanban';
     return normalizeBoardLayoutValue(getBoardSettingValue('boardLayout', 'kanban'));
   }
 
@@ -1726,14 +1731,19 @@ const LexeraDashboard = (function () {
   function handleEmbeddedHierarchyFocusMessage(event) {
     if (!embeddedMode) return;
     var data = event && event.data;
-    if (!data || data.type !== 'lexera-focus-hierarchy-target' || !data.target) return;
+    if (!data || !data.type) return;
+    if (data.type === 'lexera-board-action' && data.action) {
+      handleBoardAction(data.action);
+      return;
+    }
+    if (data.type !== 'lexera-focus-hierarchy-target' || !data.target) return;
     navigateToHierarchyTarget(data.target, { skipSplitRouting: true }).catch(function (err) {
       logFrontendIssue('warn', 'split.focus', 'Failed to focus hierarchy target inside embedded pane', err);
     });
   }
 
   function setupSplitControls() {
-    if (embeddedMode) return;
+    if (embeddedMode || workspaceShellEnabled) return;
     activeSplitPane = normalizeSplitPane(activeSplitPane);
     splitRatios.vertical = normalizeSplitRatio(splitRatios.vertical);
     splitRatios.horizontal = normalizeSplitRatio(splitRatios.horizontal);
@@ -1776,6 +1786,41 @@ const LexeraDashboard = (function () {
 
   function refreshHeaderFileControls() {
     // Header controls are split-view + sync status only.
+  }
+
+  function setShellActiveBoard(boardId) {
+    activeBoardId = boardId || null;
+    activeBoardData = null;
+    fullBoardData = null;
+    pendingExternalRebaseConflict = null;
+    _lastLoadedGeneration = null;
+    _lastLoadedRevision = null;
+    addCardColumn = null;
+    if (!embeddedMode) {
+      if (activeBoardId) {
+        localStorage.setItem('lexera-last-board', activeBoardId);
+        trackRecentBoard(activeBoardId);
+      } else {
+        localStorage.removeItem('lexera-last-board');
+      }
+    }
+    renderBoardList();
+    refreshHeaderFileControls();
+    scheduleDashboardRefresh(60);
+  }
+
+  function setupWorkspaceShell() {
+    if (!workspaceShellEnabled || !WorkspaceShell) return;
+    WorkspaceShell.mount({
+      getMainContent: getElMainContent,
+      onActiveBoardChanged: function (boardId) {
+        setShellActiveBoard(boardId || null);
+      },
+      openWindow: function (payload) {
+        if (!hasTauri) return Promise.reject(new Error('Tauri unavailable'));
+        return tauriInvoke('open_new_window', payload || {});
+      }
+    });
   }
 
   function normalizeMarkdownFileName(rawName) {
@@ -2403,6 +2448,7 @@ const LexeraDashboard = (function () {
     setupDashboardControls();
     setupSidebarSectionResize();
     setupSidebarWidthResize();
+    setupWorkspaceShell();
 
     if ($searchInput) {
       $searchInput.addEventListener('input', onSearchInput);
@@ -3390,8 +3436,30 @@ const LexeraDashboard = (function () {
       }
       await refreshBoardHierarchyCache(boards);
       renderBoardList();
+      if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.onBoardsUpdated === 'function') {
+        WorkspaceShell.onBoardsUpdated(boards.concat(remoteBoards));
+      }
       if (!embeddedMode && splitViewMode !== 'single') {
         refreshSplitFrames(false);
+      }
+
+      if (workspaceShellEnabled) {
+        if (!searchMode) {
+          if (activeBoardId && !findBoardMeta(activeBoardId)) {
+            setShellActiveBoard(null);
+          }
+          if (!activeBoardId) {
+            var initialBoardId = embeddedMode
+              ? embeddedPreferredBoardId
+              : (urlParams.get('board') || localStorage.getItem('lexera-last-board') || (boards[0] && boards[0].id) || '');
+            if (initialBoardId && findBoardMeta(initialBoardId) && typeof WorkspaceShell.ensureInitialTab === 'function') {
+              WorkspaceShell.ensureInitialTab(initialBoardId);
+            }
+          }
+        }
+        refreshHeaderFileControls();
+        scheduleDashboardRefresh(120);
+        return;
       }
 
       if (activeBoardId && !searchMode) {
@@ -4294,6 +4362,10 @@ const LexeraDashboard = (function () {
               if (boardId !== activeBoardId) selectBoard(boardId);
               return;
             }
+            if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
+              WorkspaceShell.focusHierarchyTarget(navTarget, boardId);
+              return;
+            }
             navigateToHierarchyTarget(navTarget, { pane: activeSplitPane }).catch(function (err) {
               logFrontendIssue('warn', 'sidebar.hierarchy-focus', 'Failed to focus hierarchy target', err);
               showNotification('Failed to focus hierarchy item');
@@ -4320,14 +4392,36 @@ const LexeraDashboard = (function () {
         boardRow.addEventListener('contextmenu', function (e) {
           e.preventDefault();
           e.stopPropagation();
-          showNativeMenu([
-            { id: 'split-left', label: 'Open in Split Left' },
-            { id: 'split-right', label: 'Open in Split Right' },
-            { separator: true },
-            { id: 'backend-settings', label: 'Backend Settings' },
-            { separator: true },
-            { id: 'reveal', label: 'Reveal in Finder' },
-          ], e.clientX, e.clientY).then(async function (action) {
+          var items = workspaceShellEnabled
+            ? [
+                { id: 'open-tab', label: 'Open / Focus Tab' },
+                { id: 'detach', label: 'Open in Detached Window' },
+                { separator: true },
+                { id: 'backend-settings', label: 'Backend Settings' },
+                { separator: true },
+                { id: 'reveal', label: 'Reveal in Finder' }
+              ]
+            : [
+                { id: 'split-left', label: 'Open in Split Left' },
+                { id: 'split-right', label: 'Open in Split Right' },
+                { separator: true },
+                { id: 'backend-settings', label: 'Backend Settings' },
+                { separator: true },
+                { id: 'reveal', label: 'Reveal in Finder' }
+              ];
+          showNativeMenu(items, e.clientX, e.clientY).then(async function (action) {
+            if (workspaceShellEnabled && WorkspaceShell) {
+              if (action === 'open-tab') {
+                selectBoard(boardId);
+              } else if (action === 'detach') {
+                if (hasTauri) tauriInvoke('open_new_window', { boardId: boardId, profile: 'detachedBoard' });
+              } else if (action === 'backend-settings') {
+                openConnectionWindow();
+              } else if (action === 'reveal' && boardFilePath) {
+                showInFinder(boardFilePath);
+              }
+              return;
+            }
             if (action === 'split-left') {
               openBoardInPane(boardId, 'a');
             } else if (action === 'split-right') {
@@ -4540,6 +4634,14 @@ const LexeraDashboard = (function () {
   async function selectBoard(boardId, options) {
     options = options || {};
     if (!boardId) return;
+    if (workspaceShellEnabled && WorkspaceShell && !options.forceLocalBoardLoad) {
+      WorkspaceShell.openBoard(boardId, {
+        duplicate: !!options.duplicate,
+        preferExisting: options.preferExisting !== false,
+        viewKind: options.viewKind || 'default'
+      });
+      return;
+    }
     // Save unsaved changes before switching away from the current board
     if (activeBoardId && activeBoardId !== boardId && isBoardDirty()) {
       try { await saveFullBoard(); } catch (_) { /* auto-save retry will handle it */ }
@@ -6674,6 +6776,14 @@ const LexeraDashboard = (function () {
   // --- Main View ---
 
   function renderMainView() {
+    if (workspaceShellEnabled) {
+      getElSearchResults().classList.add('hidden');
+      getElBoardHeader().classList.add('hidden');
+      getElColumnsContainer().classList.add('hidden');
+      getElEmptyState().classList.add('hidden');
+      refreshHeaderFileControls();
+      return;
+    }
     if (searchMode && searchResults) {
       renderSearchResults();
       refreshHeaderFileControls();
@@ -8787,6 +8897,9 @@ const LexeraDashboard = (function () {
 
   async function handleBoardAction(action) {
     if (!action) return;
+    if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.handleBoardAction === 'function') {
+      if (WorkspaceShell.handleBoardAction(action)) return;
+    }
     // Try registered actions first
     if (ActionRegistry && ActionRegistry.dispatch('board', action, {})) return;
     // Fallback: delegation to sub-handlers that do their own prefix matching
@@ -12090,8 +12203,7 @@ const LexeraDashboard = (function () {
     container.classList.remove('html-comments-hide', 'html-comments-dim');
     var wasCanvas = container.classList.contains('layout-canvas');
     container.classList.remove('layout-spacious', 'layout-rows-fixed', 'layout-canvas');
-    var willBeCanvas = fullBoardData && fullBoardData.boardSettings &&
-      normalizeBoardLayoutValue(fullBoardData.boardSettings.boardLayout) === 'canvas';
+    var willBeCanvas = getCurrentBoardLayout() === 'canvas';
     // Reset canvas zoom and pan only when actually leaving canvas mode
     if (wasCanvas && !willBeCanvas) {
       if ($canvasZoom !== 1) applyCanvasZoom(1);
@@ -20401,6 +20513,10 @@ const LexeraDashboard = (function () {
 
   async function navigateToHierarchyTarget(target, options) {
     options = options || {};
+    if (workspaceShellEnabled && WorkspaceShell && target && target.boardId) {
+      WorkspaceShell.focusHierarchyTarget(target, target.boardId, options || {});
+      return true;
+    }
     return getBoardNavigationApi().navigateToHierarchyTarget(target, {
       embeddedMode: embeddedMode,
       splitViewMode: splitViewMode,
@@ -20427,6 +20543,17 @@ const LexeraDashboard = (function () {
   }
 
   async function navigateToSearchResult(result) {
+    if (workspaceShellEnabled && WorkspaceShell && result && result.boardId) {
+      WorkspaceShell.focusHierarchyTarget({
+        boardId: result.boardId,
+        cardId: result.cardId,
+        rowIndex: parseOptionalSearchIndex(result.rowIndex),
+        stackIndex: parseOptionalSearchIndex(result.stackIndex),
+        colLocalIndex: parseOptionalSearchIndex(result.colLocalIndex),
+        cardIndex: parseOptionalSearchIndex(result.cardIndex)
+      }, result.boardId, {});
+      return true;
+    }
     return getBoardNavigationApi().navigateToSearchResult(result, {
       searchInput: $searchInput,
       exitSearchMode: exitSearchMode,

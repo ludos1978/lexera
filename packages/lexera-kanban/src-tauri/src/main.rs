@@ -12,15 +12,34 @@ use tauri::{Emitter, Manager, WebviewUrl};
 static WINDOW_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 #[tauri::command]
-fn open_new_window(app: tauri::AppHandle, board_id: Option<String>) -> Result<String, String> {
+fn open_new_window(
+    app: tauri::AppHandle,
+    board_id: Option<String>,
+    view_kind: Option<String>,
+    profile: Option<String>,
+) -> Result<String, String> {
     let n = WINDOW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let label = format!("kanban-{}", n);
 
     let mut url_str = String::from("index.html");
+    let mut query_started = false;
     if let Some(ref bid) = board_id {
         url_str.push_str("?board=");
         url_str.push_str(bid);
+        query_started = true;
     }
+    if let Some(ref view) = view_kind {
+        url_str.push_str(if query_started { "&view=" } else { "?view=" });
+        url_str.push_str(view);
+        query_started = true;
+    }
+    if let Some(ref window_profile) = profile {
+        url_str.push_str(if query_started { "&profile=" } else { "?profile=" });
+        url_str.push_str(window_profile);
+        query_started = true;
+    }
+    url_str.push_str(if query_started { "&windowLabel=" } else { "?windowLabel=" });
+    url_str.push_str(&label);
     let url = WebviewUrl::App(url_str.into());
 
     tauri::WebviewWindowBuilder::new(&app, &label, url)
@@ -174,7 +193,7 @@ fn main() {
             if let Some(action) = app_menu::menu_id_to_action(id) {
                 // Handle Rust-side actions that don't go to the frontend
                 if action == "new-window" {
-                    let _ = open_new_window(app.clone(), None);
+                    let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()));
                     return;
                 }
                 // Route to the focused window, falling back to "main"
