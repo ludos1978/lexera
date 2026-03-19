@@ -42,6 +42,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   GET  /boards/:boardId/columns             -> full column data with cards (+ ETag)
 ///   POST /boards/:boardId/columns/:colIndex/cards -> add card
 ///   POST /boards/:boardId/media               -> upload media file
+///   GET  /boards/:boardId/media-manifest      -> list media files with SHA-256 hashes
 ///   GET  /boards/:boardId/media/:filename     -> serve media file
 ///   GET  /boards/:boardId/file?path=...       -> serve any file relative to board dir
 ///   GET  /boards/:boardId/file-info?path=...  -> file metadata (size, type, etc.)
@@ -146,6 +147,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
         .route(
             "/boards/{board_id}/media",
             axum::routing::post(media::upload_media),
+        )
+        .route(
+            "/boards/{board_id}/media-manifest",
+            get(media::media_manifest),
         )
         .route(
             "/boards/{board_id}/media/{filename}",

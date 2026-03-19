@@ -40,6 +40,487 @@ const INVITE_CLEANUP_INTERVAL_SECS: u64 = 3600;
 /// Seconds between periodic saves of collaboration state and config.
 const PERIODIC_SAVE_INTERVAL_SECS: u64 = 60;
 
+// ── Setup helper functions ─────────────────────────────────────────────────
+
+/// Load boards from config into storage. Returns `(board_id, canonical_path)` pairs.
+fn init_storage_and_boards(
+    storage: &LocalStorage,
+    config: &std::sync::Mutex<config::SyncConfig>,
+) -> Vec<(String, PathBuf)> {
+    let mut board_paths = Vec::new();
+    let cfg = match config.lock() {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("[lexera.setup] Config mutex poisoned during board loading: {}", e);
+            return board_paths;
+        }
+    };
+    for entry in &cfg.boards {
+        let path = PathBuf::from(&entry.file);
+        match storage.add_board(&path) {
+            Ok(id) => {
+                log::info!("Loaded board: {} -> {}", entry.file, id);
+                let canonical = std::fs::canonicalize(&path).unwrap_or(path);
+                board_paths.push((id, canonical));
+            }
+            Err(e) => log::warn!("Failed to load board {}: {}", entry.file, e),
+        }
+    }
+    board_paths
+}
+
+/// Resolve the incoming config (map file path to board ID).
+fn resolve_incoming(
+    config: &std::sync::Mutex<config::SyncConfig>,
+    board_paths: &[(String, PathBuf)],
+) -> Option<ResolvedIncoming> {
+    config.lock().ok()?.incoming.clone().and_then(|inc| {
+        let inc_path = PathBuf::from(&inc.board);
+        board_paths.iter().find(|(_, p)| {
+            let canonical_inc = std::fs::canonicalize(&inc_path).unwrap_or(inc_path.clone());
+            *p == canonical_inc
+        }).map(|(id, _)| ResolvedIncoming {
+            board_id: id.clone(),
+            column: inc.column,
+        })
+    })
+}
+
+/// Create file watcher, watch boards/includes, and spawn the event processing loop.
+fn setup_file_watcher(
+    storage: &Arc<LocalStorage>,
+    board_paths: &[(String, PathBuf)],
+    event_tx: &tokio::sync::broadcast::Sender<BoardChangeEvent>,
+    shutdown_rx: &tokio::sync::watch::Receiver<bool>,
+) -> Arc<std::sync::Mutex<Option<FileWatcher>>> {
+    let include_map = Arc::new(RwLock::new(IncludeMap::new()));
+    let watcher_arc: Arc<std::sync::Mutex<Option<FileWatcher>>> =
+        Arc::new(std::sync::Mutex::new(None));
+
+    let watcher_result = FileWatcher::new(include_map.clone());
+    if let Ok((mut watcher, _watcher_rx)) = watcher_result {
+        for (board_id, path) in board_paths {
+            if let Err(e) = watcher.watch_board(board_id, path) {
+                log::warn!("[lexera.watcher] Failed to watch board {}: {}", board_id, e);
+            }
+        }
+        if let Some(storage_map) = storage.include_map() {
+            for path in storage_map.all_include_paths() {
+                if let Err(e) = watcher.watch_include(&path) {
+                    log::warn!("[lexera.watcher] Failed to watch include {:?}: {}", path, e);
+                }
+            }
+        } else {
+            log::error!("[lexera.watcher] Include map lock poisoned, skipping include watches");
+        }
+
+        let mut event_rx = watcher.event_sender().subscribe();
+        match watcher_arc.lock() {
+            Ok(mut guard) => *guard = Some(watcher),
+            Err(e) => {
+                log::error!("[lexera.watcher] Watcher mutex poisoned, cannot store file watcher: {}", e);
+            }
+        }
+
+        let storage_for_events = storage.clone();
+        let event_tx_for_forward = event_tx.clone();
+        let mut event_shutdown_rx = shutdown_rx.clone();
+
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::select! {
+                    result = event_rx.recv() => {
+                        match result {
+                            Ok(event) => {
+                                match &event {
+                                    BoardChangeEvent::MainFileChanged { board_id, .. } => {
+                                        if let Some(path) = storage_for_events.get_board_path(board_id) {
+                                            if storage_for_events.check_self_write(&path) {
+                                                log::info!("[lexera.events] Suppressed self-write for board {}", board_id);
+                                                continue;
+                                            }
+                                        }
+                                        if let Err(e) = storage_for_events.reload_board(board_id) {
+                                            log::warn!("[lexera.events] Failed to reload board {}: {}", board_id, e);
+                                        }
+                                    }
+                                    BoardChangeEvent::IncludeFileChanged { board_ids, include_path } => {
+                                        if storage_for_events.check_self_write(include_path) {
+                                            log::info!("[lexera.events] Suppressed self-write for include {:?}", include_path);
+                                            continue;
+                                        }
+                                        for bid in board_ids {
+                                            if let Err(e) = storage_for_events.reload_board(bid) {
+                                                log::warn!("[lexera.events] Failed to reload board {}: {}", bid, e);
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+
+                                let event = match event {
+                                    BoardChangeEvent::MainFileChanged { board_id, .. } => {
+                                        let revision = storage_for_events.get_board_revision_token(&board_id);
+                                        let generation = storage_for_events.get_board_generation(&board_id);
+                                        log::info!(
+                                            "[lexera.events] Forwarding MainFileChanged board={} revision={:?} generation={:?}",
+                                            board_id, revision, generation
+                                        );
+                                        BoardChangeEvent::MainFileChanged {
+                                            revision, generation, writer_id: None, board_id,
+                                        }
+                                    }
+                                    other => other,
+                                };
+                                let _ = event_tx_for_forward.send(event);
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                log::warn!("[lexera.events] Lagged by {} events", n);
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                log::info!("[lexera.events] Event channel closed");
+                                break;
+                            }
+                        }
+                    }
+                    _ = event_shutdown_rx.changed() => {
+                        log::info!("[lexera.events] Shutdown signal received");
+                        break;
+                    }
+                }
+            }
+        });
+    } else if let Err(e) = watcher_result {
+        log::warn!("[lexera.watcher] Failed to create file watcher: {}", e);
+    }
+
+    watcher_arc
+}
+
+/// Collaboration services container returned by `init_collab_services`.
+struct CollabServices {
+    auth_service: Arc<std::sync::Mutex<crate::auth::AuthService>>,
+    invite_service: Arc<std::sync::Mutex<crate::invite::InviteService>>,
+    public_service: Arc<std::sync::Mutex<crate::public::PublicRoomService>>,
+}
+
+/// Initialize collaboration services from persisted state on disk.
+fn init_collab_services(collab_dir: &std::path::Path) -> CollabServices {
+    if let Err(e) = std::fs::create_dir_all(collab_dir) {
+        log::error!("[collab] Failed to create collab dir {:?}: {}", collab_dir, e);
+    }
+
+    let auth_service = Arc::new(std::sync::Mutex::new(
+        crate::auth::AuthService::load_from_file(&collab_dir.join("auth.json")).unwrap_or_else(|e| {
+            log::warn!("[collab] Failed to load auth state: {}, starting empty", e);
+            crate::auth::AuthService::new()
+        }),
+    ));
+    let invite_service = Arc::new(std::sync::Mutex::new(
+        crate::invite::InviteService::load_from_file(&collab_dir.join("invites.json")).unwrap_or_else(|e| {
+            log::warn!("[collab] Failed to load invite state: {}, starting empty", e);
+            crate::invite::InviteService::new()
+        }),
+    ));
+    let public_service = Arc::new(std::sync::Mutex::new(
+        crate::public::PublicRoomService::load_from_file(&collab_dir.join("public_rooms.json")).unwrap_or_else(|e| {
+            log::warn!("[collab] Failed to load public rooms state: {}, starting empty", e);
+            crate::public::PublicRoomService::new()
+        }),
+    ));
+
+    CollabServices { auth_service, invite_service, public_service }
+}
+
+/// Register the local user as owner of all boards, ensuring they have a token.
+fn bootstrap_local_user(
+    auth_service: &std::sync::Mutex<crate::auth::AuthService>,
+    local_user: &crate::auth::User,
+    board_paths: &[(String, PathBuf)],
+    collab_dir: &std::path::Path,
+) {
+    match auth_service.lock() {
+        Ok(mut auth) => {
+            match auth.register_user(local_user.clone()) {
+                Ok(token) => {
+                    log::info!("[identity] Local user registered, token: {}…", &token[..8]);
+                }
+                Err(_) => {
+                    if auth.get_token_for_user(&local_user.id).is_none() {
+                        match auth.generate_token_for_user(&local_user.id) {
+                            Ok(token) => {
+                                log::info!("[identity] Generated token for existing user: {}…", &token[..8]);
+                            }
+                            Err(e) => {
+                                log::error!("[identity] Failed to generate token: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+            for (board_id, _) in board_paths {
+                auth.add_to_room(board_id, &local_user.id, crate::auth::RoomRole::Owner, "local")
+                    .unwrap_or_else(|e| {
+                        log::warn!("[identity] Failed to add owner to board {}: {}", board_id, e);
+                    });
+            }
+        }
+        Err(e) => {
+            log::error!("[identity] Auth service unavailable during bootstrap: {}", e);
+        }
+    }
+    // Persist auth state immediately (token must survive a crash before periodic save)
+    if let Ok(auth) = auth_service.lock() {
+        if let Err(e) = auth.save_to_file(&collab_dir.join("auth.json")) {
+            log::error!("[identity] Failed to save auth state after bootstrap: {}", e);
+        }
+    }
+}
+
+/// Spawn the invite cleanup and periodic save background tasks.
+fn spawn_background_tasks(
+    invite_service: &Arc<std::sync::Mutex<crate::invite::InviteService>>,
+    auth_service: &Arc<std::sync::Mutex<crate::auth::AuthService>>,
+    public_service: &Arc<std::sync::Mutex<crate::public::PublicRoomService>>,
+    config: &Arc<std::sync::Mutex<config::SyncConfig>>,
+    config_path: &std::path::Path,
+    collab_dir: &std::path::Path,
+    shutdown_rx: &tokio::sync::watch::Receiver<bool>,
+) {
+    // Invite cleanup loop
+    let invite_cleanup = invite_service.clone();
+    let mut invite_shutdown_rx = shutdown_rx.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(INVITE_CLEANUP_INTERVAL_SECS));
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    match invite_cleanup.lock() {
+                        Ok(mut service) => {
+                            let count = service.cleanup_expired();
+                            if count > 0 {
+                                log::info!("[collab] Cleaned up {} expired invites", count);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("[collab] Invite cleanup skipped; service unavailable: {}", e);
+                        }
+                    }
+                }
+                _ = invite_shutdown_rx.changed() => {
+                    log::info!("[collab] Invite cleanup shutting down");
+                    break;
+                }
+            }
+        }
+    });
+
+    // Periodic save loop
+    let save_auth = auth_service.clone();
+    let save_invite = invite_service.clone();
+    let save_public = public_service.clone();
+    let save_config_arc = config.clone();
+    let save_config_path = config_path.to_path_buf();
+    let save_dir = collab_dir.to_path_buf();
+    let mut save_shutdown_rx = shutdown_rx.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(PERIODIC_SAVE_INTERVAL_SECS));
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    if let Ok(cfg) = save_config_arc.lock() {
+                        if let Err(e) = crate::config::save_config(&save_config_path, &cfg) {
+                            log::error!("[collab.save] Failed to save sync config: {}", e);
+                        }
+                    }
+                    if let Ok(auth) = save_auth.lock() {
+                        if let Err(e) = auth.save_to_file(&save_dir.join("auth.json")) {
+                            log::error!("[collab.save] Failed to save auth state: {}", e);
+                        }
+                    }
+                    if let Ok(invite) = save_invite.lock() {
+                        if let Err(e) = invite.save_to_file(&save_dir.join("invites.json")) {
+                            log::error!("[collab.save] Failed to save invite state: {}", e);
+                        }
+                    }
+                    if let Ok(public) = save_public.lock() {
+                        if let Err(e) = public.save_to_file(&save_dir.join("public_rooms.json")) {
+                            log::error!("[collab.save] Failed to save public rooms state: {}", e);
+                        }
+                    }
+                }
+                _ = save_shutdown_rx.changed() => {
+                    if let Ok(cfg) = save_config_arc.lock() {
+                        let _ = crate::config::save_config(&save_config_path, &cfg);
+                    }
+                    if let Ok(auth) = save_auth.lock() {
+                        let _ = auth.save_to_file(&save_dir.join("auth.json"));
+                    }
+                    if let Ok(invite) = save_invite.lock() {
+                        let _ = invite.save_to_file(&save_dir.join("invites.json"));
+                    }
+                    if let Ok(public) = save_public.lock() {
+                        let _ = public.save_to_file(&save_dir.join("public_rooms.json"));
+                    }
+                    log::info!("[collab.save] Final save completed, shutting down");
+                    break;
+                }
+            }
+        }
+    });
+}
+
+/// Restore persisted remote connections from config.
+fn restore_persisted_connections(
+    config: &Arc<std::sync::Mutex<config::SyncConfig>>,
+    app_state: &AppState,
+    local_user_id: &str,
+    local_user_name: &str,
+) {
+    let persisted = match config.lock() {
+        Ok(cfg) => cfg.remote_connections.clone(),
+        Err(e) => {
+            log::error!("[sync_client.restore] Failed to read persisted remote connections: {}", e);
+            return;
+        }
+    };
+    if persisted.is_empty() {
+        return;
+    }
+
+    let restore_state = app_state.clone();
+    let restore_user_id = local_user_id.to_string();
+    let restore_user_name = local_user_name.to_string();
+    tauri::async_runtime::spawn(async move {
+        log::info!(
+            "[sync_client.restore] Restoring {} persisted remote connection(s)",
+            persisted.len()
+        );
+        for entry in persisted {
+            if !entry.enabled {
+                log::info!(
+                    "[sync_client.restore] Skipping disabled connection local_board_id={} server={}",
+                    entry.local_board_id, entry.server_url
+                );
+                continue;
+            }
+            let remote_board_id = if entry.remote_board_id.trim().is_empty() {
+                entry.local_board_id.strip_prefix("remote-")
+                    .unwrap_or(entry.local_board_id.as_str())
+                    .to_string()
+            } else {
+                entry.remote_board_id.clone()
+            };
+            if remote_board_id.trim().is_empty() {
+                log::error!(
+                    "[sync_client.restore] Skipping connection with empty remote board id local_board_id={} server={}",
+                    entry.local_board_id, entry.server_url
+                );
+                continue;
+            }
+
+            let reconnect_result = {
+                let mut client = restore_state.sync_client.lock().await;
+                client.reconnect_existing(
+                    entry.server_url.clone(), remote_board_id.clone(),
+                    restore_user_id.clone(), restore_user_name.clone(),
+                    entry.auth_token.clone(),
+                    restore_state.storage.clone(), restore_state.event_tx.clone(),
+                    restore_state.sync_hub.clone(),
+                ).await
+            };
+
+            let final_result = match reconnect_result {
+                Ok(local_board_id) => Ok(local_board_id),
+                Err(primary_error) => {
+                    if let Some(token) = entry.invite_token.clone() {
+                        log::warn!(
+                            "[sync_client.restore] Reconnect failed for {} ({}): {}. Retrying with invite token.",
+                            entry.local_board_id, entry.server_url, primary_error
+                        );
+                        let mut client = restore_state.sync_client.lock().await;
+                        match client.connect(
+                            entry.server_url.clone(), token,
+                            restore_user_id.clone(), restore_user_name.clone(),
+                            restore_state.storage.clone(), restore_state.event_tx.clone(),
+                            restore_state.sync_hub.clone(),
+                        ).await {
+                            Ok((local_board_id, _)) => Ok(local_board_id),
+                            Err(e) => Err(e),
+                        }
+                    } else {
+                        Err(primary_error)
+                    }
+                }
+            };
+
+            match final_result {
+                Ok(local_board_id) => {
+                    log::info!(
+                        "[sync_client.restore] Restored connection local_board_id={} remote={} server={}",
+                        local_board_id, remote_board_id, entry.server_url
+                    );
+                    let _ = restore_state.event_tx.send(BoardChangeEvent::CollabConnectionChanged);
+                }
+                Err(error) => {
+                    log::error!(
+                        "[sync_client.restore] Failed to restore connection local_board_id={} remote={} server={}: {}",
+                        entry.local_board_id, remote_board_id, entry.server_url, error
+                    );
+                }
+            }
+        }
+    });
+}
+
+/// Spawn the HTTP server and start LAN discovery if not localhost-only.
+fn spawn_http_server(
+    app_state: AppState,
+    server_shutdown: Arc<std::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>>>,
+    live_port: Arc<std::sync::Mutex<u16>>,
+    discovery: Arc<std::sync::Mutex<crate::discovery::DiscoveryService>>,
+    app_handle: tauri::AppHandle,
+    bind_address: &str,
+    local_user_id: &str,
+    local_user_name: &str,
+    event_tx: &tokio::sync::broadcast::Sender<BoardChangeEvent>,
+) {
+    let discovery_bind = bind_address.to_string();
+    let discovery_user_id = local_user_id.to_string();
+    let discovery_user_name = local_user_name.to_string();
+    let event_tx_for_discovery = event_tx.clone();
+    tauri::async_runtime::spawn(async move {
+        match server::spawn_server(app_state).await {
+            Ok((actual_port, shutdown_tx)) => {
+                log::info!("Server started on port {}", actual_port);
+                if let Ok(mut sh) = server_shutdown.lock() {
+                    *sh = Some(shutdown_tx);
+                }
+                if let Ok(mut lp) = live_port.lock() {
+                    *lp = actual_port;
+                }
+
+                let tray_handle = app_handle.clone();
+                let _ = app_handle.run_on_main_thread(move || {
+                    if let Err(e) = tray::setup_tray(&tray_handle, actual_port) {
+                        log::error!(target: "lexera.tray", "Failed to update tray for port {}: {}", actual_port, e);
+                    }
+                });
+
+                if discovery_bind != config::DEFAULT_BIND_ADDRESS {
+                    if let Ok(mut disc) = discovery.lock() {
+                        disc.start(actual_port, discovery_user_id, discovery_user_name, event_tx_for_discovery);
+                        log::info!("[discovery] Started LAN discovery");
+                    }
+                } else {
+                    log::info!("[discovery] Skipped (bind_address is localhost)");
+                }
+            }
+            Err(e) => log::error!("Failed to start server: {}", e),
+        }
+    });
+}
+
 fn format_recent_backend_log_tail(limit: usize) -> String {
     let entries = log_bridge::recent_entries();
     if entries.is_empty() {
@@ -182,10 +663,10 @@ pub fn run() {
             }
         })
         .setup(move |app| {
-            // Hide from Dock, show only as menu bar (tray) app
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            // ── Config & identity ──────────────────────────────────────────
             let config_path = config::default_config_path();
             let mut config = config::load_config(&config_path);
             config::ensure_default_workspace(&mut config, &config_path);
@@ -199,342 +680,42 @@ pub fn run() {
                 .join(config::IDENTITY_FILENAME);
 
             if let Err(e) = tray::setup_tray(&app.handle().clone(), port) {
-                log::error!(
-                    target: "lexera.tray",
-                    "Failed to create initial tray icon for configured port {}: {}",
-                    port,
-                    e
-                );
+                log::error!(target: "lexera.tray", "Failed to create initial tray: {}", e);
             }
 
-            // Initialize storage and load boards
+            // ── Storage & boards ───────────────────────────────────────────
             let storage = Arc::new(LocalStorage::new());
-            let mut board_paths: Vec<(String, PathBuf)> = Vec::new();
+            let board_paths = init_storage_and_boards(&storage, &config);
+            let incoming = resolve_incoming(&config, &board_paths);
 
-            {
-                let cfg = match config.lock() {
-                    Ok(c) => c,
-                    Err(e) => {
-                        log::error!("[lexera.setup] Config mutex poisoned during board loading: {}", e);
-                        return Ok(());
-                    }
-                };
-                for entry in &cfg.boards {
-                    let path = PathBuf::from(&entry.file);
-                    match storage.add_board(&path) {
-                        Ok(id) => {
-                            log::info!("Loaded board: {} -> {}", entry.file, id);
-                            let canonical = std::fs::canonicalize(&path).unwrap_or(path);
-                            board_paths.push((id, canonical));
-                        }
-                        Err(e) => log::warn!("Failed to load board {}: {}", entry.file, e),
-                    }
-                }
-            }
-
-            // Resolve incoming config (map file path to board ID)
-            let incoming = config.lock().ok().and_then(|cfg| cfg.incoming.clone()).and_then(|inc| {
-                let inc_path = PathBuf::from(&inc.board);
-                board_paths.iter().find(|(_, p)| {
-                    let canonical_inc = std::fs::canonicalize(&inc_path).unwrap_or(inc_path.clone());
-                    *p == canonical_inc
-                }).map(|(id, _)| ResolvedIncoming {
-                    board_id: id.clone(),
-                    column: inc.column,
-                })
-            });
-
-            // Register global shortcuts
+            // ── Global shortcuts ───────────────────────────────────────────
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             let _ = app.global_shortcut().register("CmdOrCtrl+Shift+C");
             let _ = app.global_shortcut().register("CmdOrCtrl+B");
 
-            // Create file watcher
-            let include_map = Arc::new(RwLock::new(IncludeMap::new()));
+            // ── File watcher ───────────────────────────────────────────────
             let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<BoardChangeEvent>(EVENT_CHANNEL_CAPACITY);
+            let watcher_arc = setup_file_watcher(&storage, &board_paths, &event_tx, &shutdown_rx);
 
-            let watcher_arc: Arc<std::sync::Mutex<Option<FileWatcher>>> = Arc::new(std::sync::Mutex::new(None));
-
-            let watcher_result = FileWatcher::new(include_map.clone());
-
-            if let Ok((mut watcher, _watcher_rx)) = watcher_result {
-                // Watch all board files
-                for (board_id, path) in &board_paths {
-                    if let Err(e) = watcher.watch_board(board_id, path) {
-                        log::warn!("[lexera.watcher] Failed to watch board {}: {}", board_id, e);
-                    }
-                }
-
-                // Watch include files
-                if let Some(storage_map) = storage.include_map() {
-                    for path in storage_map.all_include_paths() {
-                        if let Err(e) = watcher.watch_include(&path) {
-                            log::warn!("[lexera.watcher] Failed to watch include {:?}: {}", path, e);
-                        }
-                    }
-                } else {
-                    log::error!("[lexera.watcher] Include map lock poisoned, skipping include watches");
-                }
-
-                // Subscribe before moving watcher into Arc
-                let mut event_rx = watcher.event_sender().subscribe();
-
-                // Store watcher in Arc for AppState access
-                match watcher_arc.lock() {
-                    Ok(mut guard) => *guard = Some(watcher),
-                    Err(e) => {
-                        log::error!("[lexera.watcher] Watcher mutex poisoned, cannot store file watcher: {}", e);
-                    }
-                }
-
-                // Spawn event processing loop
-                let storage_for_events = storage.clone();
-                let event_tx_for_forward = event_tx.clone();
-                let mut event_shutdown_rx = shutdown_rx.clone();
-
-                tauri::async_runtime::spawn(async move {
-                    loop {
-                        tokio::select! {
-                            result = event_rx.recv() => {
-                                match result {
-                                    Ok(event) => {
-                                        // Check self-write before propagating
-                                        match &event {
-                                            BoardChangeEvent::MainFileChanged { board_id, .. } => {
-                                                if let Some(path) = storage_for_events.get_board_path(board_id) {
-                                                    if storage_for_events.check_self_write(&path) {
-                                                        log::info!("[lexera.events] Suppressed self-write for board {}", board_id);
-                                                        continue;
-                                                    }
-                                                }
-                                                if let Err(e) = storage_for_events.reload_board(board_id) {
-                                                    log::warn!("[lexera.events] Failed to reload board {}: {}", board_id, e);
-                                                }
-                                            }
-                                            BoardChangeEvent::IncludeFileChanged { board_ids, include_path } => {
-                                                if storage_for_events.check_self_write(include_path) {
-                                                    log::info!("[lexera.events] Suppressed self-write for include {:?}", include_path);
-                                                    continue;
-                                                }
-                                                for bid in board_ids {
-                                                    if let Err(e) = storage_for_events.reload_board(bid) {
-                                                        log::warn!("[lexera.events] Failed to reload board {}: {}", bid, e);
-                                                    }
-                                                }
-                                            }
-                                            _ => {}
-                                        }
-
-                                        // Enrich MainFileChanged events with authoritative
-                                        // backend-computed freshness data after reload.
-                                        let event = match event {
-                                            BoardChangeEvent::MainFileChanged { board_id, .. } => {
-                                                let revision =
-                                                    storage_for_events.get_board_revision_token(&board_id);
-                                                let generation =
-                                                    storage_for_events.get_board_generation(&board_id);
-                                                log::info!(
-                                                    "[lexera.events] Forwarding MainFileChanged board={} revision={:?} generation={:?}",
-                                                    board_id,
-                                                    revision,
-                                                    generation
-                                                );
-                                                BoardChangeEvent::MainFileChanged {
-                                                    revision,
-                                                    generation,
-                                                    writer_id: None,
-                                                    board_id,
-                                                }
-                                            }
-                                            other => other,
-                                        };
-
-                                        // Forward event to SSE clients
-                                        let _ = event_tx_for_forward.send(event);
-                                    }
-                                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                                        log::warn!("[lexera.events] Lagged by {} events", n);
-                                    }
-                                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                                        log::info!("[lexera.events] Event channel closed");
-                                        break;
-                                    }
-                                }
-                            }
-                            _ = event_shutdown_rx.changed() => {
-                                log::info!("[lexera.events] Shutdown signal received");
-                                break;
-                            }
-                        }
-                    }
-                });
-            } else if let Err(e) = watcher_result {
-                log::warn!("[lexera.watcher] Failed to create file watcher: {}", e);
-            }
-
-            // Initialize collaboration services with persistence
+            // ── Collaboration services ─────────────────────────────────────
             let collab_dir = dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(config::CONFIG_DIR_NAME)
                 .join(config::COLLAB_DIR_NAME);
-            if let Err(e) = std::fs::create_dir_all(&collab_dir) {
-                log::error!("[collab] Failed to create collab dir {:?}: {}", collab_dir, e);
-            }
+            let collab = init_collab_services(&collab_dir);
+            bootstrap_local_user(&collab.auth_service, &local_user, &board_paths, &collab_dir);
 
-            let auth_path = collab_dir.join("auth.json");
-            let invites_path = collab_dir.join("invites.json");
-            let public_rooms_path = collab_dir.join("public_rooms.json");
+            // ── Background tasks ───────────────────────────────────────────
+            spawn_background_tasks(
+                &collab.invite_service, &collab.auth_service, &collab.public_service,
+                &config, &config_path, &collab_dir, &shutdown_rx,
+            );
 
-            let auth_service = Arc::new(std::sync::Mutex::new(
-                crate::auth::AuthService::load_from_file(&auth_path).unwrap_or_else(|e| {
-                    log::warn!("[collab] Failed to load auth state: {}, starting empty", e);
-                    crate::auth::AuthService::new()
-                }),
-            ));
-            let invite_service = Arc::new(std::sync::Mutex::new(
-                crate::invite::InviteService::load_from_file(&invites_path).unwrap_or_else(|e| {
-                    log::warn!("[collab] Failed to load invite state: {}, starting empty", e);
-                    crate::invite::InviteService::new()
-                }),
-            ));
-            let public_service = Arc::new(std::sync::Mutex::new(
-                crate::public::PublicRoomService::load_from_file(&public_rooms_path).unwrap_or_else(|e| {
-                    log::warn!("[collab] Failed to load public rooms state: {}, starting empty", e);
-                    crate::public::PublicRoomService::new()
-                }),
-            ));
-
-            // Bootstrap local user as owner of all boards
-            {
-                match auth_service.lock() {
-                    Ok(mut auth) => {
-                        match auth.register_user(local_user.clone()) {
-                            Ok(token) => {
-                                log::info!("[identity] Local user registered, token: {}…", &token[..8]);
-                            }
-                            Err(_) => {
-                                // User already exists — ensure they have a token
-                                // (handles auth.json loaded from before token support)
-                                if auth.get_token_for_user(&local_user.id).is_none() {
-                                    match auth.generate_token_for_user(&local_user.id) {
-                                        Ok(token) => {
-                                            log::info!("[identity] Generated token for existing user: {}…", &token[..8]);
-                                        }
-                                        Err(e) => {
-                                            log::error!("[identity] Failed to generate token: {}", e);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        for (board_id, _) in &board_paths {
-                            auth.add_to_room(board_id, &local_user.id, crate::auth::RoomRole::Owner, "local")
-                                .unwrap_or_else(|e| {
-                                    log::warn!("[identity] Failed to add owner to board {}: {}", board_id, e);
-                                });
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("[identity] Auth service unavailable during bootstrap: {}", e);
-                    }
-                }
-                // Persist auth state immediately (token must survive a crash before periodic save)
-                if let Ok(auth) = auth_service.lock() {
-                    if let Err(e) = auth.save_to_file(&collab_dir.join("auth.json")) {
-                        log::error!("[identity] Failed to save auth state after bootstrap: {}", e);
-                    }
-                }
-            }
-
-            // Start periodic cleanup for expired invites
-            let invite_cleanup = invite_service.clone();
-            let mut invite_shutdown_rx = shutdown_rx.clone();
-            tauri::async_runtime::spawn(async move {
-                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(INVITE_CLEANUP_INTERVAL_SECS));
-                loop {
-                    tokio::select! {
-                        _ = interval.tick() => {
-                            match invite_cleanup.lock() {
-                                Ok(mut service) => {
-                                    let count = service.cleanup_expired();
-                                    if count > 0 {
-                                        log::info!("[collab] Cleaned up {} expired invites", count);
-                                    }
-                                }
-                                Err(e) => {
-                                    log::error!("[collab] Invite cleanup skipped; service unavailable: {}", e);
-                                }
-                            }
-                        }
-                        _ = invite_shutdown_rx.changed() => {
-                            log::info!("[collab] Invite cleanup shutting down");
-                            break;
-                        }
-                    }
-                }
-            });
-
-            // Start periodic save for collaboration services and config (every 60 seconds)
-            let save_auth = auth_service.clone();
-            let save_invite = invite_service.clone();
-            let save_public = public_service.clone();
-            let save_config_arc = config.clone();
-            let save_config_path = config_path.clone();
-            let save_dir = collab_dir.clone();
-            let mut save_shutdown_rx = shutdown_rx.clone();
-            tauri::async_runtime::spawn(async move {
-                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(PERIODIC_SAVE_INTERVAL_SECS));
-                loop {
-                    tokio::select! {
-                        _ = interval.tick() => {
-                            if let Ok(cfg) = save_config_arc.lock() {
-                                if let Err(e) = crate::config::save_config(&save_config_path, &cfg) {
-                                    log::error!("[collab.save] Failed to save sync config: {}", e);
-                                }
-                            }
-                            if let Ok(auth) = save_auth.lock() {
-                                if let Err(e) = auth.save_to_file(&save_dir.join("auth.json")) {
-                                    log::error!("[collab.save] Failed to save auth state: {}", e);
-                                }
-                            }
-                            if let Ok(invite) = save_invite.lock() {
-                                if let Err(e) = invite.save_to_file(&save_dir.join("invites.json")) {
-                                    log::error!("[collab.save] Failed to save invite state: {}", e);
-                                }
-                            }
-                            if let Ok(public) = save_public.lock() {
-                                if let Err(e) = public.save_to_file(&save_dir.join("public_rooms.json")) {
-                                    log::error!("[collab.save] Failed to save public rooms state: {}", e);
-                                }
-                            }
-                        }
-                        _ = save_shutdown_rx.changed() => {
-                            // Final save before exiting
-                            if let Ok(cfg) = save_config_arc.lock() {
-                                let _ = crate::config::save_config(&save_config_path, &cfg);
-                            }
-                            if let Ok(auth) = save_auth.lock() {
-                                let _ = auth.save_to_file(&save_dir.join("auth.json"));
-                            }
-                            if let Ok(invite) = save_invite.lock() {
-                                let _ = invite.save_to_file(&save_dir.join("invites.json"));
-                            }
-                            if let Ok(public) = save_public.lock() {
-                                let _ = public.save_to_file(&save_dir.join("public_rooms.json"));
-                            }
-                            log::info!("[collab.save] Final save completed, shutting down");
-                            break;
-                        }
-                    }
-                }
-            });
-
+            // ── App state ──────────────────────────────────────────────────
             let sync_hub = Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new()));
             let sync_client = Arc::new(tokio::sync::Mutex::new(crate::sync_client::SyncClientManager::new()));
             let discovery = Arc::new(std::sync::Mutex::new(crate::discovery::DiscoveryService::new()));
             let app_handle = app.handle().clone();
-            let discovery_bind = bind_address.clone();
-
             let live_port = Arc::new(std::sync::Mutex::new(port));
             let server_shutdown: Arc<std::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>>> =
                 Arc::new(std::sync::Mutex::new(None));
@@ -543,7 +724,7 @@ pub fn run() {
                 storage: storage.clone(),
                 event_tx: event_tx.clone(),
                 port,
-                bind_address,
+                bind_address: bind_address.clone(),
                 live_port: live_port.clone(),
                 server_shutdown: server_shutdown.clone(),
                 incoming,
@@ -552,10 +733,9 @@ pub fn run() {
                 identity_path,
                 config: config.clone(),
                 watcher: watcher_arc,
-                // Collaboration services
-                invite_service,
-                public_service,
-                auth_service,
+                invite_service: collab.invite_service,
+                public_service: collab.public_service,
+                auth_service: collab.auth_service,
                 sync_hub,
                 sync_client,
                 discovery: discovery.clone(),
@@ -566,179 +746,18 @@ pub fn run() {
 
             app.manage(app_state.clone());
 
-            // Restore persisted remote backend connections (joined boards).
-            // These are saved in sync.json so remote mirrors survive restarts,
-            // especially on Windows where app restarts are common while testing.
-            let persisted_remote_connections = match config.lock() {
-                Ok(cfg) => cfg.remote_connections.clone(),
-                Err(e) => {
-                    log::error!(
-                        "[sync_client.restore] Failed to read persisted remote connections from config: {}",
-                        e
-                    );
-                    Vec::new()
-                }
-            };
-            if !persisted_remote_connections.is_empty() {
-                let restore_state = app_state.clone();
-                let restore_user_id = local_user.id.clone();
-                let restore_user_name = local_user.name.clone();
-                tauri::async_runtime::spawn(async move {
-                    log::info!(
-                        "[sync_client.restore] Restoring {} persisted remote connection(s)",
-                        persisted_remote_connections.len()
-                    );
-                    for entry in persisted_remote_connections {
-                        if !entry.enabled {
-                            log::info!(
-                                "[sync_client.restore] Skipping disabled persisted remote connection local_board_id={} server={}",
-                                entry.local_board_id,
-                                entry.server_url
-                            );
-                            continue;
-                        }
-                        let remote_board_id = if entry.remote_board_id.trim().is_empty() {
-                            entry
-                                .local_board_id
-                                .strip_prefix("remote-")
-                                .unwrap_or(entry.local_board_id.as_str())
-                                .to_string()
-                        } else {
-                            entry.remote_board_id.clone()
-                        };
-                        if remote_board_id.trim().is_empty() {
-                            log::error!(
-                                "[sync_client.restore] Skipping persisted connection with empty remote board id local_board_id={} server={}",
-                                entry.local_board_id,
-                                entry.server_url
-                            );
-                            continue;
-                        }
+            // ── Restore persisted connections ───────────────────────────────
+            restore_persisted_connections(&config, &app_state, &local_user.id, &local_user.name);
 
-                        let reconnect_result = {
-                            let mut client = restore_state.sync_client.lock().await;
-                            client
-                                .reconnect_existing(
-                                    entry.server_url.clone(),
-                                    remote_board_id.clone(),
-                                    restore_user_id.clone(),
-                                    restore_user_name.clone(),
-                                    entry.auth_token.clone(),
-                                    restore_state.storage.clone(),
-                                    restore_state.event_tx.clone(),
-                                    restore_state.sync_hub.clone(),
-                                )
-                                .await
-                        };
+            // ── HTTP server & discovery ─────────────────────────────────────
+            spawn_http_server(
+                app_state, server_shutdown, live_port, discovery, app_handle,
+                &bind_address, &local_user.id, &local_user.name, &event_tx,
+            );
 
-                        let final_result = match reconnect_result {
-                            Ok(local_board_id) => Ok(local_board_id),
-                            Err(primary_error) => {
-                                if let Some(token) = entry.invite_token.clone() {
-                                    log::warn!(
-                                        "[sync_client.restore] Reconnect without token failed for local_board_id={} remote_board_id={} server={}: {}. Retrying with saved invite token.",
-                                        entry.local_board_id,
-                                        remote_board_id,
-                                        entry.server_url,
-                                        primary_error
-                                    );
-                                    let mut client = restore_state.sync_client.lock().await;
-                                    match client
-                                        .connect(
-                                            entry.server_url.clone(),
-                                            token,
-                                            restore_user_id.clone(),
-                                            restore_user_name.clone(),
-                                            restore_state.storage.clone(),
-                                            restore_state.event_tx.clone(),
-                                            restore_state.sync_hub.clone(),
-                                        )
-                                        .await
-                                    {
-                                        Ok((local_board_id, _auth_token)) => Ok(local_board_id),
-                                        Err(e) => Err(e),
-                                    }
-                                } else {
-                                    Err(primary_error)
-                                }
-                            }
-                        };
-
-                        match final_result {
-                            Ok(local_board_id) => {
-                                log::info!(
-                                    "[sync_client.restore] Restored persisted remote connection local_board_id={} remote_board_id={} server={}",
-                                    local_board_id,
-                                    remote_board_id,
-                                    entry.server_url
-                                );
-                                let _ = restore_state
-                                    .event_tx
-                                    .send(BoardChangeEvent::CollabConnectionChanged);
-                            }
-                            Err(error) => {
-                                log::error!(
-                                    "[sync_client.restore] Failed to restore persisted remote connection local_board_id={} remote_board_id={} server={}: {}",
-                                    entry.local_board_id,
-                                    remote_board_id,
-                                    entry.server_url,
-                                    error
-                                );
-                            }
-                        }
-                    }
-                });
-            }
-
-            // Spawn HTTP server
-            let discovery_for_start = discovery.clone();
-            let discovery_user_id = local_user.id.clone();
-            let discovery_user_name = local_user.name.clone();
-            let event_tx_for_discovery = event_tx.clone();
-            tauri::async_runtime::spawn(async move {
-                match server::spawn_server(app_state).await {
-                    Ok((actual_port, shutdown_tx)) => {
-                        log::info!("Server started on port {}", actual_port);
-
-                        // Store the shutdown handle and actual port
-                        if let Ok(mut sh) = server_shutdown.lock() {
-                            *sh = Some(shutdown_tx);
-                        }
-                        if let Ok(mut lp) = live_port.lock() {
-                            *lp = actual_port;
-                        }
-
-                        // Set up tray with actual port (must run on main thread on macOS)
-                        let tray_handle = app_handle.clone();
-                        let _ = app_handle.run_on_main_thread(move || {
-                            if let Err(e) = tray::setup_tray(&tray_handle, actual_port) {
-                                log::error!(
-                                    target: "lexera.tray",
-                                    "Failed to update tray icon for live port {}: {}",
-                                    actual_port,
-                                    e
-                                );
-                            }
-                        });
-
-                        // Start UDP discovery if not localhost-only
-                        if discovery_bind != config::DEFAULT_BIND_ADDRESS {
-                            if let Ok(mut disc) = discovery_for_start.lock() {
-                                disc.start(actual_port, discovery_user_id, discovery_user_name, event_tx_for_discovery);
-                                log::info!("[discovery] Started LAN discovery");
-                            }
-                        } else {
-                            log::info!("[discovery] Skipped (bind_address is localhost)");
-                        }
-                    }
-                    Err(e) => log::error!("Failed to start server: {}", e),
-                }
-            });
-
-            // Create shared clipboard history and start watcher
+            // ── Clipboard watcher ──────────────────────────────────────────
             let clipboard_history: capture::ClipboardHistory = Arc::new(std::sync::Mutex::new(Vec::new()));
             app.manage(clipboard_history.clone());
-
             let app_handle_for_watcher = app.handle().clone();
             let watcher_shutdown = clipboard_watcher::start_clipboard_watcher(&app_handle_for_watcher, clipboard_history);
             if watcher_shutdown.is_none() {
@@ -746,9 +765,7 @@ pub fn run() {
             }
             app.manage(std::sync::Mutex::new(watcher_shutdown));
 
-            // Open the quick-capture strip on startup
             capture::open_capture_popup(app.handle());
-
             Ok(())
         })
         .build(tauri::generate_context!());

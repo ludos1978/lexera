@@ -563,6 +563,31 @@ async fn handle_sync_session(
                     let hub = state_read.sync_hub.lock().await;
                     hub.broadcast(&board_id_read, peer_id, &msg);
                 }
+                ClientMessage::ClientMediaManifest { entries } => {
+                    log::info!(
+                        "[sync_ws] ClientMediaManifest from peer {} for board {}, {} entries",
+                        peer_id,
+                        board_id_read,
+                        entries.len()
+                    );
+                    let msg = match serde_json::to_string(&ServerMessage::ServerMediaManifest {
+                        peer_id,
+                        entries,
+                    }) {
+                        Ok(msg) => msg,
+                        Err(error) => {
+                            log::error!(
+                                "[sync_ws] Failed to serialize media manifest for board {} peer {}: {}",
+                                board_id_read,
+                                peer_id,
+                                error
+                            );
+                            continue;
+                        }
+                    };
+                    let hub = state_read.sync_hub.lock().await;
+                    hub.broadcast(&board_id_read, peer_id, &msg);
+                }
                 _ => {} // Ignore unexpected messages
             }
         }

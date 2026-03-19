@@ -3,7 +3,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::Json,
 };
-use lexera_core::media::{content_type_for_ext, dedup_filename};
+use lexera_core::media::{compute_media_manifest, content_type_for_ext, dedup_filename};
 
 use super::{
     err_bad_request, err_internal, err_not_found, has_path_traversal, insert_header_safe,
@@ -84,6 +84,13 @@ pub async fn upload_media(
     let media_folder_name = format!("{}-Media", board_stem);
     let relative_path = format!("{}/{}", media_folder_name, final_name);
 
+    // Notify sync peers that media changed
+    let _ = state.event_tx.send(
+        lexera_core::watcher::types::BoardChangeEvent::MediaChanged {
+            board_id: board_id.clone(),
+        },
+    );
+
     Ok((
         StatusCode::CREATED,
         Json(serde_json::json!({
@@ -91,6 +98,24 @@ pub async fn upload_media(
             "filename": final_name,
         })),
     ))
+}
+
+/// GET /boards/{board_id}/media-manifest -- list all media files with SHA-256 hashes.
+/// Used by sync clients to diff and fetch missing media from peers.
+pub async fn media_manifest(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+) -> Result<Json<Vec<lexera_core::media::MediaManifestEntry>>, (StatusCode, Json<ErrorResponse>)> {
+    let board_path = state
+        .storage
+        .get_board_path(&board_id)
+        .ok_or_else(|| err_not_found("Board not found"))?;
+
+    let manifest = tokio::task::spawn_blocking(move || compute_media_manifest(&board_path))
+        .await
+        .map_err(|e| err_internal(format!("Manifest computation failed: {}", e)))?;
+
+    Ok(Json(manifest))
 }
 
 /// GET /boards/{board_id}/media/{filename} -- serve a media file from the board's media folder.
@@ -200,5 +225,80 @@ mod tests {
         // Verify the file was actually written
         let media_dir = tmp.path().join("board-Media");
         assert!(media_dir.join("test.png").exists());
+    }
+
+    #[tokio::test]
+    async fn media_manifest_empty_when_no_media() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(authed_get(
+                &format!("/boards/{}/media-manifest", board_id),
+                &token,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json, serde_json::json!([]));
+    }
+
+    #[tokio::test]
+    async fn media_manifest_lists_uploaded_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
+
+        // Create media files directly
+        let media_dir = tmp.path().join("board-Media");
+        std::fs::create_dir_all(&media_dir).unwrap();
+        std::fs::write(media_dir.join("image.png"), b"fakepng").unwrap();
+        std::fs::write(media_dir.join("doc.pdf"), b"fakepdf").unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(authed_get(
+                &format!("/boards/{}/media-manifest", board_id),
+                &token,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let entries: Vec<serde_json::Value> = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(entries.len(), 2);
+
+        // Sorted by name
+        assert_eq!(entries[0]["name"], "doc.pdf");
+        assert_eq!(entries[0]["size"], 7);
+        assert!(entries[0]["sha256"].as_str().unwrap().len() == 64);
+
+        assert_eq!(entries[1]["name"], "image.png");
+        assert_eq!(entries[1]["size"], 7);
+        assert!(entries[1]["sha256"].as_str().unwrap().len() == 64);
+    }
+
+    #[tokio::test]
+    async fn media_manifest_nonexistent_board_returns_404() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, _board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(authed_get(
+                "/boards/nonexistent/media-manifest",
+                &token,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 }

@@ -3,9 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::State;
 
@@ -147,6 +148,9 @@ fn create_temp_render_dir(prefix: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+const CLI_PROBE_TIMEOUT_MS: u64 = 2_000;
+const DRAWIO_RENDER_TIMEOUT_MS: u64 = 60_000;
+
 fn ensure_parent_dir(path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
@@ -178,10 +182,84 @@ fn run_command_capture(command: &Path, args: &[String], cwd: Option<&Path>) -> R
     Err(detail)
 }
 
+fn run_command_output_with_timeout(
+    command: &Path,
+    args: &[&str],
+    cwd: Option<&Path>,
+    timeout: Duration,
+) -> Result<std::process::Output, String> {
+    let mut cmd = Command::new(command);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(current_dir) = cwd {
+        cmd.current_dir(current_dir);
+    }
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to run {}: {}", command.display(), e))?;
+    let started_at = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                return child
+                    .wait_with_output()
+                    .map_err(|e| format!("Failed to collect output for {}: {}", command.display(), e));
+            }
+            Ok(None) => {
+                if started_at.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!(
+                        "{} timed out after {}ms",
+                        command.display(),
+                        timeout.as_millis()
+                    ));
+                }
+                thread::sleep(Duration::from_millis(25));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("Failed to wait for {}: {}", command.display(), e));
+            }
+        }
+    }
+}
+
+fn run_command_capture_with_timeout(
+    command: &Path,
+    args: &[String],
+    cwd: Option<&Path>,
+    timeout: Duration,
+) -> Result<(), String> {
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = run_command_output_with_timeout(command, &arg_refs, cwd, timeout)?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        format!("process exited with {}", output.status)
+    };
+    Err(detail)
+}
+
 fn probe_command(candidates: &[&str], probe_args: &[&str]) -> Option<PathBuf> {
     for candidate in candidates {
         let path = PathBuf::from(candidate);
-        let output = Command::new(&path).args(probe_args).output();
+        let output = run_command_output_with_timeout(
+            &path,
+            probe_args,
+            None,
+            Duration::from_millis(CLI_PROBE_TIMEOUT_MS),
+        );
         if output.as_ref().map(|o| o.status.success()).unwrap_or(false) {
             return Some(path);
         }
@@ -216,10 +294,11 @@ fn find_soffice_cli() -> Option<PathBuf> {
 fn find_drawio_cli() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     let candidates = [
-        "/Applications/draw.io.app/Contents/MacOS/draw.io",
         "/opt/homebrew/bin/drawio",
         "/usr/local/bin/drawio",
+        "/opt/local/bin/drawio",
         "drawio",
+        "/Applications/draw.io.app/Contents/MacOS/draw.io",
     ];
     #[cfg(target_os = "windows")]
     let candidates = ["drawio.exe", "drawio"];
@@ -309,7 +388,13 @@ fn find_plantuml_jar() -> Option<PathBuf> {
 }
 
 fn read_command_version(command: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new(command).args(args).output().ok()?;
+    let output = run_command_output_with_timeout(
+        command,
+        args,
+        None,
+        Duration::from_millis(CLI_PROBE_TIMEOUT_MS),
+    )
+    .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -563,23 +648,36 @@ fn find_spreadsheet_png(dir: &Path, base_name: &str, sheet_number: u32) -> Resul
 
 fn render_drawio_file(source_path: &Path, target_path: &Path, output_format: &str) -> Result<(), String> {
     let cli = find_drawio_cli().ok_or_else(|| "draw.io CLI not found".to_string())?;
-    ensure_parent_dir(target_path)?;
+    let temp_dir = create_temp_render_dir("drawio")?;
+    let rendered_path = temp_dir.join(format!("rendered.{}", output_format));
     let mut args = vec![
         "--export".to_string(),
         "--format".to_string(),
         output_format.to_string(),
         "--output".to_string(),
-        target_path.to_string_lossy().to_string(),
+        rendered_path.to_string_lossy().to_string(),
         source_path.to_string_lossy().to_string(),
     ];
     if output_format.eq_ignore_ascii_case("png") {
         args.push("--transparent".to_string());
     }
-    run_command_capture(&cli, &args, source_path.parent())?;
-    if !target_path.is_file() {
-        return Err(format!("draw.io did not create {}", target_path.display()));
-    }
-    Ok(())
+    let result = (|| {
+        run_command_capture_with_timeout(
+            &cli,
+            &args,
+            source_path.parent(),
+            Duration::from_millis(DRAWIO_RENDER_TIMEOUT_MS),
+        )?;
+        if !rendered_path.is_file() {
+            return Err(format!("draw.io did not create {}", rendered_path.display()));
+        }
+        ensure_parent_dir(target_path)?;
+        fs::copy(&rendered_path, target_path)
+            .map_err(|e| format!("Failed to copy rendered draw.io output: {}", e))?;
+        Ok(())
+    })();
+    let _ = fs::remove_dir_all(&temp_dir);
+    result
 }
 
 fn render_spreadsheet_file(source_path: &Path, target_path: &Path, sheet_number: u32) -> Result<(), String> {

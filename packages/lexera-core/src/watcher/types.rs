@@ -54,6 +54,10 @@ pub enum BoardChangeEvent {
         )]
         path: PathBuf,
     },
+    /// A media file was added, removed, or changed in a board's media folder.
+    MediaChanged {
+        board_id: String,
+    },
     CollabConnectionChanged,
     PeerDiscoveryChanged,
     ConfigChanged,

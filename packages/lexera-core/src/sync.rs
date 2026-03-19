@@ -4,8 +4,10 @@
 ///   Client sends ClientHello { user_id, vv } on connect.
 ///   Server replies ServerHello { peer_id, vv, updates }.
 ///   Bidirectional ClientUpdate / ServerUpdate exchange follows.
+///   Media sync: ClientMediaManifest / ServerMediaManifest exchange file manifests.
 ///
 /// The `vv` and `updates` fields are base64-encoded binary (Loro CRDT version vectors and deltas).
+use crate::media::MediaManifestEntry;
 use serde::{Deserialize, Serialize};
 
 /// Messages sent from client to server.
@@ -26,6 +28,11 @@ pub enum ClientMessage {
         user_name: String,
         cursor_pos: Option<u32>,
         is_typing: bool,
+    },
+    /// Media manifest: list of files in this board's media folder with hashes.
+    /// Sent after connect and when local media changes (upload/delete).
+    ClientMediaManifest {
+        entries: Vec<MediaManifestEntry>,
     },
 }
 
@@ -54,6 +61,12 @@ pub enum ServerMessage {
         card_kid: Option<String>,
         cursor_pos: Option<u32>,
         is_typing: bool,
+    },
+    /// Media manifest from a peer: list of files with hashes.
+    /// Receiving peer should diff against local manifest and fetch missing files.
+    ServerMediaManifest {
+        peer_id: u64,
+        entries: Vec<MediaManifestEntry>,
     },
 }
 

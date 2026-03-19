@@ -5,10 +5,11 @@
 
 use axum::{
     extract::Request,
-    http::StatusCode,
+    http::{Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use percent_encoding::percent_decode_str;
 
 use crate::state::AppState;
 
@@ -22,6 +23,25 @@ fn extract_bearer_token(req: &Request) -> Option<String> {
     Some(token.to_string())
 }
 
+/// Extract auth token from a query parameter for static asset GETs.
+fn extract_query_token(req: &Request) -> Option<String> {
+    if !matches!(req.method(), &Method::GET | &Method::HEAD) {
+        return None;
+    }
+    let query = req.uri().query()?;
+    for pair in query.split('&') {
+        let (key, value) = pair.split_once('=')?;
+        if key != "auth_token" && key != "token" {
+            continue;
+        }
+        let token = percent_decode_str(value).decode_utf8().ok()?.trim().to_string();
+        if !token.is_empty() {
+            return Some(token);
+        }
+    }
+    None
+}
+
 /// Axum middleware that requires a valid bearer token.
 /// Uses `State<AppState>` — must be applied via `from_fn_with_state(state, ...)`.
 pub async fn require_auth_middleware(
@@ -29,8 +49,8 @@ pub async fn require_auth_middleware(
     req: Request,
     next: Next,
 ) -> Response {
-    // Try bearer token first
-    if let Some(token) = extract_bearer_token(&req) {
+    // Try Authorization first, then query-param auth for static asset GET URLs.
+    if let Some(token) = extract_bearer_token(&req).or_else(|| extract_query_token(&req)) {
         let valid = state
             .auth_service
             .lock()
@@ -94,6 +114,36 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         assert_eq!(super::extract_bearer_token(&req), None);
+    }
+
+    #[test]
+    fn extract_query_token_valid() {
+        let req = HttpRequest::builder()
+            .method("GET")
+            .uri("/boards/test/file?path=demo.drawio&auth_token=abc-123")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(super::extract_query_token(&req), Some("abc-123".into()));
+    }
+
+    #[test]
+    fn extract_query_token_decodes_value() {
+        let req = HttpRequest::builder()
+            .method("GET")
+            .uri("/boards/test/file?path=demo.drawio&auth_token=abc%20123")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(super::extract_query_token(&req), Some("abc 123".into()));
+    }
+
+    #[test]
+    fn extract_query_token_ignores_post_requests() {
+        let req = HttpRequest::builder()
+            .method("POST")
+            .uri("/boards/test/file?auth_token=abc-123")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(super::extract_query_token(&req), None);
     }
 
 }
