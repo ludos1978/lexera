@@ -10,12 +10,24 @@ const srcDir = resolve(__dirname, '..', 'src');
  * Extract board mutation and tag functions from app.js for isolated testing.
  */
 function loadMutationFunctions() {
-  // Load TagSystem first so delegating functions in app.js can reference it
+  // Load PathUtils first so delegating wrappers in app.js can reference it
+  const pathUtilsSource = readFileSync(resolve(srcDir, 'utils', 'pathUtils.js'), 'utf-8');
+  new Function(pathUtilsSource)();
+
+  // Load TagSystem so delegating functions in app.js can reference it
   const tagSystemSource = readFileSync(resolve(srcDir, 'tagSystem.js'), 'utf-8');
   new Function(tagSystemSource)();
 
+  // Load TagColors so tag data constants and functions are available
+  const tagColorsSource = readFileSync(resolve(srcDir, 'tagcolors', 'tagColors.js'), 'utf-8');
+  new Function(tagColorsSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
+
+  // Also load tagColors.js for extracting constants
+  const tcSource = readFileSync(resolve(srcDir, 'tagcolors', 'tagColors.js'), 'utf-8');
+  const tcLines = tcSource.split('\n');
 
   function extractFunction(startLine) {
     let depth = 0;
@@ -40,75 +52,54 @@ function loadMutationFunctions() {
     throw new Error('Could not find: ' + pattern);
   }
 
-  // Extract TAG_CATEGORIES constant
-  const catLine = findLine('var TAG_CATEGORIES = {');
-  let catDepth = 0, catStarted = false;
-  const catLines = [];
-  for (let i = catLine - 1; i < lines.length; i++) {
-    catLines.push(lines[i]);
-    for (let c = 0; c < lines[i].length; c++) {
-      if (lines[i][c] === '{') { catDepth++; catStarted = true; }
-      if (lines[i][c] === '}') catDepth--;
+  function findLineInTc(pattern) {
+    for (let i = 0; i < tcLines.length; i++) {
+      if (tcLines[i].includes(pattern)) return i + 1;
     }
-    if (catStarted && catDepth === 0) break;
+    throw new Error('Could not find in tagColors: ' + pattern);
   }
-  const tagCategoriesSource = catLines.join('\n');
 
-  const colorsLine = findLine('var TAG_COLORS = {');
-  let colorsDepth = 0, colorsStarted = false;
-  const colorsLines = [];
-  for (let i = colorsLine - 1; i < lines.length; i++) {
-    colorsLines.push(lines[i]);
-    for (let c = 0; c < lines[i].length; c++) {
-      if (lines[i][c] === '{') { colorsDepth++; colorsStarted = true; }
-      if (lines[i][c] === '}') colorsDepth--;
+  function extractConstFromTc(startLine) {
+    let depth = 0;
+    let started = false;
+    const result = [];
+    for (let i = startLine - 1; i < tcLines.length; i++) {
+      const line = tcLines[i];
+      result.push(line);
+      for (let c = 0; c < line.length; c++) {
+        if (line[c] === '{' || line[c] === '[') { depth++; started = true; }
+        if (line[c] === '}' || line[c] === ']') depth--;
+      }
+      if (started && depth === 0) break;
     }
-    if (colorsStarted && colorsDepth === 0) break;
+    return result.join('\n');
   }
-  const tagColorsSource = colorsLines.join('\n');
 
-  const paletteLine = findLine('var TAG_PALETTE = [');
-  let paletteDepth = 0, paletteStarted = false;
-  const paletteLines = [];
-  for (let i = paletteLine - 1; i < lines.length; i++) {
-    paletteLines.push(lines[i]);
-    for (let c = 0; c < lines[i].length; c++) {
-      if (lines[i][c] === '[') { paletteDepth++; paletteStarted = true; }
-      if (lines[i][c] === ']') paletteDepth--;
+  function extractFunctionFromTc(startLine) {
+    let depth = 0;
+    let started = false;
+    const result = [];
+    for (let i = startLine - 1; i < tcLines.length; i++) {
+      const line = tcLines[i];
+      result.push(line);
+      for (let c = 0; c < line.length; c++) {
+        if (line[c] === '{') { depth++; started = true; }
+        if (line[c] === '}') depth--;
+      }
+      if (started && depth === 0) break;
     }
-    if (paletteStarted && paletteDepth === 0) break;
+    return result.join('\n');
   }
-  const tagPaletteSource = paletteLines.join('\n');
 
-  const roleLine = findLine('var TAG_STYLE_ROLE_BY_CATEGORY = {');
-  let roleDepth = 0, roleStarted = false;
-  const roleLines = [];
-  for (let i = roleLine - 1; i < lines.length; i++) {
-    roleLines.push(lines[i]);
-    for (let c = 0; c < lines[i].length; c++) {
-      if (lines[i][c] === '{') { roleDepth++; roleStarted = true; }
-      if (lines[i][c] === '}') roleDepth--;
-    }
-    if (roleStarted && roleDepth === 0) break;
-  }
-  const tagStyleRoleSource = roleLines.join('\n');
-
-  // Extract TAG_STYLE_PRESETS constant
-  const presetsLine = findLine('var TAG_STYLE_PRESETS = {');
-  let presetsDepth = 0, presetsStarted = false;
-  const presetsLines = [];
-  for (let i = presetsLine - 1; i < lines.length; i++) {
-    presetsLines.push(lines[i]);
-    for (let c = 0; c < lines[i].length; c++) {
-      if (lines[i][c] === '{') { presetsDepth++; presetsStarted = true; }
-      if (lines[i][c] === '}') presetsDepth--;
-    }
-    if (presetsStarted && presetsDepth === 0) break;
-  }
-  const tagStylePresetsSource = presetsLines.join('\n');
+  // Extract TAG_* constants from tagColors.js (moved from app.js)
+  const tagCategoriesSource = extractConstFromTc(findLineInTc('var TAG_CATEGORIES = {'));
+  const tagColorsConstSource = extractConstFromTc(findLineInTc('var TAG_COLORS = {'));
+  const tagPaletteSource = extractConstFromTc(findLineInTc('var TAG_PALETTE = ['));
+  const tagStyleRoleSource = extractConstFromTc(findLineInTc('var TAG_STYLE_ROLE_BY_CATEGORY = {'));
+  const tagStylePresetsSource = extractConstFromTc(findLineInTc('var TAG_STYLE_PRESETS = {'));
 
   const fnDefs = [
-    tagColorsSource,
+    tagColorsConstSource,
     tagPaletteSource,
     tagCategoriesSource,
     tagStyleRoleSource,
@@ -164,12 +155,12 @@ function loadMutationFunctions() {
     extractFunction(findLine('function getContrastingTextColor(')),
     extractFunction(findLine('function getTagColor(')),
     extractFunction(findLine('function escapeAttr(')),
-    extractFunction(findLine('function resolveTagStyleProperty(')),
+    extractFunctionFromTc(findLineInTc('function resolveTagStyleProperty(')),
     extractFunction(findLine('function getResolvedCategoryRole(')),
     extractFunction(findLine('function getTagStyleOverride(')),
     extractFunction(findLine('function applyTagBorderSpecialRules(')),
     extractFunction(findLine('function buildTagStyleDescriptor(')),
-    extractFunction(findLine('function cloneTagStyleValue(')),
+    extractFunctionFromTc(findLineInTc('function cloneTagStyleValue(')),
     extractFunction(findLine('function buildCombinedTagStyleDescriptor(')),
     extractFunction(findLine('function toTagAccentRgba(')),
     extractFunction(findLine('function resolveTagSurfaceColor(')),
@@ -201,6 +192,8 @@ function loadMutationFunctions() {
   ];
 
   const wrappedSource = `
+    var PathUtils = globalThis.LexeraPathUtils;
+    var TagColors = globalThis.LexeraTagColors;
     ${fnDefs.join('\n\n')}
     return {
       TAG_CATEGORIES,

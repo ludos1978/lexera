@@ -119,6 +119,12 @@ const LexeraApi = (function () {
     return h;
   }
 
+  function appendAuthTokenQuery(url) {
+    if (!url || !bearerToken) return url;
+    var separator = url.indexOf('?') === -1 ? '?' : '&';
+    return url + separator + 'auth_token=' + encodeURIComponent(bearerToken);
+  }
+
   var DEFAULT_TIMEOUT_MS = 10000;
   var LONG_TIMEOUT_MS = 30000;
 
@@ -275,11 +281,11 @@ const LexeraApi = (function () {
   }
 
   function mediaUrl(boardId, filename) {
-    return (baseUrl || '') + '/boards/' + boardId + '/media/' + encodeURIComponent(filename);
+    return appendAuthTokenQuery((baseUrl || '') + '/boards/' + boardId + '/media/' + encodeURIComponent(filename));
   }
 
   function fileUrl(boardId, path) {
-    return (baseUrl || '') + '/boards/' + boardId + '/file?path=' + encodeURIComponent(path);
+    return appendAuthTokenQuery((baseUrl || '') + '/boards/' + boardId + '/file?path=' + encodeURIComponent(path));
   }
 
   async function fileInfo(boardId, path) {

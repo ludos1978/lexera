@@ -1,0 +1,596 @@
+/**
+ * Lexera Log — Status bar + dedicated frontend/backend log views.
+ */
+var frontendLogEntries = [];
+var backendLogEntries = [];
+var LOG_MAX = 1000;
+var storedLogSource = localStorage.getItem('lexera-log-source');
+var activeLogSource = storedLogSource === 'backend' ? 'backend' : 'frontend';
+var backendLogLoaded = false;
+var backendLogEventSource = null;
+var backendLogConnectPending = false;
+var backendLogEmptySnapshotRetries = 0;
+var FRONTEND_BUILD_STAMP = '20260305-1528-remote-join-persistence';
+
+var elStatusMsg = null;
+var elStatusBar = null;
+var elLogEntriesBackend = null;
+var elLogEntriesFrontend = null;
+var elLogPanel = null;
+var elLogSettingsPane = null;
+var elLogSettingsContainer = null;
+var elLogTabBackend = null;
+var elLogTabFrontend = null;
+var elLogRefreshBtn = null;
+var elLogCopyBtn = null;
+var elLogClearBtn = null;
+var elLogCloseBtn = null;
+
+function getElStatusMsg() { return elStatusMsg || (elStatusMsg = document.getElementById('status-msg')); }
+function getElStatusBar() { return elStatusBar || (elStatusBar = document.getElementById('status-bar')); }
+function getElLogEntriesBackend() { return elLogEntriesBackend || (elLogEntriesBackend = document.getElementById('log-entries-backend')); }
+function getElLogEntriesFrontend() { return elLogEntriesFrontend || (elLogEntriesFrontend = document.getElementById('log-entries-frontend')); }
+function getElLogPanel() { return elLogPanel || (elLogPanel = document.getElementById('log-panel')); }
+function getElLogSettingsPane() { return elLogSettingsPane || (elLogSettingsPane = document.getElementById('log-settings-pane')); }
+function getElLogSettingsContainer() { return elLogSettingsContainer || (elLogSettingsContainer = document.getElementById('log-settings-container')); }
+function getElLogTabBackend() { return elLogTabBackend || (elLogTabBackend = document.getElementById('log-tab-backend')); }
+function getElLogTabFrontend() { return elLogTabFrontend || (elLogTabFrontend = document.getElementById('log-tab-frontend')); }
+function getElLogRefreshBtn() { return elLogRefreshBtn || (elLogRefreshBtn = document.getElementById('log-refresh-btn')); }
+function getElLogCopyBtn() { return elLogCopyBtn || (elLogCopyBtn = document.getElementById('log-copy-btn')); }
+function getElLogClearBtn() { return elLogClearBtn || (elLogClearBtn = document.getElementById('log-clear-btn')); }
+function getElLogCloseBtn() { return elLogCloseBtn || (elLogCloseBtn = document.getElementById('log-close-btn')); }
+
+var elBoardList = null;
+var elBoardHeader = null;
+var elColumnsContainer = null;
+var elSearchResults = null;
+var elEmptyState = null;
+var elConnectionStatusBtn = null;
+var elConnectionDot = null;
+var elMainContent = null;
+var elLayout = null;
+var elSidebar = null;
+var elSidebarDashboardDivider = null;
+var elSidebarWidthDivider = null;
+var elDashboardRoot = null;
+var elDashboardSearchInput = null;
+var elDashboardSearchBtn = null;
+var elDashboardScopeSelect = null;
+var elDashboardPinBtn = null;
+var elInspectorBtn = null;
+var elDashboardPinnedList = null;
+var elDashboardResultsList = null;
+var elDashboardDeadlineList = null;
+var elDashboardOverdueList = null;
+var elMgmtPanel = null;
+var elMgmtPanelBody = null;
+var elBtnSidebarSync = null;
+var elMgmtClose = null;
+var elHeaderActions = null;
+var elSidebarLockBtn = null;
+var elSidebarHeader = null;
+
+function getElBoardList() { return elBoardList || (elBoardList = document.getElementById('board-list')); }
+function getElBoardHeader() { return elBoardHeader || (elBoardHeader = document.getElementById('board-header')); }
+function getElColumnsContainer() { return elColumnsContainer || (elColumnsContainer = document.getElementById('columns-container')); }
+function getElSearchResults() { return elSearchResults || (elSearchResults = document.getElementById('search-results')); }
+function getElEmptyState() { return elEmptyState || (elEmptyState = document.getElementById('empty-state')); }
+function getElConnectionStatusBtn() { return elConnectionStatusBtn || (elConnectionStatusBtn = document.getElementById('btn-connection-status')); }
+function getElConnectionDot() { return elConnectionDot || (elConnectionDot = document.getElementById('connection-dot')); }
+function getElMainContent() { return elMainContent || (elMainContent = document.getElementById('main-content')); }
+function getElLayout() { return elLayout || (elLayout = document.querySelector('.layout')); }
+function getElSidebar() { return elSidebar || (elSidebar = document.querySelector('.sidebar')); }
+function getElSidebarDashboardDivider() { return elSidebarDashboardDivider || (elSidebarDashboardDivider = document.getElementById('sidebar-dashboard-divider')); }
+function getElSidebarWidthDivider() { return elSidebarWidthDivider || (elSidebarWidthDivider = document.getElementById('sidebar-width-divider')); }
+function getElDashboardRoot() { return elDashboardRoot || (elDashboardRoot = document.getElementById('sidebar-dashboard')); }
+function getElDashboardSearchInput() { return elDashboardSearchInput || (elDashboardSearchInput = document.getElementById('dashboard-search-input')); }
+function getElDashboardSearchBtn() { return elDashboardSearchBtn || (elDashboardSearchBtn = document.getElementById('btn-dashboard-search')); }
+function getElDashboardScopeSelect() { return elDashboardScopeSelect || (elDashboardScopeSelect = document.getElementById('dashboard-scope-select')); }
+function getElDashboardPinBtn() { return elDashboardPinBtn || (elDashboardPinBtn = document.getElementById('btn-dashboard-pin')); }
+function getElInspectorBtn() { return elInspectorBtn || (elInspectorBtn = document.getElementById('btn-inspector')); }
+function getElDashboardPinnedList() { return elDashboardPinnedList || (elDashboardPinnedList = document.getElementById('dashboard-pinned-list')); }
+function getElDashboardResultsList() { return elDashboardResultsList || (elDashboardResultsList = document.getElementById('dashboard-results-list')); }
+function getElDashboardDeadlineList() { return elDashboardDeadlineList || (elDashboardDeadlineList = document.getElementById('dashboard-deadline-list')); }
+function getElDashboardOverdueList() { return elDashboardOverdueList || (elDashboardOverdueList = document.getElementById('dashboard-overdue-list')); }
+function getElMgmtPanel() { return elMgmtPanel || (elMgmtPanel = document.getElementById('mgmt-panel')); }
+function getElMgmtPanelBody() { return elMgmtPanelBody || (elMgmtPanelBody = document.getElementById('mgmt-panel-body')); }
+function getElBtnSidebarSync() { return elBtnSidebarSync || (elBtnSidebarSync = document.getElementById('btn-sidebar-sync')); }
+function getElMgmtClose() { return elMgmtClose || (elMgmtClose = document.getElementById('mgmt-close')); }
+function getElHeaderActions() { return elHeaderActions || (elHeaderActions = document.querySelector('.header-actions')); }
+function getElSidebarLockBtn() { return elSidebarLockBtn || (elSidebarLockBtn = document.getElementById('btn-sidebar-lock')); }
+function getElSidebarHeader() { var s = getElSidebar(); return elSidebarHeader || (elSidebarHeader = s ? s.querySelector('.sidebar-header') : null); }
+
+function normalizeLogMessage(message) {
+  if (message == null) return String(message);
+  if (typeof message === 'string') return message;
+  if (message instanceof Error) return formatErrorDetails(message);
+  if (typeof message === 'object') {
+    if (typeof message.message === 'string' && message.message) {
+      return formatErrorDetails(message);
+    }
+    try {
+      return JSON.stringify(message);
+    } catch (e) {
+      return String(message);
+    }
+  }
+  return String(message);
+}
+
+function formatErrorDetails(error) {
+  if (error == null) return String(error);
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) {
+    if (error.stack) return String(error.stack);
+    return error.name && error.message
+      ? (error.name + ': ' + error.message)
+      : (error.message || String(error));
+  }
+  if (typeof error === 'object') {
+    if (error.reason && error.reason !== error) {
+      return formatErrorDetails(error.reason);
+    }
+    if (typeof error.stack === 'string' && error.stack) return error.stack;
+    if (typeof error.message === 'string' && error.message) return error.message;
+    try {
+      return JSON.stringify(error);
+    } catch (e) {
+      return String(error);
+    }
+  }
+  return String(error);
+}
+
+function joinLogArgs(argsLike) {
+  var parts = Array.prototype.slice.call(argsLike || []);
+  if (!parts.length) return '';
+  return parts.map(function (value) {
+    return normalizeLogMessage(value);
+  }).join(' ');
+}
+
+function getLogEntries(source) {
+  return source === 'backend' ? backendLogEntries : frontendLogEntries;
+}
+
+function escapeLogHtml(value) {
+  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function getLogContainer(source) {
+  return source === 'backend' ? getElLogEntriesBackend() : getElLogEntriesFrontend();
+}
+
+function formatLogTimestamp(entry) {
+  return new Date(entry.timestampMs || Date.now()).toLocaleTimeString('en-GB', { hour12: false });
+}
+
+function logEntryKey(entry) {
+  return [
+    entry.level || '',
+    entry.target || '',
+    entry.message || ''
+  ].join('|');
+}
+
+function setStatusBarEntry(source, entry) {
+  var statusMsg = getElStatusMsg();
+  var statusBar = getElStatusBar();
+  if (!statusMsg || !statusBar) return;
+  var prefix = source === 'backend' ? '[backend] ' : '';
+  statusMsg.textContent = prefix + entry.message;
+  statusBar.className = 'status-bar status-' + entry.level;
+}
+
+function renderLogEntry(source, entry) {
+  var el = document.createElement('div');
+  el.className = 'log-entry log-' + entry.level;
+  el.innerHTML =
+    '<span class="log-time">' + escapeLogHtml(formatLogTimestamp(entry)) + '</span>' +
+    '<span class="log-level">' + escapeLogHtml(String(entry.level || '').toUpperCase()) + '</span>' +
+    '<span class="log-entry-source">' + escapeLogHtml(source) + '</span>' +
+    '<span class="log-entry-target">' + escapeLogHtml(entry.target || (source === 'backend' ? 'backend' : 'frontend')) + '</span>' +
+    '<span class="log-msg">' + escapeLogHtml(entry.message) + '</span>';
+  return el;
+}
+
+function appendLogEntry(source, entry) {
+  var entries = getLogEntries(source);
+  if (entries.length > 0 && logEntryKey(entries[entries.length - 1]) === logEntryKey(entry)) {
+    return;
+  }
+
+  entries.push(entry);
+  if (entries.length > LOG_MAX) entries.shift();
+
+  setStatusBarEntry(source, entry);
+
+  var panel = getLogContainer(source);
+  if (panel) {
+    while (panel.childNodes.length >= LOG_MAX) {
+      panel.removeChild(panel.firstChild);
+    }
+    panel.appendChild(renderLogEntry(source, entry));
+    panel.scrollTop = panel.scrollHeight;
+  }
+}
+
+function replaceLogEntries(source, entries) {
+  var nextEntries = (entries || []).slice(-LOG_MAX);
+  var target = getLogEntries(source);
+  target.length = 0;
+  Array.prototype.push.apply(target, nextEntries);
+
+  var panel = getLogContainer(source);
+  if (!panel) return;
+  panel.innerHTML = '';
+  for (var i = 0; i < nextEntries.length; i++) {
+    panel.appendChild(renderLogEntry(source, nextEntries[i]));
+  }
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function setActiveLogSource(source) {
+  if (source !== 'frontend' && source !== 'stats') source = 'backend';
+  activeLogSource = source;
+  localStorage.setItem('lexera-log-source', activeLogSource);
+
+  var backendBtn = getElLogTabBackend();
+  var frontendBtn = getElLogTabFrontend();
+  var backendPanel = getLogContainer('backend');
+  var frontendPanel = getLogContainer('frontend');
+  var statsPanel = document.getElementById('log-entries-stats');
+  var settingsPane = getElLogSettingsPane();
+  var refreshBtn = getElLogRefreshBtn();
+  var logTitle = document.querySelector('.log-panel-title');
+
+  if (backendBtn) backendBtn.classList.toggle('active', activeLogSource === 'backend');
+  if (frontendBtn) frontendBtn.classList.toggle('active', activeLogSource === 'frontend');
+  if (backendPanel) backendPanel.classList.toggle('hidden', activeLogSource !== 'backend');
+  if (frontendPanel) frontendPanel.classList.toggle('hidden', activeLogSource !== 'frontend');
+  if (statsPanel) statsPanel.classList.toggle('hidden', activeLogSource !== 'stats');
+  if (settingsPane) settingsPane.classList.toggle('hidden', activeLogSource === 'stats');
+  if (refreshBtn) refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
+
+  // Update title and hide log tabs when showing stats
+  var logTabs = document.querySelector('.log-panel-tabs');
+  if (activeLogSource === 'stats') {
+    if (logTitle) logTitle.textContent = 'Board Statistics';
+    if (logTabs) logTabs.style.display = 'none';
+  } else {
+    if (logTitle) logTitle.textContent = 'Logs';
+    if (logTabs) logTabs.style.display = '';
+  }
+
+  // Update status bar tab highlights
+  var statsTab = document.getElementById('status-tab-stats');
+  var processesTab = document.getElementById('status-tab-processes');
+  var panelVisible = !getElLogPanel().classList.contains('hidden');
+  if (statsTab) statsTab.classList.toggle('active', panelVisible && activeLogSource === 'stats');
+  if (processesTab) processesTab.classList.toggle('active', panelVisible && activeLogSource !== 'stats');
+}
+
+function isLogPanelVisible() {
+  var panel = getElLogPanel();
+  return !!(panel && !panel.classList.contains('hidden'));
+}
+
+function runInitManagementUI() {
+  if (typeof initManagementUI === 'function') return initManagementUI();
+  if (typeof window !== 'undefined' && typeof window.initManagementUI === 'function') {
+    return window.initManagementUI();
+  }
+  return false;
+}
+
+function setLogPanelVisibility(visible) {
+  var panel = getElLogPanel();
+  if (!panel) return;
+  if (visible) {
+    runInitManagementUI();
+    panel.classList.remove('hidden');
+  } else {
+    panel.classList.add('hidden');
+  }
+  updateAppBottomInset();
+  setActiveLogSource(activeLogSource);
+}
+
+function activateEmbeddedManagementTab(tabName) {
+  var container = getElLogSettingsContainer();
+  if (!container || !tabName) return;
+  var topTab = container.querySelector('.mgmt-top-tab[data-mgmt-top-tab="' + tabName + '"]');
+  var panel = container.querySelector('.mgmt-top-tab-content[data-mgmt-top-panel="' + tabName + '"]');
+  if (!topTab || !panel) return;
+  var tabs = container.querySelectorAll('.mgmt-top-tab');
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+  var panels = container.querySelectorAll('.mgmt-top-tab-content');
+  for (var p = 0; p < panels.length; p++) panels[p].classList.remove('active');
+  topTab.classList.add('active');
+  panel.classList.add('active');
+}
+
+function syncEmbeddedManagementUiState(preferredTab) {
+  var container = getElLogSettingsContainer();
+  if (!container) return;
+  var logsTab = container.querySelector('.mgmt-top-tab[data-mgmt-top-tab="logs"]');
+  var logsPanel = container.querySelector('.mgmt-top-tab-content[data-mgmt-top-panel="logs"]');
+  if (logsTab) logsTab.classList.remove('active');
+  if (logsPanel) logsPanel.classList.remove('active');
+  if (preferredTab) activateEmbeddedManagementTab(preferredTab);
+}
+
+function lexeraLogWithTarget(level, target, message) {
+  appendLogEntry('frontend', {
+    timestampMs: Date.now(),
+    level: level,
+    target: target || 'frontend',
+    message: normalizeLogMessage(message)
+  });
+}
+
+function lexeraLog(level, message) {
+  lexeraLogWithTarget(level, 'frontend', message);
+}
+
+function logFrontendIssue(level, target, context, error) {
+  var detail = error == null ? '' : formatErrorDetails(error);
+  var message = detail ? (context + ': ' + detail) : context;
+  lexeraLogWithTarget(level, target, message);
+}
+
+function formatTraceDetails(details) {
+  if (details == null) return '';
+  var normalized = normalizeLogMessage(details);
+  return normalized ? (' ' + normalized) : '';
+}
+
+function traceFrontendAction(level, target, message, details) {
+  lexeraLogWithTarget(level, target, message + formatTraceDetails(details));
+}
+
+function summarizeMenuItems(items) {
+  var result = [];
+  if (!Array.isArray(items)) return result;
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    if (!item) continue;
+    if (item.separator) {
+      result.push('---');
+      continue;
+    }
+    var label = item.id || item.label || ('item-' + i);
+    if (Array.isArray(item.items) && item.items.length > 0) {
+      result.push(label + '[' + item.items.length + ']');
+    } else {
+      result.push(label);
+    }
+  }
+  return result;
+}
+
+function summarizeBoardHierarchy(boardData) {
+  var summary = { rows: 0, stacks: 0, columns: 0, cards: 0 };
+  if (!boardData || !Array.isArray(boardData.rows)) return summary;
+  summary.rows = boardData.rows.length;
+  for (var r = 0; r < boardData.rows.length; r++) {
+    var row = boardData.rows[r];
+    var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
+    summary.stacks += stacks.length;
+    for (var s = 0; s < stacks.length; s++) {
+      var cols = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+      summary.columns += cols.length;
+      for (var c = 0; c < cols.length; c++) {
+        summary.cards += Array.isArray(cols[c].cards) ? cols[c].cards.length : 0;
+      }
+    }
+  }
+  return summary;
+}
+
+function lexeraBackendLog(entry) {
+  appendLogEntry('backend', {
+    timestampMs: entry && entry.timestampMs ? entry.timestampMs : Date.now(),
+    level: entry && entry.level ? entry.level : 'info',
+    target: entry && entry.target ? entry.target : 'backend',
+    message: normalizeLogMessage(entry && entry.message ? entry.message : '')
+  });
+}
+
+function refreshBackendLogs() {
+  if (!window.LexeraApi || typeof LexeraApi.getLogs !== 'function') return Promise.resolve();
+  return LexeraApi.getLogs().then(function (data) {
+    var entries = data && Array.isArray(data.entries) ? data.entries : [];
+    replaceLogEntries('backend', entries);
+    backendLogLoaded = entries.length > 0 || backendLogLoaded;
+    traceFrontendAction('info', 'backend.log.refresh', 'Loaded backend log snapshot', {
+      entries: entries.length,
+      filePath: data && data.filePath ? data.filePath : null
+    });
+    if (entries.length === 0 && backendLogEmptySnapshotRetries < 5) {
+      backendLogEmptySnapshotRetries++;
+      setTimeout(refreshBackendLogs, 1000);
+    } else if (entries.length > 0) {
+      backendLogEmptySnapshotRetries = 0;
+    }
+  }).catch(function (err) {
+    lexeraLog('warn', '[backend.log] Failed to load backend logs: ' + err.message);
+    traceFrontendAction('warn', 'backend.log.refresh', 'Backend log snapshot request failed', {
+      error: formatErrorDetails(err)
+    });
+    if (backendLogEmptySnapshotRetries < 5) {
+      backendLogEmptySnapshotRetries++;
+      setTimeout(refreshBackendLogs, 1500);
+    }
+  });
+}
+
+function openBackendLogStream() {
+  if (backendLogEventSource || !window.LexeraApi || typeof LexeraApi.connectLogStream !== 'function') return;
+  traceFrontendAction('info', 'backend.log.stream', 'Opening backend log stream', {});
+  backendLogEventSource = LexeraApi.connectLogStream(function (entry) {
+    backendLogLoaded = true;
+    lexeraBackendLog(entry);
+  });
+  if (!backendLogEventSource) {
+    traceFrontendAction('warn', 'backend.log.stream', 'Backend log stream did not open (no backend URL yet)', {});
+    setTimeout(connectBackendLogStreamIfReady, 1000);
+    return;
+  }
+  backendLogEventSource.onopen = function () {
+    traceFrontendAction('info', 'backend.log.stream', 'Backend log stream connected', {});
+  };
+  backendLogEventSource.onerror = function () {
+    traceFrontendAction('warn', 'backend.log.stream', 'Backend log stream error; reconnect scheduled', {
+      readyState: backendLogEventSource ? backendLogEventSource.readyState : null
+    });
+    if (backendLogEventSource) backendLogEventSource.close();
+    backendLogEventSource = null;
+    setTimeout(connectBackendLogStreamIfReady, 1500);
+  };
+}
+
+function connectBackendLogStreamIfReady() {
+  if (backendLogEventSource || backendLogConnectPending || !window.LexeraApi || typeof LexeraApi.discover !== 'function') {
+    return;
+  }
+  backendLogConnectPending = true;
+  LexeraApi.discover().then(function (url) {
+    backendLogConnectPending = false;
+    if (!url) {
+      traceFrontendAction('warn', 'backend.log.stream', 'Backend discovery returned no URL for log stream; retrying', {});
+      setTimeout(connectBackendLogStreamIfReady, 1500);
+      return;
+    }
+    traceFrontendAction('info', 'backend.log.stream', 'Backend discovered for log stream', { url: url });
+    var ready = backendLogLoaded ? Promise.resolve() : refreshBackendLogs();
+    ready.finally(function () {
+      openBackendLogStream();
+    });
+  }).catch(function (err) {
+    logFrontendIssue('warn', 'backend.log.stream', 'Failed to connect backend log stream', err);
+    backendLogConnectPending = false;
+    setTimeout(connectBackendLogStreamIfReady, 1500);
+  });
+}
+
+window.connectBackendLogStreamIfReady = connectBackendLogStreamIfReady;
+
+// Intercept console.log/warn/error
+(function () {
+  var origLog = console.log, origWarn = console.warn, origError = console.error;
+  console.log = function () {
+    origLog.apply(console, arguments);
+    lexeraLogWithTarget('info', 'console.log', joinLogArgs(arguments));
+  };
+  console.warn = function () {
+    origWarn.apply(console, arguments);
+    lexeraLogWithTarget('warn', 'console.warn', joinLogArgs(arguments));
+  };
+  console.error = function () {
+    origError.apply(console, arguments);
+    lexeraLogWithTarget('error', 'console.error', joinLogArgs(arguments));
+  };
+})();
+
+// Catch unhandled errors
+window.addEventListener('error', function (e) {
+  var location = '';
+  if (e && e.filename) {
+    location = ' at ' + e.filename + ':' + (e.lineno || 0);
+    if (e.colno) location += ':' + e.colno;
+  }
+  var detail = e && e.error ? formatErrorDetails(e.error) : (e && e.message ? e.message : 'Unknown error');
+  lexeraLogWithTarget('error', 'window.error', 'Uncaught' + location + ': ' + detail);
+});
+window.addEventListener('unhandledrejection', function (e) {
+  var reason = e && Object.prototype.hasOwnProperty.call(e, 'reason') ? e.reason : e;
+  lexeraLogWithTarget('error', 'window.unhandledrejection', 'Unhandled promise rejection: ' + formatErrorDetails(reason));
+});
+
+function updateAppBottomInset() {
+  var root = document.documentElement;
+  if (!root) return;
+  // Bottom bars now participate in normal layout flow (no fixed overlay).
+  root.style.setProperty('--app-bottom-inset', '0px');
+}
+
+window.updateAppBottomInset = updateAppBottomInset;
+window.addEventListener('resize', updateAppBottomInset);
+
+// Log panel + status bar UI
+document.addEventListener('DOMContentLoaded', function () {
+  var panel = getElLogPanel();
+  var refreshBtn = getElLogRefreshBtn();
+  var clearBtn = getElLogClearBtn();
+  var closeBtn = getElLogCloseBtn();
+  var backendTab = getElLogTabBackend();
+  var frontendTab = getElLogTabFrontend();
+  updateAppBottomInset();
+
+  // Click status bar message area to expand/collapse log panel
+  var statusMsg = document.getElementById('status-msg');
+  if (statusMsg) statusMsg.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (activeLogSource === 'stats') setActiveLogSource('backend');
+    setLogPanelVisibility(!(panel && !panel.classList.contains('hidden')));
+  });
+
+  // Status bar tab handlers are set up in init() where toggleBoardStatsBar is accessible
+
+  if (refreshBtn) refreshBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    refreshBackendLogs();
+  });
+
+  var copyBtn = getElLogCopyBtn();
+  if (copyBtn) copyBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var entries = getLogEntries(activeLogSource);
+    var text = entries.map(function (entry) {
+      var ts = formatLogTimestamp(entry);
+      var level = String(entry.level || '').toUpperCase();
+      var target = entry.target || activeLogSource;
+      return ts + ' ' + level + ' [' + target + '] ' + (entry.message || '');
+    }).join('\n');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
+      });
+    }
+  });
+  if (clearBtn) clearBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    replaceLogEntries(activeLogSource, []);
+  });
+  if (closeBtn) closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setLogPanelVisibility(false);
+  });
+  if (backendTab) backendTab.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setActiveLogSource('backend');
+  });
+  if (frontendTab) frontendTab.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setActiveLogSource('frontend');
+  });
+
+  replaceLogEntries('frontend', frontendLogEntries);
+  replaceLogEntries('backend', backendLogEntries);
+  setActiveLogSource(activeLogSource);
+  connectBackendLogStreamIfReady();
+});
+
+function toggleLogPanel() {
+  setLogPanelVisibility(!isLogPanelVisible());
+}
+
+// Ctrl+Shift+L to toggle log
+document.addEventListener('keydown', function (e) {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'L') {
+    e.preventDefault();
+    toggleLogPanel();
+  }
+});

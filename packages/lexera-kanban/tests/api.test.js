@@ -81,28 +81,29 @@ beforeEach(() => {
 describe('mediaUrl', () => {
   it('builds a media URL from boardId and filename', () => {
     // baseUrl is null initially, so (baseUrl || '') produces ''
+    // auth_token appended because bearer token is set in beforeEach
     const url = Api.mediaUrl('board-1', 'image.png');
-    expect(url).toBe('/boards/board-1/media/image.png');
+    expect(url).toBe('/boards/board-1/media/image.png?auth_token=test-bearer-token');
   });
 
   it('encodes special characters in filename', () => {
     const url = Api.mediaUrl('board-1', 'my file (1).png');
-    expect(url).toBe('/boards/board-1/media/my%20file%20(1).png');
+    expect(url).toBe('/boards/board-1/media/my%20file%20(1).png?auth_token=test-bearer-token');
   });
 
   it('encodes unicode characters in filename', () => {
     const url = Api.mediaUrl('b1', 'bild-überblick.jpg');
-    expect(url).toBe('/boards/b1/media/bild-%C3%BCberblick.jpg');
+    expect(url).toBe('/boards/b1/media/bild-%C3%BCberblick.jpg?auth_token=test-bearer-token');
   });
 
   it('handles empty boardId', () => {
     const url = Api.mediaUrl('', 'photo.jpg');
-    expect(url).toBe('/boards//media/photo.jpg');
+    expect(url).toBe('/boards//media/photo.jpg?auth_token=test-bearer-token');
   });
 
   it('handles filename with slashes', () => {
     const url = Api.mediaUrl('b1', 'sub/dir/file.png');
-    expect(url).toBe('/boards/b1/media/sub%2Fdir%2Ffile.png');
+    expect(url).toBe('/boards/b1/media/sub%2Fdir%2Ffile.png?auth_token=test-bearer-token');
   });
 });
 
@@ -112,23 +113,24 @@ describe('mediaUrl', () => {
 
 describe('fileUrl', () => {
   it('builds a file URL from boardId and path', () => {
+    // auth_token appended because bearer token is set in beforeEach
     const url = Api.fileUrl('board-1', 'docs/readme.md');
-    expect(url).toBe('/boards/board-1/file?path=docs%2Freadme.md');
+    expect(url).toBe('/boards/board-1/file?path=docs%2Freadme.md&auth_token=test-bearer-token');
   });
 
   it('encodes special characters in path', () => {
     const url = Api.fileUrl('b1', 'path with spaces/file.txt');
-    expect(url).toBe('/boards/b1/file?path=path%20with%20spaces%2Ffile.txt');
+    expect(url).toBe('/boards/b1/file?path=path%20with%20spaces%2Ffile.txt&auth_token=test-bearer-token');
   });
 
   it('handles empty path', () => {
     const url = Api.fileUrl('b1', '');
-    expect(url).toBe('/boards/b1/file?path=');
+    expect(url).toBe('/boards/b1/file?path=&auth_token=test-bearer-token');
   });
 
   it('handles path with query-like characters', () => {
     const url = Api.fileUrl('b1', 'file?name=test&x=1');
-    expect(url).toBe('/boards/b1/file?path=file%3Fname%3Dtest%26x%3D1');
+    expect(url).toBe('/boards/b1/file?path=file%3Fname%3Dtest%26x%3D1&auth_token=test-bearer-token');
   });
 });
 
@@ -255,14 +257,14 @@ describe('mediaUrl with baseUrl set', () => {
   it('prepends the discovered baseUrl', () => {
     // After discover() succeeded above, baseUrl is 'http://localhost:13080'
     const url = Api.mediaUrl('b1', 'img.png');
-    expect(url).toBe('http://localhost:13080/boards/b1/media/img.png');
+    expect(url).toBe('http://localhost:13080/boards/b1/media/img.png?auth_token=test-bearer-token');
   });
 });
 
 describe('fileUrl with baseUrl set', () => {
   it('prepends the discovered baseUrl', () => {
     const url = Api.fileUrl('b1', 'readme.md');
-    expect(url).toBe('http://localhost:13080/boards/b1/file?path=readme.md');
+    expect(url).toBe('http://localhost:13080/boards/b1/file?path=readme.md&auth_token=test-bearer-token');
   });
 });
 

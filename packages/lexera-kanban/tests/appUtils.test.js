@@ -17,21 +17,31 @@ const srcDir = resolve(__dirname, '..', 'src');
  * isExternalHttpUrl) are available. Returns an object with each function by name.
  */
 function loadAppUtils() {
-  // Load TagSystem first so delegating functions in app.js can reference it
+  // Load PathUtils first so delegating wrappers in app.js can reference it
+  const pathUtilsSource = readFileSync(resolve(srcDir, 'utils', 'pathUtils.js'), 'utf-8');
+  new Function(pathUtilsSource)();
+
+  // Load TagSystem so delegating functions in app.js can reference it
   const tagSystemSource = readFileSync(resolve(srcDir, 'tagSystem.js'), 'utf-8');
   new Function(tagSystemSource)();
+
+  // Load loggingSystem for normalizeLogMessage / formatErrorDetails
+  const loggingSource = readFileSync(resolve(srcDir, 'logging', 'loggingSystem.js'), 'utf-8');
 
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
+  // Also parse the logging system for extractable functions
+  const logLines = loggingSource.split('\n');
+
   // Extract a function starting at the given 1-based line number.
   // Scans forward to find the matching closing brace.
-  function extractFunction(startLine) {
+  function extractFunctionFrom(sourceLines, startLine) {
     let depth = 0;
     let started = false;
     const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
+    for (let i = startLine - 1; i < sourceLines.length; i++) {
+      const line = sourceLines[i];
       result.push(line);
       for (let c = 0; c < line.length; c++) {
         if (line[c] === '{') { depth++; started = true; }
@@ -42,19 +52,27 @@ function loadAppUtils() {
     return result.join('\n');
   }
 
+  function extractFunction(startLine) {
+    return extractFunctionFrom(lines, startLine);
+  }
+
   // Find 1-based line number for a function definition
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
+  function findLineIn(sourceLines, pattern) {
+    for (let i = 0; i < sourceLines.length; i++) {
+      if (sourceLines[i].includes(pattern)) return i + 1;
     }
     throw new Error('Could not find: ' + pattern);
   }
 
+  function findLine(pattern) {
+    return findLineIn(lines, pattern);
+  }
+
   // Extract all needed functions
   const fnDefs = [
-    // Global-scope functions (before the IIFE)
-    extractFunction(findLine('function normalizeLogMessage(')),
-    extractFunction(findLine('function formatErrorDetails(')),
+    // Functions from loggingSystem.js (previously in app.js global scope)
+    extractFunctionFrom(logLines, findLineIn(logLines, 'function normalizeLogMessage(')),
+    extractFunctionFrom(logLines, findLineIn(logLines, 'function formatErrorDetails(')),
 
     // Functions inside the IIFE — extract them individually
     extractFunction(findLine('function normalizePathForCompare(')),
@@ -94,6 +112,7 @@ function loadAppUtils() {
   ];
 
   const wrappedSource = `
+    var PathUtils = globalThis.LexeraPathUtils;
     ${fnDefs.join('\n\n')}
 
     return {

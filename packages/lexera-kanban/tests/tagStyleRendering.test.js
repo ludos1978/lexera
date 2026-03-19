@@ -12,8 +12,8 @@ function readSource(name) {
 
 describe('tag style rendering parity', () => {
   it('keeps explicit named color tag mappings instead of hashing them', () => {
-    const appSource = readSource('app.js');
-    const tagColorsMatch = appSource.match(/var TAG_COLORS = \{[\s\S]*?\n  \};/);
+    const moduleSource = readSource('tagcolors/tagColors.js');
+    const tagColorsMatch = moduleSource.match(/var TAG_COLORS = \{[\s\S]*?\n  \};/);
     expect(tagColorsMatch).not.toBeNull();
     const tagColors = new Function(`${tagColorsMatch[0]}; return TAG_COLORS;`)();
 
@@ -27,13 +27,14 @@ describe('tag style rendering parity', () => {
 
   it('allows surface-style tags on all styled entities and the board header', () => {
     const appSource = readSource('app.js');
+    const moduleSource = readSource('tagcolors/tagColors.js');
     const cssSource = readSource('app.css');
 
     expect(appSource.includes("descriptor.normalizedTag === 'surface' && entityType !== 'card'")).toBe(false);
     expect(appSource.includes("applyTagStyleToEntity(getElBoardHeader(), activeBoardData && activeBoardData.title ? activeBoardData.title : '')")).toBe(true);
     expect(appSource.includes("applyTagStyleToEntity(cardEl, getCardContainerStyleSource(card.content || ''))")).toBe(true);
     expect(appSource.includes('skipFirstLineTagStyle: true')).toBe(true);
-    expect(appSource.includes('buildCombinedTagStyleDescriptor(styleTags)')).toBe(true);
+    expect(moduleSource.includes('buildCombinedTagStyleDescriptor(styleTags)')).toBe(true);
     expect(cssSource.includes('.board-header.tag-styled')).toBe(true);
     expect(cssSource.includes('.tag-line-styled')).toBe(true);
   });
