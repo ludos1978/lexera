@@ -46,18 +46,21 @@
 
 ## High Priority — Media Sync
 
-- [ ] **HTTP-based media file sync between LAN peers** — media files are currently NOT synced at all. Pragmatic approach using existing infrastructure:
-  - Add `GET /boards/{id}/media-manifest` endpoint returning [{name, blake3_hash, size}] per file
-  - Sync manifest via existing WebSocket as new `MediaManifestUpdate` message type
-  - Background task: diff manifests between peers, fetch missing files via HTTP GET
-  - Push new uploads to discovered peers via HTTP POST
-  - ~300-400 lines in sync_client.rs, no new dependencies needed (or just add blake3 for hashing)
+- [x] **HTTP-based media file sync between LAN peers** — implemented using existing infrastructure:
+  - `GET /boards/{id}/media-manifest` endpoint returns `[{name, sha256, size}]` per file (SHA-256 via existing sha2 dep)
+  - `MediaManifestEntry` + `compute_media_manifest()` + `diff_media_manifests()` in lexera-core
+  - `ClientMediaManifest` / `ServerMediaManifest` WebSocket message types for real-time notification
+  - `MediaChanged` board event fired after media upload, triggers sync to connected peers
+  - `sync_client.rs`: initial media sync on connect, periodic sync (30s), event-driven sync on local changes
+  - Bidirectional: downloads missing files via `GET /boards/{id}/media/{filename}`, uploads via multipart `POST /boards/{id}/media`
+  - `ServerMediaManifest` handler diffs and downloads missing files from remote peer manifests
+  - 14 new tests (11 core unit + 3 backend integration), all 903 Rust tests pass
 
 ## High Priority — Code Quality
 
-- [ ] **Extract backend lib.rs setup function** — 542-line setup() closure in lib.rs needs splitting into named functions: setup_file_watcher, setup_collab_services, spawn_background_tasks, restore_persisted_connections, spawn_http_server, setup_clipboard_watcher.
+- [x] **Extract backend lib.rs setup function** — extracted 570-line setup() closure into 8 named functions + `CollabServices` struct: `init_storage_and_boards`, `resolve_incoming`, `setup_file_watcher`, `init_collab_services`, `bootstrap_local_user`, `spawn_background_tasks`, `restore_persisted_connections`, `spawn_http_server`. All 903 Rust tests pass.
 
-- [ ] **Frontend modularization** — app.js is 28K lines. Continue extraction pattern (foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js already done). Next: board rendering, dashboard, canvas, export, settings.
+- [ ] **Frontend modularization** — app.js reduced from 28K to 27K lines. Extracted: loggingSystem.js (596), virtualScroll.js (321), pathUtils.js (298), tagColors.js (788). Previously done: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next: board rendering, dashboard, canvas, export, settings.
 
 ## Open — Features
 
