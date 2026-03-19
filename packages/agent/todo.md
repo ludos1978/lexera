@@ -2,23 +2,47 @@
 
 ## High Priority — Security & Reliability
 
-- [ ] **Auth model: replace query-param identity** — current `?user=someId` is self-declaration, not authentication. Any user can impersonate any other user. Design a proper auth token system (at minimum: server-generated session tokens on registration, verified on every request).
-  - POST /collab/users/register has no auth — anyone can register as any user_id (account takeover)
-  - WebSocket sync_ws.rs accepts user_id from query param — client claims any identity
-  - SSE /events has no auth — anyone can watch all board change events
-  - /collab/server-info leaks local user_id unauthenticated
-  - /collab/public-rooms discoverable without auth
+- [x] **Step 1: Auth tokens in AuthService** — server-generated bearer tokens replace query-param identity.
+  - `tokens: HashMap<String, String>` (token → user_id) in AuthService
+  - `register_user()` generates UUID v4 token, returns it
+  - `validate_token()`, `get_token_for_user()`, `generate_token_for_user()` methods
+  - `extract_bearer_token()` + updated `require_authenticated_user()` in collab_api.rs
+  - Tokens persisted in auth.json (`#[serde(default)]` for backwards compat)
+  - All 14 collab endpoints accept `Authorization: Bearer <token>` header
+  - Register endpoint returns token in response
 
-- [ ] **Workspace invite ownership check** — create_workspace_invite (collab_api.rs:393) authenticates user but never verifies they own the workspace. Any authenticated user can create workspace invites.
+- [x] **Step 2: Apply auth to board endpoints** — auth middleware on all /boards/*, /config/*, /search/*, /capture/*, /events routes.
+  - `auth_middleware.rs` validates bearer token (query-param fallback removed)
+  - Applied via `route_layer` to authenticated route group in `api_router()`
+  - Unauthenticated routes: /status, /templates, /logs, /external-embeds/probe
+  - All 35+ API tests updated with bearer token auth
 
-- [ ] **Invite system cleanup** —
-  - Remove dead `email` field from CreateInviteRequest (invite.rs:34) — collected but never used
-  - Call `cleanup_expired()` at startup and periodically — function exists (invite.rs:204) but is never called, expired invites accumulate forever
-  - Add `max_uses` upper bound validation (currently accepts u32::MAX)
+- [x] **Step 3: Local auto-auth** — local user always has a token on backend startup.
+  - On startup, `register_user` generates token; existing users get `generate_token_for_user`
+  - Auth state saved immediately after bootstrap (crash safety)
+  - `GET /collab/me` returns token alongside user info for frontend use
 
-- [ ] **Rate limiting on collab endpoints** — no throttling on register, invite accept, or connect endpoints. Brute-force attacks possible on all auth-related routes.
+- [x] **Step 4: Remote client auth flow** — return auth token on invite accept.
+  - `accept_invite` endpoint returns `auth_token` alongside room join info
+  - `register_user` response token captured by sync client (new registrations)
+  - `RemoteConnectionEntry` stores `auth_token` in sync.json for reconnection
+  - All sync client HTTP requests include `Authorization: Bearer <token>` header
+  - WebSocket handshake uses `?token=<auth_token>` query param (validated in sync_ws.rs)
+  - `reconnect_existing` passes stored auth_token; falls back to register token
+  - Frontend api.js fetches token from `/collab/me` and injects `Authorization` header
+  - management.js uses api adapter (auto-includes bearer token)
+  - `?user=` query-param fallback fully removed from all backend endpoints and frontend
 
-- [ ] **Input validation on user names** — no length or charset checks on user registration/update (collab_api.rs:679). Risk of XSS if names rendered unescaped, DoS via extremely long names.
+- [x] **Workspace invite ownership check** — `require_workspace_invite_permission` verifies requester owns at least one board in workspace before allowing create/list/revoke workspace invites. Returns 403 Forbidden otherwise.
+
+- [x] **Invite system cleanup** —
+  - Removed dead `email` field from `CreateInviteRequest`
+  - `cleanup_expired()` already called periodically (3600s interval) and at startup (tokio interval fires first tick immediately)
+  - Added `max_uses` upper bound validation (cap at 100), returns `MaxUsesTooHigh` error
+
+- [x] **Rate limiting on collab endpoints** — auth-sensitive routes (`/users/register`, `/invites/{token}/accept`, `/connect`, `/join-public`) rate-limited to 5 req/sec via existing `RateLimiter` middleware.
+
+- [x] **Input validation on user names** — `validate_user_name()` and `validate_user_id()` enforce: non-empty, max 200 chars, no `<`/`>` (XSS), no `..` in IDs (path traversal). Applied to `register_user` and `update_me`.
 
 ## High Priority — Media Sync
 

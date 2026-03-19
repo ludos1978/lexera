@@ -41,7 +41,7 @@ pub fn test_state(tmp: &std::path::Path) -> AppState {
 }
 
 pub fn test_router(state: AppState) -> Router {
-    crate::api::api_router().with_state(state)
+    crate::api::api_router(&state).with_state(state)
 }
 
 pub async fn body_json(body: axum::body::Body) -> serde_json::Value {
@@ -70,6 +70,33 @@ pub fn setup_board(tmp: &std::path::Path) -> (AppState, String) {
 pub fn get_request(uri: &str) -> axum::http::Request<axum::body::Body> {
     axum::http::Request::builder()
         .uri(uri)
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
+
+/// Register a test user in the auth service and return the bearer token.
+pub fn register_test_user(state: &AppState) -> String {
+    let mut auth = state.auth_service.lock().unwrap();
+    match auth.register_user(crate::auth::User {
+        id: "test-user".into(),
+        name: "Test User".into(),
+        email: None,
+    }) {
+        Ok(token) => token,
+        Err(_) => {
+            // Already registered — get existing token or generate new one
+            auth.get_token_for_user("test-user")
+                .map(|t| t.to_string())
+                .unwrap_or_else(|| auth.generate_token_for_user("test-user").unwrap())
+        }
+    }
+}
+
+/// Create a GET request with bearer token authentication.
+pub fn authed_get(uri: &str, token: &str) -> axum::http::Request<axum::body::Body> {
+    axum::http::Request::builder()
+        .uri(uri)
+        .header("authorization", format!("Bearer {}", token))
         .body(axum::body::Body::empty())
         .unwrap()
 }

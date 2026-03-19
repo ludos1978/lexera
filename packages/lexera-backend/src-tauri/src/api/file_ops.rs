@@ -405,17 +405,21 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    use crate::test_helpers::{body_json, get_request, setup_board, test_router};
+    use crate::test_helpers::{authed_get, body_json, register_test_user, setup_board, test_router};
 
     #[tokio::test]
     async fn serve_file_returns_content() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("hello.txt"), "hello world").unwrap();
         let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
 
         let app = test_router(state);
         let resp = app
-            .oneshot(get_request(&format!("/boards/{}/file?path=hello.txt", board_id)))
+            .oneshot(authed_get(
+                &format!("/boards/{}/file?path=hello.txt", board_id),
+                &token,
+            ))
             .await
             .unwrap();
 
@@ -429,10 +433,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("data.txt"), "12345").unwrap();
         let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
 
         let app = test_router(state);
         let resp = app
-            .oneshot(get_request(&format!("/boards/{}/file-info?path=data.txt", board_id)))
+            .oneshot(authed_get(
+                &format!("/boards/{}/file-info?path=data.txt", board_id),
+                &token,
+            ))
             .await
             .unwrap();
 
@@ -447,13 +455,17 @@ mod tests {
     async fn serve_file_blocks_path_traversal() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
 
         let app = test_router(state);
         let resp = app
-            .oneshot(get_request(&format!(
-                "/boards/{}/file?path=../../../etc/passwd",
-                board_id
-            )))
+            .oneshot(authed_get(
+                &format!(
+                    "/boards/{}/file?path=../../../etc/passwd",
+                    board_id
+                ),
+                &token,
+            ))
             .await
             .unwrap();
 
@@ -468,13 +480,17 @@ mod tests {
     async fn serve_file_blocks_absolute_path_traversal() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
 
         let app = test_router(state);
         let resp = app
-            .oneshot(get_request(&format!(
-                "/boards/{}/file?path=/etc/passwd",
-                board_id
-            )))
+            .oneshot(authed_get(
+                &format!(
+                    "/boards/{}/file?path=/etc/passwd",
+                    board_id
+                ),
+                &token,
+            ))
             .await
             .unwrap();
 

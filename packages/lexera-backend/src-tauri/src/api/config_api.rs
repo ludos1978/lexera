@@ -584,7 +584,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
-    use crate::test_helpers::{body_json, test_router, test_state};
+    use crate::test_helpers::{register_test_user, test_router, test_state};
 
     fn write_board_file(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
         let path = dir.join(name);
@@ -600,6 +600,7 @@ mod tests {
     async fn update_workspace_sync_persists_values() {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         {
             let mut cfg = state.config.lock().unwrap();
             cfg.workspaces.push(WorkspaceEntry {
@@ -616,6 +617,7 @@ mod tests {
                     .method("PUT")
                     .uri("/config/workspaces/ws-1/sync")
                     .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::from(
                         serde_json::json!({
                             "bookmarkSync": false,
@@ -644,6 +646,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let board_path = write_board_file(tmp.path(), "board.md");
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         let board_id = state.storage.add_board(&board_path).unwrap();
         {
             let mut cfg = state.config.lock().unwrap();
@@ -664,6 +667,7 @@ mod tests {
                     .method("PUT")
                     .uri(&format!("/config/boards/{}/sync", board_id))
                     .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::from(
                         serde_json::json!({
                             "xbelName": "bookmarks.xbel",

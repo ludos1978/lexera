@@ -39,6 +39,9 @@ pub struct RemoteConnectionEntry {
     pub invite_token: Option<String>,
     #[serde(default = "default_remote_connection_enabled")]
     pub enabled: bool,
+    /// Bearer token for authenticating with the remote server.
+    #[serde(default)]
+    pub auth_token: Option<String>,
 }
 
 fn default_remote_connection_enabled() -> bool {
@@ -692,6 +695,7 @@ mod tests {
                 server_url: "http://192.168.1.50:13080".to_string(),
                 invite_token: Some("token-xyz".to_string()),
                 enabled: true,
+                auth_token: Some("bearer-abc".to_string()),
             }],
         };
 
@@ -721,6 +725,33 @@ mod tests {
         assert_eq!(
             loaded.remote_connections[0].remote_board_id,
             "abc123".to_string()
+        );
+        assert_eq!(
+            loaded.remote_connections[0].auth_token.as_deref(),
+            Some("bearer-abc")
+        );
+    }
+
+    #[test]
+    fn remote_connection_auth_token_defaults_to_none() {
+        // Backwards compat: old config files without auth_token should load fine
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("sync.json");
+        let json = r#"{
+            "remote_connections": [{
+                "local_board_id": "remote-xyz",
+                "remote_board_id": "xyz",
+                "server_url": "http://192.168.1.10:13080",
+                "invite_token": "tok-1",
+                "enabled": true
+            }]
+        }"#;
+        fs::write(&path, json).unwrap();
+        let cfg = load_config(&path.to_path_buf());
+        assert_eq!(cfg.remote_connections.len(), 1);
+        assert!(
+            cfg.remote_connections[0].auth_token.is_none(),
+            "auth_token should default to None for old config files"
         );
     }
 

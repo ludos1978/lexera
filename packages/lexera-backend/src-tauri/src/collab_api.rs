@@ -4,8 +4,8 @@ use crate::public::{MakePublicRequest, PublicRoom};
 use crate::state::AppState;
 /// Collaboration API: invitations, public rooms, user management.
 use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
+    extract::{Path, State},
+    http::{HeaderMap, StatusCode},
     routing::{delete, get, post},
     Json, Router,
 };
@@ -17,14 +17,74 @@ use std::sync::{Arc, Mutex, MutexGuard};
 /// Minimum allowed port number for server configuration (ports below this are privileged).
 const MIN_CONFIGURABLE_PORT: u16 = 1024;
 
+/// Maximum length for user names and IDs (bytes).
+const MAX_USER_NAME_LEN: usize = 200;
+const MAX_USER_ID_LEN: usize = 200;
+
+/// Validate a user name: must not be empty after trimming, must not exceed
+/// MAX_USER_NAME_LEN, and must not contain HTML tags (XSS prevention).
+fn validate_user_name(name: &str) -> Result<String> {
+    let trimmed = name.trim().to_string();
+    if trimmed.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::bad_request("Name cannot be empty")),
+        ));
+    }
+    if trimmed.len() > MAX_USER_NAME_LEN {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::bad_request(&format!(
+                "Name exceeds maximum length of {} characters",
+                MAX_USER_NAME_LEN
+            ))),
+        ));
+    }
+    if trimmed.contains('<') || trimmed.contains('>') {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::bad_request(
+                "Name must not contain < or > characters",
+            )),
+        ));
+    }
+    Ok(trimmed)
+}
+
+/// Validate a user ID: must not be empty, must not exceed MAX_USER_ID_LEN,
+/// and must not contain path-traversal or HTML characters.
+fn validate_user_id(id: &str) -> Result<String> {
+    let trimmed = id.trim().to_string();
+    if trimmed.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::bad_request("User ID cannot be empty")),
+        ));
+    }
+    if trimmed.len() > MAX_USER_ID_LEN {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::bad_request(&format!(
+                "User ID exceeds maximum length of {} characters",
+                MAX_USER_ID_LEN
+            ))),
+        ));
+    }
+    if trimmed.contains('<') || trimmed.contains('>') || trimmed.contains("..") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::bad_request(
+                "User ID contains invalid characters",
+            )),
+        ));
+    }
+    Ok(trimmed)
+}
+
 // ============================================================================
 // Request/Response Types
 // ============================================================================
 
-#[derive(Deserialize)]
-struct AuthQuery {
-    user: Option<String>,
-}
 
 #[derive(Deserialize)]
 struct CreateInviteBody {
@@ -84,13 +144,37 @@ fn lock_arc<'a, T>(service: &'a Arc<Mutex<T>>, name: &str) -> Result<MutexGuard<
         .map_err(|e| internal_error(format!("{} service unavailable: {}", name, e)))
 }
 
-fn require_authenticated_user(params: &AuthQuery) -> Result<String> {
-    params.user.clone().ok_or_else(|| {
-        (
+/// Extract a bearer token from the Authorization header ("Bearer <token>").
+fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get("authorization")?.to_str().ok()?;
+    let token = value.strip_prefix("Bearer ")?;
+    if token.is_empty() {
+        return None;
+    }
+    Some(token.to_string())
+}
+
+/// Authenticate a request via bearer token.
+/// Validates the `Authorization: Bearer <token>` header against the AuthService.
+fn require_authenticated_user(
+    headers: &HeaderMap,
+    state: &AppState,
+) -> Result<String> {
+    if let Some(token) = extract_bearer_token(headers) {
+        let auth = lock_arc(&state.auth_service, "auth")?;
+        if let Some(user_id) = auth.validate_token(&token) {
+            return Ok(user_id.to_string());
+        }
+        return Err((
             StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse::unauthorized()),
-        )
-    })
+            Json(ErrorResponse::new("Invalid token")),
+        ));
+    }
+
+    Err((
+        StatusCode::UNAUTHORIZED,
+        Json(ErrorResponse::unauthorized()),
+    ))
 }
 
 fn require_room_member(
@@ -123,6 +207,33 @@ fn require_invite_permission_in_state(
 ) -> Result<()> {
     let auth_service = lock_arc(&state.auth_service, "auth")?;
     require_invite_permission(&auth_service, room_id, user_id)
+}
+
+/// Check that the user is an owner of at least one board in the workspace.
+/// Workspace invites grant access to all boards, so only board owners may create them.
+fn require_workspace_invite_permission(
+    state: &AppState,
+    workspace_id: &str,
+    user_id: &str,
+) -> Result<()> {
+    let board_ids: Vec<String> = {
+        let cfg = lock_arc(&state.config, "config")?;
+        cfg.boards
+            .iter()
+            .filter(|b| b.workspace_ids.iter().any(|id| id == workspace_id))
+            .map(|b| b.file.clone())
+            .collect()
+    };
+
+    let auth = lock_arc(&state.auth_service, "auth")?;
+    let is_owner = board_ids
+        .iter()
+        .any(|board_id| auth.can_invite(board_id, user_id));
+
+    if !is_owner {
+        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse::forbidden())));
+    }
+    Ok(())
 }
 
 fn require_invite_permission_and_member_count(
@@ -183,6 +294,7 @@ fn persist_remote_connection(
     server_url: &str,
     local_board_id: &str,
     invite_token: Option<String>,
+    auth_token: Option<String>,
 ) -> std::result::Result<(), String> {
     let mut cfg = state
         .config
@@ -198,6 +310,7 @@ fn persist_remote_connection(
             server_url: server_url.trim_end_matches('/').to_string(),
             invite_token,
             enabled: true,
+            auth_token,
         });
     crate::config::save_config(&state.config_path, &cfg)
         .map_err(|e| format!("failed to save config: {}", e))
@@ -230,10 +343,10 @@ fn remove_persisted_remote_connection(
 async fn create_invite(
     State(state): State<AppState>,
     Path(room_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
     Json(body): Json<CreateInviteBody>,
 ) -> Result<Json<InviteLink>> {
-    let user_id = require_authenticated_user(&params)?;
+    let user_id = require_authenticated_user(&headers, &state)?;
 
     // Verify user can invite (owner only)
     require_invite_permission_in_state(&state, &room_id, &user_id)?;
@@ -252,7 +365,6 @@ async fn create_invite(
                     role: body.role.clone(),
                     expires_in_hours: body.expires_in_hours,
                     max_uses: body.max_uses,
-                    email: None,
                     scope: "board".to_string(),
                 },
                 room_title,
@@ -273,9 +385,9 @@ async fn create_invite(
 async fn list_invites(
     State(state): State<AppState>,
     Path(room_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<InviteLink>>> {
-    let user_id = require_authenticated_user(&params)?;
+    let user_id = require_authenticated_user(&headers, &state)?;
 
     // Verify user can invite (owner only)
     require_invite_permission_in_state(&state, &room_id, &user_id)?;
@@ -286,12 +398,16 @@ async fn list_invites(
 }
 
 /// POST /collab/invites/{token}/accept - Accept an invite
+///
+/// Returns the room join info plus an `auth_token` for the accepting user.
+/// Remote clients should store this token and include it as
+/// `Authorization: Bearer <token>` in all subsequent requests.
 async fn accept_invite(
     State(state): State<AppState>,
     Path(token): Path<String>,
-    Query(params): Query<AuthQuery>,
-) -> Result<Json<RoomJoin>> {
-    let user_id = require_authenticated_user(&params)?;
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>> {
+    let user_id = require_authenticated_user(&headers, &state)?;
 
     let join = {
         let mut invite_service = lock_arc(&state.invite_service, "invite")?;
@@ -353,18 +469,37 @@ async fn accept_invite(
             })?;
     }
 
+    // Get or generate an auth token for the accepting user so remote clients
+    // can authenticate subsequent requests without query-param fallback.
+    let auth_token = {
+        let mut auth_service = lock_arc(&state.auth_service, "auth")?;
+        match auth_service.get_token_for_user(&user_id) {
+            Some(existing) => existing.to_string(),
+            None => auth_service
+                .generate_token_for_user(&user_id)
+                .unwrap_or_default(),
+        }
+    };
+
     save_invites(&state);
     save_auth(&state);
-    Ok(Json(join))
+
+    Ok(Json(serde_json::json!({
+        "room_id": join.room_id,
+        "room_title": join.room_title,
+        "role": join.role,
+        "scope": join.scope,
+        "auth_token": auth_token,
+    })))
 }
 
 /// DELETE /collab/rooms/{room_id}/invites/{token} - Revoke an invite
 async fn revoke_invite(
     State(state): State<AppState>,
     Path((room_id, token)): Path<(String, String)>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<SuccessResponse>> {
-    let user_id = require_authenticated_user(&params)?;
+    let user_id = require_authenticated_user(&headers, &state)?;
 
     // Verify user is owner
     require_invite_permission_in_state(&state, &room_id, &user_id)?;
@@ -387,10 +522,13 @@ async fn revoke_invite(
 async fn create_workspace_invite(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
     Json(body): Json<CreateInviteBody>,
 ) -> Result<Json<InviteLink>> {
-    let _user_id = require_authenticated_user(&params)?;
+    let _user_id = require_authenticated_user(&headers, &state)?;
+
+    // Verify user owns at least one board in the workspace
+    require_workspace_invite_permission(&state, &workspace_id, &_user_id)?;
 
     // Verify workspace exists
     let workspace_name = {
@@ -417,7 +555,6 @@ async fn create_workspace_invite(
                     role: body.role.clone(),
                     expires_in_hours: body.expires_in_hours,
                     max_uses: body.max_uses,
-                    email: None,
                     scope: "workspace".to_string(),
                 },
                 Some(workspace_name),
@@ -438,9 +575,12 @@ async fn create_workspace_invite(
 async fn list_workspace_invites(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<InviteLink>>> {
-    let _user_id = require_authenticated_user(&params)?;
+    let _user_id = require_authenticated_user(&headers, &state)?;
+
+    // Verify user owns at least one board in the workspace
+    require_workspace_invite_permission(&state, &workspace_id, &_user_id)?;
 
     // Verify workspace exists
     {
@@ -461,9 +601,12 @@ async fn list_workspace_invites(
 async fn revoke_workspace_invite(
     State(state): State<AppState>,
     Path((workspace_id, token)): Path<(String, String)>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<SuccessResponse>> {
-    let _user_id = require_authenticated_user(&params)?;
+    let _user_id = require_authenticated_user(&headers, &state)?;
+
+    // Verify user owns at least one board in the workspace
+    require_workspace_invite_permission(&state, &workspace_id, &_user_id)?;
 
     {
         lock_arc(&state.invite_service, "invite")?
@@ -479,9 +622,9 @@ async fn revoke_workspace_invite(
 async fn get_presence(
     State(state): State<AppState>,
     Path(room_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<String>>> {
-    let user_id = require_authenticated_user(&params)?;
+    let user_id = require_authenticated_user(&headers, &state)?;
     {
         let auth = lock_arc(&state.auth_service, "auth")?;
         require_room_member(&auth, &room_id, &user_id)?;
@@ -516,10 +659,10 @@ async fn list_public_rooms(State(state): State<AppState>) -> Result<Json<Vec<Pub
 async fn make_public(
     State(state): State<AppState>,
     Path(room_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
     Json(body): Json<MakePublicBody>,
 ) -> Result<Json<SuccessResponse>> {
-    let user_id = require_authenticated_user(&params)?;
+    let user_id = require_authenticated_user(&headers, &state)?;
 
     // Verify user can invite (owner only)
     let member_count = require_invite_permission_and_member_count(&state, &room_id, &user_id)?;
@@ -547,9 +690,9 @@ async fn make_public(
 async fn make_private(
     State(state): State<AppState>,
     Path(room_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<SuccessResponse>> {
-    let user_id = require_authenticated_user(&params)?;
+    let user_id = require_authenticated_user(&headers, &state)?;
 
     // Verify user can invite (owner only)
     require_invite_permission_in_state(&state, &room_id, &user_id)?;
@@ -566,9 +709,9 @@ async fn make_private(
 async fn join_public(
     State(state): State<AppState>,
     Path(room_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<RoomJoin>> {
-    let user_id = require_authenticated_user(&params)?;
+    let user_id = require_authenticated_user(&headers, &state)?;
 
     // Get board title (storage has its own internal RwLock, safe to call outside our mutexes)
     let room_title = state
@@ -625,9 +768,9 @@ async fn join_public(
 async fn leave_room(
     State(state): State<AppState>,
     Path(room_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<SuccessResponse>> {
-    let user_id = require_authenticated_user(&params)?;
+    let user_id = require_authenticated_user(&headers, &state)?;
 
     let mut auth = lock_arc(&state.auth_service, "auth")?;
     auth.remove_from_room(&room_id, &user_id);
@@ -646,9 +789,9 @@ async fn leave_room(
 async fn list_room_members(
     State(state): State<AppState>,
     Path(room_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<AuthRoomMember>>> {
-    let user_id = require_authenticated_user(&params)?;
+    let user_id = require_authenticated_user(&headers, &state)?;
 
     // Verify user is member
     let auth = lock_arc(&state.auth_service, "auth")?;
@@ -670,35 +813,49 @@ struct RegisterUserBody {
     email: Option<String>,
 }
 
-/// POST /collab/users/register - Register a new user
+/// POST /collab/users/register - Register a new user. Returns a bearer token.
 async fn register_user(
     State(state): State<AppState>,
     Json(body): Json<RegisterUserBody>,
-) -> Result<Json<SuccessResponse>> {
-    let mut auth = lock_arc(&state.auth_service, "auth")?;
-    auth.register_user(crate::auth::User {
-        id: body.id.clone(),
-        name: body.name.clone(),
-        email: body.email,
-    })
-    .map_err(|e| match e {
-        crate::auth::AuthError::UserAlreadyExists => (
-            StatusCode::CONFLICT,
-            Json(ErrorResponse::new("User ID already exists")),
-        ),
-    })?;
+) -> Result<Json<serde_json::Value>> {
+    let id = validate_user_id(&body.id)?;
+    let name = validate_user_name(&body.name)?;
 
-    Ok(Json(SuccessResponse { success: true }))
+    let mut auth = lock_arc(&state.auth_service, "auth")?;
+    let token = auth
+        .register_user(crate::auth::User {
+            id,
+            name,
+            email: body.email,
+        })
+        .map_err(|e| match e {
+            crate::auth::AuthError::UserAlreadyExists => (
+                StatusCode::CONFLICT,
+                Json(ErrorResponse::new("User ID already exists")),
+            ),
+            crate::auth::AuthError::UserNotFound => (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse::not_found()),
+            ),
+        })?;
+
+    drop(auth);
+    save_auth(&state);
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "token": token,
+    })))
 }
 
 /// GET /collab/users/{user_id} - Get user info (requires authentication)
 async fn get_user(
     State(state): State<AppState>,
     Path(user_id): Path<String>,
-    Query(params): Query<AuthQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<crate::auth::User>> {
     // Require authentication — caller must identify themselves
-    let requester = require_authenticated_user(&params)?;
+    let requester = require_authenticated_user(&headers, &state)?;
 
     let auth = lock_arc(&state.auth_service, "auth")?;
 
@@ -717,8 +874,8 @@ async fn get_user(
     Ok(Json(user.clone()))
 }
 
-/// GET /collab/me - Get the local user identity
-async fn get_me(State(state): State<AppState>) -> Result<Json<crate::auth::User>> {
+/// GET /collab/me - Get the local user identity (includes auth token for frontend)
+async fn get_me(State(state): State<AppState>) -> Result<Json<serde_json::Value>> {
     let auth = lock_arc(&state.auth_service, "auth")?;
     let user = auth.get_user(&state.local_user_id).ok_or_else(|| {
         (
@@ -726,7 +883,13 @@ async fn get_me(State(state): State<AppState>) -> Result<Json<crate::auth::User>
             Json(ErrorResponse::new("Local user not found")),
         )
     })?;
-    Ok(Json(user.clone()))
+    let token = auth.get_token_for_user(&state.local_user_id).map(|t| t.to_string());
+    Ok(Json(serde_json::json!({
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "token": token,
+    })))
 }
 
 #[derive(Deserialize)]
@@ -739,13 +902,7 @@ async fn update_me(
     State(state): State<AppState>,
     Json(body): Json<UpdateMeBody>,
 ) -> Result<Json<crate::auth::User>> {
-    let name = body.name.trim().to_string();
-    if name.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::bad_request("Name cannot be empty")),
-        ));
-    }
+    let name = validate_user_name(&body.name)?;
 
     let updated_user = {
         let mut auth = lock_arc(&state.auth_service, "auth")?;
@@ -836,7 +993,7 @@ async fn connect_remote(
         .unwrap_or_else(|| "Unknown".to_string());
 
     let mut client = state.sync_client.lock().await;
-    let local_board_id = client
+    let (local_board_id, auth_token) = client
         .connect(
             body.server_url.clone(),
             body.token.clone(),
@@ -859,6 +1016,7 @@ async fn connect_remote(
         &body.server_url,
         &local_board_id,
         Some(body.token.clone()),
+        auth_token,
     ) {
         Ok(()) => {
             log::info!(
@@ -1168,14 +1326,30 @@ async fn discovered_peers(State(state): State<AppState>) -> Json<Vec<serde_json:
 // Router
 // ============================================================================
 
+/// Rate limit for auth-sensitive collab endpoints (requests per second).
+const COLLAB_AUTH_RATE_LIMIT: usize = 5;
+
 pub fn collab_router() -> Router<AppState> {
+    use crate::api::rate_limit::{rate_limit_middleware, RateLimiter};
+
+    // Rate-limited routes: registration, invite accept, remote connect
+    let rate_limited_routes = Router::new()
+        .route("/collab/users/register", post(register_user))
+        .route("/collab/invites/{token}/accept", post(accept_invite))
+        .route("/collab/connect", post(connect_remote))
+        .route("/collab/rooms/{room_id}/join-public", post(join_public))
+        .route_layer(axum::middleware::from_fn_with_state(
+            RateLimiter::new(COLLAB_AUTH_RATE_LIMIT),
+            rate_limit_middleware,
+        ));
+
     Router::new()
+        .merge(rate_limited_routes)
         // Invites
         .route(
             "/collab/rooms/{room_id}/invites",
             get(list_invites).post(create_invite),
         )
-        .route("/collab/invites/{token}/accept", post(accept_invite))
         .route(
             "/collab/rooms/{room_id}/invites/{token}",
             delete(revoke_invite),
@@ -1195,13 +1369,11 @@ pub fn collab_router() -> Router<AppState> {
             "/collab/rooms/{room_id}/make-public",
             post(make_public).delete(make_private),
         )
-        .route("/collab/rooms/{room_id}/join-public", post(join_public))
         .route("/collab/rooms/{room_id}/leave", post(leave_room))
         .route("/collab/rooms/{room_id}/members", get(list_room_members))
         .route("/collab/rooms/{room_id}/presence", get(get_presence))
         // Users
         .route("/collab/me", get(get_me).put(update_me))
-        .route("/collab/users/register", post(register_user))
         .route("/collab/users/{user_id}", get(get_user))
         // Server info + config
         .route("/collab/server-info", get(server_info))
@@ -1213,7 +1385,6 @@ pub fn collab_router() -> Router<AppState> {
         // LAN discovery
         .route("/collab/discovered-peers", get(discovered_peers))
         // Sync client (backend-to-backend connections)
-        .route("/collab/connect", post(connect_remote))
         .route(
             "/collab/connect/{local_board_id}",
             delete(disconnect_remote),
@@ -1235,7 +1406,8 @@ mod tests {
         super::collab_router().with_state(state)
     }
 
-    fn seed_owner(state: &AppState, room_id: &str) {
+    /// Register "test-user" as room owner, return their bearer token.
+    fn seed_owner(state: &AppState, room_id: &str) -> String {
         let mut auth = state.auth_service.lock().unwrap();
         auth.register_user(crate::auth::User {
             id: "test-user".into(),
@@ -1245,6 +1417,19 @@ mod tests {
         .unwrap();
         auth.add_to_room(room_id, "test-user", crate::auth::RoomRole::Owner, "test")
             .unwrap();
+        auth.generate_token_for_user("test-user").unwrap()
+    }
+
+    /// Register a user and return their bearer token.
+    fn seed_user_token(state: &AppState, id: &str, name: &str) -> String {
+        let mut auth = state.auth_service.lock().unwrap();
+        auth.register_user(crate::auth::User {
+            id: id.into(),
+            name: name.into(),
+            email: None,
+        })
+        .unwrap();
+        auth.generate_token_for_user(id).unwrap()
     }
 
     #[tokio::test]
@@ -1336,13 +1521,14 @@ mod tests {
     async fn list_members_after_join() {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
-        seed_owner(&state, "room1");
+        let token = seed_owner(&state, "room1");
 
         let app = test_router(state);
         let resp = app
             .oneshot(
                 Request::builder()
-                    .uri("/collab/rooms/room1/members?user=test-user")
+                    .uri("/collab/rooms/room1/members")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1362,14 +1548,15 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("collab")).unwrap();
         let state = test_state(tmp.path());
-        seed_owner(&state, "room1");
+        let owner_token = seed_owner(&state, "room1");
 
         let app = test_router(state.clone());
         let resp = app
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/collab/rooms/room1/invites?user=test-user")
+                    .uri("/collab/rooms/room1/invites")
+                    .header("authorization", format!("Bearer {}", owner_token))
                     .header("content-type", "application/json")
                     .body(Body::from(
                         serde_json::json!({
@@ -1388,22 +1575,15 @@ mod tests {
         assert_eq!(invite_json["room_id"], "room1");
         assert_eq!(invite_json["role"], "editor");
 
-        {
-            let mut auth = state.auth_service.lock().unwrap();
-            auth.register_user(crate::auth::User {
-                id: "bob".into(),
-                name: "Bob".into(),
-                email: None,
-            })
-            .unwrap();
-        }
+        let bob_token = seed_user_token(&state, "bob", "Bob");
 
         let app2 = test_router(state.clone());
         let resp2 = app2
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/collab/invites/{}/accept?user=bob", token))
+                    .uri(&format!("/collab/invites/{}/accept", token))
+                    .header("authorization", format!("Bearer {}", bob_token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1419,7 +1599,8 @@ mod tests {
         let resp3 = app3
             .oneshot(
                 Request::builder()
-                    .uri("/collab/rooms/room1/members?user=test-user")
+                    .uri("/collab/rooms/room1/members")
+                    .header("authorization", format!("Bearer {}", owner_token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1436,13 +1617,15 @@ mod tests {
     async fn accept_invalid_invite_returns_404() {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
+        let alice_token = seed_user_token(&state, "alice", "Alice");
         let app = test_router(state);
 
         let resp = app
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/collab/invites/bad-token/accept?user=alice")
+                    .uri("/collab/invites/bad-token/accept")
+                    .header("authorization", format!("Bearer {}", alice_token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1457,7 +1640,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
 
-        {
+        let viewer_token = {
             let mut auth = state.auth_service.lock().unwrap();
             auth.register_user(crate::auth::User {
                 id: "viewer1".into(),
@@ -1467,14 +1650,16 @@ mod tests {
             .unwrap();
             auth.add_to_room("room1", "viewer1", crate::auth::RoomRole::Viewer, "test")
                 .unwrap();
-        }
+            auth.generate_token_for_user("viewer1").unwrap()
+        };
 
         let app = test_router(state);
         let resp = app
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/collab/rooms/room1/invites?user=viewer1")
+                    .uri("/collab/rooms/room1/invites")
+                    .header("authorization", format!("Bearer {}", viewer_token))
                     .header("content-type", "application/json")
                     .body(Body::from(
                         serde_json::json!({ "role": "editor" }).to_string(),
@@ -1491,9 +1676,9 @@ mod tests {
     async fn leave_room() {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
-        seed_owner(&state, "room1");
+        let owner_token = seed_owner(&state, "room1");
 
-        {
+        let bob_token = {
             let mut auth = state.auth_service.lock().unwrap();
             auth.register_user(crate::auth::User {
                 id: "bob".into(),
@@ -1503,14 +1688,16 @@ mod tests {
             .unwrap();
             auth.add_to_room("room1", "bob", crate::auth::RoomRole::Editor, "test")
                 .unwrap();
-        }
+            auth.generate_token_for_user("bob").unwrap()
+        };
 
         let app = test_router(state.clone());
         let resp = app
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/collab/rooms/room1/leave?user=bob")
+                    .uri("/collab/rooms/room1/leave")
+                    .header("authorization", format!("Bearer {}", bob_token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1523,7 +1710,8 @@ mod tests {
         let resp2 = app2
             .oneshot(
                 Request::builder()
-                    .uri("/collab/rooms/room1/members?user=test-user")
+                    .uri("/collab/rooms/room1/members")
+                    .header("authorization", format!("Bearer {}", owner_token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1574,6 +1762,179 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn register_user_returns_token() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/users/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "id": "alice",
+                            "name": "Alice"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["success"], true);
+        assert!(json["token"].is_string());
+        assert!(!json["token"].as_str().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn bearer_token_authenticates_request() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+
+        // Register user and get token
+        let token = {
+            let mut auth = state.auth_service.lock().unwrap();
+            let token = auth
+                .register_user(crate::auth::User {
+                    id: "alice".into(),
+                    name: "Alice".into(),
+                    email: None,
+                })
+                .unwrap();
+            auth.add_to_room("room1", "alice", crate::auth::RoomRole::Owner, "test")
+                .unwrap();
+            token
+        };
+
+        // Use bearer token instead of query param to list members
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/collab/rooms/room1/members")
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let members = body_json(resp.into_body()).await;
+        let members = members.as_array().unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0]["user_id"], "alice");
+    }
+
+    #[tokio::test]
+    async fn invalid_bearer_token_returns_unauthorized() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        seed_owner(&state, "room1");
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/collab/rooms/room1/members")
+                    .header("authorization", "Bearer invalid-token-12345")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn accept_invite_returns_auth_token() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+
+        // Register the inviter and accepting user
+        let _inviter_token = {
+            let mut auth = state.auth_service.lock().unwrap();
+            let t = auth
+                .register_user(crate::auth::User {
+                    id: "inviter".into(),
+                    name: "Inviter".into(),
+                    email: None,
+                })
+                .unwrap();
+            auth.add_to_room("board-1", "inviter", crate::auth::RoomRole::Owner, "test")
+                .unwrap();
+            t
+        };
+        let acceptor_token = {
+            let mut auth = state.auth_service.lock().unwrap();
+            auth.register_user(crate::auth::User {
+                id: "acceptor".into(),
+                name: "Acceptor".into(),
+                email: None,
+            })
+            .unwrap()
+        };
+
+        // Create an invite
+        let invite_token = {
+            let mut invite_svc = state.invite_service.lock().unwrap();
+            let invite = invite_svc
+                .create_invite(
+                    crate::invite::CreateInviteRequest {
+                        room_id: "board-1".into(),
+                        inviter_id: "inviter".into(),
+                        role: "editor".into(),
+                        expires_in_hours: None,
+                        max_uses: Some(5),
+                        scope: "board".into(),
+                    },
+                    Some("Test Board".into()),
+                )
+                .unwrap();
+            invite.token
+        };
+
+        // Accept the invite with bearer token auth
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/collab/invites/{}/accept", invite_token))
+                    .header("authorization", format!("Bearer {}", acceptor_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["room_id"], "board-1");
+        assert_eq!(json["role"], "editor");
+        assert_eq!(json["scope"], "board");
+        // auth_token must be present and non-empty
+        assert!(
+            json["auth_token"].is_string(),
+            "accept_invite must return auth_token"
+        );
+        let returned_token = json["auth_token"].as_str().unwrap();
+        assert!(
+            !returned_token.is_empty(),
+            "auth_token must not be empty"
+        );
+        // The returned token should be the acceptor's existing token
+        assert_eq!(returned_token, acceptor_token);
+    }
+
+    #[tokio::test]
     async fn server_info_uses_current_config_bind_address_and_live_port() {
         let tmp = tempfile::tempdir().unwrap();
         let mut state = test_state(tmp.path());
@@ -1604,5 +1965,99 @@ mod tests {
         assert_eq!(json["bind_address"], "127.0.0.1");
         assert_eq!(json["address"], "127.0.0.1");
         assert_eq!(json["port"], 1555);
+    }
+
+    #[tokio::test]
+    async fn register_user_rejects_empty_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/users/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({ "id": "u1", "name": "   " }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn register_user_rejects_html_in_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/users/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({ "id": "u1", "name": "<script>alert(1)</script>" })
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn register_user_rejects_overlong_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let long_name = "A".repeat(201);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/users/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({ "id": "u1", "name": long_name }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn register_user_rejects_path_traversal_in_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/users/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({ "id": "../etc/passwd", "name": "Hacker" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 }

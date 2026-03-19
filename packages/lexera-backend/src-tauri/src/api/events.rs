@@ -120,7 +120,7 @@ mod tests {
     use lexera_core::watcher::types::BoardChangeEvent;
     use tower::ServiceExt;
 
-    use crate::test_helpers::{body_json, get_request, test_router, test_state};
+    use crate::test_helpers::{authed_get, body_json, get_request, register_test_user, test_router, test_state};
 
     // -- /events SSE endpoint tests --
 
@@ -128,9 +128,10 @@ mod tests {
     async fn sse_events_returns_200_and_event_stream_content_type() {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         let app = test_router(state);
 
-        let resp = app.oneshot(get_request("/events")).await.unwrap();
+        let resp = app.oneshot(authed_get("/events", &token)).await.unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
         let content_type = resp
@@ -150,11 +151,12 @@ mod tests {
     async fn sse_events_delivers_broadcast_event() {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         let event_tx = state.event_tx.clone();
         let app = test_router(state);
 
         // Send the request to get the SSE stream
-        let resp = app.oneshot(get_request("/events")).await.unwrap();
+        let resp = app.oneshot(authed_get("/events", &token)).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Broadcast an event after the SSE stream is established
@@ -198,10 +200,11 @@ mod tests {
     async fn sse_events_delivers_multiple_events_in_order() {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         let event_tx = state.event_tx.clone();
         let app = test_router(state);
 
-        let resp = app.oneshot(get_request("/events")).await.unwrap();
+        let resp = app.oneshot(authed_get("/events", &token)).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Send two distinct events

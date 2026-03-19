@@ -138,19 +138,20 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    use crate::test_helpers::{get_request, setup_board, test_router};
+    use crate::test_helpers::{authed_get, register_test_user, setup_board, test_router};
 
     #[tokio::test]
     async fn serve_media_nonexistent_returns_404() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
 
         let app = test_router(state);
         let resp = app
-            .oneshot(get_request(&format!(
-                "/boards/{}/media/nonexistent.png",
-                board_id
-            )))
+            .oneshot(authed_get(
+                &format!("/boards/{}/media/nonexistent.png", board_id),
+                &token,
+            ))
             .await
             .unwrap();
 
@@ -161,6 +162,7 @@ mod tests {
     async fn upload_media_creates_file() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
 
         let boundary = "----TestBoundary";
         let body = format!(
@@ -182,6 +184,7 @@ mod tests {
                         "content-type",
                         format!("multipart/form-data; boundary={}", boundary),
                     )
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::from(body))
                     .unwrap(),
             )

@@ -4,6 +4,8 @@
  */
 const LexeraApi = (function () {
   let baseUrl = null;
+  let bearerToken = null;
+  let bearerTokenPromise = null;
   let recentApiLogAt = Object.create(null);
 
   function formatApiError(error) {
@@ -82,6 +84,41 @@ const LexeraApi = (function () {
     return null;
   }
 
+  async function ensureBearerToken() {
+    if (bearerToken) return bearerToken;
+    if (bearerTokenPromise) return bearerTokenPromise;
+    bearerTokenPromise = (async function () {
+      try {
+        var url = await discover();
+        if (!url) return null;
+        var res = await fetch(url + '/collab/me', { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          var data = await res.json();
+          if (data && typeof data.token === 'string' && data.token) {
+            bearerToken = data.token;
+            return bearerToken;
+          }
+        }
+      } catch (e) {
+        logApiIssue('warn', 'api.auth', 'Failed to fetch bearer token from /collab/me', e, {
+          dedupeKey: 'api.auth.fetch-token',
+          dedupeWindowMs: 10000
+        });
+      } finally {
+        bearerTokenPromise = null;
+      }
+      return null;
+    })();
+    return bearerTokenPromise;
+  }
+
+  function authHeaders(existing) {
+    if (!bearerToken) return existing || {};
+    var h = Object.assign({}, existing || {});
+    h['Authorization'] = 'Bearer ' + bearerToken;
+    return h;
+  }
+
   var DEFAULT_TIMEOUT_MS = 10000;
   var LONG_TIMEOUT_MS = 30000;
 
@@ -96,12 +133,19 @@ const LexeraApi = (function () {
       });
       throw error;
     }
+    // Ensure we have a bearer token for authenticated requests
+    // (skip for /collab/me itself to avoid circular dependency)
+    if (path !== '/collab/me') {
+      await ensureBearerToken();
+    }
     var timeoutMs = options && typeof options.timeoutMs === 'number' ? options.timeoutMs : DEFAULT_TIMEOUT_MS;
     var controller = new AbortController();
     var timeoutId = setTimeout(function () { controller.abort(); }, timeoutMs);
+    var fetchOptions = Object.assign({}, options, { signal: controller.signal });
+    fetchOptions.headers = authHeaders(fetchOptions.headers);
     let res;
     try {
-      res = await fetch(url + path, Object.assign({}, options, { signal: controller.signal }));
+      res = await fetch(url + path, fetchOptions);
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
@@ -159,7 +203,8 @@ const LexeraApi = (function () {
       });
       throw error;
     }
-    const headers = {};
+    await ensureBearerToken();
+    const headers = authHeaders();
     if (revision != null) headers['If-None-Match'] = '"' + revision + '"';
     var controller = new AbortController();
     var timeoutId = setTimeout(function () { controller.abort(); }, DEFAULT_TIMEOUT_MS);
@@ -332,13 +377,15 @@ const LexeraApi = (function () {
       });
       throw unavailable;
     }
+    await ensureBearerToken();
     var form = new FormData();
     form.append('file', file, file.name);
     var controller = new AbortController();
     var timeoutId = setTimeout(function () { controller.abort(); }, LONG_TIMEOUT_MS);
+    var uploadHeaders = authHeaders();
     var res;
     try {
-      res = await fetch(url + '/boards/' + boardId + '/media', { method: 'POST', body: form, signal: controller.signal });
+      res = await fetch(url + '/boards/' + boardId + '/media', { method: 'POST', body: form, headers: uploadHeaders, signal: controller.signal });
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
@@ -478,7 +525,7 @@ const LexeraApi = (function () {
 
   function openSyncSocket() {
     if (!baseUrl || !syncBoardId || !syncUserId) return;
-    var wsUrl = baseUrl.replace(/^http/, 'ws') + '/sync/' + syncBoardId + '?user=' + encodeURIComponent(syncUserId);
+    var wsUrl = baseUrl.replace(/^http/, 'ws') + '/sync/' + syncBoardId + '?token=' + encodeURIComponent(bearerToken || '');
     var boardId = syncBoardId;
     syncWs = new WebSocket(wsUrl);
 
@@ -663,7 +710,7 @@ const LexeraApi = (function () {
   async function createInvite(boardId, userId, role, maxUses) {
     var body = { role: role };
     if (maxUses && maxUses > 0) body.max_uses = maxUses;
-    return request('/collab/rooms/' + boardId + '/invites?user=' + encodeURIComponent(userId), {
+    return request('/collab/rooms/' + boardId + '/invites', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -671,17 +718,17 @@ const LexeraApi = (function () {
   }
 
   async function listInvites(boardId, userId) {
-    return request('/collab/rooms/' + boardId + '/invites?user=' + encodeURIComponent(userId));
+    return request('/collab/rooms/' + boardId + '/invites');
   }
 
   async function revokeInvite(boardId, token, userId) {
-    return request('/collab/rooms/' + boardId + '/invites/' + token + '?user=' + encodeURIComponent(userId), {
+    return request('/collab/rooms/' + boardId + '/invites/' + token, {
       method: 'DELETE',
     });
   }
 
   async function acceptInvite(token, userId) {
-    return request('/collab/invites/' + token + '/accept?user=' + encodeURIComponent(userId), { method: 'POST' });
+    return request('/collab/invites/' + token + '/accept', { method: 'POST' });
   }
 
   async function registerUser(user) {
@@ -693,19 +740,19 @@ const LexeraApi = (function () {
   }
 
   async function listMembers(boardId, userId) {
-    return request('/collab/rooms/' + boardId + '/members?user=' + encodeURIComponent(userId));
+    return request('/collab/rooms/' + boardId + '/members');
   }
 
   async function getPresence(boardId, userId) {
-    return request('/collab/rooms/' + boardId + '/presence?user=' + encodeURIComponent(userId));
+    return request('/collab/rooms/' + boardId + '/presence');
   }
 
   async function leaveRoom(boardId, userId) {
-    return request('/collab/rooms/' + boardId + '/leave?user=' + encodeURIComponent(userId), { method: 'POST' });
+    return request('/collab/rooms/' + boardId + '/leave', { method: 'POST' });
   }
 
   async function makePublic(boardId, userId, defaultRole, maxUsers) {
-    return request('/collab/rooms/' + boardId + '/make-public?user=' + encodeURIComponent(userId), {
+    return request('/collab/rooms/' + boardId + '/make-public', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ default_role: defaultRole, max_users: maxUsers || null }),
@@ -713,7 +760,7 @@ const LexeraApi = (function () {
   }
 
   async function makePrivate(boardId, userId) {
-    return request('/collab/rooms/' + boardId + '/make-public?user=' + encodeURIComponent(userId), { method: 'DELETE' });
+    return request('/collab/rooms/' + boardId + '/make-public', { method: 'DELETE' });
   }
 
   async function listPublicRooms() {
@@ -721,7 +768,7 @@ const LexeraApi = (function () {
   }
 
   async function joinPublicRoom(boardId, userId) {
-    return request('/collab/rooms/' + boardId + '/join-public?user=' + encodeURIComponent(userId), { method: 'POST' });
+    return request('/collab/rooms/' + boardId + '/join-public', { method: 'POST' });
   }
 
   async function getRemoteBoards() {
@@ -818,5 +865,6 @@ const LexeraApi = (function () {
     getNetworkInterfaces, updateServerConfig,
     getConnections, connectRemote, disconnectRemote, getDiscoveredPeers,
     getTheme, setTheme,
+    _setTestToken: function(t) { bearerToken = t; bearerTokenPromise = null; },
   };
 })();

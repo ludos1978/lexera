@@ -31,7 +31,6 @@ pub struct CreateInviteRequest {
     pub role: String,
     pub expires_in_hours: Option<u32>,
     pub max_uses: Option<u32>,
-    pub email: Option<String>,
     /// "board" or "workspace"
     pub scope: String,
 }
@@ -82,6 +81,9 @@ impl InviteService {
         }
     }
 
+    /// Maximum allowed value for `max_uses`.
+    const MAX_USES_LIMIT: u32 = 100;
+
     /// Create a new invite link
     pub fn create_invite(
         &mut self,
@@ -90,6 +92,13 @@ impl InviteService {
     ) -> Result<InviteLink, InviteError> {
         // Validate role
         InviteRole::from_str(&req.role).ok_or(InviteError::InvalidRole)?;
+
+        // Validate max_uses upper bound
+        if let Some(max) = req.max_uses {
+            if max > Self::MAX_USES_LIMIT {
+                return Err(InviteError::MaxUsesTooHigh);
+            }
+        }
 
         let token = Uuid::new_v4().to_string();
 
@@ -282,6 +291,9 @@ pub enum InviteError {
     #[error("Invite has reached maximum uses")]
     MaxUsesReached,
 
+    #[error("max_uses exceeds limit of 100")]
+    MaxUsesTooHigh,
+
     #[error("Invalid role")]
     InvalidRole,
 }
@@ -299,7 +311,6 @@ mod tests {
             role: role.to_string(),
             expires_in_hours: None,
             max_uses: None,
-            email: None,
             scope: "board".to_string(),
         }
     }
@@ -359,6 +370,24 @@ mod tests {
         req.max_uses = Some(10);
         let invite = svc.create_invite(req, None).unwrap();
         assert_eq!(invite.max_uses, 10);
+    }
+
+    #[test]
+    fn create_invite_rejects_max_uses_over_limit() {
+        let mut svc = InviteService::new();
+        let mut req = make_request("room-a", "editor");
+        req.max_uses = Some(101);
+        let err = svc.create_invite(req, None).unwrap_err();
+        assert!(matches!(err, InviteError::MaxUsesTooHigh));
+    }
+
+    #[test]
+    fn create_invite_allows_max_uses_at_limit() {
+        let mut svc = InviteService::new();
+        let mut req = make_request("room-a", "editor");
+        req.max_uses = Some(100);
+        let invite = svc.create_invite(req, None).unwrap();
+        assert_eq!(invite.max_uses, 100);
     }
 
     // ── 2. Expiration Enforcement ───────────────────────────────────────

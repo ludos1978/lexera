@@ -1,9 +1,10 @@
-/// Auth service: user management, room membership, and permissions.
+/// Auth service: user management, room membership, permissions, and token-based authentication.
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 use thiserror::Error;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -47,7 +48,7 @@ pub struct RoomMember {
     pub joined_via: String,
 }
 
-/// In-memory user and membership storage
+/// In-memory user and membership storage with token-based authentication.
 pub struct AuthService {
     /// user_id -> User
     users: HashMap<String, User>,
@@ -55,6 +56,8 @@ pub struct AuthService {
     memberships: HashMap<(String, String), RoomRole>,
     /// room_id -> Vec<user_id>
     room_members: HashMap<String, Vec<String>>,
+    /// auth_token -> user_id (server-generated bearer tokens)
+    tokens: HashMap<String, String>,
 }
 
 impl Default for AuthService {
@@ -69,18 +72,22 @@ impl AuthService {
             users: HashMap::new(),
             memberships: HashMap::new(),
             room_members: HashMap::new(),
+            tokens: HashMap::new(),
         }
     }
 
-    /// Register a new user. Returns error if user ID already exists.
-    pub fn register_user(&mut self, user: User) -> Result<(), AuthError> {
+    /// Register a new user. Returns a bearer token on success.
+    /// Returns error if user ID already exists.
+    pub fn register_user(&mut self, user: User) -> Result<String, AuthError> {
         if self.users.contains_key(&user.id) {
             return Err(AuthError::UserAlreadyExists);
         }
+        let token = Uuid::new_v4().to_string();
         log::info!("[auth] Registered user: {} ({})", user.name, user.id);
         let id = user.id.clone();
+        self.tokens.insert(token.clone(), id.clone());
         self.users.insert(id, user);
-        Ok(())
+        Ok(token)
     }
 
     /// Get user by ID
@@ -91,6 +98,32 @@ impl AuthService {
     /// Update an existing user's name/email in place.
     pub fn update_user(&mut self, user: User) {
         self.users.insert(user.id.clone(), user);
+    }
+
+    /// Validate a bearer token. Returns the user_id if the token is valid.
+    pub fn validate_token(&self, token: &str) -> Option<&str> {
+        self.tokens.get(token).map(|s| s.as_str())
+    }
+
+    /// Get the token for a user (if one exists).
+    pub fn get_token_for_user(&self, user_id: &str) -> Option<&str> {
+        self.tokens
+            .iter()
+            .find(|(_, uid)| uid.as_str() == user_id)
+            .map(|(token, _)| token.as_str())
+    }
+
+    /// Generate a new token for an existing user (e.g. for local auto-auth).
+    /// Revokes any existing token for this user.
+    pub fn generate_token_for_user(&mut self, user_id: &str) -> Result<String, AuthError> {
+        if !self.users.contains_key(user_id) {
+            return Err(AuthError::UserNotFound);
+        }
+        // Remove any existing token for this user
+        self.tokens.retain(|_, uid| uid != user_id);
+        let token = Uuid::new_v4().to_string();
+        self.tokens.insert(token.clone(), user_id.to_string());
+        Ok(token)
     }
 
     /// Add user to room. Updates role if already a member instead of duplicating.
@@ -206,6 +239,7 @@ impl AuthService {
             users: self.users.clone(),
             memberships: membership_list,
             room_members: self.room_members.clone(),
+            tokens: self.tokens.clone(),
         };
 
         let json = serde_json::to_string_pretty(&data)
@@ -262,6 +296,7 @@ impl AuthService {
             users: data.users,
             memberships,
             room_members: data.room_members,
+            tokens: data.tokens,
         })
     }
 }
@@ -282,12 +317,17 @@ struct AuthData {
     users: HashMap<String, User>,
     memberships: Vec<MembershipEntry>,
     room_members: HashMap<String, Vec<String>>,
+    /// auth_token -> user_id. Defaults to empty for backwards compatibility with old auth.json files.
+    #[serde(default)]
+    tokens: HashMap<String, String>,
 }
 
 #[derive(Debug, Error)]
 pub enum AuthError {
     #[error("User already exists")]
     UserAlreadyExists,
+    #[error("User not found")]
+    UserNotFound,
 }
 
 #[cfg(test)]
@@ -569,5 +609,88 @@ mod tests {
         let loaded = AuthService::load_from_file(&path).unwrap();
         assert!(loaded.get_user("u1").is_some());
         assert!(loaded.get_user("u2").is_some());
+    }
+
+    // ---- Token Authentication ----
+
+    #[test]
+    fn register_user_returns_token() {
+        let mut svc = AuthService::new();
+        let token = svc.register_user(make_user("u1", "Alice", None)).unwrap();
+        assert!(!token.is_empty());
+    }
+
+    #[test]
+    fn validate_token_returns_user_id() {
+        let mut svc = AuthService::new();
+        let token = svc.register_user(make_user("u1", "Alice", None)).unwrap();
+        assert_eq!(svc.validate_token(&token), Some("u1"));
+    }
+
+    #[test]
+    fn validate_token_rejects_invalid() {
+        let svc = AuthService::new();
+        assert_eq!(svc.validate_token("bogus-token"), None);
+    }
+
+    #[test]
+    fn get_token_for_user_returns_token() {
+        let mut svc = AuthService::new();
+        let token = svc.register_user(make_user("u1", "Alice", None)).unwrap();
+        assert_eq!(svc.get_token_for_user("u1"), Some(token.as_str()));
+    }
+
+    #[test]
+    fn get_token_for_unknown_user_returns_none() {
+        let svc = AuthService::new();
+        assert_eq!(svc.get_token_for_user("nobody"), None);
+    }
+
+    #[test]
+    fn generate_token_for_existing_user() {
+        let mut svc = AuthService::new();
+        let old_token = svc.register_user(make_user("u1", "Alice", None)).unwrap();
+        let new_token = svc.generate_token_for_user("u1").unwrap();
+
+        // Old token revoked, new token works
+        assert_ne!(old_token, new_token);
+        assert_eq!(svc.validate_token(&old_token), None);
+        assert_eq!(svc.validate_token(&new_token), Some("u1"));
+    }
+
+    #[test]
+    fn generate_token_for_unknown_user_fails() {
+        let mut svc = AuthService::new();
+        let err = svc.generate_token_for_user("nobody").unwrap_err();
+        assert!(matches!(err, AuthError::UserNotFound));
+    }
+
+    #[test]
+    fn tokens_persist_across_save_load() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+
+        let mut svc = AuthService::new();
+        let token = svc.register_user(make_user("u1", "Alice", None)).unwrap();
+        svc.save_to_file(&path).unwrap();
+
+        let loaded = AuthService::load_from_file(&path).unwrap();
+        assert_eq!(loaded.validate_token(&token), Some("u1"));
+    }
+
+    #[test]
+    fn load_old_auth_json_without_tokens_field() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        // Simulate old auth.json without tokens field
+        std::fs::write(
+            &path,
+            r#"{"users":{},"memberships":[],"room_members":{}}"#,
+        )
+        .unwrap();
+
+        let svc = AuthService::load_from_file(&path).unwrap();
+        // Should load without error, tokens map empty
+        assert_eq!(svc.validate_token("anything"), None);
     }
 }

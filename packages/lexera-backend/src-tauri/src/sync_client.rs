@@ -64,12 +64,16 @@ fn local_board_id_from_remote(remote_board_id: &str) -> String {
     format!("remote-{}", remote_board_id)
 }
 
+/// Register the local user on the remote server.
+/// Returns the auth token on successful registration, or `None` if the user
+/// already exists (409). The caller should fall back to the token returned
+/// by `accept_invite` in that case.
 async fn register_remote_user(
     client: &reqwest::Client,
     server_url: &str,
     user_id: &str,
     user_name: &str,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     let register_body = serde_json::json!({
         "id": user_id,
         "name": user_name,
@@ -80,31 +84,60 @@ async fn register_remote_user(
         .send()
         .await
         .map_err(|e| friendly_error("User registration", e))?;
-    if !register_resp.status().is_success() && register_resp.status().as_u16() != 409 {
-        let status = register_resp.status();
-        let body = register_resp.text().await.unwrap_or_default();
-        log::warn!(
-            "[sync_client] User registration returned unexpected status {} from {}: {}",
-            status,
-            server_url,
-            body
-        );
+
+    let status = register_resp.status();
+    if status.is_success() {
+        // Extract auth token from successful registration
+        let body: serde_json::Value = register_resp
+            .json()
+            .await
+            .unwrap_or(serde_json::Value::Null);
+        let token = body["token"].as_str().map(String::from);
+        if token.is_some() {
+            log::info!(
+                "[sync_client] Registered on remote server {} and received auth token",
+                server_url
+            );
+        }
+        return Ok(token);
     }
-    Ok(())
+
+    if status.as_u16() == 409 {
+        // Already registered — no token available from register
+        log::info!(
+            "[sync_client] User {} already registered on {}, will get token from accept_invite",
+            user_id,
+            server_url
+        );
+        return Ok(None);
+    }
+
+    let body = register_resp.text().await.unwrap_or_default();
+    log::warn!(
+        "[sync_client] User registration returned unexpected status {} from {}: {}",
+        status,
+        server_url,
+        body
+    );
+    Ok(None)
 }
 
 async fn fetch_remote_board_snapshot(
     client: &reqwest::Client,
     server_url: &str,
     remote_board_id: &str,
+    auth_token: Option<&str>,
 ) -> Result<KanbanBoard, String> {
     log::info!(
         "[sync_client] Fetching initial board snapshot remote_board_id={} server={}",
         remote_board_id,
         server_url
     );
-    let board_resp = client
-        .get(format!("{}/boards/{}/columns", server_url, remote_board_id))
+    let mut req = client.get(format!("{}/boards/{}/columns", server_url, remote_board_id));
+    if let Some(token) = auth_token {
+        req = req.header("authorization", format!("Bearer {}", token));
+    }
+    let board_resp = req
         .send()
         .await
         .map_err(|e| friendly_error("Initial board fetch", e))?;
@@ -156,10 +189,12 @@ impl SyncClientManager {
     /// Connect to a remote backend and sync a board.
     ///
     /// Steps:
-    /// 1. Register user on remote server
-    /// 2. Accept the invite token
-    /// 3. Fetch initial board data via REST
-    /// 4. Connect WS and exchange CRDT data
+    /// 1. Register user on remote server (captures auth token)
+    /// 2. Accept the invite token (captures auth token if not from register)
+    /// 3. Fetch initial board data via REST (with bearer token)
+    /// 4. Connect WS and exchange CRDT data (with bearer token)
+    ///
+    /// Returns `(local_board_id, auth_token)` on success.
     pub async fn connect(
         &mut self,
         server_url: String,
@@ -169,17 +204,23 @@ impl SyncClientManager {
         storage: Arc<LocalStorage>,
         event_tx: broadcast::Sender<BoardChangeEvent>,
         sync_hub: Arc<tokio::sync::Mutex<crate::sync_ws::BoardSyncHub>>,
-    ) -> Result<String, String> {
+    ) -> Result<(String, Option<String>), String> {
         let server_url = server_url.trim_end_matches('/').to_string();
         let client = reqwest::Client::new();
-        register_remote_user(&client, &server_url, &user_id, &user_name).await?;
 
-        // 2. Accept invite token
-        let accept_resp = client
-            .post(format!(
-                "{}/collab/invites/{}/accept?user={}",
-                server_url, token, user_id
-            ))
+        // 1. Register user — may return an auth token on first registration
+        let register_token =
+            register_remote_user(&client, &server_url, &user_id, &user_name).await?;
+
+        // 2. Accept invite token — use register token for bearer auth.
+        let mut accept_req = client.post(format!(
+            "{}/collab/invites/{}/accept",
+            server_url, token
+        ));
+        if let Some(ref t) = register_token {
+            accept_req = accept_req.header("authorization", format!("Bearer {}", t));
+        }
+        let accept_resp = accept_req
             .send()
             .await
             .map_err(|e| friendly_error("Accept invite", e))?;
@@ -213,6 +254,12 @@ impl SyncClientManager {
             .unwrap_or("Remote Board")
             .to_string();
 
+        // Prefer token from accept_invite (always fresh), fall back to register token
+        let auth_token = join["auth_token"]
+            .as_str()
+            .map(String::from)
+            .or(register_token);
+
         // Generate a local board ID for the remote board
         let local_board_id = local_board_id_from_remote(&remote_board_id);
 
@@ -225,8 +272,13 @@ impl SyncClientManager {
         }
 
         // 3. Fetch the initial remote board snapshot before registering the local mirror.
-        let mut initial_board =
-            fetch_remote_board_snapshot(&client, &server_url, &remote_board_id).await?;
+        let mut initial_board = fetch_remote_board_snapshot(
+            &client,
+            &server_url,
+            &remote_board_id,
+            auth_token.as_deref(),
+        )
+        .await?;
         if initial_board.title.trim().is_empty() {
             initial_board.title = room_title;
         }
@@ -237,12 +289,13 @@ impl SyncClientManager {
             remote_board_id,
             local_board_id.clone(),
             user_id,
+            auth_token.clone(),
             storage,
             event_tx,
             sync_hub,
         );
 
-        Ok(local_board_id)
+        Ok((local_board_id, auth_token))
     }
 
     /// Reconnect to an already-known remote room without consuming an invite token again.
@@ -252,6 +305,7 @@ impl SyncClientManager {
         remote_board_id: String,
         user_id: String,
         user_name: String,
+        auth_token: Option<String>,
         storage: Arc<LocalStorage>,
         event_tx: broadcast::Sender<BoardChangeEvent>,
         sync_hub: Arc<tokio::sync::Mutex<crate::sync_ws::BoardSyncHub>>,
@@ -263,10 +317,19 @@ impl SyncClientManager {
         }
 
         let client = reqwest::Client::new();
-        register_remote_user(&client, &server_url, &user_id, &user_name).await?;
+        // Re-register may yield a fresh token if the old one was lost
+        let register_token =
+            register_remote_user(&client, &server_url, &user_id, &user_name).await?;
+        // Prefer stored auth_token, fall back to newly obtained register token
+        let effective_token = auth_token.or(register_token);
 
-        let mut initial_board =
-            fetch_remote_board_snapshot(&client, &server_url, &remote_board_id).await?;
+        let mut initial_board = fetch_remote_board_snapshot(
+            &client,
+            &server_url,
+            &remote_board_id,
+            effective_token.as_deref(),
+        )
+        .await?;
         if initial_board.title.trim().is_empty() {
             initial_board.title = format!("Remote Board {}", remote_board_id);
         }
@@ -277,6 +340,7 @@ impl SyncClientManager {
             remote_board_id,
             local_board_id.clone(),
             user_id,
+            effective_token,
             storage,
             event_tx,
             sync_hub,
@@ -310,18 +374,21 @@ impl SyncClientManager {
         remote_board_id: String,
         local_board_id: String,
         user_id: String,
+        auth_token: Option<String>,
         storage: Arc<LocalStorage>,
         event_tx: broadcast::Sender<BoardChangeEvent>,
         sync_hub: Arc<tokio::sync::Mutex<crate::sync_ws::BoardSyncHub>>,
     ) {
-        let ws_url = format!(
-            "{}/sync/{}?user={}",
-            server_url
-                .replace("http://", "ws://")
-                .replace("https://", "wss://"),
-            remote_board_id,
-            user_id
-        );
+        // Build WS URL with bearer token auth
+        let ws_base = server_url
+            .replace("http://", "ws://")
+            .replace("https://", "wss://");
+        let ws_url = if let Some(ref token) = auth_token {
+            format!("{}/sync/{}?token={}", ws_base, remote_board_id, token)
+        } else {
+            log::warn!("[sync_client] No auth token for remote board {} — WebSocket may fail", remote_board_id);
+            format!("{}/sync/{}", ws_base, remote_board_id)
+        };
 
         let local_bid = local_board_id.clone();
         let ws_task = tokio::spawn(async move {

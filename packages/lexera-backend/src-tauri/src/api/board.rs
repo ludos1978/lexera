@@ -877,7 +877,7 @@ mod tests {
     use std::collections::HashMap;
     use tower::ServiceExt;
 
-    use crate::test_helpers::{body_json, test_router, test_state};
+    use crate::test_helpers::{body_json, register_test_user, test_router, test_state};
 
     fn write_board_file(dir: &std::path::Path, name: &str, content: &str) -> std::path::PathBuf {
         let path = dir.join(name);
@@ -902,12 +902,14 @@ kanban-plugin: board
     async fn list_boards_empty() {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         let app = test_router(state);
 
         let resp = app
             .oneshot(
                 Request::builder()
                     .uri("/boards")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -925,6 +927,7 @@ kanban-plugin: board
         let tmp = tempfile::tempdir().unwrap();
         let board_path = write_board_file(tmp.path(), "test.md", MINIMAL_BOARD);
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         let app = test_router(state);
 
         let resp = app
@@ -933,6 +936,7 @@ kanban-plugin: board
                     .method("POST")
                     .uri("/boards")
                     .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::from(
                         serde_json::json!({ "file": board_path.to_str().unwrap() }).to_string(),
                     ))
@@ -952,6 +956,7 @@ kanban-plugin: board
         let tmp = tempfile::tempdir().unwrap();
         let board_path = write_board_file(tmp.path(), "sync.md", MINIMAL_BOARD);
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         let board_id = state.storage.add_board(&board_path).unwrap();
         {
             let mut cfg = state.config.lock().unwrap();
@@ -975,6 +980,7 @@ kanban-plugin: board
             .oneshot(
                 Request::builder()
                     .uri("/boards")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1001,6 +1007,7 @@ kanban-plugin: board
         let tmp = tempfile::tempdir().unwrap();
         let board_path = write_board_file(tmp.path(), "cols.md", MINIMAL_BOARD);
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
 
         let board_id = state.storage.add_board(&board_path).unwrap();
 
@@ -1009,6 +1016,7 @@ kanban-plugin: board
             .oneshot(
                 Request::builder()
                     .uri(&format!("/boards/{}/columns", board_id))
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1031,6 +1039,7 @@ kanban-plugin: board
         let tmp = tempfile::tempdir().unwrap();
         let board_path = write_board_file(tmp.path(), "del.md", MINIMAL_BOARD);
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
 
         let board_id = state.storage.add_board(&board_path).unwrap();
 
@@ -1040,6 +1049,7 @@ kanban-plugin: board
                 Request::builder()
                     .method("DELETE")
                     .uri(&format!("/boards/{}", board_id))
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1055,6 +1065,7 @@ kanban-plugin: board
             .oneshot(
                 Request::builder()
                     .uri("/boards")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1068,12 +1079,14 @@ kanban-plugin: board
     async fn get_columns_nonexistent_board_returns_404() {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         let app = test_router(state);
 
         let resp = app
             .oneshot(
                 Request::builder()
                     .uri("/boards/does-not-exist/columns")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1125,6 +1138,7 @@ kanban-plugin: board
         board_id: &str,
         base: &lexera_core::types::KanbanBoard,
         incoming: &lexera_core::types::KanbanBoard,
+        token: &str,
     ) -> (StatusCode, serde_json::Value) {
         let body = serde_json::json!({
             "baseBoard": base,
@@ -1136,6 +1150,7 @@ kanban-plugin: board
                     .method("POST")
                     .uri(&format!("/boards/{}/sync-save", board_id))
                     .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::from(body.to_string()))
                     .unwrap(),
             )
@@ -1150,6 +1165,7 @@ kanban-plugin: board
     async fn sync_save_add_card_roundtrip() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "add-card.md").await;
+        let token = register_test_user(&state);
 
         // User adds a card to ColA
         let mut incoming = base.clone();
@@ -1164,7 +1180,7 @@ kanban-plugin: board
         );
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1179,13 +1195,14 @@ kanban-plugin: board
     async fn sync_save_delete_card_roundtrip() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "del-card.md").await;
+        let token = register_test_user(&state);
 
         // User removes card-a2
         let mut incoming = base.clone();
         incoming.rows[0].stacks[0].columns[0].cards.retain(|c| c.content != "card-a2");
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1199,6 +1216,7 @@ kanban-plugin: board
     async fn sync_save_add_column_preserves_existing() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "add-col.md").await;
+        let token = register_test_user(&state);
 
         // User adds a new column to Stack1
         let mut incoming = base.clone();
@@ -1219,7 +1237,7 @@ kanban-plugin: board
         );
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1234,13 +1252,14 @@ kanban-plugin: board
     async fn sync_save_delete_column_preserves_siblings() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "del-col.md").await;
+        let token = register_test_user(&state);
 
         // User deletes ColB from Stack1
         let mut incoming = base.clone();
         incoming.rows[0].stacks[0].columns.retain(|c| c.title != "ColB");
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1254,6 +1273,7 @@ kanban-plugin: board
     async fn sync_save_add_stack_preserves_existing() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "add-stack.md").await;
+        let token = register_test_user(&state);
 
         // User adds a new stack to Row1
         let mut incoming = base.clone();
@@ -1271,7 +1291,7 @@ kanban-plugin: board
         });
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1286,13 +1306,14 @@ kanban-plugin: board
     async fn sync_save_delete_stack_preserves_siblings() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "del-stack.md").await;
+        let token = register_test_user(&state);
 
         // User deletes Stack2
         let mut incoming = base.clone();
         incoming.rows[0].stacks.retain(|s| s.title != "Stack2");
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1306,6 +1327,7 @@ kanban-plugin: board
     async fn sync_save_add_row_preserves_existing() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "add-row.md").await;
+        let token = register_test_user(&state);
 
         // User adds a new row
         let mut incoming = base.clone();
@@ -1328,7 +1350,7 @@ kanban-plugin: board
         });
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1362,6 +1384,7 @@ kanban-plugin: board
         let tmp = tempfile::tempdir().unwrap();
         let board_path = write_board_file(tmp.path(), "del-row.md", two_row_md);
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         let board_id = state.storage.add_board(&board_path).unwrap();
         let base = state.storage.read_board(&board_id).unwrap();
         assert_eq!(base.rows.len(), 2);
@@ -1371,7 +1394,7 @@ kanban-plugin: board
         incoming.rows.retain(|r| r.title != "RowB");
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1383,13 +1406,14 @@ kanban-plugin: board
     async fn sync_save_rename_column_preserves_cards() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "rename-col.md").await;
+        let token = register_test_user(&state);
 
         // User renames ColA -> ColA-Renamed
         let mut incoming = base.clone();
         incoming.rows[0].stacks[0].columns[0].title = "ColA-Renamed".into();
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1402,6 +1426,7 @@ kanban-plugin: board
     async fn sync_save_move_card_between_columns() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "move-card.md").await;
+        let token = register_test_user(&state);
 
         // User moves card-a1 from ColA to ColB
         let mut incoming = base.clone();
@@ -1410,7 +1435,7 @@ kanban-plugin: board
         incoming.rows[0].stacks[0].columns[1].cards.push(card);
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1427,6 +1452,7 @@ kanban-plugin: board
     async fn sync_save_multiple_edits_sequential() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "multi-edit.md").await;
+        let token = register_test_user(&state);
 
         // Edit 1: add a card
         let mut edit1 = base.clone();
@@ -1441,7 +1467,7 @@ kanban-plugin: board
         );
 
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &edit1).await;
+        let (status, _) = sync_save(app, &board_id, &base, &edit1, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         // Edit 2: read current state, then add another card
@@ -1458,7 +1484,7 @@ kanban-plugin: board
         );
 
         let app2 = test_router(state.clone());
-        let (status2, _) = sync_save(app2, &board_id, &base2, &edit2).await;
+        let (status2, _) = sync_save(app2, &board_id, &base2, &edit2, &token).await;
         assert_eq!(status2, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();
@@ -1474,10 +1500,11 @@ kanban-plugin: board
     async fn sync_save_idempotent_no_change() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id, base) = add_new_format_board(tmp.path(), "idempotent.md").await;
+        let token = register_test_user(&state);
 
         // Save the same board back (no changes)
         let app = test_router(state.clone());
-        let (status, _) = sync_save(app, &board_id, &base, &base).await;
+        let (status, _) = sync_save(app, &board_id, &base, &base, &token).await;
         assert_eq!(status, StatusCode::OK);
 
         let saved = state.storage.read_board(&board_id).unwrap();

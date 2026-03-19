@@ -1161,7 +1161,7 @@ var ManagementUI = (function () {
     var el = container.querySelector('[data-mgmt-ws-invites-list="' + wsId + '"]');
     if (!el) return;
     try {
-      var invites = await api.get('/collab/workspaces/' + wsId + '/invites?user=' + encodeURIComponent(me.id));
+      var invites = await api.get('/collab/workspaces/' + wsId + '/invites');
       if (!invites || !invites.length) {
         el.innerHTML = '<span class="mgmt-list-empty">No active invites</span>';
         return;
@@ -1177,7 +1177,7 @@ var ManagementUI = (function () {
     var roleSelect = container.querySelector('#mgmt-ws-invite-role-' + wsId);
     var role = roleSelect ? roleSelect.value : 'editor';
     try {
-      await api.post('/collab/workspaces/' + wsId + '/invites?user=' + encodeURIComponent(me.id), { role: role });
+      await api.post('/collab/workspaces/' + wsId + '/invites', { role: role });
       await loadWorkspaceInvites(wsId);
       notify('Workspace invite created');
     } catch (e) {
@@ -1188,7 +1188,7 @@ var ManagementUI = (function () {
   async function revokeWorkspaceInvite(wsId, token) {
     if (!me) return;
     try {
-      await api.delete('/collab/workspaces/' + wsId + '/invites/' + token + '?user=' + encodeURIComponent(me.id));
+      await api.delete('/collab/workspaces/' + wsId + '/invites/' + token + '');
       await loadWorkspaceInvites(wsId);
       notify('Workspace invite revoked');
     } catch (e) {
@@ -1406,8 +1406,8 @@ var ManagementUI = (function () {
     if (!me) return;
     try {
       var results = await Promise.allSettled([
-        api.get('/collab/rooms/' + boardId + '/invites?user=' + encodeURIComponent(me.id)),
-        api.get('/collab/rooms/' + boardId + '/members?user=' + encodeURIComponent(me.id)),
+        api.get('/collab/rooms/' + boardId + '/invites'),
+        api.get('/collab/rooms/' + boardId + '/members'),
       ]);
       var invites = results[0].status === 'fulfilled' ? results[0].value : [];
       var members = results[1].status === 'fulfilled' ? results[1].value : [];
@@ -1500,7 +1500,7 @@ var ManagementUI = (function () {
     var roleSelect = container.querySelector('#mgmt-role-' + boardId);
     var role = roleSelect ? roleSelect.value : 'editor';
     try {
-      await api.post('/collab/rooms/' + boardId + '/invites?user=' + encodeURIComponent(me.id), { role: role });
+      await api.post('/collab/rooms/' + boardId + '/invites', { role: role });
       // Expand details and reload
       var detailsEl = container.querySelector('[data-mgmt-details="' + boardId + '"]');
       if (detailsEl && !detailsEl.classList.contains('expanded')) {
@@ -1518,7 +1518,7 @@ var ManagementUI = (function () {
   async function revokeInvite(boardId, token) {
     if (!me) return;
     try {
-      await api.delete('/collab/rooms/' + boardId + '/invites/' + token + '?user=' + encodeURIComponent(me.id));
+      await api.delete('/collab/rooms/' + boardId + '/invites/' + token + '');
       await loadBoardCollabData(boardId);
       notify('Invite revoked');
     } catch (e) {

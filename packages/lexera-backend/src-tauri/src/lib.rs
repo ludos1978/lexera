@@ -408,9 +408,25 @@ pub fn run() {
             {
                 match auth_service.lock() {
                     Ok(mut auth) => {
-                        auth.register_user(local_user.clone()).unwrap_or_else(|e| {
-                            log::info!("[identity] User already registered: {}", e);
-                        });
+                        match auth.register_user(local_user.clone()) {
+                            Ok(token) => {
+                                log::info!("[identity] Local user registered, token: {}…", &token[..8]);
+                            }
+                            Err(_) => {
+                                // User already exists — ensure they have a token
+                                // (handles auth.json loaded from before token support)
+                                if auth.get_token_for_user(&local_user.id).is_none() {
+                                    match auth.generate_token_for_user(&local_user.id) {
+                                        Ok(token) => {
+                                            log::info!("[identity] Generated token for existing user: {}…", &token[..8]);
+                                        }
+                                        Err(e) => {
+                                            log::error!("[identity] Failed to generate token: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         for (board_id, _) in &board_paths {
                             auth.add_to_room(board_id, &local_user.id, crate::auth::RoomRole::Owner, "local")
                                 .unwrap_or_else(|e| {
@@ -420,6 +436,12 @@ pub fn run() {
                     }
                     Err(e) => {
                         log::error!("[identity] Auth service unavailable during bootstrap: {}", e);
+                    }
+                }
+                // Persist auth state immediately (token must survive a crash before periodic save)
+                if let Ok(auth) = auth_service.lock() {
+                    if let Err(e) = auth.save_to_file(&collab_dir.join("auth.json")) {
+                        log::error!("[identity] Failed to save auth state after bootstrap: {}", e);
                     }
                 }
             }
@@ -601,6 +623,7 @@ pub fn run() {
                                     remote_board_id.clone(),
                                     restore_user_id.clone(),
                                     restore_user_name.clone(),
+                                    entry.auth_token.clone(),
                                     restore_state.storage.clone(),
                                     restore_state.event_tx.clone(),
                                     restore_state.sync_hub.clone(),
@@ -620,7 +643,7 @@ pub fn run() {
                                         primary_error
                                     );
                                     let mut client = restore_state.sync_client.lock().await;
-                                    client
+                                    match client
                                         .connect(
                                             entry.server_url.clone(),
                                             token,
@@ -631,6 +654,10 @@ pub fn run() {
                                             restore_state.sync_hub.clone(),
                                         )
                                         .await
+                                    {
+                                        Ok((local_board_id, _auth_token)) => Ok(local_board_id),
+                                        Err(e) => Err(e),
+                                    }
                                 } else {
                                     Err(primary_error)
                                 }

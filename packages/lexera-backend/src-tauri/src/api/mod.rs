@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::Serialize;
 
+mod auth_middleware;
 mod board;
 mod capture_api;
 mod config_api;
@@ -14,11 +15,12 @@ mod external_embed;
 mod file_ops;
 mod live_sync;
 mod media;
-mod rate_limit;
+pub(crate) mod rate_limit;
 mod search;
 mod template;
 
 use crate::state::AppState;
+use auth_middleware::require_auth_middleware;
 use rate_limit::{rate_limit_middleware, RateLimiter};
 
 /// Maximum allowed length for a board ID (path segment safety).
@@ -56,7 +58,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   POST /templates/:id/copy                  -> copy template files with variable substitution
 ///   GET  /capture/history                     -> quick-capture / clipboard history
 ///   DELETE /capture/history/:id              -> remove one quick-capture / clipboard history entry
-pub fn api_router() -> Router<AppState> {
+pub fn api_router(state: &AppState) -> Router<AppState> {
     // Rate-limited sub-routers for expensive endpoints (requests per second)
     let search_routes = Router::new()
         .route("/search", get(search::search))
@@ -89,8 +91,8 @@ pub fn api_router() -> Router<AppState> {
             rate_limit_middleware,
         ));
 
-    // All other routes without rate limiting
-    Router::new()
+    // Authenticated routes — require valid bearer token
+    let authed_routes = Router::new()
         .route(
             "/boards",
             get(board::list_boards).post(board::add_board_endpoint),
@@ -155,13 +157,7 @@ pub fn api_router() -> Router<AppState> {
             "/boards/{board_id}/convert-path",
             axum::routing::post(file_ops::convert_path),
         )
-        .route("/logs", get(events::list_logs))
-        .route("/logs/stream", get(events::stream_logs))
         .route("/events", get(events::sse_events))
-        .route(
-            "/external-embeds/probe",
-            get(external_embed::probe_external_embed),
-        )
         .route(
             "/config/theme",
             get(config_api::get_theme).put(config_api::set_theme),
@@ -194,13 +190,6 @@ pub fn api_router() -> Router<AppState> {
             "/config/boards/{board_id}/sync",
             axum::routing::put(config_api::update_board_sync),
         )
-        .route("/status", get(events::status))
-        .route(
-            "/open-connection-window",
-            axum::routing::post(events::open_connection_window),
-        )
-        .route("/templates", get(template::list_templates))
-        .route("/templates/{template_id}", get(template::get_template))
         .route("/capture/history", get(capture_api::list_capture_history))
         .route(
             "/capture/history/{id}",
@@ -209,6 +198,27 @@ pub fn api_router() -> Router<AppState> {
         .merge(search_routes)
         .merge(find_file_routes)
         .merge(template_copy_routes)
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_auth_middleware,
+        ));
+
+    // Unauthenticated routes — health check, templates, logs, external embeds
+    Router::new()
+        .route("/status", get(events::status))
+        .route(
+            "/open-connection-window",
+            axum::routing::post(events::open_connection_window),
+        )
+        .route("/templates", get(template::list_templates))
+        .route("/templates/{template_id}", get(template::get_template))
+        .route("/logs", get(events::list_logs))
+        .route("/logs/stream", get(events::stream_logs))
+        .route(
+            "/external-embeds/probe",
+            get(external_embed::probe_external_embed),
+        )
+        .merge(authed_routes)
 }
 
 // ── Shared types and helpers used across sub-modules ────────────────────

@@ -35,7 +35,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
-    use crate::test_helpers::{body_json, test_router, test_state};
+    use crate::test_helpers::{body_json, register_test_user, test_router, test_state};
 
     fn write_board_file(dir: &std::path::Path, name: &str, content: &str) -> std::path::PathBuf {
         let path = dir.join(name);
@@ -61,6 +61,7 @@ kanban-plugin: board
         let tmp = tempfile::tempdir().unwrap();
         let board_path = write_board_file(tmp.path(), "search.md", BOARD_WITH_CARDS);
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         state.storage.add_board(&board_path).unwrap();
 
         let app = test_router(state);
@@ -68,6 +69,7 @@ kanban-plugin: board
             .oneshot(
                 Request::builder()
                     .uri("/search?q=login")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -90,6 +92,7 @@ kanban-plugin: board
         let tmp = tempfile::tempdir().unwrap();
         let board_path = write_board_file(tmp.path(), "search2.md", BOARD_WITH_CARDS);
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         state.storage.add_board(&board_path).unwrap();
 
         let app = test_router(state);
@@ -97,6 +100,7 @@ kanban-plugin: board
             .oneshot(
                 Request::builder()
                     .uri("/search?q=zzzznonexistent")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -115,6 +119,7 @@ kanban-plugin: board
         let tmp = tempfile::tempdir().unwrap();
         let board_path = write_board_file(tmp.path(), "search3.md", BOARD_WITH_CARDS);
         let state = test_state(tmp.path());
+        let token = register_test_user(&state);
         state.storage.add_board(&board_path).unwrap();
 
         let app = test_router(state);
@@ -122,6 +127,7 @@ kanban-plugin: board
             .oneshot(
                 Request::builder()
                     .uri("/search")
+                    .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )

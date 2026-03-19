@@ -69,6 +69,9 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Pre-seed bearer token so ensureBearerToken() skips the /collab/me fetch
+  // and doesn't consume mock responses intended for the actual request.
+  if (Api._setTestToken) Api._setTestToken('test-bearer-token');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -687,7 +690,8 @@ describe('collaboration API helpers', () => {
     await Api.createInvite('b1', 'user@test', 'editor', 5);
 
     const [url, opts] = mockFetch.mock.calls[0];
-    expect(url).toContain('/collab/rooms/b1/invites?user=user%40test');
+    expect(url).toContain('/collab/rooms/b1/invites');
+    expect(url).not.toContain('?user=');
     expect(opts.method).toBe('POST');
     const body = JSON.parse(opts.body);
     expect(body.role).toBe('editor');
@@ -715,7 +719,8 @@ describe('collaboration API helpers', () => {
     await Api.acceptInvite('token-xyz', 'u1');
 
     const [url, opts] = mockFetch.mock.calls[0];
-    expect(url).toContain('/collab/invites/token-xyz/accept?user=u1');
+    expect(url).toContain('/collab/invites/token-xyz/accept');
+    expect(url).not.toContain('?user=');
     expect(opts.method).toBe('POST');
   });
 
@@ -728,9 +733,8 @@ describe('collaboration API helpers', () => {
     await Api.listMembers('b1', 'user with spaces');
 
     const url = mockFetch.mock.calls[0][0];
-    expect(url).toContain('/collab/rooms/b1/members?user=user');
-    // URLSearchParams may encode spaces as + or %20; just verify it's present
-    expect(url).toMatch(/user(%20|\+)with(%20|\+)spaces/);
+    expect(url).toContain('/collab/rooms/b1/members');
+    expect(url).not.toContain('?user=');
   });
 
   it('makePublic sends POST with defaultRole and maxUsers', async () => {

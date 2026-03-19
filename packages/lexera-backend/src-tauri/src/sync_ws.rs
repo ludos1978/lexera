@@ -152,7 +152,8 @@ pub fn sync_router() -> Router<AppState> {
 
 #[derive(Deserialize)]
 struct SyncQuery {
-    user: Option<String>,
+    /// Bearer token for authentication.
+    token: Option<String>,
 }
 
 async fn ws_handler(
@@ -161,7 +162,18 @@ async fn ws_handler(
     Query(params): Query<SyncQuery>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    let user_id = params.user.unwrap_or_default();
+    // Validate bearer token from query param and extract user_id.
+    let user_id = params
+        .token
+        .as_deref()
+        .and_then(|token| {
+            state
+                .auth_service
+                .lock()
+                .ok()
+                .and_then(|auth| auth.validate_token(token).map(|uid| uid.to_string()))
+        })
+        .unwrap_or_default();
     ws.on_upgrade(move |socket| handle_sync_session(socket, board_id, user_id, state))
 }
 
@@ -238,7 +250,7 @@ async fn handle_sync_session(
     };
 
     // 2. Auth check — use ClientHello user_id as the authoritative identity.
-    // Fall back to query param only if ClientHello user_id is empty.
+    // Fall back to token-derived user_id if ClientHello user_id is empty.
     let auth_user = if client_user_id.is_empty() {
         &user_id
     } else {

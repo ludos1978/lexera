@@ -52,7 +52,7 @@ fn build_app(state: AppState) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    api_router()
+    api_router(&state)
         .merge(collab_router())
         .merge(sync_router())
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
