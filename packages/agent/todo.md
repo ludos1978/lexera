@@ -60,7 +60,7 @@
 
 - [x] **Extract backend lib.rs setup function** — extracted 570-line setup() closure into 8 named functions + `CollabServices` struct: `init_storage_and_boards`, `resolve_incoming`, `setup_file_watcher`, `init_collab_services`, `bootstrap_local_user`, `spawn_background_tasks`, `restore_persisted_connections`, `spawn_http_server`. All 903 Rust tests pass.
 
-- [ ] **Frontend modularization** — app.js reduced from 28K to 27K lines. Extracted: loggingSystem.js (596), virtualScroll.js (321), pathUtils.js (298), tagColors.js (788). Previously done: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next: board rendering, dashboard, canvas, export, settings.
+- [ ] **Frontend modularization** — app.js reduced from 28K to 26.6K lines. Extracted this round: loggingSystem.js (596), virtualScroll.js (321), pathUtils.js (298), tagColors.js (788), dropZoneIndicators.js (261). Previously done: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next targets: archive formatting, sidebar resize, export normalization.
 
 ## Open — Features
 
