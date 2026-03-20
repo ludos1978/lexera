@@ -113,7 +113,7 @@
     if (!target || !target.boardId) return false;
 
     if (getActiveBoardId(options) !== target.boardId && typeof options.selectBoard === 'function') {
-      await options.selectBoard(target.boardId, { routeToPane: false });
+      await options.selectBoard(target.boardId);
     }
     if ((getActiveBoardId(options) !== target.boardId || !getActiveBoardData(options)) && typeof options.loadBoard === 'function') {
       await options.loadBoard(target.boardId);

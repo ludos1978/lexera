@@ -111,7 +111,7 @@ describe('navigateToHierarchyTarget', () => {
     }, buildOptions());
 
     expect(state.selectCalls).toEqual([
-      { boardId: 'board-local', options: { routeToPane: false } }
+      { boardId: 'board-local', options: {} }
     ]);
     expect(state.loadCalls).toEqual(['board-local']);
     expect(state.unfoldCalls).toHaveLength(1);

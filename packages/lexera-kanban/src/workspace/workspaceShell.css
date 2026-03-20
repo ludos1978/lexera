@@ -367,20 +367,7 @@ body.workspace-shell-panel-dragging .workspace-shell-panel-drop-overlay {
 }
 
 .workspace-shell-panel-ghost {
-  position: fixed;
-  z-index: 99999;
-  display: inline-flex;
-  align-items: center;
   max-width: 260px;
-  height: 34px;
-  padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--border));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-primary) 92%, var(--accent) 8%);
-  color: var(--text-bright);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
-  pointer-events: none;
-  transform: translate(-50%, -50%);
 }
 
 body.workspace-shell-panel-dragging .workspace-shell-panel-tab {
@@ -659,13 +646,12 @@ body.workspace-shell-tab-dragging .workspace-shell-frame {
   pointer-events: none;
 }
 
+.workspace-shell-panel-ghost,
 .workspace-shell-tab-ghost {
   position: fixed;
   z-index: 99999;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  max-width: 320px;
   height: 34px;
   padding: 0 12px;
   border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--border));
@@ -675,6 +661,11 @@ body.workspace-shell-tab-dragging .workspace-shell-frame {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
   pointer-events: none;
   transform: translate(-50%, -50%);
+}
+
+.workspace-shell-tab-ghost {
+  gap: 6px;
+  max-width: 320px;
 }
 
 .workspace-shell-empty {
