@@ -1439,8 +1439,8 @@ const LexeraDashboard = (function () {
       return;
     }
     if (data.type !== 'lexera-focus-hierarchy-target' || !data.target) return;
-    navigateToHierarchyTarget(data.target, { skipSplitRouting: true }).catch(function (err) {
-      logFrontendIssue('warn', 'split.focus', 'Failed to focus hierarchy target inside embedded pane', err);
+    navigateToHierarchyTarget(data.target).catch(function (err) {
+      logFrontendIssue('warn', 'embedded.focus', 'Failed to focus hierarchy target inside embedded pane', err);
     });
   }
 
@@ -1457,7 +1457,7 @@ const LexeraDashboard = (function () {
   }
 
   function refreshHeaderFileControls() {
-    // Header controls are split-view + sync status only.
+    // Placeholder for header sync status updates.
   }
 
   function setShellActiveBoard(boardId) {
@@ -20108,9 +20108,6 @@ const LexeraDashboard = (function () {
       return true;
     }
     return getBoardNavigationApi().navigateToHierarchyTarget(target, {
-      embeddedMode: embeddedMode,
-      splitViewMode: 'single',
-      skipSplitRouting: options.skipSplitRouting,
       selectBoard: selectBoard,
       getActiveBoardId: function () { return activeBoardId; },
       getActiveBoardData: function () { return activeBoardData; },
@@ -20144,8 +20141,6 @@ const LexeraDashboard = (function () {
       searchInput: $searchInput,
       exitSearchMode: exitSearchMode,
       selectBoard: selectBoard,
-      embeddedMode: embeddedMode,
-      splitViewMode: 'single',
       getActiveBoardId: function () { return activeBoardId; },
       getActiveBoardData: function () { return activeBoardData; },
       loadBoard: loadBoard,

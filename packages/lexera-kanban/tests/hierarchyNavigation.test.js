@@ -9,24 +9,18 @@ let state;
 
 function resetState() {
   state = {
-    embeddedMode: false,
-    splitViewMode: 'single',
     activeBoardId: null,
     activeBoardData: null,
     selectCalls: [],
     loadCalls: [],
     unfoldCalls: [],
-    localFocusCalls: [],
-    paneFocusCalls: []
+    localFocusCalls: []
   };
 }
 
 function buildOptions(extra) {
   extra = extra || {};
   return {
-    embeddedMode: state.embeddedMode,
-    splitViewMode: state.splitViewMode,
-    skipSplitRouting: !!extra.skipSplitRouting,
     async selectBoard(boardId, options) {
       state.selectCalls.push({ boardId, options: options || {} });
       state.activeBoardId = boardId;
@@ -108,10 +102,7 @@ describe('buildHierarchyFocusTargetFromTreeNode', () => {
 });
 
 describe('navigateToHierarchyTarget', () => {
-  it('loads and focuses locally in single view', async () => {
-    state.embeddedMode = false;
-    state.splitViewMode = 'single';
-
+  it('loads and focuses locally', async () => {
     await BoardNavigation.navigateToHierarchyTarget({
       boardId: 'board-local',
       rowIndex: 0,
@@ -125,12 +116,9 @@ describe('navigateToHierarchyTarget', () => {
     expect(state.loadCalls).toEqual(['board-local']);
     expect(state.unfoldCalls).toHaveLength(1);
     expect(state.localFocusCalls).toHaveLength(1);
-    expect(state.paneFocusCalls).toEqual([]);
   });
 
   it('navigates to a different board and focuses locally', async () => {
-    state.embeddedMode = false;
-    state.splitViewMode = 'single';
     state.activeBoardId = 'board-old';
     state.activeBoardData = null;
 
@@ -146,6 +134,5 @@ describe('navigateToHierarchyTarget', () => {
     expect(state.loadCalls).toEqual(['board-other']);
     expect(state.unfoldCalls).toHaveLength(1);
     expect(state.localFocusCalls).toHaveLength(1);
-    expect(state.paneFocusCalls).toEqual([]);
   });
 });
