@@ -1191,6 +1191,16 @@ const LexeraDashboard = (function () {
 
   function applySidebarSectionLayout() {
     if (!getElSidebar() || !getElBoardList()) return;
+    if (workspaceShellEnabled) {
+      if (getElSidebarDashboardDivider()) getElSidebarDashboardDivider().classList.add('hidden');
+      getElBoardList().style.flex = '1 1 auto';
+      getElBoardList().style.height = '';
+      if (getElDashboardRoot()) {
+        getElDashboardRoot().style.flex = '1 1 auto';
+        getElDashboardRoot().style.height = '';
+      }
+      return;
+    }
     var dashboardHidden = !getElDashboardRoot() || getElDashboardRoot().classList.contains('hidden');
 
     if (dashboardHidden) {
@@ -1238,6 +1248,10 @@ const LexeraDashboard = (function () {
   }
 
   function setupSidebarSectionResize() {
+    if (workspaceShellEnabled) {
+      applySidebarSectionLayout();
+      return;
+    }
     if (!getElSidebar() || !getElSidebarDashboardDivider()) return;
     sidebarSplitRatio = normalizeSidebarSplitRatio(sidebarSplitRatio);
     applySidebarSectionLayout();
@@ -1279,12 +1293,14 @@ const LexeraDashboard = (function () {
 
   function applySidebarWidth() {
     if (!getElSidebar()) return;
+    if (workspaceShellEnabled) return;
     if (sidebarWidth > 0) {
       document.documentElement.style.setProperty('--sidebar-width', sidebarWidth + 'px');
     }
   }
 
   function setupSidebarWidthResize() {
+    if (workspaceShellEnabled) return;
     if (!getElSidebar() || !getElSidebarWidthDivider() || !getElLayout()) return;
     var SIDEBAR_MIN = 180;
     var SIDEBAR_MAX = 600;

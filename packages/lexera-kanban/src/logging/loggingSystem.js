@@ -272,6 +272,10 @@ function setActiveLogSource(source) {
 
 function isLogPanelVisible() {
   var panel = getElLogPanel();
+  var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;
+  if (shell && typeof shell.isPanelVisible === 'function' && typeof shell.isEnabled === 'function' && shell.isEnabled()) {
+    return !!shell.isPanelVisible('logs');
+  }
   return !!(panel && !panel.classList.contains('hidden'));
 }
 
@@ -286,6 +290,25 @@ function runInitManagementUI() {
 function setLogPanelVisibility(visible) {
   var panel = getElLogPanel();
   if (!panel) return;
+  var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;
+  if (shell && typeof shell.setPanelVisibility === 'function' && typeof shell.isEnabled === 'function' && shell.isEnabled()) {
+    if (visible) {
+      runInitManagementUI();
+      panel.classList.remove('hidden');
+      if (typeof shell.revealPanel === 'function') {
+        shell.revealPanel('logs');
+      } else {
+        shell.setPanelVisibility('logs', true, { activate: true, restoreDock: true });
+      }
+    } else {
+      panel.classList.remove('hidden');
+      if (typeof shell.collapsePanel === 'function') shell.collapsePanel('logs');
+      else if (typeof shell.collapseDock === 'function') shell.collapseDock('bottom');
+    }
+    updateAppBottomInset();
+    setActiveLogSource(activeLogSource);
+    return;
+  }
   if (visible) {
     runInitManagementUI();
     panel.classList.remove('hidden');

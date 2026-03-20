@@ -22,6 +22,22 @@
   background: var(--bg-primary);
 }
 
+.workspace-shell-body {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+  position: relative;
+}
+
+.workspace-shell-main-row {
+  display: grid;
+  min-height: 0;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .workspace-shell-toolbar {
   display: flex;
   align-items: center;
@@ -52,50 +68,323 @@
   font-weight: 600;
 }
 
-.workspace-shell-toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.workspace-shell-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--btn-bg, var(--bg-secondary));
-  color: var(--btn-fg, var(--text-primary));
-  cursor: pointer;
-  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
-}
-
-.workspace-shell-btn:hover {
-  background: var(--btn-bg-hover, var(--bg-hover));
-  border-color: var(--icon-btn-border-hover, var(--text-secondary));
-  color: var(--icon-btn-fg-hover, var(--text-bright));
-}
-
-.workspace-shell-btn.is-active {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: var(--text-bright);
-}
-
-.workspace-shell-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
 .workspace-shell-dock {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+}
+
+.workspace-shell-panel-dock {
+  display: none;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-color: var(--border);
+  background: var(--bg-secondary);
+}
+
+.workspace-shell-panel-dock.is-visible {
+  display: flex;
+}
+
+.workspace-shell-panel-dock[data-dock="left"],
+.workspace-shell-panel-dock[data-dock="right"] {
+  width: 100%;
+  border-right: 1px solid var(--border);
+}
+
+.workspace-shell-panel-dock[data-dock="right"] {
+  border-right: 0;
+  border-left: 1px solid var(--border);
+}
+
+.workspace-shell-panel-dock[data-dock="bottom"] {
+  height: 100%;
+  border-top: 1px solid var(--border);
+}
+
+.workspace-shell-dock-divider {
+  display: none;
+  background: var(--bg-tertiary);
+  z-index: 4;
+  user-select: none;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+
+.workspace-shell-dock-divider.is-visible {
+  display: block;
+}
+
+.workspace-shell-dock-divider[data-dock-divider="left"],
+.workspace-shell-dock-divider[data-dock-divider="right"] {
+  width: 6px;
+  cursor: col-resize;
+}
+
+.workspace-shell-dock-divider[data-dock-divider="bottom"] {
+  height: 6px;
+  cursor: row-resize;
+}
+
+.workspace-shell-dock-divider:hover,
+.workspace-shell-dock-divider.is-dragging {
+  background: color-mix(in srgb, var(--accent) 28%, var(--bg-tertiary));
+}
+
+.workspace-shell-collapsed-marker-strip {
+  position: absolute;
+  z-index: 18;
+  display: none;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.workspace-shell-collapsed-marker-strip.is-visible {
+  display: flex;
+}
+
+.workspace-shell-collapsed-marker-strip[data-dock="left"] {
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.workspace-shell-collapsed-marker-strip[data-dock="right"] {
+  right: 0;
+  top: 10px;
+  bottom: 10px;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.workspace-shell-collapsed-marker-strip[data-dock="bottom"] {
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  flex-direction: row;
+  align-items: flex-end;
+}
+
+.workspace-shell-collapsed-marker {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-secondary) 92%, var(--accent) 8%);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.16);
+}
+
+.workspace-shell-collapsed-marker-strip[data-dock="left"] .workspace-shell-collapsed-marker,
+.workspace-shell-collapsed-marker-strip[data-dock="right"] .workspace-shell-collapsed-marker {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  min-width: 28px;
+  min-height: 96px;
+}
+
+.workspace-shell-collapsed-marker:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--bg-secondary) 82%, var(--accent) 18%);
+  color: var(--text-bright);
+}
+
+.workspace-shell-panel-tabbar {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-height: 38px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-header-bg, var(--bg-secondary));
+  overflow-x: auto;
+}
+
+.workspace-shell-panel-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  font: inherit;
+  user-select: none;
+}
+
+.workspace-shell-panel-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.workspace-shell-panel-tab.is-active {
+  border-color: var(--border);
+  background: var(--bg-primary);
+  color: var(--text-bright);
+}
+
+.workspace-shell-panel-tab.is-selected {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 44%, transparent);
+}
+
+.workspace-shell-panel-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.workspace-shell-panel-stack {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.workspace-shell-panel-stack[data-dock-axis="vertical"] {
+  grid-template-columns: 1fr;
+}
+
+.workspace-shell-panel-stack[data-dock-axis="horizontal"] {
+  grid-template-rows: 1fr;
+}
+
+.workspace-shell-panel-window {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-shell-panel-stack[data-dock-axis="vertical"] > .workspace-shell-panel-window {
+  min-height: 120px;
+}
+
+.workspace-shell-panel-stack[data-dock-axis="horizontal"] > .workspace-shell-panel-window {
+  min-width: 220px;
+  border-bottom: 0;
+  border-right: 1px solid var(--border);
+}
+
+.workspace-shell-panel-stack > .workspace-shell-panel-window:last-child {
+  border-bottom: 0;
+  border-right: 0;
+}
+
+.workspace-shell-panel-window.is-active {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.workspace-shell-panel-divider {
+  background: var(--bg-tertiary);
+  z-index: 3;
+  user-select: none;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+
+.workspace-shell-panel-divider[data-axis="vertical"] {
+  height: 6px;
+  cursor: row-resize;
+}
+
+.workspace-shell-panel-divider[data-axis="horizontal"] {
+  width: 6px;
+  cursor: col-resize;
+}
+
+.workspace-shell-panel-divider:hover,
+.workspace-shell-panel-divider.is-dragging {
+  background: color-mix(in srgb, var(--accent) 28%, var(--bg-tertiary));
+}
+
+.workspace-shell-panel-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  display: none;
+  pointer-events: none;
+}
+
+body.workspace-shell-panel-dragging .workspace-shell-panel-drop-overlay {
+  display: block;
+}
+
+.workspace-shell-panel-drop-zone {
+  position: absolute;
+  border: 1px dashed transparent;
+  background: transparent;
+  opacity: 0.84;
+  pointer-events: auto;
+  transition: background-color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+
+.workspace-shell-panel-drop-zone[data-ws-panel-drop-dock="left"] {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 21%;
+}
+
+.workspace-shell-panel-drop-zone[data-ws-panel-drop-dock="right"] {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 21%;
+}
+
+.workspace-shell-panel-drop-zone[data-ws-panel-drop-dock="bottom"] {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28%;
+}
+
+.workspace-shell-panel-drop-zone.is-active {
+  border-color: color-mix(in srgb, var(--accent) 68%, white 8%);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  opacity: 1;
+}
+
+.workspace-shell-panel-ghost {
+  position: fixed;
+  z-index: 99999;
+  display: inline-flex;
+  align-items: center;
+  max-width: 260px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-primary) 92%, var(--accent) 8%);
+  color: var(--text-bright);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+body.workspace-shell-panel-dragging .workspace-shell-panel-tab {
+  cursor: grabbing;
 }
 
 .workspace-shell-node {
@@ -283,30 +572,6 @@ body.workspace-shell-tab-dragging .workspace-shell-tab {
   color: var(--text-bright);
 }
 
-.workspace-shell-pane-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border-left: 1px solid var(--border);
-}
-
-.workspace-shell-pane-action {
-  width: 28px;
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.workspace-shell-pane-action:hover {
-  border-color: var(--border);
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
 .workspace-shell-pane-content {
   position: relative;
   flex: 1 1 auto;
@@ -432,12 +697,32 @@ body.workspace-shell-sidebar-hidden #sidebar-width-divider {
   display: none !important;
 }
 
-body.workspace-shell-sidebar-hidden .layout {
-  grid-template-columns: minmax(0, 1fr);
+body.workspace-shell-mode .layout > .sidebar,
+body.workspace-shell-mode #sidebar-width-divider,
+body.workspace-shell-mode #sidebar-dashboard-divider {
+  display: none !important;
 }
 
-body.workspace-shell-detached .sidebar-dashboard {
-  display: none;
+body.workspace-shell-mode .workspace-shell-panel-content > .sidebar {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border-right: 0;
+}
+
+body.workspace-shell-mode .workspace-shell-panel-content > .sidebar-dashboard {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+body.workspace-shell-mode .workspace-shell-panel-content > .log-panel {
+  display: flex;
+  flex: 1 1 auto;
+  width: auto;
+  height: 100%;
+  border-top: 0;
 }
 
 body.workspace-shell-detached .status-bar {
