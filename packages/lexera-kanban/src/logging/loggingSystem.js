@@ -31,8 +31,20 @@ function getElStatusBar() { return elStatusBar || (elStatusBar = document.getEle
 function getElLogEntriesBackend() { return elLogEntriesBackend || (elLogEntriesBackend = document.getElementById('log-entries-backend')); }
 function getElLogEntriesFrontend() { return elLogEntriesFrontend || (elLogEntriesFrontend = document.getElementById('log-entries-frontend')); }
 function getElLogPanel() { return elLogPanel || (elLogPanel = document.getElementById('log-panel')); }
-function getElLogSettingsPane() { return elLogSettingsPane || (elLogSettingsPane = document.getElementById('log-settings-pane')); }
-function getElLogSettingsContainer() { return elLogSettingsContainer || (elLogSettingsContainer = document.getElementById('log-settings-container')); }
+function getElLogSettingsPane() {
+  if (elLogSettingsPane) return elLogSettingsPane;
+  var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;
+  var shellEnabled = !!(shell && typeof shell.isEnabled === 'function' && shell.isEnabled());
+  elLogSettingsPane = document.getElementById(shellEnabled ? 'backend-settings-panel' : 'mgmt-panel');
+  return elLogSettingsPane;
+}
+function getElLogSettingsContainer() {
+  if (elLogSettingsContainer) return elLogSettingsContainer;
+  var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;
+  var shellEnabled = !!(shell && typeof shell.isEnabled === 'function' && shell.isEnabled());
+  elLogSettingsContainer = document.getElementById(shellEnabled ? 'backend-settings-container' : 'mgmt-panel-body');
+  return elLogSettingsContainer;
+}
 function getElLogTabBackend() { return elLogTabBackend || (elLogTabBackend = document.getElementById('log-tab-backend')); }
 function getElLogTabFrontend() { return elLogTabFrontend || (elLogTabFrontend = document.getElementById('log-tab-frontend')); }
 function getElLogRefreshBtn() { return elLogRefreshBtn || (elLogRefreshBtn = document.getElementById('log-refresh-btn')); }
@@ -240,7 +252,6 @@ function setActiveLogSource(source) {
   var backendPanel = getLogContainer('backend');
   var frontendPanel = getLogContainer('frontend');
   var statsPanel = document.getElementById('log-entries-stats');
-  var settingsPane = getElLogSettingsPane();
   var refreshBtn = getElLogRefreshBtn();
   var logTitle = document.querySelector('.log-panel-title');
 
@@ -249,7 +260,6 @@ function setActiveLogSource(source) {
   if (backendPanel) backendPanel.classList.toggle('hidden', activeLogSource !== 'backend');
   if (frontendPanel) frontendPanel.classList.toggle('hidden', activeLogSource !== 'frontend');
   if (statsPanel) statsPanel.classList.toggle('hidden', activeLogSource !== 'stats');
-  if (settingsPane) settingsPane.classList.toggle('hidden', activeLogSource === 'stats');
   if (refreshBtn) refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
 
   // Update title and hide log tabs when showing stats
@@ -293,7 +303,6 @@ function setLogPanelVisibility(visible) {
   var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;
   if (shell && typeof shell.setPanelVisibility === 'function' && typeof shell.isEnabled === 'function' && shell.isEnabled()) {
     if (visible) {
-      runInitManagementUI();
       panel.classList.remove('hidden');
       if (typeof shell.revealPanel === 'function') {
         shell.revealPanel('logs');
@@ -310,7 +319,6 @@ function setLogPanelVisibility(visible) {
     return;
   }
   if (visible) {
-    runInitManagementUI();
     panel.classList.remove('hidden');
   } else {
     panel.classList.add('hidden');

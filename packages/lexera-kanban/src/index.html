@@ -136,16 +136,64 @@
       </div>
     </div>
     <div class="log-panel-body">
-      <aside id="log-settings-pane" class="log-settings-pane">
-        <div class="log-settings-pane-header">
-          <span class="log-settings-pane-title">Settings</span>
-        </div>
-        <div id="log-settings-container" class="log-settings-container"></div>
-      </aside>
       <div class="log-panel-main">
         <div id="log-entries-backend" class="log-entries"></div>
         <div id="log-entries-frontend" class="log-entries hidden"></div>
         <div id="log-entries-stats" class="log-entries hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="backend-settings-panel" class="shell-settings-panel hidden">
+    <div id="backend-settings-container" class="shell-settings-container"></div>
+  </div>
+
+  <div id="frontend-settings-panel" class="shell-settings-panel frontend-settings-panel hidden">
+    <div class="mgmt-section" data-frontend-settings-section="theme">
+      <div class="mgmt-section-title">Theme</div>
+      <div class="mgmt-field-row">
+        <label class="mgmt-field-label" for="frontend-settings-theme-select">Theme</label>
+        <select id="frontend-settings-theme-select" class="mgmt-field-input"></select>
+      </div>
+    </div>
+    <div class="mgmt-section" data-frontend-settings-section="editors">
+      <div class="mgmt-section-title">Editors</div>
+      <label class="frontend-settings-toggle">
+        <input id="frontend-settings-overlay-editor" type="checkbox">
+        <span>Overlay editor</span>
+      </label>
+      <label class="frontend-settings-toggle">
+        <input id="frontend-settings-wysiwyg-editor" type="checkbox">
+        <span>WYSIWYG editor</span>
+      </label>
+      <label class="frontend-settings-toggle">
+        <input id="frontend-settings-marp-settings" type="checkbox">
+        <span>Show Marp settings</span>
+      </label>
+      <label class="frontend-settings-toggle">
+        <input id="frontend-settings-special-chars" type="checkbox">
+        <span>Show special characters</span>
+      </label>
+    </div>
+    <div class="mgmt-section" data-frontend-settings-section="hierarchy">
+      <div class="mgmt-section-title">Hierarchy</div>
+      <label class="frontend-settings-toggle">
+        <input id="frontend-settings-sidebar-counts" type="checkbox">
+        <span>Counts</span>
+      </label>
+      <label class="frontend-settings-toggle">
+        <input id="frontend-settings-sidebar-presence" type="checkbox">
+        <span>Presence badges</span>
+      </label>
+      <label class="frontend-settings-toggle">
+        <input id="frontend-settings-sidebar-grips" type="checkbox">
+        <span>Drag icons</span>
+      </label>
+    </div>
+    <div class="mgmt-section" data-frontend-settings-section="debug">
+      <div class="mgmt-section-title">Diagnostics</div>
+      <div class="mgmt-field-row">
+        <button id="frontend-settings-open-inspector" class="mgmt-btn mgmt-btn-small" type="button">Open Inspector</button>
       </div>
     </div>
   </div>

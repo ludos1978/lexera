@@ -5568,6 +5568,46 @@ select.dialog-input option,
   min-height: 0;
 }
 
+.shell-settings-panel {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-secondary);
+}
+
+.shell-settings-container {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.frontend-settings-panel {
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px;
+}
+
+.frontend-settings-panel .mgmt-section {
+  margin: 0;
+}
+
+.frontend-settings-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.frontend-settings-toggle input {
+  margin: 2px 0 0;
+}
+
 .log-entry {
   display: flex;
   gap: var(--space-4);

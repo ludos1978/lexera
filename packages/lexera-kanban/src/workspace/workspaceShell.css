@@ -716,6 +716,13 @@ body.workspace-shell-mode .workspace-shell-panel-content > .log-panel {
   border-top: 0;
 }
 
+body.workspace-shell-mode .workspace-shell-panel-content > .shell-settings-panel {
+  display: flex;
+  flex: 1 1 auto;
+  width: auto;
+  height: 100%;
+}
+
 body.workspace-shell-detached .status-bar {
   opacity: 0.88;
 }

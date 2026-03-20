@@ -69,7 +69,9 @@
   var PANEL_DEFINITIONS = {
     hierarchy: { id: 'hierarchy', title: 'Workspaces', defaultDock: 'left' },
     dashboard: { id: 'dashboard', title: 'Dashboard', defaultDock: 'right' },
-    logs: { id: 'logs', title: 'Logs', defaultDock: 'bottom' }
+    logs: { id: 'logs', title: 'Logs', defaultDock: 'bottom' },
+    backendSettings: { id: 'backendSettings', title: 'Backend Settings', defaultDock: 'right' },
+    frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right' }
   };
 
   function createDefaultPanelDocks() {
@@ -160,7 +162,9 @@
     return {
       hierarchy: true,
       dashboard: true,
-      logs: true
+      logs: true,
+      backendSettings: false,
+      frontendSettings: false
     };
   }
 
@@ -576,7 +580,7 @@
   function ensurePanelDockActives() {
     prunePanelWeights();
     if (!state.panelVisibility[state.activePanelId]) {
-      var panelOrder = ['hierarchy', 'dashboard', 'logs'];
+      var panelOrder = ['hierarchy', 'dashboard', 'logs', 'backendSettings', 'frontendSettings'];
       state.activePanelId = '';
       for (var j = 0; j < panelOrder.length; j++) {
         if (state.panelVisibility[panelOrder[j]]) {
@@ -1141,6 +1145,8 @@
     var dashboardDividerEl = document.getElementById('sidebar-dashboard-divider');
     var boardListEl = document.getElementById('board-list');
     var logPanelEl = document.getElementById('log-panel');
+    var backendSettingsPanelEl = document.getElementById('backend-settings-panel');
+    var frontendSettingsPanelEl = document.getElementById('frontend-settings-panel');
 
     if (dashboardDividerEl) {
       dashboardDividerEl.classList.add('hidden');
@@ -1161,15 +1167,18 @@
     if (logPanelEl) {
       logPanelEl.classList.remove('hidden');
     }
-
     if (sidebarEl) sidebarEl.setAttribute('data-shell-panel', 'hierarchy');
     if (dashboardEl) dashboardEl.setAttribute('data-shell-panel', 'dashboard');
     if (logPanelEl) logPanelEl.setAttribute('data-shell-panel', 'logs');
+    if (backendSettingsPanelEl) backendSettingsPanelEl.setAttribute('data-shell-panel', 'backendSettings');
+    if (frontendSettingsPanelEl) frontendSettingsPanelEl.setAttribute('data-shell-panel', 'frontendSettings');
 
     state.panelElements = {
       hierarchy: sidebarEl || null,
       dashboard: dashboardEl || null,
-      logs: logPanelEl || null
+      logs: logPanelEl || null,
+      backendSettings: backendSettingsPanelEl || null,
+      frontendSettings: frontendSettingsPanelEl || null
     };
     return state.panelElements;
   }
@@ -1218,6 +1227,8 @@
       contentEl.className = 'workspace-shell-panel-content';
       var panelEl = getPanelElement(panelId);
       if (panelEl) {
+        panelEl.classList.remove('hidden');
+        panelEl.style.display = '';
         contentEl.appendChild(panelEl);
       }
       panelWindowEl.appendChild(contentEl);
@@ -2118,6 +2129,18 @@
     if (!action) return false;
     if (action === 'new-window') {
       openWorkspaceWindow();
+      return true;
+    }
+    if (action === 'open-management' || action === 'backend-settings') {
+      revealPanel('backendSettings');
+      return true;
+    }
+    if (action === 'open-frontend-settings' || action === 'open-theme-zoom') {
+      revealPanel('frontendSettings');
+      return true;
+    }
+    if (action === 'show-processes' || action === 'running-processes') {
+      revealPanel('logs');
       return true;
     }
     if (action === 'set-board-layout:kanban') {

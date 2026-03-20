@@ -129,7 +129,7 @@ describe('navigateToHierarchyTarget', () => {
 
     expect(state.selectCalls.at(-1)).toEqual({
       boardId: 'board-other',
-      options: { routeToPane: false }
+      options: {}
     });
     expect(state.loadCalls).toEqual(['board-other']);
     expect(state.unfoldCalls).toHaveLength(1);
