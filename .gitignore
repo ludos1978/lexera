@@ -57,3 +57,4 @@ builds/windows
 builds/windows-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]
 .overstory
 _ARCHIVE/packages/ludos-dashboard/src-tauri/target/release
+tests/kanban-project-test

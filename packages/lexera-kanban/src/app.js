@@ -127,6 +127,45 @@ const LexeraDashboard = (function () {
   var dashboardRefreshTimer = null;
   var dashboardRefreshSeq = 0;
 
+  function getSharedPanelRegistry() {
+    return window.LexeraSharedPanels || null;
+  }
+
+  function getSharedPanelRoots(kind) {
+    var registry = getSharedPanelRegistry();
+    if (!registry || typeof registry.getRoots !== 'function') return [];
+    return registry.getRoots(kind);
+  }
+
+  window.addEventListener('lexera-shared-panel-created', function (event) {
+    var detail = event && event.detail ? event.detail : {};
+    if (detail.kind === 'hierarchy') syncMirroredWorkspaceViews();
+    if (detail.kind === 'dashboard') syncMirroredDashboardViews();
+  });
+
+  window.addEventListener('storage', function (event) {
+    if (!event || !event.key) return;
+    if (event.key === 'lexera-active-workspace') {
+      activeWorkspaceId = event.newValue || ALL_WORKSPACES_ID;
+      renderWorkspaceSelect();
+      renderBoardList();
+      return;
+    }
+    if (
+      event.key === 'lexera-dashboard-query' ||
+      event.key === 'lexera-dashboard-scope' ||
+      event.key === 'lexera-dashboard-active-pinned' ||
+      event.key === 'lexera-dashboard-pinned-queries'
+    ) {
+      dashboardState.query = localStorage.getItem('lexera-dashboard-query') || '';
+      dashboardState.scope = localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active';
+      dashboardState.activePinnedQuery = localStorage.getItem('lexera-dashboard-active-pinned') || '';
+      dashboardState.pinnedQueries = loadDashboardPinnedQueries();
+      renderDashboard();
+      scheduleDashboardRefresh(0);
+    }
+  });
+
   // --- Themes ---
   // LEXERA_THEMES and applyLexeraTheme are provided by the shared themes.js script.
   // THEMES is an alias for backward compatibility within app.js.
@@ -1673,6 +1712,7 @@ const LexeraDashboard = (function () {
     dashboardState.scope = normalizeDashboardScope(scope);
     if (getElDashboardScopeSelect()) getElDashboardScopeSelect().value = dashboardState.scope;
     persistDashboardPrefs();
+    syncMirroredDashboardViews();
   }
 
   function setDashboardQuery(query, options) {
@@ -1689,6 +1729,7 @@ const LexeraDashboard = (function () {
     }
     persistDashboardPrefs();
     renderDashboardPinnedList();
+    syncMirroredDashboardViews();
   }
 
   function filterDashboardResultsByScope(results) {
@@ -1790,39 +1831,157 @@ const LexeraDashboard = (function () {
     return payload.results;
   }
 
-  function dashboardCardTitle(content) {
-    return getDashboardTreeApi().dashboardCardTitle(content);
-  }
-
-  function dashboardItemTitle(item) {
-    return getDashboardTreeApi().dashboardItemTitle(item);
-  }
-
-  function dashboardDueLabel(result) {
-    return getDashboardTreeApi().dashboardDueLabel(result);
-  }
-
-  function dashboardTreeNodeTooltip(item) {
-    return getDashboardTreeApi().dashboardTreeNodeTooltip(item);
-  }
-
-  function buildDashboardResultTreeNodes(items) {
-    return getDashboardTreeApi().buildDashboardResultTreeNodes(items);
-  }
-
-  function buildDashboardNavResult(result) {
-    return getDashboardTreeApi().buildDashboardNavResult(result);
-  }
-
-  function buildDashboardNavResultFromTreeNode(node) {
-    return getDashboardTreeApi().buildDashboardNavResultFromTreeNode(node);
-  }
-
   function scopeHintForDashboard() {
     if (dashboardState.scope === 'active' && !activeBoardId) {
       return 'Select a board to show scoped results';
     }
     return '';
+  }
+
+  function bindMirroredDashboardView(rootEl) {
+    if (!rootEl || rootEl.__lexeraDashboardMirrorBound) return;
+    rootEl.__lexeraDashboardMirrorBound = true;
+
+    rootEl.addEventListener('input', function (e) {
+      var searchEl = e.target.closest('.lexera-shared-dashboard-search');
+      var canonicalSearch = getElDashboardSearchInput();
+      if (!searchEl || !canonicalSearch) return;
+      canonicalSearch.value = searchEl.value;
+      canonicalSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    rootEl.addEventListener('keydown', function (e) {
+      var searchEl = e.target.closest('.lexera-shared-dashboard-search');
+      var canonicalSearch = getElDashboardSearchInput();
+      if (!searchEl || !canonicalSearch) return;
+      canonicalSearch.value = searchEl.value;
+      canonicalSearch.dispatchEvent(new KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        key: e.key,
+        code: e.code,
+        altKey: e.altKey,
+        ctrlKey: e.ctrlKey,
+        shiftKey: e.shiftKey,
+        metaKey: e.metaKey
+      }));
+    });
+
+    rootEl.addEventListener('change', function (e) {
+      var scopeEl = e.target.closest('.lexera-shared-dashboard-scope');
+      var canonicalScope = getElDashboardScopeSelect();
+      if (!scopeEl || !canonicalScope) return;
+      canonicalScope.value = scopeEl.value;
+      canonicalScope.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    rootEl.addEventListener('click', function (e) {
+      var searchBtn = e.target.closest('.lexera-shared-dashboard-search-btn');
+      if (searchBtn && getElDashboardSearchBtn()) {
+        e.preventDefault();
+        getElDashboardSearchBtn().click();
+        return;
+      }
+      var pinBtn = e.target.closest('.lexera-shared-dashboard-pin');
+      if (pinBtn && getElDashboardPinBtn()) {
+        e.preventDefault();
+        getElDashboardPinBtn().click();
+        return;
+      }
+      var chipBtn = e.target.closest('.dashboard-chip[data-dashboard-query]');
+      if (chipBtn && getElDashboardRoot()) {
+        e.preventDefault();
+        var query = chipBtn.getAttribute('data-dashboard-query') || '';
+        var canonicalChip = null;
+        var canonicalChips = getElDashboardRoot().querySelectorAll('.dashboard-chip[data-dashboard-query]');
+        for (var chipIdx = 0; chipIdx < canonicalChips.length; chipIdx++) {
+          if ((canonicalChips[chipIdx].getAttribute('data-dashboard-query') || '') === query) {
+            canonicalChip = canonicalChips[chipIdx];
+            break;
+          }
+        }
+        if (canonicalChip) canonicalChip.click();
+        return;
+      }
+
+      var containerInfo = null;
+      var containers = [
+        ['.lexera-shared-dashboard-pinned', getElDashboardPinnedList],
+        ['.lexera-shared-dashboard-results', getElDashboardResultsList],
+        ['.lexera-shared-dashboard-deadlines', getElDashboardDeadlineList],
+        ['.lexera-shared-dashboard-overdue', getElDashboardOverdueList]
+      ];
+      for (var i = 0; i < containers.length; i++) {
+        var localContainer = e.target.closest(containers[i][0]);
+        if (localContainer) {
+          containerInfo = { local: localContainer, canonical: containers[i][1]() };
+          break;
+        }
+      }
+      if (!containerInfo || !containerInfo.canonical) return;
+
+      var localPinnedItem = e.target.closest('.dashboard-item');
+      if (localPinnedItem) {
+        e.preventDefault();
+        var localItems = Array.prototype.slice.call(containerInfo.local.querySelectorAll('.dashboard-item'));
+        var canonicalItems = Array.prototype.slice.call(containerInfo.canonical.querySelectorAll('.dashboard-item'));
+        var itemIndex = localItems.indexOf(localPinnedItem);
+        if (itemIndex >= 0 && canonicalItems[itemIndex]) {
+          if (e.target.closest('.dashboard-item-remove')) {
+            var removeBtn = canonicalItems[itemIndex].querySelector('.dashboard-item-remove');
+            if (removeBtn) removeBtn.click();
+          } else {
+            canonicalItems[itemIndex].click();
+          }
+        }
+        return;
+      }
+
+      var localTreeNode = e.target.closest('.tree-node[data-dashboard-target="result"]');
+      if (!localTreeNode) return;
+      e.preventDefault();
+      var localTreeNodes = Array.prototype.slice.call(containerInfo.local.querySelectorAll('.tree-node[data-dashboard-target="result"]'));
+      var canonicalTreeNodes = Array.prototype.slice.call(containerInfo.canonical.querySelectorAll('.tree-node[data-dashboard-target="result"]'));
+      var treeIndex = localTreeNodes.indexOf(localTreeNode);
+      if (treeIndex < 0 || !canonicalTreeNodes[treeIndex]) return;
+      if (e.target.closest('.tree-toggle')) {
+        var canonicalToggle = canonicalTreeNodes[treeIndex].querySelector('.tree-toggle');
+        if (canonicalToggle) canonicalToggle.click();
+      } else {
+        canonicalTreeNodes[treeIndex].click();
+      }
+    });
+  }
+
+  function syncMirroredDashboardViews() {
+    var dashboardRoots = getSharedPanelRoots('dashboard');
+    if (!dashboardRoots.length || !getElDashboardRoot()) return;
+    var canonicalPinned = getElDashboardPinnedList();
+    var canonicalResults = getElDashboardResultsList();
+    var canonicalDeadlines = getElDashboardDeadlineList();
+    var canonicalOverdue = getElDashboardOverdueList();
+    var canonicalGroups = getElDashboardRoot().querySelectorAll('.dashboard-group');
+    for (var i = 0; i < dashboardRoots.length; i++) {
+      var rootEl = dashboardRoots[i];
+      if (!rootEl) continue;
+      bindMirroredDashboardView(rootEl);
+      var searchEl = rootEl.querySelector('.lexera-shared-dashboard-search');
+      var scopeEl = rootEl.querySelector('.lexera-shared-dashboard-scope');
+      var pinnedEl = rootEl.querySelector('.lexera-shared-dashboard-pinned');
+      var resultsEl = rootEl.querySelector('.lexera-shared-dashboard-results');
+      var deadlinesEl = rootEl.querySelector('.lexera-shared-dashboard-deadlines');
+      var overdueEl = rootEl.querySelector('.lexera-shared-dashboard-overdue');
+      if (searchEl) searchEl.value = dashboardState.query || '';
+      if (scopeEl) scopeEl.value = dashboardState.scope || 'active';
+      if (pinnedEl && canonicalPinned) pinnedEl.innerHTML = canonicalPinned.innerHTML;
+      if (resultsEl && canonicalResults) resultsEl.innerHTML = canonicalResults.innerHTML;
+      if (deadlinesEl && canonicalDeadlines) deadlinesEl.innerHTML = canonicalDeadlines.innerHTML;
+      if (overdueEl && canonicalOverdue) overdueEl.innerHTML = canonicalOverdue.innerHTML;
+      var mirrorGroups = rootEl.querySelectorAll('.dashboard-group');
+      for (var j = 0; j < mirrorGroups.length && j < canonicalGroups.length; j++) {
+        mirrorGroups[j].className = canonicalGroups[j].className;
+      }
+    }
   }
 
   function renderDashboardPinnedList() {
@@ -1834,6 +1993,7 @@ const LexeraDashboard = (function () {
       empty.className = 'dashboard-empty';
       empty.textContent = 'No pinned searches';
       getElDashboardPinnedList().appendChild(empty);
+      syncMirroredDashboardViews();
       return;
     }
     setDashboardGroupEmptyState(getElDashboardPinnedList(), false);
@@ -1881,6 +2041,7 @@ const LexeraDashboard = (function () {
         getElDashboardPinnedList().appendChild(item);
       })(dashboardState.pinnedQueries[i]);
     }
+    syncMirroredDashboardViews();
   }
 
   function setDashboardGroupEmptyState(targetEl, isEmpty) {
@@ -1904,7 +2065,7 @@ const LexeraDashboard = (function () {
       return;
     }
     setDashboardGroupEmptyState(targetEl, false);
-    var treeNodes = buildDashboardResultTreeNodes(items);
+    var treeNodes = getDashboardTreeApi().buildDashboardResultTreeNodes(items);
     TreeView.render(targetEl, treeNodes, {
       escapeHtml: escapeHtml,
       variant: 'compact'
@@ -1919,7 +2080,7 @@ const LexeraDashboard = (function () {
         }
         var node = e.target.closest('.tree-node[data-dashboard-target="result"]');
         if (!node || !targetEl.contains(node)) return;
-        var navResult = buildDashboardNavResultFromTreeNode(node);
+        var navResult = getDashboardTreeApi().buildDashboardNavResultFromTreeNode(node);
         if (!navResult) return;
         navigateToSearchResult(navResult);
       });
@@ -1951,6 +2112,7 @@ const LexeraDashboard = (function () {
       scopeHint || loadingNote || 'No overdue tasks',
       { collapseWhenEmpty: !dashboardState.loading }
     );
+    syncMirroredDashboardViews();
   }
 
   async function refreshDashboardData(options) {
@@ -3804,6 +3966,103 @@ const LexeraDashboard = (function () {
     setActiveWorkspaceId(ALL_WORKSPACES_ID);
   }
 
+  function dispatchMirrorMouseEvent(targetEl, eventType, sourceEvent) {
+    if (!targetEl) return false;
+    targetEl.dispatchEvent(new MouseEvent(eventType, {
+      bubbles: true,
+      cancelable: true,
+      clientX: sourceEvent && typeof sourceEvent.clientX === 'number' ? sourceEvent.clientX : 0,
+      clientY: sourceEvent && typeof sourceEvent.clientY === 'number' ? sourceEvent.clientY : 0,
+      button: sourceEvent && typeof sourceEvent.button === 'number' ? sourceEvent.button : 0,
+      altKey: !!(sourceEvent && sourceEvent.altKey),
+      ctrlKey: !!(sourceEvent && sourceEvent.ctrlKey),
+      shiftKey: !!(sourceEvent && sourceEvent.shiftKey),
+      metaKey: !!(sourceEvent && sourceEvent.metaKey)
+    }));
+    return true;
+  }
+
+  function findCanonicalHierarchyTarget(sourceTarget) {
+    var boardList = getElBoardList();
+    if (!boardList || !sourceTarget || typeof sourceTarget.closest !== 'function') return null;
+    var treeNode = sourceTarget.closest('.tree-node[data-tree-id]');
+    var boardRow = sourceTarget.closest('.board-item[data-board-id]');
+    if (sourceTarget.closest('.board-item-remove') && boardRow) {
+      return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-remove');
+    }
+    if (sourceTarget.closest('.board-item-toggle') && boardRow) {
+      return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-toggle');
+    }
+    if (sourceTarget.closest('.tree-toggle') && treeNode) {
+      return boardList.querySelector('.tree-node[data-tree-id="' + treeNode.getAttribute('data-tree-id') + '"] .tree-toggle');
+    }
+    if (treeNode) {
+      return boardList.querySelector('.tree-node[data-tree-id="' + treeNode.getAttribute('data-tree-id') + '"]');
+    }
+    if (boardRow) {
+      return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"]');
+    }
+    return null;
+  }
+
+  function bindMirroredWorkspaceView(rootEl) {
+    if (!rootEl || rootEl.__lexeraWorkspaceMirrorBound) return;
+    rootEl.__lexeraWorkspaceMirrorBound = true;
+
+    rootEl.addEventListener('change', function (e) {
+      var selectEl = e.target.closest('.lexera-shared-workspace-select');
+      if (!selectEl) return;
+      setActiveWorkspaceId(selectEl.value);
+      applyWorkspaceAppearance(selectEl.value);
+      renderWorkspaceSelect();
+      renderBoardList();
+    });
+
+    rootEl.addEventListener('click', function (e) {
+      var menuBtn = e.target.closest('.lexera-shared-workspace-menu');
+      if (menuBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        showSidebarHierarchyMenu(menuBtn);
+        return;
+      }
+      var canonicalTarget = findCanonicalHierarchyTarget(e.target);
+      if (!canonicalTarget) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dispatchMirrorMouseEvent(canonicalTarget, 'click', e);
+    });
+
+    rootEl.addEventListener('contextmenu', function (e) {
+      var canonicalTarget = findCanonicalHierarchyTarget(e.target);
+      if (!canonicalTarget) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dispatchMirrorMouseEvent(canonicalTarget, 'contextmenu', e);
+    });
+  }
+
+  function syncMirroredWorkspaceViews() {
+    var workspaceRoots = getSharedPanelRoots('hierarchy');
+    if (!workspaceRoots.length) return;
+    var canonicalSelect = document.getElementById('workspace-select');
+    var canonicalBoardList = getElBoardList();
+    for (var i = 0; i < workspaceRoots.length; i++) {
+      var rootEl = workspaceRoots[i];
+      if (!rootEl) continue;
+      bindMirroredWorkspaceView(rootEl);
+      var selectEl = rootEl.querySelector('.lexera-shared-workspace-select');
+      var boardListEl = rootEl.querySelector('.lexera-shared-board-list');
+      if (selectEl && canonicalSelect) {
+        selectEl.innerHTML = canonicalSelect.innerHTML;
+        selectEl.value = activeWorkspaceId || canonicalSelect.value || ALL_WORKSPACES_ID;
+      }
+      if (boardListEl && canonicalBoardList) {
+        boardListEl.innerHTML = canonicalBoardList.innerHTML;
+      }
+    }
+  }
+
   function renderWorkspaceSelect() {
     var sel = document.getElementById('workspace-select');
     if (!sel) return;
@@ -3838,8 +4097,10 @@ const LexeraDashboard = (function () {
     sel.onchange = function () {
       setActiveWorkspaceId(sel.value);
       applyWorkspaceAppearance(sel.value);
+      renderWorkspaceSelect();
       renderBoardList();
     };
+    syncMirroredWorkspaceViews();
   }
 
   function getBoardWorkspaceIds(board) {
@@ -4128,6 +4389,8 @@ const LexeraDashboard = (function () {
         getElBoardList().appendChild(rbEl);
       }
     }
+
+    syncMirroredWorkspaceViews();
   }
 
   // --- Sidebar Sync ---
@@ -4215,46 +4478,51 @@ const LexeraDashboard = (function () {
     renderBoardList();
   }
 
+  function showSidebarHierarchyMenu(anchorEl) {
+    if (!anchorEl) return;
+    var rect = anchorEl.getBoundingClientRect();
+    var displayItems = buildSidebarHierarchyDisplayMenuItems();
+    var items = [
+      { id: 'toggle-sidebar-sync', label: formatMenuToggleLabel(sidebarSyncEnabled, 'Sync with View') },
+      { id: 'toggle-sidebar-lock', label: formatMenuToggleLabel(!hierarchyLocked, 'Editable') },
+      { separator: true },
+      { id: 'toggle-sidebar-counts', label: displayItems[0].label },
+      { id: 'toggle-sidebar-presence', label: displayItems[1].label },
+      { id: 'toggle-sidebar-grips', label: displayItems[2].label },
+      { separator: true },
+      { id: 'sidebar-fold-all', label: 'Fold All' },
+      { id: 'sidebar-unfold-all', label: 'Unfold All' }
+    ];
+    showNativeMenu(items, rect.right, rect.bottom, 'menu.sidebar').then(function (action) {
+      if (!action) return;
+      if (action === 'toggle-sidebar-sync') { toggleSidebarSync(); return; }
+      if (action === 'toggle-sidebar-lock') { toggleSidebarLock(); return; }
+      if (action === 'sidebar-fold-all' || action === 'sidebar-unfold-all') {
+        var expand = action === 'sidebar-unfold-all';
+        var boardList = getElBoardList();
+        if (boardList) {
+          var allChildren = boardList.querySelectorAll('.tree-children');
+          var allToggles = boardList.querySelectorAll('.tree-toggle');
+          for (var i = 0; i < allChildren.length; i++) {
+            allChildren[i].classList.toggle('expanded', expand);
+          }
+          for (var j = 0; j < allToggles.length; j++) {
+            allToggles[j].classList.toggle('expanded', expand);
+          }
+        }
+        renderBoardList();
+        return;
+      }
+      if (ActionRegistry) ActionRegistry.dispatch('board', action, {});
+    });
+  }
+
   (function () {
     var menuBtn = document.getElementById('btn-sidebar-menu');
     if (!menuBtn) return;
     menuBtn.addEventListener('click', function (e) {
       e.stopPropagation();
-      var rect = menuBtn.getBoundingClientRect();
-      var displayItems = buildSidebarHierarchyDisplayMenuItems();
-      var items = [
-        { id: 'toggle-sidebar-sync', label: formatMenuToggleLabel(sidebarSyncEnabled, 'Sync with View') },
-        { id: 'toggle-sidebar-lock', label: formatMenuToggleLabel(!hierarchyLocked, 'Editable') },
-        { separator: true },
-        { id: 'toggle-sidebar-counts', label: displayItems[0].label },
-        { id: 'toggle-sidebar-presence', label: displayItems[1].label },
-        { id: 'toggle-sidebar-grips', label: displayItems[2].label },
-        { separator: true },
-        { id: 'sidebar-fold-all', label: 'Fold All' },
-        { id: 'sidebar-unfold-all', label: 'Unfold All' }
-      ];
-      showNativeMenu(items, rect.right, rect.bottom, 'menu.sidebar').then(function (action) {
-        if (!action) return;
-        if (action === 'toggle-sidebar-sync') { toggleSidebarSync(); return; }
-        if (action === 'toggle-sidebar-lock') { toggleSidebarLock(); return; }
-        if (action === 'sidebar-fold-all' || action === 'sidebar-unfold-all') {
-          var expand = action === 'sidebar-unfold-all';
-          var boardList = getElBoardList();
-          if (boardList) {
-            var allChildren = boardList.querySelectorAll('.tree-children');
-            var allToggles = boardList.querySelectorAll('.tree-toggle');
-            for (var i = 0; i < allChildren.length; i++) {
-              allChildren[i].classList.toggle('expanded', expand);
-            }
-            for (var j = 0; j < allToggles.length; j++) {
-              allToggles[j].classList.toggle('expanded', expand);
-            }
-          }
-          return;
-        }
-        // Dispatch to ActionRegistry for display toggles
-        if (ActionRegistry) ActionRegistry.dispatch('board', action, {});
-      });
+      showSidebarHierarchyMenu(menuBtn);
     });
   })();
 
@@ -9680,8 +9948,6 @@ const LexeraDashboard = (function () {
 
   var mgmtPanelOpen = false;
   var mgmtInitialized = false;
-  var frontendSettingsInitialized = false;
-
   function getManagementUiContainer() {
     if (workspaceShellEnabled) {
       return getElLogSettingsContainer() || getElMgmtPanelBody();
@@ -9689,104 +9955,50 @@ const LexeraDashboard = (function () {
     return getElMgmtPanelBody();
   }
 
-  function getFrontendSettingsThemeId() {
-    return (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
-      localStorage.getItem('lexera-theme') || 'lexera';
+  var FrontendSettings = window.LexeraFrontendSettings || null;
+
+  function buildFrontendSettingsOptions() {
+    return {
+      getThemes: function () { return Array.isArray(THEMES) ? THEMES : []; },
+      getCurrentThemeId: function () {
+        return (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
+          localStorage.getItem('lexera-theme') || 'lexera';
+      },
+      getSidebarDisplayOptions: getSidebarTreeDisplayOptions,
+      applySidebarDisplayOptions: applySidebarTreeDisplayOptions,
+      isOverlayEditorEnabled: isOverlayEditorEnabled,
+      isWysiwygEditorEnabled: isWysiwygEditorEnabled,
+      isMarpSettingsEnabled: isMarpSettingsEnabled,
+      isSpecialCharactersVisible: isSpecialCharactersVisible,
+      applyTheme: applyTheme,
+      setOverlayEditorEnabled: setOverlayEditorEnabled,
+      setWysiwygEditorEnabled: setWysiwygEditorEnabled,
+      setMarpSettingsEnabled: setMarpSettingsEnabled,
+      setSpecialCharactersVisible: setSpecialCharactersVisible,
+      syncMenuCheckStates: syncMenuCheckStates,
+      toggleInspector: toggleInspector,
+      revealPanel: workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.revealPanel === 'function'
+        ? function () { WorkspaceShell.revealPanel('frontendSettings'); }
+        : null,
+      showFallbackMenu: function () {
+        var btn = document.getElementById('btn-theme-zoom');
+        if (btn) showThemeZoomMenu(btn);
+      }
+    };
   }
 
   function renderFrontendSettingsPanel() {
-    var panel = document.getElementById('frontend-settings-panel');
-    if (!panel) return false;
-    var themeSelect = document.getElementById('frontend-settings-theme-select');
-    if (themeSelect && themeSelect.options.length === 0) {
-      var themes = Array.isArray(THEMES) ? THEMES : [];
-      for (var i = 0; i < themes.length; i++) {
-        var option = document.createElement('option');
-        option.value = themes[i].id;
-        option.textContent = themes[i].label || themes[i].name || themes[i].id;
-        themeSelect.appendChild(option);
-      }
-    }
-    if (themeSelect) themeSelect.value = getFrontendSettingsThemeId();
-    var sidebarOptions = getSidebarTreeDisplayOptions();
-    var overlayInput = document.getElementById('frontend-settings-overlay-editor');
-    var wysiwygInput = document.getElementById('frontend-settings-wysiwyg-editor');
-    var marpInput = document.getElementById('frontend-settings-marp-settings');
-    var specialCharsInput = document.getElementById('frontend-settings-special-chars');
-    var countsInput = document.getElementById('frontend-settings-sidebar-counts');
-    var presenceInput = document.getElementById('frontend-settings-sidebar-presence');
-    var gripsInput = document.getElementById('frontend-settings-sidebar-grips');
-    if (overlayInput) overlayInput.checked = isOverlayEditorEnabled();
-    if (wysiwygInput) wysiwygInput.checked = isWysiwygEditorEnabled();
-    if (marpInput) marpInput.checked = isMarpSettingsEnabled();
-    if (specialCharsInput) specialCharsInput.checked = isSpecialCharactersVisible();
-    if (countsInput) countsInput.checked = !!sidebarOptions.counts;
-    if (presenceInput) presenceInput.checked = !!sidebarOptions.presence;
-    if (gripsInput) gripsInput.checked = !!sidebarOptions.grips;
-    return true;
+    if (FrontendSettings) return FrontendSettings.render(buildFrontendSettingsOptions());
+    return false;
   }
 
   function initFrontendSettingsPanel() {
-    if (frontendSettingsInitialized) return true;
-    var panel = document.getElementById('frontend-settings-panel');
-    if (!panel) return false;
-    frontendSettingsInitialized = true;
-
-    var themeSelect = document.getElementById('frontend-settings-theme-select');
-    if (themeSelect) {
-      themeSelect.addEventListener('change', function () {
-        applyTheme(themeSelect.value || 'lexera');
-      });
-    }
-
-    function bindToggle(id, setter) {
-      var input = document.getElementById(id);
-      if (!input) return;
-      input.addEventListener('change', function () {
-        setter(!!input.checked);
-        syncMenuCheckStates();
-        renderFrontendSettingsPanel();
-      });
-    }
-
-    bindToggle('frontend-settings-overlay-editor', setOverlayEditorEnabled);
-    bindToggle('frontend-settings-wysiwyg-editor', setWysiwygEditorEnabled);
-    bindToggle('frontend-settings-marp-settings', setMarpSettingsEnabled);
-    bindToggle('frontend-settings-special-chars', setSpecialCharactersVisible);
-
-    function bindSidebarToggle(id, key) {
-      var input = document.getElementById(id);
-      if (!input) return;
-      input.addEventListener('change', function () {
-        var next = getSidebarTreeDisplayOptions();
-        next[key] = !!input.checked;
-        applySidebarTreeDisplayOptions(next);
-      });
-    }
-
-    bindSidebarToggle('frontend-settings-sidebar-counts', 'counts');
-    bindSidebarToggle('frontend-settings-sidebar-presence', 'presence');
-    bindSidebarToggle('frontend-settings-sidebar-grips', 'grips');
-
-    var inspectorBtn = document.getElementById('frontend-settings-open-inspector');
-    if (inspectorBtn) {
-      inspectorBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        toggleInspector();
-      });
-    }
-
-    renderFrontendSettingsPanel();
-    return true;
+    if (FrontendSettings) return FrontendSettings.init(buildFrontendSettingsOptions());
+    return false;
   }
 
   function openFrontendSettingsPanel() {
-    initFrontendSettingsPanel();
-    renderFrontendSettingsPanel();
-    if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.revealPanel === 'function') {
-      WorkspaceShell.revealPanel('frontendSettings');
-      return;
-    }
+    if (FrontendSettings) { FrontendSettings.open(buildFrontendSettingsOptions()); return; }
     var btn = document.getElementById('btn-theme-zoom');
     if (btn) showThemeZoomMenu(btn);
   }
@@ -17360,53 +17572,55 @@ const LexeraDashboard = (function () {
     }
   }
 
-  function getWysiwygEmbedOccurrenceIndex(container) {
+  function getEmbedOccurrenceRoot(container) {
+    if (!container) return null;
     if (
-      !container ||
-      !currentCardEditor ||
-      !currentCardEditor.wysiwygWrap ||
-      !currentCardEditor.wysiwygWrap.contains(container)
+      currentCardEditor &&
+      currentCardEditor.wysiwygWrap &&
+      currentCardEditor.wysiwygWrap.contains(container)
     ) {
-      return 0;
+      return currentCardEditor.wysiwygWrap;
     }
-    var targetPath = getEmbedActionTarget(container);
-    if (!targetPath) return 0;
+    if (
+      currentCardEditor &&
+      currentCardEditor.preview &&
+      currentCardEditor.preview.contains(container)
+    ) {
+      return currentCardEditor.preview;
+    }
+    var cardEl = container.closest('.card[data-card-id]');
+    if (cardEl) return cardEl;
+    return container.closest('.board-header, .board-row, .board-stack, .column') || container.parentElement || null;
+  }
+
+  function getRenderedEmbedAbsoluteIndex(container) {
+    if (!container) return 0;
+    var explicitIndex = parseInt(container.getAttribute('data-embed-index') || '', 10);
+    if (isFinite(explicitIndex) && explicitIndex >= 0) return explicitIndex;
+    var root = getEmbedOccurrenceRoot(container);
+    if (!root) return 0;
     var selector = [
+      '.embed-container[data-file-path]',
+      '.external-embed-container[data-embed-url]',
+      '.inline-file-embed-container[data-file-path]',
       '.image-path-overlay-container[data-file-path]',
       '.video-path-overlay-container[data-file-path]',
       '.wysiwyg-media[data-file-path]',
       '.wysiwyg-media-block[data-file-path]'
     ].join(', ');
-    var nodes = currentCardEditor.wysiwygWrap.querySelectorAll(selector);
-    var seen = 0;
+    var nodes = root.querySelectorAll(selector);
     for (var i = 0; i < nodes.length; i++) {
-      if ((nodes[i].getAttribute('data-file-path') || '') !== targetPath) continue;
-      if (nodes[i] === container) return seen;
-      seen++;
+      if (nodes[i] === container) return i;
     }
     return 0;
   }
 
   function replaceCurrentEmbedOccurrence(content, container, replacer) {
-    var targetPath = getEmbedActionTarget(container);
-    if (!targetPath) return String(content || '');
-    var targetIndex = getWysiwygEmbedOccurrenceIndex(container);
-    var matchIndex = 0;
-    return String(content || '').replace(/!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g, function (match, alt, rawTarget, rawAttrs) {
-      var parsed = parseMarkdownTarget(rawTarget);
-      if (parsed.path !== targetPath) return match;
-      var currentIndex = matchIndex++;
-      if (currentIndex !== targetIndex) return match;
-      return replacer({
-        match: match,
-        alt: alt,
-        rawTarget: rawTarget,
-        rawAttrs: rawAttrs || '',
-        imageAttrs: parseMarkdownImageAttributes(rawAttrs),
-        path: parsed.path,
-        title: parsed.title
-      });
-    });
+    return replaceNthMarkdownEmbed(
+      content,
+      getRenderedEmbedAbsoluteIndex(container),
+      replacer
+    );
   }
 
   function replaceNthIncludeDirective(content, targetIndex, replacer) {
@@ -21955,6 +22169,38 @@ const LexeraDashboard = (function () {
     return '<span class="temporal-tag kanban-temporal-tag kanban-temporal-' + temporal.type + '" data-temporal-type="' + temporal.type + '" title="' + escapeAttr(temporal.resolved) + '">' + escapeHtml(tag) + '</span>';
   }
 
+  function normalizeCssColorString(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function resolveTagChipBorderColor(backgroundColor, textColor, explicitBorderColor) {
+    var normalizedBackground = normalizeCssColorString(backgroundColor);
+    var normalizedBorder = normalizeCssColorString(explicitBorderColor);
+    if (normalizedBorder && normalizedBorder !== normalizedBackground) return explicitBorderColor;
+    return String(textColor || '').trim().toLowerCase() === '#fff'
+      ? 'rgba(255, 255, 255, 0.34)'
+      : 'rgba(0, 0, 0, 0.26)';
+  }
+
+  function renderTagChipHtml(tag) {
+    var descriptor = buildTagStyleDescriptor(tag) || {};
+    var backgroundColor = descriptor.badge && descriptor.badge.color
+      ? descriptor.badge.color
+      : (descriptor.color || getTagColor(tag));
+    var textColor = descriptor.badge && descriptor.badge.labelColor
+      ? descriptor.badge.labelColor
+      : getContrastingTextColor(backgroundColor);
+    var border = descriptor.border || {};
+    var declarations = [
+      'background:' + backgroundColor,
+      'color:' + textColor,
+      '--tag-chip-border-color:' + resolveTagChipBorderColor(backgroundColor, textColor, border.color),
+      '--tag-chip-border-width:' + (border.width || '1px'),
+      '--tag-chip-border-style:' + (border.style || 'solid')
+    ];
+    return '<span class="tag" data-tag="' + escapeAttr(tag) + '" style="' + escapeAttr(declarations.join(';')) + '">' + escapeHtml(tag) + '</span>';
+  }
+
   function getMarkdownMediaStyleAttr(imageAttrs, options) {
     options = options || {};
     if (!imageAttrs) return '';
@@ -22864,24 +23110,38 @@ const LexeraDashboard = (function () {
     });
   }, true);
 
-  var hasTauri = !!(window.__TAURI_INTERNALS__ || (window.__TAURI__ && window.__TAURI__.core));
+  // Resolve the Tauri IPC bridge — prefer the current window, fall back to
+  // the parent frame so that workspace-shell iframes (same origin) can still
+  // invoke Tauri commands even when __TAURI_INTERNALS__ isn't injected into
+  // sub-frames.
+  function resolveTauriInternals() {
+    if (window.__TAURI_INTERNALS__) return window.__TAURI_INTERNALS__;
+    if (window.__TAURI__ && window.__TAURI__.core) return window.__TAURI__.core;
+    try {
+      if (window.parent && window.parent !== window) {
+        if (window.parent.__TAURI_INTERNALS__) return window.parent.__TAURI_INTERNALS__;
+        if (window.parent.__TAURI__ && window.parent.__TAURI__.core) return window.parent.__TAURI__.core;
+      }
+    } catch (e) { /* cross-origin access blocked — ignore */ }
+    return null;
+  }
+
+  var tauriIpc = resolveTauriInternals();
+  var hasTauri = !!tauriIpc;
 
   function tauriInvoke(cmd, args) {
-    if (window.__TAURI_INTERNALS__) {
-      return window.__TAURI_INTERNALS__.invoke(cmd, args);
-    }
-    if (window.__TAURI__ && window.__TAURI__.core) {
-      return window.__TAURI__.core.invoke(cmd, args);
+    var ipc = resolveTauriInternals();
+    if (ipc && typeof ipc.invoke === 'function') {
+      return ipc.invoke(cmd, args);
     }
     return Promise.reject(new Error('Tauri not available'));
   }
 
   function tauriListen(eventName, callback) {
-    if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.transformCallback === 'function') {
-      var handler = window.__TAURI_INTERNALS__.transformCallback(function (event) {
-        callback(event);
-      }, false);
-      window.__TAURI_INTERNALS__.invoke('plugin:event|listen', {
+    var ipc = resolveTauriInternals();
+    if (ipc && typeof ipc.transformCallback === 'function') {
+      var handler = ipc.transformCallback(callback, false);
+      ipc.invoke('plugin:event|listen', {
         event: eventName,
         target: { kind: 'Any' },
         handler: handler,
@@ -22890,7 +23150,13 @@ const LexeraDashboard = (function () {
     }
     if (window.__TAURI__ && window.__TAURI__.event) {
       window.__TAURI__.event.listen(eventName, callback);
+      return;
     }
+    try {
+      if (window.parent && window.parent !== window && window.parent.__TAURI__ && window.parent.__TAURI__.event) {
+        window.parent.__TAURI__.event.listen(eventName, callback);
+      }
+    } catch (e) { /* cross-origin — ignore */ }
   }
 
   /**
@@ -24721,8 +24987,7 @@ const LexeraDashboard = (function () {
     });
     // Tags with colored badges
     safe = safe.replace(/(^|[\s&|!])(#[^\s&|!]+)/g, function(_, pre, tag) {
-      var color = getTagColor(tag);
-      return pre + '<span class="tag" data-tag="' + escapeAttr(tag) + '" style="background:' + color + ';color:#fff">' + tag + '</span>';
+      return pre + renderTagChipHtml(tag);
     });
     // Temporal tags
     safe = safe.replace(/(^|\s)([!@](?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|\d{4}[-.]?(?:w|kw)\d{1,2}|(?:w|kw)\d{1,2}|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|:\d{1,2}-:\d{1,2}|\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}(?::\d{2})?(?:am|pm)?))/gi, function (_, pre, tag) {
@@ -25366,8 +25631,7 @@ const LexeraDashboard = (function () {
 
     // Tags: #tag-name (word boundary, not inside HTML attributes)
     safe = safe.replace(/(^|[\s&|!])(#[^\s&|!]+)/g, function(_, pre, tag) {
-      var color = getTagColor(tag);
-      return pre + '<span class="tag" data-tag="' + escapeAttr(tag) + '" style="background:' + color + ';color:#fff">' + tag + '</span>';
+      return pre + renderTagChipHtml(tag);
     });
 
     // Temporal tags: legacy `!` prefix and package `@` prefix for dates, weeks, weekdays, times, and slots.

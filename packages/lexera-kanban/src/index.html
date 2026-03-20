@@ -23,6 +23,7 @@
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-header">
+        <button class="workspace-panel-drag-handle" type="button" title="Drag Workspaces view" data-ws-panel-drag-handle="hierarchy" aria-label="Drag Workspaces view">&#8942;&#8942;</button>
         <div class="workspace-select-wrap">
           <select id="workspace-select" class="workspace-select" title="Active workspace"></select>
         </div>
@@ -34,6 +35,7 @@
       <div id="sidebar-dashboard-divider" class="sidebar-dashboard-divider" role="separator" aria-label="Resize hierarchy and dashboard"></div>
       <div class="sidebar-dashboard" id="sidebar-dashboard">
         <div class="sidebar-header sidebar-dashboard-header">
+          <button class="workspace-panel-drag-handle" type="button" title="Drag Dashboard view" data-ws-panel-drag-handle="dashboard" aria-label="Drag Dashboard view">&#8942;&#8942;</button>
           <span>Dashboard</span>
         </div>
         <div class="sidebar-dashboard-controls">
@@ -122,6 +124,7 @@
   <div id="log-panel" class="log-panel hidden">
     <div class="log-panel-header">
       <div class="log-panel-header-main">
+        <button class="workspace-panel-drag-handle" type="button" title="Drag Logs view" data-ws-panel-drag-handle="logs" aria-label="Drag Logs view">&#8942;&#8942;</button>
         <span class="log-panel-title">Logs</span>
         <div class="log-panel-tabs">
           <button id="log-tab-backend" class="log-panel-tab active" type="button">Backend</button>
@@ -510,6 +513,8 @@
   <script src="utils/pathUtils.js"></script>
   <script src="tagcolors/tagColors.js"></script>
   <script src="dropzone/dropZoneIndicators.js"></script>
+  <script src="settings/frontendSettings.js"></script>
+  <script src="workspace/sharedPanels.js"></script>
   <script src="workspace/workspaceShell.js"></script>
   <script src="app.js"></script>
 </body>

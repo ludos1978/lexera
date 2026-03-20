@@ -17,6 +17,9 @@ fn open_new_window(
     board_id: Option<String>,
     view_kind: Option<String>,
     profile: Option<String>,
+    panel_kind: Option<String>,
+    width: Option<f64>,
+    height: Option<f64>,
 ) -> Result<String, String> {
     let n = WINDOW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let label = format!("kanban-{}", n);
@@ -38,16 +41,30 @@ fn open_new_window(
         url_str.push_str(window_profile);
         query_started = true;
     }
+    if let Some(ref panel) = panel_kind {
+        url_str.push_str(if query_started { "&panelKind=" } else { "?panelKind=" });
+        url_str.push_str(panel);
+        query_started = true;
+    }
     url_str.push_str(if query_started { "&windowLabel=" } else { "?windowLabel=" });
     url_str.push_str(&label);
     let url = WebviewUrl::App(url_str.into());
 
-    tauri::WebviewWindowBuilder::new(&app, &label, url)
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url);
+    let inner_width = width.unwrap_or(1200.0).max(360.0);
+    let inner_height = height.unwrap_or(800.0).max(260.0);
+
+    builder = builder
         .title("Lexera Kanban")
-        .inner_size(1200.0, 800.0)
+        .inner_size(inner_width, inner_height)
         .min_inner_size(600.0, 400.0)
-        .resizable(true)
-        .build()
+        .resizable(true);
+
+    if panel_kind.is_some() {
+        builder = builder.min_inner_size(320.0, 220.0);
+    }
+
+    builder.build()
         .map_err(|e| format!("Failed to create window: {}", e))?;
 
     Ok(label)
@@ -193,7 +210,7 @@ fn main() {
             if let Some(action) = app_menu::menu_id_to_action(id) {
                 // Handle Rust-side actions that don't go to the frontend
                 if action == "new-window" {
-                    let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()));
+                    let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None);
                     return;
                 }
                 // Route to the focused window, falling back to "main"

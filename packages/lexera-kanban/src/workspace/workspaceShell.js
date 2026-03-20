@@ -67,12 +67,22 @@
   }
 
   var PANEL_DEFINITIONS = {
-    hierarchy: { id: 'hierarchy', title: 'Workspaces', defaultDock: 'left' },
-    dashboard: { id: 'dashboard', title: 'Dashboard', defaultDock: 'right' },
-    logs: { id: 'logs', title: 'Logs', defaultDock: 'bottom' },
-    backendSettings: { id: 'backendSettings', title: 'Backend Settings', defaultDock: 'right' },
-    frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right' }
+    hierarchy: { id: 'hierarchy', title: 'Workspaces', defaultDock: 'left', duplicable: true, integratedHeader: true },
+    dashboard: { id: 'dashboard', title: 'Dashboard', defaultDock: 'right', duplicable: true, integratedHeader: true },
+    logs: { id: 'logs', title: 'Logs', defaultDock: 'bottom', duplicable: true, integratedHeader: true },
+    backendSettings: { id: 'backendSettings', title: 'Backend Settings', defaultDock: 'right', duplicable: false },
+    frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right', duplicable: false }
   };
+
+  function createDefaultPanelInstances() {
+    return {
+      hierarchy: { id: 'hierarchy', kind: 'hierarchy' },
+      dashboard: { id: 'dashboard', kind: 'dashboard' },
+      logs: { id: 'logs', kind: 'logs' },
+      backendSettings: { id: 'backendSettings', kind: 'backendSettings' },
+      frontendSettings: { id: 'frontendSettings', kind: 'frontendSettings' }
+    };
+  }
 
   function createDefaultPanelDocks() {
     return {
@@ -136,6 +146,37 @@
     };
   }
 
+  function normalizePanelKind(value) {
+    return PANEL_DEFINITIONS[value] ? value : '';
+  }
+
+  function normalizePanelInstances(raw) {
+    var defaults = createDefaultPanelInstances();
+    var source = raw && typeof raw === 'object' ? raw : {};
+    var result = {};
+    var defaultIds = Object.keys(defaults);
+    for (var i = 0; i < defaultIds.length; i++) {
+      result[defaultIds[i]] = defaults[defaultIds[i]];
+    }
+    var instanceIds = Object.keys(source);
+    for (var j = 0; j < instanceIds.length; j++) {
+      var panelId = String(instanceIds[j] || '');
+      if (!panelId) continue;
+      var entry = source[panelId];
+      var kind = normalizePanelKind(entry && entry.kind ? entry.kind : panelId);
+      if (!kind) continue;
+      if (panelId !== kind && !PANEL_DEFINITIONS[kind].duplicable) continue;
+      result[panelId] = { id: panelId, kind: kind };
+    }
+    return result;
+  }
+
+  function normalizePanelIdWithInstances(value, panelInstances) {
+    var normalized = String(value || '');
+    if (panelInstances && panelInstances[normalized]) return normalized;
+    return normalizePanelKind(normalized);
+  }
+
   function normalizePanelWeights(raw) {
     var defaults = createDefaultPanelWeights();
     var dockIds = ['left', 'right', 'bottom'];
@@ -147,7 +188,7 @@
       var rawDockWeights = source[dockId] && typeof source[dockId] === 'object' ? source[dockId] : {};
       var panelIds = Object.keys(defaultDockWeights).concat(Object.keys(rawDockWeights));
       for (var j = 0; j < panelIds.length; j++) {
-        var panelId = normalizePanelId(panelIds[j]);
+        var panelId = String(panelIds[j] || '');
         if (!panelId) continue;
         var rawValue = rawDockWeights[panelId];
         var fallback = defaultDockWeights[panelId] || 1;
@@ -169,19 +210,21 @@
   }
 
   function getPanelTitle(panelId) {
-    return PANEL_DEFINITIONS[panelId] ? PANEL_DEFINITIONS[panelId].title : 'Panel';
+    var kind = getPanelKind(panelId);
+    var definition = PANEL_DEFINITIONS[kind];
+    if (!definition) return 'Panel';
+    if (panelId === kind) return definition.title;
+    var peers = getPanelInstanceIdsByKind(kind);
+    var index = peers.indexOf(panelId);
+    return index > 0 ? (definition.title + ' ' + (index + 1)) : definition.title;
   }
 
-  function normalizePanelId(value) {
-    return PANEL_DEFINITIONS[value] ? value : '';
-  }
-
-  function ensureUniquePanelIds(ids, seen) {
+  function ensureUniquePanelIds(ids, seen, panelInstances) {
     var result = [];
     var localSeen = seen || {};
     var list = Array.isArray(ids) ? ids : [];
     for (var i = 0; i < list.length; i++) {
-      var panelId = normalizePanelId(list[i]);
+      var panelId = normalizePanelIdWithInstances(list[i], panelInstances);
       if (!panelId || localSeen[panelId]) continue;
       localSeen[panelId] = true;
       result.push(panelId);
@@ -189,7 +232,7 @@
     return result;
   }
 
-  function normalizePanelDocks(raw, profile) {
+  function normalizePanelDocks(raw, profile, panelInstances) {
     var defaults = createDefaultPanelDocks();
     var result = { left: [], right: [], bottom: [] };
     var seen = {};
@@ -199,18 +242,30 @@
       var source = raw ? raw[dockId] : null;
       var panelIds = [];
       if (Array.isArray(source)) {
-        panelIds = ensureUniquePanelIds(source, seen);
+        panelIds = ensureUniquePanelIds(source, seen, panelInstances);
       } else if (source && typeof source === 'object' && Array.isArray(source.tabIds)) {
-        panelIds = ensureUniquePanelIds(source.tabIds, seen);
+        panelIds = ensureUniquePanelIds(source.tabIds, seen, panelInstances);
       }
-      if (panelIds.length === 0) panelIds = ensureUniquePanelIds(defaults[dockId], seen);
+      if (panelIds.length === 0) panelIds = ensureUniquePanelIds(defaults[dockId], seen, panelInstances);
       result[dockId] = panelIds;
     }
     return result;
   }
 
-  function normalizePanelVisibility(raw, profile) {
-    return createDefaultPanelVisibility(profile);
+  function normalizePanelVisibility(raw, profile, panelInstances) {
+    var defaults = createDefaultPanelVisibility(profile);
+    var result = {};
+    var source = raw && typeof raw === 'object' ? raw : {};
+    var panelIds = Object.keys(panelInstances || {});
+    for (var i = 0; i < panelIds.length; i++) {
+      var panelId = panelIds[i];
+      var kind = panelInstances[panelId] ? panelInstances[panelId].kind : panelId;
+      var fallback = Object.prototype.hasOwnProperty.call(defaults, panelId)
+        ? !!defaults[panelId]
+        : (panelId === kind ? !!defaults[kind] : true);
+      result[panelId] = typeof source[panelId] === 'boolean' ? source[panelId] : fallback;
+    }
+    return result;
   }
 
   function normalizeDockSizeValue(dockId, value) {
@@ -370,8 +425,11 @@
     enabled: isEnabled(),
     mounted: false,
     profile: urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace',
+    panelOnlyKind: normalizePanelKind(urlParams.get('panelKind') || ''),
+    panelOnlyId: '',
     windowLabel: String(urlParams.get('windowLabel') || 'main'),
     dockTree: createTabsetNode([]),
+    panelInstances: createDefaultPanelInstances(),
     panelDocks: createDefaultPanelDocks(),
     dockSizes: createDefaultDockSizes(urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace'),
     dockRestoreSizes: createDefaultDockRestoreSizes(urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace'),
@@ -410,6 +468,80 @@
     dragLastX: 0,
     dragLastY: 0
   };
+
+  function getSharedPanelsApi() {
+    return window.LexeraSharedPanels || null;
+  }
+
+  function getPanelKind(panelId) {
+    var normalized = String(panelId || '');
+    if (state.panelInstances && state.panelInstances[normalized]) {
+      return state.panelInstances[normalized].kind;
+    }
+    return normalizePanelKind(normalized);
+  }
+
+  function getPrimaryPanelId(kind) {
+    var normalizedKind = normalizePanelKind(kind);
+    if (!normalizedKind) return '';
+    if (state.panelInstances[normalizedKind]) return normalizedKind;
+    var panelIds = Object.keys(state.panelInstances || {});
+    for (var i = 0; i < panelIds.length; i++) {
+      if (state.panelInstances[panelIds[i]].kind === normalizedKind) return panelIds[i];
+    }
+    return '';
+  }
+
+  function resolvePanelTarget(value) {
+    var normalized = String(value || '');
+    if (state.panelInstances[normalized]) return normalized;
+    var kind = normalizePanelKind(normalized);
+    if (!kind) return '';
+    return getPrimaryPanelId(kind);
+  }
+
+  function getPanelInstanceIdsByKind(kind) {
+    var normalizedKind = normalizePanelKind(kind);
+    if (!normalizedKind) return [];
+    return Object.keys(state.panelInstances || {}).filter(function (panelId) {
+      return state.panelInstances[panelId] && state.panelInstances[panelId].kind === normalizedKind;
+    }).sort(function (a, b) {
+      if (a === normalizedKind) return -1;
+      if (b === normalizedKind) return 1;
+      return a < b ? -1 : (a > b ? 1 : 0);
+    });
+  }
+
+  function isPanelKindDuplicable(kind) {
+    var normalizedKind = normalizePanelKind(kind);
+    return !!(normalizedKind && PANEL_DEFINITIONS[normalizedKind] && PANEL_DEFINITIONS[normalizedKind].duplicable);
+  }
+
+  function isPanelOnlyWindow() {
+    return !!state.panelOnlyKind;
+  }
+
+  function createPanelInstance(kind, panelId) {
+    var normalizedKind = normalizePanelKind(kind);
+    if (!normalizedKind) return '';
+    var nextPanelId = String(panelId || nextId(normalizedKind + '-panel'));
+    state.panelInstances[nextPanelId] = { id: nextPanelId, kind: normalizedKind };
+    return nextPanelId;
+  }
+
+  function applyPanelOnlyWindowState() {
+    if (!isPanelOnlyWindow()) return;
+    state.panelOnlyId = getPrimaryPanelId(state.panelOnlyKind) || createPanelInstance(state.panelOnlyKind, state.panelOnlyKind);
+    var panelIds = Object.keys(state.panelInstances || {});
+    for (var i = 0; i < panelIds.length; i++) {
+      state.panelVisibility[panelIds[i]] = panelIds[i] === state.panelOnlyId;
+    }
+    state.panelDocks = { left: [], right: [], bottom: [] };
+    state.dockSizes.left = 0;
+    state.dockSizes.right = 0;
+    state.dockSizes.bottom = 0;
+    state.activePanelId = state.panelOnlyId;
+  }
 
   function getPersistenceStorage() {
     if (state.windowLabel === 'main') return window.localStorage;
@@ -482,8 +614,9 @@
     try {
       var storage = getPersistenceStorage();
       storage.setItem(getPersistenceKey(), JSON.stringify({
-        version: 2,
+        version: 3,
         profile: state.profile,
+        panelInstances: state.panelInstances,
         panelDocks: state.panelDocks,
         dockSizes: state.dockSizes,
         dockRestoreSizes: state.dockRestoreSizes,
@@ -503,16 +636,17 @@
       var raw = getPersistenceStorage().getItem(getPersistenceKey());
       if (!raw) return false;
       var parsed = JSON.parse(raw);
-      if (!parsed || (parsed.version !== 1 && parsed.version !== 2)) return false;
+      if (!parsed || (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3)) return false;
       if (parsed.profile && parsed.profile !== state.profile) return false;
       state.dockTree = hydrateNode(parsed.dockTree) || createTabsetNode([]);
       state.dockTree = withNormalizedLeaves(state.dockTree, true);
-      state.panelDocks = normalizePanelDocks(parsed.panelDocks, state.profile);
+      state.panelInstances = normalizePanelInstances(parsed.panelInstances);
+      state.panelDocks = normalizePanelDocks(parsed.panelDocks, state.profile, state.panelInstances);
       state.dockSizes = normalizeDockSizes(parsed.dockSizes, state.profile);
       state.dockRestoreSizes = normalizeDockRestoreSizes(parsed.dockRestoreSizes, state.profile);
       state.panelWeights = normalizePanelWeights(parsed.panelWeights);
-      state.panelVisibility = normalizePanelVisibility(parsed.panelVisibility, state.profile);
-      state.activePanelId = normalizePanelId(parsed.activePanelId) || state.activePanelId;
+      state.panelVisibility = normalizePanelVisibility(parsed.panelVisibility, state.profile, state.panelInstances);
+      state.activePanelId = resolvePanelTarget(parsed.activePanelId) || state.activePanelId;
       state.activeLeafId = String(parsed.activeLeafId || '');
       ensureActiveLeaf();
       return true;
@@ -545,7 +679,7 @@
   }
 
   function getDockForPanel(panelId) {
-    var normalized = normalizePanelId(panelId);
+    var normalized = resolvePanelTarget(panelId);
     if (!normalized) return '';
     var dockIds = ['left', 'right', 'bottom'];
     for (var i = 0; i < dockIds.length; i++) {
@@ -557,11 +691,20 @@
   }
 
   function isPanelShown(panelId) {
-    var normalized = normalizePanelId(panelId);
-    if (!normalized || !state.panelVisibility[normalized]) return false;
-    var dockId = getDockForPanel(normalized);
-    if (!dockId) return false;
-    return state.dockSizes[dockId] > 0;
+    var normalized = String(panelId || '');
+    if (state.panelInstances[normalized]) {
+      if (!state.panelVisibility[normalized]) return false;
+      var dockId = getDockForPanel(normalized);
+      if (!dockId) return false;
+      return state.dockSizes[dockId] > 0;
+    }
+    var kind = normalizePanelKind(normalized);
+    if (!kind) return false;
+    var panelIds = getPanelInstanceIdsByKind(kind);
+    for (var i = 0; i < panelIds.length; i++) {
+      if (isPanelShown(panelIds[i])) return true;
+    }
+    return false;
   }
 
   function getVisiblePanelIdsForDock(dockId) {
@@ -569,7 +712,7 @@
     if (!Array.isArray(dock)) return [];
     var result = [];
     for (var i = 0; i < dock.length; i++) {
-      var panelId = normalizePanelId(dock[i]);
+      var panelId = resolvePanelTarget(dock[i]);
       if (!panelId) continue;
       if (!state.panelVisibility[panelId]) continue;
       result.push(panelId);
@@ -580,13 +723,17 @@
   function ensurePanelDockActives() {
     prunePanelWeights();
     if (!state.panelVisibility[state.activePanelId]) {
-      var panelOrder = ['hierarchy', 'dashboard', 'logs', 'backendSettings', 'frontendSettings'];
       state.activePanelId = '';
-      for (var j = 0; j < panelOrder.length; j++) {
-        if (state.panelVisibility[panelOrder[j]]) {
-          state.activePanelId = panelOrder[j];
-          break;
+      var dockOrder = ['left', 'right', 'bottom'];
+      for (var i = 0; i < dockOrder.length; i++) {
+        var panelIds = state.panelDocks[dockOrder[i]] || [];
+        for (var j = 0; j < panelIds.length; j++) {
+          if (state.panelVisibility[panelIds[j]]) {
+            state.activePanelId = panelIds[j];
+            break;
+          }
         }
+        if (state.activePanelId) break;
       }
     }
   }
@@ -631,6 +778,44 @@
     return getDockVisiblePanelIds(dockId).length > 0 && state.dockSizes[dockId] === 0;
   }
 
+  function getHiddenReopenPanelIdsForDock(dockId) {
+    if (isPanelOnlyWindow()) return [];
+    if (state.profile !== 'workspace') return [];
+    var panelKinds = ['hierarchy', 'dashboard', 'logs'];
+    var result = [];
+    for (var i = 0; i < panelKinds.length; i++) {
+      var kind = panelKinds[i];
+      var definition = PANEL_DEFINITIONS[kind];
+      if (!definition || definition.defaultDock !== dockId) continue;
+      if (isPanelShown(kind)) continue;
+      var primaryPanelId = getPrimaryPanelId(kind);
+      if (!primaryPanelId) continue;
+      result.push(primaryPanelId);
+    }
+    return result;
+  }
+
+  function dedupeMarkerPanelIds(panelIds) {
+    var result = [];
+    var seenKinds = {};
+    var seenIds = {};
+    var list = Array.isArray(panelIds) ? panelIds : [];
+    for (var i = 0; i < list.length; i++) {
+      var panelId = resolvePanelTarget(list[i]);
+      if (!panelId || seenIds[panelId]) continue;
+      var kind = getPanelKind(panelId);
+      if (!kind) continue;
+      if (isPanelKindDuplicable(kind)) {
+        if (seenKinds[kind]) continue;
+        seenKinds[kind] = true;
+        panelId = getPrimaryPanelId(kind) || panelId;
+      }
+      seenIds[panelId] = true;
+      result.push(panelId);
+    }
+    return result;
+  }
+
   function restoreDock(dockId, panelId) {
     if (dockId !== 'left' && dockId !== 'right' && dockId !== 'bottom') return false;
     var restoreSize = clampPanelSize(dockId, state.dockRestoreSizes[dockId]);
@@ -654,11 +839,12 @@
   }
 
   function revealPanel(panelId) {
-    var normalized = normalizePanelId(panelId);
+    var normalized = resolvePanelTarget(panelId);
     if (!normalized) return false;
     var dockId = getDockForPanel(normalized);
     if (!dockId) {
-      dockId = PANEL_DEFINITIONS[normalized] ? PANEL_DEFINITIONS[normalized].defaultDock : 'left';
+      var kind = getPanelKind(normalized);
+      dockId = kind && PANEL_DEFINITIONS[kind] ? PANEL_DEFINITIONS[kind].defaultDock : 'left';
       state.panelDocks[dockId].push(normalized);
     }
     state.panelVisibility[normalized] = true;
@@ -667,11 +853,61 @@
   }
 
   function collapsePanel(panelId) {
-    var normalized = normalizePanelId(panelId);
+    var normalized = resolvePanelTarget(panelId);
     if (!normalized) return false;
     var dockId = getDockForPanel(normalized);
     if (!dockId) return false;
     return collapseDock(dockId);
+  }
+
+  function closePanelView(panelId) {
+    var normalized = resolvePanelTarget(panelId);
+    if (!normalized) return false;
+    var kind = getPanelKind(normalized);
+    if (!kind) return false;
+    if (normalized === kind) {
+      return collapsePanel(normalized);
+    }
+    var dockIds = ['left', 'right', 'bottom'];
+    for (var i = 0; i < dockIds.length; i++) {
+      var dockPanels = state.panelDocks[dockIds[i]] || [];
+      var index = dockPanels.indexOf(normalized);
+      if (index !== -1) dockPanels.splice(index, 1);
+    }
+    delete state.panelInstances[normalized];
+    delete state.panelVisibility[normalized];
+    if (state.activePanelId === normalized) state.activePanelId = '';
+    if (state.panelElements && state.panelElements[normalized]) {
+      var panelEl = state.panelElements[normalized];
+      if (panelEl.parentNode) panelEl.parentNode.removeChild(panelEl);
+      delete state.panelElements[normalized];
+    }
+    var sharedPanels = getSharedPanelsApi();
+    if (sharedPanels && typeof sharedPanels.unregisterInstance === 'function') {
+      sharedPanels.unregisterInstance(normalized);
+    }
+    ensurePanelDockActives();
+    render();
+    return true;
+  }
+
+  function duplicatePanel(panelId) {
+    var sourcePanelId = resolvePanelTarget(panelId);
+    if (!sourcePanelId) return '';
+    var kind = getPanelKind(sourcePanelId);
+    if (!isPanelKindDuplicable(kind)) return sourcePanelId;
+    var newPanelId = createPanelInstance(kind);
+    var dockId = getDockForPanel(sourcePanelId) || PANEL_DEFINITIONS[kind].defaultDock;
+    var dockPanels = state.panelDocks[dockId] || (state.panelDocks[dockId] = []);
+    var sourceIndex = dockPanels.indexOf(sourcePanelId);
+    if (sourceIndex === -1) dockPanels.push(newPanelId);
+    else dockPanels.splice(sourceIndex + 1, 0, newPanelId);
+    state.panelVisibility[newPanelId] = true;
+    if (!state.panelWeights[dockId]) state.panelWeights[dockId] = {};
+    state.panelWeights[dockId][newPanelId] = getPanelWeight(dockId, sourcePanelId);
+    state.activePanelId = newPanelId;
+    restoreDock(dockId, newPanelId);
+    return newPanelId;
   }
 
   function renderCollapsedDockMarker(dockId, hostEl) {
@@ -679,8 +915,17 @@
     hostEl.innerHTML = '';
     hostEl.className = 'workspace-shell-collapsed-marker-strip';
     hostEl.setAttribute('data-dock', dockId);
-    var panelIds = getDockVisiblePanelIds(dockId);
-    if (panelIds.length === 0 || state.dockSizes[dockId] > 0) {
+    var panelIds = [];
+    var collapsedDockPanelIds = getDockVisiblePanelIds(dockId);
+    if (collapsedDockPanelIds.length > 0 && state.dockSizes[dockId] === 0) {
+      panelIds = panelIds.concat(collapsedDockPanelIds);
+    }
+    var hiddenPanelIds = getHiddenReopenPanelIdsForDock(dockId);
+    for (var i = 0; i < hiddenPanelIds.length; i++) {
+      if (panelIds.indexOf(hiddenPanelIds[i]) === -1) panelIds.push(hiddenPanelIds[i]);
+    }
+    panelIds = dedupeMarkerPanelIds(panelIds);
+    if (panelIds.length === 0) {
       hostEl.classList.remove('is-visible');
       return;
     }
@@ -829,7 +1074,7 @@
   }
 
   function activatePanel(panelId) {
-    var normalized = normalizePanelId(panelId);
+    var normalized = resolvePanelTarget(panelId);
     if (!normalized) return false;
     var dockId = getDockForPanel(normalized);
     if (!dockId) return false;
@@ -842,7 +1087,7 @@
   }
 
   function setPanelVisibility(panelId, visible, options) {
-    var normalized = normalizePanelId(panelId);
+    var normalized = resolvePanelTarget(panelId);
     if (!normalized) return false;
     if (!visible) {
       return collapsePanel(normalized);
@@ -850,7 +1095,8 @@
     state.panelVisibility[normalized] = true;
     var dockId = getDockForPanel(normalized);
     if (!dockId) {
-      dockId = PANEL_DEFINITIONS[normalized] ? PANEL_DEFINITIONS[normalized].defaultDock : 'left';
+      var kind = getPanelKind(normalized);
+      dockId = kind && PANEL_DEFINITIONS[kind] ? PANEL_DEFINITIONS[kind].defaultDock : 'left';
       state.panelDocks[dockId].push(normalized);
     }
     if (!state.activePanelId || (options && options.activate)) state.activePanelId = normalized;
@@ -863,7 +1109,7 @@
   }
 
   function movePanelToDock(panelId, dockId) {
-    var normalizedPanelId = normalizePanelId(panelId);
+    var normalizedPanelId = resolvePanelTarget(panelId);
     if (!normalizedPanelId) return false;
     if (dockId !== 'left' && dockId !== 'right' && dockId !== 'bottom') return false;
 
@@ -1106,7 +1352,7 @@
   }
 
   function areLogsVisible() {
-    return !!state.panelVisibility.logs;
+    return isPanelShown('logs');
   }
 
   function openWindow(payload) {
@@ -1114,6 +1360,17 @@
       return Promise.resolve(state.hooks.openWindow(payload || {}));
     }
     return invokeTauri('open_new_window', payload || {});
+  }
+
+  function getPanelWindowRect(panelId) {
+    if (!state.rootEl) return null;
+    var normalized = resolvePanelTarget(panelId);
+    if (!normalized) return null;
+    var panelWindowEl = state.rootEl.querySelector('.workspace-shell-panel-window[data-panel-id="' + normalized + '"]');
+    if (!panelWindowEl || typeof panelWindowEl.getBoundingClientRect !== 'function') return null;
+    var rect = panelWindowEl.getBoundingClientRect();
+    if (!(rect.width > 0) || !(rect.height > 0)) return null;
+    return rect;
   }
 
   function detachTab(tabId) {
@@ -1184,8 +1441,23 @@
   }
 
   function getPanelElement(panelId) {
+    var normalized = resolvePanelTarget(panelId);
+    if (!normalized) return null;
     var elements = ensurePanelElements();
-    return elements[panelId] || null;
+    if (elements[normalized]) {
+      elements[normalized].setAttribute('data-shell-panel-instance', normalized);
+      return elements[normalized];
+    }
+    var kind = getPanelKind(normalized);
+    if (!kind || normalized === kind) return elements[kind] || null;
+    var sharedPanels = getSharedPanelsApi();
+    if (!sharedPanels || typeof sharedPanels.createPanelElement !== 'function') return null;
+    var panelEl = sharedPanels.createPanelElement(kind, normalized);
+    if (!panelEl) return null;
+    panelEl.setAttribute('data-shell-panel', kind);
+    panelEl.setAttribute('data-shell-panel-instance', normalized);
+    elements[normalized] = panelEl;
+    return panelEl;
   }
 
   function renderPanelDock(dockId, hostEl) {
@@ -1206,22 +1478,27 @@
     stackEl.setAttribute('data-dock-axis', axis);
     for (var i = 0; i < visibleIds.length; i++) {
       var panelId = visibleIds[i];
+      var panelKind = getPanelKind(panelId);
+      var definition = PANEL_DEFINITIONS[panelKind] || null;
       var panelWindowEl = document.createElement('div');
       panelWindowEl.className = 'workspace-shell-panel-window';
       panelWindowEl.setAttribute('data-panel-id', panelId);
       if (panelId === state.activePanelId) panelWindowEl.classList.add('is-active');
-
-      var tabbarEl = document.createElement('div');
-      tabbarEl.className = 'workspace-shell-panel-tabbar';
-      var tabBtn = document.createElement('button');
-      tabBtn.className = 'workspace-shell-panel-tab is-active';
-      tabBtn.type = 'button';
-      tabBtn.setAttribute('data-ws-action', 'activate-panel');
-      tabBtn.setAttribute('data-ws-panel-id', panelId);
-      tabBtn.textContent = getPanelTitle(panelId);
-      if (panelId === state.activePanelId) tabBtn.classList.add('is-selected');
-      tabbarEl.appendChild(tabBtn);
-      panelWindowEl.appendChild(tabbarEl);
+      if (!definition || !definition.integratedHeader) {
+        var tabbarEl = document.createElement('div');
+        tabbarEl.className = 'workspace-shell-panel-tabbar';
+        var tabBtn = document.createElement('button');
+        tabBtn.className = 'workspace-shell-panel-tab is-active';
+        tabBtn.type = 'button';
+        tabBtn.setAttribute('data-ws-action', 'activate-panel');
+        tabBtn.setAttribute('data-ws-panel-id', panelId);
+        tabBtn.textContent = getPanelTitle(panelId);
+        if (panelId === state.activePanelId) tabBtn.classList.add('is-selected');
+        tabbarEl.appendChild(tabBtn);
+        panelWindowEl.appendChild(tabbarEl);
+      } else {
+        panelWindowEl.classList.add('workspace-shell-panel-window-integrated');
+      }
 
       var contentEl = document.createElement('div');
       contentEl.className = 'workspace-shell-panel-content';
@@ -1247,8 +1524,13 @@
 
   function renderPanelDocks() {
     ensurePanelDockActives();
-    var logPanelEl = getPanelElement('logs');
-    if (logPanelEl) logPanelEl.classList.toggle('hidden', !state.panelVisibility.logs);
+    if (isPanelOnlyWindow()) {
+      if (state.leftDockEl) state.leftDockEl.innerHTML = '';
+      if (state.rightDockEl) state.rightDockEl.innerHTML = '';
+      if (state.bottomDockEl) state.bottomDockEl.innerHTML = '';
+      applyDockLayout();
+      return;
+    }
     renderPanelDock('left', state.leftDockEl);
     renderPanelDock('right', state.rightDockEl);
     renderPanelDock('bottom', state.bottomDockEl);
@@ -1346,7 +1628,69 @@
     if (dockId) {
       movePanelToDock(drag.panelId, dockId);
       activatePanel(drag.panelId);
+      return;
     }
+
+    var outsideWindow = drag.lastX < 0 || drag.lastY < 0 || drag.lastX > window.innerWidth || drag.lastY > window.innerHeight;
+    if (outsideWindow) {
+      detachPanelView(drag.panelId);
+    }
+  }
+
+  function removePanelFromCurrentWindow(panelId) {
+    var normalized = resolvePanelTarget(panelId);
+    if (!normalized) return false;
+    var kind = getPanelKind(normalized);
+    if (!kind) return false;
+    var dockIds = ['left', 'right', 'bottom'];
+    if (normalized !== kind) {
+      for (var i = 0; i < dockIds.length; i++) {
+        var duplicateDockPanels = state.panelDocks[dockIds[i]] || [];
+        var duplicateIndex = duplicateDockPanels.indexOf(normalized);
+        if (duplicateIndex !== -1) duplicateDockPanels.splice(duplicateIndex, 1);
+      }
+      return closePanelView(normalized);
+    }
+    state.panelVisibility[normalized] = false;
+    var defaultDock = (PANEL_DEFINITIONS[kind] && PANEL_DEFINITIONS[kind].defaultDock) || 'left';
+    var foundDockId = '';
+    for (var j = 0; j < dockIds.length; j++) {
+      var dockPanels = state.panelDocks[dockIds[j]] || [];
+      var index = dockPanels.indexOf(normalized);
+      if (index !== -1) {
+        foundDockId = dockIds[j];
+        while (index !== -1) {
+          dockPanels.splice(index, 1);
+          index = dockPanels.indexOf(normalized);
+        }
+      }
+    }
+    var targetDockPanels = state.panelDocks[foundDockId || defaultDock] || (state.panelDocks[foundDockId || defaultDock] = []);
+    if (targetDockPanels.indexOf(normalized) === -1) {
+      targetDockPanels.unshift(normalized);
+    }
+    ensurePanelDockActives();
+    render();
+    return true;
+  }
+
+  function detachPanelView(panelId) {
+    var normalized = resolvePanelTarget(panelId);
+    if (!normalized) return Promise.resolve(false);
+    var kind = getPanelKind(normalized);
+    if (!kind) return Promise.resolve(false);
+    var panelRect = getPanelWindowRect(normalized);
+    return openWindow({
+      profile: 'workspace',
+      panelKind: kind,
+      width: panelRect ? Math.max(360, Math.round(panelRect.width)) : null,
+      height: panelRect ? Math.max(220, Math.round(panelRect.height)) : null
+    }).then(function () {
+      removePanelFromCurrentWindow(normalized);
+      return true;
+    }).catch(function () {
+      return false;
+    });
   }
 
   function setTabViewKind(tabId, viewKind, options) {
@@ -1515,6 +1859,33 @@
 
   function handlePointerDown(event) {
     if (event.button !== 0) return;
+    var panelHandleEl = event.target.closest('[data-ws-panel-drag-handle]');
+    if (panelHandleEl) {
+      event.preventDefault();
+      var handledPanelId = resolvePanelTarget(panelHandleEl.getAttribute('data-ws-panel-drag-handle'));
+      if (!handledPanelId) return;
+      state.activePanelId = handledPanelId;
+      state.panelPointerDrag = {
+        panelId: handledPanelId,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        started: false,
+        sourceEl: panelHandleEl,
+        ghost: null
+      };
+      if (typeof panelHandleEl.setPointerCapture === 'function') {
+        try { panelHandleEl.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+      }
+      window.addEventListener('pointermove', handlePanelPointerMove, true);
+      window.addEventListener('pointerup', finishPanelPointerDrag, true);
+      window.addEventListener('pointercancel', finishPanelPointerDrag, true);
+      renderToolbar();
+      persistState();
+      return;
+    }
     var panelTabEl = event.target.closest('.workspace-shell-panel-tab[data-ws-panel-id]');
     if (panelTabEl) {
       event.preventDefault();
@@ -1541,6 +1912,15 @@
       renderToolbar();
       persistState();
       return;
+    }
+    var panelWindowEl = event.target.closest('.workspace-shell-panel-window[data-panel-id]');
+    if (panelWindowEl) {
+      var windowPanelId = resolvePanelTarget(panelWindowEl.getAttribute('data-panel-id'));
+      if (windowPanelId) {
+        state.activePanelId = windowPanelId;
+        renderToolbar();
+        persistState();
+      }
     }
     var tabEl = event.target.closest('.workspace-shell-tab[data-ws-tab-id]');
     if (tabEl && !event.target.closest('[data-ws-action="close-tab"]')) {
@@ -1630,20 +2010,8 @@
 
   function renderToolbar() {
     if (!state.toolbarEl) return;
-    var activeTab = getActiveTab();
     state.toolbarEl.innerHTML = '';
-
-    var title = document.createElement('div');
-    title.className = 'workspace-shell-toolbar-title';
-    title.textContent = state.profile === 'detachedBoard' ? 'Detached Board Window' : 'Workspace';
-    state.toolbarEl.appendChild(title);
-
-    if (activeTab) {
-      var badge = document.createElement('div');
-      badge.className = 'workspace-shell-toolbar-badge';
-      badge.textContent = getTabTitle(activeTab);
-      state.toolbarEl.appendChild(badge);
-    }
+    state.toolbarEl.classList.add('is-empty');
   }
 
   function renderTabset(node, parentEl) {
@@ -1739,6 +2107,25 @@
     else renderTabset(node, parentEl);
   }
 
+  function renderPanelOnly(panelId, hostEl) {
+    if (!hostEl) return;
+    hostEl.innerHTML = '';
+    hostEl.classList.add('workspace-shell-panel-only-host');
+    var panelWindowEl = document.createElement('div');
+    panelWindowEl.className = 'workspace-shell-panel-window workspace-shell-panel-window-integrated is-active workspace-shell-panel-only-window';
+    panelWindowEl.setAttribute('data-panel-id', panelId);
+    var contentEl = document.createElement('div');
+    contentEl.className = 'workspace-shell-panel-content';
+    var panelEl = getPanelElement(panelId);
+    if (panelEl) {
+      panelEl.classList.remove('hidden');
+      panelEl.style.display = '';
+      contentEl.appendChild(panelEl);
+    }
+    panelWindowEl.appendChild(contentEl);
+    hostEl.appendChild(panelWindowEl);
+  }
+
   function syncLeafDom(node) {
     var tabsetEl = state.dockEl ? state.dockEl.querySelector('.workspace-shell-tabset[data-node-id="' + node.id + '"]') : null;
     if (!tabsetEl) return false;
@@ -1787,6 +2174,7 @@
   function applyShellBodyClasses() {
     getBody().classList.toggle('workspace-shell-mode', state.mounted);
     getBody().classList.toggle('workspace-shell-detached', state.profile === 'detachedBoard');
+    getBody().classList.toggle('workspace-shell-panel-only', isPanelOnlyWindow());
   }
 
   function render() {
@@ -1794,15 +2182,20 @@
     ensureActiveLeaf();
     ensurePanelDockActives();
     renderToolbar();
-    var structureSignature = buildStructureSignature(state.dockTree);
-    var canPatch = structureSignature === state.lastStructureSignature && state.dockEl.childNodes.length > 0;
-    if (!canPatch || !syncDomState()) {
-      state.dockEl.innerHTML = '';
-      renderNode(state.dockTree, state.dockEl);
-      state.lastStructureSignature = structureSignature;
-    }
-    if (state.dragTabId && state.dragHoverLeafId && state.dragHoverZone) {
-      setDropZoneHighlight(state.dragHoverLeafId, state.dragHoverZone);
+    if (isPanelOnlyWindow()) {
+      renderPanelOnly(state.panelOnlyId || getPrimaryPanelId(state.panelOnlyKind), state.dockEl);
+      state.lastStructureSignature = 'panel-only:' + (state.panelOnlyId || state.panelOnlyKind);
+    } else {
+      var structureSignature = buildStructureSignature(state.dockTree);
+      var canPatch = structureSignature === state.lastStructureSignature && state.dockEl.childNodes.length > 0;
+      if (!canPatch || !syncDomState()) {
+        state.dockEl.innerHTML = '';
+        renderNode(state.dockTree, state.dockEl);
+        state.lastStructureSignature = structureSignature;
+      }
+      if (state.dragTabId && state.dragHoverLeafId && state.dragHoverZone) {
+        setDropZoneHighlight(state.dragHoverLeafId, state.dragHoverZone);
+      }
     }
     renderPanelDocks();
     notifyActiveBoardChanged();
@@ -1830,6 +2223,16 @@
     options = options || {};
     if (!boardId) return null;
     var desiredView = normalizeViewKind(options.viewKind);
+    if (isPanelOnlyWindow() && state.panelOnlyKind === 'hierarchy') {
+      openWindow({
+        boardId: boardId,
+        viewKind: desiredView === 'default' ? null : desiredView,
+        profile: 'detachedBoard'
+      }).catch(function () {
+        return false;
+      });
+      return null;
+    }
     var existing = options.duplicate ? null : findLeafContainingBoard(state.dockTree, boardId, desiredView);
     if (existing && options.preferExisting !== false) {
       existing.leaf.activeTabId = existing.tab.id;
@@ -1862,6 +2265,16 @@
 
   function focusHierarchyTarget(target, boardId, options) {
     options = options || {};
+    if (isPanelOnlyWindow() && state.panelOnlyKind === 'hierarchy') {
+      openWindow({
+        boardId: boardId,
+        viewKind: options.viewKind ? normalizeViewKind(options.viewKind) : null,
+        profile: 'detachedBoard'
+      }).catch(function () {
+        return false;
+      });
+      return true;
+    }
     var tab = openBoard(boardId, {
       preferExisting: true,
       viewKind: options.viewKind
@@ -1922,7 +2335,15 @@
       return true;
     }
     if (action === 'expand-collapsed-dock') {
-      restoreDock(extra && extra.dockId ? extra.dockId : '', extra && extra.panelId ? extra.panelId : '');
+      var markerDockId = extra && extra.dockId ? extra.dockId : '';
+      var markerPanelId = extra && extra.panelId ? extra.panelId : '';
+      if (markerPanelId) {
+        setPanelVisibility(markerPanelId, true, { activate: true });
+        if (!getDockForPanel(markerPanelId)) {
+          movePanelToDock(markerPanelId, markerDockId || (PANEL_DEFINITIONS[getPanelKind(markerPanelId)] || {}).defaultDock || 'left');
+        }
+      }
+      restoreDock(markerDockId, markerPanelId);
       return true;
     }
     if (action === 'toggle-panel') {
@@ -1976,6 +2397,14 @@
       activatePanel(value);
       return true;
     }
+    if (action === 'duplicate-panel') {
+      duplicatePanel(value || state.activePanelId);
+      return true;
+    }
+    if (action === 'close-panel') {
+      closePanelView(value || state.activePanelId);
+      return true;
+    }
     return false;
   }
 
@@ -2009,6 +2438,34 @@
       event.preventDefault();
       activateTab(tabEl.getAttribute('data-ws-tab-id'));
     }
+  }
+
+  function handleRootContextMenu(event) {
+    var panelTab = event.target.closest('.workspace-shell-panel-tab[data-ws-panel-id]');
+    var panelHandle = event.target.closest('[data-ws-panel-drag-handle]');
+    if (!panelTab && !panelHandle) return;
+    event.preventDefault();
+    event.stopPropagation();
+    var panelId = resolvePanelTarget(panelTab
+      ? panelTab.getAttribute('data-ws-panel-id')
+      : panelHandle.getAttribute('data-ws-panel-drag-handle'));
+    if (!panelId) return;
+    var kind = getPanelKind(panelId);
+    var items = [
+      { id: 'focus', label: 'Focus View' }
+    ];
+    if (isPanelKindDuplicable(kind)) {
+      items.push({ id: 'duplicate', label: 'Duplicate View' });
+    }
+    if (panelId !== kind) {
+      items.push({ id: 'close', label: 'Close View' });
+    }
+    if (typeof showNativeMenu !== 'function') return;
+    showNativeMenu(items, event.clientX, event.clientY, 'menu.panel-view').then(function (action) {
+      if (action === 'focus') activatePanel(panelId);
+      else if (action === 'duplicate') duplicatePanel(panelId);
+      else if (action === 'close') closePanelView(panelId);
+    });
   }
 
   function mount(hooks) {
@@ -2099,6 +2556,7 @@
     state.rootEl.appendChild(state.bodyEl);
 
     state.rootEl.addEventListener('click', handleRootClick);
+    state.rootEl.addEventListener('contextmenu', handleRootContextMenu);
     state.rootEl.addEventListener('pointerdown', handlePointerDown, true);
 
     mainContent.appendChild(state.rootEl);
@@ -2106,6 +2564,7 @@
 
     state.mounted = true;
     restoreState();
+    applyPanelOnlyWindowState();
     ensurePanelElements();
     applyShellBodyClasses();
     render();
@@ -2175,6 +2634,8 @@
     },
     setPanelVisibility: setPanelVisibility,
     movePanelToDock: movePanelToDock,
+    duplicatePanel: duplicatePanel,
+    closePanelView: closePanelView,
     isPanelVisible: isPanelShown,
     revealPanel: revealPanel,
     collapsePanel: collapsePanel,

@@ -52,4 +52,13 @@ describe('tag style rendering parity', () => {
     expect(cssSource.includes('.tag-style-badge-rail')).toBe(false);
     expect(cssSource.includes('.tag-style-badge')).toBe(false);
   });
+
+  it('renders inline tag chips with a visible border treatment', () => {
+    const appSource = readSource('app.js');
+    const cssSource = readSource('app.css');
+
+    expect(appSource.includes('function renderTagChipHtml(tag)')).toBe(true);
+    expect(appSource.includes('--tag-chip-border-color:')).toBe(true);
+    expect(cssSource.includes('--tag-chip-border-color')).toBe(true);
+  });
 });

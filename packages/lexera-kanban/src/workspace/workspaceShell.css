@@ -48,6 +48,10 @@
   background: var(--surface-header-bg, var(--bg-secondary));
 }
 
+.workspace-shell-toolbar.is-empty {
+  display: none;
+}
+
 .workspace-shell-toolbar-title {
   min-width: 0;
   margin-right: auto;
@@ -293,6 +297,34 @@
 
 .workspace-shell-panel-window.is-active {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.workspace-panel-drag-handle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  margin-right: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: grab;
+  font: inherit;
+  line-height: 1;
+  -webkit-app-region: no-drag;
+}
+
+.workspace-panel-drag-handle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.workspace-panel-drag-handle:active {
+  cursor: grabbing;
 }
 
 .workspace-shell-panel-divider {
@@ -683,6 +715,15 @@ body.workspace-shell-tab-dragging .workspace-shell-frame {
   color: var(--text-primary);
 }
 
+.workspace-shell-panel-only-host,
+.workspace-shell-panel-only-window {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
 body.workspace-shell-sidebar-hidden .sidebar,
 body.workspace-shell-sidebar-hidden #sidebar-width-divider {
   display: none !important;
@@ -721,6 +762,14 @@ body.workspace-shell-mode .workspace-shell-panel-content > .shell-settings-panel
   flex: 1 1 auto;
   width: auto;
   height: 100%;
+}
+
+body.workspace-shell-mode .workspace-panel-drag-handle {
+  display: inline-flex;
+}
+
+body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-shell-panel-content {
+  border-top: 0;
 }
 
 body.workspace-shell-detached .status-bar {
