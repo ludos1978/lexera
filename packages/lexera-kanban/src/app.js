@@ -72,26 +72,12 @@ const LexeraDashboard = (function () {
   var embeddedInitialBoardId = urlParams.get('board') || '';
   var embeddedPreferredBoardId = embeddedInitialBoardId;
   var embeddedForcedBoardLayout = embeddedMode ? String(urlParams.get('view') || '').trim().toLowerCase() : '';
+  var embeddedWorkspaceShellParent = embeddedMode && urlParams.get('workspaceShellParent') === '1';
   var WorkspaceShell = window.LexeraWorkspaceShell || null;
   var workspaceShellEnabled = !embeddedMode && !!(WorkspaceShell && typeof WorkspaceShell.isEnabled === 'function' && WorkspaceShell.isEnabled());
-  var splitViewMode = embeddedMode ? 'single' : (localStorage.getItem('lexera-split-mode') || 'single'); // single | vertical | horizontal
-  var splitPaneBoards = {
-    a: embeddedMode ? '' : (localStorage.getItem('lexera-split-pane-a') || ''),
-    b: embeddedMode ? '' : (localStorage.getItem('lexera-split-pane-b') || '')
-  };
-  var activeSplitPane = embeddedMode
-    ? (embeddedPaneId === 'b' ? 'b' : 'a')
-    : (localStorage.getItem('lexera-active-split-pane') === 'b' ? 'b' : 'a');
-  var splitRatios = {
-    vertical: parseFloat(localStorage.getItem('lexera-split-ratio-vertical') || '0.5'),
-    horizontal: parseFloat(localStorage.getItem('lexera-split-ratio-horizontal') || '0.5')
-  };
   var sidebarSplitRatio = parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
   var sidebarWidth = parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0;
   var headerSearchExpanded = localStorage.getItem('lexera-header-search-expanded') === 'true';
-  var splitRootEl = null;
-  var splitToggleBtn = null;
-  var splitOrientationBtn = null;
   var $foldAllBtn = null;
   var $foldAllCardsBtn = null;
   var $pinHeadersBtn = null;
@@ -1060,20 +1046,6 @@ const LexeraDashboard = (function () {
     });
   }
 
-  function saveSplitState() {
-    if (embeddedMode) return;
-    localStorage.setItem('lexera-split-mode', splitViewMode);
-    localStorage.setItem('lexera-split-pane-a', splitPaneBoards.a || '');
-    localStorage.setItem('lexera-split-pane-b', splitPaneBoards.b || '');
-    localStorage.setItem('lexera-active-split-pane', activeSplitPane || 'a');
-    localStorage.setItem('lexera-split-ratio-vertical', String(splitRatios.vertical));
-    localStorage.setItem('lexera-split-ratio-horizontal', String(splitRatios.horizontal));
-  }
-
-  function normalizeSplitPane(rawPane) {
-    return rawPane === 'b' ? 'b' : 'a';
-  }
-
   function normalizeRatio(rawRatio, options) {
     options = options || {};
     var ratio = Number(rawRatio);
@@ -1088,39 +1060,6 @@ const LexeraDashboard = (function () {
     if (ratio > max) ratio = max;
     if (Math.abs(ratio - snap) <= snapThreshold) ratio = snap;
     return ratio;
-  }
-
-  function normalizeSplitRatio(rawRatio) {
-    return normalizeRatio(rawRatio, {
-      fallback: 0.5,
-      min: 0.2,
-      max: 0.8,
-      snap: 0.5,
-      snapThreshold: 0.04
-    });
-  }
-
-  function getSplitRatioForMode(mode) {
-    if (mode !== 'horizontal' && mode !== 'vertical') return 0.5;
-    return normalizeSplitRatio(splitRatios[mode]);
-  }
-
-  function setSplitRatioForMode(mode, ratio, persist) {
-    if (mode !== 'horizontal' && mode !== 'vertical') return;
-    splitRatios[mode] = normalizeSplitRatio(ratio);
-    if (persist) saveSplitState();
-  }
-
-  function applySplitRatioLayout() {
-    if (!splitRootEl || splitViewMode === 'single') return;
-    var ratio = getSplitRatioForMode(splitViewMode);
-    if (splitViewMode === 'vertical') {
-      splitRootEl.style.gridTemplateColumns = (ratio * 100).toFixed(2) + '% var(--splitter-size) ' + ((1 - ratio) * 100).toFixed(2) + '%';
-      splitRootEl.style.gridTemplateRows = '1fr';
-    } else if (splitViewMode === 'horizontal') {
-      splitRootEl.style.gridTemplateRows = (ratio * 100).toFixed(2) + '% var(--splitter-size) ' + ((1 - ratio) * 100).toFixed(2) + '%';
-      splitRootEl.style.gridTemplateColumns = '1fr';
-    }
   }
 
   function normalizeSidebarSplitRatio(rawRatio) {
@@ -1461,16 +1400,6 @@ const LexeraDashboard = (function () {
     }
   }
 
-  function buildEmbeddedPaneUrl(boardId, paneId) {
-    var u = new URL(window.location.href);
-    u.search = '';
-    u.hash = '';
-    u.searchParams.set('embedded', '1');
-    u.searchParams.set('pane', paneId);
-    if (boardId) u.searchParams.set('board', boardId);
-    return u.toString();
-  }
-
   function notifyParentPaneActivated() {
     if (!embeddedMode || !embeddedPaneId) return;
     if (!window.parent || window.parent === window) return;
@@ -1501,249 +1430,6 @@ const LexeraDashboard = (function () {
     setTimeout(sendActivation, 0);
   }
 
-  function ensureSplitPaneBoards() {
-    if (!boards || boards.length === 0) return;
-    var boardExists = function (id) {
-      if (!id) return false;
-      for (var i = 0; i < boards.length; i++) if (boards[i].id === id) return true;
-      return false;
-    };
-    if (!boardExists(splitPaneBoards.a)) {
-      splitPaneBoards.a = boardExists(activeBoardId) ? activeBoardId : boards[0].id;
-    }
-    if (!boardExists(splitPaneBoards.b)) {
-      var alt = null;
-      for (var i = 0; i < boards.length; i++) {
-        if (boards[i].id !== splitPaneBoards.a) { alt = boards[i].id; break; }
-      }
-      splitPaneBoards.b = alt || splitPaneBoards.a;
-    }
-    activeSplitPane = normalizeSplitPane(activeSplitPane);
-    if (activeSplitPane === 'a' && !boardExists(splitPaneBoards.a)) activeSplitPane = 'b';
-    if (activeSplitPane === 'b' && !boardExists(splitPaneBoards.b)) activeSplitPane = 'a';
-  }
-
-  function isSplitPaneId(pane) {
-    return pane === 'a' || pane === 'b';
-  }
-
-  function setSplitPaneFrameSource(root, pane, boardId, forceReload) {
-    if (!root || !isSplitPaneId(pane) || !boardId) return;
-    var frame = root.querySelector('.split-pane-frame[data-pane="' + pane + '"]');
-    if (!frame) return;
-    var src = buildEmbeddedPaneUrl(boardId, pane);
-    if (forceReload || frame.getAttribute('data-src') !== src) {
-      frame.setAttribute('data-src', src);
-      frame.src = src;
-    }
-  }
-
-  function updateActiveSplitPaneUi() {
-    if (!splitRootEl) return;
-    var frames = splitRootEl.querySelectorAll('.split-pane-frame');
-    for (var i = 0; i < frames.length; i++) {
-      var pane = normalizeSplitPane(frames[i].getAttribute('data-pane'));
-      frames[i].classList.toggle('active-pane', pane === activeSplitPane);
-    }
-  }
-
-  function setActiveSplitPane(pane, persist) {
-    if (embeddedMode) return;
-    activeSplitPane = normalizeSplitPane(pane);
-    updateActiveSplitPaneUi();
-    if (persist !== false) saveSplitState();
-  }
-
-  function syncActiveBoardFromSplitPane() {
-    if (embeddedMode || splitViewMode === 'single') return;
-    var paneBoardId = splitPaneBoards[normalizeSplitPane(activeSplitPane)];
-    if (!paneBoardId || paneBoardId === activeBoardId) return;
-    activeBoardId = paneBoardId;
-    activeBoardData = null;
-    fullBoardData = null;
-    addCardColumn = null;
-    localStorage.setItem('lexera-last-board', paneBoardId);
-    renderBoardList();
-    refreshHeaderFileControls();
-  }
-
-  function ensureSplitRoot() {
-    if (splitRootEl || !getElLayout()) return splitRootEl;
-    splitRootEl = document.createElement('div');
-    splitRootEl.id = 'split-root';
-    splitRootEl.className = 'split-root';
-    splitRootEl.innerHTML =
-      '<iframe class="split-pane-frame" data-pane="a" title="Split Pane A"></iframe>' +
-      '<div class="split-divider" role="separator" aria-label="Resize split panes"></div>' +
-      '<iframe class="split-pane-frame" data-pane="b" title="Split Pane B"></iframe>';
-    var frames = splitRootEl.querySelectorAll('.split-pane-frame');
-    for (var i = 0; i < frames.length; i++) {
-      (function (frameEl) {
-        frameEl.addEventListener('pointerdown', function () {
-          if (splitViewMode === 'single') return;
-          setActiveSplitPane(frameEl.getAttribute('data-pane'));
-          syncActiveBoardFromSplitPane();
-        });
-      })(frames[i]);
-    }
-    var divider = splitRootEl.querySelector('.split-divider');
-    if (divider) {
-      bindPointerDividerDrag(divider, {
-        canStart: function () {
-          return splitViewMode !== 'single';
-        },
-        onStart: function () {
-          var mode = splitViewMode;
-          if (splitRootEl) {
-            splitRootEl.classList.add('resizing');
-            splitRootEl.setAttribute('data-resize-mode', mode);
-          }
-          return { mode: mode };
-        },
-        onMove: function (ev, ctx) {
-          if (!splitRootEl) return;
-          var rect = splitRootEl.getBoundingClientRect();
-          if (ctx.mode === 'vertical') {
-            setSplitRatioForMode(ctx.mode, (ev.clientX - rect.left) / Math.max(1, rect.width), false);
-          } else {
-            setSplitRatioForMode(ctx.mode, (ev.clientY - rect.top) / Math.max(1, rect.height), false);
-          }
-          applySplitRatioLayout();
-        },
-        onEnd: function (ev, ctx) {
-          if (splitRootEl) {
-            splitRootEl.classList.remove('resizing');
-            splitRootEl.removeAttribute('data-resize-mode');
-          }
-          setSplitRatioForMode(ctx.mode, getSplitRatioForMode(ctx.mode), true);
-          applySplitRatioLayout();
-        },
-        onDoubleClick: function () {
-          if (splitViewMode === 'single') return;
-          setSplitRatioForMode(splitViewMode, 0.5, true);
-          applySplitRatioLayout();
-        }
-      });
-    }
-    getElLayout().appendChild(splitRootEl);
-    updateActiveSplitPaneUi();
-    return splitRootEl;
-  }
-
-  function refreshSplitFrames(forceReload) {
-    if (embeddedMode || splitViewMode === 'single') return;
-    var root = ensureSplitRoot();
-    if (!root) return;
-    ensureSplitPaneBoards();
-    activeSplitPane = normalizeSplitPane(activeSplitPane);
-    applySplitRatioLayout();
-    setSplitPaneFrameSource(root, 'a', splitPaneBoards.a, forceReload);
-    setSplitPaneFrameSource(root, 'b', splitPaneBoards.b, forceReload);
-    updateActiveSplitPaneUi();
-    syncActiveBoardFromSplitPane();
-    saveSplitState();
-  }
-
-  function updateSplitButtons() {
-    if (embeddedMode) return;
-    if (splitToggleBtn) splitToggleBtn.classList.toggle('active', splitViewMode !== 'single');
-    if (splitOrientationBtn) {
-      splitOrientationBtn.classList.toggle('hidden', splitViewMode === 'single');
-      splitOrientationBtn.textContent = (splitViewMode === 'horizontal') ? '\u2195' : '\u2194';
-      splitOrientationBtn.title = (splitViewMode === 'horizontal')
-        ? 'Switch split orientation (horizontal \u2192 vertical)'
-        : 'Switch split orientation (vertical \u2192 horizontal)';
-    }
-    refreshHeaderFileControls();
-  }
-
-  function handleSplitToggleClick() {
-    var wasSingle = splitViewMode === 'single';
-    if (wasSingle && activeBoardId) {
-      splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
-    }
-    splitViewMode = wasSingle ? 'vertical' : 'single';
-    applySplitMode(false);
-  }
-
-  function handleSplitOrientationClick() {
-    if (splitViewMode === 'single') return;
-    splitViewMode = (splitViewMode === 'vertical') ? 'horizontal' : 'vertical';
-    applySplitMode(true);
-  }
-
-  function bindSplitControlButtons() {
-    if (embeddedMode) return;
-    if (splitToggleBtn) {
-      splitToggleBtn.onclick = function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSplitToggleClick();
-      };
-    }
-    if (splitOrientationBtn) {
-      splitOrientationBtn.onclick = function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSplitOrientationClick();
-      };
-    }
-  }
-
-  function applySplitMode(forceReload) {
-    if (embeddedMode) return;
-    updateSplitButtons();
-    if (splitViewMode === 'single') {
-      document.body.classList.remove('split-mode');
-      if (splitRootEl) {
-        splitRootEl.classList.remove('active', 'vertical', 'horizontal');
-      }
-      if (getElMainContent()) getElMainContent().classList.remove('hidden');
-      if (activeBoardId && !searchMode) loadBoard(activeBoardId);
-      else renderMainView();
-      saveSplitState();
-      return;
-    }
-
-    ensureSplitPaneBoards();
-    setActiveSplitPane(activeSplitPane, false);
-    var root = ensureSplitRoot();
-    if (!root) return;
-    document.body.classList.add('split-mode');
-    root.classList.add('active');
-    root.classList.toggle('vertical', splitViewMode === 'vertical');
-    root.classList.toggle('horizontal', splitViewMode === 'horizontal');
-    applySplitRatioLayout();
-    if (getElMainContent()) getElMainContent().classList.add('hidden');
-    refreshSplitFrames(!!forceReload);
-  }
-
-  function handleSplitPaneMessage(event) {
-    if (embeddedMode) return;
-    var data = event && event.data;
-    if (!data || !data.type) return;
-    if (data.type === 'lexera-pane-activated') {
-      var activatedPane = normalizeSplitPane(data.pane);
-      setActiveSplitPane(activatedPane);
-      if (data.boardId && isSplitPaneId(activatedPane)) {
-        splitPaneBoards[activatedPane] = data.boardId;
-      }
-      syncActiveBoardFromSplitPane();
-      return;
-    }
-    if (data.type !== 'lexera-pane-board-change') return;
-    var pane = data.pane;
-    var boardId = data.boardId;
-    if (!isSplitPaneId(pane) || !boardId) return;
-    setActiveSplitPane(pane);
-    splitPaneBoards[pane] = boardId;
-    if (splitRootEl) {
-      setSplitPaneFrameSource(splitRootEl, pane, boardId, false);
-    }
-    syncActiveBoardFromSplitPane();
-    saveSplitState();
-  }
-
   function handleEmbeddedHierarchyFocusMessage(event) {
     if (!embeddedMode) return;
     var data = event && event.data;
@@ -1758,46 +1444,16 @@ const LexeraDashboard = (function () {
     });
   }
 
-  function setupSplitControls() {
-    if (embeddedMode || workspaceShellEnabled) return;
-    activeSplitPane = normalizeSplitPane(activeSplitPane);
-    splitRatios.vertical = normalizeSplitRatio(splitRatios.vertical);
-    splitRatios.horizontal = normalizeSplitRatio(splitRatios.horizontal);
-    splitToggleBtn = document.getElementById('btn-split-toggle');
-    splitOrientationBtn = document.getElementById('btn-split-orientation');
-    bindSplitControlButtons();
-
-    window.addEventListener('message', handleSplitPaneMessage);
-    applySplitMode(false);
-  }
-
-  function findAlternativeBoardId(excludeId) {
-    for (var i = 0; i < boards.length; i++) {
-      if (boards[i].id !== excludeId) return boards[i].id;
-    }
-    return excludeId || '';
-  }
-
-  function openBoardInPane(boardId, pane) {
-    if (embeddedMode || !boardId) return;
-    pane = normalizeSplitPane(pane);
-    setActiveSplitPane(pane);
-    ensureSplitPaneBoards();
-    splitPaneBoards[pane] = boardId;
-    if (pane === 'a' && (!splitPaneBoards.b || splitPaneBoards.b === boardId)) {
-      splitPaneBoards.b = findAlternativeBoardId(boardId);
-    } else if (pane === 'b' && (!splitPaneBoards.a || splitPaneBoards.a === boardId)) {
-      splitPaneBoards.a = findAlternativeBoardId(boardId);
-    }
-    activeBoardId = boardId;
-    activeBoardData = null;
-    fullBoardData = null;
-    addCardColumn = null;
-    localStorage.setItem('lexera-last-board', boardId);
-    renderBoardList();
-    refreshHeaderFileControls();
-    if (splitViewMode === 'single') splitViewMode = 'vertical';
-    applySplitMode(true);
+  function requestWorkspaceShellViewKind(viewKind) {
+    if (!embeddedWorkspaceShellParent || !embeddedPaneId) return false;
+    if (!window.parent || window.parent === window) return false;
+    var normalized = normalizeBoardLayoutValue(viewKind);
+    window.parent.postMessage({
+      type: 'lexera-pane-set-view-kind',
+      pane: embeddedPaneId,
+      viewKind: normalized
+    }, '*');
+    return true;
   }
 
   function refreshHeaderFileControls() {
@@ -1896,11 +1552,6 @@ const LexeraDashboard = (function () {
       await LexeraApi.removeBoard(boardId);
     } catch (err) {
       lexeraLog('warn', '[rename.file] Failed to remove old board entry: ' + err.message);
-    }
-
-    if (newBoardId) {
-      if (splitPaneBoards.a === boardId) splitPaneBoards.a = newBoardId;
-      if (splitPaneBoards.b === boardId) splitPaneBoards.b = newBoardId;
     }
 
     await poll();
@@ -2598,7 +2249,6 @@ const LexeraDashboard = (function () {
       syncMenuCheckStates();
     }
 
-    setupSplitControls();
     setupHeaderFileControls();
     setupEmbeddedPaneActivation();
     registerExternalDndBridge();
@@ -3455,10 +3105,6 @@ const LexeraDashboard = (function () {
       if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.onBoardsUpdated === 'function') {
         WorkspaceShell.onBoardsUpdated(boards.concat(remoteBoards));
       }
-      if (!embeddedMode && splitViewMode !== 'single') {
-        refreshSplitFrames(false);
-      }
-
       if (workspaceShellEnabled) {
         if (!searchMode) {
           if (activeBoardId && !findBoardMeta(activeBoardId)) {
@@ -4382,7 +4028,7 @@ const LexeraDashboard = (function () {
               WorkspaceShell.focusHierarchyTarget(navTarget, boardId);
               return;
             }
-            navigateToHierarchyTarget(navTarget, { pane: activeSplitPane }).catch(function (err) {
+            navigateToHierarchyTarget(navTarget).catch(function (err) {
               logFrontendIssue('warn', 'sidebar.hierarchy-focus', 'Failed to focus hierarchy target', err);
               showNotification('Failed to focus hierarchy item');
             });
@@ -4408,40 +4054,19 @@ const LexeraDashboard = (function () {
         boardRow.addEventListener('contextmenu', function (e) {
           e.preventDefault();
           e.stopPropagation();
-          var items = workspaceShellEnabled
-            ? [
-                { id: 'open-tab', label: 'Open / Focus Tab' },
-                { id: 'detach', label: 'Open in Detached Window' },
-                { separator: true },
-                { id: 'backend-settings', label: 'Backend Settings' },
-                { separator: true },
-                { id: 'reveal', label: 'Reveal in Finder' }
-              ]
-            : [
-                { id: 'split-left', label: 'Open in Split Left' },
-                { id: 'split-right', label: 'Open in Split Right' },
-                { separator: true },
-                { id: 'backend-settings', label: 'Backend Settings' },
-                { separator: true },
-                { id: 'reveal', label: 'Reveal in Finder' }
-              ];
+          var items = [
+            { id: 'open-tab', label: 'Open / Focus Tab' },
+            { id: 'detach', label: 'Open in Detached Window' },
+            { separator: true },
+            { id: 'backend-settings', label: 'Backend Settings' },
+            { separator: true },
+            { id: 'reveal', label: 'Reveal in Finder' }
+          ];
           showNativeMenu(items, e.clientX, e.clientY).then(async function (action) {
-            if (workspaceShellEnabled && WorkspaceShell) {
-              if (action === 'open-tab') {
-                selectBoard(boardId);
-              } else if (action === 'detach') {
-                if (hasTauri) tauriInvoke('open_new_window', { boardId: boardId, profile: 'detachedBoard' });
-              } else if (action === 'backend-settings') {
-                openConnectionWindow();
-              } else if (action === 'reveal' && boardFilePath) {
-                showInFinder(boardFilePath);
-              }
-              return;
-            }
-            if (action === 'split-left') {
-              openBoardInPane(boardId, 'a');
-            } else if (action === 'split-right') {
-              openBoardInPane(boardId, 'b');
+            if (action === 'open-tab') {
+              selectBoard(boardId);
+            } else if (action === 'detach') {
+              if (hasTauri) tauriInvoke('open_new_window', { boardId: boardId, profile: 'detachedBoard' });
             } else if (action === 'backend-settings') {
               openConnectionWindow();
             } else if (action === 'reveal' && boardFilePath) {
@@ -4662,28 +4287,6 @@ const LexeraDashboard = (function () {
     if (activeBoardId && activeBoardId !== boardId && isBoardDirty()) {
       try { await saveFullBoard(); } catch (_) { /* auto-save retry will handle it */ }
     }
-    if (!embeddedMode && splitViewMode !== 'single' && options.routeToPane !== false) {
-      var targetPane = normalizeSplitPane(options.pane || activeSplitPane);
-      setActiveSplitPane(targetPane);
-      splitPaneBoards[targetPane] = boardId;
-      activeBoardId = boardId;
-      activeBoardData = null;
-      fullBoardData = null;
-      pendingExternalRebaseConflict = null;
-      _lastLoadedGeneration = null;
-      _lastLoadedRevision = null;
-      addCardColumn = null;
-      resetBoardDirtyState('selectBoard-split-switch', boardId);
-      localStorage.setItem('lexera-last-board', boardId);
-      trackRecentBoard(boardId);
-      renderBoardList();
-      refreshHeaderFileControls();
-      refreshSplitFrames(false);
-      scheduleDashboardRefresh(60);
-      if (options.loadInBackground) await loadBoard(boardId);
-      return;
-    }
-
     activeBoardId = boardId;
     activeBoardData = null;
     fullBoardData = null;
@@ -6885,11 +6488,6 @@ const LexeraDashboard = (function () {
     $foldAllCardsBtn = null;
     $pinHeadersBtn = document.getElementById('btn-pin-column-headers');
     $saveTrackingBtn = document.getElementById('btn-save-tracking');
-    splitToggleBtn = document.getElementById('btn-split-toggle');
-    splitOrientationBtn = document.getElementById('btn-split-orientation');
-    bindSplitControlButtons();
-    updateSplitButtons();
-
     var paneFileTitleBtn = document.getElementById('btn-pane-file-title');
     var fileHeaderMenuBtn = document.getElementById('btn-file-header-menu');
     if (paneFileTitleBtn) {
@@ -8913,6 +8511,9 @@ const LexeraDashboard = (function () {
 
   async function handleBoardAction(action) {
     if (!action) return;
+    if (embeddedWorkspaceShellParent && action.indexOf('set-board-layout:') === 0) {
+      if (requestWorkspaceShellViewKind(action.substring('set-board-layout:'.length))) return;
+    }
     if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.handleBoardAction === 'function') {
       if (WorkspaceShell.handleBoardAction(action)) return;
     }
@@ -20233,11 +19834,7 @@ const LexeraDashboard = (function () {
       return resolved;
     }
     try {
-      if (options.pane && !embeddedMode) {
-        openBoardInPane(resolved.boardId, options.pane);
-      } else {
-        await selectBoard(resolved.boardId);
-      }
+      await selectBoard(resolved.boardId, { duplicate: !!options.duplicate });
     } catch (err) {
       lexeraLog('error', '[wiki] Failed to open document: ' + resolved.document + ' ' + err);
       if (!options.silent) showNotification('Failed to open wiki link');
@@ -20496,29 +20093,6 @@ const LexeraDashboard = (function () {
     return true;
   }
 
-  function postHierarchyFocusMessageToPane(pane, target) {
-    if (!splitRootEl || !pane || !target) return false;
-    var frame = splitRootEl.querySelector('.split-pane-frame[data-pane="' + pane + '"]');
-    if (!frame || !frame.contentWindow) return false;
-    frame.contentWindow.postMessage({
-      type: 'lexera-focus-hierarchy-target',
-      target: target
-    }, '*');
-    return true;
-  }
-
-  function scheduleHierarchyFocusMessageToPane(pane, target) {
-    if (!pane || !target) return false;
-    var sent = postHierarchyFocusMessageToPane(pane, target);
-    setTimeout(function () {
-      postHierarchyFocusMessageToPane(pane, target);
-    }, 120);
-    setTimeout(function () {
-      postHierarchyFocusMessageToPane(pane, target);
-    }, 450);
-    return sent;
-  }
-
   function unfoldSearchTarget(result) {
     return getBoardNavigationApi().unfoldSearchTarget(result, {
       getActiveBoardId: function () { return activeBoardId; },
@@ -20535,13 +20109,9 @@ const LexeraDashboard = (function () {
     }
     return getBoardNavigationApi().navigateToHierarchyTarget(target, {
       embeddedMode: embeddedMode,
-      splitViewMode: splitViewMode,
+      splitViewMode: 'single',
       skipSplitRouting: options.skipSplitRouting,
-      pane: options.pane,
-      activeSplitPane: activeSplitPane,
-      normalizeSplitPane: normalizeSplitPane,
       selectBoard: selectBoard,
-      scheduleHierarchyFocusMessageToPane: scheduleHierarchyFocusMessageToPane,
       getActiveBoardId: function () { return activeBoardId; },
       getActiveBoardData: function () { return activeBoardData; },
       loadBoard: loadBoard,
@@ -20575,7 +20145,7 @@ const LexeraDashboard = (function () {
       exitSearchMode: exitSearchMode,
       selectBoard: selectBoard,
       embeddedMode: embeddedMode,
-      splitViewMode: splitViewMode,
+      splitViewMode: 'single',
       getActiveBoardId: function () { return activeBoardId; },
       getActiveBoardData: function () { return activeBoardData; },
       loadBoard: loadBoard,
@@ -23374,17 +22944,13 @@ const LexeraDashboard = (function () {
     var documentName = container.getAttribute('data-document') || '';
     var resolved = resolveWikiDocument(documentName);
     var btnRect = btn.getBoundingClientRect();
-    var otherPane = activeSplitPane === 'a' ? 'b' : 'a';
     var menuItems = [];
 
     if (resolved.kind === 'board' && resolved.boardId) {
       menuItems.push({ label: getBoardDisplayName(resolved.board) || resolved.document, disabled: true });
       menuItems.push({ id: 'open', label: 'Open Linked Board' });
       if (!embeddedMode) {
-        menuItems.push({
-          id: 'open-other-pane',
-          label: splitViewMode === 'single' ? 'Open in Split View' : 'Open in Other Pane (' + otherPane.toUpperCase() + ')'
-        });
+        menuItems.push({ id: 'open-new-tab', label: 'Open in New Tab' });
       }
       menuItems.push({ id: 'search', label: 'Search for Reference' });
     } else if (resolved.kind === 'tag') {
@@ -23411,8 +22977,8 @@ const LexeraDashboard = (function () {
       openWikiDocument(documentName);
       return;
     }
-    if (action === 'open-other-pane') {
-      openWikiDocument(documentName, { pane: activeSplitPane === 'a' ? 'b' : 'a' });
+    if (action === 'open-new-tab') {
+      openWikiDocument(documentName, { duplicate: true });
       return;
     }
     if (action === 'search') {
@@ -26257,31 +25823,6 @@ const LexeraDashboard = (function () {
     ActionRegistry.register('board', 'backend-settings', function () { openConnectionWindow(); });
     ActionRegistry.register('board', 'settings', function () { openConnectionWindow(); });
     ActionRegistry.register('board', 'collab', function () { openConnectionWindow(); });
-
-    // Split view
-    ActionRegistry.register('board', 'split-enable', function () {
-      if (embeddedMode) return;
-      if (activeBoardId) splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
-      splitViewMode = 'vertical'; applySplitMode(false);
-    });
-    ActionRegistry.register('board', 'split-disable', function () {
-      if (embeddedMode) return;
-      splitViewMode = 'single'; applySplitMode(false);
-    });
-    ActionRegistry.register('board', 'split-orientation', function () {
-      if (embeddedMode || splitViewMode === 'single') return;
-      splitViewMode = splitViewMode === 'vertical' ? 'horizontal' : 'vertical'; applySplitMode(true);
-    });
-    ActionRegistry.register('board', 'split-enable-vertical', function () {
-      if (embeddedMode) return;
-      if (activeBoardId) splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
-      splitViewMode = 'vertical'; applySplitMode(false);
-    });
-    ActionRegistry.register('board', 'split-enable-horizontal', function () {
-      if (embeddedMode) return;
-      if (activeBoardId) splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
-      splitViewMode = 'horizontal'; applySplitMode(false);
-    });
 
     // Search
     ActionRegistry.register('board', 'open-search', function () { openSearchReplacePanel(); });

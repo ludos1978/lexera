@@ -11,7 +11,6 @@ function resetState() {
   state = {
     embeddedMode: false,
     splitViewMode: 'single',
-    activeSplitPane: 'a',
     activeBoardId: null,
     activeBoardData: null,
     selectCalls: [],
@@ -27,19 +26,10 @@ function buildOptions(extra) {
   return {
     embeddedMode: state.embeddedMode,
     splitViewMode: state.splitViewMode,
-    activeSplitPane: state.activeSplitPane,
     skipSplitRouting: !!extra.skipSplitRouting,
-    pane: extra.pane,
-    normalizeSplitPane(value) {
-      return value === 'b' ? 'b' : 'a';
-    },
     async selectBoard(boardId, options) {
       state.selectCalls.push({ boardId, options: options || {} });
       state.activeBoardId = boardId;
-    },
-    scheduleHierarchyFocusMessageToPane(pane, target) {
-      state.paneFocusCalls.push({ pane, target });
-      return true;
     },
     getActiveBoardId() {
       return state.activeBoardId;
@@ -138,26 +128,24 @@ describe('navigateToHierarchyTarget', () => {
     expect(state.paneFocusCalls).toEqual([]);
   });
 
-  it('routes focus into the active split pane instead of local view', async () => {
+  it('navigates to a different board and focuses locally', async () => {
     state.embeddedMode = false;
-    state.splitViewMode = 'vertical';
-    state.activeSplitPane = 'b';
+    state.splitViewMode = 'single';
     state.activeBoardId = 'board-old';
-    state.activeBoardData = { id: 'board-old' };
+    state.activeBoardData = null;
 
     await BoardNavigation.navigateToHierarchyTarget({
-      boardId: 'board-split',
+      boardId: 'board-other',
       rowIndex: 1
     }, buildOptions());
 
     expect(state.selectCalls.at(-1)).toEqual({
-      boardId: 'board-split',
-      options: { pane: 'b' }
+      boardId: 'board-other',
+      options: { routeToPane: false }
     });
-    expect(state.paneFocusCalls.at(-1)).toEqual({
-      pane: 'b',
-      target: { boardId: 'board-split', rowIndex: 1 }
-    });
-    expect(state.localFocusCalls).toEqual([]);
+    expect(state.loadCalls).toEqual(['board-other']);
+    expect(state.unfoldCalls).toHaveLength(1);
+    expect(state.localFocusCalls).toHaveLength(1);
+    expect(state.paneFocusCalls).toEqual([]);
   });
 });

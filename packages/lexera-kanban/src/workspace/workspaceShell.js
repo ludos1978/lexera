@@ -327,6 +327,7 @@
     url.hash = '';
     url.searchParams.set('embedded', '1');
     url.searchParams.set('workspaceShell', '0');
+    url.searchParams.set('workspaceShellParent', '1');
     url.searchParams.set('pane', tab.id);
     if (tab.boardId) url.searchParams.set('board', tab.boardId);
     if (tab.viewKind === 'kanban' || tab.viewKind === 'canvas') {
@@ -1337,17 +1338,25 @@
     }
   }
 
-  function setActiveViewKind(viewKind) {
-    var activeTab = getActiveTab();
-    if (!activeTab) return false;
+  function setTabViewKind(tabId, viewKind, options) {
+    var found = findTab(state.dockTree, tabId);
+    if (!found || !found.tab) return false;
     var normalized = normalizeViewKind(viewKind);
-    if (activeTab.viewKind === normalized) return true;
-    activeTab.viewKind = normalized;
-    var frame = getOrCreateFrame(activeTab);
+    if (found.tab.viewKind === normalized) return true;
+    found.tab.viewKind = normalized;
+    found.leaf.activeTabId = tabId;
+    if (!options || options.activate !== false) state.activeLeafId = found.leaf.id;
+    var frame = getOrCreateFrame(found.tab);
     frame.setAttribute('data-src', '');
     render();
     persistState();
     return true;
+  }
+
+  function setActiveViewKind(viewKind) {
+    var activeTab = getActiveTab();
+    if (!activeTab) return false;
+    return setTabViewKind(activeTab.id, viewKind, { activate: true });
   }
 
   function getDropZoneForEvent(tabsetEl, event) {
@@ -1873,6 +1882,11 @@
       if (!found) return;
       found.tab.boardId = data.boardId || found.tab.boardId;
       activateTab(found.tab.id);
+      return;
+    }
+    if (data.type === 'lexera-pane-set-view-kind') {
+      if (!data.pane || !data.viewKind) return;
+      setTabViewKind(data.pane, data.viewKind, { activate: true });
       return;
     }
   }

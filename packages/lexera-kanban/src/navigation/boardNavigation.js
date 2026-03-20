@@ -112,19 +112,6 @@
     options = options || {};
     if (!target || !target.boardId) return false;
 
-    if (!options.embeddedMode && options.splitViewMode !== 'single' && !options.skipSplitRouting) {
-      var pane = typeof options.normalizeSplitPane === 'function'
-        ? options.normalizeSplitPane(options.pane || options.activeSplitPane)
-        : (options.pane || options.activeSplitPane);
-      if (typeof options.selectBoard === 'function') {
-        await options.selectBoard(target.boardId, { pane: pane });
-      }
-      if (typeof options.scheduleHierarchyFocusMessageToPane === 'function') {
-        options.scheduleHierarchyFocusMessageToPane(pane, target);
-      }
-      return true;
-    }
-
     if (getActiveBoardId(options) !== target.boardId && typeof options.selectBoard === 'function') {
       await options.selectBoard(target.boardId, { routeToPane: false });
     }
@@ -186,13 +173,6 @@
     try {
       if (typeof options.selectBoard === 'function') {
         await options.selectBoard(result.boardId);
-      }
-
-      if (!options.embeddedMode && options.splitViewMode !== 'single') {
-        if (typeof options.showNotification === 'function') {
-          options.showNotification('Opened result board in active split view');
-        }
-        return;
       }
 
       if ((getActiveBoardId(options) !== result.boardId || !getActiveBoardData(options)) && typeof options.loadBoard === 'function') {
