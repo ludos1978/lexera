@@ -40,6 +40,23 @@
     return window.__TAURI__.core.invoke(command, payload || {});
   }
 
+  function tauriEmitAll(eventName, payload) {
+    // Tauri v2: emit event to all windows via IPC plugin
+    var ipc = window.__TAURI_INTERNALS__ ||
+              (window.__TAURI__ && window.__TAURI__.core) || null;
+    if (ipc && typeof ipc.invoke === 'function') {
+      return ipc.invoke('plugin:event|emit', {
+        event: eventName,
+        payload: payload
+      });
+    }
+    return Promise.reject(new Error('Tauri event API unavailable'));
+  }
+
+  function closeCurrentWindow() {
+    window.close();
+  }
+
   function createIdFactory() {
     var counter = 1;
     return function (prefix) {
@@ -58,20 +75,37 @@
 
   var nextId = createIdFactory();
 
-  function createTab(boardId, viewKind) {
+  function createBoardTab(boardId, viewKind) {
     return {
       id: nextId('tab'),
+      kind: 'board',
       boardId: boardId || '',
       viewKind: normalizeViewKind(viewKind)
     };
+  }
+
+  function createPanelTab(panelId) {
+    return {
+      id: nextId('tab'),
+      kind: 'panel',
+      panelId: String(panelId || '')
+    };
+  }
+
+  function isPanelTab(tab) {
+    return !!(tab && tab.kind === 'panel');
+  }
+
+  function isBoardTab(tab) {
+    return !!tab && !isPanelTab(tab);
   }
 
   var PANEL_DEFINITIONS = {
     hierarchy: { id: 'hierarchy', title: 'Workspaces', defaultDock: 'left', duplicable: true, integratedHeader: true },
     dashboard: { id: 'dashboard', title: 'Dashboard', defaultDock: 'right', duplicable: true, integratedHeader: true },
     logs: { id: 'logs', title: 'Logs', defaultDock: 'bottom', duplicable: true, integratedHeader: true },
-    backendSettings: { id: 'backendSettings', title: 'Backend Settings', defaultDock: 'right', duplicable: false },
-    frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right', duplicable: false }
+    backendSettings: { id: 'backendSettings', title: 'Backend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
+    frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true }
   };
 
   function createDefaultPanelInstances() {
@@ -81,14 +115,6 @@
       logs: { id: 'logs', kind: 'logs' },
       backendSettings: { id: 'backendSettings', kind: 'backendSettings' },
       frontendSettings: { id: 'frontendSettings', kind: 'frontendSettings' }
-    };
-  }
-
-  function createDefaultPanelDocks() {
-    return {
-      left: ['hierarchy'],
-      right: ['dashboard'],
-      bottom: ['logs']
     };
   }
 
@@ -102,8 +128,8 @@
     }
     return {
       left: 300,
-      right: 320,
-      bottom: 240
+      right: 0,
+      bottom: 0
     };
   }
 
@@ -138,14 +164,6 @@
     };
   }
 
-  function createDefaultPanelWeights() {
-    return {
-      left: { hierarchy: 1 },
-      right: { dashboard: 1 },
-      bottom: { logs: 1 }
-    };
-  }
-
   function normalizePanelKind(value) {
     return PANEL_DEFINITIONS[value] ? value : '';
   }
@@ -175,28 +193,6 @@
     var normalized = String(value || '');
     if (panelInstances && panelInstances[normalized]) return normalized;
     return normalizePanelKind(normalized);
-  }
-
-  function normalizePanelWeights(raw) {
-    var defaults = createDefaultPanelWeights();
-    var dockIds = ['left', 'right', 'bottom'];
-    var result = { left: {}, right: {}, bottom: {} };
-    var source = raw && typeof raw === 'object' ? raw : {};
-    for (var i = 0; i < dockIds.length; i++) {
-      var dockId = dockIds[i];
-      var defaultDockWeights = defaults[dockId];
-      var rawDockWeights = source[dockId] && typeof source[dockId] === 'object' ? source[dockId] : {};
-      var panelIds = Object.keys(defaultDockWeights).concat(Object.keys(rawDockWeights));
-      for (var j = 0; j < panelIds.length; j++) {
-        var panelId = String(panelIds[j] || '');
-        if (!panelId) continue;
-        var rawValue = rawDockWeights[panelId];
-        var fallback = defaultDockWeights[panelId] || 1;
-        var nextValue = typeof rawValue === 'number' && isFinite(rawValue) ? rawValue : fallback;
-        result[dockId][panelId] = Math.max(0.25, nextValue);
-      }
-    }
-    return result;
   }
 
   function createDefaultPanelVisibility(profile) {
@@ -233,21 +229,41 @@
   }
 
   function normalizePanelDocks(raw, profile, panelInstances) {
-    var defaults = createDefaultPanelDocks();
+    var defaults = { left: [['hierarchy', 'dashboard']], right: [], bottom: [['logs']] };
     var result = { left: [], right: [], bottom: [] };
     var seen = {};
     var dockOrder = ['left', 'right', 'bottom'];
     for (var i = 0; i < dockOrder.length; i++) {
       var dockId = dockOrder[i];
       var source = raw ? raw[dockId] : null;
-      var panelIds = [];
-      if (Array.isArray(source)) {
-        panelIds = ensureUniquePanelIds(source, seen, panelInstances);
-      } else if (source && typeof source === 'object' && Array.isArray(source.tabIds)) {
-        panelIds = ensureUniquePanelIds(source.tabIds, seen, panelInstances);
+      var groups = [];
+      if (Array.isArray(source) && source.length > 0) {
+        // Detect format: grouped (array of arrays) vs flat (array of strings)
+        var isGrouped = Array.isArray(source[0]);
+        if (isGrouped) {
+          for (var g = 0; g < source.length; g++) {
+            var groupIds = ensureUniquePanelIds(source[g], seen, panelInstances);
+            if (groupIds.length > 0) groups.push(groupIds);
+          }
+        } else {
+          // Legacy flat format: each panel becomes its own group
+          var flatIds = ensureUniquePanelIds(source, seen, panelInstances);
+          for (var f = 0; f < flatIds.length; f++) {
+            groups.push([flatIds[f]]);
+          }
+        }
       }
-      if (panelIds.length === 0) panelIds = ensureUniquePanelIds(defaults[dockId], seen, panelInstances);
-      result[dockId] = panelIds;
+      if (groups.length === 0) {
+        // Use defaults (already grouped format)
+        for (var d = 0; d < defaults[dockId].length; d++) {
+          var defGroup = defaults[dockId][d];
+          var defIds = ensureUniquePanelIds(
+            Array.isArray(defGroup) ? defGroup : [defGroup], seen, panelInstances
+          );
+          if (defIds.length > 0) groups.push(defIds);
+        }
+      }
+      result[dockId] = groups;
     }
     return result;
   }
@@ -294,6 +310,116 @@
       first: first,
       second: second
     };
+  }
+
+  function createDefaultSideDocks(profile) {
+    if (profile === 'detachedBoard') return { left: null, right: null, bottom: null };
+    return {
+      left: createSplitNode('horizontal',
+        createTabsetNode([createPanelTab('hierarchy')]),
+        createTabsetNode([createPanelTab('dashboard')]),
+        0.6
+      ),
+      right: null,
+      bottom: createTabsetNode([createPanelTab('logs')])
+    };
+  }
+
+  function getTreeRoot(treeId) {
+    if (treeId === 'center') return state.dockTree;
+    return state.sideDocks ? state.sideDocks[treeId] || null : null;
+  }
+
+  function setTreeRoot(treeId, root) {
+    if (treeId === 'center') { state.dockTree = root; return; }
+    if (state.sideDocks) state.sideDocks[treeId] = root;
+  }
+
+  function allTreeIds() { return ['center', 'left', 'right', 'bottom']; }
+
+  function findLeafInAllTrees(leafId) {
+    var ids = allTreeIds();
+    for (var i = 0; i < ids.length; i++) {
+      var root = getTreeRoot(ids[i]);
+      if (!root) continue;
+      var leaf = findLeafById(root, leafId);
+      if (leaf) return { treeId: ids[i], leaf: leaf };
+    }
+    return null;
+  }
+
+  function findTabInAllTrees(tabId) {
+    var ids = allTreeIds();
+    for (var i = 0; i < ids.length; i++) {
+      var root = getTreeRoot(ids[i]);
+      if (!root) continue;
+      var found = findTab(root, tabId);
+      if (found) return { treeId: ids[i], tab: found.tab, leaf: found.leaf, index: found.index };
+    }
+    return null;
+  }
+
+  function findPanelInAllTrees(panelId) {
+    var ids = allTreeIds();
+    for (var i = 0; i < ids.length; i++) {
+      var root = getTreeRoot(ids[i]);
+      if (!root) continue;
+      var found = findLeafContainingPanel(root, panelId);
+      if (found) return { treeId: ids[i], tab: found.tab, leaf: found.leaf };
+    }
+    return null;
+  }
+
+  function countTreeTabs(tree) {
+    var count = 0;
+    visitTree(tree, function(node) {
+      if (node.type === 'tabs') count += node.tabs.length;
+    });
+    return count;
+  }
+
+  function migratePanelDocksToSideDocks(panelDocks, panelGroupActives) {
+    var result = { left: null, right: null, bottom: null };
+    var dockIds = ['left', 'right', 'bottom'];
+    for (var d = 0; d < dockIds.length; d++) {
+      var dockId = dockIds[d];
+      var groups = panelDocks[dockId];
+      if (!Array.isArray(groups) || groups.length === 0) continue;
+      var tabsetNodes = [];
+      for (var g = 0; g < groups.length; g++) {
+        var group = groups[g];
+        if (!Array.isArray(group) || group.length === 0) continue;
+        var tabs = [];
+        for (var p = 0; p < group.length; p++) {
+          tabs.push(createPanelTab(group[p]));
+        }
+        if (tabs.length === 0) continue;
+        var node = createTabsetNode(tabs);
+        var groupKey = group.join(',');
+        var activePanel = panelGroupActives && panelGroupActives[groupKey];
+        if (activePanel) {
+          for (var k = 0; k < node.tabs.length; k++) {
+            if (node.tabs[k].panelId === activePanel) {
+              node.activeTabId = node.tabs[k].id;
+              break;
+            }
+          }
+        }
+        tabsetNodes.push(node);
+      }
+      if (tabsetNodes.length === 0) continue;
+      if (tabsetNodes.length === 1) {
+        result[dockId] = tabsetNodes[0];
+      } else {
+        var axis = dockId === 'bottom' ? 'horizontal' : 'vertical';
+        var tree = tabsetNodes[0];
+        for (var n = 1; n < tabsetNodes.length; n++) {
+          tree = createSplitNode(axis, tree, tabsetNodes[n], 0.5);
+        }
+        result[dockId] = tree;
+      }
+    }
+    return result;
   }
 
   function getFirstLeaf(node) {
@@ -354,7 +480,29 @@
       if (found || candidate.type !== 'tabs') return;
       for (var i = 0; i < candidate.tabs.length; i++) {
         var tab = candidate.tabs[i];
+        if (!isBoardTab(tab)) continue;
         if (tab.boardId === boardId && tab.viewKind === desiredView) {
+          found = {
+            tab: tab,
+            leaf: candidate
+          };
+          return;
+        }
+      }
+    });
+    return found;
+  }
+
+  function findLeafContainingPanel(node, panelId) {
+    var normalizedPanelId = resolvePanelTarget(panelId);
+    if (!normalizedPanelId) return null;
+    var found = null;
+    visitTree(node, function (candidate) {
+      if (found || candidate.type !== 'tabs') return;
+      for (var i = 0; i < candidate.tabs.length; i++) {
+        var tab = candidate.tabs[i];
+        if (!isPanelTab(tab)) continue;
+        if (resolvePanelTarget(tab.panelId) === normalizedPanelId) {
           found = {
             tab: tab,
             leaf: candidate
@@ -381,6 +529,7 @@
   }
 
   function getEmbeddedUrlForTab(tab) {
+    if (!isBoardTab(tab)) return '';
     var url = new URL(window.location.href);
     url.search = '';
     url.hash = '';
@@ -427,13 +576,14 @@
     profile: urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace',
     panelOnlyKind: normalizePanelKind(urlParams.get('panelKind') || ''),
     panelOnlyId: '',
+    initialPanelKind: normalizePanelKind(urlParams.get('initialPanel') || ''),
+    windowRole: String(urlParams.get('windowRole') || ''),
     windowLabel: String(urlParams.get('windowLabel') || 'main'),
     dockTree: createTabsetNode([]),
     panelInstances: createDefaultPanelInstances(),
-    panelDocks: createDefaultPanelDocks(),
+    sideDocks: createDefaultSideDocks(urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace'),
     dockSizes: createDefaultDockSizes(urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace'),
     dockRestoreSizes: createDefaultDockRestoreSizes(urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace'),
-    panelWeights: createDefaultPanelWeights(),
     panelVisibility: createDefaultPanelVisibility(urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace'),
     activePanelId: urlParams.get('profile') === 'detachedBoard' ? '' : 'hierarchy',
     activeLeafId: '',
@@ -445,25 +595,23 @@
     toolbarEl: null,
     bodyEl: null,
     mainRowEl: null,
-    leftMarkerEl: null,
     leftDockEl: null,
     leftDividerEl: null,
     dockEl: null,
     rightDividerEl: null,
     rightDockEl: null,
-    rightMarkerEl: null,
     bottomDividerEl: null,
     bottomDockEl: null,
-    bottomMarkerEl: null,
     panelDropOverlayEl: null,
     lastStructureSignature: '',
     panelElements: null,
-    panelPointerDrag: null,
-    panelDragHoverDock: '',
     dragTabId: '',
     dragDroppedInternally: false,
     dragHoverLeafId: '',
     dragHoverZone: '',
+    dragHoverDock: '',
+    dragHoverTabIndex: -1,
+    dragPanelId: '',
     pointerDrag: null,
     dragLastX: 0,
     dragLastY: 0
@@ -521,6 +669,10 @@
     return !!state.panelOnlyKind;
   }
 
+  function isHierarchyLauncherWindow() {
+    return state.windowRole === 'hierarchyLauncher' || (isPanelOnlyWindow() && state.panelOnlyKind === 'hierarchy');
+  }
+
   function createPanelInstance(kind, panelId) {
     var normalizedKind = normalizePanelKind(kind);
     if (!normalizedKind) return '';
@@ -536,11 +688,33 @@
     for (var i = 0; i < panelIds.length; i++) {
       state.panelVisibility[panelIds[i]] = panelIds[i] === state.panelOnlyId;
     }
-    state.panelDocks = { left: [], right: [], bottom: [] };
+    state.sideDocks = { left: null, right: null, bottom: null };
     state.dockSizes.left = 0;
     state.dockSizes.right = 0;
     state.dockSizes.bottom = 0;
     state.activePanelId = state.panelOnlyId;
+  }
+
+  function ensureInitialPanelTab(panelKind) {
+    var normalizedKind = normalizePanelKind(panelKind);
+    if (!normalizedKind || isPanelOnlyWindow()) return false;
+    var leaf = getFirstLeaf(state.dockTree);
+    if (leaf && leaf.tabs && leaf.tabs.length > 0) return false;
+    var panelId = getPrimaryPanelId(normalizedKind) || createPanelInstance(normalizedKind, normalizedKind);
+    var targetLeaf = leaf || state.dockTree;
+    if (!targetLeaf || targetLeaf.type !== 'tabs') {
+      state.dockTree = createTabsetNode([]);
+      targetLeaf = state.dockTree;
+    }
+    state.panelVisibility[panelId] = true;
+    removePanelFromDocks(panelId);
+    var tab = createPanelTab(panelId);
+    targetLeaf.tabs.push(tab);
+    targetLeaf.activeTabId = tab.id;
+    state.activeLeafId = targetLeaf.id;
+    state.activePanelId = panelId;
+    state.dockTree = withNormalizedLeaves(state.dockTree, true);
+    return true;
   }
 
   function getPersistenceStorage() {
@@ -560,8 +734,16 @@
         id: node.id,
         activeTabId: node.activeTabId || '',
         tabs: (node.tabs || []).map(function (tab) {
+          if (isPanelTab(tab)) {
+            return {
+              id: tab.id,
+              kind: 'panel',
+              panelId: resolvePanelTarget(tab.panelId)
+            };
+          }
           return {
             id: tab.id,
+            kind: 'board',
             boardId: tab.boardId || '',
             viewKind: normalizeViewKind(tab.viewKind)
           };
@@ -578,17 +760,30 @@
     };
   }
 
-  function hydrateNode(raw) {
+  function hydrateNode(raw, panelInstances) {
     if (!raw || typeof raw !== 'object') return null;
     if (raw.type === 'tabs') {
       var tabs = [];
       var rawTabs = Array.isArray(raw.tabs) ? raw.tabs : [];
       for (var i = 0; i < rawTabs.length; i++) {
-        if (!rawTabs[i] || typeof rawTabs[i].boardId !== 'string' || !rawTabs[i].boardId) continue;
+        var rawTab = rawTabs[i];
+        if (!rawTab || typeof rawTab !== 'object') continue;
+        if (rawTab.kind === 'panel') {
+          var panelId = normalizePanelIdWithInstances(rawTab.panelId, panelInstances || state.panelInstances);
+          if (!panelId) continue;
+          tabs.push({
+            id: String(rawTab.id || nextId('tab')),
+            kind: 'panel',
+            panelId: panelId
+          });
+          continue;
+        }
+        if (typeof rawTab.boardId !== 'string' || !rawTab.boardId) continue;
         tabs.push({
-          id: String(rawTabs[i].id || nextId('tab')),
-          boardId: rawTabs[i].boardId,
-          viewKind: normalizeViewKind(rawTabs[i].viewKind)
+          id: String(rawTab.id || nextId('tab')),
+          kind: 'board',
+          boardId: rawTab.boardId,
+          viewKind: normalizeViewKind(rawTab.viewKind)
         });
       }
       return {
@@ -604,8 +799,8 @@
       id: String(raw.id || nextId('split')),
       axis: raw.axis === 'horizontal' ? 'horizontal' : 'vertical',
       ratio: typeof raw.ratio === 'number' && isFinite(raw.ratio) ? Math.max(0.18, Math.min(0.82, raw.ratio)) : 0.5,
-      first: hydrateNode(raw.first),
-      second: hydrateNode(raw.second)
+      first: hydrateNode(raw.first, panelInstances),
+      second: hydrateNode(raw.second, panelInstances)
     };
   }
 
@@ -614,13 +809,16 @@
     try {
       var storage = getPersistenceStorage();
       storage.setItem(getPersistenceKey(), JSON.stringify({
-        version: 3,
+        version: 4,
         profile: state.profile,
         panelInstances: state.panelInstances,
-        panelDocks: state.panelDocks,
+        sideDocks: {
+          left: serializeNode(state.sideDocks.left),
+          right: serializeNode(state.sideDocks.right),
+          bottom: serializeNode(state.sideDocks.bottom)
+        },
         dockSizes: state.dockSizes,
         dockRestoreSizes: state.dockRestoreSizes,
-        panelWeights: state.panelWeights,
         panelVisibility: state.panelVisibility,
         activePanelId: state.activePanelId || '',
         activeLeafId: state.activeLeafId || '',
@@ -636,16 +834,28 @@
       var raw = getPersistenceStorage().getItem(getPersistenceKey());
       if (!raw) return false;
       var parsed = JSON.parse(raw);
-      if (!parsed || (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3)) return false;
+      if (!parsed || (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3 && parsed.version !== 4)) return false;
       if (parsed.profile && parsed.profile !== state.profile) return false;
-      state.dockTree = hydrateNode(parsed.dockTree) || createTabsetNode([]);
-      state.dockTree = withNormalizedLeaves(state.dockTree, true);
       state.panelInstances = normalizePanelInstances(parsed.panelInstances);
-      state.panelDocks = normalizePanelDocks(parsed.panelDocks, state.profile, state.panelInstances);
+      state.dockTree = hydrateNode(parsed.dockTree, state.panelInstances) || createTabsetNode([]);
+      state.dockTree = withNormalizedLeaves(state.dockTree, true);
+      // Hydrate sideDocks: version 4 stores sideDocks trees; older versions store panelDocks groups
+      if (parsed.version === 4 && parsed.sideDocks && typeof parsed.sideDocks === 'object') {
+        state.sideDocks = {
+          left: hydrateNode(parsed.sideDocks.left, state.panelInstances),
+          right: hydrateNode(parsed.sideDocks.right, state.panelInstances),
+          bottom: hydrateNode(parsed.sideDocks.bottom, state.panelInstances)
+        };
+      } else if (parsed.panelDocks) {
+        var normalizedOldDocks = normalizePanelDocks(parsed.panelDocks, state.profile, state.panelInstances);
+        state.sideDocks = migratePanelDocksToSideDocks(normalizedOldDocks, parsed.panelGroupActives);
+      } else {
+        state.sideDocks = createDefaultSideDocks(state.profile);
+      }
       state.dockSizes = normalizeDockSizes(parsed.dockSizes, state.profile);
       state.dockRestoreSizes = normalizeDockRestoreSizes(parsed.dockRestoreSizes, state.profile);
-      state.panelWeights = normalizePanelWeights(parsed.panelWeights);
       state.panelVisibility = normalizePanelVisibility(parsed.panelVisibility, state.profile, state.panelInstances);
+      syncIntegratedPanelVisibility();
       state.activePanelId = resolvePanelTarget(parsed.activePanelId) || state.activePanelId;
       state.activeLeafId = String(parsed.activeLeafId || '');
       ensureActiveLeaf();
@@ -683,20 +893,25 @@
     if (!normalized) return '';
     var dockIds = ['left', 'right', 'bottom'];
     for (var i = 0; i < dockIds.length; i++) {
-      var dockId = dockIds[i];
-      var panelIds = Array.isArray(state.panelDocks[dockId]) ? state.panelDocks[dockId] : [];
-      if (panelIds.indexOf(normalized) !== -1) return dockId;
+      var tree = state.sideDocks[dockIds[i]];
+      if (tree && findLeafContainingPanel(tree, normalized)) return dockIds[i];
     }
     return '';
+  }
+
+  function isPanelIntegrated(panelId) {
+    return !!findLeafContainingPanel(state.dockTree, panelId);
   }
 
   function isPanelShown(panelId) {
     var normalized = String(panelId || '');
     if (state.panelInstances[normalized]) {
       if (!state.panelVisibility[normalized]) return false;
-      var dockId = getDockForPanel(normalized);
-      if (!dockId) return false;
-      return state.dockSizes[dockId] > 0;
+      if (isPanelIntegrated(normalized)) return true;
+      // Check side docks
+      var found = findPanelInAllTrees(normalized);
+      if (!found || found.treeId === 'center') return false;
+      return state.dockSizes[found.treeId] > 0;
     }
     var kind = normalizePanelKind(normalized);
     if (!kind) return false;
@@ -707,26 +922,31 @@
     return false;
   }
 
+  // Returns flat list of visible panel IDs for a side dock tree
   function getVisiblePanelIdsForDock(dockId) {
-    var dock = state.panelDocks[dockId];
-    if (!Array.isArray(dock)) return [];
+    var tree = state.sideDocks[dockId];
+    if (!tree) return [];
     var result = [];
-    for (var i = 0; i < dock.length; i++) {
-      var panelId = resolvePanelTarget(dock[i]);
-      if (!panelId) continue;
-      if (!state.panelVisibility[panelId]) continue;
-      result.push(panelId);
-    }
+    visitTree(tree, function(node) {
+      if (node.type !== 'tabs') return;
+      for (var i = 0; i < node.tabs.length; i++) {
+        if (!isPanelTab(node.tabs[i])) continue;
+        var panelId = resolvePanelTarget(node.tabs[i].panelId);
+        if (!panelId) continue;
+        if (!state.panelVisibility[panelId]) continue;
+        if (isPanelIntegrated(panelId)) continue;
+        result.push(panelId);
+      }
+    });
     return result;
   }
 
   function ensurePanelDockActives() {
-    prunePanelWeights();
     if (!state.panelVisibility[state.activePanelId]) {
       state.activePanelId = '';
       var dockOrder = ['left', 'right', 'bottom'];
       for (var i = 0; i < dockOrder.length; i++) {
-        var panelIds = state.panelDocks[dockOrder[i]] || [];
+        var panelIds = getVisiblePanelIdsForDock(dockOrder[i]);
         for (var j = 0; j < panelIds.length; j++) {
           if (state.panelVisibility[panelIds[j]]) {
             state.activePanelId = panelIds[j];
@@ -738,34 +958,21 @@
     }
   }
 
-  function ensurePanelWeightEntry(dockId, panelId) {
-    if (!state.panelWeights[dockId]) state.panelWeights[dockId] = {};
-    if (!(state.panelWeights[dockId][panelId] > 0)) {
-      state.panelWeights[dockId][panelId] = 1;
-    }
-  }
-
-  function prunePanelWeights() {
-    var dockIds = ['left', 'right', 'bottom'];
-    for (var i = 0; i < dockIds.length; i++) {
-      var dockId = dockIds[i];
-      var weights = state.panelWeights[dockId] || {};
-      var panelIds = Array.isArray(state.panelDocks[dockId]) ? state.panelDocks[dockId] : [];
-      for (var j = 0; j < panelIds.length; j++) {
-        ensurePanelWeightEntry(dockId, panelIds[j]);
-      }
-      var weightKeys = Object.keys(weights);
-      for (var k = 0; k < weightKeys.length; k++) {
-        if (panelIds.indexOf(weightKeys[k]) === -1) {
-          delete weights[weightKeys[k]];
+  function syncIntegratedPanelVisibility() {
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var root = getTreeRoot(ids[t]);
+      if (!root) continue;
+      visitTree(root, function (node) {
+        if (!node || node.type !== 'tabs') return;
+        for (var i = 0; i < node.tabs.length; i++) {
+          if (!isPanelTab(node.tabs[i])) continue;
+          var panelId = resolvePanelTarget(node.tabs[i].panelId);
+          if (!panelId) continue;
+          state.panelVisibility[panelId] = true;
         }
-      }
+      });
     }
-  }
-
-  function getPanelWeight(dockId, panelId) {
-    ensurePanelWeightEntry(dockId, panelId);
-    return state.panelWeights[dockId][panelId];
   }
 
   function getDockVisiblePanelIds(dockId) {
@@ -778,42 +985,13 @@
     return getDockVisiblePanelIds(dockId).length > 0 && state.dockSizes[dockId] === 0;
   }
 
-  function getHiddenReopenPanelIdsForDock(dockId) {
-    if (isPanelOnlyWindow()) return [];
-    if (state.profile !== 'workspace') return [];
-    var panelKinds = ['hierarchy', 'dashboard', 'logs'];
-    var result = [];
-    for (var i = 0; i < panelKinds.length; i++) {
-      var kind = panelKinds[i];
-      var definition = PANEL_DEFINITIONS[kind];
-      if (!definition || definition.defaultDock !== dockId) continue;
-      if (isPanelShown(kind)) continue;
-      var primaryPanelId = getPrimaryPanelId(kind);
-      if (!primaryPanelId) continue;
-      result.push(primaryPanelId);
+  function isPanelInAnyDock(panelId) {
+    var docks = ['left', 'right', 'bottom'];
+    for (var i = 0; i < docks.length; i++) {
+      var tree = state.sideDocks[docks[i]];
+      if (tree && findLeafContainingPanel(tree, panelId)) return true;
     }
-    return result;
-  }
-
-  function dedupeMarkerPanelIds(panelIds) {
-    var result = [];
-    var seenKinds = {};
-    var seenIds = {};
-    var list = Array.isArray(panelIds) ? panelIds : [];
-    for (var i = 0; i < list.length; i++) {
-      var panelId = resolvePanelTarget(list[i]);
-      if (!panelId || seenIds[panelId]) continue;
-      var kind = getPanelKind(panelId);
-      if (!kind) continue;
-      if (isPanelKindDuplicable(kind)) {
-        if (seenKinds[kind]) continue;
-        seenKinds[kind] = true;
-        panelId = getPrimaryPanelId(kind) || panelId;
-      }
-      seenIds[panelId] = true;
-      result.push(panelId);
-    }
-    return result;
+    return false;
   }
 
   function restoreDock(dockId, panelId) {
@@ -825,6 +1003,7 @@
     state.dockSizes[dockId] = restoreSize;
     if (panelId) activatePanel(panelId);
     render();
+    persistState();
     return true;
   }
 
@@ -835,17 +1014,41 @@
     }
     state.dockSizes[dockId] = 0;
     render();
+    persistState();
     return true;
   }
 
   function revealPanel(panelId) {
     var normalized = resolvePanelTarget(panelId);
     if (!normalized) return false;
-    var dockId = getDockForPanel(normalized);
-    if (!dockId) {
-      var kind = getPanelKind(normalized);
-      dockId = kind && PANEL_DEFINITIONS[kind] ? PANEL_DEFINITIONS[kind].defaultDock : 'left';
-      state.panelDocks[dockId].push(normalized);
+    // Check all trees for existing panel tab
+    var found = findPanelInAllTrees(normalized);
+    if (found && found.tab) {
+      state.panelVisibility[normalized] = true;
+      state.activePanelId = normalized;
+      if (found.treeId === 'center') {
+        activateTab(found.tab.id);
+      } else {
+        found.leaf.activeTabId = found.tab.id;
+        return restoreDock(found.treeId, normalized);
+      }
+      return true;
+    }
+    // Not found anywhere, add to default side dock
+    var kind = getPanelKind(normalized);
+    var dockId = kind && PANEL_DEFINITIONS[kind] ? PANEL_DEFINITIONS[kind].defaultDock : 'left';
+    var dockTree = state.sideDocks[dockId];
+    var newTab = createPanelTab(normalized);
+    if (dockTree) {
+      var firstLeaf = getFirstLeaf(dockTree);
+      if (firstLeaf) {
+        firstLeaf.tabs.push(newTab);
+        firstLeaf.activeTabId = newTab.id;
+      } else {
+        state.sideDocks[dockId] = createTabsetNode([newTab]);
+      }
+    } else {
+      state.sideDocks[dockId] = createTabsetNode([newTab]);
     }
     state.panelVisibility[normalized] = true;
     state.activePanelId = normalized;
@@ -855,25 +1058,38 @@
   function collapsePanel(panelId) {
     var normalized = resolvePanelTarget(panelId);
     if (!normalized) return false;
-    var dockId = getDockForPanel(normalized);
-    if (!dockId) return false;
+    var found = findPanelInAllTrees(normalized);
+    if (found && found.treeId === 'center' && found.tab) {
+      return closeTab(found.tab.id);
+    }
+    var dockId = found ? found.treeId : getDockForPanel(normalized);
+    if (!dockId || dockId === 'center') return false;
     return collapseDock(dockId);
   }
 
   function closePanelView(panelId) {
     var normalized = resolvePanelTarget(panelId);
     if (!normalized) return false;
+    var found = findPanelInAllTrees(normalized);
+    if (found && found.treeId === 'center' && found.tab) {
+      return closeTab(found.tab.id);
+    }
     var kind = getPanelKind(normalized);
     if (!kind) return false;
     if (normalized === kind) {
-      return collapsePanel(normalized);
+      // Base panel: remove tab from tree and hide
+      state.panelVisibility[normalized] = false;
+      if (state.activePanelId === normalized) state.activePanelId = '';
+      if (found && found.tab) {
+        extractTab(found.tab.id);
+      }
+      ensurePanelDockActives();
+      render();
+      persistState();
+      return true;
     }
-    var dockIds = ['left', 'right', 'bottom'];
-    for (var i = 0; i < dockIds.length; i++) {
-      var dockPanels = state.panelDocks[dockIds[i]] || [];
-      var index = dockPanels.indexOf(normalized);
-      if (index !== -1) dockPanels.splice(index, 1);
-    }
+    // Duplicated instance: remove from side docks entirely
+    removePanelFromDocks(normalized);
     delete state.panelInstances[normalized];
     delete state.panelVisibility[normalized];
     if (state.activePanelId === normalized) state.activePanelId = '';
@@ -888,6 +1104,7 @@
     }
     ensurePanelDockActives();
     render();
+    persistState();
     return true;
   }
 
@@ -897,137 +1114,192 @@
     var kind = getPanelKind(sourcePanelId);
     if (!isPanelKindDuplicable(kind)) return sourcePanelId;
     var newPanelId = createPanelInstance(kind);
-    var dockId = getDockForPanel(sourcePanelId) || PANEL_DEFINITIONS[kind].defaultDock;
-    var dockPanels = state.panelDocks[dockId] || (state.panelDocks[dockId] = []);
-    var sourceIndex = dockPanels.indexOf(sourcePanelId);
-    if (sourceIndex === -1) dockPanels.push(newPanelId);
-    else dockPanels.splice(sourceIndex + 1, 0, newPanelId);
     state.panelVisibility[newPanelId] = true;
-    if (!state.panelWeights[dockId]) state.panelWeights[dockId] = {};
-    state.panelWeights[dockId][newPanelId] = getPanelWeight(dockId, sourcePanelId);
+    // Find source in any tree
+    var found = findPanelInAllTrees(sourcePanelId);
+    if (found && found.leaf) {
+      var newTab = createPanelTab(newPanelId);
+      var insertAt = found.leaf.tabs.indexOf(found.tab);
+      if (insertAt === -1) found.leaf.tabs.push(newTab);
+      else found.leaf.tabs.splice(insertAt + 1, 0, newTab);
+      found.leaf.activeTabId = newTab.id;
+      if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
+      state.activePanelId = newPanelId;
+      render();
+      persistState();
+      return newPanelId;
+    }
+    // Not found anywhere, add to default dock
+    var dockId = PANEL_DEFINITIONS[kind] ? PANEL_DEFINITIONS[kind].defaultDock : 'left';
+    var newTab2 = createPanelTab(newPanelId);
+    var dockTree = state.sideDocks[dockId];
+    if (dockTree) {
+      var firstLeaf = getFirstLeaf(dockTree);
+      if (firstLeaf) {
+        firstLeaf.tabs.push(newTab2);
+        firstLeaf.activeTabId = newTab2.id;
+      } else {
+        state.sideDocks[dockId] = createTabsetNode([newTab2]);
+      }
+    } else {
+      state.sideDocks[dockId] = createTabsetNode([newTab2]);
+    }
     state.activePanelId = newPanelId;
     restoreDock(dockId, newPanelId);
     return newPanelId;
   }
 
-  function renderCollapsedDockMarker(dockId, hostEl) {
-    if (!hostEl) return;
-    hostEl.innerHTML = '';
-    hostEl.className = 'workspace-shell-collapsed-marker-strip';
-    hostEl.setAttribute('data-dock', dockId);
-    var panelIds = [];
-    var collapsedDockPanelIds = getDockVisiblePanelIds(dockId);
-    if (collapsedDockPanelIds.length > 0 && state.dockSizes[dockId] === 0) {
-      panelIds = panelIds.concat(collapsedDockPanelIds);
-    }
-    var hiddenPanelIds = getHiddenReopenPanelIdsForDock(dockId);
-    for (var i = 0; i < hiddenPanelIds.length; i++) {
-      if (panelIds.indexOf(hiddenPanelIds[i]) === -1) panelIds.push(hiddenPanelIds[i]);
-    }
-    panelIds = dedupeMarkerPanelIds(panelIds);
-    if (panelIds.length === 0) {
-      hostEl.classList.remove('is-visible');
-      return;
-    }
-    hostEl.classList.add('is-visible');
+  function getFoldIndicatorContent(panelId) {
+    var kind = getPanelKind(panelId);
+    if (kind === 'hierarchy') return '\u2630'; // ☰
+    if (kind === 'dashboard') return '\u25a3'; // ▣
+    if (kind === 'logs') return '\u25cb'; // ○ (replaced with dot in strip)
+    if (kind === 'backendSettings' || kind === 'frontendSettings') return '\u2699'; // ⚙
+    return '\u25a1'; // □
+  }
+
+  function renderFoldStrip(dockId, dockEl) {
+    // Remove old fold strip if any
+    var oldStrip = dockEl.querySelector('.ws-fold-strip');
+    if (oldStrip) oldStrip.parentNode.removeChild(oldStrip);
+
+    var panelIds = getDockVisiblePanelIds(dockId);
+    if (panelIds.length === 0) return;
+
+    var strip = document.createElement('div');
+    strip.className = 'ws-fold-strip';
+
+    // Pin/expand button
+    var pinBtn = document.createElement('button');
+    pinBtn.className = 'ws-fold-pin';
+    pinBtn.type = 'button';
+    pinBtn.title = 'Expand panel';
+    pinBtn.setAttribute('data-ws-action', 'expand-collapsed-dock');
+    pinBtn.setAttribute('data-ws-dock-id', dockId);
+    if (panelIds.length > 0) pinBtn.setAttribute('data-ws-panel-id', panelIds[0]);
+    pinBtn.innerHTML = '\u25b6'; // ▶
+    strip.appendChild(pinBtn);
+
+    // Panel indicators
     for (var i = 0; i < panelIds.length; i++) {
       var panelId = panelIds[i];
-      var markerBtn = document.createElement('button');
-      markerBtn.className = 'workspace-shell-collapsed-marker';
-      markerBtn.type = 'button';
-      markerBtn.setAttribute('data-ws-action', 'expand-collapsed-dock');
-      markerBtn.setAttribute('data-ws-dock-id', dockId);
-      markerBtn.setAttribute('data-ws-panel-id', panelId);
-      markerBtn.textContent = getPanelTitle(panelId);
-      hostEl.appendChild(markerBtn);
-    }
-  }
+      var kind = getPanelKind(panelId);
 
-  function applyPanelDockLayout(stackEl, dockId, visibleIds) {
-    if (!stackEl) return;
-    var axis = dockId === 'bottom' ? 'horizontal' : 'vertical';
-    var templateParts = [];
-    for (var i = 0; i < visibleIds.length; i++) {
-      var panelId = visibleIds[i];
-      templateParts.push(Math.max(0.25, getPanelWeight(dockId, panelId)).toFixed(4) + 'fr');
-      if (i < visibleIds.length - 1) templateParts.push(axis === 'horizontal' ? '6px' : '6px');
-    }
-    if (axis === 'horizontal') {
-      stackEl.style.gridTemplateColumns = templateParts.join(' ');
-      stackEl.style.gridTemplateRows = '1fr';
-    } else {
-      stackEl.style.gridTemplateRows = templateParts.join(' ');
-      stackEl.style.gridTemplateColumns = '1fr';
-    }
-  }
-
-  function bindPanelDockDivider(dividerEl, dockId, beforePanelId, afterPanelId, axis, stackEl, visibleIds) {
-    if (!dividerEl) return;
-    dividerEl.addEventListener('pointerdown', function (event) {
-      event.preventDefault();
-      dividerEl.setPointerCapture(event.pointerId);
-      dividerEl.classList.add('is-dragging');
-      var beforeWeight = getPanelWeight(dockId, beforePanelId);
-      var afterWeight = getPanelWeight(dockId, afterPanelId);
-      var totalWeight = beforeWeight + afterWeight;
-      var beforeWindow = dividerEl.previousElementSibling;
-      var afterWindow = dividerEl.nextElementSibling;
-      var startRect = beforeWindow && afterWindow ? {
-        left: beforeWindow.getBoundingClientRect().left,
-        top: beforeWindow.getBoundingClientRect().top,
-        right: afterWindow.getBoundingClientRect().right,
-        bottom: afterWindow.getBoundingClientRect().bottom
-      } : null;
-      function handleMove(moveEvent) {
-        if (!startRect) return;
-        var ratio;
-        if (axis === 'horizontal') {
-          ratio = (moveEvent.clientX - startRect.left) / Math.max(1, startRect.right - startRect.left);
+      // Special: logs shows connection dot
+      if (kind === 'logs') {
+        var statusDiv = document.createElement('div');
+        statusDiv.className = 'ws-fold-status';
+        var dot = document.createElement('span');
+        dot.className = 'ws-fold-dot';
+        // Check connection state
+        var connBtn = document.getElementById('btn-connection-status');
+        if (connBtn && !connBtn.classList.contains('disconnected')) {
+          dot.classList.add('is-connected');
         } else {
-          ratio = (moveEvent.clientY - startRect.top) / Math.max(1, startRect.bottom - startRect.top);
+          dot.classList.add('is-disconnected');
         }
-        ratio = Math.max(0.15, Math.min(0.85, ratio));
-        state.panelWeights[dockId][beforePanelId] = Math.max(0.25, totalWeight * ratio);
-        state.panelWeights[dockId][afterPanelId] = Math.max(0.25, totalWeight - state.panelWeights[dockId][beforePanelId]);
-        applyPanelDockLayout(stackEl, dockId, visibleIds);
+        statusDiv.appendChild(dot);
+        strip.appendChild(statusDiv);
+        continue;
       }
-      function handleUp(upEvent) {
-        dividerEl.classList.remove('is-dragging');
-        dividerEl.removeEventListener('pointermove', handleMove);
-        dividerEl.removeEventListener('pointerup', handleUp);
-        dividerEl.removeEventListener('pointercancel', handleUp);
-        try { dividerEl.releasePointerCapture(upEvent.pointerId); } catch (_) { /* ignore */ }
-        persistState();
-      }
-      dividerEl.addEventListener('pointermove', handleMove);
-      dividerEl.addEventListener('pointerup', handleUp);
-      dividerEl.addEventListener('pointercancel', handleUp);
+
+      var indicator = document.createElement('button');
+      indicator.className = 'ws-fold-indicator';
+      indicator.type = 'button';
+      indicator.title = getPanelTitle(panelId);
+      indicator.setAttribute('data-ws-action', 'expand-collapsed-dock');
+      indicator.setAttribute('data-ws-dock-id', dockId);
+      indicator.setAttribute('data-ws-panel-id', panelId);
+      if (panelId === state.activePanelId) indicator.classList.add('is-active');
+      indicator.textContent = getFoldIndicatorContent(panelId);
+      strip.appendChild(indicator);
+    }
+
+    // Label (first panel title, rotated vertically for left/right)
+    var label = document.createElement('span');
+    label.className = 'ws-fold-label';
+    label.textContent = panelIds.length === 1
+      ? getPanelTitle(panelIds[0])
+      : panelIds.length + ' panels';
+    strip.appendChild(label);
+
+    dockEl.appendChild(strip);
+  }
+
+  function bindFoldHover(dockId, dockEl) {
+    if (dockEl.__wsFoldBound) return;
+    dockEl.__wsFoldBound = true;
+    var hoverTimer = null;
+    dockEl.addEventListener('mouseenter', function () {
+      if (!dockEl.classList.contains('is-folded')) return;
+      hoverTimer = setTimeout(function () {
+        dockEl.classList.add('is-fold-hover');
+        // Set expand size from restore size
+        var expandSize = clampPanelSize(dockId, state.dockRestoreSizes[dockId]);
+        dockEl.style.setProperty('--ws-fold-expand-size', expandSize + 'px');
+      }, 180);
+    });
+    dockEl.addEventListener('mouseleave', function () {
+      clearTimeout(hoverTimer);
+      dockEl.classList.remove('is-fold-hover');
     });
   }
 
   function applyDockLayout() {
     if (!state.bodyEl || !state.mainRowEl) return;
-    var leftVisible = getDockVisiblePanelIds('left').length > 0 && state.dockSizes.left > 0;
-    var rightVisible = getDockVisiblePanelIds('right').length > 0 && state.dockSizes.right > 0;
-    var bottomVisible = getDockVisiblePanelIds('bottom').length > 0 && state.dockSizes.bottom > 0;
+    var FOLD_SIZE = 22;
 
-    if (state.leftDockEl) state.leftDockEl.classList.toggle('is-visible', leftVisible);
-    if (state.rightDockEl) state.rightDockEl.classList.toggle('is-visible', rightVisible);
-    if (state.bottomDockEl) state.bottomDockEl.classList.toggle('is-visible', bottomVisible);
-    if (state.leftDividerEl) state.leftDividerEl.classList.toggle('is-visible', leftVisible);
-    if (state.rightDividerEl) state.rightDividerEl.classList.toggle('is-visible', rightVisible);
-    if (state.bottomDividerEl) state.bottomDividerEl.classList.toggle('is-visible', bottomVisible);
-    renderCollapsedDockMarker('left', state.leftMarkerEl);
-    renderCollapsedDockMarker('right', state.rightMarkerEl);
-    renderCollapsedDockMarker('bottom', state.bottomMarkerEl);
+    var dockIds = ['left', 'right', 'bottom'];
+    var dockEls = { left: state.leftDockEl, right: state.rightDockEl, bottom: state.bottomDockEl };
+    var dividerEls = { left: state.leftDividerEl, right: state.rightDividerEl, bottom: state.bottomDividerEl };
+    var visible = {};
+    var folded = {};
+
+    for (var d = 0; d < dockIds.length; d++) {
+      var id = dockIds[d];
+      var hasPanels = getDockVisiblePanelIds(id).length > 0;
+      var isCollapsed = hasPanels && state.dockSizes[id] === 0;
+      visible[id] = hasPanels && state.dockSizes[id] > 0;
+      folded[id] = isCollapsed;
+
+      var dockEl = dockEls[id];
+      if (dockEl) {
+        var showDock = visible[id] || folded[id];
+        dockEl.classList.toggle('is-visible', showDock);
+        dockEl.classList.toggle('is-folded', folded[id]);
+        dockEl.classList.toggle('is-compact', visible[id] && state.dockSizes[id] < 200);
+        dockEl.style.overflow = folded[id] ? 'visible' : '';
+        if (folded[id]) {
+          renderFoldStrip(id, dockEl);
+          bindFoldHover(id, dockEl);
+        } else {
+          // Remove fold strip when not folded
+          var oldStrip = dockEl.querySelector('.ws-fold-strip');
+          if (oldStrip) oldStrip.parentNode.removeChild(oldStrip);
+          dockEl.classList.remove('is-fold-hover');
+        }
+      }
+      if (dividerEls[id]) dividerEls[id].classList.toggle('is-visible', visible[id]);
+    }
+
+    // Grid: folded docks get FOLD_SIZE px, visible docks get their size, hidden get nothing
+    var leftCol = '';
+    if (visible.left) leftCol = clampPanelSize('left', state.dockSizes.left) + 'px 1px ';
+    else if (folded.left) leftCol = FOLD_SIZE + 'px ';
+
+    var rightCol = '';
+    if (visible.right) rightCol = ' 1px ' + clampPanelSize('right', state.dockSizes.right) + 'px';
+    else if (folded.right) rightCol = ' ' + FOLD_SIZE + 'px';
 
     state.mainRowEl.style.gridTemplateColumns =
-      (leftVisible ? clampPanelSize('left', state.dockSizes.left) + 'px 6px ' : '') +
-      'minmax(0, 1fr)' +
-      (rightVisible ? ' 6px ' + clampPanelSize('right', state.dockSizes.right) + 'px' : '');
+      leftCol + 'minmax(0, 1fr)' + rightCol;
+
+    var bottomRow = '';
+    if (visible.bottom) bottomRow = ' 1px ' + clampPanelSize('bottom', state.dockSizes.bottom) + 'px';
+    else if (folded.bottom) bottomRow = ' ' + FOLD_SIZE + 'px';
+
     state.bodyEl.style.gridTemplateRows =
-      'minmax(0, 1fr)' +
-      (bottomVisible ? ' 6px ' + clampPanelSize('bottom', state.dockSizes.bottom) + 'px' : '');
+      'minmax(0, 1fr)' + bottomRow;
   }
 
   function bindDockResizeDivider(dividerEl, dockId) {
@@ -1073,17 +1345,53 @@
     });
   }
 
+  function removePanelFromDocks(panelId) {
+    var normalized = resolvePanelTarget(panelId);
+    if (!normalized) return false;
+    var changed = false;
+    var dockIds = ['left', 'right', 'bottom'];
+    for (var i = 0; i < dockIds.length; i++) {
+      var tree = state.sideDocks[dockIds[i]];
+      if (!tree) continue;
+      var found = findLeafContainingPanel(tree, normalized);
+      if (!found) continue;
+      // Remove the tab from the leaf
+      for (var j = found.leaf.tabs.length - 1; j >= 0; j--) {
+        if (isPanelTab(found.leaf.tabs[j]) && resolvePanelTarget(found.leaf.tabs[j].panelId) === normalized) {
+          found.leaf.tabs.splice(j, 1);
+          changed = true;
+        }
+      }
+      if (found.leaf.tabs.length > 0) {
+        if (!findTab(tree, found.leaf.activeTabId)) {
+          found.leaf.activeTabId = found.leaf.tabs[0].id;
+        }
+      }
+      state.sideDocks[dockIds[i]] = withNormalizedLeaves(tree, false);
+    }
+    return changed;
+  }
+
   function activatePanel(panelId) {
     var normalized = resolvePanelTarget(panelId);
     if (!normalized) return false;
-    var dockId = getDockForPanel(normalized);
-    if (!dockId) return false;
-    state.panelVisibility[normalized] = true;
-    state.activePanelId = normalized;
-    renderToolbar();
-    renderPanelDocks();
-    persistState();
-    return true;
+    var found = findPanelInAllTrees(normalized);
+    if (found && found.treeId === 'center' && found.tab) {
+      state.panelVisibility[normalized] = true;
+      state.activePanelId = normalized;
+      activateTab(found.tab.id);
+      return true;
+    }
+    if (found && found.treeId !== 'center') {
+      state.panelVisibility[normalized] = true;
+      state.activePanelId = normalized;
+      found.leaf.activeTabId = found.tab.id;
+      renderToolbar();
+      renderPanelDocks();
+      persistState();
+      return true;
+    }
+    return false;
   }
 
   function setPanelVisibility(panelId, visible, options) {
@@ -1093,11 +1401,37 @@
       return collapsePanel(normalized);
     }
     state.panelVisibility[normalized] = true;
-    var dockId = getDockForPanel(normalized);
-    if (!dockId) {
-      var kind = getPanelKind(normalized);
-      dockId = kind && PANEL_DEFINITIONS[kind] ? PANEL_DEFINITIONS[kind].defaultDock : 'left';
-      state.panelDocks[dockId].push(normalized);
+    var found = findPanelInAllTrees(normalized);
+    if (found && found.treeId === 'center' && found.tab) {
+      if (!state.activePanelId || (options && options.activate)) state.activePanelId = normalized;
+      activateTab(found.tab.id);
+      return true;
+    }
+    if (found && found.treeId !== 'center') {
+      if (!state.activePanelId || (options && options.activate)) state.activePanelId = normalized;
+      found.leaf.activeTabId = found.tab.id;
+      if (options && options.restoreDock) {
+        return restoreDock(found.treeId, normalized);
+      }
+      ensurePanelDockActives();
+      render();
+      return true;
+    }
+    // Not found, add to default dock
+    var kind = getPanelKind(normalized);
+    var dockId = kind && PANEL_DEFINITIONS[kind] ? PANEL_DEFINITIONS[kind].defaultDock : 'left';
+    var newTab = createPanelTab(normalized);
+    var dockTree = state.sideDocks[dockId];
+    if (dockTree) {
+      var firstLeaf = getFirstLeaf(dockTree);
+      if (firstLeaf) {
+        firstLeaf.tabs.push(newTab);
+        firstLeaf.activeTabId = newTab.id;
+      } else {
+        state.sideDocks[dockId] = createTabsetNode([newTab]);
+      }
+    } else {
+      state.sideDocks[dockId] = createTabsetNode([newTab]);
     }
     if (!state.activePanelId || (options && options.activate)) state.activePanelId = normalized;
     if (options && options.restoreDock) {
@@ -1112,26 +1446,69 @@
     var normalizedPanelId = resolvePanelTarget(panelId);
     if (!normalizedPanelId) return false;
     if (dockId !== 'left' && dockId !== 'right' && dockId !== 'bottom') return false;
-
-    var dockIds = ['left', 'right', 'bottom'];
-    for (var i = 0; i < dockIds.length; i++) {
-      var existingDockId = dockIds[i];
-      var panelIds = state.panelDocks[existingDockId];
-      var index = panelIds.indexOf(normalizedPanelId);
-      if (index !== -1) panelIds.splice(index, 1);
+    // Remove from all locations
+    removePanelFromDocks(normalizedPanelId);
+    var panelTab = findLeafContainingPanel(state.dockTree, normalizedPanelId);
+    if (panelTab) {
+      extractTab(panelTab.tab.id);
+      removeFrame(panelTab.tab.id);
+      state.dockTree = withNormalizedLeaves(state.dockTree, true);
+      ensureActiveLeaf();
     }
-
-    state.panelDocks[dockId].push(normalizedPanelId);
+    // Add to target side dock
+    var newTab = createPanelTab(normalizedPanelId);
+    var dockTree = state.sideDocks[dockId];
+    if (dockTree) {
+      var firstLeaf = getFirstLeaf(dockTree);
+      if (firstLeaf) {
+        firstLeaf.tabs.push(newTab);
+        firstLeaf.activeTabId = newTab.id;
+      } else {
+        state.sideDocks[dockId] = createTabsetNode([newTab]);
+      }
+    } else {
+      state.sideDocks[dockId] = createTabsetNode([newTab]);
+    }
     state.panelVisibility[normalizedPanelId] = true;
     state.activePanelId = normalizedPanelId;
     ensurePanelDockActives();
     render();
+    persistState();
+    return true;
+  }
+
+  // Move a panel into the same tabset leaf as another panel (tab together)
+  function movePanelToGroup(panelId, targetPanelId) {
+    var normalized = resolvePanelTarget(panelId);
+    var targetNormalized = resolvePanelTarget(targetPanelId);
+    if (!normalized || !targetNormalized || normalized === targetNormalized) return false;
+    // Find the target in any tree
+    var targetFound = findPanelInAllTrees(targetNormalized);
+    if (!targetFound) return false;
+    // Remove source from current location
+    removePanelFromDocks(normalized);
+    var sourceInCenter = findLeafContainingPanel(state.dockTree, normalized);
+    if (sourceInCenter) {
+      extractTab(sourceInCenter.tab.id);
+      removeFrame(sourceInCenter.tab.id);
+      state.dockTree = withNormalizedLeaves(state.dockTree, true);
+      ensureActiveLeaf();
+    }
+    // Add to target's leaf
+    var newTab = createPanelTab(normalized);
+    targetFound.leaf.tabs.push(newTab);
+    targetFound.leaf.activeTabId = newTab.id;
+    state.panelVisibility[normalized] = true;
+    state.activePanelId = normalized;
+    ensurePanelDockActives();
+    render();
+    persistState();
     return true;
   }
 
   function notifyActiveBoardChanged() {
     var activeTab = getActiveTab();
-    var boardId = activeTab && activeTab.boardId ? activeTab.boardId : '';
+    var boardId = activeTab && isBoardTab(activeTab) && activeTab.boardId ? activeTab.boardId : '';
     if (boardId === state.lastNotifiedBoardId) return;
     state.lastNotifiedBoardId = boardId;
     if (state.hooks && typeof state.hooks.onActiveBoardChanged === 'function') {
@@ -1144,7 +1521,11 @@
     if (node.type === 'tabs') {
       var tabBits = [];
       for (var i = 0; i < node.tabs.length; i++) {
-        tabBits.push(node.tabs[i].id + ':' + node.tabs[i].boardId + ':' + normalizeViewKind(node.tabs[i].viewKind));
+        if (isPanelTab(node.tabs[i])) {
+          tabBits.push(node.tabs[i].id + ':panel:' + resolvePanelTarget(node.tabs[i].panelId));
+        } else {
+          tabBits.push(node.tabs[i].id + ':board:' + node.tabs[i].boardId + ':' + normalizeViewKind(node.tabs[i].viewKind));
+        }
       }
       return 'tabs(' + node.id + ')[' + tabBits.join('|') + ']';
     }
@@ -1152,38 +1533,68 @@
   }
 
   function getTabTitle(tab) {
+    if (isPanelTab(tab)) return getPanelTitle(tab.panelId);
     var meta = state.boardsById[tab.boardId];
     return getBoardMetaLabel(meta || { id: tab.boardId || 'Untitled' });
   }
 
   function getTabMetaLabel(tab) {
+    if (isPanelTab(tab)) {
+      var panelKind = getPanelKind(tab.panelId);
+      if (panelKind === 'hierarchy') return 'Workspace';
+      if (panelKind === 'dashboard') return 'Panel';
+      if (panelKind === 'logs') return 'Panel';
+      if (panelKind === 'backendSettings') return 'Settings';
+      if (panelKind === 'frontendSettings') return 'Settings';
+      return 'Panel';
+    }
     if (tab.viewKind === 'canvas') return 'Canvas';
     if (tab.viewKind === 'kanban') return 'Kanban';
     return '';
   }
 
   function getOrCreateFrame(tab) {
-    var frame = state.frameCache[tab.id];
+    var view = state.frameCache[tab.id];
+    if (isPanelTab(tab)) {
+      if (!view) {
+        view = document.createElement('div');
+        view.className = 'workspace-shell-view workspace-shell-panel-tab-view';
+        view.setAttribute('data-tab-id', tab.id);
+        view.setAttribute('data-panel-id', resolvePanelTarget(tab.panelId));
+        view.addEventListener('pointerdown', function () {
+          activateTab(tab.id);
+        });
+        state.frameCache[tab.id] = view;
+      }
+      var panelEl = getPanelElement(tab.panelId);
+      if (panelEl && panelEl.parentNode !== view) {
+        view.innerHTML = '';
+        panelEl.classList.remove('hidden');
+        panelEl.style.display = '';
+        view.appendChild(panelEl);
+      }
+      return view;
+    }
     var desiredSrc = getEmbeddedUrlForTab(tab);
-    if (!frame) {
-      frame = document.createElement('iframe');
-      frame.className = 'workspace-shell-frame';
-      frame.setAttribute('data-tab-id', tab.id);
-      frame.setAttribute('data-src', desiredSrc);
-      frame.setAttribute('title', getTabTitle(tab));
-      frame.src = desiredSrc;
-      frame.addEventListener('pointerdown', function () {
+    if (!view) {
+      view = document.createElement('iframe');
+      view.className = 'workspace-shell-view workspace-shell-frame';
+      view.setAttribute('data-tab-id', tab.id);
+      view.setAttribute('data-src', desiredSrc);
+      view.setAttribute('title', getTabTitle(tab));
+      view.src = desiredSrc;
+      view.addEventListener('pointerdown', function () {
         activateTab(tab.id);
       });
-      state.frameCache[tab.id] = frame;
-      return frame;
+      state.frameCache[tab.id] = view;
+      return view;
     }
-    if (frame.getAttribute('data-src') !== desiredSrc) {
-      frame.setAttribute('data-src', desiredSrc);
-      frame.src = desiredSrc;
+    if (view.getAttribute('data-src') !== desiredSrc) {
+      view.setAttribute('data-src', desiredSrc);
+      view.src = desiredSrc;
     }
-    frame.setAttribute('title', getTabTitle(tab));
-    return frame;
+    view.setAttribute('title', getTabTitle(tab));
+    return view;
   }
 
   function removeFrame(tabId) {
@@ -1194,48 +1605,62 @@
   }
 
   function activateTab(tabId) {
-    var found = findTab(state.dockTree, tabId);
+    var found = findTabInAllTrees(tabId);
     if (!found) return false;
     found.leaf.activeTabId = tabId;
-    state.activeLeafId = found.leaf.id;
+    if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
     render();
     persistState();
     return true;
   }
 
   function extractTab(tabId) {
-    var found = findTab(state.dockTree, tabId);
-    if (!found) return null;
-    found.leaf.tabs.splice(found.index, 1);
-    if (found.leaf.activeTabId === tabId) {
-      found.leaf.activeTabId = found.leaf.tabs.length > 0
-        ? found.leaf.tabs[Math.max(0, found.index - 1)].id
-        : '';
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var root = getTreeRoot(ids[t]);
+      if (!root) continue;
+      var found = findTab(root, tabId);
+      if (!found) continue;
+      var tab = found.tab;
+      var leaf = found.leaf;
+      var sourceLeafId = leaf.id;
+      leaf.tabs.splice(found.index, 1);
+      if (leaf.activeTabId === tabId) {
+        leaf.activeTabId = leaf.tabs.length > 0
+          ? leaf.tabs[Math.max(0, found.index - 1)].id
+          : '';
+      }
+      var newRoot = withNormalizedLeaves(root, ids[t] === 'center');
+      setTreeRoot(ids[t], newRoot || (ids[t] === 'center' ? createTabsetNode([]) : null));
+      return { tab: tab, sourceLeafId: sourceLeafId, treeId: ids[t] };
     }
-    return {
-      tab: found.tab,
-      sourceLeafId: found.leaf.id
-    };
+    return null;
   }
 
   function insertTabIntoLeaf(tab, leafId) {
-    var leaf = findLeafById(state.dockTree, leafId);
-    if (!leaf) return false;
-    leaf.tabs.push(tab);
-    leaf.activeTabId = tab.id;
-    state.activeLeafId = leaf.id;
+    var found = findLeafInAllTrees(leafId);
+    if (!found) return false;
+    found.leaf.tabs.push(tab);
+    found.leaf.activeTabId = tab.id;
+    if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
     return true;
   }
 
   function replaceNodeById(nodeId, replacement) {
-    var found = findNodeAndParent(state.dockTree, nodeId);
-    if (!found) return false;
-    if (!found.parent) {
-      state.dockTree = replacement;
-    } else {
-      found.parent[found.side] = replacement;
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var root = getTreeRoot(ids[t]);
+      if (!root) continue;
+      var found = findNodeAndParent(root, nodeId);
+      if (!found) continue;
+      if (!found.parent) {
+        setTreeRoot(ids[t], replacement);
+      } else {
+        found.parent[found.side] = replacement;
+      }
+      return true;
     }
-    return true;
+    return false;
   }
 
   function moveTabToLeaf(tabId, targetLeafId) {
@@ -1245,7 +1670,13 @@
       insertTabIntoLeaf(extracted.tab, extracted.sourceLeafId);
       return false;
     }
-    state.dockTree = withNormalizedLeaves(state.dockTree, true);
+    // Normalize all trees
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var root = getTreeRoot(ids[t]);
+      if (!root) continue;
+      setTreeRoot(ids[t], withNormalizedLeaves(root, ids[t] === 'center'));
+    }
     ensureActiveLeaf();
     render();
     persistState();
@@ -1253,15 +1684,24 @@
   }
 
   function splitLeafWithTab(targetLeafId, zone, tabId) {
-    var targetLeaf = findLeafById(state.dockTree, targetLeafId);
-    if (!targetLeaf) return false;
-    var tabInfo = findTab(state.dockTree, tabId);
+    var targetFound = findLeafInAllTrees(targetLeafId);
+    if (!targetFound) return false;
+    var targetLeaf = targetFound.leaf;
+    var tabInfo = findTabInAllTrees(tabId);
     if (!tabInfo) return false;
     var movingWithinSameLeaf = tabInfo.leaf.id === targetLeafId;
     var shouldDuplicateSingleTab = movingWithinSameLeaf && tabInfo.leaf.tabs.length === 1;
     var tabForNewLeaf = null;
     if (shouldDuplicateSingleTab) {
-      tabForNewLeaf = createTab(tabInfo.tab.boardId, tabInfo.tab.viewKind);
+      if (isPanelTab(tabInfo.tab)) {
+        var panelKind = getPanelKind(tabInfo.tab.panelId);
+        if (!isPanelKindDuplicable(panelKind)) return false;
+        var duplicatedPanelId = createPanelInstance(panelKind);
+        state.panelVisibility[duplicatedPanelId] = true;
+        tabForNewLeaf = createPanelTab(duplicatedPanelId);
+      } else {
+        tabForNewLeaf = createBoardTab(tabInfo.tab.boardId, tabInfo.tab.viewKind);
+      }
     } else {
       var extracted = extractTab(tabId);
       if (!extracted) return false;
@@ -1273,19 +1713,69 @@
       ? createSplitNode(axis, newLeaf, targetLeaf, 0.5)
       : createSplitNode(axis, targetLeaf, newLeaf, 0.5);
     replaceNodeById(targetLeafId, split);
-    state.activeLeafId = newLeaf.id;
-    state.dockTree = withNormalizedLeaves(state.dockTree, true);
+    if (targetFound.treeId === 'center') state.activeLeafId = newLeaf.id;
+    // Normalize all trees
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var root = getTreeRoot(ids[t]);
+      if (!root) continue;
+      setTreeRoot(ids[t], withNormalizedLeaves(root, ids[t] === 'center'));
+    }
     render();
     persistState();
     return true;
   }
 
+  function handleRemovedPanelTab(tab) {
+    if (!isPanelTab(tab)) return;
+    var panelId = resolvePanelTarget(tab.panelId);
+    if (!panelId) return;
+    var kind = getPanelKind(panelId);
+    if (panelId === kind) {
+      state.panelVisibility[panelId] = false;
+      var defaultDock = (PANEL_DEFINITIONS[kind] && PANEL_DEFINITIONS[kind].defaultDock) || 'left';
+      // Re-add to side dock if not already there
+      var alreadyInDock = false;
+      var dockTree = state.sideDocks[defaultDock];
+      if (dockTree) alreadyInDock = !!findLeafContainingPanel(dockTree, panelId);
+      if (!alreadyInDock) {
+        var newTab = createPanelTab(panelId);
+        if (dockTree) {
+          var firstLeaf = getFirstLeaf(dockTree);
+          if (firstLeaf) {
+            firstLeaf.tabs.unshift(newTab);
+            firstLeaf.activeTabId = newTab.id;
+          } else {
+            state.sideDocks[defaultDock] = createTabsetNode([newTab]);
+          }
+        } else {
+          state.sideDocks[defaultDock] = createTabsetNode([newTab]);
+        }
+      }
+      return;
+    }
+    removePanelFromDocks(panelId);
+    delete state.panelInstances[panelId];
+    delete state.panelVisibility[panelId];
+    if (state.panelElements && state.panelElements[panelId]) {
+      var panelEl = state.panelElements[panelId];
+      if (panelEl.parentNode) panelEl.parentNode.removeChild(panelEl);
+      delete state.panelElements[panelId];
+    }
+    var sharedPanels = getSharedPanelsApi();
+    if (sharedPanels && typeof sharedPanels.unregisterInstance === 'function') {
+      sharedPanels.unregisterInstance(panelId);
+    }
+  }
+
   function closeTab(tabId) {
     var extracted = extractTab(tabId);
     if (!extracted) return false;
+    handleRemovedPanelTab(extracted.tab);
     removeFrame(tabId);
     state.dockTree = withNormalizedLeaves(state.dockTree, true);
     ensureActiveLeaf();
+    ensurePanelDockActives();
     render();
     persistState();
     return true;
@@ -1366,7 +1856,7 @@
     if (!state.rootEl) return null;
     var normalized = resolvePanelTarget(panelId);
     if (!normalized) return null;
-    var panelWindowEl = state.rootEl.querySelector('.workspace-shell-panel-window[data-panel-id="' + normalized + '"]');
+    var panelWindowEl = state.rootEl.querySelector('.workspace-shell-panel-window[data-panel-id="' + normalized + '"], .workspace-shell-panel-tab-view[data-panel-id="' + normalized + '"]');
     if (!panelWindowEl || typeof panelWindowEl.getBoundingClientRect !== 'function') return null;
     var rect = panelWindowEl.getBoundingClientRect();
     if (!(rect.width > 0) || !(rect.height > 0)) return null;
@@ -1374,8 +1864,12 @@
   }
 
   function detachTab(tabId) {
-    var found = findTab(state.dockTree, tabId);
-    if (!found || !found.tab || !found.tab.boardId) return Promise.resolve(false);
+    var found = findTabInAllTrees(tabId);
+    if (!found || !found.tab) return Promise.resolve(false);
+    if (isPanelTab(found.tab)) {
+      return detachPanelView(found.tab.panelId);
+    }
+    if (!found.tab.boardId) return Promise.resolve(false);
     return openWindow({
       boardId: found.tab.boardId,
       viewKind: found.tab.viewKind === 'default' ? null : found.tab.viewKind,
@@ -1402,12 +1896,19 @@
     var dashboardDividerEl = document.getElementById('sidebar-dashboard-divider');
     var boardListEl = document.getElementById('board-list');
     var logPanelEl = document.getElementById('log-panel');
-    var backendSettingsPanelEl = document.getElementById('backend-settings-panel');
-    var frontendSettingsPanelEl = document.getElementById('frontend-settings-panel');
+    var sharedPanels = getSharedPanelsApi();
+    var backendSettingsPanelEl = document.getElementById('backend-settings-panel') ||
+      (sharedPanels ? sharedPanels.createPanelElement('backendSettings', 'backendSettings') : null);
+    var frontendSettingsPanelEl = document.getElementById('frontend-settings-panel') ||
+      (sharedPanels ? sharedPanels.createPanelElement('frontendSettings', 'frontendSettings') : null);
 
     if (dashboardDividerEl) {
       dashboardDividerEl.classList.add('hidden');
       if (dashboardDividerEl.parentNode) dashboardDividerEl.parentNode.removeChild(dashboardDividerEl);
+    }
+    var sidebarWidthDividerEl = document.getElementById('sidebar-width-divider');
+    if (sidebarWidthDividerEl && sidebarWidthDividerEl.parentNode) {
+      sidebarWidthDividerEl.parentNode.removeChild(sidebarWidthDividerEl);
     }
     if (dashboardEl && dashboardEl.parentNode === sidebarEl) {
       dashboardEl.parentNode.removeChild(dashboardEl);
@@ -1431,11 +1932,11 @@
     if (frontendSettingsPanelEl) frontendSettingsPanelEl.setAttribute('data-shell-panel', 'frontendSettings');
 
     state.panelElements = {
-      hierarchy: sidebarEl || null,
-      dashboard: dashboardEl || null,
-      logs: logPanelEl || null,
-      backendSettings: backendSettingsPanelEl || null,
-      frontendSettings: frontendSettingsPanelEl || null
+      hierarchy: sidebarEl,
+      dashboard: dashboardEl,
+      logs: logPanelEl,
+      backendSettings: backendSettingsPanelEl,
+      frontendSettings: frontendSettingsPanelEl
     };
     return state.panelElements;
   }
@@ -1460,66 +1961,233 @@
     return panelEl;
   }
 
-  function renderPanelDock(dockId, hostEl) {
-    if (!hostEl) return;
-    hostEl.innerHTML = '';
-    var visibleIds = getVisiblePanelIdsForDock(dockId);
-    hostEl.className = 'workspace-shell-panel-dock';
-    hostEl.setAttribute('data-dock', dockId);
-    if (visibleIds.length === 0) {
-      hostEl.classList.add('is-hidden');
-      return;
+  // ── Unified view header for both board tabsets and panel dock groups ──
+  // opts.items: [{ id, label, meta? }]
+  // opts.activeId: current active item id
+  // opts.dragAttr: { name, value } — data attribute on drag handle
+  // opts.closeAction: 'close-tab' | 'close-panel'
+  // opts.closeIdAttr: 'data-ws-tab-id' | 'data-ws-panel-id'
+  // opts.tabClickAttr: attr name set on each tab element (e.g. 'data-ws-tab-id')
+  // opts.activateAction: data-ws-action value for tab click (null = use tabClickAttr click)
+  // opts.extraTabAttrs: function(item) → {} | null
+  // opts.showMeta: show meta label on tabs
+  function renderViewHeader(opts) {
+    var el = document.createElement('div');
+    el.className = 'ws-view-header';
+    var isSingle = opts.items.length <= 1;
+    if (isSingle) el.classList.add('is-single');
+
+    // Drag handle
+    var drag = document.createElement('button');
+    drag.className = 'ws-view-drag';
+    drag.type = 'button';
+    drag.title = 'Drag view';
+    if (opts.dragAttr) drag.setAttribute(opts.dragAttr.name, opts.dragAttr.value);
+    drag.innerHTML = '&#8942;&#8942;';
+    el.appendChild(drag);
+
+    if (isSingle && opts.items.length === 1) {
+      // Single item: show title
+      var title = document.createElement('span');
+      title.className = 'ws-view-title';
+      title.textContent = opts.items[0].label;
+      el.appendChild(title);
     }
 
-    hostEl.classList.add('is-visible');
-    var stackEl = document.createElement('div');
-    stackEl.className = 'workspace-shell-panel-stack';
-    var axis = dockId === 'bottom' ? 'horizontal' : 'vertical';
-    stackEl.setAttribute('data-dock-axis', axis);
-    for (var i = 0; i < visibleIds.length; i++) {
-      var panelId = visibleIds[i];
-      var panelKind = getPanelKind(panelId);
-      var definition = PANEL_DEFINITIONS[panelKind] || null;
-      var panelWindowEl = document.createElement('div');
-      panelWindowEl.className = 'workspace-shell-panel-window';
-      panelWindowEl.setAttribute('data-panel-id', panelId);
-      if (panelId === state.activePanelId) panelWindowEl.classList.add('is-active');
-      if (!definition || !definition.integratedHeader) {
-        var tabbarEl = document.createElement('div');
-        tabbarEl.className = 'workspace-shell-panel-tabbar';
-        var tabBtn = document.createElement('button');
-        tabBtn.className = 'workspace-shell-panel-tab is-active';
-        tabBtn.type = 'button';
-        tabBtn.setAttribute('data-ws-action', 'activate-panel');
-        tabBtn.setAttribute('data-ws-panel-id', panelId);
-        tabBtn.textContent = getPanelTitle(panelId);
-        if (panelId === state.activePanelId) tabBtn.classList.add('is-selected');
-        tabbarEl.appendChild(tabBtn);
-        panelWindowEl.appendChild(tabbarEl);
-      } else {
-        panelWindowEl.classList.add('workspace-shell-panel-window-integrated');
-      }
+    if (!isSingle) {
+      // Multiple items: show tabs
+      var tabs = document.createElement('div');
+      tabs.className = 'ws-view-tabs';
+      for (var i = 0; i < opts.items.length; i++) {
+        var item = opts.items[i];
+        var tab = document.createElement('div');
+        tab.className = 'ws-view-tab';
+        if (opts.tabClickAttr) tab.setAttribute(opts.tabClickAttr, item.id);
+        if (opts.activateAction) tab.setAttribute('data-ws-action', opts.activateAction);
+        if (opts.extraTabAttrs) {
+          var extras = opts.extraTabAttrs(item);
+          for (var k in extras) {
+            if (extras.hasOwnProperty(k)) tab.setAttribute(k, extras[k]);
+          }
+        }
+        if (item.id === opts.activeId) tab.classList.add('is-active');
+        if (item.isSelected) tab.classList.add('is-selected');
 
-      var contentEl = document.createElement('div');
-      contentEl.className = 'workspace-shell-panel-content';
+        tab.innerHTML =
+          '<span class="ws-view-tab-label">' + escapeHtml(item.label) + '</span>' +
+          (opts.showMeta && item.meta ? '<span class="ws-view-tab-meta">' + escapeHtml(item.meta) + '</span>' : '') +
+          '<button class="ws-view-tab-close" type="button" data-ws-action="' + escapeHtml(opts.closeAction) + '" ' +
+            escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Close">\u00d7</button>';
+        tabs.appendChild(tab);
+      }
+      el.appendChild(tabs);
+    }
+
+    // Fold button (only for side dock panels)
+    if (opts.foldDockId) {
+      var fold = document.createElement('button');
+      fold.className = 'ws-view-fold';
+      fold.type = 'button';
+      fold.title = 'Collapse dock';
+      fold.setAttribute('data-ws-action', 'collapse-dock');
+      fold.setAttribute('data-ws-dock-id', opts.foldDockId);
+      var foldChar = opts.foldDockId === 'left' ? '\u25C2' : opts.foldDockId === 'right' ? '\u25B8' : '\u25BE';
+      fold.textContent = foldChar;
+      el.appendChild(fold);
+    }
+
+    // Header-level close button (visible for single, hidden for multi via CSS)
+    var close = document.createElement('button');
+    close.className = 'ws-view-close';
+    close.type = 'button';
+    close.title = 'Close';
+    close.setAttribute('data-ws-action', opts.closeAction);
+    close.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
+    close.textContent = '\u00d7';
+    el.appendChild(close);
+
+    return el;
+  }
+
+  function renderSideDockTabset(node, parentEl, dockId) {
+    var tabsetEl = document.createElement('div');
+    tabsetEl.className = 'workspace-shell-tabset workspace-shell-node workspace-shell-panel-window';
+    tabsetEl.setAttribute('data-node-id', node.id);
+    // Determine active panel for this tabset
+    var activeTab = null;
+    for (var i = 0; i < node.tabs.length; i++) {
+      if (node.tabs[i].id === node.activeTabId) { activeTab = node.tabs[i]; break; }
+    }
+    if (!activeTab && node.tabs.length > 0) activeTab = node.tabs[0];
+    var activePanelId = activeTab && isPanelTab(activeTab) ? resolvePanelTarget(activeTab.panelId) : '';
+    if (activePanelId) tabsetEl.setAttribute('data-panel-id', activePanelId);
+    if (node.tabs.length === 1) tabsetEl.classList.add('workspace-shell-panel-window-integrated');
+    // Check if any tab in this tabset contains the global activePanelId
+    var containsActive = false;
+    for (var a = 0; a < node.tabs.length; a++) {
+      if (isPanelTab(node.tabs[a]) && resolvePanelTarget(node.tabs[a].panelId) === state.activePanelId) {
+        containsActive = true;
+        break;
+      }
+    }
+    if (containsActive) tabsetEl.classList.add('is-active');
+
+    var headerItems = [];
+    for (var h = 0; h < node.tabs.length; h++) {
+      var tab = node.tabs[h];
+      var tabPanelId = isPanelTab(tab) ? resolvePanelTarget(tab.panelId) : '';
+      headerItems.push({
+        id: tabPanelId || tab.id,
+        label: isPanelTab(tab) ? getPanelTitle(tab.panelId) : getTabTitle(tab),
+        isSelected: tabPanelId === state.activePanelId
+      });
+    }
+    var activeItemId = activePanelId || (activeTab ? activeTab.id : '');
+    var headerEl = renderViewHeader({
+      items: headerItems,
+      activeId: activeItemId,
+      dragAttr: { name: 'data-ws-panel-drag-handle', value: activeItemId },
+      closeAction: 'close-panel',
+      closeIdAttr: 'data-ws-panel-id',
+      tabClickAttr: 'data-ws-panel-id',
+      activateAction: 'activate-panel',
+      extraTabAttrs: null,
+      showMeta: false,
+      foldDockId: dockId || null
+    });
+    tabsetEl.appendChild(headerEl);
+
+    var contentEl = document.createElement('div');
+    contentEl.className = 'workspace-shell-panel-content';
+    for (var ci = 0; ci < node.tabs.length; ci++) {
+      var panelTab = node.tabs[ci];
+      if (!isPanelTab(panelTab)) continue;
+      var panelId = resolvePanelTarget(panelTab.panelId);
+      if (!panelId) continue;
+      if (!state.panelVisibility[panelId]) continue;
+      if (isPanelIntegrated(panelId)) continue;
       var panelEl = getPanelElement(panelId);
       if (panelEl) {
         panelEl.classList.remove('hidden');
-        panelEl.style.display = '';
+        if (panelTab.id === node.activeTabId) {
+          panelEl.style.display = '';
+        } else {
+          panelEl.style.display = 'none';
+        }
         contentEl.appendChild(panelEl);
       }
-      panelWindowEl.appendChild(contentEl);
-      stackEl.appendChild(panelWindowEl);
-      if (i < visibleIds.length - 1) {
-        var dividerEl = document.createElement('div');
-        dividerEl.className = 'workspace-shell-panel-divider';
-        dividerEl.setAttribute('data-axis', axis);
-        bindPanelDockDivider(dividerEl, dockId, panelId, visibleIds[i + 1], axis, stackEl, visibleIds);
-        stackEl.appendChild(dividerEl);
+    }
+    tabsetEl.appendChild(contentEl);
+
+    var overlayEl = document.createElement('div');
+    overlayEl.className = 'workspace-shell-drop-overlay';
+    overlayEl.innerHTML =
+      '<div class="workspace-shell-drop-zone" data-zone="left" data-ws-drop-zone="left" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
+      '<div class="workspace-shell-drop-zone" data-zone="right" data-ws-drop-zone="right" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
+      '<div class="workspace-shell-drop-zone" data-zone="top" data-ws-drop-zone="top" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
+      '<div class="workspace-shell-drop-zone" data-zone="bottom" data-ws-drop-zone="bottom" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
+      '<div class="workspace-shell-drop-zone" data-zone="center" data-ws-drop-zone="center" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>';
+    contentEl.appendChild(overlayEl);
+
+    parentEl.appendChild(tabsetEl);
+  }
+
+  function renderSideDockSplit(node, parentEl, dockId) {
+    var splitEl = document.createElement('div');
+    splitEl.className = 'workspace-shell-split workspace-shell-node axis-' + node.axis;
+    splitEl.setAttribute('data-node-id', node.id);
+    var firstWeight = Math.round(node.ratio * 1000);
+    var secondWeight = 1000 - firstWeight;
+    if (node.axis === 'vertical') {
+      splitEl.style.gridTemplateColumns = firstWeight + 'fr 1px ' + secondWeight + 'fr';
+      splitEl.style.gridTemplateRows = '1fr';
+    } else {
+      splitEl.style.gridTemplateRows = firstWeight + 'fr 1px ' + secondWeight + 'fr';
+      splitEl.style.gridTemplateColumns = '1fr';
+    }
+
+    var firstPane = document.createElement('div');
+    firstPane.className = 'workspace-shell-split-pane';
+    renderSideDockNode(node.first, firstPane, dockId);
+
+    var divider = document.createElement('div');
+    divider.className = 'workspace-shell-divider';
+    divider.setAttribute('data-axis', node.axis);
+    bindSplitDivider(divider, node.id, node.axis);
+
+    var secondPane = document.createElement('div');
+    secondPane.className = 'workspace-shell-split-pane';
+    renderSideDockNode(node.second, secondPane, dockId);
+
+    splitEl.appendChild(firstPane);
+    splitEl.appendChild(divider);
+    splitEl.appendChild(secondPane);
+    parentEl.appendChild(splitEl);
+  }
+
+  function renderSideDockNode(node, parentEl, dockId) {
+    if (!node) return;
+    if (node.type === 'split') renderSideDockSplit(node, parentEl, dockId);
+    else renderSideDockTabset(node, parentEl, dockId);
+  }
+
+  function renderSideDock(dockId, hostEl) {
+    if (!hostEl) return;
+    // Remove tree content but preserve fold strip
+    var children = hostEl.children;
+    for (var i = children.length - 1; i >= 0; i--) {
+      if (!children[i].classList.contains('ws-fold-strip')) {
+        hostEl.removeChild(children[i]);
       }
     }
-    applyPanelDockLayout(stackEl, dockId, visibleIds);
-    hostEl.appendChild(stackEl);
+    var tree = state.sideDocks[dockId];
+    hostEl.setAttribute('data-dock', dockId);
+    if (!tree || countTreeTabs(tree) === 0) {
+      hostEl.classList.add('is-hidden');
+      hostEl.classList.remove('is-visible', 'is-folded', 'is-fold-hover');
+      return;
+    }
+    renderSideDockNode(tree, hostEl, dockId);
   }
 
   function renderPanelDocks() {
@@ -1531,110 +2199,117 @@
       applyDockLayout();
       return;
     }
-    renderPanelDock('left', state.leftDockEl);
-    renderPanelDock('right', state.rightDockEl);
-    renderPanelDock('bottom', state.bottomDockEl);
+    renderSideDock('left', state.leftDockEl);
+    renderSideDock('right', state.rightDockEl);
+    renderSideDock('bottom', state.bottomDockEl);
     applyDockLayout();
+    var logsVisible = isPanelShown('logs');
+    var statusBar = document.getElementById('status-bar');
+    if (statusBar) statusBar.style.display = logsVisible ? '' : 'none';
   }
 
-  function setPanelDragModeEnabled(enabled) {
-    getBody().classList.toggle('workspace-shell-panel-dragging', !!enabled);
+  function getWorkspaceBoundsRect() {
+    if (state.rootEl && typeof state.rootEl.getBoundingClientRect === 'function') {
+      return state.rootEl.getBoundingClientRect();
+    }
+    return {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight
+    };
   }
 
-  function createPanelDragGhost(panelId) {
-    var ghost = document.createElement('div');
-    ghost.className = 'workspace-shell-panel-ghost';
-    ghost.textContent = getPanelTitle(panelId);
-    document.body.appendChild(ghost);
-    return ghost;
-  }
-
-  function positionPanelDragGhost(ghost, x, y) {
-    if (!ghost) return;
-    ghost.style.left = Math.round(x) + 'px';
-    ghost.style.top = Math.round(y) + 'px';
-  }
-
-  function destroyPanelDragGhost(ghost) {
-    if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+  function isPointOutsideWorkspaceBounds(x, y, threshold) {
+    var margin = typeof threshold === 'number' && isFinite(threshold) ? Math.max(0, threshold) : 0;
+    var rect = getWorkspaceBoundsRect();
+    return x < rect.left - margin ||
+      y < rect.top - margin ||
+      x > rect.right + margin ||
+      y > rect.bottom + margin;
   }
 
   function clearPanelDropTargets() {
-    state.panelDragHoverDock = '';
+    state.dragHoverDock = '';
     if (!state.panelDropOverlayEl) return;
     var zones = state.panelDropOverlayEl.querySelectorAll('.workspace-shell-panel-drop-zone.is-active');
     for (var i = 0; i < zones.length; i++) {
       zones[i].classList.remove('is-active');
     }
+    clearDropZones();
   }
 
   function setPanelDropTarget(dockId) {
     clearPanelDropTargets();
     if (!dockId || !state.panelDropOverlayEl) return;
-    state.panelDragHoverDock = dockId;
+    state.dragHoverDock = dockId;
     var zone = state.panelDropOverlayEl.querySelector('.workspace-shell-panel-drop-zone[data-ws-panel-drop-dock="' + dockId + '"]');
     if (zone) zone.classList.add('is-active');
   }
 
-  function handlePanelPointerMove(event) {
-    var drag = state.panelPointerDrag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    drag.lastX = event.clientX;
-    drag.lastY = event.clientY;
-
-    if (!drag.started) {
-      var dx = event.clientX - drag.startX;
-      var dy = event.clientY - drag.startY;
-      if ((dx * dx) + (dy * dy) < 36) return;
-      drag.started = true;
-      drag.ghost = createPanelDragGhost(drag.panelId);
-      setPanelDragModeEnabled(true);
+  function placePanelInLeaf(panelId, leafId) {
+    var normalized = resolvePanelTarget(panelId);
+    var leafFound = findLeafInAllTrees(leafId);
+    if (!normalized || !leafFound) return false;
+    removePanelFromDocks(normalized);
+    var existing = findPanelInAllTrees(normalized);
+    if (existing && existing.tab) {
+      return moveTabToLeaf(existing.tab.id, leafId);
     }
-
-    positionPanelDragGhost(drag.ghost, event.clientX, event.clientY);
-
-    var target = document.elementFromPoint(event.clientX, event.clientY);
-    var zoneEl = target ? target.closest('[data-ws-panel-drop-dock]') : null;
-    if (zoneEl) {
-      setPanelDropTarget(zoneEl.getAttribute('data-ws-panel-drop-dock'));
-      return;
-    }
-    clearPanelDropTargets();
+    var newTab = createPanelTab(normalized);
+    leafFound.leaf.tabs.push(newTab);
+    leafFound.leaf.activeTabId = newTab.id;
+    if (leafFound.treeId === 'center') state.activeLeafId = leafFound.leaf.id;
+    state.panelVisibility[normalized] = true;
+    state.activePanelId = normalized;
+    render();
+    persistState();
+    return true;
   }
 
-  function finishPanelPointerDrag(event) {
-    var drag = state.panelPointerDrag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    window.removeEventListener('pointermove', handlePanelPointerMove, true);
-    window.removeEventListener('pointerup', finishPanelPointerDrag, true);
-    window.removeEventListener('pointercancel', finishPanelPointerDrag, true);
-
-    if (drag.sourceEl && typeof drag.sourceEl.releasePointerCapture === 'function') {
-      try { drag.sourceEl.releasePointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+  function splitLeafWithPanel(targetLeafId, zone, panelId) {
+    var normalized = resolvePanelTarget(panelId);
+    var targetFound = findLeafInAllTrees(targetLeafId);
+    if (!normalized || !targetFound) return false;
+    var targetLeaf = targetFound.leaf;
+    var existing = findPanelInAllTrees(normalized);
+    var movingWithinSameLeaf = existing && existing.leaf.id === targetLeafId;
+    var shouldDuplicateSingleTab = movingWithinSameLeaf && existing.leaf.tabs.length === 1;
+    var tabForNewLeaf = null;
+    if (shouldDuplicateSingleTab) {
+      var panelKind = getPanelKind(normalized);
+      if (!isPanelKindDuplicable(panelKind)) return false;
+      var duplicatedPanelId = createPanelInstance(panelKind);
+      state.panelVisibility[duplicatedPanelId] = true;
+      tabForNewLeaf = createPanelTab(duplicatedPanelId);
+      normalized = duplicatedPanelId;
+    } else if (existing && existing.tab) {
+      var extracted = extractTab(existing.tab.id);
+      if (!extracted) return false;
+      tabForNewLeaf = extracted.tab;
+    } else {
+      removePanelFromDocks(normalized);
+      tabForNewLeaf = createPanelTab(normalized);
     }
-
-    destroyPanelDragGhost(drag.ghost);
-    setPanelDragModeEnabled(false);
-
-    var dockId = state.panelDragHoverDock;
-    clearPanelDropTargets();
-    state.panelPointerDrag = null;
-
-    if (!drag.started) {
-      activatePanel(drag.panelId);
-      return;
+    var newLeaf = createTabsetNode([tabForNewLeaf]);
+    var axis = (zone === 'top' || zone === 'bottom') ? 'horizontal' : 'vertical';
+    var split = (zone === 'left' || zone === 'top')
+      ? createSplitNode(axis, newLeaf, targetLeaf, 0.5)
+      : createSplitNode(axis, targetLeaf, newLeaf, 0.5);
+    replaceNodeById(targetLeafId, split);
+    if (targetFound.treeId === 'center') state.activeLeafId = newLeaf.id;
+    state.panelVisibility[normalized] = true;
+    state.activePanelId = normalized;
+    // Normalize all trees
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var root = getTreeRoot(ids[t]);
+      if (!root) continue;
+      setTreeRoot(ids[t], withNormalizedLeaves(root, ids[t] === 'center'));
     }
-
-    if (dockId) {
-      movePanelToDock(drag.panelId, dockId);
-      activatePanel(drag.panelId);
-      return;
-    }
-
-    var outsideWindow = drag.lastX < 0 || drag.lastY < 0 || drag.lastX > window.innerWidth || drag.lastY > window.innerHeight;
-    if (outsideWindow) {
-      detachPanelView(drag.panelId);
-    }
+    render();
+    persistState();
+    return true;
   }
 
   function removePanelFromCurrentWindow(panelId) {
@@ -1642,32 +2317,34 @@
     if (!normalized) return false;
     var kind = getPanelKind(normalized);
     if (!kind) return false;
-    var dockIds = ['left', 'right', 'bottom'];
+    var found = findPanelInAllTrees(normalized);
+    if (found && found.treeId === 'center' && found.tab) {
+      return closeTab(found.tab.id);
+    }
     if (normalized !== kind) {
-      for (var i = 0; i < dockIds.length; i++) {
-        var duplicateDockPanels = state.panelDocks[dockIds[i]] || [];
-        var duplicateIndex = duplicateDockPanels.indexOf(normalized);
-        if (duplicateIndex !== -1) duplicateDockPanels.splice(duplicateIndex, 1);
-      }
+      removePanelFromDocks(normalized);
       return closePanelView(normalized);
     }
     state.panelVisibility[normalized] = false;
     var defaultDock = (PANEL_DEFINITIONS[kind] && PANEL_DEFINITIONS[kind].defaultDock) || 'left';
-    var foundDockId = '';
-    for (var j = 0; j < dockIds.length; j++) {
-      var dockPanels = state.panelDocks[dockIds[j]] || [];
-      var index = dockPanels.indexOf(normalized);
-      if (index !== -1) {
-        foundDockId = dockIds[j];
-        while (index !== -1) {
-          dockPanels.splice(index, 1);
-          index = dockPanels.indexOf(normalized);
+    var foundDockId = getDockForPanel(normalized) || '';
+    removePanelFromDocks(normalized);
+    var targetDock = foundDockId || defaultDock;
+    // Re-add as hidden tab so it can be restored later
+    var alreadyInDock = state.sideDocks[targetDock] && findLeafContainingPanel(state.sideDocks[targetDock], normalized);
+    if (!alreadyInDock) {
+      var newTab = createPanelTab(normalized);
+      var dockTree = state.sideDocks[targetDock];
+      if (dockTree) {
+        var firstLeaf = getFirstLeaf(dockTree);
+        if (firstLeaf) {
+          firstLeaf.tabs.unshift(newTab);
+        } else {
+          state.sideDocks[targetDock] = createTabsetNode([newTab]);
         }
+      } else {
+        state.sideDocks[targetDock] = createTabsetNode([newTab]);
       }
-    }
-    var targetDockPanels = state.panelDocks[foundDockId || defaultDock] || (state.panelDocks[foundDockId || defaultDock] = []);
-    if (targetDockPanels.indexOf(normalized) === -1) {
-      targetDockPanels.unshift(normalized);
     }
     ensurePanelDockActives();
     render();
@@ -1681,8 +2358,9 @@
     if (!kind) return Promise.resolve(false);
     var panelRect = getPanelWindowRect(normalized);
     return openWindow({
-      profile: 'workspace',
-      panelKind: kind,
+      profile: 'detachedBoard',
+      initialPanel: kind,
+      windowRole: kind === 'hierarchy' ? 'hierarchyLauncher' : null,
       width: panelRect ? Math.max(360, Math.round(panelRect.width)) : null,
       height: panelRect ? Math.max(220, Math.round(panelRect.height)) : null
     }).then(function () {
@@ -1693,9 +2371,22 @@
     });
   }
 
+  function dockToMainWindow() {
+    if (!isPanelOnlyWindow() || !state.panelOnlyKind) return;
+    var kind = state.panelOnlyKind;
+    tauriEmitAll('menu-action', 'reveal-panel:' + kind).then(function () {
+      closeCurrentWindow();
+    }).catch(function () {
+      // Fallback: store intent in localStorage and close
+      try { localStorage.setItem('lexera-dock-panel', kind); } catch (_) {}
+      closeCurrentWindow();
+    });
+  }
+
   function setTabViewKind(tabId, viewKind, options) {
     var found = findTab(state.dockTree, tabId);
     if (!found || !found.tab) return false;
+    if (isPanelTab(found.tab)) return false;
     var normalized = normalizeViewKind(viewKind);
     if (found.tab.viewKind === normalized) return true;
     found.tab.viewKind = normalized;
@@ -1728,17 +2419,98 @@
   }
 
   function clearDropZones() {
-    if (!state.dockEl) return;
-    var nodes = state.dockEl.querySelectorAll('.workspace-shell-tabset[data-drop-zone]');
-    for (var i = 0; i < nodes.length; i++) {
-      nodes[i].removeAttribute('data-drop-zone');
-    }
-    var zones = state.dockEl.querySelectorAll('.workspace-shell-drop-zone.is-active');
-    for (var j = 0; j < zones.length; j++) {
-      zones[j].classList.remove('is-active');
+    var containers = [state.dockEl, state.leftDockEl, state.rightDockEl, state.bottomDockEl];
+    for (var c = 0; c < containers.length; c++) {
+      if (!containers[c]) continue;
+      var nodes = containers[c].querySelectorAll('.workspace-shell-tabset[data-drop-zone]');
+      for (var i = 0; i < nodes.length; i++) nodes[i].removeAttribute('data-drop-zone');
+      var zones = containers[c].querySelectorAll('.workspace-shell-drop-zone.is-active');
+      for (var j = 0; j < zones.length; j++) zones[j].classList.remove('is-active');
     }
     state.dragHoverLeafId = '';
     state.dragHoverZone = '';
+    clearTabInsertIndicator();
+  }
+
+  // ── Tab reorder within tabset ──
+
+  function getTabInsertIndex(tabsEl, clientX) {
+    var children = tabsEl.children;
+    var tabs = [];
+    for (var j = 0; j < children.length; j++) {
+      if (!children[j].classList.contains('ws-tab-insert-marker')) tabs.push(children[j]);
+    }
+    if (!tabs.length) return 0;
+    for (var i = 0; i < tabs.length; i++) {
+      var rect = tabs[i].getBoundingClientRect();
+      var mid = rect.left + rect.width / 2;
+      if (clientX < mid) return i;
+    }
+    return tabs.length;
+  }
+
+  function setTabInsertIndicator(tabsEl, index) {
+    clearTabInsertIndicator();
+    if (!tabsEl || index < 0) return;
+    state.dragHoverTabIndex = index;
+    var marker = document.createElement('div');
+    marker.className = 'ws-tab-insert-marker';
+    // Collect real tab children (excluding markers)
+    var children = tabsEl.children;
+    var tabs = [];
+    for (var j = 0; j < children.length; j++) {
+      if (!children[j].classList.contains('ws-tab-insert-marker')) tabs.push(children[j]);
+    }
+    if (index < tabs.length) {
+      tabsEl.insertBefore(marker, tabs[index]);
+    } else {
+      tabsEl.appendChild(marker);
+    }
+  }
+
+  function clearTabInsertIndicator() {
+    state.dragHoverTabIndex = -1;
+    var markers = document.querySelectorAll('.ws-tab-insert-marker');
+    for (var i = 0; i < markers.length; i++) {
+      markers[i].parentNode.removeChild(markers[i]);
+    }
+  }
+
+  function reorderTabInLeaf(tabId, leafId, targetIndex) {
+    var found = findTabInAllTrees(tabId);
+    if (!found || found.leaf.id !== leafId) return false;
+    var currentIndex = found.index;
+    if (currentIndex === targetIndex || currentIndex + 1 === targetIndex) return false; // no-op
+    var tab = found.leaf.tabs.splice(currentIndex, 1)[0];
+    var insertAt = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
+    found.leaf.tabs.splice(insertAt, 0, tab);
+    render();
+    persistState();
+    return true;
+  }
+
+  function moveTabToLeafAtIndex(tabId, targetLeafId, targetIndex) {
+    var extracted = extractTab(tabId);
+    if (!extracted) return false;
+    var found = findLeafInAllTrees(targetLeafId);
+    if (!found) {
+      insertTabIntoLeaf(extracted.tab, extracted.sourceLeafId);
+      return false;
+    }
+    var idx = Math.max(0, Math.min(targetIndex, found.leaf.tabs.length));
+    found.leaf.tabs.splice(idx, 0, extracted.tab);
+    found.leaf.activeTabId = extracted.tab.id;
+    if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var root = getTreeRoot(ids[t]);
+      if (!root) continue;
+      setTreeRoot(ids[t], withNormalizedLeaves(root, ids[t] === 'center'));
+    }
+    ensureActiveLeaf();
+    render();
+    persistState();
+    return true;
   }
 
   function setTabDragModeEnabled(enabled) {
@@ -1746,7 +2518,7 @@
   }
 
   function createTabDragGhost(tabId) {
-    var found = findTab(state.dockTree, tabId);
+    var found = findTabInAllTrees(tabId);
     if (!found) return null;
     var ghost = document.createElement('div');
     ghost.className = 'workspace-shell-tab-ghost';
@@ -1766,15 +2538,21 @@
   }
 
   function setDropZoneHighlight(leafId, zone) {
-    if (!state.dockEl) return;
     clearDropZones();
     if (!leafId || !zone) return;
     state.dragHoverLeafId = leafId;
     state.dragHoverZone = zone;
-    var tabsetEl = state.dockEl.querySelector('.workspace-shell-tabset[data-node-id="' + leafId + '"]');
-    if (tabsetEl) tabsetEl.setAttribute('data-drop-zone', zone);
-    var zoneEl = state.dockEl.querySelector('.workspace-shell-drop-zone[data-ws-drop-leaf="' + leafId + '"][data-zone="' + zone + '"]');
-    if (zoneEl) zoneEl.classList.add('is-active');
+    var containers = [state.dockEl, state.leftDockEl, state.rightDockEl, state.bottomDockEl];
+    for (var c = 0; c < containers.length; c++) {
+      if (!containers[c]) continue;
+      var tabsetEl = containers[c].querySelector('.workspace-shell-tabset[data-node-id="' + leafId + '"]');
+      if (tabsetEl) { tabsetEl.setAttribute('data-drop-zone', zone); break; }
+    }
+    for (var d = 0; d < containers.length; d++) {
+      if (!containers[d]) continue;
+      var zoneEl = containers[d].querySelector('.workspace-shell-drop-zone[data-ws-drop-leaf="' + leafId + '"][data-zone="' + zone + '"]');
+      if (zoneEl) { zoneEl.classList.add('is-active'); break; }
+    }
   }
 
   function handleTabPointerMove(event) {
@@ -1782,6 +2560,9 @@
     if (!drag || drag.pointerId !== event.pointerId) return;
     drag.lastX = event.clientX;
     drag.lastY = event.clientY;
+    if (isPointOutsideWorkspaceBounds(event.clientX, event.clientY, 40)) {
+      drag.detachArmed = true;
+    }
     state.dragLastX = event.clientX;
     state.dragLastY = event.clientY;
 
@@ -1790,25 +2571,68 @@
       var dy = event.clientY - drag.startY;
       if ((dx * dx) + (dy * dy) < 36) return;
       drag.started = true;
-      state.dragTabId = drag.tabId;
+      state.dragTabId = drag.tabId || '';
+      state.dragPanelId = drag.panelId || '';
       state.dragDroppedInternally = false;
-      drag.ghost = createTabDragGhost(drag.tabId);
+      if (drag.tabId) {
+        drag.ghost = createTabDragGhost(drag.tabId);
+      } else if (drag.panelId) {
+        // Create ghost for panel-only drag
+        var ghost = document.createElement('div');
+        ghost.className = 'workspace-shell-tab-ghost';
+        ghost.textContent = getPanelTitle(drag.panelId);
+        document.body.appendChild(ghost);
+        drag.ghost = ghost;
+      }
       setTabDragModeEnabled(true);
     }
 
     positionTabDragGhost(drag.ghost, event.clientX, event.clientY);
 
     var target = document.elementFromPoint(event.clientX, event.clientY);
+
+    // Tab bar reorder detection: if pointer is over tab area, show insert marker
+    var headerEl = target ? target.closest('.ws-view-header') : null;
+    if (headerEl) {
+      var headerTabsetEl = headerEl.closest('.workspace-shell-tabset');
+      if (headerTabsetEl) {
+        var tabsEl = headerEl.querySelector('.ws-view-tabs');
+        var leafId = headerTabsetEl.getAttribute('data-node-id');
+        if (tabsEl && leafId) {
+          clearPanelDropTargets();
+          clearDropZones();
+          var insertIdx = getTabInsertIndex(tabsEl, event.clientX);
+          setTabInsertIndicator(tabsEl, insertIdx);
+          state.dragHoverLeafId = leafId;
+          state.dragHoverZone = 'tab-reorder';
+          return;
+        }
+        // Single-tab header: treat as center drop
+        clearPanelDropTargets();
+        setDropZoneHighlight(leafId, 'center');
+        return;
+      }
+    }
+
     var zoneEl = target ? target.closest('[data-ws-drop-zone][data-ws-drop-leaf]') : null;
     var tabsetEl = target ? target.closest('.workspace-shell-tabset') : null;
     if (zoneEl) {
+      clearPanelDropTargets();
       setDropZoneHighlight(zoneEl.getAttribute('data-ws-drop-leaf'), zoneEl.getAttribute('data-ws-drop-zone'));
       return;
     }
     if (tabsetEl) {
+      clearPanelDropTargets();
       setDropZoneHighlight(tabsetEl.getAttribute('data-node-id'), getDropZoneForEvent(tabsetEl, event));
       return;
     }
+    // Check for dock-level panel drop zones
+    var dockZoneEl = target ? target.closest('[data-ws-panel-drop-dock]') : null;
+    if (dockZoneEl) {
+      setPanelDropTarget(dockZoneEl.getAttribute('data-ws-panel-drop-dock'));
+      return;
+    }
+    clearPanelDropTargets();
     clearDropZones();
   }
 
@@ -1829,49 +2653,96 @@
     if (!drag.started) {
       state.pointerDrag = null;
       state.dragTabId = '';
+      state.dragPanelId = '';
       clearDropZones();
-      activateTab(drag.tabId);
+      if (drag.panelId) activatePanel(drag.panelId);
+      else if (drag.tabId) activateTab(drag.tabId);
       return;
     }
 
     var tabId = drag.tabId;
+    var panelId = drag.panelId || '';
     var x = drag.lastX;
     var y = drag.lastY;
     var leafId = state.dragHoverLeafId;
     var zone = state.dragHoverZone;
+    var dockId = state.dragHoverDock || '';
 
     clearDropZones();
+    clearPanelDropTargets();
     state.pointerDrag = null;
     state.dragTabId = '';
+    state.dragPanelId = '';
 
-    if (leafId && zone) {
-      state.dragDroppedInternally = true;
-      if (zone === 'center') moveTabToLeaf(tabId, leafId);
-      else splitLeafWithTab(leafId, zone, tabId);
+    // Dock-level drop for panel drags
+    if (dockId && panelId) {
+      movePanelToDock(panelId, dockId);
+      activatePanel(panelId);
       state.dragDroppedInternally = false;
       return;
     }
 
-    var outsideWindow = x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight;
-    if (outsideWindow) detachTab(tabId);
+    if (leafId && zone) {
+      state.dragDroppedInternally = true;
+      var dropTabIndex = state.dragHoverTabIndex;
+      clearTabInsertIndicator();
+
+      if (zone === 'tab-reorder' && dropTabIndex >= 0) {
+        // Tab reorder: same leaf = reorder, different leaf = move at index
+        var effectiveTabId = tabId;
+        if (!effectiveTabId && panelId) {
+          var panelInfo = findPanelInAllTrees(panelId);
+          if (panelInfo) effectiveTabId = panelInfo.tab.id;
+        }
+        if (effectiveTabId) {
+          var tabInfo = findTabInAllTrees(effectiveTabId);
+          if (tabInfo && tabInfo.leaf.id === leafId) {
+            reorderTabInLeaf(effectiveTabId, leafId, dropTabIndex);
+          } else {
+            moveTabToLeafAtIndex(effectiveTabId, leafId, dropTabIndex);
+          }
+        }
+      } else if (panelId && !tabId) {
+        // Panel drag onto a leaf
+        if (zone === 'center') placePanelInLeaf(panelId, leafId);
+        else splitLeafWithPanel(leafId, zone, panelId);
+      } else if (tabId) {
+        if (zone === 'center') moveTabToLeaf(tabId, leafId);
+        else splitLeafWithTab(leafId, zone, tabId);
+      }
+      state.dragDroppedInternally = false;
+      return;
+    }
+
+    var outsideWindow = drag.detachArmed && isPointOutsideWorkspaceBounds(x, y, 20);
+    if (outsideWindow) {
+      if (panelId && !tabId) detachPanelView(panelId);
+      else if (tabId) detachTab(tabId);
+    }
     state.dragDroppedInternally = false;
   }
 
   function handlePointerDown(event) {
     if (event.button !== 0) return;
+    // Panel drag handle: find the panel's tab in side dock tree, start unified drag
     var panelHandleEl = event.target.closest('[data-ws-panel-drag-handle]');
     if (panelHandleEl) {
       event.preventDefault();
       var handledPanelId = resolvePanelTarget(panelHandleEl.getAttribute('data-ws-panel-drag-handle'));
       if (!handledPanelId) return;
       state.activePanelId = handledPanelId;
-      state.panelPointerDrag = {
+      // Find the tab for this panel in any tree
+      var panelFound = findPanelInAllTrees(handledPanelId);
+      var dragTabId = panelFound ? panelFound.tab.id : '';
+      state.pointerDrag = {
+        tabId: dragTabId,
         panelId: handledPanelId,
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         lastX: event.clientX,
         lastY: event.clientY,
+        detachArmed: false,
         started: false,
         sourceEl: panelHandleEl,
         ghost: null
@@ -1879,26 +2750,31 @@
       if (typeof panelHandleEl.setPointerCapture === 'function') {
         try { panelHandleEl.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
       }
-      window.addEventListener('pointermove', handlePanelPointerMove, true);
-      window.addEventListener('pointerup', finishPanelPointerDrag, true);
-      window.addEventListener('pointercancel', finishPanelPointerDrag, true);
+      window.addEventListener('pointermove', handleTabPointerMove, true);
+      window.addEventListener('pointerup', finishTabPointerDrag, true);
+      window.addEventListener('pointercancel', finishTabPointerDrag, true);
       renderToolbar();
       persistState();
       return;
     }
-    var panelTabEl = event.target.closest('.workspace-shell-panel-tab[data-ws-panel-id]');
-    if (panelTabEl) {
+    // Panel tab click in side dock: start unified drag (but not on close buttons)
+    var panelTabEl = event.target.closest('.ws-view-tab[data-ws-panel-id]');
+    if (panelTabEl && !event.target.closest('[data-ws-action="close-panel"]')) {
       event.preventDefault();
       var panelId = panelTabEl.getAttribute('data-ws-panel-id');
       if (!panelId) return;
       state.activePanelId = panelId;
-      state.panelPointerDrag = {
+      var panelFound2 = findPanelInAllTrees(panelId);
+      var dragTabId2 = panelFound2 ? panelFound2.tab.id : '';
+      state.pointerDrag = {
+        tabId: dragTabId2,
         panelId: panelId,
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         lastX: event.clientX,
         lastY: event.clientY,
+        detachArmed: false,
         started: false,
         sourceEl: panelTabEl,
         ghost: null
@@ -1906,9 +2782,9 @@
       if (typeof panelTabEl.setPointerCapture === 'function') {
         try { panelTabEl.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
       }
-      window.addEventListener('pointermove', handlePanelPointerMove, true);
-      window.addEventListener('pointerup', finishPanelPointerDrag, true);
-      window.addEventListener('pointercancel', finishPanelPointerDrag, true);
+      window.addEventListener('pointermove', handleTabPointerMove, true);
+      window.addEventListener('pointerup', finishTabPointerDrag, true);
+      window.addEventListener('pointercancel', finishTabPointerDrag, true);
       renderToolbar();
       persistState();
       return;
@@ -1922,7 +2798,8 @@
         persistState();
       }
     }
-    var tabEl = event.target.closest('.workspace-shell-tab[data-ws-tab-id]');
+    var tabEl = event.target.closest('.ws-view-tab[data-ws-tab-id]') ||
+                event.target.closest('.ws-view-drag[data-ws-tab-id]');
     if (tabEl && !event.target.closest('[data-ws-action="close-tab"]')) {
       event.preventDefault();
       var tabId = tabEl.getAttribute('data-ws-tab-id');
@@ -1936,11 +2813,13 @@
       }
       state.pointerDrag = {
         tabId: tabId,
+        panelId: '',
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         lastX: event.clientX,
         lastY: event.clientY,
+        detachArmed: false,
         started: false,
         sourceEl: tabEl,
         ghost: null
@@ -1966,7 +2845,14 @@
   function bindSplitDivider(dividerEl, splitId, axis) {
     dividerEl.addEventListener('pointerdown', function (event) {
       event.preventDefault();
-      var found = findNodeAndParent(state.dockTree, splitId);
+      var found = null;
+      var ids = allTreeIds();
+      for (var t = 0; t < ids.length; t++) {
+        var root = getTreeRoot(ids[t]);
+        if (!root) continue;
+        found = findNodeAndParent(root, splitId);
+        if (found) break;
+      }
       if (!found || !found.node || found.node.type !== 'split') return;
       var splitNode = found.node;
       var container = dividerEl.parentElement;
@@ -1975,10 +2861,10 @@
         var firstWeight = Math.round(splitNode.ratio * 1000);
         var secondWeight = 1000 - firstWeight;
         if (axis === 'vertical') {
-          container.style.gridTemplateColumns = firstWeight + 'fr 6px ' + secondWeight + 'fr';
+          container.style.gridTemplateColumns = firstWeight + 'fr 1px ' + secondWeight + 'fr';
           container.style.gridTemplateRows = '1fr';
         } else {
-          container.style.gridTemplateRows = firstWeight + 'fr 6px ' + secondWeight + 'fr';
+          container.style.gridTemplateRows = firstWeight + 'fr 1px ' + secondWeight + 'fr';
           container.style.gridTemplateColumns = '1fr';
         }
       }
@@ -2020,26 +2906,28 @@
     tabsetEl.setAttribute('data-node-id', node.id);
     if (node.id === state.activeLeafId) tabsetEl.classList.add('is-active');
 
-    var tabbarEl = document.createElement('div');
-    tabbarEl.className = 'workspace-shell-tabbar';
-
-    var tabsEl = document.createElement('div');
-    tabsEl.className = 'workspace-shell-tabs';
+    var headerItems = [];
     for (var i = 0; i < node.tabs.length; i++) {
       var tab = node.tabs[i];
-      var tabBtn = document.createElement('div');
-      tabBtn.className = 'workspace-shell-tab';
-      tabBtn.setAttribute('data-ws-tab-id', tab.id);
-      if (tab.id === node.activeTabId) tabBtn.classList.add('is-active');
-      tabBtn.innerHTML =
-        '<span class="workspace-shell-tab-label">' + escapeHtml(getTabTitle(tab)) + '</span>' +
-        (getTabMetaLabel(tab) ? '<span class="workspace-shell-tab-meta">' + escapeHtml(getTabMetaLabel(tab)) + '</span>' : '') +
-        '<button class="workspace-shell-tab-close" type="button" data-ws-action="close-tab" data-ws-tab-id="' + escapeHtml(tab.id) + '" title="Close tab">×</button>';
-      tabsEl.appendChild(tabBtn);
+      headerItems.push({
+        id: tab.id,
+        label: getTabTitle(tab),
+        meta: getTabMetaLabel(tab)
+      });
     }
-    tabbarEl.appendChild(tabsEl);
-
-    tabsetEl.appendChild(tabbarEl);
+    var activeTabId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
+    var headerEl = renderViewHeader({
+      items: headerItems,
+      activeId: activeTabId,
+      dragAttr: { name: 'data-ws-tab-id', value: activeTabId },
+      closeAction: 'close-tab',
+      closeIdAttr: 'data-ws-tab-id',
+      tabClickAttr: 'data-ws-tab-id',
+      activateAction: null,
+      extraTabAttrs: null,
+      showMeta: true
+    });
+    tabsetEl.appendChild(headerEl);
 
     var contentEl = document.createElement('div');
     contentEl.className = 'workspace-shell-pane-content';
@@ -2075,10 +2963,10 @@
     var firstWeight = Math.round(node.ratio * 1000);
     var secondWeight = 1000 - firstWeight;
     if (node.axis === 'vertical') {
-      splitEl.style.gridTemplateColumns = firstWeight + 'fr 6px ' + secondWeight + 'fr';
+      splitEl.style.gridTemplateColumns = firstWeight + 'fr 1px ' + secondWeight + 'fr';
       splitEl.style.gridTemplateRows = '1fr';
     } else {
-      splitEl.style.gridTemplateRows = firstWeight + 'fr 6px ' + secondWeight + 'fr';
+      splitEl.style.gridTemplateRows = firstWeight + 'fr 1px ' + secondWeight + 'fr';
       splitEl.style.gridTemplateColumns = '1fr';
     }
 
@@ -2114,6 +3002,25 @@
     var panelWindowEl = document.createElement('div');
     panelWindowEl.className = 'workspace-shell-panel-window workspace-shell-panel-window-integrated is-active workspace-shell-panel-only-window';
     panelWindowEl.setAttribute('data-panel-id', panelId);
+
+    // Dock-back header for detached panel windows
+    if (canUseTauriInvoke()) {
+      var headerEl = document.createElement('div');
+      headerEl.className = 'workspace-shell-panel-only-header';
+      var titleEl = document.createElement('span');
+      titleEl.className = 'workspace-shell-panel-only-title';
+      titleEl.textContent = getPanelTitle(panelId);
+      var dockBtn = document.createElement('button');
+      dockBtn.className = 'workspace-shell-panel-only-dock-btn';
+      dockBtn.type = 'button';
+      dockBtn.title = 'Dock to main window';
+      dockBtn.textContent = 'Dock';
+      dockBtn.addEventListener('click', function () { dockToMainWindow(); });
+      headerEl.appendChild(titleEl);
+      headerEl.appendChild(dockBtn);
+      panelWindowEl.appendChild(headerEl);
+    }
+
     var contentEl = document.createElement('div');
     contentEl.className = 'workspace-shell-panel-content';
     var panelEl = getPanelElement(panelId);
@@ -2131,28 +3038,51 @@
     if (!tabsetEl) return false;
     tabsetEl.classList.toggle('is-active', node.id === state.activeLeafId);
 
-    var tabsEl = tabsetEl.querySelector('.workspace-shell-tabs');
+    var headerEl = tabsetEl.querySelector('.ws-view-header');
     var contentEl = tabsetEl.querySelector('.workspace-shell-pane-content');
-    if (!tabsEl || !contentEl) return false;
+    if (!headerEl || !contentEl) return false;
 
-    var tabButtons = tabsEl.querySelectorAll('.workspace-shell-tab');
-    if (tabButtons.length !== node.tabs.length) return false;
+    var views = contentEl.querySelectorAll('.workspace-shell-view');
+    if (views.length !== node.tabs.length) return false;
 
-    var frames = contentEl.querySelectorAll('.workspace-shell-frame');
-    if (frames.length !== node.tabs.length) return false;
+    // Update title for single-tab, or tabs for multi-tab
+    var tabsEl = headerEl.querySelector('.ws-view-tabs');
+    if (tabsEl) {
+      var tabButtons = tabsEl.querySelectorAll('.ws-view-tab');
+      if (tabButtons.length !== node.tabs.length) return false;
+    } else if (node.tabs.length > 1) {
+      return false; // structure mismatch
+    }
 
     for (var i = 0; i < node.tabs.length; i++) {
       var tab = node.tabs[i];
-      var tabEl = tabsEl.querySelector('.workspace-shell-tab[data-ws-tab-id="' + tab.id + '"]');
-      var frameEl = contentEl.querySelector('.workspace-shell-frame[data-tab-id="' + tab.id + '"]');
-      if (!tabEl || !frameEl) return false;
-      tabEl.classList.toggle('is-active', tab.id === node.activeTabId);
-      var labelEl = tabEl.querySelector('.workspace-shell-tab-label');
-      if (labelEl) labelEl.textContent = getTabTitle(tab);
-      var metaEl = tabEl.querySelector('.workspace-shell-tab-meta');
-      if (metaEl) metaEl.textContent = getTabMetaLabel(tab);
-      frameEl.classList.toggle('is-active', tab.id === node.activeTabId);
-      frameEl.setAttribute('title', getTabTitle(tab));
+      var viewEl = contentEl.querySelector('.workspace-shell-view[data-tab-id="' + tab.id + '"]');
+      if (!viewEl) return false;
+      if (tabsEl) {
+        var tabEl = tabsEl.querySelector('.ws-view-tab[data-ws-tab-id="' + tab.id + '"]');
+        if (!tabEl) return false;
+        tabEl.classList.toggle('is-active', tab.id === node.activeTabId);
+        var labelEl = tabEl.querySelector('.ws-view-tab-label');
+        if (labelEl) labelEl.textContent = getTabTitle(tab);
+        var metaEl = tabEl.querySelector('.ws-view-tab-meta');
+        if (metaEl) metaEl.textContent = getTabMetaLabel(tab);
+      } else {
+        var titleEl = headerEl.querySelector('.ws-view-title');
+        if (titleEl) titleEl.textContent = getTabTitle(tab);
+      }
+      viewEl.classList.toggle('is-active', tab.id === node.activeTabId);
+      if (isPanelTab(tab)) {
+        var panelEl = getPanelElement(tab.panelId);
+        if (panelEl && panelEl.parentNode !== viewEl) {
+          viewEl.innerHTML = '';
+          panelEl.classList.remove('hidden');
+          panelEl.style.display = '';
+          viewEl.appendChild(panelEl);
+        }
+        viewEl.setAttribute('data-panel-id', resolvePanelTarget(tab.panelId));
+      } else {
+        viewEl.setAttribute('title', getTabTitle(tab));
+      }
     }
     return true;
   }
@@ -2180,6 +3110,7 @@
   function render() {
     if (!state.mounted || !state.rootEl || !state.dockEl) return;
     ensureActiveLeaf();
+    syncIntegratedPanelVisibility();
     ensurePanelDockActives();
     renderToolbar();
     if (isPanelOnlyWindow()) {
@@ -2207,6 +3138,7 @@
     visitTree(state.dockTree, function (node) {
       if (node.type !== 'tabs') return;
       for (var i = node.tabs.length - 1; i >= 0; i--) {
+        if (!isBoardTab(node.tabs[i])) continue;
         if (!state.boardsById[node.tabs[i].boardId]) {
           removeFrame(node.tabs[i].id);
           node.tabs.splice(i, 1);
@@ -2223,7 +3155,7 @@
     options = options || {};
     if (!boardId) return null;
     var desiredView = normalizeViewKind(options.viewKind);
-    if (isPanelOnlyWindow() && state.panelOnlyKind === 'hierarchy') {
+    if (isHierarchyLauncherWindow()) {
       openWindow({
         boardId: boardId,
         viewKind: desiredView === 'default' ? null : desiredView,
@@ -2246,7 +3178,7 @@
       state.dockTree = createTabsetNode([]);
       targetLeaf = state.dockTree;
     }
-    var tab = createTab(boardId, desiredView);
+    var tab = createBoardTab(boardId, desiredView);
     targetLeaf.tabs.push(tab);
     targetLeaf.activeTabId = tab.id;
     state.activeLeafId = targetLeaf.id;
@@ -2265,7 +3197,7 @@
 
   function focusHierarchyTarget(target, boardId, options) {
     options = options || {};
-    if (isPanelOnlyWindow() && state.panelOnlyKind === 'hierarchy') {
+    if (isHierarchyLauncherWindow()) {
       openWindow({
         boardId: boardId,
         viewKind: options.viewKind ? normalizeViewKind(options.viewKind) : null,
@@ -2332,6 +3264,11 @@
     if (action === 'select-panel') {
       setPanelVisibility(value, true, { activate: true });
       activatePanel(value);
+      return true;
+    }
+    if (action === 'collapse-dock') {
+      var cdDockId = extra && extra.dockId ? extra.dockId : '';
+      if (cdDockId) collapseDock(cdDockId);
       return true;
     }
     if (action === 'expand-collapsed-dock') {
@@ -2441,7 +3378,7 @@
   }
 
   function handleRootContextMenu(event) {
-    var panelTab = event.target.closest('.workspace-shell-panel-tab[data-ws-panel-id]');
+    var panelTab = event.target.closest('.ws-view-tab[data-ws-panel-id]');
     var panelHandle = event.target.closest('[data-ws-panel-drag-handle]');
     if (!panelTab && !panelHandle) return;
     event.preventDefault();
@@ -2491,11 +3428,6 @@
     state.mainRowEl = document.createElement('div');
     state.mainRowEl.className = 'workspace-shell-main-row';
 
-    state.leftMarkerEl = document.createElement('div');
-    state.leftMarkerEl.className = 'workspace-shell-collapsed-marker-strip';
-    state.leftMarkerEl.setAttribute('data-dock', 'left');
-    state.bodyEl.appendChild(state.leftMarkerEl);
-
     state.leftDockEl = document.createElement('div');
     state.leftDockEl.className = 'workspace-shell-panel-dock';
     state.leftDockEl.setAttribute('data-dock', 'left');
@@ -2522,11 +3454,6 @@
     state.rightDockEl.setAttribute('data-dock', 'right');
     state.mainRowEl.appendChild(state.rightDockEl);
 
-    state.rightMarkerEl = document.createElement('div');
-    state.rightMarkerEl.className = 'workspace-shell-collapsed-marker-strip';
-    state.rightMarkerEl.setAttribute('data-dock', 'right');
-    state.bodyEl.appendChild(state.rightMarkerEl);
-
     state.bodyEl.appendChild(state.mainRowEl);
 
     state.bottomDividerEl = document.createElement('div');
@@ -2539,11 +3466,6 @@
     state.bottomDockEl.className = 'workspace-shell-panel-dock';
     state.bottomDockEl.setAttribute('data-dock', 'bottom');
     state.bodyEl.appendChild(state.bottomDockEl);
-
-    state.bottomMarkerEl = document.createElement('div');
-    state.bottomMarkerEl.className = 'workspace-shell-collapsed-marker-strip';
-    state.bottomMarkerEl.setAttribute('data-dock', 'bottom');
-    state.bodyEl.appendChild(state.bottomMarkerEl);
 
     state.panelDropOverlayEl = document.createElement('div');
     state.panelDropOverlayEl.className = 'workspace-shell-panel-drop-overlay';
@@ -2565,6 +3487,7 @@
     state.mounted = true;
     restoreState();
     applyPanelOnlyWindowState();
+    ensureInitialPanelTab(state.initialPanelKind);
     ensurePanelElements();
     applyShellBodyClasses();
     render();
@@ -2583,6 +3506,15 @@
     render();
   }
 
+  var ACTION_PANEL_ALIASES = {
+    'open-management': 'backendSettings',
+    'backend-settings': 'backendSettings',
+    'open-frontend-settings': 'frontendSettings',
+    'open-theme-zoom': 'frontendSettings',
+    'show-processes': 'logs',
+    'running-processes': 'logs'
+  };
+
   function handleBoardAction(action) {
     if (!state.enabled || !state.mounted) return false;
     if (!action) return false;
@@ -2590,24 +3522,19 @@
       openWorkspaceWindow();
       return true;
     }
-    if (action === 'open-management' || action === 'backend-settings') {
-      revealPanel('backendSettings');
+    if (action.indexOf('reveal-panel:') === 0) {
+      var panelKind = action.substring('reveal-panel:'.length);
+      if (PANEL_DEFINITIONS[panelKind]) {
+        revealPanel(panelKind);
+        return true;
+      }
+    }
+    if (ACTION_PANEL_ALIASES[action]) {
+      revealPanel(ACTION_PANEL_ALIASES[action]);
       return true;
     }
-    if (action === 'open-frontend-settings' || action === 'open-theme-zoom') {
-      revealPanel('frontendSettings');
-      return true;
-    }
-    if (action === 'show-processes' || action === 'running-processes') {
-      revealPanel('logs');
-      return true;
-    }
-    if (action === 'set-board-layout:kanban') {
-      setActiveViewKind('kanban');
-      return true;
-    }
-    if (action === 'set-board-layout:canvas') {
-      setActiveViewKind('canvas');
+    if (action.indexOf('set-board-layout:') === 0) {
+      setActiveViewKind(action.substring('set-board-layout:'.length));
       return true;
     }
     if (action === 'split-disable') {
@@ -2634,6 +3561,7 @@
     },
     setPanelVisibility: setPanelVisibility,
     movePanelToDock: movePanelToDock,
+    movePanelToGroup: movePanelToGroup,
     duplicatePanel: duplicatePanel,
     closePanelView: closePanelView,
     isPanelVisible: isPanelShown,

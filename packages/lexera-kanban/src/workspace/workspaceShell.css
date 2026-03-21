@@ -41,10 +41,9 @@
 .workspace-shell-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  gap: 4px;
+  min-height: 0;
+  padding: 0;
   background: var(--surface-header-bg, var(--bg-secondary));
 }
 
@@ -74,6 +73,7 @@
 
 .workspace-shell-dock {
   position: relative;
+  z-index: 30;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
@@ -81,6 +81,8 @@
 }
 
 .workspace-shell-panel-dock {
+  position: relative;
+  z-index: 30;
   display: none;
   flex-direction: column;
   min-height: 0;
@@ -96,18 +98,11 @@
 
 .workspace-shell-panel-dock[data-dock="left"],
 .workspace-shell-panel-dock[data-dock="right"] {
-  width: 100%;
-  border-right: 1px solid var(--border);
-}
-
-.workspace-shell-panel-dock[data-dock="right"] {
-  border-right: 0;
-  border-left: 1px solid var(--border);
+  height: 100%;
 }
 
 .workspace-shell-panel-dock[data-dock="bottom"] {
-  height: 100%;
-  border-top: 1px solid var(--border);
+  width: 100%;
 }
 
 .workspace-shell-dock-divider {
@@ -125,12 +120,12 @@
 
 .workspace-shell-dock-divider[data-dock-divider="left"],
 .workspace-shell-dock-divider[data-dock-divider="right"] {
-  width: 6px;
+  width: 1px;
   cursor: col-resize;
 }
 
 .workspace-shell-dock-divider[data-dock-divider="bottom"] {
-  height: 6px;
+  height: 1px;
   cursor: row-resize;
 }
 
@@ -139,115 +134,398 @@
   background: color-mix(in srgb, var(--accent) 28%, var(--bg-tertiary));
 }
 
-.workspace-shell-collapsed-marker-strip {
-  position: absolute;
-  z-index: 18;
+/* ── Fold strip: compact dock when collapsed ── */
+.ws-fold-strip {
   display: none;
-  gap: 6px;
-  pointer-events: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border-color: var(--border);
+  user-select: none;
+  overflow: hidden;
 }
 
-.workspace-shell-collapsed-marker-strip.is-visible {
+.workspace-shell-panel-dock.is-folded > .ws-fold-strip {
   display: flex;
 }
 
-.workspace-shell-collapsed-marker-strip[data-dock="left"] {
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  flex-direction: column;
-  align-items: flex-start;
+.workspace-shell-panel-dock.is-folded[data-dock="left"] > .ws-fold-strip,
+.workspace-shell-panel-dock.is-folded[data-dock="right"] > .ws-fold-strip {
+  width: 22px;
+  height: 100%;
+  padding: 4px 0;
 }
 
-.workspace-shell-collapsed-marker-strip[data-dock="right"] {
-  right: 0;
-  top: 10px;
-  bottom: 10px;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-.workspace-shell-collapsed-marker-strip[data-dock="bottom"] {
-  left: 10px;
-  right: 10px;
-  bottom: 0;
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"] > .ws-fold-strip {
   flex-direction: row;
-  align-items: flex-end;
+  width: 100%;
+  height: 22px;
+  padding: 0 4px;
 }
 
-.workspace-shell-collapsed-marker {
-  pointer-events: auto;
+.workspace-shell-panel-dock.is-folded[data-dock="left"] > .ws-fold-strip {
+  border-right: 1px solid var(--border);
+}
+.workspace-shell-panel-dock.is-folded[data-dock="right"] > .ws-fold-strip {
+  border-left: 1px solid var(--border);
+}
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"] > .ws-fold-strip {
+  border-top: 1px solid var(--border);
+}
+
+/* Pin/unpin toggle */
+.ws-fold-pin {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-secondary) 92%, var(--accent) 8%);
-  color: var(--text-primary);
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
   cursor: pointer;
-  font: inherit;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.16);
+  padding: 0;
+  opacity: 0.6;
+}
+.ws-fold-pin:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  opacity: 1;
 }
 
-.workspace-shell-collapsed-marker-strip[data-dock="left"] .workspace-shell-collapsed-marker,
-.workspace-shell-collapsed-marker-strip[data-dock="right"] .workspace-shell-collapsed-marker {
+/* Panel indicator in fold strip */
+.ws-fold-indicator {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.ws-fold-indicator:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.ws-fold-indicator.is-active {
+  color: var(--text-primary);
+}
+
+/* Vertical labels for left/right fold strips */
+.ws-fold-label {
   writing-mode: vertical-rl;
   text-orientation: mixed;
-  min-width: 28px;
-  min-height: 96px;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  padding: 4px 0;
+  cursor: default;
+}
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"] .ws-fold-label {
+  writing-mode: horizontal-tb;
+  padding: 0 4px;
 }
 
-.workspace-shell-collapsed-marker:hover {
-  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
-  background: color-mix(in srgb, var(--bg-secondary) 82%, var(--accent) 18%);
-  color: var(--text-bright);
+/* Custom fold content for specific panels */
+.ws-fold-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 0;
+}
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"] .ws-fold-status {
+  flex-direction: row;
+  padding: 0 2px;
 }
 
-.workspace-shell-panel-tabbar {
+.ws-fold-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.ws-fold-dot.is-connected {
+  background: #22c55e;
+}
+.ws-fold-dot.is-disconnected {
+  background: #ef4444;
+}
+
+/* Folded dock hides normal content, only shows strip */
+.workspace-shell-panel-dock.is-folded > .workspace-shell-tabset,
+.workspace-shell-panel-dock.is-folded > .workspace-shell-split,
+.workspace-shell-panel-dock.is-folded > .workspace-shell-node {
+  display: none;
+}
+
+/* Hover expansion: show full content as overlay */
+.ws-fold-expanded {
+  display: none;
+  position: absolute;
+  z-index: 50;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.workspace-shell-panel-dock.is-folded.is-fold-hover > .ws-fold-expanded,
+.workspace-shell-panel-dock.is-folded.is-fold-pinned > .ws-fold-expanded {
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-shell-panel-dock.is-folded.is-fold-hover > .workspace-shell-tabset,
+.workspace-shell-panel-dock.is-folded.is-fold-hover > .workspace-shell-split,
+.workspace-shell-panel-dock.is-folded.is-fold-hover > .workspace-shell-node,
+.workspace-shell-panel-dock.is-folded.is-fold-pinned > .workspace-shell-tabset,
+.workspace-shell-panel-dock.is-folded.is-fold-pinned > .workspace-shell-split,
+.workspace-shell-panel-dock.is-folded.is-fold-pinned > .workspace-shell-node {
+  display: flex;
+  position: absolute;
+  z-index: 51;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+}
+
+.workspace-shell-panel-dock.is-folded[data-dock="left"].is-fold-hover > .workspace-shell-node,
+.workspace-shell-panel-dock.is-folded[data-dock="left"].is-fold-pinned > .workspace-shell-node {
+  top: 0;
+  left: 22px;
+  bottom: 0;
+  width: var(--ws-fold-expand-size, 280px);
+}
+.workspace-shell-panel-dock.is-folded[data-dock="right"].is-fold-hover > .workspace-shell-node,
+.workspace-shell-panel-dock.is-folded[data-dock="right"].is-fold-pinned > .workspace-shell-node {
+  top: 0;
+  right: 22px;
+  bottom: 0;
+  width: var(--ws-fold-expand-size, 280px);
+}
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"].is-fold-hover > .workspace-shell-node,
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"].is-fold-pinned > .workspace-shell-node {
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  height: var(--ws-fold-expand-size, 200px);
+}
+
+/* ── Unified view header (shared by board tabsets + panel docks) ── */
+.ws-view-header {
   display: flex;
   align-items: stretch;
-  gap: 4px;
-  min-height: 38px;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
+  gap: 2px;
+  min-height: 24px;
+  padding: 0 2px;
   background: var(--surface-header-bg, var(--bg-secondary));
-  overflow-x: auto;
+  overflow: hidden;
 }
 
-.workspace-shell-panel-tab {
+.ws-view-drag {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 0;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  flex: 0 0 auto;
+  width: 18px;
+  min-width: 18px;
+  height: 100%;
+  border: 0;
   background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 9px;
+  letter-spacing: -2px;
+  cursor: grab;
+  padding: 0;
+  opacity: 0.5;
+  -webkit-app-region: no-drag;
+}
+
+.ws-view-drag:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  opacity: 1;
+}
+
+.ws-view-drag:active {
+  cursor: grabbing;
+}
+
+.ws-view-title {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  font: inherit;
+  font-size: 12px;
+  color: var(--text-secondary);
   user-select: none;
 }
 
-.workspace-shell-panel-tab:hover {
+.ws-view-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.ws-view-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 320px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.ws-view-tab:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
 
-.workspace-shell-panel-tab.is-active {
+.ws-view-tab.is-active {
   border-color: var(--border);
   background: var(--bg-primary);
   color: var(--text-bright);
 }
 
-.workspace-shell-panel-tab.is-selected {
+.ws-view-tab.is-selected {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 44%, transparent);
 }
 
+.ws-view-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-view-tab-meta {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.ws-view-tab-close {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0;
+  opacity: 0.5;
+}
+
+.ws-view-tab:hover .ws-view-tab-close {
+  opacity: 0.8;
+}
+
+.ws-view-tab-close:hover {
+  background: color-mix(in srgb, var(--error) 16%, transparent);
+  color: var(--text-bright);
+  opacity: 1;
+}
+
+.ws-view-fold {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s, background 0.15s;
+  padding: 0;
+}
+.ws-view-fold:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text-bright);
+  opacity: 1;
+}
+
+.ws-view-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+}
+
+.ws-view-close:hover {
+  background: color-mix(in srgb, var(--error) 16%, transparent);
+  color: var(--text-bright);
+  opacity: 1;
+}
+
+/* When no fold button precedes close, close pushes right */
+.ws-view-close:not(.ws-view-fold ~ .ws-view-close) {
+  margin-left: auto;
+}
+
+/* When there are tabs, hide the header-level close (each tab has its own) */
+.ws-view-header:not(.is-single) .ws-view-close {
+  display: none;
+}
+
+/* When single, the close is at the header level */
+.ws-view-header.is-single .ws-view-tabs {
+  display: none;
+}
+
 .workspace-shell-panel-content {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
@@ -256,98 +534,13 @@
   background: var(--bg-secondary);
 }
 
-.workspace-shell-panel-stack {
-  display: grid;
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-}
-
-.workspace-shell-panel-stack[data-dock-axis="vertical"] {
-  grid-template-columns: 1fr;
-}
-
-.workspace-shell-panel-stack[data-dock-axis="horizontal"] {
-  grid-template-rows: 1fr;
-}
-
+/* Side dock panel windows reuse .workspace-shell-tabset styling via unified tree rendering */
 .workspace-shell-panel-window {
   display: flex;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
   flex-direction: column;
-  border-bottom: 1px solid var(--border);
-}
-
-.workspace-shell-panel-stack[data-dock-axis="vertical"] > .workspace-shell-panel-window {
-  min-height: 120px;
-}
-
-.workspace-shell-panel-stack[data-dock-axis="horizontal"] > .workspace-shell-panel-window {
-  min-width: 220px;
-  border-bottom: 0;
-  border-right: 1px solid var(--border);
-}
-
-.workspace-shell-panel-stack > .workspace-shell-panel-window:last-child {
-  border-bottom: 0;
-  border-right: 0;
-}
-
-.workspace-shell-panel-window.is-active {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
-}
-
-.workspace-panel-drag-handle {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  margin-right: 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: grab;
-  font: inherit;
-  line-height: 1;
-  -webkit-app-region: no-drag;
-}
-
-.workspace-panel-drag-handle:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.workspace-panel-drag-handle:active {
-  cursor: grabbing;
-}
-
-.workspace-shell-panel-divider {
-  background: var(--bg-tertiary);
-  z-index: 3;
-  user-select: none;
-  touch-action: none;
-  -webkit-app-region: no-drag;
-}
-
-.workspace-shell-panel-divider[data-axis="vertical"] {
-  height: 6px;
-  cursor: row-resize;
-}
-
-.workspace-shell-panel-divider[data-axis="horizontal"] {
-  width: 6px;
-  cursor: col-resize;
-}
-
-.workspace-shell-panel-divider:hover,
-.workspace-shell-panel-divider.is-dragging {
-  background: color-mix(in srgb, var(--accent) 28%, var(--bg-tertiary));
 }
 
 .workspace-shell-panel-drop-overlay {
@@ -358,7 +551,7 @@
   pointer-events: none;
 }
 
-body.workspace-shell-panel-dragging .workspace-shell-panel-drop-overlay {
+body.workspace-shell-tab-dragging .workspace-shell-panel-drop-overlay {
   display: block;
 }
 
@@ -366,7 +559,7 @@ body.workspace-shell-panel-dragging .workspace-shell-panel-drop-overlay {
   position: absolute;
   border: 1px dashed transparent;
   background: transparent;
-  opacity: 0.84;
+  opacity: 0.76;
   pointer-events: auto;
   transition: background-color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
@@ -375,36 +568,29 @@ body.workspace-shell-panel-dragging .workspace-shell-panel-drop-overlay {
   top: 0;
   left: 0;
   bottom: 0;
-  width: 21%;
+  width: 26%;
 }
 
 .workspace-shell-panel-drop-zone[data-ws-panel-drop-dock="right"] {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 21%;
+  width: 26%;
 }
 
 .workspace-shell-panel-drop-zone[data-ws-panel-drop-dock="bottom"] {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 28%;
+  height: 26%;
 }
 
 .workspace-shell-panel-drop-zone.is-active {
   border-color: color-mix(in srgb, var(--accent) 68%, white 8%);
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   opacity: 1;
 }
 
-.workspace-shell-panel-ghost {
-  max-width: 260px;
-}
-
-body.workspace-shell-panel-dragging .workspace-shell-panel-tab {
-  cursor: grabbing;
-}
 
 .workspace-shell-node {
   min-height: 0;
@@ -515,80 +701,18 @@ body.workspace-shell-panel-dragging .workspace-shell-panel-tab {
   height: 34%;
 }
 
-.workspace-shell-tabbar {
-  display: flex;
-  align-items: stretch;
-  min-height: 38px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-header-bg, var(--bg-secondary));
-  overflow: hidden;
-}
-
-.workspace-shell-tabs {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.workspace-shell-tab {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  max-width: 320px;
-  padding: 0 12px;
-  border-right: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
-}
-
-.workspace-shell-tab:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.workspace-shell-tab.is-active {
-  background: var(--bg-primary);
-  color: var(--text-bright);
-}
-
-body.workspace-shell-tab-dragging .workspace-shell-tab {
+body.workspace-shell-tab-dragging .ws-view-tab {
   cursor: grabbing;
 }
 
-.workspace-shell-tab-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-shell-tab-meta {
+/* Tab reorder insertion marker */
+.ws-tab-insert-marker {
   flex: 0 0 auto;
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.workspace-shell-tab-close {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.workspace-shell-tab-close:hover {
-  background: color-mix(in srgb, var(--error) 16%, transparent);
-  color: var(--text-bright);
+  width: 2px;
+  align-self: stretch;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
 }
 
 .workspace-shell-pane-content {
@@ -622,36 +746,36 @@ body.workspace-shell-tab-dragging .workspace-shell-drop-overlay {
   top: 0;
   left: 0;
   bottom: 0;
-  width: 26%;
+  width: 28%;
 }
 
 .workspace-shell-drop-zone[data-zone="right"] {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 26%;
+  width: 28%;
 }
 
 .workspace-shell-drop-zone[data-zone="top"] {
   top: 0;
   left: 0;
   right: 0;
-  height: 26%;
+  height: 28%;
 }
 
 .workspace-shell-drop-zone[data-zone="bottom"] {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 26%;
+  height: 28%;
 }
 
 .workspace-shell-drop-zone[data-zone="center"] {
-  top: 22%;
-  left: 22%;
-  right: 22%;
-  bottom: 22%;
-  border-radius: 14px;
+  top: 28%;
+  left: 28%;
+  right: 28%;
+  bottom: 28%;
+  border-radius: 10px;
 }
 
 .workspace-shell-drop-zone.is-active {
@@ -660,44 +784,50 @@ body.workspace-shell-tab-dragging .workspace-shell-drop-overlay {
   opacity: 1;
 }
 
-.workspace-shell-frame {
+.workspace-shell-view {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  border: 0;
   display: none;
   background: var(--bg-primary);
 }
 
-.workspace-shell-frame.is-active {
+.workspace-shell-view.is-active {
   display: block;
 }
 
-body.workspace-shell-tab-dragging .workspace-shell-frame {
+body.workspace-shell-tab-dragging .workspace-shell-frame,
+body.workspace-shell-tab-dragging .workspace-shell-panel-tab-view,
+body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspace-shell-drop-overlay) {
   pointer-events: none;
 }
 
-.workspace-shell-panel-ghost,
+.workspace-shell-frame {
+  border: 0;
+}
+
+.workspace-shell-panel-tab-view {
+  overflow: hidden;
+}
+
 .workspace-shell-tab-ghost {
   position: fixed;
   z-index: 99999;
   display: inline-flex;
   align-items: center;
-  height: 34px;
-  padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--border));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-primary) 92%, var(--accent) 8%);
-  color: var(--text-bright);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-}
-
-.workspace-shell-tab-ghost {
   gap: 6px;
   max-width: 320px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-primary) 92%, var(--accent) 8%);
+  color: var(--text-bright);
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 
 .workspace-shell-empty {
@@ -718,10 +848,44 @@ body.workspace-shell-tab-dragging .workspace-shell-frame {
 .workspace-shell-panel-only-host,
 .workspace-shell-panel-only-window {
   display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   width: 100%;
   height: 100%;
+}
+.workspace-shell-panel-only-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+  min-height: 24px;
+  background: var(--surface-header-bg, var(--bg-secondary));
+}
+.workspace-shell-panel-only-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.workspace-shell-panel-only-dock-btn {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.workspace-shell-panel-only-dock-btn:hover {
+  background: var(--accent);
+  color: var(--text-bright, #fff);
 }
 
 body.workspace-shell-sidebar-hidden .sidebar,
@@ -764,9 +928,6 @@ body.workspace-shell-mode .workspace-shell-panel-content > .shell-settings-panel
   height: 100%;
 }
 
-body.workspace-shell-mode .workspace-panel-drag-handle {
-  display: inline-flex;
-}
 
 body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-shell-panel-content {
   border-top: 0;
@@ -785,4 +946,55 @@ body.workspace-shell-detached .status-bar {
     width: 100%;
     margin-right: 0;
   }
+}
+
+/* ── Compact panel modes ── */
+
+/* Workspaces compact: hide workspace dropdown, show only board names */
+.workspace-shell-panel-dock.is-compact .sidebar-header {
+  display: none;
+}
+.workspace-shell-panel-dock.is-compact .board-list .board-item {
+  padding: 2px 4px;
+  font-size: 11px;
+}
+.workspace-shell-panel-dock.is-compact .board-item-actions,
+.workspace-shell-panel-dock.is-compact .board-item-icon {
+  display: none;
+}
+
+/* Dashboard compact: hide quick chips, group headers, pin button */
+.workspace-shell-panel-dock.is-compact .dashboard-quick-row,
+.workspace-shell-panel-dock.is-compact .dashboard-group-header,
+.workspace-shell-panel-dock.is-compact .dashboard-filter-row {
+  display: none;
+}
+.workspace-shell-panel-dock.is-compact .dashboard-search-input {
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+/* Logs compact: hide actions row, smaller entries */
+.workspace-shell-panel-dock.is-compact .log-panel-actions {
+  display: none;
+}
+.workspace-shell-panel-dock.is-compact .log-panel-header {
+  min-height: 0;
+  padding: 2px 4px;
+}
+.workspace-shell-panel-dock.is-compact .log-panel-tab {
+  font-size: 10px;
+  padding: 1px 4px;
+}
+.workspace-shell-panel-dock.is-compact .log-entries {
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+/* Settings compact: tighter layout */
+.workspace-shell-panel-dock.is-compact .shell-settings-header {
+  padding: 2px 4px;
+}
+.workspace-shell-panel-dock.is-compact .mgmt-section-title {
+  font-size: 10px;
 }

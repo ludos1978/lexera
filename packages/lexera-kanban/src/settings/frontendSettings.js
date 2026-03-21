@@ -7,12 +7,22 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var initialized = false;
+  var initializedPanels = [];
+
+  function findPanel() {
+    return document.querySelector('.lexera-shared-panel-frontend-settings') ||
+           document.getElementById('frontend-settings-panel');
+  }
+
+  function q(panel, cls) {
+    return panel.querySelector('.lexera-shared-frontend-settings-' + cls) ||
+           panel.querySelector('#frontend-settings-' + cls);
+  }
 
   function render(options) {
-    var panel = document.getElementById('frontend-settings-panel');
+    var panel = findPanel();
     if (!panel) return false;
-    var themeSelect = document.getElementById('frontend-settings-theme-select');
+    var themeSelect = q(panel, 'theme-select');
     if (themeSelect && themeSelect.options.length === 0) {
       var themes = options && options.getThemes ? options.getThemes() : [];
       for (var i = 0; i < themes.length; i++) {
@@ -29,44 +39,44 @@
       ? options.getSidebarDisplayOptions() : {};
 
     var toggleMap = [
-      ['frontend-settings-overlay-editor', options && options.isOverlayEditorEnabled],
-      ['frontend-settings-wysiwyg-editor', options && options.isWysiwygEditorEnabled],
-      ['frontend-settings-marp-settings', options && options.isMarpSettingsEnabled],
-      ['frontend-settings-special-chars', options && options.isSpecialCharactersVisible]
+      ['overlay-editor', options && options.isOverlayEditorEnabled],
+      ['wysiwyg-editor', options && options.isWysiwygEditorEnabled],
+      ['marp-settings', options && options.isMarpSettingsEnabled],
+      ['special-chars', options && options.isSpecialCharactersVisible]
     ];
     for (var k = 0; k < toggleMap.length; k++) {
-      var el = document.getElementById(toggleMap[k][0]);
+      var el = q(panel, toggleMap[k][0]);
       var getter = toggleMap[k][1];
       if (el && typeof getter === 'function') el.checked = getter();
     }
 
     var sidebarToggles = [
-      ['frontend-settings-sidebar-counts', 'counts'],
-      ['frontend-settings-sidebar-presence', 'presence'],
-      ['frontend-settings-sidebar-grips', 'grips']
+      ['sidebar-counts', 'counts'],
+      ['sidebar-presence', 'presence'],
+      ['sidebar-grips', 'grips']
     ];
     for (var s = 0; s < sidebarToggles.length; s++) {
-      var sEl = document.getElementById(sidebarToggles[s][0]);
+      var sEl = q(panel, sidebarToggles[s][0]);
       if (sEl) sEl.checked = !!sidebarOptions[sidebarToggles[s][1]];
     }
     return true;
   }
 
   function init(options) {
-    if (initialized) return true;
-    var panel = document.getElementById('frontend-settings-panel');
+    var panel = findPanel();
     if (!panel) return false;
-    initialized = true;
+    if (initializedPanels.indexOf(panel) !== -1) return true;
+    initializedPanels.push(panel);
 
-    var themeSelect = document.getElementById('frontend-settings-theme-select');
+    var themeSelect = q(panel, 'theme-select');
     if (themeSelect && options && typeof options.applyTheme === 'function') {
       themeSelect.addEventListener('change', function () {
         options.applyTheme(themeSelect.value || 'lexera');
       });
     }
 
-    function bindToggle(id, setter) {
-      var input = document.getElementById(id);
+    function bindToggle(cls, setter) {
+      var input = q(panel, cls);
       if (!input || typeof setter !== 'function') return;
       input.addEventListener('change', function () {
         setter(!!input.checked);
@@ -76,14 +86,14 @@
     }
 
     if (options) {
-      bindToggle('frontend-settings-overlay-editor', options.setOverlayEditorEnabled);
-      bindToggle('frontend-settings-wysiwyg-editor', options.setWysiwygEditorEnabled);
-      bindToggle('frontend-settings-marp-settings', options.setMarpSettingsEnabled);
-      bindToggle('frontend-settings-special-chars', options.setSpecialCharactersVisible);
+      bindToggle('overlay-editor', options.setOverlayEditorEnabled);
+      bindToggle('wysiwyg-editor', options.setWysiwygEditorEnabled);
+      bindToggle('marp-settings', options.setMarpSettingsEnabled);
+      bindToggle('special-chars', options.setSpecialCharactersVisible);
     }
 
-    function bindSidebarToggle(id, key) {
-      var input = document.getElementById(id);
+    function bindSidebarToggle(cls, key) {
+      var input = q(panel, cls);
       if (!input) return;
       input.addEventListener('change', function () {
         if (options && typeof options.getSidebarDisplayOptions === 'function' &&
@@ -95,11 +105,11 @@
       });
     }
 
-    bindSidebarToggle('frontend-settings-sidebar-counts', 'counts');
-    bindSidebarToggle('frontend-settings-sidebar-presence', 'presence');
-    bindSidebarToggle('frontend-settings-sidebar-grips', 'grips');
+    bindSidebarToggle('sidebar-counts', 'counts');
+    bindSidebarToggle('sidebar-presence', 'presence');
+    bindSidebarToggle('sidebar-grips', 'grips');
 
-    var inspectorBtn = document.getElementById('frontend-settings-open-inspector');
+    var inspectorBtn = q(panel, 'open-inspector');
     if (inspectorBtn && options && typeof options.toggleInspector === 'function') {
       inspectorBtn.addEventListener('click', function (e) {
         e.preventDefault();
@@ -113,7 +123,6 @@
 
   function open(options) {
     init(options);
-    render(options);
     if (options && typeof options.revealPanel === 'function') {
       options.revealPanel();
       return;

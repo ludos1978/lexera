@@ -164,6 +164,13 @@ const LexeraDashboard = (function () {
       renderDashboard();
       scheduleDashboardRefresh(0);
     }
+    if (event.key === 'lexera-dock-panel' && event.newValue) {
+      localStorage.removeItem('lexera-dock-panel');
+      var shell = window.LexeraWorkspaceShell;
+      if (shell && typeof shell.revealPanel === 'function') {
+        shell.revealPanel(event.newValue);
+      }
+    }
   });
 
   // --- Themes ---
@@ -2305,23 +2312,6 @@ const LexeraDashboard = (function () {
 
     document.addEventListener('keydown', handleKeyNavigation);
 
-    // Status bar tabs: Stats and Processes
-    var statusTabStats = document.getElementById('status-tab-stats');
-    if (statusTabStats) statusTabStats.addEventListener('click', function (e) {
-      e.stopPropagation();
-      toggleBoardStatsBar();
-    });
-    var statusTabProcesses = document.getElementById('status-tab-processes');
-    if (statusTabProcesses) statusTabProcesses.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var isProcessesActive = activeLogSource !== 'stats' && isLogPanelVisible();
-      if (isProcessesActive) {
-        setLogPanelVisibility(false);
-      } else {
-        setActiveLogSource('backend');
-        setLogPanelVisibility(true);
-      }
-    });
     var connectionStatusBtn = getElConnectionStatusBtn();
     if (connectionStatusBtn) connectionStatusBtn.addEventListener('click', function (e) {
       e.preventDefault();
@@ -10087,6 +10077,22 @@ const LexeraDashboard = (function () {
   if (typeof window !== 'undefined') {
     window.initManagementUI = initManagementUI;
     if (isLogPanelVisible()) initManagementUI();
+    window.addEventListener('lexera-shared-panel-created', function (event) {
+      if (!event.detail) return;
+      var el = event.detail.element;
+      if (event.detail.kind === 'backendSettings' && el) {
+        var container = el.querySelector('.lexera-shared-backend-settings-container');
+        if (container) {
+          elLogSettingsContainer = container;
+          elLogSettingsPane = el;
+          mgmtInitialized = false;
+          initManagementUI();
+        }
+      }
+      if (event.detail.kind === 'frontendSettings') {
+        initFrontendSettingsPanel();
+      }
+    });
   }
 
   function openManagementPanel(options) {
@@ -26214,6 +26220,22 @@ const LexeraDashboard = (function () {
     ActionRegistry.register('board', 'backend-settings', function () { openConnectionWindow(); });
     ActionRegistry.register('board', 'settings', function () { openConnectionWindow(); });
     ActionRegistry.register('board', 'collab', function () { openConnectionWindow(); });
+    ActionRegistry.register('board', 'reveal-panel:hierarchy', function () {
+      if (WorkspaceShell) WorkspaceShell.revealPanel('hierarchy');
+    });
+    ActionRegistry.register('board', 'reveal-panel:dashboard', function () {
+      if (WorkspaceShell) WorkspaceShell.revealPanel('dashboard');
+    });
+    ActionRegistry.register('board', 'reveal-panel:logs', function () {
+      if (WorkspaceShell) WorkspaceShell.revealPanel('logs');
+    });
+    ActionRegistry.register('board', 'reveal-panel:backendSettings', function () {
+      if (WorkspaceShell) WorkspaceShell.revealPanel('backendSettings');
+      else openConnectionWindow();
+    });
+    ActionRegistry.register('board', 'reveal-panel:frontendSettings', function () {
+      if (WorkspaceShell) WorkspaceShell.revealPanel('frontendSettings');
+    });
 
     // Search
     ActionRegistry.register('board', 'open-search', function () { openSearchReplacePanel(); });

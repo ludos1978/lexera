@@ -24,7 +24,6 @@ var elLogTabFrontend = null;
 var elLogRefreshBtn = null;
 var elLogCopyBtn = null;
 var elLogClearBtn = null;
-var elLogCloseBtn = null;
 
 function getElStatusMsg() { return elStatusMsg || (elStatusMsg = document.getElementById('status-msg')); }
 function getElStatusBar() { return elStatusBar || (elStatusBar = document.getElementById('status-bar')); }
@@ -35,14 +34,18 @@ function getElLogSettingsPane() {
   if (elLogSettingsPane) return elLogSettingsPane;
   var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;
   var shellEnabled = !!(shell && typeof shell.isEnabled === 'function' && shell.isEnabled());
-  elLogSettingsPane = document.getElementById(shellEnabled ? 'backend-settings-panel' : 'mgmt-panel');
+  elLogSettingsPane = shellEnabled
+    ? document.querySelector('.lexera-shared-panel-backend-settings') || document.getElementById('backend-settings-panel')
+    : document.getElementById('mgmt-panel');
   return elLogSettingsPane;
 }
 function getElLogSettingsContainer() {
   if (elLogSettingsContainer) return elLogSettingsContainer;
   var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;
   var shellEnabled = !!(shell && typeof shell.isEnabled === 'function' && shell.isEnabled());
-  elLogSettingsContainer = document.getElementById(shellEnabled ? 'backend-settings-container' : 'mgmt-panel-body');
+  elLogSettingsContainer = shellEnabled
+    ? document.querySelector('.lexera-shared-backend-settings-container') || document.getElementById('backend-settings-container')
+    : document.getElementById('mgmt-panel-body');
   return elLogSettingsContainer;
 }
 function getElLogTabBackend() { return elLogTabBackend || (elLogTabBackend = document.getElementById('log-tab-backend')); }
@@ -50,7 +53,6 @@ function getElLogTabFrontend() { return elLogTabFrontend || (elLogTabFrontend = 
 function getElLogRefreshBtn() { return elLogRefreshBtn || (elLogRefreshBtn = document.getElementById('log-refresh-btn')); }
 function getElLogCopyBtn() { return elLogCopyBtn || (elLogCopyBtn = document.getElementById('log-copy-btn')); }
 function getElLogClearBtn() { return elLogClearBtn || (elLogClearBtn = document.getElementById('log-clear-btn')); }
-function getElLogCloseBtn() { return elLogCloseBtn || (elLogCloseBtn = document.getElementById('log-close-btn')); }
 
 function getSharedLogRoots() {
   var registry = window.LexeraSharedPanels;
@@ -65,10 +67,10 @@ function getMirroredLogViews() {
       root: root,
       backendTab: root.querySelector('.lexera-shared-log-tab-backend'),
       frontendTab: root.querySelector('.lexera-shared-log-tab-frontend'),
+      statsTab: root.querySelector('.lexera-shared-log-tab-stats'),
       refreshBtn: root.querySelector('.lexera-shared-log-refresh'),
       copyBtn: root.querySelector('.lexera-shared-log-copy'),
       clearBtn: root.querySelector('.lexera-shared-log-clear'),
-      closeBtn: root.querySelector('.lexera-shared-log-close'),
       titleEl: root.querySelector('.log-panel-title'),
       tabsEl: root.querySelector('.log-panel-tabs'),
       backendEntries: root.querySelector('.lexera-shared-log-entries-backend'),
@@ -99,18 +101,6 @@ function bindMirroredLogView(view) {
       replaceLogEntries(activeLogSource, []);
     });
   }
-  if (view.closeBtn) {
-    view.closeBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var shell = window.LexeraWorkspaceShell;
-      var instanceId = view.root.getAttribute('data-shell-panel-instance') || view.root.getAttribute('data-shared-panel-instance') || 'logs';
-      if (shell && typeof shell.closePanelView === 'function' && typeof shell.isEnabled === 'function' && shell.isEnabled()) {
-        shell.closePanelView(instanceId);
-      } else {
-        setLogPanelVisibility(false);
-      }
-    });
-  }
   if (view.backendTab) {
     view.backendTab.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -121,6 +111,12 @@ function bindMirroredLogView(view) {
     view.frontendTab.addEventListener('click', function (e) {
       e.stopPropagation();
       setActiveLogSource('frontend');
+    });
+  }
+  if (view.statsTab) {
+    view.statsTab.addEventListener('click', function (e) {
+      e.stopPropagation();
+      setActiveLogSource('stats');
     });
   }
 }
@@ -141,6 +137,7 @@ function syncMirroredLogViews() {
     if (view.statsEntries) view.statsEntries.innerHTML = statsHtml;
     if (view.backendTab) view.backendTab.classList.toggle('active', activeLogSource === 'backend');
     if (view.frontendTab) view.frontendTab.classList.toggle('active', activeLogSource === 'frontend');
+    if (view.statsTab) view.statsTab.classList.toggle('active', activeLogSource === 'stats');
     if (view.backendEntries) view.backendEntries.classList.toggle('hidden', activeLogSource !== 'backend');
     if (view.frontendEntries) view.frontendEntries.classList.toggle('hidden', activeLogSource !== 'frontend');
     if (view.statsEntries) view.statsEntries.classList.toggle('hidden', activeLogSource !== 'stats');
@@ -382,29 +379,14 @@ function setActiveLogSource(source) {
   var refreshBtn = getElLogRefreshBtn();
   var logTitle = document.querySelector('.log-panel-title');
 
+  var statsBtn = document.getElementById('log-tab-stats');
   if (backendBtn) backendBtn.classList.toggle('active', activeLogSource === 'backend');
   if (frontendBtn) frontendBtn.classList.toggle('active', activeLogSource === 'frontend');
+  if (statsBtn) statsBtn.classList.toggle('active', activeLogSource === 'stats');
   if (backendPanel) backendPanel.classList.toggle('hidden', activeLogSource !== 'backend');
   if (frontendPanel) frontendPanel.classList.toggle('hidden', activeLogSource !== 'frontend');
   if (statsPanel) statsPanel.classList.toggle('hidden', activeLogSource !== 'stats');
   if (refreshBtn) refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
-
-  // Update title and hide log tabs when showing stats
-  var logTabs = document.querySelector('.log-panel-tabs');
-  if (activeLogSource === 'stats') {
-    if (logTitle) logTitle.textContent = 'Board Statistics';
-    if (logTabs) logTabs.style.display = 'none';
-  } else {
-    if (logTitle) logTitle.textContent = 'Logs';
-    if (logTabs) logTabs.style.display = '';
-  }
-
-  // Update status bar tab highlights
-  var statsTab = document.getElementById('status-tab-stats');
-  var processesTab = document.getElementById('status-tab-processes');
-  var panelVisible = !getElLogPanel().classList.contains('hidden');
-  if (statsTab) statsTab.classList.toggle('active', panelVisible && activeLogSource === 'stats');
-  if (processesTab) processesTab.classList.toggle('active', panelVisible && activeLogSource !== 'stats');
   syncMirroredLogViews();
 }
 
@@ -682,7 +664,6 @@ document.addEventListener('DOMContentLoaded', function () {
   var panel = getElLogPanel();
   var refreshBtn = getElLogRefreshBtn();
   var clearBtn = getElLogClearBtn();
-  var closeBtn = getElLogCloseBtn();
   var backendTab = getElLogTabBackend();
   var frontendTab = getElLogTabFrontend();
   updateAppBottomInset();
@@ -711,16 +692,6 @@ document.addEventListener('DOMContentLoaded', function () {
     e.stopPropagation();
     replaceLogEntries(activeLogSource, []);
   });
-  if (closeBtn) closeBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    var shell = window.LexeraWorkspaceShell;
-    var instanceId = panel ? (panel.getAttribute('data-shell-panel-instance') || 'logs') : 'logs';
-    if (shell && typeof shell.closePanelView === 'function' && typeof shell.isEnabled === 'function' && shell.isEnabled()) {
-      shell.closePanelView(instanceId);
-      return;
-    }
-    setLogPanelVisibility(false);
-  });
   if (backendTab) backendTab.addEventListener('click', function (e) {
     e.stopPropagation();
     setActiveLogSource('backend');
@@ -728,6 +699,11 @@ document.addEventListener('DOMContentLoaded', function () {
   if (frontendTab) frontendTab.addEventListener('click', function (e) {
     e.stopPropagation();
     setActiveLogSource('frontend');
+  });
+  var statsTab = document.getElementById('log-tab-stats');
+  if (statsTab) statsTab.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setActiveLogSource('stats');
   });
 
   replaceLogEntries('frontend', frontendLogEntries);

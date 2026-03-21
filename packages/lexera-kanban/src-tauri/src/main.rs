@@ -18,6 +18,8 @@ fn open_new_window(
     view_kind: Option<String>,
     profile: Option<String>,
     panel_kind: Option<String>,
+    initial_panel: Option<String>,
+    window_role: Option<String>,
     width: Option<f64>,
     height: Option<f64>,
 ) -> Result<String, String> {
@@ -46,6 +48,16 @@ fn open_new_window(
         url_str.push_str(panel);
         query_started = true;
     }
+    if let Some(ref panel) = initial_panel {
+        url_str.push_str(if query_started { "&initialPanel=" } else { "?initialPanel=" });
+        url_str.push_str(panel);
+        query_started = true;
+    }
+    if let Some(ref role) = window_role {
+        url_str.push_str(if query_started { "&windowRole=" } else { "?windowRole=" });
+        url_str.push_str(role);
+        query_started = true;
+    }
     url_str.push_str(if query_started { "&windowLabel=" } else { "?windowLabel=" });
     url_str.push_str(&label);
     let url = WebviewUrl::App(url_str.into());
@@ -60,7 +72,7 @@ fn open_new_window(
         .min_inner_size(600.0, 400.0)
         .resizable(true);
 
-    if panel_kind.is_some() {
+    if panel_kind.is_some() || initial_panel.is_some() {
         builder = builder.min_inner_size(320.0, 220.0);
     }
 
@@ -196,6 +208,17 @@ fn snap_window_to_edges(window: &tauri::Window) {
     }
 }
 
+/// Find the window with the lowest ID. "main" is always lowest (id 0),
+/// then "kanban-1", "kanban-2", etc.
+fn find_lowest_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    if let Some(main_win) = app.get_webview_window("main") {
+        return Some(main_win);
+    }
+    let mut windows: Vec<_> = app.webview_windows().into_iter().collect();
+    windows.sort_by(|a, b| a.0.cmp(&b.0));
+    windows.into_iter().next().map(|(_, w)| w)
+}
+
 fn main() {
     install_panic_hook();
 
@@ -210,14 +233,19 @@ fn main() {
             if let Some(action) = app_menu::menu_id_to_action(id) {
                 // Handle Rust-side actions that don't go to the frontend
                 if action == "new-window" {
-                    let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None);
+                    let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None, None, None);
                     return;
                 }
-                // Route to the focused window, falling back to "main"
-                let target = app.webview_windows().values()
-                    .find(|w| w.is_focused().unwrap_or(false))
-                    .cloned()
-                    .or_else(|| app.get_webview_window("main"));
+                // Panel reveal actions go to the lowest-numbered window;
+                // all other actions go to the focused window.
+                let target = if action.starts_with("reveal-panel:") {
+                    find_lowest_window(app)
+                } else {
+                    app.webview_windows().values()
+                        .find(|w| w.is_focused().unwrap_or(false))
+                        .cloned()
+                        .or_else(|| find_lowest_window(app))
+                };
                 if let Some(window) = target {
                     let _ = window.emit("menu-action", action);
                 }

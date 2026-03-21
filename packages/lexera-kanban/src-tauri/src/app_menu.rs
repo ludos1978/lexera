@@ -87,7 +87,18 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&MenuItemBuilder::with_id("view-zoom-reset", "Reset Zoom (100%)").accelerator("CmdOrCtrl+0").build(app)?)
         .build()?;
 
+    let panels_sub = SubmenuBuilder::new(app, "Panels")
+        .item(&MenuItemBuilder::with_id("view-panel-hierarchy", "Workspaces").build(app)?)
+        .item(&MenuItemBuilder::with_id("view-panel-dashboard", "Dashboard").build(app)?)
+        .item(&MenuItemBuilder::with_id("view-panel-logs", "Logs").build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("view-panel-backend-settings", "Backend Settings").build(app)?)
+        .item(&MenuItemBuilder::with_id("view-panel-frontend-settings", "Frontend Settings").build(app)?)
+        .build()?;
+
     let view_menu = SubmenuBuilder::new(app, "View")
+        .item(&panels_sub)
+        .separator()
         .item(&MenuItemBuilder::with_id("view-fold-cards", "Fold All Cards").build(app)?)
         .item(&MenuItemBuilder::with_id("view-fold-columns", "Fold All Columns").build(app)?)
         .separator()
@@ -315,6 +326,12 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("edit-find-replace", "open-search-replace"),
     ("edit-paste-as-card", "paste-as-card"),
     ("edit-smart-paste", "smart-paste"),
+    // View – panels
+    ("view-panel-hierarchy", "reveal-panel:hierarchy"),
+    ("view-panel-dashboard", "reveal-panel:dashboard"),
+    ("view-panel-logs", "reveal-panel:logs"),
+    ("view-panel-backend-settings", "reveal-panel:backendSettings"),
+    ("view-panel-frontend-settings", "reveal-panel:frontendSettings"),
     // View – fold
     ("view-fold-cards", "toggle-fold-cards"),
     ("view-fold-columns", "toggle-fold-columns"),

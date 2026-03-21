@@ -23,7 +23,6 @@
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-header">
-        <button class="workspace-panel-drag-handle" type="button" title="Drag Workspaces view" data-ws-panel-drag-handle="hierarchy" aria-label="Drag Workspaces view">&#8942;&#8942;</button>
         <div class="workspace-select-wrap">
           <select id="workspace-select" class="workspace-select" title="Active workspace"></select>
         </div>
@@ -34,10 +33,6 @@
       <div id="board-list" class="board-list"></div>
       <div id="sidebar-dashboard-divider" class="sidebar-dashboard-divider" role="separator" aria-label="Resize hierarchy and dashboard"></div>
       <div class="sidebar-dashboard" id="sidebar-dashboard">
-        <div class="sidebar-header sidebar-dashboard-header">
-          <button class="workspace-panel-drag-handle" type="button" title="Drag Dashboard view" data-ws-panel-drag-handle="dashboard" aria-label="Drag Dashboard view">&#8942;&#8942;</button>
-          <span>Dashboard</span>
-        </div>
         <div class="sidebar-dashboard-controls">
           <div class="dashboard-query-row">
             <input id="dashboard-search-input" class="dashboard-search-input" type="text" placeholder="Search board content...">
@@ -105,10 +100,6 @@
   <!-- Status Bar -->
   <div id="status-bar" class="status-bar">
     <div class="status-bar-left">
-      <div class="status-bar-tabs">
-        <button id="status-tab-stats" class="status-bar-tab" type="button" title="Toggle board statistics">Stats</button>
-        <button id="status-tab-processes" class="status-bar-tab" type="button" title="Toggle processes and logs">Processes</button>
-      </div>
     </div>
     <span id="status-msg" class="status-msg"></span>
     <div class="status-bar-right">
@@ -124,18 +115,17 @@
   <div id="log-panel" class="log-panel hidden">
     <div class="log-panel-header">
       <div class="log-panel-header-main">
-        <button class="workspace-panel-drag-handle" type="button" title="Drag Logs view" data-ws-panel-drag-handle="logs" aria-label="Drag Logs view">&#8942;&#8942;</button>
         <span class="log-panel-title">Logs</span>
         <div class="log-panel-tabs">
           <button id="log-tab-backend" class="log-panel-tab active" type="button">Backend</button>
           <button id="log-tab-frontend" class="log-panel-tab" type="button">Frontend</button>
+          <button id="log-tab-stats" class="log-panel-tab" type="button">Stats</button>
         </div>
       </div>
       <div class="log-panel-actions">
         <button id="log-refresh-btn" class="log-panel-btn" title="Reload backend logs">Reload</button>
         <button id="log-copy-btn" class="log-panel-btn" title="Copy logs to clipboard">Copy</button>
         <button id="log-clear-btn" class="log-panel-btn" title="Clear log">Clear</button>
-        <button id="log-close-btn" class="log-panel-btn" title="Close log">&#10005;</button>
       </div>
     </div>
     <div class="log-panel-body">
@@ -147,59 +137,7 @@
     </div>
   </div>
 
-  <div id="backend-settings-panel" class="shell-settings-panel hidden">
-    <div id="backend-settings-container" class="shell-settings-container"></div>
-  </div>
-
-  <div id="frontend-settings-panel" class="shell-settings-panel frontend-settings-panel hidden">
-    <div class="mgmt-section" data-frontend-settings-section="theme">
-      <div class="mgmt-section-title">Theme</div>
-      <div class="mgmt-field-row">
-        <label class="mgmt-field-label" for="frontend-settings-theme-select">Theme</label>
-        <select id="frontend-settings-theme-select" class="mgmt-field-input"></select>
-      </div>
-    </div>
-    <div class="mgmt-section" data-frontend-settings-section="editors">
-      <div class="mgmt-section-title">Editors</div>
-      <label class="frontend-settings-toggle">
-        <input id="frontend-settings-overlay-editor" type="checkbox">
-        <span>Overlay editor</span>
-      </label>
-      <label class="frontend-settings-toggle">
-        <input id="frontend-settings-wysiwyg-editor" type="checkbox">
-        <span>WYSIWYG editor</span>
-      </label>
-      <label class="frontend-settings-toggle">
-        <input id="frontend-settings-marp-settings" type="checkbox">
-        <span>Show Marp settings</span>
-      </label>
-      <label class="frontend-settings-toggle">
-        <input id="frontend-settings-special-chars" type="checkbox">
-        <span>Show special characters</span>
-      </label>
-    </div>
-    <div class="mgmt-section" data-frontend-settings-section="hierarchy">
-      <div class="mgmt-section-title">Hierarchy</div>
-      <label class="frontend-settings-toggle">
-        <input id="frontend-settings-sidebar-counts" type="checkbox">
-        <span>Counts</span>
-      </label>
-      <label class="frontend-settings-toggle">
-        <input id="frontend-settings-sidebar-presence" type="checkbox">
-        <span>Presence badges</span>
-      </label>
-      <label class="frontend-settings-toggle">
-        <input id="frontend-settings-sidebar-grips" type="checkbox">
-        <span>Drag icons</span>
-      </label>
-    </div>
-    <div class="mgmt-section" data-frontend-settings-section="debug">
-      <div class="mgmt-section-title">Diagnostics</div>
-      <div class="mgmt-field-row">
-        <button id="frontend-settings-open-inspector" class="mgmt-btn mgmt-btn-small" type="button">Open Inspector</button>
-      </div>
-    </div>
-  </div>
+  <!-- Settings panels are now created by sharedPanels.js factory -->
 
   <!-- Export Modal -->
   <div id="export-modal" class="dialog-overlay" style="display: none;">

@@ -2,6 +2,16 @@
 
 ## High Priority — Security & Reliability
 
+- [ ] each view must also have a close button in the top right. so for all views (dashboard, workspaces, log and kanban/canvas, logs views etc.). they have the drag icon, the title, the individual buttons and to the right there is the close button. the close and drag buttons move up into the tab bar when it's visible (if multiple views are on top of each other)
+
+- [ ] the burger menu of stacks must contain:
+  - add
+    - column
+    - stack
+      - before
+      - after
+  - rename
+
 - [ ] when pressing retry render on a drawio diagram it disappears and it seems to be rendering the image (draw.io opens in the background). but it doesnt show the image afterwards. maybe its not doing a visual refresh with the image. also make sure that the cache files are stored somewhere good. 
 
 - [ ]  i want the views (kanban view or canvas view) to be able to be individual windows. when a new board is opened its opening a new tab, when i drag a tab out of the window, it creates a separate window. the tabs can be modularely placed  so the view is for example split vertically or horizontally! this is a major refactor, do a deep analysis first!

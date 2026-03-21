@@ -484,6 +484,8 @@ textarea {
 .layout {
   grid-row: 1;
   display: flex;
+  padding: 0;
+  margin: 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -5578,13 +5580,31 @@ select.dialog-input option,
 .shell-settings-panel {
   display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   background: var(--bg-secondary);
 }
 
-.shell-settings-container {
+.shell-settings-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-header-bg, var(--bg-secondary));
+}
+
+.shell-settings-title {
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.shell-settings-body {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
@@ -5592,7 +5612,31 @@ select.dialog-input option,
   overflow: auto;
 }
 
+.shell-settings-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.shell-settings-container .mgmt-top-tab-bar {
+  flex: 0 0 auto;
+}
+.shell-settings-container .mgmt-top-tab-content {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0;
+  padding: 4px 8px;
+}
+
 .frontend-settings-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.frontend-settings-panel .shell-settings-body {
+  display: flex;
   flex-direction: column;
   gap: 14px;
   padding: 12px;
@@ -6986,11 +7030,6 @@ select.export-input {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .layout {
-  gap: calc(4px * var(--ui-scale));
-  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar,
