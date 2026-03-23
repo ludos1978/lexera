@@ -34,6 +34,10 @@ function loadAppUtils() {
   // Also parse the logging system for extractable functions
   const logLines = loggingSource.split('\n');
 
+  // Load hiddenItemsDropdown for functions extracted from app.js
+  const hiddenItemsSource = readFileSync(resolve(srcDir, 'hiddenItems', 'hiddenItemsDropdown.js'), 'utf-8');
+  const hiddenItemsLines = hiddenItemsSource.split('\n');
+
   // Extract a function starting at the given 1-based line number.
   // Scans forward to find the matching closing brace.
   function extractFunctionFrom(sourceLines, startLine) {
@@ -83,7 +87,7 @@ function loadAppUtils() {
     extractFunction(findLine('function normalizeWikiLookupKey(')),
     extractFunction(findLine('function extractHtmlComments(')),
     extractFunction(findLine('function stripHtmlComments(')),
-    extractFunction(findLine('function buildSourceSummaryLabel(')),
+    extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function buildSourceSummaryLabel(')),
     extractFunction(findLine('function getCreationEntityDragIconSvg(')),
     extractFunction(findLine('function stashRenderedHtmlToken(')),
     extractFunction(findLine('function restoreRenderedHtmlTokens(')),
@@ -92,11 +96,11 @@ function loadAppUtils() {
     extractFunction(findLine('function getMediaCategory(')),
     extractFunction(findLine('function getFileExtension(')),
     extractFunction(findLine('function inferExternalMediaCategoryFromUrl(')),
-    extractFunction(findLine('function normalizeIncomingImageBase64(')),
-    extractFunction(findLine('function decodeBase64BinaryStringToUint8Array(')),
+    extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function normalizeIncomingImageBase64(')),
+    extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function decodeBase64BinaryStringToUint8Array(')),
     extractFunction(findLine('function sanitizeBuiltInDiagramFileName(')),
-    extractFunction(findLine('function buildPastedEmbedImageFileName(')),
-    extractFunction(findLine('function getUploadedMediaEmbedTarget(')),
+    extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function buildPastedEmbedImageFileName(')),
+    extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function getUploadedMediaEmbedTarget(')),
     extractFunction(findLine('function stripLayoutTags(')),
     extractFunction(findLine('function stripLegacyImportStructureTags(')),
     extractFunction(findLine('function getColumnLayoutTags(')),
@@ -112,6 +116,7 @@ function loadAppUtils() {
 
   const wrappedSource = `
     var PathUtils = globalThis.LexeraPathUtils;
+    var _deps = { sanitizeBuiltInDiagramFileName: function(n, e, f) { return sanitizeBuiltInDiagramFileName(n, e, f); } };
     ${fnDefs.join('\n\n')}
 
     return {
