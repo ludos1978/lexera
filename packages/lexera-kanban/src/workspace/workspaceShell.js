@@ -2106,6 +2106,233 @@
     return panelEl;
   }
 
+  // ── Tab overflow: fold tabs that don't fit into a dropdown ──
+
+  var _tabOverflowObserver = null;
+
+  /** Recalculate which tabs are visible and which overflow into the dropdown. */
+  function updateTabOverflow(headerEl) {
+    var tabsEl = headerEl.querySelector('.ws-view-tabs');
+    var overflowBtn = headerEl.querySelector('.ws-tab-overflow-btn');
+    if (!tabsEl || !overflowBtn) return;
+    var tabs = tabsEl.querySelectorAll('.ws-view-tab');
+    if (tabs.length === 0) { overflowBtn.classList.remove('is-visible'); return; }
+
+    // Reset: show all tabs, hide overflow button
+    for (var r = 0; r < tabs.length; r++) tabs[r].classList.remove('is-tab-overflowed');
+    overflowBtn.classList.remove('is-visible');
+
+    // Measure available width: tabs container width
+    var containerWidth = tabsEl.clientWidth;
+    if (containerWidth <= 0) return;
+
+    // First check: do all tabs fit without the overflow button?
+    var totalTabWidth = 0;
+    for (var t = 0; t < tabs.length; t++) totalTabWidth += tabs[t].offsetWidth;
+    if (totalTabWidth <= containerWidth) return; // All tabs fit, no overflow needed
+
+    // Measure overflow button width (unhide temporarily to measure)
+    overflowBtn.classList.add('is-visible');
+    var btnWidth = overflowBtn.offsetWidth || 32;
+    overflowBtn.classList.remove('is-visible');
+
+    // Walk tabs left-to-right, accumulate widths, mark overflowing ones
+    var usedWidth = 0;
+    var overflowCount = 0;
+    var activeOverflowed = false;
+    for (var i = 0; i < tabs.length; i++) {
+      var tabWidth = tabs[i].offsetWidth;
+      // If this tab would push beyond available space (minus room for overflow btn),
+      // mark it and all subsequent tabs as overflowed
+      if (overflowCount > 0 || usedWidth + tabWidth > containerWidth - btnWidth) {
+        tabs[i].classList.add('is-tab-overflowed');
+        overflowCount++;
+        if (tabs[i].classList.contains('is-active')) activeOverflowed = true;
+      } else {
+        usedWidth += tabWidth;
+      }
+    }
+
+    // If the active tab got overflowed, swap it with the last visible tab
+    if (activeOverflowed && overflowCount < tabs.length) {
+      var lastVisibleIdx = tabs.length - overflowCount - 1;
+      if (lastVisibleIdx >= 0) {
+        tabs[lastVisibleIdx].classList.add('is-tab-overflowed');
+        for (var a = 0; a < tabs.length; a++) {
+          if (tabs[a].classList.contains('is-active')) {
+            tabs[a].classList.remove('is-tab-overflowed');
+            break;
+          }
+        }
+      }
+    }
+
+    if (overflowCount > 0) {
+      overflowBtn.classList.add('is-visible');
+      var countEl = overflowBtn.querySelector('.ws-tab-overflow-count');
+      if (countEl) countEl.textContent = '+' + overflowCount;
+    }
+
+    // Close any open overflow menu since the tab layout changed
+    closeTabOverflowMenus();
+  }
+
+  /** Ensure a ResizeObserver is watching all .ws-view-tabs elements. */
+  function ensureTabOverflowObserver() {
+    if (_tabOverflowObserver) return;
+    if (typeof ResizeObserver === 'undefined') return;
+    _tabOverflowObserver = new ResizeObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        var tabsEl = entries[i].target;
+        var headerEl = tabsEl.closest('.ws-view-header');
+        if (headerEl) updateTabOverflow(headerEl);
+      }
+    });
+  }
+
+  /** Attach overflow observation to a header element. */
+  function observeTabOverflow(headerEl) {
+    var tabsEl = headerEl.querySelector('.ws-view-tabs');
+    if (!tabsEl) return;
+    ensureTabOverflowObserver();
+    if (_tabOverflowObserver) _tabOverflowObserver.observe(tabsEl);
+    // Initial calculation after layout settles
+    requestAnimationFrame(function () { updateTabOverflow(headerEl); });
+  }
+
+  /** Close any open tab overflow menu. */
+  function closeTabOverflowMenus() {
+    var existing = document.querySelector('.ws-tab-overflow-menu.is-open');
+    if (existing) {
+      existing.classList.remove('is-open');
+      if (existing.parentNode) existing.parentNode.removeChild(existing);
+    }
+  }
+
+  /** Toggle the overflow dropdown for a given header. */
+  function toggleTabOverflowMenu(headerEl) {
+    var existing = document.querySelector('.ws-tab-overflow-menu.is-open');
+    if (existing) {
+      // If this menu belongs to the same header, just close it
+      var sameHeader = existing._wsOverflowHeaderEl === headerEl;
+      existing.classList.remove('is-open');
+      if (existing.parentNode) existing.parentNode.removeChild(existing);
+      if (sameHeader) return;
+    }
+
+    // Build the menu and position it on the body
+    var tabs = headerEl.querySelectorAll('.ws-view-tab.is-tab-overflowed');
+    if (tabs.length === 0) return;
+
+    var menu = document.createElement('div');
+    menu.className = 'ws-tab-overflow-menu is-open';
+    menu._wsOverflowHeaderEl = headerEl;
+
+    for (var i = 0; i < tabs.length; i++) {
+      var tab = tabs[i];
+      var labelEl = tab.querySelector('.ws-view-tab-label');
+      var label = labelEl ? labelEl.textContent : '';
+      var isActive = tab.classList.contains('is-active');
+
+      var item = document.createElement('button');
+      item.className = 'ws-tab-overflow-menu-item' + (isActive ? ' is-active' : '');
+      item.type = 'button';
+
+      var tabId = tab.getAttribute('data-ws-tab-id');
+      var panelId = tab.getAttribute('data-ws-panel-id');
+      if (tabId) item.setAttribute('data-ws-tab-id', tabId);
+      if (panelId) {
+        item.setAttribute('data-ws-panel-id', panelId);
+        item.setAttribute('data-ws-action', 'activate-panel');
+      }
+
+      var itemLabel = document.createElement('span');
+      itemLabel.className = 'ws-tab-overflow-menu-item-label';
+      itemLabel.textContent = label;
+      item.appendChild(itemLabel);
+
+      var closeBtn = document.createElement('button');
+      closeBtn.className = 'ws-tab-overflow-menu-item-close';
+      closeBtn.type = 'button';
+      closeBtn.title = 'Close';
+      closeBtn.textContent = '\u00d7';
+      var origClose = tab.querySelector('.ws-view-tab-close');
+      if (origClose) {
+        var closeAction = origClose.getAttribute('data-ws-action') || 'close-tab';
+        closeBtn.setAttribute('data-ws-action', closeAction);
+        if (tabId) closeBtn.setAttribute('data-ws-tab-id', tabId);
+        if (panelId) closeBtn.setAttribute('data-ws-panel-id', panelId);
+      }
+      item.appendChild(closeBtn);
+      menu.appendChild(item);
+    }
+
+    // Handle clicks within the menu (since it's on the body, not inside the workspace root)
+    menu.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Close button within a menu item
+      var closeEl = e.target.closest('.ws-tab-overflow-menu-item-close');
+      if (closeEl) {
+        var ca = closeEl.getAttribute('data-ws-action');
+        if (ca === 'close-tab') {
+          closeTab(closeEl.getAttribute('data-ws-tab-id'));
+        } else if (ca === 'close-panel') {
+          var dh = headerEl.closest('[data-dock]');
+          handleToolbarAction(ca, closeEl.getAttribute('data-ws-panel-id') || '', {
+            panelId: closeEl.getAttribute('data-ws-panel-id') || '',
+            dockId: dh ? dh.getAttribute('data-dock') || '' : ''
+          });
+        }
+        closeTabOverflowMenus();
+        return;
+      }
+
+      // Menu item click (activate tab/panel)
+      var itemEl = e.target.closest('.ws-tab-overflow-menu-item');
+      if (itemEl) {
+        var ia = itemEl.getAttribute('data-ws-action');
+        var ip = itemEl.getAttribute('data-ws-panel-id');
+        var it = itemEl.getAttribute('data-ws-tab-id');
+        if (ia && ip) {
+          var dh2 = headerEl.closest('[data-dock]');
+          handleToolbarAction(ia, ip, {
+            panelId: ip,
+            dockId: dh2 ? dh2.getAttribute('data-dock') || '' : ''
+          });
+        } else if (it) {
+          activateTab(it);
+        }
+        closeTabOverflowMenus();
+      }
+    });
+
+    // Position the menu relative to the overflow button
+    var btn = headerEl.querySelector('.ws-tab-overflow-btn');
+    if (btn) {
+      var rect = btn.getBoundingClientRect();
+      menu.style.position = 'fixed';
+      menu.style.top = rect.bottom + 2 + 'px';
+      menu.style.right = (window.innerWidth - rect.right) + 'px';
+      menu.style.left = 'auto';
+    }
+
+    document.body.appendChild(menu);
+
+    // Close menu when clicking outside
+    var _closeOnOutsideClick = function (evt) {
+      if (!menu.contains(evt.target) && evt.target !== btn && !btn.contains(evt.target)) {
+        closeTabOverflowMenus();
+        document.removeEventListener('pointerdown', _closeOnOutsideClick, true);
+      }
+    };
+    // Delay to avoid catching the current click
+    requestAnimationFrame(function () {
+      document.addEventListener('pointerdown', _closeOnOutsideClick, true);
+    });
+  }
+
   // ── Unified view header for both board tabsets and panel dock groups ──
   // opts.items: [{ id, label, meta? }]
   // opts.activeId: current active item id
@@ -2166,6 +2393,22 @@
         tabs.appendChild(tab);
       }
       el.appendChild(tabs);
+
+      // Overflow button (shown when tabs don't fit)
+      var overflowBtn = document.createElement('button');
+      overflowBtn.className = 'ws-tab-overflow-btn';
+      overflowBtn.type = 'button';
+      overflowBtn.title = 'More tabs';
+      overflowBtn.innerHTML = '<span class="ws-tab-overflow-count"></span>\u25BE';
+      overflowBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleTabOverflowMenu(el);
+      });
+      el.appendChild(overflowBtn);
+
+      // Observe for overflow after appending to DOM
+      observeTabOverflow(el);
     }
 
     // Fold button for panel views
@@ -3188,6 +3431,12 @@
       }
     }
     renderPanelDocks();
+    // Recalculate tab overflow after DOM updates
+    requestAnimationFrame(function () {
+      if (!state.rootEl) return;
+      var headers = state.rootEl.querySelectorAll('.ws-view-header');
+      for (var hi = 0; hi < headers.length; hi++) updateTabOverflow(headers[hi]);
+    });
     notifyActiveBoardChanged();
     persistState();
   }
@@ -3413,6 +3662,9 @@
   }
 
   function handleRootClick(event) {
+    // Close overflow menu when clicking inside workspace root but outside the overflow btn
+    if (!event.target.closest('.ws-tab-overflow-btn')) closeTabOverflowMenus();
+
     var closeBtn = event.target.closest('[data-ws-action="close-tab"]');
     if (closeBtn) {
       event.preventDefault();
