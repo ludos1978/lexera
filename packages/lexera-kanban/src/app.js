@@ -43,8 +43,7 @@ const LexeraDashboard = (function () {
   var MAX_UNDO_BYTES = 10 * 1024 * 1024;
   var undoTotalBytes = 0;
   var undoPendingSnapshot = null; // snapshot taken before the last mutation, awaiting delta computation
-  var sidebarSyncEnabled = localStorage.getItem('lexera-sidebar-sync') === 'true';
-  var hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') === 'true'; // default false
+  var SidebarSync = window.LexeraSidebarSync;
   var DiagramRegistry = window.LexeraDiagramRegistry;
   var CardContentRenderer = window.LexeraCardContentRenderer;
   var ContentEnhancerRegistry = window.LexeraContentEnhancerRegistry;
@@ -62,6 +61,17 @@ const LexeraDashboard = (function () {
   if (DropZoneIndicators) DropZoneIndicators.init({
     getElColumnsContainer: function() { return getElColumnsContainer(); },
     isHorizontalCanvasStack: function(stackEl) { return isHorizontalCanvasStackElement(stackEl); }
+  });
+  if (SidebarSync) SidebarSync.init({
+    getFocusedCardEl: function () { return focusedCardEl; },
+    getElColumnsContainer: function () { return getElColumnsContainer(); },
+    getElBoardList: function () { return getElBoardList(); },
+    getSidebarTreeOwnerNode: function (el) { return getSidebarTreeOwnerNode(el); },
+    renderBoardList: function () { renderBoardList(); },
+    buildSidebarHierarchyDisplayMenuItems: function () { return buildSidebarHierarchyDisplayMenuItems(); },
+    formatMenuToggleLabel: function (on, label) { return formatMenuToggleLabel(on, label); },
+    showNativeMenu: function (items, x, y, id) { return showNativeMenu(items, x, y, id); },
+    getActionRegistry: function () { return ActionRegistry; }
   });
 
   var DragDropHandlers = window.LexeraDragDropHandlers;
@@ -1156,7 +1166,7 @@ const LexeraDashboard = (function () {
   }
 
   function addBoardsByPath(paths) {
-    if (hierarchyLocked || !paths || paths.length === 0) return;
+    if ((SidebarSync && SidebarSync.isHierarchyLocked()) || !paths || paths.length === 0) return;
     var seen = {};
     var mdFiles = [];
     for (var i = 0; i < paths.length; i++) {
@@ -2269,7 +2279,7 @@ const LexeraDashboard = (function () {
     // Sidebar drop: add .md files from OS drag-and-drop when unlocked.
     if (getElSidebar()) {
       getElSidebar().addEventListener('dragover', function (e) {
-        if (hierarchyLocked) return;
+        if ((SidebarSync && SidebarSync.isHierarchyLocked())) return;
         if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
@@ -2283,7 +2293,7 @@ const LexeraDashboard = (function () {
       });
       getElSidebar().addEventListener('drop', function (e) {
         getElSidebar().classList.remove('drop-zone-active');
-        if (hierarchyLocked) return;
+        if ((SidebarSync && SidebarSync.isHierarchyLocked())) return;
         var dt = e.dataTransfer;
         if (!dt) return;
         var paths = collectDroppedPathsFromDataTransfer(dt);
@@ -2303,7 +2313,7 @@ const LexeraDashboard = (function () {
           boardsSection.classList.toggle('mgmt-drop-active', isPositionInsideElement(pos, boardsSection));
         }
         // Sidebar drop zone
-        if (hierarchyLocked) return;
+        if ((SidebarSync && SidebarSync.isHierarchyLocked())) return;
         if (getElSidebar() && pos) {
           if (isPositionInsideElement(pos, getElSidebar())) {
             getElSidebar().classList.add('drop-zone-active');
@@ -2329,7 +2339,7 @@ const LexeraDashboard = (function () {
           return;
         }
         // Sidebar drop
-        if (hierarchyLocked) return;
+        if ((SidebarSync && SidebarSync.isHierarchyLocked())) return;
         if (getElSidebar() && pos && !isPositionInsideElement(pos, getElSidebar())) {
           return;
         }
@@ -4084,7 +4094,7 @@ const LexeraDashboard = (function () {
         (presenceCount > 0 ? (' title="' + presenceCount + ' user(s) online"') : '') + '>' +
         (presenceCount > 0 ? presenceCount : '') +
         '</span>';
-      var removeButton = '<span class="tree-meta-action board-item-remove' + (hierarchyLocked ? ' hidden' : '') + '" title="Remove board">\u00D7</span>';
+      var removeButton = '<span class="tree-meta-action board-item-remove' + ((SidebarSync && SidebarSync.isHierarchyLocked()) ? ' hidden' : '') + '" title="Remove board">\u00D7</span>';
       var boardGrip = '<span class="tree-grip entity-drag-icon entity-drag-icon-board" title="Drag to reorder">' +
         getCreationEntityDragIconSvg('board') +
         '</span>';
@@ -4310,146 +4320,13 @@ const LexeraDashboard = (function () {
     syncMirroredWorkspaceViews();
   }
 
-  // --- Sidebar Sync ---
+  // --- Sidebar Sync --- (delegated to LexeraSidebarSync module)
 
-  function syncSidebarToView() {
-    if (!sidebarSyncEnabled) return;
-
-    // Priority 1: focused card
-    if (focusedCardEl && focusedCardEl.isConnected) {
-      var colIdx = focusedCardEl.getAttribute('data-col-index');
-      var cardIdx = focusedCardEl.getAttribute('data-card-index');
-      highlightSidebarNode('.tree-card[data-col-index="' + colIdx + '"][data-card-index="' + cardIdx + '"]');
-      return;
-    }
-
-    // Priority 2: first visible column in viewport
-    var columns = getElColumnsContainer().querySelectorAll('.column');
-    var containerRect = getElColumnsContainer().getBoundingClientRect();
-    for (var i = 0; i < columns.length; i++) {
-      var rect = columns[i].getBoundingClientRect();
-      if (rect.left >= containerRect.left && rect.right > containerRect.left) {
-        var colCards = columns[i].querySelector('.column-cards');
-        if (colCards) {
-          var colIdx = colCards.getAttribute('data-col-index');
-          if (colIdx != null) {
-            highlightSidebarNode('.tree-column[data-col-index="' + colIdx + '"]');
-            return;
-          }
-        }
-      }
-    }
-  }
-
-  function highlightSidebarNode(selector) {
-    // Remove previous highlight
-    var prev = getElBoardList().querySelector('.sync-highlight');
-    if (prev) prev.classList.remove('sync-highlight');
-
-    var node = getElBoardList().querySelector(selector);
-    if (!node) return;
-
-    // Expand all parent .tree-children containers
-    var parent = node.parentElement;
-    while (parent && parent !== getElBoardList()) {
-      if (parent.classList.contains('tree-children') && !parent.classList.contains('expanded')) {
-        parent.classList.add('expanded');
-        var toggleNode = getSidebarTreeOwnerNode(parent);
-        if (toggleNode) {
-          toggleNode.setAttribute('aria-expanded', 'true');
-          var toggle = toggleNode.querySelector('.tree-toggle');
-          if (toggle) toggle.classList.add('expanded');
-        }
-      }
-      if (parent.classList.contains('board-item-tree') && !parent.classList.contains('expanded')) {
-        parent.classList.add('expanded');
-        var boardItem = parent.previousElementSibling;
-        if (boardItem) {
-          var toggle = boardItem.querySelector('.board-item-toggle');
-          if (toggle) toggle.classList.add('expanded');
-        }
-      }
-      parent = parent.parentElement;
-    }
-
-    // Highlight and scroll
-    node.classList.add('sync-highlight');
-    node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }
-
-  // Sidebar sync button handler
-  // Sidebar hierarchy burger menu — replaces individual sync/lock buttons
-  function toggleSidebarSync() {
-    sidebarSyncEnabled = !sidebarSyncEnabled;
-    localStorage.setItem('lexera-sidebar-sync', sidebarSyncEnabled ? 'true' : 'false');
-    if (sidebarSyncEnabled) syncSidebarToView();
-    else {
-      var prev = getElBoardList().querySelector('.sync-highlight');
-      if (prev) prev.classList.remove('sync-highlight');
-    }
-  }
-
-  function toggleSidebarLock() {
-    hierarchyLocked = !hierarchyLocked;
-    localStorage.setItem('lexera-hierarchy-locked', hierarchyLocked ? 'true' : 'false');
-    renderBoardList();
-  }
-
-  function showSidebarHierarchyMenu(anchorEl) {
-    if (!anchorEl) return;
-    var rect = anchorEl.getBoundingClientRect();
-    var displayItems = buildSidebarHierarchyDisplayMenuItems();
-    var items = [
-      { id: 'toggle-sidebar-sync', label: formatMenuToggleLabel(sidebarSyncEnabled, 'Sync with View') },
-      { id: 'toggle-sidebar-lock', label: formatMenuToggleLabel(!hierarchyLocked, 'Editable') },
-      { separator: true },
-      { id: 'toggle-sidebar-counts', label: displayItems[0].label },
-      { id: 'toggle-sidebar-presence', label: displayItems[1].label },
-      { id: 'toggle-sidebar-grips', label: displayItems[2].label },
-      { separator: true },
-      { id: 'sidebar-fold-all', label: 'Fold All' },
-      { id: 'sidebar-unfold-all', label: 'Unfold All' }
-    ];
-    showNativeMenu(items, rect.right, rect.bottom, 'menu.sidebar').then(function (action) {
-      if (!action) return;
-      if (action === 'toggle-sidebar-sync') { toggleSidebarSync(); return; }
-      if (action === 'toggle-sidebar-lock') { toggleSidebarLock(); return; }
-      if (action === 'sidebar-fold-all' || action === 'sidebar-unfold-all') {
-        var expand = action === 'sidebar-unfold-all';
-        var boardList = getElBoardList();
-        if (boardList) {
-          var allChildren = boardList.querySelectorAll('.tree-children');
-          var allToggles = boardList.querySelectorAll('.tree-toggle');
-          for (var i = 0; i < allChildren.length; i++) {
-            allChildren[i].classList.toggle('expanded', expand);
-          }
-          for (var j = 0; j < allToggles.length; j++) {
-            allToggles[j].classList.toggle('expanded', expand);
-          }
-        }
-        renderBoardList();
-        return;
-      }
-      if (ActionRegistry) ActionRegistry.dispatch('board', action, {});
-    });
-  }
-
-  (function () {
-    var menuBtn = document.getElementById('btn-sidebar-menu');
-    if (!menuBtn) return;
-    menuBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      showSidebarHierarchyMenu(menuBtn);
-    });
-  })();
-
-  // Debounced scroll sync
-  var scrollSyncTimer = null;
-  getElColumnsContainer().addEventListener('scroll', function () {
-    if (!sidebarSyncEnabled) return;
-    clearTimeout(scrollSyncTimer);
-    scrollSyncTimer = setTimeout(syncSidebarToView, 300);
-  });
+  function syncSidebarToView() { if (SidebarSync) SidebarSync.syncSidebarToView(); }
+  function highlightSidebarNode(selector) { if (SidebarSync) SidebarSync.highlightSidebarNode(selector); }
+  function toggleSidebarSync() { if (SidebarSync) SidebarSync.toggleSidebarSync(); }
+  function toggleSidebarLock() { if (SidebarSync) SidebarSync.toggleSidebarLock(); }
+  function showSidebarHierarchyMenu(anchorEl) { if (SidebarSync) SidebarSync.showSidebarHierarchyMenu(anchorEl); }
 
   function trackRecentBoard(boardId) {
     if (!boardId || embeddedMode) return;
