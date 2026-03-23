@@ -8414,6 +8414,18 @@ select.export-input {
   border-left-color: var(--accent);
 }
 
+/* ── Sidebar display overrides for sleek theme ──────────────────── */
+/* Must come after the sleek theme variable definitions to win specificity */
+:root[data-visual-theme="sleek"][data-sidebar-tree-counts="off"] {
+  --sidebar-tree-count-col: 0px;
+}
+:root[data-visual-theme="sleek"][data-sidebar-tree-presence="off"] {
+  --sidebar-tree-presence-col: 0px;
+}
+:root[data-visual-theme="sleek"][data-sidebar-tree-grips="off"] {
+  --sidebar-tree-grip-col: 0px;
+}
+
 /* ── Virtual Scrolling ────────────────────────────────────────────── */
 
 .vs-placeholder {

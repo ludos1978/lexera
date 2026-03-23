@@ -176,12 +176,6 @@
             '<span>Drag icons</span>' +
           '</label>' +
         '</div>' +
-        '<div class="mgmt-section" data-frontend-settings-section="debug">' +
-          '<div class="mgmt-section-title">Diagnostics</div>' +
-          '<div class="mgmt-field-row">' +
-            '<button class="mgmt-btn mgmt-btn-small lexera-shared-frontend-settings-open-inspector" type="button">Open Inspector</button>' +
-          '</div>' +
-        '</div>' +
       '</div>';
     return root;
   }
