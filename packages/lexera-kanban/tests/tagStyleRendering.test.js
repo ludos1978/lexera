@@ -55,10 +55,12 @@ describe('tag style rendering parity', () => {
 
   it('renders inline tag chips with a visible border treatment', () => {
     const appSource = readSource('app.js');
+    const embedMenuSource = readSource('menu/embedMenu.js');
     const cssSource = readSource('app.css');
+    const combinedSource = appSource + embedMenuSource;
 
-    expect(appSource.includes('function renderTagChipHtml(tag)')).toBe(true);
-    expect(appSource.includes('--tag-chip-border-color:')).toBe(true);
+    expect(combinedSource.includes('function renderTagChipHtml(tag)')).toBe(true);
+    expect(combinedSource.includes('--tag-chip-border-color:')).toBe(true);
     expect(cssSource.includes('--tag-chip-border-color')).toBe(true);
   });
 });
