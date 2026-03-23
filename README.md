@@ -1,6 +1,10 @@
 
 # Ludos Kanban Editor
 
+Current active application code lives under [`packages/`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages).
+
+The root-level VS Code extension setup is legacy reference material from the older product line. It is no longer the active build, test, or runtime surface in this branch.
+
 ---
 
 ## Description

@@ -714,11 +714,15 @@ describe('syncConnectionStatusButton', () => {
   }
 
   it('marks the button and dot as connected and updates accessibility text', () => {
+    const label = { textContent: '' };
     const button = {
       classList: createClassList(),
       attributes: {},
       setAttribute(name, value) { this.attributes[name] = value; },
       title: '',
+      querySelector(selector) {
+        return selector === '.connection-status-label' ? label : null;
+      },
     };
     const dot = { classList: createClassList() };
 
@@ -729,16 +733,21 @@ describe('syncConnectionStatusButton', () => {
     expect(button.attributes['data-connection-state']).toBe('connected');
     expect(button.attributes['aria-label']).toContain('connected');
     expect(button.title).toContain('connected');
+    expect(label.textContent).toBe('Connected');
     expect(dot.classList.contains('connected')).toBe(true);
     expect(dot.classList.contains('disconnected')).toBe(false);
   });
 
   it('marks the button and dot as disconnected', () => {
+    const label = { textContent: '' };
     const button = {
       classList: createClassList(),
       attributes: {},
       setAttribute(name, value) { this.attributes[name] = value; },
       title: '',
+      querySelector(selector) {
+        return selector === '.connection-status-label' ? label : null;
+      },
     };
     const dot = { classList: createClassList() };
 
@@ -749,6 +758,7 @@ describe('syncConnectionStatusButton', () => {
     expect(button.attributes['data-connection-state']).toBe('disconnected');
     expect(button.attributes['aria-label']).toContain('disconnected');
     expect(button.title).toContain('disconnected');
+    expect(label.textContent).toBe('Disconnected');
     expect(dot.classList.contains('connected')).toBe(false);
     expect(dot.classList.contains('disconnected')).toBe(true);
   });

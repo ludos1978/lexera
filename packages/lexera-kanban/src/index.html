@@ -97,21 +97,7 @@
     <div id="mgmt-panel-body" class="mgmt-panel-body"></div>
   </div>
 
-  <!-- Status Bar -->
-  <div id="status-bar" class="status-bar">
-    <div class="status-bar-left">
-    </div>
-    <span id="status-msg" class="status-msg"></span>
-    <div class="status-bar-right">
-      <button id="btn-connection-status" class="status-bar-icon-btn connection-status-btn disconnected" type="button" title="Backend disconnected. Open backend settings" aria-label="Backend disconnected. Open backend settings">
-        <span id="connection-dot" class="connection-dot" aria-hidden="true"></span>
-        <span class="connection-status-label">Backend</span>
-      </button>
-      <button id="btn-inspector" class="status-bar-icon-btn" type="button" title="Open Inspector (F12 / Ctrl+Shift+I / Alt+I)">&lt;&gt;</button>
-    </div>
-  </div>
-
-  <!-- Bottom Panel (expandable from status bar tabs) -->
+  <!-- Bottom Panel -->
   <div id="log-panel" class="log-panel hidden">
     <div class="log-panel-header">
       <div class="log-panel-header-main">
@@ -127,6 +113,14 @@
         <button id="log-copy-btn" class="log-panel-btn" title="Copy logs to clipboard">Copy</button>
         <button id="log-clear-btn" class="log-panel-btn" title="Clear log">Clear</button>
       </div>
+    </div>
+    <div class="log-panel-status">
+      <span id="status-msg" class="status-msg"></span>
+      <button id="btn-connection-status" class="log-panel-status-btn connection-status-btn disconnected" type="button" title="Backend disconnected. Open backend settings" aria-label="Backend disconnected. Open backend settings">
+        <span id="connection-dot" class="connection-dot" aria-hidden="true"></span>
+        <span class="connection-status-label">Disconnected</span>
+      </button>
+      <button id="btn-inspector" class="log-panel-status-btn" type="button" title="Open Inspector (F12 / Ctrl+Shift+I / Alt+I)">&lt;&gt;</button>
     </div>
     <div class="log-panel-body">
       <div class="log-panel-main">
@@ -417,6 +411,7 @@
   </script>
 
   <script src="management.js"></script>
+  <script src="backendDiscovery.js"></script>
   <script src="api.js"></script>
   <script src="templates.js"></script>
   <script src="plugins/fileFormatRegistry.js"></script>
@@ -424,6 +419,7 @@
   <script src="export/exportTreeBuilder.js"></script>
   <script src="export/exportTreeUI.js"></script>
   <script src="export/exportService.js"></script>
+  <script src="export/exportUiPreferences.js"></script>
   <script src="export/exportUI.js"></script>
   <script src="treeView.js"></script>
   <script src="wysiwyg-editor.js"></script>
@@ -436,6 +432,7 @@
   <script src="boardSettingRegistry.js"></script>
   <script src="menuContributorRegistry.js"></script>
   <script src="canvas/canvasMath.js"></script>
+  <script src="canvas/canvasMode.js"></script>
   <script src="canvas/canvasViewport.js"></script>
   <script src="canvas/canvasDom.js"></script>
   <script src="canvas/stackDrop.js"></script>
@@ -451,6 +448,7 @@
   <script src="utils/pathUtils.js"></script>
   <script src="tagcolors/tagColors.js"></script>
   <script src="dropzone/dropZoneIndicators.js"></script>
+  <script src="render/inlineRenderer.js"></script>
   <script src="settings/frontendSettings.js"></script>
   <script src="workspace/sharedPanels.js"></script>
   <script src="workspace/workspaceShell.js"></script>

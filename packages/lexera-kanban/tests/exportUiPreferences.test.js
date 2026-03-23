@@ -1,107 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const srcDir = resolve(__dirname, '..', 'src');
+import { loadIIFE } from './load-iife.js';
 
 function loadExportUiHelpers() {
-  const source = readFileSync(resolve(srcDir, 'export', 'exportUI.js'), 'utf-8');
-  const lines = source.split('\n');
-
-  function extractFunction(startLine) {
-    let depth = 0;
-    let started = false;
-    const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
-      result.push(line);
-      for (let c = 0; c < line.length; c++) {
-        if (line[c] === '{') { depth++; started = true; }
-        if (line[c] === '}') depth--;
-      }
-      if (started && depth === 0) break;
-    }
-    return result.join('\n');
-  }
-
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
-    }
-    throw new Error('Could not find: ' + pattern);
-  }
-
-  const storageLine = findLine('var EXPORT_UI_STORAGE_KEYS = {');
-  let depth = 0;
-  let started = false;
-  const storageLines = [];
-  for (let i = storageLine - 1; i < lines.length; i++) {
-    storageLines.push(lines[i]);
-    for (let c = 0; c < lines[i].length; c++) {
-      if (lines[i][c] === '{') { depth++; started = true; }
-      if (lines[i][c] === '}') depth--;
-    }
-    if (started && depth === 0) break;
-  }
-
-  const legacyLine = findLine('var EXPORT_UI_LEGACY_STORAGE_KEYS = {');
-  depth = 0;
-  started = false;
-  const legacyLines = [];
-  for (let i = legacyLine - 1; i < lines.length; i++) {
-    legacyLines.push(lines[i]);
-    for (let c = 0; c < lines[i].length; c++) {
-      if (lines[i][c] === '{') { depth++; started = true; }
-      if (lines[i][c] === '}') depth--;
-    }
-    if (started && depth === 0) break;
-  }
-
-  const wrappedSource = `
-    ${storageLines.join('\n')}
-    ${legacyLines.join('\n')}
-    ${extractFunction(findLine('function normalizeExportDialogFormat('))}
-    ${extractFunction(findLine('function normalizeExportPreset('))}
-    ${extractFunction(findLine('function normalizePandocExportFormat('))}
-    ${extractFunction(findLine('function normalizeDocumentPageBreakPreference('))}
-    ${extractFunction(findLine('function normalizeSpeakerNoteMode('))}
-    ${extractFunction(findLine('function normalizeKeepRemoveMode('))}
-    ${extractFunction(findLine('function normalizeEmbedHandling('))}
-    ${extractFunction(findLine('function normalizeMarpBrowser('))}
-    ${extractFunction(findLine('function normalizeLinkHandlingMode('))}
-    ${extractFunction(findLine('function normalizeBooleanPreference('))}
-    ${extractFunction(findLine('function normalizePackFileSizeLimit('))}
-    ${extractFunction(findLine('function defaultExcludeTagsInput('))}
-    ${extractFunction(findLine('function normalizeExcludeTagsInput('))}
-    ${extractFunction(findLine('function applyExportPresetToOptions('))}
-    ${extractFunction(findLine('function getStoredExportUiPreference('))}
-    ${extractFunction(findLine('function setStoredExportUiPreference('))}
-
-    return {
-      EXPORT_UI_STORAGE_KEYS,
-      EXPORT_UI_LEGACY_STORAGE_KEYS,
-      normalizeExportDialogFormat,
-      normalizeExportPreset,
-      normalizePandocExportFormat,
-      normalizeDocumentPageBreakPreference,
-      normalizeSpeakerNoteMode,
-      normalizeKeepRemoveMode,
-      normalizeEmbedHandling,
-      normalizeMarpBrowser,
-      normalizeLinkHandlingMode,
-      normalizeBooleanPreference,
-      normalizePackFileSizeLimit,
-      defaultExcludeTagsInput,
-      normalizeExcludeTagsInput,
-      applyExportPresetToOptions,
-      getStoredExportUiPreference,
-      setStoredExportUiPreference,
-      __storage: localStorage,
-    };
-  `;
-
   const storage = {
     _map: {},
     getItem(key) {
@@ -115,8 +15,11 @@ function loadExportUiHelpers() {
     },
   };
 
-  const factory = new Function('localStorage', wrappedSource);
-  return factory(storage);
+  const Preferences = loadIIFE('export/exportUiPreferences.js', 'LexeraExportUiPreferences');
+  return {
+    ...Preferences.createExportUiPreferenceHelpers(storage),
+    __storage: storage,
+  };
 }
 
 let U;

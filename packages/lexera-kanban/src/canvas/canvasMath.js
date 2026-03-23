@@ -35,9 +35,9 @@
     return String(Math.round(parsed));
   }
 
-  function getCanvasFallbackStackBox(stackIndex, width, height) {
+  function getCanvasFallbackStackBox(stackIndex, width) {
     width = Math.max(180, parseCanvasLayoutNumber(width, CANVAS_DEFAULT_STACK_W));
-    height = Math.max(120, parseCanvasLayoutNumber(height, CANVAS_DEFAULT_STACK_H));
+    var height = CANVAS_DEFAULT_STACK_H;
     return {
       x: CANVAS_DEFAULT_STACK_X + (stackIndex % 4) * (width + CANVAS_STACK_SPACING),
       y: CANVAS_DEFAULT_STACK_Y + Math.floor(stackIndex / 4) * (height + CANVAS_STACK_SPACING),
@@ -48,12 +48,12 @@
 
   function getCanvasStackLayoutBox(stack, stackIndex) {
     var params = stack && stack.params ? stack.params : {};
-    var fallback = getCanvasFallbackStackBox(stackIndex, params.w, params.h);
+    var fallback = getCanvasFallbackStackBox(stackIndex, params.w);
     return {
       x: parseCanvasLayoutNumber(params.x, fallback.x),
       y: parseCanvasLayoutNumber(params.y, fallback.y),
       w: Math.max(180, parseCanvasLayoutNumber(params.w, fallback.w)),
-      h: Math.max(120, parseCanvasLayoutNumber(params.h, fallback.h))
+      h: fallback.h
     };
   }
 

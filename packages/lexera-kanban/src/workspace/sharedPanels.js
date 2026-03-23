@@ -4,7 +4,8 @@
     dashboard: true,
     logs: true,
     backendSettings: true,
-    frontendSettings: true
+    frontendSettings: true,
+    files: true
   };
 
   var instancesByKind = {
@@ -12,14 +13,20 @@
     dashboard: {},
     logs: {},
     backendSettings: {},
-    frontendSettings: {}
+    frontendSettings: {},
+    files: {}
   };
 
-  function createHierarchyPanelElement(instanceId) {
+  function createPanelRoot(className, kind, instanceId) {
     var root = document.createElement('div');
-    root.className = 'sidebar lexera-shared-panel lexera-shared-panel-hierarchy';
-    root.setAttribute('data-shared-panel-kind', 'hierarchy');
+    root.className = className;
+    root.setAttribute('data-shared-panel-kind', kind);
     root.setAttribute('data-shared-panel-instance', instanceId);
+    return root;
+  }
+
+  function createHierarchyPanelElement(instanceId) {
+    var root = createPanelRoot('sidebar lexera-shared-panel lexera-shared-panel-hierarchy', 'hierarchy', instanceId);
     root.innerHTML =
       '<div class="sidebar-header">' +
         '<div class="workspace-select-wrap">' +
@@ -34,10 +41,7 @@
   }
 
   function createDashboardPanelElement(instanceId) {
-    var root = document.createElement('div');
-    root.className = 'sidebar-dashboard lexera-shared-panel lexera-shared-panel-dashboard';
-    root.setAttribute('data-shared-panel-kind', 'dashboard');
-    root.setAttribute('data-shared-panel-instance', instanceId);
+    var root = createPanelRoot('sidebar-dashboard lexera-shared-panel lexera-shared-panel-dashboard', 'dashboard', instanceId);
     root.innerHTML =
       '<div class="sidebar-dashboard-controls">' +
         '<div class="dashboard-query-row">' +
@@ -82,10 +86,7 @@
   }
 
   function createLogsPanelElement(instanceId) {
-    var root = document.createElement('div');
-    root.className = 'log-panel lexera-shared-panel lexera-shared-panel-logs';
-    root.setAttribute('data-shared-panel-kind', 'logs');
-    root.setAttribute('data-shared-panel-instance', instanceId);
+    var root = createPanelRoot('log-panel lexera-shared-panel lexera-shared-panel-logs', 'logs', instanceId);
     root.innerHTML =
       '<div class="log-panel-header">' +
         '<div class="log-panel-header-main">' +
@@ -102,6 +103,14 @@
           '<button class="log-panel-btn lexera-shared-log-clear" title="Clear log" type="button">Clear</button>' +
         '</div>' +
       '</div>' +
+      '<div class="log-panel-status">' +
+        '<span id="status-msg" class="status-msg"></span>' +
+        '<button id="btn-connection-status" class="log-panel-status-btn connection-status-btn disconnected" type="button" title="Backend disconnected. Open backend settings" aria-label="Backend disconnected. Open backend settings">' +
+          '<span id="connection-dot" class="connection-dot" aria-hidden="true"></span>' +
+          '<span class="connection-status-label">Disconnected</span>' +
+        '</button>' +
+        '<button id="btn-inspector" class="log-panel-status-btn" type="button" title="Open Inspector (F12 / Ctrl+Shift+I / Alt+I)">&lt;&gt;</button>' +
+      '</div>' +
       '<div class="log-panel-body">' +
         '<div class="log-panel-main">' +
           '<div class="log-entries lexera-shared-log-entries-backend"></div>' +
@@ -113,20 +122,14 @@
   }
 
   function createBackendSettingsPanelElement(instanceId) {
-    var root = document.createElement('div');
-    root.className = 'shell-settings-panel lexera-shared-panel lexera-shared-panel-backend-settings';
-    root.setAttribute('data-shared-panel-kind', 'backendSettings');
-    root.setAttribute('data-shared-panel-instance', instanceId);
+    var root = createPanelRoot('shell-settings-panel lexera-shared-panel lexera-shared-panel-backend-settings', 'backendSettings', instanceId);
     root.innerHTML =
       '<div class="shell-settings-container lexera-shared-backend-settings-container"></div>';
     return root;
   }
 
   function createFrontendSettingsPanelElement(instanceId) {
-    var root = document.createElement('div');
-    root.className = 'shell-settings-panel frontend-settings-panel lexera-shared-panel lexera-shared-panel-frontend-settings';
-    root.setAttribute('data-shared-panel-kind', 'frontendSettings');
-    root.setAttribute('data-shared-panel-instance', instanceId);
+    var root = createPanelRoot('shell-settings-panel frontend-settings-panel lexera-shared-panel lexera-shared-panel-frontend-settings', 'frontendSettings', instanceId);
     root.innerHTML =
       '<div class="shell-settings-header">' +
         '<span class="shell-settings-title">Frontend Settings</span>' +
@@ -183,12 +186,20 @@
     return root;
   }
 
+  function createFilesPanelElement(instanceId) {
+    var root = createPanelRoot('shell-settings-panel lexera-shared-panel lexera-shared-panel-files', 'files', instanceId);
+    root.innerHTML =
+      '<div class="shell-settings-container lexera-shared-files-container"></div>';
+    return root;
+  }
+
   var PANEL_FACTORIES = {
     hierarchy: createHierarchyPanelElement,
     dashboard: createDashboardPanelElement,
     logs: createLogsPanelElement,
     backendSettings: createBackendSettingsPanelElement,
-    frontendSettings: createFrontendSettingsPanelElement
+    frontendSettings: createFrontendSettingsPanelElement,
+    files: createFilesPanelElement
   };
 
   function createPanelElement(kind, instanceId) {

@@ -20,14 +20,14 @@ describe('getCanvasStackLayoutBox', () => {
     });
   });
 
-  it('respects explicit canvas params with minimum size guards', () => {
+  it('respects explicit canvas position and width while keeping auto-height fallback', () => {
     expect(CanvasHelpers.getCanvasStackLayoutBox({
       params: { x: '80', y: '140', w: '260', h: '180' }
     }, 0)).toEqual({
       x: 80,
       y: 140,
       w: 260,
-      h: 180
+      h: 220
     });
   });
 
@@ -38,7 +38,7 @@ describe('getCanvasStackLayoutBox', () => {
       x: -80,
       y: -40,
       w: 260,
-      h: 180
+      h: 220
     });
   });
 });

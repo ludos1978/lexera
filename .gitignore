@@ -21,6 +21,7 @@ tests/kanban-graph-tools/Media-kanban-graphs
 tests/kanban-graph-tools/kanban-graphs-*
 logs/
 tests/kanban-include-tests/root/.backups
+tests/**/.lexera-backups/
 tmp
 _Export/
 *-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]/

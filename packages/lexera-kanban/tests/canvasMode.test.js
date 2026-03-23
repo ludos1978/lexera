@@ -1,55 +1,19 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const srcDir = resolve(__dirname, '..', 'src');
+import { loadIIFE } from './load-iife.js';
 
 function loadCanvasModeHelpers() {
-  const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
-  const lines = source.split('\n');
-
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
+  const CanvasMode = loadIIFE('canvas/canvasMode.js', 'LexeraCanvasMode');
+  return CanvasMode.createCanvasModeHelpers({
+    stripHtmlComments(text) {
+      return String(text || '')
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
     }
-    throw new Error('Could not find: ' + pattern);
-  }
-
-  function extractFunction(startLine) {
-    let depth = 0;
-    let started = false;
-    const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
-      result.push(line);
-      for (let c = 0; c < line.length; c++) {
-        if (line[c] === '{') { depth++; started = true; }
-        if (line[c] === '}') depth--;
-      }
-      if (started && depth === 0) break;
-    }
-    return result.join('\n');
-  }
-
-  const wrappedSource = `
-    ${extractFunction(findLine('function normalizeBoardLayoutValue('))}
-    ${extractFunction(findLine('function normalizeCanvasGridValue('))}
-    ${extractFunction(findLine('function stripHtmlComments('))}
-    ${extractFunction(findLine('function parseCanvasParamMap('))}
-    ${extractFunction(findLine('function extractCanvasConnectionSpecs('))}
-    ${extractFunction(findLine('function getCanvasColumnWidthSpec('))}
-
-    return {
-      normalizeBoardLayoutValue,
-      normalizeCanvasGridValue,
-      extractCanvasConnectionSpecs,
-      getCanvasColumnWidthSpec
-    };
-  `;
-
-  return new Function(wrappedSource)();
+  });
 }
 
 let CanvasModeHelpers;

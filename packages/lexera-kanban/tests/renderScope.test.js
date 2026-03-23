@@ -1,38 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const srcDir = resolve(__dirname, '..', 'src');
+import { loadIIFE } from './load-iife.js';
 
 function loadRenderScopeHelpers() {
-  const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
-  const lines = source.split('\n');
-
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
-    }
-    throw new Error('Could not find: ' + pattern);
-  }
-
-  function extractRegion(startPattern, endPattern) {
-    const startLine = findLine(startPattern);
-    const endLine = findLine(endPattern);
-    return lines.slice(startLine - 1, endLine - 1).join('\n');
-  }
-
-  const wrappedSource = `
-    ${extractRegion('function renderTitleInline(', 'function renderTable(')}
-    ${extractRegion('function renderInline(', 'function getTemporalTagType(')}
-
-    return {
-      renderTitleInline,
-      renderInline
-    };
-  `;
-
   function stashRenderedHtmlToken(htmlTokens, html) {
     const token = '@@HTMLTOKEN' + htmlTokens.length + '@@';
     htmlTokens.push(String(html || ''));
@@ -60,83 +29,47 @@ function loadRenderScopeHelpers() {
     return escapeHtml(value);
   }
 
-  const factory = new Function(
-    'activeBoardId',
-    'extractAngleBracketAutolinks',
-    'stripHtmlComments',
-    'escapeHtml',
-    'stashRenderedHtmlToken',
-    'restoreRenderedHtmlTokens',
-    'renderIncludeDirectiveHtml',
-    'parseMarkdownTarget',
-    'escapeAttr',
-    'renderBoardFileLinkHtml',
-    'buildAngleBracketAutolinkHtml',
-    'decodeHtmlEntities',
-    'renderWikiLinkHtml',
-    'getTagColor',
-    'renderTemporalTagHtml',
-    'renderEmojiShortcodes',
-    'getHtmlContentRenderMode',
-    'parseLocalFileReference',
-    'normalizeMarkdownAttrValue',
-    'parseMarkdownImageAttributes',
-    'getFileExtension',
-    'isExternalHttpUrl',
-    'getExternalEmbedConfig',
-    'getInlineFileEmbedExtension',
-    'getMediaCategory',
-    'inferExternalMediaCategoryFromUrl',
-    'LexeraApi',
-    'getMarkdownMediaStyleAttr',
-    'getEmbedPreviewKind',
-    'renderInlineFileEmbedHtml',
-    'getFileEmbedChipHtml',
-    'getDisplayFileNameFromPath',
-    'isRenderedSpecialPreviewKind',
-    'applyAbbreviationsToHtml',
-    wrappedSource
-  );
-
-  return factory(
-    '',
-    (text) => ({ text: String(text || ''), links: [] }),
-    (text) => String(text || ''),
+  const InlineRenderer = loadIIFE('render/inlineRenderer.js', 'LexeraInlineRenderer');
+  return InlineRenderer.createInlineRenderers({
+    getActiveBoardId: () => '',
+    extractAngleBracketAutolinks: (text) => ({ text: String(text || ''), links: [] }),
+    stripHtmlComments: (text) => String(text || ''),
     escapeHtml,
     stashRenderedHtmlToken,
     restoreRenderedHtmlTokens,
-    (rawPath) => '<include path="' + escapeAttr(rawPath) + '"></include>',
-    (raw) => ({ path: String(raw || '').trim(), title: '' }),
+    renderIncludeDirectiveHtml: (rawPath) => '<include path="' + escapeAttr(rawPath) + '"></include>',
+    parseMarkdownTarget: (raw) => ({ path: String(raw || '').trim(), title: '' }),
     escapeAttr,
-    (href, _boardId, label) => '<board-link href="' + escapeAttr(href) + '">' + escapeHtml(label) + '</board-link>',
-    (href) => '<a href="' + escapeAttr(href) + '">' + escapeHtml(href) + '</a>',
-    (value) => String(value || ''),
-    (_documentName, label) => '<wiki-link>' + escapeHtml(label) + '</wiki-link>',
-    () => '#336699',
-    (tag) => '<time-tag>' + escapeHtml(tag) + '</time-tag>',
-    (value) => String(value || ''),
-    () => 'text',
-    (path) => ({ path: String(path || ''), pageNumber: null }),
-    (value) => String(value || ''),
-    () => ({ values: {} }),
-    (path) => {
+    renderBoardFileLinkHtml: (href, _boardId, label) => '<board-link href="' + escapeAttr(href) + '">' + escapeHtml(label) + '</board-link>',
+    buildAngleBracketAutolinkHtml: (href) => '<a href="' + escapeAttr(href) + '">' + escapeHtml(href) + '</a>',
+    decodeHtmlEntities: (value) => String(value || ''),
+    renderWikiLinkHtml: (_documentName, label) => '<wiki-link>' + escapeHtml(label) + '</wiki-link>',
+    renderTagChipHtml: (tag) => '<tag-chip>' + escapeHtml(tag) + '</tag-chip>',
+    renderTemporalTagHtml: (tag) => '<time-tag>' + escapeHtml(tag) + '</time-tag>',
+    renderEmojiShortcodes: (value) => String(value || ''),
+    getHtmlContentRenderMode: () => 'text',
+    parseLocalFileReference: (path) => ({ path: String(path || ''), pageNumber: null }),
+    normalizeMarkdownAttrValue: (value) => String(value || ''),
+    parseMarkdownImageAttributes: () => ({ values: {} }),
+    getFileExtension: (path) => {
       const parts = String(path || '').split('.');
       return parts.length > 1 ? parts.pop().toLowerCase() : '';
     },
-    () => false,
-    () => null,
-    () => '',
-    (ext) => (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext) ? 'image' : 'unknown'),
-    () => null,
-    { fileUrl: (boardId, path) => '/file/' + boardId + '/' + path },
-    () => '',
-    () => '',
-    () => '<inline-file></inline-file>',
-    () => '<file-chip></file-chip>',
-    (path) => String(path || '').split('/').pop() || '',
-    () => false,
-    (html) => html
-  );
+    isExternalHttpUrl: () => false,
+    getExternalEmbedConfig: () => null,
+    getInlineFileEmbedExtension: () => '',
+    getMediaCategory: (ext) => (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext) ? 'image' : 'unknown'),
+    inferExternalMediaCategoryFromUrl: () => null,
+    LexeraApi: { fileUrl: (boardId, path) => '/file/' + boardId + '/' + path },
+    getMarkdownMediaStyleAttr: () => '',
+    getEmbedPreviewKind: () => '',
+    renderInlineFileEmbedHtml: () => '<inline-file></inline-file>',
+    getFileEmbedChipHtml: () => '<file-chip></file-chip>',
+    getDisplayFileNameFromPath: (path) => String(path || '').split('/').pop() || '',
+    isRenderedSpecialPreviewKind: () => false,
+    applyAbbreviationsToHtml: (html) => html,
+    sanitizeCssLength: (value) => String(value || '').trim(),
+  });
 }
 
 let RenderScopeHelpers;

@@ -16,6 +16,7 @@
   var sseSource = null;
   var fallbackConnectionsInterval = null;
   var fallbackPeersInterval = null;
+  var BackendDiscovery = window.LexeraBackendDiscovery || null;
 
   // Apply theme immediately from localStorage to avoid flash of wrong theme
   if (typeof applyLexeraTheme === 'function') {
@@ -24,92 +25,31 @@
 
   // ── Backend Discovery ──
 
-  function fetchWithTimeout(url, options, timeoutMs) {
-    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    var timeoutId = null;
-    var requestOptions = Object.assign({}, options || {});
-    if (controller) {
-      requestOptions.signal = controller.signal;
-      if (typeof timeoutMs === 'number' && timeoutMs > 0) {
-        timeoutId = setTimeout(function () { controller.abort(); }, timeoutMs);
+  async function discoverBackend() {
+    if (BackendDiscovery && typeof BackendDiscovery.discoverBackend === 'function') {
+      try {
+        return await BackendDiscovery.discoverBackend({
+          preferredUrl: initialBackendUrl,
+          useTauri: true,
+          timeoutMs: 1200
+        });
+      } catch (e) {
+        /* fall through */
       }
     }
-    return fetch(url, requestOptions).finally(function () {
-      if (timeoutId) clearTimeout(timeoutId);
-    });
-  }
-
-  function normalizeBackendUrl(url) {
-    if (!url) return '';
-    try {
-      var parsed = new URL(url);
-      var port = parsed.port ? ':' + parsed.port : '';
-      return parsed.protocol + '//' + parsed.hostname + port;
-    } catch (e) {
-      return '';
-    }
-  }
-
-  function buildBackendUrlVariants(url) {
-    var normalized = normalizeBackendUrl(url);
-    if (!normalized) return [];
-    var variants = [];
-    var seen = Object.create(null);
-    function push(candidate) {
-      var key = normalizeBackendUrl(candidate);
-      if (!key || seen[key]) return;
-      seen[key] = true;
-      variants.push(key);
-    }
-    push(normalized);
-    try {
-      var parsed = new URL(normalized);
-      if (parsed.hostname === 'localhost') { parsed.hostname = '127.0.0.1'; push(parsed.toString()); }
-      else if (parsed.hostname === '127.0.0.1') { parsed.hostname = 'localhost'; push(parsed.toString()); }
-    } catch (e) {}
-    return variants;
-  }
-
-  async function probeBackendCandidate(url, source, timeoutMs) {
-    var variants = buildBackendUrlVariants(url);
-    for (var i = 0; i < variants.length; i++) {
-      try {
-        var res = await fetchWithTimeout(variants[i] + '/status', {}, timeoutMs);
-        if (res.ok) {
+    var ports = [13080, 8083, 1431, 12080, 14080, 11080, 15080];
+    for (var i = 0; i < ports.length; i++) {
+      for (var h = 0; h < 2; h++) {
+        var host = h === 0 ? '127.0.0.1' : 'localhost';
+        try {
+          var res = await fetch('http://' + host + ':' + ports[i] + '/status');
+          if (!res.ok) continue;
           var data = await res.json();
           if (data.status === 'running') {
-            var resolved = normalizeBackendUrl(variants[i]);
-            if (data.port) {
-              try {
-                var p = new URL(resolved);
-                p.port = String(data.port);
-                resolved = normalizeBackendUrl(p.toString());
-              } catch (_) {}
-            }
-            return resolved;
+            return 'http://' + host + ':' + (data.port || ports[i]);
           }
-        }
-      } catch (e) {}
-    }
-    return null;
-  }
-
-  async function discoverBackend() {
-    if (initialBackendUrl) {
-      var m = await probeBackendCandidate(initialBackendUrl, 'query', 2000);
-      if (m) return m;
-    }
-    try {
-      if (window.__TAURI_INTERNALS__) {
-        var url = await window.__TAURI_INTERNALS__.invoke('get_backend_url');
-        var tm = await probeBackendCandidate(url, 'tauri-invoke', 2000);
-        if (tm) return tm;
+        } catch (e) {}
       }
-    } catch (e) {}
-    var ports = [13080, 12080, 14080, 11080, 15080];
-    for (var i = 0; i < ports.length; i++) {
-      var sm = await probeBackendCandidate('http://localhost:' + ports[i], 'port-scan', 1000);
-      if (sm) return sm;
     }
     return null;
   }
@@ -226,6 +166,11 @@
 
       ManagementUI.init({
         container: document.getElementById('management-container'),
+        ui: {
+          topTabs: ['sharing', 'network', 'logs'],
+          defaultTopTab: 'network',
+          themeEnabled: false
+        },
         api: {
           get: apiGet,
           post: apiPost,

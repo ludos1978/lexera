@@ -7,7 +7,7 @@
 | **Core Data** | [Types](shared/types/SPEC.md), [Parser](shared/parser/SPEC.md), [Markdown](shared/markdown/SPEC.md) |
 | **Core Logic** | [Gather](core/gather/SPEC.md), [State Machine](core/statemachine/SPEC.md), [Mutations](core/mutations/SPEC.md) |
 | **Board UX** | [Board Renderer](core/board/SPEC.md), [Editor](core/editor/SPEC.md) |
-| **Interaction** | [Drag/Drop](ux/dragdrop/SPEC.md), [Menus](ux/menus/SPEC.md), [Search](ux/search/SPEC.md), [Export](ux/export/SPEC.md), [Actions](ux/actions/SPEC.md), [Menu Contributors](ux/menu-contributors/SPEC.md), [Board Settings](ux/board-settings/SPEC.md) |
+| **Interaction** | [Drag/Drop](ux/dragdrop/SPEC.md), [Menus](ux/menus/SPEC.md), [Search](ux/search/SPEC.md), [Export](ux/export/SPEC.md), [Actions](ux/actions/SPEC.md), [Menu Contributors](ux/menu-contributors/SPEC.md), [Board Settings](ux/board-settings/SPEC.md), [Panels](ux/panels/SPEC.md) |
 | **Services** | [API](services/api/SPEC.md), [Save & Recovery](services/save/SPEC.md), [Board Registry](services/boardregistry/SPEC.md), [Keybinding](services/keybinding/SPEC.md), [Notification](services/notification/SPEC.md), [Media Tracker](services/mediatracker/SPEC.md) |
 | **Plugins** | [Content System](plugins/content/SPEC.md), [Registry](plugins/registry/SPEC.md), [Diagram Registry](plugins/diagram/SPEC.md), [Enhancer Pipeline](plugins/enhancer/SPEC.md) |
 | **Sync** | [Sync & Collaboration](sync/SPEC.md) |

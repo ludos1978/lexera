@@ -95,6 +95,10 @@
 .workspace-shell-panel-dock.is-visible {
   display: flex;
 }
+/* Hover-expanding dock must paint above the center dock (also z-index 30) */
+.workspace-shell-panel-dock.is-fold-hover {
+  z-index: 60;
+}
 
 .workspace-shell-panel-dock[data-dock="left"],
 .workspace-shell-panel-dock[data-dock="right"] {
@@ -174,70 +178,94 @@
   border-top: 1px solid var(--border);
 }
 
-/* Pin/unpin toggle */
-.ws-fold-pin {
+/* Status bar in fold strip: show inline for bottom dock, hide for side docks */
+.ws-fold-strip .log-panel-status {
+  display: none;
+}
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"] > .ws-fold-strip .log-panel-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+  font-size: 11px;
+  height: 100%;
+}
+.ws-fold-strip .log-panel-status .status-msg {
+  max-width: 160px;
+}
+.ws-fold-strip .log-panel-status .log-panel-status-btn {
+  height: 16px;
+  font-size: 10px;
+  padding: 0 4px;
+}
+
+/* Fold zone: each panel gets a proportional hover area in the strip.
+ * Hovering a zone expands the dock overlay and activates that panel. */
+.ws-fold-zone {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.ws-fold-zone:hover {
+  background: var(--bg-hover);
+}
+
+/* Fold indicator icon inside a zone */
+.ws-fold-indicator {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
-  opacity: 0.6;
-}
-.ws-fold-pin:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  opacity: 1;
-}
-
-/* Panel indicator in fold strip */
-.ws-fold-indicator {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--text-muted);
+  width: 14px;
+  height: 14px;
   font-size: 10px;
+  color: var(--text-muted);
   line-height: 1;
-  cursor: pointer;
-  padding: 0;
-}
-.ws-fold-indicator:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
 }
 .ws-fold-indicator.is-active {
   color: var(--text-primary);
 }
+.ws-fold-zone:hover .ws-fold-indicator {
+  color: var(--text-primary);
+}
 
-/* Vertical labels for left/right fold strips */
-.ws-fold-label {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
+/* Zone label: panel title, rotated for side docks */
+.ws-fold-zone-label {
   font-size: 10px;
   color: var(--text-muted);
   letter-spacing: 0.04em;
   white-space: nowrap;
   overflow: hidden;
-  padding: 4px 0;
-  cursor: default;
+  text-overflow: ellipsis;
 }
-.workspace-shell-panel-dock.is-folded[data-dock="bottom"] .ws-fold-label {
+.ws-fold-zone:hover .ws-fold-zone-label {
+  color: var(--text-primary);
+}
+.workspace-shell-panel-dock.is-folded[data-dock="left"] .ws-fold-zone,
+.workspace-shell-panel-dock.is-folded[data-dock="right"] .ws-fold-zone {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 6px 0;
+}
+/* Left/right docks: vertical label */
+.workspace-shell-panel-dock.is-folded[data-dock="left"] .ws-fold-zone-label,
+.workspace-shell-panel-dock.is-folded[data-dock="right"] .ws-fold-zone-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+/* Bottom dock: horizontal label */
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"] .ws-fold-zone-label {
   writing-mode: horizontal-tb;
-  padding: 0 4px;
 }
 
 /* Custom fold content for specific panels */
@@ -266,6 +294,13 @@
   background: #ef4444;
 }
 
+.ws-fold-indicator.is-drag-handle {
+  font-size: 9px;
+  letter-spacing: -2px;
+  width: 18px;
+  height: 18px;
+}
+
 /* Folded dock hides normal content, only shows strip */
 .workspace-shell-panel-dock.is-folded > .workspace-shell-tabset,
 .workspace-shell-panel-dock.is-folded > .workspace-shell-split,
@@ -290,40 +325,49 @@
   flex-direction: column;
 }
 
-.workspace-shell-panel-dock.is-folded.is-fold-hover > .workspace-shell-tabset,
-.workspace-shell-panel-dock.is-folded.is-fold-hover > .workspace-shell-split,
+/* Hover/pinned overlay: show tree content as absolute overlay.
+ * Shared positioning — tabsets get flex, splits get grid. */
 .workspace-shell-panel-dock.is-folded.is-fold-hover > .workspace-shell-node,
-.workspace-shell-panel-dock.is-folded.is-fold-pinned > .workspace-shell-tabset,
-.workspace-shell-panel-dock.is-folded.is-fold-pinned > .workspace-shell-split,
 .workspace-shell-panel-dock.is-folded.is-fold-pinned > .workspace-shell-node {
-  display: flex;
   position: absolute;
   z-index: 51;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
 }
+.workspace-shell-panel-dock.is-folded.is-fold-hover > .workspace-shell-tabset,
+.workspace-shell-panel-dock.is-folded.is-fold-pinned > .workspace-shell-tabset {
+  display: flex;
+}
+.workspace-shell-panel-dock.is-folded.is-fold-hover > .workspace-shell-split,
+.workspace-shell-panel-dock.is-folded.is-fold-pinned > .workspace-shell-split {
+  display: grid;
+}
 
+/* Shrink-to-fit: only one edge set, no width → element sizes to content */
 .workspace-shell-panel-dock.is-folded[data-dock="left"].is-fold-hover > .workspace-shell-node,
 .workspace-shell-panel-dock.is-folded[data-dock="left"].is-fold-pinned > .workspace-shell-node {
   top: 0;
   left: 22px;
   bottom: 0;
-  width: var(--ws-fold-expand-size, 280px);
+  min-width: 200px;
+  max-width: 60vw;
 }
 .workspace-shell-panel-dock.is-folded[data-dock="right"].is-fold-hover > .workspace-shell-node,
 .workspace-shell-panel-dock.is-folded[data-dock="right"].is-fold-pinned > .workspace-shell-node {
   top: 0;
   right: 22px;
   bottom: 0;
-  width: var(--ws-fold-expand-size, 280px);
+  min-width: 200px;
+  max-width: 60vw;
 }
 .workspace-shell-panel-dock.is-folded[data-dock="bottom"].is-fold-hover > .workspace-shell-node,
 .workspace-shell-panel-dock.is-folded[data-dock="bottom"].is-fold-pinned > .workspace-shell-node {
   left: 0;
   right: 0;
   bottom: 22px;
-  height: var(--ws-fold-expand-size, 200px);
+  min-height: 120px;
+  max-height: 50vh;
 }
 
 /* ── Unified view header (shared by board tabsets + panel docks) ── */
@@ -337,18 +381,26 @@
   overflow: hidden;
 }
 
+/*
+ * SOLO VIEW HEADER
+ * When a view is alone (not tabbed), the header shows: [drag] [title] [close].
+ * Drag is to the left of the filename, close is to the right.
+ * The is-single class hides tabs, showing title + controls in a single row.
+ */
+
 .ws-view-drag {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 18px;
-  min-width: 18px;
+  width: var(--btn-square-size);
+  min-width: var(--btn-square-size);
   height: 100%;
   border: 0;
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-muted);
-  font-size: 9px;
+  color: var(--icon-btn-fg, var(--btn-fg));
+  font-size: var(--icon-glyph-size);
   letter-spacing: -2px;
   cursor: grab;
   padding: 0;
@@ -357,8 +409,8 @@
 }
 
 .ws-view-drag:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
+  color: var(--icon-btn-fg-hover, var(--text-bright));
+  background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
   opacity: 1;
 }
 
@@ -436,15 +488,15 @@
 
 .ws-view-tab-close {
   flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
+  width: var(--btn-square-size);
+  height: var(--btn-square-size);
   border: 0;
   border-radius: 50%;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-size: 13px;
-  line-height: 16px;
+  font-size: var(--icon-glyph-size);
+  line-height: 1;
   text-align: center;
   padding: 0;
   opacity: 0.5;
@@ -465,23 +517,150 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: var(--btn-square-size);
+  height: var(--btn-square-size);
   margin-left: auto;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-dim);
-  font-size: 16px;
+  color: var(--icon-btn-fg, var(--btn-fg));
+  font-size: var(--icon-glyph-size);
   cursor: pointer;
-  opacity: 0.5;
-  transition: opacity 0.15s, background 0.15s;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
   padding: 0;
 }
 .ws-view-fold:hover {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--text-bright);
+  background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
+  color: var(--icon-btn-fg-hover, var(--text-bright));
   opacity: 1;
+}
+.ws-view-fold.is-folded {
+  transform: rotate(-90deg);
+}
+
+/*
+ * FOLD SYSTEM
+ *
+ * Fold rules:
+ *   - Views in left/right docks fold to a vertical bar (narrow width column).
+ *   - Views in top/bottom docks fold to a horizontal bar (narrow height row).
+ *   - The same rules apply in the center tree: vertical splits → vertical bar,
+ *     horizontal splits → horizontal bar.
+ *   - Left/right dock fold uses collapseDock (dock-level, 22px strip).
+ *     Bottom dock and center tree use pane-level fold (ratio within split, 28px).
+ *   - Close button removes the view entirely (distinct from fold).
+ *
+ * Hover-to-preview:
+ *   - Each view in a folded bar has a proportional hover zone.
+ *   - Hovering a zone temporarily expands the view for preview and editing.
+ *   - The expanded area closes when the mouse leaves.
+ *   - Dock-level: fold strip zones → per-panel overlay via is-fold-hover (JS).
+ *   - Pane-level: CSS :hover on is-pane-folded → absolute-positioned overlay.
+ *     Horizontal fold → content drops down (200px). Vertical fold → slides right (280px).
+ *
+ * Classes:
+ *   .is-pane-folded            — base: hides content
+ *   .is-pane-folded-horizontal — horizontal bar (28px height), hover drops down
+ *   .is-pane-folded-vertical   — vertical bar (28px width, header rotated), hover slides right
+ *   .ws-fold-zone              — proportional hover zone in fold strip (dock-level)
+ *   .is-fold-hover             — dock-level hover expansion active
+ */
+.workspace-shell-split-pane.is-pane-folded {
+  overflow: hidden;
+}
+.workspace-shell-split-pane.is-pane-folded .workspace-shell-panel-content,
+.workspace-shell-split-pane.is-pane-folded .workspace-shell-pane-content {
+  display: none;
+}
+
+/* Vertical fold: narrow column with rotated header text */
+.workspace-shell-split-pane.is-pane-folded-vertical .ws-view-header {
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+  white-space: nowrap;
+  height: 100%;
+  width: 28px;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 2px;
+}
+.workspace-shell-split-pane.is-pane-folded-vertical .ws-view-header .ws-view-tab {
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+}
+.workspace-shell-split-pane.is-pane-folded-vertical .ws-view-fold {
+  transform: rotate(0deg);
+  margin-left: 0;
+  margin-top: auto;
+}
+
+/* Hover-to-preview: folded pane overlays content on hover.
+ * The pane stays at its grid-assigned 28px; content floats via absolute position. */
+.workspace-shell-split-pane.is-pane-folded {
+  position: relative;
+  z-index: 1;
+}
+.workspace-shell-split-pane.is-pane-folded:hover {
+  z-index: 100;
+  overflow: visible;
+}
+
+/* Horizontal fold hover: content drops down from the 28px bar */
+.workspace-shell-split-pane.is-pane-folded-horizontal:hover .workspace-shell-panel-content,
+.workspace-shell-split-pane.is-pane-folded-horizontal:hover .workspace-shell-pane-content {
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 28px;
+  bottom: auto;
+  min-height: 120px;
+  max-height: 50vh;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  z-index: 100;
+  overflow: auto;
+}
+
+/* Vertical fold hover: header reverts to horizontal, content slides out to the side */
+.workspace-shell-split-pane.is-pane-folded-vertical:hover .ws-view-header {
+  writing-mode: horizontal-tb;
+  text-orientation: initial;
+  width: auto;
+  height: auto;
+  flex-direction: row;
+  padding: 2px 4px;
+}
+.workspace-shell-split-pane.is-pane-folded-vertical:hover .ws-view-header .ws-view-tab {
+  writing-mode: horizontal-tb;
+  text-orientation: initial;
+}
+.workspace-shell-split-pane.is-pane-folded-vertical:hover .ws-view-fold {
+  margin-left: auto;
+  margin-top: 0;
+}
+.workspace-shell-split-pane.is-pane-folded-vertical:hover .workspace-shell-panel-content,
+.workspace-shell-split-pane.is-pane-folded-vertical:hover .workspace-shell-pane-content {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 28px;
+  right: auto;
+  bottom: 0;
+  min-width: 200px;
+  max-width: 60vw;
+  height: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  box-shadow: 4px 0 12px rgba(0,0,0,0.25);
+  z-index: 100;
+  overflow: auto;
 }
 
 .ws-view-close {
@@ -489,15 +668,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: var(--btn-square-size);
+  height: var(--btn-square-size);
   margin-left: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-muted);
+  color: var(--icon-btn-fg, var(--btn-fg));
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--icon-glyph-size);
   line-height: 1;
   padding: 0;
   opacity: 0.7;
@@ -931,10 +1110,6 @@ body.workspace-shell-mode .workspace-shell-panel-content > .shell-settings-panel
 
 body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-shell-panel-content {
   border-top: 0;
-}
-
-body.workspace-shell-detached .status-bar {
-  opacity: 0.88;
 }
 
 @media (max-width: 960px) {

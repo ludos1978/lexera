@@ -91,6 +91,7 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&MenuItemBuilder::with_id("view-panel-hierarchy", "Workspaces").build(app)?)
         .item(&MenuItemBuilder::with_id("view-panel-dashboard", "Dashboard").build(app)?)
         .item(&MenuItemBuilder::with_id("view-panel-logs", "Logs").build(app)?)
+        .item(&MenuItemBuilder::with_id("view-panel-files", "Files").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("view-panel-backend-settings", "Backend Settings").build(app)?)
         .item(&MenuItemBuilder::with_id("view-panel-frontend-settings", "Frontend Settings").build(app)?)
@@ -332,6 +333,7 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("view-panel-logs", "reveal-panel:logs"),
     ("view-panel-backend-settings", "reveal-panel:backendSettings"),
     ("view-panel-frontend-settings", "reveal-panel:frontendSettings"),
+    ("view-panel-files", "reveal-panel:files"),
     // View – fold
     ("view-fold-cards", "toggle-fold-cards"),
     ("view-fold-columns", "toggle-fold-columns"),

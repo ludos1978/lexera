@@ -1050,6 +1050,9 @@ impl LocalStorage {
             .get_board_path(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
         let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        // Capture the original format hint before normalize_board_for_write()
+        // calls reconcile_format_hint() which promotes Legacy→New.
+        let originally_legacy = board.format_hint == crate::types::BoardFormat::Legacy;
         let normalized_board = Self::normalize_board_for_write(board, &board_dir);
         let normalized_base =
             base_board.map(|base| Self::normalize_board_for_write(base, &board_dir));
@@ -1249,13 +1252,12 @@ impl LocalStorage {
         );
 
         // Legacy-format boards: redirect writes to a new file so the original
-        // is never overwritten.  The check on has_explicit_hierarchy() allows
-        // boards that the user promoted to new format (added rows/stacks) to
-        // write back to the original path.  Subsequent saves already target the
-        // `-lexera2.md` path.
+        // v1 file is never overwritten.  We use `originally_legacy` (captured
+        // before reconcile_format_hint promotes Legacy→New) so the redirect
+        // fires even after the frontend migrates the board to row/stack
+        // hierarchy.  Subsequent saves already target the `-lexera2.md` path.
         let file_path_str = file_path.to_string_lossy();
-        let is_legacy_redirect = board_to_write.format_hint == crate::types::BoardFormat::Legacy
-            && !board_to_write.has_explicit_hierarchy()
+        let is_legacy_redirect = originally_legacy
             && !file_path_str.contains("-lexera2");
         let (actual_path, redirected_path) = if is_legacy_redirect {
             let stem = file_path
@@ -4240,7 +4242,6 @@ kanban-plugin: board
         assert_eq!(board.rows.len(), 1);
         assert_eq!(board.rows[0].stacks.len(), 1);
         assert_eq!(board.rows[0].stacks[0].columns.len(), 1);
-        board.format_hint = BoardFormat::Legacy;
 
         board.rows[0].stacks[0].columns.push(KanbanColumn {
             id: "col-empty".to_string(),
@@ -4302,7 +4303,7 @@ kanban-plugin: board
     }
 
     #[test]
-    fn test_write_board_legacy_upgrades_when_explicit_hierarchy_is_added() {
+    fn test_write_board_legacy_redirects_to_lexera2_file() {
         let legacy_md = "\
 ---
 kanban-plugin: board
@@ -4313,6 +4314,7 @@ kanban-plugin: board
 ";
         let dir = tempdir().unwrap();
         let board_path = dir.path().join("legacy-upgrade-to-hierarchy.md");
+        let redirected_path = dir.path().join("legacy-upgrade-to-hierarchy-lexera2.md");
         fs::write(&board_path, legacy_md).unwrap();
 
         let storage = LocalStorage::new();
@@ -4353,8 +4355,40 @@ kanban-plugin: board
             params: HashMap::new(),
         });
 
-        storage.write_board(&id, &board).unwrap();
+        let write_result = storage.write_board(&id, &board).unwrap();
 
+        // Legacy board must be redirected to -lexera2.md file
+        assert!(
+            write_result.redirected_path.is_some(),
+            "Legacy board write must return a redirected path"
+        );
+        let rp = write_result.redirected_path.unwrap();
+        assert!(
+            rp.ends_with("legacy-upgrade-to-hierarchy-lexera2.md"),
+            "Redirected path must end with -lexera2.md, got: {:?}",
+            rp
+        );
+
+        // Original v1 file must be untouched
+        let original_on_disk = fs::read_to_string(&board_path).unwrap();
+        assert!(
+            original_on_disk.contains("## Todo"),
+            "Original v1 file must not be overwritten"
+        );
+        assert!(
+            !original_on_disk.contains("# Sprint 1"),
+            "Original v1 file must not contain v2 format"
+        );
+
+        // New file must contain the v2 format
+        let on_disk = fs::read_to_string(&redirected_path).unwrap();
+        assert!(on_disk.contains("# Sprint 1"));
+        assert!(on_disk.contains("## Frontend"));
+        assert!(on_disk.contains("### Done"));
+        assert!(on_disk.contains("# Sprint 2"));
+        assert!(on_disk.contains("## Backend"));
+
+        // In-memory board state must point to the new file
         let board2 = storage.read_board(&id).unwrap();
         assert!(board2.valid);
         assert_eq!(board2.format_hint, BoardFormat::New);
@@ -4366,12 +4400,12 @@ kanban-plugin: board
         assert_eq!(board2.rows[1].stacks[0].title, "Backend");
         assert_eq!(board2.rows[1].stacks[0].columns[0].title, "Backlog");
 
-        let on_disk = fs::read_to_string(&board_path).unwrap();
-        assert!(on_disk.contains("# Sprint 1"));
-        assert!(on_disk.contains("## Frontend"));
-        assert!(on_disk.contains("### Done"));
-        assert!(on_disk.contains("# Sprint 2"));
-        assert!(on_disk.contains("## Backend"));
+        // Subsequent saves must go to the -lexera2.md file (no double redirect)
+        let write_result2 = storage.write_board(&id, &board2).unwrap();
+        assert!(
+            write_result2.redirected_path.is_none(),
+            "Second save must NOT redirect again"
+        );
     }
 
     #[test]

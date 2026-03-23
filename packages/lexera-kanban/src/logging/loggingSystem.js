@@ -10,10 +10,12 @@ var backendLogLoaded = false;
 var backendLogEventSource = null;
 var backendLogConnectPending = false;
 var backendLogEmptySnapshotRetries = 0;
+var backendConnectionState = false;
+var lastStatusText = '';
+var lastStatusLevel = '';
 var FRONTEND_BUILD_STAMP = '20260305-1528-remote-join-persistence';
 
 var elStatusMsg = null;
-var elStatusBar = null;
 var elLogEntriesBackend = null;
 var elLogEntriesFrontend = null;
 var elLogPanel = null;
@@ -26,7 +28,6 @@ var elLogCopyBtn = null;
 var elLogClearBtn = null;
 
 function getElStatusMsg() { return elStatusMsg || (elStatusMsg = document.getElementById('status-msg')); }
-function getElStatusBar() { return elStatusBar || (elStatusBar = document.getElementById('status-bar')); }
 function getElLogEntriesBackend() { return elLogEntriesBackend || (elLogEntriesBackend = document.getElementById('log-entries-backend')); }
 function getElLogEntriesFrontend() { return elLogEntriesFrontend || (elLogEntriesFrontend = document.getElementById('log-entries-frontend')); }
 function getElLogPanel() { return elLogPanel || (elLogPanel = document.getElementById('log-panel')); }
@@ -58,6 +59,71 @@ function getSharedLogRoots() {
   var registry = window.LexeraSharedPanels;
   if (!registry || typeof registry.getRoots !== 'function') return [];
   return registry.getRoots('logs');
+}
+
+function getAllLogStatusContainers() {
+  return Array.prototype.slice.call(document.querySelectorAll('.log-panel-status'));
+}
+
+function getAllLogStatusMessages() {
+  return getAllLogStatusContainers().map(function (container) {
+    return container.querySelector('.status-msg');
+  }).filter(function (el) { return !!el; });
+}
+
+function getAllConnectionStatusButtons() {
+  return Array.prototype.slice.call(document.querySelectorAll('.log-panel-status .connection-status-btn'));
+}
+
+function syncStatusContainerLevel(container, level) {
+  if (!container) return;
+  container.classList.remove('status-warn', 'status-error', 'status-info');
+  if (level === 'warn' || level === 'error' || level === 'info') {
+    container.classList.add('status-' + level);
+  }
+}
+
+function syncAllLogStatusMessages() {
+  var messages = getAllLogStatusMessages();
+  for (var i = 0; i < messages.length; i++) {
+    messages[i].textContent = lastStatusText;
+    syncStatusContainerLevel(messages[i].parentElement, lastStatusLevel);
+  }
+}
+
+function syncConnectionStatusButtonState(buttonEl, state) {
+  if (!buttonEl) return;
+  var isConnected = !!state;
+  var title = isConnected
+    ? 'Backend connected. Open backend settings'
+    : 'Backend disconnected. Open backend settings';
+  buttonEl.classList.toggle('connected', isConnected);
+  buttonEl.classList.toggle('disconnected', !isConnected);
+  buttonEl.setAttribute('data-connection-state', isConnected ? 'connected' : 'disconnected');
+  buttonEl.title = title;
+  buttonEl.setAttribute('aria-label', title);
+  var labelEl = buttonEl.querySelector('.connection-status-label');
+  if (labelEl) labelEl.textContent = isConnected ? 'Connected' : 'Disconnected';
+  var dotEl = buttonEl.querySelector('.connection-dot');
+  if (dotEl) {
+    dotEl.classList.toggle('connected', isConnected);
+    dotEl.classList.toggle('disconnected', !isConnected);
+  }
+}
+
+function syncAllConnectionStatusButtons() {
+  var buttons = getAllConnectionStatusButtons();
+  for (var i = 0; i < buttons.length; i++) {
+    syncConnectionStatusButtonState(buttons[i], backendConnectionState);
+  }
+}
+
+function setLogBackendConnectionState(state) {
+  backendConnectionState = !!state;
+  syncAllConnectionStatusButtons();
+  window.dispatchEvent(new CustomEvent('lexera-backend-connection-state-changed', {
+    detail: { connected: backendConnectionState }
+  }));
 }
 
 function getMirroredLogViews() {
@@ -145,6 +211,8 @@ function syncMirroredLogViews() {
     if (view.titleEl) view.titleEl.textContent = titleText;
     if (view.tabsEl) view.tabsEl.style.display = canonicalTabs ? canonicalTabs.style.display : '';
   }
+  syncAllLogStatusMessages();
+  syncAllConnectionStatusButtons();
 }
 
 window.addEventListener('lexera-shared-panel-created', function (event) {
@@ -291,12 +359,10 @@ function logEntryKey(entry) {
 }
 
 function setStatusBarEntry(source, entry) {
-  var statusMsg = getElStatusMsg();
-  var statusBar = getElStatusBar();
-  if (!statusMsg || !statusBar) return;
   var prefix = source === 'backend' ? '[backend] ' : '';
-  statusMsg.textContent = prefix + entry.message;
-  statusBar.className = 'status-bar status-' + entry.level;
+  lastStatusText = prefix + entry.message;
+  lastStatusLevel = entry.level || '';
+  syncAllLogStatusMessages();
 }
 
 function renderLogEntry(source, entry) {
@@ -616,6 +682,16 @@ function connectBackendLogStreamIfReady() {
 }
 
 window.connectBackendLogStreamIfReady = connectBackendLogStreamIfReady;
+window.setLogBackendConnectionState = setLogBackendConnectionState;
+
+document.addEventListener('click', function (event) {
+  var connectionBtn = event.target && event.target.closest ? event.target.closest('.log-panel-status .connection-status-btn') : null;
+  if (connectionBtn) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof window.openConnectionWindow === 'function') window.openConnectionWindow();
+  }
+});
 
 // Intercept console.log/warn/error
 (function () {
@@ -668,14 +744,6 @@ document.addEventListener('DOMContentLoaded', function () {
   var frontendTab = getElLogTabFrontend();
   updateAppBottomInset();
 
-  // Click status bar message area to expand/collapse log panel
-  var statusMsg = document.getElementById('status-msg');
-  if (statusMsg) statusMsg.addEventListener('click', function (e) {
-    e.stopPropagation();
-    if (activeLogSource === 'stats') setActiveLogSource('backend');
-    setLogPanelVisibility(!(panel && !panel.classList.contains('hidden')));
-  });
-
   // Status bar tab handlers are set up in init() where toggleBoardStatsBar is accessible
 
   if (refreshBtn) refreshBtn.addEventListener('click', function (e) {
@@ -709,6 +777,8 @@ document.addEventListener('DOMContentLoaded', function () {
   replaceLogEntries('frontend', frontendLogEntries);
   replaceLogEntries('backend', backendLogEntries);
   setActiveLogSource(activeLogSource);
+  syncAllLogStatusMessages();
+  syncAllConnectionStatusButtons();
   connectBackendLogStreamIfReady();
 });
 

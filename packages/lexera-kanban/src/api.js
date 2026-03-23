@@ -7,6 +7,7 @@ const LexeraApi = (function () {
   let bearerToken = null;
   let bearerTokenPromise = null;
   let recentApiLogAt = Object.create(null);
+  var BackendDiscovery = window.LexeraBackendDiscovery || null;
 
   function formatApiError(error) {
     if (error == null) return String(error);
@@ -45,40 +46,35 @@ const LexeraApi = (function () {
   async function discover() {
     if (baseUrl) return baseUrl;
 
-    // Try Tauri command first (reads shared config file)
-    try {
-      if (window.__TAURI_INTERNALS__) {
-        const url = await window.__TAURI_INTERNALS__.invoke('get_backend_url');
-        if (url) {
-          // Verify the backend is actually running at this URL
-          const res = await fetch(url + '/status', { signal: AbortSignal.timeout(2000) });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.status === 'running') {
-              baseUrl = url;
-              return baseUrl;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      // Fall through to port scanning
-    }
-
-    // Fallback: port scanning (for browser mode or if config read fails)
-    const ports = [13080, 12080, 14080, 11080, 15080];
-    for (const port of ports) {
+    if (BackendDiscovery && typeof BackendDiscovery.discoverBackend === 'function') {
       try {
-        const res = await fetch(`http://localhost:${port}/status`, { signal: AbortSignal.timeout(1000) });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'running') {
-            baseUrl = `http://localhost:${data.port}`;
-            return baseUrl;
-          }
+        var discovered = await BackendDiscovery.discoverBackend({
+          useTauri: true,
+          timeoutMs: 1200
+        });
+        if (discovered) {
+          baseUrl = discovered;
+          return baseUrl;
         }
       } catch (e) {
-        // Try next port
+        // Fall through to inline fallback
+      }
+    }
+
+    const ports = [13080, 8083, 1431, 12080, 14080, 11080, 15080];
+    for (const port of ports) {
+      for (const host of ['127.0.0.1', 'localhost']) {
+        try {
+          const res = await fetch(`http://${host}:${port}/status`, { signal: AbortSignal.timeout(1000) });
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (data.status === 'running') {
+            baseUrl = `http://${host}:${data.port || port}`;
+            return baseUrl;
+          }
+        } catch (e) {
+          // Try next candidate
+        }
       }
     }
     return null;

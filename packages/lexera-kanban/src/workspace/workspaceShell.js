@@ -105,7 +105,8 @@
     dashboard: { id: 'dashboard', title: 'Dashboard', defaultDock: 'right', duplicable: true, integratedHeader: true },
     logs: { id: 'logs', title: 'Logs', defaultDock: 'bottom', duplicable: true, integratedHeader: true },
     backendSettings: { id: 'backendSettings', title: 'Backend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
-    frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true }
+    frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
+    files: { id: 'files', title: 'Files', defaultDock: 'right', duplicable: true, integratedHeader: true }
   };
 
   function createDefaultPanelInstances() {
@@ -114,7 +115,8 @@
       dashboard: { id: 'dashboard', kind: 'dashboard' },
       logs: { id: 'logs', kind: 'logs' },
       backendSettings: { id: 'backendSettings', kind: 'backendSettings' },
-      frontendSettings: { id: 'frontendSettings', kind: 'frontendSettings' }
+      frontendSettings: { id: 'frontendSettings', kind: 'frontendSettings' },
+      files: { id: 'files', kind: 'files' }
     };
   }
 
@@ -201,7 +203,8 @@
       dashboard: true,
       logs: true,
       backendSettings: false,
-      frontendSettings: false
+      frontendSettings: false,
+      files: false
     };
   }
 
@@ -336,6 +339,15 @@
   }
 
   function allTreeIds() { return ['center', 'left', 'right', 'bottom']; }
+
+  function normalizeAllTrees() {
+    var ids = allTreeIds();
+    for (var i = 0; i < ids.length; i++) {
+      var root = getTreeRoot(ids[i]);
+      if (!root) continue;
+      setTreeRoot(ids[i], withNormalizedLeaves(root, ids[i] === 'center'));
+    }
+  }
 
   function findLeafInAllTrees(leafId) {
     var ids = allTreeIds();
@@ -604,6 +616,8 @@
     bottomDockEl: null,
     panelDropOverlayEl: null,
     lastStructureSignature: '',
+    foldedPanes: {},
+    backendConnected: false,
     panelElements: null,
     dragTabId: '',
     dragDroppedInternally: false,
@@ -822,7 +836,8 @@
         panelVisibility: state.panelVisibility,
         activePanelId: state.activePanelId || '',
         activeLeafId: state.activeLeafId || '',
-        dockTree: serializeNode(state.dockTree)
+        dockTree: serializeNode(state.dockTree),
+        foldedPanes: state.foldedPanes
       }));
     } catch (_) {
       // ignore persistence failures
@@ -858,6 +873,7 @@
       syncIntegratedPanelVisibility();
       state.activePanelId = resolvePanelTarget(parsed.activePanelId) || state.activePanelId;
       state.activeLeafId = String(parsed.activeLeafId || '');
+      state.foldedPanes = (parsed.foldedPanes && typeof parsed.foldedPanes === 'object') ? parsed.foldedPanes : {};
       ensureActiveLeaf();
       return true;
     } catch (_) {
@@ -975,24 +991,7 @@
     }
   }
 
-  function getDockVisiblePanelIds(dockId) {
-    var panelIds = getVisiblePanelIdsForDock(dockId);
-    if (panelIds.length === 0) return [];
-    return panelIds;
-  }
 
-  function isDockCollapsed(dockId) {
-    return getDockVisiblePanelIds(dockId).length > 0 && state.dockSizes[dockId] === 0;
-  }
-
-  function isPanelInAnyDock(panelId) {
-    var docks = ['left', 'right', 'bottom'];
-    for (var i = 0; i < docks.length; i++) {
-      var tree = state.sideDocks[docks[i]];
-      if (tree && findLeafContainingPanel(tree, panelId)) return true;
-    }
-    return false;
-  }
 
   function restoreDock(dockId, panelId) {
     if (dockId !== 'left' && dockId !== 'right' && dockId !== 'bottom') return false;
@@ -1003,7 +1002,6 @@
     state.dockSizes[dockId] = restoreSize;
     if (panelId) activatePanel(panelId);
     render();
-    persistState();
     return true;
   }
 
@@ -1014,8 +1012,181 @@
     }
     state.dockSizes[dockId] = 0;
     render();
-    persistState();
     return true;
+  }
+
+  function toggleFoldPane(nodeId) {
+    if (state.foldedPanes[nodeId]) return unfoldPane(nodeId);
+    // If this node is in a dock-level collapsed dock, restore the dock
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var treeId = ids[t];
+      if (treeId === 'center') continue;
+      var root = getTreeRoot(treeId);
+      if (!root) continue;
+      if (!findNodeAndParent(root, nodeId) && root.id !== nodeId) continue;
+      if (state.dockSizes[treeId] === 0) return restoreDock(treeId, nodeId);
+    }
+    return foldPane(nodeId);
+  }
+
+  /**
+   * FOLD RULES (keep in sync with CSS comment block in workspaceShell.css):
+   *
+   * Fold direction:
+   *   - Left/right docks → dock-level collapse (vertical bar, 22px strip).
+   *   - Bottom dock → pane-level fold (horizontal bar, 28px tall).
+   *   - Center tree vertical split → pane-level fold (vertical bar, 28px wide).
+   *   - Center tree horizontal split → pane-level fold (horizontal bar, 28px tall).
+   *   - Close button removes the view entirely (separate from fold).
+   *
+   * Hover-to-preview:
+   *   - Each view in a folded bar has a proportional hover zone.
+   *   - Hovering a zone temporarily expands the view for preview/editing.
+   *   - Mouse leave closes the expanded area.
+   *   - Dock-level: fold strip zones + JS (bindFoldHover, per-panel activation).
+   *   - Pane-level: CSS :hover on .is-pane-folded → absolute overlay.
+   *
+   * CSS classes (renderSplit / renderSideDockSplit):
+   *   .is-pane-folded-vertical   — vertical splits (narrow column, hover slides right)
+   *   .is-pane-folded-horizontal — horizontal splits (narrow row, hover drops down)
+   */
+  function foldPane(nodeId) {
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var treeId = ids[t];
+      var root = getTreeRoot(treeId);
+      if (!root) continue;
+      var info = findNodeAndParent(root, nodeId);
+      if (!info) continue;
+      // Left/right docks: always collapse the entire dock (vertical bar, 22px)
+      if (treeId === 'left' || treeId === 'right') return collapseDock(treeId);
+      if (!info.parent || info.parent.type !== 'split') continue;
+      // Bottom dock and center tree: pane-level fold within split
+      state.foldedPanes[nodeId] = info.parent.ratio;
+      if (info.side === 'first') {
+        info.parent.ratio = 0;
+      } else {
+        info.parent.ratio = 1;
+      }
+      render();
+      return true;
+    }
+    // No parent split found — try collapsing the dock this node is in
+    for (var d = 0; d < ids.length; d++) {
+      if (ids[d] === 'center') continue;
+      var dRoot = getTreeRoot(ids[d]);
+      if (dRoot && dRoot.id === nodeId) return collapseDock(ids[d]);
+    }
+    return false;
+  }
+
+  function unfoldPane(nodeId) {
+    var restoreRatio = state.foldedPanes[nodeId];
+    if (restoreRatio == null) return false;
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var root = getTreeRoot(ids[t]);
+      if (!root) continue;
+      var info = findNodeAndParent(root, nodeId);
+      if (!info || !info.parent || info.parent.type !== 'split') continue;
+      info.parent.ratio = restoreRatio;
+      delete state.foldedPanes[nodeId];
+      render();
+      return true;
+    }
+    delete state.foldedPanes[nodeId];
+    return false;
+  }
+
+  function addTabToDock(dockId, tab, opts) {
+    var method = typeof opts === 'string' ? opts : (opts && opts.method || 'push');
+    var activate = typeof opts === 'string' ? true : (opts ? opts.activate !== false : true);
+    var dockTree = state.sideDocks[dockId];
+    if (dockTree) {
+      var firstLeaf = getFirstLeaf(dockTree);
+      if (firstLeaf) {
+        if (method === 'unshift') firstLeaf.tabs.unshift(tab);
+        else firstLeaf.tabs.push(tab);
+        if (activate) firstLeaf.activeTabId = tab.id;
+      } else {
+        state.sideDocks[dockId] = createTabsetNode([tab]);
+      }
+    } else {
+      state.sideDocks[dockId] = createTabsetNode([tab]);
+    }
+  }
+
+  function destroyDuplicatedPanelInstance(panelId) {
+    removePanelFromDocks(panelId);
+    delete state.panelInstances[panelId];
+    delete state.panelVisibility[panelId];
+    if (state.panelElements && state.panelElements[panelId]) {
+      var panelEl = state.panelElements[panelId];
+      if (panelEl.parentNode) panelEl.parentNode.removeChild(panelEl);
+      delete state.panelElements[panelId];
+    }
+    var sharedPanels = getSharedPanelsApi();
+    if (sharedPanels && typeof sharedPanels.unregisterInstance === 'function') {
+      sharedPanels.unregisterInstance(panelId);
+    }
+  }
+
+  function buildDropOverlayHtml(nodeId) {
+    var escaped = escapeHtml(nodeId);
+    return '<div class="workspace-shell-drop-zone" data-zone="left" data-ws-drop-zone="left" data-ws-drop-leaf="' + escaped + '"></div>' +
+      '<div class="workspace-shell-drop-zone" data-zone="right" data-ws-drop-zone="right" data-ws-drop-leaf="' + escaped + '"></div>' +
+      '<div class="workspace-shell-drop-zone" data-zone="top" data-ws-drop-zone="top" data-ws-drop-leaf="' + escaped + '"></div>' +
+      '<div class="workspace-shell-drop-zone" data-zone="bottom" data-ws-drop-zone="bottom" data-ws-drop-leaf="' + escaped + '"></div>' +
+      '<div class="workspace-shell-drop-zone" data-zone="center" data-ws-drop-zone="center" data-ws-drop-leaf="' + escaped + '"></div>';
+  }
+
+  function moveLogsStatusToHeader(panelId, headerEl) {
+    var logsPanel = getPanelElement(panelId);
+    if (!logsPanel) return;
+    var statusEl = logsPanel.querySelector('.log-panel-status');
+    if (!statusEl) return;
+    var foldBtn = headerEl.querySelector('.ws-view-fold');
+    if (foldBtn) headerEl.insertBefore(statusEl, foldBtn);
+    else headerEl.appendChild(statusEl);
+  }
+
+  function renderSplitLayout(node, parentEl, childRenderer) {
+    var splitEl = document.createElement('div');
+    splitEl.className = 'workspace-shell-split workspace-shell-node axis-' + node.axis;
+    splitEl.setAttribute('data-node-id', node.id);
+    var firstFolded = node.first && state.foldedPanes[node.first.id];
+    var secondFolded = node.second && state.foldedPanes[node.second.id];
+    var firstSize = firstFolded ? '28px' : (Math.round(node.ratio * 1000) + 'fr');
+    var secondSize = secondFolded ? '28px' : ((1000 - Math.round(node.ratio * 1000)) + 'fr');
+    if (node.axis === 'vertical') {
+      splitEl.style.gridTemplateColumns = firstSize + ' 1px ' + secondSize;
+      splitEl.style.gridTemplateRows = '1fr';
+    } else {
+      splitEl.style.gridTemplateRows = firstSize + ' 1px ' + secondSize;
+      splitEl.style.gridTemplateColumns = '1fr';
+    }
+
+    var foldDir = node.axis === 'vertical' ? 'is-pane-folded-vertical' : 'is-pane-folded-horizontal';
+    var firstPane = document.createElement('div');
+    firstPane.className = 'workspace-shell-split-pane';
+    if (firstFolded) { firstPane.classList.add('is-pane-folded'); firstPane.classList.add(foldDir); }
+    childRenderer(node.first, firstPane);
+
+    var divider = document.createElement('div');
+    divider.className = 'workspace-shell-divider';
+    divider.setAttribute('data-axis', node.axis);
+    bindSplitDivider(divider, node.id, node.axis);
+
+    var secondPane = document.createElement('div');
+    secondPane.className = 'workspace-shell-split-pane';
+    if (secondFolded) { secondPane.classList.add('is-pane-folded'); secondPane.classList.add(foldDir); }
+    childRenderer(node.second, secondPane);
+
+    splitEl.appendChild(firstPane);
+    splitEl.appendChild(divider);
+    splitEl.appendChild(secondPane);
+    parentEl.appendChild(splitEl);
   }
 
   function revealPanel(panelId) {
@@ -1037,19 +1208,7 @@
     // Not found anywhere, add to default side dock
     var kind = getPanelKind(normalized);
     var dockId = kind && PANEL_DEFINITIONS[kind] ? PANEL_DEFINITIONS[kind].defaultDock : 'left';
-    var dockTree = state.sideDocks[dockId];
-    var newTab = createPanelTab(normalized);
-    if (dockTree) {
-      var firstLeaf = getFirstLeaf(dockTree);
-      if (firstLeaf) {
-        firstLeaf.tabs.push(newTab);
-        firstLeaf.activeTabId = newTab.id;
-      } else {
-        state.sideDocks[dockId] = createTabsetNode([newTab]);
-      }
-    } else {
-      state.sideDocks[dockId] = createTabsetNode([newTab]);
-    }
+    addTabToDock(dockId, createPanelTab(normalized));
     state.panelVisibility[normalized] = true;
     state.activePanelId = normalized;
     return restoreDock(dockId, normalized);
@@ -1085,26 +1244,13 @@
       }
       ensurePanelDockActives();
       render();
-      persistState();
       return true;
     }
     // Duplicated instance: remove from side docks entirely
-    removePanelFromDocks(normalized);
-    delete state.panelInstances[normalized];
-    delete state.panelVisibility[normalized];
     if (state.activePanelId === normalized) state.activePanelId = '';
-    if (state.panelElements && state.panelElements[normalized]) {
-      var panelEl = state.panelElements[normalized];
-      if (panelEl.parentNode) panelEl.parentNode.removeChild(panelEl);
-      delete state.panelElements[normalized];
-    }
-    var sharedPanels = getSharedPanelsApi();
-    if (sharedPanels && typeof sharedPanels.unregisterInstance === 'function') {
-      sharedPanels.unregisterInstance(normalized);
-    }
+    destroyDuplicatedPanelInstance(normalized);
     ensurePanelDockActives();
     render();
-    persistState();
     return true;
   }
 
@@ -1126,24 +1272,11 @@
       if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
       state.activePanelId = newPanelId;
       render();
-      persistState();
       return newPanelId;
     }
     // Not found anywhere, add to default dock
     var dockId = PANEL_DEFINITIONS[kind] ? PANEL_DEFINITIONS[kind].defaultDock : 'left';
-    var newTab2 = createPanelTab(newPanelId);
-    var dockTree = state.sideDocks[dockId];
-    if (dockTree) {
-      var firstLeaf = getFirstLeaf(dockTree);
-      if (firstLeaf) {
-        firstLeaf.tabs.push(newTab2);
-        firstLeaf.activeTabId = newTab2.id;
-      } else {
-        state.sideDocks[dockId] = createTabsetNode([newTab2]);
-      }
-    } else {
-      state.sideDocks[dockId] = createTabsetNode([newTab2]);
-    }
+    addTabToDock(dockId, createPanelTab(newPanelId));
     state.activePanelId = newPanelId;
     restoreDock(dockId, newPanelId);
     return newPanelId;
@@ -1163,85 +1296,161 @@
     var oldStrip = dockEl.querySelector('.ws-fold-strip');
     if (oldStrip) oldStrip.parentNode.removeChild(oldStrip);
 
-    var panelIds = getDockVisiblePanelIds(dockId);
+    var panelIds = getVisiblePanelIdsForDock(dockId);
     if (panelIds.length === 0) return;
 
     var strip = document.createElement('div');
     strip.className = 'ws-fold-strip';
 
-    // Pin/expand button
-    var pinBtn = document.createElement('button');
-    pinBtn.className = 'ws-fold-pin';
-    pinBtn.type = 'button';
-    pinBtn.title = 'Expand panel';
-    pinBtn.setAttribute('data-ws-action', 'expand-collapsed-dock');
-    pinBtn.setAttribute('data-ws-dock-id', dockId);
-    if (panelIds.length > 0) pinBtn.setAttribute('data-ws-panel-id', panelIds[0]);
-    pinBtn.innerHTML = '\u25b6'; // ▶
-    strip.appendChild(pinBtn);
-
-    // Panel indicators
+    // Each panel gets a proportional hover zone in the fold strip.
+    // Hovering a zone temporarily expands the dock and activates that panel.
     for (var i = 0; i < panelIds.length; i++) {
       var panelId = panelIds[i];
       var kind = getPanelKind(panelId);
 
-      // Special: logs shows connection dot
+      var zone = document.createElement('div');
+      zone.className = 'ws-fold-zone';
+      zone.setAttribute('data-ws-panel-id', panelId);
+      zone.setAttribute('data-ws-dock-id', dockId);
+      zone.setAttribute('data-ws-action', 'expand-collapsed-dock');
+      zone.title = getPanelTitle(panelId);
+
+      var indicator = document.createElement('span');
+      indicator.className = 'ws-fold-indicator';
+      if (panelId === state.activePanelId) indicator.classList.add('is-active');
+
+      // Logs: show connection dot inside indicator
       if (kind === 'logs') {
-        var statusDiv = document.createElement('div');
-        statusDiv.className = 'ws-fold-status';
         var dot = document.createElement('span');
         dot.className = 'ws-fold-dot';
-        // Check connection state
-        var connBtn = document.getElementById('btn-connection-status');
-        if (connBtn && !connBtn.classList.contains('disconnected')) {
+        if (state.backendConnected) {
           dot.classList.add('is-connected');
         } else {
           dot.classList.add('is-disconnected');
         }
-        statusDiv.appendChild(dot);
-        strip.appendChild(statusDiv);
-        continue;
+        indicator.appendChild(dot);
+      } else if (dockId === 'left' || dockId === 'right') {
+        indicator.classList.add('is-drag-handle');
+        indicator.innerHTML = '&#8942;&#8942;';
+      } else {
+        indicator.textContent = getFoldIndicatorContent(panelId);
       }
+      zone.appendChild(indicator);
 
-      var indicator = document.createElement('button');
-      indicator.className = 'ws-fold-indicator';
-      indicator.type = 'button';
-      indicator.title = getPanelTitle(panelId);
-      indicator.setAttribute('data-ws-action', 'expand-collapsed-dock');
-      indicator.setAttribute('data-ws-dock-id', dockId);
-      indicator.setAttribute('data-ws-panel-id', panelId);
-      if (panelId === state.activePanelId) indicator.classList.add('is-active');
-      indicator.textContent = getFoldIndicatorContent(panelId);
-      strip.appendChild(indicator);
+      var label = document.createElement('span');
+      label.className = 'ws-fold-zone-label';
+      label.textContent = kind === 'logs'
+        ? (getPanelTitle(panelId) + ' · ' + (state.backendConnected ? 'Connected' : 'Disconnected'))
+        : getPanelTitle(panelId);
+      zone.appendChild(label);
+
+      strip.appendChild(zone);
     }
 
-    // Label (first panel title, rotated vertically for left/right)
-    var label = document.createElement('span');
-    label.className = 'ws-fold-label';
-    label.textContent = panelIds.length === 1
-      ? getPanelTitle(panelIds[0])
-      : panelIds.length + ' panels';
-    strip.appendChild(label);
+    // Move logs status bar into fold strip so it's visible when collapsed
+    for (var si = 0; si < panelIds.length; si++) {
+      if (getPanelKind(panelIds[si]) === 'logs') {
+        // Status may be in the panel element or already moved to the ws-view-header
+        var statusEl = dockEl.querySelector('.log-panel-status');
+        if (!statusEl) {
+          var logPanel = getPanelElement(panelIds[si]);
+          if (logPanel) statusEl = logPanel.querySelector('.log-panel-status');
+        }
+        if (statusEl) strip.appendChild(statusEl);
+        break;
+      }
+    }
 
     dockEl.appendChild(strip);
   }
 
+  /**
+   * Per-zone hover: hovering a fold strip zone temporarily expands the dock
+   * overlay and activates the hovered panel's tab. Mouse leave closes it.
+   */
   function bindFoldHover(dockId, dockEl) {
     if (dockEl.__wsFoldBound) return;
     dockEl.__wsFoldBound = true;
     var hoverTimer = null;
+    var activeHoverPanelId = null;
+
+    function activatePanelTab(panelId) {
+      var found = findPanelInAllTrees(panelId);
+      if (found && found.leaf) {
+        found.leaf.activeTabId = found.tab.id;
+      }
+    }
+
+    function showHover(panelId) {
+      if (panelId) activatePanelTab(panelId);
+      activeHoverPanelId = panelId;
+      dockEl.classList.add('is-fold-hover');
+      rerenderDockTree();
+      measureAndApplyOverlaySize();
+    }
+
+    function rerenderDockTree() {
+      var tree = state.sideDocks[dockId];
+      if (!tree) return;
+      var treeNodes = dockEl.querySelectorAll(':scope > .workspace-shell-node');
+      for (var n = 0; n < treeNodes.length; n++) treeNodes[n].parentNode.removeChild(treeNodes[n]);
+      renderSideDockNode(tree, dockEl, dockId);
+    }
+
+    function measureAndApplyOverlaySize() {
+      var node = dockEl.querySelector(':scope > .workspace-shell-node');
+      if (!node) return;
+      var isHorizontal = dockId === 'bottom';
+      var prop = isHorizontal ? 'height' : 'width';
+      var offsetProp = isHorizontal ? 'offsetHeight' : 'offsetWidth';
+      var minSize = isHorizontal ? 120 : 200;
+      var maxSize = isHorizontal
+        ? Math.round(window.innerHeight * 0.6)
+        : Math.round(window.innerWidth * 0.6);
+      // Use max-content to let the content determine its natural size.
+      // This forces all flex/grid children to size to their content
+      // rather than collapsing via min-width:0.
+      node.style[prop] = 'max-content';
+      var natural = node[offsetProp];
+      var size = Math.max(minSize, Math.min(natural, maxSize));
+      node.style[prop] = size + 'px';
+    }
+
     dockEl.addEventListener('mouseenter', function () {
       if (!dockEl.classList.contains('is-folded')) return;
       hoverTimer = setTimeout(function () {
-        dockEl.classList.add('is-fold-hover');
-        // Set expand size from restore size
-        var expandSize = clampPanelSize(dockId, state.dockRestoreSizes[dockId]);
-        dockEl.style.setProperty('--ws-fold-expand-size', expandSize + 'px');
+        showHover(null);
       }, 180);
     });
+
+    // Per-zone mouseover: switch active panel when moving between zones
+    dockEl.addEventListener('mouseover', function (e) {
+      var zone = e.target.closest ? e.target.closest('.ws-fold-zone') : null;
+      if (!zone) return;
+      var panelId = zone.getAttribute('data-ws-panel-id');
+      if (!panelId || panelId === activeHoverPanelId) return;
+      // If hover overlay not yet shown, start it with this panel
+      if (!dockEl.classList.contains('is-fold-hover')) {
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(function () {
+          showHover(panelId);
+        }, 180);
+      } else {
+        // Already showing — switch to this panel
+        activatePanelTab(panelId);
+        activeHoverPanelId = panelId;
+        rerenderDockTree();
+        measureAndApplyOverlaySize();
+      }
+    });
+
     dockEl.addEventListener('mouseleave', function () {
       clearTimeout(hoverTimer);
+      activeHoverPanelId = null;
       dockEl.classList.remove('is-fold-hover');
+      // Clean up inline size from measurement
+      var node = dockEl.querySelector(':scope > .workspace-shell-node');
+      if (node) { node.style.width = ''; node.style.height = ''; }
     });
   }
 
@@ -1257,7 +1466,7 @@
 
     for (var d = 0; d < dockIds.length; d++) {
       var id = dockIds[d];
-      var hasPanels = getDockVisiblePanelIds(id).length > 0;
+      var hasPanels = getVisiblePanelIdsForDock(id).length > 0;
       var isCollapsed = hasPanels && state.dockSizes[id] === 0;
       visible[id] = hasPanels && state.dockSizes[id] > 0;
       folded[id] = isCollapsed;
@@ -1420,19 +1629,7 @@
     // Not found, add to default dock
     var kind = getPanelKind(normalized);
     var dockId = kind && PANEL_DEFINITIONS[kind] ? PANEL_DEFINITIONS[kind].defaultDock : 'left';
-    var newTab = createPanelTab(normalized);
-    var dockTree = state.sideDocks[dockId];
-    if (dockTree) {
-      var firstLeaf = getFirstLeaf(dockTree);
-      if (firstLeaf) {
-        firstLeaf.tabs.push(newTab);
-        firstLeaf.activeTabId = newTab.id;
-      } else {
-        state.sideDocks[dockId] = createTabsetNode([newTab]);
-      }
-    } else {
-      state.sideDocks[dockId] = createTabsetNode([newTab]);
-    }
+    addTabToDock(dockId, createPanelTab(normalized));
     if (!state.activePanelId || (options && options.activate)) state.activePanelId = normalized;
     if (options && options.restoreDock) {
       return restoreDock(dockId, normalized);
@@ -1456,24 +1653,11 @@
       ensureActiveLeaf();
     }
     // Add to target side dock
-    var newTab = createPanelTab(normalizedPanelId);
-    var dockTree = state.sideDocks[dockId];
-    if (dockTree) {
-      var firstLeaf = getFirstLeaf(dockTree);
-      if (firstLeaf) {
-        firstLeaf.tabs.push(newTab);
-        firstLeaf.activeTabId = newTab.id;
-      } else {
-        state.sideDocks[dockId] = createTabsetNode([newTab]);
-      }
-    } else {
-      state.sideDocks[dockId] = createTabsetNode([newTab]);
-    }
+    addTabToDock(dockId, createPanelTab(normalizedPanelId));
     state.panelVisibility[normalizedPanelId] = true;
     state.activePanelId = normalizedPanelId;
     ensurePanelDockActives();
     render();
-    persistState();
     return true;
   }
 
@@ -1502,7 +1686,6 @@
     state.activePanelId = normalized;
     ensurePanelDockActives();
     render();
-    persistState();
     return true;
   }
 
@@ -1610,7 +1793,6 @@
     found.leaf.activeTabId = tabId;
     if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
     render();
-    persistState();
     return true;
   }
 
@@ -1671,15 +1853,9 @@
       return false;
     }
     // Normalize all trees
-    var ids = allTreeIds();
-    for (var t = 0; t < ids.length; t++) {
-      var root = getTreeRoot(ids[t]);
-      if (!root) continue;
-      setTreeRoot(ids[t], withNormalizedLeaves(root, ids[t] === 'center'));
-    }
+    normalizeAllTrees();
     ensureActiveLeaf();
     render();
-    persistState();
     return true;
   }
 
@@ -1715,14 +1891,8 @@
     replaceNodeById(targetLeafId, split);
     if (targetFound.treeId === 'center') state.activeLeafId = newLeaf.id;
     // Normalize all trees
-    var ids = allTreeIds();
-    for (var t = 0; t < ids.length; t++) {
-      var root = getTreeRoot(ids[t]);
-      if (!root) continue;
-      setTreeRoot(ids[t], withNormalizedLeaves(root, ids[t] === 'center'));
-    }
+    normalizeAllTrees();
     render();
-    persistState();
     return true;
   }
 
@@ -1735,37 +1905,13 @@
       state.panelVisibility[panelId] = false;
       var defaultDock = (PANEL_DEFINITIONS[kind] && PANEL_DEFINITIONS[kind].defaultDock) || 'left';
       // Re-add to side dock if not already there
-      var alreadyInDock = false;
-      var dockTree = state.sideDocks[defaultDock];
-      if (dockTree) alreadyInDock = !!findLeafContainingPanel(dockTree, panelId);
+      var alreadyInDock = state.sideDocks[defaultDock] && findLeafContainingPanel(state.sideDocks[defaultDock], panelId);
       if (!alreadyInDock) {
-        var newTab = createPanelTab(panelId);
-        if (dockTree) {
-          var firstLeaf = getFirstLeaf(dockTree);
-          if (firstLeaf) {
-            firstLeaf.tabs.unshift(newTab);
-            firstLeaf.activeTabId = newTab.id;
-          } else {
-            state.sideDocks[defaultDock] = createTabsetNode([newTab]);
-          }
-        } else {
-          state.sideDocks[defaultDock] = createTabsetNode([newTab]);
-        }
+        addTabToDock(defaultDock, createPanelTab(panelId), 'unshift');
       }
       return;
     }
-    removePanelFromDocks(panelId);
-    delete state.panelInstances[panelId];
-    delete state.panelVisibility[panelId];
-    if (state.panelElements && state.panelElements[panelId]) {
-      var panelEl = state.panelElements[panelId];
-      if (panelEl.parentNode) panelEl.parentNode.removeChild(panelEl);
-      delete state.panelElements[panelId];
-    }
-    var sharedPanels = getSharedPanelsApi();
-    if (sharedPanels && typeof sharedPanels.unregisterInstance === 'function') {
-      sharedPanels.unregisterInstance(panelId);
-    }
+    destroyDuplicatedPanelInstance(panelId);
   }
 
   function closeTab(tabId) {
@@ -1777,7 +1923,6 @@
     ensureActiveLeaf();
     ensurePanelDockActives();
     render();
-    persistState();
     return true;
   }
 
@@ -1789,7 +1934,6 @@
     replaceNodeById(leaf.id, split);
     state.activeLeafId = newLeaf.id;
     render();
-    persistState();
     return true;
   }
 
@@ -1798,7 +1942,6 @@
     if (!split) return splitActivePane('horizontal');
     split.axis = split.axis === 'horizontal' ? 'vertical' : 'horizontal';
     render();
-    persistState();
     return true;
   }
 
@@ -1812,7 +1955,6 @@
     state.dockTree = replacement;
     state.activeLeafId = replacement.id;
     render();
-    persistState();
     return true;
   }
 
@@ -1901,6 +2043,7 @@
       (sharedPanels ? sharedPanels.createPanelElement('backendSettings', 'backendSettings') : null);
     var frontendSettingsPanelEl = document.getElementById('frontend-settings-panel') ||
       (sharedPanels ? sharedPanels.createPanelElement('frontendSettings', 'frontendSettings') : null);
+    var filesPanelEl = sharedPanels ? sharedPanels.createPanelElement('files', 'files') : null;
 
     if (dashboardDividerEl) {
       dashboardDividerEl.classList.add('hidden');
@@ -1930,13 +2073,15 @@
     if (logPanelEl) logPanelEl.setAttribute('data-shell-panel', 'logs');
     if (backendSettingsPanelEl) backendSettingsPanelEl.setAttribute('data-shell-panel', 'backendSettings');
     if (frontendSettingsPanelEl) frontendSettingsPanelEl.setAttribute('data-shell-panel', 'frontendSettings');
+    if (filesPanelEl) filesPanelEl.setAttribute('data-shell-panel', 'files');
 
     state.panelElements = {
       hierarchy: sidebarEl,
       dashboard: dashboardEl,
       logs: logPanelEl,
       backendSettings: backendSettingsPanelEl,
-      frontendSettings: frontendSettingsPanelEl
+      frontendSettings: frontendSettingsPanelEl,
+      files: filesPanelEl
     };
     return state.panelElements;
   }
@@ -2023,16 +2168,18 @@
       el.appendChild(tabs);
     }
 
-    // Fold button (only for side dock panels)
-    if (opts.foldDockId) {
+    // Fold button for panel views
+    if (opts.foldNodeId) {
       var fold = document.createElement('button');
       fold.className = 'ws-view-fold';
       fold.type = 'button';
-      fold.title = 'Collapse dock';
-      fold.setAttribute('data-ws-action', 'collapse-dock');
-      fold.setAttribute('data-ws-dock-id', opts.foldDockId);
-      var foldChar = opts.foldDockId === 'left' ? '\u25C2' : opts.foldDockId === 'right' ? '\u25B8' : '\u25BE';
-      fold.textContent = foldChar;
+      fold.title = opts.isFolded ? 'Expand' : 'Collapse';
+      fold.setAttribute('data-ws-action', 'fold-pane');
+      fold.setAttribute('data-ws-value', opts.foldNodeId);
+      if (opts.isFolded) {
+        fold.classList.add('is-folded');
+      }
+      fold.textContent = '\u25BE'; // ▾
       el.appendChild(fold);
     }
 
@@ -2093,7 +2240,8 @@
       activateAction: 'activate-panel',
       extraTabAttrs: null,
       showMeta: false,
-      foldDockId: dockId || null
+      foldNodeId: node.id,
+      isFolded: !!state.foldedPanes[node.id]
     });
     tabsetEl.appendChild(headerEl);
 
@@ -2119,50 +2267,23 @@
     }
     tabsetEl.appendChild(contentEl);
 
+    // Move logs status bar into ws-view-header so it's visible when folded
+    if (activePanelId && getPanelKind(activePanelId) === 'logs') {
+      moveLogsStatusToHeader(activePanelId, headerEl);
+    }
+
     var overlayEl = document.createElement('div');
     overlayEl.className = 'workspace-shell-drop-overlay';
-    overlayEl.innerHTML =
-      '<div class="workspace-shell-drop-zone" data-zone="left" data-ws-drop-zone="left" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
-      '<div class="workspace-shell-drop-zone" data-zone="right" data-ws-drop-zone="right" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
-      '<div class="workspace-shell-drop-zone" data-zone="top" data-ws-drop-zone="top" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
-      '<div class="workspace-shell-drop-zone" data-zone="bottom" data-ws-drop-zone="bottom" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
-      '<div class="workspace-shell-drop-zone" data-zone="center" data-ws-drop-zone="center" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>';
+    overlayEl.innerHTML = buildDropOverlayHtml(node.id);
     contentEl.appendChild(overlayEl);
 
     parentEl.appendChild(tabsetEl);
   }
 
   function renderSideDockSplit(node, parentEl, dockId) {
-    var splitEl = document.createElement('div');
-    splitEl.className = 'workspace-shell-split workspace-shell-node axis-' + node.axis;
-    splitEl.setAttribute('data-node-id', node.id);
-    var firstWeight = Math.round(node.ratio * 1000);
-    var secondWeight = 1000 - firstWeight;
-    if (node.axis === 'vertical') {
-      splitEl.style.gridTemplateColumns = firstWeight + 'fr 1px ' + secondWeight + 'fr';
-      splitEl.style.gridTemplateRows = '1fr';
-    } else {
-      splitEl.style.gridTemplateRows = firstWeight + 'fr 1px ' + secondWeight + 'fr';
-      splitEl.style.gridTemplateColumns = '1fr';
-    }
-
-    var firstPane = document.createElement('div');
-    firstPane.className = 'workspace-shell-split-pane';
-    renderSideDockNode(node.first, firstPane, dockId);
-
-    var divider = document.createElement('div');
-    divider.className = 'workspace-shell-divider';
-    divider.setAttribute('data-axis', node.axis);
-    bindSplitDivider(divider, node.id, node.axis);
-
-    var secondPane = document.createElement('div');
-    secondPane.className = 'workspace-shell-split-pane';
-    renderSideDockNode(node.second, secondPane, dockId);
-
-    splitEl.appendChild(firstPane);
-    splitEl.appendChild(divider);
-    splitEl.appendChild(secondPane);
-    parentEl.appendChild(splitEl);
+    renderSplitLayout(node, parentEl, function (child, pane) {
+      renderSideDockNode(child, pane, dockId);
+    });
   }
 
   function renderSideDockNode(node, parentEl, dockId) {
@@ -2203,9 +2324,6 @@
     renderSideDock('right', state.rightDockEl);
     renderSideDock('bottom', state.bottomDockEl);
     applyDockLayout();
-    var logsVisible = isPanelShown('logs');
-    var statusBar = document.getElementById('status-bar');
-    if (statusBar) statusBar.style.display = logsVisible ? '' : 'none';
   }
 
   function getWorkspaceBoundsRect() {
@@ -2263,7 +2381,6 @@
     state.panelVisibility[normalized] = true;
     state.activePanelId = normalized;
     render();
-    persistState();
     return true;
   }
 
@@ -2301,14 +2418,8 @@
     state.panelVisibility[normalized] = true;
     state.activePanelId = normalized;
     // Normalize all trees
-    var ids = allTreeIds();
-    for (var t = 0; t < ids.length; t++) {
-      var root = getTreeRoot(ids[t]);
-      if (!root) continue;
-      setTreeRoot(ids[t], withNormalizedLeaves(root, ids[t] === 'center'));
-    }
+    normalizeAllTrees();
     render();
-    persistState();
     return true;
   }
 
@@ -2333,18 +2444,7 @@
     // Re-add as hidden tab so it can be restored later
     var alreadyInDock = state.sideDocks[targetDock] && findLeafContainingPanel(state.sideDocks[targetDock], normalized);
     if (!alreadyInDock) {
-      var newTab = createPanelTab(normalized);
-      var dockTree = state.sideDocks[targetDock];
-      if (dockTree) {
-        var firstLeaf = getFirstLeaf(dockTree);
-        if (firstLeaf) {
-          firstLeaf.tabs.unshift(newTab);
-        } else {
-          state.sideDocks[targetDock] = createTabsetNode([newTab]);
-        }
-      } else {
-        state.sideDocks[targetDock] = createTabsetNode([newTab]);
-      }
+      addTabToDock(targetDock, createPanelTab(normalized), { method: 'unshift', activate: false });
     }
     ensurePanelDockActives();
     render();
@@ -2395,7 +2495,6 @@
     var frame = getOrCreateFrame(found.tab);
     frame.setAttribute('data-src', '');
     render();
-    persistState();
     return true;
   }
 
@@ -2485,7 +2584,6 @@
     var insertAt = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
     found.leaf.tabs.splice(insertAt, 0, tab);
     render();
-    persistState();
     return true;
   }
 
@@ -2501,15 +2599,9 @@
     found.leaf.tabs.splice(idx, 0, extracted.tab);
     found.leaf.activeTabId = extracted.tab.id;
     if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
-    var ids = allTreeIds();
-    for (var t = 0; t < ids.length; t++) {
-      var root = getTreeRoot(ids[t]);
-      if (!root) continue;
-      setTreeRoot(ids[t], withNormalizedLeaves(root, ids[t] === 'center'));
-    }
+    normalizeAllTrees();
     ensureActiveLeaf();
     render();
-    persistState();
     return true;
   }
 
@@ -2596,21 +2688,27 @@
     if (headerEl) {
       var headerTabsetEl = headerEl.closest('.workspace-shell-tabset');
       if (headerTabsetEl) {
-        var tabsEl = headerEl.querySelector('.ws-view-tabs');
         var leafId = headerTabsetEl.getAttribute('data-node-id');
-        if (tabsEl && leafId) {
+        // Multi-tab header: reorder within tab bar
+        if (!headerEl.classList.contains('is-single')) {
+          var tabsEl = headerEl.querySelector('.ws-view-tabs');
+          if (tabsEl && leafId) {
+            clearPanelDropTargets();
+            clearDropZones();
+            var insertIdx = getTabInsertIndex(tabsEl, event.clientX);
+            setTabInsertIndicator(tabsEl, insertIdx);
+            state.dragHoverLeafId = leafId;
+            state.dragHoverZone = 'tab-reorder';
+            return;
+          }
+        }
+        // Single-tab header: treat as center drop (merge into tabset)
+        if (leafId) {
           clearPanelDropTargets();
-          clearDropZones();
-          var insertIdx = getTabInsertIndex(tabsEl, event.clientX);
-          setTabInsertIndicator(tabsEl, insertIdx);
-          state.dragHoverLeafId = leafId;
-          state.dragHoverZone = 'tab-reorder';
+          clearTabInsertIndicator();
+          setDropZoneHighlight(leafId, 'center');
           return;
         }
-        // Single-tab header: treat as center drop
-        clearPanelDropTargets();
-        setDropZoneHighlight(leafId, 'center');
-        return;
       }
     }
 
@@ -2722,6 +2820,28 @@
     state.dragDroppedInternally = false;
   }
 
+  function startPointerDrag(sourceEl, tabId, panelId, event) {
+    state.pointerDrag = {
+      tabId: tabId,
+      panelId: panelId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      detachArmed: false,
+      started: false,
+      sourceEl: sourceEl,
+      ghost: null
+    };
+    if (typeof sourceEl.setPointerCapture === 'function') {
+      try { sourceEl.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+    }
+    window.addEventListener('pointermove', handleTabPointerMove, true);
+    window.addEventListener('pointerup', finishTabPointerDrag, true);
+    window.addEventListener('pointercancel', finishTabPointerDrag, true);
+  }
+
   function handlePointerDown(event) {
     if (event.button !== 0) return;
     // Panel drag handle: find the panel's tab in side dock tree, start unified drag
@@ -2734,25 +2854,7 @@
       // Find the tab for this panel in any tree
       var panelFound = findPanelInAllTrees(handledPanelId);
       var dragTabId = panelFound ? panelFound.tab.id : '';
-      state.pointerDrag = {
-        tabId: dragTabId,
-        panelId: handledPanelId,
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        lastX: event.clientX,
-        lastY: event.clientY,
-        detachArmed: false,
-        started: false,
-        sourceEl: panelHandleEl,
-        ghost: null
-      };
-      if (typeof panelHandleEl.setPointerCapture === 'function') {
-        try { panelHandleEl.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
-      }
-      window.addEventListener('pointermove', handleTabPointerMove, true);
-      window.addEventListener('pointerup', finishTabPointerDrag, true);
-      window.addEventListener('pointercancel', finishTabPointerDrag, true);
+      startPointerDrag(panelHandleEl, dragTabId, handledPanelId, event);
       renderToolbar();
       persistState();
       return;
@@ -2766,25 +2868,7 @@
       state.activePanelId = panelId;
       var panelFound2 = findPanelInAllTrees(panelId);
       var dragTabId2 = panelFound2 ? panelFound2.tab.id : '';
-      state.pointerDrag = {
-        tabId: dragTabId2,
-        panelId: panelId,
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        lastX: event.clientX,
-        lastY: event.clientY,
-        detachArmed: false,
-        started: false,
-        sourceEl: panelTabEl,
-        ghost: null
-      };
-      if (typeof panelTabEl.setPointerCapture === 'function') {
-        try { panelTabEl.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
-      }
-      window.addEventListener('pointermove', handleTabPointerMove, true);
-      window.addEventListener('pointerup', finishTabPointerDrag, true);
-      window.addEventListener('pointercancel', finishTabPointerDrag, true);
+      startPointerDrag(panelTabEl, dragTabId2, panelId, event);
       renderToolbar();
       persistState();
       return;
@@ -2811,25 +2895,7 @@
         renderToolbar();
         persistState();
       }
-      state.pointerDrag = {
-        tabId: tabId,
-        panelId: '',
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        lastX: event.clientX,
-        lastY: event.clientY,
-        detachArmed: false,
-        started: false,
-        sourceEl: tabEl,
-        ghost: null
-      };
-      if (typeof tabEl.setPointerCapture === 'function') {
-        try { tabEl.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
-      }
-      window.addEventListener('pointermove', handleTabPointerMove, true);
-      window.addEventListener('pointerup', finishTabPointerDrag, true);
-      window.addEventListener('pointercancel', finishTabPointerDrag, true);
+      startPointerDrag(tabEl, tabId, '', event);
       return;
     }
     var tabset = event.target.closest('.workspace-shell-tabset');
@@ -2855,6 +2921,9 @@
       }
       if (!found || !found.node || found.node.type !== 'split') return;
       var splitNode = found.node;
+      // Clear folded state on children when user drags the divider
+      if (splitNode.first && state.foldedPanes[splitNode.first.id]) delete state.foldedPanes[splitNode.first.id];
+      if (splitNode.second && state.foldedPanes[splitNode.second.id]) delete state.foldedPanes[splitNode.second.id];
       var container = dividerEl.parentElement;
       if (!container) return;
       function applySplitContainerLayout() {
@@ -2886,7 +2955,6 @@
         dividerEl.removeEventListener('pointercancel', handleUp);
         try { dividerEl.releasePointerCapture(upEvent.pointerId); } catch (_) { /* ignore */ }
         render();
-        persistState();
       }
       dividerEl.addEventListener('pointermove', handleMove);
       dividerEl.addEventListener('pointerup', handleUp);
@@ -2916,6 +2984,13 @@
       });
     }
     var activeTabId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
+    // Check if active tab is a panel (for fold button)
+    var activeTabObj = null;
+    for (var at = 0; at < node.tabs.length; at++) {
+      if (node.tabs[at].id === activeTabId) { activeTabObj = node.tabs[at]; break; }
+    }
+    var centerFoldPanelId = activeTabObj && isPanelTab(activeTabObj)
+      ? resolvePanelTarget(activeTabObj.panelId) : null;
     var headerEl = renderViewHeader({
       items: headerItems,
       activeId: activeTabId,
@@ -2925,7 +3000,9 @@
       tabClickAttr: 'data-ws-tab-id',
       activateAction: null,
       extraTabAttrs: null,
-      showMeta: true
+      showMeta: true,
+      foldNodeId: centerFoldPanelId ? node.id : null,
+      isFolded: centerFoldPanelId ? !!state.foldedPanes[node.id] : false
     });
     tabsetEl.appendChild(headerEl);
 
@@ -2933,12 +3010,7 @@
     contentEl.className = 'workspace-shell-pane-content';
     var overlayEl = document.createElement('div');
     overlayEl.className = 'workspace-shell-drop-overlay';
-    overlayEl.innerHTML =
-      '<div class="workspace-shell-drop-zone" data-zone="left" data-ws-drop-zone="left" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
-      '<div class="workspace-shell-drop-zone" data-zone="right" data-ws-drop-zone="right" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
-      '<div class="workspace-shell-drop-zone" data-zone="top" data-ws-drop-zone="top" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
-      '<div class="workspace-shell-drop-zone" data-zone="bottom" data-ws-drop-zone="bottom" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>' +
-      '<div class="workspace-shell-drop-zone" data-zone="center" data-ws-drop-zone="center" data-ws-drop-leaf="' + escapeHtml(node.id) + '"></div>';
+    overlayEl.innerHTML = buildDropOverlayHtml(node.id);
     contentEl.appendChild(overlayEl);
     if (node.tabs.length === 0) {
       var emptyEl = document.createElement('div');
@@ -2953,40 +3025,17 @@
       }
     }
     tabsetEl.appendChild(contentEl);
+
+    // Move logs status bar into ws-view-header so it's visible when folded
+    if (centerFoldPanelId && getPanelKind(centerFoldPanelId) === 'logs') {
+      moveLogsStatusToHeader(centerFoldPanelId, headerEl);
+    }
+
     parentEl.appendChild(tabsetEl);
   }
 
   function renderSplit(node, parentEl) {
-    var splitEl = document.createElement('div');
-    splitEl.className = 'workspace-shell-split workspace-shell-node axis-' + node.axis;
-    splitEl.setAttribute('data-node-id', node.id);
-    var firstWeight = Math.round(node.ratio * 1000);
-    var secondWeight = 1000 - firstWeight;
-    if (node.axis === 'vertical') {
-      splitEl.style.gridTemplateColumns = firstWeight + 'fr 1px ' + secondWeight + 'fr';
-      splitEl.style.gridTemplateRows = '1fr';
-    } else {
-      splitEl.style.gridTemplateRows = firstWeight + 'fr 1px ' + secondWeight + 'fr';
-      splitEl.style.gridTemplateColumns = '1fr';
-    }
-
-    var firstPane = document.createElement('div');
-    firstPane.className = 'workspace-shell-split-pane';
-    renderNode(node.first, firstPane);
-
-    var divider = document.createElement('div');
-    divider.className = 'workspace-shell-divider';
-    divider.setAttribute('data-axis', node.axis);
-    bindSplitDivider(divider, node.id, node.axis);
-
-    var secondPane = document.createElement('div');
-    secondPane.className = 'workspace-shell-split-pane';
-    renderNode(node.second, secondPane);
-
-    splitEl.appendChild(firstPane);
-    splitEl.appendChild(divider);
-    splitEl.appendChild(secondPane);
-    parentEl.appendChild(splitEl);
+    renderSplitLayout(node, parentEl, renderNode);
   }
 
   function renderNode(node, parentEl) {
@@ -3118,6 +3167,8 @@
       state.lastStructureSignature = 'panel-only:' + (state.panelOnlyId || state.panelOnlyKind);
     } else {
       var structureSignature = buildStructureSignature(state.dockTree);
+      var foldedKeys = Object.keys(state.foldedPanes).sort().join(',');
+      if (foldedKeys) structureSignature += '|fold:' + foldedKeys;
       var canPatch = structureSignature === state.lastStructureSignature && state.dockEl.childNodes.length > 0;
       if (!canPatch || !syncDomState()) {
         state.dockEl.innerHTML = '';
@@ -3170,7 +3221,6 @@
       existing.leaf.activeTabId = existing.tab.id;
       state.activeLeafId = existing.leaf.id;
       render();
-      persistState();
       return existing.tab;
     }
     var targetLeaf = getActiveLeaf() || getFirstLeaf(state.dockTree);
@@ -3183,7 +3233,6 @@
     targetLeaf.activeTabId = tab.id;
     state.activeLeafId = targetLeaf.id;
     render();
-    persistState();
     return tab;
   }
 
@@ -3247,6 +3296,12 @@
     }
   }
 
+  function handleBackendConnectionStateChanged(event) {
+    var detail = event && event.detail ? event.detail : {};
+    state.backendConnected = !!detail.connected;
+    if (state.enabled && state.mounted) render();
+  }
+
   function forwardActionToActiveFrame(action) {
     var activeTab = getActiveTab();
     if (!activeTab) return false;
@@ -3264,6 +3319,10 @@
     if (action === 'select-panel') {
       setPanelVisibility(value, true, { activate: true });
       activatePanel(value);
+      return true;
+    }
+    if (action === 'fold-pane') {
+      if (value) toggleFoldPane(value);
       return true;
     }
     if (action === 'collapse-dock') {
@@ -3483,8 +3542,10 @@
 
     mainContent.appendChild(state.rootEl);
     window.addEventListener('message', handleWindowMessage);
+    window.addEventListener('lexera-backend-connection-state-changed', handleBackendConnectionStateChanged);
 
     state.mounted = true;
+    state.backendConnected = !!document.querySelector('.log-panel-status .connection-status-btn.connected');
     restoreState();
     applyPanelOnlyWindowState();
     ensureInitialPanelTab(state.initialPanelKind);

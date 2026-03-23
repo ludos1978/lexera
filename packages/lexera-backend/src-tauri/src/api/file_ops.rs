@@ -78,8 +78,20 @@ pub async fn file_info(
     let fp = match resolve_board_file(&state, &board_id, &params.path) {
         Ok(p) => p,
         Err(_) => {
+            // resolve_board_file fails for paths outside the board dir (path
+            // traversal) or truly missing files.  For file-info we still want
+            // to report existence so the UI doesn't mark valid external links
+            // as broken — do a direct existence check without serving content.
+            let board_path = state.storage.get_board_path(&board_id);
+            let board_dir = board_path
+                .as_ref()
+                .and_then(|p| p.parent())
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let resolved = board_dir.join(&params.path);
+            let exists = resolved.canonicalize().ok().map(|p| p.exists()).unwrap_or(false);
             return Json(serde_json::json!({
-                "exists": false,
+                "exists": exists,
+                "external": true,
                 "path": params.path,
                 "filename": std::path::Path::new(&params.path).file_name().and_then(|s| s.to_str()).unwrap_or(""),
             }));
