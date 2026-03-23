@@ -23,7 +23,7 @@ const LexeraDashboard = (function () {
   var columnSortState = {};
   let pollInterval = null;
   let addCardColumn = null;
-  var ptrDrag = null; // Pointer-based DnD state: { type, source, startX, startY, started, ghost, el }
+  // ptrDrag state now lives in DragDropHandlers module
   var isEditing = false;
   var currentCardEditor = null;
   var InlineCardEditorModule = window.InlineCardEditor;
@@ -55,13 +55,60 @@ const LexeraDashboard = (function () {
   if (VirtualScroll) VirtualScroll.init({
     getColumnsContainer: function() { return getElColumnsContainer(); },
     getCurrentCardEditor: function() { return currentCardEditor; },
-    getPtrDrag: function() { return ptrDrag; },
-    getCardDrag: function() { return cardDrag; }
+    getPtrDrag: function() { return DragDropHandlers ? DragDropHandlers.getPtrDrag() : null; },
+    getCardDrag: function() { return DragDropHandlers ? DragDropHandlers.getCardDrag() : null; }
   });
   var DropZoneIndicators = window.LexeraDropZoneIndicators;
   if (DropZoneIndicators) DropZoneIndicators.init({
     getElColumnsContainer: function() { return getElColumnsContainer(); },
     isHorizontalCanvasStack: function(stackEl) { return isHorizontalCanvasStackElement(stackEl); }
+  });
+
+  var DragDropHandlers = window.LexeraDragDropHandlers;
+  if (DragDropHandlers) DragDropHandlers.init({
+    getElColumnsContainer: function() { return getElColumnsContainer(); },
+    getElBoardList: function() { return getElBoardList(); },
+    getActiveBoardId: function() { return activeBoardId; },
+    getFullBoardData: function() { return fullBoardData; },
+    is_archived_or_deleted: function(text) { return is_archived_or_deleted(text); },
+    getBoardHierarchyRows: function(boardId) { return getBoardHierarchyRows(boardId); },
+    findFullDataStack: function(rowIdx, stackIdx) { return findFullDataStack(rowIdx, stackIdx); },
+    findFullColumnIndexInStack: function(stack, colIdx) { return findFullColumnIndexInStack(stack, colIdx); },
+    findFullDataRow: function(rowIdx) { return findFullDataRow(rowIdx); },
+    findFullDataStackIndex: function(row, rowIdx, stackIdx) { return findFullDataStackIndex(row, rowIdx, stackIdx); },
+    insertDropZoneIndicators: function(dragType) { insertDropZoneIndicators(dragType); },
+    removeDropZoneIndicators: function() { removeDropZoneIndicators(); },
+    clearDropZoneIndicatorHighlights: function() { clearDropZoneIndicatorHighlights(); },
+    highlightDropZoneIndicator: function(dragType, mx, my) { highlightDropZoneIndicator(dragType, mx, my); },
+    insertStackDropZones: function() { insertStackDropZones(); },
+    removeStackDropZones: function() { removeStackDropZones(); },
+    vsRestoreAfterDrag: function() { vsRestoreAfterDrag(); },
+    tagCard: function(colIdx, cardIdx, tag) { tagCard(colIdx, cardIdx, tag); },
+    moveCard: function(source, target) { return moveCard(source, target); },
+    logFrontendIssue: function(level, area, msg, err) { logFrontendIssue(level, area, msg, err); },
+    lexeraLog: function(level, msg) { lexeraLog(level, msg); },
+    poll: function() { poll(); },
+    reorderRows: function(srcIdx, targetIdx, before) { reorderRows(srcIdx, targetIdx, before); },
+    moveRowAcrossBoards: function(src, target) { return moveRowAcrossBoards(src, target); },
+    moveStack: function(srcRow, srcStack, targetRow, targetStack, before) { moveStack(srcRow, srcStack, targetRow, targetStack, before); },
+    moveStackAcrossBoards: function(src, target) { return moveStackAcrossBoards(src, target); },
+    moveColumnToNewStack: function(srcRow, srcStack, srcCol, targetRow, insertIdx) { moveColumnToNewStack(srcRow, srcStack, srcCol, targetRow, insertIdx); },
+    moveColumnWithinBoard: function(srcRow, srcStack, srcCol, targetRow, targetStack, targetCol, before) { moveColumnWithinBoard(srcRow, srcStack, srcCol, targetRow, targetStack, targetCol, before); },
+    moveColumnToExistingStack: function(srcRow, srcStack, srcCol, targetRow, targetStack) { moveColumnToExistingStack(srcRow, srcStack, srcCol, targetRow, targetStack); },
+    moveColumnAcrossBoards: function(src, target) { return moveColumnAcrossBoards(src, target); },
+    reorderBoards: function(srcIdx, targetIdx, before) { reorderBoards(srcIdx, targetIdx, before); },
+    isCanvasBoardLayout: function() { return isCanvasBoardLayout(); },
+    isHorizontalCanvasStackElement: function(stackEl) { return isHorizontalCanvasStackElement(stackEl); },
+    getCanvasStackDropApi: function() { return getCanvasStackDropApi(); },
+    getCanvasDomApi: function() { return getCanvasDomApi(); },
+    getCanvasPositionFromViewportPoint: function(rowContent, x, y, grabX, grabY) { return getCanvasPositionFromViewportPoint(rowContent, x, y, grabX, grabY); },
+    pushUndo: function() { pushUndo(); },
+    persistBoardMutation: function(opts) { return persistBoardMutation(opts); },
+    removeEmptyStacksAndRows: function() { removeEmptyStacksAndRows(); },
+    setRowHiddenTag: function(rowIdx, tag) { return setRowHiddenTag(rowIdx, tag); },
+    setStackHiddenTag: function(rowIdx, stackIdx, tag) { return setStackHiddenTag(rowIdx, stackIdx, tag); },
+    applyInternalHiddenTag: function(title, tag) { return applyInternalHiddenTag(title, tag); },
+    renderColumns: function() { renderColumns(); }
   });
   if (InlineCardEditorModule) InlineCardEditorModule.init({
     getCurrentCardEditor: function() { return currentCardEditor; },
@@ -12961,1098 +13008,82 @@ const LexeraDashboard = (function () {
     return text;
   }
 
-  // --- Card DnD (pointer-based, bypasses broken WebKit HTML5 DnD) ---
-
-  var cardDrag = null; // { el, ghost, colIndex, cardIndex, startX, startY, started }
-  var DRAG_THRESHOLD = 5; // px before drag actually starts
-  var dragLayoutLocks = null;
-
-  function lockBoardLayoutForDrag() {
-    if (dragLayoutLocks) return;
-    var nodes = getElColumnsContainer().querySelectorAll('.board-row, .board-stack, .column');
-    dragLayoutLocks = [];
-    for (var i = 0; i < nodes.length; i++) {
-      var el = nodes[i];
-      var rect = el.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) continue;
-      dragLayoutLocks.push({
-        el: el,
-        width: el.style.width,
-        minWidth: el.style.minWidth,
-        maxWidth: el.style.maxWidth,
-        height: el.style.height,
-        minHeight: el.style.minHeight,
-        maxHeight: el.style.maxHeight
-      });
-      el.style.width = rect.width + 'px';
-      el.style.minWidth = rect.width + 'px';
-      el.style.maxWidth = rect.width + 'px';
-      el.style.height = rect.height + 'px';
-      el.style.minHeight = rect.height + 'px';
-      el.style.maxHeight = rect.height + 'px';
-      el.classList.add('layout-locked');
-    }
-    if (dragLayoutLocks.length === 0) dragLayoutLocks = null;
-  }
-
-  function unlockBoardLayoutForDrag() {
-    if (!dragLayoutLocks) return;
-    for (var i = 0; i < dragLayoutLocks.length; i++) {
-      var prev = dragLayoutLocks[i];
-      prev.el.style.width = prev.width;
-      prev.el.style.minWidth = prev.minWidth;
-      prev.el.style.maxWidth = prev.maxWidth;
-      prev.el.style.height = prev.height;
-      prev.el.style.minHeight = prev.minHeight;
-      prev.el.style.maxHeight = prev.maxHeight;
-      prev.el.classList.remove('layout-locked');
-    }
-    dragLayoutLocks = null;
-  }
-
-  // Single mousedown listener on the columns container (event delegation)
-  getElColumnsContainer().addEventListener('mousedown', function (e) {
-    try {
-    // Only left mouse button
-    if (e.button !== 0) return;
-    // Don't start drag on interactive elements
-    if (e.target.closest('.card-checkbox, .card-collapse-toggle, .card-menu-btn, .embed-menu-btn, .card-edit-input, a, button, textarea, input')) return;
-    var cardEl = e.target.closest('.card');
-    if (!cardEl) return;
-    // Don't drag if in edit mode
-    if (cardEl.classList.contains('editing')) return;
-
-    cardDrag = {
-      el: cardEl,
-      ghost: null,
-      boardId: activeBoardId,
-      flatColIndex: parseInt(cardEl.getAttribute('data-col-index'), 10),
-      rowIndex: null,
-      stackIndex: null,
-      colIndex: null,
-      cardIndex: parseInt(cardEl.getAttribute('data-card-index'), 10),
-      startX: e.clientX,
-      startY: e.clientY,
-      startTopX: null,
-      startTopY: null,
-      started: false,
-    };
-    var sourceColEl = cardEl.closest('.column');
-    var sourceStackEl = cardEl.closest('.board-stack');
-    if (sourceStackEl) {
-      var sourceRowIdx = parseInt(sourceStackEl.getAttribute('data-row-index'), 10);
-      var sourceStackIdx = parseInt(sourceStackEl.getAttribute('data-stack-index'), 10);
-      if (!isNaN(sourceRowIdx)) cardDrag.rowIndex = sourceRowIdx;
-      if (!isNaN(sourceStackIdx)) cardDrag.stackIndex = sourceStackIdx;
-      if (sourceColEl) {
-        var stackColumns = sourceStackEl.querySelectorAll('.board-stack-content > .column');
-        cardDrag.colIndex = Array.prototype.indexOf.call(stackColumns, sourceColEl);
-      }
-    }
-    var cardStartTop = toTopFramePoint(window, e.clientX, e.clientY);
-    if (cardStartTop) {
-      cardDrag.startTopX = cardStartTop.x;
-      cardDrag.startTopY = cardStartTop.y;
-    }
-    startCrossViewBridge('card');
-    e.preventDefault();
-    } catch (err) {
-      logFrontendIssue('error', 'drag.card', 'Error in card mousedown handler', err);
-    }
-  });
-
-  document.addEventListener('mousemove', function (e) {
-    if (!cardDrag) return;
-    try {
-    // Check threshold before starting actual drag
-    if (!cardDrag.started) {
-      var dx = e.clientX - cardDrag.startX;
-      var dy = e.clientY - cardDrag.startY;
-      if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
-      cardDrag.started = true;
-      vsMaterialiseAll();
-      startCardDrag(e);
-    }
-
-    // Move ghost
-    if (cardDrag.ghost) {
-      cardDrag.ghost.style.left = (e.clientX + 8) + 'px';
-      cardDrag.ghost.style.top = (e.clientY - 12) + 'px';
-    }
-
-    // Find drop target
-    updateCardDropTarget(e.clientX, e.clientY);
-    } catch (err) {
-      logFrontendIssue('error', 'drag.card', 'Error in card mousemove handler', err);
-      cancelCardDrag();
-    }
-  });
-
-  document.addEventListener('mouseup', function (e) {
-    if (!cardDrag) return;
-    try {
-    if (!cardDrag.started) {
-      // Was just a click, not a drag — enter edit mode
-      var clickedCard = cardDrag.el;
-      var colIndex = cardDrag.flatColIndex;
-      var cardIndex = cardDrag.cardIndex;
-      cardDrag = null;
-      stopCrossViewBridge();
-      openCardEditor(clickedCard, colIndex, cardIndex, e.altKey ? 'overlay' : 'inline');
-      return;
-    }
-    finishCardDrag(e.clientX, e.clientY);
-    } catch (err) {
-      logFrontendIssue('error', 'drag.card', 'Error in card mouseup handler', err);
-      cancelCardDrag();
-    }
-  });
-
-  // Also cancel on Escape
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') {
-      try {
-      if (InlineCardEditorModule && InlineCardEditorModule.getCurrentInlineCardEditor()) {
-        e.preventDefault();
-        closeInlineCardEditor({ save: false });
-        return;
-      }
-      if (currentCardEditor) {
-        e.preventDefault();
-        closeCardEditorOverlay({ save: false });
-        return;
-      }
-      e.preventDefault();
-      if (cardDrag && cardDrag.started) cancelCardDrag();
-      else if (cardDrag) {
-        cardDrag = null;
-        stopCrossViewBridge();
-      }
-      if (ptrDrag && ptrDrag.started) cleanupPtrDrag();
-      else if (ptrDrag) {
-        ptrDrag = null;
-        stopCrossViewBridge();
-      }
-      } catch (err) {
-        logFrontendIssue('error', 'keyboard', 'Error in Escape keydown handler', err);
-      }
-    }
-  });
-
-  function startCardDrag(e) {
-    var el = cardDrag.el;
-    lockBoardLayoutForDrag();
-    startCrossViewBridge('card');
-    el.classList.add('dragging');
-    insertDropZoneIndicators('card');
-
-    // Create ghost element
-    var ghost = document.createElement('div');
-    ghost.className = 'card-drag-ghost';
-    var titleEl = el.querySelector('.card-title-display');
-    ghost.textContent = (titleEl ? titleEl.textContent : el.textContent).substring(0, 80);
-    ghost.style.width = el.offsetWidth + 'px';
-    ghost.style.left = (e.clientX + 8) + 'px';
-    ghost.style.top = (e.clientY - 12) + 'px';
-    document.body.appendChild(ghost);
-    cardDrag.ghost = ghost;
-
-    // Clear text selection
-    var sel = window.getSelection();
-    if (sel) sel.removeAllRanges();
-  }
-
-  function isPointInsideRect(mx, my, rect) {
-    return mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom;
-  }
-
-  function findNodeAtPoint(nodeList, mx, my) {
-    for (var i = 0; i < nodeList.length; i++) {
-      var rect = nodeList[i].getBoundingClientRect();
-      if (isPointInsideRect(mx, my, rect)) return nodeList[i];
-    }
-    return null;
-  }
-
-  function removeClassFromNodeList(nodeList, className) {
-    for (var i = 0; i < nodeList.length; i++) nodeList[i].classList.remove(className);
-  }
-
-  function removeClassesFromNodeList(nodeList, classNames) {
-    for (var i = 0; i < nodeList.length; i++) {
-      nodeList[i].classList.remove.apply(nodeList[i].classList, classNames);
-    }
-  }
-
-  function getColumnCardsContainers() {
-    return getElColumnsContainer().querySelectorAll('.column-cards');
-  }
-
-  function findColumnCardsContainerAt(mx, my) {
-    return findNodeAtPoint(getColumnCardsContainers(), mx, my);
-  }
-
-  function clearCardDragOverHighlights() {
-    removeClassFromNodeList(getColumnCardsContainers(), 'card-drag-over');
-  }
-
-  function findStackDropZoneAt(mx, my) {
-    return findNodeAtPoint(getElColumnsContainer().querySelectorAll('.stack-drop-zone'), mx, my);
-  }
-
-  function findDraggableColumnAt(mx, my) {
-    return findNodeAtPoint(getElColumnsContainer().querySelectorAll('.column:not(.dragging)'), mx, my);
-  }
-
-  function findBoardStackAt(mx, my) {
-    return findNodeAtPoint(getElColumnsContainer().querySelectorAll('.board-stack'), mx, my);
-  }
-
-  function clearSidebarDropHighlights() {
-    removeClassFromNodeList(
-      getElBoardList().querySelectorAll('.tree-column.drop-target, .tree-stack.drop-target, .tree-row.drop-target, .board-item.drop-target'),
-      'drop-target'
-    );
-    removeClassesFromNodeList(
-      getElBoardList().querySelectorAll('.tree-drop-above, .tree-drop-below'),
-      ['tree-drop-above', 'tree-drop-below']
-    );
-  }
-
-  function findSidebarColumnAt(mx, my) {
-    return findNodeAtPoint(getElBoardList().querySelectorAll('.tree-column[data-tree-drag="tree-column"]'), mx, my);
-  }
-
-  function getVisibleCardCountInColumn(col) {
-    if (!col || !col.cards) return 0;
-    var count = 0;
-    for (var i = 0; i < col.cards.length; i++) {
-      if (!is_archived_or_deleted(col.cards[i].content || '')) count++;
-    }
-    return count;
-  }
-
-  function buildSidebarCardTarget(boardId, rowIdx, stackIdx, colIdx, sidebarNode) {
-    if (!boardId || isNaN(rowIdx) || isNaN(stackIdx)) return null;
-    var rows = getBoardHierarchyRows(boardId) || [];
-    var row = rows[rowIdx];
-    var stack = row && row.stacks ? row.stacks[stackIdx] : null;
-    if (!stack) return null;
-    if (!stack.columns || stack.columns.length === 0) {
-      return {
-        kind: 'sidebar',
-        boardId: boardId,
-        rowIndex: rowIdx,
-        stackIndex: stackIdx,
-        indexMode: boardId === activeBoardId ? 'display' : 'full',
-        insertIdx: 0,
-        insertMode: 'full',
-        sidebarNode: sidebarNode || null,
-        container: null
-      };
-    }
-
-    var resolvedColIdx = (typeof colIdx === 'number' && colIdx >= 0 && colIdx < stack.columns.length)
-      ? colIdx
-      : (stack.columns.length - 1);
-    var targetCol = stack.columns[resolvedColIdx];
-    var insertIdx = getVisibleCardCountInColumn(targetCol);
-
-    return {
-      kind: 'sidebar',
-      boardId: boardId,
-      rowIndex: rowIdx,
-      stackIndex: stackIdx,
-      colIndex: resolvedColIdx,
-      indexMode: boardId === activeBoardId ? 'display' : 'full',
-      insertIdx: insertIdx,
-      insertMode: 'visible',
-      sidebarNode: sidebarNode || null,
-      container: null
-    };
-  }
-
-  function getFirstSidebarCardTargetForBoard(boardId, sidebarNode) {
-    if (!boardId) return null;
-    var rows = getBoardHierarchyRows(boardId) || [];
-    for (var r = 0; r < rows.length; r++) {
-      var row = rows[r];
-      if (!row || !row.stacks) continue;
-      for (var s = 0; s < row.stacks.length; s++) {
-        var stack = row.stacks[s];
-        if (!stack || !stack.columns || stack.columns.length === 0) continue;
-        return buildSidebarCardTarget(boardId, r, s, 0, sidebarNode || null);
-      }
-    }
-    if (rows.length > 0) {
-      return {
-        kind: 'sidebar',
-        boardId: boardId,
-        rowIndex: 0,
-        indexMode: boardId === activeBoardId ? 'display' : 'full',
-        insertIdx: 0,
-        insertMode: 'full',
-        sidebarNode: sidebarNode || null,
-        container: null
-      };
-    }
-    return null;
-  }
-
-  function resolveCardDropTarget(mx, my) {
-    // Header drop targets: Incoming / Park / Archive / Trash buttons
-    var incomingBtn = document.getElementById('btn-incoming');
-    var parkedBtn = document.getElementById('btn-parked');
-    var archiveBtn = document.getElementById('btn-archived');
-    var trashBtn = document.getElementById('btn-trash');
-    if (incomingBtn && isPointInsideRect(mx, my, incomingBtn.getBoundingClientRect())) {
-      return { kind: 'header-incoming', sidebarNode: null, container: null };
-    }
-    if (parkedBtn && isPointInsideRect(mx, my, parkedBtn.getBoundingClientRect())) {
-      return { kind: 'header-park', sidebarNode: null, container: null };
-    }
-    if (archiveBtn && isPointInsideRect(mx, my, archiveBtn.getBoundingClientRect())) {
-      return { kind: 'header-archive', sidebarNode: null, container: null };
-    }
-    if (trashBtn && isPointInsideRect(mx, my, trashBtn.getBoundingClientRect())) {
-      return { kind: 'header-trash', sidebarNode: null, container: null };
-    }
-
-    var isCardDrag = (ptrDrag && ptrDrag.type === 'tree-card') || (cardDrag && cardDrag.started);
-
-    // Card-to-card: precise between-card positioning in hierarchy
-    if (isCardDrag) {
-      var treeCardTarget = getTreeCardDropTarget(mx, my);
-      if (treeCardTarget) {
-        var tcInsertIdx = treeCardTarget.before ? treeCardTarget.cardIndex : treeCardTarget.cardIndex + 1;
-        return {
-          kind: 'sidebar',
-          boardId: treeCardTarget.boardId,
-          rowIndex: treeCardTarget.rowIndex,
-          stackIndex: treeCardTarget.stackIndex,
-          colIndex: treeCardTarget.colIndex,
-          indexMode: treeCardTarget.indexMode,
-          insertIdx: tcInsertIdx,
-          insertMode: treeCardTarget.boardId === activeBoardId ? 'visible' : 'full',
-          sidebarNode: null,
-          container: null
-        };
-      }
-    }
-
-    // Prefer sidebar hierarchy columns.
-    var sidebarCol = findSidebarColumnAt(mx, my);
-    if (sidebarCol) {
-      var sidebarBoardId = sidebarCol.getAttribute('data-board-id');
-      var sidebarRowIdx = parseInt(sidebarCol.getAttribute('data-row-index'), 10);
-      var sidebarStackIdx = parseInt(sidebarCol.getAttribute('data-stack-index'), 10);
-      var sidebarColIdx = parseInt(sidebarCol.getAttribute('data-col-local-index'), 10);
-      if (sidebarBoardId && !isNaN(sidebarRowIdx) && !isNaN(sidebarStackIdx) && !isNaN(sidebarColIdx)) {
-        var sidebarInsertIdx = 0;
-        if (sidebarBoardId === activeBoardId && fullBoardData) {
-          var activeTargetCol = null;
-          var activeTargetStack = findFullDataStack(sidebarRowIdx, sidebarStackIdx);
-          if (activeTargetStack) {
-            var activeTargetColIdx = findFullColumnIndexInStack(activeTargetStack, sidebarColIdx);
-            if (activeTargetColIdx >= 0 && activeTargetColIdx < activeTargetStack.columns.length) {
-              activeTargetCol = activeTargetStack.columns[activeTargetColIdx];
-            }
-          }
-          sidebarInsertIdx = getVisibleCardCountInColumn(activeTargetCol);
-        } else {
-          var sidebarRows = getBoardHierarchyRows(sidebarBoardId) || [];
-          var sidebarRow = sidebarRows[sidebarRowIdx];
-          var sidebarStack = sidebarRow && sidebarRow.stacks ? sidebarRow.stacks[sidebarStackIdx] : null;
-          var sidebarTargetCol = sidebarStack && sidebarStack.columns ? sidebarStack.columns[sidebarColIdx] : null;
-          sidebarInsertIdx = getVisibleCardCountInColumn(sidebarTargetCol);
-        }
-        return {
-          kind: 'sidebar',
-          boardId: sidebarBoardId,
-          rowIndex: sidebarRowIdx,
-          stackIndex: sidebarStackIdx,
-          colIndex: sidebarColIdx,
-          indexMode: sidebarBoardId === activeBoardId ? 'display' : 'full',
-          insertIdx: sidebarInsertIdx,
-          insertMode: 'visible',
-          sidebarNode: sidebarCol,
-          container: null
-        };
-      }
-    }
-
-    // Tree-originated card drags only go into columns; board card drags also target stacks/rows/boards
-    var isTreeOnlyCardDrag = ptrDrag && ptrDrag.type === 'tree-card';
-    if (!isTreeOnlyCardDrag) {
-      // Sidebar stack drop: append to last column in stack.
-      var sidebarStackNode = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-stack[data-tree-drag="tree-stack"]'), mx, my);
-      if (sidebarStackNode) {
-        var stackBoardId = sidebarStackNode.getAttribute('data-board-id');
-        var stackRowIdx = parseInt(sidebarStackNode.getAttribute('data-row-index'), 10);
-        var stackIdx = parseInt(sidebarStackNode.getAttribute('data-stack-index'), 10);
-        var stackTarget = buildSidebarCardTarget(stackBoardId, stackRowIdx, stackIdx, Number.POSITIVE_INFINITY, sidebarStackNode);
-        if (stackTarget) return stackTarget;
-      }
-
-      // Sidebar row drop: append to first non-empty stack/column in row.
-      var sidebarRowNode = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-row[data-tree-drag="tree-row"]'), mx, my);
-      if (sidebarRowNode) {
-        var rowBoardId = sidebarRowNode.getAttribute('data-board-id');
-        var rowIdx = parseInt(sidebarRowNode.getAttribute('data-row-index'), 10);
-        var rowDataSet = getBoardHierarchyRows(rowBoardId) || [];
-        var rowData = rowDataSet[rowIdx];
-        if (rowData && rowData.stacks) {
-          for (var rs = 0; rs < rowData.stacks.length; rs++) {
-            if (rowData.stacks[rs] && rowData.stacks[rs].columns && rowData.stacks[rs].columns.length > 0) {
-              var rowTarget = buildSidebarCardTarget(rowBoardId, rowIdx, rs, 0, sidebarRowNode);
-              if (rowTarget) return rowTarget;
-              break;
-            }
-          }
-          return {
-            kind: 'sidebar',
-            boardId: rowBoardId,
-            rowIndex: rowIdx,
-            indexMode: rowBoardId === activeBoardId ? 'display' : 'full',
-            insertIdx: 0,
-            insertMode: 'full',
-            sidebarNode: sidebarRowNode,
-            container: null
-          };
-        }
-      }
-
-      // Sidebar board drop: append to first available column in board.
-      var sidebarBoardNode = findNodeAtPoint(getElBoardList().querySelectorAll('.board-item[data-board-id]'), mx, my);
-      if (sidebarBoardNode) {
-        var boardNodeId = sidebarBoardNode.getAttribute('data-board-id');
-        var boardTarget = getFirstSidebarCardTargetForBoard(boardNodeId, sidebarBoardNode);
-        if (boardTarget) return boardTarget;
-      }
-    }
-
-    // Then main board columns.
-    var targetContainer = findColumnCardsContainerAt(mx, my);
-    if (targetContainer) {
-      var targetColIndex = parseInt(targetContainer.getAttribute('data-col-index'), 10);
-      if (!isNaN(targetColIndex)) {
-        return {
-          kind: 'main',
-          boardId: activeBoardId,
-          flatColIndex: targetColIndex,
-          indexMode: 'display',
-          insertIdx: findCardInsertIndex(my, targetContainer),
-          insertMode: 'visible',
-          sidebarNode: null,
-          container: targetContainer
-        };
-      }
-    }
-
-    var targetStackEl = findBoardStackAt(mx, my);
-    if (targetStackEl) {
-      var stackRowIdx = parseInt(targetStackEl.getAttribute('data-row-index'), 10);
-      var stackIdx = parseInt(targetStackEl.getAttribute('data-stack-index'), 10);
-      if (!isNaN(stackRowIdx) && !isNaN(stackIdx)) {
-        return {
-          kind: 'main',
-          boardId: activeBoardId,
-          rowIndex: stackRowIdx,
-          stackIndex: stackIdx,
-          indexMode: 'display',
-          insertIdx: 0,
-          insertMode: 'full',
-          sidebarNode: null,
-          container: null
-        };
-      }
-    }
-
-    var targetRowEl = findNodeAtPoint(getElColumnsContainer().querySelectorAll('.board-row'), mx, my);
-    if (targetRowEl) {
-      var mainRowIdx = parseInt(targetRowEl.getAttribute('data-row-index'), 10);
-      if (!isNaN(mainRowIdx)) {
-        return {
-          kind: 'main',
-          boardId: activeBoardId,
-          rowIndex: mainRowIdx,
-          indexMode: 'display',
-          insertIdx: 0,
-          insertMode: 'full',
-          sidebarNode: null,
-          container: null
-        };
-      }
-    }
-
-    return null;
-  }
-
-  function updateCardDropTarget(mx, my) {
-    clearCardDropIndicators();
-    clearSidebarDropHighlights();
-    clearCardDragOverHighlights();
-    clearDropZoneIndicatorHighlights();
-
-    var target = resolveCardDropTarget(mx, my);
-    // Clear header drop target highlights
-    clearHeaderDropTargetHighlights();
-
-    if (!target) return false;
-
-    if (target.kind === 'header-incoming' || target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
-      var hdrBtnId = target.kind === 'header-incoming' ? 'btn-incoming' : target.kind === 'header-park' ? 'btn-parked' : target.kind === 'header-archive' ? 'btn-archived' : 'btn-trash';
-      var hdrBtn = document.getElementById(hdrBtnId);
-      if (hdrBtn) hdrBtn.classList.add('drop-target');
-      return true;
-    }
-
-    if (target.kind === 'sidebar') {
-      if (target.sidebarNode) target.sidebarNode.classList.add('drop-target');
-      return true;
-    }
-
-    if (target.kind === 'main') {
-      if (typeof target.stackIndex === 'number') {
-        var stackSelector = '.board-stack[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"]';
-        var stackTarget = getElColumnsContainer().querySelector(stackSelector);
-        if (stackTarget) stackTarget.classList.add('column-drop-target');
-        return true;
-      }
-      if (typeof target.rowIndex === 'number') {
-        var rowSelector = '.board-row[data-row-index="' + target.rowIndex + '"]';
-        var rowTarget = getElColumnsContainer().querySelector(rowSelector);
-        if (rowTarget) rowTarget.classList.add('drop-target');
-        return true;
-      }
-    }
-
-    if (target.container) {
-      target.container.classList.add('card-drag-over');
-      showCardDropIndicator(target.container, target.insertIdx);
-      highlightDropZoneIndicator('card', mx, my);
-      return true;
-    }
-    return false;
-  }
-
-  function applyCardDropByPoint(source, mx, my) {
-    var target = resolveCardDropTarget(mx, my);
-    if (!target) return false;
-
-    // Header drop targets: incoming, park, archive, or trash the dragged card
-    if (target.kind === 'header-incoming' || target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
-      var tag = target.kind === 'header-incoming' ? '#hidden-internal-incoming'
-        : target.kind === 'header-park' ? '#hidden-internal-parked'
-        : target.kind === 'header-archive' ? '#hidden-internal-archived'
-        : '#hidden-internal-deleted';
-      var srcColIndex = source.flatColIndex;
-      var srcCardIndex = source.cardIndex;
-      if (typeof srcColIndex === 'number' && typeof srcCardIndex === 'number') {
-        tagCard(srcColIndex, srcCardIndex, tag);
-      }
-      return true;
-    }
-
-    moveCard(source, target).catch(function (err) {
-      logFrontendIssue('error', 'moveCard', 'Drop failed', err);
-    });
-    return true;
-  }
-
-  function finishCardDrag(mx, my) {
-    clearCardDropIndicators();
-    clearSidebarDropHighlights();
-    clearCardDragOverHighlights();
-    var source = {
-      boardId: cardDrag.boardId,
-      flatColIndex: cardDrag.flatColIndex,
-      cardIndex: cardDrag.cardIndex,
-      cardIndexMode: 'visible',
-      indexMode: 'display'
-    };
-    if (
-      typeof cardDrag.rowIndex === 'number' &&
-      typeof cardDrag.stackIndex === 'number' &&
-      typeof cardDrag.colIndex === 'number' &&
-      cardDrag.rowIndex >= 0 &&
-      cardDrag.stackIndex >= 0 &&
-      cardDrag.colIndex >= 0
-    ) {
-      source.rowIndex = cardDrag.rowIndex;
-      source.stackIndex = cardDrag.stackIndex;
-      source.colIndex = cardDrag.colIndex;
-    }
-    applyCardDropByPoint(source, mx, my);
-    cleanupCardDrag();
-  }
-
-  function cancelCardDrag() {
-    clearCardDropIndicators();
-    clearSidebarDropHighlights();
-    clearCardDragOverHighlights();
-    clearHeaderDropTargetHighlights();
-    cleanupCardDrag();
-  }
-
-  function clearHeaderDropTargetHighlights() {
-    var p = document.getElementById('btn-parked');
-    var a = document.getElementById('btn-archived');
-    var t = document.getElementById('btn-trash');
-    if (p) p.classList.remove('drop-target');
-    if (a) a.classList.remove('drop-target');
-    if (t) t.classList.remove('drop-target');
-  }
-
-  function cleanupCardDrag() {
-    removeDropZoneIndicators();
-    clearHeaderDropTargetHighlights();
-    if (cardDrag) {
-      if (cardDrag.el) cardDrag.el.classList.remove('dragging');
-      if (cardDrag.ghost) cardDrag.ghost.remove();
-      cardDrag = null;
-    }
-    stopCrossViewBridge();
-    unlockBoardLayoutForDrag();
-    vsRestoreAfterDrag();
-  }
-
-  function findCardInsertIndex(mouseY, cardsEl) {
-    var cards = cardsEl.querySelectorAll('.card:not(.dragging)');
-    for (var i = 0; i < cards.length; i++) {
-      var rect = cards[i].getBoundingClientRect();
-      if (mouseY < rect.top + rect.height / 2) {
-        return i;
-      }
-    }
-    return cards.length;
-  }
-
-  function showCardDropIndicator(cardsEl, insertIdx) {
-    if (!cardsEl) return;
-    var indicator = document.querySelector('.card-drop-indicator');
-    if (!indicator) {
-      indicator = document.createElement('div');
-      indicator.className = 'card-drop-indicator';
-      document.body.appendChild(indicator);
-    }
-    var cards = cardsEl.querySelectorAll('.card:not(.dragging)');
-    var containerRect = cardsEl.getBoundingClientRect();
-    var y;
-    if (insertIdx < cards.length && cards[insertIdx]) {
-      y = cards[insertIdx].getBoundingClientRect().top;
-    } else if (cards.length > 0) {
-      y = cards[cards.length - 1].getBoundingClientRect().bottom;
-    } else {
-      y = containerRect.top + 8;
-    }
-    indicator.style.top = Math.round(y) + 'px';
-    indicator.style.left = Math.round(containerRect.left + 6) + 'px';
-    indicator.style.width = Math.max(24, Math.round(containerRect.width - 12)) + 'px';
-  }
-
-  function clearCardDropIndicators() {
-    var indicators = document.querySelectorAll('.card-drop-indicator');
-    for (var i = 0; i < indicators.length; i++) {
-      indicators[i].remove();
-    }
-  }
-
-  var crossViewBridge = null;
-
-  function getTopWindowSafe() {
-    try {
-      if (window.top && window.top.document) return window.top;
-    } catch (e) {
-      logFrontendIssue('warn', 'cross-frame', 'Failed to access top window', e);
-    }
-    return window;
-  }
-
-  function getFrameWindowAtTopPoint(topX, topY) {
-    var topWin = getTopWindowSafe();
-    if (!topWin || !topWin.document || !topWin.document.elementFromPoint) return window;
-    var hit = topWin.document.elementFromPoint(topX, topY);
-    if (!hit) return window;
-    if (hit.tagName === 'IFRAME' && hit.contentWindow) return hit.contentWindow;
-    return topWin;
-  }
-
-  function getFrameRectInTopWindow(targetWin) {
-    var topWin = getTopWindowSafe();
-    if (!targetWin || targetWin === topWin) return { left: 0, top: 0 };
-    try {
-      var iframes = topWin.document.querySelectorAll('iframe');
-      for (var i = 0; i < iframes.length; i++) {
-        if (iframes[i].contentWindow === targetWin) {
-          return iframes[i].getBoundingClientRect();
-        }
-      }
-    } catch (e) {
-      logFrontendIssue('warn', 'cross-frame', 'Failed to resolve iframe bounds in top window', e);
-    }
-    return null;
-  }
-
-  function toTopFramePoint(sourceWin, localX, localY) {
-    var topWin = getTopWindowSafe();
-    if (!sourceWin) return null;
-    if (sourceWin === topWin) return { x: localX, y: localY };
-    var rect = getFrameRectInTopWindow(sourceWin);
-    if (!rect) return null;
-    return { x: localX + rect.left, y: localY + rect.top };
-  }
-
-  function toLocalFramePoint(targetWin, topX, topY) {
-    var topWin = getTopWindowSafe();
-    if (!targetWin) return null;
-    if (targetWin === topWin) return { x: topX, y: topY };
-    var rect = getFrameRectInTopWindow(targetWin);
-    if (!rect) return null;
-    return { x: topX - rect.left, y: topY - rect.top };
-  }
-
-  function getDragStartTopPoint(kind) {
-    if (kind === 'card' && cardDrag) {
-      if (typeof cardDrag.startTopX === 'number' && typeof cardDrag.startTopY === 'number') {
-        return { x: cardDrag.startTopX, y: cardDrag.startTopY };
-      }
-      return toTopFramePoint(window, cardDrag.startX, cardDrag.startY);
-    }
-    if (kind === 'ptr' && ptrDrag) {
-      if (typeof ptrDrag.startTopX === 'number' && typeof ptrDrag.startTopY === 'number') {
-        return { x: ptrDrag.startTopX, y: ptrDrag.startTopY };
-      }
-      return toTopFramePoint(window, ptrDrag.startX, ptrDrag.startY);
-    }
-    return null;
-  }
-
-  function hasCrossViewDragMovedBeyondThreshold(kind, topPoint) {
-    if (!topPoint) return false;
-    if (kind === 'card' && cardDrag && cardDrag.started) return true;
-    if (kind === 'ptr' && ptrDrag && ptrDrag.started) return true;
-    var startPoint = getDragStartTopPoint(kind);
-    if (!startPoint) return false;
-    var dx = topPoint.x - startPoint.x;
-    var dy = topPoint.y - startPoint.y;
-    return Math.abs(dx) >= DRAG_THRESHOLD || Math.abs(dy) >= DRAG_THRESHOLD;
-  }
-
-  function getCrossViewDragPayload(kind) {
-    if (kind === 'card' && cardDrag) {
-      var source = {
-        boardId: cardDrag.boardId,
-        flatColIndex: cardDrag.flatColIndex,
-        cardIndex: cardDrag.cardIndex,
-        cardIndexMode: 'visible',
-        indexMode: 'display'
-      };
-      if (
-        typeof cardDrag.rowIndex === 'number' &&
-        typeof cardDrag.stackIndex === 'number' &&
-        typeof cardDrag.colIndex === 'number' &&
-        cardDrag.rowIndex >= 0 &&
-        cardDrag.stackIndex >= 0 &&
-        cardDrag.colIndex >= 0
-      ) {
-        source.rowIndex = cardDrag.rowIndex;
-        source.stackIndex = cardDrag.stackIndex;
-        source.colIndex = cardDrag.colIndex;
-      }
-      return {
-        type: 'tree-card',
-        source: source
-      };
-    }
-    if (kind === 'ptr' && ptrDrag) {
-      if (
-        ptrDrag.type !== 'tree-card' &&
-        ptrDrag.type !== 'column' &&
-        ptrDrag.type !== 'tree-column' &&
-        ptrDrag.type !== 'board-row' &&
-        ptrDrag.type !== 'tree-row' &&
-        ptrDrag.type !== 'board-stack' &&
-        ptrDrag.type !== 'tree-stack'
-      ) {
-        return null;
-      }
-      return {
-        type: ptrDrag.type,
-        source: JSON.parse(JSON.stringify(ptrDrag.source || {}))
-      };
-    }
-    return null;
-  }
-
-  function tryExternalFrameDrop(targetWin, payload, topX, topY) {
-    if (!targetWin || !payload || !payload.source) return false;
-    var api = targetWin.__lexeraExternalDnd;
-    if (!api || typeof api.drop !== 'function') return false;
-    var localPoint = toLocalFramePoint(targetWin, topX, topY);
-    if (!localPoint) return false;
-    return !!api.drop(payload, localPoint.x, localPoint.y);
-  }
-
-  function tryExternalFrameHover(targetWin, payload, topX, topY) {
-    if (!targetWin || !payload || !payload.source) return false;
-    var api = targetWin.__lexeraExternalDnd;
-    if (!api || typeof api.hover !== 'function') return false;
-    var localPoint = toLocalFramePoint(targetWin, topX, topY);
-    if (!localPoint) return false;
-    return !!api.hover(payload, localPoint.x, localPoint.y);
-  }
-
-  function tryExternalFrameClear(targetWin) {
-    if (!targetWin) return;
-    var api = targetWin.__lexeraExternalDnd;
-    if (api && typeof api.clear === 'function') {
-      api.clear();
-    }
-  }
-
-  function getCrossViewGhostLabel(kind) {
-    if (kind === 'card' && cardDrag && cardDrag.el) {
-      var titleEl = cardDrag.el.querySelector('.card-title-display');
-      var text = titleEl ? titleEl.textContent : cardDrag.el.textContent;
-      return (text || 'Drag').trim().substring(0, 80);
-    }
-    if (kind === 'ptr' && ptrDrag) {
-      return getPtrDragLabel();
-    }
-    return 'Drag';
-  }
-
-  function getCrossViewBridgeWindows(topWin) {
-    var result = [];
-    var seen = [];
-    function pushWin(win) {
-      if (!win) return;
-      if (seen.indexOf(win) !== -1) return;
-      seen.push(win);
-      result.push(win);
-    }
-    pushWin(topWin);
-    if (!topWin || !topWin.document) return result;
-    try {
-      var iframes = topWin.document.querySelectorAll('iframe');
-      for (var i = 0; i < iframes.length; i++) {
-        if (iframes[i] && iframes[i].contentWindow) pushWin(iframes[i].contentWindow);
-      }
-    } catch (e) {
-      // ignore cross-frame access issues
-    }
-    return result;
-  }
-
-  function clearCrossViewHoverTarget() {
-    if (!crossViewBridge || !crossViewBridge.hoverWin) return;
-    tryExternalFrameClear(crossViewBridge.hoverWin);
-    crossViewBridge.hoverWin = null;
-  }
-
-  function hideCrossViewTopGhost() {
-    if (!crossViewBridge || !crossViewBridge.topGhost) return;
-    crossViewBridge.topGhost.style.display = 'none';
-  }
-
-  function ensureCrossViewTopGhost(kind) {
-    if (!crossViewBridge || !crossViewBridge.topWin || !crossViewBridge.topWin.document) return null;
-    if (!crossViewBridge.topGhost || !crossViewBridge.topGhost.isConnected) {
-      var ghost = crossViewBridge.topWin.document.createElement('div');
-      ghost.className = 'card-drag-ghost cross-view-drag-ghost';
-      ghost.style.display = 'none';
-      crossViewBridge.topWin.document.body.appendChild(ghost);
-      crossViewBridge.topGhost = ghost;
-    }
-    var label = getCrossViewGhostLabel(kind);
-    crossViewBridge.topGhost.textContent = label || 'Drag';
-    return crossViewBridge.topGhost;
-  }
-
-  function updateCrossViewTopGhost(kind, topX, topY) {
-    var ghost = ensureCrossViewTopGhost(kind);
-    if (!ghost) return;
-    ghost.style.left = (topX + 8) + 'px';
-    ghost.style.top = (topY - 12) + 'px';
-    ghost.style.display = 'block';
-  }
-
-  function removeCrossViewTopGhost() {
-    if (!crossViewBridge || !crossViewBridge.topGhost) return;
-    crossViewBridge.topGhost.remove();
-    crossViewBridge.topGhost = null;
-  }
-
-  function updateCrossViewExternalHover(kind, topX, topY) {
-    if (!crossViewBridge) return;
-    var payload = getCrossViewDragPayload(kind);
-    if (!payload) {
-      clearCrossViewHoverTarget();
-      return;
-    }
-    var targetWin = getFrameWindowAtTopPoint(topX, topY);
-    if (!targetWin || targetWin === window || targetWin === crossViewBridge.topWin) {
-      clearCrossViewHoverTarget();
-      return;
-    }
-    if (crossViewBridge.hoverWin && crossViewBridge.hoverWin !== targetWin) {
-      tryExternalFrameClear(crossViewBridge.hoverWin);
-      crossViewBridge.hoverWin = null;
-    }
-    var hovered = tryExternalFrameHover(targetWin, payload, topX, topY);
-    if (hovered) {
-      crossViewBridge.hoverWin = targetWin;
-      return;
-    }
-    if (crossViewBridge.hoverWin === targetWin) {
-      tryExternalFrameClear(targetWin);
-      crossViewBridge.hoverWin = null;
-    }
-  }
-
-  function startCrossViewBridge(kind) {
-    if (crossViewBridge) return;
-    var topWin = getTopWindowSafe();
-    if (!topWin || topWin === window) return;
-
-    var bridgeTargets = [];
-    var bridgeWindows = getCrossViewBridgeWindows(topWin);
-
-    function onAnyMouseMove(originWin, e) {
-      var topPoint = toTopFramePoint(originWin, e.clientX, e.clientY);
-      if (!topPoint) return;
-      var crossedThreshold = hasCrossViewDragMovedBeyondThreshold(kind, topPoint);
-      if (!crossedThreshold) {
-        hideCrossViewTopGhost();
-        clearCrossViewHoverTarget();
-        return;
-      }
-      var targetWin = getFrameWindowAtTopPoint(topPoint.x, topPoint.y);
-      if (targetWin && targetWin !== window) {
-        updateCrossViewTopGhost(kind, topPoint.x, topPoint.y);
-      } else {
-        hideCrossViewTopGhost();
-      }
-      updateCrossViewExternalHover(kind, topPoint.x, topPoint.y);
-    }
-
-    function onAnyMouseUp(originWin, e) {
-      var topPoint = toTopFramePoint(originWin, e.clientX, e.clientY);
-      if (!topPoint) return;
-      var targetWin = getFrameWindowAtTopPoint(topPoint.x, topPoint.y);
-      if (!targetWin || targetWin === window) return;
-      var crossedThreshold = hasCrossViewDragMovedBeyondThreshold(kind, topPoint);
-      if (!crossedThreshold) {
-        if (kind === 'card' && cardDrag && !cardDrag.started) cancelCardDrag();
-        else if (kind === 'ptr' && ptrDrag && !ptrDrag.started) cleanupPtrDrag();
-        stopCrossViewBridge();
-        return;
-      }
-
-      var payload = getCrossViewDragPayload(kind);
-      var dropped =
-        payload && targetWin !== topWin
-          ? tryExternalFrameDrop(targetWin, payload, topPoint.x, topPoint.y)
-          : false;
-      if (kind === 'card' && cardDrag) {
-        if (dropped) cleanupCardDrag();
-        else cancelCardDrag();
-      } else if (kind === 'ptr' && ptrDrag) {
-        cleanupPtrDrag();
-      }
-      if (dropped) poll();
-      stopCrossViewBridge();
-    }
-
-    for (var i = 0; i < bridgeWindows.length; i++) {
-      (function (targetWin) {
-        function upListener(e) {
-          onAnyMouseUp(targetWin, e);
-        }
-        function moveListener(e) {
-          onAnyMouseMove(targetWin, e);
-        }
-        targetWin.addEventListener('mouseup', upListener, true);
-        targetWin.addEventListener('mousemove', moveListener, true);
-        bridgeTargets.push({ win: targetWin, upListener: upListener, moveListener: moveListener });
-      })(bridgeWindows[i]);
-    }
-
-    crossViewBridge = { topWin: topWin, kind: kind, targets: bridgeTargets, hoverWin: null, topGhost: null };
-  }
-
-  function stopCrossViewBridge() {
-    if (!crossViewBridge) return;
-    var targets = crossViewBridge.targets || [];
-    for (var i = 0; i < targets.length; i++) {
-      var target = targets[i];
-      if (target && target.win && target.upListener) {
-        target.win.removeEventListener('mouseup', target.upListener, true);
-      }
-      if (target && target.win && target.moveListener) {
-        target.win.removeEventListener('mousemove', target.moveListener, true);
-      }
-    }
-    clearCrossViewHoverTarget();
-    removeCrossViewTopGhost();
-    crossViewBridge = null;
-  }
-
-  function registerExternalDndBridge() {
-    window.__lexeraExternalDnd = {
-      hover: function (payload, x, y) {
-        if (!payload || !payload.source) return false;
-        if (payload.type === 'tree-card') {
-          return updateCardDropTarget(x, y);
-        }
-        if (
-          payload.type === 'board-row' ||
-          payload.type === 'tree-row' ||
-          payload.type === 'board-stack' ||
-          payload.type === 'tree-stack' ||
-          payload.type === 'column' ||
-          payload.type === 'tree-column'
-        ) {
-          return updatePtrDropTargetByType(payload.type, x, y);
-        }
-        return false;
-      },
-      drop: function (payload, x, y) {
-        if (!payload || !payload.source) return false;
-        if (payload.type === 'tree-card') {
-          return applyCardDropByPoint(payload.source, x, y);
-        }
-        if (payload.type === 'board-row' || payload.type === 'tree-row') {
-          return applyRowDropByPoint(payload.source, x, y);
-        }
-        if (payload.type === 'board-stack' || payload.type === 'tree-stack') {
-          return applyStackDropByPoint(payload.source, x, y);
-        }
-        if (payload.type === 'column' || payload.type === 'tree-column') {
-          executeColumnPtrDrop(x, y, payload.source);
-          return true;
-        }
-        return false;
-      },
-      clear: function () {
-        clearPtrDropIndicators();
-      }
-    };
-  }
-
-  // --- Pointer-based DnD for rows/stacks/columns/boards (bypasses broken HTML5 DnD in WebKit) ---
-
-  // Sidebar: tree grips and board item grips
+  // --- Card & Pointer DnD (delegated to LexeraDragDropHandlers module) ---
+  var DRAG_THRESHOLD = 5;
+  function lockBoardLayoutForDrag() { if (DragDropHandlers) DragDropHandlers.lockBoardLayoutForDrag(); }
+  function unlockBoardLayoutForDrag() { if (DragDropHandlers) DragDropHandlers.unlockBoardLayoutForDrag(); }
+  function startCardDrag(e) { if (DragDropHandlers) DragDropHandlers.startCardDrag(e); }
+  function updateCardDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.updateCardDropTarget(mx, my) : false; }
+  function applyCardDropByPoint(source, mx, my) { return DragDropHandlers ? DragDropHandlers.applyCardDropByPoint(source, mx, my) : false; }
+  function finishCardDrag(mx, my) { if (DragDropHandlers) DragDropHandlers.finishCardDrag(mx, my); }
+  function cancelCardDrag() { if (DragDropHandlers) DragDropHandlers.cancelCardDrag(); }
+  function cleanupCardDrag() { if (DragDropHandlers) DragDropHandlers.cleanupCardDrag(); }
+  function clearCardDropIndicators() { if (DragDropHandlers) DragDropHandlers.clearCardDropIndicators(); }
+  function showCardDropIndicator(cardsEl, insertIdx) { if (DragDropHandlers) DragDropHandlers.showCardDropIndicator(cardsEl, insertIdx); }
+  function findCardInsertIndex(mouseY, cardsEl) { return DragDropHandlers ? DragDropHandlers.findCardInsertIndex(mouseY, cardsEl) : 0; }
+  function clearHeaderDropTargetHighlights() { if (DragDropHandlers) DragDropHandlers.clearHeaderDropTargetHighlights(); }
+  function clearCardDragOverHighlights() { if (DragDropHandlers) DragDropHandlers.clearCardDragOverHighlights(); }
+  function clearSidebarDropHighlights() { if (DragDropHandlers) DragDropHandlers.clearSidebarDropHighlights(); }
+  function isPointInsideRect(mx, my, rect) { return DragDropHandlers ? DragDropHandlers.isPointInsideRect(mx, my, rect) : false; }
+  function findNodeAtPoint(nodeList, mx, my) { return DragDropHandlers ? DragDropHandlers.findNodeAtPoint(nodeList, mx, my) : null; }
+  function removeClassFromNodeList(nodeList, className) { if (DragDropHandlers) DragDropHandlers.removeClassFromNodeList(nodeList, className); }
+  function removeClassesFromNodeList(nodeList, classNames) { if (DragDropHandlers) DragDropHandlers.removeClassesFromNodeList(nodeList, classNames); }
+  function findStackDropZoneAt(mx, my) { return DragDropHandlers ? DragDropHandlers.findStackDropZoneAt(mx, my) : null; }
+  function findDraggableColumnAt(mx, my) { return DragDropHandlers ? DragDropHandlers.findDraggableColumnAt(mx, my) : null; }
+  function findBoardStackAt(mx, my) { return DragDropHandlers ? DragDropHandlers.findBoardStackAt(mx, my) : null; }
+  function findColumnCardsContainerAt(mx, my) { return DragDropHandlers ? DragDropHandlers.findColumnCardsContainerAt(mx, my) : null; }
+  function findSidebarColumnAt(mx, my) { return DragDropHandlers ? DragDropHandlers.findSidebarColumnAt(mx, my) : null; }
+  function resolveCardDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.resolveCardDropTarget(mx, my) : null; }
+  function resolveDropTarget(nodeList, mx, my, vertical) { return DragDropHandlers ? DragDropHandlers.resolveDropTarget(nodeList, mx, my, vertical) : null; }
+  function resolveDropTargetStrict(nodeList, mx, my, vertical) { return DragDropHandlers ? DragDropHandlers.resolveDropTargetStrict(nodeList, mx, my, vertical) : null; }
+  function resolveRowBodyDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.resolveRowBodyDropTarget(mx, my) : null; }
+  function resolveCanvasRowContentDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.resolveCanvasRowContentDropTarget(mx, my) : null; }
+  function resolveHeaderDropTag(mx, my) { return DragDropHandlers ? DragDropHandlers.resolveHeaderDropTag(mx, my) : null; }
+  function getPtrDragLabel() { return DragDropHandlers ? DragDropHandlers.getPtrDragLabel() : 'Drag'; }
+  function updatePtrDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.updatePtrDropTarget(mx, my) : false; }
+  function updatePtrDropTargetByType(type, mx, my) { return DragDropHandlers ? DragDropHandlers.updatePtrDropTargetByType(type, mx, my) : false; }
+  function updateColumnPtrDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.updateColumnPtrDropTarget(mx, my) : false; }
+  function clearPtrDropIndicators() { if (DragDropHandlers) DragDropHandlers.clearPtrDropIndicators(); }
+  function executePtrDrop(mx, my) { if (DragDropHandlers) DragDropHandlers.executePtrDrop(mx, my); }
+  function executeColumnPtrDrop(mx, my, src) { if (DragDropHandlers) DragDropHandlers.executeColumnPtrDrop(mx, my, src); }
+  function cleanupPtrDrag() { if (DragDropHandlers) DragDropHandlers.cleanupPtrDrag(); }
+  function applyPtrDragHiddenTag(type, src, tag) { if (DragDropHandlers) return DragDropHandlers.applyPtrDragHiddenTag(type, src, tag); }
+  function applyRowDropByPoint(source, mx, my) { return DragDropHandlers ? DragDropHandlers.applyRowDropByPoint(source, mx, my) : false; }
+  function applyStackDropByPoint(source, mx, my) { return DragDropHandlers ? DragDropHandlers.applyStackDropByPoint(source, mx, my) : false; }
+  function applyCanvasStackDrop(source, mx, my) { return DragDropHandlers ? DragDropHandlers.applyCanvasStackDrop(source, mx, my) : false; }
+  function getRowDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.getRowDropTarget(mx, my) : null; }
+  function getStackDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.getStackDropTarget(mx, my) : null; }
+  function getTreeColumnDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.getTreeColumnDropTarget(mx, my) : null; }
+  function getTreeStackDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.getTreeStackDropTarget(mx, my) : null; }
+  function getTreeCardDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.getTreeCardDropTarget(mx, my) : null; }
+  function getCanvasDropPositionInRowContent(rowContent, clientX, clientY, grabOffsetX, grabOffsetY) { return DragDropHandlers ? DragDropHandlers.getCanvasDropPositionInRowContent(rowContent, clientX, clientY, grabOffsetX, grabOffsetY) : { x: 0, y: 0 }; }
+  function getCanvasRowContentNodeFromDropTarget(target, fallbackNode) { return DragDropHandlers ? DragDropHandlers.getCanvasRowContentNodeFromDropTarget(target, fallbackNode) : fallbackNode; }
+  function clearCanvasDragStyles(stackEl) { if (DragDropHandlers) DragDropHandlers.clearCanvasDragStyles(stackEl); }
+  function startCrossViewBridge(kind) { if (DragDropHandlers) DragDropHandlers.startCrossViewBridge(kind); }
+  function stopCrossViewBridge() { if (DragDropHandlers) DragDropHandlers.stopCrossViewBridge(); }
+  function toTopFramePoint(win, x, y) { return DragDropHandlers ? DragDropHandlers.toTopFramePoint(win, x, y) : null; }
+  function ptrFindHitNode(nodeList, mx, my, classBefore, classAfter, vertical) { return DragDropHandlers ? DragDropHandlers.ptrFindHitNode(nodeList, mx, my, classBefore, classAfter, vertical) : null; }
+  function ptrFindStrictHitNode(nodeList, mx, my, classBefore, classAfter, vertical) { return DragDropHandlers ? DragDropHandlers.ptrFindStrictHitNode(nodeList, mx, my, classBefore, classAfter, vertical) : null; }
+  function ptrFindDropTarget(nodeList, mx, my, vertical) { return DragDropHandlers ? DragDropHandlers.ptrFindDropTarget(nodeList, mx, my, vertical) : null; }
+  function getVisibleCardCountInColumn(col) { return DragDropHandlers ? DragDropHandlers.getVisibleCardCountInColumn(col) : 0; }
+  function buildSidebarCardTarget(boardId, rowIdx, stackIdx, colIdx, sidebarNode) { return DragDropHandlers ? DragDropHandlers.buildSidebarCardTarget(boardId, rowIdx, stackIdx, colIdx, sidebarNode) : null; }
+  function getFirstSidebarCardTargetForBoard(boardId, sidebarNode) { return DragDropHandlers ? DragDropHandlers.getFirstSidebarCardTargetForBoard(boardId, sidebarNode) : null; }
+  function getSourceRowIndex(source) { return DragDropHandlers ? DragDropHandlers.getSourceRowIndex(source) : -1; }
+  function getColumnCardsContainers() { return getElColumnsContainer().querySelectorAll('.column-cards'); }
+  function registerExternalDndBridge() { if (DragDropHandlers) DragDropHandlers.registerExternalDndBridge(); }
+
+
+  // --- Pointer-based DnD event listeners for rows/stacks/columns/boards ---
   getElBoardList().addEventListener('mousedown', function (e) {
     try {
     if (e.button !== 0) return;
+    var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
+    var cardDrag = DragDropHandlers ? DragDropHandlers.getCardDrag() : null;
     if (ptrDrag || cardDrag) return;
 
     var grip = e.target.closest('.tree-grip');
     if (!grip) return;
 
-    // Tree node drag
     var treeNode = grip.closest('.tree-node[data-tree-drag]');
     if (treeNode) {
       var dragType = treeNode.getAttribute('data-tree-drag');
@@ -14083,29 +13114,30 @@ const LexeraDashboard = (function () {
         source.cardIndexMode = source.boardId === activeBoardId ? 'visible' : 'full';
         source.indexMode = source.boardId === activeBoardId ? 'display' : 'full';
       }
-      ptrDrag = { type: dragType, source: source, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: treeNode };
+      var newPtrDrag = { type: dragType, source: source, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: treeNode };
       var treeStartTop = toTopFramePoint(window, e.clientX, e.clientY);
       if (treeStartTop) {
-        ptrDrag.startTopX = treeStartTop.x;
-        ptrDrag.startTopY = treeStartTop.y;
+        newPtrDrag.startTopX = treeStartTop.x;
+        newPtrDrag.startTopY = treeStartTop.y;
       }
+      DragDropHandlers.setPtrDrag(newPtrDrag);
       startCrossViewBridge('ptr');
       e.preventDefault();
       e.stopPropagation();
       return;
     }
 
-    // Board item drag (for reordering boards in sidebar)
     var boardItem = grip.closest('.board-item');
     if (boardItem) {
       var boardIndex = parseInt(boardItem.getAttribute('data-board-index'), 10);
       if (isNaN(boardIndex)) return;
-      ptrDrag = { type: 'board', source: { type: 'board', index: boardIndex }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: boardItem };
+      var newPtrDrag = { type: 'board', source: { type: 'board', index: boardIndex }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: boardItem };
       var boardStartTop = toTopFramePoint(window, e.clientX, e.clientY);
       if (boardStartTop) {
-        ptrDrag.startTopX = boardStartTop.x;
-        ptrDrag.startTopY = boardStartTop.y;
+        newPtrDrag.startTopX = boardStartTop.x;
+        newPtrDrag.startTopY = boardStartTop.y;
       }
+      DragDropHandlers.setPtrDrag(newPtrDrag);
       startCrossViewBridge('ptr');
       e.preventDefault();
       e.stopPropagation();
@@ -14145,76 +13177,34 @@ const LexeraDashboard = (function () {
     }
   });
 
-  // Double-click on row/stack/column titles to rename inline
-  getElColumnsContainer().addEventListener('dblclick', function (e) {
-    try {
-      // Row title
-      var rowTitleEl = e.target.closest('.board-row-title');
-      if (rowTitleEl) {
-        var rowEl = rowTitleEl.closest('.board-row');
-        if (rowEl) {
-          var rowIdx = parseInt(rowEl.getAttribute('data-row-index'), 10);
-          if (!isNaN(rowIdx)) renameRowOrStack('row', rowIdx);
-        }
-        return;
-      }
-      // Stack title
-      var stackTitleEl = e.target.closest('.board-stack-title');
-      if (stackTitleEl) {
-        var stackEl = stackTitleEl.closest('.board-stack');
-        if (stackEl) {
-          var rowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
-          var stackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
-          if (!isNaN(rowIdx) && !isNaN(stackIdx)) renameRowOrStack('stack', rowIdx, stackIdx);
-        }
-        return;
-      }
-      // Column title
-      var colTitleEl = e.target.closest('.column-title');
-      if (colTitleEl) {
-        var colEl = colTitleEl.closest('.column');
-        if (colEl) {
-          var colCardsEl = colEl.querySelector('.column-cards[data-col-index]');
-          if (colCardsEl) {
-            var colIndex = parseInt(colCardsEl.getAttribute('data-col-index'), 10);
-            if (!isNaN(colIndex)) enterColumnRename(colEl, colIndex);
-          }
-        }
-        return;
-      }
-    } catch (err) {
-      logFrontendIssue('error', 'dblclick.rename', 'Error in title double-click handler', err);
-    }
-  });
-
-  // Main board: row/stack/column drag starts from header area (not just grip)
   getElColumnsContainer().addEventListener('mousedown', function (e) {
     try {
     if (e.button !== 0) return;
+    var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
+    var cardDrag = DragDropHandlers ? DragDropHandlers.getCardDrag() : null;
     if (ptrDrag || cardDrag) return;
     if (e.target.closest('.board-row-title, .board-stack-title, .column-title')) return;
     if (e.target.closest('button, input, textarea, select, a, .column-rename-input, .card-menu-btn, .card-collapse-toggle, .card-checkbox')) {
       return;
     }
 
-    // Row grip
     var rowHeader = e.target.closest('.board-row-header');
     if (rowHeader) {
       var rowEl = rowHeader.closest('.board-row');
       var rowIdx = parseInt(rowEl.getAttribute('data-row-index'), 10);
-      ptrDrag = { type: 'board-row', source: { type: 'board-row', boardId: activeBoardId, rowIndex: rowIdx, indexMode: 'display' }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: rowEl };
+      var newPtrDrag = { type: 'board-row', source: { type: 'board-row', boardId: activeBoardId, rowIndex: rowIdx, indexMode: 'display' }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: rowEl };
       var rowStartTop = toTopFramePoint(window, e.clientX, e.clientY);
       if (rowStartTop) {
-        ptrDrag.startTopX = rowStartTop.x;
-        ptrDrag.startTopY = rowStartTop.y;
+        newPtrDrag.startTopX = rowStartTop.x;
+        newPtrDrag.startTopY = rowStartTop.y;
       }
+      DragDropHandlers.setPtrDrag(newPtrDrag);
       startCrossViewBridge('ptr');
       e.preventDefault();
       e.stopPropagation();
       return;
     }
 
-    // Stack grip
     var stackHeader = e.target.closest('.board-stack-header');
     if (stackHeader) {
       var stackEl = stackHeader.closest('.board-stack');
@@ -14222,7 +13212,7 @@ const LexeraDashboard = (function () {
       var stackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
       var stackRect = stackEl.getBoundingClientRect();
       var rowContentEl = stackEl.closest('.board-row-content');
-      ptrDrag = {
+      var newPtrDrag = {
         type: 'board-stack',
         source: { type: 'board-stack', boardId: activeBoardId, rowIndex: rowIdx, stackIndex: stackIdx, indexMode: 'display' },
         startX: e.clientX,
@@ -14238,16 +13228,16 @@ const LexeraDashboard = (function () {
       };
       var stackStartTop = toTopFramePoint(window, e.clientX, e.clientY);
       if (stackStartTop) {
-        ptrDrag.startTopX = stackStartTop.x;
-        ptrDrag.startTopY = stackStartTop.y;
+        newPtrDrag.startTopX = stackStartTop.x;
+        newPtrDrag.startTopY = stackStartTop.y;
       }
+      DragDropHandlers.setPtrDrag(newPtrDrag);
       startCrossViewBridge('ptr');
       e.preventDefault();
       e.stopPropagation();
       return;
     }
 
-    // Column grip
     var columnHeader = e.target.closest('.column-header');
     if (columnHeader) {
       var colEl = columnHeader.closest('.column');
@@ -14256,7 +13246,7 @@ const LexeraDashboard = (function () {
       var stackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
       var columns = stackEl.querySelectorAll('.board-stack-content > .column');
       var colIdx = Array.prototype.indexOf.call(columns, colEl);
-      ptrDrag = {
+      var newPtrDrag = {
         type: 'column',
         source: {
           type: 'column',
@@ -14276,9 +13266,10 @@ const LexeraDashboard = (function () {
       };
       var colStartTop = toTopFramePoint(window, e.clientX, e.clientY);
       if (colStartTop) {
-        ptrDrag.startTopX = colStartTop.x;
-        ptrDrag.startTopY = colStartTop.y;
+        newPtrDrag.startTopX = colStartTop.x;
+        newPtrDrag.startTopY = colStartTop.y;
       }
+      DragDropHandlers.setPtrDrag(newPtrDrag);
       startCrossViewBridge('ptr');
       e.preventDefault();
       e.stopPropagation();
@@ -14291,6 +13282,7 @@ const LexeraDashboard = (function () {
 
   // Pointer drag: mousemove
   document.addEventListener('mousemove', function (e) {
+    var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
     if (!ptrDrag) return;
     try {
     if (!ptrDrag.started) {
@@ -14298,7 +13290,6 @@ const LexeraDashboard = (function () {
       var dy = e.clientY - ptrDrag.startY;
       if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       ptrDrag.started = true;
-      // Canvas mode: free-position stack drag (no ghost, no drop targets)
       if (ptrDrag.type === 'board-stack' && isCanvasBoardLayout()) {
         ptrDrag.canvasMove = true;
         ptrDrag.el.classList.add('dragging');
@@ -14327,7 +13318,6 @@ const LexeraDashboard = (function () {
       }
       insertDropZoneIndicators(ptrDrag.type);
 
-      // Create ghost
       var ghost = document.createElement('div');
       ghost.className = 'card-drag-ghost';
       ghost.textContent = getPtrDragLabel();
@@ -14340,18 +13330,18 @@ const LexeraDashboard = (function () {
       if (sel) sel.removeAllRanges();
     }
 
-    // Canvas mode: move stack element directly
     if (ptrDrag.canvasMove) {
       clearPtrDropIndicators();
       var canvasHeaderTag = resolveHeaderDropTag(e.clientX, e.clientY);
+      var canvasRowTarget;
       if (canvasHeaderTag) {
         var canvasHeaderBtnId = canvasHeaderTag === '#hidden-internal-incoming' ? 'btn-incoming'
           : canvasHeaderTag === '#hidden-internal-parked' ? 'btn-parked'
           : canvasHeaderTag === '#hidden-internal-archived' ? 'btn-archived' : 'btn-trash';
         var canvasHeaderBtn = document.getElementById(canvasHeaderBtnId);
-      if (canvasHeaderBtn) canvasHeaderBtn.classList.add('drop-target');
+        if (canvasHeaderBtn) canvasHeaderBtn.classList.add('drop-target');
       } else {
-        var canvasRowTarget = resolveCanvasRowContentDropTarget(e.clientX, e.clientY);
+        canvasRowTarget = resolveCanvasRowContentDropTarget(e.clientX, e.clientY);
         if (canvasRowTarget && canvasRowTarget.node) canvasRowTarget.node.classList.add('drop-target');
       }
 
@@ -14386,10 +13376,11 @@ const LexeraDashboard = (function () {
 
   // Pointer drag: mouseup
   document.addEventListener('mouseup', function (e) {
+    var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
     if (!ptrDrag) return;
     try {
     if (!ptrDrag.started) {
-      ptrDrag = null;
+      DragDropHandlers.setPtrDrag(null);
       stopCrossViewBridge();
       return;
     }
@@ -14403,6 +13394,8 @@ const LexeraDashboard = (function () {
 
   // Safety net for interrupted drags (window focus loss, tab hide).
   window.addEventListener('blur', function () {
+    var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
+    var dragLayoutLocks = DragDropHandlers ? DragDropHandlers.getDragLayoutLocks() : null;
     if (ptrDrag || dragLayoutLocks) {
       var wasCanvas = ptrDrag && ptrDrag.canvasMove;
       cleanupPtrDrag();
@@ -14410,6 +13403,8 @@ const LexeraDashboard = (function () {
     }
   });
   document.addEventListener('visibilitychange', function () {
+    var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
+    var dragLayoutLocks = DragDropHandlers ? DragDropHandlers.getDragLayoutLocks() : null;
     if (document.visibilityState === 'hidden' && (ptrDrag || dragLayoutLocks)) {
       var wasCanvas = ptrDrag && ptrDrag.canvasMove;
       cleanupPtrDrag();
@@ -14425,880 +13420,21 @@ const LexeraDashboard = (function () {
     scheduleCanvasFocusStacksControlSync(container);
   });
 
-  function getPtrDragLabel() {
-    var type = ptrDrag.type;
-    var labelEl;
-    if (type === 'board') {
-      labelEl = ptrDrag.el.querySelector('.board-item-title');
-    } else if (type === 'board-row' || type === 'tree-row') {
-      labelEl = ptrDrag.el.querySelector('.board-row-title, .tree-label');
-    } else if (type === 'board-stack' || type === 'tree-stack') {
-      labelEl = ptrDrag.el.querySelector('.board-stack-title, .tree-label');
-    } else if (type === 'column' || type === 'tree-column') {
-      labelEl = ptrDrag.el.querySelector('.column-title, .tree-label');
-    } else if (type === 'tree-card') {
-      labelEl = ptrDrag.el.querySelector('.tree-label');
-    }
-    return labelEl ? labelEl.textContent : 'Drag';
-  }
-
-  function updatePtrDropTarget(mx, my) {
-    if (!ptrDrag) return false;
-    return updatePtrDropTargetByType(ptrDrag.type, mx, my);
-  }
-
-  function updatePtrDropTargetByType(type, mx, my) {
-    clearPtrDropIndicators();
-    clearDropZoneIndicatorHighlights();
-    clearHeaderDropTargetHighlights();
-
-    // Check header drop targets (Park/Archive/Trash) for all non-board types
-    if (type !== 'board') {
-      var headerTag = resolveHeaderDropTag(mx, my);
-      if (headerTag) {
-        var hdrBtnId = headerTag === '#hidden-internal-incoming' ? 'btn-incoming'
-          : headerTag === '#hidden-internal-parked' ? 'btn-parked'
-          : headerTag === '#hidden-internal-archived' ? 'btn-archived' : 'btn-trash';
-        var hdrBtn = document.getElementById(hdrBtnId);
-        if (hdrBtn) hdrBtn.classList.add('drop-target');
-        return true;
-      }
-    }
-
-    if (type === 'tree-row' || type === 'board-row') {
-      var rowBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
-      var rowTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
-      if (rowBoardHit) highlightDropZoneIndicator(type, mx, my);
-      return !!(rowBoardHit || rowTreeHit);
-    } else if (type === 'tree-stack' || type === 'board-stack') {
-      if (isCanvasBoardLayout()) {
-        var canvasStackRowTarget = resolveCanvasRowContentDropTarget(mx, my);
-        if (canvasStackRowTarget && canvasStackRowTarget.node) {
-          canvasStackRowTarget.node.classList.add('drop-target');
-          return true;
-        }
-      }
-      var stackBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-stack'), mx, my, 'drag-over-left', 'drag-over-right', false);
-      var stackTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
-      if (stackBoardHit) {
-        highlightDropZoneIndicator(type, mx, my);
-        return true;
-      }
-      if (stackTreeHit) return true;
-      var stackRowBodyTarget = resolveRowBodyDropTarget(mx, my);
-      if (stackRowBodyTarget && stackRowBodyTarget.node) {
-        stackRowBodyTarget.node.classList.add('drop-target');
-        return true;
-      }
-      var stackRowBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
-      var stackRowTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
-      return !!(stackRowBoardHit || stackRowTreeHit);
-    } else if (type === 'tree-column' || type === 'column') {
-      var boardColumnHit = updateColumnPtrDropTarget(mx, my);
-      var treeColHit = ptrFindStrictHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
-      if (treeColHit) return true;
-      if (!treeColHit) {
-        var treeStackHit = ptrFindStrictHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
-        if (treeStackHit) return true;
-        if (!treeStackHit) {
-          var stackZone = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-children.tree-stack-drop-zone'), mx, my);
-          if (stackZone) {
-            stackZone.classList.add('tree-drop-stack-target');
-            return true;
-          }
-        }
-      }
-      if (boardColumnHit) {
-        highlightDropZoneIndicator(type, mx, my);
-        return true;
-      }
-      var columnRowBodyTarget = resolveRowBodyDropTarget(mx, my);
-      if (columnRowBodyTarget && columnRowBodyTarget.node) {
-        columnRowBodyTarget.node.classList.add('drop-target');
-        return true;
-      }
-      var columnRowBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
-      var columnRowTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
-      return !!(columnRowBoardHit || columnRowTreeHit);
-    } else if (type === 'tree-card') {
-      // Cards can only drop into columns (not stacks/rows/boards)
-      clearCardDropIndicators();
-      clearSidebarDropHighlights();
-      clearCardDragOverHighlights();
-      // Tree card-to-card indicator (between-card reorder in tree)
-      var treeCardHit = ptrFindStrictHitNode(
-        getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-card"]'),
-        mx, my, 'tree-drop-above', 'tree-drop-below', true
-      );
-      if (treeCardHit) return true;
-      // Tree column highlight (drop appends to column)
-      var treeColNode = findSidebarColumnAt(mx, my);
-      if (treeColNode) { treeColNode.classList.add('drop-target'); return true; }
-      // Main board column
-      var mainCol = findColumnCardsContainerAt(mx, my);
-      if (mainCol) {
-        mainCol.classList.add('card-drag-over');
-        showCardDropIndicator(mainCol, findCardInsertIndex(my, mainCol));
-        highlightDropZoneIndicator('tree-card', mx, my);
-        return true;
-      }
-      return false;
-    } else if (type === 'board') {
-      var boardHit = ptrFindHitNode(getElBoardList().querySelectorAll('.board-item'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
-      return !!boardHit;
-    }
-    return false;
-  }
-
-  function getSourceRowIndex(source) {
-    if (!source) return -1;
-    if (typeof source.rowIndex === 'number') return source.rowIndex;
-    if (typeof source.index === 'number') return source.index;
-    return -1;
-  }
-
-  function getRowDropTarget(mx, my) {
-    var boardTarget = ptrFindDropTarget(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, true);
-    if (boardTarget) {
-      var boardRowIdx = parseInt(boardTarget.node.getAttribute('data-row-index'), 10);
-      if (!isNaN(boardRowIdx)) {
-        return {
-          boardId: activeBoardId,
-          rowIndex: boardRowIdx,
-          before: boardTarget.before,
-          indexMode: 'display'
-        };
-      }
-    }
-    var treeTarget = ptrFindDropTarget(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, true);
-    if (treeTarget) {
-      var treeBoardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
-      var treeRowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
-      if (!isNaN(treeRowIdx)) {
-        return {
-          boardId: treeBoardId,
-          rowIndex: treeRowIdx,
-          before: treeTarget.before,
-          indexMode: treeBoardId === activeBoardId ? 'display' : 'full'
-        };
-      }
-    }
-    return null;
-  }
-
-  function resolveRowBodyDropTarget(mx, my) {
-    var boardRowNode = findNodeAtPoint(getElColumnsContainer().querySelectorAll('.board-row'), mx, my);
-    if (boardRowNode) {
-      var boardRect = boardRowNode.getBoundingClientRect();
-      var boardEdge = Math.min(40, boardRect.height * 0.25);
-      if (my > boardRect.top + boardEdge && my < boardRect.bottom - boardEdge) {
-        var boardRowIdx = parseInt(boardRowNode.getAttribute('data-row-index'), 10);
-        if (!isNaN(boardRowIdx)) {
-          return {
-            node: boardRowNode,
-            boardId: activeBoardId,
-            rowIndex: boardRowIdx,
-            indexMode: 'display'
-          };
-        }
-      }
-    }
-
-    var treeRowNode = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my);
-    if (treeRowNode) {
-      var treeRect = treeRowNode.getBoundingClientRect();
-      var treeEdge = Math.min(16, treeRect.height * 0.25);
-      if (my > treeRect.top + treeEdge && my < treeRect.bottom - treeEdge) {
-        var treeBoardId = treeRowNode.getAttribute('data-board-id') || activeBoardId;
-        var treeRowIdx = parseInt(treeRowNode.getAttribute('data-row-index'), 10);
-        if (!isNaN(treeRowIdx)) {
-          return {
-            node: treeRowNode,
-            boardId: treeBoardId,
-            rowIndex: treeRowIdx,
-            indexMode: treeBoardId === activeBoardId ? 'display' : 'full'
-          };
-        }
-      }
-    }
-    return null;
-  }
-
-  function resolveCanvasRowContentDropTarget(mx, my) {
-    if (typeof document !== 'undefined' && typeof document.elementFromPoint === 'function') {
-      var hit = document.elementFromPoint(mx, my);
-      var rowContent = hit && typeof hit.closest === 'function' ? hit.closest('.board-row-content') : null;
-      if (rowContent) {
-        var rowNode = rowContent.closest('.board-row');
-        var rowIndex = rowNode ? parseInt(rowNode.getAttribute('data-row-index'), 10) : NaN;
-        if (!isNaN(rowIndex)) {
-          return {
-            node: rowNode,
-            contentNode: rowContent,
-            boardId: activeBoardId,
-            rowIndex: rowIndex,
-            indexMode: 'display'
-          };
-        }
-      }
-    }
-    return resolveRowBodyDropTarget(mx, my);
-  }
-
-  function getCanvasRowContentNodeFromDropTarget(target, fallbackNode) {
-    return getCanvasDomApi().getCanvasRowContentNodeFromDropTarget(target, fallbackNode);
-  }
-
-  function getStackDropTarget(mx, my) {
-    var boardTarget = ptrFindDropTarget(getElColumnsContainer().querySelectorAll('.board-stack'), mx, my, false);
-    if (boardTarget) {
-      var boardRowIdx = parseInt(boardTarget.node.getAttribute('data-row-index'), 10);
-      var boardStackIdx = parseInt(boardTarget.node.getAttribute('data-stack-index'), 10);
-      if (!isNaN(boardRowIdx) && !isNaN(boardStackIdx)) {
-        return {
-          boardId: activeBoardId,
-          rowIndex: boardRowIdx,
-          stackIndex: boardStackIdx,
-          before: boardTarget.before,
-          indexMode: 'display'
-        };
-      }
-    }
-    var treeTarget = ptrFindDropTarget(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, true);
-    if (treeTarget) {
-      var treeBoardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
-      var treeRowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
-      var treeStackIdx = parseInt(treeTarget.node.getAttribute('data-stack-index'), 10);
-      if (!isNaN(treeRowIdx) && !isNaN(treeStackIdx)) {
-        return {
-          boardId: treeBoardId,
-          rowIndex: treeRowIdx,
-          stackIndex: treeStackIdx,
-          before: treeTarget.before,
-          indexMode: treeBoardId === activeBoardId ? 'display' : 'full'
-        };
-      }
-    }
-    return null;
-  }
-
-  function applyRowDropByPoint(source, mx, my) {
-    if (!source) return false;
-    var srcBoardId = source.boardId || activeBoardId;
-    var srcRowIdx = getSourceRowIndex(source);
-    if (!srcBoardId || srcRowIdx < 0) return false;
-
-    var rowTarget = getRowDropTarget(mx, my);
-    if (!rowTarget || !rowTarget.boardId || rowTarget.rowIndex < 0) return false;
-
-    var srcIndexMode = source.indexMode || (srcBoardId === activeBoardId ? 'display' : 'full');
-    var targetIndexMode = rowTarget.indexMode || (rowTarget.boardId === activeBoardId ? 'display' : 'full');
-
-    if (
-      srcBoardId === rowTarget.boardId &&
-      srcBoardId === activeBoardId &&
-      srcIndexMode === 'display' &&
-      targetIndexMode === 'display'
-    ) {
-      if (srcRowIdx !== rowTarget.rowIndex) {
-        reorderRows(srcRowIdx, rowTarget.rowIndex, rowTarget.before);
-      }
-      return true;
-    }
-
-    moveRowAcrossBoards(
-      { boardId: srcBoardId, rowIndex: srcRowIdx, indexMode: srcIndexMode },
-      {
-        boardId: rowTarget.boardId,
-        rowIndex: rowTarget.rowIndex,
-        before: rowTarget.before,
-        indexMode: targetIndexMode
-      }
-    ).catch(function (err) {
-      lexeraLog('error', '[moveRowAcrossBoards] Drop failed: ' + err);
-    });
-    return true;
-  }
-
-  function applyStackDropByPoint(source, mx, my) {
-    if (!source) return false;
-    var srcBoardId = source.boardId || activeBoardId;
-    var srcRowIdx = parseInt(source.rowIndex, 10);
-    var srcStackIdx = parseInt(source.stackIndex, 10);
-    if (!srcBoardId || isNaN(srcRowIdx) || isNaN(srcStackIdx) || srcRowIdx < 0 || srcStackIdx < 0) return false;
-
-    var srcIndexMode = source.indexMode || (srcBoardId === activeBoardId ? 'display' : 'full');
-    var canvasStackTarget = getCanvasStackDropApi().resolveCanvasStackDropTarget({
-      isCanvasLayout: isCanvasBoardLayout(),
-      activeBoardId: activeBoardId,
-      clientX: mx,
-      clientY: my,
-      grabOffsetX: ptrDrag && typeof ptrDrag.grabOffsetX === 'number' ? ptrDrag.grabOffsetX : 0,
-      grabOffsetY: ptrDrag && typeof ptrDrag.grabOffsetY === 'number' ? ptrDrag.grabOffsetY : 0,
-      fallbackRowContent: ptrDrag && ptrDrag.canvasSourceRowContent ? ptrDrag.canvasSourceRowContent : null,
-      resolveCanvasRowContentDropTarget: resolveCanvasRowContentDropTarget,
-      getCanvasRowContentNodeFromDropTarget: getCanvasRowContentNodeFromDropTarget,
-      getCanvasDropPositionInRowContent: getCanvasDropPositionInRowContent
-    });
-    if (canvasStackTarget) {
-      moveStackAcrossBoards(
-        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
-        canvasStackTarget
-      ).catch(function (err) {
-        lexeraLog('error', '[moveStackAcrossBoards] Canvas drop failed: ' + err);
-      });
-      return true;
-    }
-
-    var stackTarget = getStackDropTarget(mx, my);
-    if (stackTarget && stackTarget.boardId && stackTarget.rowIndex >= 0 && stackTarget.stackIndex >= 0) {
-      var targetIndexMode = stackTarget.indexMode || (stackTarget.boardId === activeBoardId ? 'display' : 'full');
-
-      if (
-        srcBoardId === stackTarget.boardId &&
-        srcBoardId === activeBoardId &&
-        srcIndexMode === 'display' &&
-        targetIndexMode === 'display'
-      ) {
-        if (srcRowIdx !== stackTarget.rowIndex || srcStackIdx !== stackTarget.stackIndex) {
-          moveStack(srcRowIdx, srcStackIdx, stackTarget.rowIndex, stackTarget.stackIndex, stackTarget.before);
-        }
-        return true;
-      }
-
-      moveStackAcrossBoards(
-        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
-        {
-          boardId: stackTarget.boardId,
-          rowIndex: stackTarget.rowIndex,
-          stackIndex: stackTarget.stackIndex,
-          before: stackTarget.before,
-          indexMode: targetIndexMode
-        }
-      ).catch(function (err) {
-        lexeraLog('error', '[moveStackAcrossBoards] Drop failed: ' + err);
-      });
-      return true;
-    }
-
-    var rowBodyTarget = resolveRowBodyDropTarget(mx, my);
-    if (rowBodyTarget && rowBodyTarget.boardId) {
-      moveStackAcrossBoards(
-        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
-        {
-          kind: 'row',
-          boardId: rowBodyTarget.boardId,
-          rowIndex: rowBodyTarget.rowIndex,
-          indexMode: rowBodyTarget.indexMode
-        }
-      ).catch(function (err) {
-        lexeraLog('error', '[moveStackAcrossBoards] Drop to row failed: ' + err);
-      });
-      return true;
-    }
-
-    var rowTarget = getRowDropTarget(mx, my);
-    if (rowTarget && rowTarget.boardId && rowTarget.rowIndex >= 0) {
-      moveStackAcrossBoards(
-        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
-        {
-          kind: 'new-row',
-          boardId: rowTarget.boardId,
-          rowIndex: rowTarget.rowIndex,
-          before: rowTarget.before,
-          indexMode: rowTarget.indexMode
-        }
-      ).catch(function (err) {
-        lexeraLog('error', '[moveStackAcrossBoards] Drop to new row failed: ' + err);
-      });
-      return true;
-    }
-    return false;
-  }
-
-  function getCanvasDropPositionInRowContent(rowContent, clientX, clientY, grabOffsetX, grabOffsetY) {
-    return getCanvasPositionFromViewportPoint(rowContent, clientX, clientY, grabOffsetX, grabOffsetY);
-  }
-
-  function clearCanvasDragStyles(stackEl) {
-    if (!stackEl) return;
-    stackEl.style.zIndex = '';
-    stackEl.style.width = '';
-    stackEl.style.position = '';
-    stackEl.style.pointerEvents = '';
-  }
-
-  function applyCanvasStackDrop(source, mx, my) {
-    if (!source || !ptrDrag || !ptrDrag.el) return false;
-    var stackEl = ptrDrag.el;
-    var sourceRow = findFullDataRow(source.rowIndex);
-    var sourceStack = findFullDataStack(source.rowIndex, source.stackIndex);
-    if (!sourceRow || !sourceStack) return false;
-
-    // Check if dropped on a different row
-    var targetRow = sourceRow;
-    var targetRowTarget = resolveCanvasRowContentDropTarget(mx, my);
-    var targetRowContent = ptrDrag.canvasSourceRowContent || stackEl.closest('.board-row-content');
-    if (
-      targetRowTarget &&
-      targetRowTarget.boardId === activeBoardId &&
-      targetRowTarget.indexMode === 'display'
-    ) {
-      var resolvedTargetRow = findFullDataRow(targetRowTarget.rowIndex);
-      if (resolvedTargetRow) {
-        targetRow = resolvedTargetRow;
-      }
-      targetRowContent = getCanvasRowContentNodeFromDropTarget(targetRowTarget, targetRowContent);
-    }
-    var nextCanvasPos = getCanvasDropPositionInRowContent(
-      targetRowContent,
-      mx,
-      my,
-      ptrDrag.grabOffsetX,
-      ptrDrag.grabOffsetY
-    );
-    var newX = nextCanvasPos.x;
-    var newY = nextCanvasPos.y;
-
-    pushUndo();
-    if (targetRow !== sourceRow) {
-      var sourceFullStackIdx = findFullDataStackIndex(sourceRow, source.rowIndex, source.stackIndex);
-      if (sourceFullStackIdx === -1) {
-        clearCanvasDragStyles(stackEl);
-        return false;
-      }
-      var movedStack = sourceRow.stacks.splice(sourceFullStackIdx, 1)[0];
-      if (!movedStack) {
-        clearCanvasDragStyles(stackEl);
-        return false;
-      }
-      if (!movedStack.params) movedStack.params = {};
-      movedStack.params.x = String(newX);
-      movedStack.params.y = String(newY);
-      if (!Array.isArray(targetRow.stacks)) targetRow.stacks = [];
-      targetRow.stacks.push(movedStack);
-      removeEmptyStacksAndRows();
-      clearCanvasDragStyles(stackEl);
-      persistBoardMutation({ refreshSidebar: true });
-      return true;
-    }
-    if (!sourceStack.params) sourceStack.params = {};
-    sourceStack.params.x = String(newX);
-    sourceStack.params.y = String(newY);
-    clearCanvasDragStyles(stackEl);
-    persistBoardMutation({ refreshSidebar: true });
-    return true;
-  }
-
-  function getTreeColumnDropTarget(mx, my) {
-    var treeTarget = resolveDropTargetStrict(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, true);
-    if (!treeTarget) return null;
-    var boardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
-    var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
-    var stackIdx = parseInt(treeTarget.node.getAttribute('data-stack-index'), 10);
-    var colIdx = parseInt(treeTarget.node.getAttribute('data-col-local-index'), 10);
-    if (isNaN(rowIdx) || isNaN(stackIdx) || isNaN(colIdx)) return null;
-    return {
-      boardId: boardId,
-      rowIndex: rowIdx,
-      stackIndex: stackIdx,
-      colIndex: colIdx,
-      before: treeTarget.before,
-      indexMode: boardId === activeBoardId ? 'display' : 'full'
-    };
-  }
-
-  function getTreeStackDropTarget(mx, my) {
-    var treeTarget = resolveDropTargetStrict(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, true);
-    if (treeTarget) {
-      var boardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
-      var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
-      var stackIdx = parseInt(treeTarget.node.getAttribute('data-stack-index'), 10);
-      if (!isNaN(rowIdx) && !isNaN(stackIdx)) {
-        return {
-          boardId: boardId,
-          rowIndex: rowIdx,
-          stackIndex: stackIdx,
-          before: treeTarget.before,
-          indexMode: boardId === activeBoardId ? 'display' : 'full'
-        };
-      }
-    }
-    var zone = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-children.tree-stack-drop-zone'), mx, my);
-    if (!zone) return null;
-    var zoneBoardId = zone.getAttribute('data-board-id') || activeBoardId;
-    var zoneRowIdx = parseInt(zone.getAttribute('data-row-index'), 10);
-    var zoneStackIdx = parseInt(zone.getAttribute('data-stack-index'), 10);
-    if (isNaN(zoneRowIdx) || isNaN(zoneStackIdx)) return null;
-    return {
-      boardId: zoneBoardId,
-      rowIndex: zoneRowIdx,
-      stackIndex: zoneStackIdx,
-      before: false,
-      indexMode: zoneBoardId === activeBoardId ? 'display' : 'full'
-    };
-  }
-
-  function getTreeCardDropTarget(mx, my) {
-    var treeTarget = ptrFindStrictHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-card"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
-    if (!treeTarget) return null;
-    var boardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
-    var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
-    var stackIdx = parseInt(treeTarget.node.getAttribute('data-stack-index'), 10);
-    var colIdx = parseInt(treeTarget.node.getAttribute('data-col-local-index'), 10);
-    var cardIdx = parseInt(treeTarget.node.getAttribute('data-card-index'), 10);
-    if (isNaN(rowIdx) || isNaN(stackIdx) || isNaN(colIdx) || isNaN(cardIdx)) return null;
-    return {
-      kind: 'sidebar',
-      boardId: boardId,
-      rowIndex: rowIdx,
-      stackIndex: stackIdx,
-      colIndex: colIdx,
-      cardIndex: cardIdx,
-      before: treeTarget.before,
-      indexMode: boardId === activeBoardId ? 'display' : 'full'
-    };
-  }
-
-  // Generic target resolver: returns { node, before } with edge snapping.
-  function resolveDropTarget(nodeList, mx, my, vertical) {
-    for (var i = 0; i < nodeList.length; i++) {
-      var rect = nodeList[i].getBoundingClientRect();
-      if (isPointInsideRect(mx, my, rect)) {
-        var before = vertical ? (my < rect.top + rect.height / 2) : (mx < rect.left + rect.width / 2);
-        return { node: nodeList[i], before: before };
-      }
-    }
-
-    // Edge case: cursor outside all nodes — snap to nearest in the same cross-axis range.
-    var lastInRange = null;
-    for (var i = 0; i < nodeList.length; i++) {
-      var rect = nodeList[i].getBoundingClientRect();
-      var inCross = vertical ? (mx >= rect.left && mx <= rect.right) : (my >= rect.top && my <= rect.bottom);
-      if (!inCross) continue;
-      if (vertical ? (my <= rect.top) : (mx <= rect.left)) {
-        return { node: nodeList[i], before: true };
-      }
-      if (vertical ? (my >= rect.bottom) : (mx >= rect.right)) {
-        lastInRange = nodeList[i];
-      }
-    }
-    if (lastInRange) return { node: lastInRange, before: false };
-    return null;
-  }
-
-  // Strict target resolver: only if pointer is directly inside a node.
-  function resolveDropTargetStrict(nodeList, mx, my, vertical) {
-    for (var i = 0; i < nodeList.length; i++) {
-      var rect = nodeList[i].getBoundingClientRect();
-      if (isPointInsideRect(mx, my, rect)) {
-        var before = vertical ? (my < rect.top + rect.height / 2) : (mx < rect.left + rect.width / 2);
-        return { node: nodeList[i], before: before };
-      }
-    }
-    return null;
-  }
-
-  // Generic hit-test: find which element in nodeList the mouse is over, add before/after indicator.
-  function ptrFindHitNode(nodeList, mx, my, classBefore, classAfter, vertical) {
-    var target = resolveDropTarget(nodeList, mx, my, vertical);
-    if (!target) return null;
-    target.node.classList.add(target.before ? classBefore : classAfter);
-    return target;
-  }
-
-  function ptrFindStrictHitNode(nodeList, mx, my, classBefore, classAfter, vertical) {
-    var target = resolveDropTargetStrict(nodeList, mx, my, vertical);
-    if (!target) return null;
-    target.node.classList.add(target.before ? classBefore : classAfter);
-    return target;
-  }
-
-  function updateColumnPtrDropTarget(mx, my) {
-    // Check drop zones first (new-stack insertion points between stacks)
-    var zone = findStackDropZoneAt(mx, my);
-    if (zone) {
-      zone.classList.add('active');
-      return true;
-    }
-    // Check columns (reorder within/between stacks)
-    var column = findDraggableColumnAt(mx, my);
-    if (column) {
-      var colRect = column.getBoundingClientRect();
-      var stackEl = column.closest('.board-stack');
-      if (isHorizontalCanvasStackElement(stackEl)) {
-        if (mx < colRect.left + colRect.width / 2) {
-          column.classList.add('drag-over-left');
-        } else {
-          column.classList.add('drag-over-right');
-        }
-      } else {
-        if (my < colRect.top + colRect.height / 2) {
-          column.classList.add('drag-over-top');
-        } else {
-          column.classList.add('drag-over-bottom');
-        }
-      }
-      return true;
-    }
-    // Check stacks (move column into stack)
-    var stack = findBoardStackAt(mx, my);
-    if (stack) {
-      stack.classList.add('column-drop-target');
-      return true;
-    }
-    return false;
-  }
-  function clearPtrDropIndicators() {
-    removeClassesFromNodeList(getElBoardList().querySelectorAll('.tree-node'), ['tree-drop-above', 'tree-drop-below']);
-    removeClassesFromNodeList(getElBoardList().querySelectorAll('.board-item'), ['drag-over-top', 'drag-over-bottom']);
-    removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.board-row'), ['drag-over-top', 'drag-over-bottom', 'drop-target']);
-    removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.board-stack'), ['drag-over-left', 'drag-over-right', 'column-drop-target']);
-    removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.column'), ['drag-over-top', 'drag-over-bottom', 'drag-over-left', 'drag-over-right']);
-    removeClassFromNodeList(getElColumnsContainer().querySelectorAll('.stack-drop-zone'), 'active');
-    removeClassFromNodeList(getElBoardList().querySelectorAll('.tree-children.tree-stack-drop-zone.tree-drop-stack-target'), 'tree-drop-stack-target');
-    removeClassFromNodeList(getElBoardList().querySelectorAll('.tree-node.drop-target'), 'drop-target');
-    clearCardDropIndicators();
-    clearCardDragOverHighlights();
-    clearSidebarDropHighlights();
-  }
-
-  // Resolve header drop target (Park/Archive/Trash) at the given point.
-  // Returns the hidden tag string or null if not over a header button.
-  function resolveHeaderDropTag(mx, my) {
-    var incomingBtn = document.getElementById('btn-incoming');
-    var parkedBtn = document.getElementById('btn-parked');
-    var archiveBtn = document.getElementById('btn-archived');
-    var trashBtn = document.getElementById('btn-trash');
-    if (incomingBtn && isPointInsideRect(mx, my, incomingBtn.getBoundingClientRect())) return '#hidden-internal-incoming';
-    if (parkedBtn && isPointInsideRect(mx, my, parkedBtn.getBoundingClientRect())) return '#hidden-internal-parked';
-    if (archiveBtn && isPointInsideRect(mx, my, archiveBtn.getBoundingClientRect())) return '#hidden-internal-archived';
-    if (trashBtn && isPointInsideRect(mx, my, trashBtn.getBoundingClientRect())) return '#hidden-internal-deleted';
-    return null;
-  }
-
-  // Apply a hidden tag to the ptrDrag source element (row/stack/column/card).
-  async function applyPtrDragHiddenTag(type, src, tag) {
-    if (type === 'tree-row' || type === 'board-row') {
-      await setRowHiddenTag(src.rowIndex, tag);
-    } else if (type === 'tree-stack' || type === 'board-stack') {
-      await setStackHiddenTag(src.rowIndex, src.stackIndex, tag);
-    } else if (type === 'column' || type === 'tree-column') {
-      // Convert display (row, stack, col) indices to full data column
-      var stack = findFullDataStack(src.rowIndex, src.stackIndex);
-      if (stack) {
-        var fullColIdx = findFullColumnIndexInStack(stack, src.colIndex);
-        if (fullColIdx >= 0 && stack.columns[fullColIdx]) {
-          pushUndo();
-          stack.columns[fullColIdx].title = applyInternalHiddenTag(stack.columns[fullColIdx].title || '', tag);
-          await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
-        }
-      }
-    } else if (type === 'tree-card') {
-      // Tree-card has flatColIndex and cardIndex
-      if (typeof src.flatColIndex === 'number' && typeof src.cardIndex === 'number') {
-        tagCard(src.flatColIndex, src.cardIndex, tag);
-      }
-    }
-  }
-
-  function executePtrDrop(mx, my) {
-    var type = ptrDrag.type;
-    var src = ptrDrag.source;
-
-    // Check header drop targets (Park/Archive/Trash) for all non-board types
-    if (type !== 'board') {
-      var headerTag = resolveHeaderDropTag(mx, my);
-      if (headerTag) {
-        applyPtrDragHiddenTag(type, src, headerTag);
-        return;
-      }
-    }
-
-    if (type === 'tree-row' || type === 'board-row') {
-      applyRowDropByPoint(src, mx, my);
-    } else if (type === 'tree-stack' || type === 'board-stack') {
-      if (ptrDrag.canvasMove) {
-        applyCanvasStackDrop(src, mx, my);
-      } else {
-        applyStackDropByPoint(src, mx, my);
-      }
-    } else if (type === 'board') {
-      var t = ptrFindDropTarget(getElBoardList().querySelectorAll('.board-item'), mx, my, true);
-      if (t) {
-        var targetIdx = parseInt(t.node.getAttribute('data-board-index'), 10);
-        if (src.index !== targetIdx) reorderBoards(src.index, targetIdx, t.before);
-      }
-    } else if (type === 'column' || type === 'tree-column') {
-      executeColumnPtrDrop(mx, my, src);
-    } else if (type === 'tree-card') {
-      if (!isNaN(src.cardIndex)) {
-        applyCardDropByPoint(src, mx, my);
-      }
-    }
-  }
-
-  // Generic drop target finder.
-  function ptrFindDropTarget(nodeList, mx, my, vertical) {
-    return resolveDropTarget(nodeList, mx, my, vertical);
-  }
-
-  function executeColumnPtrDrop(mx, my, src) {
-    function isSameActiveBoardDisplayTarget(target) {
-      return (
-        src &&
-        src.boardId === activeBoardId &&
-        src.indexMode === 'display' &&
-        target &&
-        target.boardId === activeBoardId &&
-        target.indexMode === 'display'
-      );
-    }
-
-    function moveAcross(targetDef) {
-      moveColumnAcrossBoards(src, targetDef).catch(function (err) {
-        lexeraLog('error', '[moveColumnAcrossBoards] Drop failed: ' + err);
-      });
-    }
-
-    // Check drop zones first (create new stack at specific position)
-    var zone = findStackDropZoneAt(mx, my);
-    if (zone) {
-      var targetRowIdx = parseInt(zone.getAttribute('data-row-index'), 10);
-      var insertIdx = parseInt(zone.getAttribute('data-insert-index'), 10);
-      var zoneTarget = {
-        kind: 'new-stack',
-        boardId: activeBoardId,
-        rowIndex: targetRowIdx,
-        insertAtStackIdx: insertIdx,
-        indexMode: 'display'
+      return {
+        row: row,
+        stack: stack,
+        rowIndex: fullBoardData.rows.indexOf(row),
+        stackIndex: row.stacks.indexOf(stack)
       };
-      if (isSameActiveBoardDisplayTarget(zoneTarget)) {
-        moveColumnToNewStack(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, insertIdx);
-      } else {
-        moveAcross(zoneTarget);
-      }
-      return;
     }
-    // Check columns (reorder)
-    var column = findDraggableColumnAt(mx, my);
-    if (column) {
-      var colRect = column.getBoundingClientRect();
-      var stackEl = column.closest('.board-stack');
-      var targetRowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
-      var targetStackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
-      var columns = stackEl.querySelectorAll('.board-stack-content > .column');
-      var targetColIdx = Array.prototype.indexOf.call(columns, column);
-      var insertBefore = isHorizontalCanvasStackElement(stackEl)
-        ? (mx < colRect.left + colRect.width / 2)
-        : (my < colRect.top + colRect.height / 2);
-      var colTarget = {
-        kind: 'column',
-        boardId: activeBoardId,
-        rowIndex: targetRowIdx,
-        stackIndex: targetStackIdx,
-        colIndex: targetColIdx,
-        before: insertBefore,
-        indexMode: 'display'
-      };
-      if (isSameActiveBoardDisplayTarget(colTarget)) {
-        moveColumnWithinBoard(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, targetStackIdx, targetColIdx, insertBefore);
-      } else {
-        moveAcross(colTarget);
-      }
-      return;
-    }
-    // Check stacks (move column into existing stack)
-    var stack = findBoardStackAt(mx, my);
-    if (stack) {
-      var targetRowIdx = parseInt(stack.getAttribute('data-row-index'), 10);
-      var targetStackIdx = parseInt(stack.getAttribute('data-stack-index'), 10);
-      var stackTarget = {
-        kind: 'stack',
-        boardId: activeBoardId,
-        rowIndex: targetRowIdx,
-        stackIndex: targetStackIdx,
-        indexMode: 'display'
-      };
-      if (isSameActiveBoardDisplayTarget(stackTarget)) {
-        if (src.rowIndex !== targetRowIdx || src.stackIndex !== targetStackIdx) {
-          moveColumnToExistingStack(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, targetStackIdx);
-        }
-      } else {
-        moveAcross(stackTarget);
-      }
-      return;
-    }
-
-    // Check hierarchy columns (reorder via sidebar tree)
-    var treeColTarget = getTreeColumnDropTarget(mx, my);
-    if (treeColTarget) {
-      if (isSameActiveBoardDisplayTarget(treeColTarget)) {
-        if (src.rowIndex !== treeColTarget.rowIndex || src.stackIndex !== treeColTarget.stackIndex || src.colIndex !== treeColTarget.colIndex) {
-          moveColumnWithinBoard(
-            src.rowIndex,
-            src.stackIndex,
-            src.colIndex,
-            treeColTarget.rowIndex,
-            treeColTarget.stackIndex,
-            treeColTarget.colIndex,
-            treeColTarget.before
-          );
-        }
-      } else {
-        moveAcross({
-          kind: 'column',
-          boardId: treeColTarget.boardId,
-          rowIndex: treeColTarget.rowIndex,
-          stackIndex: treeColTarget.stackIndex,
-          colIndex: treeColTarget.colIndex,
-          before: treeColTarget.before,
-          indexMode: treeColTarget.indexMode
-        });
-      }
-      return;
-    }
-
-    // Check hierarchy stacks (append into target stack)
-    var treeStackTarget = getTreeStackDropTarget(mx, my);
-    if (treeStackTarget) {
-      if (isSameActiveBoardDisplayTarget(treeStackTarget)) {
-        if (src.rowIndex !== treeStackTarget.rowIndex || src.stackIndex !== treeStackTarget.stackIndex) {
-          moveColumnToExistingStack(src.rowIndex, src.stackIndex, src.colIndex, treeStackTarget.rowIndex, treeStackTarget.stackIndex);
-        }
-      } else {
-        moveAcross({
-          kind: 'stack',
-          boardId: treeStackTarget.boardId,
-          rowIndex: treeStackTarget.rowIndex,
-          stackIndex: treeStackTarget.stackIndex,
-          indexMode: treeStackTarget.indexMode
-        });
-      }
-      return;
-    }
-
-    var rowBodyTarget = resolveRowBodyDropTarget(mx, my);
-    if (rowBodyTarget && rowBodyTarget.boardId) {
-      moveAcross({
-        kind: 'row',
-        boardId: rowBodyTarget.boardId,
-        rowIndex: rowBodyTarget.rowIndex,
-        indexMode: rowBodyTarget.indexMode
-      });
-      return;
-    }
-
-    var rowTarget = getRowDropTarget(mx, my);
-    if (rowTarget && rowTarget.boardId && rowTarget.rowIndex >= 0) {
-      moveAcross({
-        kind: 'new-row',
-        boardId: rowTarget.boardId,
-        rowIndex: rowTarget.rowIndex,
-        before: rowTarget.before,
-        indexMode: rowTarget.indexMode
-      });
-    }
+    var targetRow = boardData.rows[rowIndex];
+    if (!targetRow || !targetRow.stacks || stackIndex < 0 || stackIndex >= targetRow.stacks.length) return null;
+    return {
+      row: targetRow,
+      stack: targetRow.stacks[stackIndex],
+      rowIndex: rowIndex,
+      stackIndex: stackIndex
+    };
   }
 
   function resolveColumnLocationForMutation(boardId, boardData, rowIndex, stackIndex, colIndex, indexMode) {
@@ -15736,28 +13872,6 @@ const LexeraDashboard = (function () {
   function clearDropZoneIndicatorHighlights() { if (DropZoneIndicators) DropZoneIndicators.clearDropZoneIndicatorHighlights(); }
   function highlightDropZoneIndicator(dragType, mx, my) { if (DropZoneIndicators) DropZoneIndicators.highlightDropZoneIndicator(dragType, mx, my); }
 
-  function cleanupPtrDrag() {
-    removeStackDropZones();
-    removeDropZoneIndicators();
-    clearHeaderDropTargetHighlights();
-    stopCrossViewBridge();
-    unlockBoardLayoutForDrag();
-    if (ptrDrag) {
-      if (ptrDrag.el) {
-        ptrDrag.el.classList.remove('dragging');
-        if (ptrDrag.canvasMove) {
-          ptrDrag.el.style.zIndex = '';
-          ptrDrag.el.style.width = '';
-          ptrDrag.el.style.position = '';
-          ptrDrag.el.style.pointerEvents = '';
-        }
-      }
-      if (ptrDrag.ghost) ptrDrag.ghost.remove();
-      ptrDrag = null;
-    }
-    clearPtrDropIndicators();
-    vsRestoreAfterDrag();
-  }
 
   function resolveColumnRefForCardMutation(boardId, boardData, descriptor) {
     if (!descriptor) return null;
