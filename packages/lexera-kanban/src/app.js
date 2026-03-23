@@ -262,15 +262,10 @@ const LexeraDashboard = (function () {
 
   applySidebarTreeDisplayOptions(sidebarTreeDisplayOptions);
 
-  function applyTheme(themeId, skipBackendSync) {
+  function applyTheme(themeId) {
     // Use shared theme applier for base CSS variables
     if (typeof applyLexeraTheme === 'function') {
       applyLexeraTheme(themeId);
-    }
-
-    // Persist to backend so all Lexera UIs share the same theme
-    if (!skipBackendSync && window.LexeraApi && typeof LexeraApi.setTheme === 'function') {
-      LexeraApi.setTheme(themeId).catch(function () { /* ignore */ });
     }
 
     // Find the active theme and palette for kanban-specific derived tokens
@@ -616,21 +611,11 @@ const LexeraDashboard = (function () {
   }
 
   function normalizeBoardLayoutValue(value) {
-    var normalized = String(value == null ? '' : value).trim().toLowerCase();
-    if (normalized === 'canvas') return 'canvas';
-    return 'kanban';
+    return getCanvasModeHelpers().normalizeBoardLayoutValue(value);
   }
 
   function normalizeCanvasGridValue(value) {
-    var normalized = String(value == null ? '' : value).trim().toLowerCase();
-    if (!normalized || normalized === 'default' || normalized === 'medium') return '32';
-    if (normalized === 'off' || normalized === 'none' || normalized === 'hidden') return 'off';
-    if (normalized === 'fine' || normalized === 'small') return '16';
-    if (normalized === 'large') return '64';
-    if (normalized === 'largest' || normalized === 'largest-element' || normalized === 'auto') return 'largest';
-    var parsed = parseFloat(normalized);
-    if (!isFinite(parsed) || parsed <= 0) return '32';
-    return String(Math.round(parsed));
+    return getCanvasModeHelpers().normalizeCanvasGridValue(value);
   }
 
   function getCurrentBoardLayout() {
@@ -2312,13 +2297,11 @@ const LexeraDashboard = (function () {
 
     document.addEventListener('keydown', handleKeyNavigation);
 
-    var connectionStatusBtn = getElConnectionStatusBtn();
-    if (connectionStatusBtn) connectionStatusBtn.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      openConnectionWindow();
-    });
-    syncConnectionStatusButton(connectionStatusBtn, getElConnectionDot(), connected);
+    if (typeof window.setLogBackendConnectionState === 'function') {
+      window.setLogBackendConnectionState(connected);
+    } else {
+      syncConnectionStatusButton(getElConnectionStatusBtn(), getElConnectionDot(), connected);
+    }
 
     // Management panel close button
     if (getElMgmtClose()) getElMgmtClose().addEventListener('click', function () {
@@ -2382,8 +2365,14 @@ const LexeraDashboard = (function () {
     // Tauri drag-drop payload (paths + pointer position).
     if (hasTauri) {
       tauriListen('tauri://drag-over', function (event) {
-        if (hierarchyLocked) return;
         var pos = event.payload.position;
+        // Boards section drop zone
+        var boardsSection = document.querySelector('[data-mgmt-section="boards"]');
+        if (boardsSection && pos) {
+          boardsSection.classList.toggle('mgmt-drop-active', isPositionInsideElement(pos, boardsSection));
+        }
+        // Sidebar drop zone
+        if (hierarchyLocked) return;
         if (getElSidebar() && pos) {
           if (isPositionInsideElement(pos, getElSidebar())) {
             getElSidebar().classList.add('drop-zone-active');
@@ -2394,12 +2383,22 @@ const LexeraDashboard = (function () {
       });
       tauriListen('tauri://drag-leave', function () {
         if (getElSidebar()) getElSidebar().classList.remove('drop-zone-active');
+        var boardsSection = document.querySelector('[data-mgmt-section="boards"]');
+        if (boardsSection) boardsSection.classList.remove('mgmt-drop-active');
       });
       tauriListen('tauri://drag-drop', function (event) {
         if (getElSidebar()) getElSidebar().classList.remove('drop-zone-active');
-        if (hierarchyLocked) return;
+        var boardsSection = document.querySelector('[data-mgmt-section="boards"]');
+        if (boardsSection) boardsSection.classList.remove('mgmt-drop-active');
         var paths = event.payload.paths || [];
         var pos = event.payload.position;
+        // Check boards section first
+        if (boardsSection && pos && isPositionInsideElement(pos, boardsSection)) {
+          addBoardsByPath(paths);
+          return;
+        }
+        // Sidebar drop
+        if (hierarchyLocked) return;
         if (getElSidebar() && pos && !isPositionInsideElement(pos, getElSidebar())) {
           return;
         }
@@ -3232,16 +3231,6 @@ const LexeraDashboard = (function () {
     connectSSEIfReady();
     connectBackendLogStreamIfReady();
 
-    // Sync theme from backend (backend is authoritative when available)
-    try {
-      var themeData = await LexeraApi.getTheme();
-      if (themeData && themeData.theme) {
-        applyTheme(themeData.theme, true);
-      }
-    } catch (err) {
-      // Keep localStorage theme on failure
-    }
-
     try {
       // Load workspaces
       try {
@@ -3351,6 +3340,9 @@ const LexeraDashboard = (function () {
   function setConnected(state) {
     if (state && !connected) loadTemplatesOnce();
     connected = state;
+    if (typeof window.setLogBackendConnectionState === 'function') {
+      window.setLogBackendConnectionState(state);
+    }
     syncConnectionStatusButton(getElConnectionStatusBtn(), getElConnectionDot(), state);
   }
 
@@ -3365,6 +3357,8 @@ const LexeraDashboard = (function () {
       buttonEl.setAttribute('data-connection-state', isConnected ? 'connected' : 'disconnected');
       buttonEl.title = title;
       buttonEl.setAttribute('aria-label', title);
+      var labelEl = buttonEl.querySelector('.connection-status-label');
+      if (labelEl) labelEl.textContent = isConnected ? 'Connected' : 'Disconnected';
     }
     if (dotEl) {
       dotEl.classList.toggle('connected', isConnected);
@@ -3723,6 +3717,7 @@ const LexeraDashboard = (function () {
     if (options.refreshMainView) {
       renderMainView();
     } else {
+      applyBoardSettings();
       renderColumns();
       renderBoardList();
     }
@@ -3751,6 +3746,7 @@ const LexeraDashboard = (function () {
     _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
     updateDisplayFromFullBoard();
     setBoardHierarchyRows(boardId, fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+    applyBoardSettings();
     renderColumns();
     renderBoardList();
     refreshHeaderFileControls();
@@ -9281,6 +9277,15 @@ const LexeraDashboard = (function () {
         } else {
           setBoardSaveBase(fullBoardData, fullBoardData);
         }
+        // Legacy→v2 redirect: backend saved to a new filename to preserve
+        // the original v1 file.  Update the tracked file path everywhere.
+        if (result && result.redirectedPath && activeBoardData) {
+          activeBoardData.filePath = result.redirectedPath;
+          traceFrontendAction('info', 'save.legacy_redirect', 'Board saved to new file to preserve original v1 file', {
+            boardId: activeBoardId,
+            redirectedPath: result.redirectedPath
+          });
+        }
         if (activeBoardData && result && typeof result.version === 'number') {
           activeBoardData.version = result.version;
         }
@@ -9982,8 +9987,8 @@ const LexeraDashboard = (function () {
     return false;
   }
 
-  function initFrontendSettingsPanel() {
-    if (FrontendSettings) return FrontendSettings.init(buildFrontendSettingsOptions());
+  function initFrontendSettingsPanel(panelEl) {
+    if (FrontendSettings) return FrontendSettings.init(buildFrontendSettingsOptions(), panelEl);
     return false;
   }
 
@@ -9993,6 +9998,79 @@ const LexeraDashboard = (function () {
     if (btn) showThemeZoomMenu(btn);
   }
 
+  var mgmtApiAdapter = {
+    get: function (path) { return LexeraApi.request(path); },
+    post: function (path, body) {
+      return LexeraApi.request(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    },
+    put: function (path, body) {
+      return LexeraApi.request(path, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    },
+    delete: function (path) {
+      return LexeraApi.request(path, { method: 'DELETE' });
+    },
+  };
+
+  var mgmtCallbacks = {
+    onThemeChange: function (themeId) {
+      if (typeof applyTheme === 'function') applyTheme(themeId);
+    },
+    openLogStream: function (onEntry, onOpen, onError) {
+      var es = LexeraApi.connectLogStream(onEntry);
+      if (!es) return null;
+      var previousError = es.onerror;
+      es.onopen = function (event) {
+        if (onOpen) onOpen(event);
+      };
+      es.onerror = function (event) {
+        if (typeof previousError === 'function') previousError(event);
+        if (onError) onError(event);
+      };
+      return es;
+    },
+    onNotify: function (msg) { showNotification(msg); },
+    onConfirm: function (msg) { return showConfirmDialog(msg); },
+    onBoardAdded: function () { poll(); },
+    onBoardRemoved: function (boardId) {
+      boards = boards.filter(function (b) { return b.id !== boardId; });
+      delete boardHierarchyCache[boardId];
+      if (activeBoardId === boardId) {
+        activeBoardId = null;
+        activeBoardData = null;
+        fullBoardData = null;
+        localStorage.removeItem('lexera-last-board');
+      }
+      renderBoardList();
+      renderMainView();
+      scheduleDashboardRefresh(60);
+    },
+    onBoardSettingsSaved: function (boardId, settings) {
+      if (boardId === activeBoardId && fullBoardData) {
+        if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
+        for (var s in settings) {
+          if (settings[s] == null) {
+            delete fullBoardData.boardSettings[s];
+          } else {
+            fullBoardData.boardSettings[s] = settings[s];
+          }
+        }
+        applyBoardSettings();
+      }
+    },
+    onServerRestarted: function () {},
+    getThemes: function () {
+      return typeof LEXERA_THEMES !== 'undefined' ? LEXERA_THEMES : [];
+    },
+  };
+
   function initManagementUI() {
     var managementContainer = getManagementUiContainer();
     if (mgmtInitialized || !managementContainer) return;
@@ -10000,78 +10078,31 @@ const LexeraDashboard = (function () {
     ManagementUI.init({
       container: managementContainer,
       ui: {
-        topTabs: ['config', 'sharing'],
-        defaultTopTab: 'config'
+        topTabs: ['network'],
+        defaultTopTab: 'network',
+        themeEnabled: false
       },
-      api: {
-        get: function (path) { return LexeraApi.request(path); },
-        post: function (path, body) {
-          return LexeraApi.request(path, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-        },
-        put: function (path, body) {
-          return LexeraApi.request(path, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-        },
-        delete: function (path) {
-          return LexeraApi.request(path, { method: 'DELETE' });
-        },
-      },
-      callbacks: {
-        onThemeChange: function (themeId) {
-          if (typeof applyTheme === 'function') applyTheme(themeId, true);
-        },
-        openLogStream: function (onEntry, onOpen, onError) {
-          var es = LexeraApi.connectLogStream(onEntry);
-          if (!es) return null;
-          var previousError = es.onerror;
-          es.onopen = function (event) {
-            if (onOpen) onOpen(event);
-          };
-          es.onerror = function (event) {
-            if (typeof previousError === 'function') previousError(event);
-            if (onError) onError(event);
-          };
-          return es;
-        },
-        onNotify: function (msg) { showNotification(msg); },
-        onConfirm: function (msg) { return showConfirmDialog(msg); },
-        onBoardAdded: function () { poll(); },
-        onBoardRemoved: function (boardId) {
-          boards = boards.filter(function (b) { return b.id !== boardId; });
-          delete boardHierarchyCache[boardId];
-          if (activeBoardId === boardId) {
-            activeBoardId = null;
-            activeBoardData = null;
-            fullBoardData = null;
-            localStorage.removeItem('lexera-last-board');
-          }
-          renderBoardList();
-          renderMainView();
-          scheduleDashboardRefresh(60);
-        },
-        onBoardSettingsSaved: function (boardId, settings) {
-          if (boardId === activeBoardId && fullBoardData) {
-            if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
-            for (var s in settings) { fullBoardData.boardSettings[s] = settings[s]; }
-            applyBoardSettings();
-          }
-        },
-        onServerRestarted: function () {
-          // LexeraApi handles reconnection automatically
-        },
-        getThemes: function () {
-          return typeof LEXERA_THEMES !== 'undefined' ? LEXERA_THEMES : [];
-        },
-      },
+      api: mgmtApiAdapter,
+      callbacks: mgmtCallbacks,
     });
-    syncEmbeddedManagementUiState('config');
+    syncEmbeddedManagementUiState('network');
+  }
+
+  var filesMountInitialized = false;
+
+  function initFilesPanelMount(container) {
+    if (!container) return;
+    ManagementUI.mount('files', {
+      container: container,
+      ui: {
+        topTabs: ['workspaces', 'boards'],
+        defaultTopTab: 'workspaces',
+        themeEnabled: false
+      },
+      api: mgmtApiAdapter,
+      callbacks: mgmtCallbacks,
+    });
+    filesMountInitialized = true;
   }
 
   if (typeof window !== 'undefined') {
@@ -10089,8 +10120,14 @@ const LexeraDashboard = (function () {
           initManagementUI();
         }
       }
+      if (event.detail.kind === 'files' && el) {
+        var container = el.querySelector('.lexera-shared-files-container');
+        if (container) {
+          initFilesPanelMount(container);
+        }
+      }
       if (event.detail.kind === 'frontendSettings') {
-        initFrontendSettingsPanel();
+        initFrontendSettingsPanel(event.detail.element);
       }
     });
   }
@@ -10098,12 +10135,13 @@ const LexeraDashboard = (function () {
   function openManagementPanel(options) {
     options = options || {};
     mgmtPanelOpen = true;
-    runInitManagementUI();
-    syncEmbeddedManagementUiState(options.section === 'boards' || options.section === 'sharing' ? 'sharing' : 'config');
+    var isFilesSection = options.section === 'boards' || options.section === 'sharing' || options.section === 'workspaces';
     if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.revealPanel === 'function') {
-      WorkspaceShell.revealPanel('backendSettings');
+      WorkspaceShell.revealPanel(isFilesSection ? 'files' : 'backendSettings');
       return;
     }
+    runInitManagementUI();
+    syncEmbeddedManagementUiState(isFilesSection ? 'workspaces' : 'network');
     if (getElMgmtPanel()) getElMgmtPanel().classList.add('open');
   }
 
@@ -10117,6 +10155,7 @@ const LexeraDashboard = (function () {
   function openConnectionWindow() {
     openManagementPanel({ section: 'config' });
   }
+  window.openConnectionWindow = openConnectionWindow;
 
   function showNotification(message) {
     var el = document.createElement('div');
@@ -10836,6 +10875,101 @@ const LexeraDashboard = (function () {
     throw new Error('LexeraCanvasMath is unavailable');
   }
 
+  var _canvasModeHelpers = null;
+
+  function createFallbackCanvasModeHelpers() {
+    function normalizeBoardLayoutValueFallback(value) {
+      var normalized = String(value == null ? '' : value).trim().toLowerCase();
+      if (normalized === 'canvas') return 'canvas';
+      return 'kanban';
+    }
+
+    function normalizeCanvasGridValueFallback(value) {
+      var normalized = String(value == null ? '' : value).trim().toLowerCase();
+      if (!normalized || normalized === 'default' || normalized === 'medium') return '32';
+      if (normalized === 'off' || normalized === 'none' || normalized === 'hidden') return 'off';
+      if (normalized === 'fine' || normalized === 'small') return '16';
+      if (normalized === 'large') return '64';
+      if (normalized === 'largest' || normalized === 'largest-element' || normalized === 'auto') return 'largest';
+      var parsed = parseFloat(normalized);
+      if (!isFinite(parsed) || parsed <= 0) return '32';
+      return String(Math.round(parsed));
+    }
+
+    function parseCanvasParamMapFallback(raw) {
+      var out = {};
+      var text = String(raw || '').trim();
+      if (!text) return out;
+      var parts = text.split(',');
+      for (var i = 0; i < parts.length; i++) {
+        var pair = String(parts[i] || '').trim();
+        if (!pair) continue;
+        var colon = pair.indexOf(':');
+        if (colon === -1) continue;
+        var key = pair.substring(0, colon).trim();
+        var value = pair.substring(colon + 1).trim();
+        if (!key) continue;
+        out[key] = value;
+      }
+      return out;
+    }
+
+    function extractCanvasConnectionSpecsFallback(title) {
+      var out = [];
+      var text = stripHtmlComments(String(title || ''));
+      var connectionRe = /\[(#[^\]\s]+)\]\u007B([^\u007D]+)\u007D/gi;
+      var match;
+      while ((match = connectionRe.exec(text))) {
+        out.push({
+          targetTag: String(match[1] || '').toLowerCase(),
+          params: parseCanvasParamMapFallback(match[2])
+        });
+      }
+      return out;
+    }
+
+    function getCanvasColumnWidthSpecFallback(value) {
+      var raw = String(value == null ? '' : value).trim().toLowerCase();
+      if (!raw) return null;
+      if (/^-?\d+(\.\d+)?%$/.test(raw)) {
+        return { kind: 'percent', value: Math.max(0, parseFloat(raw)) };
+      }
+      var fractionMatch = raw.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+      if (fractionMatch) {
+        var numerator = parseFloat(fractionMatch[1]);
+        var denominator = parseFloat(fractionMatch[2]);
+        if (isFinite(numerator) && isFinite(denominator) && denominator > 0) {
+          return { kind: 'percent', value: Math.max(0, (numerator / denominator) * 100) };
+        }
+      }
+      var numeric = parseFloat(raw);
+      if (!isFinite(numeric) || numeric <= 0) return null;
+      if (numeric <= 1) return { kind: 'percent', value: numeric * 100 };
+      if (numeric <= 100) return { kind: 'percent', value: numeric };
+      return { kind: 'px', value: numeric };
+    }
+
+    return {
+      normalizeBoardLayoutValue: normalizeBoardLayoutValueFallback,
+      normalizeCanvasGridValue: normalizeCanvasGridValueFallback,
+      parseCanvasParamMap: parseCanvasParamMapFallback,
+      extractCanvasConnectionSpecs: extractCanvasConnectionSpecsFallback,
+      getCanvasColumnWidthSpec: getCanvasColumnWidthSpecFallback
+    };
+  }
+
+  function getCanvasModeHelpers() {
+    if (_canvasModeHelpers) return _canvasModeHelpers;
+    if (typeof globalThis === 'undefined' || !globalThis.LexeraCanvasMode || typeof globalThis.LexeraCanvasMode.createCanvasModeHelpers !== 'function') {
+      _canvasModeHelpers = createFallbackCanvasModeHelpers();
+      return _canvasModeHelpers;
+    }
+    _canvasModeHelpers = globalThis.LexeraCanvasMode.createCanvasModeHelpers({
+      stripHtmlComments: stripHtmlComments
+    });
+    return _canvasModeHelpers;
+  }
+
   function getCanvasViewportApi() {
     if (typeof globalThis !== 'undefined' && globalThis.LexeraCanvasViewport) return globalThis.LexeraCanvasViewport;
     throw new Error('LexeraCanvasViewport is unavailable');
@@ -10904,35 +11038,11 @@ const LexeraDashboard = (function () {
   }
 
   function parseCanvasParamMap(raw) {
-    var out = {};
-    var text = String(raw || '').trim();
-    if (!text) return out;
-    var parts = text.split(',');
-    for (var i = 0; i < parts.length; i++) {
-      var pair = String(parts[i] || '').trim();
-      if (!pair) continue;
-      var colon = pair.indexOf(':');
-      if (colon === -1) continue;
-      var key = pair.substring(0, colon).trim();
-      var value = pair.substring(colon + 1).trim();
-      if (!key) continue;
-      out[key] = value;
-    }
-    return out;
+    return getCanvasModeHelpers().parseCanvasParamMap(raw);
   }
 
   function extractCanvasConnectionSpecs(title) {
-    var out = [];
-    var text = stripHtmlComments(String(title || ''));
-    var connectionRe = /\[(#[^\]\s]+)\]\u007B([^\u007D]+)\u007D/gi;
-    var match;
-    while ((match = connectionRe.exec(text))) {
-      out.push({
-        targetTag: String(match[1] || '').toLowerCase(),
-        params: parseCanvasParamMap(match[2])
-      });
-    }
-    return out;
+    return getCanvasModeHelpers().extractCanvasConnectionSpecs(title);
   }
 
   function extractCanvasStackTags(title) {
@@ -11035,24 +11145,7 @@ const LexeraDashboard = (function () {
   }
 
   function getCanvasColumnWidthSpec(value) {
-    var raw = String(value == null ? '' : value).trim().toLowerCase();
-    if (!raw) return null;
-    if (/^-?\d+(\.\d+)?%$/.test(raw)) {
-      return { kind: 'percent', value: Math.max(0, parseFloat(raw)) };
-    }
-    var fractionMatch = raw.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
-    if (fractionMatch) {
-      var numerator = parseFloat(fractionMatch[1]);
-      var denominator = parseFloat(fractionMatch[2]);
-      if (isFinite(numerator) && isFinite(denominator) && denominator > 0) {
-        return { kind: 'percent', value: Math.max(0, (numerator / denominator) * 100) };
-      }
-    }
-    var numeric = parseFloat(raw);
-    if (!isFinite(numeric) || numeric <= 0) return null;
-    if (numeric <= 1) return { kind: 'percent', value: numeric * 100 };
-    if (numeric <= 100) return { kind: 'percent', value: numeric };
-    return { kind: 'px', value: numeric };
+    return getCanvasModeHelpers().getCanvasColumnWidthSpec(value);
   }
 
   function applyCanvasColumnLayout(colEl, col) {
@@ -11285,10 +11378,12 @@ const LexeraDashboard = (function () {
         scene.style.top = stableOffsetY + 'px';
         scene.style.width = surface.width + 'px';
         scene.style.height = surface.height + 'px';
-        scene.style.setProperty('--canvas-grid-size', Math.max(1, gridStep) + 'px');
-        scene.style.setProperty('--canvas-grid-color', gridStep > 0 ? 'color-mix(in srgb, var(--border) 34%, transparent)' : 'transparent');
-        scene.setAttribute('data-canvas-grid', gridMode);
       }
+      rowContent.style.setProperty('--canvas-grid-size', Math.max(1, gridStep) + 'px');
+      rowContent.style.setProperty('--canvas-grid-color', gridStep > 0 ? 'color-mix(in srgb, var(--border) 34%, transparent)' : 'transparent');
+      rowContent.style.setProperty('--canvas-scene-offset-x', (container.__canvasSceneOffsetX || 0) + 'px');
+      rowContent.style.setProperty('--canvas-scene-offset-y', (container.__canvasSceneOffsetY || 0) + 'px');
+      rowContent.setAttribute('data-canvas-grid', gridMode);
       rowContent.__canvasSurface = surface;
       syncCanvasRowConnections(rowContent);
     }
@@ -12651,6 +12746,28 @@ const LexeraDashboard = (function () {
         rowContent.appendChild(emptyStacks);
       }
 
+      if (isCanvasLayout) {
+        (function (rowIdx, contentEl) {
+          contentEl.addEventListener('contextmenu', function (e) {
+            if (!isCanvasBoardLayout()) return;
+            if (targetClosest(
+              e.target,
+              '.board-stack, .column, .card, button, input, textarea, select, a, [contenteditable="true"], .cm-editor, .cm-scroller, .monaco-editor, .canvas-focus-stacks-control'
+            )) {
+              return;
+            }
+            var canvasPosition = getCanvasPositionFromViewportPoint(contentEl, e.clientX, e.clientY, 0, 0);
+            if (!canvasPosition || !isFinite(canvasPosition.x) || !isFinite(canvasPosition.y)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            showCanvasBackgroundContextMenu(e.clientX, e.clientY, rowIdx, {
+              x: Math.round(canvasPosition.x),
+              y: Math.round(canvasPosition.y)
+            });
+          });
+        })(r, rowContent);
+      }
+
       for (var s = 0; s < rowStacks.length; s++) {
         var stack = rowStacks[s];
         var stackFoldKey = getStackFoldKey(stack, r, s);
@@ -12675,7 +12792,7 @@ const LexeraDashboard = (function () {
           stackEl.style.left = Math.round(canvasBox.x) + 'px';
           stackEl.style.top = Math.round(canvasBox.y) + 'px';
           stackEl.style.width = canvasBox.w + 'px';
-          stackEl.style.height = canvasBox.h + 'px';
+          stackEl.style.removeProperty('height');
           stackEl.style.zIndex = String(10 + s);
           stackEl.setAttribute('data-stack-dir', normalizeCanvasStackDirection(stackParams.dir));
         }
@@ -12689,19 +12806,17 @@ const LexeraDashboard = (function () {
               var entry = entries[0];
               if (!entry) return;
               var newW = Math.round(entry.contentRect.width);
-              var newH = Math.round(entry.contentRect.height);
               scheduleCanvasRowBoundsSync(getElColumnsContainer());
               clearTimeout(resizeTimer);
               resizeTimer = setTimeout(function () {
                 var fullStack = findFullDataStack(rIdx, sIdx);
                 if (!fullStack) return;
                 var curW = fullStack.params && fullStack.params.w ? parseInt(fullStack.params.w, 10) : 0;
-                var curH = fullStack.params && fullStack.params.h ? parseInt(fullStack.params.h, 10) : 0;
-                if (Math.abs(newW - curW) < 5 && Math.abs(newH - curH) < 5) return;
+                if (Math.abs(newW - curW) < 5) return;
                 pushUndo();
                 if (!fullStack.params) fullStack.params = {};
                 fullStack.params.w = String(newW);
-                fullStack.params.h = String(newH);
+                if (Object.prototype.hasOwnProperty.call(fullStack.params, 'h')) delete fullStack.params.h;
                 persistBoardMutation({ skipRender: true });
               }, 400);
             });
@@ -12787,6 +12902,42 @@ const LexeraDashboard = (function () {
         var stackFooter = document.createElement('div');
         stackFooter.className = 'board-stack-footer';
         stackEl.appendChild(stackFooter);
+        if (isCanvasLayout) {
+          (function (el) {
+            var resizeHandle = document.createElement('div');
+            resizeHandle.className = 'canvas-stack-resize-handle';
+            resizeHandle.title = 'Resize stack width';
+            resizeHandle.setAttribute('aria-hidden', 'true');
+            resizeHandle.addEventListener('pointerdown', function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              var startX = e.clientX;
+              var startWidth = Math.round(el.getBoundingClientRect().width);
+              el.classList.add('resizing');
+              if (resizeHandle.setPointerCapture) {
+                try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+              }
+              function handleMove(moveEvent) {
+                var nextWidth = Math.max(220, Math.round(startWidth + (moveEvent.clientX - startX)));
+                el.style.width = nextWidth + 'px';
+                scheduleCanvasRowBoundsSync(getElColumnsContainer());
+              }
+              function handleUp(upEvent) {
+                el.classList.remove('resizing');
+                if (resizeHandle.releasePointerCapture) {
+                  try { resizeHandle.releasePointerCapture(upEvent.pointerId); } catch (_) { /* ignore */ }
+                }
+                window.removeEventListener('pointermove', handleMove, true);
+                window.removeEventListener('pointerup', handleUp, true);
+                window.removeEventListener('pointercancel', handleUp, true);
+              }
+              window.addEventListener('pointermove', handleMove, true);
+              window.addEventListener('pointerup', handleUp, true);
+              window.addEventListener('pointercancel', handleUp, true);
+            });
+            el.appendChild(resizeHandle);
+          })(stackEl);
+        }
         applyTagStyleToEntity(stackEl, stack.title || '');
         if (isCanvasLayout) {
           getCanvasSceneElement(rowContent, true).appendChild(stackEl);
@@ -13321,6 +13472,13 @@ const LexeraDashboard = (function () {
 
   function showStackContextMenu(x, y, rowIdx, stackIdx) {
     showElementContextMenu('stack', x, y, { rowIdx: rowIdx, stackIdx: stackIdx });
+  }
+
+  function showCanvasBackgroundContextMenu(x, y, rowIdx, canvasPosition) {
+    showElementContextMenu('canvas', x, y, {
+      rowIdx: rowIdx,
+      canvasPosition: canvasPosition || null
+    });
   }
 
   function showElementContextMenu(scope, x, y, rawContext) {
@@ -13946,14 +14104,20 @@ const LexeraDashboard = (function () {
     await persistBoardMutation({ refreshSidebar: true });
   }
 
-  async function addStackToRow(rowIdx, atStackIdx) {
+  async function addStackToRow(rowIdx, atStackIdx, options) {
+    if (atStackIdx && typeof atStackIdx === 'object' && !Array.isArray(atStackIdx)) {
+      options = atStackIdx;
+      atStackIdx = undefined;
+    }
+    options = options || {};
 
     var row = findFullDataRow(rowIdx);
     if (!row) {
       traceFrontendAction('warn', 'stack.create', 'Aborted add stack because row could not be resolved', {
         boardId: activeBoardId || null,
         rowIdx: rowIdx,
-        atStackIdx: atStackIdx
+        atStackIdx: atStackIdx,
+        options: options
       });
       return false;
     }
@@ -13965,7 +14129,16 @@ const LexeraDashboard = (function () {
       title: 'New Stack',
       columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }]
     };
-    applyDefaultCanvasPlacementToStack(row, newStack);
+    var explicitCanvasPosition = options && options.canvasPosition ? options.canvasPosition : null;
+    var explicitCanvasX = explicitCanvasPosition ? Number(explicitCanvasPosition.x) : NaN;
+    var explicitCanvasY = explicitCanvasPosition ? Number(explicitCanvasPosition.y) : NaN;
+    if (isCanvasBoardLayout() && isFinite(explicitCanvasX) && isFinite(explicitCanvasY)) {
+      if (!newStack.params || typeof newStack.params !== 'object') newStack.params = {};
+      newStack.params.x = String(Math.round(explicitCanvasX));
+      newStack.params.y = String(Math.round(explicitCanvasY));
+    } else {
+      applyDefaultCanvasPlacementToStack(row, newStack);
+    }
     var insertAt = row.stacks.length;
     if (typeof atStackIdx === 'number' && !isNaN(atStackIdx)) {
       // atStackIdx is a display index — convert to fullBoardData index
@@ -13979,7 +14152,8 @@ const LexeraDashboard = (function () {
       rowId: row.id || null,
       rowTitle: row.title || '',
       insertAt: insertAt,
-      stackId: newStack.id
+      stackId: newStack.id,
+      canvasPosition: isCanvasBoardLayout() ? { x: newStack.params && newStack.params.x, y: newStack.params && newStack.params.y } : null
     });
     row.stacks.splice(insertAt, 0, newStack);
     var saved = await persistBoardMutation({ refreshSidebar: true });
@@ -17747,6 +17921,7 @@ const LexeraDashboard = (function () {
       applyRenderedHtmlCommentVisibility(contentEl, currentHtmlCommentRenderMode);
       applyRenderedTagVisibility(contentEl, currentTagVisibilityMode);
     }
+    attachRenderedTagInteractions(cardEl);
   }
 
   function autoResizeInlineCardTextarea(textarea) {
@@ -17823,6 +17998,8 @@ const LexeraDashboard = (function () {
 
     isEditing = true;
     cardEl.classList.add('editing');
+    cardEl.classList.add('editing-inline');
+    cardEl.classList.remove('editing-overlay');
     cardEl.classList.remove('collapsed');
     contentEl.innerHTML =
       '<textarea class="card-edit-input card-inline-textarea" spellcheck="false" style="' +
@@ -17935,7 +18112,11 @@ const LexeraDashboard = (function () {
     if (LexeraApi.isSyncConnected()) {
       LexeraApi.sendEditingPresence(null, '', null, false);
     }
-    if (editor.cardEl && editor.cardEl.classList) editor.cardEl.classList.remove('editing');
+    if (editor.cardEl && editor.cardEl.classList) {
+      editor.cardEl.classList.remove('editing');
+      editor.cardEl.classList.remove('editing-inline');
+      editor.cardEl.classList.remove('editing-overlay');
+    }
     if (options.save) {
       clearPendingCardDraftSync();
       return saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
@@ -17988,6 +18169,8 @@ const LexeraDashboard = (function () {
 
     isEditing = true;
     cardEl.classList.add('editing');
+    cardEl.classList.add('editing-overlay');
+    cardEl.classList.remove('editing-inline');
     cardEl.classList.remove('collapsed');
     var overlay = document.createElement('div');
     overlay.className = 'dialog-overlay card-editor-overlay';
@@ -18316,7 +18499,8 @@ const LexeraDashboard = (function () {
       ? currentCardEditor.dialog.querySelector('.card-editor-title-text')
       : null;
     if (titleEl) {
-      titleEl.textContent = getCardTitle(stripInternalHiddenTags(value)).trim() || 'Untitled';
+      var resolvedForTitle = getIncludeResolvedContent(value, currentCardEditor.colIndex);
+      titleEl.textContent = getCardTitle(stripInternalHiddenTags(resolvedForTitle)).trim() || 'Untitled';
     }
   }
 
@@ -18340,7 +18524,11 @@ const LexeraDashboard = (function () {
     destroyCardEditorWysiwyg(editor);
     window.currentTaskIncludeContext = null;
     window.currentFilePath = '';
-    if (editor.cardEl && editor.cardEl.classList) editor.cardEl.classList.remove('editing');
+    if (editor.cardEl && editor.cardEl.classList) {
+      editor.cardEl.classList.remove('editing');
+      editor.cardEl.classList.remove('editing-inline');
+      editor.cardEl.classList.remove('editing-overlay');
+    }
     if (editor.overlay && editor.overlay.parentNode) editor.overlay.parentNode.removeChild(editor.overlay);
     if (options.save) {
       clearPendingCardDraftSync();
@@ -18393,10 +18581,7 @@ const LexeraDashboard = (function () {
     var oldContent = col.cards[fullCardIdx].content;
     if (newContent === oldContent) {
       if (cardEl && cardEl.classList) cardEl.classList.remove('editing');
-      var contentEl = cardEl ? cardEl.querySelector('.card-content') : null;
-      if (contentEl) contentEl.innerHTML = renderCardContent(oldContent, activeBoardId);
-      var titleEl = cardEl ? cardEl.querySelector('.card-title-display') : null;
-      if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(oldContent), activeBoardId);
+      renderCardDisplayState(cardEl, oldContent);
       await flushDeferredBoardRefresh({ refreshSidebar: true });
       return;
     }
@@ -20990,6 +21175,21 @@ const LexeraDashboard = (function () {
     }
   }
 
+  function refreshVisibleIncludePreviews(boardId, filePath) {
+    if (!boardId || !filePath) return;
+    var containers = document.querySelectorAll('.include-inline-container[data-file-path][data-board-id]');
+    for (var i = 0; i < containers.length; i++) {
+      var container = containers[i];
+      if ((container.getAttribute('data-board-id') || '') !== boardId) continue;
+      if ((container.getAttribute('data-file-path') || '') !== filePath) continue;
+      container.classList.remove('include-broken');
+      container.removeAttribute('data-include-enhanced');
+      var body = container.querySelector('.include-inline-body');
+      if (body) body.innerHTML = '<div class="embed-preview-loading">Loading include...</div>';
+      enhanceSingleIncludeDirective(container);
+    }
+  }
+
   async function saveSpecialFileEditorOverlay(editor) {
     if (!editor) return;
     var content = await requestSpecialFileEditorSaveContent(editor);
@@ -21737,16 +21937,28 @@ const LexeraDashboard = (function () {
 
   function computeRelativePath(fromDir, toPath) { return PathUtils.computeRelativePath(fromDir, toPath); }
 
+  function getIncludePreviewContextPath(container) {
+    var includeBody = container ? container.closest('.include-inline-body') : null;
+    if (!includeBody) return '';
+    var includeContainer = includeBody.closest('.include-inline-container[data-file-path]');
+    if (!includeContainer) return '';
+    return String(includeContainer.getAttribute('data-file-path') || '').trim();
+  }
+
   /// If the container is inside an include column, convert a board-relative path
   /// to be relative to the include file's directory instead.
   function adjustPathForIncludeContext(container, boardRelPath) {
-    var cardEl = container ? container.closest('.card[data-card-id]') : null;
-    if (!cardEl) return boardRelPath;
-    var cardRef = findCardRefById(cardEl.getAttribute('data-card-id'));
-    if (!cardRef) return boardRelPath;
-    var col = cardRef.column;
-    if (!col || !col.includeSource || !col.includeSource.rawPath) return boardRelPath;
-    var includeDir = getDirNameFromPath(col.includeSource.rawPath);
+    var includePath = getIncludePreviewContextPath(container);
+    if (!includePath) {
+      var cardEl = container ? container.closest('.card[data-card-id]') : null;
+      if (!cardEl) return boardRelPath;
+      var cardRef = findCardRefById(cardEl.getAttribute('data-card-id'));
+      if (!cardRef) return boardRelPath;
+      var col = cardRef.column;
+      if (!col || !col.includeSource || !col.includeSource.rawPath) return boardRelPath;
+      includePath = col.includeSource.rawPath;
+    }
+    var includeDir = getDirNameFromPath(includePath);
     if (!includeDir) return boardRelPath;
     return computeRelativePath(includeDir, boardRelPath);
   }
@@ -22271,6 +22483,42 @@ const LexeraDashboard = (function () {
 
   async function mutateEmbedSource(container, contentMutator) {
     if (!container || typeof contentMutator !== 'function') return false;
+    var includePath = getIncludePreviewContextPath(container);
+    if (includePath) {
+      if (!hasTauri) return false;
+      var includeBoardId = activeBoardId || '';
+      var includeContainer = container.closest('.include-inline-container[data-file-path][data-board-id]');
+      if (includeContainer) {
+        includeBoardId = includeContainer.getAttribute('data-board-id') || includeBoardId;
+      }
+      if (!includeBoardId) return false;
+      var includeAbsolutePath = await resolveBoardPath(includeBoardId, includePath, 'absolute');
+      var includeContent;
+      try {
+        includeContent = await tauriInvoke('read_text_file', { path: includeAbsolutePath });
+      } catch (err) {
+        logFrontendIssue('warn', 'embed.include-source', 'Failed to read included file ' + includePath, err);
+        return false;
+      }
+      var nextIncludeContent = contentMutator(includeContent || '');
+      if (typeof nextIncludeContent !== 'string' || nextIncludeContent === includeContent) return false;
+      try {
+        await tauriInvoke('write_text_file', {
+          path: includeAbsolutePath,
+          content: normalizeCardContentAfterInlineMutation(nextIncludeContent)
+        });
+      } catch (err) {
+        logFrontendIssue('warn', 'embed.include-source', 'Failed to write included file ' + includePath, err);
+        return false;
+      }
+      clearCachedFilePreviewState(includeBoardId, includePath);
+      refreshVisibleBoardFileEmbeds(includeBoardId, includePath);
+      refreshVisibleIncludePreviews(includeBoardId, includePath);
+      if (currentCardEditor && currentCardEditor.preview && currentCardEditor.preview.contains(container)) {
+        refreshCardEditorPreview();
+      }
+      return true;
+    }
     if (currentCardEditor && currentCardEditor.wysiwygWrap && currentCardEditor.wysiwygWrap.contains(container)) {
       var currentWysiwygValue = currentCardEditor.wysiwyg &&
         typeof currentCardEditor.wysiwyg.getMarkdown === 'function'
@@ -22998,6 +23246,8 @@ const LexeraDashboard = (function () {
       var embedContainer = activeEmbedMenu._embedContainer;
       if (embedContainer && embedContainer.classList && embedContainer.classList.contains('link-path-overlay-container')) {
         handleBoardFileLinkAction(action, embedContainer);
+      } else if (isIncludeDirectiveContainer(embedContainer)) {
+        handleIncludeAction(action, embedContainer);
       } else {
         handleEmbedAction(action, embedContainer);
       }
@@ -23084,9 +23334,21 @@ const LexeraDashboard = (function () {
           { id: 'edit-url', label: 'Edit URL' },
           { id: 'delete', label: 'Delete Embed' },
         ]
+      : container
+      ? [
+          { id: 'open-system', label: 'Open in System App' },
+          { id: 'show-finder', label: 'Show in Finder' },
+          { id: 'copy-path', label: 'Copy Path' },
+          { separator: true },
+          { id: 'path-fix', label: 'Automatic Path Fix' },
+          { id: 'path-manual', label: 'Manual Path Fix' },
+          { id: 'convert-path', label: isAbsoluteFilePath(parseLocalFileReference(filePath).path) ? 'Convert to Relative' : 'Convert to Absolute' },
+          { separator: true },
+          { id: 'delete', label: 'Delete Embed' },
+        ]
       : [
-          { id: container ? 'open-system' : 'file-open', label: 'Open in System App' },
-          { id: container ? 'show-finder' : 'file-finder', label: 'Show in Finder' },
+          { id: 'file-open', label: 'Open in System App' },
+          { id: 'file-finder', label: 'Show in Finder' },
         ];
 
     if (!isExternalEmbed && /^(https?:\/\/|mailto:|#)/.test(filePath)) return;
@@ -23555,7 +23817,12 @@ const LexeraDashboard = (function () {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: getDisplayFileNameFromPath(fileRef.path) }),
       }).then(function (res) {
-        showPathFixResults(container, res && res.matches ? res.matches : []);
+        applyAutomaticPathFix(container, res && res.matches ? res.matches : [], function (nextTarget) {
+          return updateBoardFileLinkTarget(container, nextTarget);
+        }, {
+          suffix: fileRef.suffix || '',
+          successMessage: 'Path fixed'
+        });
       }).catch(function (err) {
         logFrontendIssue('warn', 'path.fix', 'Automatic path fix failed for file link ' + filePath, err);
       });
@@ -23592,7 +23859,7 @@ const LexeraDashboard = (function () {
 
   function showIncludeMenu(container, btn) {
     var filePath = container.getAttribute('data-file-path') || '';
-    var boardId = container.getAttribute('data-board-id') || '';
+    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
     if (!filePath || !boardId) return;
     var isAbsolute = isAbsoluteFilePath(parseLocalFileReference(filePath).path);
     var btnRect = btn.getBoundingClientRect();
@@ -23616,7 +23883,7 @@ const LexeraDashboard = (function () {
   function handleIncludeAction(action, container) {
     if (!container) { closeEmbedMenu(); return; }
     var filePath = container.getAttribute('data-file-path') || '';
-    var boardId = container.getAttribute('data-board-id') || '';
+    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
     var fileRef = parseLocalFileReference(filePath);
 
     if (action === 'preview') {
@@ -23649,7 +23916,12 @@ const LexeraDashboard = (function () {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: filename }),
       }).then(function (res) {
-        showPathFixResults(container, res && res.matches ? res.matches : []);
+        applyAutomaticPathFix(container, res && res.matches ? res.matches : [], function (nextTarget) {
+          return updateIncludeTarget(container, nextTarget);
+        }, {
+          suffix: fileRef.suffix || '',
+          successMessage: 'Include path fixed'
+        });
       }).catch(function (err) {
         logFrontendIssue('warn', 'path.fix', 'Automatic path fix failed for include ' + filePath, err);
       });
@@ -23749,7 +24021,7 @@ const LexeraDashboard = (function () {
     var filePath = container.getAttribute('data-file-path') || '';
     var embedUrl = getExternalEmbedSourceUrl(container);
     var probeUrl = getExternalEmbedProbeUrl(container);
-    var boardId = container.getAttribute('data-board-id') || '';
+    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
     var isExternal = isExternalEmbedContainer(container);
     var fileRef = parseLocalFileReference(filePath);
 
@@ -23879,11 +24151,12 @@ const LexeraDashboard = (function () {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: filename }),
       }).then(function (res) {
-        if (!res.matches || res.matches.length === 0) {
-          showPathFixResults(container, []);
-          return;
-        }
-        showPathFixResults(container, res.matches);
+        applyAutomaticPathFix(container, res && res.matches ? res.matches : [], function (nextTarget) {
+          return updateEmbedTarget(container, nextTarget);
+        }, {
+          suffix: fileRef.suffix || '',
+          successMessage: 'Embed path fixed'
+        });
       }).catch(function (err) {
         logFrontendIssue('warn', 'path.fix', 'Automatic path fix failed for embed ' + filePath, err);
       });
@@ -24347,7 +24620,7 @@ const LexeraDashboard = (function () {
     var embedIndex = parseInt(container.getAttribute('data-embed-index'), 10);
     var nextValue = String(nextTarget || '').trim();
     if (!nextValue) return Promise.resolve(false);
-    return mutateEmbedSource(container, function (content) {
+    var embedMutator = function (content) {
       if (!isFinite(embedIndex)) {
         return replaceCurrentEmbedOccurrence(content, container, function (embed) {
           return buildMarkdownEmbed(embed.alt, nextValue, embed.title, embed.rawAttrs);
@@ -24356,6 +24629,10 @@ const LexeraDashboard = (function () {
       return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function (embed) {
         return buildMarkdownEmbed(embed.alt, nextValue, embed.title, embed.rawAttrs);
       });
+    };
+    return Promise.resolve(mutateEmbedSource(container, embedMutator)).then(function (changed) {
+      if (changed) return true;
+      return mutateBoardTitleSource(container, embedMutator);
     });
   }
 
@@ -24442,6 +24719,30 @@ const LexeraDashboard = (function () {
     }
     showNotification('Failed to update embed target');
     return false;
+  }
+
+  function applyAutomaticPathFix(container, matches, applyTarget, options) {
+    var resolvedMatches = Array.isArray(matches) ? matches.filter(Boolean) : [];
+    options = options || {};
+    if (resolvedMatches.length !== 1 || typeof applyTarget !== 'function') {
+      showPathFixResults(container, resolvedMatches);
+      return;
+    }
+    var nextPath = adjustPathForIncludeContext(container, resolvedMatches[0]);
+    var suffix = options.suffix || '';
+    Promise.resolve(applyTarget(nextPath + suffix)).then(function (changed) {
+      if (changed) {
+        showNotification(options.successMessage || 'Path fixed');
+        return;
+      }
+      if (options.showPickerOnNoChange !== false) {
+        showPathFixResults(container, resolvedMatches);
+      }
+    }).catch(function (err) {
+      if (typeof options.onError === 'function') {
+        options.onError(err);
+      }
+    });
   }
 
   function showPathFixResults(container, matches) {
@@ -24939,92 +25240,58 @@ const LexeraDashboard = (function () {
     return '<a href="' + safeHref + '"' + targetAttr + '>' + escapeHtml(normalizedHref) + '</a>';
   }
 
+  var InlineRendererFactory = window.LexeraInlineRenderer || null;
+  var _inlineRendererHelpers = null;
+
+  function getInlineRendererHelpers() {
+    if (_inlineRendererHelpers) return _inlineRendererHelpers;
+    if (!InlineRendererFactory || typeof InlineRendererFactory.createInlineRenderers !== 'function') return null;
+    _inlineRendererHelpers = InlineRendererFactory.createInlineRenderers({
+      getActiveBoardId: function () { return activeBoardId || ''; },
+      extractAngleBracketAutolinks: extractAngleBracketAutolinks,
+      stripHtmlComments: stripHtmlComments,
+      escapeHtml: escapeHtml,
+      stashRenderedHtmlToken: stashRenderedHtmlToken,
+      restoreRenderedHtmlTokens: restoreRenderedHtmlTokens,
+      renderIncludeDirectiveHtml: renderIncludeDirectiveHtml,
+      parseMarkdownTarget: parseMarkdownTarget,
+      escapeAttr: escapeAttr,
+      renderBoardFileLinkHtml: renderBoardFileLinkHtml,
+      buildAngleBracketAutolinkHtml: buildAngleBracketAutolinkHtml,
+      decodeHtmlEntities: decodeHtmlEntities,
+      renderWikiLinkHtml: renderWikiLinkHtml,
+      renderTagChipHtml: renderTagChipHtml,
+      renderTemporalTagHtml: renderTemporalTagHtml,
+      renderEmojiShortcodes: renderEmojiShortcodes,
+      getHtmlContentRenderMode: getHtmlContentRenderMode,
+      parseLocalFileReference: parseLocalFileReference,
+      normalizeMarkdownAttrValue: normalizeMarkdownAttrValue,
+      parseMarkdownImageAttributes: parseMarkdownImageAttributes,
+      getFileExtension: getFileExtension,
+      isExternalHttpUrl: isExternalHttpUrl,
+      getExternalEmbedConfig: getExternalEmbedConfig,
+      getInlineFileEmbedExtension: getInlineFileEmbedExtension,
+      getMediaCategory: getMediaCategory,
+      inferExternalMediaCategoryFromUrl: inferExternalMediaCategoryFromUrl,
+      LexeraApi: LexeraApi,
+      getMarkdownMediaStyleAttr: getMarkdownMediaStyleAttr,
+      getEmbedPreviewKind: getEmbedPreviewKind,
+      renderInlineFileEmbedHtml: renderInlineFileEmbedHtml,
+      getFileEmbedChipHtml: getFileEmbedChipHtml,
+      getDisplayFileNameFromPath: getDisplayFileNameFromPath,
+      isRenderedSpecialPreviewKind: isRenderedSpecialPreviewKind,
+      applyAbbreviationsToHtml: applyAbbreviationsToHtml,
+      sanitizeCssLength: sanitizeCssLength
+    });
+    return _inlineRendererHelpers;
+  }
+
   function renderTitleInline(text, boardId, options) {
-    boardId = boardId || activeBoardId || '';
-    options = options || {};
-    var allowIncludeDirectives = !!options.allowIncludeDirectives;
-    var htmlTokens = [];
-    var autolinkData = extractAngleBracketAutolinks(stripHtmlComments(text));
-    var safe = escapeHtml(autolinkData.text);
-    var titleIncludeIndex = 0;
-    var titleLinkIndex = 0;
-    // Titles never render card embeds; keep the markdown literal instead.
-    safe = safe.replace(/!\[[^\]]*\]\([^)]+\)(\{[^}]+\})?/g, function (match) {
-      return stashRenderedHtmlToken(htmlTokens, match);
-    });
-    // Include directives are only active in column headers.
-    if (allowIncludeDirectives) {
-      safe = safe.replace(/!!!include\(([^)]+)\)!!!/g, function (_, rawPath) {
-        return stashRenderedHtmlToken(htmlTokens, renderIncludeDirectiveHtml(rawPath, boardId, 'include-filename-link', {
-          includeIndex: titleIncludeIndex++,
-          allowActions: false
-        }));
-      });
+    var helpers = getInlineRendererHelpers();
+    if (!helpers || typeof helpers.renderTitleInline !== 'function') {
+      return escapeHtml(String(text || ''));
     }
-    // Links: [text](url)
-    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_, label, rawHref) {
-      var parsed = parseMarkdownTarget(rawHref);
-      var href = parsed.path;
-      var titleText = parsed.title ? parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '') : '';
-      var titleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
-      var isExternal = /^https?:\/\//.test(href);
-      var isAnchor = href.indexOf('#') === 0;
-      var isMailto = href.indexOf('mailto:') === 0;
-      if (!isExternal && !isAnchor && !isMailto && href) {
-        return stashRenderedHtmlToken(htmlTokens, renderBoardFileLinkHtml(href, boardId, label, titleText, '', {
-          withMenu: true,
-          linkIndex: titleLinkIndex++
-        }));
-      }
-      var safeHref = escapeAttr(href);
-      var targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
-      return stashRenderedHtmlToken(htmlTokens, '<a href="' + safeHref + '"' + titleAttr + targetAttr + '>' + label + '</a>');
-    });
-    // Angle-bracket autolinks: <https://example.com>
-    safe = safe.replace(/@@AUTOLINKTOKEN(\d+)@@/g, function (_, index) {
-      var href = autolinkData.links[parseInt(index, 10)] || '';
-      return stashRenderedHtmlToken(htmlTokens, buildAngleBracketAutolinkHtml(href));
-    });
-    // Wiki links: [[document]] or [[document|title]]
-    safe = safe.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, function (_, rawDocument, rawTitle) {
-      var documentName = decodeHtmlEntities(rawDocument).trim();
-      var label = rawTitle ? rawTitle.trim() : rawDocument.trim();
-      return stashRenderedHtmlToken(htmlTokens, renderWikiLinkHtml(documentName, label, { withMenu: false }));
-    });
-    // Tags with colored badges
-    safe = safe.replace(/(^|[\s&|!])(#[^\s&|!]+)/g, function(_, pre, tag) {
-      return pre + renderTagChipHtml(tag);
-    });
-    // Temporal tags
-    safe = safe.replace(/(^|\s)([!@](?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|\d{4}[-.]?(?:w|kw)\d{1,2}|(?:w|kw)\d{1,2}|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|:\d{1,2}-:\d{1,2}|\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}(?::\d{2})?(?:am|pm)?))/gi, function (_, pre, tag) {
-      return pre + renderTemporalTagHtml(tag);
-    });
-    // Bold
-    safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    // Italic
-    safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    // Strikethrough
-    safe = safe.replace(/~~([^~]+)~~/g, '<s>$1</s>');
-    // Mark
-    safe = safe.replace(/==([^=]+)==/g, '<mark>$1</mark>');
-    // Inserted text
-    safe = safe.replace(/\+\+([^+]+)\+\+/g, '<ins>$1</ins>');
-    // Underline
-    safe = safe.replace(/(^|[^\w])_([^_\n]+)_/g, function (_, pre, value) {
-      return pre + '<u>' + value + '</u>';
-    });
-    // Subscript
-    safe = safe.replace(/(^|[^~])~([^~]+)~(?=[^~]|$)/g, function (_, pre, value) {
-      return pre + '<sub>' + value + '</sub>';
-    });
-    // Superscript
-    safe = safe.replace(/(^|[^^])\^([^^]+)\^(?=[^^]|$)/g, function (_, pre, value) {
-      return pre + '<sup>' + value + '</sup>';
-    });
-    // Inline code
-    safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
-    safe = renderEmojiShortcodes(safe);
-    return restoreRenderedHtmlTokens(safe, htmlTokens);
+    return helpers.renderTitleInline(text, boardId, options);
   }
 
   // --- Util ---
@@ -25435,221 +25702,11 @@ const LexeraDashboard = (function () {
   }
 
   function renderInline(text, boardId, renderState) {
-    renderState = renderState || {};
-    if (typeof renderState.embedCounter !== 'number') renderState.embedCounter = 0;
-    if (typeof renderState.includeCounter !== 'number') renderState.includeCounter = 0;
-    var source = text || '';
-    var htmlTokens = [];
-    var autolinkData = extractAngleBracketAutolinks(source);
-    source = autolinkData.text;
-    if (getHtmlContentRenderMode() === 'html') {
-      source = source.replace(/<[^>]+>/g, function (match) {
-        return stashRenderedHtmlToken(htmlTokens, match);
-      });
+    var helpers = getInlineRendererHelpers();
+    if (!helpers || typeof helpers.renderInline !== 'function') {
+      return escapeHtml(String(text || ''));
     }
-    var safe = escapeHtml(source);
-
-    // Embeds: ![alt](path "optional title"){height=...}
-    safe = safe.replace(/!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g, function (_, alt, rawSrc, rawAttrs) {
-      var parsedTarget = parseMarkdownTarget(rawSrc);
-      var filePath = parsedTarget.path;
-      var fileRef = parseLocalFileReference(filePath);
-      var titleText = decodeHtmlEntities(normalizeMarkdownAttrValue(parsedTarget.title));
-      var imageAttrs = parseMarkdownImageAttributes(rawAttrs);
-      var ext = getFileExtension(fileRef.path);
-      var isExternalHttp = isExternalHttpUrl(filePath);
-      var isExternal = isExternalHttp || filePath.indexOf('data:') === 0;
-      var externalEmbedConfig = isExternalHttp ? getExternalEmbedConfig(filePath, imageAttrs) : null;
-      var inlineFileExtension = !isExternal ? getInlineFileEmbedExtension(fileRef.path) : '';
-      var category = getMediaCategory(ext);
-      if (category === 'unknown' && isExternalHttp) {
-        category = inferExternalMediaCategoryFromUrl(filePath) || category;
-      }
-
-      if (externalEmbedConfig) {
-        var embedWidth = sanitizeCssLength(imageAttrs.values.width) || '100%';
-        var embedHeight = sanitizeCssLength(imageAttrs.values.height) || '500px';
-        var externalCaptionHtml = titleText ? '<figcaption class="media-caption external-embed-caption">' + renderInline(titleText, boardId, renderState) + '</figcaption>' : '';
-        var externalEmbedHtml = '<span class="external-embed-container" data-embed-url="' + escapeAttr(externalEmbedConfig.sourceUrl) + '"' +
-          ' data-embed-frame-url="' + escapeAttr(externalEmbedConfig.frameUrl) + '"' +
-          ' data-embed-probe-url="' + escapeAttr(externalEmbedConfig.probeUrl) + '"' +
-          ' data-embed-index="' + escapeAttr(String(renderState.embedCounter++)) + '"' +
-          ' data-alt-text="' + escapeAttr(decodeHtmlEntities(alt || titleText || '')) + '"' +
-          ' data-embed-caption="' + escapeAttr(titleText || '') + '"' +
-          ' data-embed-title="' + escapeAttr(decodeHtmlEntities(alt || titleText || externalEmbedConfig.sourceUrl)) + '"' +
-          ' data-embed-width="' + escapeAttr(embedWidth) + '"' +
-          ' data-embed-height="' + escapeAttr(embedHeight) + '"' +
-          ' style="' + escapeAttr('position:relative;display:block;max-width:100%') + '">' +
-          '<span class="external-embed-stage">' +
-            '<div class="external-embed-shell external-embed-shell-loading">' +
-              '<div class="external-embed-label">External page</div>' +
-              '<div class="external-embed-heading">' + escapeHtml(decodeHtmlEntities(alt || titleText || externalEmbedConfig.sourceUrl)) + '</div>' +
-              '<div class="external-embed-url">' + escapeHtml(externalEmbedConfig.sourceUrl) + '</div>' +
-              '<div class="external-embed-message">Checking whether this page can be embedded…</div>' +
-            '</div>' +
-          '</span>' +
-          '<button class="embed-menu-btn" title="Embed actions" style="opacity:1">&#8942;</button>' +
-          '</span>';
-        if (externalCaptionHtml) {
-          return stashRenderedHtmlToken(htmlTokens, '<figure class="media-figure">' + externalEmbedHtml + externalCaptionHtml + '</figure>');
-        }
-        return stashRenderedHtmlToken(htmlTokens, externalEmbedHtml);
-      }
-
-      if (inlineFileExtension && boardId) {
-        return stashRenderedHtmlToken(htmlTokens, renderInlineFileEmbedHtml(
-          filePath,
-          boardId,
-          alt || '',
-          titleText || '',
-          inlineFileExtension,
-          renderState.embedCounter++
-        ));
-      }
-
-      var src = filePath;
-      if (!isExternal && boardId) {
-        src = LexeraApi.fileUrl(boardId, fileRef.path);
-      }
-
-      var mediaStyleAttr = getMarkdownMediaStyleAttr(imageAttrs, { allowHeightOnImages: true });
-      var previewKind = getEmbedPreviewKind(filePath);
-      var inner = '';
-      if (category === 'image') {
-        var imageTitleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
-        inner = '<img src="' + src + '" alt="' + alt + '"' + imageTitleAttr + ' loading="lazy"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')">';
-      } else if (category === 'video') {
-        inner = '<video controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
-      } else if (category === 'audio') {
-        inner = '<audio controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
-      } else if (isRenderedSpecialPreviewKind(previewKind)) {
-        inner = getFileEmbedChipHtml(previewKind, filePath, mediaStyleAttr);
-      } else if (category === 'document') {
-        var documentFilename = getDisplayFileNameFromPath(filePath);
-        inner = '<span class="embed-file-link"' + mediaStyleAttr + '>&#128196; ' + escapeHtml(documentFilename) + '</span>';
-      } else {
-        var filename = getDisplayFileNameFromPath(filePath);
-        inner = '<span class="embed-file-link"' + mediaStyleAttr + '>&#128206; ' + escapeHtml(filename) + '</span>';
-      }
-
-      var embedIndex = renderState.embedCounter++;
-      var previewPageValue = imageAttrs.values.page || imageAttrs.values.sheet || '';
-      var previewPageAttr = /^\d+$/.test(String(previewPageValue || ''))
-        ? ' data-preview-page="' + escapeAttr(String(Math.max(1, parseInt(previewPageValue, 10)))) + '"'
-        : '';
-      var embedHtml = '<span class="embed-container" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '" data-embed-index="' + escapeAttr(String(embedIndex)) + '"' +
-        ' data-alt-text="' + escapeAttr(decodeHtmlEntities(alt || '')) + '"' +
-        ' data-embed-caption="' + escapeAttr(titleText || '') + '"' +
-        previewPageAttr + '>' +
-        inner +
-        '<button class="embed-menu-btn" title="Embed actions">&#8942;</button>' +
-        '</span>';
-      if (titleText) {
-        return stashRenderedHtmlToken(htmlTokens, '<figure class="media-figure">' +
-          embedHtml +
-          '<figcaption class="media-caption">' + renderInline(titleText, boardId, renderState) + '</figcaption>' +
-          '</figure>');
-      }
-      return stashRenderedHtmlToken(htmlTokens, embedHtml);
-    });
-
-    // Links: [text](url)
-    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_, label, rawHref) {
-      var parsed = parseMarkdownTarget(rawHref);
-      var href = parsed.path;
-      var titleAttr = parsed.title ? ' title="' + escapeAttr(parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '')) + '"' : '';
-      var isExternal = /^https?:\/\//.test(href);
-      var isAnchor = href.indexOf('#') === 0;
-      var isMailto = href.indexOf('mailto:') === 0;
-      if (!isExternal && !isAnchor && !isMailto && href && boardId) {
-        var linkIndex = renderState.linkCounter || 0;
-        renderState.linkCounter = linkIndex + 1;
-        return stashRenderedHtmlToken(htmlTokens, renderBoardFileLinkHtml(href, boardId, label, parsed.title ? parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '') : '', '', {
-          withMenu: true,
-          linkIndex: linkIndex
-        }));
-      }
-      var safeHref = escapeAttr(href);
-      var targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
-      return stashRenderedHtmlToken(htmlTokens, '<a href="' + safeHref + '"' + titleAttr + targetAttr + '>' + label + '</a>');
-    });
-
-    // Angle-bracket autolinks: <https://example.com>
-    safe = safe.replace(/@@AUTOLINKTOKEN(\d+)@@/g, function (_, index) {
-      var href = autolinkData.links[parseInt(index, 10)] || '';
-      return stashRenderedHtmlToken(htmlTokens, buildAngleBracketAutolinkHtml(href));
-    });
-
-    // Wiki links: [[document]] or [[document|title]]
-    safe = safe.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, function (_, rawDocument, rawTitle) {
-      var documentName = decodeHtmlEntities(rawDocument).trim();
-      var label = rawTitle ? rawTitle.trim() : rawDocument.trim();
-      return stashRenderedHtmlToken(htmlTokens, renderWikiLinkHtml(documentName, label, { withMenu: true }));
-    });
-
-    // Footnote references: [^1]
-    safe = safe.replace(/\[\^([^\]]+)\]/g, function (_, footnoteId) {
-      var order = renderState.footnoteOrder || [];
-      var idx = order.indexOf(footnoteId);
-      var number = idx === -1 ? '?' : String(idx + 1);
-      return stashRenderedHtmlToken(htmlTokens, '<sup class="footnote-ref"><a href="#footnote-' + escapeAttr(footnoteId) + '">[' + number + ']</a></sup>');
-    });
-
-    // Bold: **text**
-    safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-    // Italic: *text*
-    safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-    // Strikethrough: ~~text~~
-    safe = safe.replace(/~~([^~]+)~~/g, '<s>$1</s>');
-
-    // Mark: ==text==
-    safe = safe.replace(/==([^=]+)==/g, '<mark>$1</mark>');
-
-    // Inserted text: ++text++
-    safe = safe.replace(/\+\+([^+]+)\+\+/g, '<ins>$1</ins>');
-
-    // Underline: _text_
-    safe = safe.replace(/(^|[^\w])_([^_\n]+)_/g, function (_, pre, value) {
-      return pre + '<u>' + value + '</u>';
-    });
-
-    // Subscript: H~2~O
-    safe = safe.replace(/(^|[^~])~([^~]+)~(?=[^~]|$)/g, function (_, pre, value) {
-      return pre + '<sub>' + value + '</sub>';
-    });
-
-    // Superscript: 29^th^
-    safe = safe.replace(/(^|[^^])\^([^^]+)\^(?=[^^]|$)/g, function (_, pre, value) {
-      return pre + '<sup>' + value + '</sup>';
-    });
-
-    // CriticMarkup: {++addition++}, {--deletion--}, {~~old~>new~~}, {>>comment<<}, {==highlight==}
-    safe = safe.replace(/\{~~([^~]*?)~&gt;([^~]*?)~~\}/g, '<del class="critic critic-sub">$1</del><ins class="critic critic-sub">$2</ins>');
-    safe = safe.replace(/\{\+\+([^+]*?)\+\+\}/g, '<ins class="critic critic-add">$1</ins>');
-    safe = safe.replace(/\{--([^-]*?)--\}/g, '<del class="critic critic-del">$1</del>');
-    safe = safe.replace(/\{&gt;&gt;([^&]*?)&lt;&lt;\}/g, '<span class="critic critic-comment">$1</span>');
-    safe = safe.replace(/\{==([^=]*?)==\}/g, '<mark class="critic critic-highlight">$1</mark>');
-
-    // Inline code: `code`
-    safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-    // Tags: #tag-name (word boundary, not inside HTML attributes)
-    safe = safe.replace(/(^|[\s&|!])(#[^\s&|!]+)/g, function(_, pre, tag) {
-      return pre + renderTagChipHtml(tag);
-    });
-
-    // Temporal tags: legacy `!` prefix and package `@` prefix for dates, weeks, weekdays, times, and slots.
-    safe = safe.replace(/(^|\s)([!@](?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|\d{4}[-.]?(?:w|kw)\d{1,2}|(?:w|kw)\d{1,2}|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|:\d{1,2}-:\d{1,2}|\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}(?::\d{2})?(?:am|pm)?))/gi, function (_, pre, tag) {
-      return pre + renderTemporalTagHtml(tag);
-    });
-
-    safe = renderEmojiShortcodes(safe);
-    safe = restoreRenderedHtmlTokens(safe, htmlTokens);
-
-    safe = applyAbbreviationsToHtml(safe, renderState.abbrDefs || {});
-    return safe;
+    return helpers.renderInline(text, boardId, renderState);
   }
 
   function getTemporalTagType(tag) {
@@ -26236,6 +26293,9 @@ const LexeraDashboard = (function () {
     ActionRegistry.register('board', 'reveal-panel:frontendSettings', function () {
       if (WorkspaceShell) WorkspaceShell.revealPanel('frontendSettings');
     });
+    ActionRegistry.register('board', 'reveal-panel:files', function () {
+      if (WorkspaceShell) WorkspaceShell.revealPanel('files');
+    });
 
     // Search
     ActionRegistry.register('board', 'open-search', function () { openSearchReplacePanel(); });
@@ -26392,6 +26452,11 @@ const LexeraDashboard = (function () {
     ActionRegistry.register('row', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'row', { rowIdx: ctx.rowIdx }); });
     ActionRegistry.register('row', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'row', { rowIdx: ctx.rowIdx }); });
 
+    // ----- Canvas background scope -----
+    ActionRegistry.register('canvas', 'add-stack-here', function (action, ctx) {
+      addStackToRow(ctx.rowIdx, { canvasPosition: ctx.canvasPosition });
+    });
+
     // ----- Stack scope -----
     ActionRegistry.register('stack', 'rename', function (action, ctx) { renameRowOrStack('stack', ctx.rowIdx, ctx.stackIdx); });
     ActionRegistry.register('stack', 'add-column', function (action, ctx) { addColumnToStack(ctx.rowIdx, ctx.stackIdx); });
@@ -26463,6 +26528,15 @@ const LexeraDashboard = (function () {
           { id: 'add-stack-after', label: 'Add stack after' }
         ];
         return null;
+      }
+    });
+    MenuContributorRegistry.register({
+      id: 'core-canvas-background', scopes: ['canvas'], priority: 5, section: 'header',
+      build: function (scope, ctx) {
+        if (!ctx || !isFinite(ctx.rowIdx)) return null;
+        return [
+          { id: 'add-stack-here', label: 'Create stack here' }
+        ];
       }
     });
     // Structure: reveal, insert, duplicate (all scopes)

@@ -463,12 +463,8 @@ fn read_card(card_map: &LoroMap) -> KanbanCard {
     let kid = get_string(card_map, "kid");
     let content = get_string(card_map, "content");
     let checked = get_bool(card_map, "checked");
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
     KanbanCard {
-        id: format!("crdt-{:x}", ts),
+        id: crate::parser::generate_id("crdt"),
         content,
         checked,
         kid: if kid.is_empty() { None } else { Some(kid) },
