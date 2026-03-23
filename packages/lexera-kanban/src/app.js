@@ -15,7 +15,7 @@ const LexeraDashboard = (function () {
   let activeBoardId = null;
   let activeBoardData = null;
   let fullBoardData = null;
-  let boardHierarchyCache = {};
+  // boardHierarchyCache is now owned by LexeraBoardList module
   let connected = false;
   let boardLoadSeq = 0;
   let searchMode = false;
@@ -29,6 +29,7 @@ const LexeraDashboard = (function () {
   var InlineCardEditorModule = window.InlineCardEditor;
   var cardEditorMode = null;
   var cardEditorFontScale = 1;
+  var pendingExternalRebaseConflict = null;
   var pendingRefresh = false;
   var eventSource = null;
   var lastSaveTime = 0;
@@ -50,6 +51,7 @@ const LexeraDashboard = (function () {
   var ActionRegistry = window.LexeraActionRegistry;
   var BoardSettingRegistry = window.LexeraBoardSettingRegistry;
   var MenuContributorRegistry = window.LexeraMenuContributorRegistry;
+  var TreeView = window.TreeView || null;
   var VirtualScroll = window.LexeraVirtualScroll;
   if (VirtualScroll) VirtualScroll.init({
     getColumnsContainer: function() { return getElColumnsContainer(); },
@@ -168,6 +170,95 @@ const LexeraDashboard = (function () {
     collectHeaderTagTokens: function(content, opts) { return collectHeaderTagTokens(content, opts); },
     escapeHtml: function(str) { return escapeHtml(str); }
   });
+  if (BoardList) BoardList.init({
+    TreeView: TreeView,
+    SidebarSync: SidebarSync,
+    LexeraApi: LexeraApi,
+    get activeBoardId() { return activeBoardId; },
+    get activeBoardData() { return activeBoardData; },
+    get fullBoardData() { return fullBoardData; },
+    get liveSyncState() { return liveSyncState; },
+    get boards() { return boards; },
+    get remoteBoards() { return remoteBoards; },
+    get workspaces() { return workspaces; },
+    get activeWorkspaceId() { return activeWorkspaceId; },
+    get ALL_WORKSPACES_ID() { return ALL_WORKSPACES_ID; },
+    get boardPresenceCache() { return boardPresenceCache; },
+    get _lastLoadedRevision() { return _lastLoadedRevision; },
+    get _saveInFlight() { return _saveInFlight; },
+    get workspaceShellEnabled() { return workspaceShellEnabled; },
+    get WorkspaceShell() { return WorkspaceShell; },
+    get hasTauri() { return hasTauri; },
+    setFullBoardData: function (v) { fullBoardData = v; },
+    setActiveBoardId: function (v) { activeBoardId = v; },
+    setActiveBoardData: function (v) { activeBoardData = v; },
+    setBoards: function (v) { boards = v; },
+    setActiveWorkspaceIdState: function (v) { activeWorkspaceId = v; },
+    setLastLoadedGeneration: function (v) { _lastLoadedGeneration = v; },
+    setLastLoadedRevision: function (v) { _lastLoadedRevision = v; },
+    setPendingExternalRebaseConflict: function (v) { pendingExternalRebaseConflict = v; },
+    getSidebarTreeApi: function () { return getSidebarTreeApi(); },
+    stripLayoutTags: function (t) { return stripLayoutTags(t); },
+    getDisplayOrderedColumnEntries: function (cols, opts) { return getDisplayOrderedColumnEntries(cols, opts); },
+    getOrderedItems: function (items, key, fn) { return getOrderedItems(items, key, fn); },
+    getAllColumnsFromBoardData: function (bd) { return getAllColumnsFromBoardData(bd); },
+    isRemoteBoardId: function (id) { return isRemoteBoardId(id); },
+    hasTag: function (text, tag) { return hasTag(text, tag); },
+    stripStackTag: function (title) { return stripStackTag(title); },
+    ensureBoardRowsForMutation: function (bd, t) { ensureBoardRowsForMutation(bd, t); },
+    getMutationBoardTitle: function (id, bd) { return getMutationBoardTitle(id, bd); },
+    isBoardDirty: function () { return isBoardDirty(); },
+    clearBoardDirty: function () { clearBoardDirty(); },
+    markBoardDirty: function () { markBoardDirty(); },
+    updateDisplayFromFullBoard: function () { updateDisplayFromFullBoard(); },
+    renderMainView: function () { renderMainView(); },
+    applyBoardSettings: function () { applyBoardSettings(); },
+    renderColumns: function () { renderColumns(); },
+    refreshHeaderFileControls: function () { refreshHeaderFileControls(); },
+    scheduleDashboardRefresh: function (ms) { scheduleDashboardRefresh(ms); },
+    showNotification: function (msg) { showNotification(msg); },
+    showConfirmDialog: function (msg) { return showConfirmDialog(msg); },
+    showExternalRebaseConflictDialog: function (r) { showExternalRebaseConflictDialog(r); },
+    cleanupBoardBeforeSidebarClose: function (id) { return cleanupBoardBeforeSidebarClose(id); },
+    getDisplayNameFromPath: function (p) { return getDisplayNameFromPath(p); },
+    escapeHtml: function (s) { return escapeHtml(s); },
+    getCreationEntityDragIconSvg: function (t) { return getCreationEntityDragIconSvg(t); },
+    targetClosest: function (t, s) { return targetClosest(t, s); },
+    exitSearchMode: function () { exitSearchMode(); },
+    selectBoard: function (id) { selectBoard(id); },
+    showNativeMenu: function (items, x, y) { return showNativeMenu(items, x, y); },
+    tauriInvoke: function (cmd, args) { return tauriInvoke(cmd, args); },
+    openConnectionWindow: function () { openConnectionWindow(); },
+    showInFinder: function (p) { showInFinder(p); },
+    poll: function () { poll(); },
+    applyVisualTheme: function (id) { applyVisualTheme(id); },
+    getSharedPanelRoots: function (kind) { return getSharedPanelRoots(kind); },
+    showSidebarHierarchyMenu: function (el) { showSidebarHierarchyMenu(el); },
+    buildHierarchyFocusTargetFromTreeNode: function (node, bid) { return buildHierarchyFocusTargetFromTreeNode(node, bid); },
+    navigateToHierarchyTarget: function (target) { return navigateToHierarchyTarget(target); }
+  });
+  if (KeyboardNav) KeyboardNav.init({
+    getElColumnsContainer: function() { return getElColumnsContainer(); },
+    getActiveBoardColumns: function() { return activeBoardData ? activeBoardData.columns : []; },
+    getIsEditing: function() { return isEditing; },
+    getSearchMode: function() { return searchMode; },
+    getMgmtPanelOpen: function() { return mgmtPanelOpen; },
+    getCurrentArrowKeyFocusScrollMode: function() { return currentArrowKeyFocusScrollMode; },
+    moveCard: function(sci, scj, tci, tcj) { return moveCard(sci, scj, tci, tcj); },
+    openCardEditor: function(el, ci, cj, mode) { openCardEditor(el, ci, cj, mode); },
+    duplicateCard: function(ci, cj) { duplicateCard(ci, cj); },
+    deleteCard: function(ci, cj) { deleteCard(ci, cj); },
+    tagCard: function(ci, cj, tag) { tagCard(ci, cj, tag); },
+    revealCardContent: function(ci, cj) { revealCardContent(ci, cj); },
+    insertCardAtIndex: function(ci, cj) { insertCardAtIndex(ci, cj); },
+    copyElementAsMarkdown: function(type, opts) { copyElementAsMarkdown(type, opts); },
+    isOverlayEditorEnabled: function() { return isOverlayEditorEnabled(); },
+    showCardContextMenu: function(x, y, ci, cj) { showCardContextMenu(x, y, ci, cj); },
+    setAddCardColumn: function(idx) { addCardColumn = idx; },
+    renderColumns: function() { renderColumns(); },
+    closeManagementPanel: function() { closeManagementPanel(); },
+    syncSidebarToView: function() { syncSidebarToView(); }
+  });
   var currentTagVisibilityMode = 'allexcludinglayout';
   var currentArrowKeyFocusScrollMode = 'nearest';
   var currentHtmlCommentRenderMode = 'hidden';
@@ -181,6 +272,8 @@ const LexeraDashboard = (function () {
   var WorkspaceShell = window.LexeraWorkspaceShell || null;
   var workspaceShellEnabled = !embeddedMode && !!(WorkspaceShell && typeof WorkspaceShell.isEnabled === 'function' && WorkspaceShell.isEnabled());
   var SidebarResize = window.LexeraSidebarResize;
+  var sidebarSplitRatio = parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
+  var sidebarWidth = parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0;
   var headerSearchExpanded = localStorage.getItem('lexera-header-search-expanded') === 'true';
   var $foldAllBtn = null;
   var $foldAllCardsBtn = null;
@@ -689,9 +782,19 @@ const LexeraDashboard = (function () {
     };
   }
 
+  function isHierarchyLocked() {
+    if (SidebarSync && typeof SidebarSync.isHierarchyLocked === 'function') {
+      return !!SidebarSync.isHierarchyLocked();
+    }
+    try {
+      return localStorage.getItem('lexera-hierarchy-locked') === 'true';
+    } catch (err) {
+      return false;
+    }
+  }
+
   // --- Order Helpers --- (delegated to LexeraOrderHelpers module)
-  var OrderHelpers = window.LexeraOrderHelpers;
-  if (OrderHelpers) OrderHelpers.init({
+  var orderHelpersInitConfig = {
     getCanvasModeHelpers: function () { return getCanvasModeHelpers(); },
     getBoardSettingValue: function (k, d) { return getBoardSettingValue(k, d); },
     embeddedForcedBoardLayout: embeddedForcedBoardLayout,
@@ -712,7 +815,7 @@ const LexeraDashboard = (function () {
     getElColumnsContainer: function () { return getElColumnsContainer(); },
     saveCardCollapseState: function (bid) { return saveCardCollapseState(bid); },
     refreshBoardHeaderActionStates: function () { return refreshBoardHeaderActionStates(); },
-    get hierarchyLocked() { return hierarchyLocked; },
+    get hierarchyLocked() { return isHierarchyLocked(); },
     LexeraApi: LexeraApi,
     lexeraLog: function () { return lexeraLog.apply(null, arguments); },
     poll: function () { return poll(); },
@@ -741,14 +844,26 @@ const LexeraDashboard = (function () {
     get activeColMenu() { return activeColMenu; },
     get activeCardMenu() { return activeCardMenu; },
     get activeRowStackMenu() { return activeRowStackMenu; },
-    get activeEmbedMenu() { return activeEmbedMenu; },
-    get activeHtmlMenu() { return activeHtmlMenu; },
+    get activeEmbedMenu() {
+      return window.LexeraEmbedMenu && typeof window.LexeraEmbedMenu.getActiveEmbedMenu === 'function'
+        ? window.LexeraEmbedMenu.getActiveEmbedMenu()
+        : null;
+    },
+    get activeHtmlMenu() {
+      return window.LexeraEmbedMenu && typeof window.LexeraEmbedMenu.getActiveHtmlMenu === 'function'
+        ? window.LexeraEmbedMenu.getActiveHtmlMenu()
+        : null;
+    },
     closeColumnContextMenu: function () { return closeColumnContextMenu(); },
     closeCardContextMenu: function () { return closeCardContextMenu(); },
     closeRowStackMenu: function () { return closeRowStackMenu(); },
     closeEmbedMenu: function () { return closeEmbedMenu(); },
     closeHtmlMenu: function () { return closeHtmlMenu(); },
-    get currentInlineCardEditor() { return currentInlineCardEditor; },
+    get currentInlineCardEditor() {
+      return InlineCardEditorModule && typeof InlineCardEditorModule.getCurrentInlineCardEditor === 'function'
+        ? InlineCardEditorModule.getCurrentInlineCardEditor()
+        : null;
+    },
     closeInlineCardEditor: function (opts) { return closeInlineCardEditor(opts); },
     get currentCardEditor() { return currentCardEditor; },
     closeCardEditorOverlay: function (opts) { return closeCardEditorOverlay(opts); },
@@ -794,16 +909,108 @@ const LexeraDashboard = (function () {
     getDashboardTreeApi: function () { return getDashboardTreeApi(); },
     TreeView: TreeView,
     navigateToSearchResult: function (r) { return navigateToSearchResult(r); }
-  });
+  };
+
+  var _resolvedOrderHelpers = null;
+  var _initializedOrderHelpers = null;
+  var _missingOrderHelperWarnings = {};
+
+  function getOrderHelpersGlobal() {
+    if (typeof window !== 'undefined' && window) return window;
+    if (typeof globalThis !== 'undefined' && globalThis) return globalThis;
+    if (typeof self !== 'undefined' && self) return self;
+    return null;
+  }
+
+  function normalizeCanvasStackDirectionFallback(value) {
+    var normalized = String(value == null ? '' : value).trim().toLowerCase();
+    if (normalized === 'horizontal') normalized = 'row';
+    if (normalized === 'vertical') normalized = 'column';
+    return normalized === 'row' ? 'row' : 'column';
+  }
+
+  function resolveOrderHelpersModule() {
+    var globalObj = getOrderHelpersGlobal();
+    var helpers = globalObj && globalObj.LexeraOrderHelpers ? globalObj.LexeraOrderHelpers : null;
+    if (!helpers) return null;
+    _resolvedOrderHelpers = helpers;
+    if (_initializedOrderHelpers !== helpers && typeof helpers.init === 'function') {
+      helpers.init(orderHelpersInitConfig);
+      _initializedOrderHelpers = helpers;
+    }
+    return helpers;
+  }
+
+  function getOrderHelpersFallback(prop) {
+    if (prop === 'normalizeBoardLayoutValue') {
+      return function (value) { return getCanvasModeHelpers().normalizeBoardLayoutValue(value); };
+    }
+    if (prop === 'normalizeCanvasGridValue') {
+      return function (value) { return getCanvasModeHelpers().normalizeCanvasGridValue(value); };
+    }
+    if (prop === 'getCurrentBoardLayout') {
+      return function () {
+        if (embeddedForcedBoardLayout === 'canvas') return 'canvas';
+        if (embeddedForcedBoardLayout === 'kanban') return 'kanban';
+        return getCanvasModeHelpers().normalizeBoardLayoutValue(getBoardSettingValue('boardLayout', 'kanban'));
+      };
+    }
+    if (prop === 'isCanvasBoardLayout') {
+      return function () { return getOrderHelpersFallback('getCurrentBoardLayout')() === 'canvas'; };
+    }
+    if (prop === 'normalizeCanvasStackDirection') {
+      return normalizeCanvasStackDirectionFallback;
+    }
+    return function () {
+      if (!_missingOrderHelperWarnings[prop]) {
+        _missingOrderHelperWarnings[prop] = true;
+        logFrontendIssue('error', 'order.helpers', 'LexeraOrderHelpers unavailable', { method: String(prop) });
+      }
+      return undefined;
+    };
+  }
+
+  var OrderHelpers = typeof Proxy === 'function'
+    ? new Proxy({}, {
+      get: function (_target, prop) {
+        if (typeof prop === 'symbol' || prop === 'then') return undefined;
+        var helpers = resolveOrderHelpersModule();
+        if (helpers && helpers[prop] != null) {
+          var value = helpers[prop];
+          if (typeof value === 'function') {
+            return function () {
+              var liveHelpers = resolveOrderHelpersModule();
+              var liveValue = liveHelpers && liveHelpers[prop];
+              if (typeof liveValue === 'function') return liveValue.apply(liveHelpers, arguments);
+              return getOrderHelpersFallback(prop).apply(null, arguments);
+            };
+          }
+          return value;
+        }
+        return getOrderHelpersFallback(prop);
+      }
+    })
+    : (resolveOrderHelpersModule() || {});
+
+  resolveOrderHelpersModule();
 
   function extractHtmlComments(text) { return OrderHelpers.extractHtmlComments(text); }
   function stripHtmlComments(text) { return OrderHelpers.stripHtmlComments(text); }
   function rebuildTitleWithPreservedComments(userInput, originalTitle) { return OrderHelpers.rebuildTitleWithPreservedComments(userInput, originalTitle); }
-  function normalizeBoardLayoutValue(value) { return OrderHelpers.normalizeBoardLayoutValue(value); }
-  function normalizeCanvasGridValue(value) { return OrderHelpers.normalizeCanvasGridValue(value); }
-  function getCurrentBoardLayout() { return OrderHelpers.getCurrentBoardLayout(); }
-  function isCanvasBoardLayout() { return OrderHelpers.isCanvasBoardLayout(); }
-  function normalizeCanvasStackDirection(value) { return OrderHelpers.normalizeCanvasStackDirection(value); }
+  function normalizeBoardLayoutValue(value) { return getCanvasModeHelpers().normalizeBoardLayoutValue(value); }
+  function normalizeCanvasGridValue(value) { return getCanvasModeHelpers().normalizeCanvasGridValue(value); }
+  function getCurrentBoardLayout() {
+    if (embeddedForcedBoardLayout === 'canvas') return 'canvas';
+    if (embeddedForcedBoardLayout === 'kanban') return 'kanban';
+    return normalizeBoardLayoutValue(getBoardSettingValue('boardLayout', 'kanban'));
+  }
+  function isCanvasBoardLayout() { return getCurrentBoardLayout() === 'canvas'; }
+  function normalizeCanvasStackDirection(value) {
+    var normalized = String(value == null ? '' : value).trim().toLowerCase();
+    if (normalized === 'horizontal') normalized = 'row';
+    if (normalized === 'vertical') normalized = 'column';
+    return normalized === 'row' ? 'row' : 'column';
+  }
   function stripLayoutTags(title) { return OrderHelpers.stripLayoutTags(title); }
   function stripStackTag(title) { return OrderHelpers.stripStackTag(title); }
   function stripLegacyImportStructureTags(title) { return OrderHelpers.stripLegacyImportStructureTags(title); }
@@ -978,10 +1185,10 @@ const LexeraDashboard = (function () {
       handleFileDrop(e.clipboardData.files, null);
     });
 
-    // Sidebar drop: add .md files from OS drag-and-drop when unlocked.
+      // Sidebar drop: add .md files from OS drag-and-drop when unlocked.
     if (getElSidebar()) {
       getElSidebar().addEventListener('dragover', function (e) {
-        if (hierarchyLocked) return;
+        if (isHierarchyLocked()) return;
         if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
@@ -995,7 +1202,7 @@ const LexeraDashboard = (function () {
       });
       getElSidebar().addEventListener('drop', function (e) {
         getElSidebar().classList.remove('drop-zone-active');
-        if (hierarchyLocked) return;
+        if (isHierarchyLocked()) return;
         var dt = e.dataTransfer;
         if (!dt) return;
         var paths = collectDroppedPathsFromDataTransfer(dt);
@@ -1015,7 +1222,7 @@ const LexeraDashboard = (function () {
           boardsSection.classList.toggle('mgmt-drop-active', isPositionInsideElement(pos, boardsSection));
         }
         // Sidebar drop zone
-        if (hierarchyLocked) return;
+        if (isHierarchyLocked()) return;
         if (getElSidebar() && pos) {
           if (isPositionInsideElement(pos, getElSidebar())) {
             getElSidebar().classList.add('drop-zone-active');
@@ -1041,7 +1248,7 @@ const LexeraDashboard = (function () {
           return;
         }
         // Sidebar drop
-        if (hierarchyLocked) return;
+        if (isHierarchyLocked()) return;
         if (getElSidebar() && pos && !isPositionInsideElement(pos, getElSidebar())) {
           return;
         }
@@ -1064,222 +1271,28 @@ const LexeraDashboard = (function () {
     pollInterval = setInterval(poll, 5000);
   }
 
-  // --- Keyboard Navigation ---
-
-  var focusedCardEl = null;
+  // --- Keyboard Navigation --- (delegated to LexeraKeyboardNavigation module)
+  var KeyboardNav = window.LexeraKeyboardNavigation;
 
   function handleKeyNavigation(e) {
-    if (isEditing || searchMode) return;
-    if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') return;
-    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
-
-    var key = e.key;
-    if ((key === 'ArrowUp' || key === 'ArrowDown') && e.altKey && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      if (key === 'ArrowUp' && cj > 0) {
-        moveCard(ci, cj, ci, cj - 1).then(function () {
-          var moved = getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj - 1) + '"]');
-          if (moved) focusCard(moved);
-        });
-      } else if (key === 'ArrowDown') {
-        moveCard(ci, cj, ci, cj + 2).then(function () {
-          var moved = getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj + 1) + '"]');
-          if (moved) focusCard(moved);
-        });
-      }
-    } else if ((key === 'ArrowLeft' || key === 'ArrowRight') && e.altKey && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      var columns = activeBoardData ? activeBoardData.columns : [];
-      var colIndices = columns.map(function (c) { return c.index; });
-      var curPos = colIndices.indexOf(ci);
-      var targetPos = key === 'ArrowRight' ? curPos + 1 : curPos - 1;
-      if (targetPos >= 0 && targetPos < colIndices.length) {
-        var targetColIdx = colIndices[targetPos];
-        moveCard(ci, cj, targetColIdx, 0).then(function () {
-          var moved = getElColumnsContainer().querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="0"]');
-          if (moved) focusCard(moved);
-        });
-      }
-    } else if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight') {
-      e.preventDefault();
-      navigateCards(key);
-    } else if (key === 'Enter' && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      openCardEditor(focusedCardEl, ci, cj, 'inline');
-    } else if (key === 'Home' && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var first = getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="0"]');
-      if (first) focusCard(first);
-    } else if (key === 'End' && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var colCards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ci + '"]');
-      if (colCards.length > 0) focusCard(colCards[colCards.length - 1]);
-    } else if ((key === 'd' || key === 'D') && (e.ctrlKey || e.metaKey) && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      duplicateCard(ci, cj);
-    } else if ((key === 'Delete' || key === 'Backspace') && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      deleteCard(ci, cj);
-    } else if (key === 'p' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      tagCard(ci, cj, '#hidden-internal-parked');
-    } else if (key === 'r' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      revealCardContent(ci, cj);
-    } else if (key === 'i' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      insertCardAtIndex(ci, cj + 1);
-    } else if (key === 'c' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      copyElementAsMarkdown('card', { colIndex: ci, cardIndex: cj });
-    } else if (key === 'e' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      if (isOverlayEditorEnabled()) {
-        openCardEditor(focusedCardEl, ci, cj, 'overlay');
-      } else {
-        openCardEditor(focusedCardEl, ci, cj, 'inline');
-      }
-    } else if (key === ' ' && focusedCardEl) {
-      e.preventDefault();
-      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      var rect = focusedCardEl.getBoundingClientRect();
-      showCardContextMenu(rect.left + 20, rect.top + 20, ci, cj);
-    } else if (key >= '1' && key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      var colNum = parseInt(key, 10) - 1;
-      var columns = activeBoardData ? activeBoardData.columns : [];
-      if (colNum < columns.length) {
-        e.preventDefault();
-        var targetColIdx = columns[colNum].index;
-        var firstCard = getElColumnsContainer().querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="0"]');
-        if (firstCard) focusCard(firstCard);
-        else {
-          // Scroll column into view even if empty
-          var colEl = getElColumnsContainer().querySelector('.column[data-col-index="' + targetColIdx + '"]');
-          if (colEl) colEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }
-      }
-    } else if (key === 'n' && !e.ctrlKey && !e.metaKey && !focusedCardEl && !mgmtPanelOpen) {
-      e.preventDefault();
-      var columns = activeBoardData ? activeBoardData.columns : [];
-      if (columns.length > 0) {
-        addCardColumn = columns[0].index;
-        renderColumns();
-      }
-    } else if (key === 'Escape' && mgmtPanelOpen) {
-      e.preventDefault();
-      closeManagementPanel();
-    } else if (key === 'Escape' && focusedCardEl) {
-      e.preventDefault();
-      unfocusCard();
-    } else if (key === 'Escape') {
-      e.preventDefault();
-    }
+    if (KeyboardNav) KeyboardNav.handleKeyNavigation(e);
   }
-
   function navigateCards(key) {
-    var allCards = getElColumnsContainer().querySelectorAll('.card');
-    if (allCards.length === 0) return;
-
-    if (!focusedCardEl || !focusedCardEl.isConnected) {
-      focusCard(allCards[0]);
-      return;
-    }
-
-    var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-    var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-
-    if (key === 'ArrowDown') {
-      // Next card in same column
-      var next = getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj + 1) + '"]');
-      if (next) focusCard(next);
-    } else if (key === 'ArrowUp') {
-      // Previous card in same column
-      if (cj > 0) {
-        var prev = getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj - 1) + '"]');
-        if (prev) focusCard(prev);
-      }
-    } else if (key === 'ArrowRight' || key === 'ArrowLeft') {
-      // Move to adjacent column, same card position or last card
-      var columns = activeBoardData ? activeBoardData.columns : [];
-      var colIndices = columns.map(function (c) { return c.index; });
-      var curPos = colIndices.indexOf(ci);
-      var targetPos = key === 'ArrowRight' ? curPos + 1 : curPos - 1;
-      if (targetPos >= 0 && targetPos < colIndices.length) {
-        var targetColIdx = colIndices[targetPos];
-        var target = getElColumnsContainer().querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="' + cj + '"]');
-        if (!target) {
-          // Try last card in target column
-          var colCards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + targetColIdx + '"]');
-          if (colCards.length > 0) target = colCards[colCards.length - 1];
-        }
-        if (target) focusCard(target);
-      }
-    }
+    if (KeyboardNav) KeyboardNav.navigateCards(key);
   }
-
   function focusCard(cardEl) {
-    unfocusCard();
-    focusedCardEl = cardEl;
-    cardEl.classList.add('focused');
-    if (currentArrowKeyFocusScrollMode !== 'disabled') {
-      cardEl.scrollIntoView({
-        block: currentArrowKeyFocusScrollMode === 'center' ? 'center' : 'nearest',
-        behavior: 'smooth'
-      });
-    }
-    syncSidebarToView();
+    if (KeyboardNav) KeyboardNav.focusCard(cardEl);
   }
-
   function unfocusCard() {
-    if (focusedCardEl) {
-      focusedCardEl.classList.remove('focused');
-      focusedCardEl = null;
-    }
+    if (KeyboardNav) KeyboardNav.unfocusCard();
   }
-
-  var focusedBoardEntityEl = null;
-  var focusedBoardEntityTimer = null;
-
   function focusBoardEntity(el) {
-    if (!el) return false;
-    if (focusedBoardEntityTimer) {
-      clearTimeout(focusedBoardEntityTimer);
-      focusedBoardEntityTimer = null;
-    }
-    if (focusedBoardEntityEl && focusedBoardEntityEl !== el) {
-      focusedBoardEntityEl.classList.remove('board-focus-highlight');
-    }
-    focusedBoardEntityEl = el;
-    el.classList.add('board-focus-highlight');
-    focusedBoardEntityTimer = setTimeout(function () {
-      el.classList.remove('board-focus-highlight');
-      if (focusedBoardEntityEl === el) focusedBoardEntityEl = null;
-      focusedBoardEntityTimer = null;
-    }, 1600);
-    return true;
+    if (KeyboardNav) return KeyboardNav.focusBoardEntity(el);
+    return false;
+  }
+  function getFocusedCardEl() {
+    if (KeyboardNav) return KeyboardNav.getFocusedCardEl();
+    return null;
   }
 
   function connectSSEIfReady() {
@@ -2009,1018 +2022,64 @@ const LexeraDashboard = (function () {
     }
   }
 
-  // --- Board List ---
-
-  function getSidebarExpandedBoards() {
-    try { return JSON.parse(localStorage.getItem('lexera-sidebar-expanded') || '[]'); } catch (e) {
-      logFrontendIssue('warn', 'sidebar.state', 'Failed to read expanded sidebar boards', e);
-      return [];
-    }
-  }
-  function saveSidebarExpandedBoards(ids) {
-    localStorage.setItem('lexera-sidebar-expanded', JSON.stringify(ids));
-  }
-
-  function getSidebarTreeState(boardId) {
-    try {
-      var all = JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
-      return all[boardId] || { rows: [], stacks: [], columns: [] };
-    } catch (e) {
-      logFrontendIssue('warn', 'sidebar.tree', 'Failed to read sidebar tree state for board ' + boardId, e);
-      return { rows: [], stacks: [], columns: [] };
-    }
-  }
-
-  function hasSidebarTreeState(boardId) {
-    try {
-      var all = JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
-      return Object.prototype.hasOwnProperty.call(all, boardId);
-    } catch (e) {
-      logFrontendIssue('warn', 'sidebar.tree', 'Failed to check sidebar tree state for board ' + boardId, e);
-      return false;
-    }
-  }
-
-  function saveSidebarTreeState(boardId, state) {
-    try {
-      var all = JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
-      all[boardId] = state;
-      localStorage.setItem('lexera-sidebar-tree-state', JSON.stringify(all));
-    } catch (e) {
-      logFrontendIssue('warn', 'sidebar.tree', 'Failed to persist sidebar tree state for board ' + boardId, e);
-    }
-  }
-
-  function getSidebarTreeChildrenContainer(node) {
-    if (TreeView && typeof TreeView.getNodeChildrenContainer === 'function') {
-      return TreeView.getNodeChildrenContainer(node);
-    }
-    if (!node) return null;
-    var next = node.nextElementSibling;
-    return next && next.classList && next.classList.contains('tree-children') ? next : null;
-  }
-
-  function getSidebarTreeOwnerNode(container) {
-    if (TreeView && typeof TreeView.getChildrenOwnerNode === 'function') {
-      return TreeView.getChildrenOwnerNode(container);
-    }
-    if (!container) return null;
-    var prev = container.previousElementSibling;
-    return prev && prev.classList && prev.classList.contains('tree-node') ? prev : null;
-  }
-
-  function toggleSidebarTreeNode(boardId, kind, id) {
-    var state = getSidebarTreeState(boardId);
-    var arr = state[kind] || [];
-    var idx = arr.indexOf(id);
-    if (idx !== -1) { arr.splice(idx, 1); } else { arr.push(id); }
-    state[kind] = arr;
-    saveSidebarTreeState(boardId, state);
-  }
-
-  // Alt+click helper: expand or collapse all descendant tree nodes inside a container.
-  // `expand` = true means set children to expanded state; false = collapsed.
-  function setDescendantTreeState(container, expand, boardId) {
-    TreeView.setDescendantsExpanded(container, expand);
-    // Persist: collect all descendant tree-node IDs and batch-update state
-    var state = getSidebarTreeState(boardId);
-    var nodes = container.querySelectorAll('.tree-node[data-tree-id]');
-    for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
-      var treeId = n.getAttribute('data-tree-id');
-      if (!treeId) continue;
-      var kind = n.classList.contains('tree-row') ? 'rows'
-        : n.classList.contains('tree-stack') ? 'stacks'
-        : n.classList.contains('tree-column') ? 'columns' : null;
-      if (!kind) continue;
-      var arr = state[kind] || [];
-      var idx = arr.indexOf(treeId);
-      // rows/stacks: in array = collapsed; columns: in array = expanded
-      if (kind === 'columns') {
-        if (expand && idx === -1) arr.push(treeId);
-        else if (!expand && idx !== -1) arr.splice(idx, 1);
-      } else {
-        if (expand && idx !== -1) arr.splice(idx, 1);
-        else if (!expand && idx === -1) arr.push(treeId);
-      }
-      state[kind] = arr;
-    }
-    saveSidebarTreeState(boardId, state);
-  }
-
-  // Convert kanban rows/stacks/columns/cards into generic TreeView node arrays.
-  // Keep the full row -> stack -> column -> card structure even for single-row or
-  // single-stack boards. Collapsing those levels into breadcrumbs saves a few pixels
-  // but harms scanability and makes the sidebar tree less trustworthy as a hierarchy.
-  function buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState) {
-    return getSidebarTreeApi().buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState, {
-      stripLayoutTags: stripLayoutTags,
-      getDisplayOrderedColumnEntries: getDisplayOrderedColumnEntries
-    });
-  }
-
-  function countCardsInRow(row) {
-    return getSidebarTreeApi().countCardsInRow(row);
-  }
-
-  function countCardsInStack(stack) {
-    return getSidebarTreeApi().countCardsInStack(stack);
-  }
-
-  function countCardsInRows(rows) {
-    var total = 0;
-    for (var i = 0; i < rows.length; i++) {
-      total += countCardsInRow(rows[i]);
-    }
-    return total;
-  }
-
-  function cloneRows(rows) {
-    return JSON.parse(JSON.stringify(rows || []));
-  }
-
-  function cloneBoardData(boardData) {
-    if (!boardData) return null;
-    return JSON.parse(JSON.stringify(boardData));
-  }
-
-  function boardDraftStorageKey(boardId) {
-    return boardId ? ('lexera-board-draft:' + boardId) : '';
-  }
-
-  function getBoardCardKids(boardData) {
-    var kids = [];
-    var cols = getAllColumnsFromBoardData(boardData);
-    for (var i = 0; i < cols.length; i++) {
-      var cards = cols[i] && cols[i].cards ? cols[i].cards : [];
-      for (var j = 0; j < cards.length; j++) {
-        if (cards[j] && cards[j].kid) kids.push(cards[j].kid);
-      }
-    }
-    return kids;
-  }
-
-  function getBoardCardIdentityStats(boardA, boardB) {
-    var aKids = getBoardCardKids(boardA);
-    var bKids = getBoardCardKids(boardB);
-    var seen = Object.create(null);
-    var overlap = 0;
-    for (var i = 0; i < aKids.length; i++) seen[aKids[i]] = true;
-    for (var j = 0; j < bKids.length; j++) {
-      if (seen[bKids[j]]) overlap++;
-    }
-    return {
-      boardACards: aKids.length,
-      boardBCards: bKids.length,
-      overlap: overlap
-    };
-  }
-
-  function summarizeBoardIdentity(boardData, limit) {
-    var kids = getBoardCardKids(boardData);
-    var max = typeof limit === 'number' ? limit : 6;
-    return {
-      summary: summarizeBoardHierarchy(boardData),
-      cards: kids.length,
-      sampleKids: kids.slice(0, max)
-    };
-  }
-
-  function describeBoardIdentityPair(labelA, boardA, labelB, boardB, limit) {
-    var max = typeof limit === 'number' ? limit : 6;
-    var aKids = getBoardCardKids(boardA);
-    var bKids = getBoardCardKids(boardB);
-    var seenA = Object.create(null);
-    var seenB = Object.create(null);
-    var overlap = 0;
-    var onlyA = [];
-    var onlyB = [];
-    var i;
-    for (i = 0; i < aKids.length; i++) seenA[aKids[i]] = true;
-    for (i = 0; i < bKids.length; i++) seenB[bKids[i]] = true;
-    for (i = 0; i < aKids.length; i++) {
-      if (seenB[aKids[i]]) overlap++;
-      else if (onlyA.length < max) onlyA.push(aKids[i]);
-    }
-    for (i = 0; i < bKids.length; i++) {
-      if (!seenA[bKids[i]] && onlyB.length < max) onlyB.push(bKids[i]);
-    }
-    return {
-      labels: [labelA, labelB],
-      stats: {
-        boardACards: aKids.length,
-        boardBCards: bKids.length,
-        overlap: overlap
-      },
-      onlyA: onlyA,
-      onlyB: onlyB,
-      summaryA: summarizeBoardHierarchy(boardA),
-      summaryB: summarizeBoardHierarchy(boardB)
-    };
-  }
-
-  function traceBoardIdentityPair(level, target, message, boardId, labelA, boardA, labelB, boardB, extra) {
-    var details = {
-      boardId: boardId || null,
-      pair: describeBoardIdentityPair(labelA, boardA, labelB, boardB)
-    };
-    if (extra && typeof extra === 'object') {
-      for (var key in extra) details[key] = extra[key];
-    }
-    traceFrontendAction(level, target, message, details);
-  }
-
-  function hasBoardIdentityMismatch(boardA, boardB) {
-    if (!boardA || !boardB) return false;
-    var stats = getBoardCardIdentityStats(boardA, boardB);
-    return stats.boardACards > 0 && stats.boardBCards > 0 && stats.overlap === 0;
-  }
-
-  function saveLocalBoardDraft(boardId, boardData) {
-    if (!boardId || !boardData) return;
-    if (isRemoteBoardId(boardId)) return;
-    try {
-      var baseBoard = getBoardSaveBase(boardData) || boardData;
-      localStorage.setItem(boardDraftStorageKey(boardId), JSON.stringify({
-        savedAt: Date.now(),
-        revision: _lastLoadedRevision || (activeBoardData && activeBoardData.revision ? activeBoardData.revision : null),
-        board: cloneBoardData(boardData),
-        baseBoard: cloneBoardData(baseBoard)
-      }));
-    } catch (err) {
-      logFrontendIssue('warn', 'board.draft.save', 'Failed to persist local board draft', err);
-    }
-  }
-
-  function loadLocalBoardDraft(boardId) {
-    if (!boardId) return null;
-    try {
-      var raw = localStorage.getItem(boardDraftStorageKey(boardId));
-      if (!raw) return null;
-      var parsed = JSON.parse(raw);
-      return parsed && parsed.board ? parsed : null;
-    } catch (err) {
-      logFrontendIssue('warn', 'board.draft.load', 'Failed to load local board draft', err);
-      return null;
-    }
-  }
-
-  function clearLocalBoardDraft(boardId) {
-    if (!boardId) return;
-    try {
-      localStorage.removeItem(boardDraftStorageKey(boardId));
-    } catch (err) {
-      logFrontendIssue('warn', 'board.draft.clear', 'Failed to clear local board draft', err);
-    }
-  }
-
-  function boardCardSummary(bd) {
-    if (!bd) return '(null)';
-    var cols = (bd.rows && bd.rows.length > 0)
-      ? bd.rows.flatMap(function(r) { return (r.stacks || []).flatMap(function(s) { return s.columns || []; }); })
-      : (bd.columns || []);
-    return cols.map(function(c) {
-      var kids = (c.cards || []).map(function(card) { return card.kid || '??'; });
-      return '[' + c.title + ':' + kids.join(',') + ']';
-    }).join(' ');
-  }
-
-  function setBoardSaveBase(boardData, baseBoardData) {
-    if (!boardData || typeof boardData !== 'object') return boardData;
-    Object.defineProperty(boardData, '__lexeraSaveBase', {
-      value: cloneBoardData(baseBoardData || boardData),
-      writable: true,
-      configurable: true,
-      enumerable: false
-    });
-    return boardData;
-  }
-
-  function getBoardSaveBase(boardData) {
-    return boardData && boardData.__lexeraSaveBase ? boardData.__lexeraSaveBase : null;
-  }
-
-  function resolveSavedBoardData(boardData, result, boardId) {
-    var savedBoard = result && result.board ? result.board : boardData;
-    ensureBoardRowsForMutation(savedBoard, getMutationBoardTitle(boardId, savedBoard));
-    if (!savedBoard.columns) savedBoard.columns = [];
-    return setBoardSaveBase(savedBoard, savedBoard);
-  }
-
-  function resolveLiveSyncBoardData(boardData, boardId) {
-    if (!boardData) return null;
-    ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
-    if (!boardData.columns) boardData.columns = [];
-    return setBoardSaveBase(boardData, boardData);
-  }
-
-  function applyLiveSyncBoardSnapshot(boardId, boardData, options) {
-    options = options || {};
-    if (!boardData || boardId !== activeBoardId) return;
-    var replaceLocalBoard = !!options.replaceLocalBoard || (!isBoardDirty() && !_saveInFlight);
-    traceFrontendAction('info', 'liveSync.snapshot', replaceLocalBoard
-      ? 'Adopting live sync snapshot into active board'
-      : 'Updating save base from live sync response while preserving dirty local board', {
-      boardId: boardId,
-      replaceLocalBoard: replaceLocalBoard,
-      incomingSummary: summarizeBoardHierarchy(boardData),
-      currentSummary: summarizeBoardHierarchy(fullBoardData)
-    });
-    var canonicalBoard = resolveLiveSyncBoardData(cloneBoardData(boardData), boardId);
-    if (liveSyncState && liveSyncState.boardId === boardId) {
-      liveSyncState.board = canonicalBoard;
-    }
-    if (fullBoardData) {
-      traceBoardIdentityPair(replaceLocalBoard ? 'info' : 'warn', 'liveSync.snapshot', 'Identity comparison before applying live sync snapshot', boardId, 'local', fullBoardData, 'incoming', canonicalBoard, {
-        replaceLocalBoard: replaceLocalBoard
-      });
-    }
-    if (replaceLocalBoard) {
-      fullBoardData = cloneBoardData(canonicalBoard);
-      ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
-      if (!fullBoardData.columns) fullBoardData.columns = [];
-      setBoardSaveBase(fullBoardData, canonicalBoard);
-      clearBoardDirty();
-    } else if (fullBoardData) {
-      setBoardSaveBase(fullBoardData, canonicalBoard);
-    }
-    if (fullBoardData) {
-      traceBoardIdentityPair('info', 'liveSync.snapshot', 'Identity comparison after applying live sync snapshot', boardId, 'local', fullBoardData, 'saveBase', getBoardSaveBase(fullBoardData));
-      if (liveSyncState && liveSyncState.boardId === boardId) {
-        traceBoardIdentityPair('info', 'liveSync.snapshot', 'Identity comparison after syncing live sync snapshot into session', boardId, 'local', fullBoardData, 'session', liveSyncState.board);
-      }
-    }
-    if (activeBoardData) {
-      delete activeBoardData.version;
-      delete activeBoardData.revision;
-    }
-    updateDisplayFromFullBoard();
-    setBoardHierarchyRows(boardId, fullBoardData, fullBoardData ? (fullBoardData.title || '') : '');
-    if (options.skipRender) return;
-    if (options.refreshMainView) {
-      renderMainView();
-    } else {
-      applyBoardSettings();
-      renderColumns();
-      renderBoardList();
-    }
-    refreshHeaderFileControls();
-    scheduleDashboardRefresh(80);
-  }
-
-  var pendingExternalRebaseConflict = null;
-  var _rebaseInFlight = null;
-
-  function applyRebasedBoardSnapshot(boardId, workingBoard, currentBoard, result, options) {
-    options = options || {};
-    if (!workingBoard || boardId !== activeBoardId) return;
-    fullBoardData = workingBoard;
-    ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
-    if (!fullBoardData.columns) fullBoardData.columns = [];
-    setBoardSaveBase(fullBoardData, currentBoard || workingBoard);
-    pendingExternalRebaseConflict = null;
-    if (activeBoardData) {
-      if (result && typeof result.version === 'number') activeBoardData.version = result.version;
-      if (result && result.revision) activeBoardData.revision = result.revision;
-    }
-    if (result && typeof result.generation === 'number') {
-      _lastLoadedGeneration = result.generation;
-    }
-    _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
-    updateDisplayFromFullBoard();
-    setBoardHierarchyRows(boardId, fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
-    applyBoardSettings();
-    renderColumns();
-    renderBoardList();
-    refreshHeaderFileControls();
-    scheduleDashboardRefresh(80);
-    markBoardDirty();
-    saveLocalBoardDraft(boardId, fullBoardData);
-    if (!options.silent) {
-      if (result && result.merged && result.autoMerged > 0) {
-        showNotification('Integrated external changes into your draft (' + result.autoMerged + ' auto-merge(s)).');
-      } else {
-        showNotification('Integrated external changes into your draft.');
-      }
-    }
-  }
-
-  async function rebaseDirtyBoardFromServer(triggerKind) {
-    if (!activeBoardId || !fullBoardData) return false;
-    if (_rebaseInFlight) return _rebaseInFlight;
-    var baseBoardData = getBoardSaveBase(fullBoardData);
-    if (!baseBoardData) {
-      setBoardSaveBase(fullBoardData, fullBoardData);
-      baseBoardData = getBoardSaveBase(fullBoardData);
-    }
-    _rebaseInFlight = (async function () {
-      try {
-        traceFrontendAction('info', 'board.rebase', 'Rebasing dirty board against latest external state', {
-          boardId: activeBoardId,
-          trigger: triggerKind || null,
-          baseSummary: summarizeBoardHierarchy(baseBoardData),
-          workingSummary: summarizeBoardHierarchy(fullBoardData)
-        });
-        traceBoardIdentityPair('info', 'board.rebase', 'Identity comparison before rebase request', activeBoardId, 'working', fullBoardData, 'base', baseBoardData, {
-          trigger: triggerKind || null
-        });
-        var result = await LexeraApi.rebaseBoardWithBase(activeBoardId, baseBoardData, fullBoardData);
-        var currentBoard = result && result.currentBoard ? result.currentBoard : null;
-        if (!result || !currentBoard) return false;
-        traceBoardIdentityPair('info', 'board.rebase', 'Identity comparison between rebase current board and working board', activeBoardId, 'working', fullBoardData, 'current', currentBoard, {
-          trigger: triggerKind || null,
-          hasConflicts: !!(result && result.hasConflicts)
-        });
-        if (result.hasConflicts) {
-          pendingExternalRebaseConflict = {
-            result: result,
-            savedAt: Date.now()
-          };
-          traceFrontendAction('warn', 'board.rebase.conflict', 'External changes conflict with local draft; preserving local draft', {
-            boardId: activeBoardId,
-            trigger: triggerKind || null,
-            conflicts: result.conflicts || 0,
-            autoMerged: result.autoMerged || 0
-          });
-          showExternalRebaseConflictDialog(result);
-          return false;
-        }
-        applyRebasedBoardSnapshot(activeBoardId, result.board || fullBoardData, currentBoard, result);
-        return true;
-      } catch (err) {
-        logFrontendIssue('error', 'board.rebase', 'Failed to rebase dirty board against latest external state', err);
-        return false;
-      } finally {
-        _rebaseInFlight = null;
-      }
-    })();
-    return _rebaseInFlight;
-  }
-
-  function rowsFromLegacyColumns(columns, boardTitle) {
-    var cols = (columns || []).map(function (col) {
-      return {
-        index: col.index,
-        title: col.title,
-        cards: (col.cards || []).map(function (card) {
-          return {
-            id: card.id,
-            content: card.content,
-            checked: !!card.checked,
-            kid: card.kid || null,
-          };
-        }),
-      };
-    });
-    if (cols.length === 0) return [];
-
-    var groups = [];
-    for (var i = 0; i < cols.length; i++) {
-      var hasStackTag = hasTag(cols[i].title, '#stack');
-      if (hasStackTag && groups.length > 0) groups[groups.length - 1].push(cols[i]);
-      else groups.push([cols[i]]);
-    }
-
-    var stacks = [];
-    for (var g = 0; g < groups.length; g++) {
-      for (var c = 0; c < groups[g].length; c++) {
-        groups[g][c].title = stripStackTag(groups[g][c].title);
-      }
-      stacks.push({
-        id: 'stack-' + (g + 1),
-        title: 'Stack ' + (g + 1),
-        columns: groups[g],
-      });
-    }
-
-    return [{
-      id: 'row-1',
-      title: boardTitle || 'Board',
-      stacks: stacks,
-    }];
-  }
-
-  function rowsForBoardData(fullBoard, fallbackTitle) {
-    if (fullBoard && fullBoard.rows && fullBoard.rows.length > 0) {
-      return cloneRows(fullBoard.rows);
-    }
-    if (fullBoard && fullBoard.columns) {
-      return rowsFromLegacyColumns(fullBoard.columns, fullBoard.title || fallbackTitle || 'Board');
-    }
-    return [];
-  }
-
-  function setBoardHierarchyRows(boardId, fullBoard, fallbackTitle) {
-    if (!boardId) return;
-    boardHierarchyCache[boardId] = {
-      rows: rowsForBoardData(fullBoard, fallbackTitle),
-      updatedAt: Date.now(),
-    };
-  }
-
-  function getBoardHierarchyRows(boardId) {
-    if (boardId && boardId === activeBoardId && activeBoardData && activeBoardData.rows) {
-      return activeBoardData.rows;
-    }
-    var cached = boardHierarchyCache[boardId];
-    return cached && cached.rows ? cached.rows : null;
-  }
-
-  async function refreshBoardHierarchyCache(boardList) {
-    var keep = {};
-    for (var i = 0; i < boardList.length; i++) keep[boardList[i].id] = true;
-    var cachedIds = Object.keys(boardHierarchyCache);
-    for (var j = 0; j < cachedIds.length; j++) {
-      if (!keep[cachedIds[j]]) delete boardHierarchyCache[cachedIds[j]];
-    }
-
-    var tasks = [];
-    for (var k = 0; k < boardList.length; k++) {
-      (function (boardMeta) {
-        if (
-          boardMeta.id === activeBoardId &&
-          fullBoardData &&
-          activeBoardData &&
-          activeBoardData.rows
-        ) {
-          setBoardHierarchyRows(boardMeta.id, fullBoardData, boardMeta.title || 'Board');
-          return;
-        }
-        tasks.push(
-          LexeraApi.getBoardColumns(boardMeta.id).then(function (response) {
-            setBoardHierarchyRows(boardMeta.id, response.fullBoard || null, response.title || boardMeta.title || 'Board');
-          }).catch(function (err) {
-            lexeraLog('warn', '[hierarchy.cache] Failed to load board ' + boardMeta.id + ': ' + err.message);
-          })
-        );
-      })(boardList[k]);
-    }
-    if (tasks.length > 0) await Promise.all(tasks);
-  }
-
-  function cardPreviewText(content) {
-    return getSidebarTreeApi().cardPreviewText(content);
-  }
-
-  function setActiveWorkspaceId(workspaceId) {
-    activeWorkspaceId = workspaceId || ALL_WORKSPACES_ID;
-    localStorage.setItem('lexera-active-workspace', activeWorkspaceId);
-  }
-
-  function applyWorkspaceAppearance(workspaceId) {
-    if (!workspaceId || workspaceId === ALL_WORKSPACES_ID) return;
-    var ws = null;
-    for (var i = 0; i < workspaces.length; i++) {
-      if (workspaces[i].id === workspaceId) { ws = workspaces[i]; break; }
-    }
-    if (!ws) return;
-    if (ws.theme) applyVisualTheme(ws.theme);
-  }
-
-  function resolveActiveWorkspaceId(defaultWorkspaceId) {
-    var knownWorkspaceIds = workspaces.map(function (ws) { return ws.id; });
-    var storedIsValid = activeWorkspaceId === ALL_WORKSPACES_ID
-      || knownWorkspaceIds.indexOf(activeWorkspaceId) >= 0;
-
-    if (storedIsValid) return;
-
-    if (defaultWorkspaceId && knownWorkspaceIds.indexOf(defaultWorkspaceId) >= 0) {
-      setActiveWorkspaceId(defaultWorkspaceId);
-      return;
-    }
-    if (knownWorkspaceIds.length > 0) {
-      setActiveWorkspaceId(knownWorkspaceIds[0]);
-      return;
-    }
-    setActiveWorkspaceId(ALL_WORKSPACES_ID);
-  }
-
-  function dispatchMirrorMouseEvent(targetEl, eventType, sourceEvent) {
-    if (!targetEl) return false;
-    targetEl.dispatchEvent(new MouseEvent(eventType, {
-      bubbles: true,
-      cancelable: true,
-      clientX: sourceEvent && typeof sourceEvent.clientX === 'number' ? sourceEvent.clientX : 0,
-      clientY: sourceEvent && typeof sourceEvent.clientY === 'number' ? sourceEvent.clientY : 0,
-      button: sourceEvent && typeof sourceEvent.button === 'number' ? sourceEvent.button : 0,
-      altKey: !!(sourceEvent && sourceEvent.altKey),
-      ctrlKey: !!(sourceEvent && sourceEvent.ctrlKey),
-      shiftKey: !!(sourceEvent && sourceEvent.shiftKey),
-      metaKey: !!(sourceEvent && sourceEvent.metaKey)
-    }));
-    return true;
-  }
-
-  function findCanonicalHierarchyTarget(sourceTarget) {
-    var boardList = getElBoardList();
-    if (!boardList || !sourceTarget || typeof sourceTarget.closest !== 'function') return null;
-    var treeNode = sourceTarget.closest('.tree-node[data-tree-id]');
-    var boardRow = sourceTarget.closest('.board-item[data-board-id]');
-    if (sourceTarget.closest('.board-item-remove') && boardRow) {
-      return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-remove');
-    }
-    if (sourceTarget.closest('.board-item-toggle') && boardRow) {
-      return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-toggle');
-    }
-    if (sourceTarget.closest('.tree-toggle') && treeNode) {
-      return boardList.querySelector('.tree-node[data-tree-id="' + treeNode.getAttribute('data-tree-id') + '"] .tree-toggle');
-    }
-    if (treeNode) {
-      return boardList.querySelector('.tree-node[data-tree-id="' + treeNode.getAttribute('data-tree-id') + '"]');
-    }
-    if (boardRow) {
-      return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"]');
-    }
-    return null;
-  }
-
-  function bindMirroredWorkspaceView(rootEl) {
-    if (!rootEl || rootEl.__lexeraWorkspaceMirrorBound) return;
-    rootEl.__lexeraWorkspaceMirrorBound = true;
-
-    rootEl.addEventListener('change', function (e) {
-      var selectEl = e.target.closest('.lexera-shared-workspace-select');
-      if (!selectEl) return;
-      setActiveWorkspaceId(selectEl.value);
-      applyWorkspaceAppearance(selectEl.value);
-      renderWorkspaceSelect();
-      renderBoardList();
-    });
-
-    rootEl.addEventListener('click', function (e) {
-      var menuBtn = e.target.closest('.lexera-shared-workspace-menu');
-      if (menuBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        showSidebarHierarchyMenu(menuBtn);
-        return;
-      }
-      var canonicalTarget = findCanonicalHierarchyTarget(e.target);
-      if (!canonicalTarget) return;
-      e.preventDefault();
-      e.stopPropagation();
-      dispatchMirrorMouseEvent(canonicalTarget, 'click', e);
-    });
-
-    rootEl.addEventListener('contextmenu', function (e) {
-      var canonicalTarget = findCanonicalHierarchyTarget(e.target);
-      if (!canonicalTarget) return;
-      e.preventDefault();
-      e.stopPropagation();
-      dispatchMirrorMouseEvent(canonicalTarget, 'contextmenu', e);
-    });
-  }
-
-  function syncMirroredWorkspaceViews() {
-    var workspaceRoots = getSharedPanelRoots('hierarchy');
-    if (!workspaceRoots.length) return;
-    var canonicalSelect = document.getElementById('workspace-select');
-    var canonicalBoardList = getElBoardList();
-    for (var i = 0; i < workspaceRoots.length; i++) {
-      var rootEl = workspaceRoots[i];
-      if (!rootEl) continue;
-      bindMirroredWorkspaceView(rootEl);
-      var selectEl = rootEl.querySelector('.lexera-shared-workspace-select');
-      var boardListEl = rootEl.querySelector('.lexera-shared-board-list');
-      if (selectEl && canonicalSelect) {
-        selectEl.innerHTML = canonicalSelect.innerHTML;
-        selectEl.value = activeWorkspaceId || canonicalSelect.value || ALL_WORKSPACES_ID;
-      }
-      if (boardListEl && canonicalBoardList) {
-        boardListEl.innerHTML = canonicalBoardList.innerHTML;
-      }
-    }
-  }
-
-  function renderWorkspaceSelect() {
-    var sel = document.getElementById('workspace-select');
-    if (!sel) return;
-
-    resolveActiveWorkspaceId(null);
-
-    sel.innerHTML = '';
-
-    var allOpt = document.createElement('option');
-    allOpt.value = ALL_WORKSPACES_ID;
-    allOpt.textContent = 'All Workspaces';
-    if (activeWorkspaceId === ALL_WORKSPACES_ID) allOpt.selected = true;
-    sel.appendChild(allOpt);
-
-    for (var i = 0; i < workspaces.length; i++) {
-      var ws = workspaces[i];
-      var opt = document.createElement('option');
-      opt.value = ws.id;
-      var boardCount = typeof ws.board_count === 'number' ? ws.board_count : null;
-      opt.textContent = boardCount != null ? (ws.name + ' (' + boardCount + ')') : ws.name;
-      if (ws.id === activeWorkspaceId) opt.selected = true;
-      sel.appendChild(opt);
-    }
-
-    if (!sel.value) {
-      setActiveWorkspaceId(ALL_WORKSPACES_ID);
-      sel.value = ALL_WORKSPACES_ID;
-    } else if (sel.value !== activeWorkspaceId) {
-      setActiveWorkspaceId(sel.value);
-    }
-
-    sel.onchange = function () {
-      setActiveWorkspaceId(sel.value);
-      applyWorkspaceAppearance(sel.value);
-      renderWorkspaceSelect();
-      renderBoardList();
-    };
-    syncMirroredWorkspaceViews();
-  }
-
-  function getBoardWorkspaceIds(board) {
-    return board.workspace_ids || board.workspaceIds || (board.workspace_id || board.workspaceId ? [board.workspace_id || board.workspaceId] : []);
-  }
-
-  async function removeBoardFromSidebar(boardId, boardName) {
-    var cleanupOk = await cleanupBoardBeforeSidebarClose(boardId);
-    if (!cleanupOk) return false;
-    if (!(await showConfirmDialog('Remove "' + boardName + '" from sidebar?\n(The file will not be deleted.)'))) return false;
-
-    boards = boards.filter(function (b) { return b.id !== boardId; });
-    delete boardHierarchyCache[boardId];
-    if (activeBoardId === boardId) {
-      activeBoardId = null;
-      activeBoardData = null;
-      fullBoardData = null;
-      localStorage.removeItem('lexera-last-board');
-    }
-    renderBoardList();
-    renderMainView();
-    scheduleDashboardRefresh(60);
-
-    LexeraApi.removeBoard(boardId).catch(function (err) {
-      lexeraLog('error', '[sidebar.remove] Backend error: ' + err.message);
-      showNotification('Failed to remove board');
-      poll();
-    });
-    return true;
-  }
-
-  function renderBoardList() {
-    getElBoardList().innerHTML = '';
-    var filteredBoards = activeWorkspaceId && activeWorkspaceId !== ALL_WORKSPACES_ID
-      ? boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(activeWorkspaceId) >= 0; })
-      : boards;
-    var orderedBoards = getOrderedItems(filteredBoards, 'lexera-board-order', function (b) { return b.id; });
-    var expandedIds = getSidebarExpandedBoards();
-
-    for (var i = 0; i < orderedBoards.length; i++) {
-      var board = orderedBoards[i];
-      var isExpanded = expandedIds.indexOf(board.id) !== -1;
-      var isActive = board.id === activeBoardId;
-      var rows = getBoardHierarchyRows(board.id) || [];
-      var totalCards = rows.length > 0
-        ? countCardsInRows(rows)
-        : board.columns.reduce(function (sum, c) { return sum + c.cardCount; }, 0);
-
-      var wrapper = document.createElement('div');
-      wrapper.className = 'board-item-wrapper tree-view-host tree-view-host-compact';
-      wrapper.setAttribute('data-board-id', board.id);
-
-      var el = document.createElement('div');
-      el.className = 'board-item tree-node tree-board' + (isActive ? ' active' : '');
-      el.setAttribute('data-board-index', i.toString());
-      el.setAttribute('data-board-id', board.id);
-      el.setAttribute('data-tree-depth', '0');
-      var boardName = board.title || getDisplayNameFromPath(board.filePath || '') || 'Untitled';
-
-      var hasContent = rows.length > 0;
-      var displayTitle = escapeHtml(boardName);
-      var presenceCount = (boardPresenceCache[board.id] || []).length;
-      var presenceBadge = '<span class="tree-meta-presence board-presence-badge' + (presenceCount > 0 ? '' : ' hidden') + '"' +
-        (presenceCount > 0 ? (' title="' + presenceCount + ' user(s) online"') : '') + '>' +
-        (presenceCount > 0 ? presenceCount : '') +
-        '</span>';
-      var removeButton = '<span class="tree-meta-action board-item-remove' + ((SidebarSync && SidebarSync.isHierarchyLocked()) ? ' hidden' : '') + '" title="Remove board">\u00D7</span>';
-      var boardGrip = '<span class="tree-grip entity-drag-icon entity-drag-icon-board" title="Drag to reorder">' +
-        getCreationEntityDragIconSvg('board') +
-        '</span>';
-      if (hasContent) {
-        el.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-      }
-      el.innerHTML =
-        '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +
-        (hasContent ? '<span class="tree-toggle board-item-toggle' + (isExpanded ? ' expanded' : '') + '"></span>' : '<span class="tree-toggle-spacer board-item-toggle-spacer"></span>') +
-        '<span class="tree-label board-item-title"><span class="board-item-title-text">' + displayTitle + '</span></span>' +
-        '<span class="tree-meta board-item-meta">' +
-          presenceBadge +
-          '<span class="tree-count board-item-count">' + totalCards + '</span>' +
-          removeButton +
-          boardGrip +
-        '</span>';
-
-      // Tree sub-list
-      var tree = document.createElement('div');
-      tree.className = 'board-item-tree tree-children' + (isExpanded ? ' expanded' : '');
-      tree.setAttribute('data-tree-depth', '1');
-      tree.setAttribute('role', 'tree');
-
-      if (hasContent) {
-        var treeState = getSidebarTreeState(board.id);
-        var hasTreeState = hasSidebarTreeState(board.id);
-        var treeNodes = buildSidebarTreeNodes(rows, board.id, treeState, hasTreeState);
-        TreeView.render(tree, treeNodes, {
-          escapeHtml: escapeHtml,
-          variant: 'compact',
-          onChildrenContainer: function (el, node) {
-            if (node.type === 'stack') {
-              el.classList.add('tree-stack-drop-zone');
-              if (node.attrs) {
-                if (node.attrs['data-board-id']) el.setAttribute('data-board-id', node.attrs['data-board-id']);
-                if (node.attrs['data-row-index']) el.setAttribute('data-row-index', node.attrs['data-row-index']);
-                if (node.attrs['data-stack-index']) el.setAttribute('data-stack-index', node.attrs['data-stack-index']);
-              }
-              if (!node.children || node.children.length === 0) {
-                el.classList.add('tree-stack-drop-zone-empty');
-              }
-            }
-          }
-        });
-      }
-
-      wrapper.appendChild(el);
-      wrapper.appendChild(tree);
-
-      (function (boardId, boardIndex, wrapperEl, boardFilePath) {
-        // Toggle expand on board arrow click (Alt+click = recursive)
-        var toggle = wrapperEl.querySelector('.board-item-toggle');
-        if (toggle) {
-          toggle.addEventListener('click', function (e) {
-            e.stopPropagation();
-            var ids = getSidebarExpandedBoards();
-            var idx = ids.indexOf(boardId);
-            var treeContainer = wrapperEl.querySelector('.board-item-tree');
-            if (idx !== -1) {
-              ids.splice(idx, 1);
-              toggle.classList.remove('expanded');
-              treeContainer.classList.remove('expanded');
-              boardRow.setAttribute('aria-expanded', 'false');
-              if (e.altKey) setDescendantTreeState(treeContainer, false, boardId);
-            } else {
-              ids.push(boardId);
-              toggle.classList.add('expanded');
-              treeContainer.classList.add('expanded');
-              boardRow.setAttribute('aria-expanded', 'true');
-              if (e.altKey) setDescendantTreeState(treeContainer, true, boardId);
-            }
-            saveSidebarExpandedBoards(ids);
-          });
-        }
-
-        // Tree node toggle, click, and DnD handlers (event delegation on tree container)
-        var treeEl = wrapperEl.querySelector('.board-item-tree');
-        if (treeEl) {
-          treeEl.addEventListener('click', function (e) {
-            var target = e.target;
-
-            // Grip click — do nothing (grip is for drag only)
-            if (target.classList.contains('tree-grip')) {
-              e.stopPropagation();
-              return;
-            }
-
-            // Toggle arrow click (Alt+click = fold children only, not self)
-            if (target.classList.contains('tree-toggle')) {
-              e.stopPropagation();
-              var node = target.closest('.tree-node');
-              if (!node) return;
-              var children = getSidebarTreeChildrenContainer(node);
-              if (children) {
-                if (e.altKey) {
-                  // Alt+click: fold/unfold all descendants, leave self unchanged
-                  var childNodes = children.querySelectorAll('.tree-children');
-                  var allCollapsed = true;
-                  for (var ci = 0; ci < childNodes.length; ci++) {
-                    if (childNodes[ci].classList.contains('expanded')) { allCollapsed = false; break; }
-                  }
-                  setDescendantTreeState(children, allCollapsed, boardId);
-                } else {
-                  var expanding = !children.classList.contains('expanded');
-                  children.classList.toggle('expanded');
-                  target.classList.toggle('expanded');
-                  node.setAttribute('aria-expanded', expanding ? 'true' : 'false');
-                  // Persist fold state
-                  var treeId = node.getAttribute('data-tree-id');
-                  if (treeId) {
-                    if (node.classList.contains('tree-row')) {
-                      toggleSidebarTreeNode(boardId, 'rows', treeId);
-                    } else if (node.classList.contains('tree-stack')) {
-                      toggleSidebarTreeNode(boardId, 'stacks', treeId);
-                    } else if (node.classList.contains('tree-column')) {
-                      toggleSidebarTreeNode(boardId, 'columns', treeId);
-                    }
-                  }
-                }
-              }
-              return;
-            }
-            var anyNode = target.closest('.tree-node');
-            if (!anyNode) return;
-            e.stopPropagation();
-            var navTarget = buildHierarchyFocusTargetFromTreeNode(anyNode, boardId);
-            if (!navTarget) {
-              if (boardId !== activeBoardId) selectBoard(boardId);
-              return;
-            }
-            if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
-              WorkspaceShell.focusHierarchyTarget(navTarget, boardId);
-              return;
-            }
-            navigateToHierarchyTarget(navTarget).catch(function (err) {
-              logFrontendIssue('warn', 'sidebar.hierarchy-focus', 'Failed to focus hierarchy target', err);
-              showNotification('Failed to focus hierarchy item');
-            });
-          });
-
-          // Tree DnD is handled by the pointer-based drag system (mousedown on getElBoardList())
-        }
-
-        var boardRow = wrapperEl.querySelector('.board-item');
-        boardRow.addEventListener('click', async function (e) {
-          // Remove button click — handle inline via delegation
-          if (targetClosest(e.target, '.board-item-remove')) {
-            e.preventDefault();
-            e.stopPropagation();
-            var boardName = boardRow.querySelector('.board-item-title').textContent;
-            await removeBoardFromSidebar(boardId, boardName);
-            return;
-          }
-          exitSearchMode();
-          selectBoard(boardId);
-        });
-
-        boardRow.addEventListener('contextmenu', function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          var items = [
-            { id: 'open-tab', label: 'Open / Focus Tab' },
-            { id: 'detach', label: 'Open in Detached Window' },
-            { separator: true },
-            { id: 'backend-settings', label: 'Backend Settings' },
-            { separator: true },
-            { id: 'reveal', label: 'Reveal in Finder' }
-          ];
-          showNativeMenu(items, e.clientX, e.clientY).then(async function (action) {
-            if (action === 'open-tab') {
-              selectBoard(boardId);
-            } else if (action === 'detach') {
-              if (hasTauri) tauriInvoke('open_new_window', { boardId: boardId, profile: 'detachedBoard' });
-            } else if (action === 'backend-settings') {
-              openConnectionWindow();
-            } else if (action === 'reveal' && boardFilePath) {
-              showInFinder(boardFilePath);
-            }
-          });
-        });
-        // Board DnD is handled by the pointer-based drag system (mousedown on getElBoardList())
-      })(board.id, i, wrapper, board.filePath);
-
-      getElBoardList().appendChild(wrapper);
-    }
-
-    // Remote boards section
-    if (remoteBoards.length > 0) {
-      var remoteDivider = document.createElement('div');
-      remoteDivider.className = 'sidebar-section-divider';
-      remoteDivider.innerHTML = '<span class="sidebar-section-label">Remote</span>';
-      getElBoardList().appendChild(remoteDivider);
-
-      for (var ri = 0; ri < remoteBoards.length; ri++) {
-        var rb = remoteBoards[ri];
-        var rbEl = document.createElement('div');
-        rbEl.className = 'board-item tree-node tree-board remote-board' + (rb.id === activeBoardId ? ' active' : '');
-        rbEl.setAttribute('data-board-id', rb.id);
-        rbEl.setAttribute('data-tree-depth', '0');
-        rbEl.innerHTML =
-          '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +
-          '<span class="tree-toggle-spacer board-item-toggle-spacer"></span>' +
-          '<span class="tree-label board-item-title board-item-title-with-icon">' +
-            '<span class="board-item-remote-icon" title="Remote board">&#127760;</span>' +
-            '<span class="board-item-title-text">' + escapeHtml(rb.title || rb.id) + '</span>' +
-          '</span>' +
-          '<span class="tree-meta board-item-meta">' +
-            '<span class="tree-meta-presence board-presence-badge hidden" aria-hidden="true"></span>' +
-            '<span class="tree-count board-item-count">' + (rb.card_count || 0) + '</span>' +
-            '<span class="tree-meta-action board-item-remove hidden" aria-hidden="true"></span>' +
-            '<span class="tree-grip tree-grip-spacer" aria-hidden="true"></span>' +
-          '</span>';
-        (function (boardId) {
-          rbEl.addEventListener('click', function () {
-            exitSearchMode();
-            selectBoard(boardId);
-          });
-        })(rb.id);
-        getElBoardList().appendChild(rbEl);
-      }
-    }
-
-    syncMirroredWorkspaceViews();
-  }
+  // --- Board List --- (delegated to LexeraBoardList module)
+
+  var BoardList = window.LexeraBoardList;
+  function getSidebarExpandedBoards() { return BoardList.getSidebarExpandedBoards(); }
+  function saveSidebarExpandedBoards(ids) { BoardList.saveSidebarExpandedBoards(ids); }
+  function getSidebarTreeState(boardId) { return BoardList.getSidebarTreeState(boardId); }
+  function hasSidebarTreeState(boardId) { return BoardList.hasSidebarTreeState(boardId); }
+  function saveSidebarTreeState(boardId, state) { BoardList.saveSidebarTreeState(boardId, state); }
+  function getSidebarTreeChildrenContainer(node) { return BoardList.getSidebarTreeChildrenContainer(node); }
+  function getSidebarTreeOwnerNode(container) { return BoardList.getSidebarTreeOwnerNode(container); }
+  function toggleSidebarTreeNode(boardId, kind, id) { BoardList.toggleSidebarTreeNode(boardId, kind, id); }
+  function setDescendantTreeState(container, expand, boardId) { BoardList.setDescendantTreeState(container, expand, boardId); }
+  function buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState) { return BoardList.buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState); }
+  function countCardsInRow(row) { return BoardList.countCardsInRow(row); }
+  function countCardsInStack(stack) { return BoardList.countCardsInStack(stack); }
+  function countCardsInRows(rows) { return BoardList.countCardsInRows(rows); }
+  function cloneRows(rows) { return BoardList.cloneRows(rows); }
+  function cloneBoardData(boardData) { return BoardList.cloneBoardData(boardData); }
+  function boardDraftStorageKey(boardId) { return BoardList.boardDraftStorageKey(boardId); }
+
+  function getBoardCardKids(boardData) { return BoardList.getBoardCardKids(boardData); }
+  function getBoardCardIdentityStats(boardA, boardB) { return BoardList.getBoardCardIdentityStats(boardA, boardB); }
+  function summarizeBoardIdentity(boardData, limit) { return BoardList.summarizeBoardIdentity(boardData, limit); }
+  function describeBoardIdentityPair(labelA, boardA, labelB, boardB, limit) { return BoardList.describeBoardIdentityPair(labelA, boardA, labelB, boardB, limit); }
+  function traceBoardIdentityPair(level, target, message, boardId, labelA, boardA, labelB, boardB, extra) { BoardList.traceBoardIdentityPair(level, target, message, boardId, labelA, boardA, labelB, boardB, extra); }
+  function hasBoardIdentityMismatch(boardA, boardB) { return BoardList.hasBoardIdentityMismatch(boardA, boardB); }
+  function saveLocalBoardDraft(boardId, boardData) { BoardList.saveLocalBoardDraft(boardId, boardData); }
+  function loadLocalBoardDraft(boardId) { return BoardList.loadLocalBoardDraft(boardId); }
+  function clearLocalBoardDraft(boardId) { BoardList.clearLocalBoardDraft(boardId); }
+  function boardCardSummary(bd) { return BoardList.boardCardSummary(bd); }
+  function setBoardSaveBase(boardData, baseBoardData) { return BoardList.setBoardSaveBase(boardData, baseBoardData); }
+  function getBoardSaveBase(boardData) { return BoardList.getBoardSaveBase(boardData); }
+  function resolveSavedBoardData(boardData, result, boardId) { return BoardList.resolveSavedBoardData(boardData, result, boardId); }
+  function resolveLiveSyncBoardData(boardData, boardId) { return BoardList.resolveLiveSyncBoardData(boardData, boardId); }
+
+  function applyLiveSyncBoardSnapshot(boardId, boardData, options) { BoardList.applyLiveSyncBoardSnapshot(boardId, boardData, options); }
+  function applyRebasedBoardSnapshot(boardId, workingBoard, currentBoard, result, options) { BoardList.applyRebasedBoardSnapshot(boardId, workingBoard, currentBoard, result, options); }
+  async function rebaseDirtyBoardFromServer(triggerKind) { return BoardList.rebaseDirtyBoardFromServer(triggerKind); }
+  function rowsFromLegacyColumns(columns, boardTitle) { return BoardList.rowsFromLegacyColumns(columns, boardTitle); }
+  function rowsForBoardData(fullBoard, fallbackTitle) { return BoardList.rowsForBoardData(fullBoard, fallbackTitle); }
+
+  function setBoardHierarchyRows(boardId, fullBoard, fallbackTitle) { BoardList.setBoardHierarchyRows(boardId, fullBoard, fallbackTitle); }
+  function getBoardHierarchyRows(boardId) { return BoardList.getBoardHierarchyRows(boardId); }
+  async function refreshBoardHierarchyCache(boardList) { return BoardList.refreshBoardHierarchyCache(boardList); }
+  function cardPreviewText(content) { return BoardList.cardPreviewText(content); }
+  function setActiveWorkspaceId(workspaceId) { BoardList.setActiveWorkspaceId(workspaceId); }
+  function applyWorkspaceAppearance(workspaceId) { BoardList.applyWorkspaceAppearance(workspaceId); }
+  function resolveActiveWorkspaceId(defaultWorkspaceId) { BoardList.resolveActiveWorkspaceId(defaultWorkspaceId); }
+  function dispatchMirrorMouseEvent(targetEl, eventType, sourceEvent) { return BoardList.dispatchMirrorMouseEvent(targetEl, eventType, sourceEvent); }
+  function findCanonicalHierarchyTarget(sourceTarget) { return BoardList.findCanonicalHierarchyTarget(sourceTarget); }
+  function bindMirroredWorkspaceView(rootEl) { BoardList.bindMirroredWorkspaceView(rootEl); }
+  function syncMirroredWorkspaceViews() { BoardList.syncMirroredWorkspaceViews(); }
+
+  function renderWorkspaceSelect() { BoardList.renderWorkspaceSelect(); }
+  function getBoardWorkspaceIds(board) { return BoardList.getBoardWorkspaceIds(board); }
+  async function removeBoardFromSidebar(boardId, boardName) { return BoardList.removeBoardFromSidebar(boardId, boardName); }
+
+  function renderBoardList() { BoardList.renderBoardList(); }
 
   // --- Sidebar Sync --- (delegated to LexeraSidebarSync module)
 
@@ -7420,7 +6479,7 @@ const LexeraDashboard = (function () {
     onBoardAdded: function () { poll(); },
     onBoardRemoved: function (boardId) {
       boards = boards.filter(function (b) { return b.id !== boardId; });
-      delete boardHierarchyCache[boardId];
+      BoardList.deleteBoardHierarchyCacheEntry(boardId);
       if (activeBoardId === boardId) {
         activeBoardId = null;
         activeBoardData = null;
@@ -9942,12 +9001,22 @@ const LexeraDashboard = (function () {
         if (isCanvasLayout) {
           (function (el, rIdx, sIdx) {
             var resizeTimer = null;
+            var layoutSyncFrame = 0;
+            var lastObservedWidth = null;
             var observer = new ResizeObserver(function (entries) {
+              var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
               if (ptrDrag) return; // ignore resize during drag
               var entry = entries[0];
               if (!entry) return;
               var newW = Math.round(entry.contentRect.width);
-              scheduleCanvasRowBoundsSync(getElColumnsContainer());
+              if (newW === lastObservedWidth) return;
+              lastObservedWidth = newW;
+              if (!layoutSyncFrame) {
+                layoutSyncFrame = requestAnimationFrame(function () {
+                  layoutSyncFrame = 0;
+                  scheduleCanvasRowBoundsSync(getElColumnsContainer());
+                });
+              }
               clearTimeout(resizeTimer);
               resizeTimer = setTimeout(function () {
                 var fullStack = findFullDataStack(rIdx, sIdx);
@@ -11998,23 +11067,6 @@ const LexeraDashboard = (function () {
     scheduleCanvasRowBoundsSync(container);
     scheduleCanvasFocusStacksControlSync(container);
   });
-
-      return {
-        row: row,
-        stack: stack,
-        rowIndex: fullBoardData.rows.indexOf(row),
-        stackIndex: row.stacks.indexOf(stack)
-      };
-    }
-    var targetRow = boardData.rows[rowIndex];
-    if (!targetRow || !targetRow.stacks || stackIndex < 0 || stackIndex >= targetRow.stacks.length) return null;
-    return {
-      row: targetRow,
-      stack: targetRow.stacks[stackIndex],
-      rowIndex: rowIndex,
-      stackIndex: stackIndex
-    };
-  }
 
   function resolveColumnLocationForMutation(boardId, boardData, rowIndex, stackIndex, colIndex, indexMode) {
     if (!boardData || !boardData.rows) return null;
@@ -15745,7 +14797,7 @@ const LexeraDashboard = (function () {
       getFullBoardData: function () { return fullBoardData; },
       getCurrentHtmlCommentRenderMode: function () { return currentHtmlCommentRenderMode; },
       getCurrentTagVisibilityMode: function () { return currentTagVisibilityMode; },
-      getExportToolStatusCache: function () { return exportToolStatusCache; },
+      getExportToolStatusCache: function () { return getExportToolStatusCache(); },
       isEmbeddedMode: function () { return embeddedMode; },
       getLexeraApi: function () { return LexeraApi; },
       getContentEnhancerRegistry: function () { return ContentEnhancerRegistry; },
@@ -16124,7 +15176,11 @@ const LexeraDashboard = (function () {
     renderCardContent: renderCardContent,
     applyRenderedHtmlCommentVisibility: applyRenderedHtmlCommentVisibility,
     applyRenderedTagVisibility: applyRenderedTagVisibility,
-    applyFileLinkInfo: applyFileLinkInfo,
+    applyFileLinkInfo: function () {
+      return _EmbedMenu && typeof _EmbedMenu.applyFileLinkInfo === 'function'
+        ? _EmbedMenu.applyFileLinkInfo.apply(_EmbedMenu, arguments)
+        : undefined;
+    },
     requestFileInfo: requestFileInfo,
     flushPendingDiagramQueues: flushPendingDiagramQueues
   });
@@ -16794,10 +15850,10 @@ const LexeraDashboard = (function () {
     });
     BoardSettingRegistry.register({
       id: 'whitespace', label: 'Whitespace', category: 'format',
-      settingsKey: 'whitespace', actionPrefix: 'set-whitespace', defaultValue: '16px',
+      settingsKey: 'whitespace', actionPrefix: 'set-whitespace', defaultValue: '8px',
       normalize: normalizeWhitespaceValue,
       options: [
-        { value: '8px', label: 'Compact' }, { value: '16px', label: 'Default' },
+        { value: '8px', label: 'Compact' }, { value: '16px', label: 'Relaxed' },
         { value: '32px', label: 'Spacious' }
       ]
     });
