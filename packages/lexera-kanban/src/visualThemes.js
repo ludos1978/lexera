@@ -11,6 +11,12 @@
       description: 'Swiss-style minimal layout'
     },
     {
+      id: 'sleek-uniform',
+      baseId: 'sleek',
+      name: 'Sleek Uniform',
+      description: 'Sleek layout copy for unified typography'
+    },
+    {
       id: 'gap',
       name: 'Gap',
       description: 'Whitespace and separators over boxes'
@@ -26,6 +32,7 @@
     var source = String(value || '').trim().toLowerCase();
     if (!source || source === 'classic' || source === 'default' || source === 'legacy') return 'classic';
     if (source === 'sleek' || source === 'minimal' || source === 'modern') return 'sleek';
+    if (source === 'sleek-uniform' || source === 'sleekuniform' || source === 'uniform') return 'sleek-uniform';
     if (source === 'bordered' || source === 'boxed' || source === 'outline') return 'classic';
     if (source === 'gap' || source === 'gap-highlight' || source === 'gaphighlight') return 'gap';
     if (source === 'lines' || source === 'line' || source === 'line-separator') return 'lines';
@@ -64,10 +71,14 @@
   function applyLexeraVisualTheme(themeId) {
     var theme = findLexeraVisualTheme(themeId);
     var normalized = theme.id;
+    var baseThemeId = theme.baseId || normalized;
     var root = document && document.documentElement ? document.documentElement : null;
 
     currentThemeId = normalized;
-    if (root) root.setAttribute('data-visual-theme', normalized);
+    if (root) {
+      root.setAttribute('data-visual-theme', baseThemeId);
+      root.setAttribute('data-visual-theme-variant', normalized);
+    }
 
     try {
       localStorage.setItem('lexera-visual-theme', normalized);
