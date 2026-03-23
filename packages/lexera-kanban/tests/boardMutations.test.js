@@ -26,6 +26,10 @@ function loadMutationFunctions() {
   const archiveFormattingSource = readFileSync(resolve(srcDir, 'export', 'archiveFormatting.js'), 'utf-8');
   new Function(archiveFormattingSource + '\nglobalThis.LexeraArchiveFormatting = LexeraArchiveFormatting;')();
 
+  // Load OrderHelpers so delegation stubs in app.js can reference it
+  const orderHelpersSource = readFileSync(resolve(srcDir, 'board', 'orderHelpers.js'), 'utf-8');
+  new Function(orderHelpersSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
@@ -198,9 +202,21 @@ function loadMutationFunctions() {
   ];
 
   const wrappedSource = `
+    var OrderHelpers = (typeof globalThis !== 'undefined' && globalThis.LexeraOrderHelpers) || null;
     var PathUtils = globalThis.LexeraPathUtils;
     var TagColors = globalThis.LexeraTagColors;
+    var LexeraTagSystem = globalThis.LexeraTagSystem || null;
     ${fnDefs.join('\n\n')}
+
+    // Initialize OrderHelpers with extracted functions so delegation stubs work
+    if (OrderHelpers && typeof OrderHelpers.init === 'function') {
+      OrderHelpers.init({
+        hasTag: typeof hasTag === 'function' ? hasTag : function () { return false; },
+        is_archived_or_deleted: typeof is_archived_or_deleted === 'function' ? is_archived_or_deleted : function () { return false; },
+        stripInternalHiddenTags: typeof stripInternalHiddenTags === 'function' ? stripInternalHiddenTags : function (t) { return t; },
+        LexeraTagSystem: LexeraTagSystem
+      });
+    }
     return {
       TAG_CATEGORIES,
       normalizePathForCompare,

@@ -28,6 +28,10 @@ function loadAppUtils() {
   // Load loggingSystem for normalizeLogMessage / formatErrorDetails
   const loggingSource = readFileSync(resolve(srcDir, 'logging', 'loggingSystem.js'), 'utf-8');
 
+  // Load OrderHelpers so delegation stubs in app.js can reference it
+  const orderHelpersSource = readFileSync(resolve(srcDir, 'board', 'orderHelpers.js'), 'utf-8');
+  new Function(orderHelpersSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
@@ -119,8 +123,24 @@ function loadAppUtils() {
   ];
 
   const wrappedSource = `
+    var OrderHelpers = (typeof globalThis !== 'undefined' && globalThis.LexeraOrderHelpers) || null;
+    var LexeraTagSystem = globalThis.LexeraTagSystem || null;
     var PathUtils = globalThis.LexeraPathUtils;
     var _deps = { sanitizeBuiltInDiagramFileName: function(n, e, f) { return sanitizeBuiltInDiagramFileName(n, e, f); } };
+
+    // Initialize OrderHelpers with extracted functions so delegation stubs work
+    if (OrderHelpers && typeof OrderHelpers.init === 'function') {
+      OrderHelpers.init({
+        hasTag: typeof hasTag === 'function' ? hasTag : function () { return false; },
+        is_archived_or_deleted: typeof is_archived_or_deleted === 'function' ? is_archived_or_deleted : function () { return false; },
+        stripInternalHiddenTags: typeof stripInternalHiddenTags === 'function' ? stripInternalHiddenTags : function (t) { return t; },
+        LexeraTagSystem: LexeraTagSystem,
+        getCanvasModeHelpers: function () {
+          return { normalizeBoardLayoutValue: function (v) { return v === 'canvas' ? 'canvas' : 'kanban'; }, normalizeCanvasGridValue: function (v) { return v; } };
+        },
+        getBoardSettingValue: function () { return 'kanban'; }
+      });
+    }
     ${fnDefs.join('\n\n')}
 
     return {

@@ -16,6 +16,10 @@ function loadMutationHarness() {
   new Function(tagSystemSource)();
   const LexeraTagSystem = globalThis.LexeraTagSystem || globalThis.window?.LexeraTagSystem;
 
+  // Load OrderHelpers so delegation stubs in app.js can reference it
+  const orderHelpersSource = readFileSync(resolve(srcDir, 'board', 'orderHelpers.js'), 'utf-8');
+  new Function(orderHelpersSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
@@ -198,8 +202,37 @@ function loadMutationHarness() {
       };
     }
 
+    var OrderHelpers = (typeof window !== 'undefined' && window.LexeraOrderHelpers) || (typeof globalThis !== 'undefined' && globalThis.LexeraOrderHelpers) || null;
+
     // --- Pure helpers ---
     ${pureHelpers}
+
+    // Initialize OrderHelpers with test mock deps so delegation stubs work
+    if (OrderHelpers && typeof OrderHelpers.init === 'function') {
+      OrderHelpers.init({
+        hasTag: function (text, tag) { return hasTag(text, tag); },
+        is_archived_or_deleted: function (text) { return is_archived_or_deleted(text); },
+        stripInternalHiddenTags: function (text) { return stripInternalHiddenTags(text); },
+        LexeraTagSystem: (typeof window !== 'undefined' && window.LexeraTagSystem) || (typeof globalThis !== 'undefined' && globalThis.LexeraTagSystem) || null,
+        get fullBoardData() { return fullBoardData; },
+        get activeBoardId() { return activeBoardId; },
+        get activeBoardData() { return activeBoardData; },
+        getFullColumn: function (idx) {
+          var cols = getAllColumnsFromBoardData(fullBoardData);
+          return (idx >= 0 && idx < cols.length) ? cols[idx] : null;
+        },
+        pushUndo: function () { pushUndo(); },
+        persistBoardMutation: function (opts) { return persistBoardMutation(opts); },
+        getCanvasModeHelpers: function () {
+          return { normalizeBoardLayoutValue: function (v) { return v === 'canvas' ? 'canvas' : 'kanban'; }, normalizeCanvasGridValue: function (v) { return v; } };
+        },
+        getBoardSettingValue: function () { return 'kanban'; },
+        getFoldStateApi: function () { return {}; },
+        getElColumnsContainer: function () { return null; },
+        saveCardCollapseState: function () {},
+        refreshBoardHeaderActionStates: function () {}
+      });
+    }
 
     // --- Closure helpers ---
     ${closureHelpers}
