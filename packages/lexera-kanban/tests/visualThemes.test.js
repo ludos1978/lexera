@@ -48,7 +48,7 @@ describe('visualThemes', () => {
 
     expect(window.getLexeraCurrentVisualThemeId()).toBe('sleek');
     expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
-    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['classic', 'sleek', 'gap', 'lines']);
+    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['classic', 'sleek', 'sleek-uniform', 'gap', 'lines']);
   });
 
   it('migrates legacy board-theme storage into the unified visual theme', () => {
