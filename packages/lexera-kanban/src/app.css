@@ -674,10 +674,83 @@ textarea {
 
 .dashboard-chip {
   min-height: var(--btn-square-size);
-  padding: 0 8px;
+  padding: 0 10px;
   font-size: 11px;
   line-height: 1.2;
   white-space: nowrap;
+  border-radius: calc(12px * var(--ui-scale));
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.dashboard-chip .chip-icon {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+.dashboard-chip[data-dashboard-query*="overdue"] {
+  color: var(--error);
+  border-color: rgba(211, 47, 47, 0.35);
+}
+.dashboard-chip[data-dashboard-query*="overdue"]:hover {
+  background: rgba(211, 47, 47, 0.1);
+  border-color: var(--error);
+}
+
+.dashboard-chip[data-dashboard-query*="today"] {
+  color: var(--accent);
+  border-color: rgba(0, 122, 204, 0.35);
+}
+.dashboard-chip[data-dashboard-query*="today"]:hover {
+  background: rgba(0, 122, 204, 0.1);
+  border-color: var(--accent);
+}
+
+.dashboard-chip[data-dashboard-query*="week"] {
+  color: var(--success);
+  border-color: rgba(56, 138, 108, 0.35);
+}
+.dashboard-chip[data-dashboard-query*="week"]:hover {
+  background: rgba(56, 138, 108, 0.1);
+  border-color: var(--success);
+}
+
+.dashboard-chip[data-dashboard-query*="parked"] {
+  color: var(--text-muted);
+  border-color: rgba(138, 138, 138, 0.35);
+}
+.dashboard-chip[data-dashboard-query*="parked"]:hover {
+  background: rgba(138, 138, 138, 0.1);
+  border-color: var(--text-muted);
+}
+
+.dashboard-chip.active {
+  font-weight: 600;
+}
+.dashboard-chip[data-dashboard-query*="overdue"].active {
+  background: rgba(211, 47, 47, 0.15);
+  border-color: var(--error);
+  color: var(--error);
+}
+.dashboard-chip[data-dashboard-query*="today"].active {
+  background: rgba(0, 122, 204, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.dashboard-chip[data-dashboard-query*="week"].active {
+  background: rgba(56, 138, 108, 0.15);
+  border-color: var(--success);
+  color: var(--success);
+}
+.dashboard-chip[data-dashboard-query*="parked"].active {
+  background: rgba(138, 138, 138, 0.15);
+  border-color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .sidebar-dashboard-body {

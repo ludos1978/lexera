@@ -60,10 +60,10 @@
           '<button class="board-action-btn lexera-shared-dashboard-pin" type="button" title="Pin current dashboard query">Pin</button>' +
         '</div>' +
         '<div class="dashboard-quick-row">' +
-          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:overdue" type="button">Overdue</button>' +
-          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:today" type="button">Today</button>' +
-          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:week" type="button">Week</button>' +
-          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open #hidden-internal-parked" type="button">Parked</button>' +
+          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:overdue" type="button"><span class="chip-icon">!!</span>Overdue</button>' +
+          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:today" type="button"><span class="chip-icon">&#9679;</span>Today</button>' +
+          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:week" type="button"><span class="chip-icon">&#9670;</span>Week</button>' +
+          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open #hidden-internal-parked" type="button"><span class="chip-icon">&#9646;</span>Parked</button>' +
         '</div>' +
       '</div>' +
       '<div class="sidebar-dashboard-body">' +
