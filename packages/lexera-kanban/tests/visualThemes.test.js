@@ -64,13 +64,14 @@ describe('visualThemes', () => {
     const applied = window.applyLexeraVisualTheme('legacy');
 
     expect(applied).toEqual({
-      id: 'classic',
-      name: 'Classic',
-      description: 'Balanced Lexera layout'
+      id: 'sleek-uniform',
+      baseId: 'sleek',
+      name: 'Sleek Uniform',
+      description: 'Sleek layout copy for unified typography'
     });
-    expect(window.getLexeraCurrentVisualThemeId()).toBe('classic');
-    expect(documentElement.getAttribute('data-visual-theme')).toBe('classic');
-    expect(localStorage.getItem('lexera-visual-theme')).toBe('classic');
+    expect(window.getLexeraCurrentVisualThemeId()).toBe('sleek-uniform');
+    expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
+    expect(localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
   });
 
   it('maps the removed bordered alias back to classic', () => {

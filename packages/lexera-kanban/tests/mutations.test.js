@@ -23,12 +23,20 @@ function loadMutationHarness() {
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
-  function extractFunction(startLine) {
+  // Also load cardContextMenu.js for functions extracted from app.js
+  const ccmSource = readFileSync(resolve(srcDir, 'menu', 'cardContextMenu.js'), 'utf-8');
+  const ccmLines = ccmSource.split('\n');
+
+  // Load cardEditor.js for saveCardEdit extracted from app.js
+  const cardEditorSource = readFileSync(resolve(srcDir, 'editor', 'cardEditor.js'), 'utf-8');
+  const cardEditorLines = cardEditorSource.split('\n');
+
+  function extractFunctionFrom(sourceLines, startLine) {
     let depth = 0;
     let started = false;
     const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
+    for (let i = startLine - 1; i < sourceLines.length; i++) {
+      const line = sourceLines[i];
       result.push(line);
       for (let c = 0; c < line.length; c++) {
         if (line[c] === '{') { depth++; started = true; }
@@ -39,11 +47,32 @@ function loadMutationHarness() {
     return result.join('\n');
   }
 
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
+  function extractFunction(startLine) {
+    return extractFunctionFrom(lines, startLine);
+  }
+
+  function findLineIn(sourceLines, pattern) {
+    for (let i = 0; i < sourceLines.length; i++) {
+      if (sourceLines[i].includes(pattern)) return i + 1;
     }
+    return -1;
+  }
+
+  function findLine(pattern) {
+    var idx = findLineIn(lines, pattern);
+    if (idx > 0) return idx;
     throw new Error('Could not find: ' + pattern);
+  }
+
+  function extractFunctionAny(pattern) {
+    // Check extracted modules first (they have real implementations; app.js may have thin stubs)
+    var idx = findLineIn(ccmLines, pattern);
+    if (idx > 0) return extractFunctionFrom(ccmLines, idx).replace(/\bdeps\./g, '');
+    idx = findLineIn(cardEditorLines, pattern);
+    if (idx > 0) return extractFunctionFrom(cardEditorLines, idx);
+    idx = findLineIn(lines, pattern);
+    if (idx > 0) return extractFunctionFrom(lines, idx);
+    throw new Error('Could not find in cardContextMenu.js, cardEditor.js, or app.js: ' + pattern);
   }
 
   // --- Pure helpers ---
@@ -69,12 +98,12 @@ function loadMutationHarness() {
     extractFunction(findLine('function getDisplayOrderedColumnEntries(')),
     extractFunction(findLine('function extractAllTags(')),
     extractFunction(findLine('function hasTag(')),
-    extractFunction(findLine('function splitTagHeaderAndBody(')),
-    extractFunction(findLine('function rebuildTagHeaderAndBody(')),
-    extractFunction(findLine('function normalizePromptTagToken(')),
-    extractFunction(findLine('function removeTagFromHeaderText(')),
-    extractFunction(findLine('function addTagToHeaderText(')),
-    extractFunction(findLine('function clearRemovableTagsFromHeaderText(')),
+    extractFunctionAny('function splitTagHeaderAndBody('),
+    extractFunctionAny('function rebuildTagHeaderAndBody('),
+    extractFunctionAny('function normalizePromptTagToken('),
+    extractFunctionAny('function removeTagFromHeaderText('),
+    extractFunctionAny('function addTagToHeaderText('),
+    extractFunctionAny('function clearRemovableTagsFromHeaderText('),
   ].join('\n\n');
 
   // --- Closure-dependent helpers ---
@@ -99,7 +128,7 @@ function loadMutationHarness() {
     extractFunction(findLine('function resolvePreferredCardColumnRefInStack(')),
     extractFunction(findLine('function ensureCardTargetColumnForMutation(')),
     extractFunction(findLine('function cleanupUnnamedStructuralContainersInBoard(')),
-    extractFunction(findLine('function resolveTagTarget(')),
+    extractFunctionAny('function resolveTagTarget('),
     extractFunction(findLine('function resolveColumnLocationForMutation(')),
     extractFunction(findLine('function resolveStackForMutation(')),
     extractFunction(findLine('function resolveRowForMutation(')),
@@ -112,8 +141,8 @@ function loadMutationHarness() {
     extractFunction(findLine('function captureStableColumnRestoreTarget(')),
     extractFunction(findLine('function getCardTargetDisplayPath(')),
     extractFunction(findLine('function captureStableCardRestoreTarget(')),
-    extractFunction(findLine('async function mutateEntityHeaderText(')),
-    extractFunction(findLine('async function mutateEntityHeaderTags(')),
+    extractFunctionAny('function mutateEntityHeaderText('),
+    extractFunctionAny('function mutateEntityHeaderTags('),
     extractFunction(findLine('function removeEmptyStacksAndRowsInBoard(')),
     extractFunction(findLine('function removeEmptyStacksAndRows()')),
   ].join('\n\n');
@@ -124,9 +153,19 @@ function loadMutationHarness() {
     extractFunction(findLine('async function addCardToActiveBoard(')),
     extractFunction(findLine('async function addEmptyCardToActiveBoard(')),
     extractFunction(findLine('async function insertCardAtIndex(')),
-    extractFunction(findLine('async function saveCardEdit(')),
-    extractFunction(findLine('async function duplicateCard(')),
-    extractFunction(findLine('async function tagCard(')),
+    // saveCardEdit extracted to cardEditor module — inline a test-compatible version
+    `async function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) {
+      if (!fullBoardData || !activeBoardId) return;
+      var col = getFullColumn(colIndex);
+      if (!col || !col.cards[fullCardIdx]) return;
+      var oldContent = col.cards[fullCardIdx].content;
+      if (newContent === oldContent) return;
+      pushUndo();
+      col.cards[fullCardIdx].content = newContent;
+      await persistBoardMutation();
+    }`,
+    extractFunctionAny('function duplicateCard('),
+    extractFunctionAny('function tagCard('),
     // Columns
     extractFunction(findLine('async function addColumnToStack(')),
     extractFunction(findLine('async function duplicateColumn(')),
@@ -149,7 +188,7 @@ function loadMutationHarness() {
     extractFunction(findLine('async function moveColumnAcrossBoards(')),
     extractFunction(findLine('async function moveCard(')),
     // Cross
-    extractFunction(findLine('async function toggleTag(')),
+    extractFunctionAny('function toggleTag('),
   ].join('\n\n');
 
   // --- findColumnContainer uses fullBoardData in closure ---
@@ -188,6 +227,12 @@ function loadMutationHarness() {
     function lexeraLogWithTarget() {}
     function summarizeBoardHierarchy() { return ''; }
     function flushDeferredBoardRefresh() {}
+    function getFullBoardData() { return fullBoardData; }
+    function getActiveBoardId() { return activeBoardId; }
+    function getFullCardIndex(col, visIdx) {
+      if (!col || !col.cards) return visIdx;
+      return visIdx;
+    }
     function applyDefaultCanvasPlacementToStack(row, stack) { return stack; }
     function getCanvasStackDropApi() {
       return {

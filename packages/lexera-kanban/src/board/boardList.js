@@ -746,13 +746,15 @@ var LexeraBoardList = (function () {
 
   function syncMirroredWorkspaceViews() {
     var workspaceRoots = _callDep('getSharedPanelRoots', 'hierarchy');
-    if (!workspaceRoots.length) return;
+    var normalizedWorkspaceRoots = Array.isArray(workspaceRoots) ? workspaceRoots : [];
+    var workspaceRootCount = normalizedWorkspaceRoots.length;
+    if (!workspaceRootCount) return;
     var activeWorkspaceId = _dep('activeWorkspaceId');
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var canonicalSelect = document.getElementById('workspace-select');
     var canonicalBoardList = getElBoardList();
-    for (var i = 0; i < workspaceRoots.length; i++) {
-      var rootEl = workspaceRoots[i];
+    for (var i = 0; i < workspaceRootCount; i++) {
+      var rootEl = normalizedWorkspaceRoots[i];
       if (!rootEl) continue;
       bindMirroredWorkspaceView(rootEl);
       var selectEl = rootEl.querySelector('.lexera-shared-workspace-select');
@@ -865,7 +867,7 @@ var LexeraBoardList = (function () {
     var filteredBoards = activeWorkspaceId && activeWorkspaceId !== ALL_WORKSPACES_ID
       ? boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(activeWorkspaceId) >= 0; })
       : boards;
-    var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; });
+    var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; }) || filteredBoards;
     var expandedIds = getSidebarExpandedBoards();
 
     for (var i = 0; i < orderedBoards.length; i++) {
