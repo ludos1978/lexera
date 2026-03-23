@@ -88,7 +88,9 @@ pub async fn file_info(
                 .and_then(|p| p.parent())
                 .unwrap_or_else(|| std::path::Path::new("."));
             let resolved = board_dir.join(&params.path);
-            let exists = resolved.canonicalize().ok().map(|p| p.exists()).unwrap_or(false);
+            let exists = resolved.canonicalize().ok().map(|p| p.exists()).unwrap_or(false)
+                || resolved.with_extension("md").canonicalize().ok().map(|_| true).unwrap_or(false)
+                || resolved.is_dir();
             return Json(serde_json::json!({
                 "exists": exists,
                 "external": true,

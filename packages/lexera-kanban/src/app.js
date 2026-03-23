@@ -22005,7 +22005,7 @@ const LexeraDashboard = (function () {
 
   function applyFileLinkInfo(link, info, filePath) {
     if (!link) return;
-    var isMissing = !!(info && info.exists === false);
+    var isMissing = !!(info && info.exists === false && !info.external);
     link.classList.toggle('link-broken', isMissing);
     var container = link.closest('.link-path-overlay-container');
     if (container) container.classList.toggle('link-broken', isMissing);
