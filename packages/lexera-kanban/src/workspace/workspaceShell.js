@@ -2183,7 +2183,7 @@
       el.appendChild(fold);
     }
 
-    // Header-level close button (visible for single, hidden for multi via CSS)
+    // Header-level close button (always visible; closes the active tab/panel)
     var close = document.createElement('button');
     close.className = 'ws-view-close';
     close.type = 'button';
@@ -3133,6 +3133,14 @@
         viewEl.setAttribute('title', getTabTitle(tab));
       }
     }
+
+    // Keep header-level drag handle and close button pointing at the active tab
+    var activeId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
+    var dragEl = headerEl.querySelector('.ws-view-drag');
+    if (dragEl) dragEl.setAttribute('data-ws-tab-id', activeId);
+    var closeEl = headerEl.querySelector('.ws-view-close');
+    if (closeEl) closeEl.setAttribute('data-ws-tab-id', activeId);
+
     return true;
   }
 

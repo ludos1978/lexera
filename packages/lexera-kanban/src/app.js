@@ -21769,12 +21769,13 @@ const LexeraDashboard = (function () {
     });
   }
 
-  async function requestRenderedSpecialPreviewAsset(boardId, filePath, absoluteSourcePath, cachePath, config) {
+  async function requestRenderedSpecialPreviewAsset(boardId, filePath, absoluteSourcePath, cachePath, config, renderOptions) {
     if (!hasTauri || !absoluteSourcePath || !cachePath || !config || config.supportsRuntimeRender === false) {
       return false;
     }
+    var force = !!(renderOptions && renderOptions.force);
     var renderKey = String(config.pluginId || '') + '::' + cachePath;
-    if (pendingSpecialPreviewRenderCache[renderKey]) {
+    if (!force && pendingSpecialPreviewRenderCache[renderKey]) {
       return pendingSpecialPreviewRenderCache[renderKey];
     }
     pendingSpecialPreviewRenderCache[renderKey] = tauriInvoke('render_embedded_file', {
@@ -21783,7 +21784,8 @@ const LexeraDashboard = (function () {
         sourcePath: absoluteSourcePath,
         targetPath: cachePath,
         pageNumber: config.pageNumber || 1,
-        outputFormat: config.outputFormat || config.extension || 'png'
+        outputFormat: config.outputFormat || config.extension || 'png',
+        force: force
       }
     }).then(function (result) {
       delete pendingSpecialPreviewRenderCache[renderKey];
@@ -21857,7 +21859,7 @@ const LexeraDashboard = (function () {
     var forceRerender = !!(options && options.forceRerender);
     var cacheInfo = forceRerender ? null : await requestFileInfo(boardId, cachePath);
     if (!cacheInfo || !cacheInfo.exists) {
-      var rendered = await requestRenderedSpecialPreviewAsset(boardId, filePath, absoluteSourcePath, cachePath, config);
+      var rendered = await requestRenderedSpecialPreviewAsset(boardId, filePath, absoluteSourcePath, cachePath, config, { force: forceRerender });
       if (!rendered) return null;
       delete fileInfoCache[getFileInfoCacheKey(boardId, cachePath)];
       delete pendingFileInfoCache[getFileInfoCacheKey(boardId, cachePath)];
@@ -26524,8 +26526,11 @@ const LexeraDashboard = (function () {
           { id: 'add-row-after', label: 'Add row after' }
         ];
         if (scope === 'stack') return [
-          { id: 'add-column', label: 'Add column' },
-          { id: 'add-stack-after', label: 'Add stack after' }
+          { id: 'add-sub', label: 'Add', items: [
+            { id: 'add-column', label: 'Column' },
+            { id: 'add-stack-before', label: 'Stack before' },
+            { id: 'add-stack-after', label: 'Stack after' }
+          ]}
         ];
         return null;
       }

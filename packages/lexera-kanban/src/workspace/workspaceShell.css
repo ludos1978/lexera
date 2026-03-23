@@ -382,9 +382,10 @@
 }
 
 /*
- * SOLO VIEW HEADER
- * When a view is alone (not tabbed), the header shows: [drag] [title] [close].
- * Drag is to the left of the filename, close is to the right.
+ * VIEW HEADER
+ * Single view: [drag] [title] ... [fold?] [close].
+ * Multi-tab view: [drag] [tabs (each with own ×)] ... [fold?] [close].
+ * Drag and close are always visible. In multi-tab mode they sit in the tab bar row.
  * The is-single class hides tabs, showing title + controls in a single row.
  */
 
@@ -693,10 +694,8 @@
   margin-left: auto;
 }
 
-/* When there are tabs, hide the header-level close (each tab has its own) */
-.ws-view-header:not(.is-single) .ws-view-close {
-  display: none;
-}
+/* When there are tabs, the header-level close button remains visible
+ * at the far right of the tab bar. It closes the currently active tab. */
 
 /* When single, the close is at the header level */
 .ws-view-header.is-single .ws-view-tabs {

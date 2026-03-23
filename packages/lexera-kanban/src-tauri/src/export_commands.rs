@@ -75,6 +75,8 @@ pub struct RenderEmbeddedFileOptions {
     pub target_path: String,
     pub page_number: Option<u32>,
     pub output_format: Option<String>,
+    #[serde(default)]
+    pub force: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -1657,13 +1659,18 @@ pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<Ren
         });
     }
 
+    let force = opts.force.unwrap_or(false);
     if target_path.is_file() {
-        return Ok(RenderEmbeddedFileResult {
-            success: true,
-            output_path: opts.target_path,
-            format: output_format,
-            error: None,
-        });
+        if force {
+            let _ = fs::remove_file(&target_path);
+        } else {
+            return Ok(RenderEmbeddedFileResult {
+                success: true,
+                output_path: opts.target_path,
+                format: output_format,
+                error: None,
+            });
+        }
     }
 
     let render_result = if let Some(renderer) = find_embedded_renderer(&opts.plugin_id) {
