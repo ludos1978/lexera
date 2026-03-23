@@ -2,17 +2,19 @@
 
 ## High Priority — Security & Reliability
 
-- [ ] each view must also have a close button in the top right. so for all views (dashboard, workspaces, log and kanban/canvas, logs views etc.). they have the drag icon, the title, the individual buttons and to the right there is the close button. the close and drag buttons move up into the tab bar when it's visible (if multiple views are on top of each other)
+- [ ] if space is so small for the list of tabs fold it together to show as a dropdown. make the empty space areound the close button smaller!
 
-- [ ] the burger menu of stacks must contain:
-  - add
-    - column
-    - stack
-      - before
-      - after
-  - rename
+- [ ] make the drag borders between views allways at least 3 pixels. it currently seems as if it's 1 pixel and it's barely findable.
 
-- [ ] when pressing retry render on a drawio diagram it disappears and it seems to be rendering the image (draw.io opens in the background). but it doesnt show the image afterwards. maybe its not doing a visual refresh with the image. also make sure that the cache files are stored somewhere good. 
+- [ ] the hierarchy settings in the frontend settings have no influence (only drag icons works). also remove the diagnositics & open inspector in  frontend settings. the theme change sometimes doesnt react, only after re-opening the settings they apply immediately. the editor settings down work as well as far as i can tell. 
+
+- [x] ~~double clicking any title starts modifying the text.~~ (4aade867)
+
+- [x] ~~each view must also have a close button in the top right.~~ (89dc578b)
+
+- [x] ~~the burger menu of stacks must contain: add (column, stack before/after), rename~~ (89dc578b)
+
+- [x] ~~drawio retry render fix — cache-buster URL parameter fixed~~ (3eaf7260)
 
 - [ ]  i want the views (kanban view or canvas view) to be able to be individual windows. when a new board is opened its opening a new tab, when i drag a tab out of the window, it creates a separate window. the tabs can be modularely placed  so the view is for example split vertically or horizontally! this is a major refactor, do a deep analysis first!
 
