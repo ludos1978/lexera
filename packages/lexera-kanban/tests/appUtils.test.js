@@ -38,6 +38,10 @@ function loadAppUtils() {
   const hiddenItemsSource = readFileSync(resolve(srcDir, 'hiddenItems', 'hiddenItemsDropdown.js'), 'utf-8');
   const hiddenItemsLines = hiddenItemsSource.split('\n');
 
+  // Load inlineCardEditor module for extracted inline editor helpers
+  const inlineCardEditorSource = readFileSync(resolve(srcDir, 'editor', 'inlineCardEditor.js'), 'utf-8');
+  const inlineCardEditorLines = inlineCardEditorSource.split('\n');
+
   // Extract a function starting at the given 1-based line number.
   // Scans forward to find the matching closing brace.
   function extractFunctionFrom(sourceLines, startLine) {
@@ -109,8 +113,8 @@ function loadAppUtils() {
     extractFunction(findLine('function reconstructColumnTitle(')),
     extractFunction(findLine('function reorderItems(')),
     extractFunction(findLine('function normalizeDroppedPath(')),
-    extractFunction(findLine('function shouldKeepInlineEditorOpenOnBlur(')),
-    extractFunction(findLine('function shouldCancelInlineEditorOnEscape(')),
+    extractFunctionFrom(inlineCardEditorLines, findLineIn(inlineCardEditorLines, 'function shouldKeepInlineEditorOpenOnBlur(')),
+    extractFunctionFrom(inlineCardEditorLines, findLineIn(inlineCardEditorLines, 'function shouldCancelInlineEditorOnEscape(')),
     extractFunction(findLine('function syncConnectionStatusButton(')),
   ];
 

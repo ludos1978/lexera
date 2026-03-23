@@ -26,7 +26,7 @@ const LexeraDashboard = (function () {
   var ptrDrag = null; // Pointer-based DnD state: { type, source, startX, startY, started, ghost, el }
   var isEditing = false;
   var currentCardEditor = null;
-  var currentInlineCardEditor = null;
+  var InlineCardEditorModule = window.InlineCardEditor;
   var cardEditorMode = null;
   var cardEditorFontScale = 1;
   var pendingRefresh = false;
@@ -46,6 +46,7 @@ const LexeraDashboard = (function () {
   var sidebarSyncEnabled = localStorage.getItem('lexera-sidebar-sync') === 'true';
   var hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') === 'true'; // default false
   var DiagramRegistry = window.LexeraDiagramRegistry;
+  var CardContentRenderer = window.LexeraCardContentRenderer;
   var ContentEnhancerRegistry = window.LexeraContentEnhancerRegistry;
   var ActionRegistry = window.LexeraActionRegistry;
   var BoardSettingRegistry = window.LexeraBoardSettingRegistry;
@@ -61,6 +62,29 @@ const LexeraDashboard = (function () {
   if (DropZoneIndicators) DropZoneIndicators.init({
     getElColumnsContainer: function() { return getElColumnsContainer(); },
     isHorizontalCanvasStack: function(stackEl) { return isHorizontalCanvasStackElement(stackEl); }
+  });
+  if (InlineCardEditorModule) InlineCardEditorModule.init({
+    getCurrentCardEditor: function() { return currentCardEditor; },
+    getFullBoardData: function() { return fullBoardData; },
+    getFullColumn: function(idx) { return getFullColumn(idx); },
+    getFullCardIndex: function(col, visIdx) { return getFullCardIndex(col, visIdx); },
+    escapeAttr: function(s) { return escapeAttr(s); },
+    setIsEditing: function(v) { isEditing = v; },
+    LexeraApi: LexeraApi,
+    getSyncUserName: function() { return syncUserName; },
+    getSyncUserId: function() { return syncUserId; },
+    queueCardDraftLiveSync: function(ci, fi, c) { queueCardDraftLiveSync(ci, fi, c); },
+    queueEditingPresenceBroadcast: function(kid, pos, typing) { queueEditingPresenceBroadcast(kid, pos, typing); },
+    handleTextareaTabIndent: function(e, ta) { return handleTextareaTabIndent(e, ta); },
+    insertFormatting: function(ta, fmt) { insertFormatting(ta, fmt); },
+    resolveDropContent: function(dt) { return resolveDropContent(dt); },
+    handleEditorPasteImage: function(e, ta) { handleEditorPasteImage(e, ta); },
+    clearEditingPresenceQueue: function() { clearEditingPresenceQueue(); },
+    clearPendingCardDraftSync: function() { clearPendingCardDraftSync(); },
+    saveCardEdit: function(el, ci, fi, val) { return saveCardEdit(el, ci, fi, val); },
+    renderCardDisplayState: function(el, content) { renderCardDisplayState(el, content); },
+    revertCardDraftLiveSync: function(ci, fi, orig) { return revertCardDraftLiveSync(ci, fi, orig); },
+    flushDeferredBoardRefresh: function(opts) { return flushDeferredBoardRefresh(opts); }
   });
   if (window.BoardSearchReplace) window.BoardSearchReplace.init({
     getFullBoardData: function () { return fullBoardData; },
@@ -1198,7 +1222,7 @@ const LexeraDashboard = (function () {
       didClose = true;
     }
 
-    if (currentInlineCardEditor) {
+    if (InlineCardEditorModule && InlineCardEditorModule.getCurrentInlineCardEditor()) {
       closeInlineCardEditor({ save: true });
       didClose = true;
     }
@@ -13170,7 +13194,7 @@ const LexeraDashboard = (function () {
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       try {
-      if (currentInlineCardEditor) {
+      if (InlineCardEditorModule && InlineCardEditorModule.getCurrentInlineCardEditor()) {
         e.preventDefault();
         closeInlineCardEditor({ save: false });
         return;
@@ -16540,9 +16564,7 @@ const LexeraDashboard = (function () {
   }
 
   function autoResizeInlineCardTextarea(textarea) {
-    if (!textarea) return;
-    textarea.style.height = 'auto';
-    textarea.style.height = textarea.scrollHeight + 'px';
+    if (InlineCardEditorModule) InlineCardEditorModule.autoResizeInlineCardTextarea(textarea);
   }
 
   function findVisibleCardElement(colIndex, cardIndex) {
@@ -16554,12 +16576,13 @@ const LexeraDashboard = (function () {
     if (mode === 'overlay' && !isOverlayEditorEnabled()) mode = 'inline';
     var targetCol = getFullColumn(colIndex);
     var targetFullIdx = targetCol ? getFullCardIndex(targetCol, cardIndex) : -1;
-    if (currentInlineCardEditor) {
-      var sameInlineCard = currentInlineCardEditor.cardEl === cardEl &&
-        currentInlineCardEditor.colIndex === colIndex &&
-        currentInlineCardEditor.fullCardIdx === targetFullIdx;
+    var inlineEditor = InlineCardEditorModule ? InlineCardEditorModule.getCurrentInlineCardEditor() : null;
+    if (inlineEditor) {
+      var sameInlineCard = inlineEditor.cardEl === cardEl &&
+        inlineEditor.colIndex === colIndex &&
+        inlineEditor.fullCardIdx === targetFullIdx;
       if (sameInlineCard && mode !== 'overlay') {
-        if (currentInlineCardEditor.textarea) currentInlineCardEditor.textarea.focus();
+        if (inlineEditor.textarea) inlineEditor.textarea.focus();
         return;
       }
       closeInlineCardEditor({ save: true }).then(function () {
@@ -16588,163 +16611,22 @@ const LexeraDashboard = (function () {
   }
 
   function shouldKeepInlineEditorOpenOnBlur() {
-    try {
-      return typeof document.hasFocus === 'function' && !document.hasFocus();
-    } catch (err) {
-      return false;
-    }
+    if (InlineCardEditorModule) return InlineCardEditorModule.shouldKeepInlineEditorOpenOnBlur();
+    return false;
   }
 
   function shouldCancelInlineEditorOnEscape(event) {
-    return !!event && event.key === 'Escape';
+    if (InlineCardEditorModule) return InlineCardEditorModule.shouldCancelInlineEditorOnEscape(event);
+    return false;
   }
 
   function enterInlineCardEditMode(cardEl, colIndex, cardIndex) {
-    if (currentCardEditor || currentInlineCardEditor) return;
-    if (!fullBoardData) return;
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var fullIdx = getFullCardIndex(col, cardIndex);
-    var card = col.cards[fullIdx];
-    if (!card) return;
-
-    var contentEl = cardEl ? cardEl.querySelector('.card-content') : null;
-    if (!contentEl) return;
-
-    isEditing = true;
-    cardEl.classList.add('editing');
-    cardEl.classList.add('editing-inline');
-    cardEl.classList.remove('editing-overlay');
-    cardEl.classList.remove('collapsed');
-    contentEl.innerHTML =
-      '<textarea class="card-edit-input card-inline-textarea" spellcheck="false" style="' +
-        escapeAttr('display:block;width:100%;resize:vertical;overflow:auto') +
-      '"></textarea>';
-
-    var textarea = contentEl.querySelector('.card-inline-textarea');
-    if (!textarea) return;
-    textarea.value = card.content || '';
-    autoResizeInlineCardTextarea(textarea);
-
-    currentInlineCardEditor = {
-      cardEl: cardEl,
-      colIndex: colIndex,
-      fullCardIdx: fullIdx,
-      contentEl: contentEl,
-      textarea: textarea,
-      originalContent: card.content || ''
-    };
-
-    function maybeSaveOnBlur() {
-      var editor = currentInlineCardEditor;
-      if (!editor || editor.textarea !== textarea) return;
-      setTimeout(function () {
-        if (!currentInlineCardEditor || currentInlineCardEditor.textarea !== textarea) return;
-        if (shouldKeepInlineEditorOpenOnBlur()) return;
-        closeInlineCardEditor({ save: true });
-      }, 0);
-    }
-
-    // Broadcast editing presence when opening inline editor
-    if (card.kid && LexeraApi.isSyncConnected()) {
-      LexeraApi.sendEditingPresence(card.kid, syncUserName || syncUserId, textarea.selectionStart, false);
-    }
-
-    textarea.addEventListener('input', function () {
-      try {
-      autoResizeInlineCardTextarea(textarea);
-      queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
-      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, true);
-      } catch (err) {
-        logFrontendIssue('error', 'editor.inline', 'Error in inline editor input handler', err);
-      }
-    });
-    textarea.addEventListener('keyup', function () {
-      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
-    });
-    textarea.addEventListener('mouseup', function () {
-      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
-    });
-    textarea.addEventListener('blur', maybeSaveOnBlur);
-    textarea.addEventListener('keydown', function (e) {
-      try {
-      if (handleTextareaTabIndent(e, textarea)) return;
-      if (shouldCancelInlineEditorOnEscape(e)) {
-        e.preventDefault();
-        e.stopPropagation();
-        closeInlineCardEditor({ save: false });
-        return;
-      }
-      if (e.altKey && e.key === 'Enter') {
-        e.preventDefault();
-        closeInlineCardEditor({ save: true });
-        return;
-      }
-      // Check user-defined keybindings for editor context
-      if (window.LexeraKeybindingRegistry) {
-        var kb = window.LexeraKeybindingRegistry.match(e, 'editor');
-        if (kb) {
-          e.preventDefault();
-          window.LexeraKeybindingRegistry.execute(kb, textarea, insertFormatting);
-          return;
-        }
-      }
-      } catch (err) {
-        logFrontendIssue('error', 'editor.inline', 'Error in inline editor keydown handler', err);
-      }
-    });
-    textarea.addEventListener('dragover', function (e) {
-      if (e.dataTransfer) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
-    });
-    textarea.addEventListener('drop', async function (e) {
-      if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
-      e.preventDefault();
-      var markdown = await resolveDropContent(e.dataTransfer);
-      if (markdown) {
-        insertFormatting(textarea, { snippet: markdown });
-        textarea.focus();
-      }
-    });
-    textarea.addEventListener('paste', function (e) {
-      handleEditorPasteImage(e, textarea);
-    });
-
-    requestAnimationFrame(function () {
-      if (!currentInlineCardEditor || currentInlineCardEditor.textarea !== textarea) return;
-      textarea.focus();
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-    });
+    if (InlineCardEditorModule) InlineCardEditorModule.enterInlineCardEditMode(cardEl, colIndex, cardIndex);
   }
 
   function closeInlineCardEditor(options) {
-    options = options || {};
-    if (!currentInlineCardEditor) return Promise.resolve();
-    var editor = currentInlineCardEditor;
-    currentInlineCardEditor = null;
-    isEditing = false;
-    // Clear editing presence
-    clearEditingPresenceQueue();
-    if (LexeraApi.isSyncConnected()) {
-      LexeraApi.sendEditingPresence(null, '', null, false);
-    }
-    if (editor.cardEl && editor.cardEl.classList) {
-      editor.cardEl.classList.remove('editing');
-      editor.cardEl.classList.remove('editing-inline');
-      editor.cardEl.classList.remove('editing-overlay');
-    }
-    if (options.save) {
-      clearPendingCardDraftSync();
-      return saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
-    }
-    renderCardDisplayState(editor.cardEl, editor.originalContent);
-    return revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent)
-      .catch(function (err) {
-        logFrontendIssue('warn', 'live-sync.revert', 'Failed to revert inline editor live-sync draft', err);
-        return false;
-      })
-      .then(function () {
-        return flushDeferredBoardRefresh({ refreshSidebar: true });
-      });
+    if (InlineCardEditorModule) return InlineCardEditorModule.closeInlineCardEditor(options);
+    return Promise.resolve();
   }
 
   function applyCardEditorMode(mode) {
@@ -16774,7 +16656,7 @@ const LexeraDashboard = (function () {
   }
 
   function enterCardEditMode(cardEl, colIndex, cardIndex) {
-    if (currentCardEditor || currentInlineCardEditor) return;
+    if (currentCardEditor || (InlineCardEditorModule && InlineCardEditorModule.getCurrentInlineCardEditor())) return;
     if (!fullBoardData) return;
     var col = getFullColumn(colIndex);
     if (!col) return;
@@ -19218,16 +19100,14 @@ const LexeraDashboard = (function () {
   // --- Embed Menu ---
 
   var activeEmbedMenu = null;
-  var embedPreviewCache = {};
-  var externalEmbedPolicyCache = {};
-  var pendingExternalEmbedPolicyCache = {};
+  // embedPreviewCache, externalEmbedPolicyCache, pendingExternalEmbedPolicyCache, MAX_INCLUDE_PREVIEW_DEPTH
+  // are now managed inside EmbedEnhancer module
   var fileInfoCache = {};
   var pendingFileInfoCache = {};
   var pendingSpecialPreviewRenderCache = {};
   var pendingPlantUmlRenderCache = {};
   var specialPreviewErrorCache = {};
   var activeSpecialFileEditor = null;
-  var MAX_INCLUDE_PREVIEW_DEPTH = 2;
 
   function isMarkdownPreviewExtension(ext) {
     return ext === 'md' || ext === 'markdown';
@@ -19968,7 +19848,7 @@ const LexeraDashboard = (function () {
   function clearCachedFilePreviewState(boardId, filePath) {
     var cacheKey = getEmbedPreviewCacheKey(boardId, filePath);
     var infoKey = getFileInfoCacheKey(boardId, parseLocalFileReference(filePath).path);
-    delete embedPreviewCache[cacheKey];
+    if (window.EmbedEnhancer) EmbedEnhancer.clearEmbedPreviewCache(boardId, filePath);
     delete specialPreviewErrorCache[cacheKey];
     delete fileInfoCache[infoKey];
     delete pendingFileInfoCache[infoKey];
@@ -19977,9 +19857,7 @@ const LexeraDashboard = (function () {
   function clearBoardPreviewCaches(boardId) {
     var prefix = String(boardId || '') + '::';
     if (!prefix || prefix === '::') return;
-    Object.keys(embedPreviewCache).forEach(function (key) {
-      if (key.indexOf(prefix) === 0) delete embedPreviewCache[key];
-    });
+    if (window.EmbedEnhancer) EmbedEnhancer.clearEmbedPreviewCache();
     Object.keys(fileInfoCache).forEach(function (key) {
       if (key.indexOf(prefix) === 0) delete fileInfoCache[key];
     });
@@ -19992,188 +19870,78 @@ const LexeraDashboard = (function () {
   }
 
   function normalizeExternalEmbedUrlForCache(url) {
+    if (window.EmbedEnhancer) return EmbedEnhancer.normalizeExternalEmbedUrlForCache(url);
     var value = String(url || '').trim();
     if (!value) return '';
-    try {
-      var parsed = new URL(value);
-      parsed.hash = '';
-      return parsed.toString();
-    } catch (err) {
-      return value;
-    }
+    try { var parsed = new URL(value); parsed.hash = ''; return parsed.toString(); } catch (err) { return value; }
   }
 
   function getExternalEmbedParentOrigin() {
-    try {
-      if (window.location && typeof window.location.origin === 'string') {
-        return window.location.origin || '';
-      }
-    } catch (err) {
-      // Fall through to empty origin.
-    }
+    if (window.EmbedEnhancer) return EmbedEnhancer.getExternalEmbedParentOrigin();
+    try { if (window.location && typeof window.location.origin === 'string') return window.location.origin || ''; } catch (err) {}
     return '';
   }
 
   function getExternalEmbedPolicyCacheKey(url, parentOrigin) {
+    if (window.EmbedEnhancer) return EmbedEnhancer.getExternalEmbedPolicyCacheKey(url, parentOrigin);
     return String(parentOrigin || '') + '::' + normalizeExternalEmbedUrlForCache(url);
   }
 
   function clearExternalEmbedPolicyCache(url, parentOrigin) {
-    var cacheKey = getExternalEmbedPolicyCacheKey(url, parentOrigin || getExternalEmbedParentOrigin());
-    delete externalEmbedPolicyCache[cacheKey];
-    delete pendingExternalEmbedPolicyCache[cacheKey];
+    if (window.EmbedEnhancer) return EmbedEnhancer.clearExternalEmbedPolicyCache(url, parentOrigin);
   }
 
   function getExternalEmbedPolicyButtonLabel(policy) {
+    if (window.EmbedEnhancer) return EmbedEnhancer.getExternalEmbedPolicyButtonLabel(policy);
     return policy && policy.action === 'open_page' ? 'Open page' : 'Open in browser';
   }
 
   function getExternalEmbedPolicyButtonAction(policy) {
+    if (window.EmbedEnhancer) return EmbedEnhancer.getExternalEmbedPolicyButtonAction(policy);
     return policy && policy.action === 'open_page' ? 'open-page' : 'open-browser';
   }
 
   function getExternalEmbedSourceUrl(container) {
+    if (window.EmbedEnhancer) return EmbedEnhancer.getExternalEmbedSourceUrl(container);
     if (!container) return '';
     return container.getAttribute('data-embed-url') || '';
   }
 
   function getExternalEmbedFrameUrl(container) {
+    if (window.EmbedEnhancer) return EmbedEnhancer.getExternalEmbedFrameUrl(container);
     if (!container) return '';
     return container.getAttribute('data-embed-frame-url') || getExternalEmbedSourceUrl(container);
   }
 
   function getExternalEmbedProbeUrl(container) {
+    if (window.EmbedEnhancer) return EmbedEnhancer.getExternalEmbedProbeUrl(container);
     if (!container) return '';
     return container.getAttribute('data-embed-probe-url') || getExternalEmbedFrameUrl(container) || getExternalEmbedSourceUrl(container);
   }
 
   function buildExternalEmbedFrameHtml(container) {
-    var embedUrl = getExternalEmbedFrameUrl(container);
-    var embedWidth = sanitizeCssLength(container.getAttribute('data-embed-width')) || '100%';
-    var embedHeight = sanitizeCssLength(container.getAttribute('data-embed-height')) || '500px';
-    var titleText = decodeHtmlEntities(
-      container.getAttribute('data-embed-title') ||
-      container.getAttribute('data-alt-text') ||
-      embedUrl
-    );
-    return '<iframe class="external-embed-frame" src="' + escapeAttr(embedUrl) + '"' +
-      ' title="' + escapeAttr(titleText || embedUrl) + '"' +
-      ' loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen frameborder="0"' +
-      ' style="' + escapeAttr('width:' + embedWidth + ';height:' + embedHeight) + '"></iframe>';
+    if (window.EmbedEnhancer) return EmbedEnhancer.buildExternalEmbedFrameHtml(container);
+    return '';
   }
 
   function getExternalEmbedStage(container) {
+    if (window.EmbedEnhancer) return EmbedEnhancer.getExternalEmbedStage(container);
     if (!container) return null;
     var stage = container.querySelector('.external-embed-stage');
-    if (stage) return stage;
-    stage = document.createElement('span');
-    stage.className = 'external-embed-stage';
-    container.insertBefore(stage, container.firstChild || null);
-    return stage;
+    return stage || null;
   }
 
   function renderExternalEmbedPrompt(container, state) {
-    if (!container) return;
-    var stage = getExternalEmbedStage(container);
-    if (!stage) return;
-    var embedUrl = getExternalEmbedSourceUrl(container);
-    var displayUrl = embedUrl;
-    try {
-      displayUrl = (new URL(embedUrl)).hostname || embedUrl;
-    } catch (err) {
-      displayUrl = embedUrl;
-    }
-    var titleText = decodeHtmlEntities(container.getAttribute('data-embed-title') || '');
-    var heading = titleText || displayUrl || 'External page';
-    var buttonHtml = '';
-    var reasonHtml = '';
-    if (state && state.ready) {
-      buttonHtml = '<button class="external-embed-open-btn" type="button" data-external-embed-action="' +
-        escapeAttr(getExternalEmbedPolicyButtonAction(state.policy)) + '">' +
-        escapeHtml(getExternalEmbedPolicyButtonLabel(state.policy)) +
-        '</button>';
-      if (state.policy && state.policy.reason) {
-        reasonHtml = '<div class="external-embed-reason">' + escapeHtml(state.policy.reason) + '</div>';
-      }
-      container.setAttribute('data-external-policy-action', state.policy && state.policy.action ? state.policy.action : '');
-      if (state.policy && state.policy.reason) {
-        container.setAttribute('data-external-policy-reason', state.policy.reason);
-      } else {
-        container.removeAttribute('data-external-policy-reason');
-      }
-    } else {
-      container.removeAttribute('data-external-policy-action');
-      container.removeAttribute('data-external-policy-reason');
-    }
-    stage.innerHTML =
-      '<div class="external-embed-shell external-embed-shell-' + escapeAttr((state && state.mode) || 'loading') + '">' +
-        '<div class="external-embed-label">External page</div>' +
-        '<div class="external-embed-heading">' + escapeHtml(heading) + '</div>' +
-        '<div class="external-embed-url">' + escapeHtml(embedUrl) + '</div>' +
-        '<div class="external-embed-message">' + escapeHtml((state && state.message) || 'Checking whether the page can be embedded…') + '</div>' +
-        (buttonHtml ? '<div class="external-embed-actions">' + buttonHtml + '</div>' : '') +
-        reasonHtml +
-      '</div>';
+    if (window.EmbedEnhancer) return EmbedEnhancer.renderExternalEmbedPrompt(container, state);
   }
 
   function openExternalEmbedInPlace(container) {
-    if (!container) return;
-    var embedUrl = getExternalEmbedFrameUrl(container);
-    if (!embedUrl) return;
-    container.setAttribute('data-external-opened', '1');
-    var stage = getExternalEmbedStage(container);
-    if (!stage) return;
-    stage.innerHTML =
-      buildExternalEmbedFrameHtml(container) +
-      '<div class="external-embed-inline-actions">' +
-        '<button class="external-embed-secondary-btn" type="button" data-external-embed-action="open-browser">Open in browser</button>' +
-      '</div>';
-    traceFrontendAction('info', 'embed.external.open', 'Opened external page inside embed', {
-      url: getExternalEmbedSourceUrl(container),
-      frameUrl: embedUrl
-    });
+    if (window.EmbedEnhancer) return EmbedEnhancer.openExternalEmbedInPlace(container);
   }
 
   function requestExternalEmbedPolicy(url, options) {
-    options = options || {};
-    var normalizedUrl = normalizeExternalEmbedUrlForCache(url);
-    var parentOrigin = options.parentOrigin || getExternalEmbedParentOrigin();
-    var forceRefresh = !!options.forceRefresh;
-    var cacheKey = getExternalEmbedPolicyCacheKey(normalizedUrl, parentOrigin);
-    if (!forceRefresh && Object.prototype.hasOwnProperty.call(externalEmbedPolicyCache, cacheKey)) {
-      return Promise.resolve(externalEmbedPolicyCache[cacheKey]);
-    }
-    if (!forceRefresh && pendingExternalEmbedPolicyCache[cacheKey]) {
-      return pendingExternalEmbedPolicyCache[cacheKey];
-    }
-    pendingExternalEmbedPolicyCache[cacheKey] = LexeraApi.probeExternalEmbed(normalizedUrl, parentOrigin, forceRefresh)
-      .then(function (policy) {
-        externalEmbedPolicyCache[cacheKey] = policy || null;
-        delete pendingExternalEmbedPolicyCache[cacheKey];
-        traceFrontendAction('info', 'embed.external.policy', 'Resolved external embed policy', {
-          url: normalizedUrl,
-          parentOrigin: parentOrigin,
-          action: policy && policy.action,
-          embeddable: !!(policy && policy.embeddable),
-          fromCache: !!(policy && policy.fromCache),
-          reason: policy && policy.reason
-        });
-        return externalEmbedPolicyCache[cacheKey];
-      })
-      .catch(function (err) {
-        delete pendingExternalEmbedPolicyCache[cacheKey];
-        logFrontendIssue('warn', 'embed.external.policy', 'Failed to probe external embed policy for ' + normalizedUrl, err);
-        var fallback = {
-          url: normalizedUrl,
-          parentOrigin: parentOrigin,
-          embeddable: false,
-          action: 'open_in_browser',
-          reason: 'Could not verify iframe policy. Open in browser instead.'
-        };
-        externalEmbedPolicyCache[cacheKey] = fallback;
-        return fallback;
-      });
-    return pendingExternalEmbedPolicyCache[cacheKey];
+    if (window.EmbedEnhancer) return EmbedEnhancer.requestExternalEmbedPolicy(url, options);
+    return Promise.resolve(null);
   }
 
   function encodeUtf8Base64(value) { return PathUtils.encodeUtf8Base64(value); }
@@ -21010,309 +20778,44 @@ const LexeraDashboard = (function () {
   }
 
   function renderEmbedPreviewContent(kind, boardId, filePath, content) {
-    var safeContent = String(content || '');
-    if (safeContent.length > 12000) {
-      safeContent = safeContent.slice(0, 12000) + '\n\n[Preview truncated]';
-    }
-    if (kind === 'markdown') {
-      safeContent = resolveMarkdownRelativeTargets(safeContent, filePath);
-      return '<div class="embed-inline-markdown">' +
-        renderCardContent(safeContent, boardId, {
-          footnoteDefs: {},
-          footnoteOrder: [],
-          abbrDefs: {},
-          embedCounter: 0
-        }, { nested: true }) +
-        '</div>';
-    }
-    return '<pre class="embed-text-preview">' + escapeHtml(safeContent) + '</pre>';
+    if (window.EmbedEnhancer) return EmbedEnhancer.renderEmbedPreviewContent(kind, boardId, filePath, content);
+    return '<pre class="embed-text-preview">' + escapeHtml(String(content || '')) + '</pre>';
   }
 
   async function enhanceEmbeddedContent(root) {
+    if (window.EmbedEnhancer) return EmbedEnhancer.enhanceEmbeddedContent(root);
     if (ContentEnhancerRegistry) {
       ContentEnhancerRegistry.enhance(root, { boardId: activeBoardId });
     }
   }
 
   async function enhanceSingleExternalEmbedContainer(container, options) {
-    options = options || {};
-    if (!container) return;
-    var embedUrl = getExternalEmbedSourceUrl(container);
-    var probeUrl = getExternalEmbedProbeUrl(container);
-    var lastEnhancedUrl = container.getAttribute('data-external-enhanced-url') || '';
-    var lastEnhancedProbeUrl = container.getAttribute('data-external-enhanced-probe-url') || '';
-    if (
-      !options.forceRefresh &&
-      container.getAttribute('data-external-enhanced') === '1' &&
-      lastEnhancedUrl === embedUrl &&
-      lastEnhancedProbeUrl === probeUrl
-    ) return;
-    if (!embedUrl || !probeUrl) return;
-    container.setAttribute('data-external-enhanced', '1');
-    container.setAttribute('data-external-enhanced-url', embedUrl);
-    container.setAttribute('data-external-enhanced-probe-url', probeUrl);
-    container.removeAttribute('data-external-opened');
-    traceFrontendAction('info', 'embed.external.prepare', 'Preparing external embed check', {
-      url: embedUrl,
-      frameUrl: getExternalEmbedFrameUrl(container),
-      probeUrl: probeUrl,
-      forceRefresh: !!options.forceRefresh
-    });
-    renderExternalEmbedPrompt(container, {
-      mode: 'loading',
-      ready: false,
-      message: 'Checking whether this page can be embedded…'
-    });
-    var currentUrl = embedUrl;
-    var currentProbeUrl = probeUrl;
-    var policy = await requestExternalEmbedPolicy(probeUrl, {
-      forceRefresh: !!options.forceRefresh
-    });
-    if (!container.isConnected) return;
-    if (getExternalEmbedSourceUrl(container) !== currentUrl) return;
-    if (getExternalEmbedProbeUrl(container) !== currentProbeUrl) return;
-    renderExternalEmbedPrompt(container, {
-      mode: policy && policy.action === 'open_page' ? 'ready' : 'browser',
-      ready: true,
-      policy: policy,
-      message: policy && policy.action === 'open_page'
-        ? 'This page appears to allow embedding. It will only load after you confirm.'
-        : 'This page should be opened in your browser instead of being embedded here.'
-    });
+    if (window.EmbedEnhancer) return EmbedEnhancer.enhanceSingleExternalEmbedContainer(container, options);
   }
 
   async function enhanceSingleFileLink(link) {
-    if (!link || link.getAttribute('data-link-enhanced') === '1') return;
-    var boardId = link.getAttribute('data-board-id') || activeBoardId || '';
-    var filePath = link.getAttribute('data-file-path') || link.getAttribute('data-original-href') || '';
-    if (!boardId || !filePath || /^(https?:\/\/|mailto:|#)/.test(filePath)) return;
-    var fileRef = parseLocalFileReference(filePath);
-    link.setAttribute('data-link-enhanced', '1');
-    var info = await requestFileInfo(boardId, fileRef.path);
-    applyFileLinkInfo(link, info, fileRef.path);
+    if (window.EmbedEnhancer) return EmbedEnhancer.enhanceSingleFileLink(link);
   }
 
   async function enhanceSingleInlineFileEmbed(container) {
-    if (!container || container.getAttribute('data-inline-enhanced') === '1') return;
-    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
-    var filePath = container.getAttribute('data-file-path') || '';
-    var ext = container.getAttribute('data-inline-type') || getInlineFileEmbedExtension(filePath);
-    var body = container.querySelector('.inline-file-embed-body');
-    if (!boardId || !filePath || !ext || !body) return;
-
-    container.setAttribute('data-inline-enhanced', '1');
-    body.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
-
-    var fileRef = parseLocalFileReference(filePath);
-    var info = await requestFileInfo(boardId, fileRef.path);
-    var isMissing = !info || info.exists === false;
-    container.classList.toggle('embed-broken', isMissing);
-    if (isMissing) {
-      body.innerHTML = '<div class="broken-include-placeholder">Inline file unavailable</div>';
-      return;
-    }
-
-    try {
-      var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
-      if (!response.ok) throw new Error('Failed to load inline file preview');
-      var text = await response.text();
-      var previewPath = filePath;
-      if (isBoardRelativePath(filePath)) {
-        previewPath = await resolveBoardPath(boardId, filePath, 'absolute');
-      }
-      var kind = (ext === 'md' || ext === 'markdown') ? 'markdown' : 'text';
-      body.innerHTML = renderEmbedPreviewContent(kind, boardId, previewPath, text);
-      applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
-      applyRenderedTagVisibility(body, currentTagVisibilityMode);
-      enhanceEmbeddedContent(body);
-    } catch (err) {
-      logFrontendIssue(
-        'warn',
-        'embed.inline-file',
-        'Failed to render inline file preview for board ' + boardId + ' path ' + filePath,
-        err
-      );
-      container.classList.add('embed-broken');
-      body.innerHTML = '<div class="broken-include-placeholder">Inline file unavailable</div>';
-    }
+    if (window.EmbedEnhancer) return EmbedEnhancer.enhanceSingleInlineFileEmbed(container);
   }
 
   async function enhanceSingleColumnIncludeBadge(badge) {
-    if (!badge || badge.getAttribute('data-include-enhanced') === '1') return;
-    var boardId = activeBoardId || '';
-    var includePath = badge.getAttribute('data-include-path') || '';
-    if (!boardId || !includePath) return;
-    badge.setAttribute('data-include-enhanced', '1');
-    var resolvedPath = includePath;
-    if (isBoardRelativePath(includePath)) {
-      resolvedPath = await resolveBoardPath(boardId, includePath, 'absolute');
-    }
-    var info = await requestFileInfo(boardId, resolvedPath || includePath);
-    var isMissing = !info || info.exists === false;
-    badge.classList.toggle('include-broken', isMissing);
-    if (isMissing) {
-      badge.setAttribute('title', 'Missing include: ' + includePath);
-    }
+    if (window.EmbedEnhancer) return EmbedEnhancer.enhanceSingleColumnIncludeBadge(badge);
   }
 
   async function enhanceSingleIncludeDirective(container) {
-    if (!container || container.getAttribute('data-include-enhanced') === '1') return;
-    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
-    var rawPath = container.getAttribute('data-file-path') || '';
-    var depth = parseInt(container.getAttribute('data-include-depth') || '0', 10);
-    var link = container.querySelector('.markdown-file-link[data-file-path]');
-    var body = container.querySelector('.include-inline-body');
-    if (!boardId || !rawPath || !body) return;
-
-    container.setAttribute('data-include-enhanced', '1');
-    if (!isFinite(depth)) depth = 0;
-    if (depth >= MAX_INCLUDE_PREVIEW_DEPTH) {
-      body.innerHTML = '';
-      return;
-    }
-
-    body.innerHTML = '<div class="embed-preview-loading">Loading include...</div>';
-
-    var resolvedPath = rawPath;
-    if (isBoardRelativePath(rawPath)) {
-      resolvedPath = await resolveBoardPath(boardId, rawPath, 'absolute');
-    }
-    if (resolvedPath && link) {
-      link.setAttribute('data-file-path', resolvedPath);
-      link.setAttribute('data-original-href', resolvedPath);
-    }
-
-    var info = await requestFileInfo(boardId, resolvedPath || rawPath);
-    applyFileLinkInfo(link, info, resolvedPath || rawPath);
-    var isMissing = !info || info.exists === false;
-    if (isMissing) {
-      container.classList.add('include-broken');
-      body.innerHTML = '<div class="broken-include-placeholder">Included content unavailable</div>';
-      return;
-    }
-
-    try {
-      var response = await fetch(LexeraApi.fileUrl(boardId, resolvedPath || rawPath));
-      if (!response.ok) throw new Error('Failed to load include');
-      var text = await response.text();
-      var rewritten = resolveMarkdownRelativeTargets(text, resolvedPath || rawPath);
-      body.innerHTML = '<div class="included-content-block">' +
-        renderCardContent(rewritten, boardId, {
-          footnoteDefs: {},
-          footnoteOrder: [],
-          abbrDefs: {},
-          embedCounter: 0
-        }, { nested: true }) +
-        '</div>';
-      applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
-      applyRenderedTagVisibility(body, currentTagVisibilityMode);
-
-      var nested = body.querySelectorAll('.include-inline-container[data-file-path]');
-      for (var i = 0; i < nested.length; i++) {
-        nested[i].setAttribute('data-include-depth', String(depth + 1));
-      }
-
-      enhanceEmbeddedContent(body);
-    } catch (err) {
-      logFrontendIssue(
-        'warn',
-        'embed.include',
-        'Failed to render include preview for board ' + boardId + ' path ' + rawPath,
-        err
-      );
-      container.classList.add('include-broken');
-      body.innerHTML = '<div class="broken-include-placeholder">Included content unavailable</div>';
-    }
+    if (window.EmbedEnhancer) return EmbedEnhancer.enhanceSingleIncludeDirective(container);
   }
 
   async function enhanceSingleEmbedContainer(container, enhanceOpts) {
-    enhanceOpts = enhanceOpts || {};
-    if (!container || (!enhanceOpts.forceRerender && container.getAttribute('data-embed-enhanced') === '1')) return;
-    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
-    var filePath = container.getAttribute('data-file-path') || '';
-    if (!boardId || !filePath) return;
-    var fileRef = parseLocalFileReference(filePath);
-    var previewKind = getEmbedPreviewKind(filePath);
-    if (!previewKind) return;
-
-    container.setAttribute('data-embed-enhanced', '1');
-    var cacheKey = getEmbedPreviewCacheKey(boardId, filePath);
-    var previewEl = document.createElement(previewKind === 'pdf' ? 'iframe' : 'div');
-    previewEl.className = 'embed-preview embed-preview-' + previewKind;
-
-    if (previewKind === 'pdf') {
-      previewEl.setAttribute('loading', 'lazy');
-      previewEl.setAttribute('title', getDisplayFileNameFromPath(filePath) || 'PDF preview');
-      previewEl.setAttribute(
-        'src',
-        LexeraApi.fileUrl(boardId, fileRef.path) +
-          '#toolbar=0&navpanes=0' +
-          (fileRef.pageNumber ? '&page=' + fileRef.pageNumber : '')
-      );
-      container.appendChild(previewEl);
-      return;
-    }
-
-    if (isRenderedSpecialPreviewKind(previewKind)) {
-      container.appendChild(previewEl);
-      var previewPage = container.getAttribute('data-preview-page') || '';
-      var rendered = await renderCachedSpecialPreview(previewEl, boardId, filePath, previewKind, { pageNumber: previewPage, forceRerender: !!enhanceOpts.forceRerender });
-      if (!rendered) {
-        previewEl.innerHTML = buildFilePreviewPlaceholderHtml(
-          previewKind,
-          filePath,
-          buildSpecialPreviewPlaceholderMessage(previewKind, boardId, filePath)
-        );
-      }
-      return;
-    }
-
-    previewEl.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
-    container.appendChild(previewEl);
-    try {
-      var cached = embedPreviewCache[cacheKey];
-      if (!cached) {
-        var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
-        if (!response.ok) throw new Error('Failed to load file preview');
-        var text = await response.text();
-        var previewPath = filePath;
-        if (previewKind === 'markdown' && isBoardRelativePath(filePath)) {
-          previewPath = await resolveBoardPath(boardId, filePath, 'absolute');
-        }
-        cached = renderEmbedPreviewContent(previewKind, boardId, previewPath, text);
-        embedPreviewCache[cacheKey] = cached;
-      }
-      previewEl.innerHTML = cached;
-      applyRenderedHtmlCommentVisibility(previewEl, currentHtmlCommentRenderMode);
-      applyRenderedTagVisibility(previewEl, currentTagVisibilityMode);
-      flushPendingDiagramQueues();
-    } catch (err) {
-      logFrontendIssue(
-        'warn',
-        'embed.preview',
-        'Failed to render embed preview for board ' + boardId + ' path ' + filePath,
-        err
-      );
-      previewEl.innerHTML = '<div class="embed-preview-error">Preview unavailable</div>';
-    }
+    if (window.EmbedEnhancer) return EmbedEnhancer.enhanceSingleEmbedContainer(container, enhanceOpts);
   }
 
   function resolveBoardPath(boardId, filePath, toMode) {
-    return LexeraApi.request('/boards/' + boardId + '/convert-path', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cardId: '', path: filePath, to: toMode }),
-    }).then(function (res) {
-      return res && res.path ? res.path : filePath;
-    }).catch(function (err) {
-      logFrontendIssue(
-        'warn',
-        'path.resolve',
-        'Failed to resolve ' + toMode + ' path for board ' + boardId + ' path ' + filePath,
-        err
-      );
-      return filePath;
-    });
+    if (window.EmbedEnhancer) return EmbedEnhancer.resolveBoardPath(boardId, filePath, toMode);
+    return Promise.resolve(filePath);
   }
 
   function openBoardFileInSystem(boardId, filePath) {
@@ -23391,6 +22894,36 @@ const LexeraDashboard = (function () {
     localStorage.removeItem('lexera-card-expanded:' + boardId);
   }
 
+  // --- Embed Enhancer --- (delegated to EmbedEnhancer module)
+  if (window.EmbedEnhancer) EmbedEnhancer.init({
+    LexeraApi: LexeraApi,
+    ContentEnhancerRegistry: ContentEnhancerRegistry,
+    getActiveBoardId: function () { return activeBoardId; },
+    getCurrentTagVisibilityMode: function () { return currentTagVisibilityMode; },
+    getCurrentHtmlCommentRenderMode: function () { return currentHtmlCommentRenderMode; },
+    escapeHtml: escapeHtml,
+    escapeAttr: escapeAttr,
+    decodeHtmlEntities: decodeHtmlEntities,
+    sanitizeCssLength: sanitizeCssLength,
+    parseLocalFileReference: parseLocalFileReference,
+    isBoardRelativePath: isBoardRelativePath,
+    getInlineFileEmbedExtension: getInlineFileEmbedExtension,
+    getEmbedPreviewKind: getEmbedPreviewKind,
+    getEmbedPreviewCacheKey: getEmbedPreviewCacheKey,
+    getDisplayFileNameFromPath: getDisplayFileNameFromPath,
+    isRenderedSpecialPreviewKind: isRenderedSpecialPreviewKind,
+    renderCachedSpecialPreview: renderCachedSpecialPreview,
+    buildFilePreviewPlaceholderHtml: buildFilePreviewPlaceholderHtml,
+    buildSpecialPreviewPlaceholderMessage: buildSpecialPreviewPlaceholderMessage,
+    resolveMarkdownRelativeTargets: resolveMarkdownRelativeTargets,
+    renderCardContent: renderCardContent,
+    applyRenderedHtmlCommentVisibility: applyRenderedHtmlCommentVisibility,
+    applyRenderedTagVisibility: applyRenderedTagVisibility,
+    applyFileLinkInfo: applyFileLinkInfo,
+    requestFileInfo: requestFileInfo,
+    flushPendingDiagramQueues: flushPendingDiagramQueues
+  });
+
   // --- Tag Colors --- (delegated to LexeraTagColors module)
   var TagColors = window.LexeraTagColors;
   if (TagColors) TagColors.init({ escapeHtml: escapeHtml, escapeAttr: escapeAttr });
@@ -23744,6 +23277,7 @@ const LexeraDashboard = (function () {
   }
 
   function renderTitleInline(text, boardId, options) {
+    if (CardContentRenderer) return CardContentRenderer.renderTitleInline(text, boardId, options);
     var helpers = getInlineRendererHelpers();
     if (!helpers || typeof helpers.renderTitleInline !== 'function') {
       return escapeHtml(String(text || ''));
@@ -23754,44 +23288,8 @@ const LexeraDashboard = (function () {
   // --- Util ---
 
   function renderTable(lines, startIdx, boardId, renderState) {
-    var headerLine = lines[startIdx].trim();
-    var sepLine = lines[startIdx + 1].trim();
-
-    function parseCells(line) {
-      // Split by | and trim, removing empty first/last from leading/trailing |
-      var parts = line.split('|');
-      if (parts[0].trim() === '') parts.shift();
-      if (parts.length > 0 && parts[parts.length - 1].trim() === '') parts.pop();
-      return parts.map(function (c) { return c.trim(); });
-    }
-
-    var headers = parseCells(headerLine);
-    var seps = parseCells(sepLine);
-    var aligns = seps.map(function (s) {
-      if (s.charAt(0) === ':' && s.charAt(s.length - 1) === ':') return 'center';
-      if (s.charAt(s.length - 1) === ':') return 'right';
-      return 'left';
-    });
-
-    var out = '<table class="md-table"><thead><tr>';
-    for (var h = 0; h < headers.length; h++) {
-      out += '<th style="text-align:' + aligns[h] + '">' + renderInline(headers[h], boardId, renderState) + '</th>';
-    }
-    out += '</tr></thead><tbody>';
-
-    for (var r = startIdx + 2; r < lines.length; r++) {
-      if (lines[r].trim().indexOf('|') !== 0) break;
-      var cells = parseCells(lines[r]);
-      out += '<tr>';
-      for (var c = 0; c < headers.length; c++) {
-        var val = c < cells.length ? cells[c] : '';
-        var align = c < aligns.length ? aligns[c] : 'left';
-        out += '<td style="text-align:' + align + '">' + renderInline(val, boardId, renderState) + '</td>';
-      }
-      out += '</tr>';
-    }
-    out += '</tbody></table>';
-    return out;
+    if (CardContentRenderer) return CardContentRenderer.renderTable(lines, startIdx, boardId, renderState);
+    return '';
   }
 
   function flushPendingDiagramQueues() {
@@ -23891,274 +23389,24 @@ const LexeraDashboard = (function () {
     return parts.join('');
   }
 
+  // --- CardContentRenderer init (must be after getInlineRendererHelpers, buildTagStyledLineHtml, etc.) ---
+  if (CardContentRenderer) CardContentRenderer.init({
+    getInlineRendererHelpers: getInlineRendererHelpers,
+    escapeHtml: escapeHtml,
+    escapeAttr: escapeAttr,
+    buildTagStyledLineHtml: buildTagStyledLineHtml,
+    wrapRenderedLineBlockHtml: wrapRenderedLineBlockHtml,
+    DiagramRegistry: DiagramRegistry,
+    getActiveBoardId: function () { return activeBoardId || ''; }
+  });
+
   function renderCardContent(content, boardId, renderState, options) {
-    renderState = renderState || {};
-    options = options || {};
-    var previousNestedDepth = typeof renderState.nestedDepth === 'number' ? renderState.nestedDepth : 0;
-    renderState.nestedDepth = options.nested ? previousNestedDepth + 1 : previousNestedDepth;
-    try {
-    var lines = content.split('\n');
-    var html = '';
-    var listTag = null; // 'ul' or 'ol'
-    var skipLines = {};
-    var footnoteDefs = renderState.footnoteDefs || (renderState.footnoteDefs = {});
-    var footnoteOrder = renderState.footnoteOrder || (renderState.footnoteOrder = []);
-    var abbrDefs = renderState.abbrDefs || (renderState.abbrDefs = {});
-
-    for (var scanIdx = 0; scanIdx < lines.length; scanIdx++) {
-      var footnoteMatch = lines[scanIdx].match(/^\[\^([^\]]+)\]:\s*(.*)$/);
-      if (footnoteMatch) {
-        var footnoteId = footnoteMatch[1];
-        var textParts = [];
-        if (footnoteMatch[2]) textParts.push(footnoteMatch[2]);
-        skipLines[scanIdx] = true;
-        var continuationIdx = scanIdx + 1;
-        while (continuationIdx < lines.length) {
-          var continuation = lines[continuationIdx];
-          if (/^( {2,}|\t)/.test(continuation)) {
-            textParts.push(continuation.replace(/^( {2,}|\t)/, ''));
-            skipLines[continuationIdx] = true;
-            continuationIdx++;
-            continue;
-          }
-          if (continuation.trim() === '') {
-            skipLines[continuationIdx] = true;
-            continuationIdx++;
-            break;
-          }
-          break;
-        }
-        footnoteDefs[footnoteId] = textParts.join(' ').trim();
-        if (footnoteOrder.indexOf(footnoteId) === -1) footnoteOrder.push(footnoteId);
-        scanIdx = continuationIdx - 1;
-        continue;
-      }
-      var abbrMatch = lines[scanIdx].match(/^\*\[([^\]]+)\]:\s*(.+)$/);
-      if (abbrMatch) {
-        abbrDefs[abbrMatch[1]] = abbrMatch[2].trim();
-        skipLines[scanIdx] = true;
-      }
-    }
-
-    function closeList() {
-      if (listTag) { html += '</' + listTag + '>'; listTag = null; }
-    }
-    function openList(tag) {
-      if (listTag !== tag) { closeList(); html += '<' + tag + '>'; listTag = tag; }
-    }
-
-    for (var i = 0; i < lines.length; i++) {
-      if (skipLines[i]) continue;
-      var line = lines[i];
-      var lineStyleSource = options.skipFirstLineTagStyle && i === 0 ? '' : line;
-
-      var multiStartMatch = line.match(/^---:\s*(\d+)?\s*$/);
-      if (multiStartMatch) {
-        closeList();
-        var multiColumns = [];
-        var multiGrowths = [];
-        var currentColumnLines = [];
-        var currentGrowth = parseInt(multiStartMatch[1], 10) || 1;
-        var nextIdx = i + 1;
-        for (; nextIdx < lines.length; nextIdx++) {
-          var multiLine = lines[nextIdx];
-          var multiSplitMatch = multiLine.match(/^:--:\s*(\d+)?\s*$/);
-          if (multiSplitMatch) {
-            multiColumns.push(currentColumnLines.join('\n'));
-            multiGrowths.push(currentGrowth);
-            currentColumnLines = [];
-            currentGrowth = parseInt(multiSplitMatch[1], 10) || 1;
-            continue;
-          }
-          if (/^:---\s*$/.test(multiLine)) {
-            multiColumns.push(currentColumnLines.join('\n'));
-            multiGrowths.push(currentGrowth);
-            break;
-          }
-          currentColumnLines.push(multiLine);
-        }
-        if (multiColumns.length > 0) {
-          var multiHtml = '<div class="md-multicolumn">';
-          for (var mc = 0; mc < multiColumns.length; mc++) {
-            multiHtml += '<div class="md-multicolumn-column" style="flex-grow:' + multiGrowths[mc] + ';flex-basis:0">' +
-              renderCardContent(multiColumns[mc], boardId, renderState, { nested: true }) +
-              '</div>';
-          }
-          multiHtml += '</div>';
-          html += wrapRenderedLineBlockHtml(multiHtml, lineStyleSource);
-          i = nextIdx;
-          continue;
-        }
-      }
-
-      var containerMatch = line.match(/^:::\s*([a-z0-9-]+)\s*$/i);
-      if (containerMatch) {
-        closeList();
-        var containerType = containerMatch[1].toLowerCase();
-        var containerLines = [];
-        i++;
-        while (i < lines.length && !/^:::\s*$/.test(lines[i].trim())) {
-          containerLines.push(lines[i]);
-          i++;
-        }
-        html += buildTagStyledLineHtml('div',
-          renderCardContent(containerLines.join('\n'), boardId, renderState, { nested: true }) +
-          '', lineStyleSource, {
-            className: 'md-container md-container-' + escapeAttr(containerType)
-          });
-        continue;
-      }
-
-      // Fenced code blocks: ```lang ... ```
-      var fenceMatch = line.match(/^```(\w*)$/);
-      if (fenceMatch) {
-        closeList();
-        var lang = fenceMatch[1];
-        var codeLines = [];
-        i++;
-        while (i < lines.length && !(/^```$/.test(lines[i]))) {
-          codeLines.push(lines[i]);
-          i++;
-        }
-        var diagramPlugin = DiagramRegistry ? DiagramRegistry.findByLanguage(lang.toLowerCase()) : null;
-        if (diagramPlugin) {
-          var diagId = DiagramRegistry.nextId(diagramPlugin.id);
-          var diagCode = codeLines.join('\n');
-          html += buildTagStyledLineHtml('div',
-            '<button class="embed-menu-btn diagram-menu-btn" title="Diagram actions" style="opacity:1">&#8942;</button>' +
-            diagramPlugin.placeholder(diagId, diagCode),
-            lineStyleSource,
-            {
-              className: 'diagram-overlay-container',
-              attrs: 'data-diagram-type="' + escapeAttr(diagramPlugin.id) + '" data-diagram-code="' + escapeAttr(diagCode) + '"',
-              styleText: 'position:relative;display:block'
-            }
-          );
-          DiagramRegistry.enqueue(diagramPlugin.id, diagId, diagCode, boardId || activeBoardId || '');
-        } else {
-          var langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
-          html += buildTagStyledLineHtml('pre', '<code' + langClass + '>' + escapeHtml(codeLines.join('\n')) + '</code>', lineStyleSource, {
-            className: 'code-block'
-          });
-        }
-        continue;
-      }
-
-      // Markdown tables: |col|col| with |---|---| separator
-      if (line.trim().indexOf('|') === 0 && i + 1 < lines.length && /^\|[\s:]*-+/.test(lines[i + 1].trim())) {
-        closeList();
-        html += wrapRenderedLineBlockHtml(renderTable(lines, i, boardId, renderState), lineStyleSource);
-        // Skip past table lines
-        while (i < lines.length && lines[i].trim().indexOf('|') === 0) i++;
-        i--; // compensate for loop increment
-        continue;
-      }
-
-      // Empty line: close list if open, add line break
-      if (line.trim() === '') {
-        closeList();
-        html += '<br>';
-        continue;
-      }
-
-      // HTML comments: render as styled span (visibility controlled by board setting)
-      var commentMatch = line.match(/^<!--(.+?)-->$/);
-      if (commentMatch) {
-        closeList();
-        html += buildTagStyledLineHtml('div', escapeHtml(commentMatch[1].trim()), lineStyleSource, {
-          className: 'html-comment'
-        });
-        continue;
-      }
-
-      // Horizontal rule
-      if (/^---+$/.test(line.trim())) {
-        closeList();
-        html += buildTagStyledLineHtml('hr', '', lineStyleSource, { selfClosing: true });
-        continue;
-      }
-
-      // Blockquote
-      var quoteMatch = line.match(/^>\s?(.*)/);
-      if (quoteMatch) {
-        closeList();
-        html += buildTagStyledLineHtml('blockquote', renderInline(quoteMatch[1], boardId, renderState), lineStyleSource);
-        continue;
-      }
-
-      // Speaker notes
-      var speakerNoteMatch = line.match(/^;;\s?(.*)/);
-      if (speakerNoteMatch) {
-        closeList();
-        html += buildTagStyledLineHtml('div', renderInline(speakerNoteMatch[1], boardId, renderState), lineStyleSource, {
-          className: 'speaker-note'
-        });
-        continue;
-      }
-
-      // Headings
-      var headingMatch = line.match(/^(#{1,3})\s+(.+)/);
-      if (headingMatch) {
-        closeList();
-        var level = headingMatch[1].length;
-        html += buildTagStyledLineHtml('h' + level, renderInline(headingMatch[2], boardId, renderState), lineStyleSource);
-        continue;
-      }
-
-      // Checkbox list items (must be checked BEFORE unordered list)
-      var checkMatch = line.match(/^-\s+\[([ xX])\]\s*(.*)/);
-      if (checkMatch) {
-        openList('ul');
-        var checked = checkMatch[1] !== ' ';
-        var checkedAttr = checked ? ' checked' : '';
-        var strikePre = checked ? '<s>' : '';
-        var strikePost = checked ? '</s>' : '';
-        html += buildTagStyledLineHtml('li',
-          '<input type="checkbox" class="card-checkbox" data-line="' + i + '"' + checkedAttr + '> ' + strikePre + renderInline(checkMatch[2], boardId, renderState) + strikePost,
-          lineStyleSource,
-          { className: 'checkbox-item' }
-        );
-        continue;
-      }
-
-      // Ordered list items
-      var olMatch = line.match(/^\d+\.\s+(.+)/);
-      if (olMatch) {
-        openList('ol');
-        html += buildTagStyledLineHtml('li', renderInline(olMatch[1], boardId, renderState), lineStyleSource);
-        continue;
-      }
-
-      // Unordered list items
-      var listMatch = line.match(/^[-*]\s+(.+)/);
-      if (listMatch) {
-        openList('ul');
-        html += buildTagStyledLineHtml('li', renderInline(listMatch[1], boardId, renderState), lineStyleSource);
-        continue;
-      }
-
-      // Regular line
-      closeList();
-      html += buildTagStyledLineHtml('div', renderInline(line, boardId, renderState), lineStyleSource);
-    }
-
-    closeList();
-    if (!options.nested && footnoteOrder.length > 0) {
-      html += '<div class="footnotes"><hr><ol>';
-      for (var fn = 0; fn < footnoteOrder.length; fn++) {
-        var footnoteId = footnoteOrder[fn];
-        var footnoteText = footnoteDefs[footnoteId] || '';
-        html += '<li id="footnote-' + escapeAttr(footnoteId) + '">' + renderInline(footnoteText, boardId, renderState) + '</li>';
-      }
-      html += '</ol></div>';
-    }
-    return html;
-    } finally {
-      renderState.nestedDepth = previousNestedDepth;
-    }
+    if (CardContentRenderer) return CardContentRenderer.renderCardContent(content, boardId, renderState, options);
+    return '';
   }
 
   function renderInline(text, boardId, renderState) {
+    if (CardContentRenderer) return CardContentRenderer.renderInline(text, boardId, renderState);
     var helpers = getInlineRendererHelpers();
     if (!helpers || typeof helpers.renderInline !== 'function') {
       return escapeHtml(String(text || ''));
