@@ -2,11 +2,11 @@
 
 ## High Priority — Security & Reliability
 
-- [ ] if space is so small for the list of tabs fold it together to show as a dropdown. make the empty space areound the close button smaller!
+- [x] ~~tab overflow dropdown + reduced close button size~~ (4ec0e383)
 
-- [ ] make the drag borders between views allways at least 3 pixels. it currently seems as if it's 1 pixel and it's barely findable.
+- [x] ~~make the drag borders between views always at least 3 pixels~~ (66249ffa)
 
-- [ ] the hierarchy settings in the frontend settings have no influence (only drag icons works). also remove the diagnositics & open inspector in  frontend settings. the theme change sometimes doesnt react, only after re-opening the settings they apply immediately. the editor settings down work as well as far as i can tell. 
+- [x] ~~frontend settings: fixed hierarchy/editor/theme reactivity, removed diagnostics~~ (ec84756d)
 
 - [x] ~~double clicking any title starts modifying the text.~~ (4aade867)
 
@@ -78,7 +78,7 @@
 
 - [x] **Extract backend lib.rs setup function** — extracted 570-line setup() closure into 8 named functions + `CollabServices` struct: `init_storage_and_boards`, `resolve_incoming`, `setup_file_watcher`, `init_collab_services`, `bootstrap_local_user`, `spawn_background_tasks`, `restore_persisted_connections`, `spawn_http_server`. All 903 Rust tests pass.
 
-- [ ] **Frontend modularization** — app.js reduced from 28K to 26.6K lines. Extracted this round: loggingSystem.js (596), virtualScroll.js (321), pathUtils.js (298), tagColors.js (788), dropZoneIndicators.js (261). Previously done: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next targets: archive formatting, sidebar resize, export normalization.
+- [ ] **Frontend modularization** — app.js reduced from 28K to ~26.2K lines. Extracted: loggingSystem.js, virtualScroll.js, pathUtils.js, tagColors.js, dropZoneIndicators.js, archiveFormatting.js (4aade867), sidebarResize.js (0b8c1442). Previously: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next targets: export normalization, render helpers.
 
 - [x] **Fix duplicate code paths producing inconsistent results:**
   - [x] **CRDT card ID collision** — replaced inline `crdt-{hex_timestamp}` ID generation in `bridge.rs:read_card()` with `crate::parser::generate_id("crdt")` which uses atomic sequence counter for guaranteed uniqueness.
