@@ -2,6 +2,8 @@
 
 ## High Priority — Security & Reliability
 
+- [ ] horizontal dont look and behave the same as vertical moveable borders between views! they should share the style!
+
 - [ ] i currently cant put the log viewer into the window bottom when the view is split with the left/right panes, i can only split the kanban/canvas views top/bottom. when very close (~6pix) to the window borders allways snap to the border areas.
 
 - [ ] the log viewer should show the number of logs that fit into the view. it's current limited in height.
@@ -82,7 +84,7 @@
 
 - [x] **Extract backend lib.rs setup function** — extracted 570-line setup() closure into 8 named functions + `CollabServices` struct: `init_storage_and_boards`, `resolve_incoming`, `setup_file_watcher`, `init_collab_services`, `bootstrap_local_user`, `spawn_background_tasks`, `restore_persisted_connections`, `spawn_http_server`. All 903 Rust tests pass.
 
-- [ ] **Frontend modularization** — app.js reduced from 28K to ~17.4K lines (38% reduction). Extracted: loggingSystem.js, virtualScroll.js, pathUtils.js, tagColors.js, dropZoneIndicators.js, archiveFormatting.js (4aade867), sidebarResize.js (0b8c1442), exportToolStatus.js (5f6ed8c0), renderAppsSettings.js (5f6ed8c0), boardSearchReplace.js (4a40e43c), boardStatsFilter.js (0165eec3), hiddenItemsDropdown.js (53e2f15c), cardContentRenderer.js (56b557c7), inlineCardEditor.js (56b557c7), embedEnhancer.js (56b557c7), canvasLayout.js (28abc26e), contextMenuBuilders.js (a72a6f55), dragDropHandlers.js (a812bd68), sidebarSync.js (084bc543), orderHelpers.js (3d6b4a6d), embedMenu.js (649926c1). Previously: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next targets: keyboard navigation, board list, themes, card editing, canvas pan.
+- [ ] **Frontend modularization** — app.js reduced from 28K to ~16.5K lines (41% reduction). Extracted: loggingSystem.js, virtualScroll.js, pathUtils.js, tagColors.js, dropZoneIndicators.js, archiveFormatting.js (4aade867), sidebarResize.js (0b8c1442), exportToolStatus.js (5f6ed8c0), renderAppsSettings.js (5f6ed8c0), boardSearchReplace.js (4a40e43c), boardStatsFilter.js (0165eec3), hiddenItemsDropdown.js (53e2f15c), cardContentRenderer.js (56b557c7), inlineCardEditor.js (56b557c7), embedEnhancer.js (56b557c7), canvasLayout.js (28abc26e), contextMenuBuilders.js (a72a6f55), dragDropHandlers.js (a812bd68), sidebarSync.js (084bc543), orderHelpers.js (3d6b4a6d), embedMenu.js (649926c1), keyboardNavigation.js (2d223eda), boardList.js (85999a98). Previously: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next targets: canvas pan, card editing, card context menu, column context menu, row/stack context menus, search.
 
 - [x] **Fix duplicate code paths producing inconsistent results:**
   - [x] **CRDT card ID collision** — replaced inline `crdt-{hex_timestamp}` ID generation in `bridge.rs:read_card()` with `crate::parser::generate_id("crdt")` which uses atomic sequence counter for guaranteed uniqueness.
