@@ -1290,24 +1290,27 @@ textarea {
 }
 
 @container sidebar-tree (max-width: 270px) {
-  .board-list .board-item-count,
-  .board-list .tree-count {
-    display: none !important;
-  }
   .board-item-meta,
   .tree-meta {
     --sidebar-tree-count-col: 0px;
   }
 }
+/* When the user explicitly keeps counts on, preserve the column width even in narrow sidebars */
+:root[data-sidebar-tree-counts="on"] .board-item-meta,
+:root[data-sidebar-tree-counts="on"] .tree-meta {
+  --sidebar-tree-count-col: calc(20px * var(--ui-scale, 1));
+}
 
 @container sidebar-tree (max-width: 230px) {
-  .board-list .board-presence-badge {
-    display: none !important;
-  }
   .board-item-meta,
   .tree-meta {
     --sidebar-tree-presence-col: 0px;
   }
+}
+/* When the user explicitly keeps presence on, preserve the column width even in narrow sidebars */
+:root[data-sidebar-tree-presence="on"] .board-item-meta,
+:root[data-sidebar-tree-presence="on"] .tree-meta {
+  --sidebar-tree-presence-col: calc(18px * var(--ui-scale, 1));
 }
 
 /* Tree DnD drop indicators */
