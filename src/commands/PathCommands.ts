@@ -692,18 +692,22 @@ export class PathCommands extends SwitchBasedCommand {
             // _replacePaths already sent a targeted updateTaskContent WITHOUT the title.
             // A full refreshBoard won't help (isFullRefresh=false, webview skips re-render).
             // So we update the file, THEN update the board task, THEN send a targeted update.
-            if (replaceResult.success && (replaceResult.data as any)?.replaced && result.sourceUrl) {
-                const actualNewPath = (replaceResult.data as any)?.newPath;
-                if (actualNewPath) {
-                    // 1. Update the file content with the source URL title
-                    this._addSourceUrlToImageTitle(actualNewPath, result.sourceUrl);
+            const replacementData = replaceResult.data as {
+                replaced?: boolean;
+                newPath?: string;
+                count?: number;
+                oldPath?: string;
+            } | undefined;
+            if (replaceResult.success && replacementData?.replaced && result.sourceUrl && replacementData.newPath) {
+                const actualNewPath = replacementData.newPath;
+                // 1. Update the file content with the source URL title
+                this._addSourceUrlToImageTitle(actualNewPath, result.sourceUrl);
 
-                    // 2. Also update the board task object and send targeted webview update
-                    this._updateBoardTaskWithSourceUrl(
-                        context, actualNewPath, result.sourceUrl,
-                        message.cardId, message.columnId
-                    );
-                }
+                // 2. Also update the board task object and send targeted webview update
+                this._updateBoardTaskWithSourceUrl(
+                    context, actualNewPath, result.sourceUrl,
+                    message.cardId, message.columnId
+                );
             }
 
             return replaceResult;

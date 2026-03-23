@@ -540,10 +540,15 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
 
         if (options?.saveSearch) {
-            await BoardRegistryService.getInstance().addSearch(query, options?.useRegex, options?.scope as any);
+            const searchScope = options?.scope === 'active' || options?.scope === 'listed' || options?.scope === 'open'
+                ? options.scope
+                : undefined;
+            await BoardRegistryService.getInstance().addSearch(query, options?.useRegex, searchScope);
         }
 
-        const scope = options?.scope || 'active';
+        const scope = (options?.scope === 'active' || options?.scope === 'listed' || options?.scope === 'open')
+            ? options.scope
+            : 'active';
         const boards = await this._collectBoardsForScope(scope);
 
         if (boards.length === 0) {

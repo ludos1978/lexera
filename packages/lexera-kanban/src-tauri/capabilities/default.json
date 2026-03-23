@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "description": "Default permissions for Lexera Kanban",
+  "windows": ["*"],
+  "permissions": [
+    "core:default",
+    "core:event:allow-listen"
+  ]
+}

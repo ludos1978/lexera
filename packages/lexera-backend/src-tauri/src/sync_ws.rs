@@ -1,0 +1,402 @@
+/// WebSocket CRDT sync handler.
+///
+/// Protocol:
+///   Client sends ClientHello { user_id, vv } on connect.
+///   Server replies ServerHello { peer_id, vv, updates }.
+///   Bidirectional ClientUpdate / ServerUpdate exchange follows.
+use axum::{
+    extract::{
+        ws::{Message, WebSocket},
+        Path, Query, State, WebSocketUpgrade,
+    },
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
+use base64::Engine;
+use futures_util::{SinkExt, StreamExt};
+use lexera_core::sync::{ClientMessage, ServerMessage};
+use serde::Deserialize;
+use std::collections::HashMap;
+use tokio::sync::mpsc;
+
+use crate::state::AppState;
+
+const WS_HELLO_TIMEOUT_SECS: u64 = 10;
+const WS_PING_INTERVAL_SECS: u64 = 30;
+
+fn b64() -> base64::engine::general_purpose::GeneralPurpose {
+    base64::engine::general_purpose::STANDARD
+}
+
+// ── BoardSyncHub ────────────────────────────────────────────────────────────
+
+/// Per-client channel capacity. If a client falls behind by this many messages,
+/// new messages are dropped (safe for CRDT — the client will catch up via VV).
+const CLIENT_CHANNEL_CAPACITY: usize = 256;
+
+struct BoardRoom {
+    clients: HashMap<u64, mpsc::Sender<String>>,
+    peer_users: HashMap<u64, String>,
+    next_peer_id: u64,
+}
+
+impl BoardRoom {
+    fn new() -> Self {
+        Self {
+            clients: HashMap::new(),
+            peer_users: HashMap::new(),
+            next_peer_id: 1,
+        }
+    }
+}
+
+pub struct BoardSyncHub {
+    rooms: HashMap<String, BoardRoom>,
+}
+
+impl BoardSyncHub {
+    pub fn new() -> Self {
+        Self {
+            rooms: HashMap::new(),
+        }
+    }
+
+    /// Register a new client for a board room. Returns (peer_id, receiver).
+    fn register(
+        &mut self,
+        board_id: &str,
+        user_id: &str,
+    ) -> (u64, mpsc::Receiver<String>) {
+        let room = self
+            .rooms
+            .entry(board_id.to_string())
+            .or_insert_with(BoardRoom::new);
+        let peer_id = room.next_peer_id;
+        room.next_peer_id += 1;
+        let (tx, rx) = mpsc::channel(CLIENT_CHANNEL_CAPACITY);
+        room.clients.insert(peer_id, tx);
+        room.peer_users.insert(peer_id, user_id.to_string());
+        (peer_id, rx)
+    }
+
+    /// Unregister a client from a board room.
+    fn unregister(&mut self, board_id: &str, peer_id: u64) {
+        if let Some(room) = self.rooms.get_mut(board_id) {
+            room.clients.remove(&peer_id);
+            room.peer_users.remove(&peer_id);
+            if room.clients.is_empty() {
+                self.rooms.remove(board_id);
+            }
+        }
+    }
+
+    /// Broadcast a JSON message to all clients in a board room except the sender.
+    pub fn broadcast(&self, board_id: &str, exclude_peer: u64, msg: &str) {
+        if let Some(room) = self.rooms.get(board_id) {
+            for (&pid, tx) in &room.clients {
+                if pid != exclude_peer {
+                    if let Err(mpsc::error::TrySendError::Full(_)) = tx.try_send(msg.to_string()) {
+                        log::warn!(
+                            "[sync_ws.broadcast] Channel full for peer {} on board {}, dropping message (CRDT will self-heal)",
+                            pid, board_id
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Broadcast a JSON message to ALL clients in a board room (no exclusion).
+    pub fn broadcast_all(&self, board_id: &str, msg: &str) {
+        if let Some(room) = self.rooms.get(board_id) {
+            for (&pid, tx) in &room.clients {
+                if let Err(mpsc::error::TrySendError::Full(_)) = tx.try_send(msg.to_string()) {
+                    log::warn!(
+                        "[sync_ws.broadcast_all] Channel full for peer {} on board {}, dropping message (CRDT will self-heal)",
+                        pid, board_id
+                    );
+                }
+            }
+        }
+    }
+
+    /// Return the set of distinct user_ids currently connected to a board.
+    pub fn online_users(&self, board_id: &str) -> Vec<String> {
+        self.rooms
+            .get(board_id)
+            .map(|room| {
+                let mut users: Vec<String> = room.peer_users.values().cloned().collect();
+                users.sort();
+                users.dedup();
+                users
+            })
+            .unwrap_or_default()
+    }
+
+    /// Check if a board has any connected sync clients.
+    pub fn has_clients(&self, board_id: &str) -> bool {
+        self.rooms
+            .get(board_id)
+            .map_or(false, |r| !r.clients.is_empty())
+    }
+}
+
+// ── Router + Handler ────────────────────────────────────────────────────────
+
+pub fn sync_router() -> Router<AppState> {
+    Router::new().route("/sync/{board_id}", get(ws_handler))
+}
+
+#[derive(Deserialize)]
+struct SyncQuery {
+    user: Option<String>,
+}
+
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    Path(board_id): Path<String>,
+    Query(params): Query<SyncQuery>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let user_id = params.user.unwrap_or_default();
+    ws.on_upgrade(move |socket| handle_sync_session(socket, board_id, user_id, state))
+}
+
+async fn handle_sync_session(
+    socket: WebSocket,
+    board_id: String,
+    user_id: String,
+    state: AppState,
+) {
+    let (mut ws_tx, mut ws_rx) = socket.split();
+
+    // 1. Wait for ClientHello (10s timeout)
+    let hello = tokio::time::timeout(std::time::Duration::from_secs(WS_HELLO_TIMEOUT_SECS), async {
+        while let Some(Ok(msg)) = ws_rx.next().await {
+            if let Message::Text(text) = msg {
+                return serde_json::from_str::<ClientMessage>(&text).ok();
+            }
+        }
+        None
+    })
+    .await;
+
+    let (client_user_id, client_vv_b64) = match hello {
+        Ok(Some(ClientMessage::ClientHello { user_id, vv })) => (user_id, vv),
+        _ => {
+            let err = serde_json::to_string(&ServerMessage::ServerError {
+                message: format!("Expected ClientHello within {}s", WS_HELLO_TIMEOUT_SECS),
+            })
+            .unwrap_or_default();
+            let _ = ws_tx.send(Message::Text(err.into())).await;
+            return;
+        }
+    };
+
+    // 2. Auth check — use ClientHello user_id as the authoritative identity.
+    // Fall back to query param only if ClientHello user_id is empty.
+    let auth_user = if client_user_id.is_empty() {
+        &user_id
+    } else {
+        &client_user_id
+    };
+    let authorized = if auth_user.is_empty() {
+        false
+    } else {
+        match state.auth_service.lock() {
+            Ok(auth) => auth.is_member(&board_id, auth_user),
+            Err(_) => false,
+        }
+    };
+
+    if !authorized {
+        let err = serde_json::to_string(&ServerMessage::ServerError {
+            message: "Not authorized for this board".to_string(),
+        })
+        .unwrap_or_default();
+        let _ = ws_tx.send(Message::Text(err.into())).await;
+        return;
+    }
+
+    // 3. Register in hub and broadcast presence
+    let (peer_id, mut hub_rx) = {
+        let mut hub = state.sync_hub.lock().await;
+        let result = hub.register(&board_id, auth_user);
+        let presence_msg = serde_json::to_string(&ServerMessage::ServerPresence {
+            online_users: hub.online_users(&board_id),
+        })
+        .unwrap_or_default();
+        hub.broadcast_all(&board_id, &presence_msg);
+        result
+    };
+
+    log::info!(
+        "[sync_ws] Peer {} connected to board {} (user={})",
+        peer_id,
+        board_id,
+        client_user_id
+    );
+
+    // 4. Compute delta from server CRDT
+    let client_vv_bytes = b64().decode(&client_vv_b64).unwrap_or_default();
+    let server_updates = state
+        .storage
+        .export_crdt_updates_since(&board_id, &client_vv_bytes)
+        .unwrap_or_default();
+    let server_vv = state
+        .storage
+        .get_crdt_vv(&board_id)
+        .unwrap_or_default();
+
+    // 5. Send ServerHello
+    let hello_msg = serde_json::to_string(&ServerMessage::ServerHello {
+        peer_id,
+        vv: b64().encode(&server_vv),
+        updates: b64().encode(&server_updates),
+    })
+    .unwrap_or_default();
+    if ws_tx.send(Message::Text(hello_msg.into())).await.is_err() {
+        let mut hub = state.sync_hub.lock().await;
+        hub.unregister(&board_id, peer_id);
+        return;
+    }
+
+    // 6. Split into read and write tasks
+    let board_id_read = board_id.clone();
+    let state_read = state.clone();
+    let auth_user_read = auth_user.to_string();
+
+    // Write task: forward hub messages to WebSocket + periodic ping keepalive
+    let write_task = tokio::spawn(async move {
+        let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(WS_PING_INTERVAL_SECS));
+        ping_interval.tick().await; // consume the immediate first tick
+        loop {
+            tokio::select! {
+                maybe_msg = hub_rx.recv() => {
+                    match maybe_msg {
+                        Some(msg) => {
+                            if ws_tx.send(Message::Text(msg.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                        None => break,
+                    }
+                }
+                _ = ping_interval.tick() => {
+                    if ws_tx.send(Message::Ping(vec![].into())).await.is_err() {
+                        log::info!("[sync_ws] Ping failed for peer, closing connection");
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    // Read task: process ClientUpdate messages
+    let read_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = ws_rx.next().await {
+            let text = match msg {
+                Message::Text(t) => t,
+                Message::Close(_) => break,
+                _ => continue,
+            };
+
+            let parsed: ClientMessage = match serde_json::from_str(&text) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            match parsed {
+                ClientMessage::ClientUpdate { updates } => {
+                    let bytes = match b64().decode(&updates) {
+                        Ok(b) => b,
+                        Err(_) => continue,
+                    };
+
+                    // Import into storage CRDT
+                    if let Err(e) =
+                        state_read.storage.import_crdt_updates(&board_id_read, &bytes)
+                    {
+                        log::warn!(
+                            "[sync_ws] Failed to import updates from peer {}: {}",
+                            peer_id,
+                            e
+                        );
+                        continue;
+                    }
+
+                    // Broadcast to other peers
+                    let broadcast_msg =
+                        serde_json::to_string(&ServerMessage::ServerUpdate {
+                            updates: updates.clone(),
+                        })
+                        .unwrap_or_default();
+                    let hub = state_read.sync_hub.lock().await;
+                    hub.broadcast(&board_id_read, peer_id, &broadcast_msg);
+
+                    // Fire SSE event so non-WS clients know something changed
+                    let _ = state_read.event_tx.send(
+                        lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
+                            board_id: board_id_read.clone(),
+                        },
+                    );
+                }
+                ClientMessage::ClientEditingPresence {
+                    card_kid,
+                    user_name,
+                    cursor_pos,
+                    is_typing,
+                } => {
+                    let msg = serde_json::to_string(
+                        &ServerMessage::ServerEditingPresence {
+                            user_id: auth_user_read.clone(),
+                            user_name,
+                            card_kid,
+                            cursor_pos,
+                            is_typing,
+                        },
+                    )
+                    .unwrap_or_default();
+                    let hub = state_read.sync_hub.lock().await;
+                    hub.broadcast(&board_id_read, peer_id, &msg);
+                }
+                _ => {} // Ignore unexpected messages
+            }
+        }
+    });
+
+    // Wait for either task to finish, abort the other to prevent leaks
+    let mut write_task = write_task;
+    let mut read_task = read_task;
+    tokio::select! {
+        _ = &mut write_task => { read_task.abort(); }
+        _ = &mut read_task => { write_task.abort(); }
+    }
+
+    // 7. Cleanup and broadcast updated presence
+    {
+        let mut hub = state.sync_hub.lock().await;
+        hub.unregister(&board_id, peer_id);
+        let presence_msg = serde_json::to_string(&ServerMessage::ServerPresence {
+            online_users: hub.online_users(&board_id),
+        })
+        .unwrap_or_default();
+        hub.broadcast_all(&board_id, &presence_msg);
+        // Clear editing presence for this peer
+        let editing_clear = serde_json::to_string(&ServerMessage::ServerEditingPresence {
+            user_id: auth_user.to_string(),
+            user_name: String::new(),
+            card_kid: None,
+            cursor_pos: None,
+            is_typing: false,
+        })
+        .unwrap_or_default();
+        hub.broadcast_all(&board_id, &editing_clear);
+    }
+    log::info!(
+        "[sync_ws] Peer {} disconnected from board {}",
+        peer_id,
+        board_id
+    );
+}

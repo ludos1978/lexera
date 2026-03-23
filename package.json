@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.233.40",
+  "version": "0.234.2",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -22,9 +22,7 @@
   "icon": "./imgs/logo.png",
   "activationEvents": [
     "onLanguage:markdown",
-    "onWebviewPanel:markdownKanbanPanel",
-    "onView:kanbanBoardsSidebar",
-    "onView:kanbanDashboard"
+    "onWebviewPanel:markdownKanbanPanel"
   ],
   "main": "./dist/extension.js",
   "repository": {
@@ -5995,7 +5993,12 @@
       "activitybar": [
         {
           "id": "kanbanBoards",
-          "title": "Kanban",
+          "title": "Kanban Boards",
+          "icon": "$(notebook)"
+        },
+        {
+          "id": "kanbanDashboardContainer",
+          "title": "Kanban Dashboard",
           "icon": "$(notebook)"
         }
       ]
@@ -6006,7 +6009,9 @@
           "type": "webview",
           "id": "kanbanBoardsSidebar",
           "name": "Kanban Boards"
-        },
+        }
+      ],
+      "kanbanDashboardContainer": [
         {
           "type": "webview",
           "id": "kanbanDashboard",
@@ -6186,7 +6191,7 @@
     "lint": "eslint",
     "test": "vscode-test",
     "test:unit": "jest --config jest.config.js",
-    "sync-marp-engine": "mkdir -p tests/marp-engine-test && cp -r packages/marp-engine/engine/* tests/marp-engine-test/",
+    "sync-marp-engine": "cp -r packages/marp-engine/engine/* tests/marp-engine-test/",
     "vsix": "vsce package",
     "postinstall": "npx playwright install chromium"
   },

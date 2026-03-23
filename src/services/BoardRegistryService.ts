@@ -87,6 +87,13 @@ export class BoardRegistryService implements vscode.Disposable {
     private _onBoardsChanged = new vscode.EventEmitter<void>();
     readonly onBoardsChanged: vscode.Event<void> = this._onBoardsChanged.event;
 
+    /**
+     * Manually trigger boards changed event (for external refresh requests)
+     */
+    public triggerBoardsChanged(): void {
+        this._onBoardsChanged.fire();
+    }
+
     private _onSearchesChanged = new vscode.EventEmitter<void>();
     readonly onSearchesChanged: vscode.Event<void> = this._onSearchesChanged.event;
 

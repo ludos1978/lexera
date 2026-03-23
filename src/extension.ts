@@ -367,7 +367,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const refreshSidebarCommand = vscode.commands.registerCommand('markdown-kanban.sidebar.refresh', () => {
 		// Boards panel refreshes via registry events; trigger a boards change notification
-		(registry as any)._onBoardsChanged.fire();
+		registry.triggerBoardsChanged();
 	});
 
 	const filterSidebarCommand = vscode.commands.registerCommand('markdown-kanban.sidebar.filter', async () => {

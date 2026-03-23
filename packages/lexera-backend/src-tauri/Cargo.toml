@@ -1,0 +1,31 @@
+[package]
+name = "lexera-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lexera-core = { path = "../../lexera-core" }
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+axum = { version = "0.8", features = ["multipart", "ws"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+log = "0.4"
+env_logger = "0.11"
+tokio-stream = { version = "0.1", features = ["sync"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-clipboard-manager = "2"
+clipboard-rs = "0.2"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4", "serde"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+thiserror = "2"
+if-addrs = "0.13"
+percent-encoding = "2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

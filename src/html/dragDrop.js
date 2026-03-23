@@ -4718,6 +4718,26 @@ function restoreParkedTask(parkedIndex, dropPosition) {
             window.renderBoard();
         }
     }
+    // FALLBACK: If no valid drop position found, restore to original position
+    if (!targetColumnId) {
+        console.log('[restoreParkedTask] No valid drop position found, restoring to original location');
+        // Find the column containing this task and its index
+        for (const col of window.cachedBoard.columns) {
+            const idx = col.cards?.findIndex(t => t.id === task.id);
+            if (idx !== undefined && idx >= 0) {
+                targetColumnId = col.id;
+                insertIndex = idx; // Insert at original position
+                break;
+            }
+        }
+
+        // Ultimate fallback: first available column if task not found anywhere
+        if (!targetColumnId && window.cachedBoard?.columns?.length > 0) {
+            console.warn('[restoreParkedTask] Task not found in board, defaulting to first column');
+            targetColumnId = window.cachedBoard.columns[0].id;
+            insertIndex = 0;
+        }
+    }
 
     // Update parked items UI (task is no longer parked)
     initializeParkedItems();

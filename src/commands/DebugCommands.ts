@@ -18,25 +18,27 @@ import { getErrorMessage, safeDecodeURIComponent, normalizePathForLookup } from 
 import { PanelCommandAccess, hasConflictService } from '../types/PanelCommandAccess';
 import { MarkdownKanbanParser } from '../markdownParser';
 import { KanbanBoard } from '../board/KanbanTypes';
-import { IncludeFile } from '../files/IncludeFile';
-import { MarkdownFile } from '../files/MarkdownFile';
-import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
-import * as fs from 'fs';
-import * as path from 'path';
-import { createHash } from 'crypto';
-import {
+import type {
+    VerifyContentSyncMessage,
+    GetMediaTrackingStatusMessage,
     SetDebugModeMessage,
+    ApplyBatchFileActionsMessage,
     ConflictResolutionMessage,
     OpenFileDialogMessage,
     OpenVscodeDiffMessage,
     CloseVscodeDiffMessage,
-    ApplyBatchFileActionsMessage,
     VerifyContentSyncFileResult,
     VerifyContentSyncFrontendSnapshot,
     DuplicationVerificationResult,
     DuplicationVerificationIssue,
     DuplicationCopyState
 } from '../core/bridge/MessageTypes';
+import { IncludeFile } from '../files/IncludeFile';
+import { MarkdownFile } from '../files/MarkdownFile';
+import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
+import * as fs from 'fs';
+import * as path from 'path';
+import { createHash } from 'crypto';
 import { KanbanDiffService } from '../services/KanbanDiffService';
 import { ConflictDialogResult, toConflictFileInfo } from '../services/ConflictDialogBridge';
 import { logger } from '../utils/logger';
@@ -144,11 +146,11 @@ export class DebugCommands extends SwitchBasedCommand {
 
     protected handlers: Record<string, MessageHandler> = {
         'forceWriteAllContent': (_msg, ctx) => this.handleForceWriteAllContent(ctx),
-        'verifyContentSync': (msg, ctx) => this.handleVerifyContentSync((msg as any).frontendBoard, ctx),
+        'verifyContentSync': (msg, ctx) => this.handleVerifyContentSync(msg as VerifyContentSyncMessage, ctx),
         'getTrackedFilesDebugInfo': (_msg, ctx) => this.handleGetTrackedFilesDebugInfo(ctx),
         'clearTrackedFilesCache': (_msg, ctx) => this.handleClearTrackedFilesCache(ctx),
         'setDebugMode': (msg, ctx) => this.handleSetDebugMode(msg as SetDebugModeMessage, ctx),
-        'getMediaTrackingStatus': (msg, ctx) => this.handleGetMediaTrackingStatus((msg as any).filePath, ctx),
+        'getMediaTrackingStatus': (msg, ctx) => this.handleGetMediaTrackingStatus(msg as GetMediaTrackingStatusMessage, ctx),
         'applyBatchFileActions': (msg, ctx) => this.handleApplyBatchFileActions(msg as ApplyBatchFileActionsMessage, ctx),
         'conflictResolution': (msg, ctx) => this.handleConflictResolution(msg as ConflictResolutionMessage, ctx),
         'openFileDialog': (msg, ctx) => this.handleOpenFileDialog(msg as OpenFileDialogMessage, ctx),
@@ -878,9 +880,10 @@ export class DebugCommands extends SwitchBasedCommand {
     }
 
     private async handleVerifyContentSync(
-        frontendBoard: unknown,
+        message: VerifyContentSyncMessage,
         _context: CommandContext
     ): Promise<CommandResult> {
+        const frontendBoard = message.frontendBoard;
         if (!this.getPanel()) {
             return this.success();
         }
@@ -1130,7 +1133,11 @@ export class DebugCommands extends SwitchBasedCommand {
         return this.success();
     }
 
-    private async handleGetMediaTrackingStatus(filePath: string, context: CommandContext): Promise<CommandResult> {
+    private async handleGetMediaTrackingStatus(
+        message: GetMediaTrackingStatusMessage,
+        context: CommandContext
+    ): Promise<CommandResult> {
+        const filePath = message.filePath;
         const mediaTracker = context.getMediaTracker?.();
         const fileName = filePath ? path.basename(filePath) : '';
 

@@ -2,7 +2,32 @@
 
 This document catalogs ALL singleton instances, global state, and data instances (actual runtime instances, not just type definitions) in the Markdown Kanban Obsidian extension.
 
-**Last Updated:** 2026-02-14
+**Last Updated:** 2026-02-27
+
+---
+
+## Template System Instances (2026-02-27)
+
+### Backend (lexera-backend)
+- Templates directory resolved per-request from `SyncConfig.templates_path` or default `~/.config/lexera/templates/`.
+- No persistent state — template endpoints are stateless file-system reads.
+
+### Frontend (lexera-kanban)
+- `LexeraTemplates.templateCache` — Module-private array of TemplateSummary, loaded once on first backend connection.
+- `templatesLoaded` (in app.js closure) — Boolean flag, prevents duplicate template loading.
+
+---
+
+## WebSocket CRDT Sync Instances (2026-02-26)
+
+### Backend (lexera-backend)
+- `AppState.sync_hub` — `Arc<tokio::sync::Mutex<BoardSyncHub>>`, created in lib.rs setup. Manages all active WS sync sessions per board.
+- Per-connection instances in `handle_sync_session()`: `hub_rx` (mpsc receiver from BoardRoom), `ws_tx`/`ws_rx` (split WebSocket halves).
+
+### Frontend (lexera-kanban)
+- `LexeraApi.syncWs` — Module-private WebSocket instance for the active sync connection.
+- `LexeraApi.syncBoardId` — Board ID of the active sync connection.
+- `syncUserId` (in app.js closure) — Cached local user ID for sync handshake.
 
 ---
 

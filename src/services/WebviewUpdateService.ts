@@ -179,7 +179,8 @@ export class WebviewUpdateService {
         }
 
         // BoardUpdateMessage type matches getBoardViewConfig() output
-        logger.debug('[WebviewUpdateService._sendBoardUpdateMessage] viewConfig.columnWidth:', (viewConfig as any).columnWidth);
+        const columnWidth = viewConfig.columnWidth as string | undefined;
+        logger.debug('[WebviewUpdateService._sendBoardUpdateMessage] viewConfig.columnWidth:', columnWidth);
 
         // Include authoritative theme kind from VS Code API
         // (body class can be stale with retainContextWhenHidden)

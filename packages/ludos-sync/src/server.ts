@@ -13,6 +13,7 @@ import { LocalhostAuth } from './auth/LocalhostAuth';
 import { BoardFileWatcher } from './fileWatcher';
 import { ConfigManager, SyncConfig, resolveBoardOptions } from './config';
 import { createCaldavRouter } from './middleware/caldavMiddleware';
+import { createApiRouter } from './middleware/apiMiddleware';
 import { log } from './logger';
 import { resolveProcessName, recordAccess, getRecentClients, stopTracking } from './clientTracker';
 import type { Socket } from 'net';
@@ -130,6 +131,10 @@ export class SyncServer {
     // Mount CalDAV router
     const caldavRouter = createCaldavRouter(this.boardWatcher, '/caldav');
     this.app.use('/caldav', caldavRouter);
+
+    // Mount REST API for Ludos Dashboard
+    const apiRouter = createApiRouter(this.boardWatcher);
+    this.app.use('/api', apiRouter);
 
     // Health check endpoint
     this.app.get('/status', (_req, res) => {

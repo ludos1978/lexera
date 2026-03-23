@@ -1,0 +1,616 @@
+.card-description-wysiwyg .ProseMirror {
+  display: block;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  word-wrap: break-word;
+  max-height: inherit;
+  max-width: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-variant-ligatures: normal;
+  font-feature-settings: normal;
+  margin: 0;
+  padding: 0;
+  min-height: 1em;
+  cursor: text;
+  color: var(--vscode-foreground);
+  caret-color: var(--vscode-editorCursor-foreground, var(--vscode-foreground, #000));
+}
+
+.card-description-wysiwyg .ProseMirror-focused,
+.card-overlay-wysiwyg .ProseMirror-focused {
+  outline: none;
+  box-shadow: none;
+  border: none;
+}
+
+.card-description-wysiwyg .ProseMirror:focus {
+  caret-color: var(--vscode-editorCursor-foreground, var(--vscode-foreground, #000));
+}
+
+.card-description-wysiwyg .ProseMirror * {
+  caret-color: inherit;
+}
+
+.card-description-wysiwyg .ProseMirror ::selection {
+  background: var(--vscode-editor-selectionBackground, rgba(0, 120, 215, 0.3));
+}
+
+.card-description-wysiwyg .ProseMirror .ProseMirror-selectednode {
+  outline: 2px solid var(--vscode-focusBorder, #007acc);
+}
+
+.card-description-wysiwyg .ProseMirror h1,
+.card-description-wysiwyg .ProseMirror h2,
+.card-description-wysiwyg .ProseMirror h3,
+.card-description-wysiwyg .ProseMirror h4,
+.card-description-wysiwyg .ProseMirror h5,
+.card-description-wysiwyg .ProseMirror h6 {
+  margin: 0.25em 0;
+}
+
+.card-description-wysiwyg .ProseMirror p {
+  margin: 0.5em 0 !important;
+  padding: 0;
+}
+
+.card-description-wysiwyg .ProseMirror ul,
+.card-description-wysiwyg .ProseMirror ol {
+  margin: 0.125em 0;
+  padding-left: 1.5em;
+}
+
+.card-description-wysiwyg .ProseMirror code {
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.card-description-wysiwyg .ProseMirror pre {
+  padding: 0.5em;
+  border-radius: 3px;
+  overflow-x: auto;
+  margin: 0.25em 0;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block .wysiwyg-edit-btn {
+  align-self: flex-start;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram code {
+  font-family: var(--vscode-editor-font-family);
+}
+
+.card-description-wysiwyg .ProseMirror a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+.card-description-wysiwyg img {
+  max-width: 100%;
+  max-height: 400px;
+  width: auto;
+  height: auto;
+  margin: 0;
+  display: block;
+  object-fit: contain;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-file {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-file .diagram-placeholder,
+.card-description-wysiwyg .wysiwyg-diagram-file .diagram-rendered {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-file .diagram-rendered {
+  height: auto;
+  max-height: 400px;
+  object-fit: contain;
+}
+
+.card-description-wysiwyg .wysiwyg-media-block {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 3px;
+}
+
+.card-description-wysiwyg .image-path-overlay-container.wysiwyg-media-block {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.card-description-wysiwyg .video-path-overlay-container {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.card-description-wysiwyg .video-path-overlay-container video,
+.card-description-wysiwyg .video-path-overlay-container audio {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.card-description-wysiwyg .wysiwyg-include-inline,
+.card-description-wysiwyg .wysiwyg-include-block,
+.card-description-wysiwyg .wysiwyg-media,
+.card-description-wysiwyg .wysiwyg-wiki-link,
+.card-description-wysiwyg .wysiwyg-tag,
+.card-description-wysiwyg .wysiwyg-date-tag,
+.card-description-wysiwyg .wysiwyg-person-tag,
+.card-description-wysiwyg .wysiwyg-temporal-tag,
+.card-description-wysiwyg .wysiwyg-footnote,
+.card-overlay-wysiwyg .wysiwyg-include-inline,
+.card-overlay-wysiwyg .wysiwyg-include-block,
+.card-overlay-wysiwyg .wysiwyg-media,
+.card-overlay-wysiwyg .wysiwyg-wiki-link,
+.card-overlay-wysiwyg .wysiwyg-tag,
+.card-overlay-wysiwyg .wysiwyg-date-tag,
+.card-overlay-wysiwyg .wysiwyg-person-tag,
+.card-overlay-wysiwyg .wysiwyg-temporal-tag,
+.card-overlay-wysiwyg .wysiwyg-footnote {
+  background: var(--button-secondary-background);
+  color: var(--button-secondary-foreground);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin: 0 3px;
+  display: inline-block;
+}
+
+.card-description-wysiwyg .wysiwyg-media[data-type="image"],
+.card-description-wysiwyg .wysiwyg-media[data-type="video"],
+.card-description-wysiwyg .wysiwyg-media[data-type="audio"] {
+  background: transparent;
+}
+
+.card-description-wysiwyg .wysiwyg-edit-btn {
+  margin-right: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border-radius: 3px;
+  font-size: 0.75em;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.card-description-wysiwyg .wysiwyg-edit-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.card-description-wysiwyg .wysiwyg-include-block,
+.card-description-wysiwyg .wysiwyg-media {
+  display: inline-flex;
+  align-items: center;
+}
+
+.card-description-wysiwyg .wysiwyg-include-block {
+  display: flex;
+  gap: 6px;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block:not(.is-editing) .wysiwyg-diagram {
+  display: none;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview {
+  grid-column: 1;
+  border-right: 1px solid var(--vscode-panel-border);
+  padding-right: 8px;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram {
+  grid-column: 2;
+  margin: 0;
+  border-left: 1px solid var(--vscode-panel-border);
+  padding-left: 8px;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::before,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::before {
+  content: "```" attr(data-lang);
+  display: block;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.8em;
+  margin-bottom: 4px;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::after,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::after {
+  content: "```";
+  display: block;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.8em;
+  margin-top: 4px;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block .wysiwyg-edit-btn {
+  display: none;
+}
+
+.card-description-wysiwyg .wysiwyg-multicolumn {
+  position: relative;
+  margin: 10px 3px;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  outline: 1px dashed color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
+  overflow: visible;
+}
+
+.card-overlay-wysiwyg .wysiwyg-multicolumn {
+  position: relative;
+  margin: 10px 3px;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  outline: 1px dashed color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
+  overflow: visible;
+}
+
+.card-description-wysiwyg .wysiwyg-multicolumn-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.card-overlay-wysiwyg .wysiwyg-multicolumn-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.card-description-wysiwyg .wysiwyg-multicolumn-btn {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border-radius: 3px;
+  font-size: 0.7em;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transform: translateY(-6px);
+}
+
+.card-overlay-wysiwyg .wysiwyg-multicolumn-btn {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border-radius: 3px;
+  font-size: 0.7em;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transform: translateY(-6px);
+}
+
+.card-description-wysiwyg .wysiwyg-multicolumn-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.card-overlay-wysiwyg .wysiwyg-multicolumn-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.card-description-wysiwyg .wysiwyg-multicolumn-columns {
+  display: flex;
+  gap: 10px;
+}
+
+.card-overlay-wysiwyg .wysiwyg-multicolumn-columns {
+  display: flex;
+  gap: 10px;
+}
+
+.card-description-wysiwyg .wysiwyg-multicolumn-column {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px;
+  border-left: none;
+}
+
+.card-overlay-wysiwyg .wysiwyg-multicolumn-column {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px;
+  border-left: none;
+}
+
+.card-description-wysiwyg .wysiwyg-multicolumn-column + .wysiwyg-multicolumn-column {
+  border-left: 1px solid var(--vscode-panel-border);
+}
+
+.card-overlay-wysiwyg .wysiwyg-multicolumn-column + .wysiwyg-multicolumn-column {
+  border-left: 1px solid var(--vscode-panel-border);
+}
+
+
+.card-description-wysiwyg .wysiwyg-diagram-preview,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview {
+  margin: 0;
+  display: block;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview {
+  /* height: 240px; */
+  /* max-height: 240px; */
+  overflow: auto;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-preview .diagram-overlay-container,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview .diagram-overlay-container,
+.card-description-wysiwyg .wysiwyg-diagram-preview .mermaid-diagram,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview .mermaid-diagram,
+.card-description-wysiwyg .wysiwyg-diagram-preview .plantuml-diagram,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview .plantuml-diagram {
+  /* width: 100%; */
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .diagram-overlay-container,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .diagram-overlay-container,
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .mermaid-diagram,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .mermaid-diagram,
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .plantuml-diagram,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .plantuml-diagram {
+  height: -webkite-fill-available;
+  width: -webkite-fill-available;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-preview svg,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview svg {
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  display: block;
+}
+
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview svg,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview svg {
+  max-height: none;
+}
+
+.card-description-wysiwyg .diagram-overlay-container,
+.card-description-wysiwyg .mermaid-diagram,
+.card-description-wysiwyg .plantuml-diagram,
+.card-description-wysiwyg .mermaid-placeholder,
+.card-description-wysiwyg .plantuml-placeholder,
+.card-description-wysiwyg .diagram-placeholder {
+  margin: 0;
+}
+
+.card-description-wysiwyg .wysiwyg-include-block,
+.card-overlay-wysiwyg .wysiwyg-include-block {
+  margin: 2px 3px;
+  padding: 2px 6px;
+}
+
+.card-overlay-wysiwyg {
+  flex: 1;
+  min-width: 0;
+  display: none;
+  box-sizing: border-box;
+}
+
+.task-overlay-editor[data-mode="markdown"] .task-overlay-markdown {
+  display: block;
+}
+
+.task-overlay-editor[data-mode="dual"] .task-overlay-markdown,
+.task-overlay-editor[data-mode="dual"] .task-overlay-preview {
+  display: block;
+}
+
+.task-overlay-editor[data-mode="dual"] .task-overlay-markdown {
+  border-right: 1px solid var(--vscode-panel-border);
+}
+
+.task-overlay-editor[data-mode="wysiwyg"] .card-overlay-wysiwyg {
+  display: block;
+}
+
+.card-overlay-wysiwyg {
+  overflow: auto;
+}
+
+.card-overlay-wysiwyg .ProseMirror {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.card-overlay-wysiwyg .wysiwyg-diagram-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.card-overlay-wysiwyg .wysiwyg-diagram-block:not(.is-editing) .wysiwyg-diagram {
+  display: none;
+}
+
+.card-overlay-wysiwyg .wysiwyg-diagram-block .wysiwyg-edit-btn {
+  display: none;
+}
+
+.card-overlay-wysiwyg img,
+.card-overlay-wysiwyg video,
+.card-overlay-wysiwyg iframe,
+.card-overlay-wysiwyg canvas,
+.card-overlay-wysiwyg svg {
+  max-width: 100%;
+  max-height: var(--card-overlay-wysiwyg-height, 100%);
+  height: auto;
+}
+
+.card-overlay-wysiwyg .image-path-overlay-container,
+.card-overlay-wysiwyg .video-path-overlay-container,
+.card-overlay-wysiwyg .wysiwyg-media,
+.card-overlay-wysiwyg .wysiwyg-media-block,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview {
+  max-width: 100%;
+  max-height: var(--card-overlay-wysiwyg-height, 100%);
+  box-sizing: border-box;
+}
+
+.card-overlay-wysiwyg .wysiwyg-media-block {
+  margin: 0 3px;
+}
+
+.card-editor-dialog {
+  --vscode-panel-border: var(--border);
+  --vscode-editor-background: var(--input-bg);
+  --vscode-editor-foreground: var(--text-primary);
+  --vscode-textLink-foreground: var(--accent);
+  --vscode-textLink-activeForeground: var(--accent-hover);
+  --vscode-focusBorder: var(--accent);
+  --vscode-button-secondaryBackground: var(--bg-tertiary);
+  --vscode-button-secondaryForeground: var(--text-primary);
+  --vscode-button-secondaryHoverBackground: var(--bg-hover);
+  --vscode-input-background: var(--input-bg);
+  --vscode-input-foreground: var(--text-primary);
+  --vscode-input-border: var(--input-border);
+  --vscode-editorWidget-background: var(--card-bg);
+  --vscode-editorWidget-border: var(--border);
+  --task-overlay-font-scale: 1;
+}
+
+.card-editor-wysiwyg-pane {
+  display: none;
+  border-right: none;
+}
+
+.card-editor-dialog[data-editor-mode="wysiwyg"] .card-editor-body {
+  display: flex;
+}
+
+.card-editor-dialog[data-editor-mode="wysiwyg"] .card-editor-text-pane,
+.card-editor-dialog[data-editor-mode="wysiwyg"] .card-editor-preview-pane {
+  display: none;
+}
+
+.card-editor-dialog[data-editor-mode="wysiwyg"] .card-editor-wysiwyg-pane {
+  display: flex;
+  flex: 1;
+}
+
+.card-editor-dialog[data-editor-mode="wysiwyg"] .card-overlay-wysiwyg {
+  display: block;
+}
+
+.card-overlay-wysiwyg {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  background: var(--input-bg);
+  border-radius: 0 0 10px 10px;
+}
+
+.card-overlay-wysiwyg .ProseMirror {
+  min-height: 420px;
+  padding: 14px 16px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  line-height: 1.55;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.card-overlay-wysiwyg .ProseMirror-focused {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.card-overlay-wysiwyg .ProseMirror > :first-child {
+  margin-top: 0;
+}
+
+.card-overlay-wysiwyg .ProseMirror > :last-child {
+  margin-bottom: 0;
+}
+
+.card-overlay-wysiwyg a {
+  color: var(--accent);
+}
+
+.card-overlay-wysiwyg .wysiwyg-edit-btn,
+.card-overlay-wysiwyg .wysiwyg-multicolumn-btn,
+.card-overlay-wysiwyg .image-menu-btn,
+.card-overlay-wysiwyg .video-menu-btn {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.card-overlay-wysiwyg .image-path-overlay-container,
+.card-overlay-wysiwyg .video-path-overlay-container,
+.card-overlay-wysiwyg .wysiwyg-media,
+.card-overlay-wysiwyg .wysiwyg-media-block,
+.card-overlay-wysiwyg .wysiwyg-diagram-block,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview {
+  background: var(--card-bg);
+  border-color: var(--border);
+}

@@ -1444,8 +1444,8 @@ export class KanbanFileService {
                     logger.debug(`[KanbanFileService] Initial load include check: column=${column.id}, relativePath=${relativePath}, absolutePath=${absolutePath}, exists=${fileExists}`);
 
                     if (!fileExists) {
-                        (column as any).includeMode = true;  // REQUIRED for frontend to show error styling
-                        (column as any).includeError = true;
+                        column.includeMode = true;  // REQUIRED for frontend to show error styling
+                        column.includeError = true;
                         // Don't create error task - just show empty column with error badge
                         column.cards = [];
                     }

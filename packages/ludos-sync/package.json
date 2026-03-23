@@ -1,6 +1,6 @@
 {
   "name": "ludos-sync",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Standalone WebDAV sync server for Ludos Kanban markdown files",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",

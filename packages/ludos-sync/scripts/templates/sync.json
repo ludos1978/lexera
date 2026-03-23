@@ -22,7 +22,7 @@
     "calendar: reserved for future CalDAV support (not yet implemented)."
   ],
 
-  "port": 8080,
+  "port": 13080,
 
   "bookmarks": {
     "enabled": true,

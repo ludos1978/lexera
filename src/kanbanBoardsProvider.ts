@@ -311,11 +311,12 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             const parseResult = MarkdownKanbanParser.parseMarkdown(content);
             const board = parseResult.board;
             if (!board.boardSettings) { board.boardSettings = {}; }
+            const settings = board.boardSettings as Record<string, string | undefined>;
             if (color) {
-                (board.boardSettings as any)[settingKey] = color;
+                settings[settingKey] = color;
             } else {
                 // Set to empty string so updateYamlWithBoardSettings removes the line
-                (board.boardSettings as any)[settingKey] = '';
+                settings[settingKey] = '';
             }
             const updatedYaml = MarkdownKanbanParser.updateYamlWithBoardSettings(board.yamlHeader, board.boardSettings);
             const updatedContent = content.replace(/^---[\s\S]*?---/, updatedYaml);

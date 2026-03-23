@@ -1,8 +1,41 @@
-- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board. For that we define an Inbox. I would like it to be a separate application that can be used as drop source. But it would also be good if it could access the browser data (if the user is logged in somewhere or we cant access the data from playwright). What system would you suggest? I am planning on adding other sources that could be used to integrate into the system directly. Ideas that pop up are RSS, EMail, Filesystem. An mobile web clipper (something that can run on an ios and or android) would be best as well. It should sync using a kanban board that is shared using icloud or dropbox. the external tool could also be used to search the boards and display results we have within the kanban boards.
+## Version 2
 
-- [ ] i want to have a better diff system that allows visual change acceptance from changes that are made in the file, vs changes that are made in the kanban. with a fallback to the line by line changes diff and merge.
+- [ ] in the packages/lexera folders work on feature parity with the code in the src folder. there is some difference as we added row, stack structures in lexera. also the splitting of features are different and a backend data realtime syncing. but for the user perspective the features must be equal.  there is a lot of features that are missing or not functioning well. do an state analysis first
+
+- [ ] the backend needs a small interface that allows adding and removing kanban boards from/to it and of course list the ones that are currently included. it must show if users are working on them and if this machine is autoritative for the board (maybe other network relevant informations). it must communicate with the frontend when it changes this. 
+
+- [ ] i want to be able to setup multiple workspaces. 
+  - each workspace has specific boards open
+  - it can have specific layouts
+  - it can have a specific theme
+  - maybe more...
+
+- [ ] the file format should be changed to \                                                                
+  ---\                                                                                                  
+  yaml-header\                                                                                          
+  ---\                                                                                                  
+  # row name\                                                                                           
+  ## stack name\                                                                                        
+  ### column name\                                                                                      
+  - [ ] card name\                                                                                      
+    ...\                                                                                                
+  - [ ] ...\                                                                                            
+  \                                                                                                     
+  all of the elements should be moveable and foldable individuall. so a row can be folded, a stack can  
+  be folded and columns as well and cards. they can be dragged around and placed as needed. we will     
+  think about layout options for the groups later. currently rows are horizontally listed items,        
+  stacks are vertically listed items, column contain verticall listed items (the cards).
+
+- [ ] file watcher, but we need a strong change handling from eigther user changes and file system (data storage backend) changes. plan with a multi-user system in mind and a system that is save to never loose any data. it uses the known system of main file, included file we have in the version 1 syste
+
+- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board. For that we define an Inbox. I would like it to be a separate application that can be used as drop source. But it would also be good if it could access the browser data (if the ushttps://www.heise.de/news/Klage-wegen-Social-Media-Sucht-Mark-Zuckerberg-wollte-mit-Apple-kooperieren-11185998.htmler is logged in somewhere or we cant access the data from playwright). What system would you suggest? I am planning on adding other sources that could be used to integrate into the system directly. Ideas that pop up are RSS, EMail, Filesystem. An mobile web clipper (something that can run on an ios and or android) would be best as well. It should sync using a kanban board that is shared using icloud or dropbox. the external tool could also be used to search the boards and display results we have within the kanban boards.
 
 - [ ] when searching allow to limit seaches for l: links
+
+
+## Version 1
+
+- [ ] i want to have a better diff system that allows visual change acceptance from changes that are made in the file, vs changes that are made in the kanban. with a fallback to the line by line changes diff and merge.
 
 - [ ] Add the option to unfold the columns that are below a kanban board within the kanban boards list (on the separate view). it must be automatically updated with each modification of colums! make it a modular element that could be activated within the board view as a side element as well (the list of all columns within a board). within the board itself the list only shows it's own columns. the columns should accept drops from other boards, external drops etc. when dropped on columns it adds them at the end, when dropped over a kanban board it create a column named "Incoming" which is another category of the kind "Park", "Tash", "Archive". Also add the option to unfold the columns which lists the titles of the cards! make this a re-usable element as well!
 
@@ -24,15 +57,15 @@
     - (give me ideas)
 
 - [ ] @KW7 @KW37 Ilias / ELearning vorbereiten  is not listed in "kanban dashboards". we currently have KW8.
-  
+
   This is only for events that has not specified the year such as @KW13 or @JAN possibly in combination with @MON. These must be handled like this:
 
   - Any yearly date value that is past within the last 2 Month must be displayed in the "Overdue" events as long as they are not checked.
   - Any yearly date value that is not checked that is Overdue 2 to 2.5 Months must be shown in a group "Outdated, soon discarded".
   - Any yearly date value that is checked and within the past 2.5 to 3 months must be shown as "Reset to repeat"
   - yearly date values older then 3 months is considered in the future (in the coming nine months)
-  
-  for weeky date values such as - [ ] @mon  
+
+  for weeky date values such as - [ ] @mon
   - weekly date value unchecked and past in 2 days in overdue
   - weekly date value unchecked and past 2 to 2.5 days is "outdated, soon discarded"
   - weekly date value checked and past 2.5 to 3 days is shown as "Reset to repeat"
