@@ -30,7 +30,7 @@
   --scrollbar-track: transparent;
   --header-height: 44px;
   --app-bottom-inset: 22px;
-  --sidebar-width: 300px;
+  --sidebar-width: 272px;
   --ui-scale: 1;
   --space-1: calc(2px * var(--ui-scale));
   --space-2: calc(4px * var(--ui-scale));
@@ -39,24 +39,32 @@
   --radius-sm: calc(3px * var(--ui-scale));
   --radius-md: calc(4px * var(--ui-scale));
   --radius-lg: calc(6px * var(--ui-scale));
-  --btn-square-size: calc(20px * var(--ui-scale));
-  --hierarchy-btn-size: calc(16px * var(--ui-scale));
-  --icon-glyph-size: calc(10px * var(--ui-scale));
-  --fold-icon-size: var(--icon-glyph-size);
+  --btn-square-size: calc(18px * var(--ui-scale));
+  --hierarchy-btn-size: calc(18px * var(--ui-scale));
+  --app-icon-box-size: calc(13px * var(--ui-scale));
+  --app-icon-glyph-size: calc(10px * var(--ui-scale));
+  --app-icon-svg-size: calc(10px * var(--ui-scale));
+  --app-fold-icon-size: var(--app-icon-glyph-size);
+  --board-icon-glyph-size: calc(10px * var(--ui-scale));
+  --board-icon-svg-size: calc(10px * var(--ui-scale));
+  --board-fold-icon-size: var(--board-icon-glyph-size);
+  --icon-glyph-size: var(--app-icon-glyph-size);
+  --icon-svg-size: var(--app-icon-svg-size);
+  --fold-icon-size: var(--app-fold-icon-size);
   --btn-gap: var(--space-2);
   --layout-row-rail-width: calc(36px * var(--ui-scale));
   --layout-folded-stack-width: calc(36px * var(--ui-scale));
-  --layout-stack-min-width: calc(250px * var(--ui-scale));
-  --layout-row-header-pad-y: var(--space-4);
+  --layout-stack-min-width: calc(228px * var(--ui-scale));
+  --layout-row-header-pad-y: var(--space-3);
   --layout-row-header-pad-x: var(--space-2);
-  --layout-stack-header-pad-y: calc(5px * var(--ui-scale));
-  --layout-stack-header-pad-x: var(--space-4);
+  --layout-stack-header-pad-y: calc(4px * var(--ui-scale));
+  --layout-stack-header-pad-x: var(--space-3);
   --layout-column-header-pad-y: var(--space-2);
-  --layout-column-header-pad-x: var(--space-4);
-  --board-row-gap: calc(12px * var(--ui-scale));
-  --board-stack-gap: calc(10px * var(--ui-scale));
-  --board-column-gap: calc(6px * var(--ui-scale));
-  --board-inner-padding: calc(8px * var(--ui-scale));
+  --layout-column-header-pad-x: var(--space-3);
+  --board-row-gap: calc(8px * var(--ui-scale));
+  --board-stack-gap: calc(8px * var(--ui-scale));
+  --board-column-gap: calc(5px * var(--ui-scale));
+  --board-inner-padding: calc(6px * var(--ui-scale));
   --board-layout-rows: 1;
   --board-bg: var(--bg-primary);
   --board-color: transparent;
@@ -81,11 +89,11 @@
   --surface-header-bg: var(--bg-tertiary);
   --surface-header-border: var(--border);
   --surface-footer-bg: var(--bg-secondary);
-  --card-radius: 4px;
+  --card-radius: 5px;
   --card-shadow: none;
-  --card-gap: 4px;
-  --card-list-padding: 4px;
-  --card-content-padding: 5px 10px 9px;
+  --card-gap: 3px;
+  --card-list-padding: 3px;
+  --card-content-padding: 4px 8px 6px;
   --row-content-bg: transparent;
   --stack-content-bg: transparent;
   --title-row-color: var(--text-bright);
@@ -374,6 +382,29 @@ textarea {
   font-size: var(--icon-glyph-size);
 }
 
+.btn-icon svg,
+.sidebar-btn svg,
+.fold-btn svg,
+.card-collapse-toggle svg,
+.column-menu-btn svg,
+.column-add-btn svg,
+.column-edit-btn svg,
+.stack-add-column-btn svg,
+.stack-edit-btn svg,
+.row-add-stack-btn svg,
+.row-edit-btn svg,
+.stack-delete-btn svg,
+.card-menu-btn svg,
+.embed-menu-btn svg,
+.burger-menu-btn svg,
+.board-item-remove svg,
+.dashboard-item-remove svg {
+  display: block;
+  width: var(--icon-svg-size);
+  height: var(--icon-svg-size);
+  flex: 0 0 auto;
+}
+
 .burger-menu-btn {
   font-size: 0;
 }
@@ -381,7 +412,7 @@ textarea {
 .burger-lines {
   position: relative;
   display: inline-block;
-  width: calc(10px * var(--ui-scale));
+  width: var(--icon-svg-size);
   height: calc(2px * var(--ui-scale));
   border-radius: 99px;
   background: currentColor;
@@ -433,6 +464,15 @@ textarea {
   color: var(--accent);
   border-color: var(--accent);
   background: var(--icon-btn-bg-active);
+}
+
+/* Board and canvas surfaces keep their own icon scale separate from app chrome. */
+.board-header,
+.columns-container,
+.hidden-items-dropdown-item {
+  --icon-glyph-size: var(--board-icon-glyph-size);
+  --icon-svg-size: var(--board-icon-svg-size);
+  --fold-icon-size: var(--board-fold-icon-size);
 }
 
 /* Layout */
@@ -673,84 +713,99 @@ textarea {
 }
 
 .dashboard-chip {
-  min-height: var(--btn-square-size);
-  padding: 0 10px;
-  font-size: 11px;
-  line-height: 1.2;
+  min-height: calc(22px * var(--ui-scale));
+  padding: 2px 10px;
+  font-size: calc(10.5px * var(--ui-scale));
+  line-height: 1.3;
   white-space: nowrap;
-  border-radius: calc(12px * var(--ui-scale));
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  gap: 4px;
+  border-radius: 999px;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  gap: 5px;
   display: inline-flex;
   align-items: center;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
 }
 
 .dashboard-chip .chip-icon {
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1;
-  opacity: 0.75;
+  opacity: 0.8;
+  flex-shrink: 0;
 }
 
 .dashboard-chip[data-dashboard-query*="overdue"] {
   color: var(--error);
-  border-color: rgba(211, 47, 47, 0.35);
+  border-color: rgba(211, 47, 47, 0.3);
+  background: rgba(211, 47, 47, 0.06);
 }
 .dashboard-chip[data-dashboard-query*="overdue"]:hover {
-  background: rgba(211, 47, 47, 0.1);
-  border-color: var(--error);
+  background: rgba(211, 47, 47, 0.12);
+  border-color: rgba(211, 47, 47, 0.5);
+  box-shadow: 0 0 0 1px rgba(211, 47, 47, 0.08);
 }
 
 .dashboard-chip[data-dashboard-query*="today"] {
   color: var(--accent);
-  border-color: rgba(0, 122, 204, 0.35);
+  border-color: rgba(0, 122, 204, 0.3);
+  background: rgba(0, 122, 204, 0.06);
 }
 .dashboard-chip[data-dashboard-query*="today"]:hover {
-  background: rgba(0, 122, 204, 0.1);
-  border-color: var(--accent);
+  background: rgba(0, 122, 204, 0.12);
+  border-color: rgba(0, 122, 204, 0.5);
+  box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.08);
 }
 
 .dashboard-chip[data-dashboard-query*="week"] {
   color: var(--success);
-  border-color: rgba(56, 138, 108, 0.35);
+  border-color: rgba(56, 138, 108, 0.3);
+  background: rgba(56, 138, 108, 0.06);
 }
 .dashboard-chip[data-dashboard-query*="week"]:hover {
-  background: rgba(56, 138, 108, 0.1);
-  border-color: var(--success);
+  background: rgba(56, 138, 108, 0.12);
+  border-color: rgba(56, 138, 108, 0.5);
+  box-shadow: 0 0 0 1px rgba(56, 138, 108, 0.08);
 }
 
 .dashboard-chip[data-dashboard-query*="parked"] {
   color: var(--text-muted);
-  border-color: rgba(138, 138, 138, 0.35);
+  border-color: rgba(138, 138, 138, 0.25);
+  background: rgba(138, 138, 138, 0.05);
 }
 .dashboard-chip[data-dashboard-query*="parked"]:hover {
   background: rgba(138, 138, 138, 0.1);
-  border-color: var(--text-muted);
+  border-color: rgba(138, 138, 138, 0.45);
+  box-shadow: 0 0 0 1px rgba(138, 138, 138, 0.06);
 }
 
 .dashboard-chip.active {
-  font-weight: 600;
+  font-weight: 650;
 }
 .dashboard-chip[data-dashboard-query*="overdue"].active {
-  background: rgba(211, 47, 47, 0.15);
-  border-color: var(--error);
+  background: rgba(211, 47, 47, 0.18);
+  border-color: rgba(211, 47, 47, 0.55);
   color: var(--error);
+  box-shadow: 0 0 0 1px rgba(211, 47, 47, 0.12);
 }
 .dashboard-chip[data-dashboard-query*="today"].active {
-  background: rgba(0, 122, 204, 0.15);
-  border-color: var(--accent);
+  background: rgba(0, 122, 204, 0.18);
+  border-color: rgba(0, 122, 204, 0.55);
   color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.12);
 }
 .dashboard-chip[data-dashboard-query*="week"].active {
-  background: rgba(56, 138, 108, 0.15);
-  border-color: var(--success);
+  background: rgba(56, 138, 108, 0.18);
+  border-color: rgba(56, 138, 108, 0.55);
   color: var(--success);
+  box-shadow: 0 0 0 1px rgba(56, 138, 108, 0.12);
 }
 .dashboard-chip[data-dashboard-query*="parked"].active {
-  background: rgba(138, 138, 138, 0.15);
-  border-color: var(--text-muted);
+  background: rgba(138, 138, 138, 0.18);
+  border-color: rgba(138, 138, 138, 0.45);
   color: var(--text-secondary);
+  box-shadow: 0 0 0 1px rgba(138, 138, 138, 0.08);
 }
 
 .sidebar-dashboard-body {
@@ -914,7 +969,7 @@ textarea {
   width: calc(var(--btn-square-size) - 2px);
   height: calc(var(--btn-square-size) - 2px);
   padding: 0;
-  font-size: 11px;
+  font-size: var(--icon-glyph-size);
   line-height: 1;
   cursor: pointer;
 }
@@ -1006,7 +1061,7 @@ textarea {
   min-width: var(--hierarchy-btn-size);
   width: var(--hierarchy-btn-size);
   height: var(--hierarchy-btn-size);
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--icon-glyph-size);
   color: var(--error);
   margin-left: 0;
   visibility: hidden;
@@ -1579,14 +1634,22 @@ body.embedded-mode .columns-container {
 }
 
 .board-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(4px * var(--ui-scale));
+  min-height: var(--btn-square-size);
   background: var(--btn-bg);
   border: 1px solid var(--border);
   color: var(--btn-fg);
-  border-radius: 3px;
-  padding: 2px 8px;
-  font-size: 11px;
+  border-radius: var(--radius-md);
+  padding: 0 calc(7px * var(--ui-scale));
+  font-size: calc(10.5px * var(--ui-scale));
+  font-weight: 600;
+  line-height: 1;
   cursor: pointer;
   font-family: inherit;
+  white-space: nowrap;
 }
 
 .board-action-btn:hover {
@@ -1627,9 +1690,9 @@ body.embedded-mode .columns-container {
 }
 
 .board-header.board-header-compact .board-action-btn {
-  min-width: calc(22px * var(--ui-scale));
-  height: calc(var(--btn-square-size) - 2px);
-  padding: 0 calc(6px * var(--ui-scale));
+  min-width: var(--btn-square-size);
+  height: var(--btn-square-size);
+  padding: 0 calc(5px * var(--ui-scale));
 }
 
 .board-header.board-header-compact .board-action-btn.icon-only {
@@ -1773,8 +1836,8 @@ body.show-special-characters .card-editor-textarea {
 .card-drag-handle.entity-drag-icon svg,
 .tree-grip.entity-drag-icon svg {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: var(--icon-svg-size);
+  height: var(--icon-svg-size);
 }
 
 /* Board row: horizontal container for stacks (new format) */
@@ -4409,31 +4472,35 @@ select.dialog-input option,
 
 .card-editor-overlay {
   align-items: stretch;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.62);
+  padding: 16px;
+  background: rgba(10, 16, 24, 0.56);
   z-index: 1200;
 }
 
 .card-editor-dialog {
-  width: min(1120px, calc(100vw - 48px));
+  width: min(520px, calc(100vw - 32px));
   max-width: none;
-  min-width: min(820px, 100%);
-  max-height: calc(100vh - 48px);
+  min-width: min(380px, 100%);
+  max-height: calc((100vh - 32px) / 2);
   margin: auto;
   padding: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, white 22%);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  box-shadow: 0 24px 72px rgba(15, 23, 42, 0.22);
 }
 
 .card-editor-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px 18px 12px;
+  gap: 12px;
+  padding: 10px 12px 8px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
+  background: color-mix(in srgb, var(--bg-secondary) 92%, white 8%);
 }
 
 .card-editor-header-main {
@@ -4450,8 +4517,8 @@ select.dialog-input option,
 }
 
 .card-editor-title-text {
-  margin-top: 4px;
-  font-size: 18px;
+  margin-top: 2px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-bright);
   white-space: nowrap;
@@ -4463,26 +4530,26 @@ select.dialog-input option,
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .card-editor-mode-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px;
+  gap: 1px;
+  padding: 1px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--bg-tertiary);
+  background: color-mix(in srgb, var(--bg-primary) 88%, var(--bg-secondary) 12%);
 }
 
 .card-editor-mode-toggle .board-action-btn {
-  min-height: 30px;
+  min-height: 26px;
   border: none;
   border-radius: 999px;
   background: transparent;
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
 .card-editor-mode-toggle .board-action-btn.active {
@@ -4493,15 +4560,15 @@ select.dialog-input option,
 .card-editor-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
-  padding: 12px 18px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--bg-secondary) 88%, white 12%);
 }
 
 .card-editor-toolbar .board-action-btn {
-  min-height: 30px;
+  min-height: 26px;
 }
 
 .card-editor-snippet-select {
@@ -4512,14 +4579,14 @@ select.dialog-input option,
 
 .card-editor-hint {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-secondary);
 }
 
 .card-editor-body {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  min-height: 0;
+  min-height: 100px;
   flex: 1;
 }
 
@@ -4535,19 +4602,19 @@ select.dialog-input option,
 }
 
 .card-editor-pane-title {
-  padding: 10px 14px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.7px;
   text-transform: uppercase;
   color: var(--text-secondary);
 }
 
 .card-editor-textarea {
   flex: 1;
-  min-height: 380px;
-  padding: 14px 16px;
+  min-height: 100px;
+  padding: 10px 12px;
   background: var(--input-bg);
   overflow: auto;
   resize: none;
@@ -4556,7 +4623,7 @@ select.dialog-input option,
 .card-editor-preview {
   flex: 1;
   min-height: 0;
-  padding: 14px 16px;
+  padding: 10px 12px;
   overflow: auto;
   outline: none;
 }
@@ -5256,7 +5323,7 @@ select.dialog-input option,
   cursor: grab;
   opacity: 0.4;
   user-select: none;
-  font-size: 11px;
+  font-size: var(--icon-glyph-size);
   letter-spacing: -2px;
   flex-shrink: 0;
 }
@@ -5271,8 +5338,8 @@ select.dialog-input option,
   color: var(--text-secondary);
 }
 .hidden-items-dropdown-item .drag-grip.entity-drag-icon svg {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-svg-size);
+  height: var(--icon-svg-size);
 }
 .hidden-items-dropdown-item .drag-grip:hover {
   opacity: 1;
@@ -7088,8 +7155,13 @@ select.export-input {
   --radius-lg: calc(4px * var(--ui-scale));
   --btn-square-size: calc(18px * var(--ui-scale));
   --hierarchy-btn-size: calc(14px * var(--ui-scale));
-  --icon-glyph-size: calc(11px * var(--ui-scale));
-  --fold-icon-size: calc(10px * var(--ui-scale));
+  --app-icon-box-size: calc(13px * var(--ui-scale));
+  --app-icon-glyph-size: calc(10px * var(--ui-scale));
+  --app-icon-svg-size: calc(10px * var(--ui-scale));
+  --app-fold-icon-size: calc(10px * var(--ui-scale));
+  --board-icon-glyph-size: calc(10px * var(--ui-scale));
+  --board-icon-svg-size: calc(10px * var(--ui-scale));
+  --board-fold-icon-size: calc(10px * var(--ui-scale));
   --layout-row-rail-width: calc(34px * var(--ui-scale));
   --layout-folded-stack-width: calc(
     var(--layout-stack-header-pad-x) +
@@ -7513,6 +7585,12 @@ select.export-input {
   line-height: 1;
 }
 
+:root[data-visual-theme="sleek"] .board-action-btn {
+  min-height: var(--btn-square-size);
+  padding: 0 calc(6px * var(--ui-scale));
+  font-size: calc(10px * var(--ui-scale));
+}
+
 :root[data-visual-theme="sleek"] .sidebar-btn {
   padding: 0;
 }
@@ -7534,6 +7612,8 @@ select.export-input {
 :root[data-visual-theme="sleek"] .card-drag-handle:not(.entity-drag-icon) {
   opacity: 0.28;
   color: color-mix(in srgb, var(--text-muted) 88%, transparent);
+  border-color: transparent;
+  background: transparent;
 }
 
 :root[data-visual-theme="sleek"] .card:hover .card-drag-handle:not(.entity-drag-icon),
@@ -7617,7 +7697,6 @@ select.export-input {
   color: var(--accent);
 }
 
-:root[data-visual-theme="sleek"] .dashboard-chip,
 :root[data-visual-theme="sleek"] #btn-dashboard-pin,
 :root[data-visual-theme="sleek"] .dashboard-search-btn {
   border: none;
@@ -7625,7 +7704,10 @@ select.export-input {
   background: var(--bg-secondary);
 }
 
-:root[data-visual-theme="sleek"] .dashboard-chip:hover,
+:root[data-visual-theme="sleek"] .dashboard-chip {
+  border-color: transparent;
+}
+
 :root[data-visual-theme="sleek"] #btn-dashboard-pin:hover,
 :root[data-visual-theme="sleek"] .dashboard-search-btn:hover {
   background: var(--bg-hover);
@@ -7678,8 +7760,8 @@ select.export-input {
   --sidebar-tree-meta-gap: calc(3px * var(--ui-scale));
   --sidebar-tree-presence-col: calc(18px * var(--ui-scale));
   --sidebar-tree-count-col: calc(20px * var(--ui-scale));
-  --sidebar-tree-action-col: var(--hierarchy-btn-size);
-  --sidebar-tree-grip-col: calc(12px * var(--ui-scale));
+  --sidebar-tree-action-col: var(--app-icon-box-size);
+  --sidebar-tree-grip-col: var(--app-icon-box-size);
   --sidebar-board-font-size: 11px;
   --sidebar-board-font-weight: 600;
   --sidebar-board-padding-inline: var(--sidebar-tree-root-offset);
@@ -7790,8 +7872,8 @@ select.export-input {
 
 :root[data-visual-theme="sleek"] .board-item-meta > .tree-grip.entity-drag-icon svg,
 :root[data-visual-theme="sleek"] .tree-meta > .tree-grip.entity-drag-icon svg {
-  width: calc(10px * var(--ui-scale));
-  height: calc(10px * var(--ui-scale));
+  width: var(--icon-svg-size);
+  height: var(--icon-svg-size);
 }
 
 :root[data-visual-theme="sleek"] .board-item:hover .board-item-remove,
@@ -8361,8 +8443,8 @@ select.export-input {
 
 /* Sleek Uniform keeps the sleek layout, but flattens board/canvas typography. */
 :root[data-visual-theme-variant="sleek-uniform"] .columns-container {
-  --sleek-uniform-font-size: var(--board-font-size, calc(13px * var(--ui-scale)));
-  --sleek-uniform-line-height: 1.4;
+  --sleek-uniform-font-size: var(--board-font-size, calc(12px * var(--ui-scale)));
+  --sleek-uniform-line-height: 1.32;
 }
 
 :root[data-visual-theme-variant="sleek-uniform"] .board-row-title,
