@@ -86,6 +86,11 @@ const LexeraDashboard = (function () {
     revertCardDraftLiveSync: function(ci, fi, orig) { return revertCardDraftLiveSync(ci, fi, orig); },
     flushDeferredBoardRefresh: function(opts) { return flushDeferredBoardRefresh(opts); }
   });
+  var CanvasLayout = window.LexeraCanvasLayout;
+  if (CanvasLayout) CanvasLayout.init({
+    stripLayoutTags: function(title) { return stripLayoutTags(title); },
+    getCanvasColumnWidthSpec: function(value) { return getCanvasColumnWidthSpec(value); }
+  });
   if (window.BoardSearchReplace) window.BoardSearchReplace.init({
     getFullBoardData: function () { return fullBoardData; },
     getActiveBoardId: function () { return activeBoardId; },
@@ -670,10 +675,7 @@ const LexeraDashboard = (function () {
   }
 
   function normalizeCanvasStackDirection(value) {
-    var normalized = String(value == null ? '' : value).trim().toLowerCase();
-    if (normalized === 'horizontal') normalized = 'row';
-    if (normalized === 'vertical') normalized = 'column';
-    return normalized === 'row' ? 'row' : 'column';
+    return getCanvasLayoutApi().normalizeCanvasStackDirection(value);
   }
 
   function stripLayoutTags(title) {
@@ -9582,6 +9584,11 @@ const LexeraDashboard = (function () {
     throw new Error('LexeraCanvasStackDrop is unavailable');
   }
 
+  function getCanvasLayoutApi() {
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraCanvasLayout) return globalThis.LexeraCanvasLayout;
+    throw new Error('LexeraCanvasLayout is unavailable');
+  }
+
   function getBoardDeltaApi() {
     if (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta) return globalThis.LexeraBoardDelta;
     throw new Error('LexeraBoardDelta is unavailable');
@@ -9643,102 +9650,31 @@ const LexeraDashboard = (function () {
   }
 
   function extractCanvasStackTags(title) {
-    var cleanTitle = stripLayoutTags(title);
-    var tags = cleanTitle.match(/#[A-Za-z0-9._/-]+/g) || [];
-    var out = [];
-    var seen = {};
-    for (var i = 0; i < tags.length; i++) {
-      var normalized = String(tags[i] || '').toLowerCase();
-      if (!normalized || seen[normalized]) continue;
-      seen[normalized] = true;
-      out.push(normalized);
-    }
-    return out;
+    return getCanvasLayoutApi().extractCanvasStackTags(title);
   }
 
   function normalizeCanvasAnchorSide(value, fallback) {
-    var normalized = String(value == null ? '' : value).trim().toLowerCase();
-    if (normalized === 'l') normalized = 'left';
-    if (normalized === 'r') normalized = 'right';
-    if (normalized === 't') normalized = 'top';
-    if (normalized === 'b') normalized = 'bottom';
-    if (normalized === 'middle' || normalized === 'centre') normalized = 'center';
-    return normalized === 'left' || normalized === 'right' || normalized === 'top' || normalized === 'bottom' || normalized === 'center'
-      ? normalized
-      : fallback;
+    return getCanvasLayoutApi().normalizeCanvasAnchorSide(value, fallback);
   }
 
   function parseCanvasAnchorOffset(value, size, start, center, end) {
-    if (value == null || value === '') return null;
-    var raw = String(value).trim().toLowerCase();
-    if (!raw) return null;
-    if (raw === 'start' || raw === 'left' || raw === 'top') return start;
-    if (raw === 'middle' || raw === 'center' || raw === 'centre') return center;
-    if (raw === 'end' || raw === 'right' || raw === 'bottom') return end;
-    if (/^-?\d+(\.\d+)?%$/.test(raw)) return (parseFloat(raw) / 100) * size;
-    var n = parseFloat(raw);
-    if (!isFinite(n)) return null;
-    if (n >= 0 && n <= 1) return n * size;
-    return n;
+    return getCanvasLayoutApi().parseCanvasAnchorOffset(value, size, start, center, end);
   }
 
   function getDefaultCanvasConnectionSide(sourceBox, targetBox, role) {
-    var sourceCenterX = sourceBox.x + sourceBox.w / 2;
-    var sourceCenterY = sourceBox.y + sourceBox.h / 2;
-    var targetCenterX = targetBox.x + targetBox.w / 2;
-    var targetCenterY = targetBox.y + targetBox.h / 2;
-    var dx = targetCenterX - sourceCenterX;
-    var dy = targetCenterY - sourceCenterY;
-    if (Math.abs(dx) >= Math.abs(dy)) {
-      if (role === 'source') return dx >= 0 ? 'right' : 'left';
-      return dx >= 0 ? 'left' : 'right';
-    }
-    if (role === 'source') return dy >= 0 ? 'bottom' : 'top';
-    return dy >= 0 ? 'top' : 'bottom';
+    return getCanvasLayoutApi().getDefaultCanvasConnectionSide(sourceBox, targetBox, role);
   }
 
   function resolveCanvasConnectionAnchor(box, params, keys, fallbackSide) {
-    var side = normalizeCanvasAnchorSide(
-      params[keys.side] || params[keys.aliasSide] || params[keys.position],
-      fallbackSide || 'center'
-    );
-    var x = box.x + box.w / 2;
-    var y = box.y + box.h / 2;
-    if (side === 'left') x = box.x;
-    else if (side === 'right') x = box.x + box.w;
-    if (side === 'top') y = box.y;
-    else if (side === 'bottom') y = box.y + box.h;
-
-    var xOffset = parseCanvasAnchorOffset(params[keys.x], box.w, 0, box.w / 2, box.w);
-    var yOffset = parseCanvasAnchorOffset(params[keys.y], box.h, 0, box.h / 2, box.h);
-    if (xOffset != null) x = box.x + xOffset;
-    if (yOffset != null) y = box.y + yOffset;
-
-    return { x: x, y: y, side: side };
+    return getCanvasLayoutApi().resolveCanvasConnectionAnchor(box, params, keys, fallbackSide);
   }
 
   function canvasSideToVector(side) {
-    switch (side) {
-      case 'left':   return { x: -1, y:  0 };
-      case 'right':  return { x:  1, y:  0 };
-      case 'top':    return { x:  0, y: -1 };
-      case 'bottom': return { x:  0, y:  1 };
-      default:       return { x:  0, y:  0 };
-    }
+    return getCanvasLayoutApi().canvasSideToVector(side);
   }
 
   function getCanvasConnectionPath(sourceAnchor, targetAnchor) {
-    var sourceVector = canvasSideToVector(sourceAnchor.side);
-    var targetVector = canvasSideToVector(targetAnchor.side);
-    var dx = targetAnchor.x - sourceAnchor.x;
-    var dy = targetAnchor.y - sourceAnchor.y;
-    var control = Math.max(40, Math.min(180, Math.max(Math.abs(dx), Math.abs(dy)) * 0.38));
-    var c1x = sourceAnchor.x + sourceVector.x * control;
-    var c1y = sourceAnchor.y + sourceVector.y * control;
-    var c2x = targetAnchor.x - targetVector.x * control;
-    var c2y = targetAnchor.y - targetVector.y * control;
-    return 'M ' + sourceAnchor.x + ' ' + sourceAnchor.y +
-      ' C ' + c1x + ' ' + c1y + ', ' + c2x + ' ' + c2y + ', ' + targetAnchor.x + ' ' + targetAnchor.y;
+    return getCanvasLayoutApi().getCanvasConnectionPath(sourceAnchor, targetAnchor);
   }
 
   function getCanvasColumnWidthSpec(value) {
@@ -9746,25 +9682,7 @@ const LexeraDashboard = (function () {
   }
 
   function applyCanvasColumnLayout(colEl, col) {
-    if (!colEl) return;
-    var colParams = col && col.params ? col.params : {};
-    var widthSpec = getCanvasColumnWidthSpec(colParams.w);
-    colEl.style.flex = '1 1 100%';
-    colEl.style.maxWidth = '';
-    colEl.style.minWidth = '0';
-    colEl.removeAttribute('data-canvas-width-mode');
-    if (!widthSpec) return;
-    if (widthSpec.kind === 'percent') {
-      var widthValue = Math.max(0, Math.min(100, widthSpec.value));
-      var widthCss = widthValue.toFixed(4).replace(/\.?0+$/, '') + '%';
-      colEl.style.flex = '0 0 ' + widthCss;
-      colEl.style.maxWidth = widthCss;
-      colEl.setAttribute('data-canvas-width-mode', 'percent');
-      return;
-    }
-    colEl.style.flex = '0 0 ' + Math.round(widthSpec.value) + 'px';
-    colEl.style.maxWidth = Math.round(widthSpec.value) + 'px';
-    colEl.setAttribute('data-canvas-width-mode', 'fixed');
+    getCanvasLayoutApi().applyCanvasColumnLayout(colEl, col);
   }
 
   function isHorizontalCanvasStackElement(stackEl) {
