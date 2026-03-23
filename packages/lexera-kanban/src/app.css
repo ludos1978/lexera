@@ -5679,6 +5679,35 @@ select.dialog-input option,
   margin: 2px 0 0;
 }
 
+/* -- Render Applications Settings Panel -- */
+.render-apps-settings-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.render-apps-settings-panel .shell-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px;
+}
+
+.render-apps-settings-panel .mgmt-section {
+  margin: 0;
+}
+
+.render-apps-description {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+
+.render-apps-grid {
+  grid-template-columns: 100px 1fr;
+  gap: 6px 8px;
+}
+
 .log-entry {
   display: flex;
   gap: var(--space-4);
