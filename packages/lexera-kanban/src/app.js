@@ -150,6 +150,16 @@ const LexeraDashboard = (function () {
     stripLayoutTags: function(title) { return stripLayoutTags(title); },
     getCanvasColumnWidthSpec: function(value) { return getCanvasColumnWidthSpec(value); }
   });
+  var CanvasPan = window.LexeraCanvasPan;
+  if (CanvasPan) CanvasPan.init({
+    getActiveBoardData: function () { return activeBoardData; },
+    isCanvasBoardLayout: function () { return isCanvasBoardLayout(); },
+    canStartCanvasPointerPan: function (target, button, altKey) { return canStartCanvasPointerPan(target, button, altKey); },
+    getElColumnsContainer: function () { return getElColumnsContainer(); },
+    getCanvasPanX: function () { return $canvasPanX; },
+    getCanvasPanY: function () { return $canvasPanY; },
+    applyCanvasPan: function (panX, panY) { applyCanvasPan(panX, panY); }
+  });
   if (window.BoardSearchReplace) window.BoardSearchReplace.init({
     getFullBoardData: function () { return fullBoardData; },
     getActiveBoardId: function () { return activeBoardId; },
@@ -7955,62 +7965,7 @@ const LexeraDashboard = (function () {
     container.scrollTop += deltaY * multiplier;
   }, { passive: false });
 
-  // --- Canvas pan: middle-mouse or alt+left-mouse drag ---
-  var _canvasPan = null;
-
-  document.addEventListener('mousedown', function (e) {
-    if (!activeBoardData || !isCanvasBoardLayout()) return;
-    var target = e.target;
-    if (!canStartCanvasPointerPan(target, e.button, !!e.altKey)) return;
-    var container = getElColumnsContainer();
-    if (!container) return;
-    e.preventDefault();
-    _canvasPan = {
-      container: container,
-      startX: e.clientX,
-      startY: e.clientY,
-      startPanX: $canvasPanX,
-      startPanY: $canvasPanY
-    };
-    container.classList.add('canvas-panning');
-    container.style.cursor = 'grabbing';
-  });
-
-  document.addEventListener('mousemove', function (e) {
-    if (!_canvasPan) return;
-    var dx = e.clientX - _canvasPan.startX;
-    var dy = e.clientY - _canvasPan.startY;
-    applyCanvasPan(_canvasPan.startPanX + dx, _canvasPan.startPanY + dy);
-  });
-
-  document.addEventListener('mouseup', function (e) {
-    if (!_canvasPan) return;
-    _canvasPan.container.classList.remove('canvas-panning');
-    _canvasPan.container.style.cursor = '';
-    _canvasPan = null;
-  });
-
-  // Prevent default middle-click auto-scroll behavior in canvas mode
-  document.addEventListener('auxclick', function (e) {
-    if (e.button === 1 && activeBoardData && isCanvasBoardLayout()) {
-      var target = e.target;
-      if (target && typeof target.closest === 'function' && target.closest('#columns-container')) {
-        e.preventDefault();
-      }
-    }
-  });
-
-  // In canvas mode, prevent any programmatic scrolling (e.g. scrollIntoView, focus)
-  // from shifting the viewport — all navigation uses CSS transform pan instead.
-  document.addEventListener('scroll', function () {
-    if (!isCanvasBoardLayout()) return;
-    var container = getElColumnsContainer();
-    if (!container) return;
-    if (container.scrollLeft !== 0 || container.scrollTop !== 0) {
-      container.scrollLeft = 0;
-      container.scrollTop = 0;
-    }
-  }, true);
+  // --- Canvas pan: delegated to LexeraCanvasPan module ---
 
   function normalizeStickyHeaderMode(rawMode) {
     var mode = String(rawMode || '').trim().toLowerCase();
