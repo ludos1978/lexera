@@ -82,7 +82,7 @@
 
 - [x] **Extract backend lib.rs setup function** — extracted 570-line setup() closure into 8 named functions + `CollabServices` struct: `init_storage_and_boards`, `resolve_incoming`, `setup_file_watcher`, `init_collab_services`, `bootstrap_local_user`, `spawn_background_tasks`, `restore_persisted_connections`, `spawn_http_server`. All 903 Rust tests pass.
 
-- [ ] **Frontend modularization** — app.js reduced from 28K to ~24K lines. Extracted: loggingSystem.js, virtualScroll.js, pathUtils.js, tagColors.js, dropZoneIndicators.js, archiveFormatting.js (4aade867), sidebarResize.js (0b8c1442), exportToolStatus.js (5f6ed8c0), renderAppsSettings.js (5f6ed8c0), boardSearchReplace.js (4a40e43c), boardStatsFilter.js (0165eec3), hiddenItemsDropdown.js (53e2f15c). Previously: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next targets: render helpers, card editor logic, context menu builders.
+- [ ] **Frontend modularization** — app.js reduced from 28K to ~23K lines. Extracted: loggingSystem.js, virtualScroll.js, pathUtils.js, tagColors.js, dropZoneIndicators.js, archiveFormatting.js (4aade867), sidebarResize.js (0b8c1442), exportToolStatus.js (5f6ed8c0), renderAppsSettings.js (5f6ed8c0), boardSearchReplace.js (4a40e43c), boardStatsFilter.js (0165eec3), hiddenItemsDropdown.js (53e2f15c), cardContentRenderer.js (56b557c7), inlineCardEditor.js (56b557c7), embedEnhancer.js (56b557c7). Previously: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next targets: context menu builders, canvas layout helpers, drag-drop handlers.
 
 - [x] **Fix duplicate code paths producing inconsistent results:**
   - [x] **CRDT card ID collision** — replaced inline `crdt-{hex_timestamp}` ID generation in `bridge.rs:read_card()` with `crate::parser::generate_id("crdt")` which uses atomic sequence counter for guaranteed uniqueness.
@@ -898,3 +898,68 @@ Specs: `packages/agent/specs/plugins/diagram/SPEC.md`, `plugins/enhancer/SPEC.md
   - standard control heights
   - standard row gaps
   - allowed exceptions
+## Application Spacing Migration Follow-up
+
+- [ ] **Create an application spacing audit matrix before refactoring** — inventory the current non-board spacing/control-size rules per surface:
+  - sidebar/workspace browser
+  - dashboard
+  - logs
+  - frontend settings
+  - backend settings
+  - export dialog
+  - workspace shell chrome
+  - quick capture
+  and map each existing literal to its future spacing token or documented exception
+
+- [ ] **Define canonical header spacing specs for application surfaces** — standardize one header recipe for:
+  - panel headers
+  - dialog headers
+  - status headers
+  - tab headers
+  including title gap, action gap, top/bottom padding, left/right inset, and minimum height
+
+- [ ] **Define canonical body inset specs for application surfaces** — standardize one inset recipe for:
+  - scrollable panel bodies
+  - form bodies
+  - list bodies
+  - dialog bodies
+  - utility-window content panes
+  so the app no longer alternates arbitrarily between tight, medium, and large content padding
+
+- [ ] **Define canonical row-density specs for non-board lists and forms** — workspace rows, dashboard rows, management rows, log rows, and export fields should each map to one of a very small number of approved row densities rather than each surface inventing its own height and padding
+
+- [ ] **Unify fold-strip and collapsed-panel dimensions** — standardize the collapsed side/bottom strip sizes, hover-expansion insets, label padding, and collapsed action hit-areas in [packages/lexera-kanban/src/workspace/workspaceShell.css](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-kanban/src/workspace/workspaceShell.css)
+
+- [ ] **Normalize spacing inside logs/settings composite panels** — the logs area currently mixes:
+  - log header spacing
+  - log status spacing
+  - log settings pane spacing
+  - shell settings panel spacing
+  make these compose from the same spacing rules instead of each subsection carrying its own local rhythm
+
+- [ ] **Normalize dialog spacing patterns across the app** — use the export dialog as the first canonical dialog migration and define reusable spacing patterns for:
+  - header
+  - body
+  - footer
+  - sections
+  - field groups
+  - inline checkbox clusters
+  then apply the same model to future dialogs
+
+- [ ] **Add representative UI screenshot baselines for spacing QA** — once spacing tokens are introduced, capture a small baseline set for:
+  - main app with sidebar/dashboard/logs
+  - workspace shell with folded docks
+  - frontend settings
+  - backend settings
+  - export dialog
+  - quick capture
+  so spacing regressions become visible during future cleanup
+
+- [ ] **Migrate application spacing in phases instead of by file ownership** — do the rollout in this order:
+  1. shared control heights and button sizes
+  2. shared panel/dialog insets
+  3. settings and management forms
+  4. shell chrome and folded docks
+  5. utility windows
+  6. cleanup of remaining literals
+  this reduces churn compared with rewriting one CSS file at a time
