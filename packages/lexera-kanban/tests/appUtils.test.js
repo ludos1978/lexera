@@ -103,7 +103,6 @@ function loadAppUtils() {
     extractFunction(findLine('function getLegacyImportRowNumber(')),
     extractFunction(findLine('function buildRowsFromLegacyColumns(')),
     extractFunction(findLine('function reconstructColumnTitle(')),
-    extractFunction(findLine('function normalizeRatio(')),
     extractFunction(findLine('function reorderItems(')),
     extractFunction(findLine('function normalizeDroppedPath(')),
     extractFunction(findLine('function shouldKeepInlineEditorOpenOnBlur(')),
@@ -141,7 +140,6 @@ function loadAppUtils() {
       getLegacyImportRowNumber,
       buildRowsFromLegacyColumns,
       reconstructColumnTitle,
-      normalizeRatio,
       reorderItems,
       normalizeDroppedPath,
       shouldKeepInlineEditorOpenOnBlur,
@@ -160,7 +158,17 @@ function loadAppUtils() {
     .replace(/'/g, '&#39;');
   const escapeAttrShim = escapeHtmlShim;
   const factory = new Function('URL', 'atob', 'escapeHtml', 'escapeAttr', wrappedSource);
-  return factory(URL, atobShim, escapeHtmlShim, escapeAttrShim);
+  const utils = factory(URL, atobShim, escapeHtmlShim, escapeAttrShim);
+
+  // Load SidebarResize module for normalizeRatio (extracted from app.js)
+  const sidebarResizeSource = readFileSync(resolve(srcDir, 'sidebar', 'sidebarResize.js'), 'utf-8');
+  const localStorageShim = { getItem: () => null, setItem: () => {} };
+  const windowShim = {};
+  const sidebarResizeFactory = new Function('localStorage', 'window', sidebarResizeSource + '\nreturn LexeraSidebarResize;');
+  const sidebarResize = sidebarResizeFactory(localStorageShim, windowShim);
+  utils.normalizeRatio = sidebarResize.normalizeRatio;
+
+  return utils;
 }
 
 let U; // utility functions under test
