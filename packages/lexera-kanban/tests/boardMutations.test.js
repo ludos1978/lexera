@@ -33,16 +33,28 @@ function loadMutationFunctions() {
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
+  // Also load cardContextMenu.js for functions extracted from app.js
+  const ccmSource = readFileSync(resolve(srcDir, 'menu', 'cardContextMenu.js'), 'utf-8');
+  const ccmLines = ccmSource.split('\n');
+
+  // Also load columnContextMenu.js for functions extracted from app.js
+  const colCtxSource = readFileSync(resolve(srcDir, 'menu', 'columnContextMenu.js'), 'utf-8');
+  const colCtxLines = colCtxSource.split('\n');
+
+  // Also load contextMenuBuilders.js for menu builder functions
+  const cmbSource = readFileSync(resolve(srcDir, 'menu', 'contextMenuBuilders.js'), 'utf-8');
+  const cmbLines = cmbSource.split('\n');
+
   // Also load tagColors.js for extracting constants
   const tcSource = readFileSync(resolve(srcDir, 'tagcolors', 'tagColors.js'), 'utf-8');
   const tcLines = tcSource.split('\n');
 
-  function extractFunction(startLine) {
+  function extractFunctionFrom(sourceLines, startLine) {
     let depth = 0;
     let started = false;
     const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
+    for (let i = startLine - 1; i < sourceLines.length; i++) {
+      const line = sourceLines[i];
       result.push(line);
       for (let c = 0; c < line.length; c++) {
         if (line[c] === '{') { depth++; started = true; }
@@ -53,11 +65,44 @@ function loadMutationFunctions() {
     return result.join('\n');
   }
 
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
+  function extractFunction(startLine) {
+    return extractFunctionFrom(lines, startLine);
+  }
+
+  function findLineIn(sourceLines, pattern) {
+    for (let i = 0; i < sourceLines.length; i++) {
+      if (sourceLines[i].includes(pattern)) return i + 1;
     }
+    return -1;
+  }
+
+  function findLine(pattern) {
+    var idx = findLineIn(lines, pattern);
+    if (idx > 0) return idx;
     throw new Error('Could not find: ' + pattern);
+  }
+
+  function findLineAny(pattern) {
+    var idx = findLineIn(lines, pattern);
+    if (idx > 0) return { lines: lines, line: idx };
+    idx = findLineIn(ccmLines, pattern);
+    if (idx > 0) return { lines: ccmLines, line: idx };
+    idx = findLineIn(colCtxLines, pattern);
+    if (idx > 0) return { lines: colCtxLines, line: idx };
+    throw new Error('Could not find in app.js, cardContextMenu.js, or columnContextMenu.js: ' + pattern);
+  }
+
+  function extractFunctionAny(pattern) {
+    // Prefer extracted modules over app.js (which now has delegation stubs)
+    var idx = findLineIn(cmbLines, pattern);
+    if (idx > 0) return extractFunctionFrom(cmbLines, idx).replace(/\bdeps\./g, '');
+    idx = findLineIn(ccmLines, pattern);
+    if (idx > 0) return extractFunctionFrom(ccmLines, idx).replace(/\bdeps\./g, '');
+    idx = findLineIn(colCtxLines, pattern);
+    if (idx > 0) return extractFunctionFrom(colCtxLines, idx).replace(/\bdeps\./g, '');
+    idx = findLineIn(lines, pattern);
+    if (idx > 0) return extractFunctionFrom(lines, idx);
+    throw new Error('Could not find in app.js, cardContextMenu.js, columnContextMenu.js, or contextMenuBuilders.js: ' + pattern);
   }
 
   function findLineInTc(pattern) {
@@ -133,7 +178,7 @@ function loadMutationFunctions() {
     extractFunction(findLine('function is_archived_or_deleted(')),
     extractFunction(findLine('function getFullCardIndex(')),
     extractFunction(findLine('function getAllColumnsFromBoardData(')),
-    extractFunction(findLine('function findColumnContainerInBoard(')),
+    extractFunctionAny('function findColumnContainerInBoard('),
     extractFunction(findLine('function escapeRegex(')),
     extractFunction(findLine('function isTagTokenBoundaryChar(')),
     extractFunction(findLine('function normalizeTagTokenForMatch(')),
@@ -144,25 +189,25 @@ function loadMutationFunctions() {
     extractFunction(findLine('function isTagExpression(')),
     extractFunction(findLine('function extractAllTags(')),
     extractFunction(findLine('function hasTag(')),
-    extractFunction(findLine('function getMarpDirectiveFinalName(')),
-    extractFunction(findLine('function getMarpDirectiveRegex(')),
-    extractFunction(findLine('function getMarpDirectiveValueFromHeader(')),
-    extractFunction(findLine('function clearMarpDirectiveFromHeaderText(')),
-    extractFunction(findLine('function setMarpDirectiveInHeaderText(')),
-    extractFunction(findLine('function hasMarpDirectiveValue(')),
-    extractFunction(findLine('function getMarpClassListFromHeader(')),
-    extractFunction(findLine('function setMarpClassListInHeader(')),
-    extractFunction(findLine('function toggleMarpClassInHeaderText(')),
+    extractFunctionAny('function getMarpDirectiveFinalName('),
+    extractFunctionAny('function getMarpDirectiveRegex('),
+    extractFunctionAny('function getMarpDirectiveValueFromHeader('),
+    extractFunctionAny('function clearMarpDirectiveFromHeaderText('),
+    extractFunctionAny('function setMarpDirectiveInHeaderText('),
+    extractFunctionAny('function hasMarpDirectiveValue('),
+    extractFunctionAny('function getMarpClassListFromHeader('),
+    extractFunctionAny('function setMarpClassListInHeader('),
+    extractFunctionAny('function toggleMarpClassInHeaderText('),
     extractFunction(findLine('function isNumericIndexTag(')),
-    extractFunction(findLine('function extractNumericTag(')),
-    extractFunction(findLine('function extractAllNumericTags(')),
+    extractFunctionAny('function extractNumericTag('),
+    extractFunctionAny('function extractAllNumericTags('),
     extractFunction(findLine('function normalizeTagCategoryName(')),
     extractFunction(findLine('function getTagCategoryKey(')),
     extractFunction(findLine('function formatTagDisplayLabel(')),
     extractFunction(findLine('function parseColorChannels(')),
     extractFunction(findLine('function getContrastingTextColor(')),
     extractFunction(findLine('function getTagColor(')),
-    extractFunction(findLine('function escapeAttr(')),
+    extractFunctionAny('function escapeAttr('),
     extractFunctionFromTc(findLineInTc('function resolveTagStyleProperty(')),
     extractFunction(findLine('function getResolvedCategoryRole(')),
     extractFunction(findLine('function getTagStyleOverride(')),
@@ -181,8 +226,8 @@ function loadMutationFunctions() {
     extractFunction(findLine('function isTagStyleEligible(')),
     extractFunction(findLine('function getFirstStyleTag(')),
     extractFunction(findLine('function getCardContainerStyleSource(')),
-    extractFunction(findLine('function buildTagSubmenu(')),
-    extractFunction(findLine('function buildCustomTagsSubmenu(')),
+    extractFunctionAny('function buildTagSubmenu('),
+    extractFunctionAny('function buildCustomTagsSubmenu('),
     extractFunction(findLine('function getColumnLayoutTags(')),
     'var _archiveFormattingHelpers = null;',
     extractFunction(findLine('function getArchiveFormattingHelpers(')),
