@@ -54,6 +54,8 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   GET  /calendar/tasks                      -> all cards with due dates
 ///   GET  /config/theme                        -> current theme ID
 ///   PUT  /config/theme                        -> update theme ID
+///   GET  /config/render-apps                  -> render application paths
+///   PUT  /config/render-apps                  -> update render application paths
 ///   GET  /events                              -> SSE stream of board changes
 ///   GET  /status                              -> health check (+ incoming config)
 ///   GET  /templates                           -> list available templates
@@ -197,6 +199,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
         .route(
             "/config/boards/{board_id}/sync",
             axum::routing::put(config_api::update_board_sync),
+        )
+        .route(
+            "/config/render-apps",
+            get(config_api::get_render_apps).put(config_api::set_render_apps),
         )
         .route("/capture/history", get(capture_api::list_capture_history))
         .route(

@@ -5,6 +5,7 @@
     logs: true,
     backendSettings: true,
     frontendSettings: true,
+    renderApps: true,
     files: true
   };
 
@@ -14,6 +15,7 @@
     logs: {},
     backendSettings: {},
     frontendSettings: {},
+    renderApps: {},
     files: {}
   };
 
@@ -180,6 +182,41 @@
     return root;
   }
 
+  function createRenderAppsPanelElement(instanceId) {
+    var root = createPanelRoot('shell-settings-panel render-apps-settings-panel lexera-shared-panel lexera-shared-panel-render-apps', 'renderApps', instanceId);
+    root.innerHTML =
+      '<div class="shell-settings-header">' +
+        '<span class="shell-settings-title">Render Applications</span>' +
+      '</div>' +
+      '<div class="shell-settings-body">' +
+        '<div class="mgmt-section">' +
+          '<div class="mgmt-section-title">Application Paths</div>' +
+          '<p class="render-apps-description">Configure paths to external tools used for rendering and export. ' +
+            'Leave empty to use automatic detection.</p>' +
+          '<div class="mgmt-settings-grid render-apps-grid">' +
+            '<label for="render-app-drawio">Draw.io</label>' +
+            '<input class="mgmt-field-input lexera-shared-render-apps-drawio" id="render-app-drawio" type="text" placeholder="Auto-detect">' +
+            '<label for="render-app-marp">Marp CLI</label>' +
+            '<input class="mgmt-field-input lexera-shared-render-apps-marp" id="render-app-marp" type="text" placeholder="Auto-detect (npx or marp)">' +
+            '<label for="render-app-pandoc">Pandoc</label>' +
+            '<input class="mgmt-field-input lexera-shared-render-apps-pandoc" id="render-app-pandoc" type="text" placeholder="Auto-detect">' +
+            '<label for="render-app-soffice">LibreOffice</label>' +
+            '<input class="mgmt-field-input lexera-shared-render-apps-soffice" id="render-app-soffice" type="text" placeholder="Auto-detect">' +
+            '<label for="render-app-pdftoppm">pdftoppm</label>' +
+            '<input class="mgmt-field-input lexera-shared-render-apps-pdftoppm" id="render-app-pdftoppm" type="text" placeholder="Auto-detect">' +
+            '<label for="render-app-mutool">mutool</label>' +
+            '<input class="mgmt-field-input lexera-shared-render-apps-mutool" id="render-app-mutool" type="text" placeholder="Auto-detect">' +
+          '</div>' +
+          '<div class="mgmt-settings-actions">' +
+            '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-reload" type="button">Reload</button>' +
+            '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary lexera-shared-render-apps-save" type="button">Save</button>' +
+          '</div>' +
+          '<div class="mgmt-status lexera-shared-render-apps-status"></div>' +
+        '</div>' +
+      '</div>';
+    return root;
+  }
+
   function createFilesPanelElement(instanceId) {
     var root = createPanelRoot('shell-settings-panel lexera-shared-panel lexera-shared-panel-files', 'files', instanceId);
     root.innerHTML =
@@ -193,6 +230,7 @@
     logs: createLogsPanelElement,
     backendSettings: createBackendSettingsPanelElement,
     frontendSettings: createFrontendSettingsPanelElement,
+    renderApps: createRenderAppsPanelElement,
     files: createFilesPanelElement
   };
 

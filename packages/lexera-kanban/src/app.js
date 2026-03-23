@@ -2038,6 +2038,16 @@ const LexeraDashboard = (function () {
     if (embeddedMode) document.body.classList.add('embedded-mode');
     if (typeof window.updateAppBottomInset === 'function') window.updateAppBottomInset();
 
+    // Initialize ExportToolStatus module with dependencies
+    if (window.ExportToolStatus) {
+      window.ExportToolStatus.init({
+        tauriInvoke: tauriInvoke,
+        hasTauri: hasTauri,
+        buildModeMenuItems: buildModeMenuItems,
+        storage: localStorage
+      });
+    }
+
     // Load user keybindings from ~/.config/lexera/keybindings.json
     if (hasTauri && window.LexeraKeybindingRegistry) {
       tauriInvoke('read_keybindings', {}).then(function (json) {
@@ -6832,237 +6842,33 @@ const LexeraDashboard = (function () {
   }
 
 
-  var EXPORT_DEFAULT_STORAGE_KEYS = {
-    marpTheme: 'lexera-export-marp-theme',
-    speakerNotes: 'lexera-export-speaker-notes',
-    htmlComments: 'lexera-export-html-comments',
-    htmlContent: 'lexera-export-html-content',
-    pandocFormat: 'lexera-export-pandoc-format',
-    pandocPageBreaks: 'lexera-export-pandoc-page-breaks'
-  };
-  var exportToolStatusCache = {
-    pandoc: { available: false, version: null, checkedAt: 0, pending: null, error: null },
-    renderers: { rows: [], checkedAt: 0, pending: null, error: null }
-  };
+  // ── Export tool status delegates (logic moved to ExportToolStatus module) ──
 
-  function normalizeExportDialogFormat(value) {
-    var normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'keep' || normalized === 'kanban' || normalized === 'document') return normalized;
-    return 'presentation';
-  }
+  function getExportToolStatus() { return window.ExportToolStatus; }
 
-  function normalizePandocExportFormat(value) {
-    var normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'odt' || normalized === 'epub') return normalized;
-    return 'docx';
-  }
+  function normalizeExportDialogFormat(value) { return getExportToolStatus().normalizeExportDialogFormat(value); }
+  function normalizePandocExportFormat(value) { return getExportToolStatus().normalizePandocExportFormat(value); }
+  function normalizeDocumentPageBreakPreference(value) { return getExportToolStatus().normalizeDocumentPageBreakPreference(value); }
 
-  function normalizeDocumentPageBreakPreference(value) {
-    var normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'per-task' || normalized === 'pertask') return 'perTask';
-    if (normalized === 'per-column' || normalized === 'percolumn') return 'perColumn';
-    return 'continuous';
-  }
+  function getStoredExportDefault(key, fallback) { return getExportToolStatus().getStoredExportDefault(key, fallback); }
+  function setStoredExportDefault(key, value) { getExportToolStatus().setStoredExportDefault(key, value); }
 
-  function getStoredExportDefault(key, fallback) {
-    var storageKey = EXPORT_DEFAULT_STORAGE_KEYS[key];
-    if (!storageKey) return fallback;
-    var raw = localStorage.getItem(storageKey);
-    return raw == null || raw === '' ? fallback : raw;
-  }
+  function formatEmbeddedRendererStatusItem(status) { return getExportToolStatus().formatEmbeddedRendererStatusItem(status); }
 
-  function setStoredExportDefault(key, value) {
-    var storageKey = EXPORT_DEFAULT_STORAGE_KEYS[key];
-    if (!storageKey) return;
-    if (value == null || value === '') localStorage.removeItem(storageKey);
-    else localStorage.setItem(storageKey, String(value));
-  }
+  function refreshEmbeddedRendererStatuses(force) { return getExportToolStatus().refreshEmbeddedRendererStatuses(force); }
+  function refreshExportToolStatus(toolName, force) { return getExportToolStatus().refreshExportToolStatus(toolName, force); }
 
-  function getStoredPandocDefaults() {
-    return {
-      format: normalizePandocExportFormat(getStoredExportDefault('pandocFormat', 'docx')),
-      pageBreaks: normalizeDocumentPageBreakPreference(getStoredExportDefault('pandocPageBreaks', 'continuous'))
-    };
-  }
+  function buildEmbeddedRendererStatusMenuItems() { return getExportToolStatus().buildEmbeddedRendererStatusMenuItems(); }
+  function buildFileHeaderPandocMenuItems() { return getExportToolStatus().buildFileHeaderPandocMenuItems(); }
 
-  function buildPandocOutputFormatItems(actionPrefix) {
-    return buildModeMenuItems(getStoredPandocDefaults().format, actionPrefix, [
-      { value: 'docx', label: 'DOCX' },
-      { value: 'odt', label: 'ODT' },
-      { value: 'epub', label: 'EPUB' }
-    ]);
-  }
-
-  function buildDocumentPageBreakModeItems(actionPrefix) {
-    return buildModeMenuItems(getStoredPandocDefaults().pageBreaks, actionPrefix, [
-      { value: 'continuous', label: 'Continuous' },
-      { value: 'perTask', label: 'Per Task' },
-      { value: 'perColumn', label: 'Per Column' }
-    ]);
-  }
-
-  function formatExportToolStatusLabel(toolName, status) {
-    if (!status) return toolName + ': Unknown';
-    if (status.pending) return toolName + ': Checking…';
-    if (status.available) return toolName + ': Ready' + (status.version ? ' (v' + status.version + ')' : '');
-    if (status.error) return toolName + ': Unavailable';
-    return toolName + ': Not Installed';
-  }
-
-  function formatEmbeddedRendererStatusSummary(cache) {
-    if (!cache) return 'Embedded Renderers: Unknown';
-    if (cache.pending) return 'Embedded Renderers: Checking…';
-    if (cache.error && (!cache.rows || cache.rows.length === 0)) return 'Embedded Renderers: Unavailable';
-    var rows = Array.isArray(cache.rows) ? cache.rows : [];
-    if (rows.length === 0) return 'Embedded Renderers: Unknown';
-    var readyCount = 0;
-    for (var i = 0; i < rows.length; i++) {
-      if (rows[i] && rows[i].available) readyCount += 1;
-    }
-    return 'Embedded Renderers: ' + readyCount + '/' + rows.length + ' Ready';
-  }
-
-  function formatEmbeddedRendererStatusItem(status) {
-    if (!status) return 'Unknown Renderer';
-    var label = (status.label || 'Renderer') + ': ' + (status.available ? 'Ready' : 'Missing');
-    if (status.version) label += ' (' + status.version + ')';
-    if (!status.available && status.details) label += ' - ' + status.details;
-    return label;
-  }
-
-  async function refreshEmbeddedRendererStatuses(force) {
-    var cache = exportToolStatusCache.renderers;
-    var maxAgeMs = 30000;
-    if (!force && cache.checkedAt > 0 && (Date.now() - cache.checkedAt) < maxAgeMs && !cache.pending) {
-      return cache;
-    }
-    if (cache.pending) return cache.pending;
-    if (!hasTauri) {
-      cache.rows = [];
-      cache.error = 'tauri-unavailable';
-      cache.checkedAt = Date.now();
-      return cache;
-    }
-    cache.pending = tauriInvoke('check_embedded_renderer_statuses', {})
-      .then(function (rows) {
-        cache.rows = Array.isArray(rows) ? rows : [];
-        cache.error = null;
-        cache.checkedAt = Date.now();
-        cache.pending = null;
-        return cache;
-      })
-      .catch(function (err) {
-        cache.rows = [];
-        cache.error = err ? (err.message || String(err)) : 'unknown-error';
-        cache.checkedAt = Date.now();
-        cache.pending = null;
-        return cache;
-      });
-    return cache.pending;
-  }
-
-  function buildEmbeddedRendererStatusMenuItems() {
-    var cache = exportToolStatusCache.renderers;
-    var items = [
-      { id: 'file-renderer-status-summary', label: formatEmbeddedRendererStatusSummary(cache), disabled: true },
-      { id: 'file-renderer-refresh-status', label: 'Refresh Status' }
-    ];
-    var rows = cache && Array.isArray(cache.rows) ? cache.rows : [];
-    if (rows.length > 0) {
-      items.push({ separator: true });
-      for (var i = 0; i < rows.length; i++) {
-        items.push({
-          id: 'file-renderer-status-item:' + String(rows[i].id || i),
-          label: formatEmbeddedRendererStatusItem(rows[i]),
-          disabled: true
-        });
-      }
-    }
-    return items;
-  }
-
-  async function refreshExportToolStatus(toolName, force) {
-    var cache = exportToolStatusCache[toolName];
-    if (!cache) return { available: false, version: null, checkedAt: 0, pending: null, error: 'unknown-tool' };
-    var maxAgeMs = 30000;
-    if (!force && cache.checkedAt > 0 && (Date.now() - cache.checkedAt) < maxAgeMs && !cache.pending) {
-      return cache;
-    }
-    if (cache.pending) return cache.pending;
-    if (toolName !== 'pandoc' || !window.ExportService || typeof ExportService.checkPandocStatus !== 'function') {
-      cache.error = 'unavailable';
-      cache.available = false;
-      cache.version = null;
-      cache.checkedAt = Date.now();
-      return cache;
-    }
-    cache.pending = ExportService.checkPandocStatus().then(function (status) {
-      cache.available = !!(status && status.available);
-      cache.version = status && status.version ? status.version : null;
-      cache.error = null;
-      cache.checkedAt = Date.now();
-      cache.pending = null;
-      return cache;
-    }).catch(function (err) {
-      cache.available = false;
-      cache.version = null;
-      cache.error = err ? (err.message || String(err)) : 'unknown-error';
-      cache.checkedAt = Date.now();
-      cache.pending = null;
-      return cache;
-    });
-    return cache.pending;
-  }
-
-  function buildFileHeaderPandocMenuItems() {
-    var status = exportToolStatusCache.pandoc;
-    return [
-      { id: 'file-pandoc-status', label: formatExportToolStatusLabel('Pandoc', status), disabled: true },
-      { id: 'file-pandoc-refresh-status', label: 'Refresh Status' },
-      { separator: true },
-      { id: 'file-pandoc-open-export', label: 'Open Document Export' },
-      {
-        id: 'file-pandoc-output-format',
-        label: 'Output Format',
-        items: buildPandocOutputFormatItems('file-pandoc-set-format')
-      },
-      {
-        id: 'file-pandoc-page-breaks',
-        label: 'Page Breaks',
-        items: buildDocumentPageBreakModeItems('file-pandoc-set-page-breaks')
-      }
-    ];
-  }
+  function getExportToolStatusCache() { return getExportToolStatus().getToolStatusCache(); }
 
   async function handleBoardPandocMenuAction(action) {
-    if (action === 'file-pandoc-refresh-status') {
-      await refreshExportToolStatus('pandoc', true);
-      return true;
-    }
-    if (action === 'file-pandoc-open-export') {
-      await triggerBoardExport({
-        format: 'document',
-        runPandoc: true
-      });
-      return true;
-    }
-    if (action.indexOf('file-pandoc-set-format:') === 0) {
-      setStoredExportDefault('pandocFormat', normalizePandocExportFormat(action.substring('file-pandoc-set-format:'.length)));
-      return true;
-    }
-    if (action.indexOf('file-pandoc-set-page-breaks:') === 0) {
-      setStoredExportDefault('pandocPageBreaks', normalizeDocumentPageBreakPreference(action.substring('file-pandoc-set-page-breaks:'.length)));
-      return true;
-    }
-    return false;
+    return getExportToolStatus().handleBoardPandocMenuAction(action, triggerBoardExport);
   }
 
   async function handleEmbeddedRendererMenuAction(action) {
-    if (action === 'file-renderer-refresh-status') {
-      await refreshEmbeddedRendererStatuses(true);
-      return true;
-    }
-    return false;
+    return getExportToolStatus().handleEmbeddedRendererMenuAction(action);
   }
 
   async function triggerBoardExport(initialOptions) {
@@ -9670,6 +9476,13 @@ const LexeraDashboard = (function () {
     return false;
   }
 
+  var RenderAppsSettings = window.LexeraRenderAppsSettings || null;
+
+  function initRenderAppsPanel(panelEl) {
+    if (RenderAppsSettings) return RenderAppsSettings.init(panelEl);
+    return false;
+  }
+
   function openFrontendSettingsPanel() {
     if (FrontendSettings) { FrontendSettings.open(buildFrontendSettingsOptions()); return; }
     var btn = document.getElementById('btn-theme-zoom');
@@ -9806,6 +9619,9 @@ const LexeraDashboard = (function () {
       }
       if (event.detail.kind === 'frontendSettings') {
         initFrontendSettingsPanel(event.detail.element);
+      }
+      if (event.detail.kind === 'renderApps') {
+        initRenderAppsPanel(event.detail.element);
       }
     });
   }
@@ -20652,8 +20468,9 @@ const LexeraDashboard = (function () {
   }
 
   function getRendererStatusRowsById() {
-    var rows = exportToolStatusCache.renderers && Array.isArray(exportToolStatusCache.renderers.rows)
-      ? exportToolStatusCache.renderers.rows
+    var cache = getExportToolStatusCache();
+    var rows = cache.renderers && Array.isArray(cache.renderers.rows)
+      ? cache.renderers.rows
       : [];
     var map = {};
     for (var i = 0; i < rows.length; i++) {
@@ -26014,6 +25831,9 @@ const LexeraDashboard = (function () {
     });
     ActionRegistry.register('board', 'reveal-panel:frontendSettings', function () {
       if (WorkspaceShell) WorkspaceShell.revealPanel('frontendSettings');
+    });
+    ActionRegistry.register('board', 'reveal-panel:renderApps', function () {
+      if (WorkspaceShell) WorkspaceShell.revealPanel('renderApps');
     });
     ActionRegistry.register('board', 'reveal-panel:files', function () {
       if (WorkspaceShell) WorkspaceShell.revealPanel('files');

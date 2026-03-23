@@ -68,6 +68,25 @@ pub struct SyncConfig {
     pub default_workspace: Option<String>,
     #[serde(default, alias = "remoteConnections")]
     pub remote_connections: Vec<RemoteConnectionEntry>,
+    #[serde(default, alias = "renderApps")]
+    pub render_apps: Option<RenderAppsConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderAppsConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drawio: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marp: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pandoc: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub soffice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pdftoppm: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutool: Option<String>,
 }
 
 fn default_port() -> u16 {
@@ -98,6 +117,7 @@ impl Default for SyncConfig {
             workspaces: Vec::new(),
             default_workspace: None,
             remote_connections: Vec::new(),
+            render_apps: None,
         }
     }
 }
@@ -633,6 +653,7 @@ mod tests {
             workspaces: Vec::new(),
             default_workspace: None,
             remote_connections: Vec::new(),
+            render_apps: None,
         };
 
         save_config(&path.to_path_buf(), &cfg).unwrap();
@@ -697,6 +718,14 @@ mod tests {
                 enabled: true,
                 auth_token: Some("bearer-abc".to_string()),
             }],
+            render_apps: Some(RenderAppsConfig {
+                drawio: Some("/usr/local/bin/drawio".to_string()),
+                marp: Some("npx".to_string()),
+                pandoc: None,
+                soffice: None,
+                pdftoppm: None,
+                mutool: None,
+            }),
         };
 
         save_config(&path.to_path_buf(), &original).unwrap();
@@ -730,6 +759,11 @@ mod tests {
             loaded.remote_connections[0].auth_token.as_deref(),
             Some("bearer-abc")
         );
+        assert!(loaded.render_apps.is_some());
+        let ra = loaded.render_apps.unwrap();
+        assert_eq!(ra.drawio.as_deref(), Some("/usr/local/bin/drawio"));
+        assert_eq!(ra.marp.as_deref(), Some("npx"));
+        assert!(ra.pandoc.is_none());
     }
 
     #[test]

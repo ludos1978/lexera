@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use lexera_core::watcher::types::BoardChangeEvent;
 
-use crate::config::{normalize_workspace_setup, save_config, WorkspaceEntry};
+use crate::config::{normalize_workspace_setup, save_config, RenderAppsConfig, WorkspaceEntry};
 use crate::state::AppState;
 
 use super::{err_bad_request, err_internal, err_not_found, ErrorResponse};
@@ -545,6 +545,87 @@ pub async fn update_board_sync(
         "calendarSync": body.calendar_sync,
         "calendarSlug": calendar_slug,
         "calendarName": calendar_name,
+    })))
+}
+
+// ── Render Applications ─────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateRenderAppsRequest {
+    #[serde(default)]
+    pub drawio: Option<String>,
+    #[serde(default)]
+    pub marp: Option<String>,
+    #[serde(default)]
+    pub pandoc: Option<String>,
+    #[serde(default)]
+    pub soffice: Option<String>,
+    #[serde(default)]
+    pub pdftoppm: Option<String>,
+    #[serde(default)]
+    pub mutool: Option<String>,
+}
+
+/// GET /config/render-apps — returns configured render application paths.
+pub async fn get_render_apps(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let ra = state
+        .config
+        .lock()
+        .ok()
+        .and_then(|cfg| cfg.render_apps.clone())
+        .unwrap_or_default();
+
+    Json(serde_json::json!({
+        "drawio": ra.drawio,
+        "marp": ra.marp,
+        "pandoc": ra.pandoc,
+        "soffice": ra.soffice,
+        "pdftoppm": ra.pdftoppm,
+        "mutool": ra.mutool,
+    }))
+}
+
+/// PUT /config/render-apps — update render application paths.
+pub async fn set_render_apps(
+    State(state): State<AppState>,
+    Json(body): Json<UpdateRenderAppsRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let config_path = state.config_path.clone();
+    let ra = RenderAppsConfig {
+        drawio: normalize_optional_text(body.drawio),
+        marp: normalize_optional_text(body.marp),
+        pandoc: normalize_optional_text(body.pandoc),
+        soffice: normalize_optional_text(body.soffice),
+        pdftoppm: normalize_optional_text(body.pdftoppm),
+        mutool: normalize_optional_text(body.mutool),
+    };
+
+    // Only store Some if at least one field is set
+    let has_any = ra.drawio.is_some()
+        || ra.marp.is_some()
+        || ra.pandoc.is_some()
+        || ra.soffice.is_some()
+        || ra.pdftoppm.is_some()
+        || ra.mutool.is_some();
+
+    {
+        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        cfg.render_apps = if has_any { Some(ra.clone()) } else { None };
+        if let Err(e) = save_config(&config_path, &cfg) {
+            log::error!("Failed to save config after render-apps update: {}", e);
+        }
+    }
+
+    log::info!("[config] Render application paths updated");
+    notify_config_changed(&state);
+    Ok(Json(serde_json::json!({
+        "drawio": ra.drawio,
+        "marp": ra.marp,
+        "pandoc": ra.pandoc,
+        "soffice": ra.soffice,
+        "pdftoppm": ra.pdftoppm,
+        "mutool": ra.mutool,
     })))
 }
 

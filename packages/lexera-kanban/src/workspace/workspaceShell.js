@@ -106,6 +106,7 @@
     logs: { id: 'logs', title: 'Logs', defaultDock: 'bottom', duplicable: true, integratedHeader: true },
     backendSettings: { id: 'backendSettings', title: 'Backend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
     frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
+    renderApps: { id: 'renderApps', title: 'Render Applications', defaultDock: 'right', duplicable: true, integratedHeader: true },
     files: { id: 'files', title: 'Files', defaultDock: 'right', duplicable: true, integratedHeader: true }
   };
 
@@ -116,6 +117,7 @@
       logs: { id: 'logs', kind: 'logs' },
       backendSettings: { id: 'backendSettings', kind: 'backendSettings' },
       frontendSettings: { id: 'frontendSettings', kind: 'frontendSettings' },
+      renderApps: { id: 'renderApps', kind: 'renderApps' },
       files: { id: 'files', kind: 'files' }
     };
   }
@@ -204,6 +206,7 @@
       logs: true,
       backendSettings: false,
       frontendSettings: false,
+      renderApps: false,
       files: false
     };
   }
@@ -1287,7 +1290,7 @@
     if (kind === 'hierarchy') return '\u2630'; // ☰
     if (kind === 'dashboard') return '\u25a3'; // ▣
     if (kind === 'logs') return '\u25cb'; // ○ (replaced with dot in strip)
-    if (kind === 'backendSettings' || kind === 'frontendSettings') return '\u2699'; // ⚙
+    if (kind === 'backendSettings' || kind === 'frontendSettings' || kind === 'renderApps') return '\u2699'; // ⚙
     return '\u25a1'; // □
   }
 
@@ -1729,6 +1732,7 @@
       if (panelKind === 'logs') return 'Panel';
       if (panelKind === 'backendSettings') return 'Settings';
       if (panelKind === 'frontendSettings') return 'Settings';
+      if (panelKind === 'renderApps') return 'Settings';
       return 'Panel';
     }
     if (tab.viewKind === 'canvas') return 'Canvas';
@@ -2043,6 +2047,7 @@
       (sharedPanels ? sharedPanels.createPanelElement('backendSettings', 'backendSettings') : null);
     var frontendSettingsPanelEl = document.getElementById('frontend-settings-panel') ||
       (sharedPanels ? sharedPanels.createPanelElement('frontendSettings', 'frontendSettings') : null);
+    var renderAppsPanelEl = sharedPanels ? sharedPanels.createPanelElement('renderApps', 'renderApps') : null;
     var filesPanelEl = sharedPanels ? sharedPanels.createPanelElement('files', 'files') : null;
 
     if (dashboardDividerEl) {
@@ -2073,6 +2078,7 @@
     if (logPanelEl) logPanelEl.setAttribute('data-shell-panel', 'logs');
     if (backendSettingsPanelEl) backendSettingsPanelEl.setAttribute('data-shell-panel', 'backendSettings');
     if (frontendSettingsPanelEl) frontendSettingsPanelEl.setAttribute('data-shell-panel', 'frontendSettings');
+    if (renderAppsPanelEl) renderAppsPanelEl.setAttribute('data-shell-panel', 'renderApps');
     if (filesPanelEl) filesPanelEl.setAttribute('data-shell-panel', 'files');
 
     state.panelElements = {
@@ -2081,6 +2087,7 @@
       logs: logPanelEl,
       backendSettings: backendSettingsPanelEl,
       frontendSettings: frontendSettingsPanelEl,
+      renderApps: renderAppsPanelEl,
       files: filesPanelEl
     };
     return state.panelElements;
@@ -3833,7 +3840,9 @@
     'open-frontend-settings': 'frontendSettings',
     'open-theme-zoom': 'frontendSettings',
     'show-processes': 'logs',
-    'running-processes': 'logs'
+    'running-processes': 'logs',
+    'open-render-apps': 'renderApps',
+    'render-apps': 'renderApps'
   };
 
   function handleBoardAction(action) {
