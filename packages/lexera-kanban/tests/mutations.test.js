@@ -20,6 +20,10 @@ function loadMutationHarness() {
   const orderHelpersSource = readFileSync(resolve(srcDir, 'board', 'orderHelpers.js'), 'utf-8');
   new Function(orderHelpersSource)();
 
+  // Load DndMutations so delegation stubs in app.js can reference it
+  const dndMutationsSource = readFileSync(resolve(srcDir, 'dragdrop', 'dndMutations.js'), 'utf-8');
+  new Function(dndMutationsSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
@@ -27,9 +31,17 @@ function loadMutationHarness() {
   const ccmSource = readFileSync(resolve(srcDir, 'menu', 'cardContextMenu.js'), 'utf-8');
   const ccmLines = ccmSource.split('\n');
 
+  // Also load columnContextMenu.js for functions extracted from app.js
+  const colCtxSource = readFileSync(resolve(srcDir, 'menu', 'columnContextMenu.js'), 'utf-8');
+  const colCtxLines = colCtxSource.split('\n');
+
   // Load cardEditor.js for saveCardEdit extracted from app.js
   const cardEditorSource = readFileSync(resolve(srcDir, 'editor', 'cardEditor.js'), 'utf-8');
   const cardEditorLines = cardEditorSource.split('\n');
+
+  // Load dndMutations.js for cross-board move functions extracted from app.js
+  const dndSource = readFileSync(resolve(srcDir, 'dragdrop', 'dndMutations.js'), 'utf-8');
+  const dndLines = dndSource.split('\n');
 
   function extractFunctionFrom(sourceLines, startLine) {
     let depth = 0;
@@ -68,11 +80,22 @@ function loadMutationHarness() {
     // Check extracted modules first (they have real implementations; app.js may have thin stubs)
     var idx = findLineIn(ccmLines, pattern);
     if (idx > 0) return extractFunctionFrom(ccmLines, idx).replace(/\bdeps\./g, '');
+    idx = findLineIn(colCtxLines, pattern);
+    if (idx > 0) return extractFunctionFrom(colCtxLines, idx).replace(/\bdeps\./g, '');
     idx = findLineIn(cardEditorLines, pattern);
     if (idx > 0) return extractFunctionFrom(cardEditorLines, idx);
+    idx = findLineIn(dndLines, pattern);
+    if (idx > 0) {
+      var raw = extractFunctionFrom(dndLines, idx);
+      raw = raw.replace(/_deps\.([\w]+)/g, '$1');
+      raw = raw.replace(/\bfullBoardData\(\)/g, 'fullBoardData');
+      raw = raw.replace(/\bactiveBoardData\(\)/g, 'activeBoardData');
+      raw = raw.replace(/\bactiveBoardId\(\)/g, 'activeBoardId');
+      return raw;
+    }
     idx = findLineIn(lines, pattern);
     if (idx > 0) return extractFunctionFrom(lines, idx);
-    throw new Error('Could not find in cardContextMenu.js, cardEditor.js, or app.js: ' + pattern);
+    throw new Error('Could not find in extracted modules or app.js: ' + pattern);
   }
 
   // --- Pure helpers ---
@@ -82,9 +105,9 @@ function loadMutationHarness() {
     extractFunction(findLine('function stripInternalHiddenTags(')),
     extractFunction(findLine('function stripHtmlComments(')),
     extractFunction(findLine('function getAllColumnsFromBoardData(')),
-    extractFunction(findLine('function findColumnContainerInBoard(')),
+    extractFunctionAny('function findColumnContainerInBoard('),
     extractFunction(findLine('function getFullCardIndex(')),
-    extractFunction(findLine('function visibleColumnIndicesInStack(')),
+    extractFunctionAny('function visibleColumnIndicesInStack('),
     extractFunction(findLine('function escapeRegex(')),
     extractFunction(findLine('function isTagTokenBoundaryChar(')),
     extractFunction(findLine('function normalizeTagTokenForMatch(')),
@@ -109,14 +132,14 @@ function loadMutationHarness() {
   // --- Closure-dependent helpers ---
   const closureHelpers = [
     extractFunction(findLine('function getFullColumn(')),
-    extractFunction(findLine('function findFullDataRow(')),
-    extractFunction(findLine('function findFullDataStack(')),
-    extractFunction(findLine('function findFullDataRowIndex(')),
-    extractFunction(findLine('function findFullDataStackIndex(')),
-    extractFunction(findLine('function findInsertRowIndex(')),
-    extractFunction(findLine('function findFullColumnIndexInStack(')),
-    extractFunction(findLine('function findInsertStackIndexInRow(')),
-    extractFunction(findLine('function findInsertColumnIndexInStack(')),
+    extractFunctionAny('function findFullDataRow('),
+    extractFunctionAny('function findFullDataStack('),
+    extractFunctionAny('function findFullDataRowIndex('),
+    extractFunctionAny('function findFullDataStackIndex('),
+    extractFunctionAny('function findInsertRowIndex('),
+    extractFunctionAny('function findFullColumnIndexInStack('),
+    extractFunctionAny('function findInsertStackIndexInRow('),
+    extractFunctionAny('function findInsertColumnIndexInStack('),
     extractFunction(findLine('function nextMutationEntityId(')),
     extractFunction(findLine('function isUnnamedStructuralTitle(')),
     extractFunction(findLine('function createUnnamedColumnForMutation(')),
@@ -143,8 +166,8 @@ function loadMutationHarness() {
     extractFunction(findLine('function captureStableCardRestoreTarget(')),
     extractFunctionAny('function mutateEntityHeaderText('),
     extractFunctionAny('function mutateEntityHeaderTags('),
-    extractFunction(findLine('function removeEmptyStacksAndRowsInBoard(')),
-    extractFunction(findLine('function removeEmptyStacksAndRows()')),
+    extractFunctionAny('function removeEmptyStacksAndRowsInBoard('),
+    extractFunctionAny('function removeEmptyStacksAndRows()'),
   ].join('\n\n');
 
   // --- Mutation functions ---
@@ -168,8 +191,8 @@ function loadMutationHarness() {
     extractFunctionAny('function tagCard('),
     // Columns
     extractFunction(findLine('async function addColumnToStack(')),
-    extractFunction(findLine('async function duplicateColumn(')),
-    extractFunction(findLine('async function setColumnHiddenTag(')),
+    extractFunctionAny('async function duplicateColumn('),
+    extractFunctionAny('async function setColumnHiddenTag('),
     extractFunction(findLine('async function moveColumnWithinBoard(')),
     extractFunction(findLine('async function moveColumnToExistingStack(')),
     extractFunction(findLine('async function moveColumnToNewStack(')),
@@ -177,16 +200,16 @@ function loadMutationHarness() {
     extractFunction(findLine('async function addStackToRow(')),
     extractFunction(findLine('async function duplicateStack(')),
     extractFunction(findLine('async function setStackHiddenTag(')),
-    extractFunction(findLine('async function moveStack(')),
+    extractFunctionAny('function moveStack('),
     // Rows
     extractFunction(findLine('async function addRow(')),
     extractFunction(findLine('async function duplicateRow(')),
     extractFunction(findLine('async function setRowHiddenTag(')),
-    extractFunction(findLine('async function reorderRows(')),
-    extractFunction(findLine('async function moveRowAcrossBoards(')),
-    extractFunction(findLine('async function moveStackAcrossBoards(')),
-    extractFunction(findLine('async function moveColumnAcrossBoards(')),
-    extractFunction(findLine('async function moveCard(')),
+    extractFunctionAny('function reorderRows('),
+    extractFunctionAny('async function moveRowAcrossBoards('),
+    extractFunctionAny('async function moveStackAcrossBoards('),
+    extractFunctionAny('async function moveColumnAcrossBoards('),
+    extractFunctionAny('async function moveCard('),
     // Cross
     extractFunctionAny('function toggleTag('),
   ].join('\n\n');
@@ -248,6 +271,7 @@ function loadMutationHarness() {
     }
 
     var OrderHelpers = (typeof window !== 'undefined' && window.LexeraOrderHelpers) || (typeof globalThis !== 'undefined' && globalThis.LexeraOrderHelpers) || null;
+    var DndMutations = (typeof window !== 'undefined' && window.LexeraDndMutations) || (typeof globalThis !== 'undefined' && globalThis.LexeraDndMutations) || null;
 
     // --- Pure helpers ---
     ${pureHelpers}
@@ -276,6 +300,26 @@ function loadMutationHarness() {
         getElColumnsContainer: function () { return null; },
         saveCardCollapseState: function () {},
         refreshBoardHeaderActionStates: function () {}
+      });
+    }
+
+    // Initialize DndMutations with test mock deps so delegation stubs work
+    if (DndMutations && typeof DndMutations.init === 'function') {
+      DndMutations.init({
+        fullBoardData: function () { return fullBoardData; },
+        activeBoardData: function () { return activeBoardData; },
+        activeBoardId: function () { return activeBoardId; },
+        pushUndo: function () { pushUndo(); },
+        persistBoardMutation: function (opts) { return persistBoardMutation(opts); },
+        traceFrontendAction: function () {},
+        getDisplayOrderedColumnEntries: typeof getDisplayOrderedColumnEntries === 'function' ? getDisplayOrderedColumnEntries : function (c) { return c; },
+        stripInternalHiddenTags: typeof stripInternalHiddenTags === 'function' ? stripInternalHiddenTags : function (t) { return t; },
+        stripHtmlComments: typeof stripHtmlComments === 'function' ? stripHtmlComments : function (t) { return t; },
+        addColumnToStack: typeof addColumnToStack === 'function' ? addColumnToStack : function () {},
+        applyDefaultCanvasPlacementToStack: function () {},
+        resolveRowForMutation: typeof resolveRowForMutation === 'function' ? resolveRowForMutation : function () { return null; },
+        resolveStackForMutation: typeof resolveStackForMutation === 'function' ? resolveStackForMutation : function () { return null; },
+        resolveColumnRefForCardMutation: typeof resolveColumnRefForCardMutation === 'function' ? resolveColumnRefForCardMutation : function () { return null; }
       });
     }
 

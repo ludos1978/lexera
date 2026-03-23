@@ -20,15 +20,13 @@ const LexeraDashboard = (function () {
   let boardLoadSeq = 0;
   let searchMode = false;
   let searchResults = null;
-  var columnSortState = {};
+  // columnSortState now lives in LexeraColumnContextMenu module
   let pollInterval = null;
   let addCardColumn = null;
   // ptrDrag state now lives in DragDropHandlers module
   var isEditing = false;
-  var currentCardEditor = null;
+  var CardEditorModule = window.CardEditor;
   var InlineCardEditorModule = window.InlineCardEditor;
-  var cardEditorMode = null;
-  var cardEditorFontScale = 1;
   var pendingExternalRebaseConflict = null;
   var pendingRefresh = false;
   var eventSource = null;
@@ -55,7 +53,7 @@ const LexeraDashboard = (function () {
   var VirtualScroll = window.LexeraVirtualScroll;
   if (VirtualScroll) VirtualScroll.init({
     getColumnsContainer: function() { return getElColumnsContainer(); },
-    getCurrentCardEditor: function() { return currentCardEditor; },
+    getCurrentCardEditor: function() { return CardEditorModule ? CardEditorModule.getCurrentCardEditor() : null; },
     getPtrDrag: function() { return DragDropHandlers ? DragDropHandlers.getPtrDrag() : null; },
     getCardDrag: function() { return DragDropHandlers ? DragDropHandlers.getCardDrag() : null; }
   });
@@ -122,8 +120,56 @@ const LexeraDashboard = (function () {
     applyInternalHiddenTag: function(title, tag) { return applyInternalHiddenTag(title, tag); },
     renderColumns: function() { renderColumns(); }
   });
+  if (CardEditorModule) CardEditorModule.init({
+    getActiveBoardId: function() { return activeBoardId; },
+    getActiveBoardFilePath: function() { return getActiveBoardFilePath(); },
+    getBoardFilePathForId: function(id) { return getBoardFilePathForId(id); },
+    normalizePathForCompare: function(p) { return normalizePathForCompare(p); },
+    joinBoardRelativePath: function(b, r) { return joinBoardRelativePath(b, r); },
+    getDirNameFromPath: function(p) { return getDirNameFromPath(p); },
+    getFullColumn: function(idx) { return getFullColumn(idx); },
+    getFullCardIndex: function(col, visIdx) { return getFullCardIndex(col, visIdx); },
+    getFullBoardData: function() { return fullBoardData; },
+    getElColumnsContainer: function() { return getElColumnsContainer(); },
+    LexeraApi: LexeraApi,
+    showNativeMenu: function(items, x, y) { return showNativeMenu(items, x, y); },
+    escapeHtml: function(s) { return escapeHtml(s); },
+    isWysiwygEditorEnabled: function() { return isWysiwygEditorEnabled(); },
+    isOverlayEditorEnabled: function() { return isOverlayEditorEnabled(); },
+    setIsEditing: function(v) { isEditing = v; },
+    getSyncUserName: function() { return syncUserName; },
+    getSyncUserId: function() { return syncUserId; },
+    queueCardDraftLiveSync: function(ci, fi, c) { queueCardDraftLiveSync(ci, fi, c); },
+    queueEditingPresenceBroadcast: function(kid, pos, typing) { queueEditingPresenceBroadcast(kid, pos, typing); },
+    handleTextareaTabIndent: function(e, ta) { return handleTextareaTabIndent(e, ta); },
+    handleEditorPasteImage: function(e, ta) { handleEditorPasteImage(e, ta); },
+    resolveDropContent: function(dt) { return resolveDropContent(dt); },
+    clearEditingPresenceQueue: function() { clearEditingPresenceQueue(); },
+    clearPendingCardDraftSync: function() { clearPendingCardDraftSync(); },
+    revertCardDraftLiveSync: function(ci, fi, orig) { return revertCardDraftLiveSync(ci, fi, orig); },
+    flushDeferredBoardRefresh: function(opts) { return flushDeferredBoardRefresh(opts); },
+    pushUndo: function() { pushUndo(); },
+    persistBoardMutation: function() { return persistBoardMutation(); },
+    getIncludeResolvedContent: function(content, colIndex) { return getIncludeResolvedContent(content, colIndex); },
+    renderCardContent: function(content, boardId, col, opts) { return renderCardContent(content, boardId, col, opts); },
+    renderTitleInline: function(title, boardId) { return renderTitleInline(title, boardId); },
+    enhanceEmbeddedContent: function(el) { enhanceEmbeddedContent(el); },
+    applyRenderedHtmlCommentVisibility: function(el, mode) { applyRenderedHtmlCommentVisibility(el, mode); },
+    applyRenderedTagVisibility: function(el, mode) { applyRenderedTagVisibility(el, mode); },
+    attachRenderedTagInteractions: function(el) { attachRenderedTagInteractions(el); },
+    getCurrentHtmlCommentRenderMode: function() { return currentHtmlCommentRenderMode; },
+    getCurrentTagVisibilityMode: function() { return currentTagVisibilityMode; },
+    getCardTitle: function(content) { return getCardTitle(content); },
+    stripInternalHiddenTags: function(content) { return stripInternalHiddenTags(content); },
+    replaceNthMarkdownEmbed: function(c, i, r) { return replaceNthMarkdownEmbed(c, i, r); },
+    lexeraLog: function(level, msg) { lexeraLog(level, msg); },
+    logFrontendIssue: function(level, tag, msg, err) { logFrontendIssue(level, tag, msg, err); },
+    getInlineCardEditor: function() { return InlineCardEditorModule ? InlineCardEditorModule.getCurrentInlineCardEditor() : null; },
+    closeInlineCardEditor: function(opts) { return closeInlineCardEditor(opts); },
+    enterInlineCardEditMode: function(el, ci, cj) { enterInlineCardEditMode(el, ci, cj); }
+  });
   if (InlineCardEditorModule) InlineCardEditorModule.init({
-    getCurrentCardEditor: function() { return currentCardEditor; },
+    getCurrentCardEditor: function() { return CardEditorModule ? CardEditorModule.getCurrentCardEditor() : null; },
     getFullBoardData: function() { return fullBoardData; },
     getFullColumn: function(idx) { return getFullColumn(idx); },
     getFullCardIndex: function(col, visIdx) { return getFullCardIndex(col, visIdx); },
@@ -340,7 +386,8 @@ const LexeraDashboard = (function () {
   function getSharedPanelRoots(kind) {
     var registry = getSharedPanelRegistry();
     if (!registry || typeof registry.getRoots !== 'function') return [];
-    return registry.getRoots(kind);
+    var roots = registry.getRoots(kind);
+    return Array.isArray(roots) ? roots : [];
   }
 
   window.addEventListener('lexera-shared-panel-created', function (event) {
@@ -542,11 +589,9 @@ const LexeraDashboard = (function () {
   const BURGER_MENU_ICON_HTML = '<span class="burger-lines" aria-hidden="true"></span>';
 
   // Apply on load after DOM refs exist so board settings can safely re-apply theme-derived styles.
-  applyVisualTheme(localStorage.getItem('lexera-visual-theme') || 'classic');
+  applyVisualTheme(localStorage.getItem('lexera-visual-theme') || 'sleek-uniform');
   applyTheme(localStorage.getItem('lexera-theme') || 'lexera');
-  cardEditorMode = normalizeCardEditorMode(localStorage.getItem('lexera-card-editor-mode') || 'dual');
-  cardEditorFontScale = normalizeCardEditorFontScale(localStorage.getItem('lexera-card-editor-font-scale') || '1');
-  $uiScale = normalizeUiScale(localStorage.getItem('lexera-ui-scale') || '1');
+  $uiScale = normalizeUiScale(localStorage.getItem('lexera-ui-scale') || '0.95');
   applyUiScale($uiScale);
   applySpecialCharactersVisibilitySetting();
 
@@ -583,7 +628,7 @@ const LexeraDashboard = (function () {
 
   function setOverlayEditorEnabled(enabled) {
     localStorage.setItem('lexera-overlay-editor-enabled', enabled ? 'true' : 'false');
-    if (!enabled && currentCardEditor) {
+    if (!enabled && CardEditorModule && CardEditorModule.getCurrentCardEditor()) {
       closeCardEditorOverlay({ save: true });
     }
     renderFrontendSettingsPanel();
@@ -595,7 +640,8 @@ const LexeraDashboard = (function () {
 
   function setWysiwygEditorEnabled(enabled) {
     localStorage.setItem('lexera-wysiwyg-editor-enabled', enabled ? 'true' : 'false');
-    if (!enabled && currentCardEditor && currentCardEditor.mode === 'wysiwyg') {
+    var _cardEditor = CardEditorModule ? CardEditorModule.getCurrentCardEditor() : null;
+    if (!enabled && _cardEditor && _cardEditor.mode === 'wysiwyg') {
       applyCardEditorMode('dual');
     }
     renderFrontendSettingsPanel();
@@ -851,8 +897,8 @@ const LexeraDashboard = (function () {
     get searchMode() { return searchMode; },
     get addCardColumn() { return addCardColumn; },
     setAddCardColumn: function (v) { addCardColumn = v; },
-    get activeColMenu() { return activeColMenu; },
-    get activeCardMenu() { return activeCardMenu; },
+    get activeColMenu() { return _ColCtx ? _ColCtx.getActiveColMenu() : null; },
+    get activeCardMenu() { return _CCM ? _CCM.getActiveCardMenu() : null; },
     get activeRowStackMenu() { return activeRowStackMenu; },
     get activeEmbedMenu() {
       return window.LexeraEmbedMenu && typeof window.LexeraEmbedMenu.getActiveEmbedMenu === 'function'
@@ -875,7 +921,7 @@ const LexeraDashboard = (function () {
         : null;
     },
     closeInlineCardEditor: function (opts) { return closeInlineCardEditor(opts); },
-    get currentCardEditor() { return currentCardEditor; },
+    get currentCardEditor() { return CardEditorModule ? CardEditorModule.getCurrentCardEditor() : null; },
     closeCardEditorOverlay: function (opts) { return closeCardEditorOverlay(opts); },
     get $searchInput() { return $searchInput; },
     get $searchContainer() { return $searchContainer; },
@@ -2055,18 +2101,55 @@ const LexeraDashboard = (function () {
     WorkspaceShell: window.LexeraWorkspaceShell,
     ALL_WORKSPACES_ID: ALL_WORKSPACES_ID,
     isBoardDirty: function() { return isBoardDirty(); },
+    clearBoardDirty: function() { clearBoardDirty(); },
+    markBoardDirty: function() { markBoardDirty(); },
     selectBoard: function(boardId) { selectBoard(boardId); },
     setLastLoadedRevision: function(rev) { _lastLoadedRevision = rev; },
+    setLastLoadedGeneration: function(generation) { _lastLoadedGeneration = generation; },
+    setActiveBoardId: function(boardId) { activeBoardId = boardId; },
+    setActiveBoardData: function(boardData) { activeBoardData = boardData; },
+    setFullBoardData: function(boardData) { fullBoardData = boardData; },
+    setBoards: function(nextBoards) { boards = nextBoards; },
     setActiveWorkspaceIdState: function(id) { activeWorkspaceId = id; },
+    setPendingExternalRebaseConflict: function(conflict) { pendingExternalRebaseConflict = conflict; },
     tauriInvoke: function(cmd, args) { return window.__TAURI__ && window.__TAURI__.core.invoke(cmd, args); },
     getSidebarTreeApi: function() { return getSidebarTreeApi(); },
     stripLayoutTags: function(text) { return stripLayoutTags(text); },
+    getDisplayOrderedColumnEntries: function(cols, opts) { return getDisplayOrderedColumnEntries(cols, opts); },
+    getOrderedItems: function(items, key, fn) { return getOrderedItems(items, key, fn); },
+    getAllColumnsFromBoardData: function(boardData) { return getAllColumnsFromBoardData(boardData); },
+    getMutationBoardTitle: function(boardId, boardData) { return getMutationBoardTitle(boardId, boardData); },
+    getDisplayNameFromPath: function(filePath) { return getDisplayNameFromPath(filePath); },
+    getCreationEntityDragIconSvg: function(type) { return getCreationEntityDragIconSvg(type); },
+    getSharedPanelRoots: function(kind) { return getSharedPanelRoots(kind); },
+    isRemoteBoardId: function(boardId) { return isRemoteBoardId(boardId); },
+    hasTag: function(text, tag) { return hasTag(text, tag); },
+    stripStackTag: function(title) { return stripStackTag(title); },
+    ensureBoardRowsForMutation: function(boardData, title) { ensureBoardRowsForMutation(boardData, title); },
+    updateDisplayFromFullBoard: function() { updateDisplayFromFullBoard(); },
     logFrontendIssue: function(level, target, msg, err) { logFrontendIssue(level, target, msg, err); },
     traceFrontendAction: function(level, target, msg, details) { traceFrontendAction(level, target, msg, details); },
     applyBoardSettings: function() { applyBoardSettings(); },
     renderColumns: function() { renderColumns(); },
     renderBoardList: function() { renderBoardList(); },
-    showNotification: function(msg) { showNotification(msg); }
+    renderMainView: function() { renderMainView(); },
+    refreshHeaderFileControls: function() { refreshHeaderFileControls(); },
+    scheduleDashboardRefresh: function(ms) { scheduleDashboardRefresh(ms); },
+    showNotification: function(msg) { showNotification(msg); },
+    showConfirmDialog: function(msg) { return showConfirmDialog(msg); },
+    showExternalRebaseConflictDialog: function(result) { showExternalRebaseConflictDialog(result); },
+    escapeHtml: function(text) { return escapeHtml(text); },
+    exitSearchMode: function() { exitSearchMode(); },
+    showNativeMenu: function(items, x, y) { return showNativeMenu(items, x, y); },
+    openConnectionWindow: function() { openConnectionWindow(); },
+    showInFinder: function(filePath) { showInFinder(filePath); },
+    poll: function() { poll(); },
+    applyVisualTheme: function(themeId) { applyVisualTheme(themeId); },
+    showSidebarHierarchyMenu: function(anchor) { showSidebarHierarchyMenu(anchor); },
+    buildHierarchyFocusTargetFromTreeNode: function(node, boardId) { return buildHierarchyFocusTargetFromTreeNode(node, boardId); },
+    navigateToHierarchyTarget: function(target) { return navigateToHierarchyTarget(target); },
+    targetClosest: function(target, selector) { return targetClosest(target, selector); },
+    cleanupBoardBeforeSidebarClose: function(boardId) { return cleanupBoardBeforeSidebarClose(boardId); }
   });
   function getSidebarExpandedBoards() { return BoardList.getSidebarExpandedBoards(); }
   function saveSidebarExpandedBoards(ids) { BoardList.saveSidebarExpandedBoards(ids); }
@@ -2202,7 +2285,7 @@ const LexeraDashboard = (function () {
     var seq = ++boardLoadSeq;
     var isBoardSwitch = boardId !== activeBoardId;
     if (BoardStatsFilter) BoardStatsFilter.resetState();
-    columnSortState = {};
+    if (_ColCtx) _ColCtx.resetColumnSortState();
     closeSearchReplacePanel();
     // Reset canvas zoom and pan only when switching to a different board.
     // Reloading the same board (e.g. poll, save-then-poll) must preserve viewport.
@@ -4140,7 +4223,7 @@ const LexeraDashboard = (function () {
   function showThemeZoomMenu(btnElement) {
     if (!btnElement) return;
     var rect = btnElement.getBoundingClientRect();
-    var zoomLevels = [0.8, 0.9, 1, 1.1, 1.25];
+    var zoomLevels = [0.75, 0.85, 0.95, 1, 1.1, 1.25];
     var items = buildSettingMenuItems('visualTheme');
     items.push({ separator: true });
     items.push({ id: 'sidebar-hierarchy-display', label: 'Sidebar Hierarchy', items: buildSidebarHierarchyDisplayMenuItems() });
@@ -9237,424 +9320,56 @@ const LexeraDashboard = (function () {
     await persistBoardMutation({ refreshSidebar: true });
   }
 
-  // --- New-format DnD mutations ---
+  // --- New-format DnD mutations (delegated to LexeraDndMutations module) ---
 
-  async function reorderRows(sourceIdx, targetIdx, insertBefore) {
-    if (!fullBoardData) return;
+  var DndMutations = typeof LexeraDndMutations !== 'undefined' ? LexeraDndMutations : null;
 
-    var sourceFullIdx = findFullDataRowIndex(sourceIdx);
-    var targetFullIdx = findFullDataRowIndex(targetIdx);
-    if (sourceFullIdx === -1 || targetFullIdx === -1 || sourceFullIdx === targetFullIdx) return;
-
-    var insertAt = targetFullIdx;
-    if (sourceFullIdx < targetFullIdx) insertAt--;
-    if (!insertBefore) insertAt++;
-    if (insertAt === sourceFullIdx) return;
-
-    pushUndo();
-    var moved = fullBoardData.rows.splice(sourceFullIdx, 1)[0];
-    fullBoardData.rows.splice(insertAt, 0, moved);
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  async function moveStack(fromRowIdx, fromStackIdx, toRowIdx, toStackIdx, insertBefore) {
-    if (!fullBoardData) return;
-
-    // Map display indices to fullBoardData row indices
-    var fromRow = findFullDataRow(fromRowIdx);
-    var toRow = findFullDataRow(toRowIdx);
-    if (!fromRow || !toRow) return;
-    var fromFullStackIdx = findFullDataStackIndex(fromRow, fromRowIdx, fromStackIdx);
-    var toFullStackIdx = findFullDataStackIndex(toRow, toRowIdx, toStackIdx);
-    if (fromFullStackIdx === -1 || toFullStackIdx === -1) return;
-    var insertAt = toFullStackIdx;
-    if (fromRow === toRow && fromFullStackIdx < toFullStackIdx) insertAt--;
-    if (!insertBefore) insertAt++;
-    if (fromRow === toRow && insertAt === fromFullStackIdx) return;
-
-    pushUndo();
-    var moved = fromRow.stacks.splice(fromFullStackIdx, 1)[0];
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > toRow.stacks.length) insertAt = toRow.stacks.length;
-    toRow.stacks.splice(insertAt, 0, moved);
-    removeEmptyStacksAndRows();
-
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  /**
-   * Find the fullBoardData row that corresponds to a display row index.
-   * Matches by row title from activeBoardData.rows.
-   */
-  function findFullDataRow(displayRowIdx) {
-    if (!activeBoardData || !activeBoardData.rows || displayRowIdx >= activeBoardData.rows.length) return null;
-    var displayRow = activeBoardData.rows[displayRowIdx];
-    for (var i = 0; i < fullBoardData.rows.length; i++) {
-      if (fullBoardData.rows[i].id === displayRow.id) return fullBoardData.rows[i];
-    }
-    return null;
-  }
-
-  function findFullDataStack(displayRowIdx, displayStackIdx) {
-    var row = findFullDataRow(displayRowIdx);
-    if (!row || !activeBoardData || !activeBoardData.rows || displayRowIdx < 0 || displayRowIdx >= activeBoardData.rows.length) return null;
-    var displayRow = activeBoardData.rows[displayRowIdx];
-    if (!displayRow || displayStackIdx < 0 || displayStackIdx >= displayRow.stacks.length) return null;
-    var displayStack = displayRow.stacks[displayStackIdx];
-    for (var i = 0; i < row.stacks.length; i++) {
-      if (row.stacks[i].id === displayStack.id) return row.stacks[i];
-    }
-    return null;
-  }
-
-  function findFullDataRowIndex(displayRowIdx) {
-    if (!activeBoardData || !activeBoardData.rows || displayRowIdx < 0 || displayRowIdx >= activeBoardData.rows.length) return -1;
-    var displayRow = activeBoardData.rows[displayRowIdx];
-    for (var i = 0; i < fullBoardData.rows.length; i++) {
-      if (fullBoardData.rows[i].id === displayRow.id) return i;
-    }
-    return -1;
-  }
-
-  function findInsertRowIndex(displayInsertAtIdx) {
-    if (!fullBoardData || !fullBoardData.rows) return 0;
-    if (!activeBoardData || !activeBoardData.rows || displayInsertAtIdx >= activeBoardData.rows.length) {
-      return fullBoardData.rows.length;
-    }
-    if (displayInsertAtIdx <= 0) {
-      var first = activeBoardData.rows[0];
-      if (first && first.id) {
-        for (var i = 0; i < fullBoardData.rows.length; i++) {
-          if (fullBoardData.rows[i].id === first.id) return i;
-        }
-      }
-      return 0;
-    }
-    var target = activeBoardData.rows[displayInsertAtIdx];
-    if (target && target.id) {
-      for (var i = 0; i < fullBoardData.rows.length; i++) {
-        if (fullBoardData.rows[i].id === target.id) return i;
-      }
-    }
-    return fullBoardData.rows.length;
-  }
-
-  function visibleColumnIndicesInStack(stack) {
-    var result = [];
-    if (!stack || !stack.columns) return result;
-    var entries = getDisplayOrderedColumnEntries(stack.columns || []);
-    for (var i = 0; i < entries.length; i++) {
-      result.push(entries[i].fullIndex);
-    }
-    return result;
-  }
-
-  function findFullDataStackIndex(fullRow, displayRowIdx, displayStackIdx) {
-    if (!fullRow || !activeBoardData || !activeBoardData.rows || displayRowIdx < 0 || displayRowIdx >= activeBoardData.rows.length) return -1;
-    var displayRow = activeBoardData.rows[displayRowIdx];
-    if (!displayRow || displayStackIdx < 0 || displayStackIdx >= displayRow.stacks.length) return -1;
-    var displayStack = displayRow.stacks[displayStackIdx];
-
-    if (displayStack.id) {
-      for (var i = 0; i < fullRow.stacks.length; i++) {
-        if (fullRow.stacks[i].id === displayStack.id) return i;
-      }
-    }
-
-    // Fallback when IDs are missing: map by visible stack order.
-    var visibleStackIdx = -1;
-    for (var i = 0; i < fullRow.stacks.length; i++) {
-      if (visibleColumnIndicesInStack(fullRow.stacks[i]).length === 0) continue;
-      visibleStackIdx++;
-      if (visibleStackIdx === displayStackIdx) return i;
-    }
-    return -1;
-  }
-
-  function findFullColumnIndexInStack(stack, displayColIdx) {
-    if (!stack || displayColIdx < 0) return -1;
-    var visible = visibleColumnIndicesInStack(stack);
-    return displayColIdx < visible.length ? visible[displayColIdx] : -1;
-  }
-
-  function findInsertStackIndexInRow(fullRow, displayRowIdx, displayInsertAtIdx) {
-    if (!fullRow || !fullRow.stacks) return 0;
-    if (!activeBoardData || !activeBoardData.rows || displayRowIdx < 0 || displayRowIdx >= activeBoardData.rows.length) {
-      return fullRow.stacks.length;
-    }
-    var displayRow = activeBoardData.rows[displayRowIdx];
-    if (!displayRow || !displayRow.stacks || displayInsertAtIdx >= displayRow.stacks.length) {
-      return fullRow.stacks.length;
-    }
-    if (displayInsertAtIdx <= 0) {
-      // Insert before the first visible stack
-      var first = displayRow.stacks[0];
-      if (first && first.id) {
-        for (var i = 0; i < fullRow.stacks.length; i++) {
-          if (fullRow.stacks[i].id === first.id) return i;
-        }
-      }
-      return 0;
-    }
-    // Insert before the display stack at displayInsertAtIdx
-    var target = displayRow.stacks[displayInsertAtIdx];
-    if (target && target.id) {
-      for (var i = 0; i < fullRow.stacks.length; i++) {
-        if (fullRow.stacks[i].id === target.id) return i;
-      }
-    }
-    return fullRow.stacks.length;
-  }
-
-  function findInsertColumnIndexInStack(stack, displayColIdx, insertBefore) {
-    if (!stack) return -1;
-    var visible = visibleColumnIndicesInStack(stack);
-    if (displayColIdx < 0 || displayColIdx >= visible.length) {
-      return stack.columns.length;
-    }
-    return insertBefore ? visible[displayColIdx] : (visible[displayColIdx] + 1);
-  }
-
-  async function addColumnRelativeToDisplayPosition(displayRowIdx, displayStackIdx, displayColIdx, insertBefore) {
-    var stack = findFullDataStack(displayRowIdx, displayStackIdx);
-    if (!stack) {
-      traceFrontendAction('warn', 'column.insert.relative', 'Failed to resolve stack for display-relative insert', {
-        boardId: activeBoardId || null,
-        displayRowIdx: displayRowIdx,
-        displayStackIdx: displayStackIdx,
-        displayColIdx: displayColIdx,
-        insertBefore: !!insertBefore
-      });
-      return false;
-    }
-    var visibleIndices = visibleColumnIndicesInStack(stack);
-    var insertAt = findInsertColumnIndexInStack(stack, displayColIdx, insertBefore);
-    if (insertAt < 0) {
-      traceFrontendAction('warn', 'column.insert.relative', 'Failed to compute insert index for display-relative insert', {
-        boardId: activeBoardId || null,
-        displayRowIdx: displayRowIdx,
-        displayStackIdx: displayStackIdx,
-        displayColIdx: displayColIdx,
-        insertBefore: !!insertBefore,
-        stackId: stack.id || null,
-        visibleIndices: visibleIndices
-      });
-      return false;
-    }
-    traceFrontendAction('info', 'column.insert.relative', 'Resolved display-relative insert position', {
-      boardId: activeBoardId || null,
-      displayRowIdx: displayRowIdx,
-      displayStackIdx: displayStackIdx,
-      displayColIdx: displayColIdx,
-      insertBefore: !!insertBefore,
-      stackId: stack.id || null,
-      stackTitle: stack.title || '',
-      insertAt: insertAt,
-      visibleIndices: visibleIndices
+  function initDndMutations() {
+    if (!DndMutations) return;
+    DndMutations.init({
+      getFullBoardData: function () { return fullBoardData; },
+      getActiveBoardData: function () { return activeBoardData; },
+      getActiveBoardId: function () { return activeBoardId; },
+      pushUndo: pushUndo,
+      persistBoardMutation: persistBoardMutation,
+      addColumnToStack: addColumnToStack,
+      applyDefaultCanvasPlacementToStack: applyDefaultCanvasPlacementToStack,
+      getDisplayOrderedColumnEntries: getDisplayOrderedColumnEntries,
+      stripInternalHiddenTags: stripInternalHiddenTags,
+      stripHtmlComments: stripHtmlComments,
+      traceFrontendAction: traceFrontendAction,
+      resolveRowForMutation: resolveRowForMutation,
+      resolveStackForMutation: resolveStackForMutation,
+      resolveColumnRefForCardMutation: resolveColumnRefForCardMutation
     });
-    return addColumnToStack(displayRowIdx, displayStackIdx, insertAt);
   }
+  initDndMutations();
 
-  var mutationEntityIdSeed = 0;
-
-  function nextMutationEntityId(prefix) {
-    mutationEntityIdSeed = (mutationEntityIdSeed + 1) % 1000000;
-    return prefix + '-' + Date.now() + '-' + mutationEntityIdSeed;
-  }
-
-  function isUnnamedStructuralTitle(title) {
-    return stripInternalHiddenTags(stripHtmlComments(String(title || ''))).trim() === '';
-  }
-
-  function createUnnamedColumnForMutation(cards) {
-    return {
-      id: nextMutationEntityId('col'),
-      title: '',
-      cards: Array.isArray(cards) ? cards : []
-    };
-  }
-
-  function createUnnamedStackForMutation(columns) {
-    return {
-      id: nextMutationEntityId('stack'),
-      title: '',
-      columns: Array.isArray(columns) ? columns : []
-    };
-  }
-
-  function createUnnamedRowForMutation(stacks) {
-    return {
-      id: nextMutationEntityId('row'),
-      title: '',
-      stacks: Array.isArray(stacks) ? stacks : []
-    };
-  }
-
-  function resolveRowInsertIndexForMutation(boardId, boardData, target) {
-    if (!boardData || !boardData.rows) return 0;
-    if (!target || typeof target.rowIndex !== 'number') return boardData.rows.length;
-
-    var rowInfo = resolveRowForMutation(
-      boardId,
-      boardData,
-      target.rowIndex,
-      target.indexMode || (boardId === activeBoardId ? 'display' : 'full')
-    );
-    if (!rowInfo || !rowInfo.row) return boardData.rows.length;
-
-    var insertAt = target.before ? rowInfo.rowIndex : (rowInfo.rowIndex + 1);
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > boardData.rows.length) insertAt = boardData.rows.length;
-    return insertAt;
-  }
-
-  function insertUnnamedRowForMutation(boardId, boardData, target, stacks) {
-    if (!boardData) return null;
-    if (!boardData.rows) boardData.rows = [];
-    var row = createUnnamedRowForMutation(stacks);
-    var insertAt = resolveRowInsertIndexForMutation(boardId, boardData, target);
-    boardData.rows.splice(insertAt, 0, row);
-    return { row: row, rowIndex: insertAt };
-  }
-
-  function insertUnnamedStackIntoRowForMutation(boardId, boardData, target) {
-    if (!target || typeof target.rowIndex !== 'number') return null;
-    var rowInfo = resolveRowForMutation(
-      boardId,
-      boardData,
-      target.rowIndex,
-      target.indexMode || (boardId === activeBoardId ? 'display' : 'full')
-    );
-    if (!rowInfo || !rowInfo.row) return null;
-
-    if (!rowInfo.row.stacks) rowInfo.row.stacks = [];
-    var stack = createUnnamedStackForMutation([]);
-    applyDefaultCanvasPlacementToStack(rowInfo.row, stack);
-    var insertAt = rowInfo.row.stacks.length;
-    if (typeof target.insertAtStackIdx === 'number') {
-      if ((target.indexMode || (boardId === activeBoardId ? 'display' : 'full')) === 'display' && boardId === activeBoardId) {
-        insertAt = findInsertStackIndexInRow(rowInfo.row, target.rowIndex, target.insertAtStackIdx);
-      } else {
-        insertAt = target.insertAtStackIdx;
-      }
-    }
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > rowInfo.row.stacks.length) insertAt = rowInfo.row.stacks.length;
-    rowInfo.row.stacks.splice(insertAt, 0, stack);
-    return {
-      row: rowInfo.row,
-      rowIndex: rowInfo.rowIndex,
-      stack: stack,
-      stackIndex: insertAt
-    };
-  }
-
-  function resolvePreferredCardColumnRefInStack(stack, preferLast) {
-    if (!stack || !Array.isArray(stack.columns)) return null;
-    var entries = getDisplayOrderedColumnEntries(stack.columns || []);
-    if (entries.length > 0) {
-      var entry = preferLast ? entries[entries.length - 1] : entries[0];
-      return {
-        column: stack.columns[entry.fullIndex],
-        columnIndex: entry.fullIndex,
-        stack: stack
-      };
-    }
-    if (stack.columns.length > 0) {
-      var idx = preferLast ? (stack.columns.length - 1) : 0;
-      return {
-        column: stack.columns[idx],
-        columnIndex: idx,
-        stack: stack
-      };
-    }
-    return null;
-  }
-
-  function ensureCardTargetColumnForMutation(boardId, boardData, descriptor) {
-    var existing = resolveColumnRefForCardMutation(boardId, boardData, descriptor);
-    if (existing && existing.column) return existing;
-    if (!descriptor) return null;
-
-    var indexMode = descriptor.indexMode || (boardId === activeBoardId ? 'display' : 'full');
-
-    if (typeof descriptor.rowIndex === 'number' && typeof descriptor.stackIndex === 'number') {
-      var stackInfo = resolveStackForMutation(boardId, boardData, descriptor.rowIndex, descriptor.stackIndex, indexMode);
-      if (!stackInfo || !stackInfo.stack) return null;
-      if (!stackInfo.stack.columns) stackInfo.stack.columns = [];
-      var preferredColumn = resolvePreferredCardColumnRefInStack(stackInfo.stack, true);
-      if (preferredColumn) return preferredColumn;
-      var newColumn = createUnnamedColumnForMutation([]);
-      stackInfo.stack.columns.push(newColumn);
-      return {
-        column: newColumn,
-        columnIndex: stackInfo.stack.columns.length - 1,
-        stack: stackInfo.stack
-      };
-    }
-
-    if (typeof descriptor.rowIndex === 'number') {
-      var rowInfo = resolveRowForMutation(boardId, boardData, descriptor.rowIndex, indexMode);
-      if (!rowInfo || !rowInfo.row) return null;
-      if (!rowInfo.row.stacks) rowInfo.row.stacks = [];
-      for (var i = 0; i < rowInfo.row.stacks.length; i++) {
-        var stackTarget = resolvePreferredCardColumnRefInStack(rowInfo.row.stacks[i], false);
-        if (stackTarget) return stackTarget;
-      }
-      var insertedStackInfo = insertUnnamedStackIntoRowForMutation(boardId, boardData, descriptor);
-      if (!insertedStackInfo || !insertedStackInfo.stack) return null;
-      var insertedColumn = createUnnamedColumnForMutation([]);
-      insertedStackInfo.stack.columns.push(insertedColumn);
-      return {
-        column: insertedColumn,
-        columnIndex: insertedStackInfo.stack.columns.length - 1,
-        stack: insertedStackInfo.stack
-      };
-    }
-
-    return null;
-  }
-
-  function cleanupUnnamedStructuralContainersInBoard(boardData) {
-    if (!boardData || !boardData.rows) return;
-    for (var r = boardData.rows.length - 1; r >= 0; r--) {
-      var row = boardData.rows[r];
-      if (!row.stacks) row.stacks = [];
-      for (var s = row.stacks.length - 1; s >= 0; s--) {
-        var stack = row.stacks[s];
-        if (!stack.columns) stack.columns = [];
-        for (var c = stack.columns.length - 1; c >= 0; c--) {
-          var column = stack.columns[c];
-          var cards = column && Array.isArray(column.cards) ? column.cards : [];
-          if (cards.length === 0 && isUnnamedStructuralTitle(column && column.title ? column.title : '')) {
-            stack.columns.splice(c, 1);
-          }
-        }
-        if (stack.columns.length === 0 && isUnnamedStructuralTitle(stack && stack.title ? stack.title : '')) {
-          row.stacks.splice(s, 1);
-        }
-      }
-      if (row.stacks.length === 0 && isUnnamedStructuralTitle(row && row.title ? row.title : '')) {
-        boardData.rows.splice(r, 1);
-      }
-    }
-  }
-
-  function removeEmptyStacksAndRowsInBoard(boardData) {
-    if (!boardData || !boardData.rows) return;
-    cleanupUnnamedStructuralContainersInBoard(boardData);
-    for (var r = boardData.rows.length - 1; r >= 0; r--) {
-      var row = boardData.rows[r];
-      if (!row.stacks) row.stacks = [];
-      if (row.stacks.length === 0) {
-        boardData.rows.splice(r, 1);
-      }
-    }
-  }
-
-  function removeEmptyStacksAndRows() {
-    removeEmptyStacksAndRowsInBoard(fullBoardData);
-  }
+  function reorderRows(s, t, b) { return DndMutations.reorderRows(s, t, b); }
+  function moveStack(fr, fs, tr, ts, b) { return DndMutations.moveStack(fr, fs, tr, ts, b); }
+  function findFullDataRow(i) { return DndMutations.findFullDataRow(i); }
+  function findFullDataStack(r, s) { return DndMutations.findFullDataStack(r, s); }
+  function findFullDataRowIndex(i) { return DndMutations.findFullDataRowIndex(i); }
+  function findInsertRowIndex(i) { return DndMutations.findInsertRowIndex(i); }
+  function visibleColumnIndicesInStack(s) { return DndMutations.visibleColumnIndicesInStack(s); }
+  function findFullDataStackIndex(r, ri, si) { return DndMutations.findFullDataStackIndex(r, ri, si); }
+  function findFullColumnIndexInStack(s, c) { return DndMutations.findFullColumnIndexInStack(s, c); }
+  function findInsertStackIndexInRow(r, ri, i) { return DndMutations.findInsertStackIndexInRow(r, ri, i); }
+  function findInsertColumnIndexInStack(s, c, b) { return DndMutations.findInsertColumnIndexInStack(s, c, b); }
+  function addColumnRelativeToDisplayPosition(r, s, c, b) { return DndMutations.addColumnRelativeToDisplayPosition(r, s, c, b); }
+  function nextMutationEntityId(p) { return DndMutations.nextMutationEntityId(p); }
+  function isUnnamedStructuralTitle(t) { return DndMutations.isUnnamedStructuralTitle(t); }
+  function createUnnamedColumnForMutation(c) { return DndMutations.createUnnamedColumnForMutation(c); }
+  function createUnnamedStackForMutation(c) { return DndMutations.createUnnamedStackForMutation(c); }
+  function createUnnamedRowForMutation(s) { return DndMutations.createUnnamedRowForMutation(s); }
+  function resolveRowInsertIndexForMutation(b, d, t) { return DndMutations.resolveRowInsertIndexForMutation(b, d, t); }
+  function insertUnnamedRowForMutation(b, d, t, s) { return DndMutations.insertUnnamedRowForMutation(b, d, t, s); }
+  function insertUnnamedStackIntoRowForMutation(b, d, t) { return DndMutations.insertUnnamedStackIntoRowForMutation(b, d, t); }
+  function resolvePreferredCardColumnRefInStack(s, l) { return DndMutations.resolvePreferredCardColumnRefInStack(s, l); }
+  function ensureCardTargetColumnForMutation(b, d, desc) { return DndMutations.ensureCardTargetColumnForMutation(b, d, desc); }
+  function cleanupUnnamedStructuralContainersInBoard(d) { return DndMutations.cleanupUnnamedStructuralContainersInBoard(d); }
+  function removeEmptyStacksAndRowsInBoard(d) { return DndMutations.removeEmptyStacksAndRowsInBoard(d); }
+  function removeEmptyStacksAndRows() { return DndMutations.removeEmptyStacksAndRows(); }
 
   // --- Row & Stack Context Menus ---
 
@@ -9719,7 +9434,7 @@ const LexeraDashboard = (function () {
         ? String(ccol.includeSource.rawPath)
         : extractIncludePathFromTitle(colTitle);
       context.boardRows = activeBoardData && Array.isArray(activeBoardData.rows) ? activeBoardData.rows : [];
-      context.columnSortState = columnSortState;
+      context.columnSortState = _ColCtx ? _ColCtx.getColumnSortState() : {};
     } else if (scope === 'row') {
       var row = findFullDataRow(context.rowIdx);
       context.elementText = row ? (row.title || '') : '';
@@ -11646,620 +11361,49 @@ const LexeraDashboard = (function () {
     return -1;
   }
 
-  // --- Card Editing ---
+  // --- Card Editing (delegated to CardEditorModule) ---
 
-  function getCurrentEditorBoardId() {
-    if (currentCardEditor && currentCardEditor.boardId) return currentCardEditor.boardId;
-    return activeBoardId || '';
-  }
+  function getCurrentEditorBoardId() { return CardEditorModule.getCurrentEditorBoardId(); }
+  function getCurrentEditorFilePath() { return CardEditorModule.getCurrentEditorFilePath(); }
+  function safeDecodePath(value) { return CardEditorModule.safeDecodePath(value); }
+  function isWindowsAbsolutePath(value) { return CardEditorModule.isWindowsAbsolutePath(value); }
+  function normalizeWindowsAbsolutePath(value) { return CardEditorModule.normalizeWindowsAbsolutePath(value); }
+  function isRelativeResourcePath(value) { return CardEditorModule.isRelativeResourcePath(value); }
+  function resolveRelativePath(baseDir, relativePath) { return CardEditorModule.resolveRelativePath(baseDir, relativePath); }
+  function buildWebviewResourceUrl(pathValue) { return CardEditorModule.buildWebviewResourceUrl(pathValue); }
+  function resolveCurrentEditorResourcePath(pathValue, includeDir) { return CardEditorModule.resolveCurrentEditorResourcePath(pathValue, includeDir); }
+  function syncCardEditorWysiwygContext(editor) { CardEditorModule.syncCardEditorWysiwygContext(editor); }
+  function setCurrentCardEditorMarkdown(nextValue, options) { CardEditorModule.setCurrentCardEditorMarkdown(nextValue, options); }
 
-  function getCurrentEditorFilePath() {
-    var boardId = getCurrentEditorBoardId();
-    return getBoardFilePathForId(boardId) || getActiveBoardFilePath() || '';
-  }
+  function updateCardEditorWysiwygToolbar(selectionState) { CardEditorModule.updateCardEditorWysiwygToolbar(selectionState); }
+  function applyCardEditorFontScale(scale, persist) { CardEditorModule.applyCardEditorFontScale(scale, persist); }
+  function openCardEditorFontScaleMenu(anchorEl) { CardEditorModule.openCardEditorFontScaleMenu(anchorEl); }
 
-  function safeDecodePath(value) {
-    var text = String(value || '');
-    try {
-      return decodeURIComponent(text);
-    } catch (e) {
-      return text;
-    }
-  }
+  function openFileSearchDialog(textarea) { CardEditorModule.openFileSearchDialog(textarea); }
+  function insertAtCursor(textarea, text) { CardEditorModule.insertAtCursor(textarea, text); }
 
-  function isWindowsAbsolutePath(value) {
-    return /^[a-zA-Z]:[\\/]/.test(String(value || ''));
-  }
+  function syncCardEditorTextareaFromWysiwyg() { CardEditorModule.syncCardEditorTextareaFromWysiwyg(); }
+  function destroyCardEditorWysiwyg(editor) { CardEditorModule.destroyCardEditorWysiwyg(editor); }
+  function ensureCardEditorWysiwyg() { return CardEditorModule.ensureCardEditorWysiwyg(); }
+  function applyCardEditorFormatting(textarea, fmt) { CardEditorModule.applyCardEditorFormatting(textarea, fmt); }
+  function getEmbedOccurrenceRoot(container) { return CardEditorModule.getEmbedOccurrenceRoot(container); }
+  function getRenderedEmbedAbsoluteIndex(container) { return CardEditorModule.getRenderedEmbedAbsoluteIndex(container); }
+  function replaceCurrentEmbedOccurrence(content, container, replacer) { return CardEditorModule.replaceCurrentEmbedOccurrence(content, container, replacer); }
+  function replaceNthIncludeDirective(content, targetIndex, replacer) { return CardEditorModule.replaceNthIncludeDirective(content, targetIndex, replacer); }
+  function normalizeCardEditorMode(mode) { return CardEditorModule.normalizeCardEditorMode(mode); }
+  function normalizeCardEditorFontScale(value) { return CardEditorModule.normalizeCardEditorFontScale(value); }
 
-  function normalizeWindowsAbsolutePath(value) {
-    return normalizePathForCompare(String(value || ''));
-  }
-
-  function isRelativeResourcePath(value) {
-    var normalized = String(value || '').trim();
-    if (!normalized) return false;
-    return normalized.charAt(0) !== '/' &&
-      !isWindowsAbsolutePath(normalized) &&
-      !/^(https?:\/\/|mailto:|data:|blob:|vscode-webview:\/\/)/i.test(normalized);
-  }
-
-  function resolveRelativePath(baseDir, relativePath) {
-    return joinBoardRelativePath(baseDir, relativePath);
-  }
-
-  function buildWebviewResourceUrl(pathValue) {
-    var resolvedPath = normalizeWindowsAbsolutePath(safeDecodePath(pathValue));
-    if (!resolvedPath || /^(https?:\/\/|mailto:|data:|blob:|vscode-webview:\/\/)/i.test(resolvedPath)) {
-      return resolvedPath;
-    }
-    var boardId = getCurrentEditorBoardId();
-    if (!boardId) return resolvedPath;
-    return LexeraApi.fileUrl(boardId, resolvedPath);
-  }
-
-  function resolveCurrentEditorResourcePath(pathValue, includeDir) {
-    var decodedPath = safeDecodePath(pathValue);
-    if (!decodedPath) return '';
-    if (!isRelativeResourcePath(decodedPath)) {
-      return normalizeWindowsAbsolutePath(decodedPath);
-    }
-    if (includeDir) {
-      return resolveRelativePath(safeDecodePath(includeDir), decodedPath);
-    }
-    var boardDir = getDirNameFromPath(getCurrentEditorFilePath());
-    if (!boardDir) return decodedPath;
-    return resolveRelativePath(boardDir, decodedPath);
-  }
-
-  function syncCardEditorWysiwygContext(editor) {
-    var boardId = editor && editor.boardId ? editor.boardId : (activeBoardId || '');
-    var boardFilePath = getBoardFilePathForId(boardId) || getActiveBoardFilePath() || '';
-    var includeDir = '';
-    var col = editor && editor.colIndex != null ? getFullColumn(editor.colIndex) : null;
-    if (col && col.includeSource && col.includeSource.rawPath) {
-      var boardDir = getDirNameFromPath(boardFilePath);
-      includeDir = getDirNameFromPath(joinBoardRelativePath(boardDir, col.includeSource.rawPath));
-    } else {
-      includeDir = getDirNameFromPath(boardFilePath);
-    }
-    window.currentTaskIncludeContext = includeDir ? { includeDir: includeDir } : null;
-    window.currentFilePath = boardFilePath || '';
-  }
-
-  function setCurrentCardEditorMarkdown(nextValue, options) {
-    options = options || {};
-    if (!currentCardEditor) return;
-    var normalizedValue = String(nextValue || '');
-    if (currentCardEditor.textarea) currentCardEditor.textarea.value = normalizedValue;
-    if (
-      currentCardEditor.wysiwyg &&
-      !options.skipWysiwygSync &&
-      typeof currentCardEditor.wysiwyg.setMarkdown === 'function'
-    ) {
-      currentCardEditor.suppressWysiwygChange = true;
-      try {
-        currentCardEditor.wysiwyg.setMarkdown(normalizedValue);
-      } finally {
-        currentCardEditor.suppressWysiwygChange = false;
-      }
-    }
-    if (!options.skipPreviewRefresh) refreshCardEditorPreview();
-  }
-
-  function updateCardEditorWysiwygToolbar(selectionState) {
-    if (!currentCardEditor || !currentCardEditor.dialog) return;
-    var markMap = {
-      bold: 'strong',
-      italic: 'em',
-      underline: 'underline',
-      strike: 'strike',
-      mark: 'mark',
-      sub: 'sub',
-      sup: 'sup',
-      code: 'code',
-      ins: 'ins'
-    };
-    var marks = selectionState && selectionState.marks ? selectionState.marks : [];
-    var block = selectionState && selectionState.block ? selectionState.block : '';
-    var buttons = currentCardEditor.dialog.querySelectorAll('[data-card-editor-fmt]');
-    for (var i = 0; i < buttons.length; i++) {
-      var fmt = buttons[i].getAttribute('data-card-editor-fmt') || '';
-      var isActive = false;
-      if (fmt === 'code-block') {
-        isActive = block === 'code_block';
-      } else if (fmt === 'columns') {
-        isActive = block === 'multicolumn_column';
-      } else if (markMap[fmt]) {
-        isActive = marks.indexOf(markMap[fmt]) !== -1;
-      }
-      buttons[i].classList.toggle('active', isActive);
-      buttons[i].setAttribute('aria-pressed', isActive ? 'true' : 'false');
-    }
-  }
-
-  function applyCardEditorFontScale(scale, persist) {
-    var normalizedScale = normalizeCardEditorFontScale(scale);
-    cardEditorFontScale = normalizedScale;
-    if (!currentCardEditor || !currentCardEditor.dialog) {
-      if (persist !== false) localStorage.setItem('lexera-card-editor-font-scale', String(normalizedScale));
-      return;
-    }
-    currentCardEditor.fontScale = normalizedScale;
-    currentCardEditor.dialog.style.setProperty('--task-overlay-font-scale', String(normalizedScale));
-    if (currentCardEditor.textarea) currentCardEditor.textarea.style.fontSize = 'calc(14px * ' + normalizedScale + ')';
-    if (currentCardEditor.preview) currentCardEditor.preview.style.fontSize = 'calc(14px * ' + normalizedScale + ')';
-    if (currentCardEditor.wysiwygWrap) currentCardEditor.wysiwygWrap.style.fontSize = 'calc(1em * ' + normalizedScale + ')';
-    if (persist !== false) localStorage.setItem('lexera-card-editor-font-scale', String(normalizedScale));
-  }
-
-  function openCardEditorFontScaleMenu(anchorEl) {
-    if (!anchorEl || !currentCardEditor) return;
-    var rect = anchorEl.getBoundingClientRect();
-    var items = [
-      { id: 'font-1.0', label: 'Text 100%' },
-      { id: 'font-1.2', label: 'Text 120%' },
-      { id: 'font-1.4', label: 'Text 140%' }
-    ];
-    showNativeMenu(items, rect.right, rect.bottom).then(function (action) {
-      if (!action) return;
-      var nextScale = action === 'font-1.4' ? 1.4 : (action === 'font-1.2' ? 1.2 : 1);
-      applyCardEditorFontScale(nextScale, true);
-    });
-  }
-
-  // ── File search dialog for card editor ──────────────────────────────
-  function openFileSearchDialog(textarea) {
-    if (!textarea) return;
-    var overlay = document.createElement('div');
-    overlay.className = 'dialog-overlay file-search-overlay';
-    var dialog = document.createElement('div');
-    dialog.className = 'dialog file-search-dialog';
-    dialog.innerHTML =
-      '<div class="file-search-header">' +
-        '<div class="file-search-title">Search Files</div>' +
-        '<div class="file-search-categories" role="group">' +
-          '<button class="board-action-btn file-search-cat active" type="button" data-cat="">All</button>' +
-          '<button class="board-action-btn file-search-cat" type="button" data-cat="image">Images</button>' +
-          '<button class="board-action-btn file-search-cat" type="button" data-cat="document">Docs</button>' +
-          '<button class="board-action-btn file-search-cat" type="button" data-cat="video">Video</button>' +
-          '<button class="board-action-btn file-search-cat" type="button" data-cat="audio">Audio</button>' +
-        '</div>' +
-        '<button class="btn-small btn-cancel file-search-close" type="button">Close</button>' +
-      '</div>' +
-      '<input class="file-search-input" type="text" placeholder="Type to search files..." spellcheck="false" />' +
-      '<div class="file-search-results"></div>';
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
-
-    var input = dialog.querySelector('.file-search-input');
-    var resultsEl = dialog.querySelector('.file-search-results');
-    var activeCategory = '';
-    var searchTimer = null;
-
-    function closeDialog() {
-      if (searchTimer) clearTimeout(searchTimer);
-      overlay.remove();
-      textarea.focus();
-    }
-
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) closeDialog();
-    });
-    dialog.querySelector('.file-search-close').addEventListener('click', closeDialog);
-    dialog.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { e.stopPropagation(); closeDialog(); }
-    });
-
-    // Category filter buttons
-    dialog.addEventListener('click', function (e) {
-      var catBtn = e.target.closest('[data-cat]');
-      if (!catBtn) return;
-      activeCategory = catBtn.getAttribute('data-cat');
-      dialog.querySelectorAll('.file-search-cat').forEach(function (b) {
-        b.classList.toggle('active', b.getAttribute('data-cat') === activeCategory);
-      });
-      doSearch();
-    });
-
-    function doSearch() {
-      var q = input.value.trim();
-      if (q.length < 2) {
-        resultsEl.innerHTML = '<div class="file-search-hint">Type at least 2 characters to search</div>';
-        return;
-      }
-      resultsEl.innerHTML = '<div class="file-search-hint">Searching...</div>';
-      var body = { query: q };
-      if (activeCategory) body.category = activeCategory;
-      LexeraApi.request('/search/files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }).then(function (data) {
-        var results = data && data.results ? data.results : [];
-        if (results.length === 0) {
-          resultsEl.innerHTML = '<div class="file-search-hint">No files found</div>';
-          return;
-        }
-        var html = '';
-        for (var i = 0; i < results.length; i++) {
-          var r = results[i];
-          var catClass = 'badge-' + (r.category || 'unknown');
-          html += '<div class="file-search-item" data-index="' + i + '">' +
-            '<span class="file-search-badge ' + catClass + '">' + escapeHtml(r.category || '?') + '</span>' +
-            '<span class="file-search-filename">' + escapeHtml(r.filename) + '</span>' +
-            '<span class="file-search-board">' + escapeHtml(r.boardName) + '</span>' +
-            '<span class="file-search-path">' + escapeHtml(r.path) + '</span>' +
-          '</div>';
-        }
-        resultsEl.innerHTML = html;
-        resultsEl._results = results;
-      }).catch(function () {
-        resultsEl.innerHTML = '<div class="file-search-hint">Search failed</div>';
-      });
-    }
-
-    // Click result to insert
-    resultsEl.addEventListener('click', function (e) {
-      var item = e.target.closest('.file-search-item');
-      if (!item || !resultsEl._results) return;
-      var idx = parseInt(item.getAttribute('data-index'), 10);
-      var r = resultsEl._results[idx];
-      if (!r) return;
-      var embed = '';
-      if (r.category === 'image') {
-        embed = '![' + r.filename + '](' + r.path + ')';
-      } else {
-        embed = '[' + r.filename + '](' + r.path + ')';
-      }
-      // If the result is from a different board, use the file API URL
-      if (r.boardId && activeBoardId && r.boardId !== activeBoardId) {
-        var url = LexeraApi.fileUrl(r.boardId, r.path);
-        if (r.category === 'image') {
-          embed = '![' + r.filename + '](' + url + ')';
-        } else {
-          embed = '[' + r.filename + '](' + url + ')';
-        }
-      }
-      insertAtCursor(textarea, embed);
-      closeDialog();
-      textarea.dispatchEvent(new Event('input'));
-    });
-
-    input.addEventListener('input', function () {
-      if (searchTimer) clearTimeout(searchTimer);
-      searchTimer = setTimeout(doSearch, 300);
-    });
-
-    input.focus();
-  }
-
-  function insertAtCursor(textarea, text) {
-    var start = textarea.selectionStart;
-    var end = textarea.selectionEnd;
-    var before = textarea.value.substring(0, start);
-    var after = textarea.value.substring(end);
-    textarea.value = before + text + after;
-    textarea.selectionStart = textarea.selectionEnd = start + text.length;
-  }
-
-  function syncCardEditorTextareaFromWysiwyg() {
-    if (
-      !currentCardEditor ||
-      !currentCardEditor.wysiwyg ||
-      typeof currentCardEditor.wysiwyg.getMarkdown !== 'function'
-    ) {
-      return;
-    }
-    if (currentCardEditor.textarea) {
-      currentCardEditor.textarea.value = currentCardEditor.wysiwyg.getMarkdown() || '';
-    }
-  }
-
-  function destroyCardEditorWysiwyg(editor) {
-    if (!editor || !editor.wysiwyg) return;
-    try {
-      if (typeof editor.wysiwyg.destroy === 'function') editor.wysiwyg.destroy();
-    } catch (err) {
-      lexeraLog('warn', '[card-editor] Failed to destroy WYSIWYG editor: ' + err);
-    }
-    editor.wysiwyg = null;
-    if (editor.wysiwygWrap) editor.wysiwygWrap.innerHTML = '';
-  }
-
-  function ensureCardEditorWysiwyg() {
-    if (
-      !currentCardEditor ||
-      !currentCardEditor.wysiwygWrap ||
-      typeof window.WysiwygEditor !== 'function'
-    ) {
-      return null;
-    }
-    syncCardEditorWysiwygContext(currentCardEditor);
-    if (!currentCardEditor.wysiwyg) {
-      currentCardEditor.wysiwygWrap.innerHTML = '';
-      currentCardEditor.wysiwyg = new window.WysiwygEditor(currentCardEditor.wysiwygWrap, {
-        markdown: currentCardEditor.textarea ? currentCardEditor.textarea.value : '',
-        temporalPrefix: '!',
-        onChange: function (markdown) {
-          if (!currentCardEditor || currentCardEditor.suppressWysiwygChange) return;
-          if (currentCardEditor.textarea) currentCardEditor.textarea.value = markdown || '';
-          refreshCardEditorPreview();
-          queueCardDraftLiveSync(currentCardEditor.colIndex, currentCardEditor.fullCardIdx, markdown || '');
-        },
-        onSelectionChange: function (selectionState) {
-          updateCardEditorWysiwygToolbar(selectionState);
-        },
-        onSubmit: function () {
-          closeCardEditorOverlay({ save: true });
-        }
-      });
-      return currentCardEditor.wysiwyg;
-    }
-    if (
-      currentCardEditor.textarea &&
-      typeof currentCardEditor.wysiwyg.getMarkdown === 'function' &&
-      currentCardEditor.wysiwyg.getMarkdown() !== currentCardEditor.textarea.value
-    ) {
-      currentCardEditor.suppressWysiwygChange = true;
-      try {
-        currentCardEditor.wysiwyg.setMarkdown(currentCardEditor.textarea.value);
-      } finally {
-        currentCardEditor.suppressWysiwygChange = false;
-      }
-    }
-    return currentCardEditor.wysiwyg;
-  }
-
-  function applyCardEditorFormatting(textarea, fmt) {
-    if (!currentCardEditor || !fmt) return;
-    if (currentCardEditor.mode === 'wysiwyg') {
-      var editor = ensureCardEditorWysiwyg();
-      if (editor) {
-        var command = fmt;
-        if (fmt === 'columns') command = 'multicolumn';
-        if (fmt === 'code-block' || fmt === 'link' || fmt === 'bold' || fmt === 'italic' ||
-          fmt === 'underline' || fmt === 'strike' || fmt === 'mark' || fmt === 'sub' ||
-          fmt === 'sup' || fmt === 'code' || fmt === 'ins') {
-          if (editor.applyCommand(command)) {
-            return;
-          }
-        }
-        var wysiwygFormatSpec = getCardEditorFormatSpec(fmt);
-        if (wysiwygFormatSpec) {
-          var snippet = '';
-          if (wysiwygFormatSpec.snippet != null) snippet = wysiwygFormatSpec.snippet;
-          else if (wysiwygFormatSpec.wrap) snippet = wysiwygFormatSpec.wrap + 'text' + wysiwygFormatSpec.wrap;
-          else snippet = wysiwygFormatSpec.prefix + 'text' + wysiwygFormatSpec.suffix;
-          editor.insertText(snippet);
-        }
-        return;
-      }
-    }
-    var formatSpec = getCardEditorFormatSpec(fmt);
-    if (formatSpec) {
-      insertFormatting(textarea, formatSpec);
-      textarea.focus();
-    }
-  }
-
-  function getEmbedOccurrenceRoot(container) {
-    if (!container) return null;
-    if (
-      currentCardEditor &&
-      currentCardEditor.wysiwygWrap &&
-      currentCardEditor.wysiwygWrap.contains(container)
-    ) {
-      return currentCardEditor.wysiwygWrap;
-    }
-    if (
-      currentCardEditor &&
-      currentCardEditor.preview &&
-      currentCardEditor.preview.contains(container)
-    ) {
-      return currentCardEditor.preview;
-    }
-    var cardEl = container.closest('.card[data-card-id]');
-    if (cardEl) return cardEl;
-    return container.closest('.board-header, .board-row, .board-stack, .column') || container.parentElement || null;
-  }
-
-  function getRenderedEmbedAbsoluteIndex(container) {
-    if (!container) return 0;
-    var explicitIndex = parseInt(container.getAttribute('data-embed-index') || '', 10);
-    if (isFinite(explicitIndex) && explicitIndex >= 0) return explicitIndex;
-    var root = getEmbedOccurrenceRoot(container);
-    if (!root) return 0;
-    var selector = [
-      '.embed-container[data-file-path]',
-      '.external-embed-container[data-embed-url]',
-      '.inline-file-embed-container[data-file-path]',
-      '.image-path-overlay-container[data-file-path]',
-      '.video-path-overlay-container[data-file-path]',
-      '.wysiwyg-media[data-file-path]',
-      '.wysiwyg-media-block[data-file-path]'
-    ].join(', ');
-    var nodes = root.querySelectorAll(selector);
-    for (var i = 0; i < nodes.length; i++) {
-      if (nodes[i] === container) return i;
-    }
-    return 0;
-  }
-
-  function replaceCurrentEmbedOccurrence(content, container, replacer) {
-    return replaceNthMarkdownEmbed(
-      content,
-      getRenderedEmbedAbsoluteIndex(container),
-      replacer
-    );
-  }
-
-  function replaceNthIncludeDirective(content, targetIndex, replacer) {
-    var matchIndex = 0;
-    return String(content || '').replace(/!!!include\(([^)]+)\)!!!/g, function (match, rawPath) {
-      var currentIndex = matchIndex++;
-      if (currentIndex !== targetIndex) return match;
-      return replacer({
-        match: match,
-        path: String(rawPath || '').trim()
-      });
-    });
-  }
-
-  function normalizeCardEditorMode(mode) {
-    if (mode === 'markdown' || mode === 'preview') return mode;
-    if (mode === 'wysiwyg' && isWysiwygEditorEnabled() && typeof window.WysiwygEditor === 'function') return mode;
-    return 'dual';
-  }
-
-  function normalizeCardEditorFontScale(value) {
-    var parsed = parseFloat(value);
-    if (Math.abs(parsed - 1.4) < 0.01) return 1.4;
-    if (Math.abs(parsed - 1.2) < 0.01) return 1.2;
-    return 1;
-  }
-
-  function getCardEditorFormatSpec(fmt) {
-    if (fmt === 'bold') return { wrap: '**' };
-    if (fmt === 'italic') return { wrap: '*' };
-    if (fmt === 'underline') return { wrap: '_' };
-    if (fmt === 'strike') return { wrap: '~~' };
-    if (fmt === 'mark') return { wrap: '==' };
-    if (fmt === 'ins') return { wrap: '++' };
-    if (fmt === 'sub') return { wrap: '~' };
-    if (fmt === 'sup') return { wrap: '^' };
-    if (fmt === 'code') return { wrap: '`' };
-    if (fmt === 'link') return { prefix: '[', suffix: '](url)' };
-    if (fmt === 'image') return { snippet: '![alt](path)' };
-    if (fmt === 'heading') return { prefix: '## ', suffix: '' };
-    if (fmt === 'quote') return { prefix: '> ', suffix: '' };
-    if (fmt === 'bullet-list') return { prefix: '- ', suffix: '' };
-    if (fmt === 'numbered-list') return { prefix: '1. ', suffix: '' };
-    if (fmt === 'task') return { prefix: '- [ ] ', suffix: '' };
-    if (fmt === 'include') return { snippet: '!!!include(path)!!!' };
-    if (fmt === 'wiki') return { snippet: '[[Page]]' };
-    if (fmt === 'footnote') return { snippet: 'Reference[^1]\n\n[^1]: Footnote text' };
-    if (fmt === 'code-block') return { snippet: '```\ncode\n```' };
-    if (fmt === 'mermaid') return { snippet: '```mermaid\ngraph TD\n  A[Start] --> B[End]\n```' };
-    if (fmt === 'plantuml') return { snippet: '```plantuml\n@startuml\nAlice -> Bob: hello\n@enduml\n```' };
-    if (fmt === 'columns') return { snippet: '---:\n\n:--:\n\n:---' };
-    if (fmt === 'note') return { snippet: '::: note\n\n:::\n' };
-    if (fmt === 'container-comment') return { snippet: '::: comment\n\n:::\n' };
-    if (fmt === 'container-highlight') return { snippet: '::: highlight\n\n:::\n' };
-    if (fmt === 'container-mark-red') return { snippet: '::: mark-red\n\n:::\n' };
-    if (fmt === 'container-mark-green') return { snippet: '::: mark-green\n\n:::\n' };
-    if (fmt === 'container-mark-blue') return { snippet: '::: mark-blue\n\n:::\n' };
-    if (fmt === 'container-mark-cyan') return { snippet: '::: mark-cyan\n\n:::\n' };
-    if (fmt === 'container-mark-magenta') return { snippet: '::: mark-magenta\n\n:::\n' };
-    if (fmt === 'container-mark-yellow') return { snippet: '::: mark-yellow\n\n:::\n' };
-    if (fmt === 'container-center') return { snippet: '::: center\n\n:::\n' };
-    if (fmt === 'container-center100') return { snippet: '::: center100\n\n:::\n' };
-    if (fmt === 'container-right') return { snippet: '::: right\n\n:::\n' };
-    if (fmt === 'container-caption') return { snippet: '::: caption\n\n:::\n' };
-    if (fmt === 'emoji') return { snippet: ':smile:' };
-    return null;
-  }
-
-  function buildCardEditorSnippetSelectHtml() {
-    return '' +
-      '<select class="dialog-input card-editor-snippet-select" data-card-editor-snippet="snippet" title="Insert snippet">' +
-        '<option value="">Insert...</option>' +
-        '<option value="quote">Quote</option>' +
-        '<option value="bullet-list">Bullet list</option>' +
-        '<option value="numbered-list">Numbered list</option>' +
-        '<option value="columns">Multicolumn ---: :--: :---</option>' +
-        '<option value="mermaid">Mermaid diagram</option>' +
-        '<option value="plantuml">PlantUML diagram</option>' +
-        '<option value="note">Container: note</option>' +
-        '<option value="container-comment">Container: comment</option>' +
-        '<option value="container-highlight">Container: highlight</option>' +
-        '<option value="container-mark-red">Container: mark-red</option>' +
-        '<option value="container-mark-green">Container: mark-green</option>' +
-        '<option value="container-mark-blue">Container: mark-blue</option>' +
-        '<option value="container-mark-cyan">Container: mark-cyan</option>' +
-        '<option value="container-mark-magenta">Container: mark-magenta</option>' +
-        '<option value="container-mark-yellow">Container: mark-yellow</option>' +
-        '<option value="container-center">Container: center</option>' +
-        '<option value="container-center100">Container: center100</option>' +
-        '<option value="container-right">Container: right</option>' +
-        '<option value="container-caption">Container: caption</option>' +
-        '<option value="footnote">Footnote</option>' +
-        '<option value="emoji">Emoji</option>' +
-      '</select>';
-  }
-
-  function updateCheckboxLineInText(text, lineIndex, checked) {
-    var lines = String(text || '').split('\n');
-    if (lineIndex < 0 || lineIndex >= lines.length) return String(text || '');
-    if (checked) {
-      lines[lineIndex] = lines[lineIndex].replace(/\[([ ])\]/, '[x]');
-    } else {
-      lines[lineIndex] = lines[lineIndex].replace(/\[([xX])\]/, '[ ]');
-    }
-    return lines.join('\n');
-  }
-
-  function renderCardDisplayState(cardEl, content) {
-    if (!cardEl) return;
-    var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
-    var resolved = getIncludeResolvedContent(content, colIndex);
-    var titleEl = cardEl.querySelector('.card-title-display');
-    if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(resolved), activeBoardId);
-    var contentEl = cardEl.querySelector('.card-content');
-    if (contentEl) {
-      contentEl.innerHTML = renderCardContent(resolved, activeBoardId, null, { skipFirstLineTagStyle: true });
-      enhanceEmbeddedContent(contentEl);
-      applyRenderedHtmlCommentVisibility(contentEl, currentHtmlCommentRenderMode);
-      applyRenderedTagVisibility(contentEl, currentTagVisibilityMode);
-    }
-    attachRenderedTagInteractions(cardEl);
-  }
+  function getCardEditorFormatSpec(fmt) { return CardEditorModule.getCardEditorFormatSpec(fmt); }
+  function buildCardEditorSnippetSelectHtml() { return CardEditorModule.buildCardEditorSnippetSelectHtml(); }
+  function updateCheckboxLineInText(text, lineIndex, checked) { return CardEditorModule.updateCheckboxLineInText(text, lineIndex, checked); }
+  function renderCardDisplayState(cardEl, content) { CardEditorModule.renderCardDisplayState(cardEl, content); }
 
   function autoResizeInlineCardTextarea(textarea) {
     if (InlineCardEditorModule) InlineCardEditorModule.autoResizeInlineCardTextarea(textarea);
   }
 
-  function findVisibleCardElement(colIndex, cardIndex) {
-    return getElColumnsContainer().querySelector('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
-  }
-
-  function openCardEditor(cardEl, colIndex, cardIndex, mode) {
-    cardEl = findVisibleCardElement(colIndex, cardIndex) || cardEl;
-    if (mode === 'overlay' && !isOverlayEditorEnabled()) mode = 'inline';
-    var targetCol = getFullColumn(colIndex);
-    var targetFullIdx = targetCol ? getFullCardIndex(targetCol, cardIndex) : -1;
-    var inlineEditor = InlineCardEditorModule ? InlineCardEditorModule.getCurrentInlineCardEditor() : null;
-    if (inlineEditor) {
-      var sameInlineCard = inlineEditor.cardEl === cardEl &&
-        inlineEditor.colIndex === colIndex &&
-        inlineEditor.fullCardIdx === targetFullIdx;
-      if (sameInlineCard && mode !== 'overlay') {
-        if (inlineEditor.textarea) inlineEditor.textarea.focus();
-        return;
-      }
-      closeInlineCardEditor({ save: true }).then(function () {
-        openCardEditor(cardEl, colIndex, cardIndex, mode);
-      });
-      return;
-    }
-    if (currentCardEditor) {
-      var sameOverlayCard = currentCardEditor.cardEl === cardEl &&
-        currentCardEditor.colIndex === colIndex &&
-        currentCardEditor.fullCardIdx === targetFullIdx;
-      if (sameOverlayCard && mode === 'overlay') {
-        if (currentCardEditor.textarea) currentCardEditor.textarea.focus();
-        return;
-      }
-      closeCardEditorOverlay({ save: true }).then(function () {
-        openCardEditor(cardEl, colIndex, cardIndex, mode);
-      });
-      return;
-    }
-    if (mode === 'overlay') {
-      enterCardEditMode(cardEl, colIndex, cardIndex);
-      return;
-    }
-    enterInlineCardEditMode(cardEl, colIndex, cardIndex);
-  }
+  function findVisibleCardElement(colIndex, cardIndex) { return CardEditorModule.findVisibleCardElement(colIndex, cardIndex); }
+  function openCardEditor(cardEl, colIndex, cardIndex, mode) { CardEditorModule.openCardEditor(cardEl, colIndex, cardIndex, mode); }
 
   function shouldKeepInlineEditorOpenOnBlur() {
     if (InlineCardEditorModule) return InlineCardEditorModule.shouldKeepInlineEditorOpenOnBlur();
@@ -12280,465 +11424,13 @@ const LexeraDashboard = (function () {
     return Promise.resolve();
   }
 
-  function applyCardEditorMode(mode) {
-    if (!currentCardEditor || !currentCardEditor.dialog) return;
-    mode = normalizeCardEditorMode(mode);
-    if (currentCardEditor.mode === 'wysiwyg' && mode !== 'wysiwyg') {
-      syncCardEditorTextareaFromWysiwyg();
-    }
-    currentCardEditor.mode = mode;
-    currentCardEditor.dialog.setAttribute('data-editor-mode', mode);
-    var buttons = currentCardEditor.dialog.querySelectorAll('[data-card-editor-mode]');
-    for (var i = 0; i < buttons.length; i++) {
-      var isActive = buttons[i].getAttribute('data-card-editor-mode') === mode;
-      buttons[i].classList.toggle('active', isActive);
-      buttons[i].setAttribute('aria-pressed', isActive ? 'true' : 'false');
-    }
-    if (mode === 'wysiwyg') {
-      ensureCardEditorWysiwyg();
-    } else {
-      updateCardEditorWysiwygToolbar(null);
-    }
-    if (mode === 'preview') {
-      refreshCardEditorPreview();
-    }
-    cardEditorMode = mode;
-    localStorage.setItem('lexera-card-editor-mode', mode);
-  }
+  function applyCardEditorMode(mode) { CardEditorModule.applyCardEditorMode(mode); }
 
-  function enterCardEditMode(cardEl, colIndex, cardIndex) {
-    if (currentCardEditor || (InlineCardEditorModule && InlineCardEditorModule.getCurrentInlineCardEditor())) return;
-    if (!fullBoardData) return;
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var fullIdx = getFullCardIndex(col, cardIndex);
-    var card = col.cards[fullIdx];
-    if (!card) return;
-
-    isEditing = true;
-    cardEl.classList.add('editing');
-    cardEl.classList.add('editing-overlay');
-    cardEl.classList.remove('editing-inline');
-    cardEl.classList.remove('collapsed');
-    var overlay = document.createElement('div');
-    overlay.className = 'dialog-overlay card-editor-overlay';
-    var dialog = document.createElement('div');
-    dialog.className = 'dialog card-editor-dialog';
-    var allowWysiwygMode = isWysiwygEditorEnabled() && typeof window.WysiwygEditor === 'function';
-    dialog.innerHTML =
-      '<div class="card-editor-header">' +
-        '<div class="card-editor-header-main">' +
-          '<div class="card-editor-title-label">Card Editor</div>' +
-          '<div class="card-editor-title-text"></div>' +
-        '</div>' +
-        '<div class="card-editor-header-actions">' +
-          '<div class="card-editor-mode-toggle" role="group" aria-label="Editor mode">' +
-            '<button class="board-action-btn" type="button" data-card-editor-mode="markdown" aria-pressed="false">Markdown</button>' +
-            '<button class="board-action-btn" type="button" data-card-editor-mode="dual" aria-pressed="false">Dual</button>' +
-            '<button class="board-action-btn" type="button" data-card-editor-mode="preview" aria-pressed="false">Preview</button>' +
-            (allowWysiwygMode ? '<button class="board-action-btn" type="button" data-card-editor-mode="wysiwyg" aria-pressed="false">WYSIWYG</button>' : '') +
-          '</div>' +
-          '<button class="board-action-btn" type="button" data-card-editor-action="font-scale">Aa</button>' +
-          '<button class="btn-small btn-cancel" data-card-editor-action="cancel">Cancel</button>' +
-          '<button class="btn-small btn-primary" data-card-editor-action="save">Save</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="card-editor-toolbar">' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="bold" title="Bold">Bold</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="italic" title="Italic">Italic</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="underline" title="Underline">Underline</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="strike" title="Strikethrough">Strike</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="mark" title="Mark">Mark</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="ins" title="Inserted text">Ins</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="sub" title="Subscript">Sub</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="sup" title="Superscript">Sup</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="code" title="Inline code">Code</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="link" title="Link">Link</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="image" title="Image">Image</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-action="file-search" title="Search files across workspace">Files</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="heading" title="Heading">H2</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="quote" title="Quote">Quote</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="task" title="Checklist item">Task</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="include" title="Include">Include</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="wiki" title="Wiki link">Wiki</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="footnote" title="Footnote">Footnote</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="code-block" title="Code block">Block</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="mermaid" title="Mermaid diagram">Mermaid</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="columns" title="Multi-column block">Columns</button>' +
-        '<button class="board-action-btn" type="button" data-card-editor-fmt="note" title="Note container">Note</button>' +
-        buildCardEditorSnippetSelectHtml() +
-        '<span class="card-editor-hint">Ctrl/Cmd+Enter to save, Esc to cancel</span>' +
-      '</div>' +
-      '<div class="card-editor-body">' +
-        '<div class="card-editor-pane card-editor-text-pane">' +
-          '<div class="card-editor-pane-title">Markdown</div>' +
-          '<textarea class="card-editor-textarea card-edit-input" spellcheck="false"></textarea>' +
-        '</div>' +
-        '<div class="card-editor-pane card-editor-preview-pane">' +
-          '<div class="card-editor-pane-title">Preview</div>' +
-          '<div class="card-editor-preview" tabindex="0"></div>' +
-        '</div>' +
-        '<div class="card-editor-pane card-editor-wysiwyg-pane">' +
-          '<div class="card-editor-pane-title">WYSIWYG</div>' +
-          '<div class="card-overlay-wysiwyg"></div>' +
-        '</div>' +
-      '</div>';
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
-
-    function updateCardEditorOverlayHeight() {
-      dialog.style.setProperty(
-        '--card-overlay-wysiwyg-height',
-        Math.max(360, Math.min(window.innerHeight - 320, 720)) + 'px'
-      );
-    }
-    updateCardEditorOverlayHeight();
-    window.addEventListener('resize', updateCardEditorOverlayHeight);
-
-    var textarea = dialog.querySelector('.card-editor-textarea');
-    var preview = dialog.querySelector('.card-editor-preview');
-    var wysiwygWrap = dialog.querySelector('.card-overlay-wysiwyg');
-    textarea.value = card.content;
-
-    currentCardEditor = {
-      overlay: overlay,
-      dialog: dialog,
-      textarea: textarea,
-      preview: preview,
-      wysiwygWrap: wysiwygWrap,
-      wysiwyg: null,
-      resizeHandler: updateCardEditorOverlayHeight,
-      cardEl: cardEl,
-      colIndex: colIndex,
-      fullCardIdx: fullIdx,
-      originalContent: card.content || '',
-      boardId: activeBoardId || '',
-      fontScale: normalizeCardEditorFontScale(cardEditorFontScale),
-      mode: normalizeCardEditorMode(cardEditorMode || localStorage.getItem('lexera-card-editor-mode') || 'dual')
-    };
-    syncCardEditorWysiwygContext(currentCardEditor);
-    applyCardEditorFontScale(currentCardEditor.fontScale, false);
-
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) closeCardEditorOverlay({ save: false });
-    });
-    dialog.addEventListener('click', function (e) {
-      var modeBtn = e.target.closest('[data-card-editor-mode]');
-      if (modeBtn) {
-        applyCardEditorMode(modeBtn.getAttribute('data-card-editor-mode'));
-        if (currentCardEditor && currentCardEditor.textarea && currentCardEditor.mode !== 'preview') {
-          currentCardEditor.textarea.focus();
-        }
-        return;
-      }
-      var actionBtn = e.target.closest('[data-card-editor-action]');
-      if (actionBtn) {
-        var action = actionBtn.getAttribute('data-card-editor-action');
-        if (action === 'save') closeCardEditorOverlay({ save: true });
-        else if (action === 'cancel') closeCardEditorOverlay({ save: false });
-        else if (action === 'font-scale') openCardEditorFontScaleMenu(actionBtn);
-        else if (action === 'file-search') openFileSearchDialog(textarea);
-        return;
-      }
-      var fmtBtn = e.target.closest('[data-card-editor-fmt]');
-      if (!fmtBtn) return;
-      applyCardEditorFormatting(textarea, fmtBtn.getAttribute('data-card-editor-fmt'));
-    });
-    dialog.addEventListener('change', function (e) {
-      var snippetSelect = e.target.closest('[data-card-editor-snippet]');
-      if (!snippetSelect) return;
-      var snippet = snippetSelect.value;
-      if (!snippet) return;
-      snippetSelect.value = '';
-      applyCardEditorFormatting(textarea, snippet);
-    });
-
-    // Broadcast editing presence when opening overlay editor
-    if (card.kid && LexeraApi.isSyncConnected()) {
-      LexeraApi.sendEditingPresence(card.kid, syncUserName || syncUserId, textarea.selectionStart, false);
-    }
-
-    textarea.addEventListener('input', function () {
-      try {
-      refreshCardEditorPreview();
-      queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
-      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, true);
-      } catch (err) {
-        logFrontendIssue('error', 'editor.overlay', 'Error in overlay editor input handler', err);
-      }
-    });
-    textarea.addEventListener('keyup', function () {
-      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
-    });
-    textarea.addEventListener('mouseup', function () {
-      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
-    });
-    textarea.addEventListener('paste', function (e) {
-      handleEditorPasteImage(e, textarea);
-    });
-    preview.addEventListener('change', function (e) {
-      if (!e.target.classList.contains('card-checkbox')) return;
-      e.preventDefault();
-      e.stopPropagation();
-      var lineIndex = parseInt(e.target.getAttribute('data-line'), 10);
-      if (!isFinite(lineIndex)) return;
-      textarea.value = updateCheckboxLineInText(textarea.value, lineIndex, e.target.checked);
-      refreshCardEditorPreview();
-      queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
-    });
-    dialog.addEventListener('dragover', function (e) {
-      if (!e.dataTransfer) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'copy';
-    });
-    dialog.addEventListener('drop', async function (e) {
-      if (!e.dataTransfer) return;
-      e.preventDefault();
-      var markdown = typeof resolveDropContent === 'function'
-        ? await resolveDropContent(e.dataTransfer)
-        : '';
-      if (!markdown) return;
-      if (currentCardEditor && currentCardEditor.mode === 'wysiwyg') {
-        var editor = ensureCardEditorWysiwyg();
-        if (editor) {
-          editor.insertText(markdown);
-          return;
-        }
-      }
-      insertFormatting(textarea, { snippet: markdown });
-      textarea.focus();
-    });
-    dialog.addEventListener('keydown', function (e) {
-      try {
-      if (e.target === textarea) return;
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        closeCardEditorOverlay({ save: true });
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        closeCardEditorOverlay({ save: true });
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeCardEditorOverlay({ save: false });
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-        if (e.key === '1') {
-          e.preventDefault();
-          applyCardEditorMode('markdown');
-        } else if (e.key === '2') {
-          e.preventDefault();
-          applyCardEditorMode('dual');
-        } else if (e.key === '3') {
-          e.preventDefault();
-          applyCardEditorMode('preview');
-        } else if (e.key === '4') {
-          if (isWysiwygEditorEnabled() && typeof window.WysiwygEditor === 'function') {
-            e.preventDefault();
-            applyCardEditorMode('wysiwyg');
-          }
-        }
-      }
-      } catch (err) {
-        logFrontendIssue('error', 'editor.overlay', 'Error in overlay dialog keydown handler', err);
-      }
-    });
-    textarea.addEventListener('keydown', function (e) {
-      try {
-      if (handleTextareaTabIndent(e, textarea)) return;
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        closeCardEditorOverlay({ save: true });
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        closeCardEditorOverlay({ save: true });
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeCardEditorOverlay({ save: false });
-        return;
-      }
-      // Check user-defined keybindings for editor context
-      if (window.LexeraKeybindingRegistry) {
-        var kb = window.LexeraKeybindingRegistry.match(e, 'editor');
-        if (kb) {
-          e.preventDefault();
-          window.LexeraKeybindingRegistry.execute(kb, textarea, insertFormatting);
-          return;
-        }
-      }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-        if (e.key === '1') {
-          e.preventDefault();
-          applyCardEditorMode('markdown');
-          return;
-        }
-        if (e.key === '2') {
-          e.preventDefault();
-          applyCardEditorMode('dual');
-          return;
-        }
-        if (e.key === '3') {
-          e.preventDefault();
-          applyCardEditorMode('preview');
-          return;
-        }
-        if (e.key === '4') {
-          if (isWysiwygEditorEnabled() && typeof window.WysiwygEditor === 'function') {
-            e.preventDefault();
-            applyCardEditorMode('wysiwyg');
-          }
-          return;
-        }
-      }
-      if (e.ctrlKey || e.metaKey) {
-        var fmt = null;
-        if (e.key === 'b') fmt = { wrap: '**' };
-        else if (e.key === 'i') fmt = { wrap: '*' };
-        else if (e.key === '`') fmt = { wrap: '`' };
-        else if (e.key === 'k') fmt = { prefix: '[', suffix: '](url)' };
-        else if (e.key === 'u') fmt = { wrap: '_' };
-        else if (e.key === 'h') fmt = { prefix: '## ', suffix: '' };
-        if (fmt) {
-          e.preventDefault();
-          insertFormatting(textarea, fmt);
-        }
-      }
-      } catch (err) {
-        logFrontendIssue('error', 'editor.overlay', 'Error in overlay textarea keydown handler', err);
-      }
-    });
-
-    refreshCardEditorPreview();
-    applyCardEditorMode(currentCardEditor.mode);
-    requestAnimationFrame(function () {
-      if (currentCardEditor && currentCardEditor.mode === 'wysiwyg') {
-        var wysiwyg = ensureCardEditorWysiwyg();
-        if (wysiwyg && typeof wysiwyg.focus === 'function') {
-          wysiwyg.focus();
-        }
-      } else if (currentCardEditor && currentCardEditor.mode !== 'preview') {
-        textarea.focus();
-        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-      } else if (preview) {
-        preview.focus();
-      }
-    });
-  }
-
-  function refreshCardEditorPreview() {
-    if (!currentCardEditor) return;
-    var value = currentCardEditor.textarea ? currentCardEditor.textarea.value : '';
-    if (currentCardEditor.preview) {
-      var resolved = getIncludeResolvedContent(value, currentCardEditor.colIndex);
-      currentCardEditor.preview.innerHTML = renderCardContent(resolved, activeBoardId, null, { skipFirstLineTagStyle: true });
-      enhanceEmbeddedContent(currentCardEditor.preview);
-      applyRenderedHtmlCommentVisibility(currentCardEditor.preview, currentHtmlCommentRenderMode);
-      applyRenderedTagVisibility(currentCardEditor.preview, currentTagVisibilityMode);
-    }
-    var titleEl = currentCardEditor.dialog
-      ? currentCardEditor.dialog.querySelector('.card-editor-title-text')
-      : null;
-    if (titleEl) {
-      var resolvedForTitle = getIncludeResolvedContent(value, currentCardEditor.colIndex);
-      titleEl.textContent = getCardTitle(stripInternalHiddenTags(resolvedForTitle)).trim() || 'Untitled';
-    }
-  }
-
-  async function closeCardEditorOverlay(options) {
-    options = options || {};
-    if (!currentCardEditor) return;
-    var editor = currentCardEditor;
-    currentCardEditor = null;
-    isEditing = false;
-    // Clear editing presence
-    clearEditingPresenceQueue();
-    if (LexeraApi.isSyncConnected()) {
-      LexeraApi.sendEditingPresence(null, '', null, false);
-    }
-    if (editor.wysiwyg && typeof editor.wysiwyg.getMarkdown === 'function' && editor.textarea) {
-      editor.textarea.value = editor.wysiwyg.getMarkdown() || editor.textarea.value;
-    }
-    if (editor.resizeHandler) {
-      window.removeEventListener('resize', editor.resizeHandler);
-    }
-    destroyCardEditorWysiwyg(editor);
-    window.currentTaskIncludeContext = null;
-    window.currentFilePath = '';
-    if (editor.cardEl && editor.cardEl.classList) {
-      editor.cardEl.classList.remove('editing');
-      editor.cardEl.classList.remove('editing-inline');
-      editor.cardEl.classList.remove('editing-overlay');
-    }
-    if (editor.overlay && editor.overlay.parentNode) editor.overlay.parentNode.removeChild(editor.overlay);
-    if (options.save) {
-      clearPendingCardDraftSync();
-      await saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
-      return;
-    }
-    await revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent).catch(function (err) {
-      logFrontendIssue('warn', 'live-sync.revert', 'Failed to revert overlay editor live-sync draft', err);
-      return false;
-    });
-    await flushDeferredBoardRefresh({ refreshSidebar: true });
-  }
-
-  function insertFormatting(textarea, fmt) {
-    var start = textarea.selectionStart;
-    var end = textarea.selectionEnd;
-    var text = textarea.value;
-    var selected = text.substring(start, end);
-
-    var replacement;
-    if (fmt.snippet != null) {
-      replacement = fmt.snippet;
-    } else if (fmt.wrap) {
-      replacement = fmt.wrap + (selected || 'text') + fmt.wrap;
-    } else {
-      replacement = fmt.prefix + (selected || 'text') + fmt.suffix;
-    }
-
-    textarea.value = text.substring(0, start) + replacement + text.substring(end);
-
-    if (fmt.snippet != null) {
-      textarea.setSelectionRange(start, start + replacement.length);
-    } else if (selected) {
-      // Place cursor: if there was a selection, select the content between markers
-      var contentStart = start + (fmt.wrap ? fmt.wrap.length : fmt.prefix.length);
-      textarea.setSelectionRange(contentStart, contentStart + selected.length);
-    } else {
-      var contentStart = start + (fmt.wrap ? fmt.wrap.length : fmt.prefix.length);
-      textarea.setSelectionRange(contentStart, contentStart + 4); // select 'text'
-    }
-    textarea.dispatchEvent(new Event('input'));
-  }
-
-  async function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) {
-    isEditing = false;
-    if (!fullBoardData || !activeBoardId) return;
-    var col = getFullColumn(colIndex);
-    if (!col || !col.cards[fullCardIdx]) return;
-
-    var oldContent = col.cards[fullCardIdx].content;
-    if (newContent === oldContent) {
-      if (cardEl && cardEl.classList) cardEl.classList.remove('editing');
-      renderCardDisplayState(cardEl, oldContent);
-      await flushDeferredBoardRefresh({ refreshSidebar: true });
-      return;
-    }
-
-    pushUndo();
-    col.cards[fullCardIdx].content = newContent;
-    await persistBoardMutation();
-    await flushDeferredBoardRefresh({ refreshSidebar: true });
-  }
+  function enterCardEditMode(cardEl, colIndex, cardIndex) { CardEditorModule.enterCardEditMode(cardEl, colIndex, cardIndex); }
+  function refreshCardEditorPreview() { CardEditorModule.refreshCardEditorPreview(); }
+  function closeCardEditorOverlay(options) { return CardEditorModule.closeCardEditorOverlay(options); }
+  function insertFormatting(textarea, fmt) { CardEditorModule.insertFormatting(textarea, fmt); }
+  function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) { return CardEditorModule.saveCardEdit(cardEl, colIndex, fullCardIdx, newContent); }
 
   // --- Checkbox Toggle ---
 
@@ -12763,1667 +11455,85 @@ const LexeraDashboard = (function () {
     await persistBoardMutation();
   }
 
-  // --- Card Context Menu ---
+  // --- Card Context Menu (delegated to CardContextMenu module) ---
+
+  var _CCM = window.CardContextMenu;
+
+  function closeCardContextMenu() { if (_CCM) _CCM.closeCardContextMenu(); }
+  function showCardContextMenu(x, y, colIndex, cardIndex) { if (_CCM) _CCM.showCardContextMenu(x, y, colIndex, cardIndex); }
+  function duplicateCard(colIndex, cardIndex) { return _CCM ? _CCM.duplicateCard(colIndex, cardIndex) : Promise.resolve(); }
+  function duplicateCardToColumn(colIndex, cardIndex, targetColIndex) { return _CCM ? _CCM.duplicateCardToColumn(colIndex, cardIndex, targetColIndex) : Promise.resolve(); }
+  function parkCopyCard(colIndex, cardIndex) { return _CCM ? _CCM.parkCopyCard(colIndex, cardIndex) : Promise.resolve(); }
+  function tagCard(colIndex, cardIndex, tag) { return _CCM ? _CCM.tagCard(colIndex, cardIndex, tag) : Promise.resolve(); }
+  function deleteCard(colIndex, cardIndex) { return _CCM ? _CCM.deleteCard(colIndex, cardIndex) : Promise.resolve(); }
+  function resolveTagTarget(elementType, indices) { return _CCM ? _CCM.resolveTagTarget(elementType, indices) : null; }
+  function splitTagHeaderAndBody(text) { return _CCM ? _CCM.splitTagHeaderAndBody(text) : { header: '', bodyLines: [] }; }
+  function rebuildTagHeaderAndBody(headerText, bodyLines) { return _CCM ? _CCM.rebuildTagHeaderAndBody(headerText, bodyLines) : ''; }
+  function mutateEntityHeaderText(elementType, indices, mutator) { return _CCM ? _CCM.mutateEntityHeaderText(elementType, indices, mutator) : Promise.resolve(false); }
+  function normalizePromptTagToken(rawToken) { return _CCM ? _CCM.normalizePromptTagToken(rawToken) : ''; }
+  function parsePromptTagList(rawInput) { return _CCM ? _CCM.parsePromptTagList(rawInput) : []; }
+  function removeTagFromHeaderText(headerText, tagName) { return _CCM ? _CCM.removeTagFromHeaderText(headerText, tagName) : headerText; }
+  function addTagToHeaderText(headerText, tagName) { return _CCM ? _CCM.addTagToHeaderText(headerText, tagName) : headerText; }
+  function clearRemovableTagsFromHeaderText(headerText) { return _CCM ? _CCM.clearRemovableTagsFromHeaderText(headerText) : headerText; }
+  function mutateEntityHeaderTags(elementType, indices, mutator) { return _CCM ? _CCM.mutateEntityHeaderTags(elementType, indices, mutator) : Promise.resolve(false); }
+  function handleEntityTagMenuAction(action, elementType, indices) { return _CCM ? _CCM.handleEntityTagMenuAction(action, elementType, indices) : Promise.resolve(false); }
+  function handleEntityMarpMenuAction(action, elementType, indices) { return _CCM ? _CCM.handleEntityMarpMenuAction(action, elementType, indices) : Promise.resolve(false); }
+  function toggleTag(elementType, indices, tagName) { return _CCM ? _CCM.toggleTag(elementType, indices, tagName) : Promise.resolve(); }
+  function extractTagNameFromMenuAction(action) { return _CCM ? _CCM.extractTagNameFromMenuAction(action) : ''; }
+  function refreshAvailableMarpClasses(force) { return _CCM ? _CCM.refreshAvailableMarpClasses(force) : Promise.resolve([]); }
+  function buildFileHeaderMarpMenuItems() { return _CCM ? _CCM.buildFileHeaderMarpMenuItems() : []; }
+  function handleBoardMarpMenuAction(action) { return _CCM ? _CCM.handleBoardMarpMenuAction(action) : Promise.resolve(false); }
+  function getMarpDirectiveValueFromHeader(headerText, directiveName, directiveScope) { return _CCM ? _CCM.getMarpDirectiveValueFromHeader(headerText, directiveName, directiveScope) : ''; }
+  function truncateMarpDirectiveValue(value) { return _CCM ? _CCM.truncateMarpDirectiveValue(value) : ''; }
+  function getAvailableMarpClassNames(headerText) { return _CCM ? _CCM.getAvailableMarpClassNames(headerText) : []; }
+  function getMarpClassListFromHeader(headerText, classScope) { return _CCM ? _CCM.getMarpClassListFromHeader(headerText, classScope) : []; }
+  function hasMarpDirectiveValue(headerText, directiveName, directiveScope, targetValue) { return _CCM ? _CCM.hasMarpDirectiveValue(headerText, directiveName, directiveScope, targetValue) : false; }
+  // Marp constant references (delegated)
+  var MARP_COLOR_DIRECTIVES = _CCM ? _CCM.MARP_COLOR_DIRECTIVES : [];
+  var MARP_TEXT_DIRECTIVES = _CCM ? _CCM.MARP_TEXT_DIRECTIVES : [];
+  var BOARD_MARP_FRONTMATTER_KEYS = _CCM ? _CCM.BOARD_MARP_FRONTMATTER_KEYS : [];
+  var DEFAULT_MARP_CLASS_NAMES = _CCM ? _CCM.DEFAULT_MARP_CLASS_NAMES : ['lead', 'invert'];
+
+  // --- Removed: tag builders, marp constants/helpers, card ops, entity tag/marp ops ---
+  // All moved to CardContextMenu module (menu/cardContextMenu.js)
 
-  var activeCardMenu = null;
-
-  function closeCardContextMenu() {
-    if (activeCardMenu) {
-      activeCardMenu.remove();
-      activeCardMenu = null;
-    }
-  }
-
-  function buildTagSubmenu(label, tags, text, idPrefix) {
-    var items = [];
-    for (var i = 0; i < tags.length; i++) {
-      var tagName = '#' + tags[i];
-      var active = hasTag(text, tagName);
-      items.push({
-        id: idPrefix + tags[i],
-        label: (active ? '\u2713 ' : '') + tagName
-      });
-    }
-    return { id: idPrefix + '_sub', label: label, items: items };
-  }
-
-  function buildTagCategorySubmenus(text, idPrefix, order) {
-    var categoryOrder = Array.isArray(order) && order.length > 0 ? order : TAG_CATEGORY_MENU_ORDER;
-    var items = [];
-    for (var i = 0; i < categoryOrder.length; i++) {
-      var key = categoryOrder[i];
-      var tags = TAG_CATEGORIES[key];
-      if (!Array.isArray(tags) || tags.length === 0) continue;
-      var label = TAG_CATEGORY_MENU_LABELS[key] || key;
-      items.push(buildTagSubmenu(label, tags, text, idPrefix + 'cat-' + key + '-'));
-    }
-    return items;
-  }
-
-  var TAG_CATEGORY_MENU_ORDER = [
-    'special', 'importance', 'status', 'priority', 'moscow', 'positivity',
-    'type', 'category', 'colors', 'colors-dark', 'colors-light', 'colors-accessible',
-    'workflow', 'organization', 'teaching-content', 'product-content', 'complexity',
-    'status-review', 'time-estimate', 'status-testing', 'teaching-platform',
-    'product-platform', 'version', 'impact', 'schedule', 'overview', 'example', 'deliveries'
-  ];
-  var TAG_CATEGORY_MENU_LABELS = {
-    special: 'Special', importance: 'Importance', status: 'Status', priority: 'Priority',
-    moscow: 'MoSCoW', positivity: 'Positivity', type: 'Type', category: 'Category',
-    colors: 'Colors', 'colors-dark': 'Colors Dark', 'colors-light': 'Colors Light',
-    'colors-accessible': 'Colors Accessible', impact: 'Impact', workflow: 'Workflow',
-    organization: 'Organization', 'teaching-content': 'Teaching Content',
-    'product-content': 'Product Content', complexity: 'Complexity',
-    'status-review': 'Status Review', 'time-estimate': 'Time Estimate',
-    'status-testing': 'Status Testing', 'teaching-platform': 'Teaching Platform',
-    'product-platform': 'Product Platform', version: 'Version', schedule: 'Schedule',
-    overview: 'Overview', example: 'Example', deliveries: 'Deliveries'
-  };
-
-  function buildCustomTagsSubmenu(text, idPrefix) {
-    var allTags = extractAllTags(text);
-    var knownTags = {};
-    var catKeys = Object.keys(TAG_CATEGORIES);
-    for (var c = 0; c < catKeys.length; c++) {
-      var arr = TAG_CATEGORIES[catKeys[c]];
-      for (var t = 0; t < arr.length; t++) knownTags['#' + arr[t]] = true;
-    }
-    var custom = [];
-    for (var i = 0; i < allTags.length; i++) {
-      var tag = allTags[i];
-      if (knownTags[tag]) continue;
-      if (/^#hidden-internal-/.test(tag)) continue;
-      if (isLayoutTagName(tag)) continue;
-      custom.push(tag);
-    }
-    if (custom.length === 0) return null;
-    var items = [];
-    for (var j = 0; j < custom.length; j++) {
-      items.push({ id: idPrefix + custom[j].replace(/^#/, ''), label: '\u2713 ' + custom[j] });
-    }
-    return { id: idPrefix + '_sub', label: 'Custom Tags', items: items };
-  }
-
-  function extractTagNameFromMenuAction(action) {
-    var match = String(action || '').match(/^tag-(?:cat-[a-z0-9_-]+|custom)-(.+)$/i);
-    return match ? ('#' + match[1]) : '';
-  }
-
-  var DEFAULT_MARP_CLASS_NAMES = ['lead', 'invert'];
-  var marpClassDiscoveryState = {
-    pending: null,
-    lastDirKey: '',
-    lastUpdatedAt: 0
-  };
-  var MARP_COLOR_DIRECTIVES = [
-    { key: 'color', label: 'Text Color', prompt: 'Marp text color' },
-    { key: 'backgroundColor', label: 'Background Color', prompt: 'Marp background color' },
-    { key: 'backgroundImage', label: 'Background Image', prompt: 'Marp background image' },
-    { key: 'backgroundPosition', label: 'Background Position', prompt: 'Marp background position' },
-    { key: 'backgroundRepeat', label: 'Background Repeat', prompt: 'Marp background repeat' },
-    { key: 'backgroundSize', label: 'Background Size', prompt: 'Marp background size' }
-  ];
-  var MARP_TEXT_DIRECTIVES = [
-    { key: 'header', label: 'Header Text', prompt: 'Marp header text' },
-    { key: 'footer', label: 'Footer Text', prompt: 'Marp footer text' }
-  ];
-  var BOARD_MARP_PRESENTATION_FIELDS = [
-    {
-      key: 'theme',
-      label: 'Theme',
-      prompt: 'Marp theme',
-      presets: [
-        { label: 'Default', value: 'default' },
-        { label: 'Gaia', value: 'gaia' },
-        { label: 'Uncover', value: 'uncover' }
-      ]
-    },
-    {
-      key: 'style',
-      label: 'Style',
-      prompt: 'Marp style'
-    },
-    {
-      key: 'size',
-      label: 'Size',
-      prompt: 'Marp size',
-      presets: [
-        { label: '16:9', value: '16:9' },
-        { label: '4:3', value: '4:3' },
-        { label: '16:10', value: '16:10' },
-        { label: 'A4', value: 'A4' }
-      ]
-    },
-    {
-      key: 'headingDivider',
-      label: 'Heading Divider',
-      prompt: 'Marp heading divider',
-      presets: [
-        { label: 'Off', value: 'false' },
-        { label: 'All Headings', value: 'true' },
-        { label: 'Level 1', value: '1' },
-        { label: 'Level 2', value: '2' },
-        { label: 'Level 3', value: '3' },
-        { label: 'Level 4', value: '4' },
-        { label: 'Level 5', value: '5' },
-        { label: 'Level 6', value: '6' }
-      ]
-    },
-    {
-      key: 'math',
-      label: 'Math',
-      prompt: 'Marp math engine',
-      presets: [
-        { label: 'Off', value: 'false' },
-        { label: 'KaTeX', value: 'katex' },
-        { label: 'MathJax', value: 'mathjax' }
-      ]
-    }
-  ];
-  var BOARD_MARP_METADATA_FIELDS = [
-    { key: 'title', label: 'Title', prompt: 'Document title' },
-    { key: 'author', label: 'Author', prompt: 'Document author' },
-    { key: 'description', label: 'Description', prompt: 'Document description' },
-    { key: 'keywords', label: 'Keywords', prompt: 'Document keywords' },
-    { key: 'url', label: 'URL', prompt: 'Document URL' },
-    { key: 'image', label: 'Image', prompt: 'Document image URL/path' }
-  ];
-  var BOARD_MARP_SLIDE_FIELDS = [
-    {
-      key: 'paginate',
-      label: 'Paginate',
-      prompt: 'Paginate',
-      presets: [
-        { label: 'Enabled', value: 'true' },
-        { label: 'Disabled', value: 'false' }
-      ]
-    },
-    { key: 'header', label: 'Header', prompt: 'Marp header text' },
-    { key: 'footer', label: 'Footer', prompt: 'Marp footer text' }
-  ];
-  var BOARD_MARP_STYLING_FIELDS = [
-    { key: 'color', label: 'Text Color', prompt: 'Marp text color' },
-    { key: 'backgroundColor', label: 'Background Color', prompt: 'Marp background color' },
-    { key: 'backgroundImage', label: 'Background Image', prompt: 'Marp background image URL/path' },
-    { key: 'backgroundPosition', label: 'Background Position', prompt: 'Marp background position' },
-    { key: 'backgroundRepeat', label: 'Background Repeat', prompt: 'Marp background repeat' },
-    { key: 'backgroundSize', label: 'Background Size', prompt: 'Marp background size' }
-  ];
-
-  function buildMarpClassDiscoveryDirs() {
-    var dirs = [];
-    var seen = {};
-
-    function addDir(path) {
-      var normalized = normalizePathForCompare(String(path || '').trim());
-      if (!normalized || seen[normalized]) return;
-      seen[normalized] = true;
-      dirs.push(normalized);
-    }
-
-    var boardFilePath = getActiveBoardFilePath();
-    var boardDir = getDirNameFromPath(boardFilePath);
-    if (boardDir) {
-      addDir(boardDir);
-      addDir(boardDir + '/themes');
-      addDir(boardDir + '/_themes');
-      addDir(boardDir + '/assets/themes');
-    }
-
-    return dirs;
-  }
-
-  async function refreshAvailableMarpClasses(force) {
-    if (!window.ExportService || typeof ExportService.getMarpClasses !== 'function') {
-      return Array.isArray(window.marpAvailableClasses) ? window.marpAvailableClasses : [];
-    }
-
-    var dirs = buildMarpClassDiscoveryDirs();
-    var dirKey = dirs.join('|');
-    var existing = Array.isArray(window.marpAvailableClasses) ? window.marpAvailableClasses : [];
-
-    if (!force && marpClassDiscoveryState.pending) {
-      return marpClassDiscoveryState.pending;
-    }
-    if (!force && existing.length > 0 && marpClassDiscoveryState.lastDirKey === dirKey) {
-      return existing;
-    }
-
-    marpClassDiscoveryState.pending = ExportService.getMarpClasses(dirs).then(function (classes) {
-      window.marpAvailableClasses = Array.isArray(classes) ? classes.slice() : [];
-      marpClassDiscoveryState.lastDirKey = dirKey;
-      marpClassDiscoveryState.lastUpdatedAt = Date.now();
-      marpClassDiscoveryState.pending = null;
-      return window.marpAvailableClasses;
-    }).catch(function (err) {
-      marpClassDiscoveryState.pending = null;
-      logFrontendIssue('warn', 'marp.classes', 'Failed to discover Marp classes', err);
-      return existing;
-    });
-
-    return marpClassDiscoveryState.pending;
-  }
-  var BOARD_MARP_FRONTMATTER_KEYS = ['marp']
-    .concat(BOARD_MARP_PRESENTATION_FIELDS.map(function (field) { return field.key; }))
-    .concat(BOARD_MARP_METADATA_FIELDS.map(function (field) { return field.key; }))
-    .concat(BOARD_MARP_SLIDE_FIELDS.map(function (field) { return field.key; }))
-    .concat(['class'])
-    .concat(BOARD_MARP_STYLING_FIELDS.map(function (field) { return field.key; }));
-
-  function getMarpDirectiveFinalName(directiveName, directiveScope) {
-    return directiveScope === 'scoped' ? ('_' + directiveName) : directiveName;
-  }
-
-  function getMarpDirectiveRegex(directiveName, directiveScope) {
-    var finalDirectiveName = getMarpDirectiveFinalName(directiveName, directiveScope);
-    return new RegExp('<!--\\s*' + escapeRegex(finalDirectiveName) + '\\s*:\\s*([\\s\\S]*?)\\s*-->', 'gi');
-  }
-
-  function getMarpDirectiveValueFromHeader(headerText, directiveName, directiveScope) {
-    var re = getMarpDirectiveRegex(directiveName, directiveScope);
-    var text = String(headerText || '');
-    var match = null;
-    var value = '';
-    while ((match = re.exec(text)) !== null) {
-      value = String(match[1] || '').trim();
-    }
-    return value;
-  }
-
-  function clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope) {
-    return String(headerText || '')
-      .replace(getMarpDirectiveRegex(directiveName, directiveScope), ' ')
-      .replace(/[ \t]{2,}/g, ' ')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n[ \t]+/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-  }
-
-  function setMarpDirectiveInHeaderText(headerText, directiveName, value, directiveScope) {
-    var cleanValue = String(value || '').trim();
-    if (!cleanValue) {
-      return clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
-    }
-    var nextHeader = clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
-    var comment = '<!-- ' + getMarpDirectiveFinalName(directiveName, directiveScope) + ': ' + cleanValue + ' -->';
-    return nextHeader ? (nextHeader + ' ' + comment).trim() : comment;
-  }
-
-  function hasMarpDirectiveValue(headerText, directiveName, directiveScope, targetValue) {
-    var currentValue = getMarpDirectiveValueFromHeader(headerText, directiveName, directiveScope);
-    return currentValue.toLowerCase() === String(targetValue || '').trim().toLowerCase();
-  }
-
-  function getMarpClassListFromHeader(headerText, classScope) {
-    var raw = getMarpDirectiveValueFromHeader(headerText, 'class', classScope);
-    if (!raw) return [];
-    var tokens = raw.split(/\s+/);
-    var out = [];
-    var seen = {};
-    for (var i = 0; i < tokens.length; i++) {
-      var className = String(tokens[i] || '').trim();
-      if (!className || seen[className]) continue;
-      seen[className] = true;
-      out.push(className);
-    }
-    return out;
-  }
-
-  function setMarpClassListInHeader(headerText, classNames, classScope) {
-    var list = Array.isArray(classNames) ? classNames : [];
-    var clean = [];
-    var seen = {};
-    for (var i = 0; i < list.length; i++) {
-      var className = String(list[i] || '').trim();
-      if (!className || seen[className]) continue;
-      seen[className] = true;
-      clean.push(className);
-    }
-    if (clean.length === 0) {
-      return clearMarpDirectiveFromHeaderText(headerText, 'class', classScope);
-    }
-    return setMarpDirectiveInHeaderText(headerText, 'class', clean.join(' '), classScope);
-  }
-
-  function toggleMarpClassInHeaderText(headerText, className, classScope) {
-    var normalized = String(className || '').trim();
-    if (!normalized) return String(headerText || '');
-    var classes = getMarpClassListFromHeader(headerText, classScope);
-    var index = classes.indexOf(normalized);
-    if (index === -1) classes.push(normalized);
-    else classes.splice(index, 1);
-    return setMarpClassListInHeader(headerText, classes, classScope);
-  }
-
-  function getAvailableMarpClassNames(headerText) {
-    var available = [];
-    var seen = {};
-
-    function addClassNames(list) {
-      var names = Array.isArray(list) ? list : [];
-      for (var i = 0; i < names.length; i++) {
-        var className = String(names[i] || '').trim();
-        if (!className || seen[className]) continue;
-        seen[className] = true;
-        available.push(className);
-      }
-    }
-
-    addClassNames(window.marpAvailableClasses);
-    addClassNames(DEFAULT_MARP_CLASS_NAMES);
-    addClassNames(getMarpClassListFromHeader(headerText, 'local'));
-    addClassNames(getMarpClassListFromHeader(headerText, 'scoped'));
-
-    return available;
-  }
-
-  function truncateMarpDirectiveValue(value) {
-    var text = String(value || '').trim();
-    if (!text) return '';
-    return text.length > 24 ? (text.slice(0, 24) + '…') : text;
-  }
-
-  function buildMarpDirectiveValueSubmenu(headerText, directive) {
-    var localValue = getMarpDirectiveValueFromHeader(headerText, directive.key, 'local');
-    var scopedValue = getMarpDirectiveValueFromHeader(headerText, directive.key, 'scoped');
-    return {
-      id: 'marp-directive-group:' + directive.key,
-      label: directive.label,
-      items: [
-        {
-          id: 'marp-directive-set-local:' + directive.key,
-          label: (localValue ? 'Edit Local\u2026 (' + truncateMarpDirectiveValue(localValue) + ')' : 'Set Local\u2026')
-        },
-        {
-          id: 'marp-directive-clear-local:' + directive.key,
-          label: 'Clear Local',
-          disabled: !localValue
-        },
-        { separator: true },
-        {
-          id: 'marp-directive-set-scoped:' + directive.key,
-          label: (scopedValue ? 'Edit Scoped\u2026 (' + truncateMarpDirectiveValue(scopedValue) + ')' : 'Set Scoped\u2026')
-        },
-        {
-          id: 'marp-directive-clear-scoped:' + directive.key,
-          label: 'Clear Scoped',
-          disabled: !scopedValue
-        }
-      ]
-    };
-  }
-
-  function buildMarpClassScopeSubmenu(headerText, classScope) {
-    var classes = getAvailableMarpClassNames(headerText);
-    var items = [];
-    for (var i = 0; i < classes.length; i++) {
-      var className = classes[i];
-      items.push({
-        id: 'marp-class-' + classScope + ':' + className,
-        label: formatMenuToggleLabel(getMarpClassListFromHeader(headerText, classScope).indexOf(className) !== -1, className)
-      });
-    }
-    if (items.length > 0) items.push({ separator: true });
-    items.push({ id: 'marp-class-custom-' + classScope, label: 'Toggle Custom Class\u2026' });
-    items.push({
-      id: 'marp-class-clear-' + classScope,
-      label: 'Clear ' + (classScope === 'scoped' ? 'Scoped' : 'Local') + ' Classes',
-      disabled: getMarpClassListFromHeader(headerText, classScope).length === 0
-    });
-    return {
-      id: 'marp-class-group-' + classScope,
-      label: classScope === 'scoped' ? 'Scoped Classes' : 'Local Classes',
-      items: items
-    };
-  }
-
-  function buildMarpMenuItems(headerText) {
-    if (!isMarpSettingsEnabled()) return [];
-    var currentHeader = String(headerText || '');
-    return [
-      { separator: true },
-      {
-        id: 'marp-classes',
-        label: 'Marp Classes',
-        items: [
-          { id: 'marp-classes-refresh', label: 'Refresh Available Classes' },
-          { separator: true },
-          buildMarpClassScopeSubmenu(currentHeader, 'local'),
-          buildMarpClassScopeSubmenu(currentHeader, 'scoped')
-        ]
-      },
-      {
-        id: 'marp-colors',
-        label: 'Marp Colors',
-        items: MARP_COLOR_DIRECTIVES.map(function (directive) {
-          return buildMarpDirectiveValueSubmenu(currentHeader, directive);
-        })
-      },
-      {
-        id: 'marp-hf',
-        label: 'Marp Header & Footer',
-        items: [
-          buildMarpDirectiveValueSubmenu(currentHeader, MARP_TEXT_DIRECTIVES[0]),
-          buildMarpDirectiveValueSubmenu(currentHeader, MARP_TEXT_DIRECTIVES[1]),
-          { separator: true },
-          { id: 'marp-paginate-local', label: formatMenuToggleLabel(hasMarpDirectiveValue(currentHeader, 'paginate', 'local', 'true'), 'Paginate (Local)') },
-          { id: 'marp-paginate-scoped', label: formatMenuToggleLabel(hasMarpDirectiveValue(currentHeader, 'paginate', 'scoped', 'true'), 'Paginate (Scoped)') }
-        ]
-      }
-    ];
-  }
-
-  function findMarpDirectiveDefinition(directiveName) {
-    var all = MARP_COLOR_DIRECTIVES.concat(MARP_TEXT_DIRECTIVES);
-    for (var i = 0; i < all.length; i++) {
-      if (all[i].key === directiveName) return all[i];
-    }
-    return null;
-  }
-
-  function findBoardMarpFieldDefinition(key) {
-    var groups = BOARD_MARP_PRESENTATION_FIELDS
-      .concat(BOARD_MARP_METADATA_FIELDS)
-      .concat(BOARD_MARP_SLIDE_FIELDS)
-      .concat(BOARD_MARP_STYLING_FIELDS);
-    for (var i = 0; i < groups.length; i++) {
-      if (groups[i].key === key) return groups[i];
-    }
-    return null;
-  }
-
-  function getAvailableBoardMarpClassNames(frontmatter) {
-    var available = [];
-    var seen = {};
-
-    function addNames(list) {
-      var names = Array.isArray(list) ? list : [];
-      for (var i = 0; i < names.length; i++) {
-        var className = String(names[i] || '').trim();
-        if (!className || seen[className]) continue;
-        seen[className] = true;
-        available.push(className);
-      }
-    }
-
-    addNames(window.marpAvailableClasses);
-    addNames(DEFAULT_MARP_CLASS_NAMES);
-    addNames(getWhitespaceTokenList(frontmatter && frontmatter['class']));
-
-    return available;
-  }
-
-  function buildBoardMarpValueSubmenu(frontmatter, descriptor) {
-    var currentValue = normalizeYamlFrontmatterScalar(frontmatter && frontmatter[descriptor.key]);
-    var items = [];
-    var presets = Array.isArray(descriptor.presets) ? descriptor.presets : [];
-    for (var i = 0; i < presets.length; i++) {
-      var preset = presets[i];
-      items.push({
-        id: 'file-marp-set:' + descriptor.key + ':' + encodeURIComponent(String(preset.value)),
-        label: formatMenuToggleLabel(currentValue.toLowerCase() === String(preset.value).trim().toLowerCase(), preset.label)
-      });
-    }
-    if (items.length > 0) items.push({ separator: true });
-    items.push({
-      id: 'file-marp-prompt:' + descriptor.key,
-      label: currentValue ? ('Edit… (' + truncateMarpDirectiveValue(currentValue) + ')') : 'Set…'
-    });
-    items.push({
-      id: 'file-marp-clear:' + descriptor.key,
-      label: 'Clear',
-      disabled: !currentValue
-    });
-    return {
-      id: 'file-marp-field-group:' + descriptor.key,
-      label: descriptor.label + (currentValue ? ' (' + truncateMarpDirectiveValue(currentValue) + ')' : ''),
-      items: items
-    };
-  }
-
-  function buildBoardMarpClassSubmenu(frontmatter) {
-    var activeClasses = getWhitespaceTokenList(frontmatter && frontmatter['class']);
-    var availableClasses = getAvailableBoardMarpClassNames(frontmatter);
-    var items = [
-      { id: 'file-marp-refresh-classes', label: 'Refresh Available Classes' },
-      { separator: true }
-    ];
-    for (var i = 0; i < availableClasses.length; i++) {
-      var className = availableClasses[i];
-      items.push({
-        id: 'file-marp-toggle-class:' + className,
-        label: formatMenuToggleLabel(activeClasses.indexOf(className) !== -1, className)
-      });
-    }
-    if (items.length > 0) items.push({ separator: true });
-    items.push({ id: 'file-marp-prompt-class', label: 'Toggle Custom Class…' });
-    items.push({
-      id: 'file-marp-clear-class',
-      label: 'Clear Classes',
-      disabled: activeClasses.length === 0
-    });
-    return {
-      id: 'file-marp-classes',
-      label: 'Class' + (activeClasses.length > 0 ? ' (' + truncateMarpDirectiveValue(activeClasses.join(' ')) + ')' : ''),
-      items: items
-    };
-  }
-
-  function buildBoardMarpYamlPreviewItems() {
-    var yamlHeader = fullBoardData && fullBoardData.yamlHeader ? String(fullBoardData.yamlHeader) : '';
-    var items = [
-      {
-        id: 'file-marp-copy-yaml',
-        label: 'Copy YAML Header',
-        disabled: !yamlHeader
-      }
-    ];
-    items.push({ separator: true });
-    if (!yamlHeader) {
-      items.push({ id: 'file-marp-yaml-empty', label: '(No YAML header yet)', disabled: true });
-      return items;
-    }
-    var lines = yamlHeader.split(/\r?\n/);
-    var maxLines = 16;
-    for (var i = 0; i < lines.length && i < maxLines; i++) {
-      items.push({
-        id: 'file-marp-yaml-line:' + i,
-        label: lines[i] || ' ',
-        disabled: true
-      });
-    }
-    if (lines.length > maxLines) {
-      items.push({ id: 'file-marp-yaml-more', label: '…', disabled: true });
-    }
-    return items;
-  }
-
-  function buildFileHeaderMarpMenuItems() {
-    var frontmatter = getBoardMarpFrontmatter();
-    var marpEnabled = normalizeYamlFrontmatterScalar(frontmatter.marp).toLowerCase() === 'true';
-    return [
-      { id: 'file-marp-toggle-enabled', label: formatMenuToggleLabel(marpEnabled, 'Enable Marp') },
-      { separator: true },
-      {
-        id: 'file-marp-presentation',
-        label: 'Presentation',
-        items: BOARD_MARP_PRESENTATION_FIELDS.map(function (field) {
-          return buildBoardMarpValueSubmenu(frontmatter, field);
-        })
-      },
-      {
-        id: 'file-marp-metadata',
-        label: 'Metadata',
-        items: BOARD_MARP_METADATA_FIELDS.map(function (field) {
-          return buildBoardMarpValueSubmenu(frontmatter, field);
-        })
-      },
-      {
-        id: 'file-marp-slide',
-        label: 'Slide Settings',
-        items: BOARD_MARP_SLIDE_FIELDS.map(function (field) {
-          return buildBoardMarpValueSubmenu(frontmatter, field);
-        })
-      },
-      {
-        id: 'file-marp-styling',
-        label: 'Styling',
-        items: [buildBoardMarpClassSubmenu(frontmatter)].concat(
-          BOARD_MARP_STYLING_FIELDS.map(function (field) {
-            return buildBoardMarpValueSubmenu(frontmatter, field);
-          })
-        )
-      },
-      {
-        id: 'file-marp-yaml',
-        label: 'Current YAML',
-        items: buildBoardMarpYamlPreviewItems()
-      }
-    ];
-  }
-
-  async function toggleBoardMarpClass(className) {
-    var normalizedClass = String(className || '').trim();
-    if (!normalizedClass) return false;
-    var frontmatter = getBoardMarpFrontmatter();
-    var classes = getWhitespaceTokenList(frontmatter['class']);
-    var index = classes.indexOf(normalizedClass);
-    if (index === -1) classes.push(normalizedClass);
-    else classes.splice(index, 1);
-    return setBoardFrontmatterValue('class', setWhitespaceTokenList(classes) || null);
-  }
-
-  async function clearBoardMarpClasses() {
-    return setBoardFrontmatterValue('class', null);
-  }
-
-  async function promptBoardMarpValue(key) {
-    var descriptor = findBoardMarpFieldDefinition(key);
-    var currentValue = normalizeYamlFrontmatterScalar(getBoardMarpFrontmatter()[key]);
-    var label = descriptor && descriptor.prompt ? descriptor.prompt : ('Marp ' + key);
-    var requested = window.prompt(label, currentValue || '');
-    if (requested == null) return false;
-    var normalizedValue = normalizeYamlFrontmatterScalar(requested);
-    return setBoardFrontmatterValue(key, normalizedValue || null);
-  }
-
-  async function promptBoardMarpClassToggle() {
-    var requested = window.prompt('Marp class name(s) to toggle', '');
-    if (requested == null) return false;
-    var classNames = getWhitespaceTokenList(requested);
-    if (classNames.length === 0) return false;
-    var changed = false;
-    for (var i = 0; i < classNames.length; i++) {
-      changed = (await toggleBoardMarpClass(classNames[i])) || changed;
-    }
-    return changed;
-  }
-
-  async function handleBoardMarpMenuAction(action) {
-    if (action === 'file-marp-toggle-enabled') {
-      var enabled = normalizeYamlFrontmatterScalar(getBoardMarpFrontmatter().marp).toLowerCase() === 'true';
-      await setBoardFrontmatterValue('marp', enabled ? 'false' : 'true');
-      return true;
-    }
-    if (action === 'file-marp-refresh-classes') {
-      await refreshAvailableMarpClasses(true);
-      return true;
-    }
-    if (action === 'file-marp-prompt-class') {
-      await promptBoardMarpClassToggle();
-      return true;
-    }
-    if (action === 'file-marp-clear-class') {
-      await clearBoardMarpClasses();
-      return true;
-    }
-    if (action === 'file-marp-copy-yaml') {
-      copyTextToClipboard(
-        fullBoardData && fullBoardData.yamlHeader ? String(fullBoardData.yamlHeader) : '',
-        'YAML header copied to clipboard',
-        'Failed to copy YAML header'
-      );
-      return true;
-    }
-    if (action.indexOf('file-marp-toggle-class:') === 0) {
-      await toggleBoardMarpClass(action.substring('file-marp-toggle-class:'.length));
-      return true;
-    }
-
-    var setMatch = String(action || '').match(/^file-marp-set:([A-Za-z0-9_]+):(.+)$/);
-    if (setMatch) {
-      await setBoardFrontmatterValue(setMatch[1], decodeURIComponent(setMatch[2]));
-      return true;
-    }
-
-    var promptMatch = String(action || '').match(/^file-marp-prompt:([A-Za-z0-9_]+)$/);
-    if (promptMatch) {
-      await promptBoardMarpValue(promptMatch[1]);
-      return true;
-    }
-
-    var clearMatch = String(action || '').match(/^file-marp-clear:([A-Za-z0-9_]+)$/);
-    if (clearMatch) {
-      await setBoardFrontmatterValue(clearMatch[1], null);
-      return true;
-    }
-
-    return false;
-  }
-
-  async function setEntityMarpDirective(elementType, indices, directiveName, directiveValue, directiveScope) {
-    return mutateEntityHeaderText(elementType, indices, function (headerText) {
-      return setMarpDirectiveInHeaderText(headerText, directiveName, directiveValue, directiveScope);
-    });
-  }
-
-  async function clearEntityMarpDirective(elementType, indices, directiveName, directiveScope) {
-    return mutateEntityHeaderText(elementType, indices, function (headerText) {
-      return clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
-    });
-  }
-
-  async function toggleEntityMarpDirective(elementType, indices, directiveName, enabledValue, directiveScope) {
-    var targetValue = String(enabledValue || '').trim() || 'true';
-    return mutateEntityHeaderText(elementType, indices, function (headerText) {
-      if (hasMarpDirectiveValue(headerText, directiveName, directiveScope, targetValue)) {
-        return clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
-      }
-      return setMarpDirectiveInHeaderText(headerText, directiveName, targetValue, directiveScope);
-    });
-  }
-
-  async function toggleEntityMarpClass(elementType, indices, className, classScope) {
-    return mutateEntityHeaderText(elementType, indices, function (headerText) {
-      return toggleMarpClassInHeaderText(headerText, className, classScope);
-    });
-  }
-
-  async function clearEntityMarpClasses(elementType, indices, classScope) {
-    return mutateEntityHeaderText(elementType, indices, function (headerText) {
-      return setMarpClassListInHeader(headerText, [], classScope);
-    });
-  }
-
-  async function promptEntityMarpDirective(elementType, indices, directiveName, directiveScope) {
-    var target = resolveTagTarget(elementType, indices);
-    if (!target) return false;
-    var currentValue = getMarpDirectiveValueFromHeader(splitTagHeaderAndBody(target.text || '').header || '', directiveName, directiveScope);
-    var descriptor = findMarpDirectiveDefinition(directiveName);
-    var label = descriptor && descriptor.prompt ? descriptor.prompt : ('Marp ' + directiveName);
-    var requested = window.prompt(label + ' (' + directiveScope + ')', currentValue || '');
-    if (requested == null) return false;
-    var cleanValue = String(requested || '').trim();
-    if (!cleanValue) {
-      return clearEntityMarpDirective(elementType, indices, directiveName, directiveScope);
-    }
-    return setEntityMarpDirective(elementType, indices, directiveName, cleanValue, directiveScope);
-  }
-
-  async function promptEntityMarpClassToggle(elementType, indices, classScope) {
-    var requested = window.prompt('Marp class name(s) to toggle (' + classScope + ')', '');
-    if (requested == null) return false;
-    var tokens = String(requested || '').split(/\s+/);
-    var classNames = [];
-    var seen = {};
-    for (var i = 0; i < tokens.length; i++) {
-      var className = String(tokens[i] || '').trim();
-      if (!className || seen[className]) continue;
-      seen[className] = true;
-      classNames.push(className);
-    }
-    if (classNames.length === 0) return false;
-    return mutateEntityHeaderText(elementType, indices, function (headerText) {
-      var nextHeader = String(headerText || '');
-      for (var j = 0; j < classNames.length; j++) {
-        nextHeader = toggleMarpClassInHeaderText(nextHeader, classNames[j], classScope);
-      }
-      return nextHeader;
-    });
-  }
-
-  async function handleEntityMarpMenuAction(action, elementType, indices) {
-    if (action === 'marp-classes-refresh') {
-      await refreshAvailableMarpClasses(true);
-      return true;
-    }
-    if (action === 'marp-paginate-local') {
-      await toggleEntityMarpDirective(elementType, indices, 'paginate', 'true', 'local');
-      return true;
-    }
-    if (action === 'marp-paginate-scoped') {
-      await toggleEntityMarpDirective(elementType, indices, 'paginate', 'true', 'scoped');
-      return true;
-    }
-    if (action === 'marp-class-custom-local') {
-      await promptEntityMarpClassToggle(elementType, indices, 'local');
-      return true;
-    }
-    if (action === 'marp-class-custom-scoped') {
-      await promptEntityMarpClassToggle(elementType, indices, 'scoped');
-      return true;
-    }
-    if (action === 'marp-class-clear-local') {
-      await clearEntityMarpClasses(elementType, indices, 'local');
-      return true;
-    }
-    if (action === 'marp-class-clear-scoped') {
-      await clearEntityMarpClasses(elementType, indices, 'scoped');
-      return true;
-    }
-    if (action.indexOf('marp-class-local:') === 0) {
-      await toggleEntityMarpClass(elementType, indices, action.substring('marp-class-local:'.length), 'local');
-      return true;
-    }
-    if (action.indexOf('marp-class-scoped:') === 0) {
-      await toggleEntityMarpClass(elementType, indices, action.substring('marp-class-scoped:'.length), 'scoped');
-      return true;
-    }
-    var directiveMatch = String(action || '').match(/^marp-directive-(set|clear)-(local|scoped):([A-Za-z0-9_]+)$/);
-    if (!directiveMatch) return false;
-    if (directiveMatch[1] === 'set') {
-      await promptEntityMarpDirective(elementType, indices, directiveMatch[3], directiveMatch[2]);
-    } else {
-      await clearEntityMarpDirective(elementType, indices, directiveMatch[3], directiveMatch[2]);
-    }
-    return true;
-  }
-
-  function showCardContextMenu(x, y, colIndex, cardIndex) {
-    showElementContextMenu('card', x, y, { colIndex: colIndex, cardIndex: cardIndex });
-  }
-
-  async function duplicateCard(colIndex, cardIndex) {
-    if (!fullBoardData || !activeBoardId) return;
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var fullIdx = getFullCardIndex(col, cardIndex);
-    var card = col.cards[fullIdx];
-    if (!card) return;
-    pushUndo();
-
-    var clone = JSON.parse(JSON.stringify(card));
-    clone.id = 'dup-' + Date.now();
-    clone.kid = null;
-    col.cards.splice(fullIdx + 1, 0, clone);
-    await persistBoardMutation();
-  }
-
-  async function duplicateCardToColumn(colIndex, cardIndex, targetColIndex) {
-    if (!fullBoardData || !activeBoardId) return;
-    var srcCol = getFullColumn(colIndex);
-    var dstCol = getFullColumn(targetColIndex);
-    if (!srcCol || !dstCol) return;
-    var fullIdx = getFullCardIndex(srcCol, cardIndex);
-    var card = srcCol.cards[fullIdx];
-    if (!card) return;
-    pushUndo();
-    var clone = JSON.parse(JSON.stringify(card));
-    clone.id = 'dup-' + Date.now();
-    clone.kid = null;
-    dstCol.cards.push(clone);
-    await persistBoardMutation();
-  }
-
-  async function parkCopyCard(colIndex, cardIndex) {
-    if (!fullBoardData || !activeBoardId) return;
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var fullIdx = getFullCardIndex(col, cardIndex);
-    var card = col.cards[fullIdx];
-    if (!card) return;
-    pushUndo();
-    var clone = JSON.parse(JSON.stringify(card));
-    clone.id = 'dup-' + Date.now();
-    clone.kid = null;
-    clone.content = applyInternalHiddenTag(clone.content || '', '#hidden-internal-parked');
-    col.cards.splice(fullIdx + 1, 0, clone);
-    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
-  }
-
-  async function tagCard(colIndex, cardIndex, tag) {
-    if (!fullBoardData || !activeBoardId) return;
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var fullIdx = getFullCardIndex(col, cardIndex);
-    if (fullIdx === -1) return;
-    var card = col.cards[fullIdx];
-    if (!card) return;
-    var nextContent = applyInternalHiddenTag(card.content || '', tag);
-    if (nextContent === card.content) return;
-    pushUndo();
-    card.content = nextContent;
-    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
-  }
-
-  async function deleteCard(colIndex, cardIndex) {
-    await tagCard(colIndex, cardIndex, '#hidden-internal-deleted');
-  }
-
-  function resolveTagTarget(elementType, indices) {
-    var text = '';
-    var setFn = null;
-    if (elementType === 'card') {
-      var col = getFullColumn(indices.colIndex);
-      if (!col) return null;
-      var fullIdx = getFullCardIndex(col, indices.cardIndex);
-      if (fullIdx === -1) return null;
-      text = col.cards[fullIdx].content || '';
-      setFn = function (val) { col.cards[fullIdx].content = val; };
-    } else if (elementType === 'column') {
-      var col = getFullColumn(indices.colIndex);
-      if (!col) return null;
-      text = col.title || '';
-      setFn = function (val) { col.title = val; };
-    } else if (elementType === 'row') {
-      var row = findFullDataRow(indices.rowIdx);
-      if (!row) return null;
-      text = row.title || '';
-      setFn = function (val) { row.title = val; };
-    } else if (elementType === 'stack') {
-      var stack = findFullDataStack(indices.rowIdx, indices.stackIdx);
-      if (!stack) return null;
-      text = stack.title || '';
-      setFn = function (val) { stack.title = val; };
-    } else {
-      return null;
-    }
-    return { text: text, setText: setFn };
-  }
-
-  function splitTagHeaderAndBody(text) {
-    var lines = String(text || '').split('\n');
-    var splitIdx = lines.length;
-    for (var i = 0; i < lines.length; i++) {
-      if (lines[i].trim() === '') {
-        splitIdx = i;
-        break;
-      }
-    }
-    return {
-      header: lines.slice(0, splitIdx).join('\n'),
-      bodyLines: lines.slice(splitIdx)
-    };
-  }
-
-  function rebuildTagHeaderAndBody(headerText, bodyLines) {
-    var parts = [];
-    if (headerText) parts = headerText.split('\n');
-    if (Array.isArray(bodyLines) && bodyLines.length > 0) {
-      var nextBodyLines = bodyLines.slice();
-      if (!headerText) {
-        while (nextBodyLines.length > 0 && String(nextBodyLines[0] || '').trim() === '') {
-          nextBodyLines.shift();
-        }
-      }
-      parts = parts.concat(nextBodyLines);
-    }
-    return parts.join('\n');
-  }
-
-  async function mutateEntityHeaderText(elementType, indices, mutator) {
-    if (!fullBoardData || !activeBoardId || typeof mutator !== 'function') return false;
-    var target = resolveTagTarget(elementType, indices);
-    if (!target || typeof target.setText !== 'function') return false;
-    var parts = splitTagHeaderAndBody(target.text || '');
-    var nextHeader = mutator(parts.header || '', target.text || '');
-    if (typeof nextHeader !== 'string' || nextHeader === parts.header) return false;
-    var nextText = rebuildTagHeaderAndBody(nextHeader, parts.bodyLines);
-    if (nextText === target.text) return false;
-    pushUndo();
-    target.setText(nextText);
-    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
-    return true;
-  }
-
-  function normalizePromptTagToken(rawToken) {
-    return LexeraTagSystem.normalizePromptTagToken(rawToken);
-  }
-
-  function parsePromptTagList(rawInput) {
-    return LexeraTagSystem.parsePromptTagList(rawInput);
-  }
-
-  function removeTagFromHeaderText(headerText, tagName) {
-    return LexeraTagSystem.removeTagFromHeader(headerText, tagName);
-  }
-
-  function addTagToHeaderText(headerText, tagName) {
-    return LexeraTagSystem.addTagToHeader(headerText, tagName);
-  }
-
-  function clearRemovableTagsFromHeaderText(headerText) {
-    return LexeraTagSystem.clearRemovableTags(headerText);
-  }
-
-  async function mutateEntityHeaderTags(elementType, indices, mutator) {
-    return mutateEntityHeaderText(elementType, indices, function (header) {
-      return mutator(header || '');
-    });
-  }
-
-  async function promptAddTagsToEntity(elementType, indices) {
-    var raw = window.prompt('Add tags (space/comma separated)', '#todo');
-    if (raw == null) return;
-    var tags = parsePromptTagList(raw);
-    if (tags.length === 0) {
-      showNotification('No valid tags provided');
-      return;
-    }
-    var changed = await mutateEntityHeaderTags(elementType, indices, function (header) {
-      var next = header;
-      for (var i = 0; i < tags.length; i++) next = addTagToHeaderText(next, tags[i]);
-      return next;
-    });
-    if (!changed) showNotification('Tags already present');
-  }
-
-  async function promptRemoveTagsFromEntity(elementType, indices) {
-    var target = resolveTagTarget(elementType, indices);
-    var prefill = target ? extractAllTags(target.text || '').join(' ') : '';
-    var raw = window.prompt('Remove tags (space/comma separated)', prefill || '#todo');
-    if (raw == null) return;
-    var tags = parsePromptTagList(raw);
-    if (tags.length === 0) {
-      showNotification('No valid tags provided');
-      return;
-    }
-    var changed = await mutateEntityHeaderTags(elementType, indices, function (header) {
-      var next = header;
-      for (var i = 0; i < tags.length; i++) next = removeTagFromHeaderText(next, tags[i]);
-      return next;
-    });
-    if (!changed) showNotification('Selected tags not found');
-  }
-
-  async function clearTagsFromEntity(elementType, indices) {
-    var changed = await mutateEntityHeaderTags(elementType, indices, clearRemovableTagsFromHeaderText);
-    if (!changed) showNotification('No removable tags found');
-  }
-
-  async function handleEntityTagMenuAction(action, elementType, indices) {
-    if (action === 'tag-add') {
-      await promptAddTagsToEntity(elementType, indices);
-      return true;
-    }
-    if (action === 'tag-remove') {
-      await promptRemoveTagsFromEntity(elementType, indices);
-      return true;
-    }
-    if (action === 'tag-clear') {
-      await clearTagsFromEntity(elementType, indices);
-      return true;
-    }
-    var tagName = extractTagNameFromMenuAction(action);
-    if (tagName) {
-      await toggleTag(elementType, indices, tagName);
-      return true;
-    }
-    return false;
-  }
-
-  async function toggleTag(elementType, indices, tagName) {
-    var normalizedTag = normalizePromptTagToken(tagName);
-    if (!normalizedTag) return;
-    await mutateEntityHeaderTags(elementType, indices, function (header) {
-      if (hasTag(header, normalizedTag)) return removeTagFromHeaderText(header, normalizedTag);
-      return addTagToHeaderText(header, normalizedTag);
-    });
-  }
 
   // --- Column Context Menu & Operations ---
+  // All moved to LexeraColumnContextMenu module (menu/columnContextMenu.js)
 
-  var activeColMenu = null;
+  var _ColCtx = window.LexeraColumnContextMenu;
 
-  function closeColumnContextMenu() {
-    if (activeColMenu) { activeColMenu.remove(); activeColMenu = null; }
-  }
-
-  function showColumnContextMenu(x, y, colIndex, context) {
-    var ctx = { colIndex: colIndex };
-    if (context) { ctx.rowIdx = context.rowIdx; ctx.stackIdx = context.stackIdx; ctx.colLocalIdx = context.colLocalIdx; }
-    showElementContextMenu('column', x, y, ctx);
-  }
-
-  async function setColumnIncludePath(colIndex, nextPath) {
-    var col = getFullColumn(colIndex);
-    if (!col || !fullBoardData || !activeBoardId) return false;
-    var cleanPath = String(nextPath || '').trim();
-    if (!cleanPath) return false;
-    var nextTitle = reconstructColumnTitle(
-      addIncludeSyntaxToTitle(col.title || '', cleanPath),
-      col.title || ''
-    );
-    if (nextTitle === col.title && col.includeSource && col.includeSource.rawPath === cleanPath) {
-      return false;
-    }
-    pushUndo();
-    col.title = nextTitle;
-    col.includeSource = { rawPath: cleanPath };
-    return persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
-  }
-
-  async function enableColumnIncludeMode(colIndex) {
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var requested = window.prompt('Include file path', suggestIncludePathForColumn(col.title || ''));
-    if (requested == null) return;
-    await setColumnIncludePath(colIndex, requested);
-  }
-
-  async function editColumnIncludeFile(colIndex) {
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var currentPath = col && col.includeSource && col.includeSource.rawPath
-      ? String(col.includeSource.rawPath)
-      : extractIncludePathFromTitle(col.title || '');
-    if (!currentPath) {
-      showNotification('This column is not in include mode');
-      return;
-    }
-    var requested = window.prompt('Edit include file path', currentPath);
-    if (requested == null) return;
-    await setColumnIncludePath(colIndex, requested);
-  }
-
-  async function disableColumnIncludeMode(colIndex) {
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var currentPath = col && col.includeSource && col.includeSource.rawPath
-      ? String(col.includeSource.rawPath)
-      : extractIncludePathFromTitle(col.title || '');
-    if (!currentPath) return;
-    if (!(await showConfirmDialog('Disable include mode? Included cards will be written back into this board as regular cards.'))) {
-      return;
-    }
-    var cleanTitle = removeIncludeSyntaxFromTitle(col.title || '');
-    if (!cleanTitle) {
-      cleanTitle = getDisplayNameFromPath(currentPath).replace(/\.[^.]+$/, '') || 'Untitled Column';
-    }
-    pushUndo();
-    col.title = reconstructColumnTitle(cleanTitle, col.title || '');
-    col.includeSource = null;
-    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
-  }
-
-  async function moveColumnToStack(colIndex, targetRowIdx, targetStackIdx) {
-    if (!fullBoardData || !fullBoardData.rows) {
-      traceFrontendAction('warn', 'column.move', 'Aborted move because fullBoardData is missing', {
-        boardId: activeBoardId || null,
-        colIndex: colIndex,
-        targetRowIdx: targetRowIdx,
-        targetStackIdx: targetStackIdx
-      });
-      return;
-    }
-    // Find and remove column from current location
-    var col = getFullColumn(colIndex);
-    if (!col) {
-      traceFrontendAction('warn', 'column.move', 'Aborted move because source column could not be resolved', {
-        boardId: activeBoardId || null,
-        colIndex: colIndex,
-        targetRowIdx: targetRowIdx,
-        targetStackIdx: targetStackIdx
-      });
-      return;
-    }
-    var container = findColumnContainer(colIndex);
-    if (!container) {
-      traceFrontendAction('warn', 'column.move', 'Aborted move because source container could not be resolved', {
-        boardId: activeBoardId || null,
-        colIndex: colIndex,
-        targetRowIdx: targetRowIdx,
-        targetStackIdx: targetStackIdx,
-        columnId: col.id || null
-      });
-      return;
-    }
-    // Add to target stack — targetRowIdx/targetStackIdx are display indices
-    var targetStack = findFullDataStack(targetRowIdx, targetStackIdx);
-    if (!targetStack) {
-      traceFrontendAction('warn', 'column.move', 'Aborted move because target stack could not be resolved', {
-        boardId: activeBoardId || null,
-        colIndex: colIndex,
-        columnId: col.id || null,
-        targetRowIdx: targetRowIdx,
-        targetStackIdx: targetStackIdx
-      });
-      return;
-    }
-    if (container.stack === targetStack) {
-      traceFrontendAction('warn', 'column.move', 'Skipping move because source and target stack are identical', {
-        boardId: activeBoardId || null,
-        colIndex: colIndex,
-        columnId: col.id || null,
-        rowIdx: container.rowIdx,
-        stackIdx: container.stackIdx
-      });
-      return;
-    }
-    traceFrontendAction('info', 'column.move', 'Moving column to stack', {
-      boardId: activeBoardId || null,
-      colIndex: colIndex,
-      columnId: col.id || null,
-      sourceRowIdx: container.rowIdx,
-      sourceStackIdx: container.stackIdx,
-      targetRowIdx: targetRowIdx,
-      targetStackIdx: targetStackIdx
-    });
-    pushUndo();
-    var removed = container.arr.splice(container.localIdx, 1)[0];
-    targetStack.columns.push(removed);
-    removeEmptyStacksAndRows();
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-
-  async function setColumnHiddenTag(colIndex, tag) {
-    traceFrontendAction('info', 'column.hiddenTag', 'setColumnHiddenTag called', { colIndex: colIndex, tag: tag });
-    if (!fullBoardData || !activeBoardId) return;
-    var col = getFullColumn(colIndex);
-    if (!col) {
-      traceFrontendAction('warn', 'column.hiddenTag', 'getFullColumn returned null', { colIndex: colIndex });
-      return;
-    }
-    var nextTitle = applyInternalHiddenTag(col.title || '', tag);
-    traceFrontendAction('info', 'column.hiddenTag', 'Title transformation', { oldTitle: col.title, nextTitle: nextTitle, same: nextTitle === col.title });
-    if (nextTitle === col.title) return;
-    pushUndo();
-    col.title = nextTitle;
-    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
-    // Post-save verification: check if the tag survived the save round-trip
-    var postSaveCol = getFullColumn(colIndex);
-    var postTitle = postSaveCol ? postSaveCol.title : '(col gone)';
-    var tagSurvived = postTitle.indexOf(tag) !== -1;
-    traceFrontendAction(tagSurvived ? 'info' : 'error', 'column.hiddenTag', 'Post-save verification', {
-      colIndex: colIndex,
-      expectedTag: tag,
-      postSaveTitle: postTitle,
-      tagSurvived: tagSurvived
-    });
-  }
-
-  function compareNumericTagParts(aParts, bParts) {
-    var left = Array.isArray(aParts) ? aParts : null;
-    var right = Array.isArray(bParts) ? bParts : null;
-    if (!left && !right) return 0;
-    if (!left) return 1;
-    if (!right) return -1;
-    var maxLen = Math.max(left.length, right.length);
-    for (var i = 0; i < maxLen; i++) {
-      var lv = i < left.length ? left[i] : 0;
-      var rv = i < right.length ? right[i] : 0;
-      if (lv !== rv) return lv - rv;
-    }
-    return left.length - right.length;
-  }
-
-  function extractFirstTemporalDateValue(content) {
-    var tokens = collectHeaderTagTokens(content, { includeHash: false, includeAt: true, includeTemporalBang: true });
-    for (var i = 0; i < tokens.length; i++) {
-      var type = getTemporalTagType(tokens[i]);
-      if (type === 'date' || type === 'weekday') {
-        var resolved = resolveTemporalTag(tokens[i]);
-        if (resolved) return resolved;
-      }
-    }
-    return '';
-  }
-
-  function compareCardsForSort(a, b, mode) {
-    if (mode === 'title') {
-      var titleA = String((a && a.content ? a.content : '')).split('\n')[0].toLowerCase();
-      var titleB = String((b && b.content ? b.content : '')).split('\n')[0].toLowerCase();
-      return titleA < titleB ? -1 : titleA > titleB ? 1 : 0;
-    }
-    if (mode === 'tag') {
-      return compareNumericTagParts(extractNumericTag(a && a.content ? a.content : ''), extractNumericTag(b && b.content ? b.content : ''));
-    }
-    if (mode === 'duedate') {
-      var dateA = extractFirstTemporalDateValue(a && a.content ? a.content : '');
-      var dateB = extractFirstTemporalDateValue(b && b.content ? b.content : '');
-      if (!dateA && !dateB) return 0;
-      if (!dateA) return 1;
-      if (!dateB) return -1;
-      return dateA < dateB ? -1 : dateA > dateB ? 1 : 0;
-    }
-    return 0;
-  }
-
-  async function sortColumnCards(colIndex, mode) {
-    var col = getFullColumn(colIndex);
-    if (!col || col.cards.length < 2) return;
-    var key = colIndex + ':' + mode;
-    var prevDir = columnSortState[key] || 'asc';
-    var dir = prevDir === 'asc' ? 'desc' : 'asc';
-    columnSortState[key] = dir;
-    pushUndo();
-    col.cards.sort(function (a, b) {
-      var cmp = compareCardsForSort(a, b, mode);
-      return dir === 'desc' ? -cmp : cmp;
-    });
-    await persistBoardMutation();
-  }
-
-  function sortColumnsCards(columns, mode) {
-    var changed = false;
-    for (var i = 0; i < columns.length; i++) {
-      var col = columns[i];
-      if (!col || !Array.isArray(col.cards) || col.cards.length < 2) continue;
-      col.cards.sort(function (a, b) { return compareCardsForSort(a, b, mode); });
-      changed = true;
-    }
-    return changed;
-  }
-
-  async function sortRowCards(rowIdx, mode) {
-    var row = findFullDataRow(rowIdx);
-    if (!row || !row.stacks) return;
-    var cols = [];
-    for (var s = 0; s < row.stacks.length; s++) {
-      var stack = row.stacks[s];
-      if (stack && stack.columns) cols = cols.concat(stack.columns);
-    }
-    if (cols.length === 0) return;
-    pushUndo();
-    sortColumnsCards(cols, mode);
-    await persistBoardMutation();
-  }
-
-  async function sortStackCards(rowIdx, stackIdx, mode) {
-    var stack = findFullDataStack(rowIdx, stackIdx);
-    if (!stack || !stack.columns) return;
-    pushUndo();
-    sortColumnsCards(stack.columns, mode);
-    await persistBoardMutation();
-  }
-
-  async function sortAllCardsAcrossBoard(mode) {
-    if (!fullBoardData || !activeBoardId) return;
-    var allCols = getAllColumnsFromBoardData(fullBoardData);
-    if (!allCols || allCols.length === 0) return;
-
-    var plans = [];
-    for (var i = 0; i < allCols.length; i++) {
-      var col = allCols[i];
-      if (!col || !Array.isArray(col.cards) || col.cards.length < 2) continue;
-      var sorted = col.cards.slice().sort(function (a, b) { return compareCardsForSort(a, b, mode); });
-      var different = false;
-      for (var j = 0; j < sorted.length; j++) {
-        if (sorted[j] !== col.cards[j]) {
-          different = true;
-          break;
-        }
-      }
-      if (different) plans.push({ column: col, cards: sorted });
-    }
-    if (plans.length === 0) return;
-
-    pushUndo();
-    for (var p = 0; p < plans.length; p++) {
-      plans[p].column.cards = plans[p].cards;
-    }
-    await persistBoardMutation();
-  }
-
-  function extractNumericTag(content) {
-    var numericTags = extractAllNumericTags(content);
-    return numericTags.length > 0 ? numericTags[0].parts.slice() : null;
-  }
-
-  function extractAllNumericTags(content) {
-    var tokens = collectHeaderTagTokens(content, {
-      includeHash: true,
-      includeAt: false,
-      includeTemporalBang: false
-    });
-    var out = [];
-    var seen = {};
-    for (var i = 0; i < tokens.length; i++) {
-      var token = String(tokens[i] || '');
-      if (!isNumericIndexTag(token)) continue;
-      var normalizedToken = token.toLowerCase();
-      if (seen[normalizedToken]) continue;
-      seen[normalizedToken] = true;
-      var parts = token.slice(1).split('.');
-      var numbers = [];
-      for (var p = 0; p < parts.length; p++) {
-        var part = parseInt(parts[p], 10);
-        if (!isFinite(part)) {
-          numbers = null;
-          break;
-        }
-        numbers.push(part);
-      }
-      if (numbers && numbers.length > 0) {
-        out.push({
-          tag: token,
-          parts: numbers
-        });
-      }
-    }
-    return out;
-  }
-
-  function escapeAttr(str) {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-
-  function enterColumnRename(colEl, colIndex) {
-    if (!fullBoardData) return;
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var titleEl = colEl.querySelector('.column-title');
-    if (!titleEl) return;
-    var includePath = extractIncludePathFromTitle(col.title);
-    var currentTitle = removeIncludeSyntaxFromTitle(stripLayoutTags(col.title));
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'column-rename-input';
-    input.value = currentTitle;
-    titleEl.textContent = '';
-    titleEl.appendChild(input);
-    input.focus();
-    input.select();
-
-    var done = false;
-    function save() {
-      if (done) return;
-      done = true;
-      var newTitle = input.value.trim();
-      if (newTitle && newTitle !== currentTitle) {
-        pushUndo();
-        var rebuilt = reconstructColumnTitle(newTitle, col.title);
-        if (includePath) {
-          rebuilt = addIncludeSyntaxToTitle(rebuilt, includePath);
-        }
-        col.title = rebuilt;
-        persistBoardMutation();
-      } else {
-        var displayTitle = includePath ? addIncludeSyntaxToTitle(currentTitle, includePath) : currentTitle;
-        titleEl.innerHTML = renderTitleInline(displayTitle, activeBoardId, { allowIncludeDirectives: true });
-      }
-    }
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); save(); }
-    });
-  }
-
-  /**
-   * Find the container array and local index for a flat column index.
-   * Returns { arr: array, localIdx: number } where arr is the columns array
-   * containing the column, and localIdx is its position within that array.
-   */
-  function getBoardColumnByPath(boardData, rowIdx, stackIdx, colIdx) {
-    if (!boardData || !boardData.rows) return null;
-    if (rowIdx < 0 || rowIdx >= boardData.rows.length) return null;
-    var row = boardData.rows[rowIdx];
-    if (!row.stacks || stackIdx < 0 || stackIdx >= row.stacks.length) return null;
-    var stack = row.stacks[stackIdx];
-    if (!stack.columns || colIdx < 0 || colIdx >= stack.columns.length) return null;
-    return stack.columns[colIdx];
-  }
-
-  function findColumnContainerInBoard(boardData, flatIndex) {
-    if (!boardData || !boardData.rows) return null;
-    var idx = 0;
-    for (var r = 0; r < boardData.rows.length; r++) {
-      var row = boardData.rows[r];
-      for (var s = 0; s < row.stacks.length; s++) {
-        var stack = row.stacks[s];
-        for (var c = 0; c < stack.columns.length; c++) {
-          if (idx === flatIndex) {
-            return {
-              arr: stack.columns,
-              localIdx: c,
-              row: row,
-              rowIdx: r,
-              stack: stack,
-              stackIdx: s
-            };
-          }
-          idx++;
-        }
-      }
-    }
-    return null;
-  }
-
-  function findColumnContainer(flatIndex) {
-    return findColumnContainerInBoard(fullBoardData, flatIndex);
-  }
-
-  async function addColumn(atIndex) {
-    if (!fullBoardData || !activeBoardId) {
-      traceFrontendAction('warn', 'column.create.flat', 'Aborted flat add column because board data is missing', {
-        boardId: activeBoardId || null,
-        atIndex: atIndex
-      });
-      return false;
-    }
-    pushUndo();
-    var newCol = { id: 'col-' + Date.now(), title: 'New Column', cards: [] };
-    var container = findColumnContainer(atIndex);
-    if (container) {
-      traceFrontendAction('info', 'column.create.flat', 'Resolved flat insertion container', {
-        boardId: activeBoardId || null,
-        atIndex: atIndex,
-        rowIdx: container.rowIdx,
-        stackIdx: container.stackIdx,
-        localIdx: container.localIdx,
-        columnId: newCol.id
-      });
-    } else {
-      traceFrontendAction('warn', 'column.create.flat', 'Flat insertion fell back to last visible stack', {
-        boardId: activeBoardId || null,
-        atIndex: atIndex,
-        columnId: newCol.id
-      });
-    }
-    if (container) {
-      container.arr.splice(container.localIdx, 0, newCol);
-    } else {
-      // atIndex is past end — append to last stack of last row.
-      // Ensure at least one row/stack exists for empty boards.
-      if (!fullBoardData.rows || fullBoardData.rows.length === 0) {
-        fullBoardData.rows = [{
-          id: 'row-' + Date.now(),
-          title: fullBoardData.title || 'Board',
-          stacks: []
-        }];
-      }
-      var lastRow = fullBoardData.rows[fullBoardData.rows.length - 1];
-      if (!lastRow.stacks || lastRow.stacks.length === 0) {
-        lastRow.stacks = [{
-          id: 'stack-' + Date.now(),
-          title: 'Default',
-          columns: []
-        }];
-      }
-      lastRow.stacks[lastRow.stacks.length - 1].columns.push(newCol);
-    }
-    var saved = await persistBoardMutation();
-    traceFrontendAction(saved ? 'info' : 'warn', 'column.create.flat', saved ? 'Persisted flat column insertion' : 'Flat column insertion persist reported failure', {
-      boardId: activeBoardId || null,
-      atIndex: atIndex,
-      columnId: newCol.id
-    });
-    return saved;
-  }
-
-  async function deleteColumn(colIndex) {
-    traceFrontendAction('info', 'column.delete', 'deleteColumn called', { colIndex: colIndex });
-    if (!fullBoardData || !activeBoardId) {
-      traceFrontendAction('warn', 'column.delete', 'No fullBoardData or activeBoardId');
-      return;
-    }
-    var col = getFullColumn(colIndex);
-    if (!col) {
-      traceFrontendAction('warn', 'column.delete', 'getFullColumn returned null', { colIndex: colIndex });
-      return;
-    }
-    var visibleCards = (col.cards || []).filter(function (c) { return !is_archived_or_deleted(c.content || ''); });
-    traceFrontendAction('info', 'column.delete', 'Column found', { title: col.title, totalCards: col.cards.length, visibleCards: visibleCards.length });
-    if (visibleCards.length > 0) {
-      var confirmed = await showConfirmDialog('Move column "' + stripLayoutTags(col.title) + '" and ' + visibleCards.length + ' card(s) to trash?');
-      traceFrontendAction('info', 'column.delete', 'Confirm dialog result', { confirmed: confirmed });
-      if (!confirmed) return;
-    }
-    traceFrontendAction('info', 'column.delete', 'Calling setColumnHiddenTag');
-    await setColumnHiddenTag(colIndex, '#hidden-internal-deleted');
-  }
-
-  async function duplicateColumn(colIndex) {
-    if (!fullBoardData || !activeBoardId) return;
-    var container = findColumnContainer(colIndex);
-    if (!container) return;
-    var col = container.arr[container.localIdx];
-    if (!col) return;
-    pushUndo();
-    var clone = JSON.parse(JSON.stringify(col));
-    var ts = Date.now();
-    clone.id = 'col-' + ts;
-    for (var k = 0; k < clone.cards.length; k++) {
-      clone.cards[k].id = 'dup-' + ts + '-' + k;
-      clone.cards[k].kid = null;
-    }
-    container.arr.splice(container.localIdx + 1, 0, clone);
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  function toggleColCards(colIndex, collapse) {
-    if (isCanvasBoardLayout()) return;
-    var cards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"]');
-    for (var i = 0; i < cards.length; i++) {
-      if (collapse) {
-        cards[i].classList.add('collapsed');
-      } else {
-        cards[i].classList.remove('collapsed');
-      }
-      var toggle = cards[i].querySelector('.card-collapse-toggle');
-      if (toggle) {
-        if (collapse) toggle.classList.remove('expanded');
-        else toggle.classList.add('expanded');
-      }
-    }
-    saveCardCollapseState(activeBoardId);
-  }
-
-  function revealCardContent(colIndex, cardIndex) {
-    var card = getElColumnsContainer().querySelector('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
-    if (!card) return;
-    if (card.hasAttribute('data-hidden-revealed')) {
-      card.removeAttribute('data-hidden-revealed');
-    } else {
-      card.setAttribute('data-hidden-revealed', '');
-    }
-  }
-
-  function revealColumnContent(colIndex) {
-    var cards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"]');
-    var allRevealed = true;
-    for (var i = 0; i < cards.length; i++) {
-      if (!cards[i].hasAttribute('data-hidden-revealed')) { allRevealed = false; break; }
-    }
-    for (var j = 0; j < cards.length; j++) {
-      if (allRevealed) cards[j].removeAttribute('data-hidden-revealed');
-      else cards[j].setAttribute('data-hidden-revealed', '');
-    }
-  }
-
-  function revealRowContent(rowIdx) {
-    var columnsContainer = getElColumnsContainer();
-    var rowEl = columnsContainer.querySelectorAll('.kanban-row')[rowIdx];
-    if (!rowEl) return;
-    var cards = rowEl.querySelectorAll('.card');
-    var allRevealed = true;
-    for (var i = 0; i < cards.length; i++) {
-      if (!cards[i].hasAttribute('data-hidden-revealed')) { allRevealed = false; break; }
-    }
-    for (var j = 0; j < cards.length; j++) {
-      if (allRevealed) cards[j].removeAttribute('data-hidden-revealed');
-      else cards[j].setAttribute('data-hidden-revealed', '');
-    }
-  }
-
-  function revealStackContent(rowIdx, stackIdx) {
-    var columnsContainer = getElColumnsContainer();
-    var rowEl = columnsContainer.querySelectorAll('.kanban-row')[rowIdx];
-    if (!rowEl) return;
-    var stackEl = rowEl.querySelectorAll('.kanban-column-stack')[stackIdx];
-    if (!stackEl) return;
-    var cards = stackEl.querySelectorAll('.card');
-    var allRevealed = true;
-    for (var i = 0; i < cards.length; i++) {
-      if (!cards[i].hasAttribute('data-hidden-revealed')) { allRevealed = false; break; }
-    }
-    for (var j = 0; j < cards.length; j++) {
-      if (allRevealed) cards[j].removeAttribute('data-hidden-revealed');
-      else cards[j].setAttribute('data-hidden-revealed', '');
-    }
-  }
+  function closeColumnContextMenu() { _ColCtx.closeColumnContextMenu(); }
+  function showColumnContextMenu(x, y, colIndex, context) { _ColCtx.showColumnContextMenu(x, y, colIndex, context); }
+  function setColumnIncludePath(colIndex, nextPath) { return _ColCtx.setColumnIncludePath(colIndex, nextPath); }
+  function enableColumnIncludeMode(colIndex) { return _ColCtx.enableColumnIncludeMode(colIndex); }
+  function editColumnIncludeFile(colIndex) { return _ColCtx.editColumnIncludeFile(colIndex); }
+  function disableColumnIncludeMode(colIndex) { return _ColCtx.disableColumnIncludeMode(colIndex); }
+  function moveColumnToStack(colIndex, targetRowIdx, targetStackIdx) { return _ColCtx.moveColumnToStack(colIndex, targetRowIdx, targetStackIdx); }
+  function setColumnHiddenTag(colIndex, tag) { return _ColCtx.setColumnHiddenTag(colIndex, tag); }
+  function compareNumericTagParts(aParts, bParts) { return _ColCtx.compareNumericTagParts(aParts, bParts); }
+  function extractFirstTemporalDateValue(content) { return _ColCtx.extractFirstTemporalDateValue(content); }
+  function compareCardsForSort(a, b, mode) { return _ColCtx.compareCardsForSort(a, b, mode); }
+  function sortColumnCards(colIndex, mode) { return _ColCtx.sortColumnCards(colIndex, mode); }
+  function sortColumnsCards(columns, mode) { return _ColCtx.sortColumnsCards(columns, mode); }
+  function sortRowCards(rowIdx, mode) { return _ColCtx.sortRowCards(rowIdx, mode); }
+  function sortStackCards(rowIdx, stackIdx, mode) { return _ColCtx.sortStackCards(rowIdx, stackIdx, mode); }
+  function sortAllCardsAcrossBoard(mode) { return _ColCtx.sortAllCardsAcrossBoard(mode); }
+  function extractNumericTag(content) { return _ColCtx.extractNumericTag(content); }
+  function extractAllNumericTags(content) { return _ColCtx.extractAllNumericTags(content); }
+  function escapeAttr(str) { return _ColCtx.escapeAttr(str); }
+  function enterColumnRename(colEl, colIndex) { _ColCtx.enterColumnRename(colEl, colIndex); }
+  function getBoardColumnByPath(boardData, rowIdx, stackIdx, colIdx) { return _ColCtx.getBoardColumnByPath(boardData, rowIdx, stackIdx, colIdx); }
+  function findColumnContainerInBoard(boardData, flatIndex) { return _ColCtx.findColumnContainerInBoard(boardData, flatIndex); }
+  function findColumnContainer(flatIndex) { return _ColCtx.findColumnContainer(flatIndex); }
+  function addColumn(atIndex) { return _ColCtx.addColumn(atIndex); }
+  function deleteColumn(colIndex) { return _ColCtx.deleteColumn(colIndex); }
+  function duplicateColumn(colIndex) { return _ColCtx.duplicateColumn(colIndex); }
+  function toggleColCards(colIndex, collapse) { _ColCtx.toggleColCards(colIndex, collapse); }
+  function revealCardContent(colIndex, cardIndex) { _ColCtx.revealCardContent(colIndex, cardIndex); }
+  function revealColumnContent(colIndex) { _ColCtx.revealColumnContent(colIndex); }
+  function revealRowContent(rowIdx) { _ColCtx.revealRowContent(rowIdx); }
+  function revealStackContent(rowIdx, stackIdx) { _ColCtx.revealStackContent(rowIdx, stackIdx); }
 
   // Close context menus on outside click
   document.addEventListener('click', function () {
@@ -14781,7 +11891,7 @@ const LexeraDashboard = (function () {
 
       // State getters
       getActiveBoardId: function () { return activeBoardId; },
-      getCurrentCardEditor: function () { return currentCardEditor; },
+      getCurrentCardEditor: function () { return CardEditorModule ? CardEditorModule.getCurrentCardEditor() : null; },
       getFullBoardData: function () { return fullBoardData; },
       getCurrentHtmlCommentRenderMode: function () { return currentHtmlCommentRenderMode; },
       getCurrentTagVisibilityMode: function () { return currentTagVisibilityMode; },
@@ -15814,7 +12924,7 @@ const LexeraDashboard = (function () {
     // ── Board Setting Descriptors ─────────────────────────────────────
     BoardSettingRegistry.register({
       id: 'columnWidth', label: 'Column Width', category: 'format',
-      settingsKey: 'columnWidth', actionPrefix: 'set-column-width', defaultValue: '450px',
+      settingsKey: 'columnWidth', actionPrefix: 'set-column-width', defaultValue: '350px',
       normalize: normalizeColumnWidth,
       options: [
         { value: '250px', label: '250px' }, { value: '350px', label: '350px' },
@@ -16435,6 +13545,76 @@ const LexeraDashboard = (function () {
     });
     ActionRegistry.register('stack', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
     ActionRegistry.register('stack', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
+
+    // ── LexeraColumnContextMenu init ──
+    if (window.LexeraColumnContextMenu) {
+      LexeraColumnContextMenu.init({
+        getFullBoardData: function () { return fullBoardData; },
+        getActiveBoardId: function () { return activeBoardId; },
+        getFullColumn: function (idx) { return getFullColumn(idx); },
+        findFullDataRow: function (rowIdx) { return findFullDataRow(rowIdx); },
+        findFullDataStack: function (rowIdx, stackIdx) { return findFullDataStack(rowIdx, stackIdx); },
+        getAllColumnsFromBoardData: function (bd) { return getAllColumnsFromBoardData(bd); },
+        pushUndo: function () { pushUndo(); },
+        persistBoardMutation: function (opts) { return persistBoardMutation(opts); },
+        showElementContextMenu: function (scope, x, y, ctx) { showElementContextMenu(scope, x, y, ctx); },
+        showNotification: function (msg) { showNotification(msg); },
+        showConfirmDialog: function (msg) { return showConfirmDialog(msg); },
+        traceFrontendAction: function (level, area, msg, data) { traceFrontendAction(level, area, msg, data); },
+        reconstructColumnTitle: function (newTitle, oldTitle) { return reconstructColumnTitle(newTitle, oldTitle); },
+        addIncludeSyntaxToTitle: function (title, path) { return addIncludeSyntaxToTitle(title, path); },
+        removeIncludeSyntaxFromTitle: function (title) { return removeIncludeSyntaxFromTitle(title); },
+        extractIncludePathFromTitle: function (title) { return extractIncludePathFromTitle(title); },
+        suggestIncludePathForColumn: function (title) { return suggestIncludePathForColumn(title); },
+        getDisplayNameFromPath: function (p) { return getDisplayNameFromPath(p); },
+        applyInternalHiddenTag: function (content, tag) { return applyInternalHiddenTag(content, tag); },
+        removeEmptyStacksAndRows: function () { removeEmptyStacksAndRows(); },
+        stripLayoutTags: function (title) { return stripLayoutTags(title); },
+        renderTitleInline: function (title, boardId, opts) { return renderTitleInline(title, boardId, opts); },
+        is_archived_or_deleted: function (content) { return is_archived_or_deleted(content); },
+        isCanvasBoardLayout: function () { return isCanvasBoardLayout(); },
+        getElColumnsContainer: function () { return getElColumnsContainer(); },
+        saveCardCollapseState: function (boardId) { saveCardCollapseState(boardId); },
+        collectHeaderTagTokens: function (content, opts) { return collectHeaderTagTokens(content, opts); },
+        getTemporalTagType: function (token) { return getTemporalTagType(token); },
+        resolveTemporalTag: function (token) { return resolveTemporalTag(token); },
+        isNumericIndexTag: function (token) { return isNumericIndexTag(token); }
+      });
+    }
+
+    // ── CardContextMenu init ──
+    if (window.CardContextMenu) {
+      CardContextMenu.init({
+        ContextMenuBuilders: window.ContextMenuBuilders,
+        LexeraTagSystem: LexeraTagSystem,
+        getFullBoardData: function () { return fullBoardData; },
+        getActiveBoardId: function () { return activeBoardId; },
+        getFullColumn: function (idx) { return getFullColumn(idx); },
+        getFullCardIndex: function (col, visIdx) { return getFullCardIndex(col, visIdx); },
+        findFullDataRow: function (rowIdx) { return findFullDataRow(rowIdx); },
+        findFullDataStack: function (rowIdx, stackIdx) { return findFullDataStack(rowIdx, stackIdx); },
+        pushUndo: function () { pushUndo(); },
+        persistBoardMutation: function (opts) { return persistBoardMutation(opts); },
+        applyInternalHiddenTag: function (content, tag) { return applyInternalHiddenTag(content, tag); },
+        showElementContextMenu: function (scope, x, y, ctx) { showElementContextMenu(scope, x, y, ctx); },
+        showNotification: function (msg) { showNotification(msg); },
+        logFrontendIssue: function (level, area, msg, err) { logFrontendIssue(level, area, msg, err); },
+        hasTag: function (text, tag) { return hasTag(text, tag); },
+        extractAllTags: function (text) { return extractAllTags(text); },
+        escapeRegex: function (str) { return escapeRegex(str); },
+        formatMenuToggleLabel: function (enabled, label) { return formatMenuToggleLabel(enabled, label); },
+        isMarpSettingsEnabled: function () { return isMarpSettingsEnabled(); },
+        getActiveBoardFilePath: function () { return getActiveBoardFilePath(); },
+        getDirNameFromPath: function (p) { return getDirNameFromPath(p); },
+        normalizePathForCompare: function (p) { return normalizePathForCompare(p); },
+        copyTextToClipboard: function (t, s, f) { return copyTextToClipboard(t, s, f); },
+        getBoardMarpFrontmatter: function () { return getBoardMarpFrontmatter(); },
+        setBoardFrontmatterValue: function (key, value) { return setBoardFrontmatterValue(key, value); },
+        normalizeYamlFrontmatterScalar: function (value) { return normalizeYamlFrontmatterScalar(value); },
+        getWhitespaceTokenList: function (value) { return getWhitespaceTokenList(value); },
+        setWhitespaceTokenList: function (tokens) { return setWhitespaceTokenList(tokens); }
+      });
+    }
 
     // ── Menu Contributor Registrations (delegated to ContextMenuBuilders) ──
     if (window.ContextMenuBuilders) {
