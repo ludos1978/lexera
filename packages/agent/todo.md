@@ -2,6 +2,10 @@
 
 ## High Priority — Security & Reliability
 
+- [ ] i currently cant put the log viewer into the window bottom when the view is split with the left/right panes, i can only split the kanban/canvas views top/bottom. when very close (~6pix) to the window borders allways snap to the border areas.
+
+- [ ] the log viewer should show the number of logs that fit into the view. it's current limited in height.
+
 - [x] ~~tab overflow dropdown + reduced close button size~~ (4ec0e383)
 
 - [x] ~~make the drag borders between views always at least 3 pixels~~ (66249ffa)
@@ -78,7 +82,7 @@
 
 - [x] **Extract backend lib.rs setup function** — extracted 570-line setup() closure into 8 named functions + `CollabServices` struct: `init_storage_and_boards`, `resolve_incoming`, `setup_file_watcher`, `init_collab_services`, `bootstrap_local_user`, `spawn_background_tasks`, `restore_persisted_connections`, `spawn_http_server`. All 903 Rust tests pass.
 
-- [ ] **Frontend modularization** — app.js reduced from 28K to ~25K lines. Extracted: loggingSystem.js, virtualScroll.js, pathUtils.js, tagColors.js, dropZoneIndicators.js, archiveFormatting.js (4aade867), sidebarResize.js (0b8c1442), exportToolStatus.js (5f6ed8c0), renderAppsSettings.js (5f6ed8c0). Previously: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next targets: render helpers, card editor logic, context menu builders.
+- [ ] **Frontend modularization** — app.js reduced from 28K to ~24K lines. Extracted: loggingSystem.js, virtualScroll.js, pathUtils.js, tagColors.js, dropZoneIndicators.js, archiveFormatting.js (4aade867), sidebarResize.js (0b8c1442), exportToolStatus.js (5f6ed8c0), renderAppsSettings.js (5f6ed8c0), boardSearchReplace.js (4a40e43c), boardStatsFilter.js (0165eec3), hiddenItemsDropdown.js (53e2f15c). Previously: foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js. Next targets: render helpers, card editor logic, context menu builders.
 
 - [x] **Fix duplicate code paths producing inconsistent results:**
   - [x] **CRDT card ID collision** — replaced inline `crdt-{hex_timestamp}` ID generation in `bridge.rs:read_card()` with `crate::parser::generate_id("crdt")` which uses atomic sequence counter for guaranteed uniqueness.
