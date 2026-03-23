@@ -22,6 +22,10 @@ function loadMutationFunctions() {
   const tagColorsSource = readFileSync(resolve(srcDir, 'tagcolors', 'tagColors.js'), 'utf-8');
   new Function(tagColorsSource)();
 
+  // Load ArchiveFormatting so delegating functions in app.js can reference it
+  const archiveFormattingSource = readFileSync(resolve(srcDir, 'export', 'archiveFormatting.js'), 'utf-8');
+  new Function(archiveFormattingSource + '\nglobalThis.LexeraArchiveFormatting = LexeraArchiveFormatting;')();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
@@ -176,6 +180,8 @@ function loadMutationFunctions() {
     extractFunction(findLine('function buildTagSubmenu(')),
     extractFunction(findLine('function buildCustomTagsSubmenu(')),
     extractFunction(findLine('function getColumnLayoutTags(')),
+    'var _archiveFormattingHelpers = null;',
+    extractFunction(findLine('function getArchiveFormattingHelpers(')),
     extractFunction(findLine('function buildArchiveFileNameFromBoardPath(')),
     extractFunction(findLine('function buildArchiveRelativePathFromBoardPath(')),
     extractFunction(findLine('function buildArchiveFilePathFromBoardPath(')),

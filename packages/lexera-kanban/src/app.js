@@ -4990,172 +4990,74 @@ const LexeraDashboard = (function () {
     return parts.join(' / ');
   }
 
+  // ── Archive formatting helpers (delegated to LexeraArchiveFormatting) ──
+  var _archiveFormattingHelpers = null;
+
+  function getArchiveFormattingHelpers() {
+    if (_archiveFormattingHelpers) return _archiveFormattingHelpers;
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraArchiveFormatting && typeof globalThis.LexeraArchiveFormatting.createArchiveFormattingHelpers === 'function') {
+      _archiveFormattingHelpers = globalThis.LexeraArchiveFormatting.createArchiveFormattingHelpers({
+        getFileNameFromPath: getFileNameFromPath,
+        getDirNameFromPath: getDirNameFromPath,
+        stripInternalHiddenTags: stripInternalHiddenTags,
+        stripLayoutTags: stripLayoutTags,
+        stripHtmlComments: stripHtmlComments
+      });
+      return _archiveFormattingHelpers;
+    }
+    throw new Error('LexeraArchiveFormatting is unavailable');
+  }
+
   function buildArchiveFileNameFromBoardPath(boardFilePath) {
-    var fileName = getFileNameFromPath(boardFilePath);
-    if (!fileName) return 'archive.md';
-    var extMatch = fileName.match(/(\.[^.]+)$/);
-    var ext = extMatch ? extMatch[1] : '.md';
-    var stem = extMatch ? fileName.slice(0, -ext.length) : fileName;
-    return stem + '-archive' + ext;
+    return getArchiveFormattingHelpers().buildArchiveFileNameFromBoardPath(boardFilePath);
   }
 
   function buildArchiveRelativePathFromBoardPath(boardFilePath) {
-    return buildArchiveFileNameFromBoardPath(boardFilePath);
+    return getArchiveFormattingHelpers().buildArchiveRelativePathFromBoardPath(boardFilePath);
   }
 
   function buildArchiveFilePathFromBoardPath(boardFilePath) {
-    var filename = buildArchiveFileNameFromBoardPath(boardFilePath);
-    var dir = getDirNameFromPath(boardFilePath);
-    return dir ? (dir + '/' + filename) : filename;
+    return getArchiveFormattingHelpers().buildArchiveFilePathFromBoardPath(boardFilePath);
   }
 
   function buildArchiveFileHeader() {
-    return '---\narchived: true\n---\n\n';
+    return getArchiveFormattingHelpers().buildArchiveFileHeader();
   }
 
   function buildArchiveTagValue(dateValue) {
-    var now = dateValue instanceof Date ? dateValue : new Date();
-    var year = now.getFullYear();
-    var month = String(now.getMonth() + 1).padStart(2, '0');
-    var day = String(now.getDate()).padStart(2, '0');
-    var hours = String(now.getHours()).padStart(2, '0');
-    var minutes = String(now.getMinutes()).padStart(2, '0');
-    var seconds = String(now.getSeconds()).padStart(2, '0');
-    return '#archived !' + year + '.' + month + '.' + day + ' !' + hours + ':' + minutes + ':' + seconds;
+    return getArchiveFormattingHelpers().buildArchiveTagValue(dateValue);
   }
 
   function buildArchiveSectionHeading(level, label, title, archiveTag) {
-    var depth = isFinite(level) ? Math.max(1, Math.floor(level)) : 1;
-    var hashes = '';
-    for (var i = 0; i < depth; i++) hashes += '#';
-    var heading = hashes + ' Archived ' + label;
-    if (title) heading += ': ' + title;
-    if (archiveTag) heading += ' ' + archiveTag;
-    return heading;
+    return getArchiveFormattingHelpers().buildArchiveSectionHeading(level, label, title, archiveTag);
   }
 
   function cleanArchiveHeadingTitle(title, options) {
-    options = options || {};
-    var fallback = options.fallback || '';
-    var cleaned = stripInternalHiddenTags(title || '');
-    cleaned = options.isColumn ? stripLayoutTags(cleaned) : stripHtmlComments(cleaned);
-    cleaned = String(cleaned || '').replace(/\s+/g, ' ').trim();
-    return cleaned || fallback;
+    return getArchiveFormattingHelpers().cleanArchiveHeadingTitle(title, options);
   }
 
   function formatArchivedCardMarkdown(card, archiveTag) {
-    var text = stripInternalHiddenTags(card && card.content ? card.content : '');
-    var lines = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-    while (lines.length > 1 && !String(lines[lines.length - 1] || '').trim()) lines.pop();
-    if (!lines.length) lines = [''];
-
-    var firstLine = String(lines[0] || '').trim();
-    var checked = !!(card && card.checked);
-    var checkboxMatch = firstLine.match(/^\s*-\s*\[([ xX])\]\s*(.*)$/);
-    if (checkboxMatch) {
-      checked = checkboxMatch[1].toLowerCase() === 'x';
-      firstLine = checkboxMatch[2] || '';
-    }
-    firstLine = firstLine.trim() || '(untitled card)';
-
-    var rendered = '- [' + (checked ? 'x' : ' ') + '] ' + firstLine;
-    if (archiveTag) rendered += ' ' + archiveTag;
-
-    for (var i = 1; i < lines.length; i++) {
-      rendered += '\n    ' + stripInternalHiddenTags(lines[i] || '');
-    }
-    return rendered;
+    return getArchiveFormattingHelpers().formatArchivedCardMarkdown(card, archiveTag);
   }
 
   function buildArchiveMarkdownForColumn(column, archiveTag, headingLevel) {
-    var cleanTitle = cleanArchiveHeadingTitle(column && column.title, {
-      isColumn: true,
-      fallback: 'Untitled Column'
-    });
-    var lines = [buildArchiveSectionHeading(headingLevel || 2, 'Column', cleanTitle, archiveTag), ''];
-    var cards = column && Array.isArray(column.cards) ? column.cards : [];
-    for (var i = 0; i < cards.length; i++) {
-      lines.push(formatArchivedCardMarkdown(cards[i], archiveTag));
-    }
-    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    return getArchiveFormattingHelpers().buildArchiveMarkdownForColumn(column, archiveTag, headingLevel);
   }
 
   function buildArchiveMarkdownForStack(stack, archiveTag, headingLevel) {
-    var cleanTitle = cleanArchiveHeadingTitle(stack && stack.title, { fallback: 'Untitled Stack' });
-    var sections = [buildArchiveSectionHeading(headingLevel || 2, 'Stack', cleanTitle, archiveTag)];
-    var columns = stack && Array.isArray(stack.columns) ? stack.columns : [];
-    if (columns.length > 0) {
-      sections.push('');
-      for (var i = 0; i < columns.length; i++) {
-        sections.push(buildArchiveMarkdownForColumn(columns[i], archiveTag, (headingLevel || 2) + 1));
-      }
-    }
-    return sections.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    return getArchiveFormattingHelpers().buildArchiveMarkdownForStack(stack, archiveTag, headingLevel);
   }
 
   function buildArchiveMarkdownForRow(row, archiveTag, headingLevel) {
-    var cleanTitle = cleanArchiveHeadingTitle(row && row.title, { fallback: 'Untitled Row' });
-    var sections = [buildArchiveSectionHeading(headingLevel || 1, 'Row', cleanTitle, archiveTag)];
-    var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
-    if (stacks.length > 0) {
-      sections.push('');
-      for (var i = 0; i < stacks.length; i++) {
-        sections.push(buildArchiveMarkdownForStack(stacks[i], archiveTag, (headingLevel || 1) + 1));
-      }
-    }
-    return sections.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    return getArchiveFormattingHelpers().buildArchiveMarkdownForRow(row, archiveTag, headingLevel);
   }
 
   function buildArchiveMarkdownForHiddenItems(items, options) {
-    options = options || {};
-    var list = Array.isArray(items) ? items : [];
-    if (list.length === 0) return '';
-
-    var archiveTag = buildArchiveTagValue(options.now);
-    var sections = [];
-    var cards = [];
-
-    for (var i = 0; i < list.length; i++) {
-      var entry = list[i];
-      if (!entry || !entry.kind || !entry.data) continue;
-      if (entry.kind === 'card') {
-        cards.push(entry.data);
-        continue;
-      }
-      if (entry.kind === 'row') {
-        sections.push(buildArchiveMarkdownForRow(entry.data, archiveTag, 1));
-      } else if (entry.kind === 'stack') {
-        sections.push(buildArchiveMarkdownForStack(entry.data, archiveTag, 2));
-      } else if (entry.kind === 'column') {
-        sections.push(buildArchiveMarkdownForColumn(entry.data, archiveTag, 2));
-      }
-    }
-
-    if (cards.length > 0) {
-      var cardLines = ['## Archived Cards', ''];
-      for (var c = 0; c < cards.length; c++) {
-        cardLines.push(formatArchivedCardMarkdown(cards[c], archiveTag));
-      }
-      sections.push(cardLines.join('\n').trim());
-    }
-
-    return sections.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+    return getArchiveFormattingHelpers().buildArchiveMarkdownForHiddenItems(items, options);
   }
 
   function appendArchivedItemsToArchiveContent(existingContent, archivedContent) {
-    var incoming = String(archivedContent || '').replace(/\r\n/g, '\n').trim();
-    if (!incoming) return String(existingContent || '');
-
-    var existing = String(existingContent || '').replace(/\r\n/g, '\n');
-    if (!existing.trim()) return buildArchiveFileHeader() + incoming + '\n';
-
-    var yamlMatch = existing.match(/^---\n[\s\S]*?\n---\n?/);
-    if (yamlMatch) {
-      var yamlHeader = yamlMatch[0];
-      var restOfContent = existing.slice(yamlHeader.length).trim();
-      return yamlHeader + (restOfContent ? restOfContent + '\n\n' : '') + incoming + '\n';
-    }
-    return existing.replace(/\s+$/, '') + '\n\n' + incoming + '\n';
+    return getArchiveFormattingHelpers().appendArchivedItemsToArchiveContent(existingContent, archivedContent);
   }
 
   function getArchiveFileContextForBoard(boardId) {
@@ -15630,6 +15532,48 @@ const LexeraDashboard = (function () {
     }
   });
 
+  // Double-click on row/stack/column titles to rename inline
+  getElColumnsContainer().addEventListener('dblclick', function (e) {
+    try {
+      // Row title
+      var rowTitleEl = e.target.closest('.board-row-title');
+      if (rowTitleEl) {
+        var rowEl = rowTitleEl.closest('.board-row');
+        if (rowEl) {
+          var rowIdx = parseInt(rowEl.getAttribute('data-row-index'), 10);
+          if (!isNaN(rowIdx)) renameRowOrStack('row', rowIdx);
+        }
+        return;
+      }
+      // Stack title
+      var stackTitleEl = e.target.closest('.board-stack-title');
+      if (stackTitleEl) {
+        var stackEl = stackTitleEl.closest('.board-stack');
+        if (stackEl) {
+          var rowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
+          var stackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
+          if (!isNaN(rowIdx) && !isNaN(stackIdx)) renameRowOrStack('stack', rowIdx, stackIdx);
+        }
+        return;
+      }
+      // Column title
+      var colTitleEl = e.target.closest('.column-title');
+      if (colTitleEl) {
+        var colEl = colTitleEl.closest('.column');
+        if (colEl) {
+          var colCardsEl = colEl.querySelector('.column-cards[data-col-index]');
+          if (colCardsEl) {
+            var colIndex = parseInt(colCardsEl.getAttribute('data-col-index'), 10);
+            if (!isNaN(colIndex)) enterColumnRename(colEl, colIndex);
+          }
+        }
+        return;
+      }
+    } catch (err) {
+      logFrontendIssue('error', 'dblclick.rename', 'Error in title double-click handler', err);
+    }
+  });
+
   // Main board: row/stack/column drag starts from header area (not just grip)
   getElColumnsContainer().addEventListener('mousedown', function (e) {
     try {
@@ -21869,7 +21813,7 @@ const LexeraDashboard = (function () {
 
     return {
       path: cachePath,
-      url: LexeraApi.fileUrl(boardId, cachePath) + (forceRerender ? '?t=' + Date.now() : ''),
+      url: LexeraApi.fileUrl(boardId, cachePath) + (forceRerender ? '&t=' + Date.now() : ''),
       alt: getDisplayFileNameFromPath(filePath) || filePath
     };
   }

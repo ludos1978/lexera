@@ -1750,6 +1750,7 @@ body.show-special-characters .card-editor-textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: text;
 }
 .board-row-count {
   order: 10;
@@ -2096,6 +2097,7 @@ li.tag-line-styled {
   letter-spacing: 0.8px;
   min-width: calc(40px * var(--ui-scale));
   flex: 1;
+  cursor: text;
 }
 .board-stack-title:hover {
   text-decoration: none;
@@ -2832,6 +2834,7 @@ u {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: text;
 }
 
 .column-count {
