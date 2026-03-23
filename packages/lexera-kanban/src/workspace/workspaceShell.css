@@ -111,11 +111,19 @@
 
 .workspace-shell-dock-divider {
   display: none;
-  background: var(--bg-tertiary);
+  background: transparent;
   z-index: 4;
   user-select: none;
   touch-action: none;
   -webkit-app-region: no-drag;
+  position: relative;
+}
+
+/* Thin centered visual line via pseudo-element */
+.workspace-shell-dock-divider::after {
+  content: '';
+  position: absolute;
+  background: var(--bg-tertiary);
 }
 
 .workspace-shell-dock-divider.is-visible {
@@ -124,18 +132,38 @@
 
 .workspace-shell-dock-divider[data-dock-divider="left"],
 .workspace-shell-dock-divider[data-dock-divider="right"] {
-  width: 1px;
+  width: 5px;
   cursor: col-resize;
 }
 
+.workspace-shell-dock-divider[data-dock-divider="left"]::after,
+.workspace-shell-dock-divider[data-dock-divider="right"]::after {
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+}
+
 .workspace-shell-dock-divider[data-dock-divider="bottom"] {
-  height: 1px;
+  height: 5px;
   cursor: row-resize;
+}
+
+.workspace-shell-dock-divider[data-dock-divider="bottom"]::after {
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 1px;
 }
 
 .workspace-shell-dock-divider:hover,
 .workspace-shell-dock-divider.is-dragging {
-  background: color-mix(in srgb, var(--accent) 28%, var(--bg-tertiary));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.workspace-shell-dock-divider:hover::after,
+.workspace-shell-dock-divider.is-dragging::after {
+  background: color-mix(in srgb, var(--accent) 50%, var(--bg-tertiary));
 }
 
 /* ── Fold strip: compact dock when collapsed ── */

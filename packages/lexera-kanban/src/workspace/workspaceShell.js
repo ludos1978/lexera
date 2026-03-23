@@ -1493,18 +1493,18 @@
 
     // Grid: folded docks get FOLD_SIZE px, visible docks get their size, hidden get nothing
     var leftCol = '';
-    if (visible.left) leftCol = clampPanelSize('left', state.dockSizes.left) + 'px 1px ';
+    if (visible.left) leftCol = clampPanelSize('left', state.dockSizes.left) + 'px 5px ';
     else if (folded.left) leftCol = FOLD_SIZE + 'px ';
 
     var rightCol = '';
-    if (visible.right) rightCol = ' 1px ' + clampPanelSize('right', state.dockSizes.right) + 'px';
+    if (visible.right) rightCol = ' 5px ' + clampPanelSize('right', state.dockSizes.right) + 'px';
     else if (folded.right) rightCol = ' ' + FOLD_SIZE + 'px';
 
     state.mainRowEl.style.gridTemplateColumns =
       leftCol + 'minmax(0, 1fr)' + rightCol;
 
     var bottomRow = '';
-    if (visible.bottom) bottomRow = ' 1px ' + clampPanelSize('bottom', state.dockSizes.bottom) + 'px';
+    if (visible.bottom) bottomRow = ' 5px ' + clampPanelSize('bottom', state.dockSizes.bottom) + 'px';
     else if (folded.bottom) bottomRow = ' ' + FOLD_SIZE + 'px';
 
     state.bodyEl.style.gridTemplateRows =
