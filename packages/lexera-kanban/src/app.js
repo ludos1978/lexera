@@ -2025,6 +2025,39 @@ const LexeraDashboard = (function () {
   // --- Board List --- (delegated to LexeraBoardList module)
 
   var BoardList = window.LexeraBoardList;
+  if (BoardList) BoardList.init({
+    get activeBoardId() { return activeBoardId; },
+    get fullBoardData() { return fullBoardData; },
+    get activeBoardData() { return activeBoardData; },
+    get boards() { return boards; },
+    get remoteBoards() { return remoteBoards; },
+    get workspaces() { return workspaces; },
+    get activeWorkspaceId() { return activeWorkspaceId; },
+    get liveSyncState() { return liveSyncState; },
+    get boardPresenceCache() { return boardPresenceCache; },
+    get workspaceShellEnabled() { return workspaceShellEnabled; },
+    get hasTauri() { return hasTauri; },
+    get _lastLoadedRevision() { return _lastLoadedRevision; },
+    get _saveInFlight() { return _saveInFlight; },
+    LexeraApi: LexeraApi,
+    TreeView: window.LexeraSidebarTree,
+    SidebarSync: window.LexeraSidebarSync,
+    WorkspaceShell: window.LexeraWorkspaceShell,
+    ALL_WORKSPACES_ID: ALL_WORKSPACES_ID,
+    isBoardDirty: function() { return isBoardDirty(); },
+    selectBoard: function(boardId) { selectBoard(boardId); },
+    setLastLoadedRevision: function(rev) { _lastLoadedRevision = rev; },
+    setActiveWorkspaceIdState: function(id) { activeWorkspaceId = id; },
+    tauriInvoke: function(cmd, args) { return window.__TAURI__ && window.__TAURI__.core.invoke(cmd, args); },
+    getSidebarTreeApi: function() { return getSidebarTreeApi(); },
+    stripLayoutTags: function(text) { return stripLayoutTags(text); },
+    logFrontendIssue: function(level, target, msg, err) { logFrontendIssue(level, target, msg, err); },
+    traceFrontendAction: function(level, target, msg, details) { traceFrontendAction(level, target, msg, details); },
+    applyBoardSettings: function() { applyBoardSettings(); },
+    renderColumns: function() { renderColumns(); },
+    renderBoardList: function() { renderBoardList(); },
+    showNotification: function(msg) { showNotification(msg); }
+  });
   function getSidebarExpandedBoards() { return BoardList.getSidebarExpandedBoards(); }
   function saveSidebarExpandedBoards(ids) { BoardList.saveSidebarExpandedBoards(ids); }
   function getSidebarTreeState(boardId) { return BoardList.getSidebarTreeState(boardId); }
