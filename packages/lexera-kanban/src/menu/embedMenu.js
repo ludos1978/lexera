@@ -1378,7 +1378,7 @@ var LexeraEmbedMenu = (function () {
       ? ' data-link-index="' + escapeAttr(String(options.linkIndex)) + '"'
       : '';
     var wrapperStyle = 'display:inline-flex;align-items:center;gap:2px;vertical-align:baseline;max-width:100%';
-    var buttonStyle = 'position:static;top:auto;right:auto;min-width:16px;width:16px;height:16px;font-size:10px;opacity:1;margin:0 0 0 2px';
+    var buttonStyle = 'position:static;top:auto;right:auto;opacity:1;margin:0 0 0 2px';
     return '<span class="link-path-overlay-container" data-board-id="' + escapeAttr(boardId || '') + '"' +
       ' data-file-path="' + escapeAttr(filePath || '') + '"' +
       ' style="' + escapeAttr(wrapperStyle) + '"' +
@@ -1666,7 +1666,7 @@ var LexeraEmbedMenu = (function () {
     var headerStyle = 'display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border);background:var(--bg-tertiary)';
     var typeStyle = 'font-size:10px;font-weight:700;letter-spacing:0.04em;color:var(--text-secondary)';
     var labelStyle = 'font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-    var buttonStyle = 'position:static;top:auto;right:auto;min-width:18px;width:18px;height:18px;font-size:12px;opacity:1';
+    var buttonStyle = 'position:static;top:auto;right:auto;opacity:1';
     var captionHtml = titleText
       ? '<div class="media-caption" style="padding:6px 8px 8px">' + renderInline(titleText, boardId, { footnoteDefs: {}, footnoteOrder: [], abbrDefs: {}, embedCounter: 0, linkCounter: 0 }) + '</div>'
       : '';

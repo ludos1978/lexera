@@ -30,13 +30,14 @@
 
   function normalizeLexeraVisualThemeId(value) {
     var source = String(value || '').trim().toLowerCase();
-    if (!source || source === 'classic' || source === 'default' || source === 'legacy') return 'classic';
+    if (!source || source === 'default' || source === 'legacy') return 'sleek-uniform';
+    if (source === 'classic') return 'classic';
     if (source === 'sleek' || source === 'minimal' || source === 'modern') return 'sleek';
     if (source === 'sleek-uniform' || source === 'sleekuniform' || source === 'uniform') return 'sleek-uniform';
     if (source === 'bordered' || source === 'boxed' || source === 'outline') return 'classic';
     if (source === 'gap' || source === 'gap-highlight' || source === 'gaphighlight') return 'gap';
     if (source === 'lines' || source === 'line' || source === 'line-separator') return 'lines';
-    return 'classic';
+    return 'sleek-uniform';
   }
 
   function findLexeraVisualTheme(id) {
@@ -63,10 +64,10 @@
     } catch (err) {
       /* ignore localStorage errors */
     }
-    return 'classic';
+    return 'sleek-uniform';
   }
 
-  var currentThemeId = 'classic';
+  var currentThemeId = 'sleek-uniform';
 
   function applyLexeraVisualTheme(themeId) {
     var theme = findLexeraVisualTheme(themeId);
@@ -101,6 +102,6 @@
   try {
     applyLexeraVisualTheme(readStoredVisualThemeId());
   } catch (err) {
-    applyLexeraVisualTheme('classic');
+    applyLexeraVisualTheme('sleek-uniform');
   }
 })();

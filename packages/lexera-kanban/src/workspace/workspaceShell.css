@@ -41,7 +41,7 @@
 .workspace-shell-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   min-height: 0;
   padding: 0;
   background: var(--surface-header-bg, var(--bg-secondary));
@@ -184,16 +184,16 @@
 
 .workspace-shell-panel-dock.is-folded[data-dock="left"] > .ws-fold-strip,
 .workspace-shell-panel-dock.is-folded[data-dock="right"] > .ws-fold-strip {
-  width: 22px;
+  width: 20px;
   height: 100%;
-  padding: 4px 0;
+  padding: 3px 0;
 }
 
 .workspace-shell-panel-dock.is-folded[data-dock="bottom"] > .ws-fold-strip {
   flex-direction: row;
   width: 100%;
-  height: 22px;
-  padding: 0 4px;
+  height: 20px;
+  padding: 0 3px;
 }
 
 .workspace-shell-panel-dock.is-folded[data-dock="left"] > .ws-fold-strip {
@@ -253,9 +253,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
-  font-size: 10px;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  font-size: var(--icon-glyph-size);
   color: var(--text-muted);
   line-height: 1;
 }
@@ -323,10 +323,10 @@
 }
 
 .ws-fold-indicator.is-drag-handle {
-  font-size: 9px;
-  letter-spacing: -2px;
-  width: 18px;
-  height: 18px;
+  font-size: var(--icon-glyph-size);
+  letter-spacing: -1.5px;
+  width: var(--app-icon-box-size);
+  height: var(--app-icon-box-size);
 }
 
 /* Folded dock hides normal content, only shows strip */
@@ -376,7 +376,7 @@
 .workspace-shell-panel-dock.is-folded[data-dock="left"].is-fold-hover > .workspace-shell-node,
 .workspace-shell-panel-dock.is-folded[data-dock="left"].is-fold-pinned > .workspace-shell-node {
   top: 0;
-  left: 22px;
+  left: 20px;
   bottom: 0;
   min-width: 200px;
   max-width: 60vw;
@@ -384,7 +384,7 @@
 .workspace-shell-panel-dock.is-folded[data-dock="right"].is-fold-hover > .workspace-shell-node,
 .workspace-shell-panel-dock.is-folded[data-dock="right"].is-fold-pinned > .workspace-shell-node {
   top: 0;
-  right: 22px;
+  right: 20px;
   bottom: 0;
   min-width: 200px;
   max-width: 60vw;
@@ -393,7 +393,7 @@
 .workspace-shell-panel-dock.is-folded[data-dock="bottom"].is-fold-pinned > .workspace-shell-node {
   left: 0;
   right: 0;
-  bottom: 22px;
+  bottom: 20px;
   min-height: 120px;
   max-height: 50vh;
 }
@@ -403,9 +403,9 @@
   position: relative;
   display: flex;
   align-items: stretch;
-  gap: 2px;
-  min-height: 24px;
-  padding: 0 2px;
+  gap: 1px;
+  min-height: calc(var(--icon-button-size) + 5px);
+  padding: 0 1px;
   background: var(--surface-header-bg, var(--bg-secondary));
   overflow: visible;
 }
@@ -423,18 +423,19 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: var(--btn-square-size);
-  min-width: var(--btn-square-size);
-  height: 100%;
+  width: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  align-self: center;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--icon-btn-fg, var(--btn-fg));
   font-size: var(--icon-glyph-size);
-  letter-spacing: -2px;
+  letter-spacing: -1.5px;
   cursor: grab;
   padding: 0;
-  opacity: 0.5;
+  opacity: 0.62;
   -webkit-app-region: no-drag;
 }
 
@@ -456,7 +457,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   user-select: none;
 }
@@ -473,15 +474,15 @@
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   min-width: 0;
-  max-width: 320px;
-  padding: 0 4px;
+  max-width: 260px;
+  padding: 0 2px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 3px;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -511,25 +512,25 @@
 
 .ws-view-tab-meta {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-muted);
   text-transform: uppercase;
 }
 
 .ws-view-tab-close {
   flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--icon-glyph-size);
   line-height: 1;
   text-align: center;
   padding: 0;
-  opacity: 0.5;
+  opacity: 0.62;
 }
 
 .ws-view-tab:hover .ws-view-tab-close {
@@ -553,14 +554,16 @@
   display: none;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  height: 100%;
-  padding: 0 4px;
+  gap: 1px;
+  min-width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  align-self: center;
+  padding: 0 2px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 3px;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--icon-glyph-size);
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -577,7 +580,7 @@
 }
 
 .ws-tab-overflow-btn .ws-tab-overflow-count {
-  font-size: 10px;
+  font-size: calc(var(--icon-glyph-size) - 2px);
   font-weight: 600;
 }
 
@@ -639,14 +642,14 @@
 
 .ws-tab-overflow-menu-item-close {
   flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--icon-glyph-size);
   line-height: 1;
   text-align: center;
   padding: 0;
@@ -664,14 +667,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  align-self: center;
   margin-left: auto;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--icon-btn-fg, var(--btn-fg));
-  font-size: var(--icon-glyph-size);
+  font-size: var(--fold-icon-size);
   cursor: pointer;
   opacity: 0.7;
   transition: opacity 0.15s, background 0.15s, color 0.15s;
@@ -815,8 +819,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  align-self: center;
   margin-left: 0;
   border: 0;
   border-radius: var(--radius-md);
@@ -826,7 +831,7 @@
   font-size: var(--icon-glyph-size);
   line-height: 1;
   padding: 0;
-  opacity: 0.7;
+  opacity: 0.62;
 }
 
 .ws-view-close:hover {

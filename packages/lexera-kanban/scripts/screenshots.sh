@@ -73,7 +73,7 @@ find_windows() {
       var wid   = ObjC.unwrap(w["kCGWindowNumber"]);
       var layer = ObjC.unwrap(w["kCGWindowLayer"]);
       var bounds = ObjC.unwrap(w["kCGWindowBounds"]);
-      if ((owner.indexOf("Lexera") >= 0 || owner.indexOf("lexera") >= 0) && layer === 0) {
+      if ((owner.indexOf("Lexera") >= 0 || owner.indexOf("lexera") >= 0) && layer <= 0) {
         var bw = ObjC.unwrap(bounds["Width"]);
         var bh = ObjC.unwrap(bounds["Height"]);
         results.push(wid + "\t" + bw + "x" + bh + "\t" + name);
@@ -83,7 +83,33 @@ find_windows() {
   ' 2>/dev/null
 }
 
+find_windows_system_events() {
+  osascript <<'APPLESCRIPT' 2>/dev/null
+    tell application "System Events"
+      if not (exists process "lexera-kanban") then return ""
+      tell process "lexera-kanban"
+        set outputLines to {}
+        repeat with w in windows
+          try
+            set winPos to position of w
+            set winSize to size of w
+            set winName to name of w
+            set rectSpec to "rect:" & (item 1 of winPos) & "," & (item 2 of winPos) & "," & (item 1 of winSize) & "," & (item 2 of winSize)
+            set sizeSpec to (item 1 of winSize) & "x" & (item 2 of winSize)
+            copy rectSpec & tab & sizeSpec & tab & winName to end of outputLines
+          end try
+        end repeat
+        if (count of outputLines) is 0 then return ""
+        return outputLines as text
+      end tell
+    end tell
+APPLESCRIPT
+}
+
 WINDOWS="$(find_windows)"
+if [[ -z "$WINDOWS" ]]; then
+  WINDOWS="$(find_windows_system_events)"
+fi
 
 if [[ -z "$WINDOWS" ]]; then
   echo "No Lexera Kanban windows found. Is the app running?" >&2
@@ -137,7 +163,7 @@ fi
 # ── Capture function ──────────────────────────────────────────────────────
 
 capture_window() {
-  local wid="$1"
+  local target="$1"
   local title="$2"
   local index="$3"
 
@@ -158,7 +184,11 @@ capture_window() {
     sleep "$DELAY"
   fi
 
-  screencapture -l"$wid" $EXTRA_FLAGS "$OUTFILE"
+  if [[ "$target" == rect:* ]]; then
+    screencapture -R"${target#rect:}" $EXTRA_FLAGS "$OUTFILE"
+  else
+    screencapture -l"$target" $EXTRA_FLAGS "$OUTFILE"
+  fi
 
   if [[ -f "$OUTFILE" ]]; then
     if $DOWNSCALE; then
@@ -172,7 +202,7 @@ capture_window() {
     SIZE="$(du -h "$OUTFILE" | cut -f1 | tr -d ' ')"
     echo "Saved: $OUTFILE ($SIZE)"
   else
-    echo "Failed to capture window $wid" >&2
+    echo "Failed to capture window $target" >&2
   fi
 }
 

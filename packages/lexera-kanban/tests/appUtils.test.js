@@ -46,6 +46,14 @@ function loadAppUtils() {
   const inlineCardEditorSource = readFileSync(resolve(srcDir, 'editor', 'inlineCardEditor.js'), 'utf-8');
   const inlineCardEditorLines = inlineCardEditorSource.split('\n');
 
+  // Load rowStackMenu module for functions extracted from app.js
+  const rsmSource = readFileSync(resolve(srcDir, 'menu', 'rowStackMenu.js'), 'utf-8');
+  const rsmLines = rsmSource.split('\n');
+
+  // Load pollingService module for syncConnectionStatusButton
+  const pollingServiceSource = readFileSync(resolve(srcDir, 'sync', 'pollingService.js'), 'utf-8');
+  const pollingServiceLines = pollingServiceSource.split('\n');
+
   // Extract a function starting at the given 1-based line number.
   // Scans forward to find the matching closing brace.
   function extractFunctionFrom(sourceLines, startLine) {
@@ -106,7 +114,7 @@ function loadAppUtils() {
     extractFunction(findLine('function inferExternalMediaCategoryFromUrl(')),
     extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function normalizeIncomingImageBase64(')),
     extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function decodeBase64BinaryStringToUint8Array(')),
-    extractFunction(findLine('function sanitizeBuiltInDiagramFileName(')),
+    extractFunctionFrom(rsmLines, findLineIn(rsmLines, 'function sanitizeBuiltInDiagramFileName(')),
     extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function buildPastedEmbedImageFileName(')),
     extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function getUploadedMediaEmbedTarget(')),
     extractFunction(findLine('function stripLayoutTags(')),
@@ -119,7 +127,7 @@ function loadAppUtils() {
     extractFunction(findLine('function normalizeDroppedPath(')),
     extractFunctionFrom(inlineCardEditorLines, findLineIn(inlineCardEditorLines, 'function shouldKeepInlineEditorOpenOnBlur(')),
     extractFunctionFrom(inlineCardEditorLines, findLineIn(inlineCardEditorLines, 'function shouldCancelInlineEditorOnEscape(')),
-    extractFunction(findLine('function syncConnectionStatusButton(')),
+    extractFunctionFrom(pollingServiceLines, findLineIn(pollingServiceLines, 'function syncConnectionStatusButton(')),
   ];
 
   const wrappedSource = `
