@@ -391,38 +391,46 @@ const LexeraDashboard = (function () {
   }
 
   window.addEventListener('lexera-shared-panel-created', function (event) {
-    var detail = event && event.detail ? event.detail : {};
-    if (detail.kind === 'hierarchy') syncMirroredWorkspaceViews();
-    if (detail.kind === 'dashboard') syncMirroredDashboardViews();
+    try {
+      var detail = event && event.detail ? event.detail : {};
+      if (detail.kind === 'hierarchy') syncMirroredWorkspaceViews();
+      if (detail.kind === 'dashboard') syncMirroredDashboardViews();
+    } catch (err) {
+      logFrontendIssue('error', 'event.panel-created', 'Error in shared panel created handler', err);
+    }
   });
 
   window.addEventListener('storage', function (event) {
-    if (!event || !event.key) return;
-    if (event.key === 'lexera-active-workspace') {
-      activeWorkspaceId = event.newValue || ALL_WORKSPACES_ID;
-      renderWorkspaceSelect();
-      renderBoardList();
-      return;
-    }
-    if (
-      event.key === 'lexera-dashboard-query' ||
-      event.key === 'lexera-dashboard-scope' ||
-      event.key === 'lexera-dashboard-active-pinned' ||
-      event.key === 'lexera-dashboard-pinned-queries'
-    ) {
-      dashboardState.query = localStorage.getItem('lexera-dashboard-query') || '';
-      dashboardState.scope = localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active';
-      dashboardState.activePinnedQuery = localStorage.getItem('lexera-dashboard-active-pinned') || '';
-      dashboardState.pinnedQueries = loadDashboardPinnedQueries();
-      renderDashboard();
-      scheduleDashboardRefresh(0);
-    }
-    if (event.key === 'lexera-dock-panel' && event.newValue) {
-      localStorage.removeItem('lexera-dock-panel');
-      var shell = window.LexeraWorkspaceShell;
-      if (shell && typeof shell.revealPanel === 'function') {
-        shell.revealPanel(event.newValue);
+    try {
+      if (!event || !event.key) return;
+      if (event.key === 'lexera-active-workspace') {
+        activeWorkspaceId = event.newValue || ALL_WORKSPACES_ID;
+        renderWorkspaceSelect();
+        renderBoardList();
+        return;
       }
+      if (
+        event.key === 'lexera-dashboard-query' ||
+        event.key === 'lexera-dashboard-scope' ||
+        event.key === 'lexera-dashboard-active-pinned' ||
+        event.key === 'lexera-dashboard-pinned-queries'
+      ) {
+        dashboardState.query = localStorage.getItem('lexera-dashboard-query') || '';
+        dashboardState.scope = localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active';
+        dashboardState.activePinnedQuery = localStorage.getItem('lexera-dashboard-active-pinned') || '';
+        dashboardState.pinnedQueries = loadDashboardPinnedQueries();
+        renderDashboard();
+        scheduleDashboardRefresh(0);
+      }
+      if (event.key === 'lexera-dock-panel' && event.newValue) {
+        localStorage.removeItem('lexera-dock-panel');
+        var shell = window.LexeraWorkspaceShell;
+        if (shell && typeof shell.revealPanel === 'function') {
+          shell.revealPanel(event.newValue);
+        }
+      }
+    } catch (err) {
+      logFrontendIssue('error', 'event.storage', 'Error in storage event handler', err);
     }
   });
 
@@ -899,7 +907,7 @@ const LexeraDashboard = (function () {
     setAddCardColumn: function (v) { addCardColumn = v; },
     get activeColMenu() { return _ColCtx ? _ColCtx.getActiveColMenu() : null; },
     get activeCardMenu() { return _CCM ? _CCM.getActiveCardMenu() : null; },
-    get activeRowStackMenu() { return activeRowStackMenu; },
+    get activeRowStackMenu() { return _RSM ? _RSM.getActiveRowStackMenu() : null; },
     get activeEmbedMenu() {
       return window.LexeraEmbedMenu && typeof window.LexeraEmbedMenu.getActiveEmbedMenu === 'function'
         ? window.LexeraEmbedMenu.getActiveEmbedMenu()
@@ -1163,6 +1171,42 @@ const LexeraDashboard = (function () {
   function scheduleDashboardRefresh(delayMs) { return OrderHelpers.scheduleDashboardRefresh(delayMs); }
   function setupDashboardControls() { return OrderHelpers.setupDashboardControls(); }
 
+  // ── Cached DOM element getters ──────────────────────────────────────
+  function _cachedEl(key, id) {
+    var c = _cachedEl._c || (_cachedEl._c = {});
+    if (c[key] && c[key].isConnected) return c[key];
+    c[key] = document.getElementById(id);
+    return c[key];
+  }
+  function getElColumnsContainer() { return _cachedEl('cc', 'columns-container'); }
+  function getElBoardList() { return _cachedEl('bl', 'board-list'); }
+  function getElBoardHeader() { return _cachedEl('bh', 'board-header'); }
+  function getElSidebar() { return document.querySelector('.layout > .sidebar') || document.querySelector('.sidebar'); }
+  function getElSidebarHeader() { return document.querySelector('.sidebar-header'); }
+  function getElSidebarDashboardDivider() { return _cachedEl('sdd', 'sidebar-dashboard-divider'); }
+  function getElSidebarWidthDivider() { return _cachedEl('swd', 'sidebar-width-divider'); }
+  function getElLayout() { return document.querySelector('.layout'); }
+  function getElMainContent() { return _cachedEl('mc', 'main-content'); }
+  function getElEmptyState() { return _cachedEl('es', 'empty-state'); }
+  function getElSearchResults() { return _cachedEl('sr', 'search-results'); }
+  function getElLogPanel() { return _cachedEl('lp', 'log-panel'); }
+  function getElLogSettingsContainer() { return document.getElementById('backend-settings-container') || document.getElementById('mgmt-panel-body'); }
+  function getElMgmtPanel() { return _cachedEl('mp', 'mgmt-panel'); }
+  function getElMgmtPanelBody() { return _cachedEl('mpb', 'mgmt-panel-body'); }
+  function getElMgmtClose() { return _cachedEl('mgc', 'mgmt-close'); }
+  function getElConnectionStatusBtn() { return _cachedEl('csb', 'btn-connection-status'); }
+  function getElConnectionDot() { return _cachedEl('cd', 'connection-dot'); }
+  function getElInspectorBtn() { return _cachedEl('ib', 'btn-inspector'); }
+  function getElDashboardRoot() { return _cachedEl('dr', 'sidebar-dashboard'); }
+  function getElDashboardSearchInput() { return _cachedEl('dsi', 'dashboard-search-input'); }
+  function getElDashboardSearchBtn() { return _cachedEl('dsb', 'btn-dashboard-search'); }
+  function getElDashboardScopeSelect() { return _cachedEl('dss', 'dashboard-scope-select'); }
+  function getElDashboardPinBtn() { return _cachedEl('dpb', 'btn-dashboard-pin'); }
+  function getElDashboardPinnedList() { return _cachedEl('dpl', 'dashboard-pinned-list'); }
+  function getElDashboardResultsList() { return _cachedEl('drl', 'dashboard-results-list'); }
+  function getElDashboardDeadlineList() { return _cachedEl('ddl', 'dashboard-deadline-list'); }
+  function getElDashboardOverdueList() { return _cachedEl('dol', 'dashboard-overdue-list'); }
+
   function init() {
     window.__LEXERA_FRONTEND_BUILD = FRONTEND_BUILD_STAMP;
     traceFrontendAction('info', 'frontend.build', 'Loaded frontend build', {
@@ -1341,6 +1385,21 @@ const LexeraDashboard = (function () {
   }
   function unfocusCard() {
     if (KeyboardNav) KeyboardNav.unfocusCard();
+  }
+  function selectCard(cardEl) {
+    if (KeyboardNav) KeyboardNav.selectCard(cardEl);
+  }
+  function toggleCardSelection(cardEl) {
+    if (KeyboardNav) KeyboardNav.toggleCardSelection(cardEl);
+  }
+  function selectCardRange(cardEl) {
+    if (KeyboardNav) KeyboardNav.selectCardRange(cardEl);
+  }
+  function clearCardSelection() {
+    if (KeyboardNav) KeyboardNav.clearSelection();
+  }
+  function getSelectedCardEls() {
+    return KeyboardNav ? KeyboardNav.getSelectedCardEls() : [];
   }
   function focusBoardEntity(el) {
     if (KeyboardNav) return KeyboardNav.focusBoardEntity(el);
@@ -1927,156 +1986,60 @@ const LexeraDashboard = (function () {
     }
   }
 
-  // --- Polling ---
+  // --- Polling --- (delegated to LexeraPollingService module)
+  var PollingService = window.LexeraPollingService;
+  if (PollingService) PollingService.init({
+    LexeraApi: LexeraApi,
+    WorkspaceShell: WorkspaceShell,
+    get connected() { return connected; },
+    get activeBoardId() { return activeBoardId; },
+    get fullBoardData() { return fullBoardData; },
+    get boards() { return boards; },
+    get remoteBoards() { return remoteBoards; },
+    get searchMode() { return searchMode; },
+    get isEditing() { return isEditing; },
+    get workspaceShellEnabled() { return workspaceShellEnabled; },
+    get embeddedMode() { return embeddedMode; },
+    get embeddedPreferredBoardId() { return embeddedPreferredBoardId; },
+    get urlParams() { return urlParams; },
+    get _lastLoadedRevision() { return _lastLoadedRevision; },
+    get _lastLoadedGeneration() { return _lastLoadedGeneration; },
+    setConnectedState: function (v) { connected = v; },
+    setWorkspaces: function (v) { workspaces = v; },
+    setBoards: function (v) { boards = v; },
+    setRemoteBoards: function (v) { remoteBoards = v; },
+    setActiveBoardId: function (v) { activeBoardId = v; },
+    setActiveBoardData: function (v) { activeBoardData = v; },
+    setFullBoardData: function (v) { fullBoardData = v; },
+    setLastLoadedGeneration: function (v) { _lastLoadedGeneration = v; },
+    setLastLoadedRevision: function (v) { _lastLoadedRevision = v; },
+    connectSSEIfReady: function () { connectSSEIfReady(); },
+    connectBackendLogStreamIfReady: function () { connectBackendLogStreamIfReady(); },
+    loadTemplatesOnce: function () { loadTemplatesOnce(); },
+    getElConnectionStatusBtn: function () { return getElConnectionStatusBtn(); },
+    getElConnectionDot: function () { return getElConnectionDot(); },
+    resolveActiveWorkspaceId: function (id) { resolveActiveWorkspaceId(id); },
+    renderWorkspaceSelect: function () { renderWorkspaceSelect(); },
+    refreshBoardHierarchyCache: function (bl) { return refreshBoardHierarchyCache(bl); },
+    renderBoardList: function () { renderBoardList(); },
+    setShellActiveBoard: function (id) { setShellActiveBoard(id); },
+    findBoardMeta: function (id) { return findBoardMeta(id); },
+    refreshHeaderFileControls: function () { refreshHeaderFileControls(); },
+    scheduleDashboardRefresh: function (ms) { scheduleDashboardRefresh(ms); },
+    isBoardDirty: function () { return isBoardDirty(); },
+    loadBoard: function (id) { return loadBoard(id); },
+    renderMainView: function () { renderMainView(); },
+    selectBoard: function (id) { return selectBoard(id); },
+    closeLiveSyncSession: function (id) { return closeLiveSyncSession(id); },
+    isActiveRemoteBoard: function () { return isActiveRemoteBoard(); },
+    summarizeBoardHierarchy: function (d) { return summarizeBoardHierarchy(d); },
+    logFrontendIssue: function (level, target, msg, err) { logFrontendIssue(level, target, msg, err); },
+    traceFrontendAction: function (level, target, msg, details) { traceFrontendAction(level, target, msg, details); }
+  });
 
-  async function poll() {
-    try {
-      const ok = await LexeraApi.checkStatus();
-      setConnected(ok);
-      if (!ok) return;
-    } catch (err) {
-      logFrontendIssue('warn', 'poll.status', 'Failed to check backend status', err);
-      setConnected(false);
-      return;
-    }
-
-    connectSSEIfReady();
-    connectBackendLogStreamIfReady();
-
-    try {
-      // Load workspaces
-      try {
-        var wsData = await LexeraApi.request('/config/workspaces');
-        workspaces = Array.isArray(wsData.workspaces) ? wsData.workspaces : [];
-        resolveActiveWorkspaceId(wsData.default_workspace || null);
-        renderWorkspaceSelect();
-      } catch (err) {
-        logFrontendIssue('warn', 'poll.workspaces', 'Failed to load workspaces', err);
-      }
-
-      const data = await LexeraApi.getBoards();
-      boards = data.boards || [];
-      try {
-        var rb = await LexeraApi.getRemoteBoards();
-        remoteBoards = (rb.boards || []).map(function (board) {
-          if (board) board.isRemote = true;
-          return board;
-        });
-      } catch (err) {
-        logFrontendIssue('warn', 'boards.remote', 'Failed to load remote boards', err);
-        remoteBoards = [];
-      }
-      await refreshBoardHierarchyCache(boards);
-      renderBoardList();
-      if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.onBoardsUpdated === 'function') {
-        WorkspaceShell.onBoardsUpdated(boards.concat(remoteBoards));
-      }
-      if (workspaceShellEnabled) {
-        if (!searchMode) {
-          if (activeBoardId && !findBoardMeta(activeBoardId)) {
-            setShellActiveBoard(null);
-          }
-          if (!activeBoardId) {
-            var initialBoardId = embeddedMode
-              ? embeddedPreferredBoardId
-              : (urlParams.get('board') || localStorage.getItem('lexera-last-board') || (boards[0] && boards[0].id) || '');
-            if (initialBoardId && findBoardMeta(initialBoardId) && typeof WorkspaceShell.ensureInitialTab === 'function') {
-              WorkspaceShell.ensureInitialTab(initialBoardId);
-            }
-          }
-        }
-        refreshHeaderFileControls();
-        scheduleDashboardRefresh(120);
-        return;
-      }
-
-      if (activeBoardId && !searchMode) {
-        const stillExists = !!findBoardMeta(activeBoardId);
-        if (stillExists) {
-          // Never reload the board if there are unsaved changes or the user
-          // is actively editing a card — that would discard work.
-          if (!isBoardDirty() && !isEditing) {
-            traceFrontendAction('info', 'poll.reload', 'Polling reload for active board (clean)', {
-              boardId: activeBoardId,
-              revision: _lastLoadedRevision || null,
-              generation: _lastLoadedGeneration
-            });
-            await loadBoard(activeBoardId);
-          } else {
-            traceFrontendAction('warn', 'poll.reload.skipDirty', 'Skipped polling reload because active board is dirty or being edited', {
-              boardId: activeBoardId,
-              isRemoteBoard: isActiveRemoteBoard(),
-              dirty: isBoardDirty(),
-              editing: isEditing,
-              revision: _lastLoadedRevision || null,
-              generation: _lastLoadedGeneration,
-              summary: summarizeBoardHierarchy(fullBoardData)
-            });
-          }
-        } else {
-          // Board was removed while we had it open.  If the user is editing
-          // or has unsaved changes, write a crashsave so work is not lost.
-          if (isBoardDirty() || isEditing) {
-            logFrontendIssue('warn', 'poll.boardRemoved', 'Active board removed while dirty/editing — creating crashsave', { boardId: activeBoardId });
-            try { await LexeraApi.writeBoardCrashsave(activeBoardId, fullBoardData); } catch (_) { /* best-effort */ }
-          }
-          await closeLiveSyncSession(activeBoardId);
-          LexeraApi.disconnectSync();
-          activeBoardId = null;
-          activeBoardData = null;
-          fullBoardData = null;
-          _lastLoadedGeneration = null;
-          _lastLoadedRevision = null;
-          if (!embeddedMode) localStorage.removeItem('lexera-last-board');
-          renderMainView();
-        }
-      } else if (!activeBoardId && !searchMode) {
-        var lastBoard = embeddedMode ? embeddedPreferredBoardId : (urlParams.get('board') || localStorage.getItem('lexera-last-board'));
-        if (lastBoard) {
-          var found = findBoardMeta(lastBoard);
-          if (found) {
-            await selectBoard(lastBoard);
-          }
-        }
-      }
-      refreshHeaderFileControls();
-      scheduleDashboardRefresh(120);
-    } catch (err) {
-      logFrontendIssue('warn', 'poll.refresh', 'Failed to refresh board list or active board state', err);
-      // keep previous state
-      refreshHeaderFileControls();
-      scheduleDashboardRefresh(250);
-    }
-  }
-
-  function setConnected(state) {
-    if (state && !connected) loadTemplatesOnce();
-    connected = state;
-    if (typeof window.setLogBackendConnectionState === 'function') {
-      window.setLogBackendConnectionState(state);
-    }
-    syncConnectionStatusButton(getElConnectionStatusBtn(), getElConnectionDot(), state);
-  }
-
-  function syncConnectionStatusButton(buttonEl, dotEl, state) {
-    var isConnected = !!state;
-    var title = isConnected
-      ? 'Backend connected. Open backend settings'
-      : 'Backend disconnected. Open backend settings';
-    if (buttonEl) {
-      buttonEl.classList.toggle('connected', isConnected);
-      buttonEl.classList.toggle('disconnected', !isConnected);
-      buttonEl.setAttribute('data-connection-state', isConnected ? 'connected' : 'disconnected');
-      buttonEl.title = title;
-      buttonEl.setAttribute('aria-label', title);
-      var labelEl = buttonEl.querySelector('.connection-status-label');
-      if (labelEl) labelEl.textContent = isConnected ? 'Connected' : 'Disconnected';
-    }
-    if (dotEl) {
-      dotEl.classList.toggle('connected', isConnected);
-      dotEl.classList.toggle('disconnected', !isConnected);
-    }
-  }
+  function poll() { if (PollingService) return PollingService.poll(); }
+  function setConnected(state) { if (PollingService) PollingService.setConnected(state); }
+  function syncConnectionStatusButton(buttonEl, dotEl, state) { if (PollingService) PollingService.syncConnectionStatusButton(buttonEl, dotEl, state); }
 
   // --- Board List --- (delegated to LexeraBoardList module)
 
@@ -2151,61 +2114,68 @@ const LexeraDashboard = (function () {
     targetClosest: function(target, selector) { return targetClosest(target, selector); },
     cleanupBoardBeforeSidebarClose: function(boardId) { return cleanupBoardBeforeSidebarClose(boardId); }
   });
-  function getSidebarExpandedBoards() { return BoardList.getSidebarExpandedBoards(); }
-  function saveSidebarExpandedBoards(ids) { BoardList.saveSidebarExpandedBoards(ids); }
-  function getSidebarTreeState(boardId) { return BoardList.getSidebarTreeState(boardId); }
-  function hasSidebarTreeState(boardId) { return BoardList.hasSidebarTreeState(boardId); }
-  function saveSidebarTreeState(boardId, state) { BoardList.saveSidebarTreeState(boardId, state); }
-  function getSidebarTreeChildrenContainer(node) { return BoardList.getSidebarTreeChildrenContainer(node); }
-  function getSidebarTreeOwnerNode(container) { return BoardList.getSidebarTreeOwnerNode(container); }
-  function toggleSidebarTreeNode(boardId, kind, id) { BoardList.toggleSidebarTreeNode(boardId, kind, id); }
-  function setDescendantTreeState(container, expand, boardId) { BoardList.setDescendantTreeState(container, expand, boardId); }
-  function buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState) { return BoardList.buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState); }
-  function countCardsInRow(row) { return BoardList.countCardsInRow(row); }
-  function countCardsInStack(stack) { return BoardList.countCardsInStack(stack); }
-  function countCardsInRows(rows) { return BoardList.countCardsInRows(rows); }
-  function cloneRows(rows) { return BoardList.cloneRows(rows); }
-  function cloneBoardData(boardData) { return BoardList.cloneBoardData(boardData); }
-  function boardDraftStorageKey(boardId) { return BoardList.boardDraftStorageKey(boardId); }
+  // Safe BoardList delegate — returns undefined if BoardList not yet loaded
+  function _bl(method) {
+    if (!BoardList || typeof BoardList[method] !== 'function') return undefined;
+    var args = Array.prototype.slice.call(arguments, 1);
+    return BoardList[method].apply(BoardList, args);
+  }
 
-  function getBoardCardKids(boardData) { return BoardList.getBoardCardKids(boardData); }
-  function getBoardCardIdentityStats(boardA, boardB) { return BoardList.getBoardCardIdentityStats(boardA, boardB); }
-  function summarizeBoardIdentity(boardData, limit) { return BoardList.summarizeBoardIdentity(boardData, limit); }
-  function describeBoardIdentityPair(labelA, boardA, labelB, boardB, limit) { return BoardList.describeBoardIdentityPair(labelA, boardA, labelB, boardB, limit); }
-  function traceBoardIdentityPair(level, target, message, boardId, labelA, boardA, labelB, boardB, extra) { BoardList.traceBoardIdentityPair(level, target, message, boardId, labelA, boardA, labelB, boardB, extra); }
-  function hasBoardIdentityMismatch(boardA, boardB) { return BoardList.hasBoardIdentityMismatch(boardA, boardB); }
-  function saveLocalBoardDraft(boardId, boardData) { BoardList.saveLocalBoardDraft(boardId, boardData); }
-  function loadLocalBoardDraft(boardId) { return BoardList.loadLocalBoardDraft(boardId); }
-  function clearLocalBoardDraft(boardId) { BoardList.clearLocalBoardDraft(boardId); }
-  function boardCardSummary(bd) { return BoardList.boardCardSummary(bd); }
-  function setBoardSaveBase(boardData, baseBoardData) { return BoardList.setBoardSaveBase(boardData, baseBoardData); }
-  function getBoardSaveBase(boardData) { return BoardList.getBoardSaveBase(boardData); }
-  function resolveSavedBoardData(boardData, result, boardId) { return BoardList.resolveSavedBoardData(boardData, result, boardId); }
-  function resolveLiveSyncBoardData(boardData, boardId) { return BoardList.resolveLiveSyncBoardData(boardData, boardId); }
+  function getSidebarExpandedBoards() { return _bl('getSidebarExpandedBoards'); }
+  function saveSidebarExpandedBoards(ids) { _bl('saveSidebarExpandedBoards', ids); }
+  function getSidebarTreeState(boardId) { return _bl('getSidebarTreeState', boardId); }
+  function hasSidebarTreeState(boardId) { return _bl('hasSidebarTreeState', boardId); }
+  function saveSidebarTreeState(boardId, state) { _bl('saveSidebarTreeState', boardId, state); }
+  function getSidebarTreeChildrenContainer(node) { return _bl('getSidebarTreeChildrenContainer', node); }
+  function getSidebarTreeOwnerNode(container) { return _bl('getSidebarTreeOwnerNode', container); }
+  function toggleSidebarTreeNode(boardId, kind, id) { _bl('toggleSidebarTreeNode', boardId, kind, id); }
+  function setDescendantTreeState(container, expand, boardId) { _bl('setDescendantTreeState', container, expand, boardId); }
+  function buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState) { return _bl('buildSidebarTreeNodes', rows, boardId, treeState, hasTreeState); }
+  function countCardsInRow(row) { return _bl('countCardsInRow', row); }
+  function countCardsInStack(stack) { return _bl('countCardsInStack', stack); }
+  function countCardsInRows(rows) { return _bl('countCardsInRows', rows); }
+  function cloneRows(rows) { return _bl('cloneRows', rows); }
+  function cloneBoardData(boardData) { return _bl('cloneBoardData', boardData); }
+  function boardDraftStorageKey(boardId) { return _bl('boardDraftStorageKey', boardId); }
 
-  function applyLiveSyncBoardSnapshot(boardId, boardData, options) { BoardList.applyLiveSyncBoardSnapshot(boardId, boardData, options); }
-  function applyRebasedBoardSnapshot(boardId, workingBoard, currentBoard, result, options) { BoardList.applyRebasedBoardSnapshot(boardId, workingBoard, currentBoard, result, options); }
-  async function rebaseDirtyBoardFromServer(triggerKind) { return BoardList.rebaseDirtyBoardFromServer(triggerKind); }
-  function rowsFromLegacyColumns(columns, boardTitle) { return BoardList.rowsFromLegacyColumns(columns, boardTitle); }
-  function rowsForBoardData(fullBoard, fallbackTitle) { return BoardList.rowsForBoardData(fullBoard, fallbackTitle); }
+  function getBoardCardKids(boardData) { return _bl('getBoardCardKids', boardData); }
+  function getBoardCardIdentityStats(boardA, boardB) { return _bl('getBoardCardIdentityStats', boardA, boardB); }
+  function summarizeBoardIdentity(boardData, limit) { return _bl('summarizeBoardIdentity', boardData, limit); }
+  function describeBoardIdentityPair(labelA, boardA, labelB, boardB, limit) { return _bl('describeBoardIdentityPair', labelA, boardA, labelB, boardB, limit); }
+  function traceBoardIdentityPair(level, target, message, boardId, labelA, boardA, labelB, boardB, extra) { _bl('traceBoardIdentityPair', level, target, message, boardId, labelA, boardA, labelB, boardB, extra); }
+  function hasBoardIdentityMismatch(boardA, boardB) { return _bl('hasBoardIdentityMismatch', boardA, boardB); }
+  function saveLocalBoardDraft(boardId, boardData) { _bl('saveLocalBoardDraft', boardId, boardData); }
+  function loadLocalBoardDraft(boardId) { return _bl('loadLocalBoardDraft', boardId); }
+  function clearLocalBoardDraft(boardId) { _bl('clearLocalBoardDraft', boardId); }
+  function boardCardSummary(bd) { return _bl('boardCardSummary', bd); }
+  function setBoardSaveBase(boardData, baseBoardData) { return _bl('setBoardSaveBase', boardData, baseBoardData); }
+  function getBoardSaveBase(boardData) { return _bl('getBoardSaveBase', boardData); }
+  function resolveSavedBoardData(boardData, result, boardId) { return _bl('resolveSavedBoardData', boardData, result, boardId); }
+  function resolveLiveSyncBoardData(boardData, boardId) { return _bl('resolveLiveSyncBoardData', boardData, boardId); }
 
-  function setBoardHierarchyRows(boardId, fullBoard, fallbackTitle) { BoardList.setBoardHierarchyRows(boardId, fullBoard, fallbackTitle); }
-  function getBoardHierarchyRows(boardId) { return BoardList.getBoardHierarchyRows(boardId); }
-  async function refreshBoardHierarchyCache(boardList) { return BoardList.refreshBoardHierarchyCache(boardList); }
-  function cardPreviewText(content) { return BoardList.cardPreviewText(content); }
-  function setActiveWorkspaceId(workspaceId) { BoardList.setActiveWorkspaceId(workspaceId); }
-  function applyWorkspaceAppearance(workspaceId) { BoardList.applyWorkspaceAppearance(workspaceId); }
-  function resolveActiveWorkspaceId(defaultWorkspaceId) { BoardList.resolveActiveWorkspaceId(defaultWorkspaceId); }
-  function dispatchMirrorMouseEvent(targetEl, eventType, sourceEvent) { return BoardList.dispatchMirrorMouseEvent(targetEl, eventType, sourceEvent); }
-  function findCanonicalHierarchyTarget(sourceTarget) { return BoardList.findCanonicalHierarchyTarget(sourceTarget); }
-  function bindMirroredWorkspaceView(rootEl) { BoardList.bindMirroredWorkspaceView(rootEl); }
-  function syncMirroredWorkspaceViews() { BoardList.syncMirroredWorkspaceViews(); }
+  function applyLiveSyncBoardSnapshot(boardId, boardData, options) { _bl('applyLiveSyncBoardSnapshot', boardId, boardData, options); }
+  function applyRebasedBoardSnapshot(boardId, workingBoard, currentBoard, result, options) { _bl('applyRebasedBoardSnapshot', boardId, workingBoard, currentBoard, result, options); }
+  async function rebaseDirtyBoardFromServer(triggerKind) { return _bl('rebaseDirtyBoardFromServer', triggerKind); }
+  function rowsFromLegacyColumns(columns, boardTitle) { return _bl('rowsFromLegacyColumns', columns, boardTitle); }
+  function rowsForBoardData(fullBoard, fallbackTitle) { return _bl('rowsForBoardData', fullBoard, fallbackTitle); }
 
-  function renderWorkspaceSelect() { BoardList.renderWorkspaceSelect(); }
-  function getBoardWorkspaceIds(board) { return BoardList.getBoardWorkspaceIds(board); }
-  async function removeBoardFromSidebar(boardId, boardName) { return BoardList.removeBoardFromSidebar(boardId, boardName); }
+  function setBoardHierarchyRows(boardId, fullBoard, fallbackTitle) { _bl('setBoardHierarchyRows', boardId, fullBoard, fallbackTitle); }
+  function getBoardHierarchyRows(boardId) { return _bl('getBoardHierarchyRows', boardId); }
+  async function refreshBoardHierarchyCache(boardList) { return _bl('refreshBoardHierarchyCache', boardList); }
+  function cardPreviewText(content) { return _bl('cardPreviewText', content); }
+  function setActiveWorkspaceId(workspaceId) { _bl('setActiveWorkspaceId', workspaceId); }
+  function applyWorkspaceAppearance(workspaceId) { _bl('applyWorkspaceAppearance', workspaceId); }
+  function resolveActiveWorkspaceId(defaultWorkspaceId) { _bl('resolveActiveWorkspaceId', defaultWorkspaceId); }
+  function dispatchMirrorMouseEvent(targetEl, eventType, sourceEvent) { return _bl('dispatchMirrorMouseEvent', targetEl, eventType, sourceEvent); }
+  function findCanonicalHierarchyTarget(sourceTarget) { return _bl('findCanonicalHierarchyTarget', sourceTarget); }
+  function bindMirroredWorkspaceView(rootEl) { _bl('bindMirroredWorkspaceView', rootEl); }
+  function syncMirroredWorkspaceViews() { _bl('syncMirroredWorkspaceViews'); }
 
-  function renderBoardList() { BoardList.renderBoardList(); }
+  function renderWorkspaceSelect() { _bl('renderWorkspaceSelect'); }
+  function getBoardWorkspaceIds(board) { return _bl('getBoardWorkspaceIds', board); }
+  async function removeBoardFromSidebar(boardId, boardName) { return _bl('removeBoardFromSidebar', boardId, boardName); }
+
+  function renderBoardList() { _bl('renderBoardList'); }
 
   // --- Sidebar Sync --- (delegated to LexeraSidebarSync module)
 
@@ -8881,6 +8851,7 @@ const LexeraDashboard = (function () {
   function renderColumns() {
     try {
     vsTeardown();
+    clearCardSelection();
     unfocusCard();
     // Defensive cleanup: stale drag artifacts can inflate row widths.
     cleanupPtrDrag();
@@ -9345,840 +9316,63 @@ const LexeraDashboard = (function () {
   }
   initDndMutations();
 
-  function reorderRows(s, t, b) { return DndMutations.reorderRows(s, t, b); }
-  function moveStack(fr, fs, tr, ts, b) { return DndMutations.moveStack(fr, fs, tr, ts, b); }
-  function findFullDataRow(i) { return DndMutations.findFullDataRow(i); }
-  function findFullDataStack(r, s) { return DndMutations.findFullDataStack(r, s); }
-  function findFullDataRowIndex(i) { return DndMutations.findFullDataRowIndex(i); }
-  function findInsertRowIndex(i) { return DndMutations.findInsertRowIndex(i); }
-  function visibleColumnIndicesInStack(s) { return DndMutations.visibleColumnIndicesInStack(s); }
-  function findFullDataStackIndex(r, ri, si) { return DndMutations.findFullDataStackIndex(r, ri, si); }
-  function findFullColumnIndexInStack(s, c) { return DndMutations.findFullColumnIndexInStack(s, c); }
-  function findInsertStackIndexInRow(r, ri, i) { return DndMutations.findInsertStackIndexInRow(r, ri, i); }
-  function findInsertColumnIndexInStack(s, c, b) { return DndMutations.findInsertColumnIndexInStack(s, c, b); }
-  function addColumnRelativeToDisplayPosition(r, s, c, b) { return DndMutations.addColumnRelativeToDisplayPosition(r, s, c, b); }
-  function nextMutationEntityId(p) { return DndMutations.nextMutationEntityId(p); }
-  function isUnnamedStructuralTitle(t) { return DndMutations.isUnnamedStructuralTitle(t); }
-  function createUnnamedColumnForMutation(c) { return DndMutations.createUnnamedColumnForMutation(c); }
-  function createUnnamedStackForMutation(c) { return DndMutations.createUnnamedStackForMutation(c); }
-  function createUnnamedRowForMutation(s) { return DndMutations.createUnnamedRowForMutation(s); }
-  function resolveRowInsertIndexForMutation(b, d, t) { return DndMutations.resolveRowInsertIndexForMutation(b, d, t); }
-  function insertUnnamedRowForMutation(b, d, t, s) { return DndMutations.insertUnnamedRowForMutation(b, d, t, s); }
-  function insertUnnamedStackIntoRowForMutation(b, d, t) { return DndMutations.insertUnnamedStackIntoRowForMutation(b, d, t); }
-  function resolvePreferredCardColumnRefInStack(s, l) { return DndMutations.resolvePreferredCardColumnRefInStack(s, l); }
-  function ensureCardTargetColumnForMutation(b, d, desc) { return DndMutations.ensureCardTargetColumnForMutation(b, d, desc); }
-  function cleanupUnnamedStructuralContainersInBoard(d) { return DndMutations.cleanupUnnamedStructuralContainersInBoard(d); }
-  function removeEmptyStacksAndRowsInBoard(d) { return DndMutations.removeEmptyStacksAndRowsInBoard(d); }
-  function removeEmptyStacksAndRows() { return DndMutations.removeEmptyStacksAndRows(); }
+  function _dnd(m) { if (!DndMutations || typeof DndMutations[m] !== 'function') return undefined; var a = Array.prototype.slice.call(arguments, 1); return DndMutations[m].apply(DndMutations, a); }
+  function reorderRows(s, t, b) { return _dnd('reorderRows', s, t, b); }
+  function moveStack(fr, fs, tr, ts, b) { return _dnd('moveStack', fr, fs, tr, ts, b); }
+  function findFullDataRow(i) { return _dnd('findFullDataRow', i); }
+  function findFullDataStack(r, s) { return _dnd('findFullDataStack', r, s); }
+  function findFullDataRowIndex(i) { return _dnd('findFullDataRowIndex', i); }
+  function findInsertRowIndex(i) { return _dnd('findInsertRowIndex', i); }
+  function visibleColumnIndicesInStack(s) { return _dnd('visibleColumnIndicesInStack', s); }
+  function findFullDataStackIndex(r, ri, si) { return _dnd('findFullDataStackIndex', r, ri, si); }
+  function findFullColumnIndexInStack(s, c) { return _dnd('findFullColumnIndexInStack', s, c); }
+  function findInsertStackIndexInRow(r, ri, i) { return _dnd('findInsertStackIndexInRow', r, ri, i); }
+  function findInsertColumnIndexInStack(s, c, b) { return _dnd('findInsertColumnIndexInStack', s, c, b); }
+  function addColumnRelativeToDisplayPosition(r, s, c, b) { return _dnd('addColumnRelativeToDisplayPosition', r, s, c, b); }
+  function nextMutationEntityId(p) { return _dnd('nextMutationEntityId', p); }
+  function isUnnamedStructuralTitle(t) { return _dnd('isUnnamedStructuralTitle', t); }
+  function createUnnamedColumnForMutation(c) { return _dnd('createUnnamedColumnForMutation', c); }
+  function createUnnamedStackForMutation(c) { return _dnd('createUnnamedStackForMutation', c); }
+  function createUnnamedRowForMutation(s) { return _dnd('createUnnamedRowForMutation', s); }
+  function resolveRowInsertIndexForMutation(b, d, t) { return _dnd('resolveRowInsertIndexForMutation', b, d, t); }
+  function insertUnnamedRowForMutation(b, d, t, s) { return _dnd('insertUnnamedRowForMutation', b, d, t, s); }
+  function insertUnnamedStackIntoRowForMutation(b, d, t) { return _dnd('insertUnnamedStackIntoRowForMutation', b, d, t); }
+  function resolvePreferredCardColumnRefInStack(s, l) { return _dnd('resolvePreferredCardColumnRefInStack', s, l); }
+  function ensureCardTargetColumnForMutation(b, d, desc) { return _dnd('ensureCardTargetColumnForMutation', b, d, desc); }
+  function cleanupUnnamedStructuralContainersInBoard(d) { return _dnd('cleanupUnnamedStructuralContainersInBoard', d); }
+  function removeEmptyStacksAndRowsInBoard(d) { return _dnd('removeEmptyStacksAndRowsInBoard', d); }
+  function removeEmptyStacksAndRows() { return _dnd('removeEmptyStacksAndRows'); }
 
-  // --- Row & Stack Context Menus ---
-
-  var activeRowStackMenu = null;
-
-  function closeRowStackMenu() {
-    if (activeRowStackMenu) { activeRowStackMenu.remove(); activeRowStackMenu = null; }
-  }
-
-  function showRowContextMenu(x, y, rowIdx) {
-    showElementContextMenu('row', x, y, { rowIdx: rowIdx });
-  }
-
-  function showStackContextMenu(x, y, rowIdx, stackIdx) {
-    showElementContextMenu('stack', x, y, { rowIdx: rowIdx, stackIdx: stackIdx });
-  }
-
-  function showCanvasBackgroundContextMenu(x, y, rowIdx, canvasPosition) {
-    showElementContextMenu('canvas', x, y, {
-      rowIdx: rowIdx,
-      canvasPosition: canvasPosition || null
-    });
-  }
-
-  function showElementContextMenu(scope, x, y, rawContext) {
-    closeRowStackMenu();
-    closeColumnContextMenu();
-    closeCardContextMenu();
-
-    var context = {};
-    var keys = Object.keys(rawContext || {});
-    for (var ck = 0; ck < keys.length; ck++) context[keys[ck]] = rawContext[keys[ck]];
-    context.scope = scope;
-
-    // Prepare scope-specific context fields
-    if (scope === 'card') {
-      var col = getFullColumn(context.colIndex);
-      var cardText = '';
-      if (col) {
-        var fullIdx = getFullCardIndex(col, context.cardIndex);
-        if (fullIdx !== -1 && col.cards[fullIdx]) cardText = col.cards[fullIdx].content || '';
-      }
-      context.elementText = cardText;
-      context.visibleCardCount = 0;
-      if (activeBoardData && Array.isArray(activeBoardData.columns)) {
-        for (var vc = 0; vc < activeBoardData.columns.length; vc++) {
-          if (activeBoardData.columns[vc] && activeBoardData.columns[vc].index === context.colIndex) {
-            context.visibleCardCount = Array.isArray(activeBoardData.columns[vc].cards) ? activeBoardData.columns[vc].cards.length : 0;
-            break;
-          }
-        }
-      }
-      context.boardColumns = activeBoardData && Array.isArray(activeBoardData.columns) ? activeBoardData.columns : [];
-    } else if (scope === 'column') {
-      var ccol = getFullColumn(context.colIndex);
-      var colTitle = ccol ? (ccol.title || '') : '';
-      context.elementText = colTitle;
-      var layout = getColumnLayoutTags(colTitle);
-      context.isStacked = layout.stack;
-      context.currentSpan = layout.span ? parseInt(layout.span.match(/\d+/)[0], 10) : 1;
-      context.includePath = (ccol && ccol.includeSource && ccol.includeSource.rawPath)
-        ? String(ccol.includeSource.rawPath)
-        : extractIncludePathFromTitle(colTitle);
-      context.boardRows = activeBoardData && Array.isArray(activeBoardData.rows) ? activeBoardData.rows : [];
-      context.columnSortState = _ColCtx ? _ColCtx.getColumnSortState() : {};
-    } else if (scope === 'row') {
-      var row = findFullDataRow(context.rowIdx);
-      context.elementText = row ? (row.title || '') : '';
-    } else if (scope === 'stack') {
-      var stack = findFullDataStack(context.rowIdx, context.stackIdx);
-      context.elementText = stack ? (stack.title || '') : '';
-    }
-
-    var items = MenuContributorRegistry.buildMenu(scope, context);
-    var traceTarget = scope + '.menu';
-
-    showNativeMenu(items, x, y, traceTarget).then(function (action) {
-      if (!action) return;
-      ActionRegistry.dispatch(scope, action, context);
-    }).catch(function (err) {
-      logFrontendIssue('error', traceTarget, scope + ' menu action failed', err);
-    });
-  }
-
-  function renameRowOrStack(type, rowIdx, stackIdx) {
-    var rootSelector = type === 'row'
-      ? '.board-row[data-row-index="' + rowIdx + '"]'
-      : '.board-stack[data-row-index="' + rowIdx + '"][data-stack-index="' + stackIdx + '"]';
-    var rootEl = getElColumnsContainer().querySelector(rootSelector);
-    if (!rootEl) return;
-
-    var titleSelector = type === 'row' ? '.board-row-title' : '.board-stack-title';
-    var titleEl = rootEl.querySelector(titleSelector);
-    if (!titleEl) return;
-    var target = type === 'row' ? findFullDataRow(rowIdx) : findFullDataStack(rowIdx, stackIdx);
-    if (!target) return;
-
-    var headerSelector = type === 'row' ? '.board-row-header' : '.board-stack-header';
-    var headerEl = rootEl.querySelector(headerSelector);
-    var currentTitle = target.title;
-    var currentDisplayTitle = stripHtmlComments(currentTitle);
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'column-rename-input';
-    if (type === 'row') input.classList.add('row-rename-input');
-    input.value = currentDisplayTitle;
-    if (headerEl) headerEl.classList.add('title-editing');
-    titleEl.textContent = '';
-    titleEl.appendChild(input);
-    input.focus();
-    input.select();
-
-    var done = false;
-    function cleanup() {
-      if (headerEl) headerEl.classList.remove('title-editing');
-    }
-    function getDisplayTitle(title) {
-      return title.length > 40 ? title.slice(0, 40) + '\u2026' : title;
-    }
-    function save() {
-      if (done) return;
-      done = true;
-      var newTitle = input.value.trim();
-      cleanup();
-      if (newTitle && newTitle !== currentDisplayTitle) {
-        titleEl.textContent = getDisplayTitle(newTitle);
-        pushUndo();
-        target.title = rebuildTitleWithPreservedComments(newTitle, currentTitle);
-        persistBoardMutation();
-      } else {
-        titleEl.textContent = getDisplayTitle(currentDisplayTitle);
-      }
-    }
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        save();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        input.value = currentDisplayTitle;
-        save();
-      }
-    });
-  }
-
-  // ── Creation Source (template-aware add buttons) ───────────────────────
-
-  var templatesLoaded = false;
-
-  function loadTemplatesOnce() {
-    if (templatesLoaded) return;
-    templatesLoaded = true;
-    LexeraTemplates.loadTemplates().catch(function (err) {
-      logFrontendIssue('warn', 'templates.load', 'Failed to load templates', err);
-    });
-  }
-
-  /**
-   * Build a creation-source dropdown wrapper around an add button.
-   * @param {string} entityType - "card"|"column"|"stack"|"row"
-   * @param {object} context - { colIndex, rowIdx, stackIdx } as needed
-   * @param {object} options - { btnClass, btnText, wrapperClass }
-   * @returns {HTMLElement} .creation-source element
-   */
-  function renderCreationSource(entityType, context, options) {
-    options = options || {};
-    var wrapper = document.createElement('div');
-    wrapper.className = 'creation-source' + (options.wrapperClass ? ' ' + options.wrapperClass : '');
-
-    var btn = document.createElement('button');
-    btn.className = options.btnClass || 'add-entity-btn';
-    btn.textContent = options.btnText || ('+ Add ' + entityType);
-    wrapper.appendChild(btn);
-
-    if (entityType !== 'card' && entityType !== 'column') {
-      var dropdown = document.createElement('div');
-      dropdown.className = 'creation-dropdown';
-
-      // "Empty" item — always present
-      var emptyItem = document.createElement('div');
-      emptyItem.className = 'creation-item';
-      emptyItem.textContent = 'Empty ' + entityType.charAt(0).toUpperCase() + entityType.slice(1);
-      emptyItem.addEventListener('click', function (e) {
-        e.stopPropagation();
-        handleCreationAction(entityType, 'empty', context);
-      });
-      dropdown.appendChild(emptyItem);
-
-      // "From Clipboard" item
-      var clipItem = document.createElement('div');
-      clipItem.className = 'creation-item';
-      clipItem.textContent = 'From Clipboard';
-      clipItem.addEventListener('click', function (e) {
-        e.stopPropagation();
-        handleCreationAction(entityType, 'clipboard', context);
-      });
-      dropdown.appendChild(clipItem);
-
-      // Template items
-      var templates = prioritizeDrawioAndExcalidrawTemplates(entityType, LexeraTemplates.getTemplatesForType(entityType));
-      if (templates.length > 0) {
-        var sep = document.createElement('div');
-        sep.className = 'creation-sep';
-        dropdown.appendChild(sep);
-
-        for (var i = 0; i < templates.length; i++) {
-          (function (tpl) {
-            var tplItem = document.createElement('div');
-            tplItem.className = 'creation-item';
-            tplItem.textContent = tpl.name;
-            tplItem.addEventListener('click', function (e) {
-              e.stopPropagation();
-              handleCreationAction(entityType, 'template:' + tpl.id, context);
-            });
-            dropdown.appendChild(tplItem);
-          })(templates[i]);
-        }
-      }
-
-      wrapper.appendChild(dropdown);
-    }
-
-    // Direct click on button = empty creation (original behavior)
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      handleCreationAction(entityType, 'empty', context);
-    });
-
-    return wrapper;
-  }
-
-  /**
-   * Dispatch creation action for a given entity type.
-   */
-  async function handleCreationAction(entityType, action, context) {
-    traceFrontendAction('info', 'creation.action', 'Dispatching creation action', {
-      boardId: activeBoardId || null,
-      entityType: entityType,
-      action: action,
-      context: context || null
-    });
-    if (action === 'empty') {
-      if (entityType === 'card') {
-        return addEmptyCardToActiveBoard(
-          context && context.colIndex,
-          context && context.atCardIndex,
-          context && context.insertMode
-        );
-      }
-      if (entityType === 'row') {
-        addRow(context.atIndex);
-      } else if (entityType === 'stack') {
-        addStackToRow(context.rowIdx, context.atStackIdx);
-      } else if (entityType === 'column') {
-        addColumnToStack(context.rowIdx, context.stackIdx, context.atColIdx);
-      }
-      return;
-    }
-
-    if (action === 'clipboard') {
-      try {
-        var text = await navigator.clipboard.readText();
-        if (!text || !text.trim()) {
-          showNotification('Clipboard is empty');
-          lexeraLog('warn', 'Clipboard is empty');
-          return;
-        }
-        if (entityType === 'card' && context && context.colIndex !== undefined && activeBoardId) {
-          await addCardToActiveBoard(
-            context.colIndex,
-            text.trim(),
-            context.atCardIndex,
-            context.insertMode
-          );
-        } else if (entityType === 'row') {
-          await addRowFromContent(text.trim(), context.atIndex);
-        } else if (entityType === 'stack') {
-          await addStackFromContent(context.rowIdx, text.trim(), context.atStackIdx);
-        } else if (entityType === 'column') {
-          await addColumnFromContent(context.rowIdx, context.stackIdx, text.trim(), context.atColIdx);
-        }
-      } catch (err) {
-        lexeraLog('warn', 'Clipboard read failed: ' + err.message);
-      }
-      return;
-    }
-
-    // template:id
-    if (action.indexOf('template:') === 0) {
-      var templateId = action.substring(9);
-      if (templateId.indexOf('__builtin__:diagram:') === 0) {
-        if (entityType !== 'card') {
-          showNotification('Built-in diagram templates are card-only');
-          return;
-        }
-        var diagramCardContent = await buildBuiltInDiagramTemplateCardContent(templateId);
-        if (!diagramCardContent) return;
-        if (activeBoardId && context && context.colIndex !== undefined) {
-          await addCardToActiveBoard(
-            context.colIndex,
-            diagramCardContent,
-            context.atCardIndex,
-            context.insertMode
-          );
-        }
-        return;
-      }
-      try {
-        var tplData = await LexeraTemplates.getFullTemplate(templateId);
-        var parsed = tplData.parsed;
-        var values = {};
-
-        if (parsed.variables && parsed.variables.length > 0) {
-          values = await LexeraTemplates.showVariableDialog(parsed.name, parsed.variables);
-          if (values === null) return; // cancelled
-        }
-        values = LexeraTemplates.applyDefaults(parsed.variables, values);
-
-        // Copy extra template files if any
-        if (tplData.files.length > 0 && activeBoardId) {
-          LexeraApi.request('/templates/' + encodeURIComponent(templateId) + '/copy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ board_id: activeBoardId, variables: values })
-          }).catch(function (err) {
-            lexeraLog('warn', 'Template file copy failed: ' + err.message);
-          });
-        }
-
-        // Build entity and insert
-        if (entityType === 'card') {
-          var card = LexeraTemplates.buildCardFromTemplate(parsed, values);
-          if (activeBoardId && context.colIndex !== undefined) {
-            await addCardToActiveBoard(
-              context.colIndex,
-              card.content,
-              context.atCardIndex,
-              context.insertMode
-            );
-          }
-        } else if (entityType === 'column') {
-          var cols = LexeraTemplates.buildColumnFromTemplate(parsed, values);
-          insertTemplateColumns(context.rowIdx, context.stackIdx, cols, context.atColIdx);
-        } else if (entityType === 'stack') {
-          var stack = LexeraTemplates.buildStackFromTemplate(parsed, values);
-          insertTemplateStack(context.rowIdx, stack, context.atStackIdx);
-        } else if (entityType === 'row') {
-          var row = LexeraTemplates.buildRowFromTemplate(parsed, values);
-          insertTemplateRow(context.atIndex, row);
-        }
-      } catch (err) {
-        lexeraLog('error', 'Template apply failed: ' + err.message);
-      }
-    }
-  }
-
-  function sanitizeBuiltInDiagramFileName(value, extension, fallbackBase) {
-    var raw = String(value || '').replace(/\\/g, '/').split('/').pop().trim();
-    if (!raw) raw = fallbackBase;
-    raw = raw.replace(/[\x00-\x1F<>:"|?*]/g, '-').trim();
-    if (!raw) raw = fallbackBase;
-    var lower = raw.toLowerCase();
-    var normalizedExt = String(extension || '').toLowerCase();
-    if (normalizedExt && lower.slice(-normalizedExt.length) !== normalizedExt) {
-      raw += normalizedExt;
-    }
-    return raw;
-  }
-
-  function createBuiltInNamedFile(content, fileName, mimeType) {
-    if (typeof File !== 'undefined') {
-      return new File([content], fileName, { type: mimeType || 'application/octet-stream' });
-    }
-    var blob = new Blob([content], { type: mimeType || 'application/octet-stream' });
-    blob.name = fileName;
-    return blob;
-  }
-
-  function getBuiltInDiagramTemplateSpec(templateId) {
-    if (templateId === '__builtin__:diagram:drawio') {
-      return {
-        displayName: 'Draw.io',
-        extension: '.drawio',
-        mimeType: 'application/vnd.jgraph.mxfile',
-        fallbackBase: 'diagram',
-        content:
-          '<mxfile host="app.diagrams.net">\n' +
-          '  <diagram id="diagram-1" name="Page-1">\n' +
-          '    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100">\n' +
-          '      <root><mxCell id="0"/><mxCell id="1" parent="0"/></root>\n' +
-          '    </mxGraphModel>\n' +
-          '  </diagram>\n' +
-          '</mxfile>\n'
-      };
-    }
-    if (templateId === '__builtin__:diagram:excalidraw') {
-      return {
-        displayName: 'Excalidraw',
-        extension: '.excalidraw',
-        mimeType: 'application/json',
-        fallbackBase: 'diagram',
-        content:
-          '{\n' +
-          '  "type": "excalidraw",\n' +
-          '  "version": 2,\n' +
-          '  "source": "https://lexera.local",\n' +
-          '  "elements": [],\n' +
-          '  "appState": { "viewBackgroundColor": "#ffffff", "gridSize": null },\n' +
-          '  "files": {}\n' +
-          '}\n'
-      };
-    }
-    return null;
-  }
-
-  async function buildBuiltInDiagramTemplateCardContent(templateId) {
-    if (!activeBoardId) {
-      showNotification('No active board selected');
-      return null;
-    }
-    var spec = getBuiltInDiagramTemplateSpec(templateId);
-    if (!spec) return null;
-    var suggestedName = spec.fallbackBase + spec.extension;
-    var requestedName = window.prompt('New ' + spec.displayName + ' file name', suggestedName);
-    if (requestedName === null) return null;
-    var fileName = sanitizeBuiltInDiagramFileName(requestedName, spec.extension, spec.fallbackBase);
-    try {
-      var file = createBuiltInNamedFile(spec.content, fileName, spec.mimeType);
-      var result = await LexeraApi.uploadMedia(activeBoardId, file);
-      if (!result || !result.filename) {
-        showNotification('Failed to create ' + spec.displayName + ' file');
-        return null;
-      }
-      return '![' + fileName + '](' + result.filename + ')';
-    } catch (err) {
-      logFrontendIssue('error', 'template.builtin.diagram', 'Failed to create built-in ' + spec.displayName + ' template file', err);
-      showNotification('Failed to create ' + spec.displayName + ' file');
-      return null;
-    }
-  }
-
-  // ── Template insertion helpers ────────────────────────────────────────
-
-  async function addRowFromContent(text, atIndex) {
-    if (!fullBoardData) return;
-    if (!Array.isArray(fullBoardData.rows)) fullBoardData.rows = [];
-    pushUndo();
-    var ts = Date.now();
-    var card = { id: 'card-' + ts, content: text, checked: false };
-    var newRow = {
-      id: 'row-' + ts,
-      title: 'New Row',
-      stacks: [{ id: 'stack-' + ts, title: 'Default', columns: [{ id: 'col-' + ts, title: 'New Column', cards: [card] }] }]
-    };
-    applyDefaultCanvasPlacementToStack(newRow, newRow.stacks[0]);
-    var insertAt = (typeof atIndex === 'number' && !isNaN(atIndex)) ? findInsertRowIndex(atIndex) : fullBoardData.rows.length;
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > fullBoardData.rows.length) insertAt = fullBoardData.rows.length;
-    fullBoardData.rows.splice(insertAt, 0, newRow);
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  async function addStackFromContent(rowIdx, text, atStackIdx) {
-    var row = findFullDataRow(rowIdx);
-    if (!row) return;
-    pushUndo();
-    var ts = Date.now();
-    var card = { id: 'card-' + ts, content: text, checked: false };
-    if (!Array.isArray(row.stacks)) row.stacks = [];
-    var insertAt = row.stacks.length;
-    if (typeof atStackIdx === 'number' && !isNaN(atStackIdx)) {
-      insertAt = findInsertStackIndexInRow(row, rowIdx, atStackIdx);
-      if (insertAt < 0) insertAt = row.stacks.length;
-    }
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > row.stacks.length) insertAt = row.stacks.length;
-    var newStack = {
-      id: 'stack-' + ts,
-      title: 'New Stack',
-      columns: [{ id: 'col-' + ts, title: 'New Column', cards: [card] }]
-    };
-    applyDefaultCanvasPlacementToStack(row, newStack);
-    row.stacks.splice(insertAt, 0, newStack);
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  async function addColumnFromContent(rowIdx, stackIdx, text, atColIdx) {
-    var stack = findFullDataStack(rowIdx, stackIdx);
-    if (!stack) return;
-    pushUndo();
-    var ts = Date.now();
-    var card = { id: 'card-' + ts, content: text, checked: false };
-    if (!Array.isArray(stack.columns)) stack.columns = [];
-    var insertAt = stack.columns.length;
-    if (typeof atColIdx === 'number' && !isNaN(atColIdx)) insertAt = atColIdx;
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > stack.columns.length) insertAt = stack.columns.length;
-    stack.columns.splice(insertAt, 0, { id: 'col-' + ts, title: 'New Column', cards: [card] });
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  async function insertTemplateColumns(rowIdx, stackIdx, cols, atColIdx) {
-    var stack = findFullDataStack(rowIdx, stackIdx);
-    if (!stack) return;
-    pushUndo();
-    if (!Array.isArray(stack.columns)) stack.columns = [];
-    var insertAt = stack.columns.length;
-    if (typeof atColIdx === 'number' && !isNaN(atColIdx)) insertAt = atColIdx;
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > stack.columns.length) insertAt = stack.columns.length;
-    for (var i = 0; i < cols.length; i++) {
-      stack.columns.splice(insertAt + i, 0, cols[i]);
-    }
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  async function insertTemplateStack(rowIdx, stack, atStackIdx) {
-    var row = findFullDataRow(rowIdx);
-    if (!row) return;
-    pushUndo();
-    if (!Array.isArray(row.stacks)) row.stacks = [];
-    var insertAt = row.stacks.length;
-    if (typeof atStackIdx === 'number' && !isNaN(atStackIdx)) {
-      insertAt = findInsertStackIndexInRow(row, rowIdx, atStackIdx);
-      if (insertAt < 0) insertAt = row.stacks.length;
-    }
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > row.stacks.length) insertAt = row.stacks.length;
-    applyDefaultCanvasPlacementToStack(row, stack);
-    row.stacks.splice(insertAt, 0, stack);
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  async function insertTemplateRow(atIndex, row) {
-    if (!fullBoardData) return;
-    if (!Array.isArray(fullBoardData.rows)) fullBoardData.rows = [];
-    pushUndo();
-    if (typeof atIndex !== 'number' || isNaN(atIndex)) atIndex = fullBoardData.rows.length;
-    if (atIndex < 0) atIndex = 0;
-    if (atIndex > fullBoardData.rows.length) atIndex = fullBoardData.rows.length;
-    fullBoardData.rows.splice(atIndex, 0, row);
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  async function addRow(atIndex) {
-    if (!fullBoardData) {
-      traceFrontendAction('warn', 'row.create', 'Aborted add row because fullBoardData is missing', {
-        boardId: activeBoardId || null,
-        atIndex: atIndex
-      });
-      return false;
-    }
-    if (!Array.isArray(fullBoardData.rows)) fullBoardData.rows = [];
-
-    pushUndo();
-    var ts = Date.now();
-    var newRow = {
-      id: 'row-' + ts,
-      title: 'New Row',
-      stacks: [{ id: 'stack-' + ts, title: 'Default', columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }] }]
-    };
-    applyDefaultCanvasPlacementToStack(newRow, newRow.stacks[0]);
-    var insertAt;
-    if (typeof atIndex !== 'number' || isNaN(atIndex)) {
-      insertAt = fullBoardData.rows.length;
-    } else {
-      // atIndex is a display index — convert to fullBoardData index
-      insertAt = findInsertRowIndex(atIndex);
-    }
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > fullBoardData.rows.length) insertAt = fullBoardData.rows.length;
-    traceFrontendAction('info', 'row.create', 'Inserting new row', {
-      boardId: activeBoardId || null,
-      atIndex: insertAt,
-      rowId: newRow.id,
-      summaryBefore: summarizeBoardHierarchy(fullBoardData)
-    });
-    fullBoardData.rows.splice(insertAt, 0, newRow);
-    var saved = await persistBoardMutation({ refreshSidebar: true });
-    traceFrontendAction(saved ? 'info' : 'warn', 'row.create', saved ? 'Persisted new row' : 'Row persist reported failure', {
-      boardId: activeBoardId || null,
-      atIndex: atIndex,
-      rowId: newRow.id,
-      summaryAfter: summarizeBoardHierarchy(fullBoardData)
-    });
-    return saved;
-  }
-
-  async function setRowHiddenTag(displayRowIdx, tag) {
-    if (!fullBoardData || !activeBoardId) return;
-    var row = findFullDataRow(displayRowIdx);
-    if (!row) return;
-    var nextTitle = applyInternalHiddenTag(row.title || '', tag);
-    if (nextTitle === row.title) return;
-    pushUndo();
-    row.title = nextTitle;
-    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
-  }
-
-  async function deleteRow(rowIdx) {
-    traceFrontendAction('info', 'row.delete', 'deleteRow called', { rowIdx: rowIdx });
-    var row = findFullDataRow(rowIdx);
-    if (!row) {
-      traceFrontendAction('warn', 'row.delete', 'findFullDataRow returned null', { rowIdx: rowIdx });
-      return;
-    }
-    var visibleCards = 0;
-    for (var s = 0; s < row.stacks.length; s++) {
-      for (var c = 0; c < row.stacks[s].columns.length; c++) {
-        var cards = row.stacks[s].columns[c].cards || [];
-        for (var k = 0; k < cards.length; k++) {
-          if (!is_archived_or_deleted(cards[k].content || '')) visibleCards++;
-        }
-      }
-    }
-    if (visibleCards > 0) {
-      var confirmed = await showConfirmDialog('Move row "' + stripInternalHiddenTags(row.title || '') + '" and ' + visibleCards + ' card(s) to trash?');
-      if (!confirmed) return;
-    }
-    await setRowHiddenTag(rowIdx, '#hidden-internal-deleted');
-  }
-
-  async function duplicateRow(rowIdx) {
-    if (!fullBoardData || !activeBoardId) return;
-    var row = findFullDataRow(rowIdx);
-    if (!row) return;
-    pushUndo();
-    var clone = JSON.parse(JSON.stringify(row));
-    var ts = Date.now();
-    clone.id = 'row-' + ts;
-    for (var s = 0; s < clone.stacks.length; s++) {
-      clone.stacks[s].id = 'stack-' + ts + '-' + s;
-      for (var c = 0; c < clone.stacks[s].columns.length; c++) {
-        clone.stacks[s].columns[c].id = 'col-' + ts + '-' + s + '-' + c;
-        for (var k = 0; k < clone.stacks[s].columns[c].cards.length; k++) {
-          clone.stacks[s].columns[c].cards[k].id = 'dup-' + ts + '-' + s + '-' + c + '-' + k;
-          clone.stacks[s].columns[c].cards[k].kid = null;
-        }
-      }
-    }
-    var fullRowIdx = fullBoardData.rows.indexOf(row);
-    if (fullRowIdx === -1) fullRowIdx = fullBoardData.rows.length - 1;
-    fullBoardData.rows.splice(fullRowIdx + 1, 0, clone);
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  async function addStackToRow(rowIdx, atStackIdx, options) {
-    if (atStackIdx && typeof atStackIdx === 'object' && !Array.isArray(atStackIdx)) {
-      options = atStackIdx;
-      atStackIdx = undefined;
-    }
-    options = options || {};
-
-    var row = findFullDataRow(rowIdx);
-    if (!row) {
-      traceFrontendAction('warn', 'stack.create', 'Aborted add stack because row could not be resolved', {
-        boardId: activeBoardId || null,
-        rowIdx: rowIdx,
-        atStackIdx: atStackIdx,
-        options: options
-      });
-      return false;
-    }
-    if (!Array.isArray(row.stacks)) row.stacks = [];
-    pushUndo();
-    var ts = Date.now();
-    var newStack = {
-      id: 'stack-' + ts,
-      title: 'New Stack',
-      columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }]
-    };
-    var explicitCanvasPosition = options && options.canvasPosition ? options.canvasPosition : null;
-    var explicitCanvasX = explicitCanvasPosition ? Number(explicitCanvasPosition.x) : NaN;
-    var explicitCanvasY = explicitCanvasPosition ? Number(explicitCanvasPosition.y) : NaN;
-    if (isCanvasBoardLayout() && isFinite(explicitCanvasX) && isFinite(explicitCanvasY)) {
-      if (!newStack.params || typeof newStack.params !== 'object') newStack.params = {};
-      newStack.params.x = String(Math.round(explicitCanvasX));
-      newStack.params.y = String(Math.round(explicitCanvasY));
-    } else {
-      applyDefaultCanvasPlacementToStack(row, newStack);
-    }
-    var insertAt = row.stacks.length;
-    if (typeof atStackIdx === 'number' && !isNaN(atStackIdx)) {
-      // atStackIdx is a display index — convert to fullBoardData index
-      insertAt = findInsertStackIndexInRow(row, rowIdx, atStackIdx);
-    }
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > row.stacks.length) insertAt = row.stacks.length;
-    traceFrontendAction('info', 'stack.create', 'Inserting new stack', {
-      boardId: activeBoardId || null,
-      rowIdx: rowIdx,
-      rowId: row.id || null,
-      rowTitle: row.title || '',
-      insertAt: insertAt,
-      stackId: newStack.id,
-      canvasPosition: isCanvasBoardLayout() ? { x: newStack.params && newStack.params.x, y: newStack.params && newStack.params.y } : null
-    });
-    row.stacks.splice(insertAt, 0, newStack);
-    var saved = await persistBoardMutation({ refreshSidebar: true });
-    traceFrontendAction(saved ? 'info' : 'warn', 'stack.create', saved ? 'Persisted new stack' : 'Stack persist reported failure', {
-      boardId: activeBoardId || null,
-      rowIdx: rowIdx,
-      rowId: row.id || null,
-      insertAt: insertAt,
-      stackId: newStack.id
-    });
-    return saved;
-  }
-
-  async function setStackHiddenTag(displayRowIdx, displayStackIdx, tag) {
-    if (!fullBoardData || !activeBoardId) return;
-    var stack = findFullDataStack(displayRowIdx, displayStackIdx);
-    if (!stack) return;
-    var nextTitle = applyInternalHiddenTag(stack.title || '', tag);
-    if (nextTitle === stack.title) return;
-    pushUndo();
-    stack.title = nextTitle;
-    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
-  }
-
-  async function deleteStack(rowIdx, stackIdx) {
-    traceFrontendAction('info', 'stack.delete', 'deleteStack called', { rowIdx: rowIdx, stackIdx: stackIdx });
-    var row = findFullDataRow(rowIdx);
-    var stack = findFullDataStack(rowIdx, stackIdx);
-    if (!row || !stack) {
-      traceFrontendAction('warn', 'stack.delete', 'findFullDataRow/Stack returned null', { rowIdx: rowIdx, stackIdx: stackIdx });
-      return;
-    }
-    var visibleCards = 0;
-    for (var c = 0; c < stack.columns.length; c++) {
-      var cards = stack.columns[c].cards || [];
-      for (var k = 0; k < cards.length; k++) {
-        if (!is_archived_or_deleted(cards[k].content || '')) visibleCards++;
-      }
-    }
-    if (visibleCards > 0) {
-      var confirmed = await showConfirmDialog('Move stack "' + stripInternalHiddenTags(stack.title || '') + '" and ' + visibleCards + ' card(s) to trash?');
-      if (!confirmed) return;
-    }
-    await setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-deleted');
-  }
-
-  async function duplicateStack(rowIdx, stackIdx) {
-    if (!fullBoardData || !activeBoardId) return;
-    var row = findFullDataRow(rowIdx);
-    var stack = findFullDataStack(rowIdx, stackIdx);
-    if (!row || !stack) return;
-    pushUndo();
-    var clone = JSON.parse(JSON.stringify(stack));
-    var ts = Date.now();
-    clone.id = 'stack-' + ts;
-    for (var c = 0; c < clone.columns.length; c++) {
-      clone.columns[c].id = 'col-' + ts + '-' + c;
-      for (var k = 0; k < clone.columns[c].cards.length; k++) {
-        clone.columns[c].cards[k].id = 'dup-' + ts + '-' + c + '-' + k;
-        clone.columns[c].cards[k].kid = null;
-      }
-    }
-    // stackIdx is a display index — find the fullBoardData index of the source
-    // stack and insert the clone right after it.
-    var fullStackIdx = findFullDataStackIndex(row, rowIdx, stackIdx);
-    if (fullStackIdx === -1) fullStackIdx = row.stacks.length - 1;
-    row.stacks.splice(fullStackIdx + 1, 0, clone);
-    await persistBoardMutation({ refreshSidebar: true });
-  }
-
-  async function addColumnToStack(rowIdx, stackIdx, atColIdx) {
-
-    var stack = findFullDataStack(rowIdx, stackIdx);
-    if (!stack) {
-      traceFrontendAction('warn', 'column.create', 'Aborted add column because stack could not be resolved', {
-        boardId: activeBoardId || null,
-        rowIdx: rowIdx,
-        stackIdx: stackIdx,
-        atColIdx: atColIdx
-      });
-      return false;
-    }
-    if (!Array.isArray(stack.columns)) stack.columns = [];
-    pushUndo();
-    var insertAt = stack.columns.length;
-    if (typeof atColIdx === 'number' && !isNaN(atColIdx)) insertAt = atColIdx;
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > stack.columns.length) insertAt = stack.columns.length;
-    var newColumn = { id: 'col-' + Date.now(), title: 'New Column', cards: [] };
-    traceFrontendAction('info', 'column.create', 'Inserting new column into stack', {
-      boardId: activeBoardId || null,
-      rowIdx: rowIdx,
-      stackIdx: stackIdx,
-      stackId: stack.id || null,
-      stackTitle: stack.title || '',
-      insertAt: insertAt,
-      columnId: newColumn.id,
-      stackColumnCountBefore: stack.columns.length
-    });
-    stack.columns.splice(insertAt, 0, newColumn);
-    var saved = await persistBoardMutation({ refreshSidebar: true });
-    traceFrontendAction(saved ? 'info' : 'warn', 'column.create', saved ? 'Persisted new column in stack' : 'Column persist reported failure', {
-      boardId: activeBoardId || null,
-      rowIdx: rowIdx,
-      stackIdx: stackIdx,
-      stackId: stack.id || null,
-      insertAt: insertAt,
-      columnId: newColumn.id,
-      stackColumnCountAfter: stack.columns.length
-    });
-    return saved;
-  }
+  // --- Row & Stack Context Menus (delegated to LexeraRowStackMenu module) ---
+  var _RSM = window.LexeraRowStackMenu;
+  function closeRowStackMenu() { if (_RSM) _RSM.closeRowStackMenu(); }
+  function showRowContextMenu(x, y, rowIdx) { if (_RSM) _RSM.showRowContextMenu(x, y, rowIdx); }
+  function showStackContextMenu(x, y, rowIdx, stackIdx) { if (_RSM) _RSM.showStackContextMenu(x, y, rowIdx, stackIdx); }
+  function showCanvasBackgroundContextMenu(x, y, rowIdx, canvasPosition) { if (_RSM) _RSM.showCanvasBackgroundContextMenu(x, y, rowIdx, canvasPosition); }
+  function showElementContextMenu(scope, x, y, rawContext) { if (_RSM) _RSM.showElementContextMenu(scope, x, y, rawContext); }
+  function renameRowOrStack(type, rowIdx, stackIdx) { if (_RSM) _RSM.renameRowOrStack(type, rowIdx, stackIdx); }
+  function loadTemplatesOnce() { if (_RSM) _RSM.loadTemplatesOnce(); }
+  function renderCreationSource(entityType, context, options) { return _RSM ? _RSM.renderCreationSource(entityType, context, options) : document.createElement('div'); }
+  async function handleCreationAction(entityType, action, context) { if (_RSM) return _RSM.handleCreationAction(entityType, action, context); }
+  function sanitizeBuiltInDiagramFileName(value, extension, fallbackBase) { return _RSM ? _RSM.sanitizeBuiltInDiagramFileName(value, extension, fallbackBase) : ''; }
+  function createBuiltInNamedFile(content, fileName, mimeType) { return _RSM ? _RSM.createBuiltInNamedFile(content, fileName, mimeType) : null; }
+  function getBuiltInDiagramTemplateSpec(templateId) { return _RSM ? _RSM.getBuiltInDiagramTemplateSpec(templateId) : null; }
+  async function buildBuiltInDiagramTemplateCardContent(templateId) { return _RSM ? _RSM.buildBuiltInDiagramTemplateCardContent(templateId) : null; }
+  async function addRowFromContent(text, atIndex) { if (_RSM) return _RSM.addRowFromContent(text, atIndex); }
+  async function addStackFromContent(rowIdx, text, atStackIdx) { if (_RSM) return _RSM.addStackFromContent(rowIdx, text, atStackIdx); }
+  async function addColumnFromContent(rowIdx, stackIdx, text, atColIdx) { if (_RSM) return _RSM.addColumnFromContent(rowIdx, stackIdx, text, atColIdx); }
+  async function insertTemplateColumns(rowIdx, stackIdx, cols, atColIdx) { if (_RSM) return _RSM.insertTemplateColumns(rowIdx, stackIdx, cols, atColIdx); }
+  async function insertTemplateStack(rowIdx, stack, atStackIdx) { if (_RSM) return _RSM.insertTemplateStack(rowIdx, stack, atStackIdx); }
+  async function insertTemplateRow(atIndex, row) { if (_RSM) return _RSM.insertTemplateRow(atIndex, row); }
+  async function addRow(atIndex) { return _RSM ? _RSM.addRow(atIndex) : false; }
+  async function setRowHiddenTag(displayRowIdx, tag) { if (_RSM) return _RSM.setRowHiddenTag(displayRowIdx, tag); }
+  async function deleteRow(rowIdx) { if (_RSM) return _RSM.deleteRow(rowIdx); }
+  async function duplicateRow(rowIdx) { if (_RSM) return _RSM.duplicateRow(rowIdx); }
+  async function addStackToRow(rowIdx, atStackIdx, options) { return _RSM ? _RSM.addStackToRow(rowIdx, atStackIdx, options) : false; }
+  async function setStackHiddenTag(displayRowIdx, displayStackIdx, tag) { if (_RSM) return _RSM.setStackHiddenTag(displayRowIdx, displayStackIdx, tag); }
+  async function deleteStack(rowIdx, stackIdx) { if (_RSM) return _RSM.deleteStack(rowIdx, stackIdx); }
+  async function duplicateStack(rowIdx, stackIdx) { if (_RSM) return _RSM.duplicateStack(rowIdx, stackIdx); }
+  async function addColumnToStack(rowIdx, stackIdx, atColIdx) { return _RSM ? _RSM.addColumnToStack(rowIdx, stackIdx, atColIdx) : false; }
 
   async function addCardToActiveBoard(colIndex, content, atCardIndex, insertMode) {
     content = String(content || '').trim();
@@ -10424,8 +9618,11 @@ const LexeraDashboard = (function () {
   function registerExternalDndBridge() { if (DragDropHandlers) DragDropHandlers.registerExternalDndBridge(); }
 
 
+  // Safe event binding — prevents crash if element not found during script load
+  function _on(el, event, handler) { if (el) el.addEventListener(event, handler); }
+
   // --- Pointer-based DnD event listeners for rows/stacks/columns/boards ---
-  getElBoardList().addEventListener('mousedown', function (e) {
+  _on(getElBoardList(), 'mousedown', function (e) {
     try {
     if (e.button !== 0) return;
     var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
@@ -10499,7 +9696,7 @@ const LexeraDashboard = (function () {
     }
   });
 
-  getElColumnsContainer().addEventListener('click', function (e) {
+  _on(getElColumnsContainer(), 'click', function (e) {
     try {
       var columnFoldBtn = targetClosest(e.target, '.column-fold-btn');
       if (columnFoldBtn) {
@@ -10528,7 +9725,88 @@ const LexeraDashboard = (function () {
     }
   });
 
-  getElColumnsContainer().addEventListener('mousedown', function (e) {
+  // Click on card → select it (Cmd/Ctrl+click toggles, Shift+click selects range)
+  _on(getElColumnsContainer(), 'click', function (e) {
+    try {
+      if (e.target.closest('button, input, textarea, select, a, .card-menu-btn, .card-checkbox, .card-collapse-toggle, .column-fold-btn, .stack-fold-btn, .row-fold-btn')) return;
+      var cardEl = e.target.closest('.card');
+      if (cardEl && !cardEl.classList.contains('editing')) {
+        if (e.shiftKey) {
+          e.preventDefault(); // prevent text selection on shift+click
+          selectCardRange(cardEl);
+        } else if (e.metaKey || e.ctrlKey) {
+          e.preventDefault();
+          toggleCardSelection(cardEl);
+        } else {
+          selectCard(cardEl);
+        }
+        return;
+      }
+      // Click on empty area → clear selection
+      if (!e.target.closest('.card, .column-header, .board-row-header, .board-stack-header')) {
+        clearCardSelection();
+        unfocusCard();
+      }
+    } catch (err) {
+      logFrontendIssue('error', 'card.click-select', 'Error in delegated card click-to-select handler', err);
+    }
+  });
+
+  // Double-click on card → open inline editor
+  // Double-click on column/row/stack title → start rename
+  _on(getElColumnsContainer(), 'dblclick', function (e) {
+    try {
+      if (e.target.closest('button, input, textarea, select, a, .card-menu-btn, .card-checkbox, .card-collapse-toggle, .column-fold-btn, .stack-fold-btn, .row-fold-btn')) return;
+
+      // Card content → edit
+      var cardEl = e.target.closest('.card');
+      if (cardEl && !cardEl.classList.contains('editing')) {
+        var colIndex = parseInt(cardEl.getAttribute('data-col-index'), 10);
+        var cardIndex = parseInt(cardEl.getAttribute('data-card-index'), 10);
+        if (!isNaN(colIndex) && !isNaN(cardIndex)) {
+          e.stopPropagation();
+          openCardEditor(cardEl, colIndex, cardIndex, 'inline');
+        }
+        return;
+      }
+
+      // Column title → rename
+      var colTitle = e.target.closest('.column-title');
+      if (colTitle) {
+        var colEl = colTitle.closest('.column');
+        if (!colEl) return;
+        var colCardsEl = colEl.querySelector('.column-cards[data-col-index]');
+        var cIdx = colCardsEl ? parseInt(colCardsEl.getAttribute('data-col-index'), 10) : NaN;
+        if (!isNaN(cIdx)) enterColumnRename(colEl, cIdx);
+        return;
+      }
+
+      // Row title → rename
+      var rowTitle = e.target.closest('.board-row-title');
+      if (rowTitle) {
+        var rowEl = rowTitle.closest('.board-row');
+        if (!rowEl) return;
+        var rowIdx = parseInt(rowEl.getAttribute('data-row-index'), 10);
+        if (!isNaN(rowIdx)) renameRowOrStack('row', rowIdx);
+        return;
+      }
+
+      // Stack title → rename
+      var stackTitle = e.target.closest('.board-stack-title');
+      if (stackTitle) {
+        var stackEl = stackTitle.closest('.board-stack');
+        if (!stackEl) return;
+        var rIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
+        var sIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
+        if (!isNaN(rIdx) && !isNaN(sIdx)) renameRowOrStack('stack', rIdx, sIdx);
+        return;
+      }
+    } catch (err) {
+      logFrontendIssue('error', 'dblclick-edit', 'Error in delegated double-click edit handler', err);
+    }
+  });
+
+  _on(getElColumnsContainer(), 'mousedown', function (e) {
     try {
     if (e.button !== 0) return;
     var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
@@ -11362,48 +10640,45 @@ const LexeraDashboard = (function () {
   }
 
   // --- Card Editing (delegated to CardEditorModule) ---
+  function _ce(m) { if (!CardEditorModule || typeof CardEditorModule[m] !== 'function') return undefined; var a = Array.prototype.slice.call(arguments, 1); return CardEditorModule[m].apply(CardEditorModule, a); }
 
-  function getCurrentEditorBoardId() { return CardEditorModule.getCurrentEditorBoardId(); }
-  function getCurrentEditorFilePath() { return CardEditorModule.getCurrentEditorFilePath(); }
-  function safeDecodePath(value) { return CardEditorModule.safeDecodePath(value); }
-  function isWindowsAbsolutePath(value) { return CardEditorModule.isWindowsAbsolutePath(value); }
-  function normalizeWindowsAbsolutePath(value) { return CardEditorModule.normalizeWindowsAbsolutePath(value); }
-  function isRelativeResourcePath(value) { return CardEditorModule.isRelativeResourcePath(value); }
-  function resolveRelativePath(baseDir, relativePath) { return CardEditorModule.resolveRelativePath(baseDir, relativePath); }
-  function buildWebviewResourceUrl(pathValue) { return CardEditorModule.buildWebviewResourceUrl(pathValue); }
-  function resolveCurrentEditorResourcePath(pathValue, includeDir) { return CardEditorModule.resolveCurrentEditorResourcePath(pathValue, includeDir); }
-  function syncCardEditorWysiwygContext(editor) { CardEditorModule.syncCardEditorWysiwygContext(editor); }
-  function setCurrentCardEditorMarkdown(nextValue, options) { CardEditorModule.setCurrentCardEditorMarkdown(nextValue, options); }
-
-  function updateCardEditorWysiwygToolbar(selectionState) { CardEditorModule.updateCardEditorWysiwygToolbar(selectionState); }
-  function applyCardEditorFontScale(scale, persist) { CardEditorModule.applyCardEditorFontScale(scale, persist); }
-  function openCardEditorFontScaleMenu(anchorEl) { CardEditorModule.openCardEditorFontScaleMenu(anchorEl); }
-
-  function openFileSearchDialog(textarea) { CardEditorModule.openFileSearchDialog(textarea); }
-  function insertAtCursor(textarea, text) { CardEditorModule.insertAtCursor(textarea, text); }
-
-  function syncCardEditorTextareaFromWysiwyg() { CardEditorModule.syncCardEditorTextareaFromWysiwyg(); }
-  function destroyCardEditorWysiwyg(editor) { CardEditorModule.destroyCardEditorWysiwyg(editor); }
-  function ensureCardEditorWysiwyg() { return CardEditorModule.ensureCardEditorWysiwyg(); }
-  function applyCardEditorFormatting(textarea, fmt) { CardEditorModule.applyCardEditorFormatting(textarea, fmt); }
-  function getEmbedOccurrenceRoot(container) { return CardEditorModule.getEmbedOccurrenceRoot(container); }
-  function getRenderedEmbedAbsoluteIndex(container) { return CardEditorModule.getRenderedEmbedAbsoluteIndex(container); }
-  function replaceCurrentEmbedOccurrence(content, container, replacer) { return CardEditorModule.replaceCurrentEmbedOccurrence(content, container, replacer); }
-  function replaceNthIncludeDirective(content, targetIndex, replacer) { return CardEditorModule.replaceNthIncludeDirective(content, targetIndex, replacer); }
-  function normalizeCardEditorMode(mode) { return CardEditorModule.normalizeCardEditorMode(mode); }
-  function normalizeCardEditorFontScale(value) { return CardEditorModule.normalizeCardEditorFontScale(value); }
-
-  function getCardEditorFormatSpec(fmt) { return CardEditorModule.getCardEditorFormatSpec(fmt); }
-  function buildCardEditorSnippetSelectHtml() { return CardEditorModule.buildCardEditorSnippetSelectHtml(); }
-  function updateCheckboxLineInText(text, lineIndex, checked) { return CardEditorModule.updateCheckboxLineInText(text, lineIndex, checked); }
-  function renderCardDisplayState(cardEl, content) { CardEditorModule.renderCardDisplayState(cardEl, content); }
+  function getCurrentEditorBoardId() { return _ce('getCurrentEditorBoardId'); }
+  function getCurrentEditorFilePath() { return _ce('getCurrentEditorFilePath'); }
+  function safeDecodePath(value) { return _ce('safeDecodePath', value); }
+  function isWindowsAbsolutePath(value) { return _ce('isWindowsAbsolutePath', value); }
+  function normalizeWindowsAbsolutePath(value) { return _ce('normalizeWindowsAbsolutePath', value); }
+  function isRelativeResourcePath(value) { return _ce('isRelativeResourcePath', value); }
+  function resolveRelativePath(baseDir, relativePath) { return _ce('resolveRelativePath', baseDir, relativePath); }
+  function buildWebviewResourceUrl(pathValue) { return _ce('buildWebviewResourceUrl', pathValue); }
+  function resolveCurrentEditorResourcePath(pathValue, includeDir) { return _ce('resolveCurrentEditorResourcePath', pathValue, includeDir); }
+  function syncCardEditorWysiwygContext(editor) { _ce('syncCardEditorWysiwygContext', editor); }
+  function setCurrentCardEditorMarkdown(nextValue, options) { _ce('setCurrentCardEditorMarkdown', nextValue, options); }
+  function updateCardEditorWysiwygToolbar(selectionState) { _ce('updateCardEditorWysiwygToolbar', selectionState); }
+  function applyCardEditorFontScale(scale, persist) { _ce('applyCardEditorFontScale', scale, persist); }
+  function openCardEditorFontScaleMenu(anchorEl) { _ce('openCardEditorFontScaleMenu', anchorEl); }
+  function openFileSearchDialog(textarea) { _ce('openFileSearchDialog', textarea); }
+  function insertAtCursor(textarea, text) { _ce('insertAtCursor', textarea, text); }
+  function syncCardEditorTextareaFromWysiwyg() { _ce('syncCardEditorTextareaFromWysiwyg'); }
+  function destroyCardEditorWysiwyg(editor) { _ce('destroyCardEditorWysiwyg', editor); }
+  function ensureCardEditorWysiwyg() { return _ce('ensureCardEditorWysiwyg'); }
+  function applyCardEditorFormatting(textarea, fmt) { _ce('applyCardEditorFormatting', textarea, fmt); }
+  function getEmbedOccurrenceRoot(container) { return _ce('getEmbedOccurrenceRoot', container); }
+  function getRenderedEmbedAbsoluteIndex(container) { return _ce('getRenderedEmbedAbsoluteIndex', container); }
+  function replaceCurrentEmbedOccurrence(content, container, replacer) { return _ce('replaceCurrentEmbedOccurrence', content, container, replacer); }
+  function replaceNthIncludeDirective(content, targetIndex, replacer) { return _ce('replaceNthIncludeDirective', content, targetIndex, replacer); }
+  function normalizeCardEditorMode(mode) { return _ce('normalizeCardEditorMode', mode); }
+  function normalizeCardEditorFontScale(value) { return _ce('normalizeCardEditorFontScale', value); }
+  function getCardEditorFormatSpec(fmt) { return _ce('getCardEditorFormatSpec', fmt); }
+  function buildCardEditorSnippetSelectHtml() { return _ce('buildCardEditorSnippetSelectHtml'); }
+  function updateCheckboxLineInText(text, lineIndex, checked) { return _ce('updateCheckboxLineInText', text, lineIndex, checked); }
+  function renderCardDisplayState(cardEl, content) { _ce('renderCardDisplayState', cardEl, content); }
 
   function autoResizeInlineCardTextarea(textarea) {
     if (InlineCardEditorModule) InlineCardEditorModule.autoResizeInlineCardTextarea(textarea);
   }
 
-  function findVisibleCardElement(colIndex, cardIndex) { return CardEditorModule.findVisibleCardElement(colIndex, cardIndex); }
-  function openCardEditor(cardEl, colIndex, cardIndex, mode) { CardEditorModule.openCardEditor(cardEl, colIndex, cardIndex, mode); }
+  function findVisibleCardElement(colIndex, cardIndex) { return _ce('findVisibleCardElement', colIndex, cardIndex); }
+  function openCardEditor(cardEl, colIndex, cardIndex, mode) { _ce('openCardEditor', cardEl, colIndex, cardIndex, mode); }
 
   function shouldKeepInlineEditorOpenOnBlur() {
     if (InlineCardEditorModule) return InlineCardEditorModule.shouldKeepInlineEditorOpenOnBlur();
@@ -11424,13 +10699,12 @@ const LexeraDashboard = (function () {
     return Promise.resolve();
   }
 
-  function applyCardEditorMode(mode) { CardEditorModule.applyCardEditorMode(mode); }
-
-  function enterCardEditMode(cardEl, colIndex, cardIndex) { CardEditorModule.enterCardEditMode(cardEl, colIndex, cardIndex); }
-  function refreshCardEditorPreview() { CardEditorModule.refreshCardEditorPreview(); }
-  function closeCardEditorOverlay(options) { return CardEditorModule.closeCardEditorOverlay(options); }
-  function insertFormatting(textarea, fmt) { CardEditorModule.insertFormatting(textarea, fmt); }
-  function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) { return CardEditorModule.saveCardEdit(cardEl, colIndex, fullCardIdx, newContent); }
+  function applyCardEditorMode(mode) { _ce('applyCardEditorMode', mode); }
+  function enterCardEditMode(cardEl, colIndex, cardIndex) { _ce('enterCardEditMode', cardEl, colIndex, cardIndex); }
+  function refreshCardEditorPreview() { _ce('refreshCardEditorPreview'); }
+  function closeCardEditorOverlay(options) { return _ce('closeCardEditorOverlay', options); }
+  function insertFormatting(textarea, fmt) { _ce('insertFormatting', textarea, fmt); }
+  function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) { return _ce('saveCardEdit', cardEl, colIndex, fullCardIdx, newContent); }
 
   // --- Checkbox Toggle ---
 
@@ -11502,38 +10776,39 @@ const LexeraDashboard = (function () {
   // All moved to LexeraColumnContextMenu module (menu/columnContextMenu.js)
 
   var _ColCtx = window.LexeraColumnContextMenu;
+  function _col(m) { if (!_ColCtx || typeof _ColCtx[m] !== 'function') return undefined; var a = Array.prototype.slice.call(arguments, 1); return _ColCtx[m].apply(_ColCtx, a); }
 
-  function closeColumnContextMenu() { _ColCtx.closeColumnContextMenu(); }
-  function showColumnContextMenu(x, y, colIndex, context) { _ColCtx.showColumnContextMenu(x, y, colIndex, context); }
-  function setColumnIncludePath(colIndex, nextPath) { return _ColCtx.setColumnIncludePath(colIndex, nextPath); }
-  function enableColumnIncludeMode(colIndex) { return _ColCtx.enableColumnIncludeMode(colIndex); }
-  function editColumnIncludeFile(colIndex) { return _ColCtx.editColumnIncludeFile(colIndex); }
-  function disableColumnIncludeMode(colIndex) { return _ColCtx.disableColumnIncludeMode(colIndex); }
-  function moveColumnToStack(colIndex, targetRowIdx, targetStackIdx) { return _ColCtx.moveColumnToStack(colIndex, targetRowIdx, targetStackIdx); }
-  function setColumnHiddenTag(colIndex, tag) { return _ColCtx.setColumnHiddenTag(colIndex, tag); }
-  function compareNumericTagParts(aParts, bParts) { return _ColCtx.compareNumericTagParts(aParts, bParts); }
-  function extractFirstTemporalDateValue(content) { return _ColCtx.extractFirstTemporalDateValue(content); }
-  function compareCardsForSort(a, b, mode) { return _ColCtx.compareCardsForSort(a, b, mode); }
-  function sortColumnCards(colIndex, mode) { return _ColCtx.sortColumnCards(colIndex, mode); }
-  function sortColumnsCards(columns, mode) { return _ColCtx.sortColumnsCards(columns, mode); }
-  function sortRowCards(rowIdx, mode) { return _ColCtx.sortRowCards(rowIdx, mode); }
-  function sortStackCards(rowIdx, stackIdx, mode) { return _ColCtx.sortStackCards(rowIdx, stackIdx, mode); }
-  function sortAllCardsAcrossBoard(mode) { return _ColCtx.sortAllCardsAcrossBoard(mode); }
-  function extractNumericTag(content) { return _ColCtx.extractNumericTag(content); }
-  function extractAllNumericTags(content) { return _ColCtx.extractAllNumericTags(content); }
-  function escapeAttr(str) { return _ColCtx.escapeAttr(str); }
-  function enterColumnRename(colEl, colIndex) { _ColCtx.enterColumnRename(colEl, colIndex); }
-  function getBoardColumnByPath(boardData, rowIdx, stackIdx, colIdx) { return _ColCtx.getBoardColumnByPath(boardData, rowIdx, stackIdx, colIdx); }
-  function findColumnContainerInBoard(boardData, flatIndex) { return _ColCtx.findColumnContainerInBoard(boardData, flatIndex); }
-  function findColumnContainer(flatIndex) { return _ColCtx.findColumnContainer(flatIndex); }
-  function addColumn(atIndex) { return _ColCtx.addColumn(atIndex); }
-  function deleteColumn(colIndex) { return _ColCtx.deleteColumn(colIndex); }
-  function duplicateColumn(colIndex) { return _ColCtx.duplicateColumn(colIndex); }
-  function toggleColCards(colIndex, collapse) { _ColCtx.toggleColCards(colIndex, collapse); }
-  function revealCardContent(colIndex, cardIndex) { _ColCtx.revealCardContent(colIndex, cardIndex); }
-  function revealColumnContent(colIndex) { _ColCtx.revealColumnContent(colIndex); }
-  function revealRowContent(rowIdx) { _ColCtx.revealRowContent(rowIdx); }
-  function revealStackContent(rowIdx, stackIdx) { _ColCtx.revealStackContent(rowIdx, stackIdx); }
+  function closeColumnContextMenu() { _col('closeColumnContextMenu'); }
+  function showColumnContextMenu(x, y, colIndex, context) { _col('showColumnContextMenu', x, y, colIndex, context); }
+  function setColumnIncludePath(colIndex, nextPath) { return _col('setColumnIncludePath', colIndex, nextPath); }
+  function enableColumnIncludeMode(colIndex) { return _col('enableColumnIncludeMode', colIndex); }
+  function editColumnIncludeFile(colIndex) { return _col('editColumnIncludeFile', colIndex); }
+  function disableColumnIncludeMode(colIndex) { return _col('disableColumnIncludeMode', colIndex); }
+  function moveColumnToStack(colIndex, targetRowIdx, targetStackIdx) { return _col('moveColumnToStack', colIndex, targetRowIdx, targetStackIdx); }
+  function setColumnHiddenTag(colIndex, tag) { return _col('setColumnHiddenTag', colIndex, tag); }
+  function compareNumericTagParts(aParts, bParts) { return _col('compareNumericTagParts', aParts, bParts); }
+  function extractFirstTemporalDateValue(content) { return _col('extractFirstTemporalDateValue', content); }
+  function compareCardsForSort(a, b, mode) { return _col('compareCardsForSort', a, b, mode); }
+  function sortColumnCards(colIndex, mode) { return _col('sortColumnCards', colIndex, mode); }
+  function sortColumnsCards(columns, mode) { return _col('sortColumnsCards', columns, mode); }
+  function sortRowCards(rowIdx, mode) { return _col('sortRowCards', rowIdx, mode); }
+  function sortStackCards(rowIdx, stackIdx, mode) { return _col('sortStackCards', rowIdx, stackIdx, mode); }
+  function sortAllCardsAcrossBoard(mode) { return _col('sortAllCardsAcrossBoard', mode); }
+  function extractNumericTag(content) { return _col('extractNumericTag', content); }
+  function extractAllNumericTags(content) { return _col('extractAllNumericTags', content); }
+  function escapeAttr(str) { return _col('escapeAttr', str); }
+  function enterColumnRename(colEl, colIndex) { _col('enterColumnRename', colEl, colIndex); }
+  function getBoardColumnByPath(boardData, rowIdx, stackIdx, colIdx) { return _col('getBoardColumnByPath', boardData, rowIdx, stackIdx, colIdx); }
+  function findColumnContainerInBoard(boardData, flatIndex) { return _col('findColumnContainerInBoard', boardData, flatIndex); }
+  function findColumnContainer(flatIndex) { return _col('findColumnContainer', flatIndex); }
+  function addColumn(atIndex) { return _col('addColumn', atIndex); }
+  function deleteColumn(colIndex) { return _col('deleteColumn', colIndex); }
+  function duplicateColumn(colIndex) { return _col('duplicateColumn', colIndex); }
+  function toggleColCards(colIndex, collapse) { _col('toggleColCards', colIndex, collapse); }
+  function revealCardContent(colIndex, cardIndex) { _col('revealCardContent', colIndex, cardIndex); }
+  function revealColumnContent(colIndex) { _col('revealColumnContent', colIndex); }
+  function revealRowContent(rowIdx) { _col('revealRowContent', rowIdx); }
+  function revealStackContent(rowIdx, stackIdx) { _col('revealStackContent', rowIdx, stackIdx); }
 
   // Close context menus on outside click
   document.addEventListener('click', function () {
@@ -11541,68 +10816,56 @@ const LexeraDashboard = (function () {
     closeRowStackMenu();
   });
 
-  // --- Search ---
+  // --- Search --- (delegated to LexeraBoardSearch module)
 
-  let searchDebounce = null;
+  var _BoardSearch = window.LexeraBoardSearch || null;
+  if (_BoardSearch) _BoardSearch.init({
+    $searchInput: $searchInput,
+    getSearchMode: function () { return searchMode; },
+    setSearchMode: function (v) { searchMode = v; },
+    getSearchResults: function () { return searchResults; },
+    setSearchResults: function (v) { searchResults = v; },
+    getActiveBoardId: function () { return activeBoardId; },
+    getActiveBoardData: function () { return activeBoardData; },
+    isHeaderSearchExpanded: function () { return headerSearchExpanded; },
+    setHeaderSearchExpanded: function (v) { setHeaderSearchExpanded(v); },
+    updateHeaderSearchVisibility: function () { updateHeaderSearchVisibility(); },
+    renderMainView: function () { renderMainView(); },
+    selectBoard: function (id, opts) { return selectBoard(id, opts); },
+    loadBoard: function () { return loadBoard(); },
+    resolveWikiDocument: function (name) { return resolveWikiDocument(name); },
+    showNotification: function (msg) { showNotification(msg); },
+    lexeraLog: function (level, msg) { lexeraLog(level, msg); },
+    logFrontendIssue: function (level, area, msg, err) { logFrontendIssue(level, area, msg, err); },
+    escapeHtml: function (s) { return escapeHtml(s); },
+    escapeAttr: function (s) { return escapeAttr(s); },
+    focusCard: function (el) { focusCard(el); },
+    unfocusCard: function () { unfocusCard(); },
+    focusBoardEntity: function (el) { focusBoardEntity(el); },
+    syncSidebarToView: function () { syncSidebarToView(); },
+    saveFoldState: function () { saveFoldState(); },
+    isWorkspaceShellEnabled: function () { return workspaceShellEnabled; },
+    getWorkspaceShell: function () { return WorkspaceShell; },
+    getDashboardTreeApi: function () { return getDashboardTreeApi(); },
+    getBoardNavigationApi: function () { return getBoardNavigationApi(); },
+    LexeraApi: LexeraApi
+  });
 
-  function onSearchInput() {
-    clearTimeout(searchDebounce);
-    var q = $searchInput.value.trim();
-    if (!q) {
-      exitSearchMode();
-      updateHeaderSearchVisibility();
-      return;
-    }
-    if (!headerSearchExpanded) setHeaderSearchExpanded(true);
-    searchDebounce = setTimeout(function () { performSearch(q); }, 300);
-  }
-
-  async function performSearch(query) {
-    try {
-      searchResults = await LexeraApi.search(query);
-      searchMode = true;
-      updateHeaderSearchVisibility();
-      renderSearchResults();
-    } catch (err) {
-      logFrontendIssue('warn', 'search.perform', 'Search failed for query "' + query + '"', err);
-    }
-  }
-
-  function openWikiSearch(query) {
-    var value = String(query || '').trim();
-    if (!value) return;
-    if ($searchInput) $searchInput.value = value;
-    if (!headerSearchExpanded) setHeaderSearchExpanded(true);
-    performSearch(value);
-  }
-
-  async function openWikiDocument(documentName, options) {
-    options = options || {};
-    var resolved = resolveWikiDocument(documentName);
-    if (resolved.kind === 'tag') {
-      openWikiSearch(resolved.document);
-      return resolved;
-    }
-    if (resolved.kind !== 'board' || !resolved.boardId) {
-      if (!options.silent) showNotification('Wiki link not found: ' + String(documentName || ''));
-      return resolved;
-    }
-    try {
-      await selectBoard(resolved.boardId, { duplicate: !!options.duplicate });
-    } catch (err) {
-      lexeraLog('error', '[wiki] Failed to open document: ' + resolved.document + ' ' + err);
-      if (!options.silent) showNotification('Failed to open wiki link');
-    }
-    return resolved;
-  }
-
-  function exitSearchMode() {
-    searchMode = false;
-    searchResults = null;
-    getElSearchResults().classList.add('hidden');
-    updateHeaderSearchVisibility();
-    renderMainView();
-  }
+  function onSearchInput() { if (_BoardSearch) _BoardSearch.onSearchInput(); }
+  function performSearch(query) { return _BoardSearch ? _BoardSearch.performSearch(query) : Promise.resolve(); }
+  function openWikiSearch(query) { if (_BoardSearch) _BoardSearch.openWikiSearch(query); }
+  function openWikiDocument(documentName, options) { return _BoardSearch ? _BoardSearch.openWikiDocument(documentName, options) : Promise.resolve({ kind: 'unknown' }); }
+  function exitSearchMode() { if (_BoardSearch) _BoardSearch.exitSearchMode(); }
+  function parseOptionalSearchIndex(value) { return _BoardSearch ? _BoardSearch.parseOptionalSearchIndex(value) : null; }
+  function buildSearchResultLocation(item) { return _BoardSearch ? _BoardSearch.buildSearchResultLocation(item) : ''; }
+  function buildHierarchyFocusTargetFromTreeNode(node, boardId) { return _BoardSearch ? _BoardSearch.buildHierarchyFocusTargetFromTreeNode(node, boardId) : null; }
+  function findBoardEntityElement(target) { return _BoardSearch ? _BoardSearch.findBoardEntityElement(target) : null; }
+  function focusHierarchyTargetLocally(target) { return _BoardSearch ? _BoardSearch.focusHierarchyTargetLocally(target) : false; }
+  function unfoldSearchTarget(result) { return _BoardSearch ? _BoardSearch.unfoldSearchTarget(result) : null; }
+  function navigateToHierarchyTarget(target, options) { return _BoardSearch ? _BoardSearch.navigateToHierarchyTarget(target, options) : Promise.resolve(false); }
+  function focusSearchResultCard(result) { return _BoardSearch ? _BoardSearch.focusSearchResultCard(result) : false; }
+  function navigateToSearchResult(result) { return _BoardSearch ? _BoardSearch.navigateToSearchResult(result) : Promise.resolve(false); }
+  function renderSearchResults() { if (_BoardSearch) _BoardSearch.renderSearchResults(); }
 
   // ── Board Tag Filter & Statistics Bar (delegated to BoardStatsFilter module) ──
   function toggleBoardTagFilter(tag) { if (BoardStatsFilter) BoardStatsFilter.toggleBoardTagFilter(tag); }
@@ -11611,211 +10874,6 @@ const LexeraDashboard = (function () {
   function renderBoardTagFilterBar() { if (BoardStatsFilter) BoardStatsFilter.renderBoardTagFilterBar(); }
   function toggleBoardStatsBar() { if (BoardStatsFilter) BoardStatsFilter.toggleBoardStatsBar(); }
   function renderBoardStatsBar() { if (BoardStatsFilter) BoardStatsFilter.renderBoardStatsBar(); }
-
-  function parseOptionalSearchIndex(value) {
-    return getDashboardTreeApi().parseOptionalSearchIndex(value);
-  }
-
-  function buildSearchResultLocation(item) {
-    return getDashboardTreeApi().buildSearchResultLocation(item);
-  }
-
-  function buildHierarchyFocusTargetFromTreeNode(node, boardId) {
-    return getBoardNavigationApi().buildHierarchyFocusTargetFromTreeNode(node, boardId, {
-      parseOptionalSearchIndex: parseOptionalSearchIndex
-    });
-  }
-
-  function findBoardEntityElement(target) {
-    if (!target || !getElColumnsContainer()) return null;
-
-    if (target.cardId) {
-      var byCardId = getElColumnsContainer().querySelector('.card[data-card-id="' + escapeAttr(String(target.cardId)) + '"]');
-      if (byCardId) return byCardId;
-    }
-
-    if (
-      typeof target.rowIndex === 'number' &&
-      typeof target.stackIndex === 'number' &&
-      typeof target.colLocalIndex === 'number' &&
-      typeof target.cardIndex === 'number'
-    ) {
-      var cardSelector =
-        '.column[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"][data-col-local-index="' + target.colLocalIndex + '"] ' +
-        '.card[data-card-index="' + target.cardIndex + '"]';
-      var byPath = getElColumnsContainer().querySelector(cardSelector);
-      if (byPath) return byPath;
-    }
-
-    if (
-      typeof target.rowIndex === 'number' &&
-      typeof target.stackIndex === 'number' &&
-      typeof target.colLocalIndex === 'number'
-    ) {
-      var columnSelector = '.column[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"][data-col-local-index="' + target.colLocalIndex + '"]';
-      var columnEl = getElColumnsContainer().querySelector(columnSelector);
-      if (columnEl) return columnEl;
-    }
-
-    if (typeof target.rowIndex === 'number' && typeof target.stackIndex === 'number') {
-      var stackSelector = '.board-stack[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"]';
-      var stackEl = getElColumnsContainer().querySelector(stackSelector);
-      if (stackEl) return stackEl;
-    }
-
-    if (typeof target.rowIndex === 'number') {
-      return getElColumnsContainer().querySelector('.board-row[data-row-index="' + target.rowIndex + '"]');
-    }
-
-    return null;
-  }
-
-  function focusHierarchyTargetLocally(target) {
-    var el = findBoardEntityElement(target);
-    if (!el) return false;
-
-    if (el.classList.contains('card')) {
-      focusCard(el);
-      return true;
-    }
-
-    unfocusCard();
-    el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-    focusBoardEntity(el);
-    syncSidebarToView();
-    return true;
-  }
-
-  function unfoldSearchTarget(result) {
-    return getBoardNavigationApi().unfoldSearchTarget(result, {
-      getActiveBoardId: function () { return activeBoardId; },
-      getColumnsContainer: getElColumnsContainer,
-      saveFoldState: saveFoldState
-    });
-  }
-
-  async function navigateToHierarchyTarget(target, options) {
-    options = options || {};
-    if (workspaceShellEnabled && WorkspaceShell && target && target.boardId) {
-      WorkspaceShell.focusHierarchyTarget(target, target.boardId, options || {});
-      return true;
-    }
-    return getBoardNavigationApi().navigateToHierarchyTarget(target, {
-      selectBoard: selectBoard,
-      getActiveBoardId: function () { return activeBoardId; },
-      getActiveBoardData: function () { return activeBoardData; },
-      loadBoard: loadBoard,
-      unfoldSearchTarget: unfoldSearchTarget,
-      focusHierarchyTargetLocally: focusHierarchyTargetLocally
-    });
-  }
-
-  function focusSearchResultCard(result) {
-    return getBoardNavigationApi().focusSearchResultCard(result, {
-      getColumnsContainer: getElColumnsContainer,
-      escapeAttr: escapeAttr,
-      focusCard: focusCard
-    });
-  }
-
-  async function navigateToSearchResult(result) {
-    if (workspaceShellEnabled && WorkspaceShell && result && result.boardId) {
-      WorkspaceShell.focusHierarchyTarget({
-        boardId: result.boardId,
-        cardId: result.cardId,
-        rowIndex: parseOptionalSearchIndex(result.rowIndex),
-        stackIndex: parseOptionalSearchIndex(result.stackIndex),
-        colLocalIndex: parseOptionalSearchIndex(result.colLocalIndex),
-        cardIndex: parseOptionalSearchIndex(result.cardIndex)
-      }, result.boardId, {});
-      return true;
-    }
-    return getBoardNavigationApi().navigateToSearchResult(result, {
-      searchInput: $searchInput,
-      exitSearchMode: exitSearchMode,
-      selectBoard: selectBoard,
-      getActiveBoardId: function () { return activeBoardId; },
-      getActiveBoardData: function () { return activeBoardData; },
-      loadBoard: loadBoard,
-      unfoldSearchTarget: unfoldSearchTarget,
-      focusSearchResultCard: focusSearchResultCard,
-      showNotification: showNotification,
-      lexeraLog: lexeraLog
-    });
-  }
-
-  function renderSearchResults() {
-    getElBoardHeader().classList.add('hidden');
-    getElColumnsContainer().classList.add('hidden');
-    getElEmptyState().classList.add('hidden');
-    getElSearchResults().classList.remove('hidden');
-
-    if (!searchResults || !searchResults.results.length) {
-      getElSearchResults().innerHTML =
-        '<div class="search-results-title">Search: "' + escapeHtml(searchResults ? searchResults.query : '') + '"</div>' +
-        '<div class="empty-state" style="height:auto;padding:40px"><div>No results found</div></div>';
-      return;
-    }
-
-    var groups = {};
-    for (var i = 0; i < searchResults.results.length; i++) {
-      var r = searchResults.results[i];
-      var key = r.boardId;
-      if (!groups[key]) groups[key] = { title: r.boardTitle, boardId: r.boardId, items: [] };
-      groups[key].items.push(r);
-    }
-
-    var html = '<div class="search-results-title">Search: "' + escapeHtml(searchResults.query) + '" (' + searchResults.results.length + ' results)</div>';
-
-    var keys = Object.keys(groups);
-    var resultCursor = 0;
-    for (var g = 0; g < keys.length; g++) {
-      var group = groups[keys[g]];
-      html += '<div class="search-group">';
-      html += '<div class="search-group-title">' + escapeHtml(group.title || 'Untitled') + '</div>';
-
-      for (var j = 0; j < group.items.length; j++) {
-        var item = group.items[j];
-        var resultIdx = resultCursor;
-        resultCursor += 1;
-        var location = buildSearchResultLocation(item);
-        html += '<div class="search-result-item" data-result-index="' + resultIdx + '"' +
-          ' data-board="' + escapeAttr(String(item.boardId || '')) + '"' +
-          ' data-card-id="' + escapeAttr(String(item.cardId || '')) + '"' +
-          ' data-column-index="' + escapeAttr(String(item.columnIndex)) + '"' +
-          ' data-row-index="' + escapeAttr(String(item.rowIndex == null ? '' : item.rowIndex)) + '"' +
-          ' data-stack-index="' + escapeAttr(String(item.stackIndex == null ? '' : item.stackIndex)) + '"' +
-          '>';
-        html += '<div class="search-result-column">' + escapeHtml(location) + '</div>';
-        html += '<div class="search-result-content">' + escapeHtml(item.cardContent) + '</div>';
-        html += '</div>';
-      }
-      html += '</div>';
-    }
-
-    getElSearchResults().innerHTML = html;
-
-    var resultItems = getElSearchResults().querySelectorAll('.search-result-item');
-    for (var k = 0; k < resultItems.length; k++) {
-      resultItems[k].addEventListener('click', function () {
-        var idx = parseOptionalSearchIndex(this.getAttribute('data-result-index'));
-        if (idx == null || !searchResults || !searchResults.results || idx < 0 || idx >= searchResults.results.length) {
-          return;
-        }
-        var raw = searchResults.results[idx];
-        var nav = {
-          boardId: raw.boardId,
-          cardId: raw.cardId,
-          cardContent: raw.cardContent,
-          columnIndex: parseOptionalSearchIndex(raw.columnIndex),
-          rowIndex: parseOptionalSearchIndex(raw.rowIndex),
-          stackIndex: parseOptionalSearchIndex(raw.stackIndex),
-          columnTitle: raw.columnTitle
-        };
-        navigateToSearchResult(nav);
-      });
-    }
-  }
 
   // --- Embed Menu --- (delegated to LexeraEmbedMenu module)
 
@@ -13545,6 +12603,47 @@ const LexeraDashboard = (function () {
     });
     ActionRegistry.register('stack', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
     ActionRegistry.register('stack', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
+
+    // ── LexeraRowStackMenu init ──
+    if (_RSM) {
+      _RSM.init({
+        getFullBoardData: function () { return fullBoardData; },
+        getActiveBoardData: function () { return activeBoardData; },
+        getActiveBoardId: function () { return activeBoardId; },
+        getFullColumn: function (idx) { return getFullColumn(idx); },
+        getFullCardIndex: function (col, visIdx) { return getFullCardIndex(col, visIdx); },
+        getElColumnsContainer: function () { return getElColumnsContainer(); },
+        findFullDataRow: function (rowIdx) { return findFullDataRow(rowIdx); },
+        findFullDataStack: function (rowIdx, stackIdx) { return findFullDataStack(rowIdx, stackIdx); },
+        findFullDataStackIndex: function (row, rowIdx, stackIdx) { return findFullDataStackIndex(row, rowIdx, stackIdx); },
+        findInsertRowIndex: function (atIndex) { return findInsertRowIndex(atIndex); },
+        findInsertStackIndexInRow: function (row, rowIdx, atStackIdx) { return findInsertStackIndexInRow(row, rowIdx, atStackIdx); },
+        pushUndo: function () { pushUndo(); },
+        persistBoardMutation: function (opts) { return persistBoardMutation(opts); },
+        closeColumnContextMenu: function () { closeColumnContextMenu(); },
+        closeCardContextMenu: function () { closeCardContextMenu(); },
+        showNativeMenu: function (items, x, y, id) { return showNativeMenu(items, x, y, id); },
+        showNotification: function (msg) { showNotification(msg); },
+        showConfirmDialog: function (msg) { return showConfirmDialog(msg); },
+        logFrontendIssue: function (level, area, msg, data) { logFrontendIssue(level, area, msg, data); },
+        traceFrontendAction: function (level, area, msg, data) { traceFrontendAction(level, area, msg, data); },
+        lexeraLog: function (level, msg) { lexeraLog(level, msg); },
+        stripHtmlComments: function (text) { return stripHtmlComments(text); },
+        rebuildTitleWithPreservedComments: function (newTitle, oldTitle) { return rebuildTitleWithPreservedComments(newTitle, oldTitle); },
+        getColumnLayoutTags: function (title) { return getColumnLayoutTags(title); },
+        extractIncludePathFromTitle: function (title) { return extractIncludePathFromTitle(title); },
+        getColumnSortState: function () { return _ColCtx ? _ColCtx.getColumnSortState() : {}; },
+        applyDefaultCanvasPlacementToStack: function (row, stack) { applyDefaultCanvasPlacementToStack(row, stack); },
+        isCanvasBoardLayout: function () { return isCanvasBoardLayout(); },
+        applyInternalHiddenTag: function (title, tag) { return applyInternalHiddenTag(title, tag); },
+        stripInternalHiddenTags: function (text) { return stripInternalHiddenTags(text); },
+        is_archived_or_deleted: function (text) { return is_archived_or_deleted(text); },
+        summarizeBoardHierarchy: function (bd) { return summarizeBoardHierarchy(bd); },
+        prioritizeDrawioAndExcalidrawTemplates: function (entityType, templates) { return prioritizeDrawioAndExcalidrawTemplates(entityType, templates); },
+        addEmptyCardToActiveBoard: function (colIndex, atCardIndex, insertMode) { return addEmptyCardToActiveBoard(colIndex, atCardIndex, insertMode); },
+        addCardToActiveBoard: function (colIndex, content, atCardIndex, insertMode) { return addCardToActiveBoard(colIndex, content, atCardIndex, insertMode); }
+      });
+    }
 
     // ── LexeraColumnContextMenu init ──
     if (window.LexeraColumnContextMenu) {

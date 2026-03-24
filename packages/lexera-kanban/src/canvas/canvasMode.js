@@ -1,4 +1,4 @@
-const LexeraCanvasMode = (function () {
+var LexeraCanvasMode = (function () {
   function defaultStripHtmlComments(text) {
     return String(text || '')
       .replace(/<!--[\s\S]*?-->/g, ' ')
@@ -99,3 +99,4 @@ const LexeraCanvasMode = (function () {
     createCanvasModeHelpers: createCanvasModeHelpers
   };
 })();
+if (typeof window !== 'undefined') window.LexeraCanvasMode = LexeraCanvasMode;

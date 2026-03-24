@@ -4408,6 +4408,69 @@ kanban-plugin: board
         );
     }
 
+    /// Simulates the frontend round-trip: read board → serialize to JSON →
+    /// deserialize → write back.  The JSON round-trip must preserve format_hint
+    /// so the legacy redirect still fires.
+    #[test]
+    fn test_write_board_legacy_redirect_after_json_roundtrip() {
+        let legacy_md = "\
+---
+kanban-plugin: board
+---
+
+## Todo
+- [ ] Buy milk
+
+## Done
+- [x] Wash dishes
+";
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("roundtrip-test.md");
+        let redirected_path = dir.path().join("roundtrip-test-lexera2.md");
+        fs::write(&board_path, legacy_md).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        assert_eq!(board.format_hint, BoardFormat::Legacy);
+
+        // Simulate frontend JSON round-trip (like the API response → frontend → API request)
+        let json = serde_json::to_string(&board).unwrap();
+        let roundtripped: KanbanBoard = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            roundtripped.format_hint,
+            BoardFormat::Legacy,
+            "JSON round-trip must preserve format_hint as Legacy"
+        );
+
+        // Write the round-tripped board (simulates frontend save)
+        let write_result = storage.write_board(&id, &roundtripped).unwrap();
+        assert!(
+            write_result.redirected_path.is_some(),
+            "Legacy board must be redirected to -lexera2.md after JSON round-trip"
+        );
+        let rp = write_result.redirected_path.unwrap();
+        assert!(
+            rp.ends_with("roundtrip-test-lexera2.md"),
+            "Redirected path must end with -lexera2.md, got: {:?}",
+            rp
+        );
+
+        // Original v1 file must be untouched
+        let original = fs::read_to_string(&board_path).unwrap();
+        assert!(
+            original.contains("## Todo"),
+            "Original v1 file must not be overwritten"
+        );
+
+        // New file must exist
+        assert!(
+            redirected_path.exists(),
+            "Redirected -lexera2.md file must exist"
+        );
+    }
+
     #[test]
     fn test_get_board_path() {
         let dir = tempdir().unwrap();

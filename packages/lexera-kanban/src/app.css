@@ -41,13 +41,16 @@
   --radius-lg: calc(6px * var(--ui-scale));
   --btn-square-size: calc(18px * var(--ui-scale));
   --hierarchy-btn-size: calc(18px * var(--ui-scale));
+  --app-icon-button-size: calc(14px * var(--ui-scale));
   --app-icon-box-size: calc(13px * var(--ui-scale));
   --app-icon-glyph-size: calc(10px * var(--ui-scale));
   --app-icon-svg-size: calc(10px * var(--ui-scale));
   --app-fold-icon-size: var(--app-icon-glyph-size);
-  --board-icon-glyph-size: calc(10px * var(--ui-scale));
-  --board-icon-svg-size: calc(10px * var(--ui-scale));
-  --board-fold-icon-size: var(--board-icon-glyph-size);
+  --board-icon-button-size: var(--app-icon-button-size);
+  --board-icon-glyph-size: var(--app-icon-glyph-size);
+  --board-icon-svg-size: var(--app-icon-svg-size);
+  --board-fold-icon-size: var(--app-fold-icon-size);
+  --icon-button-size: var(--app-icon-button-size);
   --icon-glyph-size: var(--app-icon-glyph-size);
   --icon-svg-size: var(--app-icon-svg-size);
   --fold-icon-size: var(--app-fold-icon-size);
@@ -300,9 +303,9 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: var(--btn-square-size);
-  width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  min-width: var(--icon-button-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   padding: 0;
   border: 1px solid var(--icon-btn-border, var(--border));
   border-radius: var(--radius-md);
@@ -470,6 +473,7 @@ textarea {
 .board-header,
 .columns-container,
 .hidden-items-dropdown-item {
+  --icon-button-size: var(--board-icon-button-size);
   --icon-glyph-size: var(--board-icon-glyph-size);
   --icon-svg-size: var(--board-icon-svg-size);
   --fold-icon-size: var(--board-fold-icon-size);
@@ -700,9 +704,9 @@ textarea {
 }
 
 .dashboard-search-btn {
-  min-width: var(--btn-square-size);
-  width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  min-width: var(--icon-button-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   padding: 0;
 }
 
@@ -965,9 +969,9 @@ textarea {
   background: var(--icon-btn-bg);
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
-  min-width: calc(var(--btn-square-size) - 2px);
-  width: calc(var(--btn-square-size) - 2px);
-  height: calc(var(--btn-square-size) - 2px);
+  min-width: calc(var(--icon-button-size) - 2px);
+  width: calc(var(--icon-button-size) - 2px);
+  height: calc(var(--icon-button-size) - 2px);
   padding: 0;
   font-size: var(--icon-glyph-size);
   line-height: 1;
@@ -1696,8 +1700,10 @@ body.embedded-mode .columns-container {
 }
 
 .board-header.board-header-compact .board-action-btn.icon-only {
-  min-width: var(--btn-square-size);
-  width: var(--btn-square-size);
+  min-height: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   padding: 0;
   font-size: calc(12px * var(--ui-scale));
 }
@@ -1802,9 +1808,9 @@ body.show-special-characters .card-editor-textarea {
   cursor: grab;
   flex-shrink: 0;
   line-height: 1;
-  min-width: var(--btn-square-size);
-  width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  min-width: var(--icon-button-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   padding: 0;
   letter-spacing: -1.6px;
   border: 1px solid var(--icon-btn-border, var(--border));
@@ -2292,9 +2298,9 @@ li.tag-line-styled {
 }
 
 .stack-delete-btn {
-  min-width: var(--btn-square-size);
-  width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  min-width: var(--icon-button-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   color: var(--error);
   opacity: 1;
 }
@@ -2992,9 +2998,9 @@ u {
 }
 
 .column-menu-btn {
-  min-width: var(--btn-square-size);
-  width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  min-width: var(--icon-button-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   opacity: 1;
 }
 
@@ -3006,9 +3012,9 @@ u {
 .row-edit-btn,
 .stack-menu-btn,
 .row-menu-btn {
-  min-width: var(--btn-square-size);
-  width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  min-width: var(--icon-button-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   padding: 0;
   font-weight: 600;
   line-height: 1;
@@ -3090,8 +3096,8 @@ u {
   user-select: none;
   flex-shrink: 0;
   order: 10;
-  width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   font-size: var(--icon-glyph-size);
   display: flex;
   align-items: center;
@@ -3148,8 +3154,8 @@ u {
 
 .card-menu-btn {
   order: 90;
-  min-width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  min-width: var(--icon-button-size);
+  height: var(--icon-button-size);
   opacity: 0.5;
   transition: opacity 0.15s;
   margin-left: 0;
@@ -3446,15 +3452,16 @@ ins.critic.critic-sub {
 }
 
 .card .wiki-menu-btn {
-  width: 16px;
-  height: 16px;
+  min-width: var(--icon-button-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   padding: 0;
   margin: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--icon-glyph-size);
   line-height: 1;
   cursor: pointer;
   opacity: 0;
@@ -3597,10 +3604,10 @@ ins.critic.critic-sub {
   position: absolute;
   top: 4px;
   right: 4px;
-  min-width: 20px;
-  width: 20px;
-  height: 20px;
-  font-size: 14px;
+  min-width: var(--icon-button-size);
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  font-size: var(--icon-glyph-size);
   opacity: 0;
   transition: opacity 0.15s;
   z-index: 2;
@@ -3711,13 +3718,14 @@ ins.critic.critic-sub {
 .external-embed-secondary-btn {
   appearance: none;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-md);
   background: var(--accent);
   color: var(--bg-primary);
-  font-size: 13px;
+  min-height: var(--btn-square-size);
+  padding: 0 calc(8px * var(--ui-scale));
+  font-size: calc(10px * var(--ui-scale));
   font-weight: 700;
   line-height: 1;
-  padding: 10px 14px;
   cursor: pointer;
 }
 
@@ -4089,10 +4097,15 @@ ins.critic.critic-sub {
 }
 
 .btn-small {
-  padding: 3px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--btn-square-size);
+  padding: 0 calc(8px * var(--ui-scale));
   border: 1px solid var(--border);
-  border-radius: 3px;
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  font-size: calc(10px * var(--ui-scale));
+  line-height: 1;
   cursor: pointer;
   background: rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
@@ -4773,7 +4786,11 @@ select.dialog-input option,
 /* Card collapse */
 /* old collapse toggle and collapsed rules replaced by .card-header layout above */
 
-/* Card focus (keyboard navigation) */
+/* Card selection & focus */
+.card.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-primary));
+}
 .card.focused {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
@@ -5328,9 +5345,9 @@ select.dialog-input option,
   flex-shrink: 0;
 }
 .hidden-items-dropdown-item .drag-grip.entity-drag-icon {
-  width: 18px;
-  min-width: 18px;
-  height: 18px;
+  width: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  height: var(--icon-button-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5555,6 +5572,37 @@ select.dialog-input option,
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  transition: background 0.2s ease;
+}
+
+.log-panel-header.log-panel-has-error {
+  background: #b00020;
+  border-bottom-color: #900018;
+  cursor: pointer;
+}
+.log-panel-header.log-panel-has-error .log-panel-title,
+.log-panel-header.log-panel-has-error .log-panel-tab,
+.log-panel-header.log-panel-has-error .log-panel-btn {
+  color: #fff;
+  opacity: 0.85;
+}
+.log-panel-header.log-panel-has-error .log-panel-tab.active {
+  opacity: 1;
+}
+.log-panel-error-msg {
+  display: none;
+  font-size: 10px;
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+  margin: 0 12px;
+}
+.log-panel-header.log-panel-has-error .log-panel-error-msg {
+  display: inline;
+  color: #fff;
 }
 
 .log-panel-header-main {
@@ -5858,6 +5906,19 @@ select.dialog-input option,
 
 .log-entry:hover {
   background: var(--bg-hover);
+}
+
+.log-repeat-count {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-bright);
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 0 5px;
+  margin-left: auto;
+  align-self: center;
+  line-height: 1.6;
 }
 
 .log-entry-source {
@@ -7155,14 +7216,16 @@ select.export-input {
   --radius-lg: calc(4px * var(--ui-scale));
   --btn-square-size: calc(18px * var(--ui-scale));
   --hierarchy-btn-size: calc(14px * var(--ui-scale));
-  --app-icon-box-size: calc(13px * var(--ui-scale));
-  --app-icon-glyph-size: calc(10px * var(--ui-scale));
-  --app-icon-svg-size: calc(10px * var(--ui-scale));
-  --app-fold-icon-size: calc(10px * var(--ui-scale));
-  --board-icon-glyph-size: calc(10px * var(--ui-scale));
-  --board-icon-svg-size: calc(10px * var(--ui-scale));
-  --board-fold-icon-size: calc(10px * var(--ui-scale));
-  --layout-row-rail-width: calc(34px * var(--ui-scale));
+  --app-icon-button-size: calc(13px * var(--ui-scale));
+  --app-icon-box-size: var(--app-icon-button-size);
+  --app-icon-glyph-size: calc(9px * var(--ui-scale));
+  --app-icon-svg-size: calc(9px * var(--ui-scale));
+  --app-fold-icon-size: var(--app-icon-glyph-size);
+  --board-icon-button-size: var(--app-icon-button-size);
+  --board-icon-glyph-size: var(--app-icon-glyph-size);
+  --board-icon-svg-size: var(--app-icon-svg-size);
+  --board-fold-icon-size: var(--app-fold-icon-size);
+  --layout-row-rail-width: calc(32px * var(--ui-scale));
   --layout-folded-stack-width: calc(
     var(--layout-stack-header-pad-x) +
     var(--btn-square-size) +
@@ -7170,18 +7233,18 @@ select.export-input {
     var(--btn-square-size) +
     var(--btn-gap)
   );
-  --layout-stack-min-width: calc(256px * var(--ui-scale));
-  --layout-row-header-pad-y: calc(10px * var(--ui-scale));
-  --layout-row-header-pad-x: calc(6px * var(--ui-scale));
-  --layout-stack-header-pad-y: calc(6px * var(--ui-scale));
-  --layout-stack-header-pad-x: calc(2px * var(--ui-scale));
-  --layout-column-header-pad-y: calc(5px * var(--ui-scale));
-  --layout-column-header-pad-x: calc(2px * var(--ui-scale));
-  --board-row-gap: calc(14px * var(--ui-scale));
-  --board-stack-gap: calc(16px * var(--ui-scale));
-  --board-column-gap: calc(12px * var(--ui-scale));
-  --board-inner-padding: calc(6px * var(--ui-scale));
-  --card-content-padding: 2px 10px 8px;
+  --layout-stack-min-width: calc(240px * var(--ui-scale));
+  --layout-row-header-pad-y: calc(7px * var(--ui-scale));
+  --layout-row-header-pad-x: calc(5px * var(--ui-scale));
+  --layout-stack-header-pad-y: calc(4px * var(--ui-scale));
+  --layout-stack-header-pad-x: calc(1px * var(--ui-scale));
+  --layout-column-header-pad-y: calc(4px * var(--ui-scale));
+  --layout-column-header-pad-x: calc(1px * var(--ui-scale));
+  --board-row-gap: calc(10px * var(--ui-scale));
+  --board-stack-gap: calc(10px * var(--ui-scale));
+  --board-column-gap: calc(6px * var(--ui-scale));
+  --board-inner-padding: calc(4px * var(--ui-scale));
+  --card-content-padding: 2px 7px 6px;
   --surface-row-bg: transparent;
   --surface-row-border: transparent;
   --surface-row-shadow: none;
@@ -7197,7 +7260,7 @@ select.export-input {
   --surface-footer-bg: transparent;
   --card-radius: 0;
   --card-shadow: none;
-  --card-gap: calc(8px * var(--ui-scale));
+  --card-gap: calc(6px * var(--ui-scale));
   --card-list-padding: 0;
   --row-content-bg: transparent;
   --stack-content-bg: transparent;
@@ -7524,8 +7587,8 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .board-header-separator {
-  width: calc(12px * var(--ui-scale));
-  flex: 0 0 calc(12px * var(--ui-scale));
+  width: calc(8px * var(--ui-scale));
+  flex: 0 0 calc(8px * var(--ui-scale));
   background: transparent;
   opacity: 1;
   margin: 0;
@@ -7545,6 +7608,7 @@ select.export-input {
 :root[data-visual-theme="sleek"] .stack-delete-btn,
 :root[data-visual-theme="sleek"] .card-menu-btn,
 :root[data-visual-theme="sleek"] .embed-menu-btn,
+:root[data-visual-theme="sleek"] .wiki-menu-btn,
 :root[data-visual-theme="sleek"] .burger-menu-btn,
 :root[data-visual-theme="sleek"] .board-item-remove {
   border-radius: 0;
@@ -7574,13 +7638,14 @@ select.export-input {
 :root[data-visual-theme="sleek"] .stack-delete-btn,
 :root[data-visual-theme="sleek"] .card-menu-btn,
 :root[data-visual-theme="sleek"] .embed-menu-btn,
+:root[data-visual-theme="sleek"] .wiki-menu-btn,
 :root[data-visual-theme="sleek"] .card-drag-handle,
 :root[data-visual-theme="sleek"] .drag-grip,
 :root[data-visual-theme="sleek"] .tree-grip,
 :root[data-visual-theme="sleek"] .board-item-remove {
-  width: var(--btn-square-size);
-  min-width: var(--btn-square-size);
-  height: var(--btn-square-size);
+  width: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  height: var(--icon-button-size);
   font-size: var(--icon-glyph-size);
   line-height: 1;
 }
@@ -7663,6 +7728,7 @@ select.export-input {
 :root[data-visual-theme="sleek"] .stack-delete-btn:hover,
 :root[data-visual-theme="sleek"] .card-menu-btn:hover,
 :root[data-visual-theme="sleek"] .embed-menu-btn:hover,
+:root[data-visual-theme="sleek"] .wiki-menu-btn:hover,
 :root[data-visual-theme="sleek"] .burger-menu-btn:hover,
 :root[data-visual-theme="sleek"] .board-item-remove:hover,
 :root[data-visual-theme="sleek"] .card-drag-handle:not(.entity-drag-icon):hover {
@@ -7760,8 +7826,8 @@ select.export-input {
   --sidebar-tree-meta-gap: calc(3px * var(--ui-scale));
   --sidebar-tree-presence-col: calc(18px * var(--ui-scale));
   --sidebar-tree-count-col: calc(20px * var(--ui-scale));
-  --sidebar-tree-action-col: var(--app-icon-box-size);
-  --sidebar-tree-grip-col: var(--app-icon-box-size);
+  --sidebar-tree-action-col: var(--app-icon-button-size);
+  --sidebar-tree-grip-col: var(--app-icon-button-size);
   --sidebar-board-font-size: 11px;
   --sidebar-board-font-weight: 600;
   --sidebar-board-padding-inline: var(--sidebar-tree-root-offset);
@@ -8214,7 +8280,7 @@ select.export-input {
   background: transparent;
   box-shadow: none;
   color: var(--text-secondary);
-  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
 }
 
 :root[data-visual-theme="sleek"] .board-row:not(.folded) > .board-row-header {
@@ -8243,7 +8309,7 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .board-row-content {
-  padding: 0 0 var(--board-inner-padding) calc(6px * var(--ui-scale));
+  padding: 0 0 var(--board-inner-padding) calc(4px * var(--ui-scale));
   align-items: stretch;
 }
 
@@ -8257,7 +8323,7 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .board-stack-content {
-  padding: 4px 0 4px;
+  padding: 2px 0;
 }
 
 :root[data-visual-theme="sleek"] .board-stack {
@@ -8385,8 +8451,8 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .column-header {
-  padding-top: calc(5px * var(--ui-scale));
-  padding-bottom: calc(7px * var(--ui-scale));
+  padding-top: calc(4px * var(--ui-scale));
+  padding-bottom: calc(5px * var(--ui-scale));
   font-size: calc(11px * var(--ui-scale));
   font-weight: 600;
 }
@@ -8395,7 +8461,7 @@ select.export-input {
   display: flex;
   flex-direction: column;
   gap: var(--card-gap);
-  padding: 2px 0 4px;
+  padding: 1px 0 3px;
 }
 
 :root[data-visual-theme="sleek"] .column.folded .column-cards {
@@ -8425,7 +8491,7 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .card-header {
-  padding: 6px 10px 3px;
+  padding: 4px 7px 2px;
   border-bottom: none;
 }
 
@@ -8434,7 +8500,7 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .card.collapsed .card-header {
-  padding-bottom: 6px;
+  padding-bottom: 4px;
 }
 
 :root[data-visual-theme="sleek"] .column-cards > .card:first-child {
@@ -8713,8 +8779,13 @@ select.export-input {
 }
 
 .file-search-cat {
-  font-size: 11px;
-  padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--btn-square-size);
+  font-size: calc(10px * var(--ui-scale));
+  line-height: 1;
+  padding: 0 calc(6px * var(--ui-scale));
 }
 
 .file-search-cat.active {

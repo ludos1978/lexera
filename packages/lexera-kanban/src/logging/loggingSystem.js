@@ -365,6 +365,31 @@ function setStatusBarEntry(source, entry) {
   syncAllLogStatusMessages();
 }
 
+// ── Error indicator on log panel header ─────────────────────────────
+function showLogPanelErrorIndicator(message) {
+  var headers = document.querySelectorAll('.log-panel-header');
+  for (var i = 0; i < headers.length; i++) {
+    var header = headers[i];
+    header.classList.add('log-panel-has-error');
+    var msgEl = header.querySelector('.log-panel-error-msg');
+    if (!msgEl) {
+      msgEl = document.createElement('span');
+      msgEl.className = 'log-panel-error-msg';
+      header.appendChild(msgEl);
+    }
+    msgEl.textContent = message;
+  }
+}
+
+function clearLogPanelErrorIndicator() {
+  var headers = document.querySelectorAll('.log-panel-header');
+  for (var i = 0; i < headers.length; i++) {
+    headers[i].classList.remove('log-panel-has-error');
+    var msgEl = headers[i].querySelector('.log-panel-error-msg');
+    if (msgEl) msgEl.remove();
+  }
+}
+
 function renderLogEntry(source, entry) {
   var el = document.createElement('div');
   el.className = 'log-entry log-' + entry.level;
@@ -379,7 +404,12 @@ function renderLogEntry(source, entry) {
 
 function appendLogEntry(source, entry) {
   var entries = getLogEntries(source);
-  if (entries.length > 0 && logEntryKey(entries[entries.length - 1]) === logEntryKey(entry)) {
+  var lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
+
+  // Track repeat count instead of silently dropping duplicates
+  if (lastEntry && logEntryKey(lastEntry) === logEntryKey(entry)) {
+    lastEntry._repeatCount = (lastEntry._repeatCount || 1) + 1;
+    updateLastLogEntryRepeat(source, lastEntry);
     return;
   }
 
@@ -387,6 +417,10 @@ function appendLogEntry(source, entry) {
   if (entries.length > LOG_MAX) entries.shift();
 
   setStatusBarEntry(source, entry);
+
+  if (entry.level === 'error') {
+    showLogPanelErrorIndicator(entry.message || 'Unknown error');
+  }
 
   var panel = getLogContainer(source);
   if (panel) {
@@ -397,6 +431,20 @@ function appendLogEntry(source, entry) {
     panel.scrollTop = panel.scrollHeight;
   }
   syncMirroredLogViews();
+}
+
+function updateLastLogEntryRepeat(source, entry) {
+  var panel = getLogContainer(source);
+  if (!panel) return;
+  var lastEl = panel.lastElementChild;
+  if (!lastEl) return;
+  var badge = lastEl.querySelector('.log-repeat-count');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'log-repeat-count';
+    lastEl.appendChild(badge);
+  }
+  badge.textContent = '\u00D7' + entry._repeatCount;
 }
 
 function replaceLogEntries(source, entries) {
@@ -443,7 +491,6 @@ function setActiveLogSource(source) {
   var frontendPanel = getLogContainer('frontend');
   var statsPanel = document.getElementById('log-entries-stats');
   var refreshBtn = getElLogRefreshBtn();
-  var logTitle = document.querySelector('.log-panel-title');
 
   var statsBtn = document.getElementById('log-tab-stats');
   if (backendBtn) backendBtn.classList.toggle('active', activeLogSource === 'backend');
@@ -474,6 +521,7 @@ function runInitManagementUI() {
 }
 
 function setLogPanelVisibility(visible) {
+  if (visible) clearLogPanelErrorIndicator();
   var panel = getElLogPanel();
   if (!panel) return;
   var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;
@@ -746,6 +794,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Status bar tab handlers are set up in init() where toggleBoardStatsBar is accessible
 
+  // Clicking the log panel header dismisses the error indicator
+  var headers = document.querySelectorAll('.log-panel-header');
+  for (var hi = 0; hi < headers.length; hi++) {
+    headers[hi].addEventListener('click', function () { clearLogPanelErrorIndicator(); });
+  }
+
   if (refreshBtn) refreshBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     refreshBackendLogs();
@@ -773,6 +827,17 @@ document.addEventListener('DOMContentLoaded', function () {
     e.stopPropagation();
     setActiveLogSource('stats');
   });
+
+  // Drain early errors captured before logging system loaded, then
+  // disable the early catcher so it doesn't double-fire alongside addEventListener.
+  if (window.__lexeraEarlyErrors && window.__lexeraEarlyErrors.length > 0) {
+    for (var ei = 0; ei < window.__lexeraEarlyErrors.length; ei++) {
+      appendLogEntry('frontend', window.__lexeraEarlyErrors[ei]);
+    }
+  }
+  window.__lexeraEarlyErrors = null;
+  window.onerror = null;
+  window.onunhandledrejection = null;
 
   replaceLogEntries('frontend', frontendLogEntries);
   replaceLogEntries('backend', backendLogEntries);

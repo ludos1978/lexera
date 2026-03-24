@@ -748,23 +748,28 @@ var LexeraBoardList = (function () {
     var workspaceRoots = _callDep('getSharedPanelRoots', 'hierarchy');
     var normalizedWorkspaceRoots = Array.isArray(workspaceRoots) ? workspaceRoots : [];
     var workspaceRootCount = normalizedWorkspaceRoots.length;
+    // console.log('[ws-debug] syncMirroredWorkspaceViews: sharedRoots=' + workspaceRootCount);
     if (!workspaceRootCount) return;
     var activeWorkspaceId = _dep('activeWorkspaceId');
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var canonicalSelect = document.getElementById('workspace-select');
     var canonicalBoardList = getElBoardList();
+    // console.log('[ws-debug] syncMirror: canonicalSelect=' + (canonicalSelect ? 'children=' + canonicalSelect.children.length + ' connected=' + canonicalSelect.isConnected : 'NULL') + ', canonicalBoardList=' + (canonicalBoardList ? 'children=' + canonicalBoardList.children.length + ' connected=' + canonicalBoardList.isConnected : 'NULL'));
     for (var i = 0; i < workspaceRootCount; i++) {
       var rootEl = normalizedWorkspaceRoots[i];
       if (!rootEl) continue;
       bindMirroredWorkspaceView(rootEl);
       var selectEl = rootEl.querySelector('.lexera-shared-workspace-select');
       var boardListEl = rootEl.querySelector('.lexera-shared-board-list');
+      // console.log('[ws-debug] syncMirror[' + i + ']: root=' + rootEl.className.substring(0, 50) + ', selectEl=' + !!selectEl + ', boardListEl=' + !!boardListEl);
       if (selectEl && canonicalSelect) {
         selectEl.innerHTML = canonicalSelect.innerHTML;
         selectEl.value = activeWorkspaceId || canonicalSelect.value || ALL_WORKSPACES_ID;
+        // console.log('[ws-debug] syncMirror[' + i + ']: synced select, options=' + selectEl.children.length);
       }
       if (boardListEl && canonicalBoardList) {
         boardListEl.innerHTML = canonicalBoardList.innerHTML;
+        // console.log('[ws-debug] syncMirror[' + i + ']: synced boardList, items=' + boardListEl.children.length);
       }
     }
   }
@@ -773,6 +778,7 @@ var LexeraBoardList = (function () {
 
   function renderWorkspaceSelect() {
     var sel = document.getElementById('workspace-select');
+    // console.log('[ws-debug] renderWorkspaceSelect: sel=' + (sel ? sel.id + ' connected=' + sel.isConnected + ' parent=' + (sel.parentNode ? sel.parentNode.className : 'null') : 'NULL'));
     if (!sel) return;
 
     resolveActiveWorkspaceId(null);
@@ -780,6 +786,7 @@ var LexeraBoardList = (function () {
     var activeWorkspaceId = _dep('activeWorkspaceId');
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var workspaces = _dep('workspaces');
+    // console.log('[ws-debug] renderWorkspaceSelect: workspaces=' + (workspaces ? workspaces.length : 'null') + ', activeWs=' + activeWorkspaceId + ', ALL=' + ALL_WORKSPACES_ID);
 
     sel.innerHTML = '';
 
@@ -797,6 +804,15 @@ var LexeraBoardList = (function () {
       opt.textContent = boardCount != null ? (ws.name + ' (' + boardCount + ')') : ws.name;
       if (ws.id === activeWorkspaceId) opt.selected = true;
       sel.appendChild(opt);
+      // console.log('[ws-debug] renderWorkspaceSelect: added option "' + opt.textContent + '" value=' + opt.value);
+    }
+    // console.log('[ws-debug] renderWorkspaceSelect: sel.children=' + sel.children.length + ', sel.innerHTML.length=' + sel.innerHTML.length);
+    // Check how many workspace-select and board-list elements exist in the DOM
+    var allSelects = document.querySelectorAll('.workspace-select');
+    var allBoardLists = document.querySelectorAll('.board-list');
+    // console.log('[ws-debug] DOM totals: workspace-selects=' + allSelects.length + ', board-lists=' + allBoardLists.length);
+    for (var si = 0; si < allSelects.length; si++) {
+      // console.log('[ws-debug]   select[' + si + ']: id=' + (allSelects[si].id || 'none') + ', children=' + allSelects[si].children.length + ', connected=' + allSelects[si].isConnected + ', visible=' + (allSelects[si].offsetParent !== null));
     }
 
     if (!sel.value) {
@@ -853,6 +869,7 @@ var LexeraBoardList = (function () {
 
   function renderBoardList() {
     var boardListEl = getElBoardList();
+    // console.log('[ws-debug] renderBoardList: boardListEl=' + (boardListEl ? 'id=' + boardListEl.id + ' connected=' + boardListEl.isConnected + ' parent=' + (boardListEl.parentNode ? boardListEl.parentNode.className.substring(0, 40) : 'null') : 'NULL'));
     boardListEl.innerHTML = '';
     var activeWorkspaceId = _dep('activeWorkspaceId');
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
@@ -868,6 +885,7 @@ var LexeraBoardList = (function () {
       ? boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(activeWorkspaceId) >= 0; })
       : boards;
     var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; }) || filteredBoards;
+    // console.log('[ws-debug] renderBoardList: boards=' + boards.length + ', filtered=' + filteredBoards.length + ', ordered=' + orderedBoards.length + ', activeWs=' + activeWorkspaceId + ', shellEnabled=' + workspaceShellEnabled);
     var expandedIds = getSidebarExpandedBoards();
 
     for (var i = 0; i < orderedBoards.length; i++) {
@@ -1086,6 +1104,7 @@ var LexeraBoardList = (function () {
 
       boardListEl.appendChild(wrapper);
     }
+    // console.log('[ws-debug] renderBoardList: appended ' + orderedBoards.length + ' boards, boardListEl.children=' + boardListEl.children.length + ', connected=' + boardListEl.isConnected);
 
     // Remote boards section
     if (remoteBoards.length > 0) {
@@ -1161,9 +1180,18 @@ var LexeraBoardList = (function () {
 
   function init(deps) {
     if (!deps) return;
-    var keys = Object.keys(deps);
-    for (var i = 0; i < keys.length; i++) {
-      _deps[keys[i]] = deps[keys[i]];
+    if (typeof window !== 'undefined' && window.LexeraRuntime) {
+      window.LexeraRuntime.mergeDeps(_deps, deps);
+    } else {
+      var keys = Object.keys(deps);
+      for (var i = 0; i < keys.length; i++) {
+        var desc = Object.getOwnPropertyDescriptor(deps, keys[i]);
+        if (desc && (desc.get || desc.set)) {
+          Object.defineProperty(_deps, keys[i], desc);
+        } else {
+          _deps[keys[i]] = deps[keys[i]];
+        }
+      }
     }
   }
 

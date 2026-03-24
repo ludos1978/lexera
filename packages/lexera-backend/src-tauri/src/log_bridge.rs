@@ -176,6 +176,7 @@ pub fn subscribe() -> broadcast::Receiver<BackendLogEntry> {
     LOG_HUB.tx.subscribe()
 }
 
+#[allow(dead_code)]
 pub fn push_external_entry(
     level: impl Into<String>,
     target: impl Into<String>,

@@ -2,35 +2,44 @@ var LexeraKeyboardNavigation = (function () {
   var focusedCardEl = null;
   var focusedBoardEntityEl = null;
   var focusedBoardEntityTimer = null;
+  var selectedCardEls = [];
 
-  var _deps = null;
+  var _deps = {};
 
   function init(deps) {
-    _deps = deps;
+    _deps = deps || {};
+  }
+
+  function hasDep(name) {
+    return !!(_deps && typeof _deps[name] === 'function');
   }
 
   function handleKeyNavigation(e) {
+    if (!hasDep('getIsEditing') || !hasDep('getSearchMode')) return;
     if (_deps.getIsEditing() || _deps.getSearchMode()) return;
     if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') return;
     if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
 
+    var columnsContainer = hasDep('getElColumnsContainer') ? _deps.getElColumnsContainer() : null;
     var key = e.key;
     if ((key === 'ArrowUp' || key === 'ArrowDown') && e.altKey && focusedCardEl) {
+      if (!columnsContainer) return;
       e.preventDefault();
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
       if (key === 'ArrowUp' && cj > 0) {
         _deps.moveCard(ci, cj, ci, cj - 1).then(function () {
-          var moved = _deps.getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj - 1) + '"]');
+          var moved = columnsContainer.querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj - 1) + '"]');
           if (moved) focusCard(moved);
         });
       } else if (key === 'ArrowDown') {
         _deps.moveCard(ci, cj, ci, cj + 2).then(function () {
-          var moved = _deps.getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj + 1) + '"]');
+          var moved = columnsContainer.querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj + 1) + '"]');
           if (moved) focusCard(moved);
         });
       }
     } else if ((key === 'ArrowLeft' || key === 'ArrowRight') && e.altKey && focusedCardEl) {
+      if (!columnsContainer) return;
       e.preventDefault();
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
@@ -41,7 +50,7 @@ var LexeraKeyboardNavigation = (function () {
       if (targetPos >= 0 && targetPos < colIndices.length) {
         var targetColIdx = colIndices[targetPos];
         _deps.moveCard(ci, cj, targetColIdx, 0).then(function () {
-          var moved = _deps.getElColumnsContainer().querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="0"]');
+          var moved = columnsContainer.querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="0"]');
           if (moved) focusCard(moved);
         });
       }
@@ -54,14 +63,16 @@ var LexeraKeyboardNavigation = (function () {
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
       _deps.openCardEditor(focusedCardEl, ci, cj, 'inline');
     } else if (key === 'Home' && focusedCardEl) {
+      if (!columnsContainer) return;
       e.preventDefault();
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var first = _deps.getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="0"]');
+      var first = columnsContainer.querySelector('.card[data-col-index="' + ci + '"][data-card-index="0"]');
       if (first) focusCard(first);
     } else if (key === 'End' && focusedCardEl) {
+      if (!columnsContainer) return;
       e.preventDefault();
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
-      var colCards = _deps.getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ci + '"]');
+      var colCards = columnsContainer.querySelectorAll('.card[data-col-index="' + ci + '"]');
       if (colCards.length > 0) focusCard(colCards[colCards.length - 1]);
     } else if ((key === 'd' || key === 'D') && (e.ctrlKey || e.metaKey) && focusedCardEl) {
       e.preventDefault();
@@ -109,15 +120,16 @@ var LexeraKeyboardNavigation = (function () {
       var rect = focusedCardEl.getBoundingClientRect();
       _deps.showCardContextMenu(rect.left + 20, rect.top + 20, ci, cj);
     } else if (key >= '1' && key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!columnsContainer) return;
       var colNum = parseInt(key, 10) - 1;
       var columns = _deps.getActiveBoardColumns();
       if (colNum < columns.length) {
         e.preventDefault();
         var targetColIdx = columns[colNum].index;
-        var firstCard = _deps.getElColumnsContainer().querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="0"]');
+        var firstCard = columnsContainer.querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="0"]');
         if (firstCard) focusCard(firstCard);
         else {
-          var colEl = _deps.getElColumnsContainer().querySelector('.column[data-col-index="' + targetColIdx + '"]');
+          var colEl = columnsContainer.querySelector('.column[data-col-index="' + targetColIdx + '"]');
           if (colEl) colEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
       }
@@ -140,7 +152,10 @@ var LexeraKeyboardNavigation = (function () {
   }
 
   function navigateCards(key) {
-    var allCards = _deps.getElColumnsContainer().querySelectorAll('.card');
+    if (!hasDep('getElColumnsContainer')) return;
+    var columnsContainer = _deps.getElColumnsContainer();
+    if (!columnsContainer) return;
+    var allCards = columnsContainer.querySelectorAll('.card');
     if (allCards.length === 0) return;
 
     if (!focusedCardEl || !focusedCardEl.isConnected) {
@@ -152,11 +167,11 @@ var LexeraKeyboardNavigation = (function () {
     var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
 
     if (key === 'ArrowDown') {
-      var next = _deps.getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj + 1) + '"]');
+      var next = columnsContainer.querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj + 1) + '"]');
       if (next) focusCard(next);
     } else if (key === 'ArrowUp') {
       if (cj > 0) {
-        var prev = _deps.getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj - 1) + '"]');
+        var prev = columnsContainer.querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj - 1) + '"]');
         if (prev) focusCard(prev);
       }
     } else if (key === 'ArrowRight' || key === 'ArrowLeft') {
@@ -166,9 +181,9 @@ var LexeraKeyboardNavigation = (function () {
       var targetPos = key === 'ArrowRight' ? curPos + 1 : curPos - 1;
       if (targetPos >= 0 && targetPos < colIndices.length) {
         var targetColIdx = colIndices[targetPos];
-        var target = _deps.getElColumnsContainer().querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="' + cj + '"]');
+        var target = columnsContainer.querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="' + cj + '"]');
         if (!target) {
-          var colCards = _deps.getElColumnsContainer().querySelectorAll('.card[data-col-index="' + targetColIdx + '"]');
+          var colCards = columnsContainer.querySelectorAll('.card[data-col-index="' + targetColIdx + '"]');
           if (colCards.length > 0) target = colCards[colCards.length - 1];
         }
         if (target) focusCard(target);
@@ -177,16 +192,17 @@ var LexeraKeyboardNavigation = (function () {
   }
 
   function focusCard(cardEl) {
+    if (!cardEl) return;
     unfocusCard();
     focusedCardEl = cardEl;
     cardEl.classList.add('focused');
-    if (_deps.getCurrentArrowKeyFocusScrollMode() !== 'disabled') {
+    if (hasDep('getCurrentArrowKeyFocusScrollMode') && _deps.getCurrentArrowKeyFocusScrollMode() !== 'disabled') {
       cardEl.scrollIntoView({
         block: _deps.getCurrentArrowKeyFocusScrollMode() === 'center' ? 'center' : 'nearest',
         behavior: 'smooth'
       });
     }
-    _deps.syncSidebarToView();
+    if (hasDep('syncSidebarToView')) _deps.syncSidebarToView();
   }
 
   function unfocusCard() {
@@ -194,6 +210,70 @@ var LexeraKeyboardNavigation = (function () {
       focusedCardEl.classList.remove('focused');
       focusedCardEl = null;
     }
+  }
+
+  // ── Multi-selection ───────────────────────────────────────────────
+
+  function clearSelection() {
+    for (var i = 0; i < selectedCardEls.length; i++) {
+      selectedCardEls[i].classList.remove('selected');
+    }
+    selectedCardEls = [];
+  }
+
+  function selectCard(cardEl) {
+    clearSelection();
+    unfocusCard();
+    if (!cardEl) return;
+    cardEl.classList.add('selected');
+    selectedCardEls = [cardEl];
+    focusedCardEl = cardEl;
+    cardEl.classList.add('focused');
+  }
+
+  function toggleCardSelection(cardEl) {
+    if (!cardEl) return;
+    var idx = selectedCardEls.indexOf(cardEl);
+    if (idx !== -1) {
+      cardEl.classList.remove('selected');
+      selectedCardEls.splice(idx, 1);
+      if (focusedCardEl === cardEl) {
+        focusedCardEl = selectedCardEls.length > 0 ? selectedCardEls[selectedCardEls.length - 1] : null;
+        if (focusedCardEl) focusedCardEl.classList.add('focused');
+      }
+    } else {
+      if (focusedCardEl) focusedCardEl.classList.remove('focused');
+      cardEl.classList.add('selected');
+      selectedCardEls.push(cardEl);
+      focusedCardEl = cardEl;
+      cardEl.classList.add('focused');
+    }
+  }
+
+  function selectCardRange(cardEl) {
+    if (!cardEl) return;
+    var container = hasDep('getElColumnsContainer') ? _deps.getElColumnsContainer() : null;
+    if (!container) { selectCard(cardEl); return; }
+    var anchor = selectedCardEls.length > 0 ? selectedCardEls[0] : focusedCardEl;
+    if (!anchor || !anchor.isConnected) { selectCard(cardEl); return; }
+    var allCards = Array.prototype.slice.call(container.querySelectorAll('.card'));
+    var anchorIdx = allCards.indexOf(anchor);
+    var targetIdx = allCards.indexOf(cardEl);
+    if (anchorIdx === -1 || targetIdx === -1) { selectCard(cardEl); return; }
+    var start = Math.min(anchorIdx, targetIdx);
+    var end = Math.max(anchorIdx, targetIdx);
+    clearSelection();
+    for (var i = start; i <= end; i++) {
+      allCards[i].classList.add('selected');
+      selectedCardEls.push(allCards[i]);
+    }
+    if (focusedCardEl) focusedCardEl.classList.remove('focused');
+    focusedCardEl = cardEl;
+    cardEl.classList.add('focused');
+  }
+
+  function getSelectedCardEls() {
+    return selectedCardEls.slice();
   }
 
   function focusBoardEntity(el) {
@@ -225,6 +305,11 @@ var LexeraKeyboardNavigation = (function () {
     navigateCards: navigateCards,
     focusCard: focusCard,
     unfocusCard: unfocusCard,
+    selectCard: selectCard,
+    toggleCardSelection: toggleCardSelection,
+    selectCardRange: selectCardRange,
+    clearSelection: clearSelection,
+    getSelectedCardEls: getSelectedCardEls,
     focusBoardEntity: focusBoardEntity,
     getFocusedCardEl: getFocusedCardEl
   };

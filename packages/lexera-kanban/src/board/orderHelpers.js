@@ -995,7 +995,8 @@ var LexeraOrderHelpers = (function () {
 
   function setupWorkspaceShell() {
     if (!_dep('workspaceShellEnabled') || !_dep('WorkspaceShell')) return;
-    _dep('WorkspaceShell').mount({
+    var shell = _dep('WorkspaceShell');
+    shell.mount({
       getMainContent: _dep('getElMainContent'),
       onActiveBoardChanged: function (boardId) {
         setShellActiveBoard(boardId || null);
@@ -1005,6 +1006,10 @@ var LexeraOrderHelpers = (function () {
         return _callDep('tauriInvoke', 'open_new_window', payload || {});
       }
     });
+    // Ensure hierarchy panel is visible after mount — guards against corrupted persisted state
+    if (typeof shell.isPanelVisible === 'function' && !shell.isPanelVisible('hierarchy')) {
+      if (typeof shell.revealPanel === 'function') shell.revealPanel('hierarchy');
+    }
   }
 
   // ─── File name / rename helpers ───────────────────────────────────────
@@ -1746,9 +1751,18 @@ var LexeraOrderHelpers = (function () {
 
   function init(deps) {
     if (!deps) return;
-    var keys = Object.keys(deps);
-    for (var i = 0; i < keys.length; i++) {
-      _deps[keys[i]] = deps[keys[i]];
+    if (typeof window !== 'undefined' && window.LexeraRuntime) {
+      window.LexeraRuntime.mergeDeps(_deps, deps);
+    } else {
+      var keys = Object.keys(deps);
+      for (var i = 0; i < keys.length; i++) {
+        var desc = Object.getOwnPropertyDescriptor(deps, keys[i]);
+        if (desc && (desc.get || desc.set)) {
+          Object.defineProperty(_deps, keys[i], desc);
+        } else {
+          _deps[keys[i]] = deps[keys[i]];
+        }
+      }
     }
     // Capture the shared dashboardState reference
     if (deps.dashboardState) dashboardState = deps.dashboardState;

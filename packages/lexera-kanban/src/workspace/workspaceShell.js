@@ -131,7 +131,7 @@
       };
     }
     return {
-      left: 300,
+      left: 272,
       right: 0,
       bottom: 0
     };
@@ -145,7 +145,7 @@
     var number = typeof value === 'number' && isFinite(value) ? value : null;
     if (number == null) return createDefaultDockSizes()[dockId];
     if (dockId === 'bottom') return Math.max(140, Math.min(480, Math.round(number)));
-    return Math.max(220, Math.min(520, Math.round(number)));
+    return Math.max(200, Math.min(520, Math.round(number)));
   }
 
   function normalizeDockSizes(raw, profile) {
@@ -2188,12 +2188,21 @@
   function ensureTabOverflowObserver() {
     if (_tabOverflowObserver) return;
     if (typeof ResizeObserver === 'undefined') return;
+    var _tabOverflowRafId = 0;
     _tabOverflowObserver = new ResizeObserver(function (entries) {
+      // Defer DOM mutations to the next frame to avoid triggering another
+      // ResizeObserver notification within the same observation loop.
+      if (_tabOverflowRafId) return;
+      var headers = [];
       for (var i = 0; i < entries.length; i++) {
         var tabsEl = entries[i].target;
         var headerEl = tabsEl.closest('.ws-view-header');
-        if (headerEl) updateTabOverflow(headerEl);
+        if (headerEl && headers.indexOf(headerEl) === -1) headers.push(headerEl);
       }
+      _tabOverflowRafId = requestAnimationFrame(function () {
+        _tabOverflowRafId = 0;
+        for (var j = 0; j < headers.length; j++) updateTabOverflow(headers[j]);
+      });
     });
   }
 

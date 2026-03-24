@@ -39,6 +39,10 @@ function loadMutationHarness() {
   const cardEditorSource = readFileSync(resolve(srcDir, 'editor', 'cardEditor.js'), 'utf-8');
   const cardEditorLines = cardEditorSource.split('\n');
 
+  // Load rowStackMenu.js for row/stack menu functions extracted from app.js
+  const rsmSource = readFileSync(resolve(srcDir, 'menu', 'rowStackMenu.js'), 'utf-8');
+  const rsmLines = rsmSource.split('\n');
+
   // Load dndMutations.js for cross-board move functions extracted from app.js
   const dndSource = readFileSync(resolve(srcDir, 'dragdrop', 'dndMutations.js'), 'utf-8');
   const dndLines = dndSource.split('\n');
@@ -82,6 +86,8 @@ function loadMutationHarness() {
     if (idx > 0) return extractFunctionFrom(ccmLines, idx).replace(/\bdeps\./g, '');
     idx = findLineIn(colCtxLines, pattern);
     if (idx > 0) return extractFunctionFrom(colCtxLines, idx).replace(/\bdeps\./g, '');
+    idx = findLineIn(rsmLines, pattern);
+    if (idx > 0) return extractFunctionFrom(rsmLines, idx).replace(/\bdeps\./g, '');
     idx = findLineIn(cardEditorLines, pattern);
     if (idx > 0) return extractFunctionFrom(cardEditorLines, idx);
     idx = findLineIn(dndLines, pattern);
@@ -131,6 +137,10 @@ function loadMutationHarness() {
 
   // --- Closure-dependent helpers ---
   const closureHelpers = [
+    // Safe module delegate helpers (must come before functions that use them)
+    extractFunctionAny('function _dnd('),
+    extractFunctionAny('function _col('),
+    extractFunctionAny('function _bl('),
     extractFunction(findLine('function getFullColumn(')),
     extractFunctionAny('function findFullDataRow('),
     extractFunctionAny('function findFullDataStack('),
@@ -190,21 +200,21 @@ function loadMutationHarness() {
     extractFunctionAny('function duplicateCard('),
     extractFunctionAny('function tagCard('),
     // Columns
-    extractFunction(findLine('async function addColumnToStack(')),
+    extractFunctionAny('async function addColumnToStack('),
     extractFunctionAny('async function duplicateColumn('),
     extractFunctionAny('async function setColumnHiddenTag('),
     extractFunction(findLine('async function moveColumnWithinBoard(')),
     extractFunction(findLine('async function moveColumnToExistingStack(')),
     extractFunction(findLine('async function moveColumnToNewStack(')),
     // Stacks
-    extractFunction(findLine('async function addStackToRow(')),
-    extractFunction(findLine('async function duplicateStack(')),
-    extractFunction(findLine('async function setStackHiddenTag(')),
+    extractFunctionAny('async function addStackToRow('),
+    extractFunctionAny('async function duplicateStack('),
+    extractFunctionAny('async function setStackHiddenTag('),
     extractFunctionAny('function moveStack('),
     // Rows
-    extractFunction(findLine('async function addRow(')),
-    extractFunction(findLine('async function duplicateRow(')),
-    extractFunction(findLine('async function setRowHiddenTag(')),
+    extractFunctionAny('async function addRow('),
+    extractFunctionAny('async function duplicateRow('),
+    extractFunctionAny('async function setRowHiddenTag('),
     extractFunctionAny('function reorderRows('),
     extractFunctionAny('async function moveRowAcrossBoards('),
     extractFunctionAny('async function moveStackAcrossBoards('),
