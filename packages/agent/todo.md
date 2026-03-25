@@ -1,6 +1,22 @@
 # Lexera Kanban Todo
 
+- [ ] **Frontend Settings Redesign** — see [spec-frontend-settings.md](spec-frontend-settings.md) for full spec. Summary:
+  - [ ] Move visual theme, scroll/zoom speed, sidebar hierarchy out of top-right burger menu into Frontend Settings panel
+  - [ ] Add tag group configuration per entity type (row, stack, column, card)
+  - [ ] Add marp/pandoc YAML header settings to board filename burger menu
+  - [ ] Make Frontend Settings panel show all editor defaults (column width, tag visibility, etc.)
+  - [ ] Implement `getEffectiveSetting()` resolution: board override > frontend default > fallback
+  - [ ] Add realtime sync between Frontend Settings panel, board header menu, and board filename menu via LexeraRuntime events
+  - [ ] Persist sidebar display options (counts, presence, grips, sync) in localStorage
+  - [ ] Top-right burger: only keep quick-access items (export, column width, zoom, tag visibility, html comments/content, special chars, overlay/wysiwyg editor)
+
+- [ ] remove the following features - including the functions/variables that are only used - by them:
+  - the layout rows from the right top burger menu.
+  - the pin column headers (is broken in this app, we can remove for now).
+  - the pdf viewer shows some overlay to zoom, open in editor and download. remove that!
+
 ## Module Runtime Migration — Harden Inter-Module Communication
+
 
 Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shared moduleRuntime.js infrastructure. Prevents the class of bugs where module extractions silently break live state bindings.
 
