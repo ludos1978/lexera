@@ -12,8 +12,11 @@ var LexeraBoardList = (function () {
 
   // --- Dependencies (injected via init) ---
   var _deps = {};
+  var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
 
+  // Read deps — runtime state takes priority over injected deps for shared state
   function _dep(name) {
+    if (_rt && _rt.getState(name) !== undefined) return _rt.getState(name);
     return _deps[name];
   }
 

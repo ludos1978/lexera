@@ -5,8 +5,26 @@
  */
 const LexeraDashboard = (function () {
   var PathUtils = window.LexeraPathUtils;
+  var _rt = window.LexeraRuntime;
 
-  // State
+  // ── Shared state — bridged to LexeraRuntime for cross-module access ──
+  // Modules read via _rt.state.xxx; app.js writes via the setter helpers below.
+  if (_rt) {
+    _rt.defineState('boards', []);
+    _rt.defineState('remoteBoards', []);
+    _rt.defineState('workspaces', []);
+    _rt.defineState('activeWorkspaceId', localStorage.getItem('lexera-active-workspace') || null);
+    _rt.defineState('activeBoardId', null);
+    _rt.defineState('activeBoardData', null);
+    _rt.defineState('fullBoardData', null);
+    _rt.defineState('connected', false);
+    _rt.defineState('liveSyncState', null);
+    _rt.defineState('boardPresenceCache', {});
+    _rt.defineState('workspaceShellEnabled', false);
+  }
+
+  // Local variables — kept for backwards compat with code that reads them directly.
+  // Setters update BOTH the local var and the runtime state.
   let boards = [];
   let remoteBoards = [];
   let workspaces = [];
@@ -327,6 +345,7 @@ const LexeraDashboard = (function () {
   var embeddedWorkspaceShellParent = embeddedMode && urlParams.get('workspaceShellParent') === '1';
   var WorkspaceShell = window.LexeraWorkspaceShell || null;
   var workspaceShellEnabled = !embeddedMode && !!(WorkspaceShell && typeof WorkspaceShell.isEnabled === 'function' && WorkspaceShell.isEnabled());
+  if (_rt) _rt.setState('workspaceShellEnabled', workspaceShellEnabled);
   var SidebarResize = window.LexeraSidebarResize;
   var sidebarSplitRatio = parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
   var sidebarWidth = parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0;
@@ -1209,6 +1228,18 @@ const LexeraDashboard = (function () {
 
   function init() {
     window.__LEXERA_FRONTEND_BUILD = FRONTEND_BUILD_STAMP;
+
+    // Startup health check — discover modules and report status
+    if (_rt && typeof _rt.discoverModules === 'function') {
+      _rt.discoverModules();
+      var report = _rt.getStartupReport();
+      traceFrontendAction('info', 'startup.modules',
+        report.found.length + '/' + report.total + ' modules loaded' +
+        (report.missing.length > 0 ? ', missing: ' + report.missing.join(', ') : ''),
+        { found: report.found.length, missing: report.missing }
+      );
+    }
+
     traceFrontendAction('info', 'frontend.build', 'Loaded frontend build', {
       buildStamp: FRONTEND_BUILD_STAMP
     });
@@ -2004,13 +2035,13 @@ const LexeraDashboard = (function () {
     get urlParams() { return urlParams; },
     get _lastLoadedRevision() { return _lastLoadedRevision; },
     get _lastLoadedGeneration() { return _lastLoadedGeneration; },
-    setConnectedState: function (v) { connected = v; },
-    setWorkspaces: function (v) { workspaces = v; },
-    setBoards: function (v) { boards = v; },
-    setRemoteBoards: function (v) { remoteBoards = v; },
-    setActiveBoardId: function (v) { activeBoardId = v; },
-    setActiveBoardData: function (v) { activeBoardData = v; },
-    setFullBoardData: function (v) { fullBoardData = v; },
+    setConnectedState: function (v) { connected = v; if (_rt) _rt.setState('connected', v); },
+    setWorkspaces: function (v) { workspaces = v; if (_rt) _rt.setState('workspaces', v); },
+    setBoards: function (v) { boards = v; if (_rt) _rt.setState('boards', v); },
+    setRemoteBoards: function (v) { remoteBoards = v; if (_rt) _rt.setState('remoteBoards', v); },
+    setActiveBoardId: function (v) { activeBoardId = v; if (_rt) _rt.setState('activeBoardId', v); },
+    setActiveBoardData: function (v) { activeBoardData = v; if (_rt) _rt.setState('activeBoardData', v); },
+    setFullBoardData: function (v) { fullBoardData = v; if (_rt) _rt.setState('fullBoardData', v); },
     setLastLoadedGeneration: function (v) { _lastLoadedGeneration = v; },
     setLastLoadedRevision: function (v) { _lastLoadedRevision = v; },
     connectSSEIfReady: function () { connectSSEIfReady(); },
@@ -2069,11 +2100,11 @@ const LexeraDashboard = (function () {
     selectBoard: function(boardId) { selectBoard(boardId); },
     setLastLoadedRevision: function(rev) { _lastLoadedRevision = rev; },
     setLastLoadedGeneration: function(generation) { _lastLoadedGeneration = generation; },
-    setActiveBoardId: function(boardId) { activeBoardId = boardId; },
-    setActiveBoardData: function(boardData) { activeBoardData = boardData; },
-    setFullBoardData: function(boardData) { fullBoardData = boardData; },
-    setBoards: function(nextBoards) { boards = nextBoards; },
-    setActiveWorkspaceIdState: function(id) { activeWorkspaceId = id; },
+    setActiveBoardId: function(boardId) { activeBoardId = boardId; if (_rt) _rt.setState('activeBoardId', boardId); },
+    setActiveBoardData: function(boardData) { activeBoardData = boardData; if (_rt) _rt.setState('activeBoardData', boardData); },
+    setFullBoardData: function(boardData) { fullBoardData = boardData; if (_rt) _rt.setState('fullBoardData', boardData); },
+    setBoards: function(nextBoards) { boards = nextBoards; if (_rt) _rt.setState('boards', nextBoards); },
+    setActiveWorkspaceIdState: function(id) { activeWorkspaceId = id; if (_rt) _rt.setState('activeWorkspaceId', id); },
     setPendingExternalRebaseConflict: function(conflict) { pendingExternalRebaseConflict = conflict; },
     tauriInvoke: function(cmd, args) { return window.__TAURI__ && window.__TAURI__.core.invoke(cmd, args); },
     getSidebarTreeApi: function() { return getSidebarTreeApi(); },

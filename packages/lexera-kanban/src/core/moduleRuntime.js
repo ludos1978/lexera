@@ -31,6 +31,7 @@ var LexeraRuntime = (function () {
   function setState(key, value) {
     var old = _stateValues[key];
     _stateValues[key] = value;
+    // Notify direct state listeners
     var listeners = _stateListeners[key];
     if (listeners) {
       for (var i = 0; i < listeners.length; i++) {
@@ -39,6 +40,8 @@ var LexeraRuntime = (function () {
         }
       }
     }
+    // Also emit as event for the event bus
+    emit(key + ':changed', { key: key, value: value, previous: old });
   }
 
   function getState(key) {
@@ -113,6 +116,43 @@ var LexeraRuntime = (function () {
     return _modules[name] || null;
   }
 
+  // ── Auto-discovery ───────────────────────────────────────────────
+  // Called after all scripts load to register known modules from window.
+  var KNOWN_MODULES = [
+    'LexeraBoardList', 'LexeraOrderHelpers', 'LexeraWorkspaceShell',
+    'LexeraPollingService', 'LexeraColumnContextMenu', 'LexeraRowStackMenu',
+    'LexeraKeyboardNavigation', 'LexeraCanvasMode', 'LexeraCanvasPan',
+    'LexeraCanvasLayout', 'LexeraDragDropHandlers', 'LexeraSidebarSync',
+    'LexeraSidebarTree', 'LexeraSidebarResize', 'LexeraSharedPanels',
+    'LexeraCardContentRenderer', 'LexeraInlineRenderer', 'LexeraEmbedMenu',
+    'LexeraActionRegistry', 'LexeraKeybindingRegistry', 'LexeraBoardSettingRegistry',
+    'LexeraMenuContributorRegistry', 'LexeraDiagramRegistry', 'LexeraFileFormatRegistry',
+    'LexeraTagSystem', 'LexeraPathUtils', 'LexeraDropZoneIndicators',
+    'CardEditor', 'InlineCardEditor', 'CardContextMenu',
+    'BoardSearchReplace', 'BoardStatsFilter', 'LexeraDndMutations',
+    'LexeraDashboard'
+  ];
+
+  function discoverModules() {
+    if (typeof window === 'undefined') return;
+    for (var i = 0; i < KNOWN_MODULES.length; i++) {
+      var name = KNOWN_MODULES[i];
+      if (window[name] && !_modules[name]) {
+        _modules[name] = window[name];
+      }
+    }
+  }
+
+  function getStartupReport() {
+    var found = [];
+    var missing = [];
+    for (var i = 0; i < KNOWN_MODULES.length; i++) {
+      if (_modules[KNOWN_MODULES[i]]) found.push(KNOWN_MODULES[i]);
+      else missing.push(KNOWN_MODULES[i]);
+    }
+    return { found: found, missing: missing, total: KNOWN_MODULES.length };
+  }
+
   // ── Public API ──────────────────────────────────────────────────
   return {
     // State store
@@ -128,7 +168,10 @@ var LexeraRuntime = (function () {
     mergeDeps: mergeDeps,
     // Module registry
     registerModule: registerModule,
-    getModule: getModule
+    getModule: getModule,
+    discoverModules: discoverModules,
+    getStartupReport: getStartupReport,
+    KNOWN_MODULES: KNOWN_MODULES
   };
 })();
 window.LexeraRuntime = LexeraRuntime;

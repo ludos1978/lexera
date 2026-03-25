@@ -1,5 +1,19 @@
 # Lexera Kanban Todo
 
+## Module Runtime Migration — Harden Inter-Module Communication
+
+Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shared moduleRuntime.js infrastructure. Prevents the class of bugs where module extractions silently break live state bindings.
+
+- [ ] **Phase 1: Migrate shared mutable state to runtime.state** — move `boards`, `remoteBoards`, `workspaces`, `activeBoardId`, `activeBoardData`, `fullBoardData`, `activeWorkspaceId`, `connected` from app.js closure variables into `LexeraRuntime.state`. Replace all getter-based dep injection for these with direct `runtime.state.xxx` reads in modules.
+
+- [ ] **Phase 2: Replace setter dep callbacks with runtime.setState** — replace `setBoards`, `setWorkspaces`, `setActiveBoardId` etc. dep callbacks with `LexeraRuntime.setState('boards', value)` calls. Modules that need to react to changes subscribe via `runtime.onStateChange('boards', fn)` instead of being called explicitly.
+
+- [ ] **Phase 3: Replace render-trigger dep callbacks with events** — replace `renderBoardList`, `renderWorkspaceSelect`, `renderColumns`, `renderMainView`, `scheduleDashboardRefresh` dep callbacks with event emissions (`runtime.emit('boards:updated')`) and subscriptions in the rendering modules.
+
+- [ ] **Phase 4: Register all IIFE modules in the module registry** — each module calls `LexeraRuntime.registerModule('boardList', LexeraBoardList)` after creation. App.js resolves modules via `runtime.getModule('boardList')` instead of `window.LexeraBoardList`. Enables startup validation: log warnings for missing modules.
+
+- [ ] **Phase 5: Add startup health check** — after init(), verify all critical modules are registered and all critical state keys are defined. Log a single summary line: `[init] 15/15 modules OK, 8 state keys initialized`. Flag any module that failed to load.
+
 ## High Priority — Security & Reliability
 
 - [ ] horizontal dont look and behave the same as vertical moveable borders between views! they should share the style!
