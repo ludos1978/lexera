@@ -2361,13 +2361,17 @@ const LexeraDashboard = (function () {
         }
         if (seq !== boardLoadSeq) return; // check again after second await
       }
-      // Only prompt for draft restore on actual board switches (first load or
-      // navigating to a different board).  Reloads of the same board (poll,
-      // SSE file-changed) silently discard stale drafts.
+      // Draft restore only makes sense on board switches (opening a board for
+      // the first time or navigating to a different one).  When the same board
+      // is reloaded (poll, SSE file-changed from remote peer), any draft is
+      // from the current editing session — clear it so it doesn't trigger a
+      // spurious restore prompt.  Crash recovery still works: the next time
+      // the app starts and opens this board, isBoardSwitch will be true.
       if (!isBoardSwitch && draftSnapshot) {
         clearLocalBoardDraft(boardId);
         draftSnapshot = null;
-        traceFrontendAction('info', 'board.draft.autoDiscard', 'Auto-discarded stale draft on board reload', { boardId: boardId });
+        traceFrontendAction('info', 'board.draft.sessionClear',
+          'Cleared current-session draft during board reload (not a board switch)', { boardId: boardId });
       }
       if (draftSnapshot && draftSnapshot.board) {
         var currentSerialized = JSON.stringify(cloneBoardData(fullBoardData));

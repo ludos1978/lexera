@@ -97,13 +97,26 @@ var LexeraPollingService = (function () {
         if (stillExists) {
           // Never reload the board if there are unsaved changes or the user
           // is actively editing a card — that would discard work.
+          // Also skip reload if the board hasn't changed (same generation).
           if (!_callDep('isBoardDirty') && !_dep('isEditing')) {
-            _callDep('traceFrontendAction', 'info', 'poll.reload', 'Polling reload for active board (clean)', {
-              boardId: activeBoardId,
-              revision: _dep('_lastLoadedRevision') || null,
-              generation: _dep('_lastLoadedGeneration')
-            });
-            await _callDep('loadBoard', activeBoardId);
+            var pollGen = _dep('_lastLoadedGeneration');
+            var serverGen = data.boards ? (function () {
+              for (var bi = 0; bi < boardsList.length; bi++) {
+                if (boardsList[bi].id === activeBoardId) return boardsList[bi].generation;
+              }
+              return null;
+            })() : null;
+            if (serverGen !== null && typeof pollGen === 'number' && serverGen === pollGen) {
+              // Board hasn't changed — skip reload
+            } else {
+              _callDep('traceFrontendAction', 'info', 'poll.reload', 'Polling reload for active board (clean, generation changed)', {
+                boardId: activeBoardId,
+                revision: _dep('_lastLoadedRevision') || null,
+                loadedGeneration: pollGen,
+                serverGeneration: serverGen
+              });
+              await _callDep('loadBoard', activeBoardId);
+            }
           } else {
             _callDep('traceFrontendAction', 'warn', 'poll.reload.skipDirty', 'Skipped polling reload because active board is dirty or being edited', {
               boardId: activeBoardId,
