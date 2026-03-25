@@ -1,4 +1,5 @@
 (function () {
+  'use strict';
   var DUPLICABLE_PANEL_KINDS = {
     hierarchy: true,
     dashboard: true,

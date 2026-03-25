@@ -1,4 +1,5 @@
 var LexeraKeyboardNavigation = (function () {
+  'use strict';
   var focusedCardEl = null;
   var focusedBoardEntityEl = null;
   var focusedBoardEntityTimer = null;

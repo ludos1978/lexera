@@ -1,4 +1,5 @@
 var LexeraCanvasMode = (function () {
+  'use strict';
   function defaultStripHtmlComments(text) {
     return String(text || '')
       .replace(/<!--[\s\S]*?-->/g, ' ')

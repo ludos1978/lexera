@@ -1,4 +1,5 @@
 (function () {
+  'use strict';
   function parseSearchParams() {
     try {
       return new URLSearchParams(window.location.search || '');

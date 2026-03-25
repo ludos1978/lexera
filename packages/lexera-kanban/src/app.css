@@ -5554,7 +5554,7 @@ select.dialog-input option,
   position: relative;
   grid-row: 2;
   width: 100%;
-  height: 220px;
+  height: min(max(220px, 34vh), calc(100vh - 120px));
   background: var(--bg-secondary);
   border-top: 1px solid var(--accent);
   display: flex;
@@ -5562,6 +5562,12 @@ select.dialog-input option,
   z-index: 4;
   font-family: var(--theme-font, inherit);
   font-size: 11px;
+}
+/* In workspace shell docks, fill the pane instead of using fixed height */
+[data-shell-panel="logs"] .log-panel,
+.workspace-shell-root .log-panel {
+  height: 100%;
+  max-height: none;
 }
 
 .log-panel-header {

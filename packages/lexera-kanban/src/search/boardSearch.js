@@ -1,4 +1,5 @@
 var LexeraBoardSearch = (function () {
+  'use strict';
   var _deps = null;
   var searchDebounce = null;
 

@@ -4,7 +4,7 @@
 var frontendLogEntries = [];
 var backendLogEntries = [];
 var LOG_MAX = 1000;
-var storedLogSource = localStorage.getItem('lexera-log-source');
+var storedLogSource = (function () { try { return localStorage.getItem('lexera-log-source'); } catch (_) { return null; } })();
 var activeLogSource = storedLogSource === 'backend' ? 'backend' : 'frontend';
 var backendLogLoaded = false;
 var backendLogEventSource = null;
@@ -402,6 +402,14 @@ function renderLogEntry(source, entry) {
   return el;
 }
 
+function syncLogCount() {
+  var entries = getLogEntries(activeLogSource);
+  var titles = document.querySelectorAll('.log-panel-title');
+  var label = activeLogSource === 'backend' ? 'Backend' : activeLogSource === 'stats' ? 'Stats' : 'Frontend';
+  var text = 'Logs \u00B7 ' + label + ' (' + entries.length + ')';
+  for (var i = 0; i < titles.length; i++) titles[i].textContent = text;
+}
+
 function appendLogEntry(source, entry) {
   var entries = getLogEntries(source);
   var lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
@@ -430,6 +438,7 @@ function appendLogEntry(source, entry) {
     panel.appendChild(renderLogEntry(source, entry));
     panel.scrollTop = panel.scrollHeight;
   }
+  if (source === activeLogSource) syncLogCount();
   syncMirroredLogViews();
 }
 
@@ -460,6 +469,7 @@ function replaceLogEntries(source, entries) {
     panel.appendChild(renderLogEntry(source, nextEntries[i]));
   }
   panel.scrollTop = panel.scrollHeight;
+  if (source === activeLogSource) syncLogCount();
   syncMirroredLogViews();
 }
 
@@ -500,6 +510,7 @@ function setActiveLogSource(source) {
   if (frontendPanel) frontendPanel.classList.toggle('hidden', activeLogSource !== 'frontend');
   if (statsPanel) statsPanel.classList.toggle('hidden', activeLogSource !== 'stats');
   if (refreshBtn) refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
+  syncLogCount();
   syncMirroredLogViews();
 }
 
