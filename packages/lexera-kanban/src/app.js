@@ -5084,6 +5084,8 @@ const LexeraDashboard = (function () {
     applyBoardSettings();
     await persistBoardMutation();
     refreshBoardHeaderActionStates();
+    renderFrontendSettingsPanel();
+    if (_rt) _rt.emit('setting:changed', { key: key, value: value, source: 'board' });
     return true;
   }
 
@@ -6511,18 +6513,30 @@ const LexeraDashboard = (function () {
       // UI scale
       getUiScale: function () { return $uiScale; },
       applyUiScale: function (v) { applyUiScale(parseFloat(v) || 1); },
-      // Scroll/zoom speed
+      // Scroll/zoom speed (saved as frontend defaults)
       getScrollSpeed: function () { return getBoardSettingValue('scrollSpeed', '1'); },
-      setScrollSpeed: function (v) { setBoardSettingValue('scrollSpeed', v); },
+      setScrollSpeed: function (v) { try { localStorage.setItem('lexera-default-scrollSpeed', v); } catch (_) {} },
       getZoomSpeed: function () { return getBoardSettingValue('zoomSpeed', '0.06'); },
-      setZoomSpeed: function (v) { setBoardSettingValue('zoomSpeed', v); },
-      // Display
+      setZoomSpeed: function (v) { try { localStorage.setItem('lexera-default-zoomSpeed', v); } catch (_) {} },
+      // Display (saved as frontend defaults, applied immediately to current board)
       getTagVisibility: function () { return getBoardSettingValue('tagVisibility', 'allexcludinglayout'); },
-      setTagVisibility: function (v) { setBoardSettingValue('tagVisibility', v); applyRenderedTagVisibility(getElColumnsContainer(), v); },
+      setTagVisibility: function (v) {
+        try { localStorage.setItem('lexera-default-tagVisibility', v); } catch (_) {}
+        applyRenderedTagVisibility(getElColumnsContainer(), v);
+        renderFrontendSettingsPanel();
+      },
       getHtmlCommentMode: function () { return getBoardSettingValue('htmlCommentRenderMode', 'hidden'); },
-      setHtmlCommentMode: function (v) { setBoardSettingValue('htmlCommentRenderMode', v); },
+      setHtmlCommentMode: function (v) {
+        try { localStorage.setItem('lexera-default-htmlCommentRenderMode', v); } catch (_) {}
+        renderColumns();
+        renderFrontendSettingsPanel();
+      },
       getHtmlContentMode: function () { return getBoardSettingValue('htmlContentRenderMode', 'html'); },
-      setHtmlContentMode: function (v) { setBoardSettingValue('htmlContentRenderMode', v); },
+      setHtmlContentMode: function (v) {
+        try { localStorage.setItem('lexera-default-htmlContentRenderMode', v); } catch (_) {}
+        renderColumns();
+        renderFrontendSettingsPanel();
+      },
       // Sidebar
       getSidebarDisplayOptions: getSidebarTreeDisplayOptions,
       applySidebarDisplayOptions: applySidebarTreeDisplayOptions,
@@ -8513,9 +8527,18 @@ const LexeraDashboard = (function () {
   }
 
   function getBoardSettingValue(key, fallback) {
-    if (!fullBoardData || !fullBoardData.boardSettings) return fallback;
-    var value = fullBoardData.boardSettings[key];
-    return value == null || value === '' ? fallback : value;
+    // Tier 1: per-board override (YAML header)
+    if (fullBoardData && fullBoardData.boardSettings) {
+      var boardValue = fullBoardData.boardSettings[key];
+      if (boardValue != null && boardValue !== '') return boardValue;
+    }
+    // Tier 2: frontend default (localStorage)
+    try {
+      var frontendValue = localStorage.getItem('lexera-default-' + key);
+      if (frontendValue !== null) return frontendValue;
+    } catch (_) {}
+    // Tier 3: hardcoded fallback
+    return fallback;
   }
 
   function getHtmlContentRenderMode() {
