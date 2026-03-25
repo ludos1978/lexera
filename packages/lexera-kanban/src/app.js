@@ -2090,7 +2090,7 @@ const LexeraDashboard = (function () {
     get _lastLoadedRevision() { return _lastLoadedRevision; },
     get _saveInFlight() { return _saveInFlight; },
     LexeraApi: LexeraApi,
-    TreeView: window.LexeraSidebarTree,
+    TreeView: TreeView,
     SidebarSync: window.LexeraSidebarSync,
     WorkspaceShell: window.LexeraWorkspaceShell,
     ALL_WORKSPACES_ID: ALL_WORKSPACES_ID,
@@ -2360,6 +2360,14 @@ const LexeraDashboard = (function () {
           logFrontendIssue('warn', 'board.load.migrate', 'Failed to persist migrated board ' + boardId, err);
         }
         if (seq !== boardLoadSeq) return; // check again after second await
+      }
+      // Only prompt for draft restore on actual board switches (first load or
+      // navigating to a different board).  Reloads of the same board (poll,
+      // SSE file-changed) silently discard stale drafts.
+      if (!isBoardSwitch && draftSnapshot) {
+        clearLocalBoardDraft(boardId);
+        draftSnapshot = null;
+        traceFrontendAction('info', 'board.draft.autoDiscard', 'Auto-discarded stale draft on board reload', { boardId: boardId });
       }
       if (draftSnapshot && draftSnapshot.board) {
         var currentSerialized = JSON.stringify(cloneBoardData(fullBoardData));
