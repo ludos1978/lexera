@@ -1227,6 +1227,7 @@ const LexeraDashboard = (function () {
   function getElDashboardOverdueList() { return _cachedEl('dol', 'dashboard-overdue-list'); }
 
   function init() {
+    try {
     window.__LEXERA_FRONTEND_BUILD = FRONTEND_BUILD_STAMP;
 
     // Startup health check — discover modules and report status
@@ -1398,8 +1399,22 @@ const LexeraDashboard = (function () {
     setupEmbeddedPaneActivation();
     registerExternalDndBridge();
 
-    poll();
-    pollInterval = setInterval(poll, 5000);
+    poll().catch(function (err) {
+      logFrontendIssue('error', 'init.poll', 'Initial poll failed', err);
+    });
+    pollInterval = setInterval(function () {
+      poll().catch(function (err) {
+        logFrontendIssue('error', 'poll.interval', 'Poll interval failed', err);
+      });
+    }, 5000);
+    } catch (err) {
+      logFrontendIssue('error', 'init', 'App initialization failed — some features may be unavailable', err);
+      // Still try to start polling so boards can load even if UI setup partially failed
+      try {
+        poll().catch(function () {});
+        if (!pollInterval) pollInterval = setInterval(function () { poll().catch(function () {}); }, 5000);
+      } catch (_) {}
+    }
   }
 
   // --- Keyboard Navigation --- (delegated to LexeraKeyboardNavigation module)
@@ -1739,6 +1754,7 @@ const LexeraDashboard = (function () {
   /** Connect sync for the active board. Disconnects previous if different. */
   var syncDebounceTimer = null;
   async function connectSyncForBoard(boardId) {
+    try {
     if (!boardId) {
       LexeraApi.disconnectSync();
       await closeLiveSyncSession();
@@ -1780,6 +1796,9 @@ const LexeraDashboard = (function () {
       },
       onEditingPresence: handleEditingPresence
     });
+    } catch (err) {
+      logFrontendIssue('error', 'sync.connect', 'Failed to connect sync for board ' + boardId, err);
+    }
   }
 
   function updateBoardPresenceIndicator(boardId) {
@@ -1900,7 +1919,11 @@ const LexeraDashboard = (function () {
       var req = editingPresenceRequest;
       editingPresenceRequest = null;
       if (!req) return;
-      LexeraApi.sendEditingPresence(req.cardKid, syncUserName || syncUserId, req.cursorPos, req.isTyping);
+      try {
+        LexeraApi.sendEditingPresence(req.cardKid, syncUserName || syncUserId, req.cursorPos, req.isTyping);
+      } catch (err) {
+        logFrontendIssue('warn', 'presence.send', 'Failed to send editing presence', err);
+      }
     }, 250);
   }
 
