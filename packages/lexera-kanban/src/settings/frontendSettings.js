@@ -47,8 +47,9 @@
     for (var p = 0; p < panels.length; p++) {
       var root = panels[p];
       if (!root) continue;
-      // Use panel-specific options if available, fall back to passed options
       var opts = getOptionsForPanel(root) || options;
+
+      // Color theme select
       var themeSelect = q(root, 'theme-select');
       if (themeSelect && themeSelect.options.length === 0) {
         var themes = opts && opts.getThemes ? opts.getThemes() : [];
@@ -62,9 +63,53 @@
       if (themeSelect && opts && typeof opts.getCurrentThemeId === 'function') {
         themeSelect.value = opts.getCurrentThemeId();
       }
-      var sidebarOptions = opts && typeof opts.getSidebarDisplayOptions === 'function'
-        ? opts.getSidebarDisplayOptions() : {};
 
+      // Visual theme select
+      var visualThemeSelect = q(root, 'visual-theme');
+      if (visualThemeSelect && visualThemeSelect.options.length === 0) {
+        var vThemes = opts && opts.getVisualThemes ? opts.getVisualThemes() : [];
+        for (var vi = 0; vi < vThemes.length; vi++) {
+          var vOpt = document.createElement('option');
+          vOpt.value = vThemes[vi].id;
+          vOpt.textContent = vThemes[vi].name || vThemes[vi].id;
+          visualThemeSelect.appendChild(vOpt);
+        }
+      }
+      if (visualThemeSelect && opts && typeof opts.getCurrentVisualThemeId === 'function') {
+        visualThemeSelect.value = opts.getCurrentVisualThemeId();
+      }
+
+      // UI scale
+      var uiScaleSelect = q(root, 'ui-scale');
+      if (uiScaleSelect && opts && typeof opts.getUiScale === 'function') {
+        uiScaleSelect.value = String(opts.getUiScale());
+      }
+
+      // Scroll/zoom speed
+      var scrollSpeedSelect = q(root, 'scroll-speed');
+      if (scrollSpeedSelect && opts && typeof opts.getScrollSpeed === 'function') {
+        scrollSpeedSelect.value = String(opts.getScrollSpeed());
+      }
+      var zoomSpeedSelect = q(root, 'zoom-speed');
+      if (zoomSpeedSelect && opts && typeof opts.getZoomSpeed === 'function') {
+        zoomSpeedSelect.value = String(opts.getZoomSpeed());
+      }
+
+      // Display settings
+      var tagVisSelect = q(root, 'tag-visibility');
+      if (tagVisSelect && opts && typeof opts.getTagVisibility === 'function') {
+        tagVisSelect.value = opts.getTagVisibility();
+      }
+      var htmlCommentsSelect = q(root, 'html-comments');
+      if (htmlCommentsSelect && opts && typeof opts.getHtmlCommentMode === 'function') {
+        htmlCommentsSelect.value = opts.getHtmlCommentMode();
+      }
+      var htmlContentSelect = q(root, 'html-content');
+      if (htmlContentSelect && opts && typeof opts.getHtmlContentMode === 'function') {
+        htmlContentSelect.value = opts.getHtmlContentMode();
+      }
+
+      // Toggles
       var toggleMap = [
         ['overlay-editor', opts && opts.isOverlayEditorEnabled],
         ['wysiwyg-editor', opts && opts.isWysiwygEditorEnabled],
@@ -77,6 +122,9 @@
         if (el && typeof getter === 'function') el.checked = getter();
       }
 
+      // Sidebar toggles
+      var sidebarOptions = opts && typeof opts.getSidebarDisplayOptions === 'function'
+        ? opts.getSidebarDisplayOptions() : {};
       var sidebarToggles = [
         ['sidebar-counts', 'counts'],
         ['sidebar-presence', 'presence'],
@@ -113,6 +161,27 @@
       });
     }
 
+    // Select-based settings
+    function bindSelect(cls, setterKey) {
+      var input = q(panel, cls);
+      if (!input) return;
+      input.addEventListener('change', function () {
+        var opts = getOptions();
+        if (!opts) return;
+        var setter = opts[setterKey];
+        if (typeof setter === 'function') setter(input.value);
+      });
+    }
+
+    bindSelect('visual-theme', 'applyVisualTheme');
+    bindSelect('ui-scale', 'applyUiScale');
+    bindSelect('scroll-speed', 'setScrollSpeed');
+    bindSelect('zoom-speed', 'setZoomSpeed');
+    bindSelect('tag-visibility', 'setTagVisibility');
+    bindSelect('html-comments', 'setHtmlCommentMode');
+    bindSelect('html-content', 'setHtmlContentMode');
+
+    // Checkbox toggles
     bindToggle('overlay-editor', 'setOverlayEditorEnabled');
     bindToggle('wysiwyg-editor', 'setWysiwygEditorEnabled');
     bindToggle('marp-settings', 'setMarpSettingsEnabled');

@@ -1697,6 +1697,7 @@
     var activeTab = getActiveTab();
     var boardId = activeTab && isBoardTab(activeTab) && activeTab.boardId ? activeTab.boardId : '';
     if (boardId === state.lastNotifiedBoardId) return;
+    console.log('[ws-shell] active board changed: ' + state.lastNotifiedBoardId + ' → ' + (boardId || '(none)'));
     state.lastNotifiedBoardId = boardId;
     if (state.hooks && typeof state.hooks.onActiveBoardChanged === 'function') {
       state.hooks.onActiveBoardChanged(boardId || null);
@@ -3460,11 +3461,13 @@
 
   function pruneMissingBoards() {
     var changed = false;
+    var boardsAvailable = Object.keys(state.boardsById).length;
     visitTree(state.dockTree, function (node) {
       if (node.type !== 'tabs') return;
       for (var i = node.tabs.length - 1; i >= 0; i--) {
         if (!isBoardTab(node.tabs[i])) continue;
         if (!state.boardsById[node.tabs[i].boardId]) {
+          console.warn('[ws-shell] pruneMissingBoards: removing tab for board ' + node.tabs[i].boardId + ' (not in ' + boardsAvailable + ' known boards)');
           removeFrame(node.tabs[i].id);
           node.tabs.splice(i, 1);
           changed = true;

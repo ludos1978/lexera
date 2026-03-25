@@ -3537,7 +3537,7 @@ const LexeraDashboard = (function () {
     html += '<button class="board-action-btn' + (stickyMode ? ' has-items' : '') + '" id="btn-pin-column-headers" title="Pin or unpin column headers">Pin Headers</button>';
     // Undo/redo: keyboard only (Cmd/Ctrl+Z/Y), stats & processes: bottom bar tabs
     html += '<button class="board-action-btn" id="btn-save-tracking" title="Save now and inspect change tracking">Changes</button>';
-    html += '<button class="board-action-btn" id="btn-theme-zoom" title="Visual style and zoom controls">Themes / Zoom</button>';
+    html += '<button class="board-action-btn" id="btn-theme-zoom" title="Open frontend settings">Settings</button>';
     html += '<button class="board-action-btn" id="btn-export" title="Export or pack board">Export / Pack</button>';
     html += '<button class="burger-menu-btn board-menu-btn" id="btn-board-menu" title="Extended board settings">' + BURGER_MENU_ICON_HTML + '</button>';
     html += '</div>';
@@ -4257,43 +4257,8 @@ const LexeraDashboard = (function () {
   }
 
   function showThemeZoomMenu(btnElement) {
-    if (!btnElement) return;
-    var rect = btnElement.getBoundingClientRect();
-    var zoomLevels = [0.75, 0.85, 0.95, 1, 1.1, 1.25];
-    var items = buildSettingMenuItems('visualTheme');
-    items.push({ separator: true });
-    items.push({ id: 'sidebar-hierarchy-display', label: 'Sidebar Hierarchy', items: buildSidebarHierarchyDisplayMenuItems() });
-    items.push({ separator: true });
-    var zoomItems = zoomLevels.map(function (scale) {
-      var percent = Math.round(scale * 100);
-      return { id: 'ui-scale:' + scale, label: ($uiScale === scale ? '\u2713 ' : '') + 'Zoom ' + percent + '%' };
-    });
-    items = items.concat(zoomItems);
-    items.push({ separator: true });
-    items.push({ id: 'zoom-in', label: 'Zoom In (+)' });
-    items.push({ id: 'zoom-out', label: 'Zoom Out (-)' });
-    items.push({ id: 'zoom-reset', label: 'Reset Zoom (100%)' });
-    showNativeMenu(items, rect.right, rect.bottom, 'header.themeZoom').then(function (action) {
-      if (!action) return;
-      if (action.indexOf('set-visual-theme:') === 0) {
-        handleBoardAction(action);
-        return;
-      }
-      if (action.indexOf('ui-scale:') === 0) {
-        var nextScale = parseFloat(action.substring('ui-scale:'.length));
-        if (isFinite(nextScale)) {
-          applyUiScale(nextScale);
-          showNotification('Zoom ' + getUiScalePercentLabel());
-        }
-        return;
-      }
-      if (action === 'zoom-in') { nudgeUiScale(getUiZoomStep(0.05)); return; }
-      if (action === 'zoom-out') { nudgeUiScale(getUiZoomStep(-0.05)); return; }
-      if (action === 'zoom-reset') {
-        applyUiScale(1);
-        showNotification('Zoom 100%');
-      }
-    });
+    // Redirect to Frontend Settings panel — theme/zoom/sidebar settings live there now
+    handleBoardAction('open-frontend-settings');
   }
 
   async function buildIncomingClipboardSummaryLabel() {
@@ -5324,56 +5289,40 @@ const LexeraDashboard = (function () {
     closeColumnContextMenu();
     closeCardContextMenu();
 
-    var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
     var allColumnsFolded = areAllColumnsFolded();
     var allCardsCollapsed = areAllCardsCollapsed();
     var isCanvasLayout = isCanvasBoardLayout();
+    var tagVisMode = getBoardSettingValue('tagVisibility', 'allexcludinglayout');
+    var htmlCommentMode = getBoardSettingValue('htmlCommentRenderMode', 'hidden');
+    var htmlContentMode = getBoardSettingValue('htmlContentRenderMode', 'html');
     var items = [
-      { id: 'set-visual-theme', label: 'Visual Theme', items: buildSettingMenuItems('visualTheme') },
-      { id: 'sidebar-hierarchy-display', label: 'Sidebar Hierarchy', items: buildSidebarHierarchyDisplayMenuItems() },
-      { id: 'set-tag-style-preset', label: 'Tag Style Preset', items: buildSettingMenuItems('tagStylePreset') },
-      { separator: true },
-      { id: 'open-frontend-settings', label: 'Frontend Settings' },
-      { id: 'backend-settings', label: 'Backend Settings' },
-      { id: 'show-processes', label: 'Logs' },
-      { separator: true },
+      // Quick settings
       { id: 'set-column-width', label: 'Column Width', items: buildSettingMenuItems('columnWidth') },
-      { id: 'set-card-height', label: 'Card Height', items: buildSettingMenuItems('cardHeight') },
-      { id: 'set-whitespace', label: 'Whitespace', items: buildSettingMenuItems('whitespace') },
-      { id: 'set-font-size', label: 'Font Size', items: buildSettingMenuItems('fontSize') },
-      { id: 'set-font-family', label: 'Font Family', items: buildSettingMenuItems('fontFamily') },
+      { id: 'set-tag-visibility', label: 'Tag Visibility', items: buildSettingMenuItems('tagVisibility') },
+      { id: 'set-html-comments', label: 'HTML Comments', items: buildSettingMenuItems('htmlComments') },
+      { id: 'set-html-content', label: 'HTML Content', items: buildSettingMenuItems('htmlContent') },
+      { id: 'toggle-special-chars', label: 'Show Special Characters', checked: isSpecialCharactersVisible() },
+      { id: 'toggle-overlay-editor', label: 'Overlay Editor', checked: isOverlayEditorEnabled() },
+      { id: 'toggle-wysiwyg-editor', label: 'WYSIWYG Editor', checked: isWysiwygEditorEnabled() },
       { separator: true },
-      { id: 'set-board-layout', label: 'Board Layout', items: buildSettingMenuItems('boardLayout') }
+      // Actions
+      { id: 'export-board', label: 'Export' }
     ];
     if (isCanvasLayout) {
-      items.push(
-        { id: 'set-canvas-grid', label: 'Canvas Grid', items: buildSettingMenuItems('canvasGrid') }
-      );
+      items.splice(1, 0, { id: 'set-canvas-zoom', label: 'Zoom', items: buildCanvasZoomMenuItems() });
     }
-    items.push(
-      { id: 'set-layout-rows', label: 'Layout Rows', items: buildSettingMenuItems('layoutRows') },
-      { id: 'set-row-height', label: 'Row Height', items: buildSettingMenuItems('rowHeight') },
-      { id: 'set-layout-preset', label: 'Layout Preset', items: buildLayoutPresetMenuItems() },
-      { id: stickyMode ? 'unpin-headers' : 'pin-headers', label: stickyMode ? 'Unpin Column Headers' : 'Pin Column Headers' },
-      { id: 'set-sticky-headers', label: 'Pinned Header Mode', items: buildSettingMenuItems('stickyHeaders') },
-      { id: 'set-arrow-focus-scroll', label: 'Arrow Key Focus Scroll', items: buildSettingMenuItems('arrowFocusScroll') },
-      { id: 'set-scroll-speed', label: 'Scroll Speed', items: buildSettingMenuItems('scrollSpeed') },
-      { id: 'set-zoom-speed', label: 'Zoom Speed', items: buildSettingMenuItems('zoomSpeed') }
-    );
     if (!isCanvasLayout) {
-      var pinHeadersIndex = -1;
-      for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
-        if (items[itemIndex] && (items[itemIndex].id === 'pin-headers' || items[itemIndex].id === 'unpin-headers')) {
-          pinHeadersIndex = itemIndex;
-          break;
-        }
-      }
-      if (pinHeadersIndex < 0) pinHeadersIndex = items.length;
-      items.splice(pinHeadersIndex, 0,
+      items.push(
         { id: allColumnsFolded ? 'unfold-columns' : 'fold-columns', label: allColumnsFolded ? 'Unfold All Columns' : 'Fold All Columns' },
         { id: allCardsCollapsed ? 'unfold-cards' : 'fold-cards', label: allCardsCollapsed ? 'Unfold All Cards' : 'Fold All Cards' }
       );
     }
+    items.push(
+      { separator: true },
+      { id: 'open-frontend-settings', label: 'Frontend Settings' },
+      { id: 'backend-settings', label: 'Backend Settings' },
+      { id: 'show-processes', label: 'Logs' }
+    );
 
     showNativeMenu(items, x, y).then(function (action) {
       handleBoardAction(action);
@@ -6548,18 +6497,40 @@ const LexeraDashboard = (function () {
   function buildFrontendSettingsOptions() {
     return {
       getOptions: function () { return buildFrontendSettingsOptions(); },
+      // Color theme
       getThemes: function () { return Array.isArray(THEMES) ? THEMES : []; },
       getCurrentThemeId: function () {
         return (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
           localStorage.getItem('lexera-theme') || 'lexera';
       },
+      applyTheme: applyTheme,
+      // Visual theme
+      getVisualThemes: function () { return Array.isArray(VISUAL_THEMES) ? VISUAL_THEMES : []; },
+      getCurrentVisualThemeId: function () { return localStorage.getItem('lexera-visual-theme') || 'sleek-uniform'; },
+      applyVisualTheme: function (id) { applyVisualTheme(id); },
+      // UI scale
+      getUiScale: function () { return $uiScale; },
+      applyUiScale: function (v) { applyUiScale(parseFloat(v) || 1); },
+      // Scroll/zoom speed
+      getScrollSpeed: function () { return getBoardSettingValue('scrollSpeed', '1'); },
+      setScrollSpeed: function (v) { setBoardSettingValue('scrollSpeed', v); },
+      getZoomSpeed: function () { return getBoardSettingValue('zoomSpeed', '0.06'); },
+      setZoomSpeed: function (v) { setBoardSettingValue('zoomSpeed', v); },
+      // Display
+      getTagVisibility: function () { return getBoardSettingValue('tagVisibility', 'allexcludinglayout'); },
+      setTagVisibility: function (v) { setBoardSettingValue('tagVisibility', v); applyRenderedTagVisibility(getElColumnsContainer(), v); },
+      getHtmlCommentMode: function () { return getBoardSettingValue('htmlCommentRenderMode', 'hidden'); },
+      setHtmlCommentMode: function (v) { setBoardSettingValue('htmlCommentRenderMode', v); },
+      getHtmlContentMode: function () { return getBoardSettingValue('htmlContentRenderMode', 'html'); },
+      setHtmlContentMode: function (v) { setBoardSettingValue('htmlContentRenderMode', v); },
+      // Sidebar
       getSidebarDisplayOptions: getSidebarTreeDisplayOptions,
       applySidebarDisplayOptions: applySidebarTreeDisplayOptions,
+      // Editor toggles
       isOverlayEditorEnabled: isOverlayEditorEnabled,
       isWysiwygEditorEnabled: isWysiwygEditorEnabled,
       isMarpSettingsEnabled: isMarpSettingsEnabled,
       isSpecialCharactersVisible: isSpecialCharactersVisible,
-      applyTheme: applyTheme,
       setOverlayEditorEnabled: setOverlayEditorEnabled,
       setWysiwygEditorEnabled: setWysiwygEditorEnabled,
       setMarpSettingsEnabled: setMarpSettingsEnabled,
@@ -6568,10 +6539,7 @@ const LexeraDashboard = (function () {
       revealPanel: workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.revealPanel === 'function'
         ? function () { WorkspaceShell.revealPanel('frontendSettings'); }
         : null,
-      showFallbackMenu: function () {
-        var btn = document.getElementById('btn-theme-zoom');
-        if (btn) showThemeZoomMenu(btn);
-      }
+      showFallbackMenu: function () { handleBoardAction('open-frontend-settings'); }
     };
   }
 
@@ -7992,6 +7960,13 @@ const LexeraDashboard = (function () {
       delete container.__canvasSceneOffsetX;
       delete container.__canvasSceneOffsetY;
     }
+  }
+
+  function buildCanvasZoomMenuItems() {
+    var levels = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+    return levels.map(function (z) {
+      return { id: 'set-canvas-zoom:' + z, label: Math.round(z * 100) + '%', checked: Math.abs($canvasZoom - z) < 0.01 };
+    });
   }
 
   function applyCanvasZoom(zoom, localOriginX, localOriginY) {
@@ -12432,6 +12407,10 @@ const LexeraDashboard = (function () {
         else showNotification('No unsaved changes');
       }
       refreshBoardHeaderActionStates();
+    });
+    ActionRegistry.register('board', 'set-canvas-zoom:*', function (action) {
+      var zoom = parseFloat(action.substring('set-canvas-zoom:'.length));
+      if (isFinite(zoom) && zoom > 0) applyCanvasZoom(zoom);
     });
     ActionRegistry.register('board', 'quit-app', function () {
       requestApplicationQuitWithCleanup();

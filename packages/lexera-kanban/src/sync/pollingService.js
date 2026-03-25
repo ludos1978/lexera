@@ -75,6 +75,7 @@ var LexeraPollingService = (function () {
       if (_dep('workspaceShellEnabled')) {
         if (!_dep('searchMode')) {
           if (_dep('activeBoardId') && !_callDep('findBoardMeta', _dep('activeBoardId'))) {
+            console.warn('[poll] active board ' + _dep('activeBoardId') + ' not found in board list (' + (_dep('boards') ? _dep('boards').length : 0) + ' boards), clearing');
             _callDep('setShellActiveBoard', null);
           }
           if (!_dep('activeBoardId')) {

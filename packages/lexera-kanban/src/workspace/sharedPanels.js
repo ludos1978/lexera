@@ -138,13 +138,76 @@
         '<span class="shell-settings-title">Frontend Settings</span>' +
       '</div>' +
       '<div class="shell-settings-body">' +
-        '<div class="mgmt-section" data-frontend-settings-section="theme">' +
-          '<div class="mgmt-section-title">Theme</div>' +
+        // Appearance
+        '<div class="mgmt-section" data-frontend-settings-section="appearance">' +
+          '<div class="mgmt-section-title">Appearance</div>' +
           '<div class="mgmt-field-row">' +
-            '<label class="mgmt-field-label">Theme</label>' +
+            '<label class="mgmt-field-label">Color Theme</label>' +
             '<select class="mgmt-field-input lexera-shared-frontend-settings-theme-select"></select>' +
           '</div>' +
+          '<div class="mgmt-field-row">' +
+            '<label class="mgmt-field-label">Visual Theme</label>' +
+            '<select class="mgmt-field-input lexera-shared-frontend-settings-visual-theme"></select>' +
+          '</div>' +
+          '<div class="mgmt-field-row">' +
+            '<label class="mgmt-field-label">UI Scale</label>' +
+            '<select class="mgmt-field-input lexera-shared-frontend-settings-ui-scale">' +
+              '<option value="0.75">75%</option><option value="0.85">85%</option>' +
+              '<option value="0.95">95%</option><option value="1">100%</option>' +
+              '<option value="1.1">110%</option><option value="1.25">125%</option>' +
+            '</select>' +
+          '</div>' +
         '</div>' +
+        // Interaction
+        '<div class="mgmt-section" data-frontend-settings-section="interaction">' +
+          '<div class="mgmt-section-title">Interaction</div>' +
+          '<div class="mgmt-field-row">' +
+            '<label class="mgmt-field-label">Scroll Speed</label>' +
+            '<select class="mgmt-field-input lexera-shared-frontend-settings-scroll-speed">' +
+              '<option value="0.5">0.5x</option><option value="0.75">0.75x</option>' +
+              '<option value="1">1x</option><option value="1.25">1.25x</option>' +
+              '<option value="1.5">1.5x</option><option value="2">2x</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="mgmt-field-row">' +
+            '<label class="mgmt-field-label">Zoom Speed</label>' +
+            '<select class="mgmt-field-input lexera-shared-frontend-settings-zoom-speed">' +
+              '<option value="0.02">Fine</option><option value="0.06">Normal</option>' +
+              '<option value="0.12">Fast</option>' +
+            '</select>' +
+          '</div>' +
+        '</div>' +
+        // Display Defaults
+        '<div class="mgmt-section" data-frontend-settings-section="display">' +
+          '<div class="mgmt-section-title">Display</div>' +
+          '<div class="mgmt-field-row">' +
+            '<label class="mgmt-field-label">Tag Visibility</label>' +
+            '<select class="mgmt-field-input lexera-shared-frontend-settings-tag-visibility">' +
+              '<option value="all">All</option>' +
+              '<option value="allexcludinglayout">All (excl. layout)</option>' +
+              '<option value="customonly">Custom only</option>' +
+              '<option value="mentionsonly">Mentions only</option>' +
+              '<option value="dim">Dim</option>' +
+              '<option value="none">None</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="mgmt-field-row">' +
+            '<label class="mgmt-field-label">HTML Comments</label>' +
+            '<select class="mgmt-field-input lexera-shared-frontend-settings-html-comments">' +
+              '<option value="hidden">Hidden</option>' +
+              '<option value="text">Text</option>' +
+              '<option value="dim">Dim</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="mgmt-field-row">' +
+            '<label class="mgmt-field-label">HTML Content</label>' +
+            '<select class="mgmt-field-input lexera-shared-frontend-settings-html-content">' +
+              '<option value="html">Render HTML</option>' +
+              '<option value="text">Plain Text</option>' +
+            '</select>' +
+          '</div>' +
+        '</div>' +
+        // Editors
         '<div class="mgmt-section" data-frontend-settings-section="editors">' +
           '<div class="mgmt-section-title">Editors</div>' +
           '<label class="frontend-settings-toggle">' +
@@ -164,6 +227,7 @@
             '<span>Show special characters</span>' +
           '</label>' +
         '</div>' +
+        // Hierarchy
         '<div class="mgmt-section" data-frontend-settings-section="hierarchy">' +
           '<div class="mgmt-section-title">Hierarchy</div>' +
           '<label class="frontend-settings-toggle">' +
