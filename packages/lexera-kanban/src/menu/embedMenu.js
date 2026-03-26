@@ -2866,8 +2866,12 @@ var LexeraEmbedMenu = (function () {
             continue;
           }
           var el = document.createElement('div');
-          el.className = 'html-menu-item' + (item.disabled ? ' disabled' : '');
-          el.textContent = item.label || '';
+          el.className = 'html-menu-item' + (item.disabled ? ' disabled' : '') + (item.checked ? ' checked' : '');
+          var labelText = item.label || '';
+          if (typeof item.checked === 'boolean') {
+            labelText = (item.checked ? '\u2611 ' : '\u2610 ') + labelText;
+          }
+          el.textContent = labelText;
           if (item.items && item.items.length > 0) {
             el.classList.add('has-submenu');
             (function (submenuItems, itemEl, itemLevel) {

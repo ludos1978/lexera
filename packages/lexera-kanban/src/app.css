@@ -2098,17 +2098,21 @@ body.show-special-characters .card-editor-textarea {
   color: var(--tag-accent, inherit);
 }
 
+/* Burger menu buttons keep standard colors even on tag-styled entities */
 .board-row.tag-styled > .board-row-header .row-header-actions > button,
 .board-stack.tag-styled > .board-stack-header .stack-header-actions > button,
 .column.tag-styled > .column-header .column-header-actions > button {
-  border-color: var(--tag-accent-muted, var(--icon-btn-border));
-  color: var(--tag-accent, var(--icon-btn-fg));
+  border-color: var(--icon-btn-border, var(--border));
+  color: var(--icon-btn-fg, var(--btn-fg));
+  background: var(--icon-btn-bg, var(--btn-bg));
 }
 
 .board-row.tag-styled > .board-row-header .row-header-actions > button:hover,
 .board-stack.tag-styled > .board-stack-header .stack-header-actions > button:hover,
 .column.tag-styled > .column-header .column-header-actions > button:hover {
-  border-color: var(--tag-accent, var(--icon-btn-border-hover));
+  border-color: var(--icon-btn-border-hover, var(--text-secondary));
+  color: var(--icon-btn-fg-hover, var(--text-bright));
+  background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
 }
 
 .tag-line-styled {
@@ -3838,6 +3842,7 @@ ins.critic.critic-sub {
   display: block;
   width: min(680px, 100%);
   height: 360px;
+  pointer-events: none;
   border: none;
   background: #fff;
 }

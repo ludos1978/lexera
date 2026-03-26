@@ -1,19 +1,51 @@
 # Lexera Kanban Todo
 
-- [ ] **Frontend Settings Redesign** — see [spec-frontend-settings.md](spec-frontend-settings.md) for full spec. Summary:
-  - [ ] Move visual theme, scroll/zoom speed, sidebar hierarchy out of top-right burger menu into Frontend Settings panel
-  - [ ] Add tag group configuration per entity type (row, stack, column, card)
-  - [ ] Add marp/pandoc YAML header settings to board filename burger menu
-  - [ ] Make Frontend Settings panel show all editor defaults (column width, tag visibility, etc.)
-  - [ ] Implement `getEffectiveSetting()` resolution: board override > frontend default > fallback
-  - [ ] Add realtime sync between Frontend Settings panel, board header menu, and board filename menu via LexeraRuntime events
-  - [ ] Persist sidebar display options (counts, presence, grips, sync) in localStorage
-  - [ ] Top-right burger: only keep quick-access items (export, column width, zoom, tag visibility, html comments/content, special chars, overlay/wysiwyg editor)
+- [x] ~~row/stack tags now rendered with renderTitleInline (same as columns/cards)~~ (aac6e187)
+- [x] ~~tag clearing debounced (saveLocalBoardDraft was doing 3 serializations per mutation)~~ (f412b197)
+- [x] ~~burger menu buttons now use standard colors even on tag-styled entities~~ (this commit)
 
-- [ ] remove the following features - including the functions/variables that are only used - by them:
-  - the layout rows from the right top burger menu.
-  - the pin column headers (is broken in this app, we can remove for now).
-  - the pdf viewer shows some overlay to zoom, open in editor and download. remove that!
+- [ ] the dashboad should have:
+  - search field
+  - selection of boards searched
+  - pin the last active search as result lisst
+  - calendar results
+  - todo entries
+  - tasks
+  - tasks with Deadlines
+    - Overdue
+    - Reset to repeat (yearly events repeat and must be unchecked)
+    - Upcoming events in the coming weeks (calendarweek, dates, etc)
+  - Calendar
+    - Calendarweeks, Days etc in the future and the last 7 Days.
+  - Tagged Items
+    - List of tags defined to be searched (can be defined in the board)
+  - Broken Elements
+    - Link
+    - Images
+    - Diagrams
+    - Videos
+  Add these definitions into the specs!
+
+
+- [x] ~~context menus restructured for card/column/stack/row — see spec~~ (5ab04402)
+
+- [ ] **Frontend Settings Redesign** — see [spec-frontend-settings.md](spec-frontend-settings.md) for full spec.
+  - [x] ~~Move visual theme, scroll/zoom speed, sidebar hierarchy out of top-right burger menu into Frontend Settings panel~~ (556d9622)
+  - [x] ~~Add tag group configuration per entity type (row, stack, column, card)~~ (cafaa0ad)
+  - [ ] Add marp/pandoc YAML header settings to board filename burger menu
+  - [x] ~~Make Frontend Settings panel show all editor defaults (column width, tag visibility, etc.)~~ (556d9622)
+  - [x] ~~Implement `getEffectiveSetting()` resolution: board override > frontend default > fallback~~ (c5aa9b50)
+  - [x] ~~Add realtime sync between Frontend Settings panel, board header menu, and board filename menu via LexeraRuntime events~~ (c5aa9b50)
+  - [x] ~~Persist sidebar display options (counts, presence, grips, sync) in localStorage~~ (already done)
+  - [x] ~~Top-right burger: only keep quick-access items~~ (b97f4622)
+
+- [x] ~~burger menu toggle items now show checkbox (☑/☐) for active/inactive state~~ (this commit)
+
+- [ ] the zoom speed options have been modified! it was something like 0.01x to 2x in logarithmic scale with about 5 options in the 0.01 to 1! restore that!
+
+- [x] ~~pin column headers removed — always sticky at top~~ (854e1cb0)
+- [x] ~~layout rows, font settings, etc removed from top-right burger~~ (556d9622)
+- [x] ~~PDF viewer overlay disabled (pointer-events:none on iframe)~~ (this commit)
 
 ## Module Runtime Migration — Harden Inter-Module Communication
 
