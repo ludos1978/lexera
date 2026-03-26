@@ -12487,6 +12487,24 @@ const LexeraDashboard = (function () {
     });
     ActionRegistry.register('card', 'reveal', function (action, ctx) { revealCardContent(ctx.colIndex, ctx.cardIndex); });
     ActionRegistry.register('card', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('card', { colIndex: ctx.colIndex, cardIndex: ctx.cardIndex }); });
+    ActionRegistry.register('card', 'copy-html', function (action, ctx) {
+      var cardEl = findVisibleCardElement(ctx.colIndex, ctx.cardIndex);
+      if (!cardEl) return;
+      var contentEl = cardEl.querySelector('.card-content');
+      if (!contentEl) return;
+      var html = contentEl.innerHTML;
+      if (navigator.clipboard && navigator.clipboard.write) {
+        navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([contentEl.textContent || ''], { type: 'text/plain' })
+        })]).catch(function () {
+          // Fallback to text
+          if (navigator.clipboard.writeText) navigator.clipboard.writeText(contentEl.textContent || '');
+        });
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(contentEl.textContent || '');
+      }
+    });
     ActionRegistry.register('card', 'insert-before', function (action, ctx) { insertCardAtIndex(ctx.colIndex, ctx.cardIndex); });
     ActionRegistry.register('card', 'insert-after', function (action, ctx) { insertCardAtIndex(ctx.colIndex, ctx.cardIndex + 1); });
     ActionRegistry.register('card', 'duplicate', function (action, ctx) { duplicateCard(ctx.colIndex, ctx.cardIndex); });

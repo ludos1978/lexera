@@ -241,255 +241,200 @@ var ContextMenuBuilders = (function () {
   function registerAll() {
     var MCR = deps.MenuContributorRegistry;
 
-    // Card header: add card
+    // ── CARD ─────────────────────────────────────────────────────────
     MCR.register({
-      id: 'core-card-header', scopes: ['card'], priority: 5, section: 'header',
+      id: 'card-actions', scopes: ['card'], priority: 5, section: 'actions',
       build: function () {
+        var overlayEnabled = deps.isOverlayEditorEnabled();
         return [
-          { id: 'add-card', label: 'Add card' },
-          { id: 'insert-after', label: 'Add card after' }
-        ];
-      }
-    });
-    // Card edit section
-    MCR.register({
-      id: 'core-card-edit', scopes: ['card'], priority: 10, section: 'edit',
-      build: function () {
-        return [
-          { id: 'edit', label: 'Edit task (inline)' },
-          { id: 'edit-overlay', label: 'Edit task (overlay)', disabled: !deps.isOverlayEditorEnabled() },
-          { id: 'reveal', label: 'Reveal content' },
-          { id: 'copy-markdown', label: 'Copy as markdown' }
-        ];
-      }
-    });
-    // Rename (column, row, stack)
-    MCR.register({
-      id: 'core-rename', scopes: ['column', 'row', 'stack'], priority: 5, section: 'header',
-      build: function (scope) {
-        return [{ id: 'rename', label: 'Rename ' + scope }];
-      }
-    });
-    // Add items (column, row, stack)
-    MCR.register({
-      id: 'core-add', scopes: ['column', 'row', 'stack'], priority: 7, section: 'header',
-      build: function (scope) {
-        if (scope === 'column') return [
-          { id: 'add-card', label: 'Add card' },
-          { id: 'add-card-top', label: 'Add card at top' },
-          { id: 'paste-as-card', label: 'Paste as card' },
-          { id: 'add-after', label: 'Add column after' }
-        ];
-        if (scope === 'row') return [
-          { id: 'add-stack', label: 'Add stack' },
-          { id: 'add-row-after', label: 'Add row after' }
-        ];
-        if (scope === 'stack') return [
-          { id: 'add-sub', label: 'Add', items: [
-            { id: 'add-column', label: 'Column' },
-            { id: 'add-stack-before', label: 'Stack before' },
-            { id: 'add-stack-after', label: 'Stack after' }
-          ]}
-        ];
-        return null;
-      }
-    });
-    MCR.register({
-      id: 'core-canvas-background', scopes: ['canvas'], priority: 5, section: 'header',
-      build: function (scope, ctx) {
-        if (!ctx || !isFinite(ctx.rowIdx)) return null;
-        return [
-          { id: 'add-stack-here', label: 'Create stack here' }
-        ];
-      }
-    });
-    // Structure: reveal, insert, duplicate (all scopes)
-    MCR.register({
-      id: 'core-structure', scopes: ['card', 'column', 'row', 'stack'], priority: 20, section: 'structure',
-      build: function (scope, ctx) {
-        if (scope === 'card') return [
-          { id: 'insert-before', label: 'Insert card before' },
-          { id: 'insert-after', label: 'Insert card after' },
+          { id: 'insert-before', label: 'Add card before' },
+          { id: 'insert-after', label: 'Add card after' },
           { id: 'duplicate', label: 'Duplicate card' },
-          { id: 'move-up', label: 'Move up', disabled: ctx.cardIndex <= 0 },
-          { id: 'move-down', label: 'Move down', disabled: ctx.visibleCardCount <= 0 || ctx.cardIndex >= (ctx.visibleCardCount - 1) },
-          { id: 'move-top', label: 'Move to top', disabled: ctx.cardIndex <= 0 },
-          { id: 'move-bottom', label: 'Move to bottom', disabled: ctx.visibleCardCount <= 0 || ctx.cardIndex >= (ctx.visibleCardCount - 1) }
-        ];
-        var items = [{ id: 'reveal-all', label: 'Reveal all' }];
-        if (scope === 'column') {
-          items.push({ id: 'add-before', label: 'Insert column before' });
-          items.push({ id: 'add-after', label: 'Insert column after' });
-          items.push({ id: 'duplicate', label: 'Duplicate column' });
-        } else if (scope === 'row') {
-          items.push({ id: 'add-row-before', label: 'Insert row before' });
-          items.push({ id: 'add-row-after', label: 'Insert row after' });
-          items.push({ id: 'duplicate', label: 'Duplicate row' });
-        } else if (scope === 'stack') {
-          items.push({ id: 'add-stack-before', label: 'Insert stack before' });
-          items.push({ id: 'add-stack-after', label: 'Insert stack after' });
-          items.push({ id: 'duplicate', label: 'Duplicate stack' });
-        }
-        return items;
-      }
-    });
-    // Fold/unfold (column only)
-    MCR.register({
-      id: 'core-fold', scopes: ['column'], priority: 25, section: 'fold',
-      build: function () {
-        if (deps.isCanvasBoardLayout()) return [];
-        return [
-          { id: 'fold-all', label: 'Fold all cards' },
-          { id: 'unfold-all', label: 'Unfold all cards' }
+          { separator: true },
+          { id: 'copy-markdown', label: 'Copy as markdown' },
+          { id: 'copy-html', label: 'Copy as formatted' },
+          { separator: true },
+          { id: overlayEnabled ? 'edit' : 'edit-overlay', label: overlayEnabled ? 'Edit inline' : 'Edit overlay' },
+          { separator: true },
+          { id: 'park', label: 'Park card' },
+          { id: 'park-copy', label: 'Park copy' },
+          { id: 'archive', label: 'Archive' },
+          { id: 'delete', label: 'Delete' }
         ];
       }
     });
-    // Visibility: park, archive, delete (all scopes)
     MCR.register({
-      id: 'core-visibility', scopes: ['card', 'column', 'row', 'stack'], priority: 30, section: 'visibility',
-      build: function (scope) {
-        var items = [
-          { id: 'park', label: 'Park ' + scope }
-        ];
-        if (scope === 'card') items.push({ id: 'park-copy', label: 'Park copy' });
-        items.push({ id: 'archive', label: 'Archive ' + scope });
-        items.push({ id: 'delete', label: 'Delete ' + scope });
-        return items;
-      }
-    });
-    // Sort (column, row, stack)
-    MCR.register({
-      id: 'core-sort', scopes: ['column', 'row', 'stack'], priority: 35, section: 'sort',
-      build: function (scope, ctx) {
-        if (scope === 'column') {
-          var ci = ctx.colIndex;
-          var ss = ctx.columnSortState || {};
-          return [{ id: 'sort-sub', label: 'Sort by', items: [
-            { id: 'sort-title', label: 'Title' + (ss[ci + ':title'] ? (ss[ci + ':title'] === 'asc' ? ' \u2191' : ' \u2193') : '') },
-            { id: 'sort-tag', label: 'Tag Value' + (ss[ci + ':tag'] ? (ss[ci + ':tag'] === 'asc' ? ' \u2191' : ' \u2193') : '') },
-            { id: 'sort-duedate', label: 'Due Date' + (ss[ci + ':duedate'] ? (ss[ci + ':duedate'] === 'asc' ? ' \u2191' : ' \u2193') : '') }
-          ]}];
-        }
-        return [{ id: 'sort-sub', label: 'Sort all cards', items: [
-          { id: 'sort-title', label: 'Title' },
-          { id: 'sort-tag', label: 'Tag Value' },
-          { id: 'sort-duedate', label: 'Due Date' }
-        ]}];
-      }
-    });
-    // Tag operations (all scopes)
-    MCR.register({
-      id: 'core-tag-ops', scopes: ['card', 'column', 'row', 'stack'], priority: 40, section: 'tags',
-      build: function () {
-        return [
-          { id: 'tag-add', label: 'Add Tag...' },
-          { id: 'tag-remove', label: 'Remove Tag...' },
-          { id: 'tag-clear', label: 'Clear Tags' }
-        ];
-      }
-    });
-    // Move-to submenus (card, column)
-    MCR.register({
-      id: 'core-move-to', scopes: ['card', 'column'], priority: 45, section: 'move-to',
-      build: function (scope, ctx) {
-        if (scope === 'card') {
-          var cols = ctx.boardColumns || [];
-          var moveSubItems = [];
-          for (var i = 0; i < cols.length; i++) {
-            if (!cols[i] || cols[i].index === ctx.colIndex) continue;
-            var lbl = deps.stripLayoutTags(deps.stripInternalHiddenTags(cols[i].title || ''));
-            moveSubItems.push({ id: 'move-to:' + cols[i].index, label: lbl || 'Untitled Column' });
-          }
-          if (moveSubItems.length === 0) return null;
-          var items = [{ id: 'move-sub', label: 'Move to Column', items: moveSubItems }];
-          var dupToItems = [];
-          for (var di = 0; di < moveSubItems.length; di++) {
-            dupToItems.push({ id: 'dup-to:' + moveSubItems[di].id.substring(8), label: moveSubItems[di].label });
-          }
-          items.push({ id: 'dup-to-sub', label: 'Duplicate to Column', items: dupToItems });
-          return items;
-        }
-        if (scope === 'column') {
-          var rows = ctx.boardRows || [];
-          var stackMoveItems = [];
-          for (var r = 0; r < rows.length; r++) {
-            var row = rows[r];
-            if (!row || !Array.isArray(row.stacks)) continue;
-            var rowLabel = deps.stripHtmlComments(deps.stripInternalHiddenTags(row.title || '')) || 'Row ' + (r + 1);
-            for (var s = 0; s < row.stacks.length; s++) {
-              if (ctx.rowIdx === r && ctx.stackIdx === s) continue;
-              var stack = row.stacks[s];
-              if (!stack) continue;
-              var stackLabel = deps.stripHtmlComments(deps.stripInternalHiddenTags(stack.title || '')) || 'Stack ' + (s + 1);
-              stackMoveItems.push({ id: 'move-to-stack-' + r + '-' + s, label: rowLabel + ' / ' + stackLabel });
-            }
-          }
-          if (stackMoveItems.length === 0) return null;
-          return [{ id: 'move-sub', label: 'Move to Stack', items: stackMoveItems }];
-        }
-        return null;
-      }
-    });
-    // Tag category submenus + custom tags (all scopes)
-    // Filtered by per-entity-type config stored in localStorage
-    MCR.register({
-      id: 'core-tag-categories', scopes: ['card', 'column', 'row', 'stack'], priority: 50, section: 'tag-categories',
+      id: 'card-tags', scopes: ['card'], priority: 50, section: 'tag-categories',
       build: function (scope, ctx) {
         var text = ctx.elementText || '';
-        var enabledGroups = getTagGroupsForScope(scope);
-        var items = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
+        var items = [{ id: 'tag-clear', label: 'Clear tags' }];
+        var enabledGroups = getTagGroupsForScope('card');
+        var tagItems = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
         var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
-        if (customSub) items.push(customSub);
-        return items.length > 0 ? items : null;
+        if (customSub) tagItems.push(customSub);
+        if (tagItems.length > 0) items = items.concat(tagItems);
+        return items;
       }
     });
-    // Marp directives (all scopes)
     MCR.register({
-      id: 'marp-directives', scopes: ['card', 'column', 'row', 'stack'], priority: 55, section: 'marp',
+      id: 'card-marp', scopes: ['card'], priority: 55, section: 'marp',
       build: function (scope, ctx) {
         var items = buildMarpMenuItems(ctx.elementText || '');
         return items.length > 0 ? items : null;
       }
     });
-    // Layout: width/span, stacked (column only)
+
+    // ── COLUMN ──────────────────────────────────────────────────────
     MCR.register({
-      id: 'core-layout', scopes: ['column'], priority: 60, section: 'layout',
+      id: 'column-actions', scopes: ['column'], priority: 5, section: 'actions',
       build: function (scope, ctx) {
-        var cs = ctx.currentSpan || 1;
         return [
-          { id: 'width-sub', label: 'Width (span ' + cs + ')', items: [
-            { id: 'set-span-1', label: (cs === 1 ? '\u2713 ' : '') + 'Span 1 (default)' },
-            { id: 'set-span-2', label: (cs === 2 ? '\u2713 ' : '') + 'Span 2' },
-            { id: 'set-span-3', label: (cs === 3 ? '\u2713 ' : '') + 'Span 3' },
-            { id: 'set-span-4', label: (cs === 4 ? '\u2713 ' : '') + 'Span 4' }
-          ]},
-          { id: 'toggle-stacked', label: (ctx.isStacked ? '\u2713 ' : '') + 'Stacked column' }
-        ];
-      }
-    });
-    // Copy/export (column, row, stack)
-    MCR.register({
-      id: 'core-copy-export', scopes: ['column', 'row', 'stack'], priority: 65, section: 'copy-export',
-      build: function (scope) {
-        return [
+          { id: 'rename', label: 'Rename column' },
+          { id: 'add-card', label: 'Add card' },
+          { id: 'add-after', label: 'Add column after' },
+          { id: 'duplicate', label: 'Duplicate column' },
+          { separator: true },
           { id: 'copy-markdown', label: 'Copy as markdown' },
-          { id: 'export-' + scope, label: 'Export ' + scope }
+          { id: 'export-column', label: 'Export column' },
+          { separator: true },
+          { id: 'sort-sub', label: 'Sort by', items: (function () {
+            var ci = ctx.colIndex;
+            var ss = ctx.columnSortState || {};
+            return [
+              { id: 'sort-title', label: 'Title' + (ss[ci + ':title'] ? (ss[ci + ':title'] === 'asc' ? ' \u2191' : ' \u2193') : '') },
+              { id: 'sort-tag', label: 'Tag Value' + (ss[ci + ':tag'] ? (ss[ci + ':tag'] === 'asc' ? ' \u2191' : ' \u2193') : '') },
+              { id: 'sort-duedate', label: 'Due Date' + (ss[ci + ':duedate'] ? (ss[ci + ':duedate'] === 'asc' ? ' \u2191' : ' \u2193') : '') }
+            ];
+          })() },
+          { separator: true },
+          { id: 'park', label: 'Park column' },
+          { id: 'archive', label: 'Archive column' },
+          { id: 'delete', label: 'Delete column' }
         ];
       }
     });
-    // Include file options (column only)
     MCR.register({
-      id: 'core-include', scopes: ['column'], priority: 70, section: 'include',
+      id: 'column-include', scopes: ['column'], priority: 10, section: 'include',
       build: function (scope, ctx) {
         if (ctx.includePath) {
           return [
-            { id: 'preview-include', label: 'Preview Include File' },
-            { id: 'open-include', label: 'Open Include in System App' },
-            { id: 'edit-include', label: 'Edit Include File' },
-            { id: 'disable-include', label: 'Disable Include Mode' }
+            { id: 'preview-include', label: 'Preview include file' },
+            { id: 'open-include', label: 'Open include in system app' },
+            { id: 'edit-include', label: 'Edit include file' },
+            { id: 'disable-include', label: 'Disable include mode' }
           ];
         }
-        return [{ id: 'enable-include', label: 'Enable Include Mode' }];
+        return [{ id: 'enable-include', label: 'Enable include mode' }];
+      }
+    });
+    MCR.register({
+      id: 'column-tags', scopes: ['column'], priority: 50, section: 'tag-categories',
+      build: function (scope, ctx) {
+        var text = ctx.elementText || '';
+        var items = [{ id: 'tag-clear', label: 'Clear tags' }];
+        var enabledGroups = getTagGroupsForScope('column');
+        var tagItems = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
+        var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
+        if (customSub) tagItems.push(customSub);
+        if (tagItems.length > 0) items = items.concat(tagItems);
+        return items;
+      }
+    });
+    MCR.register({
+      id: 'column-marp', scopes: ['column'], priority: 55, section: 'marp',
+      build: function (scope, ctx) {
+        var items = buildMarpMenuItems(ctx.elementText || '');
+        return items.length > 0 ? items : null;
+      }
+    });
+
+    // ── STACK ────────────────────────────────────────────────────────
+    MCR.register({
+      id: 'stack-actions', scopes: ['stack'], priority: 5, section: 'actions',
+      build: function () {
+        return [
+          { id: 'rename', label: 'Rename stack' },
+          { id: 'add-column', label: 'Add column' },
+          { id: 'add-stack-before', label: 'Add stack before' },
+          { id: 'add-stack-after', label: 'Add stack after' },
+          { id: 'duplicate', label: 'Duplicate stack' },
+          { separator: true },
+          { id: 'copy-markdown', label: 'Copy as markdown' },
+          { id: 'export-stack', label: 'Export stack' },
+          { separator: true },
+          { id: 'park', label: 'Park stack' },
+          { id: 'archive', label: 'Archive stack' },
+          { id: 'delete', label: 'Delete stack' }
+        ];
+      }
+    });
+    MCR.register({
+      id: 'stack-tags', scopes: ['stack'], priority: 50, section: 'tag-categories',
+      build: function (scope, ctx) {
+        var text = ctx.elementText || '';
+        var items = [{ id: 'tag-clear', label: 'Clear tags' }];
+        var enabledGroups = getTagGroupsForScope('stack');
+        var tagItems = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
+        var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
+        if (customSub) tagItems.push(customSub);
+        if (tagItems.length > 0) items = items.concat(tagItems);
+        return items;
+      }
+    });
+    MCR.register({
+      id: 'stack-marp', scopes: ['stack'], priority: 55, section: 'marp',
+      build: function (scope, ctx) {
+        var items = buildMarpMenuItems(ctx.elementText || '');
+        return items.length > 0 ? items : null;
+      }
+    });
+
+    // ── ROW ──────────────────────────────────────────────────────────
+    MCR.register({
+      id: 'row-actions', scopes: ['row'], priority: 5, section: 'actions',
+      build: function () {
+        return [
+          { id: 'rename', label: 'Rename row' },
+          { id: 'add-stack', label: 'Add stack' },
+          { id: 'add-row-after', label: 'Add row after' },
+          { id: 'duplicate', label: 'Duplicate row' },
+          { separator: true },
+          { id: 'copy-markdown', label: 'Copy as markdown' },
+          { id: 'export-row', label: 'Export row' },
+          { separator: true },
+          { id: 'park', label: 'Park row' },
+          { id: 'archive', label: 'Archive row' },
+          { id: 'delete', label: 'Delete row' }
+        ];
+      }
+    });
+    MCR.register({
+      id: 'row-tags', scopes: ['row'], priority: 50, section: 'tag-categories',
+      build: function (scope, ctx) {
+        var text = ctx.elementText || '';
+        var items = [{ id: 'tag-clear', label: 'Clear tags' }];
+        var enabledGroups = getTagGroupsForScope('row');
+        var tagItems = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
+        var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
+        if (customSub) tagItems.push(customSub);
+        if (tagItems.length > 0) items = items.concat(tagItems);
+        return items;
+      }
+    });
+    MCR.register({
+      id: 'row-marp', scopes: ['row'], priority: 55, section: 'marp',
+      build: function (scope, ctx) {
+        var items = buildMarpMenuItems(ctx.elementText || '');
+        return items.length > 0 ? items : null;
+      }
+    });
+
+    // ── CANVAS BACKGROUND ───────────────────────────────────────────
+    MCR.register({
+      id: 'core-canvas-background', scopes: ['canvas'], priority: 5, section: 'header',
+      build: function (scope, ctx) {
+        if (!ctx || !isFinite(ctx.rowIdx)) return null;
+        return [{ id: 'add-stack-here', label: 'Create stack here' }];
       }
     });
   }
