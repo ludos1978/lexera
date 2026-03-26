@@ -268,23 +268,31 @@ var LexeraBoardList = (function () {
 
   // ─── Local board draft ────────────────────────────────────────────
 
+  var _draftSaveTimer = null;
   function saveLocalBoardDraft(boardId, boardData) {
     if (!boardId || !boardData) return;
     if (_callDep('isRemoteBoardId', boardId)) return;
-    try {
-      var baseBoard = getBoardSaveBase(boardData) || boardData;
-      localStorage.setItem(boardDraftStorageKey(boardId), JSON.stringify({
-        savedAt: Date.now(),
-        revision: _dep('_lastLoadedRevision') || (function () {
-          var abd = _dep('activeBoardData');
-          return abd && abd.revision ? abd.revision : null;
-        })(),
-        board: cloneBoardData(boardData),
-        baseBoard: cloneBoardData(baseBoard)
-      }));
-    } catch (err) {
-      logFrontendIssue('warn', 'board.draft.save', 'Failed to persist local board draft', err);
-    }
+    // Debounce: draft save does 2 deep clones + JSON.stringify of the entire board.
+    // On large boards this is expensive. Delay 500ms to coalesce rapid mutations.
+    if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
+    _draftSaveTimer = setTimeout(function () {
+      _draftSaveTimer = null;
+      try {
+        var bd = _dep('fullBoardData') || boardData;
+        var baseBoard = getBoardSaveBase(bd) || bd;
+        localStorage.setItem(boardDraftStorageKey(boardId), JSON.stringify({
+          savedAt: Date.now(),
+          revision: _dep('_lastLoadedRevision') || (function () {
+            var abd = _dep('activeBoardData');
+            return abd && abd.revision ? abd.revision : null;
+          })(),
+          board: cloneBoardData(bd),
+          baseBoard: cloneBoardData(baseBoard)
+        }));
+      } catch (err) {
+        logFrontendIssue('warn', 'board.draft.save', 'Failed to persist local board draft', err);
+      }
+    }, 500);
   }
 
   function loadLocalBoardDraft(boardId) {
@@ -994,6 +1002,7 @@ var LexeraBoardList = (function () {
               if (e.altKey) setDescendantTreeState(treeContainer, true, boardId);
             }
             saveSidebarExpandedBoards(ids);
+            syncMirroredWorkspaceViews();
           });
         }
 
@@ -1040,6 +1049,7 @@ var LexeraBoardList = (function () {
                       toggleSidebarTreeNode(boardId, 'columns', treeId);
                     }
                   }
+                  syncMirroredWorkspaceViews();
                 }
               }
               return;

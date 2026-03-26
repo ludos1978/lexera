@@ -5914,7 +5914,7 @@ const LexeraDashboard = (function () {
       options.beforeRefresh();
     }
     updateDisplayFromFullBoard();
-    if (activeBoardId && fullBoardData) {
+    if (activeBoardId && fullBoardData && !options.skipRender) {
       setBoardHierarchyRows(activeBoardId, fullBoardData, activeBoardData ? activeBoardData.title : '');
     }
     if (options.refreshMainView) {
