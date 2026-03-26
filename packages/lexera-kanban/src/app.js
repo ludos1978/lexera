@@ -6514,6 +6514,7 @@ const LexeraDashboard = (function () {
       setMarpSettingsEnabled: setMarpSettingsEnabled,
       setSpecialCharactersVisible: setSpecialCharactersVisible,
       syncMenuCheckStates: syncMenuCheckStates,
+      getContextMenuBuilders: function () { return window.ContextMenuBuilders || null; },
       revealPanel: workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.revealPanel === 'function'
         ? function () { WorkspaceShell.revealPanel('frontendSettings'); }
         : null,

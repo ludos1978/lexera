@@ -82,6 +82,31 @@ var ContextMenuBuilders = (function () {
     return { id: idPrefix + '_sub', label: label, items: items };
   }
 
+  // Default tag groups shown per entity type
+  var DEFAULT_TAG_GROUPS = {
+    card:   ['special', 'status', 'priority', 'type', 'category', 'moscow', 'positivity', 'complexity', 'time-estimate', 'colors'],
+    column: ['special', 'status', 'priority', 'type'],
+    stack:  ['special', 'status', 'priority'],
+    row:    ['special', 'status', 'priority']
+  };
+
+  function getTagGroupsForScope(scope) {
+    try {
+      var stored = localStorage.getItem('lexera-tag-groups-' + scope);
+      if (stored) {
+        var parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_TAG_GROUPS[scope] || TAG_CATEGORY_MENU_ORDER;
+  }
+
+  function setTagGroupsForScope(scope, groups) {
+    try {
+      localStorage.setItem('lexera-tag-groups-' + scope, JSON.stringify(groups));
+    } catch (_) {}
+  }
+
   function buildTagCategorySubmenus(text, idPrefix, order) {
     var categoryOrder = Array.isArray(order) && order.length > 0 ? order : TAG_CATEGORY_MENU_ORDER;
     var items = [];
@@ -406,11 +431,13 @@ var ContextMenuBuilders = (function () {
       }
     });
     // Tag category submenus + custom tags (all scopes)
+    // Filtered by per-entity-type config stored in localStorage
     MCR.register({
       id: 'core-tag-categories', scopes: ['card', 'column', 'row', 'stack'], priority: 50, section: 'tag-categories',
       build: function (scope, ctx) {
         var text = ctx.elementText || '';
-        var items = buildTagCategorySubmenus(text, 'tag-');
+        var enabledGroups = getTagGroupsForScope(scope);
+        var items = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
         var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
         if (customSub) items.push(customSub);
         return items.length > 0 ? items : null;
@@ -481,7 +508,12 @@ var ContextMenuBuilders = (function () {
     buildCustomTagsSubmenu: buildCustomTagsSubmenu,
     buildMarpDirectiveValueSubmenu: buildMarpDirectiveValueSubmenu,
     buildMarpClassScopeSubmenu: buildMarpClassScopeSubmenu,
-    buildMarpMenuItems: buildMarpMenuItems
+    buildMarpMenuItems: buildMarpMenuItems,
+    getTagGroupsForScope: getTagGroupsForScope,
+    setTagGroupsForScope: setTagGroupsForScope,
+    TAG_CATEGORY_MENU_ORDER: TAG_CATEGORY_MENU_ORDER,
+    TAG_CATEGORY_MENU_LABELS: TAG_CATEGORY_MENU_LABELS,
+    DEFAULT_TAG_GROUPS: DEFAULT_TAG_GROUPS
   };
 })();
 window.ContextMenuBuilders = ContextMenuBuilders;

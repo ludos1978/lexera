@@ -5837,6 +5837,14 @@ select.dialog-input option,
   margin: 0;
 }
 
+.tag-group-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  flex: 1;
+  min-width: 0;
+}
+
 .frontend-settings-toggle {
   display: flex;
   align-items: flex-start;

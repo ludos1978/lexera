@@ -41,6 +41,41 @@
     return null;
   }
 
+  function renderTagGroupCheckboxes(root, scope, CMB) {
+    var container = q(root, 'tag-groups-' + scope);
+    if (!container) return;
+    var allGroups = CMB.TAG_CATEGORY_MENU_ORDER || [];
+    var labels = CMB.TAG_CATEGORY_MENU_LABELS || {};
+    var enabled = CMB.getTagGroupsForScope(scope);
+    var enabledSet = {};
+    for (var i = 0; i < enabled.length; i++) enabledSet[enabled[i]] = true;
+    // Only rebuild if not already populated
+    if (container.children.length === 0) {
+      for (var g = 0; g < allGroups.length; g++) {
+        var groupId = allGroups[g];
+        var label = document.createElement('label');
+        label.className = 'frontend-settings-tag-group-item';
+        label.style.cssText = 'display:inline-flex;align-items:center;gap:3px;margin:1px 6px 1px 0;font-size:10px;cursor:pointer;white-space:nowrap;';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.setAttribute('data-tag-group', groupId);
+        cb.setAttribute('data-tag-scope', scope);
+        cb.checked = !!enabledSet[groupId];
+        var span = document.createElement('span');
+        span.textContent = labels[groupId] || groupId;
+        label.appendChild(cb);
+        label.appendChild(span);
+        container.appendChild(label);
+      }
+    } else {
+      // Update existing checkboxes
+      var cbs = container.querySelectorAll('input[data-tag-group]');
+      for (var j = 0; j < cbs.length; j++) {
+        cbs[j].checked = !!enabledSet[cbs[j].getAttribute('data-tag-group')];
+      }
+    }
+  }
+
   function render(options, panel) {
     var panels = resolvePanels(panel);
     if (!panels.length) return false;
@@ -107,6 +142,15 @@
       var htmlContentSelect = q(root, 'html-content');
       if (htmlContentSelect && opts && typeof opts.getHtmlContentMode === 'function') {
         htmlContentSelect.value = opts.getHtmlContentMode();
+      }
+
+      // Tag group checkboxes per entity type
+      var CMB = opts && opts.getContextMenuBuilders ? opts.getContextMenuBuilders() : null;
+      if (CMB) {
+        var scopes = ['card', 'column', 'stack', 'row'];
+        for (var tg = 0; tg < scopes.length; tg++) {
+          renderTagGroupCheckboxes(root, scopes[tg], CMB);
+        }
       }
 
       // Toggles
@@ -204,6 +248,29 @@
     bindSidebarToggle('sidebar-counts', 'counts');
     bindSidebarToggle('sidebar-presence', 'presence');
     bindSidebarToggle('sidebar-grips', 'grips');
+
+    // Tag group checkboxes — delegate to a single change handler
+    var scopes = ['card', 'column', 'stack', 'row'];
+    for (var tgi = 0; tgi < scopes.length; tgi++) {
+      (function (scope) {
+        var container = q(panel, 'tag-groups-' + scope);
+        if (!container) return;
+        container.addEventListener('change', function (e) {
+          var cb = e.target;
+          if (!cb || cb.type !== 'checkbox' || !cb.getAttribute('data-tag-group')) return;
+          var opts = getOptions();
+          var CMB = opts && opts.getContextMenuBuilders ? opts.getContextMenuBuilders() : null;
+          if (!CMB) return;
+          // Collect all checked groups for this scope
+          var checked = [];
+          var allCbs = container.querySelectorAll('input[data-tag-group]');
+          for (var ci = 0; ci < allCbs.length; ci++) {
+            if (allCbs[ci].checked) checked.push(allCbs[ci].getAttribute('data-tag-group'));
+          }
+          CMB.setTagGroupsForScope(scope, checked);
+        });
+      })(scopes[tgi]);
+    }
   }
 
   function init(options, panel) {
