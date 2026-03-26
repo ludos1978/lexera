@@ -12731,6 +12731,8 @@ const LexeraDashboard = (function () {
         hasTag: function (text, tag) { return hasTag(text, tag); },
         extractAllTags: function (text) { return extractAllTags(text); },
         escapeRegex: function (str) { return escapeRegex(str); },
+        findVisibleCardElement: function (ci, cj) { return findVisibleCardElement(ci, cj); },
+        renderCardDisplayState: function (el, content) { renderCardDisplayState(el, content); },
         formatMenuToggleLabel: function (enabled, label) { return formatMenuToggleLabel(enabled, label); },
         isMarpSettingsEnabled: function () { return isMarpSettingsEnabled(); },
         getActiveBoardFilePath: function () { return getActiveBoardFilePath(); },

@@ -958,7 +958,14 @@ var CardContextMenu = (function () {
     if (nextText === target.text) return Promise.resolve(false);
     deps.pushUndo();
     target.setText(nextText);
-    return deps.persistBoardMutation().then(function () { return true; });
+
+    // Fast path: update only the affected element's rendered content
+    // instead of re-rendering all columns
+    if (elementType === 'card' && typeof deps.findVisibleCardElement === 'function' && typeof deps.renderCardDisplayState === 'function') {
+      var cardEl = deps.findVisibleCardElement(indices.colIndex, indices.cardIndex);
+      if (cardEl) deps.renderCardDisplayState(cardEl, nextText);
+    }
+    return deps.persistBoardMutation({ skipRender: true }).then(function () { return true; });
   }
 
   // ── Tag helpers (delegating to LexeraTagSystem) ─────────────────────
