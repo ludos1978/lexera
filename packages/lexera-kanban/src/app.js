@@ -5291,11 +5291,7 @@ const LexeraDashboard = (function () {
     closeColumnContextMenu();
     closeCardContextMenu();
 
-    var allColumnsFolded = areAllColumnsFolded();
-    var allCardsCollapsed = areAllCardsCollapsed();
     var isCanvasLayout = isCanvasBoardLayout();
-    var tagVisMode = getBoardSettingValue('tagVisibility', 'allexcludinglayout');
-    var htmlCommentMode = getBoardSettingValue('htmlCommentRenderMode', 'hidden');
     var htmlContentMode = getBoardSettingValue('htmlContentRenderMode', 'html');
     var items = [
       // Quick settings
@@ -5313,18 +5309,6 @@ const LexeraDashboard = (function () {
     if (isCanvasLayout) {
       items.splice(1, 0, { id: 'set-canvas-zoom', label: 'Zoom', items: buildCanvasZoomMenuItems() });
     }
-    if (!isCanvasLayout) {
-      items.push(
-        { id: allColumnsFolded ? 'unfold-columns' : 'fold-columns', label: allColumnsFolded ? 'Unfold All Columns' : 'Fold All Columns' },
-        { id: allCardsCollapsed ? 'unfold-cards' : 'fold-cards', label: allCardsCollapsed ? 'Unfold All Cards' : 'Fold All Cards' }
-      );
-    }
-    items.push(
-      { separator: true },
-      { id: 'open-frontend-settings', label: 'Frontend Settings' },
-      { id: 'backend-settings', label: 'Backend Settings' },
-      { id: 'show-processes', label: 'Logs' }
-    );
 
     showNativeMenu(items, x, y).then(function (action) {
       handleBoardAction(action);
