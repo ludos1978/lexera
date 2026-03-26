@@ -959,14 +959,48 @@ var CardContextMenu = (function () {
     deps.pushUndo();
     target.setText(nextText);
 
-    // Fast path for cards: update only the affected card's rendered content
-    if (elementType === 'card' && typeof deps.findVisibleCardElement === 'function' && typeof deps.renderCardDisplayState === 'function') {
-      var cardEl = deps.findVisibleCardElement(indices.colIndex, indices.cardIndex);
-      if (cardEl) deps.renderCardDisplayState(cardEl, nextText);
-      return deps.persistBoardMutation({ skipRender: true }).then(function () { return true; });
+    // Fast path: update only the affected element instead of re-rendering all columns
+    var updated = false;
+    if (elementType === 'card') {
+      var cardEl = typeof deps.findVisibleCardElement === 'function' ? deps.findVisibleCardElement(indices.colIndex, indices.cardIndex) : null;
+      if (cardEl && typeof deps.renderCardDisplayState === 'function') {
+        deps.renderCardDisplayState(cardEl, nextText);
+        if (typeof deps.applyTagStyleToEntity === 'function') deps.applyTagStyleToEntity(cardEl, nextText);
+        updated = true;
+      }
+    } else {
+      var container = deps.getElColumnsContainer ? deps.getElColumnsContainer() : null;
+      if (container) {
+        var el = null;
+        var titleSelector = null;
+        if (elementType === 'column') {
+          var cardsEl = container.querySelector('.column-cards[data-col-index="' + indices.colIndex + '"]');
+          el = cardsEl ? cardsEl.closest('.column') : null;
+          titleSelector = '.column-title';
+        } else if (elementType === 'row') {
+          el = container.querySelector('.board-row[data-row-index="' + indices.rowIdx + '"]');
+          titleSelector = '.board-row-title';
+        } else if (elementType === 'stack') {
+          el = container.querySelector('.board-stack[data-row-index="' + indices.rowIdx + '"][data-stack-index="' + indices.stackIdx + '"]');
+          titleSelector = '.board-stack-title';
+        }
+        if (el && titleSelector) {
+          var titleEl = el.querySelector(titleSelector);
+          if (titleEl) {
+            var displayTitle = typeof deps.stripLayoutTags === 'function' ? deps.stripLayoutTags(nextText) : nextText;
+            var truncated = displayTitle.length > 40 ? displayTitle.slice(0, 40) + '\u2026' : displayTitle;
+            if (elementType === 'column' && typeof deps.renderTitleInline === 'function') {
+              titleEl.innerHTML = deps.renderTitleInline(displayTitle, deps.getActiveBoardId(), { allowIncludeDirectives: true });
+            } else {
+              titleEl.textContent = truncated;
+            }
+          }
+          if (typeof deps.applyTagStyleToEntity === 'function') deps.applyTagStyleToEntity(el, nextText);
+          updated = true;
+        }
+      }
     }
-    // Column/row/stack tags are in titles — need a column re-render to show
-    return deps.persistBoardMutation().then(function () { return true; });
+    return deps.persistBoardMutation({ skipRender: updated }).then(function () { return true; });
   }
 
   // ── Tag helpers (delegating to LexeraTagSystem) ─────────────────────
