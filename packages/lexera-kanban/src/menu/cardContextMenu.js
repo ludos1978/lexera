@@ -958,7 +958,7 @@ var CardContextMenu = (function () {
     if (nextText === target.text) return Promise.resolve(false);
     deps.pushUndo();
     target.setText(nextText);
-    return deps.persistBoardMutation({ refreshMainView: true, refreshSidebar: true }).then(function () { return true; });
+    return deps.persistBoardMutation().then(function () { return true; });
   }
 
   // ── Tag helpers (delegating to LexeraTagSystem) ─────────────────────
