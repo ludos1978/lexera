@@ -283,36 +283,35 @@
           renderTagGroupChips(panel, scope, CMB);
         });
 
-        // Add group from autocomplete input
-        var input = container.querySelector('.tag-group-add-input');
-        if (input) {
-          input.addEventListener('change', function () {
-            var val = input.value.trim();
-            if (!val) return;
-            var opts = getOptions();
-            var CMB = opts && opts.getContextMenuBuilders ? opts.getContextMenuBuilders() : null;
-            if (!CMB) return;
-            var allGroups = CMB.TAG_CATEGORY_MENU_ORDER || [];
-            var labels = CMB.TAG_CATEGORY_MENU_LABELS || {};
-            // Resolve label to group ID
-            var groupId = null;
-            for (var ai = 0; ai < allGroups.length; ai++) {
-              var lbl = labels[allGroups[ai]] || allGroups[ai];
-              if (lbl.toLowerCase() === val.toLowerCase() || allGroups[ai] === val) {
-                groupId = allGroups[ai];
-                break;
-              }
+        // Add group from autocomplete input — use delegation since input
+        // is created later by renderTagGroupChips
+        container.addEventListener('change', function (e) {
+          var inp = e.target;
+          if (!inp || !inp.classList.contains('tag-group-add-input')) return;
+          var val = inp.value.trim();
+          if (!val) return;
+          var opts = getOptions();
+          var CMB = opts && opts.getContextMenuBuilders ? opts.getContextMenuBuilders() : null;
+          if (!CMB) return;
+          var allGroups = CMB.TAG_CATEGORY_MENU_ORDER || [];
+          var labels = CMB.TAG_CATEGORY_MENU_LABELS || {};
+          var groupId = null;
+          for (var ai = 0; ai < allGroups.length; ai++) {
+            var lbl = labels[allGroups[ai]] || allGroups[ai];
+            if (lbl.toLowerCase() === val.toLowerCase() || allGroups[ai] === val) {
+              groupId = allGroups[ai];
+              break;
             }
-            if (!groupId) { input.value = ''; return; }
-            var current = CMB.getTagGroupsForScope(scope);
-            if (current.indexOf(groupId) === -1) {
-              current.push(groupId);
-              CMB.setTagGroupsForScope(scope, current);
-            }
-            input.value = '';
-            renderTagGroupChips(panel, scope, CMB);
-          });
-        }
+          }
+          if (!groupId) { inp.value = ''; return; }
+          var current = CMB.getTagGroupsForScope(scope);
+          if (current.indexOf(groupId) === -1) {
+            current.push(groupId);
+            CMB.setTagGroupsForScope(scope, current);
+          }
+          inp.value = '';
+          renderTagGroupChips(panel, scope, CMB);
+        });
       })(tagScopes[tgi]);
     }
   }

@@ -5842,10 +5842,11 @@ select.dialog-input option,
   align-items: flex-start;
   gap: 8px;
   margin: 4px 0;
+  overflow: hidden;
 }
 .tag-group-scope-label {
   flex-shrink: 0;
-  width: 50px;
+  width: 48px;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
@@ -5856,8 +5857,9 @@ select.dialog-input option,
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
+  overflow: hidden;
 }
 .tag-group-chips-list {
   display: contents;
