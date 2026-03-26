@@ -41,38 +41,46 @@
     return null;
   }
 
-  function renderTagGroupCheckboxes(root, scope, CMB) {
+  function renderTagGroupChips(root, scope, CMB) {
     var container = q(root, 'tag-groups-' + scope);
     if (!container) return;
     var allGroups = CMB.TAG_CATEGORY_MENU_ORDER || [];
     var labels = CMB.TAG_CATEGORY_MENU_LABELS || {};
     var enabled = CMB.getTagGroupsForScope(scope);
-    var enabledSet = {};
-    for (var i = 0; i < enabled.length; i++) enabledSet[enabled[i]] = true;
-    // Only rebuild if not already populated
-    if (container.children.length === 0) {
+
+    // Rebuild chips
+    var chipsWrap = container.querySelector('.tag-group-chips-list');
+    if (!chipsWrap) {
+      chipsWrap = document.createElement('div');
+      chipsWrap.className = 'tag-group-chips-list';
+      container.appendChild(chipsWrap);
+    }
+    chipsWrap.innerHTML = '';
+    for (var i = 0; i < enabled.length; i++) {
+      var chip = document.createElement('span');
+      chip.className = 'tag-group-chip';
+      chip.setAttribute('data-group-id', enabled[i]);
+      chip.innerHTML = '<span class="tag-group-chip-label">' + (labels[enabled[i]] || enabled[i]) + '</span><button class="tag-group-chip-remove" type="button">\u00D7</button>';
+      chipsWrap.appendChild(chip);
+    }
+
+    // Add input if not present
+    if (!container.querySelector('.tag-group-add-input')) {
+      var input = document.createElement('input');
+      input.className = 'tag-group-add-input';
+      input.type = 'text';
+      input.placeholder = '+ add group';
+      input.setAttribute('list', 'tag-group-options-' + scope);
+      var datalist = document.createElement('datalist');
+      datalist.id = 'tag-group-options-' + scope;
       for (var g = 0; g < allGroups.length; g++) {
-        var groupId = allGroups[g];
-        var label = document.createElement('label');
-        label.className = 'frontend-settings-tag-group-item';
-        label.style.cssText = 'display:inline-flex;align-items:center;gap:3px;margin:1px 6px 1px 0;font-size:10px;cursor:pointer;white-space:nowrap;';
-        var cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.setAttribute('data-tag-group', groupId);
-        cb.setAttribute('data-tag-scope', scope);
-        cb.checked = !!enabledSet[groupId];
-        var span = document.createElement('span');
-        span.textContent = labels[groupId] || groupId;
-        label.appendChild(cb);
-        label.appendChild(span);
-        container.appendChild(label);
+        var opt = document.createElement('option');
+        opt.value = labels[allGroups[g]] || allGroups[g];
+        opt.setAttribute('data-group-id', allGroups[g]);
+        datalist.appendChild(opt);
       }
-    } else {
-      // Update existing checkboxes
-      var cbs = container.querySelectorAll('input[data-tag-group]');
-      for (var j = 0; j < cbs.length; j++) {
-        cbs[j].checked = !!enabledSet[cbs[j].getAttribute('data-tag-group')];
-      }
+      container.appendChild(input);
+      container.appendChild(datalist);
     }
   }
 
@@ -144,12 +152,12 @@
         htmlContentSelect.value = opts.getHtmlContentMode();
       }
 
-      // Tag group checkboxes per entity type
+      // Tag group chips per entity type
       var CMB = opts && opts.getContextMenuBuilders ? opts.getContextMenuBuilders() : null;
       if (CMB) {
         var scopes = ['card', 'column', 'stack', 'row'];
         for (var tg = 0; tg < scopes.length; tg++) {
-          renderTagGroupCheckboxes(root, scopes[tg], CMB);
+          renderTagGroupChips(root, scopes[tg], CMB);
         }
       }
 
@@ -249,27 +257,63 @@
     bindSidebarToggle('sidebar-presence', 'presence');
     bindSidebarToggle('sidebar-grips', 'grips');
 
-    // Tag group checkboxes — delegate to a single change handler
-    var scopes = ['card', 'column', 'stack', 'row'];
-    for (var tgi = 0; tgi < scopes.length; tgi++) {
+    // Tag group chips — remove chip on x click, add on input
+    var tagScopes = ['card', 'column', 'stack', 'row'];
+    for (var tgi = 0; tgi < tagScopes.length; tgi++) {
       (function (scope) {
         var container = q(panel, 'tag-groups-' + scope);
         if (!container) return;
-        container.addEventListener('change', function (e) {
-          var cb = e.target;
-          if (!cb || cb.type !== 'checkbox' || !cb.getAttribute('data-tag-group')) return;
+
+        // Remove chip on x click
+        container.addEventListener('click', function (e) {
+          var removeBtn = e.target.closest('.tag-group-chip-remove');
+          if (!removeBtn) return;
+          var chip = removeBtn.closest('.tag-group-chip');
+          if (!chip) return;
+          var groupId = chip.getAttribute('data-group-id');
           var opts = getOptions();
           var CMB = opts && opts.getContextMenuBuilders ? opts.getContextMenuBuilders() : null;
           if (!CMB) return;
-          // Collect all checked groups for this scope
-          var checked = [];
-          var allCbs = container.querySelectorAll('input[data-tag-group]');
-          for (var ci = 0; ci < allCbs.length; ci++) {
-            if (allCbs[ci].checked) checked.push(allCbs[ci].getAttribute('data-tag-group'));
+          var current = CMB.getTagGroupsForScope(scope);
+          var next = [];
+          for (var ri = 0; ri < current.length; ri++) {
+            if (current[ri] !== groupId) next.push(current[ri]);
           }
-          CMB.setTagGroupsForScope(scope, checked);
+          CMB.setTagGroupsForScope(scope, next);
+          renderTagGroupChips(panel, scope, CMB);
         });
-      })(scopes[tgi]);
+
+        // Add group from autocomplete input
+        var input = container.querySelector('.tag-group-add-input');
+        if (input) {
+          input.addEventListener('change', function () {
+            var val = input.value.trim();
+            if (!val) return;
+            var opts = getOptions();
+            var CMB = opts && opts.getContextMenuBuilders ? opts.getContextMenuBuilders() : null;
+            if (!CMB) return;
+            var allGroups = CMB.TAG_CATEGORY_MENU_ORDER || [];
+            var labels = CMB.TAG_CATEGORY_MENU_LABELS || {};
+            // Resolve label to group ID
+            var groupId = null;
+            for (var ai = 0; ai < allGroups.length; ai++) {
+              var lbl = labels[allGroups[ai]] || allGroups[ai];
+              if (lbl.toLowerCase() === val.toLowerCase() || allGroups[ai] === val) {
+                groupId = allGroups[ai];
+                break;
+              }
+            }
+            if (!groupId) { input.value = ''; return; }
+            var current = CMB.getTagGroupsForScope(scope);
+            if (current.indexOf(groupId) === -1) {
+              current.push(groupId);
+              CMB.setTagGroupsForScope(scope, current);
+            }
+            input.value = '';
+            renderTagGroupChips(panel, scope, CMB);
+          });
+        }
+      })(tagScopes[tgi]);
     }
   }
 

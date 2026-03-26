@@ -5837,12 +5837,67 @@ select.dialog-input option,
   margin: 0;
 }
 
-.tag-group-checkboxes {
+.tag-group-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+}
+.tag-group-scope-label {
+  flex-shrink: 0;
+  width: 50px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding-top: 3px;
+}
+.tag-group-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 4px;
+  align-items: center;
+  gap: 4px;
   flex: 1;
   min-width: 0;
+}
+.tag-group-chips-list {
+  display: contents;
+}
+.tag-group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 4px 1px 7px;
+  font-size: 10px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.tag-group-chip-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 1px;
+  line-height: 1;
+}
+.tag-group-chip-remove:hover {
+  color: var(--error);
+}
+.tag-group-add-input {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 10px;
+  padding: 2px 8px;
+  width: 90px;
+  outline: none;
+}
+.tag-group-add-input:focus {
+  border-color: var(--accent);
 }
 
 .frontend-settings-toggle {

@@ -210,23 +210,10 @@
         // Tag Groups
         '<div class="mgmt-section" data-frontend-settings-section="tag-groups">' +
           '<div class="mgmt-section-title">Tag Groups in Menus</div>' +
-          '<p class="mgmt-field-hint" style="font-size:10px;color:var(--text-muted);margin:0 0 6px">Select which tag categories appear in each entity\'s burger menu. Unselected tags still work but won\'t show in quick selection.</p>' +
-          '<div class="mgmt-field-row">' +
-            '<label class="mgmt-field-label">Card</label>' +
-            '<div class="lexera-shared-frontend-settings-tag-groups-card tag-group-checkboxes"></div>' +
-          '</div>' +
-          '<div class="mgmt-field-row">' +
-            '<label class="mgmt-field-label">Column</label>' +
-            '<div class="lexera-shared-frontend-settings-tag-groups-column tag-group-checkboxes"></div>' +
-          '</div>' +
-          '<div class="mgmt-field-row">' +
-            '<label class="mgmt-field-label">Stack</label>' +
-            '<div class="lexera-shared-frontend-settings-tag-groups-stack tag-group-checkboxes"></div>' +
-          '</div>' +
-          '<div class="mgmt-field-row">' +
-            '<label class="mgmt-field-label">Row</label>' +
-            '<div class="lexera-shared-frontend-settings-tag-groups-row tag-group-checkboxes"></div>' +
-          '</div>' +
+          '<div class="tag-group-row"><span class="tag-group-scope-label">Card</span><div class="lexera-shared-frontend-settings-tag-groups-card tag-group-chips"></div></div>' +
+          '<div class="tag-group-row"><span class="tag-group-scope-label">Column</span><div class="lexera-shared-frontend-settings-tag-groups-column tag-group-chips"></div></div>' +
+          '<div class="tag-group-row"><span class="tag-group-scope-label">Stack</span><div class="lexera-shared-frontend-settings-tag-groups-stack tag-group-chips"></div></div>' +
+          '<div class="tag-group-row"><span class="tag-group-scope-label">Row</span><div class="lexera-shared-frontend-settings-tag-groups-row tag-group-chips"></div></div>' +
         '</div>' +
         // Editors
         '<div class="mgmt-section" data-frontend-settings-section="editors">' +
