@@ -959,13 +959,14 @@ var CardContextMenu = (function () {
     deps.pushUndo();
     target.setText(nextText);
 
-    // Fast path: update only the affected element's rendered content
-    // instead of re-rendering all columns
+    // Fast path for cards: update only the affected card's rendered content
     if (elementType === 'card' && typeof deps.findVisibleCardElement === 'function' && typeof deps.renderCardDisplayState === 'function') {
       var cardEl = deps.findVisibleCardElement(indices.colIndex, indices.cardIndex);
       if (cardEl) deps.renderCardDisplayState(cardEl, nextText);
+      return deps.persistBoardMutation({ skipRender: true }).then(function () { return true; });
     }
-    return deps.persistBoardMutation({ skipRender: true }).then(function () { return true; });
+    // Column/row/stack tags are in titles — need a column re-render to show
+    return deps.persistBoardMutation().then(function () { return true; });
   }
 
   // ── Tag helpers (delegating to LexeraTagSystem) ─────────────────────
