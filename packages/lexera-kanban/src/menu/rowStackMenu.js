@@ -11,6 +11,12 @@ var LexeraRowStackMenu = (function () {
   // -- Injected dependencies --
   var deps = {};
 
+  // -- Window globals accessed by this module --
+  var MenuContributorRegistry = window.LexeraMenuContributorRegistry;
+  var ActionRegistry = window.LexeraActionRegistry;
+  var LexeraTemplates = window.LexeraTemplates;
+  var LexeraApi = window.LexeraApi;
+
   // ── Row & Stack menu state ──────────────────────────────────────────
 
   var activeRowStackMenu = null;
