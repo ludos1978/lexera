@@ -3311,6 +3311,13 @@ ins.critic.critic-sub {
   padding: 0 4px;
 }
 
+.board-row-title .tag,
+.board-stack-title .tag {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 0 4px;
+}
+
 .card h1, .card h2, .card h3 {
   font-size: 13px;
   font-weight: 600;

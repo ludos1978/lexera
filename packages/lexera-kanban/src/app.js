@@ -8961,7 +8961,7 @@ const LexeraDashboard = (function () {
       rowHeader.innerHTML =
         '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
         buildCreationEntityDragIconHtml('row', ['title="Drag to move row"']) +
-        '<span class="board-row-title">' + escapeHtml(rowDisplayTitle.length > 40 ? rowDisplayTitle.slice(0, 40) + '\u2026' : rowDisplayTitle) + '</span>' +
+        '<span class="board-row-title">' + renderTitleInline(rowDisplayTitle, activeBoardId, {}) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>' +
         '<span class="row-header-actions">' +
           '<button class="row-menu-btn burger-menu-btn" title="Row options">' + BURGER_MENU_ICON_HTML + '</button>' +
@@ -9105,7 +9105,7 @@ const LexeraDashboard = (function () {
         stackHeader.innerHTML =
           (isCanvasLayout ? '' : '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>') +
           buildCreationEntityDragIconHtml('stack', ['title="Drag to move stack"']) +
-          '<span class="board-stack-title">' + (stackDisplayTitle ? escapeHtml(stackDisplayTitle.length > 40 ? stackDisplayTitle.slice(0, 40) + '\u2026' : stackDisplayTitle) : '&nbsp;') + '</span>' +
+          '<span class="board-stack-title">' + (stackDisplayTitle ? renderTitleInline(stackDisplayTitle, activeBoardId, {}) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
           '<span class="stack-header-actions">' +
             '<button class="stack-menu-btn burger-menu-btn" title="Stack options">' + BURGER_MENU_ICON_HTML + '</button>' +

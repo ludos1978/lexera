@@ -995,11 +995,11 @@ var CardContextMenu = (function () {
           var titleEl = el.querySelector(titleSelector);
           if (titleEl) {
             var displayTitle = typeof deps.stripLayoutTags === 'function' ? deps.stripLayoutTags(nextText) : nextText;
-            var truncated = displayTitle.length > 40 ? displayTitle.slice(0, 40) + '\u2026' : displayTitle;
-            if (elementType === 'column' && typeof deps.renderTitleInline === 'function') {
-              titleEl.innerHTML = deps.renderTitleInline(displayTitle, deps.getActiveBoardId(), { allowIncludeDirectives: true });
+            if (typeof deps.renderTitleInline === 'function') {
+              var opts = elementType === 'column' ? { allowIncludeDirectives: true } : {};
+              titleEl.innerHTML = deps.renderTitleInline(displayTitle, deps.getActiveBoardId(), opts);
             } else {
-              titleEl.textContent = truncated;
+              titleEl.textContent = displayTitle;
             }
           }
           if (typeof deps.applyTagStyleToEntity === 'function') deps.applyTagStyleToEntity(el, nextText);
