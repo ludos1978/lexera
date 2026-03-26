@@ -245,7 +245,6 @@ var ContextMenuBuilders = (function () {
     MCR.register({
       id: 'card-actions', scopes: ['card'], priority: 5, section: 'actions',
       build: function () {
-        var overlayEnabled = deps.isOverlayEditorEnabled();
         return [
           { id: 'insert-before', label: 'Add card before' },
           { id: 'insert-after', label: 'Add card after' },
@@ -254,7 +253,8 @@ var ContextMenuBuilders = (function () {
           { id: 'copy-markdown', label: 'Copy as markdown' },
           { id: 'copy-html', label: 'Copy as formatted' },
           { separator: true },
-          { id: overlayEnabled ? 'edit' : 'edit-overlay', label: overlayEnabled ? 'Edit inline' : 'Edit overlay' },
+          { id: 'edit', label: 'Edit inline' },
+          { id: 'edit-overlay', label: 'Edit overlay' },
           { separator: true },
           { id: 'park', label: 'Park card' },
           { id: 'park-copy', label: 'Park copy' },

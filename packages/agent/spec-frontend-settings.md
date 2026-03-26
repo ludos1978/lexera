@@ -95,7 +95,6 @@ These are settings that can be added to the board's YAML header and override fro
 - Layout Rows, Row Height, Layout Preset
 - Tag Visibility, Tag Style Preset
 - HTML Comments, HTML Content
-- Pinned Header Mode
 - Marp settings (theme, format, section class, handout direction)
 - Pandoc settings (format, page breaks)
 
@@ -105,39 +104,16 @@ These are settings that can be added to the board's YAML header and override fro
 
 Quick-access menu for frequently used actions. Does NOT contain settings that belong in Frontend Settings. Items:
 
-### Actions (always shown)
-- Export
-- Search & Replace
-- Undo / Redo
-- Reload Board
-
-### Quick Settings (read/write, synced with Frontend Settings panel in realtime)
-- Column Width (submenu, reads effective value)
+### Quick Settings (synced with Frontend Settings panel in realtime)
+- Column Width (submenu)
 - Zoom (canvas mode only)
 - Tag Visibility (submenu)
 - HTML Comment Rendering (submenu)
 - HTML Content Rendering (submenu)
 - Show Special Characters (toggle)
-- Enable Overlay Editor (toggle)
-- Enable WYSIWYG Editor (toggle)
-
-### Removed from top-right burger (moved to Frontend Settings panel)
-- Visual Theme
-- Color Theme
-- Scroll Speed
-- Zoom Speed
-- Sidebar Hierarchy display options
-- UI Scale
-- Arrow Key Focus Scroll
-
-### Removed from top-right burger (moved to board filename burger)
-- Board Layout (kanban/canvas)
-- Canvas Grid
-- Font Size, Font Family
-- Card Height, Whitespace
-- Layout Rows, Row Height, Layout Preset
-- Pinned Header Mode
-- Tag Style Preset
+- Overlay Editor (toggle)
+- WYSIWYG Editor (toggle)
+- Export
 
 ---
 
@@ -178,3 +154,52 @@ The workspace sidebar (hierarchy panel) has its own burger menu. This is the ONL
 - Tree expand/collapse all
 
 These are NOT shown in the board header menu or the board filename menu.
+
+---
+
+## Entity Context Menus (burger menus)
+
+Each entity type has a focused context menu. Tag groups per entity are configurable in Frontend Settings.
+
+### Card
+- Add card before / Add card after
+- Duplicate card
+- Copy as markdown / Copy as formatted (HTML)
+- Edit inline / Edit overlay (both always available)
+- Park card / Park copy
+- Archive / Delete
+- Clear tags + configured tag group submenus
+- Marp options (if enabled)
+
+### Column
+- Rename column
+- Add card / Add column after / Duplicate column
+- Copy as markdown / Export column
+- Sort by (Title / Tag Value / Due Date)
+- Include file options (enable/preview/edit/disable)
+- Park / Archive / Delete column
+- Clear tags + configured tag group submenus
+- Marp options (if enabled)
+
+### Stack
+- Rename stack
+- Add column / Add stack before / Add stack after / Duplicate stack
+- Copy as markdown / Export stack
+- Park / Archive / Delete stack
+- Clear tags + configured tag group submenus
+- Marp options (if enabled)
+
+### Row
+- Rename row
+- Add stack / Add row after / Duplicate row
+- Copy as markdown / Export row
+- Park / Archive / Delete row
+- Clear tags + configured tag group submenus
+- Marp options (if enabled)
+
+### Design principles
+- Both inline and overlay editors are always available — the Frontend Settings "default edit mode" only controls what double-click does
+- Tag groups shown in menus are configurable per entity type in Frontend Settings (chip UI)
+- Marp options only appear when Marp is enabled in Frontend Settings
+- No move/reorder items — drag-and-drop handles that
+- No fold/unfold — keyboard shortcuts and fold buttons handle that
