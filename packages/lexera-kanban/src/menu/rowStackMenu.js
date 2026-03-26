@@ -619,7 +619,10 @@ var LexeraRowStackMenu = (function () {
     if (nextTitle === row.title) return;
     deps.pushUndo();
     row.title = nextTitle;
-    await deps.persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    var container = (typeof deps !== 'undefined' && deps && typeof deps.getElColumnsContainer === 'function') ? deps.getElColumnsContainer() : null;
+    var rowEl = container ? container.querySelector('.board-row[data-row-index="' + rowIdx + '"]') : null;
+    if (rowEl) rowEl.style.display = 'none';
+    await deps.persistBoardMutation({ skipRender: !!rowEl });
   }
 
   async function deleteRow(rowIdx) {
@@ -742,7 +745,10 @@ var LexeraRowStackMenu = (function () {
     if (nextTitle === stack.title) return;
     deps.pushUndo();
     stack.title = nextTitle;
-    await deps.persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    var container = (typeof deps !== 'undefined' && deps && typeof deps.getElColumnsContainer === 'function') ? deps.getElColumnsContainer() : null;
+    var stackEl = container ? container.querySelector('.board-stack[data-row-index="' + rowIdx + '"][data-stack-index="' + stackIdx + '"]') : null;
+    if (stackEl) stackEl.style.display = 'none';
+    await deps.persistBoardMutation({ skipRender: !!stackEl });
   }
 
   async function deleteStack(rowIdx, stackIdx) {

@@ -258,6 +258,7 @@ function loadMutationHarness() {
     function traceFrontendAction() {}
     function lexeraLog() {}
     function lexeraLogWithTarget() {}
+    function getElColumnsContainer() { return null; }
     function summarizeBoardHierarchy() { return ''; }
     function flushDeferredBoardRefresh() {}
     function getFullBoardData() { return fullBoardData; }

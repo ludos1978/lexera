@@ -177,7 +177,12 @@ var LexeraColumnContextMenu = (function () {
     if (nextTitle === col.title) return;
     deps.pushUndo();
     col.title = nextTitle;
-    await deps.persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    // Hide the column element directly instead of full re-render
+    var container = (typeof deps !== 'undefined' && deps && typeof deps.getElColumnsContainer === 'function') ? deps.getElColumnsContainer() : null;
+    var cardsEl = container ? container.querySelector('.column-cards[data-col-index="' + colIndex + '"]') : null;
+    var colEl = cardsEl ? cardsEl.closest('.column') : null;
+    if (colEl) colEl.style.display = 'none';
+    await deps.persistBoardMutation({ skipRender: !!colEl });
     var postSaveCol = deps.getFullColumn(colIndex);
     var postTitle = postSaveCol ? postSaveCol.title : '(col gone)';
     var tagSurvived = postTitle.indexOf(tag) !== -1;
@@ -402,7 +407,10 @@ var LexeraColumnContextMenu = (function () {
           rebuilt = deps.addIncludeSyntaxToTitle(rebuilt, includePath);
         }
         col.title = rebuilt;
-        deps.persistBoardMutation();
+        // Update title in place — no full re-render needed
+        var displayNew = includePath ? deps.addIncludeSyntaxToTitle(newTitle, includePath) : newTitle;
+        titleEl.innerHTML = deps.renderTitleInline(displayNew, deps.getActiveBoardId(), { allowIncludeDirectives: true });
+        deps.persistBoardMutation({ skipRender: true });
       } else {
         var displayTitle = includePath ? deps.addIncludeSyntaxToTitle(currentTitle, includePath) : currentTitle;
         titleEl.innerHTML = deps.renderTitleInline(displayTitle, deps.getActiveBoardId(), { allowIncludeDirectives: true });

@@ -862,7 +862,8 @@ var CardContextMenu = (function () {
     clone.kid = null;
     clone.content = deps.applyInternalHiddenTag(clone.content || '', '#hidden-internal-parked');
     col.cards.splice(fullIdx + 1, 0, clone);
-    return deps.persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    // Clone is hidden — no visible change, skip re-render
+    return deps.persistBoardMutation({ skipRender: true });
   }
 
   function tagCard(colIndex, cardIndex, tag) {
@@ -877,7 +878,13 @@ var CardContextMenu = (function () {
     if (nextContent === card.content) return Promise.resolve();
     deps.pushUndo();
     card.content = nextContent;
-    return deps.persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    // Fast path: hide the card element directly instead of re-rendering all columns
+    var cardEl = typeof deps.findVisibleCardElement === 'function' ? deps.findVisibleCardElement(colIndex, cardIndex) : null;
+    if (cardEl) {
+      cardEl.style.display = 'none';
+      return deps.persistBoardMutation({ skipRender: true });
+    }
+    return deps.persistBoardMutation();
   }
 
   function deleteCard(colIndex, cardIndex) {
