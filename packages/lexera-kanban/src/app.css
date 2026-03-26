@@ -2712,35 +2712,12 @@ li.tag-line-styled {
 .columns-container.tag-visibility-dim .tag { opacity: 0.3; }
 
 /* Board setting: sticky column headers */
-.columns-container.sticky-headers .column-header,
-.columns-container.sticky-headers-top .column-header {
+/* Column headers are always sticky at top */
+.column-header {
   position: sticky;
   top: 0;
-  bottom: auto;
   z-index: 6;
-  background: var(--surface-header-bg);
-}
-
-.columns-container.sticky-headers-bottom .column-header {
-  position: sticky;
-  top: auto;
-  bottom: 0;
-  z-index: 6;
-  background: var(--surface-header-bg);
-  border-bottom: none;
-  border-top: 1px solid var(--surface-header-border);
-}
-
-.columns-container.sticky-headers-bottom .column-cards {
-  order: 1;
-}
-
-.columns-container.sticky-headers-bottom .column-footer {
-  order: 2;
-}
-
-.columns-container.sticky-headers-bottom .column-header {
-  order: 3;
+  background: var(--surface-header-bg, var(--bg-primary));
 }
 
 /* Board setting: HTML comment rendering */

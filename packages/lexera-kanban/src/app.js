@@ -352,7 +352,7 @@ const LexeraDashboard = (function () {
   var headerSearchExpanded = localStorage.getItem('lexera-header-search-expanded') === 'true';
   var $foldAllBtn = null;
   var $foldAllCardsBtn = null;
-  var $pinHeadersBtn = null;
+  // $pinHeadersBtn removed — column headers always sticky
   var $saveTrackingBtn = null;
   var _headerSavingInProgress = false;
   var _boardHeaderResizeBound = false;
@@ -3504,7 +3504,6 @@ const LexeraDashboard = (function () {
     var parkedCount = getParkedCount();
     var archivedCount = getArchivedCount();
     var deletedCount = getDeletedCount();
-    var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
     var boardFilePath = getActiveBoardFilePath();
     var boardFileName = boardFilePath
       ? getDisplayFileNameFromPath(boardFilePath)
@@ -3534,7 +3533,7 @@ const LexeraDashboard = (function () {
 
     html += '<div class="board-header-zone board-header-zone-right">';
     html += '<div class="board-header-actions board-header-actions-right">';
-    html += '<button class="board-action-btn' + (stickyMode ? ' has-items' : '') + '" id="btn-pin-column-headers" title="Pin or unpin column headers">Pin Headers</button>';
+    // Pin Headers button removed — column headers are always sticky at top
     // Undo/redo: keyboard only (Cmd/Ctrl+Z/Y), stats & processes: bottom bar tabs
     html += '<button class="board-action-btn" id="btn-save-tracking" title="Save now and inspect change tracking">Changes</button>';
     html += '<button class="board-action-btn" id="btn-theme-zoom" title="Open frontend settings">Settings</button>';
@@ -3549,7 +3548,7 @@ const LexeraDashboard = (function () {
     // Refresh board-header-lifetime cached refs
     $foldAllBtn = null;
     $foldAllCardsBtn = null;
-    $pinHeadersBtn = document.getElementById('btn-pin-column-headers');
+    // $pinHeadersBtn removed — column headers always sticky
     $saveTrackingBtn = document.getElementById('btn-save-tracking');
     var paneFileTitleBtn = document.getElementById('btn-pane-file-title');
     var fileHeaderMenuBtn = document.getElementById('btn-file-header-menu');
@@ -3584,11 +3583,7 @@ const LexeraDashboard = (function () {
       });
     }
 
-    if ($pinHeadersBtn) {
-      $pinHeadersBtn.addEventListener('click', function () {
-        togglePinnedHeaders();
-      });
-    }
+    // Pin headers button removed — always sticky
     // undo/redo and stats buttons removed from header (keyboard / bottom bar)
     if ($saveTrackingBtn) {
       $saveTrackingBtn.addEventListener('click', function (e) {
@@ -5017,18 +5012,6 @@ const LexeraDashboard = (function () {
         );
       }
 
-      if ($pinHeadersBtn) {
-        var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
-        var pinned = !!stickyMode;
-        setHeaderActionLabel(
-          $pinHeadersBtn,
-          pinned ? 'Unpin Headers' : 'Pin Headers',
-          BOARD_HEADER_V1_COMPACT_ICONS.pinHeaders,
-          'Pin or unpin column headers'
-        );
-        $pinHeadersBtn.classList.toggle('has-items', pinned);
-      }
-
       setHeaderActionLabel(runningProcessesBtn, 'Processes', BOARD_HEADER_V1_COMPACT_ICONS.processes, 'Open running processes and logs');
       setHeaderActionLabel(themeZoomBtn, 'Themes / Zoom', BOARD_HEADER_V1_COMPACT_ICONS.themeZoom, 'Visual style and zoom controls');
       setHeaderActionLabel(exportBtn, 'Export / Pack', BOARD_HEADER_V1_COMPACT_ICONS.exportPack, 'Export or pack board');
@@ -5218,10 +5201,7 @@ const LexeraDashboard = (function () {
     return true;
   }
 
-  async function togglePinnedHeaders() {
-    var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
-    await setBoardSettingValue('stickyStackMode', stickyMode ? null : 'top');
-  }
+  // togglePinnedHeaders removed — column headers are always sticky at top
 
   function toggleFoldAllColumns() {
     if (isCanvasBoardLayout()) return;
@@ -8059,13 +8039,7 @@ const LexeraDashboard = (function () {
 
   // --- Canvas pan: delegated to LexeraCanvasPan module ---
 
-  function normalizeStickyHeaderMode(rawMode) {
-    var mode = String(rawMode || '').trim().toLowerCase();
-    if (!mode) return '';
-    if (mode === 'column' || mode === 'enabled' || mode === 'true' || mode === 'titleonly' || mode === 'full') return 'top';
-    if (mode === 'top' || mode === 'bottom') return mode;
-    return '';
-  }
+  // normalizeStickyHeaderMode removed — column headers are always sticky at top
 
   var TAG_VISIBILITY_MODE_MAP = {
     '': 'allexcludinglayout',
@@ -8550,7 +8524,7 @@ const LexeraDashboard = (function () {
       container.style.removeProperty(cssProps[i]);
     }
     // Reset class-based settings
-    container.classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
+    // sticky-headers classes removed — column headers are always sticky via CSS
     container.classList.remove('html-comments-hide', 'html-comments-dim');
     var wasCanvas = container.classList.contains('layout-canvas');
     container.classList.remove('layout-spacious', 'layout-rows-fixed', 'layout-canvas');
@@ -8594,9 +8568,7 @@ const LexeraDashboard = (function () {
     container.style.setProperty('--board-layout-rows', String(layoutRows));
     if (layoutRows > 1) container.classList.add('layout-rows-fixed');
     currentTagVisibilityMode = normalizeTagVisibilityMode(s.tagVisibility);
-    var stickyMode = normalizeStickyHeaderMode(s.stickyStackMode);
-    if (stickyMode) container.classList.add('sticky-headers-' + stickyMode);
-    if (stickyMode === 'top') container.classList.add('sticky-headers'); // legacy alias
+    // stickyStackMode removed — column headers always sticky via CSS
     currentHtmlCommentRenderMode = normalizeHtmlCommentRenderMode(s.htmlCommentRenderMode);
     if (currentHtmlCommentRenderMode === 'hidden') container.classList.add('html-comments-hide');
     if (currentHtmlCommentRenderMode === 'dim') container.classList.add('html-comments-dim');
@@ -12118,7 +12090,7 @@ const LexeraDashboard = (function () {
     // --- Named Layout Presets (save/load/delete) ---
     var LAYOUT_PRESET_SETTINGS_KEYS = [
       'columnWidth', 'whitespace', 'fontSize', 'fontFamily',
-      'layoutRows', 'rowHeight', 'cardMinHeight', 'stickyStackMode', 'layoutSpacing'
+      'layoutRows', 'rowHeight', 'cardMinHeight', 'layoutSpacing'
     ];
     var LAYOUT_PRESETS_STORAGE_KEY = 'lexera-layout-presets';
 
@@ -12205,19 +12177,7 @@ const LexeraDashboard = (function () {
         { value: 'normal', label: 'Normal' }, { value: 'spacious', label: 'Spacious' }
       ]
     });
-    BoardSettingRegistry.register({
-      id: 'stickyHeaders', label: 'Pinned Header Mode', category: 'format',
-      settingsKey: 'stickyStackMode', actionPrefix: 'set-sticky-headers', defaultValue: '',
-      normalize: function (v) { return normalizeStickyHeaderMode(v) || 'off'; },
-      options: [
-        { value: 'off', label: 'Off' }, { value: 'top', label: 'Top Edge' },
-        { value: 'bottom', label: 'Bottom Edge' }
-      ],
-      handler: function (raw) {
-        var v = normalizeStickyHeaderMode(raw);
-        setBoardSettingValue('stickyStackMode', v || null);
-      }
-    });
+    // stickyHeaders registry entry removed — always sticky at top
     BoardSettingRegistry.register({
       id: 'arrowFocusScroll', label: 'Arrow Key Focus Scroll', category: 'format',
       settingsKey: 'arrowKeyFocusScroll', actionPrefix: 'set-arrow-focus-scroll', defaultValue: 'nearest',
@@ -12371,8 +12331,7 @@ const LexeraDashboard = (function () {
     });
 
     // Feature toggles
-    ActionRegistry.register('board', 'pin-headers', function () { togglePinnedHeaders(); });
-    ActionRegistry.register('board', 'unpin-headers', function () { togglePinnedHeaders(); });
+    // pin-headers/unpin-headers actions removed — always sticky at top
     ActionRegistry.register('board', 'toggle-overlay-editor', function () { setOverlayEditorEnabled(!isOverlayEditorEnabled()); syncMenuCheckStates(); });
     ActionRegistry.register('board', 'toggle-wysiwyg-editor', function () { setWysiwygEditorEnabled(!isWysiwygEditorEnabled()); syncMenuCheckStates(); });
     ActionRegistry.register('board', 'toggle-special-chars', function () { setSpecialCharactersVisible(!isSpecialCharactersVisible()); syncMenuCheckStates(); });
