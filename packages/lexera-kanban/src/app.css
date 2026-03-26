@@ -3298,24 +3298,14 @@ ins.critic.critic-sub {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  border: var(--tag-chip-border-width, 1px) var(--tag-chip-border-style, solid) var(--tag-chip-border-color, rgba(255, 255, 255, 0.24));
-  border-radius: 4px;
-  line-height: 1.25;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-.card .tag, .card-title-display .tag {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 0 4px;
-}
-
-.board-row-title .tag,
-.board-stack-title .tag {
   font-size: 10px;
   font-weight: 500;
-  padding: 0 4px;
+  padding: 1px 5px;
+  border: 1px solid var(--tag-chip-border-color, rgba(255, 255, 255, 0.18));
+  border-radius: 4px;
+  line-height: 1.4;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .card h1, .card h2, .card h3 {
