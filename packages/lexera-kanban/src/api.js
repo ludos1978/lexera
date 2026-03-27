@@ -7,7 +7,14 @@ const LexeraApi = (function () {
   let bearerToken = null;
   let bearerTokenPromise = null;
   let recentApiLogAt = Object.create(null);
-  var BackendDiscovery = window.LexeraBackendDiscovery || null;
+
+  function requireBackendDiscoveryMethod(name) {
+    var discovery = window.LexeraBackendDiscovery;
+    if (!discovery || typeof discovery[name] !== 'function') {
+      throw new Error('LexeraBackendDiscovery.' + name + ' is required. Sync runtime assets from lexera-shared.');
+    }
+    return discovery[name].bind(discovery);
+  }
 
   function formatApiError(error) {
     if (error == null) return String(error);
@@ -45,37 +52,21 @@ const LexeraApi = (function () {
 
   async function discover() {
     if (baseUrl) return baseUrl;
-
-    if (BackendDiscovery && typeof BackendDiscovery.discoverBackend === 'function') {
-      try {
-        var discovered = await BackendDiscovery.discoverBackend({
-          useTauri: true,
-          timeoutMs: 1200
-        });
-        if (discovered) {
-          baseUrl = discovered;
-          return baseUrl;
-        }
-      } catch (e) {
-        // Fall through to inline fallback
+    try {
+      var discovered = await requireBackendDiscoveryMethod('discoverBackend')({
+        useTauri: true,
+        timeoutMs: 1200
+      });
+      if (discovered) {
+        baseUrl = discovered;
+        return baseUrl;
       }
-    }
-
-    const ports = [13080, 8083, 1431, 12080, 14080, 11080, 15080];
-    for (const port of ports) {
-      for (const host of ['127.0.0.1', 'localhost']) {
-        try {
-          const res = await fetch(`http://${host}:${port}/status`, { signal: AbortSignal.timeout(1000) });
-          if (!res.ok) continue;
-          const data = await res.json();
-          if (data.status === 'running') {
-            baseUrl = `http://${host}:${data.port || port}`;
-            return baseUrl;
-          }
-        } catch (e) {
-          // Try next candidate
-        }
-      }
+    } catch (error) {
+      logApiIssue('error', 'api.discover', 'Backend discovery unavailable', error, {
+        dedupeKey: 'api.discover.unavailable',
+        dedupeWindowMs: 10000
+      });
+      throw error;
     }
     return null;
   }
@@ -161,7 +152,8 @@ const LexeraApi = (function () {
     clearTimeout(timeoutId);
     if (!res.ok) {
       var payload = null;
-      var text = await res.text().catch(() => res.statusText);
+      var text = '';
+      try { text = await res.text(); } catch (_) { text = ''; }
       if (text) {
         try {
           payload = JSON.parse(text);
@@ -169,14 +161,16 @@ const LexeraApi = (function () {
           payload = null;
         }
       }
-      if (!text && payload && typeof payload.error === 'string') {
+      // Extract structured error message from JSON response body
+      if (payload && typeof payload.error === 'string') {
         text = payload.error;
       }
       if (!text) text = res.statusText || 'Request failed';
-      const error = new Error(`${res.status}: ${text}`);
+      var errorMsg = res.status + ': ' + text;
+      var error = new Error(errorMsg);
       error.status = res.status;
       if (payload) error.data = payload;
-      logApiIssue(res.status >= 500 ? 'error' : 'warn', 'api.request', method + ' ' + path + ' failed', error);
+      logApiIssue(res.status >= 500 ? 'error' : 'warn', 'api.request', method + ' ' + path + ' failed: ' + errorMsg, error);
       throw error;
     }
     try {
