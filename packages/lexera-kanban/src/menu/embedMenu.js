@@ -2857,16 +2857,20 @@ var LexeraEmbedMenu = (function () {
       function buildMenuPanel(itemList, level) {
         var panel = document.createElement('div');
         panel.className = 'html-context-menu';
+        panel.setAttribute('role', 'menu');
         for (var i = 0; i < itemList.length; i++) {
           var item = itemList[i];
           if (item.separator) {
             var sep = document.createElement('div');
             sep.className = 'html-menu-separator';
+            sep.setAttribute('role', 'separator');
             panel.appendChild(sep);
             continue;
           }
           var el = document.createElement('div');
           el.className = 'html-menu-item' + (item.disabled ? ' disabled' : '') + (item.checked ? ' checked' : '');
+          el.setAttribute('role', 'menuitem');
+          if (item.disabled) el.setAttribute('aria-disabled', 'true');
           var labelText = item.label || '';
           if (typeof item.checked === 'boolean') {
             labelText = (item.checked ? '\u2611 ' : '\u2610 ') + labelText;

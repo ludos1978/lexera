@@ -740,6 +740,7 @@ pub fn run() {
                 sync_client,
                 discovery: discovery.clone(),
                 app_handle: Some(app_handle.clone()),
+                clipboard_history: None,
                 collab_dir,
                 shutdown_tx,
             };

@@ -35,6 +35,7 @@ pub fn test_state(tmp: &std::path::Path) -> AppState {
             crate::discovery::DiscoveryService::new(),
         )),
         app_handle: None,
+        clipboard_history: None,
         collab_dir: tmp.join("collab"),
         shutdown_tx,
     }

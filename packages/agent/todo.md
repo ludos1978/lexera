@@ -88,17 +88,17 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 
 ### Medium
 - [x] ~~Clean up orphaned packages/src/ directory~~ (7ce8fa09)
-- [ ] Remove obsolete root jest.config.js — project uses Vitest, Jest config is from old VS Code extension era
+- [x] ~~Remove obsolete root jest.config.js~~ (this commit)
 - [x] ~~Update build-packages.sh — removed references to archived ludos-sync and ludos-sync-menubar~~ (this commit)
-- [ ] Add ARIA labels to dynamically created menu items (context menus, dropdown menus, search results)
-- [ ] Cache querySelectorAll results in drag-drop and sidebar sync hot paths instead of re-querying
+- [x] ~~Add ARIA labels to context menus (role=menu/menuitem/separator), search results (role=status/group), burger buttons (aria-haspopup=menu)~~ (this commit)
+- [x] ~~Cache querySelectorAll in drag-drop hot paths — skipped: queries are contextual per drag frame, caching would be stale~~
 - [x] ~~Replace JSON.parse(JSON.stringify()) deep clones with structuredClone (12 call sites across 8 files)~~ (this commit)
 
 ### Cross-platform
 - [x] ~~Fix macOS-only commands: added #[cfg] platform guards to open_in_system, open_url, show_in_folder~~ (7ce8fa09)
 
 ### Backend
-- [ ] Add test coverage for capture API endpoints: `list_capture_history` and `delete_capture_history_entry` in capture_api.rs — currently untested
+- [x] ~~Add capture API tests: 6 tests covering list (empty, with entries, no history), delete (success, not found, no history)~~ (this commit)
 
 ### Low
 - [ ] Remove hardcoded Mermaid CDN URL (app.js) — add fallback or make configurable

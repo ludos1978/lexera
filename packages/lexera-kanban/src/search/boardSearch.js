@@ -348,13 +348,13 @@ var LexeraBoardSearch = (function () {
       groups[key].items.push(r);
     }
 
-    var html = '<div class="search-results-title">Search: "' + escapeHtml(searchResults.query) + '" (' + searchResults.results.length + ' results)</div>';
+    var html = '<div class="search-results-title" role="status">Search: "' + escapeHtml(searchResults.query) + '" (' + searchResults.results.length + ' results)</div>';
 
     var keys = Object.keys(groups);
     var resultCursor = 0;
     for (var g = 0; g < keys.length; g++) {
       var group = groups[keys[g]];
-      html += '<div class="search-group">';
+      html += '<div class="search-group" role="group" aria-label="' + escapeAttr(group.title || 'Untitled') + '">';
       html += '<div class="search-group-title">' + escapeHtml(group.title || 'Untitled') + '</div>';
 
       for (var j = 0; j < group.items.length; j++) {

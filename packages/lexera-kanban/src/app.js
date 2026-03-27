@@ -8552,7 +8552,7 @@ const LexeraDashboard = (function () {
       includeIndicator +
       '<span class="column-count">' + col.cards.length + (colLayout.wipLimit > 0 ? '/' + colLayout.wipLimit : '') + '</span>' +
       '<span class="column-header-actions">' +
-        '<button class="column-menu-btn burger-menu-btn" title="Column options">' + BURGER_MENU_ICON_HTML + '</button>' +
+        '<button class="column-menu-btn burger-menu-btn" title="Column options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
       '</span>';
     (function (columnEl, colIdx, rIdx, sIdx, cIdx) {
       header.addEventListener('click', function (e) {
@@ -8699,6 +8699,7 @@ const LexeraDashboard = (function () {
       menuBtn.className = 'card-menu-btn burger-menu-btn';
       menuBtn.innerHTML = BURGER_MENU_ICON_HTML;
       menuBtn.title = 'Card options';
+      menuBtn.setAttribute('aria-haspopup', 'menu');
       headerRow.appendChild(menuBtn);
 
       cardEl.appendChild(headerRow);
@@ -8887,7 +8888,7 @@ const LexeraDashboard = (function () {
         '<span class="board-row-title">' + renderTitleInline(rowDisplayTitle, activeBoardId, {}) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>' +
         '<span class="row-header-actions">' +
-          '<button class="row-menu-btn burger-menu-btn" title="Row options">' + BURGER_MENU_ICON_HTML + '</button>' +
+          '<button class="row-menu-btn burger-menu-btn" title="Row options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
         '</span>';
       (function (el, rowIdx) {
         rowHeader.addEventListener('click', function (e) {
@@ -9031,7 +9032,7 @@ const LexeraDashboard = (function () {
           '<span class="board-stack-title">' + (stackDisplayTitle ? renderTitleInline(stackDisplayTitle, activeBoardId, {}) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
           '<span class="stack-header-actions">' +
-            '<button class="stack-menu-btn burger-menu-btn" title="Stack options">' + BURGER_MENU_ICON_HTML + '</button>' +
+            '<button class="stack-menu-btn burger-menu-btn" title="Stack options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
             (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '') +
           '</span>';
         (function (el, rIdx, sIdx) {
