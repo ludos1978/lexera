@@ -75,6 +75,31 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 - [x] ~~**Phase 5**: Startup health check logs found/missing modules~~ (aa4b2b15)
 - [ ] **Phase 6**: Gradually migrate remaining modules to read from runtime.state instead of dep getters (boardList and orderHelpers done, others pending)
 
+## Code Quality & Project Hygiene (from verification audit)
+
+### Critical
+- [ ] Add error logging to all 13 silent `catch (_) {}` blocks across app.js, orderHelpers.js, workspaceShell.js, contextMenuBuilders.js — errors are being swallowed without any logging
+- [ ] Fix innerHTML direct copy in orderHelpers.js (mirrored dashboard sync) — copies raw innerHTML between contexts without sanitization
+- [ ] Remove CSS gradients from app.css (12 instances of linear-gradient) — violates project style policy
+
+### High
+- [ ] Fix canvas pan memory leak: 5 document addEventListener calls (mousedown/mousemove/mouseup/auxclick/scroll) in canvasPan.js never get removeEventListener. Accumulates with each board/canvas session
+- [ ] Add race condition guards to live sync: applyBoardToLiveSyncSession and flushPendingLiveSyncUpdates can execute concurrently on shared state without mutex
+- [ ] Convert 8 console.log calls in app.js/workspaceShell.js to proper traceFrontendAction logging (liveSync, saveFullBoard, board changed)
+
+### Medium
+- [ ] Clean up orphaned packages/src/ directory — deleted files (management.js, themes.js, backendDiscovery.js) not committed, directory should be removed
+- [ ] Remove obsolete root jest.config.js — project uses Vitest, Jest config is from old VS Code extension era
+- [ ] Update build-packages.sh — still references non-existent ludos-sync and ludos-sync-menubar packages
+- [ ] Add ARIA labels to dynamically created menu items (context menus, dropdown menus, search results)
+- [ ] Cache querySelectorAll results in drag-drop and sidebar sync hot paths instead of re-querying
+- [ ] Replace JSON.parse(JSON.stringify()) deep clones with structuredClone where available (boardList.js, dragDropHandlers.js)
+
+### Low
+- [ ] Remove hardcoded Mermaid CDN URL (app.js) — add fallback or make configurable
+- [ ] Add keyboard accessibility for drag-drop operations (currently pointer-only)
+- [ ] Add `<label for="">` associations to export dialog form inputs
+
 ## High Priority — Security & Reliability
 
 - [x] ~~horizontal/vertical split dividers now share the same thin-line style as dock dividers~~ (this commit)
