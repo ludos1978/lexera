@@ -32,7 +32,7 @@
 - [ ] **Frontend Settings Redesign** — see [spec-frontend-settings.md](spec-frontend-settings.md) for full spec.
   - [x] ~~Move visual theme, scroll/zoom speed, sidebar hierarchy out of top-right burger menu into Frontend Settings panel~~ (556d9622)
   - [x] ~~Add tag group configuration per entity type (row, stack, column, card)~~ (cafaa0ad)
-  - [ ] Add marp/pandoc YAML header settings to board filename burger menu
+  - [x] ~~Add marp/pandoc YAML + per-board layout overrides to board filename burger menu~~ (this commit)
   - [x] ~~Make Frontend Settings panel show all editor defaults (column width, tag visibility, etc.)~~ (556d9622)
   - [x] ~~Implement `getEffectiveSetting()` resolution: board override > frontend default > fallback~~ (c5aa9b50)
   - [x] ~~Add realtime sync between Frontend Settings panel, board header menu, and board filename menu via LexeraRuntime events~~ (c5aa9b50)
@@ -52,15 +52,12 @@
 
 Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shared moduleRuntime.js infrastructure. Prevents the class of bugs where module extractions silently break live state bindings.
 
-- [ ] **Phase 1: Migrate shared mutable state to runtime.state** — move `boards`, `remoteBoards`, `workspaces`, `activeBoardId`, `activeBoardData`, `fullBoardData`, `activeWorkspaceId`, `connected` from app.js closure variables into `LexeraRuntime.state`. Replace all getter-based dep injection for these with direct `runtime.state.xxx` reads in modules.
-
-- [ ] **Phase 2: Replace setter dep callbacks with runtime.setState** — replace `setBoards`, `setWorkspaces`, `setActiveBoardId` etc. dep callbacks with `LexeraRuntime.setState('boards', value)` calls. Modules that need to react to changes subscribe via `runtime.onStateChange('boards', fn)` instead of being called explicitly.
-
-- [ ] **Phase 3: Replace render-trigger dep callbacks with events** — replace `renderBoardList`, `renderWorkspaceSelect`, `renderColumns`, `renderMainView`, `scheduleDashboardRefresh` dep callbacks with event emissions (`runtime.emit('boards:updated')`) and subscriptions in the rendering modules.
-
-- [ ] **Phase 4: Register all IIFE modules in the module registry** — each module calls `LexeraRuntime.registerModule('boardList', LexeraBoardList)` after creation. App.js resolves modules via `runtime.getModule('boardList')` instead of `window.LexeraBoardList`. Enables startup validation: log warnings for missing modules.
-
-- [ ] **Phase 5: Add startup health check** — after init(), verify all critical modules are registered and all critical state keys are defined. Log a single summary line: `[init] 15/15 modules OK, 8 state keys initialized`. Flag any module that failed to load.
+- [x] ~~**Phase 1**: State bridged to runtime (defineState + setState sync)~~ (aa4b2b15)
+- [x] ~~**Phase 2**: Setters sync both local var + runtime.setState~~ (aa4b2b15)
+- [x] ~~**Phase 3**: setState auto-emits {key}:changed events~~ (aa4b2b15)
+- [x] ~~**Phase 4**: Module auto-discovery from window globals (34 modules)~~ (aa4b2b15)
+- [x] ~~**Phase 5**: Startup health check logs found/missing modules~~ (aa4b2b15)
+- [ ] **Phase 6**: Gradually migrate remaining modules to read from runtime.state instead of dep getters (boardList and orderHelpers done, others pending)
 
 ## High Priority — Security & Reliability
 

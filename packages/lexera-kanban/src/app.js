@@ -5236,7 +5236,22 @@ const LexeraDashboard = (function () {
     refreshExportToolStatus('pandoc', false).catch(function () {});
     refreshEmbeddedRendererStatuses(false).catch(function () {});
     refreshAvailableMarpClasses(false).catch(function () {});
+    var isCanvasLayout = isCanvasBoardLayout();
     var items = [
+      // Per-board layout overrides (stored in YAML header)
+      { id: 'set-board-layout', label: 'Board Layout', items: buildSettingMenuItems('boardLayout') },
+      { id: 'set-column-width', label: 'Column Width', items: buildSettingMenuItems('columnWidth') },
+      { id: 'set-card-height', label: 'Card Height', items: buildSettingMenuItems('cardHeight') },
+      { id: 'set-font-size', label: 'Font Size', items: buildSettingMenuItems('fontSize') },
+      { id: 'set-font-family', label: 'Font Family', items: buildSettingMenuItems('fontFamily') },
+      { id: 'set-whitespace', label: 'Whitespace', items: buildSettingMenuItems('whitespace') },
+      { id: 'set-tag-style-preset', label: 'Tag Style', items: buildSettingMenuItems('tagStylePreset') }
+    ];
+    if (isCanvasLayout) {
+      items.push({ id: 'set-canvas-grid', label: 'Canvas Grid', items: buildSettingMenuItems('canvasGrid') });
+    }
+    items.push(
+      { separator: true },
       {
         id: 'file-marp-global',
         label: 'Marp YAML / Frontmatter',
@@ -5252,7 +5267,7 @@ const LexeraDashboard = (function () {
         label: 'Embedded Renderer Status',
         items: buildEmbeddedRendererStatusMenuItems()
       }
-    ];
+    );
     var x = forcedX;
     var y = forcedY;
     if (typeof x !== 'number' || typeof y !== 'number') {
