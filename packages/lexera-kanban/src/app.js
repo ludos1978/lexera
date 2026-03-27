@@ -1266,6 +1266,15 @@ const LexeraDashboard = (function () {
     setupSidebarWidthResize();
     setupWorkspaceShell();
 
+    // Init panels that may already exist after workspace shell restore
+    var existingFilesContainer = document.querySelector('.lexera-shared-files-container');
+    if (existingFilesContainer && !filesMountInitialized) initFilesPanelMount(existingFilesContainer);
+    var existingBackendContainer = document.querySelector('.lexera-shared-backend-settings-container');
+    if (existingBackendContainer && !mgmtInitialized) {
+      elLogSettingsContainer = existingBackendContainer;
+      initManagementUI();
+    }
+
     if ($searchInput) {
       $searchInput.addEventListener('input', onSearchInput);
       $searchInput.addEventListener('keydown', function (e) {
