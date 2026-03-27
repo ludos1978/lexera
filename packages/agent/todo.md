@@ -101,9 +101,9 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 - [x] ~~Add capture API tests: 6 tests covering list (empty, with entries, no history), delete (success, not found, no history)~~ (this commit)
 
 ### Low
-- [ ] Remove hardcoded Mermaid CDN URL (app.js) — add fallback or make configurable
+- [x] ~~Remove hardcoded Mermaid CDN URL — now configurable via localStorage `lexera-mermaid-url`~~ (this commit)
 - [ ] Add keyboard accessibility for drag-drop operations (currently pointer-only)
-- [ ] Add `<label for="">` associations to export dialog form inputs
+- [x] ~~Export dialog form inputs already have proper `<label for="">` and wrapping `<label>` associations~~ (verified)
 
 ## High Priority — Security & Reliability
 

@@ -11689,7 +11689,9 @@ const LexeraDashboard = (function () {
         self._loading = true;
         return new Promise(function (resolve, reject) {
           var script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+          var mermaidUrl = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+          try { var custom = localStorage.getItem('lexera-mermaid-url'); if (custom) mermaidUrl = custom; } catch (_) { /* intentional: localStorage unavailable */ }
+          script.src = mermaidUrl;
           script.onload = function () {
             mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose', fontFamily: 'inherit' });
             self._ready = true;
