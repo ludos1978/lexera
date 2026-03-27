@@ -1,5 +1,15 @@
 # Lexera Kanban Todo
 
+- [ ] When new screens are attached or screen resolutions are changed, the quick capture isnt locked to the screen side anymore. it can be sitting in the middle of the screen forever, can we detect screen size, position etc changes and re-position it?
+
+- [ ] the quick capture is somtimes not reacting to clicks immediately, it doesnt open and also needs multiple cmd+b to open when it hasnt been opened before!
+
+- [x] ~~workspace tree styling improved: rounded corners, hover backgrounds, consistent spacing, section headers~~ (this commit)
+
+- [x] ~~files configurator fixed: delayed init after backend connects, backend settings preset includes sharing tab~~ (this commit)
+
+- [x] ~~workspace tree navigation with drill-in/out, grouped board list~~ (5ab557aa)
+
 - [x] ~~specs created: spec-frontend-settings.md, spec-dashboard.md~~ (181f41df, b4dd6e47)
 
 - [x] ~~backend settings panel now shows all tabs (sharing, network, config, logs) — was only showing network~~ (this commit)
@@ -176,11 +186,18 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 
 ## Long Term — Architecture
 
-- [ ] **Repository promotion** — move packages/ to top-level structure (see packages/todo.md for full plan)
-- [ ] **Frontend build pipeline** — replace script-tag loading with module bundler (blocked by app.js monolith split)
+- [ ] **Repository promotion** — make the active Tauri/packages workspace the obvious root product surface and move/archive the legacy VS Code extension scaffolding out of the main root package.json/README path
+- [ ] **Frontend build pipeline** — replace script-tag loading + window-global module discovery with a real module graph / bundler (blocked by app.js monolith split)
+- [ ] **Frontend settings model** — unify localStorage frontend defaults with backend/shared config models so settings have one schema and clear scopes (machine-local vs workspace-shared vs board-shared)
+- [ ] **Typed API contract** — generate or centralize backend/frontend API contracts so settings panels and management views cannot drift from LexeraApi capabilities
+- [ ] **Frontend startup smoke tests** — add integration smoke tests for app startup, settings panels, and module wiring to catch runtime-only regressions caused by script order or wrong dependency injection
+- [ ] **Backend service extraction** — split AppState into narrower injected services (config, auth, discovery, sync, board registry) instead of one broad lock-heavy state container
+- [ ] **Backend config transactions** — centralize lock/mutate/save/notify patterns from config_api.rs into a ConfigService helper so all config writes share one code path
+- [ ] **Backend auth extractor unification** — remove duplicated bearer-token parsing/auth checks between auth_middleware.rs and collab_api.rs by using shared request extractors/helpers
 - [ ] **Plugin architecture** — unify plugin registration across kanban, backend, shared (manifests, not hardcoded lists)
 - [ ] **Board schema centralization** — single canonical schema for rows, stacks, columns, cards, settings, metadata
-- [ ] **Storage abstraction** — replace broad BoardStorage trait with narrower capability-focused services
+- [ ] **Storage abstraction** — split lexera-core LocalStorage into smaller capability-focused services (repository, persistence, include tracking, revisions, search index, remote boards)
+- [ ] **Parser source of truth** — remove or strictly constrain the duplicated markdown parser logic between packages/shared and lexera-core so only one parser is canonical
 
 
 

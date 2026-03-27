@@ -995,49 +995,65 @@ textarea {
 /* Workspace tree navigation */
 .workspace-nav-up {
   cursor: pointer;
-  margin-bottom: 4px;
+  margin: 2px 4px 4px;
 }
 .workspace-nav-item {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
+  gap: 5px;
+  font-size: calc(11px * var(--ui-scale));
+  font-weight: 500;
   color: var(--accent);
   padding: 4px 8px;
+  border-radius: 4px;
 }
 .workspace-nav-item:hover {
   background: var(--bg-hover);
 }
 .workspace-nav-icon {
   font-size: 12px;
+  flex-shrink: 0;
 }
 .workspace-section-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 8px 3px;
-  font-size: 11px;
+  gap: 5px;
+  padding: 6px 8px 4px;
+  margin: 2px 4px 0;
+  font-size: calc(11px * var(--ui-scale));
   font-weight: 600;
   color: var(--text-bright);
   cursor: pointer;
   user-select: none;
+  border-radius: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
 }
 .workspace-section-header:hover {
   background: var(--bg-hover);
 }
 .workspace-section-header.workspace-unassigned .workspace-section-name {
   color: var(--text-muted);
+  font-weight: 500;
 }
 .workspace-section-toggle {
   font-size: 8px;
   color: var(--text-muted);
   width: 12px;
   text-align: center;
+  flex-shrink: 0;
+}
+.workspace-section-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .workspace-section-count {
   font-size: 9px;
+  font-weight: 500;
   color: var(--text-muted);
-  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .dashboard-tag-section {
@@ -1211,14 +1227,15 @@ textarea {
 .board-item-wrapper {}
 
 .board-item {
-  padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   cursor: pointer;
   display: grid;
   grid-template-columns: auto 12px minmax(0, 1fr) max-content;
   align-items: center;
   border-left: 2px solid transparent;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
   gap: var(--btn-gap);
+  border-radius: 4px;
+  margin: 1px 4px;
 }
 
 .board-item:hover {
@@ -1339,14 +1356,18 @@ textarea {
 .tree-node {
   display: flex;
   align-items: center;
-  padding: var(--space-1) var(--space-3);
+  padding: 2px 6px;
   cursor: pointer;
-  border-radius: var(--radius-sm);
-  font-size: calc(12px * var(--ui-scale));
+  border-radius: 3px;
+  font-size: calc(11px * var(--ui-scale));
   color: var(--tree-fg);
-  gap: var(--space-1);
+  gap: 3px;
+  margin: 0 2px;
 }
-.tree-node:hover { color: var(--tree-fg-hover); }
+.tree-node:hover {
+  color: var(--tree-fg-hover);
+  background: var(--bg-hover);
+}
 
 .tree-entry {
   display: block;

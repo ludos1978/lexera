@@ -1266,14 +1266,17 @@ const LexeraDashboard = (function () {
     setupSidebarWidthResize();
     setupWorkspaceShell();
 
-    // Init panels that may already exist after workspace shell restore
-    var existingFilesContainer = document.querySelector('.lexera-shared-files-container');
-    if (existingFilesContainer && !filesMountInitialized) initFilesPanelMount(existingFilesContainer);
-    var existingBackendContainer = document.querySelector('.lexera-shared-backend-settings-container');
-    if (existingBackendContainer && !mgmtInitialized) {
-      elLogSettingsContainer = existingBackendContainer;
-      initManagementUI();
-    }
+    // Init panels that may already exist after workspace shell restore.
+    // Delay to let the first poll establish the backend connection.
+    setTimeout(function () {
+      var existingFilesContainer = document.querySelector('.lexera-shared-files-container');
+      if (existingFilesContainer && !filesMountInitialized) initFilesPanelMount(existingFilesContainer);
+      var existingBackendContainer = document.querySelector('.lexera-shared-backend-settings-container');
+      if (existingBackendContainer && !mgmtInitialized) {
+        elLogSettingsContainer = existingBackendContainer;
+        initManagementUI();
+      }
+    }, 3000);
 
     if ($searchInput) {
       $searchInput.addEventListener('input', onSearchInput);
@@ -6642,17 +6645,43 @@ const LexeraDashboard = (function () {
     },
   };
 
+  function getManagementUiPreset(name) {
+    if (ManagementUI && typeof ManagementUI.getUiPreset === 'function') {
+      return ManagementUI.getUiPreset(name);
+    }
+    if (name === 'files') {
+      return {
+        topTabs: ['workspaces', 'boards'],
+        defaultTopTab: 'workspaces',
+        themeEnabled: false
+      };
+    }
+    if (name === 'backendSettings') {
+      return {
+        topTabs: ['sharing', 'network', 'config', 'logs'],
+        defaultTopTab: 'network',
+        themeEnabled: false
+      };
+    }
+    return {
+      topTabs: ['sharing', 'network', 'config', 'logs'],
+      defaultTopTab: 'network',
+      themeEnabled: false
+    };
+  }
+
+  function getEmbeddedManagementUiOptions() {
+    if (workspaceShellEnabled) return getManagementUiPreset('backendSettings');
+    return getManagementUiPreset('combinedManagement');
+  }
+
   function initManagementUI() {
     var managementContainer = getManagementUiContainer();
     if (mgmtInitialized || !managementContainer) return;
     mgmtInitialized = true;
     ManagementUI.init({
       container: managementContainer,
-      ui: {
-        topTabs: ['sharing', 'network', 'config', 'logs'],
-        defaultTopTab: 'network',
-        themeEnabled: false
-      },
+      ui: getEmbeddedManagementUiOptions(),
       api: mgmtApiAdapter,
       callbacks: mgmtCallbacks,
     });
@@ -6665,11 +6694,7 @@ const LexeraDashboard = (function () {
     if (!container) return;
     ManagementUI.mount('files', {
       container: container,
-      ui: {
-        topTabs: ['workspaces', 'boards'],
-        defaultTopTab: 'workspaces',
-        themeEnabled: false
-      },
+      ui: getManagementUiPreset('files'),
       api: mgmtApiAdapter,
       callbacks: mgmtCallbacks,
     });
@@ -6710,12 +6735,15 @@ const LexeraDashboard = (function () {
     options = options || {};
     mgmtPanelOpen = true;
     var isFilesSection = options.section === 'boards' || options.section === 'sharing' || options.section === 'workspaces';
+    var preferredTab = isFilesSection
+      ? (workspaceShellEnabled ? 'workspaces' : 'sharing')
+      : 'network';
     if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.revealPanel === 'function') {
       WorkspaceShell.revealPanel(isFilesSection ? 'files' : 'backendSettings');
       return;
     }
     runInitManagementUI();
-    syncEmbeddedManagementUiState(isFilesSection ? 'workspaces' : 'network');
+    syncEmbeddedManagementUiState(preferredTab);
     if (getElMgmtPanel()) getElMgmtPanel().classList.add('open');
   }
 
