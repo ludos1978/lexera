@@ -72,7 +72,7 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 - [x] ~~**Phase 3**: setState auto-emits {key}:changed events~~ (aa4b2b15)
 - [x] ~~**Phase 4**: Module auto-discovery from window globals (34 modules)~~ (aa4b2b15)
 - [x] ~~**Phase 5**: Startup health check logs found/missing modules~~ (aa4b2b15)
-- [ ] **Phase 6**: Gradually migrate remaining modules to read from runtime.state instead of dep getters (boardList and orderHelpers done, others pending)
+- [ ] **Phase 6**: 13/20 modules now use LexeraRuntime.mergeDeps (d0cc797f). Remaining 7: embedMenu, sidebarSync, sidebarResize, keyboardNavigation, exportToolStatus, canvasPan, pollingService
 
 ## Code Quality & Project Hygiene (from verification audit)
 
