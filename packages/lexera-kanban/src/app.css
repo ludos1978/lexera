@@ -3541,6 +3541,7 @@ u {
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
+  overflow: hidden;
   min-width: 0;
 }
 .card.collapsed .card-content { display: none; }
@@ -4008,6 +4009,7 @@ img[data-lazy-src] {
   display: block;
   margin: 8px 0;
   max-width: 100%;
+  overflow: hidden;
   position: relative;
 }
 
@@ -4095,6 +4097,7 @@ img[data-lazy-src] {
 .external-embed-frame {
   display: block;
   width: 100%;
+  max-width: 100%;
   min-height: 280px;
   border: 1px solid var(--border);
   border-radius: 6px;

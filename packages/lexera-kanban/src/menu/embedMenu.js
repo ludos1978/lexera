@@ -960,7 +960,7 @@ var LexeraEmbedMenu = (function () {
     return '<iframe class="external-embed-frame" src="' + escapeAttr(embedUrl) + '"' +
       ' title="' + escapeAttr(titleText || embedUrl) + '"' +
       ' loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen frameborder="0"' +
-      ' style="' + escapeAttr('width:' + embedWidth + ';height:' + embedHeight) + '"></iframe>';
+      ' style="' + escapeAttr('width:100%;max-width:' + embedWidth + ';height:' + embedHeight) + '"></iframe>';
   }
 
   function getExternalEmbedStage(container) {

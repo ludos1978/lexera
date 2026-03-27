@@ -88,7 +88,7 @@ var EmbedEnhancer = (function () {
     return '<iframe class="external-embed-frame" src="' + _deps.escapeAttr(embedUrl) + '"' +
       ' title="' + _deps.escapeAttr(titleText || embedUrl) + '"' +
       ' loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen frameborder="0"' +
-      ' style="' + _deps.escapeAttr('width:' + embedWidth + ';height:' + embedHeight) + '"></iframe>';
+      ' style="' + _deps.escapeAttr('width:100%;max-width:' + embedWidth + ';height:' + embedHeight) + '"></iframe>';
   }
 
   function getExternalEmbedStage(container) {
