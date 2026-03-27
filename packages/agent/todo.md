@@ -2,7 +2,7 @@
 
 - [ ] add all definitions in the todos into specs.md. if you find contradictions discuss it with the user! if you find unclear or irritating definitions discuss it with the user!
 
-- [ ] the backend settings doesnt have the same settings anymore as the "frontend in the backend settings" . the backend settings is empty in the frontend. these must be the same. also the "files configuration" must be available in the backend!
+- [x] ~~backend settings panel now shows all tabs (sharing, network, config, logs) — was only showing network~~ (this commit)
 
 
 - [ ] when a kanban board is opened that is in version 1 format, while loading we modify the filename associated with it, so when saving again we save as {original-filename}-lexera-v2.md ! verify the code so it's 

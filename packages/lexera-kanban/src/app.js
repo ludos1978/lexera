@@ -6640,7 +6640,7 @@ const LexeraDashboard = (function () {
     ManagementUI.init({
       container: managementContainer,
       ui: {
-        topTabs: ['network'],
+        topTabs: ['sharing', 'network', 'config', 'logs'],
         defaultTopTab: 'network',
         themeEnabled: false
       },
