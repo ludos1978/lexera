@@ -2371,18 +2371,21 @@ var LexeraEmbedMenu = (function () {
       id: 'external-embed',
       selector: '.external-embed-container[data-embed-url]',
       priority: 10,
+      lazy: true,
       enhance: function (el) { enhanceSingleExternalEmbedContainer(el); }
     });
     ContentEnhancerRegistry.register({
       id: 'file-embed',
       selector: '.embed-container[data-file-path][data-board-id]',
       priority: 20,
+      lazy: true,
       enhance: function (el) { enhanceSingleEmbedContainer(el); }
     });
     ContentEnhancerRegistry.register({
       id: 'inline-file-embed',
       selector: '.inline-file-embed-container[data-file-path][data-board-id]',
       priority: 30,
+      lazy: true,
       enhance: function (el) { enhanceSingleInlineFileEmbed(el); }
     });
     ContentEnhancerRegistry.register({
@@ -2401,6 +2404,7 @@ var LexeraEmbedMenu = (function () {
       id: 'include-directive',
       selector: '.include-inline-container[data-file-path]',
       priority: 60,
+      lazy: true,
       enhance: function (el) { enhanceSingleIncludeDirective(el); }
     });
     ContentEnhancerRegistry.register({

@@ -195,7 +195,7 @@ var LexeraInlineRenderer = (function () {
         var inner = '';
         if (category === 'image') {
           var imageTitleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
-          inner = '<img src="' + src + '" alt="' + alt + '"' + imageTitleAttr + ' loading="lazy"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')">';
+          inner = '<img data-lazy-src="' + src + '" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="' + alt + '"' + imageTitleAttr + mediaStyleAttr + ' onerror="if(this.getAttribute(\'data-lazy-src\')){return}this.parentElement.classList.add(\'embed-broken\')">';
         } else if (category === 'video') {
           inner = '<video controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
         } else if (category === 'audio') {
