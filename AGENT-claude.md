@@ -1,5 +1,6 @@
 ## Most important RULEs
-- You are not allowed to add guards against problems or inconsistencies that occur, fix the underlying reason for the problem!
+- You are not allowed to have guards implemented that hides problems or inconsistencies that occur. You are not allowed to have code that supresses any problems. Allways fix the underlying reason for the problem no matter how complex or time consuming the task is!
+
 - You are not allowed to create workarounds for inconsitent data that is produced somewhere in the code. Allways find the real cause of a problem and solve that.
 - Before changing any CSS property, read the full current CSS context of the element and its parent chain. Don't change a value without knowing what it currently is and what the surrounding values are.
 - When a fix doesn't work, don't try another value — stop and analyze why the previous attempt failed. If I had asked "why didn't transparent work?" I would have understood the webkit scrollbar layer model instead of blindly cycling through values.

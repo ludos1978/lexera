@@ -7,8 +7,8 @@
  * Any change here applies to BOTH apps. Do NOT duplicate this logic elsewhere.
  *
  * Usage:
- *   ManagementUI.init({ container, api, callbacks });   // default mount
- *   ManagementUI.mount('files', { container, ui: { topTabs: ['workspaces', 'boards'] } });
+ *   ManagementUI.init({ container, api, callbacks, ui: ManagementUI.getUiPreset('backendSettings') });
+ *   ManagementUI.mount('files', { container, ui: ManagementUI.getUiPreset('files') });
  *   ManagementUI.refresh();          // re-render everything
  *   ManagementUI.refresh('boards');  // re-render one section
  *   ManagementUI.unmount('files');   // tear down a mount
@@ -101,15 +101,54 @@ var ManagementUI = (function () {
   }
 
   var VALID_TABS = ['sharing', 'network', 'config', 'logs', 'workspaces', 'boards'];
+  var UI_PRESETS = {
+    combinedManagement: {
+      topTabs: ['sharing', 'network', 'config', 'logs'],
+      defaultTopTab: 'network',
+      themeEnabled: false
+    },
+    backendSettings: {
+      topTabs: ['network', 'config', 'logs'],
+      defaultTopTab: 'network',
+      themeEnabled: false
+    },
+    files: {
+      topTabs: ['workspaces', 'boards'],
+      defaultTopTab: 'workspaces',
+      themeEnabled: false
+    }
+  };
+
+  function cloneUiOptions(source) {
+    var copy = {};
+    if (!source) return copy;
+    for (var key in source) {
+      if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+      copy[key] = Array.isArray(source[key]) ? source[key].slice() : source[key];
+    }
+    return copy;
+  }
+
+  function getUiPreset(name, overrides) {
+    var presetName = name && UI_PRESETS[name] ? name : 'combinedManagement';
+    var options = cloneUiOptions(UI_PRESETS[presetName]);
+    if (overrides) {
+      for (var key in overrides) {
+        if (!Object.prototype.hasOwnProperty.call(overrides, key)) continue;
+        options[key] = Array.isArray(overrides[key]) ? overrides[key].slice() : overrides[key];
+      }
+    }
+    return options;
+  }
 
   function buildUiOptions(options) {
-    options = options || {};
+    options = options || getUiPreset('combinedManagement');
     var topTabs = Array.isArray(options.topTabs) && options.topTabs.length
       ? options.topTabs.filter(function (tab) {
           return VALID_TABS.indexOf(tab) !== -1;
         })
-      : ['sharing', 'network', 'config', 'logs'];
-    if (topTabs.length === 0) topTabs = ['sharing', 'network', 'config', 'logs'];
+      : getUiPreset('combinedManagement').topTabs;
+    if (topTabs.length === 0) topTabs = getUiPreset('combinedManagement').topTabs;
     var defaultTopTab = topTabs.indexOf(options.defaultTopTab) !== -1 ? options.defaultTopTab : topTabs[0];
     return {
       topTabs: topTabs,
@@ -265,6 +304,9 @@ var ManagementUI = (function () {
   function mountInstance(id, options) {
     var mc = options.container;
     if (!mc) throw new Error('ManagementUI.mount requires container');
+    if (mounts[id]) {
+      unmountInstance(id);
+    }
     if (options.api) {
       api = wrapMutatingApi(options.api);
     }
@@ -1896,6 +1938,8 @@ var ManagementUI = (function () {
     unmount: unmountInstance,
     refresh: refresh,
     destroy: destroy,
+    UI_PRESETS: UI_PRESETS,
+    getUiPreset: getUiPreset,
     BOARD_SETTINGS_FIELDS: BOARD_SETTINGS_FIELDS,
   };
 })();

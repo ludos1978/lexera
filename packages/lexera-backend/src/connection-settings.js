@@ -17,10 +17,112 @@
   var fallbackConnectionsInterval = null;
   var fallbackPeersInterval = null;
   var BackendDiscovery = window.LexeraBackendDiscovery || null;
+  var SURFACE_STORAGE_KEY = 'lexera-backend-management-surface';
+  var MANAGEMENT_SURFACES = {
+    backendSettings: {
+      containerId: 'management-container',
+      preset: 'backendSettings'
+    },
+    files: {
+      containerId: 'files-management-container',
+      preset: 'files'
+    }
+  };
+  var activeSurfaceId = 'backendSettings';
+  var initialUiState = {
+    surfaceId: 'backendSettings',
+    section: ''
+  };
 
   // Apply theme immediately from localStorage to avoid flash of wrong theme
   if (typeof applyLexeraTheme === 'function') {
     applyLexeraTheme(localStorage.getItem('lexera-theme') || 'lexera');
+  }
+
+  function getManagementUiPreset(name) {
+    if (ManagementUI && typeof ManagementUI.getUiPreset === 'function') {
+      return ManagementUI.getUiPreset(name);
+    }
+    if (name === 'files') {
+      return {
+        topTabs: ['workspaces', 'boards'],
+        defaultTopTab: 'workspaces',
+        themeEnabled: false
+      };
+    }
+    return {
+      topTabs: ['network', 'config', 'logs'],
+      defaultTopTab: 'network',
+      themeEnabled: false
+    };
+  }
+
+  function isKnownSurface(surfaceId) {
+    return !!(surfaceId && MANAGEMENT_SURFACES[surfaceId]);
+  }
+
+  function resolveSurfaceId(sectionOrSurface) {
+    if (isKnownSurface(sectionOrSurface)) return sectionOrSurface;
+    if (sectionOrSurface === 'sharing' || sectionOrSurface === 'workspaces' || sectionOrSurface === 'boards') {
+      return 'files';
+    }
+    return 'backendSettings';
+  }
+
+  function normalizeRequestedTab(tabName) {
+    if (tabName === 'sharing') return 'workspaces';
+    return tabName || '';
+  }
+
+  function getSurfaceContainer(surfaceId) {
+    var surface = MANAGEMENT_SURFACES[surfaceId];
+    if (!surface) return null;
+    return document.getElementById(surface.containerId);
+  }
+
+  function setActiveSurface(surfaceId) {
+    var nextSurfaceId = isKnownSurface(surfaceId) ? surfaceId : 'backendSettings';
+    activeSurfaceId = nextSurfaceId;
+    try {
+      localStorage.setItem(SURFACE_STORAGE_KEY, nextSurfaceId);
+    } catch (_) {}
+
+    var tabs = document.querySelectorAll('[data-management-surface-tab]');
+    for (var i = 0; i < tabs.length; i++) {
+      var isActiveTab = tabs[i].getAttribute('data-management-surface-tab') === nextSurfaceId;
+      tabs[i].classList.toggle('active', isActiveTab);
+      tabs[i].setAttribute('aria-selected', isActiveTab ? 'true' : 'false');
+    }
+
+    var panels = document.querySelectorAll('[data-management-surface-panel]');
+    for (var j = 0; j < panels.length; j++) {
+      var isActivePanel = panels[j].getAttribute('data-management-surface-panel') === nextSurfaceId;
+      panels[j].classList.toggle('is-active', isActivePanel);
+      panels[j].hidden = !isActivePanel;
+    }
+  }
+
+  function activateManagementTopTab(container, tabName) {
+    if (!container || !tabName) return;
+    var normalizedTab = normalizeRequestedTab(tabName);
+    var topTab = container.querySelector('.mgmt-top-tab[data-mgmt-top-tab="' + normalizedTab + '"]');
+    if (topTab) topTab.click();
+  }
+
+  function applyInitialUiState() {
+    setActiveSurface(initialUiState.surfaceId);
+    if (!initialUiState.section) return;
+    activateManagementTopTab(getSurfaceContainer(resolveSurfaceId(initialUiState.section)), initialUiState.section);
+  }
+
+  function bindSurfaceNavigation() {
+    document.addEventListener('click', function (event) {
+      var tab = event.target && event.target.closest
+        ? event.target.closest('[data-management-surface-tab]')
+        : null;
+      if (!tab) return;
+      setActiveSurface(tab.getAttribute('data-management-surface-tab'));
+    });
   }
 
   // ── Backend Discovery ──
@@ -100,6 +202,37 @@
     return res.json();
   }
 
+  function getManagementApiAdapter() {
+    return {
+      get: apiGet,
+      post: apiPost,
+      put: apiPut,
+      delete: apiDelete,
+    };
+  }
+
+  function getManagementCallbacks() {
+    return {
+      onThemeChange: function (themeId) {
+        if (typeof applyLexeraTheme === 'function') applyLexeraTheme(themeId);
+      },
+      openLogStream: openLogStream,
+      onNotify: function (msg) {
+        console.info('[management]', msg);
+      },
+      onConfirm: function (msg) {
+        return Promise.resolve(window.confirm(msg));
+      },
+      onServerRestarted: function (bindAddr, port) {
+        var host = (bindAddr === '0.0.0.0') ? '127.0.0.1' : bindAddr;
+        baseUrl = 'http://' + host + ':' + port;
+      },
+      getThemes: function () {
+        return typeof LEXERA_THEMES !== 'undefined' ? LEXERA_THEMES : [];
+      },
+    };
+  }
+
   // ── SSE for live updates ──
 
   function connectSSE() {
@@ -163,40 +296,22 @@
       }
       baseUrl = discovered;
       if (discoveryRetryTimer) { clearTimeout(discoveryRetryTimer); discoveryRetryTimer = null; }
+      var managementApi = getManagementApiAdapter();
+      var managementCallbacks = getManagementCallbacks();
 
       ManagementUI.init({
-        container: document.getElementById('management-container'),
-        ui: {
-          topTabs: ['sharing', 'network', 'logs'],
-          defaultTopTab: 'network',
-          themeEnabled: false
-        },
-        api: {
-          get: apiGet,
-          post: apiPost,
-          put: apiPut,
-          delete: apiDelete,
-        },
-        callbacks: {
-          onThemeChange: function (themeId) {
-            if (typeof applyLexeraTheme === 'function') applyLexeraTheme(themeId);
-          },
-          openLogStream: openLogStream,
-          onNotify: function (msg) {
-            console.info('[management]', msg);
-          },
-          onConfirm: function (msg) {
-            return Promise.resolve(window.confirm(msg));
-          },
-          onServerRestarted: function (bindAddr, port) {
-            var host = (bindAddr === '0.0.0.0') ? '127.0.0.1' : bindAddr;
-            baseUrl = 'http://' + host + ':' + port;
-          },
-          getThemes: function () {
-            return typeof LEXERA_THEMES !== 'undefined' ? LEXERA_THEMES : [];
-          },
-        },
+        container: getSurfaceContainer('backendSettings'),
+        ui: getManagementUiPreset('backendSettings'),
+        api: managementApi,
+        callbacks: managementCallbacks,
       });
+      ManagementUI.mount('files', {
+        container: getSurfaceContainer('files'),
+        ui: getManagementUiPreset('files'),
+        api: managementApi,
+        callbacks: managementCallbacks,
+      });
+      applyInitialUiState();
 
       connectSSE();
     } finally {
@@ -208,9 +323,21 @@
   try {
     var params = new URLSearchParams(window.location.search || '');
     initialBackendUrl = params.get('backend') || '';
+    initialUiState.section = params.get('section') || '';
+    initialUiState.surfaceId = resolveSurfaceId(
+      params.get('surface') ||
+      params.get('panel') ||
+      initialUiState.section ||
+      localStorage.getItem(SURFACE_STORAGE_KEY) ||
+      'backendSettings'
+    );
   } catch (e) {
     initialBackendUrl = '';
+    initialUiState.surfaceId = 'backendSettings';
+    initialUiState.section = '';
   }
 
+  bindSurfaceNavigation();
+  setActiveSurface(initialUiState.surfaceId);
   ensureBackendConnection('init');
 })();

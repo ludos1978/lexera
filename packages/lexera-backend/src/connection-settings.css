@@ -36,7 +36,9 @@ body {
 .window-container {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 8px;
+  height: 100vh;
+  min-height: 0;
   padding: 0 16px 16px;
 }
 
@@ -54,6 +56,103 @@ body {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-bright);
+}
+
+.window-surface-nav {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.window-surface-tab {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.window-surface-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.window-surface-tab.active {
+  color: var(--text-bright);
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.window-surface-stack {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.window-surface-panel {
+  display: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.window-surface-panel.is-active {
+  display: flex;
+}
+
+.shell-settings-panel {
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.shell-settings-header {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.shell-settings-title {
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.shell-settings-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.shell-settings-container {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.shell-settings-container .mgmt-top-tab-bar {
+  flex: 0 0 auto;
+}
+
+.shell-settings-container .mgmt-top-tab-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 8px;
 }
 
 /* Confirm dialog overlay (used by window.confirm fallback) */

@@ -3,16 +3,16 @@
 kanban-plugin: board
 
 fontSize: 1_0x
-generation: 17
-contentHash: a9c7f404d66dbc8e5121927faf838853b5c7fc289d5a2767dd59ec9fe9239b84
-resolvedHash: 2255fe07dd77dc0536719d136783c82609e602124a46e5a88375a518a0af24b6
-writerId: 3da36485-1b99-4e8a-ad95-1a2eef80e0ea
+generation: 288
+contentHash: 82c06638d6f255ba79da557dc6f00d23225476855e07a08ac0346609b0d1a009
+resolvedHash: 83388e6996d5e0862f06a911bff6496ac90cd83cf172c0330f5c8b933728d628
+writerId: 3e7c88a6-9077-4187-9f1a-cf48270b084c
 stickyStackMode: top
 ---
 
 # ROW
 
-## PlantUML Diagram Tests
+## PlantUML Diagram Tests {w:220, x:-231, y:-197}
 
 ### PlantUML Diagram Tests
 - [ ] ## graph styles
@@ -125,7 +125,7 @@ stickyStackMode: top
   
 - [ ] the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
 
-## Mermaid Diagram Tests 13
+## Mermaid Diagram Tests 13 {w:220, x:79, y:-204}
 
 ### Mermaid Diagram Tests 13
 - [ ] Test 1: Simple Sequence Diagram
@@ -192,12 +192,11 @@ stickyStackMode: top
   
   
 
-## includes
+## includes {w:220, x:348, y:-196}
 
 ### includes
 - [ ] excali
   ![excali.excalidraw](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/excali.excalidraw)
-- [ ] https://hslu.zoom.us/rec/share/PPNQMgKCVuRxwdBGlt0JJa4ORduA-KgPCDLL0jPBU1smvMQc8YC-gA2nn3A-DmQY.8Tr6Q8hARl-wiLtP #hidden-internal-deleted
 - [ ] draw
   ![draw.drawio](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/draw.drawio)
 - [ ] the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
