@@ -81,12 +81,27 @@ var LexeraCanvasPan = (function () {
 
   // --- Lifecycle ---
 
+  var _attached = false;
+
   function attach() {
+    if (_attached) return;
+    _attached = true;
     document.addEventListener('mousedown', handleMouseDown);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('auxclick', handleAuxClick);
     document.addEventListener('scroll', handleScroll, true);
+  }
+
+  function detach() {
+    if (!_attached) return;
+    _attached = false;
+    cancelPan();
+    document.removeEventListener('mousedown', handleMouseDown);
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+    document.removeEventListener('auxclick', handleAuxClick);
+    document.removeEventListener('scroll', handleScroll, true);
   }
 
   function isPanning() {
@@ -101,12 +116,14 @@ var LexeraCanvasPan = (function () {
   }
 
   function init(deps) {
+    detach();
     _deps = deps || {};
     attach();
   }
 
   return {
     init: init,
+    detach: detach,
     isPanning: isPanning,
     cancelPan: cancelPan
   };

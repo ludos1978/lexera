@@ -49,7 +49,18 @@ pub fn get_backend_url() -> Result<String, String> {
 
 #[tauri::command]
 pub fn open_in_system(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
     std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("Failed to open '{}': {}", path, e))?;
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", &path])
+        .spawn()
+        .map_err(|e| format!("Failed to open '{}': {}", path, e))?;
+    #[cfg(target_os = "linux")]
+    std::process::Command::new("xdg-open")
         .arg(&path)
         .spawn()
         .map_err(|e| format!("Failed to open '{}': {}", path, e))?;
@@ -58,7 +69,18 @@ pub fn open_in_system(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_url(url: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
     std::process::Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map_err(|e| format!("Failed to open URL '{}': {}", url, e))?;
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", &url])
+        .spawn()
+        .map_err(|e| format!("Failed to open URL '{}': {}", url, e))?;
+    #[cfg(target_os = "linux")]
+    std::process::Command::new("xdg-open")
         .arg(&url)
         .spawn()
         .map_err(|e| format!("Failed to open URL '{}': {}", url, e))?;
@@ -137,14 +159,33 @@ pub fn show_in_folder(path: String) -> Result<String, String> {
         return Err(format!("File not found: {}", resolved_str));
     }
 
-    let output = std::process::Command::new("open")
-        .arg("-R")
-        .arg(&resolved_str)
-        .output()
-        .map_err(|e| format!("Failed to reveal '{}': {}", resolved_str, e))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("open -R failed: {}", stderr));
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("open")
+            .arg("-R")
+            .arg(&resolved_str)
+            .output()
+            .map_err(|e| format!("Failed to reveal '{}': {}", resolved_str, e))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("open -R failed: {}", stderr));
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(format!("/select,{}", &resolved_str))
+            .spawn()
+            .map_err(|e| format!("Failed to reveal '{}': {}", resolved_str, e))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // Open the parent directory; xdg-open doesn't support file selection
+        let parent = resolved.parent().unwrap_or(&resolved);
+        std::process::Command::new("xdg-open")
+            .arg(parent.to_string_lossy().as_ref())
+            .spawn()
+            .map_err(|e| format!("Failed to reveal '{}': {}", resolved_str, e))?;
     }
     Ok(resolved_str)
 }

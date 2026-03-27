@@ -1480,12 +1480,12 @@ var LexeraOrderHelpers = (function () {
         var parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) return parsed;
       }
-    } catch (_) {}
+    } catch (err) { _callDep('logFrontendIssue', 'warn', 'dashboard.tags', 'Failed to read dashboard tags', err); }
     return ['#important', '#blocked', '#review'];
   }
 
   function setDashboardTags(tags) {
-    try { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(tags)); } catch (_) {}
+    try { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(tags)); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
   }
 
   // ── Dashboard calendar view ───────────────────────────────────────

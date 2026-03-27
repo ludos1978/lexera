@@ -118,6 +118,14 @@ var ManagementUI = (function () {
       themeEnabled: false
     }
   };
+  var SECTION_SURFACE_IDS = {
+    sharing: 'files',
+    workspaces: 'files',
+    boards: 'files',
+    network: 'backendSettings',
+    config: 'backendSettings',
+    logs: 'backendSettings'
+  };
 
   function cloneUiOptions(source) {
     var copy = {};
@@ -139,6 +147,26 @@ var ManagementUI = (function () {
       }
     }
     return options;
+  }
+
+  function getSurfaceIdForSection(sectionName) {
+    if (!sectionName) return 'backendSettings';
+    return SECTION_SURFACE_IDS[sectionName] || 'backendSettings';
+  }
+
+  function getTopTabForContext(sectionName, contextName) {
+    var section = sectionName || '';
+    if (contextName === 'files') {
+      if (section === 'boards' || section === 'workspaces') return section;
+      return UI_PRESETS.files.defaultTopTab;
+    }
+    if (contextName === 'backendSettings') {
+      if (section === 'network' || section === 'config' || section === 'logs') return section;
+      return UI_PRESETS.backendSettings.defaultTopTab;
+    }
+    if (section === 'workspaces' || section === 'boards' || section === 'sharing') return 'sharing';
+    if (section === 'network' || section === 'config' || section === 'logs') return section;
+    return UI_PRESETS.combinedManagement.defaultTopTab;
   }
 
   function buildUiOptions(options) {
@@ -1043,7 +1071,7 @@ var ManagementUI = (function () {
         second: '2-digit',
         hour12: false,
       });
-    } catch (_) {
+    } catch (_) { /* intentional: invalid timestamp → empty string fallback */
       return '';
     }
   }
@@ -1969,6 +1997,8 @@ var ManagementUI = (function () {
     destroy: destroy,
     UI_PRESETS: UI_PRESETS,
     getUiPreset: getUiPreset,
+    getSurfaceIdForSection: getSurfaceIdForSection,
+    getTopTabForContext: getTopTabForContext,
     BOARD_SETTINGS_FIELDS: BOARD_SETTINGS_FIELDS,
   };
 })();

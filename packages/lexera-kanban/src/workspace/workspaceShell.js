@@ -843,8 +843,8 @@
         dockTree: serializeNode(state.dockTree),
         foldedPanes: state.foldedPanes
       }));
-    } catch (_) {
-      // ignore persistence failures
+    } catch (err) {
+      console.warn('[ws-shell] Failed to persist state:', err);
     }
   }
 
@@ -880,7 +880,8 @@
       state.foldedPanes = (parsed.foldedPanes && typeof parsed.foldedPanes === 'object') ? parsed.foldedPanes : {};
       ensureActiveLeaf();
       return true;
-    } catch (_) {
+    } catch (err) {
+      console.warn('[ws-shell] Failed to restore state:', err);
       return false;
     }
   }
@@ -1713,7 +1714,9 @@
     var activeTab = getActiveTab();
     var boardId = activeTab && isBoardTab(activeTab) && activeTab.boardId ? activeTab.boardId : '';
     if (boardId === state.lastNotifiedBoardId) return;
-    console.log('[ws-shell] active board changed: ' + state.lastNotifiedBoardId + ' → ' + (boardId || '(none)'));
+    if (typeof traceFrontendAction === 'function') {
+      traceFrontendAction('debug', 'ws-shell.boardChange', 'Active board changed', { from: state.lastNotifiedBoardId, to: boardId || null });
+    }
     state.lastNotifiedBoardId = boardId;
     if (state.hooks && typeof state.hooks.onActiveBoardChanged === 'function') {
       state.hooks.onActiveBoardChanged(boardId || null);
@@ -2755,7 +2758,7 @@
       closeCurrentWindow();
     }).catch(function () {
       // Fallback: store intent in localStorage and close
-      try { localStorage.setItem('lexera-dock-panel', kind); } catch (_) {}
+      try { localStorage.setItem('lexera-dock-panel', kind); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
       closeCurrentWindow();
     });
   }

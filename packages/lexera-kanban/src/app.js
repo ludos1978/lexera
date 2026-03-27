@@ -1425,7 +1425,9 @@ const LexeraDashboard = (function () {
       try {
         poll().catch(function () {});
         if (!pollInterval) pollInterval = setInterval(function () { poll().catch(function () {}); }, 5000);
-      } catch (_) {}
+      } catch (err) {
+        logFrontendIssue('error', 'init.poll.recovery', 'Failed to start recovery poll after init error', err);
+      }
     }
   }
 
@@ -1573,14 +1575,14 @@ const LexeraDashboard = (function () {
     var session = getLiveSyncSession(boardId);
     if (!session) return false;
 
-    console.log('[applyBoardToLiveSync] sending board=' + boardCardSummary(boardData) + ' session_board=' + boardCardSummary(session.board));
+    traceFrontendAction('debug', 'liveSync.apply', 'Sending board to live sync', { board: boardCardSummary(boardData), sessionBoard: boardCardSummary(session.board) });
     traceBoardIdentityPair('info', 'liveSync.apply', 'Applying local board into live sync session', boardId, 'local', boardData, 'session', session.board, {
       vvLength: session.vv ? session.vv.length : 0
     });
     var response = await LexeraApi.applyLiveSyncBoard(session.sessionId, boardData);
     if (response && response.vv) session.vv = response.vv;
     if (response && response.board) session.board = response.board;
-    console.log('[applyBoardToLiveSync] response changed=' + (response && response.changed) + ' response_board=' + boardCardSummary(response && response.board) + ' updates_len=' + (response && response.updates ? response.updates.length : 0));
+    traceFrontendAction('debug', 'liveSync.apply', 'Live sync response received', { changed: response && response.changed, responseBoard: boardCardSummary(response && response.board), updatesLen: response && response.updates ? response.updates.length : 0 });
     if (response && response.board && options.syncSaveBase && boardId === activeBoardId && fullBoardData) {
       var savedLiveBoard = resolveLiveSyncBoardData(cloneBoardData(response.board), boardId);
       setBoardSaveBase(fullBoardData, savedLiveBoard);
@@ -1594,10 +1596,10 @@ const LexeraDashboard = (function () {
     }
     if (response && response.changed && response.updates) {
       if (!LexeraApi.sendSyncUpdate(response.updates)) {
-        console.log('[applyBoardToLiveSync] sendSyncUpdate FAILED');
+        traceFrontendAction('warn', 'liveSync.apply', 'sendSyncUpdate failed', { updatesLen: response.updates.length });
         return false;
       }
-      console.log('[applyBoardToLiveSync] sent WS update');
+      traceFrontendAction('debug', 'liveSync.apply', 'Sent WS sync update', { updatesLen: response.updates.length });
       liveSyncLastLocalBroadcastAt = Date.now();
       lastSaveTime = liveSyncLastLocalBroadcastAt;
     }
@@ -2283,7 +2285,7 @@ const LexeraDashboard = (function () {
     }
     // Save unsaved changes before switching away from the current board
     if (activeBoardId && activeBoardId !== boardId && isBoardDirty()) {
-      try { await saveFullBoard(); } catch (_) { /* auto-save retry will handle it */ }
+      try { await saveFullBoard(); } catch (saveErr) { console.warn('[board-switch] auto-save failed, retry will handle:', saveErr); }
     }
     activeBoardId = boardId;
     activeBoardData = null;
@@ -5755,9 +5757,9 @@ const LexeraDashboard = (function () {
           return false;
         }
 
-        console.log('[saveFullBoard] incoming=' + boardCardSummary(fullBoardData));
+        traceFrontendAction('debug', 'save.board', 'Saving board', { summary: boardCardSummary(fullBoardData) });
         if (await applyBoardToLiveSyncSession(activeBoardId, fullBoardData, { skipBoardReplace: true, syncSaveBase: true })) {
-          console.log('[saveFullBoard] live sync path succeeded');
+          traceFrontendAction('debug', 'save.board', 'Live sync save path succeeded', {});
           if (pendingRefresh) {
             pendingRefresh = false;
             await flushPendingLiveSyncUpdates({ refreshSidebar: true });
@@ -5786,7 +5788,7 @@ const LexeraDashboard = (function () {
           );
           return false;
         }
-        console.log('[saveFullBoard] REST path, has_base=' + !!baseBoardData + (baseBoardData ? ' base=' + boardCardSummary(baseBoardData) : ''));
+        traceFrontendAction('debug', 'save.board', 'Using REST save path', { hasBase: !!baseBoardData, baseSummary: baseBoardData ? boardCardSummary(baseBoardData) : null });
         if (isActiveRemoteBoard()) {
           traceFrontendAction('info', 'save.remote', 'Saving remote board via REST', {
             boardId: activeBoardId,
@@ -6530,25 +6532,25 @@ const LexeraDashboard = (function () {
       applyUiScale: function (v) { applyUiScale(parseFloat(v) || 1); },
       // Scroll/zoom speed (saved as frontend defaults)
       getScrollSpeed: function () { return getBoardSettingValue('scrollSpeed', '1'); },
-      setScrollSpeed: function (v) { try { localStorage.setItem('lexera-default-scrollSpeed', v); } catch (_) {} },
+      setScrollSpeed: function (v) { try { localStorage.setItem('lexera-default-scrollSpeed', v); } catch (_) { /* intentional: localStorage unavailable in private browsing */ } },
       getZoomSpeed: function () { return getBoardSettingValue('zoomSpeed', '0.06'); },
-      setZoomSpeed: function (v) { try { localStorage.setItem('lexera-default-zoomSpeed', v); } catch (_) {} },
+      setZoomSpeed: function (v) { try { localStorage.setItem('lexera-default-zoomSpeed', v); } catch (_) { /* intentional: localStorage unavailable in private browsing */ } },
       // Display (saved as frontend defaults, applied immediately to current board)
       getTagVisibility: function () { return getBoardSettingValue('tagVisibility', 'allexcludinglayout'); },
       setTagVisibility: function (v) {
-        try { localStorage.setItem('lexera-default-tagVisibility', v); } catch (_) {}
+        try { localStorage.setItem('lexera-default-tagVisibility', v); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
         applyRenderedTagVisibility(getElColumnsContainer(), v);
         renderFrontendSettingsPanel();
       },
       getHtmlCommentMode: function () { return getBoardSettingValue('htmlCommentRenderMode', 'hidden'); },
       setHtmlCommentMode: function (v) {
-        try { localStorage.setItem('lexera-default-htmlCommentRenderMode', v); } catch (_) {}
+        try { localStorage.setItem('lexera-default-htmlCommentRenderMode', v); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
         renderColumns();
         renderFrontendSettingsPanel();
       },
       getHtmlContentMode: function () { return getBoardSettingValue('htmlContentRenderMode', 'html'); },
       setHtmlContentMode: function (v) {
-        try { localStorage.setItem('lexera-default-htmlContentRenderMode', v); } catch (_) {}
+        try { localStorage.setItem('lexera-default-htmlContentRenderMode', v); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
         renderColumns();
         renderFrontendSettingsPanel();
       },
@@ -6669,29 +6671,70 @@ const LexeraDashboard = (function () {
     },
   };
 
+  var pendingManagementTabByContext = {
+    combinedManagement: 'network',
+    backendSettings: 'network',
+    files: 'workspaces'
+  };
+
+  function requireManagementUiMethod(name) {
+    if (!ManagementUI || typeof ManagementUI[name] !== 'function') {
+      throw new Error('ManagementUI.' + name + ' is required. Sync runtime assets from lexera-shared.');
+    }
+    return ManagementUI[name];
+  }
+
   function getManagementUiPreset(name) {
-    if (ManagementUI && typeof ManagementUI.getUiPreset === 'function') {
-      return ManagementUI.getUiPreset(name);
-    }
-    if (name === 'files') {
-      return {
-        topTabs: ['workspaces', 'boards'],
-        defaultTopTab: 'workspaces',
-        themeEnabled: false
-      };
-    }
-    if (name === 'backendSettings') {
-      return {
-        topTabs: ['sharing', 'network', 'config', 'logs'],
-        defaultTopTab: 'network',
-        themeEnabled: false
-      };
-    }
-    return {
-      topTabs: ['sharing', 'network', 'config', 'logs'],
-      defaultTopTab: 'network',
-      themeEnabled: false
-    };
+    return requireManagementUiMethod('getUiPreset')(name);
+  }
+
+  function getManagementSurfaceId(sectionName) {
+    return requireManagementUiMethod('getSurfaceIdForSection')(sectionName);
+  }
+
+  function getManagementTopTab(sectionName, contextName) {
+    return requireManagementUiMethod('getTopTabForContext')(sectionName, contextName);
+  }
+
+  function activateManagementTabInContainer(container, tabName) {
+    if (!container || !tabName) return;
+    var topTab = container.querySelector('.mgmt-top-tab[data-mgmt-top-tab="' + tabName + '"]');
+    var panel = container.querySelector('.mgmt-top-tab-content[data-mgmt-top-panel="' + tabName + '"]');
+    if (!topTab || !panel) return;
+    var tabs = container.querySelectorAll('.mgmt-top-tab');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+    var panels = container.querySelectorAll('.mgmt-top-tab-content');
+    for (var p = 0; p < panels.length; p++) panels[p].classList.remove('active');
+    topTab.classList.add('active');
+    panel.classList.add('active');
+  }
+
+  function getBackendSettingsManagementContainer() {
+    if (workspaceShellEnabled) return getElLogSettingsContainer();
+    return getElMgmtPanelBody();
+  }
+
+  function getFilesManagementContainer() {
+    if (!workspaceShellEnabled) return getElMgmtPanelBody();
+    return document.querySelector('[data-shell-panel="files"] .lexera-shared-files-container') ||
+      document.querySelector('.lexera-shared-files-container');
+  }
+
+  function getManagementContainerForContext(contextName) {
+    if (contextName === 'files') return getFilesManagementContainer();
+    if (contextName === 'backendSettings') return getBackendSettingsManagementContainer();
+    return getElMgmtPanelBody();
+  }
+
+  function rememberManagementTab(contextName, tabName) {
+    if (!contextName || !tabName) return;
+    pendingManagementTabByContext[contextName] = tabName;
+  }
+
+  function applyPendingManagementTab(contextName, container) {
+    var tabName = pendingManagementTabByContext[contextName];
+    if (!tabName) return;
+    activateManagementTabInContainer(container || getManagementContainerForContext(contextName), tabName);
   }
 
   function getEmbeddedManagementUiOptions() {
@@ -6709,7 +6752,7 @@ const LexeraDashboard = (function () {
       api: mgmtApiAdapter,
       callbacks: mgmtCallbacks,
     });
-    syncEmbeddedManagementUiState('network');
+    applyPendingManagementTab(workspaceShellEnabled ? 'backendSettings' : 'combinedManagement', managementContainer);
   }
 
   var filesMountInitialized = false;
@@ -6723,6 +6766,7 @@ const LexeraDashboard = (function () {
       callbacks: mgmtCallbacks,
     });
     filesMountInitialized = true;
+    applyPendingManagementTab('files', container);
   }
 
   if (typeof window !== 'undefined') {
@@ -6758,16 +6802,18 @@ const LexeraDashboard = (function () {
   function openManagementPanel(options) {
     options = options || {};
     mgmtPanelOpen = true;
-    var isFilesSection = options.section === 'boards' || options.section === 'sharing' || options.section === 'workspaces';
-    var preferredTab = isFilesSection
-      ? (workspaceShellEnabled ? 'workspaces' : 'sharing')
-      : 'network';
+    var targetContext = workspaceShellEnabled
+      ? getManagementSurfaceId(options.section)
+      : 'combinedManagement';
+    var preferredTab = getManagementTopTab(options.section, targetContext);
+    rememberManagementTab(targetContext, preferredTab);
     if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.revealPanel === 'function') {
-      WorkspaceShell.revealPanel(isFilesSection ? 'files' : 'backendSettings');
+      WorkspaceShell.revealPanel(targetContext);
+      applyPendingManagementTab(targetContext);
       return;
     }
     runInitManagementUI();
-    syncEmbeddedManagementUiState(preferredTab);
+    applyPendingManagementTab('combinedManagement');
     if (getElMgmtPanel()) getElMgmtPanel().classList.add('open');
   }
 
@@ -8333,7 +8379,7 @@ const LexeraDashboard = (function () {
     try {
       var frontendValue = localStorage.getItem('lexera-default-' + key);
       if (frontendValue !== null) return frontendValue;
-    } catch (_) {}
+    } catch (_) { /* localStorage unavailable (private browsing) */ }
     // Tier 3: hardcoded fallback
     return fallback;
   }
@@ -9026,7 +9072,7 @@ const LexeraDashboard = (function () {
               var startWidth = Math.round(el.getBoundingClientRect().width);
               el.classList.add('resizing');
               if (resizeHandle.setPointerCapture) {
-                try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+                try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) { /* intentional: pointer may already be released */ }
               }
               function handleMove(moveEvent) {
                 var nextWidth = Math.max(220, Math.round(startWidth + (moveEvent.clientX - startX)));
@@ -9036,7 +9082,7 @@ const LexeraDashboard = (function () {
               function handleUp(upEvent) {
                 el.classList.remove('resizing');
                 if (resizeHandle.releasePointerCapture) {
-                  try { resizeHandle.releasePointerCapture(upEvent.pointerId); } catch (_) { /* ignore */ }
+                  try { resizeHandle.releasePointerCapture(upEvent.pointerId); } catch (_) { /* intentional: pointer may already be released */ }
                 }
                 window.removeEventListener('pointermove', handleMove, true);
                 window.removeEventListener('pointerup', handleUp, true);
@@ -11950,7 +11996,7 @@ const LexeraDashboard = (function () {
 
     function getSavedLayoutPresets() {
       try { return JSON.parse(localStorage.getItem(LAYOUT_PRESETS_STORAGE_KEY)) || {}; }
-      catch (_) { return {}; }
+      catch (_) { return {}; } /* localStorage/JSON parse fallback */
     }
 
     function saveLayoutPreset(name, settings) {

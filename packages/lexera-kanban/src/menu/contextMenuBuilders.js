@@ -97,14 +97,14 @@ var ContextMenuBuilders = (function () {
         var parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    } catch (_) {}
+    } catch (err) { console.warn('[tag-groups] Failed to read tag groups for ' + scope, err); }
     return DEFAULT_TAG_GROUPS[scope] || TAG_CATEGORY_MENU_ORDER;
   }
 
   function setTagGroupsForScope(scope, groups) {
     try {
       localStorage.setItem('lexera-tag-groups-' + scope, JSON.stringify(groups));
-    } catch (_) {}
+    } catch (err) { console.warn('[tag-groups] Failed to save tag groups', err); }
   }
 
   function buildTagCategorySubmenus(text, idPrefix, order) {
