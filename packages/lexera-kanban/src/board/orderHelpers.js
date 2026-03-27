@@ -1472,6 +1472,22 @@ var LexeraOrderHelpers = (function () {
     return end;
   }
 
+  // ── Dashboard tagged items config ──────────────────────────────────
+  function getDashboardTags() {
+    try {
+      var stored = localStorage.getItem('lexera-dashboard-tags');
+      if (stored) {
+        var parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return ['#important', '#blocked', '#review'];
+  }
+
+  function setDashboardTags(tags) {
+    try { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(tags)); } catch (_) {}
+  }
+
   function renderDashboardPinnedList() {
     if (!_callDep('getElDashboardPinnedList')) return;
     _callDep('getElDashboardPinnedList').innerHTML = '';
@@ -1616,6 +1632,32 @@ var LexeraOrderHelpers = (function () {
     renderDashboardResultItems(todosEl, dashboardState.todos,
       scopeHint || loadingNote || 'No open tasks',
       { collapseWhenEmpty: !dashboardState.loading });
+    // Tagged items — render each tag group
+    var taggedEl = document.getElementById('dashboard-tagged-list');
+    if (taggedEl) {
+      var groups = dashboardState.taggedGroups || [];
+      if (groups.length === 0) {
+        taggedEl.innerHTML = '<div class="dashboard-empty">No tags configured</div>';
+      } else {
+        taggedEl.innerHTML = '';
+        for (var tgi = 0; tgi < groups.length; tgi++) {
+          var grp = groups[tgi];
+          var section = document.createElement('div');
+          section.className = 'dashboard-tag-section';
+          var header = document.createElement('div');
+          header.className = 'dashboard-tag-section-header';
+          header.textContent = grp.tag + ' (' + grp.items.length + ')';
+          section.appendChild(header);
+          if (grp.items.length > 0) {
+            var list = document.createElement('div');
+            list.className = 'dashboard-list';
+            renderDashboardResultItems(list, grp.items, '', {});
+            section.appendChild(list);
+          }
+          taggedEl.appendChild(section);
+        }
+      }
+    }
     syncMirroredDashboardViews();
   }
 
@@ -1632,6 +1674,7 @@ var LexeraOrderHelpers = (function () {
         dashboardState.upcoming = [];
         dashboardState.later = [];
         dashboardState.todos = [];
+        dashboardState.taggedGroups = [];
       }
       renderDashboard();
       return Promise.resolve();
@@ -1648,8 +1691,13 @@ var LexeraOrderHelpers = (function () {
       : Promise.resolve({ results: [] });
     var calendarPromise = LexeraApi.getCalendarTasks();
     var todosPromise = LexeraApi.search('is:open').catch(function () { return { results: [] }; });
+    var dashTags = getDashboardTags();
+    var tagPromises = dashTags.map(function (tag) {
+      return LexeraApi.search(tag).then(function (r) { return { tag: tag, results: r.results || [] }; })
+        .catch(function () { return { tag: tag, results: [] }; });
+    });
 
-    return Promise.all([queryPromise, calendarPromise, todosPromise]).then(function (resolved) {
+    return Promise.all([queryPromise, calendarPromise, todosPromise].concat(tagPromises)).then(function (resolved) {
       if (refreshId !== dashboardRefreshSeq) return;
 
       var scopedCalendar = filterDashboardResultsByScope(asCalendarTaskArray(resolved[1]));
@@ -1691,6 +1739,16 @@ var LexeraOrderHelpers = (function () {
         // Open tasks (todos)
         var scopedTodos = filterDashboardResultsByScope(asSearchResultArray(resolved[2]));
         dashboardState.todos = limitedSearchResults(scopedTodos, 60);
+        // Tagged items
+        var taggedGroups = [];
+        for (var ti = 3; ti < resolved.length; ti++) {
+          var tagResult = resolved[ti];
+          if (tagResult && tagResult.tag) {
+            var scopedTagResults = filterDashboardResultsByScope(asSearchResultArray(tagResult));
+            taggedGroups.push({ tag: tagResult.tag, items: limitedSearchResults(scopedTagResults, 30) });
+          }
+        }
+        dashboardState.taggedGroups = taggedGroups;
       }
     }).catch(function (err) {
       if (refreshId !== dashboardRefreshSeq) return;

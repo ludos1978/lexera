@@ -1,13 +1,21 @@
 # Lexera Kanban Todo
 
+- [ ] the backend settings doesnt have the same settings anymore as the "frontend in the backend settings" . the backend settings is empty in the frontend. these must be the same. also the "files configuration" must be available in the backend!
+
+- [ ] when a kanban board is opened that is in version 1 format, while loading we modify the filename associated with it, so when saving again we save as {original-filename}-lexera-v2.md ! verify the code so it's 
+
+- [ ] can we differentiate between double and single clicks on links? so if double clicking on a link it starts editing the card instead of trying to open it.
+
+- [ ] the folded state of a side-bar (log or config) should have a lock, so it doesnt unfold on hover when active. the locked state is the default state.
+
 - [x] ~~row/stack tags now rendered with renderTitleInline (same as columns/cards)~~ (aac6e187)
 - [x] ~~tag clearing debounced (saveLocalBoardDraft was doing 3 serializations per mutation)~~ (f412b197)
 - [x] ~~burger menu buttons now use standard colors even on tag-styled entities~~ (this commit)
 
 - [ ] **Dashboard Redesign** — see [spec-dashboard.md](spec-dashboard.md) for full spec. Already has: search, pinned queries, deadlines, overdue, quick chips, scope selector. Needs:
-  - [ ] Upcoming events sub-groups (Today / This Week / Next 2 Weeks / Later)
-  - [ ] Todo entries section (all unchecked `- [ ]` items across boards)
-  - [ ] Tagged items section (user-configured tags shown as groups)
+  - [x] ~~Upcoming events sub-groups (Overdue / Today / This Week / Upcoming / Later)~~ (91cac70e)
+  - [x] ~~Todo entries section (all unchecked items via is:open search)~~ (91cac70e)
+  - [x] ~~Tagged items section (configurable tags, parallel search per tag)~~ (this commit)
   - [ ] Calendar view (visual week grid with day cells)
   - [ ] Broken elements detection (missing images, broken links, failed includes)
 

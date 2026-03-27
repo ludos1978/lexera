@@ -100,6 +100,10 @@
           '<div class="dashboard-group-header">Open Tasks</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-todos"></div>' +
         '</div>' +
+        '<div class="dashboard-group">' +
+          '<div class="dashboard-group-header">Tagged Items</div>' +
+          '<div class="dashboard-list lexera-shared-dashboard-tagged"></div>' +
+        '</div>' +
       '</div>';
     return root;
   }

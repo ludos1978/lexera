@@ -837,6 +837,21 @@ textarea {
   font-weight: 600;
 }
 
+.dashboard-tag-section {
+  margin: 4px 0;
+}
+.dashboard-tag-section-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+.dashboard-empty {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
 .dashboard-list {
   display: flex;
   flex-direction: column;
