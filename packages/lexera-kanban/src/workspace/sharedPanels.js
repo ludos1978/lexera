@@ -164,16 +164,28 @@
           '<div class="mgmt-field-row">' +
             '<label class="mgmt-field-label">Scroll Speed</label>' +
             '<select class="mgmt-field-input lexera-shared-frontend-settings-scroll-speed">' +
-              '<option value="0.5">0.5x</option><option value="0.75">0.75x</option>' +
-              '<option value="1">1x</option><option value="1.25">1.25x</option>' +
-              '<option value="1.5">1.5x</option><option value="2">2x</option>' +
+              '<option value="0.1">10%</option>' +
+              '<option value="0.32">32%</option>' +
+              '<option value="0.56">56%</option>' +
+              '<option value="1">100% (default)</option>' +
+              '<option value="1.33">133%</option>' +
+              '<option value="2">200%</option>' +
+              '<option value="3">300%</option>' +
             '</select>' +
           '</div>' +
           '<div class="mgmt-field-row">' +
             '<label class="mgmt-field-label">Zoom Speed</label>' +
             '<select class="mgmt-field-input lexera-shared-frontend-settings-zoom-speed">' +
-              '<option value="0.02">Fine</option><option value="0.06">Normal</option>' +
-              '<option value="0.12">Fast</option>' +
+              '<option value="0.01">1% (finest)</option>' +
+              '<option value="0.02">2%</option>' +
+              '<option value="0.03">3%</option>' +
+              '<option value="0.06">6% (default)</option>' +
+              '<option value="0.1">10%</option>' +
+              '<option value="0.18">18%</option>' +
+              '<option value="0.32">32%</option>' +
+              '<option value="0.56">56%</option>' +
+              '<option value="1">100%</option>' +
+              '<option value="2">200% (fastest)</option>' +
             '</select>' +
           '</div>' +
         '</div>' +

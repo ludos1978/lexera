@@ -949,25 +949,53 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-drop-overlay {
   overflow: hidden;
 }
 
+/* Split view dividers — match dock-divider style (thin centered line) */
 .workspace-shell-divider {
   position: relative;
   z-index: 2;
+  background: transparent;
+  user-select: none;
+  touch-action: none;
+}
+
+.workspace-shell-divider::after {
+  content: '';
+  position: absolute;
   background: var(--bg-tertiary);
+}
+
+.workspace-shell-divider[data-axis="vertical"] {
+  width: 5px;
+  cursor: col-resize;
+}
+
+.workspace-shell-divider[data-axis="vertical"]::after {
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+}
+
+.workspace-shell-divider[data-axis="horizontal"] {
+  height: 5px;
+  cursor: row-resize;
+}
+
+.workspace-shell-divider[data-axis="horizontal"]::after {
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 1px;
 }
 
 .workspace-shell-divider:hover,
 .workspace-shell-divider.is-dragging {
-  background: color-mix(in srgb, var(--accent) 28%, var(--bg-tertiary));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.workspace-shell-divider[data-axis="vertical"] {
-  width: 6px;
-  cursor: col-resize;
-}
-
-.workspace-shell-divider[data-axis="horizontal"] {
-  height: 6px;
-  cursor: row-resize;
+.workspace-shell-divider:hover::after,
+.workspace-shell-divider.is-dragging::after {
+  background: color-mix(in srgb, var(--accent) 50%, var(--bg-tertiary));
 }
 
 .workspace-shell-tabset {

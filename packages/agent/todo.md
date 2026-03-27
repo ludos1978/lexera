@@ -41,7 +41,7 @@
 
 - [x] ~~burger menu toggle items now show checkbox (☑/☐) for active/inactive state~~ (this commit)
 
-- [ ] the zoom speed options have been modified! it was something like 0.01x to 2x in logarithmic scale with about 5 options in the 0.01 to 1! restore that!
+- [x] ~~zoom speed options restored: logarithmic 1%-200% with 10 steps~~ (this commit)
 
 - [x] ~~pin column headers removed — always sticky at top~~ (854e1cb0)
 - [x] ~~layout rows, font settings, etc removed from top-right burger~~ (556d9622)
@@ -64,11 +64,11 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 
 ## High Priority — Security & Reliability
 
-- [ ] horizontal dont look and behave the same as vertical moveable borders between views! they should share the style!
+- [x] ~~horizontal/vertical split dividers now share the same thin-line style as dock dividers~~ (this commit)
 
 - [ ] i currently cant put the log viewer into the window bottom when the view is split with the left/right panes, i can only split the kanban/canvas views top/bottom. when very close (~6pix) to the window borders allways snap to the border areas.
 
-- [ ] the log viewer should show the number of logs that fit into the view. it's current limited in height.
+- [x] ~~log viewer fills dock pane height + title shows entry count~~ (fecb89e0)
 
 - [x] ~~tab overflow dropdown + reduced close button size~~ (4ec0e383)
 
