@@ -1458,6 +1458,20 @@ var LexeraOrderHelpers = (function () {
     }
   }
 
+  function formatDashboardDate(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  function getEndOfWeek(d) {
+    var dayOfWeek = d.getDay(); // 0=Sun
+    var daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+    var end = new Date(d.getTime() + daysUntilSunday * 86400000);
+    return end;
+  }
+
   function renderDashboardPinnedList() {
     if (!_callDep('getElDashboardPinnedList')) return;
     _callDep('getElDashboardPinnedList').innerHTML = '';
@@ -1577,17 +1591,31 @@ var LexeraOrderHelpers = (function () {
       { collapseWhenEmpty: !dashboardState.loading && !dashboardState.query }
     );
     renderDashboardResultItems(
-      _callDep('getElDashboardDeadlineList'),
-      dashboardState.deadlines,
-      scopeHint || loadingNote || 'No open tasks with due dates',
-      { collapseWhenEmpty: !dashboardState.loading }
-    );
-    renderDashboardResultItems(
       _callDep('getElDashboardOverdueList'),
       dashboardState.overdue,
       scopeHint || loadingNote || 'No overdue tasks',
       { collapseWhenEmpty: !dashboardState.loading }
     );
+    var todayEl = document.getElementById('dashboard-today-list');
+    var thisWeekEl = document.getElementById('dashboard-thisweek-list');
+    var upcomingEl = document.getElementById('dashboard-upcoming-list');
+    var laterEl = document.getElementById('dashboard-later-list');
+    renderDashboardResultItems(todayEl, dashboardState.today,
+      scopeHint || loadingNote || 'No tasks due today',
+      { collapseWhenEmpty: !dashboardState.loading });
+    renderDashboardResultItems(thisWeekEl, dashboardState.thisWeek,
+      scopeHint || loadingNote || 'No tasks this week',
+      { collapseWhenEmpty: !dashboardState.loading });
+    renderDashboardResultItems(upcomingEl, dashboardState.upcoming,
+      scopeHint || loadingNote || 'No tasks in next 2 weeks',
+      { collapseWhenEmpty: !dashboardState.loading });
+    renderDashboardResultItems(laterEl, dashboardState.later,
+      scopeHint || loadingNote || 'No later tasks',
+      { collapseWhenEmpty: !dashboardState.loading });
+    var todosEl = document.getElementById('dashboard-todos-list');
+    renderDashboardResultItems(todosEl, dashboardState.todos,
+      scopeHint || loadingNote || 'No open tasks',
+      { collapseWhenEmpty: !dashboardState.loading });
     syncMirroredDashboardViews();
   }
 
@@ -1598,8 +1626,12 @@ var LexeraOrderHelpers = (function () {
       if (dashboardState) {
         dashboardState.loading = false;
         dashboardState.results = [];
-        dashboardState.deadlines = [];
         dashboardState.overdue = [];
+        dashboardState.today = [];
+        dashboardState.thisWeek = [];
+        dashboardState.upcoming = [];
+        dashboardState.later = [];
+        dashboardState.todos = [];
       }
       renderDashboard();
       return Promise.resolve();
@@ -1615,8 +1647,9 @@ var LexeraOrderHelpers = (function () {
       ? LexeraApi.search(query)
       : Promise.resolve({ results: [] });
     var calendarPromise = LexeraApi.getCalendarTasks();
+    var todosPromise = LexeraApi.search('is:open').catch(function () { return { results: [] }; });
 
-    return Promise.all([queryPromise, calendarPromise]).then(function (resolved) {
+    return Promise.all([queryPromise, calendarPromise, todosPromise]).then(function (resolved) {
       if (refreshId !== dashboardRefreshSeq) return;
 
       var scopedCalendar = filterDashboardResultsByScope(asCalendarTaskArray(resolved[1]));
@@ -1632,16 +1665,44 @@ var LexeraOrderHelpers = (function () {
 
       if (dashboardState) {
         dashboardState.results = limitedSearchResults(scopedQuery, 80);
-        dashboardState.deadlines = limitedSearchResults(sortSearchByDueDateAsc(openCalendar), 40);
         dashboardState.overdue = limitedSearchResults(sortSearchByDueDateAsc(overdueCalendar), 40);
+
+        // Split non-overdue open calendar tasks into time groups
+        var now = new Date();
+        var todayStr = formatDashboardDate(now);
+        var endOfWeek = getEndOfWeek(now);
+        var endOfWeekStr = formatDashboardDate(endOfWeek);
+        var twoWeeksOut = new Date(now.getTime() + 14 * 86400000);
+        var twoWeeksStr = formatDashboardDate(twoWeeksOut);
+        var nonOverdue = openCalendar.filter(function (item) { return item && !item.isOverdue; });
+        var sorted = sortSearchByDueDateAsc(nonOverdue);
+        var today = [], thisWeek = [], upcoming = [], later = [];
+        for (var di = 0; di < sorted.length; di++) {
+          var due = sorted[di].dueDate || '';
+          if (due === todayStr) today.push(sorted[di]);
+          else if (due <= endOfWeekStr) thisWeek.push(sorted[di]);
+          else if (due <= twoWeeksStr) upcoming.push(sorted[di]);
+          else later.push(sorted[di]);
+        }
+        dashboardState.today = limitedSearchResults(today, 40);
+        dashboardState.thisWeek = limitedSearchResults(thisWeek, 40);
+        dashboardState.upcoming = limitedSearchResults(upcoming, 40);
+        dashboardState.later = limitedSearchResults(later, 40);
+        // Open tasks (todos)
+        var scopedTodos = filterDashboardResultsByScope(asSearchResultArray(resolved[2]));
+        dashboardState.todos = limitedSearchResults(scopedTodos, 60);
       }
     }).catch(function (err) {
       if (refreshId !== dashboardRefreshSeq) return;
       _callDep('logFrontendIssue', 'error', 'dashboard.search', 'Failed to refresh', err);
       if (dashboardState) {
         dashboardState.results = [];
-        dashboardState.deadlines = [];
         dashboardState.overdue = [];
+        dashboardState.today = [];
+        dashboardState.thisWeek = [];
+        dashboardState.upcoming = [];
+        dashboardState.later = [];
+        dashboardState.todos = [];
       }
     }).then(function () {
       if (refreshId !== dashboardRefreshSeq) return;

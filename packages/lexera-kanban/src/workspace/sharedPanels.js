@@ -77,12 +77,28 @@
           '<div class="dashboard-list lexera-shared-dashboard-results"></div>' +
         '</div>' +
         '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header">Tasks with Deadlines</div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-deadlines"></div>' +
-        '</div>' +
-        '<div class="dashboard-group">' +
           '<div class="dashboard-group-header">Overdue</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-overdue"></div>' +
+        '</div>' +
+        '<div class="dashboard-group">' +
+          '<div class="dashboard-group-header">Today</div>' +
+          '<div class="dashboard-list lexera-shared-dashboard-today"></div>' +
+        '</div>' +
+        '<div class="dashboard-group">' +
+          '<div class="dashboard-group-header">This Week</div>' +
+          '<div class="dashboard-list lexera-shared-dashboard-thisweek"></div>' +
+        '</div>' +
+        '<div class="dashboard-group">' +
+          '<div class="dashboard-group-header">Upcoming</div>' +
+          '<div class="dashboard-list lexera-shared-dashboard-upcoming"></div>' +
+        '</div>' +
+        '<div class="dashboard-group">' +
+          '<div class="dashboard-group-header">Later</div>' +
+          '<div class="dashboard-list lexera-shared-dashboard-later"></div>' +
+        '</div>' +
+        '<div class="dashboard-group">' +
+          '<div class="dashboard-group-header">Open Tasks</div>' +
+          '<div class="dashboard-list lexera-shared-dashboard-todos"></div>' +
         '</div>' +
       '</div>';
     return root;
