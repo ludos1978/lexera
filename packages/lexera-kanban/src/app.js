@@ -3579,7 +3579,7 @@ const LexeraDashboard = (function () {
       paneFileTitleBtn.addEventListener('contextmenu', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        showFileHeaderSettingsMenu(paneFileTitleBtn, e.clientX, e.clientY);
+        showFilenameContextMenu(e.clientX, e.clientY);
       });
     }
     if (fileHeaderMenuBtn) {
@@ -5240,6 +5240,30 @@ const LexeraDashboard = (function () {
     }
     saveCardCollapseState(activeBoardId);
     refreshBoardHeaderActionStates();
+  }
+
+  function showFilenameContextMenu(x, y) {
+    var filePath = getActiveBoardFilePath();
+    var items = [
+      { id: 'rename-file', label: 'Rename File' }
+    ];
+    if (filePath) {
+      items.push(
+        { id: 'show-in-finder', label: 'Show in Finder' },
+        { id: 'open-in-default-app', label: 'Open in Default App' }
+      );
+    }
+    showNativeMenu(items, x, y, 'header.filename').then(function (action) {
+      if (action === 'rename-file') renameActiveBoardFile();
+      else if (action === 'show-in-finder' && filePath) showInFinder(filePath);
+      else if (action === 'open-in-default-app' && filePath) {
+        if (hasTauri) {
+          tauriInvoke('open_with_default_app', { path: filePath }).catch(function (err) {
+            showNotification('Failed to open file: ' + err);
+          });
+        }
+      }
+    });
   }
 
   async function showFileHeaderSettingsMenu(btnElement, forcedX, forcedY) {

@@ -65,6 +65,31 @@ pub fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Open a file with the system default application.
+#[tauri::command]
+pub fn open_with_default_app(path: String) -> Result<(), String> {
+    let abs_path = std::path::Path::new(&path);
+    if !abs_path.exists() {
+        return Err(format!("File not found: {}", path));
+    }
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("Failed to open '{}': {}", path, e))?;
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", &path])
+        .spawn()
+        .map_err(|e| format!("Failed to open '{}': {}", path, e))?;
+    #[cfg(target_os = "linux")]
+    std::process::Command::new("xdg-open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("Failed to open '{}': {}", path, e))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn show_in_folder(path: String) -> Result<String, String> {
     // Canonicalize path to resolve relative paths and symlinks

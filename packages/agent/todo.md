@@ -4,9 +4,15 @@
 
 - [x] ~~quick capture focus fix: 200ms delay after creation + retry focus on macOS~~ (this commit)
 
-- [ ] could we integrate a viewer that allows !!!include(file.docx)!!! in column headers for docx, xlsx and pptx files? it would e a nice addon to be able to edit them inline, but viewing and opening an external editor to edit is okay as well. maybe using <https://github.com/DraviaVemal/OpenXML-Office>, but do an online research for possible tools!
+- [ ] put the monthly and weekly calendar in the dashboard each by itself into a separate view! they will share some settings (what boards and types of content to show) in the same way, but the layout must be individual. the weekly should also show a horizontal timeline with today until todays+6 days! The dashboard shows a vertical list of the dates only and can be folded, unfolded in both states.
 
-- [ ]
+- [ ] could we integrate a viewer that allows !!!include(file.docx)!!! in column headers for docx, xlsx and pptx files? it would e a nice addon to be able to edit them ine, but viewing and opening an external editor to edit is okay as well. maybe using <https://github.com/DraviaVemal/OpenXML-Office>, but do an online research for possible tools!
+
+- [x] ~~filename right-click: Rename, Show in Finder, Open in Default App~~ (this commit)
+
+- [ ] add a file browse button to add boards to the "Files" -> Boards -> "My Board" where the user might search for boards. Dropping files on it must still work!
+
+- [ ] could we integrate a view that allows embedding ![]() images with animations from the animated format. for example i found <https://glaxnimate.org/de/> . just to extend the excalidraw and other formats we already support. it's important that keyframes could be shown as individual images using a parameter or only the final image for example with the parameters {export=keyframes} or {export=flatten} .
 
 - [x] ~~workspace tree styling improved: rounded corners, hover backgrounds, consistent spacing, section headers~~ (this commit)
 
