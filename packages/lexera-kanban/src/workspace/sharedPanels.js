@@ -103,6 +103,10 @@
           '<div class="dashboard-group-header">Tagged Items</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-tagged"></div>' +
         '</div>' +
+        '<div class="dashboard-group">' +
+          '<div class="dashboard-group-header">Broken Elements</div>' +
+          '<div class="dashboard-list lexera-shared-dashboard-broken"></div>' +
+        '</div>' +
       '</div>';
     return root;
   }

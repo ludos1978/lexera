@@ -976,6 +976,22 @@ textarea {
   line-height: 1;
 }
 
+/* Dashboard broken elements */
+.dashboard-broken-item {
+  font-size: 10px;
+  padding: 2px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.broken-type {
+  font-weight: 600;
+  color: var(--error);
+}
+.broken-src {
+  color: var(--text-muted);
+}
+
 .dashboard-tag-section {
   margin: 4px 0;
 }

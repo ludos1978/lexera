@@ -1612,6 +1612,59 @@ var LexeraOrderHelpers = (function () {
     el.innerHTML = html;
   }
 
+  // ── Dashboard broken elements scanner ─────────────────────────────
+  function scanBrokenElements() {
+    var container = _callDep('getElColumnsContainer');
+    if (!container) return [];
+    var broken = [];
+    // Broken embeds (images, videos, includes that failed to load)
+    var brokenEls = container.querySelectorAll('.embed-broken, .include-broken');
+    for (var i = 0; i < brokenEls.length; i++) {
+      var el = brokenEls[i];
+      var cardEl = el.closest('.card');
+      var colIndex = cardEl ? parseInt(cardEl.getAttribute('data-col-index'), 10) : -1;
+      var cardIndex = cardEl ? parseInt(cardEl.getAttribute('data-card-index'), 10) : -1;
+      var src = el.getAttribute('data-file-path') || el.getAttribute('src') || '';
+      var img = el.querySelector('img[src]');
+      if (!src && img) src = img.getAttribute('src') || '';
+      var type = 'embed';
+      if (el.classList.contains('include-broken') || el.querySelector('.broken-include-placeholder')) type = 'include';
+      else if (img) type = 'image';
+      else if (el.querySelector('video')) type = 'video';
+      broken.push({
+        type: type,
+        src: src,
+        colIndex: colIndex,
+        cardIndex: cardIndex
+      });
+    }
+    return broken;
+  }
+
+  function renderDashboardBrokenList() {
+    var el = document.getElementById('dashboard-broken-list');
+    if (!el) return;
+    var items = scanBrokenElements();
+    if (items.length === 0) {
+      el.innerHTML = '<div class="dashboard-empty">No broken elements</div>';
+      var group = el.closest('.dashboard-group');
+      if (group) group.classList.add('collapsed-when-empty');
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var label = item.type.charAt(0).toUpperCase() + item.type.slice(1);
+      var src = item.src;
+      if (src.length > 50) src = '\u2026' + src.slice(-47);
+      html += '<div class="dashboard-broken-item">';
+      html += '<span class="broken-type">' + escapeCalHtml(label) + '</span> ';
+      html += '<span class="broken-src">' + escapeCalHtml(src) + '</span>';
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  }
+
   function renderDashboardPinnedList() {
     if (!_callDep('getElDashboardPinnedList')) return;
     _callDep('getElDashboardPinnedList').innerHTML = '';
@@ -1781,6 +1834,8 @@ var LexeraOrderHelpers = (function () {
         }
       }
     }
+    // Broken elements — scan after a delay to let embeds/images fail to load
+    setTimeout(renderDashboardBrokenList, 2000);
     syncMirroredDashboardViews();
   }
 

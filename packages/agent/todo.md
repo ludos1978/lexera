@@ -20,7 +20,7 @@
   - [x] ~~Todo entries section (all unchecked items via is:open search)~~ (91cac70e)
   - [x] ~~Tagged items section (configurable tags, parallel search per tag)~~ (this commit)
   - [x] ~~Calendar view (4-week grid with CW, task counts, today highlight)~~ (this commit)
-  - [ ] Broken elements detection (missing images, broken links, failed includes)
+  - [x] ~~Broken elements detection (scans DOM for .embed-broken/.include-broken after render)~~ (this commit)
 
 
 - [x] ~~context menus restructured for card/column/stack/row — see spec~~ (5ab04402)
