@@ -24,7 +24,6 @@
 
 - [x] ~~backend settings panel now shows all tabs (sharing, network, config, logs) — was only showing network~~ (this commit)
 
-
 - [x] ~~v1 board filename redirect verified — saves to {name}-lexera2.md, original untouched. Rust test added~~ (3a47e9e2)
 
 - [x] ~~double-click on link edits card, single click opens link (300ms delay)~~ (this commit)
@@ -94,6 +93,12 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 - [ ] Add ARIA labels to dynamically created menu items (context menus, dropdown menus, search results)
 - [ ] Cache querySelectorAll results in drag-drop and sidebar sync hot paths instead of re-querying
 - [ ] Replace JSON.parse(JSON.stringify()) deep clones with structuredClone where available (boardList.js, dragDropHandlers.js)
+
+### Cross-platform
+- [ ] Fix macOS-only commands without platform fallbacks: `open_in_system()`, `open_url()`, `show_in_folder()` in lexera-kanban/src-tauri/src/commands.rs (lines 51-150) — will crash on Windows/Linux. `open_with_default_app` already has proper `#[cfg]` guards, use same pattern.
+
+### Backend
+- [ ] Add test coverage for capture API endpoints: `list_capture_history` and `delete_capture_history_entry` in capture_api.rs — currently untested
 
 ### Low
 - [ ] Remove hardcoded Mermaid CDN URL (app.js) — add fallback or make configurable
