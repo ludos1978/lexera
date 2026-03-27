@@ -1,11 +1,11 @@
 # Lexera Kanban Todo
 
-- [ ] add all definitions in the todos into specs.md. if you find contradictions discuss it with the user! if you find unclear or irritating definitions discuss it with the user!
+- [x] ~~specs created: spec-frontend-settings.md, spec-dashboard.md~~ (181f41df, b4dd6e47)
 
 - [x] ~~backend settings panel now shows all tabs (sharing, network, config, logs) — was only showing network~~ (this commit)
 
 
-- [ ] when a kanban board is opened that is in version 1 format, while loading we modify the filename associated with it, so when saving again we save as {original-filename}-lexera-v2.md ! verify the code so it's 
+- [x] ~~v1 board filename redirect verified — saves to {name}-lexera2.md, original untouched. Rust test added~~ (3a47e9e2)
 
 - [x] ~~double-click on link edits card, single click opens link (300ms delay)~~ (this commit)
 
