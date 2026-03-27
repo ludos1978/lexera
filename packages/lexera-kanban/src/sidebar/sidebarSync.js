@@ -229,7 +229,11 @@
   // ── Init ──────────────────────────────────────────────────────────
 
   function init(deps) {
-    _deps = deps || {};
+    if (typeof window !== 'undefined' && window.LexeraRuntime) {
+      window.LexeraRuntime.mergeDeps(_deps, deps);
+    } else {
+      _deps = deps || {};
+    }
     sidebarSyncEnabled = localStorage.getItem('lexera-sidebar-sync') === 'true';
     hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') === 'true';
     bindScrollSync();

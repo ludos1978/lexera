@@ -117,7 +117,11 @@ var LexeraCanvasPan = (function () {
 
   function init(deps) {
     detach();
-    _deps = deps || {};
+    if (typeof window !== 'undefined' && window.LexeraRuntime) {
+      window.LexeraRuntime.mergeDeps(_deps, deps);
+    } else {
+      _deps = deps || {};
+    }
     attach();
   }
 
