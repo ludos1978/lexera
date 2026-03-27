@@ -2,7 +2,7 @@
 
 - [x] ~~quick capture re-snaps to screen edge when window goes out of monitor bounds (10s polling)~~ (this commit)
 
-- [ ] the quick capture is somtimes not reacting to clicks immediately, it doesnt open and also needs multiple cmd+b to open when it hasnt been opened before!
+- [x] ~~quick capture focus fix: 200ms delay after creation + retry focus on macOS~~ (this commit)
 
 - [ ] could we integrate a viewer that allows !!!include(file.docx)!!! in column headers for docx, xlsx and pptx files? it would e a nice addon to be able to edit them inline, but viewing and opening an external editor to edit is okay as well. maybe using <https://github.com/DraviaVemal/OpenXML-Office>, but do an online research for possible tools!
 

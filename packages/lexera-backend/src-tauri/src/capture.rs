@@ -185,15 +185,25 @@ pub fn capture_selection_and_open(app: &AppHandle) {
 /// Focus the quick-capture window: open if needed, expand, and focus.
 /// Called on Cmd+B — always shows the expanded panel.
 pub fn focus_capture_popup(app: &AppHandle) {
-    if app.get_webview_window("quick-capture").is_none() {
+    let just_created = app.get_webview_window("quick-capture").is_none();
+    if just_created {
         open_capture_popup(app);
+        // Wait briefly for the webview to initialize before expanding
+        std::thread::sleep(std::time::Duration::from_millis(200));
     }
     // Expand and focus
     let _ = expand_capture(app.clone());
     if let Some(window) = app.get_webview_window("quick-capture") {
         let _ = window.show();
         let _ = window.set_focus();
-        // Notify the frontend it expanded
+        // Retry focus after a short delay (macOS sometimes ignores the first focus call)
+        let app_clone = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            if let Some(w) = app_clone.get_webview_window("quick-capture") {
+                let _ = w.set_focus();
+            }
+        });
         let _ = window.emit("capture-expanded", ());
     }
 }
