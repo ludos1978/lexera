@@ -826,7 +826,7 @@ var CardContextMenu = (function () {
     if (!card) return Promise.resolve();
     deps.pushUndo();
 
-    var clone = JSON.parse(JSON.stringify(card));
+    var clone = structuredClone(card);
     clone.id = 'dup-' + Date.now();
     clone.kid = null;
     col.cards.splice(fullIdx + 1, 0, clone);
@@ -842,7 +842,7 @@ var CardContextMenu = (function () {
     var card = srcCol.cards[fullIdx];
     if (!card) return Promise.resolve();
     deps.pushUndo();
-    var clone = JSON.parse(JSON.stringify(card));
+    var clone = structuredClone(card);
     clone.id = 'dup-' + Date.now();
     clone.kid = null;
     dstCol.cards.push(clone);
@@ -857,7 +857,7 @@ var CardContextMenu = (function () {
     var card = col.cards[fullIdx];
     if (!card) return Promise.resolve();
     deps.pushUndo();
-    var clone = JSON.parse(JSON.stringify(card));
+    var clone = structuredClone(card);
     clone.id = 'dup-' + Date.now();
     clone.kid = null;
     clone.content = deps.applyInternalHiddenTag(clone.content || '', '#hidden-internal-parked');

@@ -715,7 +715,7 @@ var LexeraDragDropHandlers = (function () {
       }
       return {
         type: ptrDrag.type,
-        source: JSON.parse(JSON.stringify(ptrDrag.source || {}))
+        source: structuredClone(ptrDrag.source || {})
       };
     }
     return null;

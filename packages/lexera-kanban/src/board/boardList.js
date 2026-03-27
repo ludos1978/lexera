@@ -162,12 +162,12 @@ var LexeraBoardList = (function () {
   // ─── Clone helpers ────────────────────────────────────────────────
 
   function cloneRows(rows) {
-    return JSON.parse(JSON.stringify(rows || []));
+    return structuredClone(rows || []);
   }
 
   function cloneBoardData(boardData) {
     if (!boardData) return null;
-    return JSON.parse(JSON.stringify(boardData));
+    return structuredClone(boardData);
   }
 
   // ─── Board draft storage ──────────────────────────────────────────

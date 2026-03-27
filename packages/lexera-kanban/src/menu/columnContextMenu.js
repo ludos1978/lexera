@@ -551,7 +551,7 @@ var LexeraColumnContextMenu = (function () {
     var col = container.arr[container.localIdx];
     if (!col) return;
     deps.pushUndo();
-    var clone = JSON.parse(JSON.stringify(col));
+    var clone = structuredClone(col);
     var ts = Date.now();
     clone.id = 'col-' + ts;
     for (var k = 0; k < clone.cards.length; k++) {

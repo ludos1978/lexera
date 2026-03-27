@@ -77,25 +77,25 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 ## Code Quality & Project Hygiene (from verification audit)
 
 ### Critical
-- [ ] Add error logging to all 13 silent `catch (_) {}` blocks across app.js, orderHelpers.js, workspaceShell.js, contextMenuBuilders.js — errors are being swallowed without any logging
-- [ ] Fix innerHTML direct copy in orderHelpers.js (mirrored dashboard sync) — copies raw innerHTML between contexts without sanitization
-- [ ] Remove CSS gradients from app.css (12 instances of linear-gradient) — violates project style policy
+- [x] ~~Add error logging to all 13 silent `catch (_) {}` blocks across app.js, orderHelpers.js, workspaceShell.js, contextMenuBuilders.js~~ (7ce8fa09)
+- [x] ~~Fix innerHTML direct copy in orderHelpers.js — replaced with DOM cloneNode-based cloneChildrenInto()~~ (this commit)
+- [x] ~~Remove CSS gradients from app.css — canvas grid uses JS-generated SVG, resize handle uses solid color~~ (this commit)
 
 ### High
-- [ ] Fix canvas pan memory leak: 5 document addEventListener calls (mousedown/mousemove/mouseup/auxclick/scroll) in canvasPan.js never get removeEventListener. Accumulates with each board/canvas session
-- [ ] Add race condition guards to live sync: applyBoardToLiveSyncSession and flushPendingLiveSyncUpdates can execute concurrently on shared state without mutex
-- [ ] Convert 8 console.log calls in app.js/workspaceShell.js to proper traceFrontendAction logging (liveSync, saveFullBoard, board changed)
+- [x] ~~Fix canvas pan memory leak: added detach() with removeEventListener, guard against double-attach~~ (7ce8fa09)
+- [x] ~~Add race condition guards to live sync: promise-chain mutex serializes applyBoardToLiveSyncSession and flushPendingLiveSyncUpdates~~ (this commit)
+- [x] ~~Convert 8 console.log calls in app.js/workspaceShell.js to proper traceFrontendAction logging~~ (7ce8fa09)
 
 ### Medium
-- [ ] Clean up orphaned packages/src/ directory — deleted files (management.js, themes.js, backendDiscovery.js) not committed, directory should be removed
+- [x] ~~Clean up orphaned packages/src/ directory~~ (7ce8fa09)
 - [ ] Remove obsolete root jest.config.js — project uses Vitest, Jest config is from old VS Code extension era
-- [ ] Update build-packages.sh — still references non-existent ludos-sync and ludos-sync-menubar packages
+- [x] ~~Update build-packages.sh — removed references to archived ludos-sync and ludos-sync-menubar~~ (this commit)
 - [ ] Add ARIA labels to dynamically created menu items (context menus, dropdown menus, search results)
 - [ ] Cache querySelectorAll results in drag-drop and sidebar sync hot paths instead of re-querying
-- [ ] Replace JSON.parse(JSON.stringify()) deep clones with structuredClone where available (boardList.js, dragDropHandlers.js)
+- [x] ~~Replace JSON.parse(JSON.stringify()) deep clones with structuredClone (12 call sites across 8 files)~~ (this commit)
 
 ### Cross-platform
-- [ ] Fix macOS-only commands without platform fallbacks: `open_in_system()`, `open_url()`, `show_in_folder()` in lexera-kanban/src-tauri/src/commands.rs (lines 51-150) — will crash on Windows/Linux. `open_with_default_app` already has proper `#[cfg]` guards, use same pattern.
+- [x] ~~Fix macOS-only commands: added #[cfg] platform guards to open_in_system, open_url, show_in_folder~~ (7ce8fa09)
 
 ### Backend
 - [ ] Add test coverage for capture API endpoints: `list_capture_history` and `delete_capture_history_entry` in capture_api.rs — currently untested
@@ -618,7 +618,7 @@ Specs: `packages/agent/specs/plugins/diagram/SPEC.md`, `plugins/enhancer/SPEC.md
   - [packages/lexera-shared](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-shared) owns browser runtime JS/CSS
   define one intentional strategy instead of two unrelated “shared” packages.
 
-- [ ] **Stop importing package source across package boundaries** — the web clipper currently imports [packages/shared/src/webClipper.ts](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/shared/src/webClipper.ts) directly from [packages/lexera-web-clipper/src/background.ts](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-web-clipper/src/background.ts). Convert this to a real package contract using built outputs or a proper workspace package export.
+- [x] **Stop importing package source across package boundaries** — done: the web clipper now imports `@ludos/shared` through the package entrypoint and build contract instead of reaching into `packages/shared/src`.
 
 ### Domain Logic / Contracts
 

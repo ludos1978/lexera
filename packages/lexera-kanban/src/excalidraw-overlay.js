@@ -26,7 +26,7 @@
 
   function safeJsonClone(value) {
     try {
-      return JSON.parse(JSON.stringify(value || null));
+      return structuredClone(value || null);
     } catch (err) {
       return value || null;
     }

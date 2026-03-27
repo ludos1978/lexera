@@ -2769,14 +2769,11 @@ li.tag-line-styled {
   min-height: 0;
   overflow: hidden;
   cursor: grab;
-  background-image:
-    linear-gradient(to right, var(--canvas-grid-color, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--canvas-grid-color, transparent) 1px, transparent 1px);
+  /* Canvas grid rendered via JS (updateCanvasGridBackground) to avoid gradients */
+  background-repeat: repeat;
   background-size:
-    calc(var(--canvas-grid-size) * var(--canvas-zoom, 1)) calc(var(--canvas-grid-size) * var(--canvas-zoom, 1)),
     calc(var(--canvas-grid-size) * var(--canvas-zoom, 1)) calc(var(--canvas-grid-size) * var(--canvas-zoom, 1));
   background-position:
-    calc(var(--canvas-scene-offset-x, 0px) + var(--canvas-pan-x, 0px)) calc(var(--canvas-scene-offset-y, 0px) + var(--canvas-pan-y, 0px)),
     calc(var(--canvas-scene-offset-x, 0px) + var(--canvas-pan-x, 0px)) calc(var(--canvas-scene-offset-y, 0px) + var(--canvas-pan-y, 0px));
 }
 
@@ -2841,7 +2838,7 @@ li.tag-line-styled {
   z-index: 4;
   opacity: 0;
   transition: opacity 0.12s ease, background-color 0.12s ease;
-  background: linear-gradient(to left, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .columns-container.layout-canvas .board-stack:hover .canvas-stack-resize-handle,

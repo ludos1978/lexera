@@ -654,7 +654,7 @@ var LexeraRowStackMenu = (function () {
     var row = deps.findFullDataRow(rowIdx);
     if (!row) return;
     deps.pushUndo();
-    var clone = JSON.parse(JSON.stringify(row));
+    var clone = structuredClone(row);
     var ts = Date.now();
     clone.id = 'row-' + ts;
     for (var s = 0; s < clone.stacks.length; s++) {
@@ -780,7 +780,7 @@ var LexeraRowStackMenu = (function () {
     var stack = deps.findFullDataStack(rowIdx, stackIdx);
     if (!row || !stack) return;
     deps.pushUndo();
-    var clone = JSON.parse(JSON.stringify(stack));
+    var clone = structuredClone(stack);
     var ts = Date.now();
     clone.id = 'stack-' + ts;
     for (var c = 0; c < clone.columns.length; c++) {

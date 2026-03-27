@@ -5,15 +5,13 @@
 #  Usage:
 #    ./build-packages.sh              Build all packages
 #    ./build-packages.sh --clean      Clean dist/ before building
-#    ./build-packages.sh --only X     Build only package X (shared|marp-engine|ludos-sync|ludos-sync-menubar)
+#    ./build-packages.sh --only X     Build only package X (shared|marp-engine)
 # ─────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SHARED_DIR="$SCRIPT_DIR/packages/shared"
 MARP_DIR="$SCRIPT_DIR/packages/marp-engine"
-SYNC_DIR="$SCRIPT_DIR/packages/ludos-sync"
-MENUBAR_DIR="$SCRIPT_DIR/packages/ludos-sync-menubar"
 
 CLEAN=false
 ONLY=""
@@ -44,10 +42,6 @@ if $CLEAN; then
     echo "Cleaning marp-engine node_modules..."
     rm -rf "$MARP_DIR/engine/node_modules"
   fi
-  if should_build "ludos-sync"; then
-    echo "Cleaning ludos-sync dist..."
-    rm -rf "$SYNC_DIR/dist"
-  fi
 fi
 
 # ── Build @ludos/shared ──────────────────────────────────────────
@@ -66,25 +60,6 @@ if should_build "marp-engine"; then
   echo "Building marp-engine..."
   "$SCRIPT_DIR/build-marp-engine.sh"
   echo "  marp-engine built."
-fi
-
-# ── Build ludos-sync ─────────────────────────────────────────────
-if should_build "ludos-sync"; then
-  echo "Building ludos-sync..."
-  cd "$SYNC_DIR"
-  if [ ! -d "node_modules" ]; then
-    npm install
-  fi
-  npm run build
-  echo "  ludos-sync built."
-fi
-
-# ── Build ludos-sync-menubar (install Python deps) ────────────────
-if should_build "ludos-sync-menubar"; then
-  echo "Building ludos-sync-menubar..."
-  cd "$MENUBAR_DIR"
-  pip install -r requirements.txt 2>/dev/null || pip3 install -r requirements.txt
-  echo "  ludos-sync-menubar built."
 fi
 
 echo ""

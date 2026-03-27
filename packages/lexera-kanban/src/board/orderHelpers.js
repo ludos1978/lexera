@@ -1427,6 +1427,13 @@ var LexeraOrderHelpers = (function () {
     });
   }
 
+  function cloneChildrenInto(source, target) {
+    target.textContent = '';
+    for (var i = 0; i < source.childNodes.length; i++) {
+      target.appendChild(source.childNodes[i].cloneNode(true));
+    }
+  }
+
   function syncMirroredDashboardViews() {
     var dashboardRoots = _callDep('getSharedPanelRoots', 'dashboard');
     if (!dashboardRoots || !dashboardRoots.length || !_callDep('getElDashboardRoot')) return;
@@ -1447,10 +1454,10 @@ var LexeraOrderHelpers = (function () {
       var overdueEl = rootEl.querySelector('.lexera-shared-dashboard-overdue');
       if (searchEl && dashboardState) searchEl.value = dashboardState.query || '';
       if (scopeEl && dashboardState) scopeEl.value = dashboardState.scope || 'active';
-      if (pinnedEl && canonicalPinned) pinnedEl.innerHTML = canonicalPinned.innerHTML;
-      if (resultsEl && canonicalResults) resultsEl.innerHTML = canonicalResults.innerHTML;
-      if (deadlinesEl && canonicalDeadlines) deadlinesEl.innerHTML = canonicalDeadlines.innerHTML;
-      if (overdueEl && canonicalOverdue) overdueEl.innerHTML = canonicalOverdue.innerHTML;
+      if (pinnedEl && canonicalPinned) cloneChildrenInto(canonicalPinned, pinnedEl);
+      if (resultsEl && canonicalResults) cloneChildrenInto(canonicalResults, resultsEl);
+      if (deadlinesEl && canonicalDeadlines) cloneChildrenInto(canonicalDeadlines, deadlinesEl);
+      if (overdueEl && canonicalOverdue) cloneChildrenInto(canonicalOverdue, overdueEl);
       var mirrorGroups = rootEl.querySelectorAll('.dashboard-group');
       for (var j = 0; j < mirrorGroups.length && j < canonicalGroups.length; j++) {
         mirrorGroups[j].className = canonicalGroups[j].className;

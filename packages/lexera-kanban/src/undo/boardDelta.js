@@ -9,7 +9,7 @@
 
   function cloneJson(value) {
     if (value == null) return value;
-    return JSON.parse(JSON.stringify(value));
+    return structuredClone(value);
   }
 
   function computeBoardDelta(oldBoard, newBoard) {

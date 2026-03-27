@@ -52,6 +52,7 @@ const LexeraDashboard = (function () {
   var SAVE_DEBOUNCE_MS = 2000;
   var liveSyncState = null;
   var liveSyncLastLocalBroadcastAt = 0;
+  var liveSyncMutex = Promise.resolve();
   var liveDraftSyncTimer = null;
   var liveDraftSyncRequest = null;
   var undoStack = [];
@@ -1569,7 +1570,18 @@ const LexeraDashboard = (function () {
     return session && session.vv ? session.vv : '';
   }
 
-  async function applyBoardToLiveSyncSession(boardId, boardData, options) {
+  function applyBoardToLiveSyncSession(boardId, boardData, options) {
+    var result;
+    liveSyncMutex = liveSyncMutex.then(function () {
+      return _applyBoardToLiveSyncSessionCore(boardId, boardData, options).then(function (r) { result = r; });
+    }).catch(function (err) {
+      traceFrontendAction('error', 'liveSync.apply', 'Mutex-wrapped apply failed', { error: String(err) });
+      result = false;
+    });
+    return liveSyncMutex.then(function () { return result; });
+  }
+
+  async function _applyBoardToLiveSyncSessionCore(boardId, boardData, options) {
     options = options || {};
     if (!canUseLiveSync(boardId)) return false;
     var session = getLiveSyncSession(boardId);
@@ -1642,7 +1654,18 @@ const LexeraDashboard = (function () {
     return !!(response && response.changed);
   }
 
-  async function flushPendingLiveSyncUpdates(options) {
+  function flushPendingLiveSyncUpdates(options) {
+    var result;
+    liveSyncMutex = liveSyncMutex.then(function () {
+      return _flushPendingLiveSyncUpdatesCore(options).then(function (r) { result = r; });
+    }).catch(function (err) {
+      traceFrontendAction('error', 'liveSync.flush', 'Mutex-wrapped flush failed', { error: String(err) });
+      result = false;
+    });
+    return liveSyncMutex.then(function () { return result; });
+  }
+
+  async function _flushPendingLiveSyncUpdatesCore(options) {
     options = options || {};
     var session = getLiveSyncSession(activeBoardId);
     if (!session || !session.pendingRemoteUpdates || session.pendingRemoteUpdates.length === 0) {
@@ -7444,6 +7467,22 @@ const LexeraDashboard = (function () {
     return stack;
   }
 
+  function updateCanvasGridBackground(rowContent, gridStep) {
+    if (!rowContent) return;
+    if (gridStep <= 0) {
+      rowContent.style.backgroundImage = 'none';
+      return;
+    }
+    var cs = getComputedStyle(rowContent);
+    var borderColor = cs.getPropertyValue('--border').trim() || '#888';
+    var size = gridStep;
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '">'
+      + '<rect x="0" y="0" width="1" height="' + size + '" fill="' + borderColor + '" opacity="0.34"/>'
+      + '<rect x="0" y="0" width="' + size + '" height="1" fill="' + borderColor + '" opacity="0.34"/>'
+      + '</svg>';
+    rowContent.style.backgroundImage = 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+  }
+
   function syncCanvasRowConnections(rowContent) {
     if (!rowContent || !rowContent.querySelectorAll) return;
     var existingLayer = getCanvasConnectionLayerElement(rowContent);
@@ -7573,7 +7612,7 @@ const LexeraDashboard = (function () {
         scene.style.height = surface.height + 'px';
       }
       rowContent.style.setProperty('--canvas-grid-size', Math.max(1, gridStep) + 'px');
-      rowContent.style.setProperty('--canvas-grid-color', gridStep > 0 ? 'color-mix(in srgb, var(--border) 34%, transparent)' : 'transparent');
+      updateCanvasGridBackground(rowContent, gridStep);
       rowContent.style.setProperty('--canvas-scene-offset-x', (container.__canvasSceneOffsetX || 0) + 'px');
       rowContent.style.setProperty('--canvas-scene-offset-y', (container.__canvasSceneOffsetY || 0) + 'px');
       rowContent.setAttribute('data-canvas-grid', gridMode);

@@ -252,7 +252,7 @@ var normalizeExcludeTagsInput = ExportUiPreferenceHelpers.normalizeExcludeTagsIn
 var applyExportPresetToOptions = ExportUiPreferenceHelpers.applyExportPresetToOptions;
 
 function cloneExportAutoOptions(options) {
-    return options ? JSON.parse(JSON.stringify(options)) : null;
+    return options ? structuredClone(options) : null;
 }
 
 var getStoredExportUiPreference = ExportUiPreferenceHelpers.getStoredExportUiPreference;
