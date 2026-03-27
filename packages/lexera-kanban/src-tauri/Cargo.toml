@@ -12,6 +12,7 @@ dirs = "6"
 log = "0.4"
 clipboard-rs = "0.2"
 base64 = "0.22"
+rfd = "0.15"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

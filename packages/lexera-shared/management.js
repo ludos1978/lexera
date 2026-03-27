@@ -7,8 +7,8 @@
  * Any change here applies to BOTH apps. Do NOT duplicate this logic elsewhere.
  *
  * Usage:
- *   ManagementUI.init({ container, api, callbacks });   // default mount
- *   ManagementUI.mount('files', { container, ui: { topTabs: ['workspaces', 'boards'] } });
+ *   ManagementUI.init({ container, api, callbacks, ui: ManagementUI.getUiPreset('backendSettings') });
+ *   ManagementUI.mount('files', { container, ui: ManagementUI.getUiPreset('files') });
  *   ManagementUI.refresh();          // re-render everything
  *   ManagementUI.refresh('boards');  // re-render one section
  *   ManagementUI.unmount('files');   // tear down a mount
@@ -101,15 +101,54 @@ var ManagementUI = (function () {
   }
 
   var VALID_TABS = ['sharing', 'network', 'config', 'logs', 'workspaces', 'boards'];
+  var UI_PRESETS = {
+    combinedManagement: {
+      topTabs: ['sharing', 'network', 'config', 'logs'],
+      defaultTopTab: 'network',
+      themeEnabled: false
+    },
+    backendSettings: {
+      topTabs: ['network', 'config', 'logs'],
+      defaultTopTab: 'network',
+      themeEnabled: false
+    },
+    files: {
+      topTabs: ['workspaces', 'boards'],
+      defaultTopTab: 'workspaces',
+      themeEnabled: false
+    }
+  };
+
+  function cloneUiOptions(source) {
+    var copy = {};
+    if (!source) return copy;
+    for (var key in source) {
+      if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+      copy[key] = Array.isArray(source[key]) ? source[key].slice() : source[key];
+    }
+    return copy;
+  }
+
+  function getUiPreset(name, overrides) {
+    var presetName = name && UI_PRESETS[name] ? name : 'combinedManagement';
+    var options = cloneUiOptions(UI_PRESETS[presetName]);
+    if (overrides) {
+      for (var key in overrides) {
+        if (!Object.prototype.hasOwnProperty.call(overrides, key)) continue;
+        options[key] = Array.isArray(overrides[key]) ? overrides[key].slice() : overrides[key];
+      }
+    }
+    return options;
+  }
 
   function buildUiOptions(options) {
-    options = options || {};
+    options = options || getUiPreset('combinedManagement');
     var topTabs = Array.isArray(options.topTabs) && options.topTabs.length
       ? options.topTabs.filter(function (tab) {
           return VALID_TABS.indexOf(tab) !== -1;
         })
-      : ['sharing', 'network', 'config', 'logs'];
-    if (topTabs.length === 0) topTabs = ['sharing', 'network', 'config', 'logs'];
+      : getUiPreset('combinedManagement').topTabs;
+    if (topTabs.length === 0) topTabs = getUiPreset('combinedManagement').topTabs;
     var defaultTopTab = topTabs.indexOf(options.defaultTopTab) !== -1 ? options.defaultTopTab : topTabs[0];
     return {
       topTabs: topTabs,
@@ -265,6 +304,9 @@ var ManagementUI = (function () {
   function mountInstance(id, options) {
     var mc = options.container;
     if (!mc) throw new Error('ManagementUI.mount requires container');
+    if (mounts[id]) {
+      unmountInstance(id);
+    }
     if (options.api) {
       api = wrapMutatingApi(options.api);
     }
@@ -390,6 +432,7 @@ var ManagementUI = (function () {
     html += '<div class="mgmt-field-row">';
     html += '<input class="mgmt-field-input" type="text" id="mgmt-add-board-input" placeholder="Path to .md file...">';
     html += '<button class="mgmt-btn mgmt-btn-primary mgmt-btn-small" data-mgmt-action="add-board">Add</button>';
+    html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="browse-board">Browse</button>';
     html += '</div>';
     html += '<div class="mgmt-drop-hint">Drop .md files here to add boards</div>';
     html += '<div id="mgmt-boards-list"></div>';
@@ -725,6 +768,7 @@ var ManagementUI = (function () {
     switch (action) {
       case 'add-workspace': addWorkspace(); break;
       case 'add-board': addBoard(); break;
+      case 'browse-board': browseAndAddBoard(); break;
       case 'save-name': saveName(); break;
       case 'save-server': saveServerConfig(); break;
       case 'toggle-log-pause': toggleLogPause(); break;
@@ -1688,6 +1732,33 @@ var ManagementUI = (function () {
     }
   }
 
+  async function browseAndAddBoard() {
+    try {
+      // Use Tauri browse_files command
+      var invoke = (typeof window !== 'undefined' && window.__TAURI__ && window.__TAURI__.core)
+        ? window.__TAURI__.core.invoke : null;
+      if (!invoke) { notify('File browse requires the Tauri desktop app'); return; }
+      var paths = await invoke('browse_files', {
+        title: 'Select board files',
+        extensions: ['md'],
+        multiple: true
+      });
+      if (!paths || paths.length === 0) return;
+      for (var i = 0; i < paths.length; i++) {
+        try {
+          await api.post('/boards', { file: paths[i] });
+        } catch (e) {
+          notify('Failed to add board: ' + (e.message || e));
+        }
+      }
+      await loadMyBoards();
+      notify(paths.length + ' board(s) added');
+      if (callbacks && typeof callbacks.onBoardAdded === 'function') callbacks.onBoardAdded();
+    } catch (e) {
+      notify('Browse failed: ' + (e.message || e));
+    }
+  }
+
   async function addBoard() {
     var input = queryFirst('#mgmt-add-board-input');
     var filePath = input ? input.value.trim() : '';
@@ -1896,6 +1967,8 @@ var ManagementUI = (function () {
     unmount: unmountInstance,
     refresh: refresh,
     destroy: destroy,
+    UI_PRESETS: UI_PRESETS,
+    getUiPreset: getUiPreset,
     BOARD_SETTINGS_FIELDS: BOARD_SETTINGS_FIELDS,
   };
 })();

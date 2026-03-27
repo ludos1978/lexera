@@ -10,7 +10,7 @@
 
 - [x] ~~filename right-click: Rename, Show in Finder, Open in Default App~~ (this commit)
 
-- [ ] add a file browse button to add boards to the "Files" -> Boards -> "My Board" where the user might search for boards. Dropping files on it must still work!
+- [x] ~~file browse button in Files > Boards panel (uses rfd native dialog)~~ (this commit)
 
 - [ ] could we integrate a view that allows embedding ![]() images with animations from the animated format. for example i found <https://glaxnimate.org/de/> . just to extend the excalidraw and other formats we already support. it's important that keyframes could be shown as individual images using a parameter or only the final image for example with the parameters {export=keyframes} or {export=flatten} .
 

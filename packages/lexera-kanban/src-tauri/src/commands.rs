@@ -65,6 +65,36 @@ pub fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Open a native file browse dialog and return selected paths.
+#[tauri::command]
+pub async fn browse_files(
+    title: Option<String>,
+    extensions: Option<Vec<String>>,
+    multiple: Option<bool>,
+) -> Result<Vec<String>, String> {
+    let mut builder = rfd::AsyncFileDialog::new();
+    if let Some(t) = &title {
+        builder = builder.set_title(t);
+    }
+    if let Some(exts) = &extensions {
+        let ext_refs: Vec<&str> = exts.iter().map(|s| s.as_str()).collect();
+        builder = builder.add_filter("Files", &ext_refs);
+    }
+    let result = if multiple.unwrap_or(false) {
+        builder.pick_files().await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|f| f.path().to_string_lossy().to_string())
+            .collect()
+    } else {
+        match builder.pick_file().await {
+            Some(f) => vec![f.path().to_string_lossy().to_string()],
+            None => vec![],
+        }
+    };
+    Ok(result)
+}
+
 /// Open a file with the system default application.
 #[tauri::command]
 pub fn open_with_default_app(path: String) -> Result<(), String> {

@@ -259,6 +259,7 @@ fn main() {
             commands::open_url,
             commands::show_in_folder,
             commands::open_with_default_app,
+            commands::browse_files,
             commands::rename_path,
             commands::read_text_file,
             commands::write_text_file,
