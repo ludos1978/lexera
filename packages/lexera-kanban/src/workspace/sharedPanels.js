@@ -76,29 +76,24 @@
           '<div class="dashboard-group-header">Results</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-results"></div>' +
         '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header">Calendar</div>' +
-          '<div class="dashboard-calendar lexera-shared-dashboard-calendar"></div>' +
+        '<div class="dashboard-group dashboard-calendar-group">' +
+          '<div class="dashboard-group-header">Calendar' +
+            '<span class="dashboard-calendar-tabs">' +
+              '<button class="dashboard-calendar-tab active" data-cal-view="week" type="button">Week</button>' +
+              '<button class="dashboard-calendar-tab" data-cal-view="month" type="button">Month</button>' +
+            '</span>' +
+          '</div>' +
+          '<div class="dashboard-calendar lexera-shared-dashboard-calendar-week"></div>' +
+          '<div class="dashboard-calendar lexera-shared-dashboard-calendar-month" style="display:none"></div>' +
+          '<div class="dashboard-list lexera-shared-dashboard-calendar-tasks"></div>' +
         '</div>' +
         '<div class="dashboard-group">' +
           '<div class="dashboard-group-header">Overdue</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-overdue"></div>' +
         '</div>' +
         '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header">Today</div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-today"></div>' +
-        '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header">This Week</div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-thisweek"></div>' +
-        '</div>' +
-        '<div class="dashboard-group">' +
           '<div class="dashboard-group-header">Upcoming</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-upcoming"></div>' +
-        '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header">Later</div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-later"></div>' +
         '</div>' +
         '<div class="dashboard-group">' +
           '<div class="dashboard-group-header">Open Tasks</div>' +

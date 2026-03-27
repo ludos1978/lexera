@@ -1506,21 +1506,59 @@ var LexeraOrderHelpers = (function () {
     return dt;
   }
 
-  function renderDashboardCalendar(calendarTasks) {
-    var el = document.getElementById('dashboard-calendar');
+  function buildDateTaskMap(tasks) {
+    var map = {};
+    for (var i = 0; i < (tasks || []).length; i++) {
+      var due = tasks[i].dueDate;
+      if (!due) continue;
+      if (!map[due]) map[due] = [];
+      map[due].push(tasks[i]);
+    }
+    return map;
+  }
+
+  function escapeCalHtml(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  // Weekly view: 7 days starting from today, each day shows date + task titles
+  function renderWeekCalendar(el, tasks) {
     if (!el) return;
     var now = new Date();
     var todayStr = formatDashboardDate(now);
-    // Build a map of date → task count
-    var dateMap = {};
-    var tasks = calendarTasks || [];
-    for (var i = 0; i < tasks.length; i++) {
-      var due = tasks[i].dueDate;
-      if (!due) continue;
-      if (!dateMap[due]) dateMap[due] = 0;
-      dateMap[due]++;
+    var dateMap = buildDateTaskMap(tasks);
+    var dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var html = '';
+    for (var d = 0; d < 7; d++) {
+      var dt = new Date(now.getTime() + d * 86400000);
+      var dtStr = formatDashboardDate(dt);
+      var isToday = dtStr === todayStr;
+      var dayTasks = dateMap[dtStr] || [];
+      html += '<div class="cal-week-day' + (isToday ? ' cal-today' : '') + '">';
+      html += '<div class="cal-week-day-header">';
+      html += '<span class="cal-week-day-name">' + dayLabels[dt.getDay()] + '</span>';
+      html += '<span class="cal-week-day-date">' + dt.getDate() + '.' + (dt.getMonth() + 1) + '.</span>';
+      if (dayTasks.length > 0) html += '<span class="cal-count">' + dayTasks.length + '</span>';
+      html += '</div>';
+      for (var t = 0; t < dayTasks.length && t < 5; t++) {
+        var title = String(dayTasks[t].cardContent || '').split('\n')[0];
+        if (title.length > 50) title = title.substring(0, 50) + '\u2026';
+        var board = dayTasks[t].boardTitle || '';
+        html += '<div class="cal-week-task">' + escapeCalHtml(title);
+        if (board) html += ' <span class="cal-week-task-board">' + escapeCalHtml(board) + '</span>';
+        html += '</div>';
+      }
+      if (dayTasks.length > 5) html += '<div class="cal-week-task cal-week-more">+' + (dayTasks.length - 5) + ' more</div>';
+      if (dayTasks.length === 0) html += '<div class="cal-week-empty">\u2014</div>';
+      html += '</div>';
     }
-    // Show 1 week back + 3 weeks forward = 4 weeks
+    el.innerHTML = html;
+  }
+
+  // Monthly view: 4-week grid with counts
+  function renderMonthCalendar(el, tasks) {
+    if (!el) return;
+    var now = new Date();
+    var todayStr = formatDashboardDate(now);
+    var dateMap = buildDateTaskMap(tasks);
     var startMonday = getMonday(new Date(now.getTime() - 7 * 86400000));
     var dayNames = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
     var html = '<table class="dashboard-calendar-grid"><thead><tr><th>CW</th>';
@@ -1533,18 +1571,44 @@ var LexeraOrderHelpers = (function () {
       for (var dd = 0; dd < 7; dd++) {
         var cellDate = new Date(weekStart.getTime() + dd * 86400000);
         var cellStr = formatDashboardDate(cellDate);
-        var count = dateMap[cellStr] || 0;
+        var count = (dateMap[cellStr] || []).length;
         var isToday = cellStr === todayStr;
         var isPast = cellStr < todayStr;
         var cls = 'cal-day' + (isToday ? ' cal-today' : '') + (isPast ? ' cal-past' : '') + (count > 0 ? ' cal-has-tasks' : '');
-        html += '<td class="' + cls + '">';
-        html += '<span class="cal-date">' + cellDate.getDate() + '</span>';
+        html += '<td class="' + cls + '"><span class="cal-date">' + cellDate.getDate() + '</span>';
         if (count > 0) html += '<span class="cal-count">' + count + '</span>';
         html += '</td>';
       }
       html += '</tr>';
     }
     html += '</tbody></table>';
+    el.innerHTML = html;
+  }
+
+  // Task list below calendar — upcoming tasks grouped by date
+  function renderCalendarTaskList(el, tasks) {
+    if (!el) return;
+    var now = new Date();
+    var todayStr = formatDashboardDate(now);
+    var sorted = sortSearchByDueDateAsc((tasks || []).filter(function (t) { return t && !t.isOverdue; }));
+    if (sorted.length === 0) { el.innerHTML = '<div class="dashboard-empty">No upcoming tasks</div>'; return; }
+    var html = '';
+    var lastDate = '';
+    for (var i = 0; i < sorted.length && i < 30; i++) {
+      var due = sorted[i].dueDate || '';
+      if (due !== lastDate) {
+        lastDate = due;
+        var label = due === todayStr ? 'Today' : due;
+        html += '<div class="cal-task-date-header">' + escapeCalHtml(label) + '</div>';
+      }
+      var title = String(sorted[i].cardContent || '').split('\n')[0];
+      if (title.length > 60) title = title.substring(0, 60) + '\u2026';
+      var board = sorted[i].boardTitle || '';
+      html += '<div class="cal-task-item">' + escapeCalHtml(title);
+      if (board) html += ' <span class="cal-task-board">' + escapeCalHtml(board) + '</span>';
+      html += '</div>';
+    }
+    if (sorted.length > 30) html += '<div class="cal-task-item cal-week-more">+' + (sorted.length - 30) + ' more</div>';
     el.innerHTML = html;
   }
 
@@ -1666,11 +1730,13 @@ var LexeraOrderHelpers = (function () {
       scopeHint || loadingNote || (dashboardState.query ? 'No matching tasks' : 'Type a query to search'),
       { collapseWhenEmpty: !dashboardState.loading && !dashboardState.query }
     );
-    // Calendar grid — show all open calendar tasks (overdue + upcoming)
-    var allCalendarForGrid = (dashboardState.overdue || []).concat(
+    // Calendar views — both week and month grids + task list
+    var allCalendar = (dashboardState.overdue || []).concat(
       dashboardState.today || [], dashboardState.thisWeek || [],
       dashboardState.upcoming || [], dashboardState.later || []);
-    renderDashboardCalendar(allCalendarForGrid);
+    renderWeekCalendar(document.getElementById('dashboard-calendar-week'), allCalendar);
+    renderMonthCalendar(document.getElementById('dashboard-calendar-month'), allCalendar);
+    renderCalendarTaskList(document.getElementById('dashboard-calendar-tasks'), allCalendar);
 
     renderDashboardResultItems(
       _callDep('getElDashboardOverdueList'),
@@ -1678,21 +1744,12 @@ var LexeraOrderHelpers = (function () {
       scopeHint || loadingNote || 'No overdue tasks',
       { collapseWhenEmpty: !dashboardState.loading }
     );
-    var todayEl = document.getElementById('dashboard-today-list');
-    var thisWeekEl = document.getElementById('dashboard-thisweek-list');
+    // "Upcoming" combines today + this week + upcoming + later (non-overdue)
+    var allUpcoming = (dashboardState.today || []).concat(
+      dashboardState.thisWeek || [], dashboardState.upcoming || [], dashboardState.later || []);
     var upcomingEl = document.getElementById('dashboard-upcoming-list');
-    var laterEl = document.getElementById('dashboard-later-list');
-    renderDashboardResultItems(todayEl, dashboardState.today,
-      scopeHint || loadingNote || 'No tasks due today',
-      { collapseWhenEmpty: !dashboardState.loading });
-    renderDashboardResultItems(thisWeekEl, dashboardState.thisWeek,
-      scopeHint || loadingNote || 'No tasks this week',
-      { collapseWhenEmpty: !dashboardState.loading });
-    renderDashboardResultItems(upcomingEl, dashboardState.upcoming,
-      scopeHint || loadingNote || 'No tasks in next 2 weeks',
-      { collapseWhenEmpty: !dashboardState.loading });
-    renderDashboardResultItems(laterEl, dashboardState.later,
-      scopeHint || loadingNote || 'No later tasks',
+    renderDashboardResultItems(upcomingEl, allUpcoming,
+      scopeHint || loadingNote || 'No upcoming tasks',
       { collapseWhenEmpty: !dashboardState.loading });
     var todosEl = document.getElementById('dashboard-todos-list');
     renderDashboardResultItems(todosEl, dashboardState.todos,
@@ -1927,6 +1984,22 @@ var LexeraOrderHelpers = (function () {
       var query = chip.getAttribute('data-dashboard-query') || '';
       setDashboardQuery(query);
       refreshDashboardData({ deferRender: true });
+    });
+
+    // Calendar tab switching (week / month)
+    _callDep('getElDashboardRoot').addEventListener('click', function (e) {
+      var tab = e.target.closest('.dashboard-calendar-tab');
+      if (!tab) return;
+      var view = tab.getAttribute('data-cal-view');
+      var group = tab.closest('.dashboard-calendar-group');
+      if (!group) return;
+      var tabs = group.querySelectorAll('.dashboard-calendar-tab');
+      for (var ti = 0; ti < tabs.length; ti++) tabs[ti].classList.remove('active');
+      tab.classList.add('active');
+      var weekEl = group.querySelector('[id$="calendar-week"], .lexera-shared-dashboard-calendar-week');
+      var monthEl = group.querySelector('[id$="calendar-month"], .lexera-shared-dashboard-calendar-month');
+      if (weekEl) weekEl.style.display = view === 'week' ? '' : 'none';
+      if (monthEl) monthEl.style.display = view === 'month' ? '' : 'none';
     });
 
     persistDashboardPrefs();

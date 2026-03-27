@@ -837,6 +837,89 @@ textarea {
   font-weight: 600;
 }
 
+/* Dashboard calendar tabs */
+.dashboard-calendar-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 8px;
+}
+.dashboard-calendar-tab {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.dashboard-calendar-tab.active {
+  background: var(--accent);
+  color: var(--bg-primary);
+  border-color: var(--accent);
+}
+
+/* Dashboard weekly calendar */
+.cal-week-day {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--bg-tertiary);
+}
+.cal-week-day.cal-today {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.cal-week-day-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.cal-week-day-name {
+  color: var(--text-secondary);
+  width: 28px;
+}
+.cal-week-day-date {
+  color: var(--text-muted);
+}
+.cal-week-task {
+  font-size: 10px;
+  color: var(--text-primary);
+  padding: 1px 0 1px 34px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-week-task-board, .cal-task-board {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+.cal-week-empty {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 1px 0 1px 34px;
+}
+.cal-week-more {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Calendar task list (text below grid) */
+.cal-task-date-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 4px 0 1px;
+}
+.cal-task-item {
+  font-size: 10px;
+  color: var(--text-primary);
+  padding: 1px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Dashboard calendar grid */
 .dashboard-calendar {
   overflow-x: auto;
