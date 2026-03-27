@@ -766,6 +766,16 @@ pub fn run() {
             app.manage(std::sync::Mutex::new(watcher_shutdown));
 
             capture::open_capture_popup(app.handle());
+
+            // Periodically validate quick-capture position (catches display changes)
+            let app_handle_for_capture = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    capture::validate_capture_position(&app_handle_for_capture);
+                }
+            });
+
             Ok(())
         })
         .build(tauri::generate_context!());

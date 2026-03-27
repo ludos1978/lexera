@@ -278,6 +278,36 @@ fn snap_capture_strip(app: &AppHandle, side: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Re-snap the quick-capture window if it's outside the current monitor bounds.
+/// Call this periodically or after display configuration changes.
+pub fn validate_capture_position(app: &AppHandle) {
+    let window = match app.get_webview_window("quick-capture") {
+        Some(w) => w,
+        None => return,
+    };
+    let pos = match window.outer_position() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let (monitor_pos, monitor_size) = match monitor_rect(&window) {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+    // Check if window is outside the monitor bounds
+    let in_bounds = pos.x >= monitor_pos.x
+        && pos.y >= monitor_pos.y
+        && pos.x < monitor_pos.x + monitor_size.width as i32
+        && pos.y < monitor_pos.y + monitor_size.height as i32;
+    if !in_bounds {
+        let side = detect_side(&window).unwrap_or_else(|_| "right".to_string());
+        log::info!(
+            "[lexera.capture] Window out of monitor bounds, re-snapping to {}",
+            side
+        );
+        let _ = snap_capture_strip(app, &side);
+    }
+}
+
 /// Determine which screen edge the window is closest to ("left" or "right").
 fn detect_side(window: &tauri::WebviewWindow) -> Result<String, String> {
     let pos = window.outer_position().map_err(|e| e.to_string())?;

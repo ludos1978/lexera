@@ -1,8 +1,12 @@
 # Lexera Kanban Todo
 
-- [ ] When new screens are attached or screen resolutions are changed, the quick capture isnt locked to the screen side anymore. it can be sitting in the middle of the screen forever, can we detect screen size, position etc changes and re-position it?
+- [x] ~~quick capture re-snaps to screen edge when window goes out of monitor bounds (10s polling)~~ (this commit)
 
 - [ ] the quick capture is somtimes not reacting to clicks immediately, it doesnt open and also needs multiple cmd+b to open when it hasnt been opened before!
+
+- [ ] could we integrate a viewer that allows !!!include(file.docx)!!! in column headers for docx, xlsx and pptx files? it would e a nice addon to be able to edit them inline, but viewing and opening an external editor to edit is okay as well. maybe using <https://github.com/DraviaVemal/OpenXML-Office>, but do an online research for possible tools!
+
+- [ ]
 
 - [x] ~~workspace tree styling improved: rounded corners, hover backgrounds, consistent spacing, section headers~~ (this commit)
 
