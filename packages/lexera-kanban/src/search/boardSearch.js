@@ -1,10 +1,14 @@
 var LexeraBoardSearch = (function () {
   'use strict';
-  var _deps = null;
+  var _deps = {};
   var searchDebounce = null;
 
   function init(deps) {
-    _deps = deps || {};
+    if (typeof window !== 'undefined' && window.LexeraRuntime) {
+      window.LexeraRuntime.mergeDeps(_deps, deps);
+    } else {
+      _deps = deps || {};
+    }
   }
 
   // ── dependency accessors ──

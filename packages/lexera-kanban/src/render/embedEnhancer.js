@@ -1,6 +1,7 @@
 var EmbedEnhancer = (function () {
   'use strict';
   var _deps = {};
+  var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
 
   // --- Cache state ---
   var embedPreviewCache = {};
@@ -9,7 +10,12 @@ var EmbedEnhancer = (function () {
   var MAX_INCLUDE_PREVIEW_DEPTH = 2;
 
   function init(deps) {
-    _deps = deps || {};
+    if (typeof window !== 'undefined' && window.LexeraRuntime) {
+      _rt = window.LexeraRuntime;
+      _rt.mergeDeps(_deps, deps);
+    } else {
+      _deps = deps || {};
+    }
   }
 
   // --- External embed URL helpers ---

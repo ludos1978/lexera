@@ -1,9 +1,15 @@
 var LexeraCardContentRenderer = (function () {
   'use strict';
   var _deps = {};
+  var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
 
   function init(deps) {
-    _deps = deps || {};
+    if (typeof window !== 'undefined' && window.LexeraRuntime) {
+      _rt = window.LexeraRuntime;
+      _rt.mergeDeps(_deps, deps);
+    } else {
+      _deps = deps || {};
+    }
   }
 
   function renderTitleInline(text, boardId, options) {

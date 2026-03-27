@@ -926,7 +926,11 @@ var HiddenItemsDropdown = (function () {
   // ═══════════════════════════════════════════════════════════════════════════
 
   function init(deps) {
-    _deps = deps || {};
+    if (typeof window !== 'undefined' && window.LexeraRuntime) {
+      window.LexeraRuntime.mergeDeps(_deps, deps);
+    } else {
+      _deps = deps || {};
+    }
   }
 
   return {
