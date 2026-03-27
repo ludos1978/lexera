@@ -835,6 +835,22 @@ textarea {
   letter-spacing: 0.5px;
   color: var(--text-secondary);
   font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dashboard-group-header::before {
+  content: '\25BE';
+  font-size: 8px;
+  transition: transform 0.15s ease;
+}
+.dashboard-group.collapsed > .dashboard-group-header::before {
+  transform: rotate(-90deg);
+}
+.dashboard-group.collapsed > :not(.dashboard-group-header) {
+  display: none;
 }
 
 /* Standalone calendar panels */
@@ -877,6 +893,67 @@ textarea {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+}
+
+/* Horizontal week timeline (standalone panel) */
+.cal-timeline {
+  display: flex;
+  gap: 1px;
+  min-height: 0;
+  overflow-x: auto;
+}
+.cal-timeline-col {
+  flex: 1;
+  min-width: 90px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+.cal-timeline-col.cal-today {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+}
+.cal-timeline-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.cal-timeline-day {
+  color: var(--text-primary);
+}
+.cal-timeline-date {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.cal-timeline-tasks {
+  flex: 1;
+  padding: 4px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cal-timeline-task {
+  font-size: 0.7rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-timeline-empty {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  text-align: center;
 }
 
 /* Dashboard calendar tabs */

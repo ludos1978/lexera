@@ -1560,6 +1560,39 @@ var LexeraOrderHelpers = (function () {
     el.innerHTML = html;
   }
 
+  // Horizontal week timeline for standalone panel: today + 6 days as columns
+  function renderWeekTimeline(el, tasks) {
+    if (!el) return;
+    var now = new Date();
+    var todayStr = formatDashboardDate(now);
+    var dateMap = buildDateTaskMap(tasks);
+    var dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var html = '<div class="cal-timeline">';
+    for (var d = 0; d < 7; d++) {
+      var dt = new Date(now.getTime() + d * 86400000);
+      var dtStr = formatDashboardDate(dt);
+      var isToday = dtStr === todayStr;
+      var dayTasks = dateMap[dtStr] || [];
+      html += '<div class="cal-timeline-col' + (isToday ? ' cal-today' : '') + '">';
+      html += '<div class="cal-timeline-header">';
+      html += '<span class="cal-timeline-day">' + dayLabels[dt.getDay()] + '</span>';
+      html += '<span class="cal-timeline-date">' + dt.getDate() + '.' + (dt.getMonth() + 1) + '</span>';
+      if (dayTasks.length > 0) html += '<span class="cal-count">' + dayTasks.length + '</span>';
+      html += '</div>';
+      html += '<div class="cal-timeline-tasks">';
+      for (var t = 0; t < dayTasks.length; t++) {
+        var title = String(dayTasks[t].cardContent || '').split('\n')[0];
+        if (title.length > 40) title = title.substring(0, 40) + '\u2026';
+        html += '<div class="cal-timeline-task">' + escapeCalHtml(title) + '</div>';
+      }
+      if (dayTasks.length === 0) html += '<div class="cal-timeline-empty">\u2014</div>';
+      html += '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
   // Monthly view: 4-week grid with counts
   function renderMonthCalendar(el, tasks) {
     if (!el) return;
@@ -1632,7 +1665,7 @@ var LexeraOrderHelpers = (function () {
     for (var w = 0; w < weekRoots.length; w++) {
       var weekEl = weekRoots[w].querySelector('.lexera-shared-calendar-week-view');
       var weekTaskEl = weekRoots[w].querySelector('.lexera-shared-calendar-task-list');
-      renderWeekCalendar(weekEl, tasks);
+      renderWeekTimeline(weekEl, tasks);
       renderCalendarTaskList(weekTaskEl, tasks);
     }
     var monthRoots = window.LexeraSharedPanels.getRoots('monthCalendar');
@@ -2088,10 +2121,53 @@ var LexeraOrderHelpers = (function () {
       if (monthEl) monthEl.style.display = view === 'month' ? '' : 'none';
     });
 
+    // Dashboard group fold/unfold via header click
+    _callDep('getElDashboardRoot').addEventListener('click', function (e) {
+      var header = e.target.closest('.dashboard-group-header');
+      if (!header) return;
+      // Don't fold when clicking calendar tabs or other interactive elements
+      if (e.target.closest('.dashboard-calendar-tab, button, a, input, select')) return;
+      var group = header.closest('.dashboard-group');
+      if (!group) return;
+      group.classList.toggle('collapsed');
+      // Persist fold state
+      saveDashboardFoldState();
+    });
+    restoreDashboardFoldState();
+
     persistDashboardPrefs();
     renderDashboard();
     scheduleDashboardRefresh(0);
     applySidebarSectionLayout();
+  }
+
+  function saveDashboardFoldState() {
+    var root = _callDep('getElDashboardRoot');
+    if (!root) return;
+    var groups = root.querySelectorAll('.dashboard-group');
+    var collapsed = [];
+    for (var i = 0; i < groups.length; i++) {
+      if (groups[i].classList.contains('collapsed')) {
+        var header = groups[i].querySelector('.dashboard-group-header');
+        if (header) collapsed.push(header.textContent.trim());
+      }
+    }
+    try { localStorage.setItem('lexera-dashboard-collapsed', JSON.stringify(collapsed)); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
+  }
+
+  function restoreDashboardFoldState() {
+    var root = _callDep('getElDashboardRoot');
+    if (!root) return;
+    var stored;
+    try { stored = JSON.parse(localStorage.getItem('lexera-dashboard-collapsed')); } catch (_) { return; }
+    if (!Array.isArray(stored) || stored.length === 0) return;
+    var groups = root.querySelectorAll('.dashboard-group');
+    for (var i = 0; i < groups.length; i++) {
+      var header = groups[i].querySelector('.dashboard-group-header');
+      if (header && stored.indexOf(header.textContent.trim()) !== -1) {
+        groups[i].classList.add('collapsed');
+      }
+    }
   }
 
   // ─── Module init & API ────────────────────────────────────────────────

@@ -1,10 +1,13 @@
 # Lexera Kanban Todo
 
+- [x] ~~browse in files settings now works — was a Tauri invoke detection issue, verified working~~ (verified)
+
 - [x] ~~quick capture re-snaps to screen edge when window goes out of monitor bounds (10s polling)~~ (this commit)
 
 - [x] ~~quick capture focus fix: 200ms delay after creation + retry focus on macOS~~ (this commit)
 
-- [ ] put the monthly and weekly calendar in the dashboard each by itself into a separate view! they will share some settings (what boards and types of content to show) in the same way, but the layout must be individual. the weekly should also show a horizontal timeline with today until todays+6 days! The dashboard shows a vertical list of the dates only and can be folded, unfolded in both states.
+- [x] ~~put the monthly and weekly calendar into separate views~~ (87ddcfdf) — standalone weekCalendar and monthCalendar panels placeable anywhere in workspace shell
+- [x] ~~weekly calendar shows horizontal timeline (today+6 days); dashboard groups have fold/unfold with localStorage persistence~~ (this commit)
 
 - [ ] could we integrate a viewer that allows !!!include(file.docx)!!! in column headers for docx, xlsx and pptx files? it would e a nice addon to be able to edit them ine, but viewing and opening an external editor to edit is okay as well. maybe using <https://github.com/DraviaVemal/OpenXML-Office>, but do an online research for possible tools!
 
