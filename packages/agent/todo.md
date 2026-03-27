@@ -15,7 +15,7 @@
 - [x] ~~tag clearing debounced (saveLocalBoardDraft was doing 3 serializations per mutation)~~ (f412b197)
 - [x] ~~burger menu buttons now use standard colors even on tag-styled entities~~ (this commit)
 
-- [ ] **Dashboard Redesign** — see [spec-dashboard.md](spec-dashboard.md) for full spec. Already has: search, pinned queries, deadlines, overdue, quick chips, scope selector. Needs:
+- [x] **Dashboard Redesign** — see [spec-dashboard.md](spec-dashboard.md) for full spec. All items complete:
   - [x] ~~Upcoming events sub-groups (Overdue / Today / This Week / Upcoming / Later)~~ (91cac70e)
   - [x] ~~Todo entries section (all unchecked items via is:open search)~~ (91cac70e)
   - [x] ~~Tagged items section (configurable tags, parallel search per tag)~~ (this commit)
@@ -25,7 +25,7 @@
 
 - [x] ~~context menus restructured for card/column/stack/row — see spec~~ (5ab04402)
 
-- [ ] **Frontend Settings Redesign** — see [spec-frontend-settings.md](spec-frontend-settings.md) for full spec.
+- [x] **Frontend Settings Redesign** — see [spec-frontend-settings.md](spec-frontend-settings.md) for full spec. All items complete:
   - [x] ~~Move visual theme, scroll/zoom speed, sidebar hierarchy out of top-right burger menu into Frontend Settings panel~~ (556d9622)
   - [x] ~~Add tag group configuration per entity type (row, stack, column, card)~~ (cafaa0ad)
   - [x] ~~Add marp/pandoc YAML + per-board layout overrides to board filename burger menu~~ (this commit)
