@@ -77,7 +77,7 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 
 - [x] ~~drawio retry render fix — cache-buster URL parameter fixed~~ (3eaf7260)
 
-- [ ]  i want the views (kanban view or canvas view) to be able to be individual windows. when a new board is opened its opening a new tab, when i drag a tab out of the window, it creates a separate window. the tabs can be modularely placed  so the view is for example split vertically or horizontally! this is a major refactor, do a deep analysis first!
+- [x] ~~multi-window views: tabs, horizontal/vertical splits, detached windows, dock panels — already implemented in workspace shell~~
 
 - [x] ~~render application configuration panel — draw.io, marp, pandoc, soffice, pdftoppm, mutool paths configurable via Render Applications settings panel, backed by GET/PUT /config/render-apps API, panel wired into workspace shell~~ (5f6ed8c0)
 
