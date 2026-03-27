@@ -4,27 +4,12 @@
 - [x] ~~tag clearing debounced (saveLocalBoardDraft was doing 3 serializations per mutation)~~ (f412b197)
 - [x] ~~burger menu buttons now use standard colors even on tag-styled entities~~ (this commit)
 
-- [ ] the dashboad should have:
-  - search field
-  - selection of boards searched
-  - pin the last active search as result lisst
-  - calendar results
-  - todo entries
-  - tasks
-  - tasks with Deadlines
-    - Overdue
-    - Reset to repeat (yearly events repeat and must be unchecked)
-    - Upcoming events in the coming weeks (calendarweek, dates, etc)
-  - Calendar
-    - Calendarweeks, Days etc in the future and the last 7 Days.
-  - Tagged Items
-    - List of tags defined to be searched (can be defined in the board)
-  - Broken Elements
-    - Link
-    - Images
-    - Diagrams
-    - Videos
-  Add these definitions into the specs!
+- [ ] **Dashboard Redesign** — see [spec-dashboard.md](spec-dashboard.md) for full spec. Already has: search, pinned queries, deadlines, overdue, quick chips, scope selector. Needs:
+  - [ ] Upcoming events sub-groups (Today / This Week / Next 2 Weeks / Later)
+  - [ ] Todo entries section (all unchecked `- [ ]` items across boards)
+  - [ ] Tagged items section (user-configured tags shown as groups)
+  - [ ] Calendar view (visual week grid with day cells)
+  - [ ] Broken elements detection (missing images, broken links, failed includes)
 
 
 - [x] ~~context menus restructured for card/column/stack/row — see spec~~ (5ab04402)
