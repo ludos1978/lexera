@@ -1,12 +1,15 @@
 # Lexera Kanban Todo
 
+- [ ] add all definitions in the todos into specs.md. if you find contradictions discuss it with the user! if you find unclear or irritating definitions discuss it with the user!
+
 - [ ] the backend settings doesnt have the same settings anymore as the "frontend in the backend settings" . the backend settings is empty in the frontend. these must be the same. also the "files configuration" must be available in the backend!
+
 
 - [ ] when a kanban board is opened that is in version 1 format, while loading we modify the filename associated with it, so when saving again we save as {original-filename}-lexera-v2.md ! verify the code so it's 
 
-- [ ] can we differentiate between double and single clicks on links? so if double clicking on a link it starts editing the card instead of trying to open it.
+- [x] ~~double-click on link edits card, single click opens link (300ms delay)~~ (this commit)
 
-- [ ] the folded state of a side-bar (log or config) should have a lock, so it doesnt unfold on hover when active. the locked state is the default state.
+- [x] ~~folded sidebar lock: default locked, no hover unfold. Click lock icon to toggle~~ (this commit)
 
 - [x] ~~row/stack tags now rendered with renderTitleInline (same as columns/cards)~~ (aac6e187)
 - [x] ~~tag clearing debounced (saveLocalBoardDraft was doing 3 serializations per mutation)~~ (f412b197)

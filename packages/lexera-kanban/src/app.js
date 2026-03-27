@@ -9788,11 +9788,26 @@ const LexeraDashboard = (function () {
     }
   });
 
-  // Double-click on card → open inline editor
+  // Delayed link click — single click opens link after 300ms, double-click cancels
+  var _linkClickTimer = null;
+  _on(getElColumnsContainer(), 'click', function (e) {
+    var link = e.target.closest('.card-content a[href]');
+    if (!link) return;
+    e.preventDefault();
+    if (_linkClickTimer) clearTimeout(_linkClickTimer);
+    _linkClickTimer = setTimeout(function () {
+      _linkClickTimer = null;
+      var href = link.getAttribute('href');
+      if (href) window.open(href, '_blank', 'noopener,noreferrer');
+    }, 300);
+  });
+
+  // Double-click on card → open inline editor (cancels pending link click)
   // Double-click on column/row/stack title → start rename
   _on(getElColumnsContainer(), 'dblclick', function (e) {
     try {
-      if (e.target.closest('button, input, textarea, select, a, .card-menu-btn, .card-checkbox, .card-collapse-toggle, .column-fold-btn, .stack-fold-btn, .row-fold-btn')) return;
+      if (_linkClickTimer) { clearTimeout(_linkClickTimer); _linkClickTimer = null; }
+      if (e.target.closest('button, input, textarea, select, .card-menu-btn, .card-checkbox, .card-collapse-toggle, .column-fold-btn, .stack-fold-btn, .row-fold-btn')) return;
 
       // Card content → edit
       var cardEl = e.target.closest('.card');

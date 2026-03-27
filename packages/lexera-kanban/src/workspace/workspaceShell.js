@@ -1365,6 +1365,22 @@
       }
     }
 
+    // Lock button — prevents hover-unfold (default: locked)
+    var lockBtn = document.createElement('button');
+    lockBtn.className = 'ws-fold-lock-btn';
+    lockBtn.type = 'button';
+    lockBtn.title = 'Toggle hover lock';
+    lockBtn.textContent = '\uD83D\uDD12'; // 🔒
+    lockBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var locked = dockEl.classList.toggle('is-fold-locked');
+      lockBtn.textContent = locked ? '\uD83D\uDD12' : '\uD83D\uDD13'; // 🔒/🔓
+      lockBtn.title = locked ? 'Locked — click to unlock hover' : 'Unlocked — click to lock';
+    });
+    strip.appendChild(lockBtn);
+    // Default: locked
+    dockEl.classList.add('is-fold-locked');
+
     dockEl.appendChild(strip);
   }
 
@@ -1422,6 +1438,7 @@
 
     dockEl.addEventListener('mouseenter', function () {
       if (!dockEl.classList.contains('is-folded')) return;
+      if (dockEl.classList.contains('is-fold-locked')) return;
       hoverTimer = setTimeout(function () {
         showHover(null);
       }, 180);
@@ -1429,18 +1446,17 @@
 
     // Per-zone mouseover: switch active panel when moving between zones
     dockEl.addEventListener('mouseover', function (e) {
+      if (dockEl.classList.contains('is-fold-locked')) return;
       var zone = e.target.closest ? e.target.closest('.ws-fold-zone') : null;
       if (!zone) return;
       var panelId = zone.getAttribute('data-ws-panel-id');
       if (!panelId || panelId === activeHoverPanelId) return;
-      // If hover overlay not yet shown, start it with this panel
       if (!dockEl.classList.contains('is-fold-hover')) {
         clearTimeout(hoverTimer);
         hoverTimer = setTimeout(function () {
           showHover(panelId);
         }, 180);
       } else {
-        // Already showing — switch to this panel
         activatePanelTab(panelId);
         activeHoverPanelId = panelId;
         rerenderDockTree();

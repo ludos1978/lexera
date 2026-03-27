@@ -228,6 +228,20 @@
   padding: 0 4px;
 }
 
+.ws-fold-lock-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 4px;
+  opacity: 0.5;
+  color: var(--text-muted);
+}
+.ws-fold-lock-btn:hover {
+  opacity: 1;
+}
+
 /* Fold zone: each panel gets a proportional hover area in the strip.
  * Hovering a zone expands the dock overlay and activates that panel. */
 .ws-fold-zone {
