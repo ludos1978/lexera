@@ -415,6 +415,9 @@ const LexeraDashboard = (function () {
       var detail = event && event.detail ? event.detail : {};
       if (detail.kind === 'hierarchy') syncMirroredWorkspaceViews();
       if (detail.kind === 'dashboard') syncMirroredDashboardViews();
+      if (detail.kind === 'weekCalendar' || detail.kind === 'monthCalendar') {
+        OrderHelpers.renderStandaloneCalendarPanels(OrderHelpers.getCalendarTasks());
+      }
     } catch (err) {
       logFrontendIssue('error', 'event.panel-created', 'Error in shared panel created handler', err);
     }

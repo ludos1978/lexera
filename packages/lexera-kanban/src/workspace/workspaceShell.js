@@ -104,6 +104,8 @@
   var PANEL_DEFINITIONS = {
     hierarchy: { id: 'hierarchy', title: 'Workspaces', defaultDock: 'left', duplicable: true, integratedHeader: true },
     dashboard: { id: 'dashboard', title: 'Dashboard', defaultDock: 'right', duplicable: true, integratedHeader: true },
+    weekCalendar: { id: 'weekCalendar', title: 'Week Calendar', defaultDock: 'right', duplicable: true, integratedHeader: true },
+    monthCalendar: { id: 'monthCalendar', title: 'Month Calendar', defaultDock: 'right', duplicable: true, integratedHeader: true },
     logs: { id: 'logs', title: 'Logs', defaultDock: 'bottom', duplicable: true, integratedHeader: true },
     backendSettings: { id: 'backendSettings', title: 'Backend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
     frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
@@ -115,6 +117,8 @@
     return {
       hierarchy: { id: 'hierarchy', kind: 'hierarchy' },
       dashboard: { id: 'dashboard', kind: 'dashboard' },
+      weekCalendar: { id: 'weekCalendar', kind: 'weekCalendar' },
+      monthCalendar: { id: 'monthCalendar', kind: 'monthCalendar' },
       logs: { id: 'logs', kind: 'logs' },
       backendSettings: { id: 'backendSettings', kind: 'backendSettings' },
       frontendSettings: { id: 'frontendSettings', kind: 'frontendSettings' },
@@ -204,6 +208,8 @@
     return {
       hierarchy: true,
       dashboard: true,
+      weekCalendar: false,
+      monthCalendar: false,
       logs: true,
       backendSettings: false,
       frontendSettings: false,
@@ -1291,6 +1297,7 @@
     var kind = getPanelKind(panelId);
     if (kind === 'hierarchy') return '\u2630'; // ☰
     if (kind === 'dashboard') return '\u25a3'; // ▣
+    if (kind === 'weekCalendar' || kind === 'monthCalendar') return '\u25a6'; // ▦
     if (kind === 'logs') return '\u25cb'; // ○ (replaced with dot in strip)
     if (kind === 'backendSettings' || kind === 'frontendSettings' || kind === 'renderApps') return '\u2699'; // ⚙
     return '\u25a1'; // □

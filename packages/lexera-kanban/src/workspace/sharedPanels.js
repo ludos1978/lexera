@@ -3,6 +3,8 @@
   var DUPLICABLE_PANEL_KINDS = {
     hierarchy: true,
     dashboard: true,
+    weekCalendar: true,
+    monthCalendar: true,
     logs: true,
     backendSettings: true,
     frontendSettings: true,
@@ -13,6 +15,8 @@
   var instancesByKind = {
     hierarchy: {},
     dashboard: {},
+    weekCalendar: {},
+    monthCalendar: {},
     logs: {},
     backendSettings: {},
     frontendSettings: {},
@@ -325,6 +329,48 @@
     return root;
   }
 
+  function createWeekCalendarPanelElement(instanceId) {
+    var root = createPanelRoot('calendar-panel lexera-shared-panel lexera-shared-panel-week-calendar', 'weekCalendar', instanceId);
+    root.innerHTML =
+      '<div class="calendar-panel-header">' +
+        '<span class="calendar-panel-title">Week Calendar</span>' +
+        '<div class="calendar-panel-controls">' +
+          '<div class="workspace-select-wrap calendar-scope-wrap">' +
+            '<select class="calendar-scope-select lexera-shared-calendar-scope" title="Calendar scope">' +
+              '<option value="active">Active Board</option>' +
+              '<option value="all">All Boards</option>' +
+            '</select>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="calendar-panel-body">' +
+        '<div class="dashboard-calendar lexera-shared-calendar-week-view"></div>' +
+        '<div class="dashboard-list lexera-shared-calendar-task-list"></div>' +
+      '</div>';
+    return root;
+  }
+
+  function createMonthCalendarPanelElement(instanceId) {
+    var root = createPanelRoot('calendar-panel lexera-shared-panel lexera-shared-panel-month-calendar', 'monthCalendar', instanceId);
+    root.innerHTML =
+      '<div class="calendar-panel-header">' +
+        '<span class="calendar-panel-title">Month Calendar</span>' +
+        '<div class="calendar-panel-controls">' +
+          '<div class="workspace-select-wrap calendar-scope-wrap">' +
+            '<select class="calendar-scope-select lexera-shared-calendar-scope" title="Calendar scope">' +
+              '<option value="active">Active Board</option>' +
+              '<option value="all">All Boards</option>' +
+            '</select>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="calendar-panel-body">' +
+        '<div class="dashboard-calendar lexera-shared-calendar-month-view"></div>' +
+        '<div class="dashboard-list lexera-shared-calendar-task-list"></div>' +
+      '</div>';
+    return root;
+  }
+
   function createFilesPanelElement(instanceId) {
     var root = createPanelRoot('shell-settings-panel lexera-shared-panel lexera-shared-panel-files', 'files', instanceId);
     root.innerHTML =
@@ -335,6 +381,8 @@
   var PANEL_FACTORIES = {
     hierarchy: createHierarchyPanelElement,
     dashboard: createDashboardPanelElement,
+    weekCalendar: createWeekCalendarPanelElement,
+    monthCalendar: createMonthCalendarPanelElement,
     logs: createLogsPanelElement,
     backendSettings: createBackendSettingsPanelElement,
     frontendSettings: createFrontendSettingsPanelElement,

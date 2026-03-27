@@ -1619,6 +1619,31 @@ var LexeraOrderHelpers = (function () {
     el.innerHTML = html;
   }
 
+  function getCalendarTasks() {
+    if (!dashboardState) return [];
+    return (dashboardState.overdue || []).concat(
+      dashboardState.today || [], dashboardState.thisWeek || [],
+      dashboardState.upcoming || [], dashboardState.later || []);
+  }
+
+  function renderStandaloneCalendarPanels(tasks) {
+    if (!window.LexeraSharedPanels) return;
+    var weekRoots = window.LexeraSharedPanels.getRoots('weekCalendar');
+    for (var w = 0; w < weekRoots.length; w++) {
+      var weekEl = weekRoots[w].querySelector('.lexera-shared-calendar-week-view');
+      var weekTaskEl = weekRoots[w].querySelector('.lexera-shared-calendar-task-list');
+      renderWeekCalendar(weekEl, tasks);
+      renderCalendarTaskList(weekTaskEl, tasks);
+    }
+    var monthRoots = window.LexeraSharedPanels.getRoots('monthCalendar');
+    for (var m = 0; m < monthRoots.length; m++) {
+      var monthEl = monthRoots[m].querySelector('.lexera-shared-calendar-month-view');
+      var monthTaskEl = monthRoots[m].querySelector('.lexera-shared-calendar-task-list');
+      renderMonthCalendar(monthEl, tasks);
+      renderCalendarTaskList(monthTaskEl, tasks);
+    }
+  }
+
   // ── Dashboard broken elements scanner ─────────────────────────────
   function scanBrokenElements() {
     var container = _callDep('getElColumnsContainer');
@@ -1791,12 +1816,11 @@ var LexeraOrderHelpers = (function () {
       { collapseWhenEmpty: !dashboardState.loading && !dashboardState.query }
     );
     // Calendar views — both week and month grids + task list
-    var allCalendar = (dashboardState.overdue || []).concat(
-      dashboardState.today || [], dashboardState.thisWeek || [],
-      dashboardState.upcoming || [], dashboardState.later || []);
+    var allCalendar = getCalendarTasks();
     renderWeekCalendar(document.getElementById('dashboard-calendar-week'), allCalendar);
     renderMonthCalendar(document.getElementById('dashboard-calendar-month'), allCalendar);
     renderCalendarTaskList(document.getElementById('dashboard-calendar-tasks'), allCalendar);
+    renderStandaloneCalendarPanels(allCalendar);
 
     renderDashboardResultItems(
       _callDep('getElDashboardOverdueList'),
@@ -2195,7 +2219,9 @@ var LexeraOrderHelpers = (function () {
     renderDashboard: renderDashboard,
     refreshDashboardData: refreshDashboardData,
     scheduleDashboardRefresh: scheduleDashboardRefresh,
-    setupDashboardControls: setupDashboardControls
+    setupDashboardControls: setupDashboardControls,
+    getCalendarTasks: getCalendarTasks,
+    renderStandaloneCalendarPanels: renderStandaloneCalendarPanels
   };
 })();
 (typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {}).LexeraOrderHelpers = LexeraOrderHelpers;
