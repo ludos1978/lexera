@@ -992,6 +992,54 @@ textarea {
   color: var(--text-muted);
 }
 
+/* Workspace tree navigation */
+.workspace-nav-up {
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+.workspace-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--accent);
+  padding: 4px 8px;
+}
+.workspace-nav-item:hover {
+  background: var(--bg-hover);
+}
+.workspace-nav-icon {
+  font-size: 12px;
+}
+.workspace-section-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-bright);
+  cursor: pointer;
+  user-select: none;
+}
+.workspace-section-header:hover {
+  background: var(--bg-hover);
+}
+.workspace-section-header.workspace-unassigned .workspace-section-name {
+  color: var(--text-muted);
+}
+.workspace-section-toggle {
+  font-size: 8px;
+  color: var(--text-muted);
+  width: 12px;
+  text-align: center;
+}
+.workspace-section-count {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
 .dashboard-tag-section {
   margin: 4px 0;
 }

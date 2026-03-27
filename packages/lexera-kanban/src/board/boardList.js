@@ -892,14 +892,99 @@ var LexeraBoardList = (function () {
     var workspaceShellEnabled = _dep('workspaceShellEnabled');
     var WorkspaceShell = _dep('WorkspaceShell');
 
-    var filteredBoards = activeWorkspaceId && activeWorkspaceId !== ALL_WORKSPACES_ID
-      ? boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(activeWorkspaceId) >= 0; })
-      : boards;
+    var workspaces = _dep('workspaces') || [];
+    var isAllView = !activeWorkspaceId || activeWorkspaceId === ALL_WORKSPACES_ID;
+    var filteredBoards = isAllView
+      ? boards
+      : boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(activeWorkspaceId) >= 0; });
     var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; }) || filteredBoards;
-    // console.log('[ws-debug] renderBoardList: boards=' + boards.length + ', filtered=' + filteredBoards.length + ', ordered=' + orderedBoards.length + ', activeWs=' + activeWorkspaceId + ', shellEnabled=' + workspaceShellEnabled);
     var expandedIds = getSidebarExpandedBoards();
 
+    // "Go up" entry when inside a specific workspace
+    if (!isAllView) {
+      var upEl = document.createElement('div');
+      upEl.className = 'board-item-wrapper workspace-nav-up';
+      upEl.innerHTML = '<div class="tree-node workspace-nav-item" data-tree-depth="0"><span class="workspace-nav-icon">\u2190</span> All Workspaces</div>';
+      upEl.addEventListener('dblclick', function () {
+        setActiveWorkspaceId(ALL_WORKSPACES_ID);
+        applyWorkspaceAppearance(ALL_WORKSPACES_ID);
+        renderWorkspaceSelect();
+        renderBoardList();
+      });
+      boardListEl.appendChild(upEl);
+    }
+
+    // In "All Workspaces" view, show workspace section headers
+    // Boards inside collapsed workspaces are excluded from orderedBoards
+    if (isAllView && workspaces.length > 0) {
+      var wsBoardMap = {};
+      var assignedBoardIds = {};
+      for (var wi = 0; wi < workspaces.length; wi++) wsBoardMap[workspaces[wi].id] = [];
+      for (var bi = 0; bi < orderedBoards.length; bi++) {
+        var bws = getBoardWorkspaceIds(orderedBoards[bi]);
+        for (var bwi = 0; bwi < bws.length; bwi++) {
+          if (wsBoardMap[bws[bwi]]) { wsBoardMap[bws[bwi]].push(orderedBoards[bi]); assignedBoardIds[orderedBoards[bi].id] = true; }
+        }
+      }
+      // Build a flat list with workspace headers inserted
+      var groupedList = [];
+      for (var wgi = 0; wgi < workspaces.length; wgi++) {
+        var ws = workspaces[wgi];
+        var wsBoards = wsBoardMap[ws.id] || [];
+        if (wsBoards.length === 0) continue;
+        groupedList.push({ _wsHeader: true, ws: ws, count: wsBoards.length, expanded: expandedIds.indexOf('ws:' + ws.id) !== -1 });
+        if (expandedIds.indexOf('ws:' + ws.id) !== -1) {
+          for (var wbi = 0; wbi < wsBoards.length; wbi++) groupedList.push(wsBoards[wbi]);
+        }
+      }
+      // Unassigned
+      var hasUnassigned = false;
+      for (var ubi = 0; ubi < orderedBoards.length; ubi++) {
+        if (!assignedBoardIds[orderedBoards[ubi].id]) {
+          if (!hasUnassigned) {
+            groupedList.push({ _wsHeader: true, ws: { id: '__unassigned__', name: 'Unassigned' }, count: 0, expanded: true, unassigned: true });
+            hasUnassigned = true;
+          }
+          groupedList.push(orderedBoards[ubi]);
+        }
+      }
+      // Replace orderedBoards with the grouped list (headers will be handled in the loop)
+      orderedBoards = groupedList;
+    }
+
     for (var i = 0; i < orderedBoards.length; i++) {
+      // Workspace section headers (inserted by "All" view grouping)
+      if (orderedBoards[i] && orderedBoards[i]._wsHeader) {
+        var wsInfo = orderedBoards[i];
+        var wsHeader = document.createElement('div');
+        wsHeader.className = 'workspace-section-header' + (wsInfo.expanded ? ' expanded' : '');
+        wsHeader.setAttribute('data-workspace-id', wsInfo.ws.id);
+        wsHeader.innerHTML =
+          '<span class="workspace-section-toggle">' + (wsInfo.expanded ? '\u25BC' : '\u25B6') + '</span>' +
+          '<span class="workspace-section-name">' + _callDep('escapeHtml', wsInfo.ws.name || 'Untitled') + '</span>' +
+          (wsInfo.count ? '<span class="workspace-section-count">' + wsInfo.count + '</span>' : '');
+        if (wsInfo.unassigned) wsHeader.classList.add('workspace-unassigned');
+        (function (wsId) {
+          wsHeader.addEventListener('dblclick', function (e) {
+            e.stopPropagation();
+            setActiveWorkspaceId(wsId);
+            applyWorkspaceAppearance(wsId);
+            renderWorkspaceSelect();
+            renderBoardList();
+          });
+          wsHeader.addEventListener('click', function (e) {
+            if (e.detail > 1) return;
+            var ids = getSidebarExpandedBoards();
+            var key = 'ws:' + wsId;
+            var idx = ids.indexOf(key);
+            if (idx !== -1) ids.splice(idx, 1); else ids.push(key);
+            saveSidebarExpandedBoards(ids);
+            renderBoardList();
+          });
+        })(wsInfo.ws.id);
+        boardListEl.appendChild(wsHeader);
+        continue;
+      }
       var board = orderedBoards[i];
       var isExpanded = expandedIds.indexOf(board.id) !== -1;
       var isActive = board.id === activeBoardId;
