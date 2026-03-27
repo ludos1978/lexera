@@ -19,7 +19,7 @@
   - [x] ~~Upcoming events sub-groups (Overdue / Today / This Week / Upcoming / Later)~~ (91cac70e)
   - [x] ~~Todo entries section (all unchecked items via is:open search)~~ (91cac70e)
   - [x] ~~Tagged items section (configurable tags, parallel search per tag)~~ (this commit)
-  - [ ] Calendar view (visual week grid with day cells)
+  - [x] ~~Calendar view (4-week grid with CW, task counts, today highlight)~~ (this commit)
   - [ ] Broken elements detection (missing images, broken links, failed includes)
 
 

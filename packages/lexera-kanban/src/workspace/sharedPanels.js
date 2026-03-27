@@ -77,6 +77,10 @@
           '<div class="dashboard-list lexera-shared-dashboard-results"></div>' +
         '</div>' +
         '<div class="dashboard-group">' +
+          '<div class="dashboard-group-header">Calendar</div>' +
+          '<div class="dashboard-calendar lexera-shared-dashboard-calendar"></div>' +
+        '</div>' +
+        '<div class="dashboard-group">' +
           '<div class="dashboard-group-header">Overdue</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-overdue"></div>' +
         '</div>' +

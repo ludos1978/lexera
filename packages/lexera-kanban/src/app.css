@@ -837,6 +837,62 @@ textarea {
   font-weight: 600;
 }
 
+/* Dashboard calendar grid */
+.dashboard-calendar {
+  overflow-x: auto;
+}
+.dashboard-calendar-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  table-layout: fixed;
+}
+.dashboard-calendar-grid th {
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 2px 0;
+  text-align: center;
+}
+.dashboard-calendar-grid td {
+  text-align: center;
+  padding: 3px 1px;
+  position: relative;
+}
+.cal-cw {
+  font-weight: 600;
+  color: var(--text-muted);
+  width: 24px;
+  font-size: 9px;
+}
+.cal-day {
+  border-radius: 4px;
+}
+.cal-today {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  font-weight: 700;
+}
+.cal-past .cal-date {
+  color: var(--text-muted);
+}
+.cal-has-tasks {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.cal-has-tasks.cal-today {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.cal-date {
+  display: block;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.cal-count {
+  display: block;
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
 .dashboard-tag-section {
   margin: 4px 0;
 }

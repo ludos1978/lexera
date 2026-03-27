@@ -1488,6 +1488,66 @@ var LexeraOrderHelpers = (function () {
     try { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(tags)); } catch (_) {}
   }
 
+  // ── Dashboard calendar view ───────────────────────────────────────
+  function getISOWeek(d) {
+    var dt = new Date(d.getTime());
+    dt.setHours(0, 0, 0, 0);
+    dt.setDate(dt.getDate() + 3 - (dt.getDay() + 6) % 7);
+    var week1 = new Date(dt.getFullYear(), 0, 4);
+    return 1 + Math.round(((dt - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+  }
+
+  function getMonday(d) {
+    var dt = new Date(d.getTime());
+    var day = dt.getDay();
+    var diff = day === 0 ? -6 : 1 - day;
+    dt.setDate(dt.getDate() + diff);
+    dt.setHours(0, 0, 0, 0);
+    return dt;
+  }
+
+  function renderDashboardCalendar(calendarTasks) {
+    var el = document.getElementById('dashboard-calendar');
+    if (!el) return;
+    var now = new Date();
+    var todayStr = formatDashboardDate(now);
+    // Build a map of date → task count
+    var dateMap = {};
+    var tasks = calendarTasks || [];
+    for (var i = 0; i < tasks.length; i++) {
+      var due = tasks[i].dueDate;
+      if (!due) continue;
+      if (!dateMap[due]) dateMap[due] = 0;
+      dateMap[due]++;
+    }
+    // Show 1 week back + 3 weeks forward = 4 weeks
+    var startMonday = getMonday(new Date(now.getTime() - 7 * 86400000));
+    var dayNames = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+    var html = '<table class="dashboard-calendar-grid"><thead><tr><th>CW</th>';
+    for (var d = 0; d < 7; d++) html += '<th>' + dayNames[d] + '</th>';
+    html += '</tr></thead><tbody>';
+    for (var w = 0; w < 4; w++) {
+      var weekStart = new Date(startMonday.getTime() + w * 7 * 86400000);
+      var cw = getISOWeek(weekStart);
+      html += '<tr><td class="cal-cw">' + cw + '</td>';
+      for (var dd = 0; dd < 7; dd++) {
+        var cellDate = new Date(weekStart.getTime() + dd * 86400000);
+        var cellStr = formatDashboardDate(cellDate);
+        var count = dateMap[cellStr] || 0;
+        var isToday = cellStr === todayStr;
+        var isPast = cellStr < todayStr;
+        var cls = 'cal-day' + (isToday ? ' cal-today' : '') + (isPast ? ' cal-past' : '') + (count > 0 ? ' cal-has-tasks' : '');
+        html += '<td class="' + cls + '">';
+        html += '<span class="cal-date">' + cellDate.getDate() + '</span>';
+        if (count > 0) html += '<span class="cal-count">' + count + '</span>';
+        html += '</td>';
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  }
+
   function renderDashboardPinnedList() {
     if (!_callDep('getElDashboardPinnedList')) return;
     _callDep('getElDashboardPinnedList').innerHTML = '';
@@ -1606,6 +1666,12 @@ var LexeraOrderHelpers = (function () {
       scopeHint || loadingNote || (dashboardState.query ? 'No matching tasks' : 'Type a query to search'),
       { collapseWhenEmpty: !dashboardState.loading && !dashboardState.query }
     );
+    // Calendar grid — show all open calendar tasks (overdue + upcoming)
+    var allCalendarForGrid = (dashboardState.overdue || []).concat(
+      dashboardState.today || [], dashboardState.thisWeek || [],
+      dashboardState.upcoming || [], dashboardState.later || []);
+    renderDashboardCalendar(allCalendarForGrid);
+
     renderDashboardResultItems(
       _callDep('getElDashboardOverdueList'),
       dashboardState.overdue,
