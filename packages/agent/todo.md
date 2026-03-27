@@ -63,7 +63,7 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 
 - [x] ~~horizontal/vertical split dividers now share the same thin-line style as dock dividers~~ (this commit)
 
-- [ ] i currently cant put the log viewer into the window bottom when the view is split with the left/right panes, i can only split the kanban/canvas views top/bottom. when very close (~6pix) to the window borders allways snap to the border areas.
+- [x] ~~bottom dock drop zone no longer overlapped by left/right zones — bottom has z-index priority~~ (this commit)
 
 - [x] ~~log viewer fills dock pane height + title shows entry count~~ (fecb89e0)
 

@@ -893,25 +893,28 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-drop-overlay {
   transition: background-color 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
 }
 
+/* Left/right zones stop above bottom zone so they don't overlap */
 .workspace-shell-panel-drop-zone[data-ws-panel-drop-dock="left"] {
   top: 0;
   left: 0;
-  bottom: 0;
+  bottom: 26%;
   width: 26%;
 }
 
 .workspace-shell-panel-drop-zone[data-ws-panel-drop-dock="right"] {
   top: 0;
   right: 0;
-  bottom: 0;
+  bottom: 26%;
   width: 26%;
 }
 
+/* Bottom zone spans full width and sits on top (higher z-index) */
 .workspace-shell-panel-drop-zone[data-ws-panel-drop-dock="bottom"] {
   left: 0;
   right: 0;
   bottom: 0;
   height: 26%;
+  z-index: 1;
 }
 
 .workspace-shell-panel-drop-zone.is-active {
