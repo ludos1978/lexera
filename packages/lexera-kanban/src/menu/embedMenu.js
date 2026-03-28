@@ -1907,7 +1907,16 @@ var LexeraEmbedMenu = (function () {
     if (typeof nextValue !== 'string' || nextValue === cardRef.card.content) return false;
     pushUndo();
     cardRef.card.content = normalizeCardContentAfterInlineMutation(nextValue);
-    return persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    // Targeted re-render: only update the affected card's content DOM
+    var colIndex = cardEl ? parseInt(cardEl.getAttribute('data-col-index'), 10) : -1;
+    var contentEl = cardEl ? cardEl.querySelector('.card-content') : null;
+    if (contentEl) {
+      contentEl.innerHTML = renderCardContent(cardRef.card.content, activeBoardId, colIndex, {});
+      flushPendingDiagramQueues();
+      if (window.LexeraContentEnhancerRegistry) window.LexeraContentEnhancerRegistry.enhance(contentEl);
+    }
+    // Persist without full re-render — the card DOM is already updated
+    return persistBoardMutation({ skipRender: true });
   }
 
   function renderEmbedPreviewContent(kind, boardId, filePath, content) {
