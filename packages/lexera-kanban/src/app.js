@@ -5352,7 +5352,22 @@ const LexeraDashboard = (function () {
 
     var isCanvasLayout = isCanvasBoardLayout();
     var htmlContentMode = getBoardSettingValue('htmlContentRenderMode', 'html');
+    var viewItems = [
+      { id: 'reveal-panel:hierarchy', label: 'Workspaces' },
+      { id: 'reveal-panel:dashboard', label: 'Dashboard' },
+      { id: 'reveal-panel:weekCalendar', label: 'Week Calendar' },
+      { id: 'reveal-panel:monthCalendar', label: 'Month Calendar' },
+      { id: 'reveal-panel:logs', label: 'Logs' },
+      { separator: true },
+      { id: 'reveal-panel:frontendSettings', label: 'Frontend Settings' },
+      { id: 'reveal-panel:backendSettings', label: 'Backend Settings' },
+      { id: 'reveal-panel:renderApps', label: 'Render Applications' },
+      { id: 'reveal-panel:files', label: 'Files' }
+    ];
     var items = [
+      // Views
+      { id: 'views', label: 'Views', items: viewItems },
+      { separator: true },
       // Quick settings
       { id: 'set-column-width', label: 'Column Width', items: buildSettingMenuItems('columnWidth') },
       { id: 'set-tag-visibility', label: 'Tag Visibility', items: buildSettingMenuItems('tagVisibility') },
@@ -11270,40 +11285,6 @@ const LexeraDashboard = (function () {
     localStorage.removeItem('lexera-card-expanded:' + boardId);
   }
 
-  // --- Embed Enhancer --- (delegated to EmbedEnhancer module)
-  if (window.EmbedEnhancer) EmbedEnhancer.init({
-    LexeraApi: LexeraApi,
-    ContentEnhancerRegistry: ContentEnhancerRegistry,
-    getActiveBoardId: function () { return activeBoardId; },
-    getCurrentTagVisibilityMode: function () { return currentTagVisibilityMode; },
-    getCurrentHtmlCommentRenderMode: function () { return currentHtmlCommentRenderMode; },
-    escapeHtml: escapeHtml,
-    escapeAttr: escapeAttr,
-    decodeHtmlEntities: decodeHtmlEntities,
-    sanitizeCssLength: sanitizeCssLength,
-    parseLocalFileReference: parseLocalFileReference,
-    isBoardRelativePath: isBoardRelativePath,
-    getInlineFileEmbedExtension: getInlineFileEmbedExtension,
-    getEmbedPreviewKind: getEmbedPreviewKind,
-    getEmbedPreviewCacheKey: getEmbedPreviewCacheKey,
-    getDisplayFileNameFromPath: getDisplayFileNameFromPath,
-    isRenderedSpecialPreviewKind: isRenderedSpecialPreviewKind,
-    renderCachedSpecialPreview: renderCachedSpecialPreview,
-    buildFilePreviewPlaceholderHtml: buildFilePreviewPlaceholderHtml,
-    buildSpecialPreviewPlaceholderMessage: buildSpecialPreviewPlaceholderMessage,
-    resolveMarkdownRelativeTargets: resolveMarkdownRelativeTargets,
-    renderCardContent: renderCardContent,
-    applyRenderedHtmlCommentVisibility: applyRenderedHtmlCommentVisibility,
-    applyRenderedTagVisibility: applyRenderedTagVisibility,
-    applyFileLinkInfo: function () {
-      return _EmbedMenu && typeof _EmbedMenu.applyFileLinkInfo === 'function'
-        ? _EmbedMenu.applyFileLinkInfo.apply(_EmbedMenu, arguments)
-        : undefined;
-    },
-    requestFileInfo: requestFileInfo,
-    flushPendingDiagramQueues: flushPendingDiagramQueues
-  });
-
   // --- Tag Colors --- (delegated to LexeraTagColors module)
   var TagColors = window.LexeraTagColors;
   if (TagColors) TagColors.init({ escapeHtml: escapeHtml, escapeAttr: escapeAttr });
@@ -12376,6 +12357,12 @@ const LexeraDashboard = (function () {
     });
     ActionRegistry.register('board', 'reveal-panel:files', function () {
       if (WorkspaceShell) WorkspaceShell.revealPanel('files');
+    });
+    ActionRegistry.register('board', 'reveal-panel:weekCalendar', function () {
+      if (WorkspaceShell) WorkspaceShell.revealPanel('weekCalendar');
+    });
+    ActionRegistry.register('board', 'reveal-panel:monthCalendar', function () {
+      if (WorkspaceShell) WorkspaceShell.revealPanel('monthCalendar');
     });
 
     // Search
