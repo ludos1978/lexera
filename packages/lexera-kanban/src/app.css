@@ -2138,9 +2138,7 @@ body.show-special-characters .card-editor-textarea {
   border-radius: 6px;
 }
 
-/* Hide scrollbars on rows, stacks, and columns — only the (split) view should scroll */
-.board-row,
-.board-row-content,
+/* Hide scrollbars on stacks and columns — row scrollbar stays visible for horizontal scroll */
 .board-stack,
 .board-stack-content,
 .column,
@@ -2148,13 +2146,25 @@ body.show-special-characters .card-editor-textarea {
   scrollbar-width: none;        /* Firefox */
   -ms-overflow-style: none;     /* IE/Edge */
 }
-.board-row::-webkit-scrollbar,
-.board-row-content::-webkit-scrollbar,
 .board-stack::-webkit-scrollbar,
 .board-stack-content::-webkit-scrollbar,
 .column::-webkit-scrollbar,
 .column-cards::-webkit-scrollbar {
   display: none;                /* Chrome/Safari */
+}
+.board-row {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+.board-row::-webkit-scrollbar {
+  height: 6px;
+}
+.board-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+.board-row::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
 }
 
 
@@ -2215,7 +2225,8 @@ body.show-special-characters .card-editor-textarea {
   border: 1px solid var(--surface-row-border);
   border-left: none;
   border-radius: var(--surface-row-radius);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: var(--surface-row-bg);
   box-shadow: var(--surface-row-shadow);
 }
