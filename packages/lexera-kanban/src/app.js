@@ -416,7 +416,12 @@ const LexeraDashboard = (function () {
       if (detail.kind === 'hierarchy') syncMirroredWorkspaceViews();
       if (detail.kind === 'dashboard') syncMirroredDashboardViews();
       if (detail.kind === 'weekCalendar' || detail.kind === 'monthCalendar') {
-        OrderHelpers.renderStandaloneCalendarPanels(OrderHelpers.getCalendarTasks());
+        var calTasks = OrderHelpers.getCalendarTasks();
+        if (calTasks && calTasks.length > 0) {
+          OrderHelpers.renderStandaloneCalendarPanels(calTasks);
+        } else {
+          OrderHelpers.scheduleDashboardRefresh(0);
+        }
       }
     } catch (err) {
       logFrontendIssue('error', 'event.panel-created', 'Error in shared panel created handler', err);

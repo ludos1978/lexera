@@ -1848,11 +1848,7 @@ var LexeraOrderHelpers = (function () {
       scopeHint || loadingNote || (dashboardState.query ? 'No matching tasks' : 'Type a query to search'),
       { collapseWhenEmpty: !dashboardState.loading && !dashboardState.query }
     );
-    // Calendar views — both week and month grids + task list
     var allCalendar = getCalendarTasks();
-    renderWeekCalendar(document.getElementById('dashboard-calendar-week'), allCalendar);
-    renderMonthCalendar(document.getElementById('dashboard-calendar-month'), allCalendar);
-    renderCalendarTaskList(document.getElementById('dashboard-calendar-tasks'), allCalendar);
     renderStandaloneCalendarPanels(allCalendar);
 
     renderDashboardResultItems(
@@ -2011,8 +2007,16 @@ var LexeraOrderHelpers = (function () {
     });
   }
 
+  function hasAnyCalendarPanel() {
+    if (!window.LexeraSharedPanels) return false;
+    var w = window.LexeraSharedPanels.getRoots('weekCalendar');
+    var m = window.LexeraSharedPanels.getRoots('monthCalendar');
+    return (w && w.length > 0) || (m && m.length > 0);
+  }
+
   function scheduleDashboardRefresh(delayMs) {
-    if (!_callDep('getElDashboardRoot') || _dep('embeddedMode')) return;
+    if (_dep('embeddedMode')) return;
+    if (!_callDep('getElDashboardRoot') && !hasAnyCalendarPanel()) return;
     clearTimeout(dashboardRefreshTimer);
     dashboardRefreshTimer = setTimeout(function () {
       refreshDashboardData();
@@ -2105,28 +2109,12 @@ var LexeraOrderHelpers = (function () {
       refreshDashboardData({ deferRender: true });
     });
 
-    // Calendar tab switching (week / month)
-    _callDep('getElDashboardRoot').addEventListener('click', function (e) {
-      var tab = e.target.closest('.dashboard-calendar-tab');
-      if (!tab) return;
-      var view = tab.getAttribute('data-cal-view');
-      var group = tab.closest('.dashboard-calendar-group');
-      if (!group) return;
-      var tabs = group.querySelectorAll('.dashboard-calendar-tab');
-      for (var ti = 0; ti < tabs.length; ti++) tabs[ti].classList.remove('active');
-      tab.classList.add('active');
-      var weekEl = group.querySelector('[id$="calendar-week"], .lexera-shared-dashboard-calendar-week');
-      var monthEl = group.querySelector('[id$="calendar-month"], .lexera-shared-dashboard-calendar-month');
-      if (weekEl) weekEl.style.display = view === 'week' ? '' : 'none';
-      if (monthEl) monthEl.style.display = view === 'month' ? '' : 'none';
-    });
-
     // Dashboard group fold/unfold via header click
     _callDep('getElDashboardRoot').addEventListener('click', function (e) {
       var header = e.target.closest('.dashboard-group-header');
       if (!header) return;
-      // Don't fold when clicking calendar tabs or other interactive elements
-      if (e.target.closest('.dashboard-calendar-tab, button, a, input, select')) return;
+      // Don't fold when clicking interactive elements
+      if (e.target.closest('button, a, input, select')) return;
       var group = header.closest('.dashboard-group');
       if (!group) return;
       group.classList.toggle('collapsed');
