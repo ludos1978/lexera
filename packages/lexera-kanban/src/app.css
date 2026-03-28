@@ -3062,7 +3062,6 @@ li.tag-line-styled {
 /* Board setting: row max height */
 .board-row-content {
   max-height: none;
-  overflow: visible;
   min-height: 0;
 }
 
@@ -3858,6 +3857,26 @@ ins.critic.critic-sub {
   color: var(--text-secondary);
 }
 
+.md-raw-html-block {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.md-raw-html-block > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.md-raw-html-block iframe {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .column-title .temporal-tag,
 .column-title .kanban-temporal-tag,
 .card-title-display .temporal-tag,
@@ -4017,23 +4036,38 @@ img[data-lazy-src] {
 .external-embed-container {
   display: block;
   margin: 8px 0;
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
   overflow: hidden;
   position: relative;
+  box-sizing: border-box;
 }
 
 .external-embed-stage {
   display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .external-embed-shell {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-secondary);
+  box-sizing: border-box;
+}
+
+.external-embed-shell > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .external-embed-shell-browser {
@@ -4110,11 +4144,13 @@ img[data-lazy-src] {
   display: block;
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   max-height: 400px;
   min-height: 200px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: #fff;
+  box-sizing: border-box;
 }
 
 .external-embed-inline-actions {
