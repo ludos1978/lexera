@@ -4,8 +4,8 @@
   "identifier": "com.lexera.backend",
   "build": {
     "frontendDist": "../src",
-    "beforeDevCommand": "node ../lexera-shared/scripts/sync-runtime-assets.mjs ../src",
-    "beforeBuildCommand": "node ../lexera-shared/scripts/sync-runtime-assets.mjs ../src"
+    "beforeDevCommand": "node ../lexera-shared/scripts/sync-runtime-assets.mjs src && node scripts/sync-frontend-view-assets.mjs",
+    "beforeBuildCommand": "node ../lexera-shared/scripts/sync-runtime-assets.mjs src && node scripts/sync-frontend-view-assets.mjs"
   },
   "bundle": {
     "icon": ["icons/icon.png"]

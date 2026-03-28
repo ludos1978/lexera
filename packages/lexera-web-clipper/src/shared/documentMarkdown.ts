@@ -6,7 +6,7 @@ import {
   isDownloadableWebClipperUrl,
   markdownFileLink,
   inferWebClipperAssetCategory,
-} from '../../../shared/src/webClipper';
+} from '@ludos/shared';
 
 type CaptureResult = {
   markdown: string;

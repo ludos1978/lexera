@@ -28,6 +28,10 @@ var LexeraCardContentRenderer = (function () {
     return helpers.renderInline(text, boardId, renderState);
   }
 
+  function isStandaloneHtmlTagLine(line) {
+    return /^\s*(?:<[^>]+>)+\s*$/.test(String(line || ''));
+  }
+
   function renderTable(lines, startIdx, boardId, renderState) {
     var headerLine = lines[startIdx].trim();
     var sepLine = lines[startIdx + 1].trim();
@@ -241,6 +245,25 @@ var LexeraCardContentRenderer = (function () {
       if (line.trim() === '') {
         closeList();
         html += '<br>';
+        continue;
+      }
+
+      // Keep contiguous raw HTML tag lines together so block HTML wrappers
+      // such as <div> ... <iframe> ... </div> survive as one DOM subtree.
+      if (isStandaloneHtmlTagLine(line)) {
+        closeList();
+        var rawHtmlLines = [line];
+        var rawHtmlIdx = i + 1;
+        while (rawHtmlIdx < lines.length) {
+          var candidateHtmlLine = lines[rawHtmlIdx];
+          if (candidateHtmlLine.trim() === '' || !isStandaloneHtmlTagLine(candidateHtmlLine)) break;
+          rawHtmlLines.push(candidateHtmlLine);
+          rawHtmlIdx++;
+        }
+        html += buildTagStyledLineHtml('div', renderInline(rawHtmlLines.join('\n'), boardId, renderState), lineStyleSource, {
+          className: 'md-raw-html-block'
+        });
+        i = rawHtmlIdx - 1;
         continue;
       }
 

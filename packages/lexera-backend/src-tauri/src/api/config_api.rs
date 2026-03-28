@@ -6,6 +6,7 @@ use axum::{
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use lexera_core::watcher::types::BoardChangeEvent;
 
@@ -22,7 +23,33 @@ pub struct SetThemeRequest {
 }
 
 /// Valid theme IDs (must match themes.js LEXERA_THEMES array).
-const VALID_THEMES: &[&str] = &["lexera", "mono", "warm", "nord"];
+const SHARED_THEMES_SOURCE: &str = include_str!("../../../../lexera-shared/themes.js");
+static VALID_THEME_IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
+
+fn extract_valid_theme_ids(source: &'static str) -> Vec<&'static str> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim_start();
+            let rest = trimmed.strip_prefix("id: '")?;
+            let end = rest.find('\'')?;
+            Some(&rest[..end])
+        })
+        .collect()
+}
+
+fn valid_theme_ids() -> &'static [&'static str] {
+    VALID_THEME_IDS
+        .get_or_init(|| {
+            let ids = extract_valid_theme_ids(SHARED_THEMES_SOURCE);
+            assert!(
+                !ids.is_empty(),
+                "Failed to extract theme IDs from lexera-shared/themes.js"
+            );
+            ids
+        })
+        .as_slice()
+}
 
 /// GET /config/theme — returns the current theme ID.
 pub async fn get_theme(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -41,11 +68,12 @@ pub async fn set_theme(
     State(state): State<AppState>,
     Json(body): Json<SetThemeRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    if !VALID_THEMES.contains(&body.theme.as_str()) {
+    let valid_themes = valid_theme_ids();
+    if !valid_themes.contains(&body.theme.as_str()) {
         return Err(err_bad_request(format!(
             "Invalid theme '{}'. Valid themes: {}",
             body.theme,
-            VALID_THEMES.join(", ")
+            valid_themes.join(", ")
         )));
     }
 
@@ -658,6 +686,81 @@ fn lock_error() -> (StatusCode, Json<ErrorResponse>) {
     err_internal("Failed to lock config")
 }
 
+// ── Dashboard Tags ─────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct DashboardTagsQuery {
+    pub workspace: Option<String>,
+}
+
+/// GET /config/dashboard-tags?workspace={id} — returns the resolved dashboard tag list.
+/// Resolution: workspace override > global config > default.
+pub async fn get_dashboard_tags(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<DashboardTagsQuery>,
+) -> Json<serde_json::Value> {
+    let default_tags: Vec<String> = vec![
+        "#important".into(),
+        "#blocked".into(),
+        "#review".into(),
+    ];
+    let cfg = state.config.lock().ok();
+    let tags = cfg
+        .as_ref()
+        .and_then(|cfg| {
+            // Try workspace-level override first
+            if let Some(ref ws_id) = query.workspace {
+                if let Some(ws) = cfg.workspaces.iter().find(|w| &w.id == ws_id) {
+                    if let Some(ref ws_tags) = ws.dashboard_tags {
+                        return Some(ws_tags.clone());
+                    }
+                }
+            }
+            // Fall back to global config
+            cfg.dashboard_tags.clone()
+        })
+        .unwrap_or(default_tags);
+    Json(serde_json::json!({ "tags": tags }))
+}
+
+#[derive(Deserialize)]
+pub struct SetDashboardTagsRequest {
+    pub tags: Vec<String>,
+    pub workspace: Option<String>,
+}
+
+/// PUT /config/dashboard-tags — update dashboard tag list (global or per-workspace).
+pub async fn set_dashboard_tags(
+    State(state): State<AppState>,
+    Json(body): Json<SetDashboardTagsRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let config_path = state.config_path.clone();
+    let tags: Vec<String> = body
+        .tags
+        .iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+
+    let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+
+    if let Some(ref ws_id) = body.workspace {
+        // Set per-workspace tags
+        let ws = cfg
+            .workspaces
+            .iter_mut()
+            .find(|w| &w.id == ws_id)
+            .ok_or_else(|| err_not_found(format!("Workspace not found: {}", ws_id)))?;
+        ws.dashboard_tags = if tags.is_empty() { None } else { Some(tags.clone()) };
+    } else {
+        // Set global tags
+        cfg.dashboard_tags = if tags.is_empty() { None } else { Some(tags.clone()) };
+    }
+
+    save_config(&config_path, &cfg).map_err(|e| err_internal(e.to_string()))?;
+    Ok(Json(serde_json::json!({ "tags": tags })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -772,5 +875,14 @@ mod tests {
         assert_eq!(board.calendar_sync, Some(false));
         assert_eq!(board.calendar_slug.as_deref(), Some("project"));
         assert_eq!(board.calendar_name.as_deref(), Some("Project Calendar"));
+    }
+
+    #[test]
+    fn shared_theme_source_drives_valid_theme_ids() {
+        let ids = valid_theme_ids();
+        assert!(ids.contains(&"lexera"));
+        assert!(ids.contains(&"mono"));
+        assert!(ids.contains(&"warm"));
+        assert!(ids.contains(&"nord"));
     }
 }

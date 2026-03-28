@@ -7,6 +7,7 @@ import { loadIIFE } from './load-iife.js';
 let Api; // LexeraApi
 const mockLexeraLog = vi.fn();
 const mockLexeraLogWithTarget = vi.fn();
+const mockDiscoverBackend = vi.fn();
 
 // Minimal EventSource mock
 class MockEventSource {
@@ -45,7 +46,12 @@ beforeAll(() => {
   mockFetch = vi.fn();
 
   Api = loadIIFE('api.js', 'LexeraApi', {
-    window: { __TAURI_INTERNALS__: undefined },
+    window: {
+      __TAURI_INTERNALS__: undefined,
+      LexeraBackendDiscovery: {
+        discoverBackend: mockDiscoverBackend,
+      },
+    },
     fetch: mockFetch,
     EventSource: MockEventSource,
     WebSocket: MockWebSocket,
@@ -69,6 +75,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDiscoverBackend.mockReset();
   // Pre-seed bearer token so ensureBearerToken() skips the /collab/me fetch
   // and doesn't consume mock responses intended for the actual request.
   if (Api._setTestToken) Api._setTestToken('test-bearer-token');
@@ -218,23 +225,17 @@ describe('discover', () => {
   });
 
   it('returns null when no backend responds', async () => {
-    mockFetch.mockRejectedValue(new Error('Connection refused'));
+    mockDiscoverBackend.mockResolvedValue(null);
     const result = await Api.discover();
     expect(result).toBe(null);
+    expect(mockDiscoverBackend).toHaveBeenCalledWith({
+      useTauri: true,
+      timeoutMs: 1200,
+    });
   });
 
-  it('finds a backend on a scanned port', async () => {
-    // All calls fail except for port 13080
-    mockFetch.mockImplementation((url) => {
-      if (url === 'http://localhost:13080/status') {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ status: 'running', port: 13080 }),
-        });
-      }
-      return Promise.reject(new Error('Connection refused'));
-    });
-
+  it('uses shared backend discovery to resolve the base URL', async () => {
+    mockDiscoverBackend.mockResolvedValue('http://localhost:13080');
     const result = await Api.discover();
     expect(result).toBe('http://localhost:13080');
   });
@@ -246,6 +247,36 @@ describe('discover', () => {
     expect(result).toBe('http://localhost:13080');
     // fetch should not have been called because baseUrl is cached
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('discover configuration errors', () => {
+  it('throws when the shared backend discovery runtime is missing', async () => {
+    const BrokenApi = loadIIFE('api.js', 'LexeraApi', {
+      window: { __TAURI_INTERNALS__: undefined },
+      fetch: mockFetch,
+      EventSource: MockEventSource,
+      WebSocket: MockWebSocket,
+      lexeraLog: mockLexeraLog,
+      lexeraLogWithTarget: mockLexeraLogWithTarget,
+      AbortSignal: globalThis.AbortSignal,
+      AbortController: globalThis.AbortController,
+      FormData: globalThis.FormData,
+      URLSearchParams: globalThis.URLSearchParams,
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+      Date: globalThis.Date,
+      JSON: globalThis.JSON,
+      Math: globalThis.Math,
+      Object: globalThis.Object,
+      String: globalThis.String,
+      Error: globalThis.Error,
+      console: globalThis.console,
+    });
+
+    await expect(BrokenApi.discover()).rejects.toThrow(
+      'LexeraBackendDiscovery.discoverBackend is required. Sync runtime assets from lexera-shared.'
+    );
   });
 });
 

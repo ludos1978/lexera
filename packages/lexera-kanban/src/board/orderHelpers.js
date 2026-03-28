@@ -1147,8 +1147,10 @@ var LexeraOrderHelpers = (function () {
   var dashboardState = null;
   var dashboardSearchDebounce = null;
   var dashboardRefreshTimer = null;
+  var dashboardBrokenRefreshTimer = null;
   var dashboardRefreshSeq = 0;
   var dashboardFileInventorySeq = 0;
+  var dashboardMirrorSyncQueued = false;
 
   function normalizeDashboardScope(scope) {
     return scope === 'all' ? 'all' : 'active';
@@ -1184,7 +1186,7 @@ var LexeraOrderHelpers = (function () {
     dashboardState.scope = normalizeDashboardScope(scope);
     if (_callDep('getElDashboardScopeSelect')) _callDep('getElDashboardScopeSelect').value = dashboardState.scope;
     persistDashboardPrefs();
-    syncMirroredDashboardViews();
+    scheduleMirroredDashboardSync();
   }
 
   function setDashboardQuery(query, options) {
@@ -1202,7 +1204,7 @@ var LexeraOrderHelpers = (function () {
     }
     persistDashboardPrefs();
     renderDashboardPinnedList();
-    syncMirroredDashboardViews();
+    scheduleMirroredDashboardSync();
   }
 
   function filterDashboardResultsByScope(results) {
@@ -1471,6 +1473,28 @@ var LexeraOrderHelpers = (function () {
     }
   }
 
+  function scheduleMirroredDashboardSync() {
+    if (dashboardMirrorSyncQueued) return;
+    dashboardMirrorSyncQueued = true;
+    var flush = function () {
+      dashboardMirrorSyncQueued = false;
+      syncMirroredDashboardViews();
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(flush);
+      return;
+    }
+    setTimeout(flush, 0);
+  }
+
+  function scheduleDashboardBrokenRefresh(delayMs) {
+    clearTimeout(dashboardBrokenRefreshTimer);
+    dashboardBrokenRefreshTimer = setTimeout(function () {
+      dashboardBrokenRefreshTimer = null;
+      renderDashboardBrokenList();
+    }, typeof delayMs === 'number' ? delayMs : 300);
+  }
+
   function formatDashboardDate(d) {
     var y = d.getFullYear();
     var m = String(d.getMonth() + 1).padStart(2, '0');
@@ -1486,7 +1510,10 @@ var LexeraOrderHelpers = (function () {
   }
 
   // ── Dashboard tagged items config ──────────────────────────────────
+  var _cachedDashboardTags = null;
+
   function getDashboardTags() {
+    if (_cachedDashboardTags && Array.isArray(_cachedDashboardTags)) return _cachedDashboardTags;
     try {
       var stored = localStorage.getItem('lexera-dashboard-tags');
       if (stored) {
@@ -1498,7 +1525,30 @@ var LexeraOrderHelpers = (function () {
   }
 
   function setDashboardTags(tags) {
+    _cachedDashboardTags = tags;
     try { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(tags)); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
+    var LexeraApi = _dep('LexeraApi');
+    var workspaceId = _dep('activeWorkspaceId') || null;
+    if (LexeraApi && typeof LexeraApi.request === 'function') {
+      LexeraApi.request('/config/dashboard-tags', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags: tags, workspace: workspaceId })
+      }).catch(function () { /* best effort */ });
+    }
+  }
+
+  function refreshDashboardTagsFromBackend() {
+    var LexeraApi = _dep('LexeraApi');
+    if (!LexeraApi || typeof LexeraApi.request !== 'function') return;
+    var workspaceId = _dep('activeWorkspaceId') || '';
+    var url = '/config/dashboard-tags' + (workspaceId ? '?workspace=' + encodeURIComponent(workspaceId) : '');
+    LexeraApi.request(url).then(function (data) {
+      if (data && Array.isArray(data.tags)) {
+        _cachedDashboardTags = data.tags;
+        try { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(data.tags)); } catch (_) { /* intentional */ }
+      }
+    }).catch(function () { /* use cached/localStorage fallback */ });
   }
 
   // ── Dashboard calendar view ───────────────────────────────────────
@@ -1896,7 +1946,7 @@ var LexeraOrderHelpers = (function () {
       renderDashboardFileEmbedsList();
       renderDashboardIncludedFilesList();
       renderDashboardBrokenList();
-      syncMirroredDashboardViews();
+      scheduleMirroredDashboardSync();
       return Promise.resolve();
     }
 
@@ -1936,7 +1986,7 @@ var LexeraOrderHelpers = (function () {
       renderDashboardFileEmbedsList();
       renderDashboardIncludedFilesList();
       renderDashboardBrokenList();
-      syncMirroredDashboardViews();
+      scheduleMirroredDashboardSync();
     }).catch(function (err) {
       if (seq !== dashboardFileInventorySeq) return;
       _callDep('logFrontendIssue', 'warn', 'dashboard.files', 'Failed to refresh dashboard file inventory', err);
@@ -1947,7 +1997,7 @@ var LexeraOrderHelpers = (function () {
       renderDashboardFileEmbedsList();
       renderDashboardIncludedFilesList();
       renderDashboardBrokenList();
-      syncMirroredDashboardViews();
+      scheduleMirroredDashboardSync();
     });
   }
 
@@ -2033,7 +2083,7 @@ var LexeraOrderHelpers = (function () {
       dashboardState && dashboardState.fileEmbeds ? dashboardState.fileEmbeds : [],
       'No file embeds'
     );
-    syncMirroredDashboardViews();
+    scheduleMirroredDashboardSync();
   }
 
   function renderDashboardIncludedFilesList() {
@@ -2042,7 +2092,7 @@ var LexeraOrderHelpers = (function () {
       dashboardState && dashboardState.includedFiles ? dashboardState.includedFiles : [],
       'No included files'
     );
-    syncMirroredDashboardViews();
+    scheduleMirroredDashboardSync();
   }
 
   function renderDashboardBrokenList() {
@@ -2056,7 +2106,7 @@ var LexeraOrderHelpers = (function () {
     setDashboardGroupEmptyState(el, items.length === 0);
     if (items.length === 0) {
       el.innerHTML = '<div class="dashboard-empty">No broken elements</div>';
-      syncMirroredDashboardViews();
+      scheduleMirroredDashboardSync();
       return;
     }
     var html = '';
@@ -2072,7 +2122,7 @@ var LexeraOrderHelpers = (function () {
       html += '</div>';
     }
     el.innerHTML = html;
-    syncMirroredDashboardViews();
+    scheduleMirroredDashboardSync();
   }
 
   function renderDashboardPinnedList() {
@@ -2084,7 +2134,7 @@ var LexeraOrderHelpers = (function () {
       empty.className = 'dashboard-empty';
       empty.textContent = 'No pinned searches';
       _callDep('getElDashboardPinnedList').appendChild(empty);
-      syncMirroredDashboardViews();
+      scheduleMirroredDashboardSync();
       return;
     }
     setDashboardGroupEmptyState(_callDep('getElDashboardPinnedList'), false);
@@ -2132,7 +2182,7 @@ var LexeraOrderHelpers = (function () {
         _callDep('getElDashboardPinnedList').appendChild(item);
       })(dashboardState.pinnedQueries[i]);
     }
-    syncMirroredDashboardViews();
+    scheduleMirroredDashboardSync();
   }
 
   function setDashboardGroupEmptyState(targetEl, isEmpty) {
@@ -2253,9 +2303,8 @@ var LexeraOrderHelpers = (function () {
     renderDashboardIncludedFilesList();
     renderDashboardBrokenList();
     refreshDashboardFileInventory();
-    // Broken elements — scan after a delay to let embeds/images fail to load
-    setTimeout(renderDashboardBrokenList, 2000);
-    syncMirroredDashboardViews();
+    scheduleDashboardBrokenRefresh(300);
+    scheduleMirroredDashboardSync();
   }
 
   function ensureDashboardState() {
@@ -2303,6 +2352,9 @@ var LexeraOrderHelpers = (function () {
     var refreshId = ++dashboardRefreshSeq;
     if (dashboardState) dashboardState.loading = true;
     if (!options.deferRender) renderDashboard();
+
+    // Refresh tag config from backend (best-effort, uses cache on failure)
+    refreshDashboardTagsFromBackend();
 
     var LexeraApi = _dep('LexeraApi');
     var query = dashboardState && dashboardState.query ? dashboardState.query.trim() : '';

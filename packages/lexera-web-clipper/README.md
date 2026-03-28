@@ -11,15 +11,16 @@ Cross-browser WebExtension scaffold for clipping links, selections, articles, pa
   - submits cards through the existing `/boards/{board_id}/columns/{col_index}/cards` API
   - archives referenced page media into `/boards/{board_id}/media` and rewrites captured markdown to local board paths
 - `popup.ts`
-  - lets the user choose the board target, clip mode, and content source
+  - keeps the primary popup focused on target selection, clip mode, content source, and preview
+  - moves backend configuration and target persistence into a dedicated settings view
   - previews reader, website, and feed-backed capture sources before save
 - `content.ts`
   - collects the current page title, selection, reader-cleaned content, website content, feed candidates, excerpt, lead image, and structured markdown for article/page/selection capture
   - prefers a portable reader-style extraction over the noisier website DOM by default
 - `src/shared/`
   - code shared between popup and background
-- `../../shared/src/webClipper.ts`
-  - browser-agnostic clip types and markdown formatting helpers
+- `@ludos/shared`
+  - browser-agnostic clip types, backend discovery helpers, and markdown formatting helpers
 
 ## Recommended System
 
@@ -50,6 +51,13 @@ If you want deeper authenticated capture later, keep the browser extension as th
 
 The extension requests `<all_urls>` host access so it can archive referenced page assets and upload them into the target board's media folder. Local backend access still goes through `http://127.0.0.1/*` and `http://localhost/*`.
 
+## Popup Settings
+
+- The popup's primary view is intentionally trimmed down to capture state only.
+- Use `Settings` to configure the backend URL and whether the clipper should remember the last target.
+- Leaving the backend URL empty enables automatic local discovery. The scan starts with `http://127.0.0.1:13080`.
+- The primary screen uses the resolved live backend connection. Saving settings does not let normal popup activity rewrite the configured backend URL.
+
 Example:
 
 ```bash
@@ -60,4 +68,10 @@ xcrun safari-web-extension-converter dist/chrome
 
 ```bash
 npm run build
+```
+
+## Test
+
+```bash
+npm test
 ```

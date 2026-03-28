@@ -76,6 +76,16 @@ export interface WebClipperBuildOptions {
   includeMetadata?: boolean;
 }
 
+type WebClipperFetchResponse = {
+  ok: boolean;
+  json(): Promise<any>;
+};
+
+type WebClipperFetch = (
+  input: string,
+  init?: { signal?: AbortSignal | null },
+) => Promise<WebClipperFetchResponse>;
+
 function normalizeWhitespace(value: string): string {
   return value.replace(/\r\n/g, '\n').replace(/\u00a0/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -95,6 +105,100 @@ function firstNonEmpty(values: Array<string | undefined | null>): string {
     }
   }
   return '';
+}
+
+function defaultWebClipperFetch(): WebClipperFetch {
+  if (typeof fetch !== 'function') {
+    throw new Error('Global fetch is unavailable');
+  }
+  return fetch as unknown as WebClipperFetch;
+}
+
+export function normalizeLexeraBackendBaseUrl(value: string | undefined | null): string {
+  return (value || '').trim().replace(/\/+$/, '');
+}
+
+export function resolveLexeraBackendStatusBaseUrl(
+  candidateBaseUrl: string,
+  statusPayload: any,
+): string {
+  const normalized = normalizeLexeraBackendBaseUrl(candidateBaseUrl);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    if (statusPayload && typeof statusPayload.port === 'number') {
+      parsed.port = String(statusPayload.port);
+    }
+    return normalizeLexeraBackendBaseUrl(parsed.toString());
+  } catch (_error) {
+    return normalized;
+  }
+}
+
+export function buildLexeraBackendCandidates(preferredBaseUrl?: string | null): string[] {
+  const candidates: string[] = [];
+  const pushCandidate = (candidate: string | undefined | null): void => {
+    const normalized = normalizeLexeraBackendBaseUrl(candidate);
+    if (!normalized || candidates.includes(normalized)) return;
+    candidates.push(normalized);
+  };
+
+  pushCandidate(preferredBaseUrl);
+  for (const port of LEXERA_BACKEND_PORT_CANDIDATES) {
+    pushCandidate(`http://127.0.0.1:${port}`);
+    pushCandidate(`http://localhost:${port}`);
+  }
+  return candidates;
+}
+
+export async function probeLexeraBackend(
+  baseUrl: string,
+  options?: {
+    fetchImpl?: WebClipperFetch;
+    timeoutMs?: number;
+  },
+): Promise<{ baseUrl: string; status: any } | null> {
+  const fetchImpl = options?.fetchImpl || defaultWebClipperFetch();
+  const timeoutMs = typeof options?.timeoutMs === 'number' ? options.timeoutMs : 1200;
+  const normalizedBaseUrl = normalizeLexeraBackendBaseUrl(baseUrl);
+  if (!normalizedBaseUrl) return null;
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller && timeoutMs > 0
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+
+  try {
+    const response = await fetchImpl(`${normalizedBaseUrl}/status`, {
+      signal: controller ? controller.signal : null,
+    });
+    if (!response.ok) return null;
+    const status = await response.json();
+    if (status?.status !== 'running') return null;
+    return {
+      baseUrl: resolveLexeraBackendStatusBaseUrl(normalizedBaseUrl, status),
+      status,
+    };
+  } catch (_error) {
+    return null;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+export async function discoverLexeraBackend(
+  preferredBaseUrl?: string | null,
+  options?: {
+    fetchImpl?: WebClipperFetch;
+    timeoutMs?: number;
+  },
+): Promise<string | null> {
+  const candidates = buildLexeraBackendCandidates(preferredBaseUrl);
+  for (const candidate of candidates) {
+    const probe = await probeLexeraBackend(candidate, options);
+    if (probe) return probe.baseUrl;
+  }
+  return null;
 }
 
 export function normalizeClipperMode(value: string | undefined | null): WebClipperMode {

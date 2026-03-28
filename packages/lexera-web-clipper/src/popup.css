@@ -32,6 +32,16 @@ body {
   color: #55606d;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.view + .view {
+  margin-top: 12px;
+}
+
 .panel {
   background: rgba(255, 255, 255, 0.84);
   border: 1px solid rgba(34, 53, 71, 0.1);
@@ -75,6 +85,14 @@ body {
   flex-shrink: 0;
 }
 
+.field-note {
+  display: block;
+  margin-top: 6px;
+  color: #55606d;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 input,
 select,
 button {
@@ -113,6 +131,25 @@ button {
   width: auto;
   background: transparent;
   padding: 8px 10px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.panel-subtitle {
+  margin: 4px 0 0;
+  color: #55606d;
+  font-size: 12px;
 }
 
 .search-section {
@@ -267,6 +304,79 @@ button {
 
 .checkbox-row input {
   margin: 0;
+}
+
+.settings-summary {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(239, 244, 247, 0.9);
+  border: 1px solid rgba(34, 53, 71, 0.08);
+}
+
+.settings-summary-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #55606d;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-summary-value {
+  margin: 0;
+  color: #1b2430;
+  word-break: break-word;
+}
+
+.settings-connection-error {
+  margin: 0 0 12px;
+  padding: 10px;
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: rgba(164, 60, 45, 0.08);
+  border-radius: 10px;
+  border: 1px solid rgba(164, 60, 45, 0.18);
+  color: #7a2e22;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.settings-actions > button {
+  width: auto;
+  flex: 1 1 0;
+}
+
+.settings-test-status {
+  min-height: 18px;
+  margin: 0 0 8px;
+  color: #38586f;
+}
+
+.settings-test-status.is-success {
+  color: #2d6a4f;
+}
+
+.settings-test-status.is-error {
+  color: #a43c2d;
+}
+
+.settings-test-response {
+  margin: 0;
+  padding: 10px;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: rgba(239, 244, 247, 0.9);
+  border-radius: 10px;
+  border: 1px solid rgba(34, 53, 71, 0.08);
+  color: #1b2430;
 }
 
 .preview-panel h2 {

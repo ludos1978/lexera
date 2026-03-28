@@ -204,6 +204,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             "/config/render-apps",
             get(config_api::get_render_apps).put(config_api::set_render_apps),
         )
+        .route(
+            "/config/dashboard-tags",
+            get(config_api::get_dashboard_tags).put(config_api::set_dashboard_tags),
+        )
         .route("/capture/history", get(capture_api::list_capture_history))
         .route(
             "/capture/history/{id}",

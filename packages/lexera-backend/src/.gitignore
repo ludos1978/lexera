@@ -2,3 +2,9 @@
 management.js
 management.css
 themes.js
+
+# Copied from lexera-kanban by beforeDevCommand/beforeBuildCommand
+loggingSystem.js
+sharedPanels.js
+workspaceShell.js
+workspaceShell.css

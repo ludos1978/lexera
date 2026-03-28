@@ -12,9 +12,37 @@
   function canUseTauriInvoke() {
     return !!(
       root &&
+      (
+        (
+          root.__TAURI_INTERNALS__ &&
+          typeof root.__TAURI_INTERNALS__.invoke === 'function'
+        ) ||
+        (
+          root.__TAURI__ &&
+          root.__TAURI__.core &&
+          typeof root.__TAURI__.core.invoke === 'function'
+        )
+      )
+    );
+  }
+
+  function invokeTauri(command, args) {
+    if (
+      root &&
       root.__TAURI_INTERNALS__ &&
       typeof root.__TAURI_INTERNALS__.invoke === 'function'
-    );
+    ) {
+      return root.__TAURI_INTERNALS__.invoke(command, args || {});
+    }
+    if (
+      root &&
+      root.__TAURI__ &&
+      root.__TAURI__.core &&
+      typeof root.__TAURI__.core.invoke === 'function'
+    ) {
+      return root.__TAURI__.core.invoke(command, args || {});
+    }
+    return Promise.reject(new Error('Tauri invoke unavailable: ' + command));
   }
 
   function fetchWithTimeout(url, options, timeoutMs) {
@@ -121,7 +149,7 @@
 
     if (options.useTauri !== false && canUseTauriInvoke()) {
       try {
-        var tauriUrl = await root.__TAURI_INTERNALS__.invoke('get_backend_url');
+        var tauriUrl = await invokeTauri('get_backend_url');
         var tauriResult = await probeBackendCandidate(tauriUrl, timeoutMs);
         if (tauriResult) return tauriResult.baseUrl;
       } catch (e) {
@@ -143,6 +171,7 @@
   return {
     DEFAULT_PORT_CANDIDATES: DEFAULT_PORT_CANDIDATES,
     canUseTauriInvoke: canUseTauriInvoke,
+    invokeTauri: invokeTauri,
     fetchWithTimeout: fetchWithTimeout,
     normalizeBackendUrl: normalizeBackendUrl,
     buildBackendUrlVariants: buildBackendUrlVariants,

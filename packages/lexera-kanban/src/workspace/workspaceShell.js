@@ -3737,6 +3737,20 @@
     return true;
   }
 
+  function getActiveBoardColumnsContainer() {
+    var activeTab = getActiveTab();
+    if (!activeTab || isPanelTab(activeTab)) return null;
+    var frame = state.frameCache[activeTab.id] || getOrCreateFrame(activeTab);
+    if (!frame) return null;
+    try {
+      var doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document) || null;
+      if (!doc || typeof doc.getElementById !== 'function') return null;
+      return doc.getElementById('columns-container');
+    } catch (err) {
+      return null;
+    }
+  }
+
   function handleToolbarAction(action, value, extra) {
     if (!action) return false;
     if (action === 'select-panel') {
@@ -4072,6 +4086,7 @@
     revealPanel: revealPanel,
     collapsePanel: collapsePanel,
     restoreDock: restoreDock,
-    collapseDock: collapseDock
+    collapseDock: collapseDock,
+    getActiveBoardColumnsContainer: getActiveBoardColumnsContainer
   };
 })();

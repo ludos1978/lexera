@@ -80,17 +80,6 @@
           '<div class="dashboard-group-header">Results</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-results"></div>' +
         '</div>' +
-        '<div class="dashboard-group dashboard-calendar-group">' +
-          '<div class="dashboard-group-header">Calendar' +
-            '<span class="dashboard-calendar-tabs">' +
-              '<button class="dashboard-calendar-tab active" data-cal-view="week" type="button">Week</button>' +
-              '<button class="dashboard-calendar-tab" data-cal-view="month" type="button">Month</button>' +
-            '</span>' +
-          '</div>' +
-          '<div class="dashboard-calendar lexera-shared-dashboard-calendar-week"></div>' +
-          '<div class="dashboard-calendar lexera-shared-dashboard-calendar-month" style="display:none"></div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-calendar-tasks"></div>' +
-        '</div>' +
         '<div class="dashboard-group">' +
           '<div class="dashboard-group-header">Overdue</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-overdue"></div>' +
@@ -108,8 +97,16 @@
           '<div class="dashboard-list lexera-shared-dashboard-tagged"></div>' +
         '</div>' +
         '<div class="dashboard-group">' +
+          '<div class="dashboard-group-header">File Embeds</div>' +
+          '<div class="dashboard-list lexera-shared-dashboard-embeds"></div>' +
+        '</div>' +
+        '<div class="dashboard-group">' +
           '<div class="dashboard-group-header">Broken Elements</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-broken"></div>' +
+        '</div>' +
+        '<div class="dashboard-group">' +
+          '<div class="dashboard-group-header">Included Files</div>' +
+          '<div class="dashboard-list lexera-shared-dashboard-included"></div>' +
         '</div>' +
       '</div>';
     return root;

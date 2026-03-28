@@ -8,7 +8,7 @@ import {
   getPreferredWebClipperContext,
   normalizeClipperMode,
   trimPreview,
-} from '../../shared/src/webClipper';
+} from '@ludos/shared';
 import { sendRuntimeMessage } from './shared/browser';
 import { fetchFeedContext } from './shared/feed';
 import { MESSAGE_TYPES } from './shared/messages';
@@ -25,7 +25,17 @@ const BADGE_LABELS = {
 } as const;
 
 const elements = {
+  primaryView: document.getElementById('primary-view') as HTMLElement,
+  settingsView: document.getElementById('settings-view') as HTMLElement,
   backendStatus: document.getElementById('backend-status') as HTMLParagraphElement,
+  settingsConnection: document.getElementById('settings-connection') as HTMLParagraphElement,
+  settingsButton: document.getElementById('settings-button') as HTMLButtonElement,
+  settingsBackButton: document.getElementById('settings-back-button') as HTMLButtonElement,
+  settingsTestButton: document.getElementById('settings-test-button') as HTMLButtonElement,
+  settingsSaveButton: document.getElementById('settings-save-button') as HTMLButtonElement,
+  settingsTestStatus: document.getElementById('settings-test-status') as HTMLParagraphElement,
+  settingsTestResponse: document.getElementById('settings-test-response') as HTMLPreElement,
+  settingsConnectionError: document.getElementById('settings-connection-error') as HTMLPreElement,
   backendUrlInput: document.getElementById('backend-url-input') as HTMLInputElement,
   searchInput: document.getElementById('search-input') as HTMLInputElement,
   browseArea: document.getElementById('browse-area') as HTMLDivElement,
@@ -105,17 +115,43 @@ let collectedPreviewContext: WebClipperCollectedPageContext | undefined;
 let sourceOptions: PopupSourceOption[] = [];
 let selectedSourceId = '';
 let sourceLoadVersion = 0;
+let configuredBackendUrl = '';
+let resolvedBackendUrl = '';
+let lastBackendError = '';
+let rememberTargetPreference = true;
+let activeView: 'primary' | 'settings' = 'primary';
 
-function currentBackendUrl(): string {
+function currentSettingsBackendUrl(): string {
   return elements.backendUrlInput.value.trim();
 }
 
-async function apiGet(path: string): Promise<any> {
-  const response = await fetch(`${currentBackendUrl().replace(/\/+$/, '')}${path}`);
-  if (!response.ok) {
-    throw new Error(`${response.status}`);
+async function loadBoardTargetPayload(boardId: string): Promise<{ columns: any[]; fullBoard: any }> {
+  const response = await sendRuntimeMessage({
+    type: MESSAGE_TYPES.popupLoadColumns,
+    boardId,
+  });
+  if (!response?.ok) {
+    const errorMessage = typeof response?.error === 'string' ? response.error : 'Failed to load board data';
+    recordBackendFailure(errorMessage);
+    throw new Error(errorMessage);
   }
-  return response.json();
+  return {
+    columns: Array.isArray(response?.columns) ? response.columns : [],
+    fullBoard: response?.fullBoard || null,
+  };
+}
+
+async function searchBackendCards(query: string): Promise<any[]> {
+  const response = await sendRuntimeMessage({
+    type: MESSAGE_TYPES.popupSearch,
+    query,
+  });
+  if (!response?.ok) {
+    const errorMessage = typeof response?.error === 'string' ? response.error : 'Failed to search Lexera';
+    recordBackendFailure(errorMessage);
+    throw new Error(errorMessage);
+  }
+  return Array.isArray(response?.results) ? response.results : [];
 }
 
 function setStatus(message: string): void {
@@ -126,12 +162,165 @@ function setBackendStatus(message: string): void {
   elements.backendStatus.textContent = message;
 }
 
+function reportUiError(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  if (looksLikeBackendError(message)) {
+    recordBackendFailure(message);
+  }
+  setStatus(message);
+}
+
+function renderSettingsConnectionError(): void {
+  const errorMessage = lastBackendError.trim();
+  elements.settingsConnectionError.textContent = errorMessage;
+  elements.settingsConnectionError.hidden = !errorMessage;
+}
+
+function isAuthorizationError(message: string): boolean {
+  return /(unauthorized|invalid token|authorization|auth token|forbidden)/i.test(message);
+}
+
+function looksLikeBackendError(message: string): boolean {
+  return /(unauthorized|invalid token|authorization|auth token|forbidden|not reachable|failed to fetch|network|timed out|econnrefused|backend|http \d{3}|failed to load board data|failed to search lexera|failed to add card|failed to upload media|capture failed)/i.test(message);
+}
+
+function summarizeBackendStatus(errorMessage = ''): string {
+  const trimmed = errorMessage.trim();
+  if (!trimmed) {
+    return 'Connected and authorized';
+  }
+  if (isAuthorizationError(trimmed)) {
+    return 'Backend auth failed';
+  }
+  if (/not reachable|failed to fetch|network|timed out|load failed|econnrefused/i.test(trimmed)) {
+    return 'Backend unavailable';
+  }
+  return 'Backend error';
+}
+
+function clearBackendFailure(): void {
+  lastBackendError = '';
+  renderSettingsConnection();
+  setBackendStatus(summarizeBackendStatus());
+}
+
+function recordBackendFailure(errorMessage: string): void {
+  lastBackendError = errorMessage.trim();
+  renderSettingsConnection();
+  setBackendStatus(summarizeBackendStatus(lastBackendError));
+}
+
+function describeConnectionTarget(): string {
+  return resolvedBackendUrl || configuredBackendUrl || '';
+}
+
+function clearSettingsTestFeedback(): void {
+  elements.settingsTestStatus.textContent = '';
+  elements.settingsTestStatus.classList.remove('is-success', 'is-error');
+  elements.settingsTestResponse.hidden = true;
+  elements.settingsTestResponse.textContent = '';
+}
+
+function setSettingsTestFeedback(
+  message: string,
+  tone: 'success' | 'error' | 'neutral' = 'neutral',
+  details = '',
+): void {
+  elements.settingsTestStatus.textContent = message;
+  elements.settingsTestStatus.classList.remove('is-success', 'is-error');
+  if (tone === 'success') {
+    elements.settingsTestStatus.classList.add('is-success');
+  } else if (tone === 'error') {
+    elements.settingsTestStatus.classList.add('is-error');
+  }
+  elements.settingsTestResponse.textContent = details;
+  elements.settingsTestResponse.hidden = !details;
+}
+
+function syncSettingsFields(): void {
+  elements.backendUrlInput.value = configuredBackendUrl;
+  elements.rememberTarget.checked = rememberTargetPreference;
+}
+
+function renderSettingsConnection(): void {
+  if (lastBackendError) {
+    const connectionTarget = describeConnectionTarget();
+    if (configuredBackendUrl) {
+      if (isAuthorizationError(lastBackendError)) {
+        elements.settingsConnection.textContent = connectionTarget
+          ? `Backend at ${connectionTarget} reached, but authorization failed`
+          : 'Saved URL reached the backend, but authorization failed';
+      } else {
+        elements.settingsConnection.textContent = connectionTarget
+          ? `Backend at ${connectionTarget} reported an error`
+          : 'Saved URL is not reachable right now';
+      }
+      renderSettingsConnectionError();
+      return;
+    }
+    if (connectionTarget) {
+      elements.settingsConnection.textContent = isAuthorizationError(lastBackendError)
+        ? `Backend at ${connectionTarget} reached, but authorization failed`
+        : `Backend at ${connectionTarget} reported an error`;
+    } else {
+      elements.settingsConnection.textContent = isAuthorizationError(lastBackendError)
+        ? 'Auto-discovery reached a backend, but authorization failed'
+        : 'Auto-discovery is not connected';
+    }
+    renderSettingsConnectionError();
+    return;
+  }
+  if (resolvedBackendUrl) {
+    elements.settingsConnection.textContent = `Authorized at ${resolvedBackendUrl}`;
+    renderSettingsConnectionError();
+    return;
+  }
+  if (configuredBackendUrl) {
+    elements.settingsConnection.textContent = 'Saved URL is not reachable right now';
+    renderSettingsConnectionError();
+    return;
+  }
+  elements.settingsConnection.textContent = 'Auto-discovery is not connected';
+  renderSettingsConnectionError();
+}
+
+function setConfiguredSettings(backendUrl: string, rememberTarget: boolean): void {
+  configuredBackendUrl = backendUrl.trim();
+  rememberTargetPreference = rememberTarget;
+  syncSettingsFields();
+  renderSettingsConnection();
+}
+
+function setResolvedBackendConnection(backendUrl: string): void {
+  resolvedBackendUrl = backendUrl.trim();
+  renderSettingsConnection();
+}
+
+function setActiveView(view: 'primary' | 'settings'): void {
+  activeView = view;
+  const showingSettings = view === 'settings';
+  elements.primaryView.hidden = showingSettings;
+  elements.settingsView.hidden = !showingSettings;
+}
+
 function setControlsEnabled(enabled: boolean): void {
   elements.searchInput.disabled = !enabled;
   elements.modeSelect.disabled = !enabled;
   elements.sourceSelect.disabled = !enabled || sourceOptions.length <= 1;
-  elements.rememberTarget.disabled = !enabled;
   elements.captureButton.disabled = !enabled;
+}
+
+function openSettingsView(): void {
+  syncSettingsFields();
+  setActiveView('settings');
+  renderSettingsConnection();
+  elements.backendUrlInput.focus();
+  elements.backendUrlInput.select();
+}
+
+function closeSettingsView(): void {
+  syncSettingsFields();
+  setActiveView('primary');
 }
 
 function selectedSourceOption(): PopupSourceOption | null {
@@ -457,7 +646,7 @@ async function loadChildren(node: PopupNode): Promise<PopupNode[]> {
   }
 
   if (node.type === 'board' && node.boardId) {
-    const payload = await apiGet(`/boards/${encodeURIComponent(node.boardId)}/columns`);
+    const payload = await loadBoardTargetPayload(node.boardId);
     const fullBoard = payload?.fullBoard;
     if (Array.isArray(fullBoard?.rows) && fullBoard.rows.length > 0) {
       return fullBoard.rows.map((row: any) => ({
@@ -497,7 +686,7 @@ async function loadChildren(node: PopupNode): Promise<PopupNode[]> {
     const columns = Array.isArray(node.data?.columns) ? node.data.columns : [];
     let flatColumns: PopupColumn[] = [];
     try {
-      const payload = await apiGet(`/boards/${encodeURIComponent(node.boardId || '')}/columns`);
+      const payload = await loadBoardTargetPayload(node.boardId || '');
       flatColumns = Array.isArray(payload?.columns) ? payload.columns : [];
     } catch (_error) {
       flatColumns = [];
@@ -523,7 +712,7 @@ async function loadChildren(node: PopupNode): Promise<PopupNode[]> {
     let cards = Array.isArray(node.data?.cards) ? node.data.cards : [];
     if (cards.length === 0) {
       try {
-        const payload = await apiGet(`/boards/${encodeURIComponent(node.boardId)}/columns`);
+        const payload = await loadBoardTargetPayload(node.boardId);
         const columns = Array.isArray(payload?.columns) ? payload.columns : [];
         const column = columns.find((entry: any) => entry.index === node.colIndex);
         if (column) cards = Array.isArray(column.cards) ? column.cards : [];
@@ -627,9 +816,9 @@ function renderLevel(): void {
     item.addEventListener('dblclick', () => {
       if (node.type === 'card') return;
       if (isSearchMode) {
-        void drillFromSearch(node);
+        void drillFromSearch(node).catch(reportUiError);
       } else {
-        void drillInto(node);
+        void drillInto(node).catch(reportUiError);
       }
     });
 
@@ -698,7 +887,7 @@ function onSearchInput(): void {
     clearTimeout(searchDebounceTimer);
   }
   searchDebounceTimer = window.setTimeout(() => {
-    void performSearch(query);
+    void performSearch(query).catch(reportUiError);
   }, 250);
 }
 
@@ -758,8 +947,7 @@ async function performSearch(query: string): Promise<void> {
   }
 
   try {
-    const payload = await apiGet(`/search?q=${encodeURIComponent(query)}`);
-    const remoteResults = Array.isArray(payload?.results) ? payload.results : [];
+    const remoteResults = await searchBackendCards(query);
     for (const result of remoteResults) {
       const board = boardsById[result.boardId] || null;
       const workspaceContext = board ? getWorkspaceLabelsForBoard(board).join(', ') : '';
@@ -844,7 +1032,7 @@ async function resolveCaptureTargetForNode(selectedTarget: PopupNode): Promise<W
     const stacks = Array.isArray(selectedTarget.data?.stacks) ? selectedTarget.data.stacks : [];
     if (stacks.length > 0 && Array.isArray(stacks[0].columns) && stacks[0].columns.length > 0) {
       try {
-        const payload = await apiGet(`/boards/${encodeURIComponent(selectedTarget.boardId)}/columns`);
+        const payload = await loadBoardTargetPayload(selectedTarget.boardId);
         const flatColumns = Array.isArray(payload?.columns) ? payload.columns : [];
         const firstColumnTitle = stacks[0].columns[0].title;
         const match = flatColumns.find((column: any) => column.title === firstColumnTitle);
@@ -857,7 +1045,7 @@ async function resolveCaptureTargetForNode(selectedTarget: PopupNode): Promise<W
     const columns = Array.isArray(selectedTarget.data?.columns) ? selectedTarget.data.columns : [];
     if (columns.length > 0) {
       try {
-        const payload = await apiGet(`/boards/${encodeURIComponent(selectedTarget.boardId)}/columns`);
+        const payload = await loadBoardTargetPayload(selectedTarget.boardId);
         const flatColumns = Array.isArray(payload?.columns) ? payload.columns : [];
         const match = flatColumns.find((column: any) => column.title === columns[0].title);
         if (match && typeof match.index === 'number') colIndex = match.index;
@@ -891,16 +1079,18 @@ function renderPreview(context: WebClipperContext | undefined): void {
 async function refreshPopup(): Promise<void> {
   setStatus('');
   setBackendStatus('Connecting to backend…');
+  setResolvedBackendConnection('');
+  clearBackendFailure();
 
   const response = await sendRuntimeMessage({
     type: MESSAGE_TYPES.popupLoad,
-    backendUrl: currentBackendUrl(),
   });
-  if (typeof response?.backendUrl === 'string') {
-    elements.backendUrlInput.value = response.backendUrl;
-  }
+  setConfiguredSettings(
+    typeof response?.configuredBackendUrl === 'string' ? response.configuredBackendUrl : '',
+    response?.rememberTarget !== false,
+  );
   if (!response?.ok) {
-    setBackendStatus('Backend unavailable');
+    recordBackendFailure(typeof response?.error === 'string' ? response.error : 'Failed to initialize popup');
     boards = [];
     workspaces = [];
     defaultWorkspaceId = '';
@@ -914,6 +1104,9 @@ async function refreshPopup(): Promise<void> {
     throw new Error(response?.error || 'Failed to initialize popup');
   }
 
+  setResolvedBackendConnection(
+    typeof response?.resolvedBackendUrl === 'string' ? response.resolvedBackendUrl : '',
+  );
   boards = Array.isArray(response.boards) ? response.boards : [];
   workspaces = Array.isArray(response.workspaces) ? response.workspaces : [];
   defaultWorkspaceId = typeof response.defaultWorkspace === 'string' ? response.defaultWorkspace : '';
@@ -927,7 +1120,61 @@ async function refreshPopup(): Promise<void> {
     })
     .catch(() => undefined);
   setControlsEnabled(true);
-  setBackendStatus(`Connected to ${response.backendUrl}`);
+  clearBackendFailure();
+}
+
+async function saveSettings(): Promise<void> {
+  const backendUrl = currentSettingsBackendUrl();
+  const rememberTarget = elements.rememberTarget.checked;
+
+  const response = await sendRuntimeMessage({
+    type: MESSAGE_TYPES.popupSaveSettings,
+    backendUrl,
+    rememberTarget,
+  });
+  if (!response?.ok) {
+    throw new Error(response?.error || 'Failed to save settings');
+  }
+
+  setConfiguredSettings(
+    typeof response?.configuredBackendUrl === 'string' ? response.configuredBackendUrl : backendUrl,
+    response?.rememberTarget !== false,
+  );
+  await refreshPopup();
+  setStatus('Settings saved');
+  setActiveView('primary');
+}
+
+async function testConnectionNow(): Promise<void> {
+  const backendUrl = currentSettingsBackendUrl();
+  setSettingsTestFeedback('Testing connection…');
+
+  const response = await sendRuntimeMessage({
+    type: MESSAGE_TYPES.popupTestConnection,
+    backendUrl,
+  });
+
+  if (response?.ok) {
+    const usedFallback = response?.usedFallback === true;
+    setSettingsTestFeedback(
+      usedFallback
+        ? `Connected and authorized via fallback ${response.resolvedBackendUrl}`
+        : `Connected and authorized at ${response.resolvedBackendUrl}`,
+      'success',
+      typeof response?.details === 'string' ? response.details : '',
+    );
+    return;
+  }
+
+  const detailParts = [
+    typeof response?.error === 'string' ? response.error : 'Connection test failed',
+    typeof response?.details === 'string' ? response.details : '',
+  ].filter(Boolean);
+  setSettingsTestFeedback(
+    'Connection test failed',
+    'error',
+    detailParts.join('\n\n'),
+  );
 }
 
 async function submitCapture(): Promise<void> {
@@ -949,15 +1196,21 @@ async function submitCapture(): Promise<void> {
   const response = await sendRuntimeMessage({
     type: MESSAGE_TYPES.popupCapture,
     mode,
-    backendUrl: currentBackendUrl(),
-    rememberTarget: elements.rememberTarget.checked,
+    rememberTarget: rememberTargetPreference,
     target,
     context: captureContext,
   });
 
   if (!response?.ok) {
-    throw new Error(response?.error || 'Capture failed');
+    const errorMessage = typeof response?.error === 'string' ? response.error : 'Capture failed';
+    recordBackendFailure(errorMessage);
+    throw new Error(errorMessage);
   }
+
+  setResolvedBackendConnection(
+    typeof response?.resolvedBackendUrl === 'string' ? response.resolvedBackendUrl : resolvedBackendUrl,
+  );
+  clearBackendFailure();
 
   const selectedBoard = boards.find((board) => board.id === selectedTarget.boardId);
   const savedToIncoming = selectedTarget.type === 'board'
@@ -980,11 +1233,33 @@ async function submitCapture(): Promise<void> {
 }
 
 elements.refreshButton.addEventListener('click', () => {
-  refreshPopup().catch((error) => setStatus(error instanceof Error ? error.message : String(error)));
+  refreshPopup().catch(reportUiError);
+});
+
+elements.settingsButton.addEventListener('click', () => {
+  openSettingsView();
+});
+
+elements.settingsBackButton.addEventListener('click', () => {
+  closeSettingsView();
+});
+
+elements.settingsTestButton.addEventListener('click', () => {
+  testConnectionNow().catch((error) => {
+    setSettingsTestFeedback(
+      'Connection test failed',
+      'error',
+      error instanceof Error ? error.message : String(error),
+    );
+  });
+});
+
+elements.settingsSaveButton.addEventListener('click', () => {
+  saveSettings().catch(reportUiError);
 });
 
 elements.captureButton.addEventListener('click', () => {
-  submitCapture().catch((error) => setStatus(error instanceof Error ? error.message : String(error)));
+  submitCapture().catch(reportUiError);
 });
 
 elements.modeSelect.addEventListener('change', () => {
@@ -1000,7 +1275,12 @@ elements.searchInput.addEventListener('input', () => {
   onSearchInput();
 });
 
+elements.backendUrlInput.addEventListener('input', () => {
+  clearSettingsTestFeedback();
+});
+
 window.addEventListener('paste', (event) => {
+  if (activeView === 'settings') return;
   if (document.activeElement === elements.backendUrlInput) return;
   if (isSearchInputFocused()) return;
   const text = event.clipboardData?.getData('text');
@@ -1009,14 +1289,21 @@ window.addEventListener('paste', (event) => {
   insertIntoSearchInput(text);
 });
 
-elements.backendUrlInput.addEventListener('change', () => {
-  sendRuntimeMessage({
-    type: MESSAGE_TYPES.popupSetBackendUrl,
-    backendUrl: currentBackendUrl(),
-  }).catch(() => undefined);
-});
-
 window.addEventListener('keydown', (event) => {
+  if (activeView === 'settings') {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeSettingsView();
+      return;
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      event.preventDefault();
+      void saveSettings().catch(reportUiError);
+    }
+    return;
+  }
+
   const level = activeLevel();
   const searchFocused = isSearchInputFocused();
   const query = elements.searchInput.value.trim();
@@ -1083,9 +1370,9 @@ window.addEventListener('keydown', (event) => {
     const node = level.items[level.activeIndex];
     if (node.type === 'card') return;
     if (isSearchMode) {
-      void drillFromSearch(node);
+      void drillFromSearch(node).catch(reportUiError);
     } else {
-      void drillInto(node);
+      void drillInto(node).catch(reportUiError);
     }
     return;
   }
@@ -1098,14 +1385,14 @@ window.addEventListener('keydown', (event) => {
 
   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
-    void submitCapture().catch((error) => setStatus(error instanceof Error ? error.message : String(error)));
+    void submitCapture().catch(reportUiError);
     return;
   }
 
   if (event.key === 'Enter') {
     if (editableControlFocused || (searchFocused && activeSearchIndex < 0)) return;
     event.preventDefault();
-    void submitCapture().catch((error) => setStatus(error instanceof Error ? error.message : String(error)));
+    void submitCapture().catch(reportUiError);
     return;
   }
 
@@ -1115,7 +1402,10 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
+setActiveView('primary');
+syncSettingsFields();
+renderSettingsConnection();
 setControlsEnabled(false);
 refreshPopup().catch((error) => {
-  setStatus(error instanceof Error ? error.message : String(error));
+  reportUiError(error);
 });

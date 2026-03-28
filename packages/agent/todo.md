@@ -1,5 +1,13 @@
 # Lexera Kanban Todo
 
+- [ ] the dashboard should allow a search tag list:
+  - that is for all the workspaces setup in the board config
+  - that can be overridden (same #tag/@tag search feature as all tag list setups) in the individual workspaces
+  - that can be overriden for each kanban/canvas board.
+
+- [ ] we maybe need need an overhaul for the workspace, kanban/canvas board configuration. 
+  - make an analysis what settings we have right now to define. how we can properly differentiate between settings needed in the frontend and settings mostly only needed in the backend! i want the settings to be well intergrated into a similar structure as we see it in all the aspects of the application (tree-structure or item navigation with key movements, maybe we could even integrate those into a better global stucture).
+
 - [x] ~~browse in files settings now works — was a Tauri invoke detection issue, verified working~~ (verified)
 
 - [x] ~~quick capture re-snaps to screen edge when window goes out of monitor bounds (10s polling)~~ (this commit)

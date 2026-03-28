@@ -624,6 +624,7 @@ pub fn run() {
             capture::close_capture,
             connection_window::open_connection_window_cmd,
             config::get_backend_url,
+            config::browse_files,
         ])
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(

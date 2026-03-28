@@ -20,6 +20,9 @@ pub struct WorkspaceEntry {
     /// Layout preset name for this workspace.
     #[serde(default, alias = "layoutPreset", skip_serializing_if = "Option::is_none")]
     pub layout_preset: Option<String>,
+    /// Dashboard tag list override for this workspace (e.g. ["#important", "#blocked"]).
+    #[serde(default, alias = "dashboardTags", skip_serializing_if = "Option::is_none")]
+    pub dashboard_tags: Option<Vec<String>>,
 }
 
 /// A board entry in the config file.

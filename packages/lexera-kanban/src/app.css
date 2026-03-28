@@ -1103,12 +1103,60 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.dashboard-file-item {
+  padding: 3px 0;
+  min-width: 0;
+}
+.dashboard-file-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.dashboard-file-kind {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dashboard-file-status {
+  font-size: 9px;
+  font-weight: 600;
+}
+.dashboard-file-status-exists {
+  color: var(--accent);
+}
+.dashboard-file-status-missing {
+  color: var(--error);
+}
+.dashboard-file-status-unknown {
+  color: var(--text-muted);
+}
+.dashboard-file-path {
+  font-size: 10px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dashboard-file-meta {
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .broken-type {
   font-weight: 600;
   color: var(--error);
 }
 .broken-src {
   color: var(--text-muted);
+}
+.dashboard-file-count {
+  color: var(--text-muted);
+  font-size: 9px;
 }
 
 /* Workspace tree navigation */

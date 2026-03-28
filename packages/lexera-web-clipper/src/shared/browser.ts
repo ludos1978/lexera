@@ -10,6 +10,8 @@ function getNamespace(): any {
 }
 
 export const extensionApi = getNamespace();
+const usesPromiseApi = typeof globalThis.browser !== 'undefined'
+  || typeof browser !== 'undefined';
 const NOTIFICATION_ICON =
   'data:image/png;base64,' +
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9s6mL4AAAAAASUVORK5CYII=';
@@ -23,6 +25,18 @@ function callbackCall(target: any, methodName: string, args: any[] = []): Promis
   const method = target?.[methodName];
   if (typeof method !== 'function') {
     return Promise.reject(new Error(`Missing browser API method ${methodName}`));
+  }
+
+  if (usesPromiseApi) {
+    try {
+      const result = method.call(target, ...args);
+      if (result && typeof result.then === 'function') {
+        return result;
+      }
+      return Promise.resolve(result);
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
   }
 
   return new Promise((resolve, reject) => {

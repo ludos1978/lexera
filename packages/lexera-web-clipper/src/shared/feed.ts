@@ -4,7 +4,7 @@ import {
   trimPreview,
   type WebClipperContext,
   type WebClipperFeedCandidate,
-} from '../../../shared/src/webClipper';
+} from '@ludos/shared';
 import { captureHtmlMarkdown } from './documentMarkdown';
 
 function normalizeWhitespace(value: string): string {

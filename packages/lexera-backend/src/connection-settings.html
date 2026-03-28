@@ -6,39 +6,19 @@
   <title>Management</title>
   <link rel="stylesheet" href="connection-settings.css">
   <link rel="stylesheet" href="management.css">
+  <link rel="stylesheet" href="workspaceShell.css">
 </head>
 <body>
   <div class="window-container">
-    <div class="window-header" data-tauri-drag-region>
-      <h2 class="window-title" data-tauri-drag-region>Management</h2>
-    </div>
-    <div class="window-surface-nav" role="tablist" aria-label="Management views">
-      <button class="window-surface-tab active" type="button" role="tab" aria-selected="true" data-management-surface-tab="backendSettings">Backend Settings</button>
-      <button class="window-surface-tab" type="button" role="tab" aria-selected="false" data-management-surface-tab="files">Files</button>
-    </div>
-    <div class="window-surface-stack">
-      <section class="window-surface-panel shell-settings-panel is-active" data-management-surface-panel="backendSettings" role="tabpanel">
-        <div class="shell-settings-header">
-          <span class="shell-settings-title">Backend Settings</span>
-        </div>
-        <div class="shell-settings-body">
-          <div id="management-container" class="shell-settings-container"></div>
-        </div>
-      </section>
-      <section class="window-surface-panel shell-settings-panel" data-management-surface-panel="files" role="tabpanel" hidden>
-        <div class="shell-settings-header">
-          <span class="shell-settings-title">Files</span>
-        </div>
-        <div class="shell-settings-body">
-          <div id="files-management-container" class="shell-settings-container"></div>
-        </div>
-      </section>
-    </div>
+    <div id="main-content" class="window-main-content"></div>
   </div>
 
   <script src="themes.js"></script>
   <script src="management.js"></script>
   <script src="backendDiscovery.js"></script>
+  <script src="loggingSystem.js"></script>
+  <script src="sharedPanels.js"></script>
+  <script src="workspaceShell.js"></script>
   <script src="connection-settings.js"></script>
 </body>
 </html>

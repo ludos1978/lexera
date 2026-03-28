@@ -1,0 +1,653 @@
+/**
+ * Shared Management UI Styles
+ *
+ * IMPORTANT: This file is the SINGLE source of truth for management panel styling.
+ * Both lexera-backend and lexera-kanban include this same file via symlink.
+ * All classes are prefixed with "mgmt-" to avoid conflicts with host app styles.
+ */
+
+/* Top-level tab bar */
+.mgmt-top-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.mgmt-top-tab {
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-size: 12px;
+  font-family: inherit;
+  transition: color 0.12s, border-color 0.12s;
+}
+.mgmt-top-tab:hover { color: var(--text-primary); }
+.mgmt-top-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.mgmt-top-tab-content { display: none; }
+.mgmt-top-tab-content.active { display: block; }
+
+/* Sections */
+.mgmt-section {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mgmt-section:last-child { border-bottom: none; }
+
+.mgmt-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+/* Fields */
+.mgmt-field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.mgmt-field-row:last-child { margin-bottom: 0; }
+
+.mgmt-check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.mgmt-check-label input {
+  margin: 0;
+}
+
+.mgmt-field-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.mgmt-field-input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--input-border, var(--border));
+  border-radius: 4px;
+  background: var(--input-bg, var(--bg-tertiary));
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+.mgmt-field-input:focus {
+  border-color: var(--accent);
+}
+.mgmt-field-input option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.mgmt-field-select-small {
+  flex: none;
+  width: auto;
+  padding: 3px 6px;
+  font-size: 11px;
+}
+
+/* Buttons */
+.mgmt-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.mgmt-btn:hover {
+  background: var(--bg-hover);
+}
+.mgmt-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.mgmt-btn-primary:hover {
+  background: var(--accent-hover);
+}
+.mgmt-btn-small {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+.mgmt-btn-fold {
+  padding: 3px 5px;
+  font-size: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+.mgmt-btn-danger {
+  color: var(--error);
+  border-color: var(--error);
+}
+.mgmt-btn-danger:hover {
+  background: rgba(244, 71, 71, 0.14);
+}
+
+/* Lists */
+.mgmt-list-empty {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* Workspace rows */
+.mgmt-workspace-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mgmt-workspace-row:last-child { border-bottom: none; }
+
+.mgmt-workspace-block {
+  padding: 6px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mgmt-workspace-block:last-child {
+  border-bottom: none;
+}
+
+.mgmt-ws-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+.mgmt-ws-count {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Workspace chips (inline in board row) */
+.mgmt-board-ws-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  margin: 0 6px;
+}
+.mgmt-ws-chip {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Workspace assignment in details */
+.mgmt-ws-assign {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.mgmt-ws-assign-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.mgmt-ws-checkbox {
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mgmt-ws-checkbox input {
+  margin-right: 2px;
+}
+
+/* Board rows */
+.mgmt-board-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mgmt-board-row:last-child { border-bottom: none; }
+
+/* Presence indicator (dot + count) */
+.mgmt-board-presence {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.3;
+  margin-right: 6px;
+  flex-shrink: 0;
+  font-size: 0;
+}
+.mgmt-board-presence.active {
+  background: var(--success);
+  opacity: 1;
+  width: auto;
+  height: auto;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  color: #fff;
+}
+
+/* Authority badge */
+.mgmt-board-authority {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+.mgmt-board-authority.local {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+.mgmt-board-authority.remote {
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent);
+}
+
+.mgmt-board-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mgmt-board-name:hover {
+  color: var(--text-bright);
+}
+
+.mgmt-board-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.mgmt-board-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.mgmt-board-row:hover .mgmt-board-remove { opacity: 1; }
+.mgmt-board-remove:hover {
+  color: var(--error);
+  border-color: var(--error);
+  background: rgba(244, 71, 71, 0.14);
+}
+
+/* Board details (expandable) */
+.mgmt-board-details {
+  display: none;
+  padding: 6px 0 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.mgmt-board-details.expanded { display: block; }
+
+/* Detail tabs */
+.mgmt-detail-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.mgmt-detail-tab {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  font-family: inherit;
+  transition: color 0.12s, border-color 0.12s;
+}
+.mgmt-detail-tab:hover { color: var(--text-primary); }
+.mgmt-detail-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.mgmt-detail-tab-content { display: none; }
+.mgmt-detail-tab-content.active { display: block; }
+
+.mgmt-invite-controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+/* Settings grid */
+.mgmt-settings-grid,
+.mgmt-sync-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 4px 8px;
+  align-items: center;
+}
+.mgmt-settings-grid label,
+.mgmt-sync-grid label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mgmt-settings-grid input,
+.mgmt-settings-grid select,
+.mgmt-sync-grid input,
+.mgmt-sync-grid select {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--input-border, var(--border));
+  border-radius: 3px;
+  background: var(--input-bg, var(--bg-tertiary));
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+}
+.mgmt-settings-grid input:focus,
+.mgmt-settings-grid select:focus,
+.mgmt-sync-grid input:focus,
+.mgmt-sync-grid select:focus {
+  border-color: var(--accent);
+}
+.mgmt-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.mgmt-subsection-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.mgmt-subsection-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 10px 0 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.mgmt-subsection-toggle:hover .mgmt-subsection-title {
+  color: var(--text-primary);
+}
+.mgmt-subsection-chevron {
+  width: 12px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.mgmt-workspace-subsection {
+  display: none;
+}
+.mgmt-workspace-subsection.is-expanded {
+  display: block;
+}
+
+/* Drop zone for adding boards */
+.mgmt-drop-hint {
+  font-size: 11px;
+  color: var(--text-tertiary, var(--text-secondary));
+  text-align: center;
+  padding: 4px 0;
+}
+.mgmt-drop-active {
+  outline: 2px dashed var(--accent, #4a90d9);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.mgmt-drop-active .mgmt-drop-hint {
+  color: var(--accent, #4a90d9);
+  font-weight: 600;
+}
+
+/* Detail items (invites, members) */
+.mgmt-detail-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.mgmt-detail-item:last-child { border-bottom: none; }
+
+.mgmt-invite-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mgmt-token-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+.mgmt-token-field input {
+  flex: 1;
+  font-family: monospace;
+  font-size: 11px;
+  padding: 3px 6px;
+  border: 1px solid var(--input-border, var(--border));
+  border-radius: 3px;
+  background: var(--input-bg, var(--bg-tertiary));
+  color: var(--text-primary);
+}
+
+.mgmt-member-role {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+/* Connection and peer rows */
+.mgmt-connection-row,
+.mgmt-peer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mgmt-connection-row:last-child,
+.mgmt-peer-row:last-child { border-bottom: none; }
+
+.mgmt-connection-info,
+.mgmt-peer-info {
+  flex: 1;
+  min-width: 0;
+}
+.mgmt-connection-url {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mgmt-connection-board {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.mgmt-connection-status {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+.mgmt-connection-status.ok { background: var(--success); }
+.mgmt-connection-status.err { background: var(--error); }
+.mgmt-peer-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mgmt-peer-url {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Status / info text */
+.mgmt-info-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  font-family: monospace;
+}
+.mgmt-info-stack {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+.mgmt-status {
+  font-size: 12px;
+  margin-top: 4px;
+  min-height: 16px;
+}
+.mgmt-status.error { color: var(--error); }
+.mgmt-status.success { color: var(--success); }
+
+.mgmt-restart-note {
+  font-size: 11px;
+  color: #e8a838;
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: rgba(232, 168, 56, 0.1);
+  border-radius: 3px;
+  border: 1px solid rgba(232, 168, 56, 0.3);
+}
+
+/* Logs */
+.mgmt-log-toolbar {
+  align-items: center;
+}
+
+.mgmt-log-view {
+  margin-top: 8px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  padding: 6px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.mgmt-log-line {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mgmt-log-line:last-child {
+  border-bottom: none;
+}
+
+.mgmt-log-ts,
+.mgmt-log-target {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.mgmt-log-source {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 0 6px;
+  min-height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+}
+
+.mgmt-log-source-backend {
+  color: var(--text-primary);
+}
+
+.mgmt-log-message {
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mgmt-log-level-warn .mgmt-log-message {
+  color: #e8a838;
+}
+
+.mgmt-log-level-error .mgmt-log-message {
+  color: var(--error);
+}

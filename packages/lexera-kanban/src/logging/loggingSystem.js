@@ -23,14 +23,34 @@ var elLogSettingsPane = null;
 var elLogSettingsContainer = null;
 var elLogTabBackend = null;
 var elLogTabFrontend = null;
+var elLogTabStats = null;
 var elLogRefreshBtn = null;
 var elLogCopyBtn = null;
 var elLogClearBtn = null;
 
-function getElStatusMsg() { return elStatusMsg || (elStatusMsg = document.getElementById('status-msg')); }
-function getElLogEntriesBackend() { return elLogEntriesBackend || (elLogEntriesBackend = document.getElementById('log-entries-backend')); }
-function getElLogEntriesFrontend() { return elLogEntriesFrontend || (elLogEntriesFrontend = document.getElementById('log-entries-frontend')); }
-function getElLogPanel() { return elLogPanel || (elLogPanel = document.getElementById('log-panel')); }
+function getSharedLogRoots() {
+  var registry = window.LexeraSharedPanels;
+  if (!registry || typeof registry.getRoots !== 'function') return [];
+  return registry.getRoots('logs');
+}
+
+function getPrimaryLogRoot() {
+  var canonical = document.getElementById('log-panel');
+  if (canonical) return canonical;
+  var roots = getSharedLogRoots();
+  return roots.length ? roots[0] : null;
+}
+
+function queryPrimaryLogRoot(selector) {
+  var root = getPrimaryLogRoot();
+  return root ? root.querySelector(selector) : null;
+}
+
+function getElStatusMsg() { return elStatusMsg || (elStatusMsg = document.getElementById('status-msg') || queryPrimaryLogRoot('.status-msg')); }
+function getElLogEntriesBackend() { return elLogEntriesBackend || (elLogEntriesBackend = document.getElementById('log-entries-backend') || queryPrimaryLogRoot('.lexera-shared-log-entries-backend')); }
+function getElLogEntriesFrontend() { return elLogEntriesFrontend || (elLogEntriesFrontend = document.getElementById('log-entries-frontend') || queryPrimaryLogRoot('.lexera-shared-log-entries-frontend')); }
+function getElLogEntriesStats() { return queryPrimaryLogRoot('.lexera-shared-log-entries-stats') || document.getElementById('log-entries-stats'); }
+function getElLogPanel() { return elLogPanel || (elLogPanel = document.getElementById('log-panel') || getPrimaryLogRoot()); }
 function getElLogSettingsPane() {
   if (elLogSettingsPane) return elLogSettingsPane;
   var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;
@@ -49,17 +69,12 @@ function getElLogSettingsContainer() {
     : document.getElementById('mgmt-panel-body');
   return elLogSettingsContainer;
 }
-function getElLogTabBackend() { return elLogTabBackend || (elLogTabBackend = document.getElementById('log-tab-backend')); }
-function getElLogTabFrontend() { return elLogTabFrontend || (elLogTabFrontend = document.getElementById('log-tab-frontend')); }
-function getElLogRefreshBtn() { return elLogRefreshBtn || (elLogRefreshBtn = document.getElementById('log-refresh-btn')); }
-function getElLogCopyBtn() { return elLogCopyBtn || (elLogCopyBtn = document.getElementById('log-copy-btn')); }
-function getElLogClearBtn() { return elLogClearBtn || (elLogClearBtn = document.getElementById('log-clear-btn')); }
-
-function getSharedLogRoots() {
-  var registry = window.LexeraSharedPanels;
-  if (!registry || typeof registry.getRoots !== 'function') return [];
-  return registry.getRoots('logs');
-}
+function getElLogTabBackend() { return elLogTabBackend || (elLogTabBackend = document.getElementById('log-tab-backend') || queryPrimaryLogRoot('.lexera-shared-log-tab-backend')); }
+function getElLogTabFrontend() { return elLogTabFrontend || (elLogTabFrontend = document.getElementById('log-tab-frontend') || queryPrimaryLogRoot('.lexera-shared-log-tab-frontend')); }
+function getElLogTabStats() { return elLogTabStats || (elLogTabStats = document.getElementById('log-tab-stats') || queryPrimaryLogRoot('.lexera-shared-log-tab-stats')); }
+function getElLogRefreshBtn() { return elLogRefreshBtn || (elLogRefreshBtn = document.getElementById('log-refresh-btn') || queryPrimaryLogRoot('.lexera-shared-log-refresh')); }
+function getElLogCopyBtn() { return elLogCopyBtn || (elLogCopyBtn = document.getElementById('log-copy-btn') || queryPrimaryLogRoot('.lexera-shared-log-copy')); }
+function getElLogClearBtn() { return elLogClearBtn || (elLogClearBtn = document.getElementById('log-clear-btn') || queryPrimaryLogRoot('.lexera-shared-log-clear')); }
 
 function getAllLogStatusContainers() {
   return Array.prototype.slice.call(document.querySelectorAll('.log-panel-status'));
@@ -190,10 +205,12 @@ function bindMirroredLogView(view) {
 function syncMirroredLogViews() {
   var backendHtml = getElLogEntriesBackend() ? getElLogEntriesBackend().innerHTML : '';
   var frontendHtml = getElLogEntriesFrontend() ? getElLogEntriesFrontend().innerHTML : '';
-  var statsPanel = document.getElementById('log-entries-stats');
+  var statsPanel = getElLogEntriesStats();
   var statsHtml = statsPanel ? statsPanel.innerHTML : '';
-  var canonicalTabs = document.querySelector('.log-panel-tabs');
-  var titleText = document.querySelector('.log-panel-title') ? document.querySelector('.log-panel-title').textContent : 'Logs';
+  var primaryRoot = getPrimaryLogRoot();
+  var canonicalTabs = primaryRoot ? primaryRoot.querySelector('.log-panel-tabs') : null;
+  var titleEl = primaryRoot ? primaryRoot.querySelector('.log-panel-title') : null;
+  var titleText = titleEl ? titleEl.textContent : 'Logs';
   var mirroredViews = getMirroredLogViews();
   for (var i = 0; i < mirroredViews.length; i++) {
     var view = mirroredViews[i];
@@ -499,10 +516,10 @@ function setActiveLogSource(source) {
   var frontendBtn = getElLogTabFrontend();
   var backendPanel = getLogContainer('backend');
   var frontendPanel = getLogContainer('frontend');
-  var statsPanel = document.getElementById('log-entries-stats');
+  var statsPanel = getElLogEntriesStats();
   var refreshBtn = getElLogRefreshBtn();
 
-  var statsBtn = document.getElementById('log-tab-stats');
+  var statsBtn = getElLogTabStats();
   if (backendBtn) backendBtn.classList.toggle('active', activeLogSource === 'backend');
   if (frontendBtn) frontendBtn.classList.toggle('active', activeLogSource === 'frontend');
   if (statsBtn) statsBtn.classList.toggle('active', activeLogSource === 'stats');
@@ -833,7 +850,7 @@ document.addEventListener('DOMContentLoaded', function () {
     e.stopPropagation();
     setActiveLogSource('frontend');
   });
-  var statsTab = document.getElementById('log-tab-stats');
+  var statsTab = getElLogTabStats();
   if (statsTab) statsTab.addEventListener('click', function (e) {
     e.stopPropagation();
     setActiveLogSource('stats');

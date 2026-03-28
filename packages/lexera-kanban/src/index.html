@@ -63,18 +63,6 @@
             <div class="dashboard-group-header">Results</div>
             <div id="dashboard-results-list" class="dashboard-list"></div>
           </div>
-          <div class="dashboard-group dashboard-calendar-group">
-            <div class="dashboard-group-header">
-              Calendar
-              <span class="dashboard-calendar-tabs">
-                <button class="dashboard-calendar-tab active" data-cal-view="week" type="button">Week</button>
-                <button class="dashboard-calendar-tab" data-cal-view="month" type="button">Month</button>
-              </span>
-            </div>
-            <div id="dashboard-calendar-week" class="dashboard-calendar"></div>
-            <div id="dashboard-calendar-month" class="dashboard-calendar" style="display:none"></div>
-            <div id="dashboard-calendar-tasks" class="dashboard-list"></div>
-          </div>
           <div class="dashboard-group">
             <div class="dashboard-group-header">Overdue</div>
             <div id="dashboard-overdue-list" class="dashboard-list"></div>
@@ -92,8 +80,16 @@
             <div id="dashboard-tagged-list" class="dashboard-list"></div>
           </div>
           <div class="dashboard-group">
+            <div class="dashboard-group-header">File Embeds</div>
+            <div id="dashboard-embeds-list" class="dashboard-list"></div>
+          </div>
+          <div class="dashboard-group">
             <div class="dashboard-group-header">Broken Elements</div>
             <div id="dashboard-broken-list" class="dashboard-list"></div>
+          </div>
+          <div class="dashboard-group">
+            <div class="dashboard-group-header">Included Files</div>
+            <div id="dashboard-included-list" class="dashboard-list"></div>
           </div>
         </div>
       </div>
@@ -481,7 +477,6 @@
   <script src="editor/cardEditor.js"></script>
   <script src="editor/inlineCardEditor.js"></script>
   <script src="render/cardContentRenderer.js"></script>
-  <script src="render/embedEnhancer.js"></script>
   <script src="render/inlineRenderer.js"></script>
   <script src="settings/frontendSettings.js"></script>
   <script src="settings/renderAppsSettings.js"></script>

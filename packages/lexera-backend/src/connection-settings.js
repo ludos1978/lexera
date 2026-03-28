@@ -1,10 +1,3 @@
-/**
- * Management window bootstrap for lexera-backend.
- *
- * This file handles backend discovery and initializes the shared ManagementUI
- * module with the appropriate API adapter. All management UI content is
- * rendered by the shared module (management.js from lexera-shared).
- */
 (function () {
   'use strict';
 
@@ -12,194 +5,270 @@
   var initialBackendUrl = '';
   var discoveryRetryTimer = null;
   var isInitializing = false;
-  var discoveryAttemptCount = 0;
   var sseSource = null;
+  var bearerToken = null;
+  var bearerTokenPromise = null;
   var fallbackConnectionsInterval = null;
   var fallbackPeersInterval = null;
-  var BackendDiscovery = window.LexeraBackendDiscovery || null;
-  var SURFACE_STORAGE_KEY = 'lexera-backend-management-surface';
-  var MANAGEMENT_SURFACES = {
-    backendSettings: {
-      containerId: 'management-container',
-      preset: 'backendSettings'
-    },
-    files: {
-      containerId: 'files-management-container',
-      preset: 'files'
-    }
-  };
-  var activeSurfaceId = 'backendSettings';
+  var shellMounted = false;
+  var shellPanels = null;
   var initialUiState = {
-    surfaceId: 'backendSettings',
-    section: ''
+    section: '',
+    panelId: 'backendSettings'
   };
 
-  // Apply theme immediately from localStorage to avoid flash of wrong theme
   if (typeof applyLexeraTheme === 'function') {
     applyLexeraTheme(localStorage.getItem('lexera-theme') || 'lexera');
   }
 
+  function requireManagementUiMethod(name) {
+    if (!ManagementUI || typeof ManagementUI[name] !== 'function') {
+      throw new Error('ManagementUI.' + name + ' is required. Sync runtime assets from lexera-shared.');
+    }
+    return ManagementUI[name];
+  }
+
+  function requireBackendDiscoveryMethod(name) {
+    var discovery = window.LexeraBackendDiscovery;
+    if (!discovery || typeof discovery[name] !== 'function') {
+      throw new Error('LexeraBackendDiscovery.' + name + ' is required. Sync runtime assets from lexera-shared.');
+    }
+    return discovery[name].bind(discovery);
+  }
+
+  function requireShellMethod(name) {
+    var shell = window.LexeraWorkspaceShell;
+    if (!shell || typeof shell[name] !== 'function') {
+      throw new Error('LexeraWorkspaceShell.' + name + ' is required. Sync frontend view assets.');
+    }
+    return shell[name].bind(shell);
+  }
+
+  function requireSharedPanelsMethod(name) {
+    var sharedPanels = window.LexeraSharedPanels;
+    if (!sharedPanels || typeof sharedPanels[name] !== 'function') {
+      throw new Error('LexeraSharedPanels.' + name + ' is required. Sync frontend view assets.');
+    }
+    return sharedPanels[name].bind(sharedPanels);
+  }
+
   function getManagementUiPreset(name) {
-    if (ManagementUI && typeof ManagementUI.getUiPreset === 'function') {
-      return ManagementUI.getUiPreset(name);
-    }
-    if (name === 'files') {
-      return {
-        topTabs: ['workspaces', 'boards'],
-        defaultTopTab: 'workspaces',
-        themeEnabled: false
-      };
-    }
-    return {
-      topTabs: ['network', 'config', 'logs'],
-      defaultTopTab: 'network',
-      themeEnabled: false
-    };
+    return requireManagementUiMethod('getUiPreset')(name);
   }
 
-  function isKnownSurface(surfaceId) {
-    return !!(surfaceId && MANAGEMENT_SURFACES[surfaceId]);
-  }
-
-  function resolveSurfaceId(sectionOrSurface) {
-    if (isKnownSurface(sectionOrSurface)) return sectionOrSurface;
-    if (sectionOrSurface === 'sharing' || sectionOrSurface === 'workspaces' || sectionOrSurface === 'boards') {
+  function resolvePanelId(value) {
+    var normalized = String(value || '').trim();
+    if (!normalized) return 'backendSettings';
+    if (normalized === 'logs') return 'logs';
+    if (normalized === 'files' || normalized === 'workspaces' || normalized === 'boards' || normalized === 'sharing') {
       return 'files';
     }
     return 'backendSettings';
   }
 
-  function normalizeRequestedTab(tabName) {
-    if (tabName === 'sharing') return 'workspaces';
-    return tabName || '';
+  function getManagementTopTab(sectionName, panelId) {
+    var contextName = panelId === 'files' ? 'files' : 'backendSettings';
+    return requireManagementUiMethod('getTopTabForContext')(sectionName, contextName);
   }
 
-  function getSurfaceContainer(surfaceId) {
-    var surface = MANAGEMENT_SURFACES[surfaceId];
-    if (!surface) return null;
-    return document.getElementById(surface.containerId);
+  function createShellPanels() {
+    if (shellPanels) return shellPanels;
+    var createPanelElement = requireSharedPanelsMethod('createPanelElement');
+    var panels = {
+      logs: createPanelElement('logs', 'logs'),
+      backendSettings: createPanelElement('backendSettings', 'backendSettings'),
+      files: createPanelElement('files', 'files')
+    };
+    panels.logs.setAttribute('data-shell-panel', 'logs');
+    panels.backendSettings.setAttribute('data-shell-panel', 'backendSettings');
+    panels.files.setAttribute('data-shell-panel', 'files');
+    shellPanels = panels;
+    return shellPanels;
   }
 
-  function setActiveSurface(surfaceId) {
-    var nextSurfaceId = isKnownSurface(surfaceId) ? surfaceId : 'backendSettings';
-    activeSurfaceId = nextSurfaceId;
-    try {
-      localStorage.setItem(SURFACE_STORAGE_KEY, nextSurfaceId);
-    } catch (_) {}
-
-    var tabs = document.querySelectorAll('[data-management-surface-tab]');
-    for (var i = 0; i < tabs.length; i++) {
-      var isActiveTab = tabs[i].getAttribute('data-management-surface-tab') === nextSurfaceId;
-      tabs[i].classList.toggle('active', isActiveTab);
-      tabs[i].setAttribute('aria-selected', isActiveTab ? 'true' : 'false');
-    }
-
-    var panels = document.querySelectorAll('[data-management-surface-panel]');
-    for (var j = 0; j < panels.length; j++) {
-      var isActivePanel = panels[j].getAttribute('data-management-surface-panel') === nextSurfaceId;
-      panels[j].classList.toggle('is-active', isActivePanel);
-      panels[j].hidden = !isActivePanel;
-    }
+  function getBackendSettingsContainer() {
+    var panels = createShellPanels();
+    return panels.backendSettings
+      ? panels.backendSettings.querySelector('.lexera-shared-backend-settings-container')
+      : null;
   }
 
-  function activateManagementTopTab(container, tabName) {
-    if (!container || !tabName) return;
-    var normalizedTab = normalizeRequestedTab(tabName);
+  function getFilesContainer() {
+    var panels = createShellPanels();
+    return panels.files ? panels.files.querySelector('.lexera-shared-files-container') : null;
+  }
+
+  function activateManagementTopTab(panelId, tabName) {
+    if (!tabName || panelId === 'logs') return;
+    var container = panelId === 'files' ? getFilesContainer() : getBackendSettingsContainer();
+    var normalizedTab = getManagementTopTab(tabName, panelId);
+    if (!container || !normalizedTab) return;
     var topTab = container.querySelector('.mgmt-top-tab[data-mgmt-top-tab="' + normalizedTab + '"]');
     if (topTab) topTab.click();
   }
 
   function applyInitialUiState() {
-    setActiveSurface(initialUiState.surfaceId);
-    if (!initialUiState.section) return;
-    activateManagementTopTab(getSurfaceContainer(resolveSurfaceId(initialUiState.section)), initialUiState.section);
+    if (!shellMounted) return;
+    var targetPanelId = resolvePanelId(initialUiState.section || initialUiState.panelId);
+    requireShellMethod('revealPanel')(targetPanelId);
+    if (initialUiState.section) activateManagementTopTab(targetPanelId, initialUiState.section);
   }
 
-  function bindSurfaceNavigation() {
-    document.addEventListener('click', function (event) {
-      var tab = event.target && event.target.closest
-        ? event.target.closest('[data-management-surface-tab]')
-        : null;
-      if (!tab) return;
-      setActiveSurface(tab.getAttribute('data-management-surface-tab'));
+  function mountManagementShell() {
+    if (shellMounted) return;
+    var panels = createShellPanels();
+    requireShellMethod('mount')({
+      getMainContent: function () {
+        return document.getElementById('main-content');
+      },
+      getPersistenceKey: function () {
+        return 'lexera-backend-management-shell';
+      },
+      getAllowedPanelKinds: function () {
+        return ['logs', 'backendSettings', 'files'];
+      },
+      getPanelElements: function () {
+        return panels;
+      }
+    });
+    shellMounted = true;
+
+    if (!requireShellMethod('didRestoreState')()) {
+      requireShellMethod('openPanelInCenter')('backendSettings');
+      requireShellMethod('openPanelInCenter')('files', { groupWith: 'backendSettings' });
+      requireShellMethod('setPanelVisibility')('logs', true, { activate: false });
+      requireShellMethod('movePanelToDock')('logs', 'bottom');
+      requireShellMethod('restoreDock')('bottom', 'logs');
+    }
+
+    applyInitialUiState();
+  }
+
+  function resetBackendAuth() {
+    bearerToken = null;
+    bearerTokenPromise = null;
+  }
+
+  function authHeaders(existing) {
+    if (!bearerToken) return Object.assign({}, existing || {});
+    return Object.assign({}, existing || {}, {
+      Authorization: 'Bearer ' + bearerToken
     });
   }
 
-  // ── Backend Discovery ──
+  function appendAuthTokenQuery(url) {
+    if (!url || !bearerToken) return url;
+    return url + (url.indexOf('?') === -1 ? '?' : '&') + 'auth_token=' + encodeURIComponent(bearerToken);
+  }
+
+  async function parseJsonResponse(res) {
+    var text = await res.text().catch(function () { return res.statusText || ''; });
+    if (!res.ok) throw new Error(res.status + ': ' + (text || res.statusText || 'Request failed'));
+    return text ? JSON.parse(text) : null;
+  }
+
+  async function ensureBearerToken(forceRefresh) {
+    if (!baseUrl) throw new Error('Backend unavailable');
+    if (forceRefresh) resetBackendAuth();
+    if (bearerToken) return bearerToken;
+    if (bearerTokenPromise) return bearerTokenPromise;
+
+    bearerTokenPromise = (async function () {
+      try {
+        var res = await fetch(baseUrl + '/collab/me');
+        var data = await parseJsonResponse(res);
+        if (!data || typeof data.token !== 'string' || !data.token) {
+          throw new Error('Backend did not return an auth token');
+        }
+        bearerToken = data.token;
+        return bearerToken;
+      } finally {
+        bearerTokenPromise = null;
+      }
+    })();
+
+    return bearerTokenPromise;
+  }
 
   async function discoverBackend() {
-    if (BackendDiscovery && typeof BackendDiscovery.discoverBackend === 'function') {
-      try {
-        return await BackendDiscovery.discoverBackend({
-          preferredUrl: initialBackendUrl,
-          useTauri: true,
-          timeoutMs: 1200
-        });
-      } catch (e) {
-        /* fall through */
-      }
-    }
-    var ports = [13080, 8083, 1431, 12080, 14080, 11080, 15080];
-    for (var i = 0; i < ports.length; i++) {
-      for (var h = 0; h < 2; h++) {
-        var host = h === 0 ? '127.0.0.1' : 'localhost';
-        try {
-          var res = await fetch('http://' + host + ':' + ports[i] + '/status');
-          if (!res.ok) continue;
-          var data = await res.json();
-          if (data.status === 'running') {
-            return 'http://' + host + ':' + (data.port || ports[i]);
-          }
-        } catch (e) {}
-      }
-    }
-    return null;
+    return requireBackendDiscoveryMethod('discoverBackend')({
+      preferredUrl: initialBackendUrl,
+      useTauri: true,
+      timeoutMs: 1200
+    });
   }
 
-  function scheduleDiscoveryRetry() {
-    if (discoveryRetryTimer) return;
-    discoveryRetryTimer = setTimeout(async function () {
-      discoveryRetryTimer = null;
-      await ensureBackendConnection('retry');
-    }, 2000);
-  }
-
-  // ── API Adapter ──
-
-  async function apiGet(path) {
+  async function apiRequest(path, options) {
     if (!baseUrl) throw new Error('Backend unavailable');
-    var res = await fetch(baseUrl + path);
-    if (!res.ok) throw new Error(res.status + ': ' + (await res.text()));
-    return res.json();
+    options = options || {};
+
+    if (path !== '/collab/me') {
+      await ensureBearerToken();
+    }
+
+    var fetchOptions = Object.assign({}, options);
+    fetchOptions.headers = authHeaders(fetchOptions.headers);
+
+    var res = await fetch(baseUrl + path, fetchOptions);
+    if (res.status === 401 && path !== '/collab/me') {
+      await ensureBearerToken(true);
+      fetchOptions.headers = authHeaders(options.headers);
+      res = await fetch(baseUrl + path, fetchOptions);
+    }
+
+    return parseJsonResponse(res);
   }
 
-  async function apiPost(path, body) {
-    if (!baseUrl) throw new Error('Backend unavailable');
-    var res = await fetch(baseUrl + path, {
+  function apiGet(path) {
+    return apiRequest(path);
+  }
+
+  function apiPost(path, body) {
+    return apiRequest(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(body)
     });
-    if (!res.ok) throw new Error(res.status + ': ' + (await res.text()));
-    return res.json();
   }
 
-  async function apiPut(path, body) {
-    if (!baseUrl) throw new Error('Backend unavailable');
-    var res = await fetch(baseUrl + path, {
+  function apiPut(path, body) {
+    return apiRequest(path, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(body)
     });
-    if (!res.ok) throw new Error(res.status + ': ' + (await res.text()));
-    return res.json();
   }
 
-  async function apiDelete(path) {
-    if (!baseUrl) throw new Error('Backend unavailable');
-    var res = await fetch(baseUrl + path, { method: 'DELETE' });
-    if (!res.ok) throw new Error(res.status + ': ' + (await res.text()));
-    return res.json();
+  function apiDelete(path) {
+    return apiRequest(path, { method: 'DELETE' });
+  }
+
+  function syncWindowLexeraApi() {
+    window.LexeraApi = {
+      discover: async function () {
+        if (baseUrl) return baseUrl;
+        var discovered = await discoverBackend();
+        if (discovered) {
+          if (baseUrl !== discovered) resetBackendAuth();
+          baseUrl = discovered;
+        }
+        return baseUrl || null;
+      },
+      getLogs: function () {
+        return apiGet('/logs');
+      },
+      connectLogStream: function (onEntry) {
+        if (!baseUrl) return null;
+        var es = new EventSource(baseUrl + '/logs/stream');
+        es.onmessage = function (event) {
+          if (!onEntry) return;
+          try {
+            onEntry(JSON.parse(event.data));
+          } catch (_) {}
+        };
+        return es;
+      }
+    };
   }
 
   function getManagementApiAdapter() {
@@ -207,8 +276,21 @@
       get: apiGet,
       post: apiPost,
       put: apiPut,
-      delete: apiDelete,
+      delete: apiDelete
     };
+  }
+
+  function openLogStream(onEntry, onOpen, onError) {
+    if (!window.LexeraApi || typeof window.LexeraApi.connectLogStream !== 'function') return null;
+    var es = window.LexeraApi.connectLogStream(onEntry);
+    if (!es) return null;
+    es.onopen = function (event) {
+      if (onOpen) onOpen(event);
+    };
+    es.onerror = function (event) {
+      if (onError) onError(event);
+    };
+    return es;
   }
 
   function getManagementCallbacks() {
@@ -224,21 +306,53 @@
         return Promise.resolve(window.confirm(msg));
       },
       onServerRestarted: function (bindAddr, port) {
-        var host = (bindAddr === '0.0.0.0') ? '127.0.0.1' : bindAddr;
+        var host = bindAddr === '0.0.0.0' ? '127.0.0.1' : bindAddr;
         baseUrl = 'http://' + host + ':' + port;
+        resetBackendAuth();
+        syncWindowLexeraApi();
+        if (typeof window.setLogBackendConnectionState === 'function') {
+          window.setLogBackendConnectionState(true);
+        }
       },
       getThemes: function () {
         return typeof LEXERA_THEMES !== 'undefined' ? LEXERA_THEMES : [];
-      },
+      }
     };
   }
 
-  // ── SSE for live updates ──
+  function clearFallbackPolling() {
+    if (fallbackConnectionsInterval) {
+      clearInterval(fallbackConnectionsInterval);
+      fallbackConnectionsInterval = null;
+    }
+    if (fallbackPeersInterval) {
+      clearInterval(fallbackPeersInterval);
+      fallbackPeersInterval = null;
+    }
+  }
 
-  function connectSSE() {
-    if (sseSource) { sseSource.close(); sseSource = null; }
+  function startFallbackPolling() {
+    if (!fallbackConnectionsInterval) {
+      fallbackConnectionsInterval = setInterval(function () { ManagementUI.refresh('connections'); }, 10000);
+    }
+    if (!fallbackPeersInterval) {
+      fallbackPeersInterval = setInterval(function () { ManagementUI.refresh('peers'); }, 5000);
+    }
+  }
+
+  async function connectSSE() {
+    if (sseSource) {
+      sseSource.close();
+      sseSource = null;
+    }
     clearFallbackPolling();
-    sseSource = new EventSource(baseUrl + '/events');
+    try {
+      await ensureBearerToken();
+    } catch (_) {
+      startFallbackPolling();
+      return;
+    }
+    sseSource = new EventSource(appendAuthTokenQuery(baseUrl + '/events'));
     sseSource.onmessage = function (e) {
       try {
         var event = JSON.parse(e.data);
@@ -248,96 +362,98 @@
       } catch (_) {}
     };
     sseSource.onerror = function () {
-      if (sseSource) { sseSource.close(); sseSource = null; }
+      if (sseSource) {
+        sseSource.close();
+        sseSource = null;
+      }
       startFallbackPolling();
     };
   }
 
-  function startFallbackPolling() {
-    if (!fallbackConnectionsInterval) fallbackConnectionsInterval = setInterval(function () { ManagementUI.refresh('connections'); }, 10000);
-    if (!fallbackPeersInterval) fallbackPeersInterval = setInterval(function () { ManagementUI.refresh('peers'); }, 5000);
+  function scheduleDiscoveryRetry() {
+    if (discoveryRetryTimer) return;
+    discoveryRetryTimer = setTimeout(async function () {
+      discoveryRetryTimer = null;
+      await ensureBackendConnection('retry');
+    }, 2000);
   }
 
-  function clearFallbackPolling() {
-    if (fallbackConnectionsInterval) { clearInterval(fallbackConnectionsInterval); fallbackConnectionsInterval = null; }
-    if (fallbackPeersInterval) { clearInterval(fallbackPeersInterval); fallbackPeersInterval = null; }
-  }
-
-  function openLogStream(onEntry, onOpen, onError) {
-    if (!baseUrl) return null;
-    var es = new EventSource(baseUrl + '/logs/stream');
-    es.onmessage = function (event) {
-      if (!onEntry) return;
-      try {
-        onEntry(JSON.parse(event.data));
-      } catch (_) {}
-    };
-    es.onopen = function (event) {
-      if (onOpen) onOpen(event);
-    };
-    es.onerror = function (event) {
-      if (onError) onError(event);
-    };
-    return es;
-  }
-
-  // ── Init ──
-
-  async function ensureBackendConnection(reason) {
+  async function ensureBackendConnection() {
     if (isInitializing) return;
     isInitializing = true;
-    discoveryAttemptCount += 1;
     try {
       var discovered = await discoverBackend();
       if (!discovered) {
         baseUrl = '';
+        resetBackendAuth();
+        syncWindowLexeraApi();
+        if (typeof window.setLogBackendConnectionState === 'function') {
+          window.setLogBackendConnectionState(false);
+        }
         scheduleDiscoveryRetry();
         return;
       }
+
+      if (baseUrl !== discovered) resetBackendAuth();
       baseUrl = discovered;
-      if (discoveryRetryTimer) { clearTimeout(discoveryRetryTimer); discoveryRetryTimer = null; }
-      var managementApi = getManagementApiAdapter();
-      var managementCallbacks = getManagementCallbacks();
+      if (discoveryRetryTimer) {
+        clearTimeout(discoveryRetryTimer);
+        discoveryRetryTimer = null;
+      }
+      syncWindowLexeraApi();
+      mountManagementShell();
 
       ManagementUI.init({
-        container: getSurfaceContainer('backendSettings'),
-        ui: getManagementUiPreset('backendSettings'),
-        api: managementApi,
-        callbacks: managementCallbacks,
+        container: getBackendSettingsContainer(),
+        ui: getManagementUiPreset('backendConfig'),
+        api: getManagementApiAdapter(),
+        callbacks: getManagementCallbacks()
       });
       ManagementUI.mount('files', {
-        container: getSurfaceContainer('files'),
+        container: getFilesContainer(),
         ui: getManagementUiPreset('files'),
-        api: managementApi,
-        callbacks: managementCallbacks,
+        api: getManagementApiAdapter(),
+        callbacks: getManagementCallbacks()
       });
-      applyInitialUiState();
 
+      if (typeof window.setLogBackendConnectionState === 'function') {
+        window.setLogBackendConnectionState(true);
+      }
+      applyInitialUiState();
       connectSSE();
     } finally {
       isInitializing = false;
     }
   }
 
-  // Parse initial backend URL from query params
+  window.openConnectionWindow = function (options) {
+    var hasSection = !!(options && Object.prototype.hasOwnProperty.call(options, 'section'));
+    var hasPanel = !!(options && Object.prototype.hasOwnProperty.call(options, 'panel'));
+    var section = hasSection ? String(options.section || '') : '';
+    var panelId = resolvePanelId(section || (hasPanel ? options.panel : 'backendSettings'));
+    initialUiState.section = section;
+    initialUiState.panelId = panelId;
+    if (shellMounted) applyInitialUiState();
+    try { window.focus(); } catch (_) {}
+    return Promise.resolve(true);
+  };
+
   try {
     var params = new URLSearchParams(window.location.search || '');
     initialBackendUrl = params.get('backend') || '';
     initialUiState.section = params.get('section') || '';
-    initialUiState.surfaceId = resolveSurfaceId(
-      params.get('surface') ||
+    initialUiState.panelId = resolvePanelId(
       params.get('panel') ||
+      params.get('surface') ||
       initialUiState.section ||
-      localStorage.getItem(SURFACE_STORAGE_KEY) ||
       'backendSettings'
     );
-  } catch (e) {
+  } catch (_) {
     initialBackendUrl = '';
-    initialUiState.surfaceId = 'backendSettings';
     initialUiState.section = '';
+    initialUiState.panelId = 'backendSettings';
   }
 
-  bindSurfaceNavigation();
-  setActiveSurface(initialUiState.surfaceId);
-  ensureBackendConnection('init');
+  syncWindowLexeraApi();
+  ensureBackendConnection();
 })();

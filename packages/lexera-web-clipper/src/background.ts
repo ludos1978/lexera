@@ -8,7 +8,7 @@ import {
   getPreferredWebClipperContext,
   normalizeClipperMode,
   trimPreview,
-} from '../../shared/src/webClipper';
+} from '@ludos/shared';
 import {
   addContextMenuListener,
   addInstalledListener,
@@ -28,6 +28,8 @@ import {
   loadBoardTargetData,
   readClipperState,
   resolveCaptureTarget,
+  searchCards,
+  testBackendConnection,
   writeClipperState,
 } from './shared/backend';
 import { captureContextToBoard } from './shared/clipper';
@@ -129,30 +131,34 @@ async function getActiveTab(): Promise<any | null> {
 
 async function loadPopupState(): Promise<any> {
   const state = await readClipperState();
-  const backendUrl = await discoverBackend(state.backendUrl);
-  if (!backendUrl) {
+  const configuredBackendUrl = typeof state.backendUrl === 'string' ? state.backendUrl.trim() : '';
+  const rememberTarget = state.rememberTarget !== false;
+  const resolvedBackendUrl = await discoverBackend(configuredBackendUrl);
+  if (!resolvedBackendUrl) {
     return {
       ok: false,
       error: 'Lexera Backend is not reachable on localhost',
-      backendUrl: state.backendUrl || '',
+      configuredBackendUrl,
+      resolvedBackendUrl: '',
+      rememberTarget,
     };
   }
 
   const [boards, workspacePayload, activeTab, target] = await Promise.all([
-    listBoards(backendUrl),
-    listWorkspaces(backendUrl),
+    listBoards(resolvedBackendUrl),
+    listWorkspaces(resolvedBackendUrl),
     getActiveTab(),
-    resolveCaptureTarget(backendUrl, state.target),
+    resolveCaptureTarget(resolvedBackendUrl),
   ]);
   const collectedContext = await collectTabContext(activeTab);
   const context = getPreferredWebClipperContext(collectedContext);
-  const targetData = target?.boardId ? await loadBoardTargetData(backendUrl, target.boardId) : null;
-
-  await writeClipperState({ backendUrl });
+  const targetData = target?.boardId ? await loadBoardTargetData(resolvedBackendUrl, target.boardId) : null;
 
   return {
     ok: true,
-    backendUrl,
+    configuredBackendUrl,
+    resolvedBackendUrl,
+    rememberTarget,
     boards,
     workspaces: workspacePayload.workspaces,
     defaultWorkspace: workspacePayload.defaultWorkspace || null,
@@ -201,25 +207,24 @@ async function performCapture(
   explicitContext?: WebClipperContext | null,
 ): Promise<any> {
   const state = await readClipperState();
-  const backendUrl = await discoverBackend(state.backendUrl);
-  if (!backendUrl) {
+  const resolvedBackendUrl = await discoverBackend(state.backendUrl);
+  if (!resolvedBackendUrl) {
     throw new Error('Lexera Backend is not reachable');
   }
 
-  const target = await resolveCaptureTarget(backendUrl, explicitTarget || state.target);
+  const target = await resolveCaptureTarget(resolvedBackendUrl, explicitTarget || null);
   const activeTab = await getActiveTab();
   const collectedContext = await collectTabContext(activeTab);
   const context = explicitContext || getPreferredWebClipperContext(collectedContext);
-  const result = await captureContextToBoard(backendUrl, target, mode, context);
+  const result = await captureContextToBoard(resolvedBackendUrl, target, mode, context);
 
   await writeClipperState({
-    backendUrl,
     mode,
   });
 
   return {
     ok: true,
-    backendUrl,
+    resolvedBackendUrl,
     target,
     context,
     collectedContext,
@@ -282,14 +287,13 @@ addContextMenuListener(async (info, tab) => {
     }
 
     const mode = clipModeForMenuItem(info.menuItemId);
-    const target = await resolveCaptureTarget(backendUrl, state.target);
+    const target = await resolveCaptureTarget(backendUrl);
     const collectedContext = await collectTabContext(tab);
     const baseContext = getPreferredWebClipperContext(collectedContext);
     const context = mergeContextMenuInfo(mode, baseContext, info, tab);
 
     await captureContextToBoard(backendUrl, target, mode, context);
     await writeClipperState({
-      backendUrl,
       mode,
     });
     await showNotification('Lexera Web Clipper', `Saved ${mode} to ${target.boardId}`);
@@ -304,20 +308,12 @@ addContextMenuListener(async (info, tab) => {
 addRuntimeMessageListener(async (message) => {
   switch (message?.type) {
     case MESSAGE_TYPES.popupLoad: {
-      const preferredBackendUrl = typeof message.backendUrl === 'string' ? message.backendUrl.trim() : '';
-      if (typeof message.backendUrl === 'string') {
-        await writeClipperState({ backendUrl: preferredBackendUrl });
-      }
       return loadPopupState();
     }
 
     case MESSAGE_TYPES.popupLoadColumns: {
       const state = await readClipperState();
-      const preferredBackendUrl = typeof message.backendUrl === 'string' ? message.backendUrl.trim() : '';
-      if (typeof message.backendUrl === 'string') {
-        await writeClipperState({ backendUrl: preferredBackendUrl });
-      }
-      const backendUrl = await discoverBackend(preferredBackendUrl || state.backendUrl);
+      const backendUrl = await discoverBackend(state.backendUrl);
       if (!backendUrl) {
         return { ok: false, error: 'Lexera Backend is not reachable' };
       }
@@ -325,29 +321,61 @@ addRuntimeMessageListener(async (message) => {
       return { ok: true, columns: targetData.columns, fullBoard: targetData.fullBoard || null };
     }
 
-    case MESSAGE_TYPES.popupSetBackendUrl: {
-      const preferredBackendUrl = typeof message.backendUrl === 'string' ? message.backendUrl.trim() : '';
-      await writeClipperState({ backendUrl: preferredBackendUrl });
-      return { ok: true };
+    case MESSAGE_TYPES.popupSearch: {
+      const state = await readClipperState();
+      const backendUrl = await discoverBackend(state.backendUrl);
+      if (!backendUrl) {
+        return { ok: false, error: 'Lexera Backend is not reachable' };
+      }
+      const query = typeof message.query === 'string' ? message.query.trim() : '';
+      const results = query ? await searchCards(backendUrl, query) : [];
+      return { ok: true, results };
+    }
+
+    case MESSAGE_TYPES.popupSaveSettings: {
+      const backendUrl = typeof message.backendUrl === 'string' ? message.backendUrl.trim() : '';
+      const rememberTarget = message.rememberTarget !== false;
+      await writeClipperState({
+        backendUrl,
+        rememberTarget,
+        ...(rememberTarget ? {} : { target: undefined }),
+      });
+      return {
+        ok: true,
+        configuredBackendUrl: backendUrl,
+        rememberTarget,
+      };
+    }
+
+    case MESSAGE_TYPES.popupTestConnection: {
+      const backendUrl = typeof message.backendUrl === 'string' ? message.backendUrl.trim() : '';
+      return testBackendConnection(backendUrl);
     }
 
     case MESSAGE_TYPES.popupCapture: {
       const mode = normalizeClipperMode(message.mode || DEFAULT_WEB_CLIPPER_MODE);
       const explicitTarget = message.target || null;
       const explicitContext = message.context || null;
-      const preferredBackendUrl = typeof message.backendUrl === 'string' ? message.backendUrl.trim() : '';
-      if (typeof message.backendUrl === 'string') {
-        await writeClipperState({ backendUrl: preferredBackendUrl });
-      }
+      const rememberTarget = message.rememberTarget !== false;
+      await writeClipperState({
+        rememberTarget,
+        ...(rememberTarget ? {} : { target: undefined }),
+      });
       const result = await performCapture(mode, explicitTarget, explicitContext);
-      if (message.rememberTarget !== false && explicitTarget?.boardId) {
+      if (rememberTarget && explicitTarget?.boardId) {
         await writeClipperState({
           target: {
             ...explicitTarget,
             source: 'saved',
           },
           mode,
-          backendUrl: preferredBackendUrl || result.backendUrl,
+          rememberTarget,
+        });
+      } else {
+        await writeClipperState({
+          target: undefined,
+          mode,
+          rememberTarget,
         });
       }
       return result;

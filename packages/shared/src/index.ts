@@ -2,6 +2,11 @@ export { KanbanCard, KanbanColumn, KanbanBoard, BoardSettings, HIDDEN_TAGS, isAr
 export { SharedMarkdownParser } from './markdownParser';
 export {
   LEXERA_BACKEND_PORT_CANDIDATES,
+  normalizeLexeraBackendBaseUrl,
+  resolveLexeraBackendStatusBaseUrl,
+  buildLexeraBackendCandidates,
+  probeLexeraBackend,
+  discoverLexeraBackend,
   DEFAULT_WEB_CLIPPER_MODE,
   normalizeClipperMode,
   extractUrlHostLabel,

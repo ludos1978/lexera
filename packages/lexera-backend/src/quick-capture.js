@@ -65,6 +65,14 @@
     applyLexeraTheme(localStorage.getItem('lexera-theme') || 'lexera');
   }
 
+  function requireBackendDiscoveryMethod(name) {
+    const discovery = window.LexeraBackendDiscovery;
+    if (!discovery || typeof discovery[name] !== 'function') {
+      throw new Error('LexeraBackendDiscovery.' + name + ' is required. Sync runtime assets from lexera-shared.');
+    }
+    return discovery[name].bind(discovery);
+  }
+
   // --- Init ---
 
   async function init() {
@@ -111,30 +119,10 @@
   }
 
   async function discoverBackend() {
-    try {
-      const url = await tauriInvoke('get_backend_url');
-      if (url) {
-        const res = await fetch(url + '/status', { signal: AbortSignal.timeout(2000) });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'running') return url;
-        }
-      }
-    } catch (e) { /* fall through */ }
-
-    const ports = [1431, 13080, 12080, 14080, 11080, 15080];
-    for (const port of ports) {
-      try {
-        const res = await fetch(`http://localhost:${port}/status`, { signal: AbortSignal.timeout(1000) });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'running' && data.port) {
-            return `http://localhost:${data.port}`;
-          }
-        }
-      } catch (e) { /* try next */ }
-    }
-    return null;
+    return requireBackendDiscoveryMethod('discoverBackend')({
+      useTauri: true,
+      timeoutMs: 1200
+    });
   }
 
   // --- Clipboard Summary ---

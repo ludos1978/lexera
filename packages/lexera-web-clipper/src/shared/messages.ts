@@ -1,8 +1,10 @@
 export const MESSAGE_TYPES = {
   popupLoad: 'popup/load',
   popupLoadColumns: 'popup/load-columns',
+  popupSearch: 'popup/search',
   popupCapture: 'popup/capture',
-  popupSetBackendUrl: 'popup/set-backend-url',
+  popupSaveSettings: 'popup/save-settings',
+  popupTestConnection: 'popup/test-connection',
   contentCollect: 'content/collect',
 } as const;
 

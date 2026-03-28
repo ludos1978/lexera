@@ -70,6 +70,9 @@ pub struct SyncConfig {
     pub remote_connections: Vec<RemoteConnectionEntry>,
     #[serde(default, alias = "renderApps")]
     pub render_apps: Option<RenderAppsConfig>,
+    /// Global default dashboard tag list (overridden per-workspace or per-board).
+    #[serde(default, alias = "dashboardTags", skip_serializing_if = "Option::is_none")]
+    pub dashboard_tags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -118,6 +121,7 @@ impl Default for SyncConfig {
             default_workspace: None,
             remote_connections: Vec::new(),
             render_apps: None,
+            dashboard_tags: None,
         }
     }
 }
@@ -164,6 +168,37 @@ pub fn get_backend_url(app: AppHandle) -> Result<String, String> {
         backend_host_for_bind(&config.bind_address),
         config.port
     ))
+}
+
+#[tauri::command]
+pub async fn browse_files(
+    title: Option<String>,
+    extensions: Option<Vec<String>>,
+    multiple: Option<bool>,
+) -> Result<Vec<String>, String> {
+    let mut builder = rfd::AsyncFileDialog::new();
+    if let Some(title) = &title {
+        builder = builder.set_title(title);
+    }
+    if let Some(extensions) = &extensions {
+        let extension_refs: Vec<&str> = extensions.iter().map(|extension| extension.as_str()).collect();
+        builder = builder.add_filter("Files", &extension_refs);
+    }
+    let paths = if multiple.unwrap_or(false) {
+        builder
+            .pick_files()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|file| file.path().to_string_lossy().to_string())
+            .collect()
+    } else {
+        match builder.pick_file().await {
+            Some(file) => vec![file.path().to_string_lossy().to_string()],
+            None => vec![],
+        }
+    };
+    Ok(paths)
 }
 
 /// Default config path: ~/.config/lexera/sync.json
@@ -654,6 +689,7 @@ mod tests {
             default_workspace: None,
             remote_connections: Vec::new(),
             render_apps: None,
+            dashboard_tags: None,
         };
 
         save_config(&path.to_path_buf(), &cfg).unwrap();
@@ -708,6 +744,7 @@ mod tests {
                 calendar_name: Some("Team Calendar".to_string()),
                 theme: None,
                 layout_preset: None,
+                dashboard_tags: None,
             }],
             default_workspace: Some("ws-main".to_string()),
             remote_connections: vec![RemoteConnectionEntry {
@@ -726,6 +763,7 @@ mod tests {
                 pdftoppm: None,
                 mutool: None,
             }),
+            dashboard_tags: None,
         };
 
         save_config(&path.to_path_buf(), &original).unwrap();
