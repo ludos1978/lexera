@@ -3256,6 +3256,7 @@ u {
   display: flex;
   flex-direction: column;
   box-shadow: var(--surface-column-shadow);
+  overflow: hidden;
 }
 
 .column-header {
@@ -3543,6 +3544,11 @@ u {
   overflow-wrap: anywhere;
   overflow: hidden;
   min-width: 0;
+}
+.card-content img,
+.card-content video,
+.card-content iframe {
+  max-width: 100%;
 }
 .card.collapsed .card-content { display: none; }
 
