@@ -2589,19 +2589,6 @@
       el.appendChild(fold);
     }
 
-    // "+" button to open panel picker dropdown
-    var addBtn = document.createElement('button');
-    addBtn.className = 'ws-view-add';
-    addBtn.type = 'button';
-    addBtn.title = 'Open view';
-    addBtn.textContent = '+';
-    addBtn.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      showPanelPickerMenu(addBtn);
-    });
-    el.appendChild(addBtn);
-
     // Header-level close button (always visible; closes the active tab/panel)
     var close = document.createElement('button');
     close.className = 'ws-view-close';
@@ -3872,25 +3859,6 @@
       event.preventDefault();
       activateTab(tabEl.getAttribute('data-ws-tab-id'));
     }
-  }
-
-  function showPanelPickerMenu(anchorEl) {
-    if (typeof showNativeMenu !== 'function') return;
-    var panelKinds = Object.keys(PANEL_DEFINITIONS);
-    var items = [];
-    for (var i = 0; i < panelKinds.length; i++) {
-      var kind = panelKinds[i];
-      var def = PANEL_DEFINITIONS[kind];
-      items.push({ id: 'reveal-panel:' + kind, label: def.title });
-    }
-    var rect = anchorEl.getBoundingClientRect();
-    showNativeMenu(items, rect.left, rect.bottom, 'menu.panel-picker').then(function (action) {
-      if (!action) return;
-      if (action.indexOf('reveal-panel:') === 0) {
-        var kind = action.substring('reveal-panel:'.length);
-        revealPanel(kind);
-      }
-    });
   }
 
   function handleRootContextMenu(event) {

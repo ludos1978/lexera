@@ -828,28 +828,6 @@
   overflow: auto;
 }
 
-.ws-view-add {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
-  align-self: center;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: calc(14px * var(--ui-scale));
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-}
-.ws-view-add:hover {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--text-bright);
-}
-
 .ws-view-close {
   flex: 0 0 auto;
   display: inline-flex;
