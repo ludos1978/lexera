@@ -1666,17 +1666,9 @@ var LexeraOrderHelpers = (function () {
   }
 
   function renderStandaloneCalendarPanels(tasks) {
-    if (!window.LexeraSharedPanels) {
-      if (typeof traceFrontendAction === 'function') traceFrontendAction('debug', 'calendar.render', 'No LexeraSharedPanels available', {});
-      return;
-    }
+    if (!window.LexeraSharedPanels) return;
     var weekRoots = window.LexeraSharedPanels.getRoots('weekCalendar');
     var monthRoots = window.LexeraSharedPanels.getRoots('monthCalendar');
-    if (typeof traceFrontendAction === 'function') {
-      traceFrontendAction('debug', 'calendar.render', 'Rendering standalone calendars', {
-        weekPanels: weekRoots.length, monthPanels: monthRoots.length, taskCount: (tasks || []).length
-      });
-    }
     for (var w = 0; w < weekRoots.length; w++) {
       var weekEl = weekRoots[w].querySelector('.lexera-shared-calendar-week-view');
       var weekTaskEl = weekRoots[w].querySelector('.lexera-shared-calendar-task-list');
@@ -1853,13 +1845,29 @@ var LexeraOrderHelpers = (function () {
 
   function buildDashboardBrokenItems(runtimeItems, embedItems, includeItems) {
     var items = [];
-    var seen = {};
+    var byKey = {};
     function push(item) {
       if (!item) return;
       var key = String(item.type || '') + '|' + String(item.src || '').toLowerCase();
-      if (seen[key]) return;
-      seen[key] = true;
-      items.push(item);
+      if (!byKey[key]) {
+        byKey[key] = {
+          type: item.type || 'embed',
+          src: item.src || '',
+          count: 0
+        };
+        if (typeof item.colIndex === 'number') byKey[key].colIndex = item.colIndex;
+        if (typeof item.cardIndex === 'number') byKey[key].cardIndex = item.cardIndex;
+        if (item.reason) byKey[key].reason = item.reason;
+        items.push(byKey[key]);
+      }
+      byKey[key].count += item.count || 1;
+      if (!byKey[key].reason && item.reason) byKey[key].reason = item.reason;
+      if ((byKey[key].colIndex == null || byKey[key].colIndex < 0) && typeof item.colIndex === 'number') {
+        byKey[key].colIndex = item.colIndex;
+      }
+      if ((byKey[key].cardIndex == null || byKey[key].cardIndex < 0) && typeof item.cardIndex === 'number') {
+        byKey[key].cardIndex = item.cardIndex;
+      }
     }
     var inventories = [].concat(embedItems || [], includeItems || []);
     for (var i = 0; i < inventories.length; i++) {
@@ -1947,7 +1955,17 @@ var LexeraOrderHelpers = (function () {
     if (!container || typeof container.querySelectorAll !== 'function') return [];
     var broken = [];
     var seen = {};
-    var brokenEls = container.querySelectorAll('.embed-broken, .include-broken');
+    var selector = [
+      '.embed-broken',
+      '.include-broken',
+      '.image-path-overlay-container.image-broken[data-file-path]',
+      '.video-path-overlay-container.image-broken[data-file-path]',
+      '.wysiwyg-media.image-broken[data-file-path]',
+      '.wysiwyg-media-block.image-broken[data-file-path]',
+      '.link-path-overlay-container.link-broken[data-file-path]',
+      '.external-embed-container[data-external-policy-action]:not([data-external-policy-action=""]):not([data-external-policy-action="open_page"])'
+    ].join(', ');
+    var brokenEls = container.querySelectorAll(selector);
     for (var i = 0; i < brokenEls.length; i++) {
       var el = brokenEls[i];
       var cardEl = typeof el.closest === 'function' ? el.closest('.card') : null;
@@ -1957,31 +1975,56 @@ var LexeraOrderHelpers = (function () {
         (typeof el.getAttribute === 'function' && (
           el.getAttribute('data-file-path') ||
           el.getAttribute('data-include-path') ||
+          el.getAttribute('data-embed-url') ||
           el.getAttribute('src')
         )) || '';
       var img = typeof el.querySelector === 'function' ? el.querySelector('img[src]') : null;
+      var video = typeof el.querySelector === 'function' ? el.querySelector('video') : null;
+      var audio = typeof el.querySelector === 'function' ? el.querySelector('audio') : null;
       if (!src && img && typeof img.getAttribute === 'function') src = img.getAttribute('src') || '';
+      if (!src && video && typeof video.getAttribute === 'function') src = video.getAttribute('src') || '';
+      if (!src && audio && typeof audio.getAttribute === 'function') src = audio.getAttribute('src') || '';
       var type = 'embed';
       var hasBrokenIncludePlaceholder = !!(typeof el.querySelector === 'function' && el.querySelector('.broken-include-placeholder'));
+      var externalPolicyAction = typeof el.getAttribute === 'function' ? String(el.getAttribute('data-external-policy-action') || '').trim() : '';
+      var mediaType = typeof el.getAttribute === 'function' ? String(el.getAttribute('data-media-type') || '').trim().toLowerCase() : '';
+      var reason = typeof el.getAttribute === 'function' ? String(el.getAttribute('data-external-policy-reason') || '').trim() : '';
       if ((el.classList && el.classList.contains('include-broken')) || hasBrokenIncludePlaceholder) type = 'include';
+      else if (externalPolicyAction && externalPolicyAction !== 'open_page') type = 'external';
+      else if (el.classList && el.classList.contains('link-broken')) type = 'link';
+      else if (mediaType === 'audio' || audio) type = 'audio';
+      else if (mediaType === 'video' || video) type = 'video';
+      else if (mediaType === 'image' || (el.classList && el.classList.contains('image-broken'))) type = 'image';
       else if (img) type = 'image';
-      else if (typeof el.querySelector === 'function' && el.querySelector('video')) type = 'video';
+      else if (video) type = 'video';
+      else if (audio) type = 'audio';
       var key = [type, src, colIndex, cardIndex].join('|');
       if (seen[key]) continue;
       seen[key] = true;
-      broken.push({
+      var item = {
         type: type,
         src: src,
         colIndex: colIndex,
         cardIndex: cardIndex
-      });
+      };
+      if (reason) item.reason = reason;
+      broken.push(item);
     }
     return broken;
   }
 
   // ── Dashboard broken elements scanner ─────────────────────────────
+  function getDashboardBrokenScanContainer() {
+    var shell = _dep('WorkspaceShell');
+    if (_dep('workspaceShellEnabled') && shell && typeof shell.getActiveBoardColumnsContainer === 'function') {
+      var shellContainer = shell.getActiveBoardColumnsContainer();
+      if (shellContainer) return shellContainer;
+    }
+    return _callDep('getElColumnsContainer');
+  }
+
   function scanBrokenElements() {
-    return scanBrokenElementsFromContainer(_callDep('getElColumnsContainer'));
+    return scanBrokenElementsFromContainer(getDashboardBrokenScanContainer());
   }
 
   function renderDashboardFileEmbedsList() {
@@ -2218,9 +2261,6 @@ var LexeraOrderHelpers = (function () {
   function ensureDashboardState() {
     if (!dashboardState) {
       dashboardState = _dep('dashboardState');
-      if (typeof traceFrontendAction === 'function') {
-        traceFrontendAction('debug', 'calendar.state', 'ensureDashboardState from dep', { found: !!dashboardState });
-      }
     }
     if (!dashboardState) {
       dashboardState = {
@@ -2230,9 +2270,6 @@ var LexeraOrderHelpers = (function () {
         pinnedQueries: [], activePinnedQuery: '',
         fileInventoryLoading: false, fileEmbeds: [], includedFiles: [], brokenFiles: []
       };
-      if (typeof traceFrontendAction === 'function') {
-        traceFrontendAction('debug', 'calendar.state', 'Created fresh dashboardState', {});
-      }
     }
     return dashboardState;
   }
@@ -2242,11 +2279,6 @@ var LexeraOrderHelpers = (function () {
     if (_dep('embeddedMode')) return Promise.resolve();
     var hasDashboard = !!_callDep('getElDashboardRoot');
     var hasCalendars = hasAnyCalendarPanel();
-    if (typeof traceFrontendAction === 'function') {
-      traceFrontendAction('debug', 'calendar.refresh', 'refreshDashboardData called', {
-        hasDashboard: hasDashboard, hasCalendars: hasCalendars, connected: !!_dep('connected')
-      });
-    }
     if (!hasDashboard && !hasCalendars) return Promise.resolve();
     ensureDashboardState();
     if (!_dep('connected')) {
@@ -2631,6 +2663,7 @@ var LexeraOrderHelpers = (function () {
     collectDashboardFileReferences: collectDashboardFileReferences,
     collectDashboardFileEmbeds: collectDashboardFileEmbeds,
     collectDashboardIncludedFiles: collectDashboardIncludedFiles,
+    scanBrokenElements: scanBrokenElements,
     scanBrokenElementsFromContainer: scanBrokenElementsFromContainer,
     renderDashboardPinnedList: renderDashboardPinnedList,
     setDashboardGroupEmptyState: setDashboardGroupEmptyState,

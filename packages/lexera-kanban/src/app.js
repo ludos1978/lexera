@@ -416,13 +416,10 @@ const LexeraDashboard = (function () {
       if (detail.kind === 'hierarchy') syncMirroredWorkspaceViews();
       if (detail.kind === 'dashboard') syncMirroredDashboardViews();
       if (detail.kind === 'weekCalendar' || detail.kind === 'monthCalendar') {
-        traceFrontendAction('debug', 'calendar.panel-created', 'Calendar panel created', { kind: detail.kind });
         var calTasks = OrderHelpers.getCalendarTasks();
-        traceFrontendAction('debug', 'calendar.panel-created', 'Existing tasks', { count: calTasks ? calTasks.length : 0 });
         if (calTasks && calTasks.length > 0) {
           OrderHelpers.renderStandaloneCalendarPanels(calTasks);
         } else {
-          traceFrontendAction('debug', 'calendar.panel-created', 'No tasks, triggering refresh', {});
           OrderHelpers.scheduleDashboardRefresh(0);
         }
       }
