@@ -1836,8 +1836,14 @@ var LexeraOrderHelpers = (function () {
   }
 
   function renderDashboard() {
-    if (!_callDep('getElDashboardRoot')) return;
     if (!dashboardState) return;
+
+    // Always render standalone calendar panels, even without dashboard DOM
+    var allCalendar = getCalendarTasks();
+    renderStandaloneCalendarPanels(allCalendar);
+
+    if (!_callDep('getElDashboardRoot')) return;
+
     var scopeHint = scopeHintForDashboard();
     var loadingNote = dashboardState.loading ? 'Loading...' : null;
 
@@ -1848,8 +1854,11 @@ var LexeraOrderHelpers = (function () {
       scopeHint || loadingNote || (dashboardState.query ? 'No matching tasks' : 'Type a query to search'),
       { collapseWhenEmpty: !dashboardState.loading && !dashboardState.query }
     );
-    var allCalendar = getCalendarTasks();
-    renderStandaloneCalendarPanels(allCalendar);
+
+    // Calendar views inside dashboard panel
+    renderWeekCalendar(document.getElementById('dashboard-calendar-week'), allCalendar);
+    renderMonthCalendar(document.getElementById('dashboard-calendar-month'), allCalendar);
+    renderCalendarTaskList(document.getElementById('dashboard-calendar-tasks'), allCalendar);
 
     renderDashboardResultItems(
       _callDep('getElDashboardOverdueList'),
@@ -1899,9 +1908,28 @@ var LexeraOrderHelpers = (function () {
     syncMirroredDashboardViews();
   }
 
+  function ensureDashboardState() {
+    if (!dashboardState) {
+      dashboardState = _dep('dashboardState');
+    }
+    if (!dashboardState) {
+      dashboardState = {
+        query: '', scope: 'active', loading: false,
+        results: [], overdue: [], today: [], thisWeek: [],
+        upcoming: [], later: [], todos: [], taggedGroups: [],
+        pinnedQueries: [], activePinnedQuery: ''
+      };
+    }
+    return dashboardState;
+  }
+
   function refreshDashboardData(options) {
     options = options || {};
-    if (!_callDep('getElDashboardRoot') || _dep('embeddedMode')) return Promise.resolve();
+    if (_dep('embeddedMode')) return Promise.resolve();
+    var hasDashboard = !!_callDep('getElDashboardRoot');
+    var hasCalendars = hasAnyCalendarPanel();
+    if (!hasDashboard && !hasCalendars) return Promise.resolve();
+    ensureDashboardState();
     if (!_dep('connected')) {
       if (dashboardState) {
         dashboardState.loading = false;
