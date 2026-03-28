@@ -1000,6 +1000,7 @@ const LexeraDashboard = (function () {
     getElDashboardResultsList: function () { return getElDashboardResultsList(); },
     getElDashboardDeadlineList: function () { return getElDashboardDeadlineList(); },
     getElDashboardOverdueList: function () { return getElDashboardOverdueList(); },
+    getElDashboardEmbedsList: function () { return getElDashboardEmbedsList(); },
     getElDashboardUpcomingList: function () { return getElDashboardUpcomingList(); },
     getElDashboardTodosList: function () { return getElDashboardTodosList(); },
     getElDashboardTaggedList: function () { return getElDashboardTaggedList(); },
@@ -1008,7 +1009,14 @@ const LexeraDashboard = (function () {
     getSharedPanelRoots: function (kind) { return getSharedPanelRoots(kind); },
     getDashboardTreeApi: function () { return getDashboardTreeApi(); },
     TreeView: TreeView,
-    navigateToSearchResult: function (r) { return navigateToSearchResult(r); }
+    navigateToSearchResult: function (r) { return navigateToSearchResult(r); },
+    requestFileInfo: function (b, f) { return requestFileInfo(b, f); },
+    resolveMarkdownRelativeTargets: function (c, f) { return resolveMarkdownRelativeTargets(c, f); },
+    parseMarkdownTarget: function (r) { return parseMarkdownTarget(r); },
+    parseLocalFileReference: function (p) { return parseLocalFileReference(p); },
+    isExternalHttpUrl: function (value) { return isExternalHttpUrl(value); },
+    getFileExtension: function (path) { return getFileExtension(path); },
+    getMediaCategory: function (ext) { return getMediaCategory(ext); }
   };
 
   var _resolvedOrderHelpers = null;
@@ -1242,6 +1250,7 @@ const LexeraDashboard = (function () {
   function getElDashboardResultsList() { return _cachedEl('drl', 'dashboard-results-list'); }
   function getElDashboardDeadlineList() { return _cachedEl('ddl', 'dashboard-deadline-list'); }
   function getElDashboardOverdueList() { return _cachedEl('dol', 'dashboard-overdue-list'); }
+  function getElDashboardEmbedsList() { return _cachedEl('dembl', 'dashboard-embeds-list'); }
   function getElDashboardUpcomingList() { return _cachedEl('dul', 'dashboard-upcoming-list'); }
   function getElDashboardTodosList() { return _cachedEl('dtl', 'dashboard-todos-list'); }
   function getElDashboardTaggedList() { return _cachedEl('dtagl', 'dashboard-tagged-list'); }

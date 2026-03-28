@@ -1148,6 +1148,7 @@ var LexeraOrderHelpers = (function () {
   var dashboardSearchDebounce = null;
   var dashboardRefreshTimer = null;
   var dashboardRefreshSeq = 0;
+  var dashboardFileInventorySeq = 0;
 
   function normalizeDashboardScope(scope) {
     return scope === 'all' ? 'all' : 'active';
@@ -1427,6 +1428,7 @@ var LexeraOrderHelpers = (function () {
     { selector: '.lexera-shared-dashboard-upcoming', getter: 'getElDashboardUpcomingList' },
     { selector: '.lexera-shared-dashboard-todos', getter: 'getElDashboardTodosList' },
     { selector: '.lexera-shared-dashboard-tagged', getter: 'getElDashboardTaggedList' },
+    { selector: '.lexera-shared-dashboard-embeds', getter: 'getElDashboardEmbedsList' },
     { selector: '.lexera-shared-dashboard-broken', getter: 'getElDashboardBrokenList' },
     { selector: '.lexera-shared-dashboard-included', getter: 'getElDashboardIncludedList' }
   ];
@@ -1690,10 +1692,70 @@ var LexeraOrderHelpers = (function () {
     }
   }
 
-  function collectDashboardIncludedFiles(boardData) {
+  function isSkippableDashboardFilePath(value) {
+    var normalized = String(value || '').trim();
+    if (!normalized) return true;
+    if (_callDep('isExternalHttpUrl', normalized)) return true;
+    return /^(?:#|mailto:|tel:|data:|javascript:)/i.test(normalized);
+  }
+
+  function normalizeDashboardFilePath(path) {
+    var normalized = String(path || '').trim();
+    if (!normalized) return '';
+    if (isSkippableDashboardFilePath(normalized)) return '';
+    var fileRef = _callDep('parseLocalFileReference', normalized);
+    if (fileRef && fileRef.path) normalized = String(fileRef.path || '').trim();
+    return normalized;
+  }
+
+  function appendDashboardFileGroup(store, kind, rawPath, contextLabel) {
+    var normalizedPath = normalizeDashboardFilePath(rawPath);
+    if (!normalizedPath) return;
+    var key = kind + '|' + normalizedPath.toLowerCase();
+    var ext = _callDep('getFileExtension', normalizedPath) || '';
+    var mediaCategory = kind === 'embed' ? (_callDep('getMediaCategory', ext) || '') : '';
+    if (!store.byKey[key]) {
+      store.byKey[key] = {
+        kind: kind,
+        path: normalizedPath,
+        count: 0,
+        firstContextLabel: contextLabel || '',
+        extension: ext,
+        mediaCategory: mediaCategory
+      };
+      store.list.push(store.byKey[key]);
+    }
+    store.byKey[key].count += 1;
+    if (!store.byKey[key].firstContextLabel && contextLabel) {
+      store.byKey[key].firstContextLabel = contextLabel;
+    }
+  }
+
+  function getColumnIncludeSourcePath(col) {
+    if (col && col.includeSource && col.includeSource.rawPath) {
+      return String(col.includeSource.rawPath || '').trim();
+    }
+    return extractIncludePathFromTitle(col && col.title ? col.title : '');
+  }
+
+  function getDashboardInventoryContextLabel(col, visibleIndex) {
+    return removeIncludeSyntaxFromTitle(col && col.title ? col.title : '') || ('Column ' + (visibleIndex + 1));
+  }
+
+  function getDashboardResolvedCardContent(col, card) {
+    var content = String(card && card.content ? card.content : '');
+    var includeSourcePath = getColumnIncludeSourcePath(col);
+    if (!content || !includeSourcePath) return content;
+    if (typeof _callDep('resolveMarkdownRelativeTargets', content, includeSourcePath) === 'string') {
+      return _callDep('resolveMarkdownRelativeTargets', content, includeSourcePath);
+    }
+    return content;
+  }
+
+  function collectDashboardFileReferences(boardData) {
     var rows = boardData && Array.isArray(boardData.rows) ? boardData.rows : [];
-    var items = [];
-    var seen = {};
+    var embedStore = { list: [], byKey: {} };
+    var includeStore = { list: [], byKey: {} };
     var visibleIndex = 0;
     for (var rowIdx = 0; rowIdx < rows.length; rowIdx++) {
       var row = rows[rowIdx];
@@ -1704,28 +1766,181 @@ var LexeraOrderHelpers = (function () {
         for (var colIdx = 0; colIdx < columns.length; colIdx++, visibleIndex++) {
           var col = columns[colIdx];
           if (!col) continue;
-          var includePath = col.includeSource && col.includeSource.rawPath
-            ? String(col.includeSource.rawPath || '').trim()
-            : extractIncludePathFromTitle(col.title || '');
-          if (!includePath) continue;
-          var normalizedPath = String(includePath).trim();
-          if (!normalizedPath) continue;
-          var key = normalizedPath.toLowerCase();
-          var displayTitle = removeIncludeSyntaxFromTitle(col.title || '') || ('Column ' + (visibleIndex + 1));
-          if (!seen[key]) {
-            seen[key] = {
-              path: normalizedPath,
-              count: 1,
-              firstColumnTitle: displayTitle
-            };
-            items.push(seen[key]);
-          } else {
-            seen[key].count += 1;
+          var contextLabel = getDashboardInventoryContextLabel(col, visibleIndex);
+          var includePath = getColumnIncludeSourcePath(col);
+          if (includePath) appendDashboardFileGroup(includeStore, 'include', includePath, contextLabel);
+
+          var cards = Array.isArray(col.cards) ? col.cards : [];
+          for (var cardIdx = 0; cardIdx < cards.length; cardIdx++) {
+            var content = getDashboardResolvedCardContent(col, cards[cardIdx]);
+            if (!content) continue;
+
+            String(content).replace(/!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g, function (_match, _alt, rawTarget) {
+              var parsed = _callDep('parseMarkdownTarget', rawTarget);
+              appendDashboardFileGroup(embedStore, 'embed', parsed && parsed.path ? parsed.path : rawTarget, contextLabel);
+              return _match;
+            });
+
+            String(content).replace(/!!!include\(([^)]+)\)!!!/g, function (_match, rawIncludePath) {
+              appendDashboardFileGroup(includeStore, 'include', rawIncludePath, contextLabel);
+              return _match;
+            });
           }
         }
       }
     }
+    return {
+      fileEmbeds: embedStore.list,
+      includedFiles: includeStore.list
+    };
+  }
+
+  function collectDashboardIncludedFiles(boardData) {
+    return collectDashboardFileReferences(boardData).includedFiles;
+  }
+
+  function collectDashboardFileEmbeds(boardData) {
+    return collectDashboardFileReferences(boardData).fileEmbeds;
+  }
+
+  function requestDashboardFileInfo(boardId, filePath) {
+    var infoRequester = _callDep('requestFileInfo');
+    if (typeof infoRequester === 'function') {
+      return infoRequester(boardId, filePath);
+    }
+    var api = _dep('LexeraApi');
+    if (api && typeof api.fileInfo === 'function') {
+      return api.fileInfo(boardId, filePath).catch(function () { return null; });
+    }
+    return Promise.resolve(null);
+  }
+
+  function renderDashboardFileInventoryList(targetEl, items, emptyText) {
+    if (!targetEl) return;
+    var state = ensureDashboardState();
+    var loading = !!(state && state.fileInventoryLoading);
+    setDashboardGroupEmptyState(targetEl, !loading && (!items || items.length === 0));
+    if (loading && (!items || items.length === 0)) {
+      targetEl.innerHTML = '<div class="dashboard-empty">Loading...</div>';
+      return;
+    }
+    if (!items || items.length === 0) {
+      targetEl.innerHTML = '<div class="dashboard-empty">' + escapeCalHtml(emptyText) + '</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var status = item.status || 'unknown';
+      var statusLabel = status === 'missing' ? 'Missing' : (status === 'exists' ? 'Exists' : 'Unknown');
+      var kindLabel = item.kind === 'include'
+        ? 'Include'
+        : (item.mediaCategory ? item.mediaCategory.charAt(0).toUpperCase() + item.mediaCategory.slice(1) : 'Embed');
+      var meta = item.count > 1
+        ? ((item.firstContextLabel || kindLabel) + ' +' + (item.count - 1) + ' more')
+        : (item.firstContextLabel || kindLabel);
+      html += '<div class="dashboard-file-item">';
+      html += '<div class="dashboard-file-header">';
+      html += '<span class="dashboard-file-kind">' + escapeCalHtml(kindLabel) + '</span>';
+      html += '<span class="dashboard-file-status dashboard-file-status-' + escapeCalHtml(status) + '">' + escapeCalHtml(statusLabel) + '</span>';
+      html += '</div>';
+      html += '<div class="dashboard-file-path">' + escapeCalHtml(item.path) + '</div>';
+      html += '<div class="dashboard-file-meta">' + escapeCalHtml(meta) + '</div>';
+      html += '</div>';
+    }
+    targetEl.innerHTML = html;
+  }
+
+  function buildDashboardBrokenItems(runtimeItems, embedItems, includeItems) {
+    var items = [];
+    var seen = {};
+    function push(item) {
+      if (!item) return;
+      var key = String(item.type || '') + '|' + String(item.src || '').toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      items.push(item);
+    }
+    var inventories = [].concat(embedItems || [], includeItems || []);
+    for (var i = 0; i < inventories.length; i++) {
+      if (inventories[i].status !== 'missing') continue;
+      push({
+        type: inventories[i].kind === 'include'
+          ? 'include'
+          : (inventories[i].mediaCategory || 'embed'),
+        src: inventories[i].path,
+        count: inventories[i].count || 1
+      });
+    }
+    for (var j = 0; j < (runtimeItems || []).length; j++) push(runtimeItems[j]);
     return items;
+  }
+
+  function refreshDashboardFileInventory() {
+    var state = ensureDashboardState();
+    var boardId = _dep('activeBoardId') || '';
+    var boardData = _dep('fullBoardData');
+    if (!boardId || !boardData || !_dep('connected')) {
+      state.fileInventoryLoading = false;
+      state.fileEmbeds = [];
+      state.includedFiles = [];
+      state.brokenFiles = [];
+      renderDashboardFileEmbedsList();
+      renderDashboardIncludedFilesList();
+      renderDashboardBrokenList();
+      syncMirroredDashboardViews();
+      return Promise.resolve();
+    }
+
+    var refs = collectDashboardFileReferences(boardData);
+    var seq = ++dashboardFileInventorySeq;
+    state.fileInventoryLoading = true;
+    renderDashboardFileEmbedsList();
+    renderDashboardIncludedFilesList();
+
+    return Promise.all([
+      Promise.all((refs.fileEmbeds || []).map(function (item) {
+        return requestDashboardFileInfo(boardId, item.path).then(function (info) {
+          var status = info && info.exists === false ? 'missing' : (info ? 'exists' : 'unknown');
+          return Object.assign({}, item, {
+            status: status,
+            exists: status === 'exists',
+            fileInfo: info || null
+          });
+        });
+      })),
+      Promise.all((refs.includedFiles || []).map(function (item) {
+        return requestDashboardFileInfo(boardId, item.path).then(function (info) {
+          var status = info && info.exists === false ? 'missing' : (info ? 'exists' : 'unknown');
+          return Object.assign({}, item, {
+            status: status,
+            exists: status === 'exists',
+            fileInfo: info || null
+          });
+        });
+      }))
+    ]).then(function (resolved) {
+      if (seq !== dashboardFileInventorySeq) return;
+      state.fileEmbeds = resolved[0] || [];
+      state.includedFiles = resolved[1] || [];
+      state.brokenFiles = buildDashboardBrokenItems([], state.fileEmbeds, state.includedFiles);
+      state.fileInventoryLoading = false;
+      renderDashboardFileEmbedsList();
+      renderDashboardIncludedFilesList();
+      renderDashboardBrokenList();
+      syncMirroredDashboardViews();
+    }).catch(function (err) {
+      if (seq !== dashboardFileInventorySeq) return;
+      _callDep('logFrontendIssue', 'warn', 'dashboard.files', 'Failed to refresh dashboard file inventory', err);
+      state.fileEmbeds = [];
+      state.includedFiles = [];
+      state.brokenFiles = [];
+      state.fileInventoryLoading = false;
+      renderDashboardFileEmbedsList();
+      renderDashboardIncludedFilesList();
+      renderDashboardBrokenList();
+      syncMirroredDashboardViews();
+    });
   }
 
   function scanBrokenElementsFromContainer(container) {
@@ -1769,35 +1984,32 @@ var LexeraOrderHelpers = (function () {
     return scanBrokenElementsFromContainer(_callDep('getElColumnsContainer'));
   }
 
+  function renderDashboardFileEmbedsList() {
+    renderDashboardFileInventoryList(
+      _callDep('getElDashboardEmbedsList'),
+      dashboardState && dashboardState.fileEmbeds ? dashboardState.fileEmbeds : [],
+      'No file embeds'
+    );
+    syncMirroredDashboardViews();
+  }
+
   function renderDashboardIncludedFilesList() {
-    var el = _callDep('getElDashboardIncludedList');
-    if (!el) return;
-    var items = collectDashboardIncludedFiles(_dep('fullBoardData'));
-    setDashboardGroupEmptyState(el, items.length === 0);
-    if (items.length === 0) {
-      el.innerHTML = '<div class="dashboard-empty">No included files</div>';
-      syncMirroredDashboardViews();
-      return;
-    }
-    var html = '';
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      var meta = item.count > 1
-        ? item.firstColumnTitle + ' +' + (item.count - 1) + ' more'
-        : item.firstColumnTitle;
-      html += '<div class="dashboard-file-item">';
-      html += '<div class="dashboard-file-path">' + escapeCalHtml(item.path) + '</div>';
-      html += '<div class="dashboard-file-meta">' + escapeCalHtml(meta) + '</div>';
-      html += '</div>';
-    }
-    el.innerHTML = html;
+    renderDashboardFileInventoryList(
+      _callDep('getElDashboardIncludedList'),
+      dashboardState && dashboardState.includedFiles ? dashboardState.includedFiles : [],
+      'No included files'
+    );
     syncMirroredDashboardViews();
   }
 
   function renderDashboardBrokenList() {
     var el = _callDep('getElDashboardBrokenList');
     if (!el) return;
-    var items = scanBrokenElements();
+    var items = buildDashboardBrokenItems(
+      scanBrokenElements(),
+      dashboardState && dashboardState.fileEmbeds ? dashboardState.fileEmbeds : [],
+      dashboardState && dashboardState.includedFiles ? dashboardState.includedFiles : []
+    );
     setDashboardGroupEmptyState(el, items.length === 0);
     if (items.length === 0) {
       el.innerHTML = '<div class="dashboard-empty">No broken elements</div>';
@@ -1813,6 +2025,7 @@ var LexeraOrderHelpers = (function () {
       html += '<div class="dashboard-broken-item">';
       html += '<span class="broken-type">' + escapeCalHtml(label) + '</span> ';
       html += '<span class="broken-src">' + escapeCalHtml(src) + '</span>';
+      if (item.count > 1) html += ' <span class="dashboard-file-count">x' + escapeCalHtml(String(item.count)) + '</span>';
       html += '</div>';
     }
     el.innerHTML = html;
@@ -1993,8 +2206,10 @@ var LexeraOrderHelpers = (function () {
         }
       }
     }
+    renderDashboardFileEmbedsList();
     renderDashboardIncludedFilesList();
     renderDashboardBrokenList();
+    refreshDashboardFileInventory();
     // Broken elements — scan after a delay to let embeds/images fail to load
     setTimeout(renderDashboardBrokenList, 2000);
     syncMirroredDashboardViews();
@@ -2012,7 +2227,8 @@ var LexeraOrderHelpers = (function () {
         query: '', scope: 'active', loading: false,
         results: [], overdue: [], today: [], thisWeek: [],
         upcoming: [], later: [], todos: [], taggedGroups: [],
-        pinnedQueries: [], activePinnedQuery: ''
+        pinnedQueries: [], activePinnedQuery: '',
+        fileInventoryLoading: false, fileEmbeds: [], includedFiles: [], brokenFiles: []
       };
       if (typeof traceFrontendAction === 'function') {
         traceFrontendAction('debug', 'calendar.state', 'Created fresh dashboardState', {});
@@ -2044,6 +2260,10 @@ var LexeraOrderHelpers = (function () {
         dashboardState.later = [];
         dashboardState.todos = [];
         dashboardState.taggedGroups = [];
+        dashboardState.fileInventoryLoading = false;
+        dashboardState.fileEmbeds = [];
+        dashboardState.includedFiles = [];
+        dashboardState.brokenFiles = [];
       }
       renderDashboard();
       return Promise.resolve();
@@ -2408,6 +2628,8 @@ var LexeraOrderHelpers = (function () {
     scopeHintForDashboard: scopeHintForDashboard,
     bindMirroredDashboardView: bindMirroredDashboardView,
     syncMirroredDashboardViews: syncMirroredDashboardViews,
+    collectDashboardFileReferences: collectDashboardFileReferences,
+    collectDashboardFileEmbeds: collectDashboardFileEmbeds,
     collectDashboardIncludedFiles: collectDashboardIncludedFiles,
     scanBrokenElementsFromContainer: scanBrokenElementsFromContainer,
     renderDashboardPinnedList: renderDashboardPinnedList,
