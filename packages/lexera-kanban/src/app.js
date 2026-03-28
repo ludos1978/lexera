@@ -416,10 +416,13 @@ const LexeraDashboard = (function () {
       if (detail.kind === 'hierarchy') syncMirroredWorkspaceViews();
       if (detail.kind === 'dashboard') syncMirroredDashboardViews();
       if (detail.kind === 'weekCalendar' || detail.kind === 'monthCalendar') {
+        traceFrontendAction('debug', 'calendar.panel-created', 'Calendar panel created', { kind: detail.kind });
         var calTasks = OrderHelpers.getCalendarTasks();
+        traceFrontendAction('debug', 'calendar.panel-created', 'Existing tasks', { count: calTasks ? calTasks.length : 0 });
         if (calTasks && calTasks.length > 0) {
           OrderHelpers.renderStandaloneCalendarPanels(calTasks);
         } else {
+          traceFrontendAction('debug', 'calendar.panel-created', 'No tasks, triggering refresh', {});
           OrderHelpers.scheduleDashboardRefresh(0);
         }
       }
@@ -997,6 +1000,11 @@ const LexeraDashboard = (function () {
     getElDashboardResultsList: function () { return getElDashboardResultsList(); },
     getElDashboardDeadlineList: function () { return getElDashboardDeadlineList(); },
     getElDashboardOverdueList: function () { return getElDashboardOverdueList(); },
+    getElDashboardUpcomingList: function () { return getElDashboardUpcomingList(); },
+    getElDashboardTodosList: function () { return getElDashboardTodosList(); },
+    getElDashboardTaggedList: function () { return getElDashboardTaggedList(); },
+    getElDashboardBrokenList: function () { return getElDashboardBrokenList(); },
+    getElDashboardIncludedList: function () { return getElDashboardIncludedList(); },
     getSharedPanelRoots: function (kind) { return getSharedPanelRoots(kind); },
     getDashboardTreeApi: function () { return getDashboardTreeApi(); },
     TreeView: TreeView,
@@ -1234,6 +1242,11 @@ const LexeraDashboard = (function () {
   function getElDashboardResultsList() { return _cachedEl('drl', 'dashboard-results-list'); }
   function getElDashboardDeadlineList() { return _cachedEl('ddl', 'dashboard-deadline-list'); }
   function getElDashboardOverdueList() { return _cachedEl('dol', 'dashboard-overdue-list'); }
+  function getElDashboardUpcomingList() { return _cachedEl('dul', 'dashboard-upcoming-list'); }
+  function getElDashboardTodosList() { return _cachedEl('dtl', 'dashboard-todos-list'); }
+  function getElDashboardTaggedList() { return _cachedEl('dtagl', 'dashboard-tagged-list'); }
+  function getElDashboardBrokenList() { return _cachedEl('dbl', 'dashboard-broken-list'); }
+  function getElDashboardIncludedList() { return _cachedEl('dfil', 'dashboard-included-list'); }
 
   function init() {
     try {

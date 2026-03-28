@@ -1377,21 +1377,7 @@ var LexeraOrderHelpers = (function () {
         return;
       }
 
-      var containerInfo = null;
-      var containers = [
-        ['.lexera-shared-dashboard-pinned', _dep('getElDashboardPinnedList')],
-        ['.lexera-shared-dashboard-results', _dep('getElDashboardResultsList')],
-        ['.lexera-shared-dashboard-deadlines', _dep('getElDashboardDeadlineList')],
-        ['.lexera-shared-dashboard-overdue', _dep('getElDashboardOverdueList')]
-      ];
-      for (var ci = 0; ci < containers.length; ci++) {
-        var localContainer = e.target.closest(containers[ci][0]);
-        if (localContainer) {
-          var canonicalFn = containers[ci][1];
-          containerInfo = { local: localContainer, canonical: typeof canonicalFn === 'function' ? canonicalFn() : null };
-          break;
-        }
-      }
+      var containerInfo = getDashboardMirrorContainerInfo(e.target);
       if (!containerInfo || !containerInfo.canonical) return;
 
       var localPinnedItem = e.target.closest('.dashboard-item');
@@ -1434,13 +1420,33 @@ var LexeraOrderHelpers = (function () {
     }
   }
 
+  var DASHBOARD_MIRROR_LISTS = [
+    { selector: '.lexera-shared-dashboard-pinned', getter: 'getElDashboardPinnedList' },
+    { selector: '.lexera-shared-dashboard-results', getter: 'getElDashboardResultsList' },
+    { selector: '.lexera-shared-dashboard-overdue', getter: 'getElDashboardOverdueList' },
+    { selector: '.lexera-shared-dashboard-upcoming', getter: 'getElDashboardUpcomingList' },
+    { selector: '.lexera-shared-dashboard-todos', getter: 'getElDashboardTodosList' },
+    { selector: '.lexera-shared-dashboard-tagged', getter: 'getElDashboardTaggedList' },
+    { selector: '.lexera-shared-dashboard-broken', getter: 'getElDashboardBrokenList' },
+    { selector: '.lexera-shared-dashboard-included', getter: 'getElDashboardIncludedList' }
+  ];
+
+  function getDashboardMirrorContainerInfo(target) {
+    for (var i = 0; i < DASHBOARD_MIRROR_LISTS.length; i++) {
+      var binding = DASHBOARD_MIRROR_LISTS[i];
+      var localContainer = target.closest(binding.selector);
+      if (!localContainer) continue;
+      return {
+        local: localContainer,
+        canonical: _callDep(binding.getter)
+      };
+    }
+    return null;
+  }
+
   function syncMirroredDashboardViews() {
     var dashboardRoots = _callDep('getSharedPanelRoots', 'dashboard');
     if (!dashboardRoots || !dashboardRoots.length || !_callDep('getElDashboardRoot')) return;
-    var canonicalPinned = _callDep('getElDashboardPinnedList');
-    var canonicalResults = _callDep('getElDashboardResultsList');
-    var canonicalDeadlines = _callDep('getElDashboardDeadlineList');
-    var canonicalOverdue = _callDep('getElDashboardOverdueList');
     var canonicalGroups = _callDep('getElDashboardRoot').querySelectorAll('.dashboard-group');
     for (var i = 0; i < dashboardRoots.length; i++) {
       var rootEl = dashboardRoots[i];
@@ -1448,16 +1454,14 @@ var LexeraOrderHelpers = (function () {
       bindMirroredDashboardView(rootEl);
       var searchEl = rootEl.querySelector('.lexera-shared-dashboard-search');
       var scopeEl = rootEl.querySelector('.lexera-shared-dashboard-scope');
-      var pinnedEl = rootEl.querySelector('.lexera-shared-dashboard-pinned');
-      var resultsEl = rootEl.querySelector('.lexera-shared-dashboard-results');
-      var deadlinesEl = rootEl.querySelector('.lexera-shared-dashboard-deadlines');
-      var overdueEl = rootEl.querySelector('.lexera-shared-dashboard-overdue');
       if (searchEl && dashboardState) searchEl.value = dashboardState.query || '';
       if (scopeEl && dashboardState) scopeEl.value = dashboardState.scope || 'active';
-      if (pinnedEl && canonicalPinned) cloneChildrenInto(canonicalPinned, pinnedEl);
-      if (resultsEl && canonicalResults) cloneChildrenInto(canonicalResults, resultsEl);
-      if (deadlinesEl && canonicalDeadlines) cloneChildrenInto(canonicalDeadlines, deadlinesEl);
-      if (overdueEl && canonicalOverdue) cloneChildrenInto(canonicalOverdue, overdueEl);
+      for (var li = 0; li < DASHBOARD_MIRROR_LISTS.length; li++) {
+        var binding = DASHBOARD_MIRROR_LISTS[li];
+        var localList = rootEl.querySelector(binding.selector);
+        var canonicalList = _callDep(binding.getter);
+        if (localList && canonicalList) cloneChildrenInto(canonicalList, localList);
+      }
       var mirrorGroups = rootEl.querySelectorAll('.dashboard-group');
       for (var j = 0; j < mirrorGroups.length && j < canonicalGroups.length; j++) {
         mirrorGroups[j].className = canonicalGroups[j].className;
@@ -1660,8 +1664,17 @@ var LexeraOrderHelpers = (function () {
   }
 
   function renderStandaloneCalendarPanels(tasks) {
-    if (!window.LexeraSharedPanels) return;
+    if (!window.LexeraSharedPanels) {
+      if (typeof traceFrontendAction === 'function') traceFrontendAction('debug', 'calendar.render', 'No LexeraSharedPanels available', {});
+      return;
+    }
     var weekRoots = window.LexeraSharedPanels.getRoots('weekCalendar');
+    var monthRoots = window.LexeraSharedPanels.getRoots('monthCalendar');
+    if (typeof traceFrontendAction === 'function') {
+      traceFrontendAction('debug', 'calendar.render', 'Rendering standalone calendars', {
+        weekPanels: weekRoots.length, monthPanels: monthRoots.length, taskCount: (tasks || []).length
+      });
+    }
     for (var w = 0; w < weekRoots.length; w++) {
       var weekEl = weekRoots[w].querySelector('.lexera-shared-calendar-week-view');
       var weekTaskEl = weekRoots[w].querySelector('.lexera-shared-calendar-task-list');
@@ -1677,25 +1690,70 @@ var LexeraOrderHelpers = (function () {
     }
   }
 
-  // ── Dashboard broken elements scanner ─────────────────────────────
-  function scanBrokenElements() {
-    var container = _callDep('getElColumnsContainer');
-    if (!container) return [];
+  function collectDashboardIncludedFiles(boardData) {
+    var rows = boardData && Array.isArray(boardData.rows) ? boardData.rows : [];
+    var items = [];
+    var seen = {};
+    var visibleIndex = 0;
+    for (var rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      var row = rows[rowIdx];
+      var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
+      for (var stackIdx = 0; stackIdx < stacks.length; stackIdx++) {
+        var stack = stacks[stackIdx];
+        var columns = stack && Array.isArray(stack.columns) ? stack.columns : [];
+        for (var colIdx = 0; colIdx < columns.length; colIdx++, visibleIndex++) {
+          var col = columns[colIdx];
+          if (!col) continue;
+          var includePath = col.includeSource && col.includeSource.rawPath
+            ? String(col.includeSource.rawPath || '').trim()
+            : extractIncludePathFromTitle(col.title || '');
+          if (!includePath) continue;
+          var normalizedPath = String(includePath).trim();
+          if (!normalizedPath) continue;
+          var key = normalizedPath.toLowerCase();
+          var displayTitle = removeIncludeSyntaxFromTitle(col.title || '') || ('Column ' + (visibleIndex + 1));
+          if (!seen[key]) {
+            seen[key] = {
+              path: normalizedPath,
+              count: 1,
+              firstColumnTitle: displayTitle
+            };
+            items.push(seen[key]);
+          } else {
+            seen[key].count += 1;
+          }
+        }
+      }
+    }
+    return items;
+  }
+
+  function scanBrokenElementsFromContainer(container) {
+    if (!container || typeof container.querySelectorAll !== 'function') return [];
     var broken = [];
-    // Broken embeds (images, videos, includes that failed to load)
+    var seen = {};
     var brokenEls = container.querySelectorAll('.embed-broken, .include-broken');
     for (var i = 0; i < brokenEls.length; i++) {
       var el = brokenEls[i];
-      var cardEl = el.closest('.card');
+      var cardEl = typeof el.closest === 'function' ? el.closest('.card') : null;
       var colIndex = cardEl ? parseInt(cardEl.getAttribute('data-col-index'), 10) : -1;
       var cardIndex = cardEl ? parseInt(cardEl.getAttribute('data-card-index'), 10) : -1;
-      var src = el.getAttribute('data-file-path') || el.getAttribute('src') || '';
-      var img = el.querySelector('img[src]');
-      if (!src && img) src = img.getAttribute('src') || '';
+      var src =
+        (typeof el.getAttribute === 'function' && (
+          el.getAttribute('data-file-path') ||
+          el.getAttribute('data-include-path') ||
+          el.getAttribute('src')
+        )) || '';
+      var img = typeof el.querySelector === 'function' ? el.querySelector('img[src]') : null;
+      if (!src && img && typeof img.getAttribute === 'function') src = img.getAttribute('src') || '';
       var type = 'embed';
-      if (el.classList.contains('include-broken') || el.querySelector('.broken-include-placeholder')) type = 'include';
+      var hasBrokenIncludePlaceholder = !!(typeof el.querySelector === 'function' && el.querySelector('.broken-include-placeholder'));
+      if ((el.classList && el.classList.contains('include-broken')) || hasBrokenIncludePlaceholder) type = 'include';
       else if (img) type = 'image';
-      else if (el.querySelector('video')) type = 'video';
+      else if (typeof el.querySelector === 'function' && el.querySelector('video')) type = 'video';
+      var key = [type, src, colIndex, cardIndex].join('|');
+      if (seen[key]) continue;
+      seen[key] = true;
       broken.push({
         type: type,
         src: src,
@@ -1706,14 +1764,44 @@ var LexeraOrderHelpers = (function () {
     return broken;
   }
 
+  // ── Dashboard broken elements scanner ─────────────────────────────
+  function scanBrokenElements() {
+    return scanBrokenElementsFromContainer(_callDep('getElColumnsContainer'));
+  }
+
+  function renderDashboardIncludedFilesList() {
+    var el = _callDep('getElDashboardIncludedList');
+    if (!el) return;
+    var items = collectDashboardIncludedFiles(_dep('fullBoardData'));
+    setDashboardGroupEmptyState(el, items.length === 0);
+    if (items.length === 0) {
+      el.innerHTML = '<div class="dashboard-empty">No included files</div>';
+      syncMirroredDashboardViews();
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var meta = item.count > 1
+        ? item.firstColumnTitle + ' +' + (item.count - 1) + ' more'
+        : item.firstColumnTitle;
+      html += '<div class="dashboard-file-item">';
+      html += '<div class="dashboard-file-path">' + escapeCalHtml(item.path) + '</div>';
+      html += '<div class="dashboard-file-meta">' + escapeCalHtml(meta) + '</div>';
+      html += '</div>';
+    }
+    el.innerHTML = html;
+    syncMirroredDashboardViews();
+  }
+
   function renderDashboardBrokenList() {
-    var el = document.getElementById('dashboard-broken-list');
+    var el = _callDep('getElDashboardBrokenList');
     if (!el) return;
     var items = scanBrokenElements();
+    setDashboardGroupEmptyState(el, items.length === 0);
     if (items.length === 0) {
       el.innerHTML = '<div class="dashboard-empty">No broken elements</div>';
-      var group = el.closest('.dashboard-group');
-      if (group) group.classList.add('collapsed-when-empty');
+      syncMirroredDashboardViews();
       return;
     }
     var html = '';
@@ -1728,6 +1816,7 @@ var LexeraOrderHelpers = (function () {
       html += '</div>';
     }
     el.innerHTML = html;
+    syncMirroredDashboardViews();
   }
 
   function renderDashboardPinnedList() {
@@ -1869,18 +1958,19 @@ var LexeraOrderHelpers = (function () {
     // "Upcoming" combines today + this week + upcoming + later (non-overdue)
     var allUpcoming = (dashboardState.today || []).concat(
       dashboardState.thisWeek || [], dashboardState.upcoming || [], dashboardState.later || []);
-    var upcomingEl = document.getElementById('dashboard-upcoming-list');
+    var upcomingEl = _callDep('getElDashboardUpcomingList');
     renderDashboardResultItems(upcomingEl, allUpcoming,
       scopeHint || loadingNote || 'No upcoming tasks',
       { collapseWhenEmpty: !dashboardState.loading });
-    var todosEl = document.getElementById('dashboard-todos-list');
+    var todosEl = _callDep('getElDashboardTodosList');
     renderDashboardResultItems(todosEl, dashboardState.todos,
       scopeHint || loadingNote || 'No open tasks',
       { collapseWhenEmpty: !dashboardState.loading });
     // Tagged items — render each tag group
-    var taggedEl = document.getElementById('dashboard-tagged-list');
+    var taggedEl = _callDep('getElDashboardTaggedList');
     if (taggedEl) {
       var groups = dashboardState.taggedGroups || [];
+      setDashboardGroupEmptyState(taggedEl, groups.length === 0);
       if (groups.length === 0) {
         taggedEl.innerHTML = '<div class="dashboard-empty">No tags configured</div>';
       } else {
@@ -1903,6 +1993,8 @@ var LexeraOrderHelpers = (function () {
         }
       }
     }
+    renderDashboardIncludedFilesList();
+    renderDashboardBrokenList();
     // Broken elements — scan after a delay to let embeds/images fail to load
     setTimeout(renderDashboardBrokenList, 2000);
     syncMirroredDashboardViews();
@@ -1911,6 +2003,9 @@ var LexeraOrderHelpers = (function () {
   function ensureDashboardState() {
     if (!dashboardState) {
       dashboardState = _dep('dashboardState');
+      if (typeof traceFrontendAction === 'function') {
+        traceFrontendAction('debug', 'calendar.state', 'ensureDashboardState from dep', { found: !!dashboardState });
+      }
     }
     if (!dashboardState) {
       dashboardState = {
@@ -1919,6 +2014,9 @@ var LexeraOrderHelpers = (function () {
         upcoming: [], later: [], todos: [], taggedGroups: [],
         pinnedQueries: [], activePinnedQuery: ''
       };
+      if (typeof traceFrontendAction === 'function') {
+        traceFrontendAction('debug', 'calendar.state', 'Created fresh dashboardState', {});
+      }
     }
     return dashboardState;
   }
@@ -1928,6 +2026,11 @@ var LexeraOrderHelpers = (function () {
     if (_dep('embeddedMode')) return Promise.resolve();
     var hasDashboard = !!_callDep('getElDashboardRoot');
     var hasCalendars = hasAnyCalendarPanel();
+    if (typeof traceFrontendAction === 'function') {
+      traceFrontendAction('debug', 'calendar.refresh', 'refreshDashboardData called', {
+        hasDashboard: hasDashboard, hasCalendars: hasCalendars, connected: !!_dep('connected')
+      });
+    }
     if (!hasDashboard && !hasCalendars) return Promise.resolve();
     ensureDashboardState();
     if (!_dep('connected')) {
@@ -2305,6 +2408,8 @@ var LexeraOrderHelpers = (function () {
     scopeHintForDashboard: scopeHintForDashboard,
     bindMirroredDashboardView: bindMirroredDashboardView,
     syncMirroredDashboardViews: syncMirroredDashboardViews,
+    collectDashboardIncludedFiles: collectDashboardIncludedFiles,
+    scanBrokenElementsFromContainer: scanBrokenElementsFromContainer,
     renderDashboardPinnedList: renderDashboardPinnedList,
     setDashboardGroupEmptyState: setDashboardGroupEmptyState,
     renderDashboardResultItems: renderDashboardResultItems,
