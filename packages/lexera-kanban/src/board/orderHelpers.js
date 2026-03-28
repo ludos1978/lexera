@@ -2109,19 +2109,44 @@ var LexeraOrderHelpers = (function () {
       scheduleMirroredDashboardSync();
       return;
     }
-    var html = '';
+    el.innerHTML = '';
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
       var label = item.type.charAt(0).toUpperCase() + item.type.slice(1);
       var src = item.src;
       if (src.length > 50) src = '\u2026' + src.slice(-47);
-      html += '<div class="dashboard-broken-item">';
-      html += '<span class="broken-type">' + escapeCalHtml(label) + '</span> ';
-      html += '<span class="broken-src">' + escapeCalHtml(src) + '</span>';
-      if (item.count > 1) html += ' <span class="dashboard-file-count">x' + escapeCalHtml(String(item.count)) + '</span>';
-      html += '</div>';
+      var row = document.createElement('div');
+      row.className = 'dashboard-broken-item';
+      if (typeof item.colIndex === 'number' && item.colIndex >= 0) {
+        row.setAttribute('data-col-index', String(item.colIndex));
+        if (typeof item.cardIndex === 'number' && item.cardIndex >= 0) {
+          row.setAttribute('data-card-index', String(item.cardIndex));
+        }
+        row.style.cursor = 'pointer';
+      }
+      row.innerHTML = '<span class="broken-type">' + escapeCalHtml(label) + '</span> ' +
+        '<span class="broken-src">' + escapeCalHtml(src) + '</span>' +
+        (item.count > 1 ? ' <span class="dashboard-file-count">x' + escapeCalHtml(String(item.count)) + '</span>' : '');
+      el.appendChild(row);
     }
-    el.innerHTML = html;
+    // Click handler: focus the card containing the broken element
+    el.addEventListener('click', function (e) {
+      var row = e.target.closest('.dashboard-broken-item[data-col-index]');
+      if (!row) return;
+      var ci = parseInt(row.getAttribute('data-col-index'), 10);
+      var cj = row.getAttribute('data-card-index') != null ? parseInt(row.getAttribute('data-card-index'), 10) : -1;
+      if (isNaN(ci) || ci < 0) return;
+      var container = getDashboardBrokenScanContainer();
+      if (!container) return;
+      var cardEl = cj >= 0
+        ? container.querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + cj + '"]')
+        : container.querySelector('.column[data-col-index="' + ci + '"]');
+      if (cardEl) {
+        cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        cardEl.classList.add('highlight-flash');
+        setTimeout(function () { cardEl.classList.remove('highlight-flash'); }, 1500);
+      }
+    });
     scheduleMirroredDashboardSync();
   }
 

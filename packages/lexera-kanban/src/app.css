@@ -1098,10 +1098,26 @@ textarea {
 /* Dashboard broken elements */
 .dashboard-broken-item {
   font-size: 10px;
-  padding: 2px 0;
+  padding: 3px 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border-radius: 3px;
+}
+.dashboard-broken-item[data-col-index] {
+  cursor: pointer;
+}
+.dashboard-broken-item[data-col-index]:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Highlight flash for focused elements */
+@keyframes highlight-flash {
+  0% { outline: 2px solid var(--accent); outline-offset: 2px; }
+  100% { outline: 2px solid transparent; outline-offset: 2px; }
+}
+.highlight-flash {
+  animation: highlight-flash 1.5s ease-out;
 }
 .dashboard-file-item {
   padding: 3px 0;
