@@ -4105,26 +4105,8 @@ var LexeraEmbedMenu = (function () {
 
   function applyAutomaticPathFix(container, matches, applyTarget, options) {
     var resolvedMatches = Array.isArray(matches) ? matches.filter(Boolean) : [];
-    options = options || {};
-    if (resolvedMatches.length !== 1 || typeof applyTarget !== 'function') {
-      showPathFixResults(container, resolvedMatches);
-      return;
-    }
-    var nextPath = adjustPathForIncludeContext(container, resolvedMatches[0]);
-    var suffix = options.suffix || '';
-    Promise.resolve(applyTarget(nextPath + suffix)).then(function (changed) {
-      if (changed) {
-        showNotification(options.successMessage || 'Path fixed');
-        return;
-      }
-      if (options.showPickerOnNoChange !== false) {
-        showPathFixResults(container, resolvedMatches);
-      }
-    }).catch(function (err) {
-      if (typeof options.onError === 'function') {
-        options.onError(err);
-      }
-    });
+    // Always show the picker so the user decides — never auto-replace
+    showPathFixResults(container, resolvedMatches);
   }
 
   function showPathFixResults(container, matches) {
