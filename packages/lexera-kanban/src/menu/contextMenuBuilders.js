@@ -241,6 +241,17 @@ var ContextMenuBuilders = (function () {
   function registerAll() {
     var MCR = deps.MenuContributorRegistry;
 
+    // Shared tag menu builder — used by card, column, stack, row
+    function buildScopedTagMenu(scope, text) {
+      var items = [{ id: 'tag-clear', label: 'Clear tags' }];
+      var enabledGroups = getTagGroupsForScope(scope);
+      var tagItems = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
+      var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
+      if (customSub) tagItems.push(customSub);
+      if (tagItems.length > 0) items = items.concat(tagItems);
+      return items;
+    }
+
     // ── CARD ─────────────────────────────────────────────────────────
     MCR.register({
       id: 'card-actions', scopes: ['card'], priority: 5, section: 'actions',
@@ -266,14 +277,7 @@ var ContextMenuBuilders = (function () {
     MCR.register({
       id: 'card-tags', scopes: ['card'], priority: 50, section: 'tag-categories',
       build: function (scope, ctx) {
-        var text = ctx.elementText || '';
-        var items = [{ id: 'tag-clear', label: 'Clear tags' }];
-        var enabledGroups = getTagGroupsForScope('card');
-        var tagItems = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
-        var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
-        if (customSub) tagItems.push(customSub);
-        if (tagItems.length > 0) items = items.concat(tagItems);
-        return items;
+        return buildScopedTagMenu('card', ctx.elementText || '');
       }
     });
     MCR.register({
@@ -330,14 +334,7 @@ var ContextMenuBuilders = (function () {
     MCR.register({
       id: 'column-tags', scopes: ['column'], priority: 50, section: 'tag-categories',
       build: function (scope, ctx) {
-        var text = ctx.elementText || '';
-        var items = [{ id: 'tag-clear', label: 'Clear tags' }];
-        var enabledGroups = getTagGroupsForScope('column');
-        var tagItems = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
-        var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
-        if (customSub) tagItems.push(customSub);
-        if (tagItems.length > 0) items = items.concat(tagItems);
-        return items;
+        return buildScopedTagMenu('column', ctx.elementText || '');
       }
     });
     MCR.register({
@@ -371,14 +368,7 @@ var ContextMenuBuilders = (function () {
     MCR.register({
       id: 'stack-tags', scopes: ['stack'], priority: 50, section: 'tag-categories',
       build: function (scope, ctx) {
-        var text = ctx.elementText || '';
-        var items = [{ id: 'tag-clear', label: 'Clear tags' }];
-        var enabledGroups = getTagGroupsForScope('stack');
-        var tagItems = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
-        var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
-        if (customSub) tagItems.push(customSub);
-        if (tagItems.length > 0) items = items.concat(tagItems);
-        return items;
+        return buildScopedTagMenu('stack', ctx.elementText || '');
       }
     });
     MCR.register({
@@ -411,14 +401,7 @@ var ContextMenuBuilders = (function () {
     MCR.register({
       id: 'row-tags', scopes: ['row'], priority: 50, section: 'tag-categories',
       build: function (scope, ctx) {
-        var text = ctx.elementText || '';
-        var items = [{ id: 'tag-clear', label: 'Clear tags' }];
-        var enabledGroups = getTagGroupsForScope('row');
-        var tagItems = buildTagCategorySubmenus(text, 'tag-', enabledGroups);
-        var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
-        if (customSub) tagItems.push(customSub);
-        if (tagItems.length > 0) items = items.concat(tagItems);
-        return items;
+        return buildScopedTagMenu('row', ctx.elementText || '');
       }
     });
     MCR.register({

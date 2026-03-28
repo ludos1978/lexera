@@ -592,8 +592,8 @@ var LexeraColumnContextMenu = (function () {
     }
   }
 
-  function revealColumnContent(colIndex) {
-    var cards = deps.getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"]');
+  function toggleRevealedCards(cards) {
+    if (!cards || !cards.length) return;
     var allRevealed = true;
     for (var i = 0; i < cards.length; i++) {
       if (!cards[i].hasAttribute('data-hidden-revealed')) { allRevealed = false; break; }
@@ -602,38 +602,21 @@ var LexeraColumnContextMenu = (function () {
       if (allRevealed) cards[j].removeAttribute('data-hidden-revealed');
       else cards[j].setAttribute('data-hidden-revealed', '');
     }
+  }
+
+  function revealColumnContent(colIndex) {
+    toggleRevealedCards(deps.getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"]'));
   }
 
   function revealRowContent(rowIdx) {
-    var columnsContainer = deps.getElColumnsContainer();
-    var rowEl = columnsContainer.querySelectorAll('.kanban-row')[rowIdx];
-    if (!rowEl) return;
-    var cards = rowEl.querySelectorAll('.card');
-    var allRevealed = true;
-    for (var i = 0; i < cards.length; i++) {
-      if (!cards[i].hasAttribute('data-hidden-revealed')) { allRevealed = false; break; }
-    }
-    for (var j = 0; j < cards.length; j++) {
-      if (allRevealed) cards[j].removeAttribute('data-hidden-revealed');
-      else cards[j].setAttribute('data-hidden-revealed', '');
-    }
+    var rowEl = deps.getElColumnsContainer().querySelectorAll('.kanban-row')[rowIdx];
+    if (rowEl) toggleRevealedCards(rowEl.querySelectorAll('.card'));
   }
 
   function revealStackContent(rowIdx, stackIdx) {
-    var columnsContainer = deps.getElColumnsContainer();
-    var rowEl = columnsContainer.querySelectorAll('.kanban-row')[rowIdx];
-    if (!rowEl) return;
-    var stackEl = rowEl.querySelectorAll('.kanban-column-stack')[stackIdx];
-    if (!stackEl) return;
-    var cards = stackEl.querySelectorAll('.card');
-    var allRevealed = true;
-    for (var i = 0; i < cards.length; i++) {
-      if (!cards[i].hasAttribute('data-hidden-revealed')) { allRevealed = false; break; }
-    }
-    for (var j = 0; j < cards.length; j++) {
-      if (allRevealed) cards[j].removeAttribute('data-hidden-revealed');
-      else cards[j].setAttribute('data-hidden-revealed', '');
-    }
+    var rowEl = deps.getElColumnsContainer().querySelectorAll('.kanban-row')[rowIdx];
+    var stackEl = rowEl ? rowEl.querySelectorAll('.kanban-column-stack')[stackIdx] : null;
+    if (stackEl) toggleRevealedCards(stackEl.querySelectorAll('.card'));
   }
 
   // ── Init ───────────────────────────────────────────────────────────
