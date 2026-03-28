@@ -2249,7 +2249,8 @@
       return elements[normalized];
     }
     var kind = getPanelKind(normalized);
-    if (!kind || normalized === kind) return elements[kind] || null;
+    if (!kind) return null;
+    // For any panel kind not pre-created in ensurePanelElements, create on demand
     var sharedPanels = getSharedPanelsApi();
     if (!sharedPanels || typeof sharedPanels.createPanelElement !== 'function') return null;
     var panelEl = sharedPanels.createPanelElement(kind, normalized);
