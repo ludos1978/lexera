@@ -113,18 +113,70 @@
     files: { id: 'files', title: 'Files', defaultDock: 'right', duplicable: true, integratedHeader: true }
   };
 
-  function createDefaultPanelInstances() {
+  var DEFAULT_PANEL_VISIBILITY = {
+    hierarchy: true,
+    dashboard: true,
+    weekCalendar: false,
+    monthCalendar: false,
+    logs: true,
+    backendSettings: false,
+    frontendSettings: false,
+    renderApps: false,
+    files: false
+  };
+
+  var runtimeAllowedPanelKinds = Object.keys(PANEL_DEFINITIONS);
+
+  function getAllowedPanelKinds() {
+    return runtimeAllowedPanelKinds.slice();
+  }
+
+  function isPanelKindAllowed(kind) {
+    return !!(kind && Object.prototype.hasOwnProperty.call(PANEL_DEFINITIONS, kind) && runtimeAllowedPanelKinds.indexOf(kind) !== -1);
+  }
+
+  function configureAllowedPanelKinds(allowedKinds) {
+    if (!Array.isArray(allowedKinds) || allowedKinds.length === 0) {
+      runtimeAllowedPanelKinds = Object.keys(PANEL_DEFINITIONS);
+      return;
+    }
+    var filtered = [];
+    for (var i = 0; i < allowedKinds.length; i++) {
+      var kind = String(allowedKinds[i] || '').trim();
+      if (!isPanelKindAllowedFromDefinitions(kind)) continue;
+      if (filtered.indexOf(kind) === -1) filtered.push(kind);
+    }
+    runtimeAllowedPanelKinds = filtered.length > 0 ? filtered : Object.keys(PANEL_DEFINITIONS);
+  }
+
+  function isPanelKindAllowedFromDefinitions(kind) {
+    return !!(kind && Object.prototype.hasOwnProperty.call(PANEL_DEFINITIONS, kind));
+  }
+
+  function getDefaultDockGroups() {
+    var leftGroup = [];
+    if (isPanelKindAllowed('hierarchy')) leftGroup.push('hierarchy');
+    if (isPanelKindAllowed('dashboard')) leftGroup.push('dashboard');
+    var bottomGroup = [];
+    if (isPanelKindAllowed('logs')) bottomGroup.push('logs');
     return {
-      hierarchy: { id: 'hierarchy', kind: 'hierarchy' },
-      dashboard: { id: 'dashboard', kind: 'dashboard' },
-      weekCalendar: { id: 'weekCalendar', kind: 'weekCalendar' },
-      monthCalendar: { id: 'monthCalendar', kind: 'monthCalendar' },
-      logs: { id: 'logs', kind: 'logs' },
-      backendSettings: { id: 'backendSettings', kind: 'backendSettings' },
-      frontendSettings: { id: 'frontendSettings', kind: 'frontendSettings' },
-      renderApps: { id: 'renderApps', kind: 'renderApps' },
-      files: { id: 'files', kind: 'files' }
+      left: leftGroup.length > 0 ? [leftGroup] : [],
+      right: [],
+      bottom: bottomGroup.length > 0 ? [bottomGroup] : []
     };
+  }
+
+  function getFirstAllowedPanelKind() {
+    return runtimeAllowedPanelKinds.length > 0 ? runtimeAllowedPanelKinds[0] : '';
+  }
+
+  function createDefaultPanelInstances() {
+    var result = {};
+    for (var i = 0; i < runtimeAllowedPanelKinds.length; i++) {
+      var kind = runtimeAllowedPanelKinds[i];
+      result[kind] = { id: kind, kind: kind };
+    }
+    return result;
   }
 
   function createDefaultDockSizes(profile) {
@@ -174,7 +226,7 @@
   }
 
   function normalizePanelKind(value) {
-    return PANEL_DEFINITIONS[value] ? value : '';
+    return isPanelKindAllowed(value) ? value : '';
   }
 
   function normalizePanelInstances(raw) {
@@ -205,17 +257,12 @@
   }
 
   function createDefaultPanelVisibility(profile) {
-    return {
-      hierarchy: true,
-      dashboard: true,
-      weekCalendar: false,
-      monthCalendar: false,
-      logs: true,
-      backendSettings: false,
-      frontendSettings: false,
-      renderApps: false,
-      files: false
-    };
+    var result = {};
+    for (var i = 0; i < runtimeAllowedPanelKinds.length; i++) {
+      var kind = runtimeAllowedPanelKinds[i];
+      result[kind] = !!DEFAULT_PANEL_VISIBILITY[kind];
+    }
+    return result;
   }
 
   function getPanelTitle(panelId) {
@@ -242,7 +289,7 @@
   }
 
   function normalizePanelDocks(raw, profile, panelInstances) {
-    var defaults = { left: [['hierarchy', 'dashboard']], right: [], bottom: [['logs']] };
+    var defaults = getDefaultDockGroups();
     var result = { left: [], right: [], bottom: [] };
     var seen = {};
     var dockOrder = ['left', 'right', 'bottom'];
@@ -327,14 +374,27 @@
 
   function createDefaultSideDocks(profile) {
     if (profile === 'detachedBoard') return { left: null, right: null, bottom: null };
-    return {
-      left: createSplitNode('horizontal',
-        createTabsetNode([createPanelTab('hierarchy')]),
-        createTabsetNode([createPanelTab('dashboard')]),
+    var defaultGroups = getDefaultDockGroups();
+    var leftTabs = defaultGroups.left.length > 0 ? defaultGroups.left[0].map(function (panelId) {
+      return createPanelTab(panelId);
+    }) : [];
+    var bottomTabs = defaultGroups.bottom.length > 0 ? defaultGroups.bottom[0].map(function (panelId) {
+      return createPanelTab(panelId);
+    }) : [];
+    var leftDock = null;
+    if (leftTabs.length === 1) {
+      leftDock = createTabsetNode(leftTabs);
+    } else if (leftTabs.length > 1) {
+      leftDock = createSplitNode('horizontal',
+        createTabsetNode([leftTabs[0]]),
+        createTabsetNode([leftTabs[1]]),
         0.6
-      ),
+      );
+    }
+    return {
+      left: leftDock,
       right: null,
-      bottom: createTabsetNode([createPanelTab('logs')])
+      bottom: bottomTabs.length > 0 ? createTabsetNode(bottomTabs) : null
     };
   }
 
@@ -595,6 +655,7 @@
   var state = {
     enabled: isEnabled(),
     mounted: false,
+    didRestoreState: false,
     profile: urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace',
     panelOnlyKind: normalizePanelKind(urlParams.get('panelKind') || ''),
     panelOnlyId: '',
@@ -747,6 +808,10 @@
   }
 
   function getPersistenceKey() {
+    if (state.hooks && typeof state.hooks.getPersistenceKey === 'function') {
+      var hookKey = state.hooks.getPersistenceKey();
+      if (hookKey) return String(hookKey);
+    }
     return 'lexera-workspace-shell:' + state.windowLabel;
   }
 
@@ -890,6 +955,52 @@
       console.warn('[ws-shell] Failed to restore state:', err);
       return false;
     }
+  }
+
+  function openPanelInCenter(panelId, options) {
+    var normalized = resolvePanelTarget(panelId);
+    if (!normalized) return false;
+
+    var existing = findPanelInAllTrees(normalized);
+    if (existing && existing.treeId === 'center' && existing.tab) {
+      state.panelVisibility[normalized] = true;
+      state.activePanelId = normalized;
+      activateTab(existing.tab.id);
+      return true;
+    }
+
+    if (existing && existing.treeId !== 'center') {
+      removePanelFromDocks(normalized);
+    }
+
+    var groupedPanelId = options && options.groupWith ? resolvePanelTarget(options.groupWith) : '';
+    var groupedTarget = groupedPanelId ? findPanelInAllTrees(groupedPanelId) : null;
+    if (groupedTarget && groupedTarget.treeId === 'center' && groupedTarget.leaf) {
+      var groupedTab = createPanelTab(normalized);
+      groupedTarget.leaf.tabs.push(groupedTab);
+      groupedTarget.leaf.activeTabId = groupedTab.id;
+      state.activeLeafId = groupedTarget.leaf.id;
+      state.activePanelId = normalized;
+      state.panelVisibility[normalized] = true;
+      state.dockTree = withNormalizedLeaves(state.dockTree, true);
+      render();
+      return true;
+    }
+
+    var leaf = getActiveLeaf() || getFirstLeaf(state.dockTree);
+    if (!leaf || leaf.type !== 'tabs') {
+      state.dockTree = createTabsetNode([]);
+      leaf = state.dockTree;
+    }
+    var tab = createPanelTab(normalized);
+    leaf.tabs.push(tab);
+    leaf.activeTabId = tab.id;
+    state.activeLeafId = leaf.id;
+    state.activePanelId = normalized;
+    state.panelVisibility[normalized] = true;
+    state.dockTree = withNormalizedLeaves(state.dockTree, true);
+    render();
+    return true;
   }
 
   function getActiveLeaf() {
@@ -2065,18 +2176,26 @@
   function ensurePanelElements() {
     if (state.panelElements) return state.panelElements;
 
-    var sidebarEl = document.querySelector('.layout > .sidebar') || document.querySelector('.sidebar');
-    var dashboardEl = document.getElementById('sidebar-dashboard');
+    var hookPanels = state.hooks && typeof state.hooks.getPanelElements === 'function'
+      ? (state.hooks.getPanelElements(getSharedPanelsApi()) || {})
+      : {};
+
+    var sidebarEl = hookPanels.hierarchy || document.querySelector('.layout > .sidebar') || document.querySelector('.sidebar');
+    var dashboardEl = hookPanels.dashboard || document.getElementById('sidebar-dashboard');
     var dashboardDividerEl = document.getElementById('sidebar-dashboard-divider');
     var boardListEl = document.getElementById('board-list');
-    var logPanelEl = document.getElementById('log-panel');
+    var logPanelEl = hookPanels.logs || document.getElementById('log-panel');
     var sharedPanels = getSharedPanelsApi();
-    var backendSettingsPanelEl = document.getElementById('backend-settings-panel') ||
+    var backendSettingsPanelEl = hookPanels.backendSettings || document.getElementById('backend-settings-panel') ||
       (sharedPanels ? sharedPanels.createPanelElement('backendSettings', 'backendSettings') : null);
-    var frontendSettingsPanelEl = document.getElementById('frontend-settings-panel') ||
+    var frontendSettingsPanelEl = hookPanels.frontendSettings || document.getElementById('frontend-settings-panel') ||
       (sharedPanels ? sharedPanels.createPanelElement('frontendSettings', 'frontendSettings') : null);
-    var renderAppsPanelEl = sharedPanels ? sharedPanels.createPanelElement('renderApps', 'renderApps') : null;
-    var filesPanelEl = sharedPanels ? sharedPanels.createPanelElement('files', 'files') : null;
+    var renderAppsPanelEl = hookPanels.renderApps || (sharedPanels ? sharedPanels.createPanelElement('renderApps', 'renderApps') : null);
+    var filesPanelEl = hookPanels.files || (sharedPanels ? sharedPanels.createPanelElement('files', 'files') : null);
+
+    if (!logPanelEl && sharedPanels && typeof sharedPanels.createPanelElement === 'function') {
+      logPanelEl = sharedPanels.createPanelElement('logs', 'logs');
+    }
 
     if (dashboardDividerEl) {
       dashboardDividerEl.classList.add('hidden');
@@ -2469,6 +2588,19 @@
       fold.textContent = '\u25BE'; // ▾
       el.appendChild(fold);
     }
+
+    // "+" button to open panel picker dropdown
+    var addBtn = document.createElement('button');
+    addBtn.className = 'ws-view-add';
+    addBtn.type = 'button';
+    addBtn.title = 'Open view';
+    addBtn.textContent = '+';
+    addBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      showPanelPickerMenu(addBtn);
+    });
+    el.appendChild(addBtn);
 
     // Header-level close button (always visible; closes the active tab/panel)
     var close = document.createElement('button');
@@ -3742,6 +3874,25 @@
     }
   }
 
+  function showPanelPickerMenu(anchorEl) {
+    if (typeof showNativeMenu !== 'function') return;
+    var panelKinds = Object.keys(PANEL_DEFINITIONS);
+    var items = [];
+    for (var i = 0; i < panelKinds.length; i++) {
+      var kind = panelKinds[i];
+      var def = PANEL_DEFINITIONS[kind];
+      items.push({ id: 'reveal-panel:' + kind, label: def.title });
+    }
+    var rect = anchorEl.getBoundingClientRect();
+    showNativeMenu(items, rect.left, rect.bottom, 'menu.panel-picker').then(function (action) {
+      if (!action) return;
+      if (action.indexOf('reveal-panel:') === 0) {
+        var kind = action.substring('reveal-panel:'.length);
+        revealPanel(kind);
+      }
+    });
+  }
+
   function handleRootContextMenu(event) {
     var panelTab = event.target.closest('.ws-view-tab[data-ws-panel-id]');
     var panelHandle = event.target.closest('[data-ws-panel-drag-handle]');
@@ -3774,6 +3925,19 @@
     if (!state.enabled) return false;
     state.hooks = hooks || {};
     if (state.mounted) return true;
+    configureAllowedPanelKinds(
+      state.hooks && typeof state.hooks.getAllowedPanelKinds === 'function'
+        ? state.hooks.getAllowedPanelKinds()
+        : null
+    );
+    state.panelOnlyKind = normalizePanelKind(state.panelOnlyKind);
+    state.initialPanelKind = normalizePanelKind(state.initialPanelKind);
+    state.panelInstances = createDefaultPanelInstances();
+    state.sideDocks = createDefaultSideDocks(state.profile);
+    state.panelVisibility = createDefaultPanelVisibility(state.profile);
+    if (state.activePanelId && !normalizePanelKind(state.activePanelId)) {
+      state.activePanelId = getFirstAllowedPanelKind();
+    }
 
     var mainContent = state.hooks.getMainContent
       ? state.hooks.getMainContent()
@@ -3852,7 +4016,7 @@
 
     state.mounted = true;
     state.backendConnected = !!document.querySelector('.log-panel-status .connection-status-btn.connected');
-    restoreState();
+    state.didRestoreState = restoreState();
     applyPanelOnlyWindowState();
     ensureInitialPanelTab(state.initialPanelKind);
     ensurePanelElements();
@@ -3931,9 +4095,11 @@
     setPanelVisibility: setPanelVisibility,
     movePanelToDock: movePanelToDock,
     movePanelToGroup: movePanelToGroup,
+    openPanelInCenter: openPanelInCenter,
     duplicatePanel: duplicatePanel,
     closePanelView: closePanelView,
     isPanelVisible: isPanelShown,
+    didRestoreState: function () { return !!state.didRestoreState; },
     revealPanel: revealPanel,
     collapsePanel: collapsePanel,
     restoreDock: restoreDock,

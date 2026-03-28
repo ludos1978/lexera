@@ -5352,22 +5352,7 @@ const LexeraDashboard = (function () {
 
     var isCanvasLayout = isCanvasBoardLayout();
     var htmlContentMode = getBoardSettingValue('htmlContentRenderMode', 'html');
-    var viewItems = [
-      { id: 'reveal-panel:hierarchy', label: 'Workspaces' },
-      { id: 'reveal-panel:dashboard', label: 'Dashboard' },
-      { id: 'reveal-panel:weekCalendar', label: 'Week Calendar' },
-      { id: 'reveal-panel:monthCalendar', label: 'Month Calendar' },
-      { id: 'reveal-panel:logs', label: 'Logs' },
-      { separator: true },
-      { id: 'reveal-panel:frontendSettings', label: 'Frontend Settings' },
-      { id: 'reveal-panel:backendSettings', label: 'Backend Settings' },
-      { id: 'reveal-panel:renderApps', label: 'Render Applications' },
-      { id: 'reveal-panel:files', label: 'Files' }
-    ];
     var items = [
-      // Views
-      { id: 'views', label: 'Views', items: viewItems },
-      { separator: true },
       // Quick settings
       { id: 'set-column-width', label: 'Column Width', items: buildSettingMenuItems('columnWidth') },
       { id: 'set-tag-visibility', label: 'Tag Visibility', items: buildSettingMenuItems('tagVisibility') },
