@@ -325,6 +325,53 @@ pub struct SearchResult {
     pub is_overdue: bool,
 }
 
+/// Calendar tasks grouped by time period, matching the dashboard UI structure.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupedCalendarTasks {
+    pub overdue: Vec<SearchResult>,
+    pub today: Vec<SearchResult>,
+    pub this_week: Vec<SearchResult>,
+    pub upcoming: Vec<SearchResult>,
+    pub later: Vec<SearchResult>,
+}
+
+impl GroupedCalendarTasks {
+    /// Group flat calendar tasks into time buckets.
+    /// `today_str` is YYYY-MM-DD for today.
+    /// `end_of_week_str` is YYYY-MM-DD for the last day of the current week.
+    /// `two_weeks_str` is YYYY-MM-DD for 14 days from now.
+    pub fn from_tasks(tasks: Vec<SearchResult>, today_str: &str, end_of_week_str: &str, two_weeks_str: &str) -> Self {
+        let mut overdue = Vec::new();
+        let mut today = Vec::new();
+        let mut this_week = Vec::new();
+        let mut upcoming = Vec::new();
+        let mut later = Vec::new();
+
+        for task in tasks {
+            if task.checked {
+                continue;
+            }
+            let due = task.due_date.as_deref().unwrap_or("");
+            if due.is_empty() {
+                continue;
+            }
+            if task.is_overdue {
+                overdue.push(task);
+            } else if due == today_str {
+                today.push(task);
+            } else if due <= end_of_week_str {
+                this_week.push(task);
+            } else if due <= two_weeks_str {
+                upcoming.push(task);
+            } else {
+                later.push(task);
+            }
+        }
+        Self { overdue, today, this_week, upcoming, later }
+    }
+}
+
 /// The YAML setting keys recognized by the board format.
 /// Order matters — this determines output order in generated YAML.
 pub const BOARD_SETTING_KEYS: &[&str] = &[

@@ -2398,42 +2398,49 @@ var LexeraOrderHelpers = (function () {
     return Promise.all([queryPromise, calendarPromise, todosPromise].concat(tagPromises)).then(function (resolved) {
       if (refreshId !== dashboardRefreshSeq) return;
 
-      var scopedCalendar = filterDashboardResultsByScope(asCalendarTaskArray(resolved[1]));
+      var calendarResponse = resolved[1] || {};
+      var scopedCalendar = filterDashboardResultsByScope(asCalendarTaskArray(calendarResponse));
       var scopedQuery = calendarScopedQuery
         ? filterCalendarTasksForDashboardQuery(scopedCalendar, query)
         : filterDashboardResultsByScope(asSearchResultArray(resolved[0]));
-      var openCalendar = scopedCalendar.filter(function (item) {
-        return item && item.checked !== true;
-      });
-      var overdueCalendar = openCalendar.filter(function (item) {
-        return item && item.isOverdue;
-      });
 
       if (dashboardState) {
         dashboardState.results = limitedSearchResults(scopedQuery, 80);
-        dashboardState.overdue = limitedSearchResults(sortSearchByDueDateAsc(overdueCalendar), 40);
 
-        // Split non-overdue open calendar tasks into time groups
-        var now = new Date();
-        var todayStr = formatDashboardDate(now);
-        var endOfWeek = getEndOfWeek(now);
-        var endOfWeekStr = formatDashboardDate(endOfWeek);
-        var twoWeeksOut = new Date(now.getTime() + 14 * 86400000);
-        var twoWeeksStr = formatDashboardDate(twoWeeksOut);
-        var nonOverdue = openCalendar.filter(function (item) { return item && !item.isOverdue; });
-        var sorted = sortSearchByDueDateAsc(nonOverdue);
-        var today = [], thisWeek = [], upcoming = [], later = [];
-        for (var di = 0; di < sorted.length; di++) {
-          var due = sorted[di].dueDate || '';
-          if (due === todayStr) today.push(sorted[di]);
-          else if (due <= endOfWeekStr) thisWeek.push(sorted[di]);
-          else if (due <= twoWeeksStr) upcoming.push(sorted[di]);
-          else later.push(sorted[di]);
+        // Use backend-provided time groups when available, fall back to client-side grouping
+        var groups = calendarResponse.groups;
+        if (groups) {
+          dashboardState.overdue = limitedSearchResults(filterDashboardResultsByScope(groups.overdue || []), 40);
+          dashboardState.today = limitedSearchResults(filterDashboardResultsByScope(groups.today || []), 40);
+          dashboardState.thisWeek = limitedSearchResults(filterDashboardResultsByScope(groups.thisWeek || []), 40);
+          dashboardState.upcoming = limitedSearchResults(filterDashboardResultsByScope(groups.upcoming || []), 40);
+          dashboardState.later = limitedSearchResults(filterDashboardResultsByScope(groups.later || []), 40);
+        } else {
+          // Fallback: client-side grouping (for older backends)
+          var openCalendar = scopedCalendar.filter(function (item) { return item && item.checked !== true; });
+          var overdueCalendar = openCalendar.filter(function (item) { return item && item.isOverdue; });
+          dashboardState.overdue = limitedSearchResults(sortSearchByDueDateAsc(overdueCalendar), 40);
+          var now = new Date();
+          var todayStr = formatDashboardDate(now);
+          var endOfWeek = getEndOfWeek(now);
+          var endOfWeekStr = formatDashboardDate(endOfWeek);
+          var twoWeeksOut = new Date(now.getTime() + 14 * 86400000);
+          var twoWeeksStr = formatDashboardDate(twoWeeksOut);
+          var nonOverdue = openCalendar.filter(function (item) { return item && !item.isOverdue; });
+          var sorted = sortSearchByDueDateAsc(nonOverdue);
+          var today = [], thisWeek = [], upcoming = [], later = [];
+          for (var di = 0; di < sorted.length; di++) {
+            var due = sorted[di].dueDate || '';
+            if (due === todayStr) today.push(sorted[di]);
+            else if (due <= endOfWeekStr) thisWeek.push(sorted[di]);
+            else if (due <= twoWeeksStr) upcoming.push(sorted[di]);
+            else later.push(sorted[di]);
+          }
+          dashboardState.today = limitedSearchResults(today, 40);
+          dashboardState.thisWeek = limitedSearchResults(thisWeek, 40);
+          dashboardState.upcoming = limitedSearchResults(upcoming, 40);
+          dashboardState.later = limitedSearchResults(later, 40);
         }
-        dashboardState.today = limitedSearchResults(today, 40);
-        dashboardState.thisWeek = limitedSearchResults(thisWeek, 40);
-        dashboardState.upcoming = limitedSearchResults(upcoming, 40);
-        dashboardState.later = limitedSearchResults(later, 40);
         // Open tasks (todos)
         var scopedTodos = filterDashboardResultsByScope(asSearchResultArray(resolved[2]));
         dashboardState.todos = limitedSearchResults(scopedTodos, 60);

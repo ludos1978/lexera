@@ -1,12 +1,60 @@
 use axum::{extract::State, response::Json};
 use lexera_core::storage::BoardStorage;
+use lexera_core::types::GroupedCalendarTasks;
 
 use crate::state::AppState;
 
-/// GET /calendar/tasks — return all cards with a due date across all boards.
+fn format_date(secs_since_epoch: i64) -> String {
+    // Convert epoch seconds to YYYY-MM-DD using manual calculation
+    // This avoids adding chrono as a dependency
+    let days = secs_since_epoch / 86400;
+    // Algorithm from http://howardhinnant.github.io/date_algorithms.html
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    format!("{:04}-{:02}-{:02}", year, m, d)
+}
+
+fn compute_date_boundaries() -> (String, String, String) {
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    // Adjust to local timezone offset (approximate — use UTC for consistency)
+    let today_str = format_date(now_secs);
+
+    // Day of week: 0=Thu for epoch. Compute weekday and find end of week (Sunday).
+    let days_since_epoch = now_secs / 86400;
+    let weekday = ((days_since_epoch % 7) + 4) % 7; // 0=Sun
+    let days_until_sunday = if weekday == 0 { 0 } else { 7 - weekday };
+    let end_of_week_str = format_date(now_secs + days_until_sunday * 86400);
+
+    let two_weeks_str = format_date(now_secs + 14 * 86400);
+
+    (today_str, end_of_week_str, two_weeks_str)
+}
+
+/// GET /calendar/tasks — return all cards with due dates, grouped by time period.
+/// Response includes both flat `results` array (backwards compat) and `groups` object
+/// with overdue/today/thisWeek/upcoming/later arrays.
 pub async fn calendar_tasks(State(state): State<AppState>) -> Json<serde_json::Value> {
     let results = state.storage.calendar_tasks();
-    Json(serde_json::json!({ "results": results }))
+    let (today_str, end_of_week_str, two_weeks_str) = compute_date_boundaries();
+    let groups = GroupedCalendarTasks::from_tasks(results.clone(), &today_str, &end_of_week_str, &two_weeks_str);
+    Json(serde_json::json!({
+        "results": results,
+        "groups": groups,
+        "today": today_str,
+        "endOfWeek": end_of_week_str,
+        "twoWeeksOut": two_weeks_str
+    }))
 }
 
 #[cfg(test)]
