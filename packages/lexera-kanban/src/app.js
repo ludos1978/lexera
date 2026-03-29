@@ -8442,8 +8442,8 @@ var LexeraDashboard = (function () {
 
   function refreshWorkspaceSettings() {
     var wsId = activeWorkspaceId || '';
-    if (!wsId || !LexeraApi || typeof LexeraApi.request !== 'function') return;
-    LexeraApi.request('/config/settings' + (wsId ? '?workspace=' + encodeURIComponent(wsId) : ''))
+    if (!wsId || wsId === ALL_WORKSPACES_ID || !LexeraApi || typeof LexeraApi.request !== 'function') return;
+    LexeraApi.request('/config/settings?workspace=' + encodeURIComponent(wsId))
       .then(function (data) {
         if (data && data.settings) _cachedWorkspaceSettings = data.settings;
       })

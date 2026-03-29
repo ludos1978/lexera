@@ -1831,9 +1831,9 @@
   var _boardChangeTimer = null;
 
   function notifyActiveBoardChanged() {
-    // Debounce to prevent rapid-fire board switches during render cycles
-    if (_boardChangeTimer) return;
-    _boardChangeTimer = requestAnimationFrame(function () {
+    // Debounce 100ms to prevent rapid-fire board switches during render cycles
+    clearTimeout(_boardChangeTimer);
+    _boardChangeTimer = setTimeout(function () {
       _boardChangeTimer = null;
       var activeTab = getActiveTab();
       var boardId = activeTab && isBoardTab(activeTab) && activeTab.boardId ? activeTab.boardId : '';
@@ -1845,7 +1845,7 @@
       if (state.hooks && typeof state.hooks.onActiveBoardChanged === 'function') {
         state.hooks.onActiveBoardChanged(boardId || null);
       }
-    });
+    }, 100);
   }
 
   function buildStructureSignature(node) {

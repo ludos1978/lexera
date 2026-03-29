@@ -1529,6 +1529,7 @@ var LexeraOrderHelpers = (function () {
     try { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(tags)); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
     var LexeraApi = _dep('LexeraApi');
     var workspaceId = _dep('activeWorkspaceId') || null;
+    if (workspaceId === '__all__') workspaceId = null;
     if (LexeraApi && typeof LexeraApi.request === 'function') {
       LexeraApi.request('/config/dashboard-tags', {
         method: 'PUT',
@@ -1542,6 +1543,7 @@ var LexeraOrderHelpers = (function () {
     var LexeraApi = _dep('LexeraApi');
     if (!LexeraApi || typeof LexeraApi.request !== 'function') return;
     var workspaceId = _dep('activeWorkspaceId') || '';
+    if (workspaceId === '__all__') workspaceId = '';
     var url = '/config/dashboard-tags' + (workspaceId ? '?workspace=' + encodeURIComponent(workspaceId) : '');
     LexeraApi.request(url).then(function (data) {
       if (data && Array.isArray(data.tags)) {
