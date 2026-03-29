@@ -3,7 +3,7 @@
 - [x] ~~the dashboard search tag list now supports per-workspace overrides via GET/PUT /config/dashboard-tags?workspace={id}, with 3-tier resolution (workspace > global > default)~~ (2e2c2784)
 
 - [x] ~~Settings architecture analysis complete~~ — see [analysis-settings-architecture.md](analysis-settings-architecture.md). Audit found ~90 localStorage keys, ~20 board YAML settings, ~30 backend config fields. Proposed 3-tier resolution (board > workspace > global) and migration path.
-- [ ] Implement settings unification: add `defaultSettings` and `workspaces[].settings` to sync.json, migrate localStorage `lexera-default-*` keys to backend
+- [x] ~~Implement settings unification: added `defaultSettings` and `workspaces[].settings` to sync.json, GET/PUT /config/settings API, 4-tier resolution in getBoardSettingValue~~ (6db5e037)
 
 - [x] ~~browse in files settings now works — was a Tauri invoke detection issue, verified working~~ (verified)
 
