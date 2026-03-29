@@ -244,7 +244,7 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 - [x] ~~**Frontend startup smoke tests** — startupSmoke.test.js (173 lines) verifies all scripts load and 38 modules available, plus moduleRuntime health report at startup~~ (already done)
 - [ ] **Backend service extraction** — split AppState into narrower injected services (config, auth, discovery, sync, board registry) instead of one broad lock-heavy state container
 - [ ] **Backend config transactions** — centralize lock/mutate/save/notify patterns from config_api.rs into a ConfigService helper so all config writes share one code path
-- [ ] **Backend auth extractor unification** — remove duplicated bearer-token parsing/auth checks between auth_middleware.rs and collab_api.rs by using shared request extractors/helpers
+- [x] ~~**Backend auth extractor unification** — extract_bearer_from_headers shared between auth_middleware.rs and collab_api.rs~~ (this commit)
 - [ ] **Plugin architecture** — unify plugin registration across kanban, backend, shared (manifests, not hardcoded lists)
 - [ ] **Board schema centralization** — single canonical schema for rows, stacks, columns, cards, settings, metadata
 - [ ] **Storage abstraction** — split lexera-core LocalStorage into smaller capability-focused services (repository, persistence, include tracking, revisions, search index, remote boards)

@@ -13,6 +13,14 @@ use percent_encoding::percent_decode_str;
 
 use crate::state::AppState;
 
+/// Extract bearer token from an Authorization header value in a HeaderMap.
+pub fn extract_bearer_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+    let value = headers.get("authorization")?.to_str().ok()?;
+    let token = value.strip_prefix("Bearer ")?;
+    if token.is_empty() { return None; }
+    Some(token.to_string())
+}
+
 /// Extract bearer token from Authorization header.
 fn extract_bearer_token(req: &Request) -> Option<String> {
     let value = req.headers().get("authorization")?.to_str().ok()?;

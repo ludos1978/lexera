@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::Serialize;
 
-mod auth_middleware;
+pub(crate) mod auth_middleware;
 mod board;
 mod calendar;
 mod capture_api;

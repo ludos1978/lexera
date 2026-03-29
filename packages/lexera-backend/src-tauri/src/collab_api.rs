@@ -146,12 +146,7 @@ fn lock_arc<'a, T>(service: &'a Arc<Mutex<T>>, name: &str) -> Result<MutexGuard<
 
 /// Extract a bearer token from the Authorization header ("Bearer <token>").
 fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
-    let value = headers.get("authorization")?.to_str().ok()?;
-    let token = value.strip_prefix("Bearer ")?;
-    if token.is_empty() {
-        return None;
-    }
-    Some(token.to_string())
+    crate::api::auth_middleware::extract_bearer_from_headers(headers)
 }
 
 /// Authenticate a request via bearer token.
