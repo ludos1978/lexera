@@ -7,6 +7,9 @@ use unicode_normalization::UnicodeNormalization;
 pub struct SearchOptions {
     pub case_sensitive: bool,
     pub use_regex: bool,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+    pub truncate: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -740,6 +743,7 @@ mod tests {
         let opts = SearchOptions {
             case_sensitive: true,
             use_regex: false,
+            ..Default::default()
         };
         let engine = SearchEngine::compile("cafe", opts);
         let meta = SearchCardMeta::from_card("Visit the café", false);
@@ -763,6 +767,7 @@ mod tests {
         let opts = SearchOptions {
             case_sensitive: false,
             use_regex: true,
+            ..Default::default()
         };
         let engine = SearchEngine::compile("[invalid(", opts);
         // Invalid regex => regex_invalid = true, is_empty is false
@@ -785,6 +790,7 @@ mod tests {
         let opts = SearchOptions {
             case_sensitive: false,
             use_regex: true,
+            ..Default::default()
         };
         let engine = SearchEngine::compile(r"task\s+\d+", opts);
         let meta = SearchCardMeta::from_card("task 42", false);
@@ -813,6 +819,7 @@ mod tests {
         let opts = SearchOptions {
             case_sensitive: false,
             use_regex: true,
+            ..Default::default()
         };
         let engine = SearchEngine::compile("", opts);
         assert!(engine.is_empty());

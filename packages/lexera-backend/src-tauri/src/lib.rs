@@ -42,30 +42,74 @@ const PERIODIC_SAVE_INTERVAL_SECS: u64 = 60;
 
 // ── Setup helper functions ─────────────────────────────────────────────────
 
-/// Load boards from config into storage. Returns `(board_id, canonical_path)` pairs.
+/// Load boards from config into storage using parallel file I/O.
+/// Returns `(board_id, canonical_path)` pairs.
 fn init_storage_and_boards(
     storage: &LocalStorage,
     config: &std::sync::Mutex<config::SyncConfig>,
 ) -> Vec<(String, PathBuf)> {
-    let mut board_paths = Vec::new();
-    let cfg = match config.lock() {
-        Ok(c) => c,
+    let board_entries: Vec<PathBuf> = match config.lock() {
+        Ok(cfg) => cfg.boards.iter().map(|e| PathBuf::from(&e.file)).collect(),
         Err(e) => {
             log::error!("[lexera.setup] Config mutex poisoned during board loading: {}", e);
-            return board_paths;
+            return Vec::new();
         }
     };
-    for entry in &cfg.boards {
-        let path = PathBuf::from(&entry.file);
-        match storage.add_board(&path) {
-            Ok(id) => {
-                log::info!("Loaded board: {} -> {}", entry.file, id);
-                let canonical = std::fs::canonicalize(&path).unwrap_or(path);
-                board_paths.push((id, canonical));
-            }
-            Err(e) => log::warn!("Failed to load board {}: {}", entry.file, e),
-        }
+
+    if board_entries.is_empty() {
+        return Vec::new();
     }
+
+    let start = std::time::Instant::now();
+
+    // Prepare all boards in parallel: file I/O, parsing, CRDT loading happen
+    // concurrently across threads. The boards RwLock is NOT acquired here.
+    let prepared: Vec<_> = std::thread::scope(|s| {
+        let handles: Vec<_> = board_entries.iter().map(|path| {
+            s.spawn(|| {
+                storage.prepare_board_state(path)
+            })
+        }).collect();
+
+        handles.into_iter().enumerate().filter_map(|(i, h)| {
+            match h.join() {
+                Ok(Ok(pair)) => {
+                    log::info!("Loaded board: {} -> {}", board_entries[i].display(), pair.0);
+                    Some(pair)
+                }
+                Ok(Err(e)) => {
+                    log::warn!("Failed to load board {}: {}", board_entries[i].display(), e);
+                    None
+                }
+                Err(payload) => {
+                    log::error!(
+                        "Board loading thread panicked for {}: {}",
+                        board_entries[i].display(),
+                        lexera_core::panic_util::panic_payload_to_string(&*payload)
+                    );
+                    None
+                }
+            }
+        }).collect()
+    });
+
+    // Collect canonical paths before batch insert (need file_path from state)
+    let board_paths: Vec<(String, PathBuf)> = prepared.iter().map(|(id, state)| {
+        (id.clone(), state.file_path.clone())
+    }).collect();
+
+    // Single write-lock acquisition for all boards
+    if let Err(e) = storage.batch_add_boards(prepared) {
+        log::error!("[lexera.setup] Failed to batch-insert boards: {}", e);
+        return Vec::new();
+    }
+
+    log::info!(
+        "[lexera.setup] Loaded {} board(s) in {:.1}ms (parallel)",
+        board_paths.len(),
+        start.elapsed().as_secs_f64() * 1000.0
+    );
+
     board_paths
 }
 
@@ -419,37 +463,65 @@ fn restore_persisted_connections(
                 continue;
             }
 
-            let reconnect_result = {
-                let mut client = restore_state.sync_client.lock().await;
-                client.reconnect_existing(
-                    entry.server_url.clone(), remote_board_id.clone(),
-                    restore_user_id.clone(), restore_user_name.clone(),
-                    entry.auth_token.clone(),
-                    restore_state.storage.clone(), restore_state.event_tx.clone(),
-                    restore_state.sync_hub.clone(),
-                ).await
-            };
-
-            let final_result = match reconnect_result {
-                Ok(local_board_id) => Ok(local_board_id),
-                Err(primary_error) => {
-                    if let Some(token) = entry.invite_token.clone() {
-                        log::warn!(
-                            "[sync_client.restore] Reconnect failed for {} ({}): {}. Retrying with invite token.",
-                            entry.local_board_id, entry.server_url, primary_error
-                        );
-                        let mut client = restore_state.sync_client.lock().await;
-                        match client.connect(
-                            entry.server_url.clone(), token,
-                            restore_user_id.clone(), restore_user_name.clone(),
-                            restore_state.storage.clone(), restore_state.event_tx.clone(),
-                            restore_state.sync_hub.clone(),
-                        ).await {
-                            Ok((local_board_id, _)) => Ok(local_board_id),
-                            Err(e) => Err(e),
+            let final_result = {
+                let client = restore_state.sync_client.lock().await;
+                if client.is_connected(&entry.local_board_id) {
+                    Ok(entry.local_board_id.clone())
+                } else {
+                    drop(client);
+                    match crate::sync_client::SyncClientManager::prepare_existing_connection(
+                        entry.server_url.clone(),
+                        remote_board_id.clone(),
+                        restore_user_id.clone(),
+                        restore_user_name.clone(),
+                        entry.auth_token.clone(),
+                        restore_state.storage.clone(),
+                    )
+                    .await
+                    {
+                        Ok(pending) => {
+                            let local_board_id = pending.local_board_id.clone();
+                            let mut client = restore_state.sync_client.lock().await;
+                            client.register_prepared_connection(
+                                pending,
+                                restore_state.storage.clone(),
+                                restore_state.event_tx.clone(),
+                                restore_state.sync_hub.clone(),
+                            );
+                            Ok(local_board_id)
                         }
-                    } else {
-                        Err(primary_error)
+                        Err(primary_error) => {
+                            if let Some(token) = entry.invite_token.clone() {
+                                log::warn!(
+                                    "[sync_client.restore] Reconnect failed for {} ({}): {}. Retrying with invite token.",
+                                    entry.local_board_id, entry.server_url, primary_error
+                                );
+                                match crate::sync_client::SyncClientManager::prepare_invite_connection(
+                                    entry.server_url.clone(),
+                                    token,
+                                    restore_user_id.clone(),
+                                    restore_user_name.clone(),
+                                    restore_state.storage.clone(),
+                                )
+                                .await
+                                {
+                                    Ok(pending) => {
+                                        let local_board_id = pending.local_board_id.clone();
+                                        let mut client = restore_state.sync_client.lock().await;
+                                        client.register_prepared_connection(
+                                            pending,
+                                            restore_state.storage.clone(),
+                                            restore_state.event_tx.clone(),
+                                            restore_state.sync_hub.clone(),
+                                        );
+                                        Ok(local_board_id)
+                                    }
+                                    Err(error) => Err(error),
+                                }
+                            } else {
+                                Err(primary_error)
+                            }
+                        }
                     }
                 }
             };

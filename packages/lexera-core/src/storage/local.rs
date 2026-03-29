@@ -1562,6 +1562,127 @@ impl LocalStorage {
         Ok(board_id)
     }
 
+    /// Prepare a board state from a file without inserting into storage.
+    ///
+    /// Does everything `add_board` does (read file, parse, resolve includes,
+    /// create/load CRDT) but does NOT acquire the `boards` RwLock. This allows
+    /// multiple boards to be prepared in parallel (file I/O + parsing) before
+    /// inserting them all at once via `batch_add_boards`.
+    pub fn prepare_board_state(&self, file_path: &Path) -> Result<(String, BoardState), StorageError> {
+        let file_path = fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
+        let board_id = Self::board_id_from_path(&file_path);
+
+        let content = fs::read_to_string(&file_path)?;
+
+        let preliminary = parser::parse_markdown(&content);
+        if !preliminary.valid {
+            return Err(StorageError::InvalidBoard(
+                file_path.to_string_lossy().to_string(),
+            ));
+        }
+
+        let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let mut board = Self::normalize_board_for_write(
+            &self.parse_with_includes(&content, &board_id, &board_dir, &file_path)?,
+            &board_dir,
+        );
+
+        let metadata = fs::metadata(&file_path)?;
+        let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
+
+        let crdt_path = file_path.with_extension("md.crdt");
+        let crdt = if crdt_path.exists() {
+            match CrdtStore::load_from_file(&crdt_path) {
+                Ok(mut c) => {
+                    c.set_metadata(
+                        board.yaml_header.clone(),
+                        board.kanban_footer.clone(),
+                        board.board_settings.clone(),
+                        board.generation_meta.clone(),
+                    );
+                    match Self::align_loaded_board_with_crdt(&board_id, &board, c, &board_dir) {
+                        Ok((canonical_board, c)) => {
+                            board = canonical_board;
+                            Some(c)
+                        }
+                        Err(e) => {
+                            log::error!("[lexera.crdt] Failed to align loaded CRDT: {}", e);
+                            None
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("[lexera.crdt] Failed to load .crdt file: {}", e);
+                    match CrdtStore::from_board(&board) {
+                        Ok(c) => {
+                            if let Err(error) = c.save_to_file(&crdt_path) {
+                                log::warn!(
+                                    "[lexera.crdt] Failed to persist rebuilt .crdt file {:?}: {}",
+                                    crdt_path,
+                                    error
+                                );
+                            }
+                            Some(c)
+                        }
+                        Err(e) => {
+                            log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
+                            None
+                        }
+                    }
+                }
+            }
+        } else {
+            match CrdtStore::from_board(&board) {
+                Ok(c) => {
+                    if let Err(error) = c.save_to_file(&crdt_path) {
+                        log::warn!(
+                            "[lexera.crdt] Failed to persist new .crdt file {:?}: {}",
+                            crdt_path,
+                            error
+                        );
+                    }
+                    Some(c)
+                }
+                Err(e) => {
+                    log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
+                    None
+                }
+            }
+        };
+
+        let generation = board
+            .generation_meta
+            .as_ref()
+            .and_then(|m| m.generation)
+            .unwrap_or(0);
+        let state = BoardState {
+            file_path,
+            board,
+            last_modified,
+            content_hash: Self::content_hash(&content),
+            version: self.next_version(),
+            generation,
+            crdt,
+        };
+
+        Ok((board_id, state))
+    }
+
+    /// Insert multiple prepared board states in a single write-lock acquisition.
+    ///
+    /// Used together with `prepare_board_state` for parallel board loading at
+    /// startup: prepare all boards in parallel threads, then batch-insert here.
+    pub fn batch_add_boards(&self, states: Vec<(String, BoardState)>) -> Result<(), StorageError> {
+        let mut boards = self
+            .boards
+            .write()
+            .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
+        for (id, state) in states {
+            boards.insert(id, state);
+        }
+        Ok(())
+    }
+
     /// Reload a board from disk (e.g. after file watcher event).
     /// Re-resolves includes and reloads include file contents.
     pub fn reload_board(&self, board_id: &str) -> Result<(), StorageError> {
@@ -2485,17 +2606,17 @@ impl LocalStorage {
         }
     }
 
-    pub fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
+    pub fn search_with_options(&self, query: &str, options: SearchOptions) -> PaginatedSearchResults {
         let engine = SearchEngine::compile(query, options);
         if engine.is_empty() {
-            return Vec::new();
+            return PaginatedSearchResults { results: Vec::new(), total: 0, limit: options.limit.unwrap_or(50), offset: options.offset.unwrap_or(0) };
         }
 
         let boards = match self.boards.read() {
             Ok(b) => b,
             Err(e) => {
                 log::error!("[lexera.storage.search] Boards lock poisoned: {}", e);
-                return Vec::new();
+                return PaginatedSearchResults { results: Vec::new(), total: 0, limit: options.limit.unwrap_or(50), offset: options.offset.unwrap_or(0) };
             }
         };
         let mut results = Vec::new();
@@ -2557,7 +2678,28 @@ impl LocalStorage {
                 })
         });
 
-        results
+        let total = results.len();
+        let offset = options.offset.unwrap_or(0);
+        let limit = options.limit.unwrap_or(50);
+
+        let mut page: Vec<SearchResult> = results.into_iter().skip(offset).take(limit).collect();
+
+        if let Some(max_chars) = options.truncate {
+            for r in &mut page {
+                if r.card_content.len() > max_chars {
+                    let end = r.card_content.floor_char_boundary(max_chars);
+                    r.card_content.truncate(end);
+                    r.card_content.push_str("…");
+                }
+            }
+        }
+
+        PaginatedSearchResults {
+            results: page,
+            total,
+            limit,
+            offset,
+        }
     }
 }
 
@@ -2835,10 +2977,10 @@ impl BoardStorage for LocalStorage {
     }
 
     fn search(&self, query: &str) -> Vec<SearchResult> {
-        LocalStorage::search_with_options(self, query, SearchOptions::default())
+        LocalStorage::search_with_options(self, query, SearchOptions::default()).results
     }
 
-    fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
+    fn search_with_options(&self, query: &str, options: SearchOptions) -> PaginatedSearchResults {
         LocalStorage::search_with_options(self, query, options)
     }
 
@@ -3189,24 +3331,24 @@ kanban-plugin: board
 
         let results =
             storage.search_with_options("#finance is:open due:overdue", SearchOptions::default());
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].card_content, "File taxes #finance @2000-01-01");
-        assert!(!results[0].checked);
-        assert!(results[0].hash_tags.contains(&"#finance".to_string()));
-        assert_eq!(results[0].due_date.as_deref(), Some("2000-01-01"));
-        assert!(results[0].is_overdue);
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].card_content, "File taxes #finance @2000-01-01");
+        assert!(!results.results[0].checked);
+        assert!(results.results[0].hash_tags.contains(&"#finance".to_string()));
+        assert_eq!(results.results[0].due_date.as_deref(), Some("2000-01-01"));
+        assert!(results.results[0].is_overdue);
 
         let results = storage.search_with_options("is:done #finance", SearchOptions::default());
-        assert_eq!(results.len(), 1);
+        assert_eq!(results.results.len(), 1);
         assert_eq!(
-            results[0].card_content,
+            results.results[0].card_content,
             "Archive receipts #finance @2000-01-01"
         );
-        assert!(results[0].checked);
+        assert!(results.results[0].checked);
 
         let results = storage.search_with_options("col:todo #team", SearchOptions::default());
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].card_content, "Sprint planning #team @2026w09");
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].card_content, "Sprint planning #team @2026w09");
     }
 
     #[test]
@@ -3218,18 +3360,18 @@ kanban-plugin: board
         storage.add_board(tmp.path()).unwrap();
 
         let ux = storage.search_with_options("#ux", SearchOptions::default());
-        assert_eq!(ux.len(), 1);
-        assert_eq!(ux[0].row_index, Some(0));
-        assert_eq!(ux[0].stack_index, Some(0));
-        assert_eq!(ux[0].col_local_index, Some(0));
-        assert_eq!(ux[0].column_index, 0);
+        assert_eq!(ux.results.len(), 1);
+        assert_eq!(ux.results[0].row_index, Some(0));
+        assert_eq!(ux.results[0].stack_index, Some(0));
+        assert_eq!(ux.results[0].col_local_index, Some(0));
+        assert_eq!(ux.results[0].column_index, 0);
 
         let infra = storage.search_with_options("#infra", SearchOptions::default());
-        assert_eq!(infra.len(), 1);
-        assert_eq!(infra[0].row_index, Some(0));
-        assert_eq!(infra[0].stack_index, Some(1));
-        assert_eq!(infra[0].col_local_index, Some(0));
-        assert_eq!(infra[0].column_index, 1);
+        assert_eq!(infra.results.len(), 1);
+        assert_eq!(infra.results[0].row_index, Some(0));
+        assert_eq!(infra.results[0].stack_index, Some(1));
+        assert_eq!(infra.results[0].col_local_index, Some(0));
+        assert_eq!(infra.results[0].column_index, 1);
     }
 
     #[test]
