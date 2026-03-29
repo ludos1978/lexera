@@ -1900,16 +1900,16 @@ var LexeraEmbedMenu = (function () {
     }
 
     var cardEl = container.closest('.card[data-card-id]');
-    var cardId = cardEl ? cardEl.getAttribute('data-card-id') : '';
-    var cardRef = findCardRefById(cardId);
+    if (!cardEl) return false;
+    var cardRef = findCardRefById(cardEl.getAttribute('data-card-id'));
     if (!cardRef || !cardRef.card) return false;
     var nextValue = contentMutator(cardRef.card.content || '');
     if (typeof nextValue !== 'string' || nextValue === cardRef.card.content) return false;
     pushUndo();
     cardRef.card.content = normalizeCardContentAfterInlineMutation(nextValue);
     // Targeted re-render: only update the affected card's content DOM
-    var colIndex = cardEl ? parseInt(cardEl.getAttribute('data-col-index'), 10) : -1;
-    var contentEl = cardEl ? cardEl.querySelector('.card-content') : null;
+    var colIndex = parseInt(cardEl.getAttribute('data-col-index'), 10);
+    var contentEl = cardEl.querySelector('.card-content');
     if (contentEl) {
       contentEl.innerHTML = renderCardContent(cardRef.card.content, activeBoardId, colIndex, {});
       flushPendingDiagramQueues();
@@ -3204,12 +3204,7 @@ var LexeraEmbedMenu = (function () {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: getDisplayFileNameFromPath(fileRef.path) }),
       }).then(function (res) {
-        applyAutomaticPathFix(container, res && res.matches ? res.matches : [], function (nextTarget) {
-          return updateBoardFileLinkTarget(container, nextTarget);
-        }, {
-          suffix: fileRef.suffix || '',
-          successMessage: 'Path fixed'
-        });
+        applyAutomaticPathFix(container, res && res.matches ? res.matches : []);
       }).catch(function (err) {
         logFrontendIssue('warn', 'path.fix', 'Automatic path fix failed for file link ' + filePath, err);
       });
@@ -3303,12 +3298,7 @@ var LexeraEmbedMenu = (function () {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: filename }),
       }).then(function (res) {
-        applyAutomaticPathFix(container, res && res.matches ? res.matches : [], function (nextTarget) {
-          return updateIncludeTarget(container, nextTarget);
-        }, {
-          suffix: fileRef.suffix || '',
-          successMessage: 'Include path fixed'
-        });
+        applyAutomaticPathFix(container, res && res.matches ? res.matches : []);
       }).catch(function (err) {
         logFrontendIssue('warn', 'path.fix', 'Automatic path fix failed for include ' + filePath, err);
       });
@@ -3538,12 +3528,7 @@ var LexeraEmbedMenu = (function () {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: filename }),
       }).then(function (res) {
-        applyAutomaticPathFix(container, res && res.matches ? res.matches : [], function (nextTarget) {
-          return updateEmbedTarget(container, nextTarget);
-        }, {
-          suffix: fileRef.suffix || '',
-          successMessage: 'Embed path fixed'
-        });
+        applyAutomaticPathFix(container, res && res.matches ? res.matches : []);
       }).catch(function (err) {
         logFrontendIssue('warn', 'path.fix', 'Automatic path fix failed for embed ' + filePath, err);
       });
@@ -4112,9 +4097,8 @@ var LexeraEmbedMenu = (function () {
     return false;
   }
 
-  function applyAutomaticPathFix(container, matches, applyTarget, options) {
+  function applyAutomaticPathFix(container, matches) {
     var resolvedMatches = Array.isArray(matches) ? matches.filter(Boolean) : [];
-    // Always show the picker so the user decides — never auto-replace
     showPathFixResults(container, resolvedMatches);
   }
 

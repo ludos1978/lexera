@@ -5,8 +5,6 @@ use lexera_core::types::GroupedCalendarTasks;
 use crate::state::AppState;
 
 fn format_date(secs_since_epoch: i64) -> String {
-    // Convert epoch seconds to YYYY-MM-DD using manual calculation
-    // This avoids adding chrono as a dependency
     let days = secs_since_epoch / 86400;
     // Algorithm from http://howardhinnant.github.io/date_algorithms.html
     let z = days + 719468;
@@ -27,15 +25,12 @@ fn compute_date_boundaries() -> (String, String, String) {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    // Adjust to local timezone offset (approximate — use UTC for consistency)
     let today_str = format_date(now_secs);
 
-    // Day of week: 0=Thu for epoch. Compute weekday and find end of week (Sunday).
     let days_since_epoch = now_secs / 86400;
     let weekday = ((days_since_epoch % 7) + 4) % 7; // 0=Sun
     let days_until_sunday = if weekday == 0 { 0 } else { 7 - weekday };
     let end_of_week_str = format_date(now_secs + days_until_sunday * 86400);
-
     let two_weeks_str = format_date(now_secs + 14 * 86400);
 
     (today_str, end_of_week_str, two_weeks_str)

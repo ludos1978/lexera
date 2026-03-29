@@ -1718,7 +1718,6 @@ var LexeraOrderHelpers = (function () {
   function renderStandaloneCalendarPanels(tasks) {
     if (!window.LexeraSharedPanels) return;
     var weekRoots = window.LexeraSharedPanels.getRoots('weekCalendar');
-    var monthRoots = window.LexeraSharedPanels.getRoots('monthCalendar');
     for (var w = 0; w < weekRoots.length; w++) {
       var weekEl = weekRoots[w].querySelector('.lexera-shared-calendar-week-view');
       var weekTaskEl = weekRoots[w].querySelector('.lexera-shared-calendar-task-list');
@@ -2333,19 +2332,26 @@ var LexeraOrderHelpers = (function () {
   }
 
   function ensureDashboardState() {
-    if (!dashboardState) {
-      dashboardState = _dep('dashboardState');
-    }
-    if (!dashboardState) {
-      dashboardState = {
-        query: '', scope: 'active', loading: false,
-        results: [], overdue: [], today: [], thisWeek: [],
-        upcoming: [], later: [], todos: [], taggedGroups: [],
-        pinnedQueries: [], activePinnedQuery: '',
-        fileInventoryLoading: false, fileEmbeds: [], includedFiles: [], brokenFiles: []
-      };
-    }
+    if (!dashboardState) dashboardState = _dep('dashboardState');
+    if (!dashboardState) dashboardState = {
+      query: '', scope: 'active', loading: false,
+      results: [], overdue: [], today: [], thisWeek: [],
+      upcoming: [], later: [], todos: [], taggedGroups: [],
+      pinnedQueries: [], activePinnedQuery: '',
+      fileInventoryLoading: false, fileEmbeds: [], includedFiles: [], brokenFiles: []
+    };
     return dashboardState;
+  }
+
+  function clearDashboardResults() {
+    dashboardState.results = [];
+    dashboardState.overdue = [];
+    dashboardState.today = [];
+    dashboardState.thisWeek = [];
+    dashboardState.upcoming = [];
+    dashboardState.later = [];
+    dashboardState.todos = [];
+    dashboardState.taggedGroups = [];
   }
 
   function refreshDashboardData(options) {
@@ -2356,33 +2362,24 @@ var LexeraOrderHelpers = (function () {
     if (!hasDashboard && !hasCalendars) return Promise.resolve();
     ensureDashboardState();
     if (!_dep('connected')) {
-      if (dashboardState) {
-        dashboardState.loading = false;
-        dashboardState.results = [];
-        dashboardState.overdue = [];
-        dashboardState.today = [];
-        dashboardState.thisWeek = [];
-        dashboardState.upcoming = [];
-        dashboardState.later = [];
-        dashboardState.todos = [];
-        dashboardState.taggedGroups = [];
-        dashboardState.fileInventoryLoading = false;
-        dashboardState.fileEmbeds = [];
-        dashboardState.includedFiles = [];
-        dashboardState.brokenFiles = [];
-      }
+      dashboardState.loading = false;
+      clearDashboardResults();
+      dashboardState.fileInventoryLoading = false;
+      dashboardState.fileEmbeds = [];
+      dashboardState.includedFiles = [];
+      dashboardState.brokenFiles = [];
       renderDashboard();
       return Promise.resolve();
     }
     var refreshId = ++dashboardRefreshSeq;
-    if (dashboardState) dashboardState.loading = true;
+    dashboardState.loading = true;
     if (!options.deferRender) renderDashboard();
 
     // Refresh tag config from backend (best-effort, uses cache on failure)
     refreshDashboardTagsFromBackend();
 
     var LexeraApi = _dep('LexeraApi');
-    var query = dashboardState && dashboardState.query ? dashboardState.query.trim() : '';
+    var query = dashboardState.query ? dashboardState.query.trim() : '';
     var calendarScopedQuery = isDashboardCalendarQuery(query);
     var queryPromise = query && !calendarScopedQuery
       ? LexeraApi.search(query)
@@ -2404,81 +2401,68 @@ var LexeraOrderHelpers = (function () {
         ? filterCalendarTasksForDashboardQuery(scopedCalendar, query)
         : filterDashboardResultsByScope(asSearchResultArray(resolved[0]));
 
-      if (dashboardState) {
-        dashboardState.results = limitedSearchResults(scopedQuery, 80);
+      dashboardState.results = limitedSearchResults(scopedQuery, 80);
 
-        // Use backend-provided time groups when available, fall back to client-side grouping
-        var groups = calendarResponse.groups;
-        if (groups) {
-          dashboardState.overdue = limitedSearchResults(filterDashboardResultsByScope(groups.overdue || []), 40);
-          dashboardState.today = limitedSearchResults(filterDashboardResultsByScope(groups.today || []), 40);
-          dashboardState.thisWeek = limitedSearchResults(filterDashboardResultsByScope(groups.thisWeek || []), 40);
-          dashboardState.upcoming = limitedSearchResults(filterDashboardResultsByScope(groups.upcoming || []), 40);
-          dashboardState.later = limitedSearchResults(filterDashboardResultsByScope(groups.later || []), 40);
-        } else {
-          // Fallback: client-side grouping (for older backends)
-          var openCalendar = scopedCalendar.filter(function (item) { return item && item.checked !== true; });
-          var overdueCalendar = openCalendar.filter(function (item) { return item && item.isOverdue; });
-          dashboardState.overdue = limitedSearchResults(sortSearchByDueDateAsc(overdueCalendar), 40);
-          var now = new Date();
-          var todayStr = formatDashboardDate(now);
-          var endOfWeek = getEndOfWeek(now);
-          var endOfWeekStr = formatDashboardDate(endOfWeek);
-          var twoWeeksOut = new Date(now.getTime() + 14 * 86400000);
-          var twoWeeksStr = formatDashboardDate(twoWeeksOut);
-          var nonOverdue = openCalendar.filter(function (item) { return item && !item.isOverdue; });
-          var sorted = sortSearchByDueDateAsc(nonOverdue);
-          var today = [], thisWeek = [], upcoming = [], later = [];
-          for (var di = 0; di < sorted.length; di++) {
-            var due = sorted[di].dueDate || '';
-            if (due === todayStr) today.push(sorted[di]);
-            else if (due <= endOfWeekStr) thisWeek.push(sorted[di]);
-            else if (due <= twoWeeksStr) upcoming.push(sorted[di]);
-            else later.push(sorted[di]);
-          }
-          dashboardState.today = limitedSearchResults(today, 40);
-          dashboardState.thisWeek = limitedSearchResults(thisWeek, 40);
-          dashboardState.upcoming = limitedSearchResults(upcoming, 40);
-          dashboardState.later = limitedSearchResults(later, 40);
+      // Use backend-provided time groups when available, fall back to client-side grouping
+      var groups = calendarResponse.groups;
+      if (groups) {
+        dashboardState.overdue = limitedSearchResults(filterDashboardResultsByScope(groups.overdue || []), 40);
+        dashboardState.today = limitedSearchResults(filterDashboardResultsByScope(groups.today || []), 40);
+        dashboardState.thisWeek = limitedSearchResults(filterDashboardResultsByScope(groups.thisWeek || []), 40);
+        dashboardState.upcoming = limitedSearchResults(filterDashboardResultsByScope(groups.upcoming || []), 40);
+        dashboardState.later = limitedSearchResults(filterDashboardResultsByScope(groups.later || []), 40);
+      } else {
+        // Fallback: client-side grouping (for older backends)
+        var openCalendar = scopedCalendar.filter(function (item) { return item && item.checked !== true; });
+        var overdueCalendar = openCalendar.filter(function (item) { return item && item.isOverdue; });
+        dashboardState.overdue = limitedSearchResults(sortSearchByDueDateAsc(overdueCalendar), 40);
+        var now = new Date();
+        var todayStr = formatDashboardDate(now);
+        var endOfWeekStr = formatDashboardDate(getEndOfWeek(now));
+        var twoWeeksStr = formatDashboardDate(new Date(now.getTime() + 14 * 86400000));
+        var nonOverdue = openCalendar.filter(function (item) { return item && !item.isOverdue; });
+        var sorted = sortSearchByDueDateAsc(nonOverdue);
+        var today = [], thisWeek = [], upcoming = [], later = [];
+        for (var di = 0; di < sorted.length; di++) {
+          var due = sorted[di].dueDate || '';
+          if (due === todayStr) today.push(sorted[di]);
+          else if (due <= endOfWeekStr) thisWeek.push(sorted[di]);
+          else if (due <= twoWeeksStr) upcoming.push(sorted[di]);
+          else later.push(sorted[di]);
         }
-        // Open tasks (todos)
-        var scopedTodos = filterDashboardResultsByScope(asSearchResultArray(resolved[2]));
-        dashboardState.todos = limitedSearchResults(scopedTodos, 60);
-        // Tagged items
-        var taggedGroups = [];
-        for (var ti = 3; ti < resolved.length; ti++) {
-          var tagResult = resolved[ti];
-          if (tagResult && tagResult.tag) {
-            var scopedTagResults = filterDashboardResultsByScope(asSearchResultArray(tagResult));
-            taggedGroups.push({ tag: tagResult.tag, items: limitedSearchResults(scopedTagResults, 30) });
-          }
-        }
-        dashboardState.taggedGroups = taggedGroups;
+        dashboardState.today = limitedSearchResults(today, 40);
+        dashboardState.thisWeek = limitedSearchResults(thisWeek, 40);
+        dashboardState.upcoming = limitedSearchResults(upcoming, 40);
+        dashboardState.later = limitedSearchResults(later, 40);
       }
+      // Open tasks (todos)
+      var scopedTodos = filterDashboardResultsByScope(asSearchResultArray(resolved[2]));
+      dashboardState.todos = limitedSearchResults(scopedTodos, 60);
+      // Tagged items
+      var taggedGroups = [];
+      for (var ti = 3; ti < resolved.length; ti++) {
+        var tagResult = resolved[ti];
+        if (tagResult && tagResult.tag) {
+          var scopedTagResults = filterDashboardResultsByScope(asSearchResultArray(tagResult));
+          taggedGroups.push({ tag: tagResult.tag, items: limitedSearchResults(scopedTagResults, 30) });
+        }
+      }
+      dashboardState.taggedGroups = taggedGroups;
     }).catch(function (err) {
       if (refreshId !== dashboardRefreshSeq) return;
       _callDep('logFrontendIssue', 'error', 'dashboard.search', 'Failed to refresh', err);
-      if (dashboardState) {
-        dashboardState.results = [];
-        dashboardState.overdue = [];
-        dashboardState.today = [];
-        dashboardState.thisWeek = [];
-        dashboardState.upcoming = [];
-        dashboardState.later = [];
-        dashboardState.todos = [];
-      }
+      clearDashboardResults();
     }).then(function () {
       if (refreshId !== dashboardRefreshSeq) return;
-      if (dashboardState) dashboardState.loading = false;
+      dashboardState.loading = false;
       renderDashboard();
     });
   }
 
   function hasAnyCalendarPanel() {
     if (!window.LexeraSharedPanels) return false;
-    var w = window.LexeraSharedPanels.getRoots('weekCalendar');
-    var m = window.LexeraSharedPanels.getRoots('monthCalendar');
-    return (w && w.length > 0) || (m && m.length > 0);
+    return window.LexeraSharedPanels.getRoots('weekCalendar').length > 0 ||
+      window.LexeraSharedPanels.getRoots('monthCalendar').length > 0;
   }
 
   function scheduleDashboardRefresh(delayMs) {
