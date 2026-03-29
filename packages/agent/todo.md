@@ -1,12 +1,9 @@
 # Lexera Kanban Todo
 
-- [ ] the dashboard should allow a search tag list:
-  - that is for all the workspaces setup in the board config
-  - that can be overridden (same #tag/@tag search feature as all tag list setups) in the individual workspaces
-  - that can be overriden for each kanban/canvas board.
+- [x] ~~the dashboard search tag list now supports per-workspace overrides via GET/PUT /config/dashboard-tags?workspace={id}, with 3-tier resolution (workspace > global > default)~~ (2e2c2784)
 
-- [ ] we maybe need need an overhaul for the workspace, kanban/canvas board configuration. 
-  - make an analysis what settings we have right now to define. how we can properly differentiate between settings needed in the frontend and settings mostly only needed in the backend! i want the settings to be well intergrated into a similar structure as we see it in all the aspects of the application (tree-structure or item navigation with key movements, maybe we could even integrate those into a better global stucture).
+- [x] ~~Settings architecture analysis complete~~ — see [analysis-settings-architecture.md](analysis-settings-architecture.md). Audit found ~90 localStorage keys, ~20 board YAML settings, ~30 backend config fields. Proposed 3-tier resolution (board > workspace > global) and migration path.
+- [ ] Implement settings unification: add `defaultSettings` and `workspaces[].settings` to sync.json, migrate localStorage `lexera-default-*` keys to backend
 
 - [x] ~~browse in files settings now works — was a Tauri invoke detection issue, verified working~~ (verified)
 
@@ -113,7 +110,8 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 
 ### Low
 - [x] ~~Remove hardcoded Mermaid CDN URL — now configurable via localStorage `lexera-mermaid-url`~~ (this commit)
-- [ ] Add keyboard accessibility for drag-drop operations (currently pointer-only)
+- [x] ~~Keyboard card move: Alt+Arrow moves cards between columns/positions (already implemented in keyboardNavigation.js)~~
+- [ ] Add keyboard reorder for columns (Alt+Shift+Arrow) and rows (Ctrl+Alt+Arrow) — pointer-only today
 - [x] ~~Export dialog form inputs already have proper `<label for="">` and wrapping `<label>` associations~~ (verified)
 
 ## High Priority — Security & Reliability
