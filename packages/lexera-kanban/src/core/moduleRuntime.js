@@ -130,7 +130,8 @@ var LexeraRuntime = (function () {
     'LexeraTagSystem', 'LexeraPathUtils', 'LexeraDropZoneIndicators',
     'CardEditor', 'InlineCardEditor', 'CardContextMenu',
     'BoardSearchReplace', 'BoardStatsFilter', 'LexeraDndMutations',
-    'LexeraDashboard'
+    'LexeraDashboard', 'LexeraApi', 'LexeraTemplates',
+    'LexeraExportUiPreferences', 'LexeraContentEnhancerRegistry'
   ];
 
   function discoverModules() {

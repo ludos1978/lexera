@@ -1,4 +1,4 @@
-const LexeraExportUiPreferences = (function () {
+var LexeraExportUiPreferences = (function () {
   const EXPORT_UI_STORAGE_KEYS = {
     preset: 'lexera-export-preset',
     marpTheme: 'lexera-export-marp-theme',
@@ -237,3 +237,4 @@ const LexeraExportUiPreferences = (function () {
     createExportUiPreferenceHelpers: createExportUiPreferenceHelpers
   };
 })();
+if (typeof window !== 'undefined') window.LexeraExportUiPreferences = LexeraExportUiPreferences;

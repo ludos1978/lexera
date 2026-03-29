@@ -12743,4 +12743,4 @@ var LexeraDashboard = (function () {
 
   return { poll: poll };
 })();
-window.LexeraDashboard = LexeraDashboard;
+if (typeof window !== 'undefined') window.LexeraDashboard = LexeraDashboard;

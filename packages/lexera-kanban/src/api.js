@@ -2,7 +2,7 @@
  * HTTP client for Lexera Backend REST API.
  * Auto-discovers the backend by trying common ports, or uses a manually set URL.
  */
-const LexeraApi = (function () {
+var LexeraApi = (function () {
   let baseUrl = null;
   let bearerToken = null;
   let bearerTokenPromise = null;
@@ -864,3 +864,4 @@ const LexeraApi = (function () {
     _setTestToken: function(t) { bearerToken = t; bearerTokenPromise = null; },
   };
 })();
+if (typeof window !== 'undefined') window.LexeraApi = LexeraApi;

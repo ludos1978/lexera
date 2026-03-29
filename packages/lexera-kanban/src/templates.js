@@ -3,7 +3,7 @@
  * Provides template loading, parsing, variable processing, dialog, and entity builders.
  * Communicates with backend via LexeraApi and returns built entities for app.js to insert.
  */
-const LexeraTemplates = (function () {
+var LexeraTemplates = (function () {
 
   // ── Cache ──────────────────────────────────────────────────────────────
 
@@ -650,3 +650,4 @@ const LexeraTemplates = (function () {
     buildRowFromTemplate: buildRowFromTemplate
   };
 })();
+if (typeof window !== 'undefined') window.LexeraTemplates = LexeraTemplates;

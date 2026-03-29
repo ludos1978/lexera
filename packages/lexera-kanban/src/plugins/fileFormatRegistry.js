@@ -1,4 +1,4 @@
-const LexeraFileFormatRegistry = (function () {
+var LexeraFileFormatRegistry = (function () {
   var plugins = [];
 
   function cloneRendererRequirement(requirement) {
