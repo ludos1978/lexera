@@ -114,6 +114,7 @@ var LexeraApi = (function () {
 
   var DEFAULT_TIMEOUT_MS = 10000;
   var LONG_TIMEOUT_MS = 30000;
+  var DASHBOARD_TIMEOUT_MS = 8000;
 
   async function request(path, options) {
     const method = options && options.method ? String(options.method).toUpperCase() : 'GET';
@@ -248,11 +249,11 @@ var LexeraApi = (function () {
     params.set('q', query || '');
     if (options && options.regex) params.set('regex', 'true');
     if (options && options.caseSensitive) params.set('caseSensitive', 'true');
-    return request('/search?' + params.toString(), { timeoutMs: LONG_TIMEOUT_MS });
+    return request('/search?' + params.toString(), { timeoutMs: DASHBOARD_TIMEOUT_MS });
   }
 
   async function getCalendarTasks() {
-    return request('/calendar/tasks', { timeoutMs: LONG_TIMEOUT_MS });
+    return request('/calendar/tasks', { timeoutMs: DASHBOARD_TIMEOUT_MS });
   }
 
   async function checkStatus() {

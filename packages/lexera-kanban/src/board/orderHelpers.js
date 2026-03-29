@@ -2488,9 +2488,11 @@ var LexeraOrderHelpers = (function () {
       if (refreshId !== dashboardRefreshSeq) return;
       _callDep('logFrontendIssue', 'error', 'dashboard.search', 'Failed to refresh', err);
       clearDashboardResults();
+      // Retry after 5 seconds if the backend was busy (startup lock contention)
+      scheduleDashboardRefresh(5000);
     }).then(function () {
       if (refreshId !== dashboardRefreshSeq) return;
-      dashboardState.loading = false;
+      if (dashboardState) dashboardState.loading = false;
       renderDashboard();
     });
   }
