@@ -529,6 +529,14 @@ function setActiveLogSource(source) {
   if (refreshBtn) refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
   syncLogCount();
   syncMirroredLogViews();
+  // Lazy connect: open backend log stream only when backend tab is active
+  if (activeLogSource === 'backend' && !backendLogEventSource && !backendLogConnectPending) {
+    connectBackendLogStreamIfReady();
+  }
+  // Disconnect when leaving backend tab to free a connection slot
+  if (activeLogSource !== 'backend' && backendLogEventSource) {
+    closeBackendLogStream();
+  }
 }
 
 function isLogPanelVisible() {
@@ -708,6 +716,14 @@ function refreshBackendLogs() {
   });
 }
 
+function closeBackendLogStream() {
+  if (backendLogEventSource) {
+    backendLogEventSource.close();
+    backendLogEventSource = null;
+    traceFrontendAction('info', 'backend.log.stream', 'Backend log stream closed (tab hidden)', {});
+  }
+}
+
 function openBackendLogStream() {
   if (backendLogEventSource || !window.LexeraApi || typeof LexeraApi.connectLogStream !== 'function') return;
   traceFrontendAction('info', 'backend.log.stream', 'Opening backend log stream', {});
@@ -872,7 +888,10 @@ document.addEventListener('DOMContentLoaded', function () {
   setActiveLogSource(activeLogSource);
   syncAllLogStatusMessages();
   syncAllConnectionStatusButtons();
-  connectBackendLogStreamIfReady();
+  // Backend log stream is now lazy — only opened when the backend log tab
+  // is visible, to avoid consuming one of the browser's 6 connections/origin.
+  // connectBackendLogStreamIfReady() will be called from setActiveLogSource()
+  // or setLogPanelVisibility() when the backend tab is selected.
 });
 
 function toggleLogPanel() {

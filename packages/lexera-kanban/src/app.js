@@ -6676,18 +6676,12 @@ var LexeraDashboard = (function () {
     onThemeChange: function (themeId) {
       if (typeof applyTheme === 'function') applyTheme(themeId);
     },
-    openLogStream: function (onEntry, onOpen, onError) {
-      var es = LexeraApi.connectLogStream(onEntry);
-      if (!es) return null;
-      var previousError = es.onerror;
-      es.onopen = function (event) {
-        if (onOpen) onOpen(event);
-      };
-      es.onerror = function (event) {
-        if (typeof previousError === 'function') previousError(event);
-        if (onError) onError(event);
-      };
-      return es;
+    openLogStream: function () {
+      // In the kanban app, backend logs are handled by loggingSystem.js
+      // which manages its own SSE connection lazily. Returning null tells
+      // management.js to skip opening a duplicate stream — saves a
+      // precious browser connection slot (6 max per origin).
+      return null;
     },
     onNotify: function (msg) { showNotification(msg); },
     onConfirm: function (msg) { return showConfirmDialog(msg); },
