@@ -170,9 +170,13 @@ var LexeraRowStackMenu = (function () {
 
   function loadTemplatesOnce() {
     if (templatesLoaded) return;
+    if (!LexeraTemplates && typeof window !== 'undefined') LexeraTemplates = window.LexeraTemplates;
+    if (!LexeraTemplates || typeof LexeraTemplates.loadTemplates !== 'function') return;
     templatesLoaded = true;
     LexeraTemplates.loadTemplates().catch(function (err) {
-      deps.logFrontendIssue('warn', 'templates.load', 'Failed to load templates', err);
+      if (deps && typeof deps.logFrontendIssue === 'function') {
+        deps.logFrontendIssue('warn', 'templates.load', 'Failed to load templates', err);
+      }
     });
   }
 

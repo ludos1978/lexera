@@ -1828,17 +1828,24 @@
     return true;
   }
 
+  var _boardChangeTimer = null;
+
   function notifyActiveBoardChanged() {
-    var activeTab = getActiveTab();
-    var boardId = activeTab && isBoardTab(activeTab) && activeTab.boardId ? activeTab.boardId : '';
-    if (boardId === state.lastNotifiedBoardId) return;
-    if (typeof traceFrontendAction === 'function') {
-      traceFrontendAction('debug', 'ws-shell.boardChange', 'Active board changed', { from: state.lastNotifiedBoardId, to: boardId || null });
-    }
-    state.lastNotifiedBoardId = boardId;
-    if (state.hooks && typeof state.hooks.onActiveBoardChanged === 'function') {
-      state.hooks.onActiveBoardChanged(boardId || null);
-    }
+    // Debounce to prevent rapid-fire board switches during render cycles
+    if (_boardChangeTimer) return;
+    _boardChangeTimer = requestAnimationFrame(function () {
+      _boardChangeTimer = null;
+      var activeTab = getActiveTab();
+      var boardId = activeTab && isBoardTab(activeTab) && activeTab.boardId ? activeTab.boardId : '';
+      if (boardId === state.lastNotifiedBoardId) return;
+      if (typeof traceFrontendAction === 'function') {
+        traceFrontendAction('debug', 'ws-shell.boardChange', 'Active board changed', { from: state.lastNotifiedBoardId, to: boardId || null });
+      }
+      state.lastNotifiedBoardId = boardId;
+      if (state.hooks && typeof state.hooks.onActiveBoardChanged === 'function') {
+        state.hooks.onActiveBoardChanged(boardId || null);
+      }
+    });
   }
 
   function buildStructureSignature(node) {

@@ -3,7 +3,7 @@
  * Lexera Kanban — Board viewer with markdown rendering.
  * Uses LexeraApi from api.js.
  */
-const LexeraDashboard = (function () {
+var LexeraDashboard = (function () {
   var PathUtils = window.LexeraPathUtils;
   var _rt = window.LexeraRuntime;
 
@@ -12743,3 +12743,4 @@ const LexeraDashboard = (function () {
 
   return { poll: poll };
 })();
+window.LexeraDashboard = LexeraDashboard;
