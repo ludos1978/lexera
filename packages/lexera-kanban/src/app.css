@@ -2279,7 +2279,8 @@ body.show-special-characters .card-editor-textarea {
   border: 1px solid var(--surface-row-border);
   border-left: none;
   border-radius: var(--surface-row-radius);
-  overflow: hidden;
+  overflow-x: visible;
+  overflow-y: hidden;
   background: var(--surface-row-bg);
   box-shadow: var(--surface-row-shadow);
 }
@@ -2385,7 +2386,8 @@ body.show-special-characters .card-editor-textarea {
   display: flex;
   flex-direction: row;
   gap: var(--board-stack-gap);
-  overflow: clip;
+  overflow-x: visible;
+  overflow-y: hidden;
   position: relative;
   align-items: flex-start;
   padding: calc(var(--board-inner-padding) - 1px);

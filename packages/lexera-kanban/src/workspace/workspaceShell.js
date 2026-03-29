@@ -3608,7 +3608,10 @@
       var headers = state.rootEl.querySelectorAll('.ws-view-header');
       for (var hi = 0; hi < headers.length; hi++) updateTabOverflow(headers[hi]);
     });
-    notifyActiveBoardChanged();
+    // Note: do NOT call notifyActiveBoardChanged() from render() —
+    // it causes cascading board switches during poll/board-list updates.
+    // Board changes are notified from explicit user actions (tab click,
+    // board open) via their own handlers.
     persistState();
   }
 
