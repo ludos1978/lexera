@@ -77,17 +77,9 @@ pub async fn set_theme(
         )));
     }
 
-    let config_path = state.config_path.clone();
-    {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
-        cfg.theme = Some(body.theme.clone());
-        if let Err(e) = save_config(&config_path, &cfg) {
-            log::error!("Failed to save config after theme change: {}", e);
-        }
-    }
-
+    let theme = body.theme.clone();
+    mutate_config(&state, |cfg| { cfg.theme = Some(theme.clone()); Ok(()) })?;
     log::info!("[config] Theme changed to '{}'", body.theme);
-    notify_config_changed(&state);
     Ok(Json(serde_json::json!({ "theme": body.theme })))
 }
 
@@ -619,7 +611,6 @@ pub async fn set_render_apps(
     State(state): State<AppState>,
     Json(body): Json<UpdateRenderAppsRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let config_path = state.config_path.clone();
     let ra = RenderAppsConfig {
         drawio: normalize_optional_text(body.drawio),
         marp: normalize_optional_text(body.marp),
@@ -629,24 +620,15 @@ pub async fn set_render_apps(
         mutool: normalize_optional_text(body.mutool),
     };
 
-    // Only store Some if at least one field is set
     let has_any = ra.drawio.is_some()
         || ra.marp.is_some()
         || ra.pandoc.is_some()
         || ra.soffice.is_some()
         || ra.pdftoppm.is_some()
         || ra.mutool.is_some();
-
-    {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
-        cfg.render_apps = if has_any { Some(ra.clone()) } else { None };
-        if let Err(e) = save_config(&config_path, &cfg) {
-            log::error!("Failed to save config after render-apps update: {}", e);
-        }
-    }
-
+    let ra_val = if has_any { Some(ra.clone()) } else { None };
+    mutate_config(&state, |cfg| { cfg.render_apps = ra_val; Ok(()) })?;
     log::info!("[config] Render application paths updated");
-    notify_config_changed(&state);
     Ok(Json(serde_json::json!({
         "drawio": ra.drawio,
         "marp": ra.marp,
@@ -684,6 +666,22 @@ fn notify_config_changed(state: &AppState) {
 
 fn lock_error() -> (StatusCode, Json<ErrorResponse>) {
     err_internal("Failed to lock config")
+}
+
+/// Lock config, apply a mutation, save, and notify.
+fn mutate_config<F>(
+    state: &AppState,
+    mutate: F,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)>
+where
+    F: FnOnce(&mut crate::config::SyncConfig) -> Result<(), (StatusCode, Json<ErrorResponse>)>,
+{
+    let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+    mutate(&mut cfg)?;
+    save_config(&state.config_path, &cfg).map_err(|e| err_internal(e.to_string()))?;
+    drop(cfg);
+    notify_config_changed(state);
+    Ok(())
 }
 
 // ── Dashboard Tags ─────────────────────────────────────────────────
@@ -734,30 +732,24 @@ pub async fn set_dashboard_tags(
     State(state): State<AppState>,
     Json(body): Json<SetDashboardTagsRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let config_path = state.config_path.clone();
     let tags: Vec<String> = body
         .tags
         .iter()
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
         .collect();
-
-    let mut cfg = state.config.lock().map_err(|_| lock_error())?;
-
-    if let Some(ref ws_id) = body.workspace {
-        // Set per-workspace tags
-        let ws = cfg
-            .workspaces
-            .iter_mut()
-            .find(|w| &w.id == ws_id)
-            .ok_or_else(|| err_not_found(format!("Workspace not found: {}", ws_id)))?;
-        ws.dashboard_tags = if tags.is_empty() { None } else { Some(tags.clone()) };
-    } else {
-        // Set global tags
-        cfg.dashboard_tags = if tags.is_empty() { None } else { Some(tags.clone()) };
-    }
-
-    save_config(&config_path, &cfg).map_err(|e| err_internal(e.to_string()))?;
+    let ws_id = body.workspace.clone();
+    let tags_val = if tags.is_empty() { None } else { Some(tags.clone()) };
+    mutate_config(&state, |cfg| {
+        if let Some(ref ws_id) = ws_id {
+            let ws = cfg.workspaces.iter_mut().find(|w| &w.id == ws_id)
+                .ok_or_else(|| err_not_found(format!("Workspace not found: {}", ws_id)))?;
+            ws.dashboard_tags = tags_val.clone();
+        } else {
+            cfg.dashboard_tags = tags_val.clone();
+        }
+        Ok(())
+    })?;
     Ok(Json(serde_json::json!({ "tags": tags })))
 }
 
@@ -813,27 +805,23 @@ pub async fn set_settings(
     State(state): State<AppState>,
     Json(body): Json<SetSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let config_path = state.config_path.clone();
     let settings: std::collections::HashMap<String, String> = body
         .settings
         .into_iter()
         .filter(|(k, _)| !k.trim().is_empty())
         .collect();
-
-    let mut cfg = state.config.lock().map_err(|_| lock_error())?;
-
-    if let Some(ref ws_id) = body.workspace {
-        let ws = cfg
-            .workspaces
-            .iter_mut()
-            .find(|w| &w.id == ws_id)
-            .ok_or_else(|| err_not_found(format!("Workspace not found: {}", ws_id)))?;
-        ws.settings = if settings.is_empty() { None } else { Some(settings.clone()) };
-    } else {
-        cfg.default_settings = if settings.is_empty() { None } else { Some(settings.clone()) };
-    }
-
-    save_config(&config_path, &cfg).map_err(|e| err_internal(e.to_string()))?;
+    let ws_id = body.workspace.clone();
+    let settings_val = if settings.is_empty() { None } else { Some(settings.clone()) };
+    mutate_config(&state, |cfg| {
+        if let Some(ref ws_id) = ws_id {
+            let ws = cfg.workspaces.iter_mut().find(|w| &w.id == ws_id)
+                .ok_or_else(|| err_not_found(format!("Workspace not found: {}", ws_id)))?;
+            ws.settings = settings_val.clone();
+        } else {
+            cfg.default_settings = settings_val.clone();
+        }
+        Ok(())
+    })?;
     Ok(Json(serde_json::json!({ "settings": settings })))
 }
 
