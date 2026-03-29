@@ -14,7 +14,8 @@
 - [x] ~~put the monthly and weekly calendar into separate views~~ (87ddcfdf) — standalone weekCalendar and monthCalendar panels placeable anywhere in workspace shell
 - [x] ~~weekly calendar shows horizontal timeline (today+6 days); dashboard groups have fold/unfold with localStorage persistence~~ (this commit)
 
-- [ ] could we integrate a viewer that allows !!!include(file.docx)!!! in column headers for docx, xlsx and pptx files? it would e a nice addon to be able to edit them ine, but viewing and opening an external editor to edit is okay as well. maybe using <https://github.com/DraviaVemal/OpenXML-Office>, but do an online research for possible tools!
+- [x] ~~Research: Office doc viewer for !!!include(file.docx)!!!~~ — see [research-office-doc-viewer.md](research-office-doc-viewer.md). Recommended: docx-preview (docx), SheetJS CE (xlsx), @jvmr/pptx-to-html (pptx). Total ~600KB, zero native deps, fully offline.
+- [ ] Implement Office doc viewer: add docx-preview, SheetJS, pptx-to-html as embed preview kinds in embedMenu.js
 
 - [x] ~~filename right-click: Rename, Show in Finder, Open in Default App~~ (this commit)
 
