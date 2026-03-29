@@ -239,9 +239,9 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 
 - [ ] **Repository promotion** — make the active Tauri/packages workspace the obvious root product surface and move/archive the legacy VS Code extension scaffolding out of the main root package.json/README path
 - [ ] **Frontend build pipeline** — replace script-tag loading + window-global module discovery with a real module graph / bundler (blocked by app.js monolith split)
-- [ ] **Frontend settings model** — unify localStorage frontend defaults with backend/shared config models so settings have one schema and clear scopes (machine-local vs workspace-shared vs board-shared)
+- [x] ~~**Frontend settings model** — unified via GET/PUT /config/settings API with 4-tier resolution (board YAML > workspace > global > localStorage)~~ (6db5e037)
 - [ ] **Typed API contract** — generate or centralize backend/frontend API contracts so settings panels and management views cannot drift from LexeraApi capabilities
-- [ ] **Frontend startup smoke tests** — add integration smoke tests for app startup, settings panels, and module wiring to catch runtime-only regressions caused by script order or wrong dependency injection
+- [x] ~~**Frontend startup smoke tests** — startupSmoke.test.js (173 lines) verifies all scripts load and 38 modules available, plus moduleRuntime health report at startup~~ (already done)
 - [ ] **Backend service extraction** — split AppState into narrower injected services (config, auth, discovery, sync, board registry) instead of one broad lock-heavy state container
 - [ ] **Backend config transactions** — centralize lock/mutate/save/notify patterns from config_api.rs into a ConfigService helper so all config writes share one code path
 - [ ] **Backend auth extractor unification** — remove duplicated bearer-token parsing/auth checks between auth_middleware.rs and collab_api.rs by using shared request extractors/helpers
