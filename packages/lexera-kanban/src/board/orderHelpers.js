@@ -2380,25 +2380,48 @@ var LexeraOrderHelpers = (function () {
     var LexeraApi = _dep('LexeraApi');
     var query = dashboardState.query ? dashboardState.query.trim() : '';
     var calendarScopedQuery = isDashboardCalendarQuery(query);
-    var queryPromise = query && !calendarScopedQuery
-      ? LexeraApi.search(query)
-      : Promise.resolve({ results: [] });
-    var calendarPromise = LexeraApi.getCalendarTasks();
-    var todosPromise = LexeraApi.search('is:open').catch(function () { return { results: [] }; });
     var dashTags = getDashboardTags();
-    var tagPromises = dashTags.map(function (tag) {
-      return LexeraApi.search(tag).then(function (r) { return { tag: tag, results: r.results || [] }; })
-        .catch(function () { return { tag: tag, results: [] }; });
-    });
 
-    return Promise.all([queryPromise, calendarPromise, todosPromise].concat(tagPromises)).then(function (resolved) {
+    // Serialize requests to avoid overwhelming the backend with concurrent
+    // read locks on the board storage (causes 30s timeouts when write lock contended)
+    var queryResult, calendarResponse, todosResult, tagResults;
+    return LexeraApi.getCalendarTasks().catch(function () { return { results: [] }; })
+    .then(function (cal) {
+      if (refreshId !== dashboardRefreshSeq) return;
+      calendarResponse = cal || {};
+      return query && !calendarScopedQuery
+        ? LexeraApi.search(query).catch(function () { return { results: [] }; })
+        : Promise.resolve({ results: [] });
+    }).then(function (qr) {
+      if (refreshId !== dashboardRefreshSeq) return;
+      queryResult = qr || { results: [] };
+      return LexeraApi.search('is:open').catch(function () { return { results: [] }; });
+    }).then(function (todos) {
+      if (refreshId !== dashboardRefreshSeq) return;
+      todosResult = todos || { results: [] };
+      // Tag searches in sequence
+      tagResults = [];
+      var chain = Promise.resolve();
+      for (var ti = 0; ti < dashTags.length; ti++) {
+        (function (tag) {
+          chain = chain.then(function () {
+            if (refreshId !== dashboardRefreshSeq) return;
+            return LexeraApi.search(tag).then(function (r) {
+              tagResults.push({ tag: tag, results: r.results || [] });
+            }).catch(function () {
+              tagResults.push({ tag: tag, results: [] });
+            });
+          });
+        })(dashTags[ti]);
+      }
+      return chain;
+    }).then(function () {
       if (refreshId !== dashboardRefreshSeq) return;
 
-      var calendarResponse = resolved[1] || {};
       var scopedCalendar = filterDashboardResultsByScope(asCalendarTaskArray(calendarResponse));
       var scopedQuery = calendarScopedQuery
         ? filterCalendarTasksForDashboardQuery(scopedCalendar, query)
-        : filterDashboardResultsByScope(asSearchResultArray(resolved[0]));
+        : filterDashboardResultsByScope(asSearchResultArray(queryResult));
 
       dashboardState.results = limitedSearchResults(scopedQuery, 80);
 
@@ -2435,12 +2458,12 @@ var LexeraOrderHelpers = (function () {
         dashboardState.later = limitedSearchResults(later, 40);
       }
       // Open tasks (todos)
-      var scopedTodos = filterDashboardResultsByScope(asSearchResultArray(resolved[2]));
+      var scopedTodos = filterDashboardResultsByScope(asSearchResultArray(todosResult));
       dashboardState.todos = limitedSearchResults(scopedTodos, 60);
       // Tagged items
       var taggedGroups = [];
-      for (var ti = 3; ti < resolved.length; ti++) {
-        var tagResult = resolved[ti];
+      for (var tgi = 0; tgi < tagResults.length; tgi++) {
+        var tagResult = tagResults[tgi];
         if (tagResult && tagResult.tag) {
           var scopedTagResults = filterDashboardResultsByScope(asSearchResultArray(tagResult));
           taggedGroups.push({ tag: tagResult.tag, items: limitedSearchResults(scopedTagResults, 30) });
