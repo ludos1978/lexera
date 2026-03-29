@@ -15,7 +15,8 @@
 - [x] ~~weekly calendar shows horizontal timeline (today+6 days); dashboard groups have fold/unfold with localStorage persistence~~ (this commit)
 
 - [x] ~~Research: Office doc viewer for !!!include(file.docx)!!!~~ — see [research-office-doc-viewer.md](research-office-doc-viewer.md). Recommended: docx-preview (docx), SheetJS CE (xlsx), @jvmr/pptx-to-html (pptx). Total ~600KB, zero native deps, fully offline.
-- [ ] Implement Office doc viewer: add docx-preview, SheetJS, pptx-to-html as embed preview kinds in embedMenu.js
+- [x] ~~Implement Office doc viewer: docx-preview (73KB) renders .docx inline, SheetJS CE (952KB) renders .xlsx/.xls/.ods/.csv with multi-sheet tabs~~ (cad64dfe)
+- [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)
 
 - [x] ~~filename right-click: Rename, Show in Finder, Open in Default App~~ (this commit)
 
