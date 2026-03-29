@@ -7,7 +7,7 @@
 
 - [x] ~~browse in files settings now works — was a Tauri invoke detection issue, verified working~~ (verified)
 
-- [x] ~~quick capture re-snaps to screen edge when window goes out of monitor bounds (10s polling)~~ (this commit)
+- [x] ~~quick capture re-snaps to screen edge https://claude.ai/chat/d9c3a774-2375-4156-be3c-e6688ae60890when window goes out of monitor bounds (10s polling)~~ (this commit)
 
 - [x] ~~quick capture focus fix: 200ms delay after creation + retry focus on macOS~~ (this commit)
 
@@ -112,7 +112,8 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 ### Low
 - [x] ~~Remove hardcoded Mermaid CDN URL — now configurable via localStorage `lexera-mermaid-url`~~ (this commit)
 - [x] ~~Keyboard card move: Alt+Arrow moves cards between columns/positions (already implemented in keyboardNavigation.js)~~
-- [ ] Add keyboard reorder for columns (Alt+Shift+Arrow) and rows (Ctrl+Alt+Arrow) — pointer-only today
+- [x] ~~Add keyboard reorder for rows: Ctrl+Alt+Up/Down moves the focused row up/down~~ (this commit)
+- [ ] Add keyboard reorder for columns and stacks within rows
 - [x] ~~Export dialog form inputs already have proper `<label for="">` and wrapping `<label>` associations~~ (verified)
 
 ## High Priority — Security & Reliability

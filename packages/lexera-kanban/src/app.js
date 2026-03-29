@@ -332,7 +332,10 @@ var LexeraDashboard = (function () {
     setAddCardColumn: function(idx) { addCardColumn = idx; },
     renderColumns: function() { renderColumns(); },
     closeManagementPanel: function() { closeManagementPanel(); },
-    syncSidebarToView: function() { syncSidebarToView(); }
+    syncSidebarToView: function() { syncSidebarToView(); },
+    reorderRows: function(s, t, b) { return reorderRows(s, t, b); },
+    moveStack: function(fr, fs, tr, ts, b) { return moveStack(fr, fs, tr, ts, b); },
+    getFullBoardData: function() { return fullBoardData; }
   });
   var currentTagVisibilityMode = 'allexcludinglayout';
   var currentArrowKeyFocusScrollMode = 'nearest';

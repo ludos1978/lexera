@@ -145,6 +145,28 @@ var LexeraKeyboardNavigation = (function () {
         _deps.setAddCardColumn(columns[0].index);
         _deps.renderColumns();
       }
+    } else if ((key === 'ArrowUp' || key === 'ArrowDown') && e.ctrlKey && e.altKey && !focusedCardEl) {
+      // Ctrl+Alt+Arrow: reorder rows
+      if (!_deps.getFullBoardData || !_deps.reorderRows) return;
+      var fbd = _deps.getFullBoardData();
+      if (!fbd || !fbd.rows || fbd.rows.length < 2) return;
+      e.preventDefault();
+      // Find focused row (first visible row by default, or row containing focused entity)
+      var rowEls = columnsContainer ? columnsContainer.querySelectorAll('.board-row') : [];
+      if (rowEls.length < 2) return;
+      var focusedRowIdx = 0; // default to first row
+      if (focusedBoardEntityEl) {
+        var rowEl = focusedBoardEntityEl.closest('.board-row');
+        if (rowEl) {
+          for (var ri = 0; ri < rowEls.length; ri++) {
+            if (rowEls[ri] === rowEl) { focusedRowIdx = ri; break; }
+          }
+        }
+      }
+      var targetIdx = key === 'ArrowUp' ? focusedRowIdx - 1 : focusedRowIdx + 1;
+      if (targetIdx >= 0 && targetIdx < rowEls.length) {
+        _deps.reorderRows(focusedRowIdx, targetIdx, key === 'ArrowUp');
+      }
     } else if (key === 'Escape' && _deps.getMgmtPanelOpen()) {
       e.preventDefault();
       _deps.closeManagementPanel();
