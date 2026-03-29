@@ -4339,6 +4339,61 @@ img[data-lazy-src] {
   background: #fff;
 }
 
+/* Office document preview */
+.office-docx-body {
+  max-height: 400px;
+  overflow: auto;
+  padding: 8px;
+  background: #fff;
+  color: #222;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.office-xlsx-body {
+  max-height: 400px;
+  overflow: auto;
+  font-size: 12px;
+}
+.office-xlsx-body table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.office-xlsx-body td,
+.office-xlsx-body th {
+  border: 1px solid var(--border);
+  padding: 3px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.office-xlsx-body th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+.office-sheet-tabs {
+  display: flex;
+  gap: 1px;
+  padding: 2px 4px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.office-sheet-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 3px 8px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 3px 3px 0 0;
+  white-space: nowrap;
+}
+.office-sheet-tab.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 /* PDF iframes block hover on parent — keep menu button visible */
 .embed-container:has(.embed-preview-pdf) .embed-menu-btn {
   opacity: 1;

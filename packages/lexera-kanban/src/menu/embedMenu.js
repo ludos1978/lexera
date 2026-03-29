@@ -1919,6 +1919,88 @@ var LexeraEmbedMenu = (function () {
     return persistBoardMutation({ skipRender: true });
   }
 
+  // ── Browser-based Office document rendering (docx-preview, SheetJS) ──
+
+  async function renderOfficeBrowserPreview(previewEl, boardId, filePath, previewKind) {
+    var ext = getFileExtension(filePath).toLowerCase();
+    var fileRef = parseLocalFileReference(filePath);
+
+    // docx rendering via docx-preview
+    if ((ext === 'docx' || ext === 'doc') && typeof window.docx !== 'undefined' && typeof window.docx.renderAsync === 'function') {
+      previewEl.innerHTML = '<div class="embed-preview-loading">Loading document...</div>';
+      try {
+        var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
+        if (!response.ok) throw new Error('Failed to fetch docx');
+        var buf = await response.arrayBuffer();
+        previewEl.innerHTML = '';
+        var bodyEl = document.createElement('div');
+        bodyEl.className = 'office-docx-body';
+        var styleEl = document.createElement('style');
+        previewEl.appendChild(styleEl);
+        previewEl.appendChild(bodyEl);
+        await window.docx.renderAsync(buf, bodyEl, styleEl, {
+          className: 'docx',
+          inWrapper: true,
+          ignoreWidth: true,
+          ignoreHeight: true,
+          breakPages: false,
+          renderHeaders: true,
+          renderFooters: true
+        });
+        return true;
+      } catch (err) {
+        logFrontendIssue('warn', 'office.docx', 'Failed to render docx: ' + filePath, err);
+        return false;
+      }
+    }
+
+    // xlsx rendering via SheetJS
+    if ((ext === 'xlsx' || ext === 'xls' || ext === 'ods' || ext === 'csv') && typeof window.XLSX !== 'undefined') {
+      previewEl.innerHTML = '<div class="embed-preview-loading">Loading spreadsheet...</div>';
+      try {
+        var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
+        if (!response.ok) throw new Error('Failed to fetch spreadsheet');
+        var buf = await response.arrayBuffer();
+        var workbook = window.XLSX.read(buf);
+        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+          previewEl.innerHTML = '<div class="embed-preview-error">No sheets found</div>';
+          return true;
+        }
+        var sheetName = workbook.SheetNames[0];
+        var html = window.XLSX.utils.sheet_to_html(workbook.Sheets[sheetName]);
+        previewEl.innerHTML = '<div class="office-xlsx-body">' + html + '</div>';
+        if (workbook.SheetNames.length > 1) {
+          var tabs = '<div class="office-sheet-tabs">';
+          for (var si = 0; si < workbook.SheetNames.length; si++) {
+            tabs += '<button class="office-sheet-tab' + (si === 0 ? ' active' : '') + '" data-sheet-index="' + si + '">' +
+              escapeHtml(workbook.SheetNames[si]) + '</button>';
+          }
+          tabs += '</div>';
+          previewEl.insertAdjacentHTML('afterbegin', tabs);
+          previewEl.addEventListener('click', function (e) {
+            var tab = e.target.closest('.office-sheet-tab[data-sheet-index]');
+            if (!tab) return;
+            var idx = parseInt(tab.getAttribute('data-sheet-index'), 10);
+            var name = workbook.SheetNames[idx];
+            if (!name) return;
+            var body = previewEl.querySelector('.office-xlsx-body');
+            if (body) body.innerHTML = window.XLSX.utils.sheet_to_html(workbook.Sheets[name]);
+            var allTabs = previewEl.querySelectorAll('.office-sheet-tab');
+            for (var ti = 0; ti < allTabs.length; ti++) allTabs[ti].classList.remove('active');
+            tab.classList.add('active');
+          });
+        }
+        return true;
+      } catch (err) {
+        logFrontendIssue('warn', 'office.xlsx', 'Failed to render spreadsheet: ' + filePath, err);
+        return false;
+      }
+    }
+
+    // pptx — no browser library vendored yet, fall through to placeholder
+    return false;
+  }
+
   function renderEmbedPreviewContent(kind, boardId, filePath, content) {
     var safeContent = String(content || '');
     if (safeContent.length > 12000) {
@@ -2168,11 +2250,15 @@ var LexeraEmbedMenu = (function () {
       var previewPage = container.getAttribute('data-preview-page') || '';
       var rendered = await renderCachedSpecialPreview(previewEl, boardId, filePath, previewKind, { pageNumber: previewPage, forceRerender: !!enhanceOpts.forceRerender });
       if (!rendered) {
-        previewEl.innerHTML = buildFilePreviewPlaceholderHtml(
-          previewKind,
-          filePath,
-          buildSpecialPreviewPlaceholderMessage(previewKind, boardId, filePath)
-        );
+        // Try browser-based Office doc rendering (docx-preview, SheetJS)
+        var browserRendered = await renderOfficeBrowserPreview(previewEl, boardId, filePath, previewKind);
+        if (!browserRendered) {
+          previewEl.innerHTML = buildFilePreviewPlaceholderHtml(
+            previewKind,
+            filePath,
+            buildSpecialPreviewPlaceholderMessage(previewKind, boardId, filePath)
+          );
+        }
       }
       return;
     }
