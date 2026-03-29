@@ -1344,9 +1344,14 @@ body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-
   padding: 2px 4px;
 }
 
-/* Logs compact: hide actions row, smaller entries */
+/* Logs compact: smaller actions, smaller entries */
 .workspace-shell-panel-dock.is-compact .log-panel-actions {
-  display: none;
+  gap: 2px;
+}
+.workspace-shell-panel-dock.is-compact .log-panel-btn {
+  font-size: 9px;
+  padding: 1px 4px;
+  min-height: 0;
 }
 .workspace-shell-panel-dock.is-compact .log-panel-header {
   min-height: 0;
