@@ -260,7 +260,7 @@ var LexeraApi = (function () {
     try {
       const url = await discover();
       if (!url) return false;
-      const res = await fetch(url + '/status', { signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) });
+      const res = await fetch(url + '/status', { signal: AbortSignal.timeout(3000) });
       return res.ok;
     } catch (error) {
       logApiIssue('warn', 'api.status', 'Status check failed', error, {

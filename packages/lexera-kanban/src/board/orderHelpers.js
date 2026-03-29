@@ -993,7 +993,7 @@ var LexeraOrderHelpers = (function () {
     }
     _callDep('renderBoardList');
     refreshHeaderFileControls();
-    scheduleDashboardRefresh(60);
+    scheduleDashboardRefresh(3000);
   }
 
   function setupWorkspaceShell() {
@@ -2378,12 +2378,28 @@ var LexeraOrderHelpers = (function () {
     if (!options.deferRender) renderDashboard();
 
     var LexeraApi = _dep('LexeraApi');
+
+    // Check backend readiness before firing heavy queries — if /status
+    // times out, the backend is still loading boards (write lock held)
+    return LexeraApi.checkStatus().catch(function () { return null; }).then(function (status) {
+      if (refreshId !== dashboardRefreshSeq) return;
+      if (!status) {
+        // Backend not ready — retry later
+        dashboardState.loading = false;
+        scheduleDashboardRefresh(5000);
+        return;
+      }
+      return _refreshDashboardDataCore(refreshId, options);
+    });
+  }
+
+  function _refreshDashboardDataCore(refreshId, options) {
+    var LexeraApi = _dep('LexeraApi');
     var query = dashboardState.query ? dashboardState.query.trim() : '';
     var calendarScopedQuery = isDashboardCalendarQuery(query);
     var dashTags = getDashboardTags();
 
     // Batch requests in pairs to limit backend read-lock concurrency
-    // (6+ concurrent reads cause 30s timeouts when write lock is contended)
     var queryResult, calendarResponse, todosResult, tagResults = [];
 
     // Batch 1: calendar + query search (2 concurrent)
