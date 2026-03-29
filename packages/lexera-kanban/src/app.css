@@ -2202,9 +2202,8 @@ body.show-special-characters .card-editor-textarea {
   border-radius: 6px;
 }
 
-/* Hide scrollbars on rows, stacks, columns — scroll via columns-container */
+/* Hide scrollbars on rows, stacks, columns — row-content keeps its scrollbar for horizontal scroll */
 .board-row,
-.board-row-content,
 .board-stack,
 .board-stack-content,
 .column,
@@ -2213,12 +2212,26 @@ body.show-special-characters .card-editor-textarea {
   -ms-overflow-style: none;     /* IE/Edge */
 }
 .board-row::-webkit-scrollbar,
-.board-row-content::-webkit-scrollbar,
 .board-stack::-webkit-scrollbar,
 .board-stack-content::-webkit-scrollbar,
 .column::-webkit-scrollbar,
 .column-cards::-webkit-scrollbar {
   display: none;                /* Chrome/Safari */
+}
+/* Thin styled scrollbar for row-content horizontal scroll */
+.board-row-content {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+.board-row-content::-webkit-scrollbar {
+  height: 6px;
+}
+.board-row-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.board-row-content::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
 }
 
 
@@ -2279,7 +2292,7 @@ body.show-special-characters .card-editor-textarea {
   border: 1px solid var(--surface-row-border);
   border-left: none;
   border-radius: var(--surface-row-radius);
-  overflow: visible;
+  overflow: hidden;
   background: var(--surface-row-bg);
   box-shadow: var(--surface-row-shadow);
 }
@@ -2385,7 +2398,8 @@ body.show-special-characters .card-editor-textarea {
   display: flex;
   flex-direction: row;
   gap: var(--board-stack-gap);
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
   position: relative;
   align-items: flex-start;
   padding: calc(var(--board-inner-padding) - 1px);
