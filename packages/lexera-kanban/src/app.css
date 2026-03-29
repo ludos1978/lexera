@@ -2218,21 +2218,8 @@ body.show-special-characters .card-editor-textarea {
 .column-cards::-webkit-scrollbar {
   display: none;                /* Chrome/Safari */
 }
-/* Thin styled scrollbar for row-content horizontal scroll */
-.board-row-content {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
-}
-.board-row-content::-webkit-scrollbar {
-  height: 6px;
-}
-.board-row-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-.board-row-content::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 3px;
-}
+/* board-row-content uses overflow:visible — no scrollbar needed.
+   Horizontal scroll lives at .columns-container level. */
 
 
 /* Drag grip handle (main board view) */
@@ -2292,7 +2279,8 @@ body.show-special-characters .card-editor-textarea {
   border: 1px solid var(--surface-row-border);
   border-left: none;
   border-radius: var(--surface-row-radius);
-  overflow: hidden;
+  overflow-x: visible;
+  overflow-y: clip;
   background: var(--surface-row-bg);
   box-shadow: var(--surface-row-shadow);
 }
@@ -2397,9 +2385,9 @@ body.show-special-characters .card-editor-textarea {
 .board-row-content {
   display: flex;
   flex-direction: row;
+  flex-wrap: nowrap;
   gap: var(--board-stack-gap);
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   position: relative;
   align-items: flex-start;
   padding: calc(var(--board-inner-padding) - 1px);
@@ -2895,6 +2883,7 @@ li.tag-line-styled {
   flex: 0 0 auto;
   width: auto;
   min-width: 0;
+  overflow: visible;
 }
 
 /* Row height model:
