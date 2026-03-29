@@ -23,6 +23,10 @@ pub struct WorkspaceEntry {
     /// Dashboard tag list override for this workspace (e.g. ["#important", "#blocked"]).
     #[serde(default, alias = "dashboardTags", skip_serializing_if = "Option::is_none")]
     pub dashboard_tags: Option<Vec<String>>,
+    /// Generic frontend settings overrides for this workspace (key → value).
+    /// Keys match board YAML setting names (columnWidth, tagVisibility, etc.).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<std::collections::HashMap<String, String>>,
 }
 
 /// A board entry in the config file.

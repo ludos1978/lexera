@@ -2122,7 +2122,7 @@ const LexeraDashboard = (function () {
     get urlParams() { return urlParams; },
     get _lastLoadedRevision() { return _lastLoadedRevision; },
     get _lastLoadedGeneration() { return _lastLoadedGeneration; },
-    setConnectedState: function (v) { connected = v; if (_rt) _rt.setState('connected', v); },
+    setConnectedState: function (v) { connected = v; if (_rt) _rt.setState('connected', v); if (v) refreshWorkspaceSettings(); },
     setWorkspaces: function (v) { workspaces = v; if (_rt) _rt.setState('workspaces', v); },
     setBoards: function (v) { boards = v; if (_rt) _rt.setState('boards', v); },
     setRemoteBoards: function (v) { remoteBoards = v; if (_rt) _rt.setState('remoteBoards', v); },
@@ -2191,7 +2191,7 @@ const LexeraDashboard = (function () {
     setActiveBoardData: function(boardData) { activeBoardData = boardData; if (_rt) _rt.setState('activeBoardData', boardData); },
     setFullBoardData: function(boardData) { fullBoardData = boardData; if (_rt) _rt.setState('fullBoardData', boardData); },
     setBoards: function(nextBoards) { boards = nextBoards; if (_rt) _rt.setState('boards', nextBoards); },
-    setActiveWorkspaceIdState: function(id) { activeWorkspaceId = id; if (_rt) _rt.setState('activeWorkspaceId', id); },
+    setActiveWorkspaceIdState: function(id) { activeWorkspaceId = id; if (_rt) _rt.setState('activeWorkspaceId', id); refreshWorkspaceSettings(); },
     setPendingExternalRebaseConflict: function(conflict) { pendingExternalRebaseConflict = conflict; },
     tauriInvoke: function(cmd, args) { return window.__TAURI__ && window.__TAURI__.core.invoke(cmd, args); },
     getSidebarTreeApi: function() { return getSidebarTreeApi(); },
@@ -8435,18 +8435,34 @@ const LexeraDashboard = (function () {
     }
   }
 
+  var _cachedWorkspaceSettings = {};
+
+  function refreshWorkspaceSettings() {
+    var wsId = activeWorkspaceId || '';
+    if (!wsId || !LexeraApi || typeof LexeraApi.request !== 'function') return;
+    LexeraApi.request('/config/settings' + (wsId ? '?workspace=' + encodeURIComponent(wsId) : ''))
+      .then(function (data) {
+        if (data && data.settings) _cachedWorkspaceSettings = data.settings;
+      })
+      .catch(function () { /* use cached */ });
+  }
+
   function getBoardSettingValue(key, fallback) {
     // Tier 1: per-board override (YAML header)
     if (fullBoardData && fullBoardData.boardSettings) {
       var boardValue = fullBoardData.boardSettings[key];
       if (boardValue != null && boardValue !== '') return boardValue;
     }
-    // Tier 2: frontend default (localStorage)
+    // Tier 2: workspace/global settings (from backend)
+    if (_cachedWorkspaceSettings && _cachedWorkspaceSettings[key] != null) {
+      return _cachedWorkspaceSettings[key];
+    }
+    // Tier 3: frontend default (localStorage)
     try {
       var frontendValue = localStorage.getItem('lexera-default-' + key);
       if (frontendValue !== null) return frontendValue;
     } catch (_) { /* localStorage unavailable (private browsing) */ }
-    // Tier 3: hardcoded fallback
+    // Tier 4: hardcoded fallback
     return fallback;
   }
 

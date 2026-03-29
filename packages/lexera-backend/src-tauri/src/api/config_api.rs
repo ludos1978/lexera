@@ -761,6 +761,82 @@ pub async fn set_dashboard_tags(
     Ok(Json(serde_json::json!({ "tags": tags })))
 }
 
+// ── Frontend Settings (unified) ────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct SettingsQuery {
+    pub workspace: Option<String>,
+}
+
+/// GET /config/settings?workspace={id} — returns resolved frontend settings.
+/// Resolution: workspace override > global default.
+pub async fn get_settings(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<SettingsQuery>,
+) -> Json<serde_json::Value> {
+    let cfg = state.config.lock().ok();
+    let mut merged = std::collections::HashMap::<String, String>::new();
+
+    // Start with global defaults
+    if let Some(ref cfg) = cfg {
+        if let Some(ref defaults) = cfg.default_settings {
+            for (k, v) in defaults {
+                merged.insert(k.clone(), v.clone());
+            }
+        }
+    }
+
+    // Apply workspace overrides
+    if let Some(ref ws_id) = query.workspace {
+        if let Some(ref cfg) = cfg {
+            if let Some(ws) = cfg.workspaces.iter().find(|w| &w.id == ws_id) {
+                if let Some(ref ws_settings) = ws.settings {
+                    for (k, v) in ws_settings {
+                        merged.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    Json(serde_json::json!({ "settings": merged }))
+}
+
+#[derive(Deserialize)]
+pub struct SetSettingsRequest {
+    pub settings: std::collections::HashMap<String, String>,
+    pub workspace: Option<String>,
+}
+
+/// PUT /config/settings — update frontend settings (global or per-workspace).
+pub async fn set_settings(
+    State(state): State<AppState>,
+    Json(body): Json<SetSettingsRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let config_path = state.config_path.clone();
+    let settings: std::collections::HashMap<String, String> = body
+        .settings
+        .into_iter()
+        .filter(|(k, _)| !k.trim().is_empty())
+        .collect();
+
+    let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+
+    if let Some(ref ws_id) = body.workspace {
+        let ws = cfg
+            .workspaces
+            .iter_mut()
+            .find(|w| &w.id == ws_id)
+            .ok_or_else(|| err_not_found(format!("Workspace not found: {}", ws_id)))?;
+        ws.settings = if settings.is_empty() { None } else { Some(settings.clone()) };
+    } else {
+        cfg.default_settings = if settings.is_empty() { None } else { Some(settings.clone()) };
+    }
+
+    save_config(&config_path, &cfg).map_err(|e| err_internal(e.to_string()))?;
+    Ok(Json(serde_json::json!({ "settings": settings })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

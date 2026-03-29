@@ -208,6 +208,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             "/config/dashboard-tags",
             get(config_api::get_dashboard_tags).put(config_api::set_dashboard_tags),
         )
+        .route(
+            "/config/settings",
+            get(config_api::get_settings).put(config_api::set_settings),
+        )
         .route("/capture/history", get(capture_api::list_capture_history))
         .route(
             "/capture/history/{id}",

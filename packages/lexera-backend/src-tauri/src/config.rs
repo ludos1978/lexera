@@ -73,6 +73,10 @@ pub struct SyncConfig {
     /// Global default dashboard tag list (overridden per-workspace or per-board).
     #[serde(default, alias = "dashboardTags", skip_serializing_if = "Option::is_none")]
     pub dashboard_tags: Option<Vec<String>>,
+    /// Global default frontend settings (columnWidth, tagVisibility, theme, etc.).
+    /// Overridden per-workspace via workspaces[].settings, per-board via board YAML.
+    #[serde(default, alias = "defaultSettings", skip_serializing_if = "Option::is_none")]
+    pub default_settings: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -122,6 +126,7 @@ impl Default for SyncConfig {
             remote_connections: Vec::new(),
             render_apps: None,
             dashboard_tags: None,
+            default_settings: None,
         }
     }
 }
@@ -690,6 +695,7 @@ mod tests {
             remote_connections: Vec::new(),
             render_apps: None,
             dashboard_tags: None,
+            default_settings: None,
         };
 
         save_config(&path.to_path_buf(), &cfg).unwrap();
@@ -745,6 +751,7 @@ mod tests {
                 theme: None,
                 layout_preset: None,
                 dashboard_tags: None,
+                settings: None,
             }],
             default_workspace: Some("ws-main".to_string()),
             remote_connections: vec![RemoteConnectionEntry {
@@ -764,6 +771,7 @@ mod tests {
                 mutool: None,
             }),
             dashboard_tags: None,
+            default_settings: None,
         };
 
         save_config(&path.to_path_buf(), &original).unwrap();
