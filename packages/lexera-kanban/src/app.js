@@ -2125,7 +2125,7 @@ var LexeraDashboard = (function () {
     get urlParams() { return urlParams; },
     get _lastLoadedRevision() { return _lastLoadedRevision; },
     get _lastLoadedGeneration() { return _lastLoadedGeneration; },
-    setConnectedState: function (v) { connected = v; if (_rt) _rt.setState('connected', v); if (v) refreshWorkspaceSettings(); },
+    setConnectedState: function (v) { connected = v; if (_rt) _rt.setState('connected', v); if (v) { refreshWorkspaceSettings(); OrderHelpers.refreshDashboardTagsFromBackend(); } },
     setWorkspaces: function (v) { workspaces = v; if (_rt) _rt.setState('workspaces', v); },
     setBoards: function (v) { boards = v; if (_rt) _rt.setState('boards', v); },
     setRemoteBoards: function (v) { remoteBoards = v; if (_rt) _rt.setState('remoteBoards', v); },
@@ -2194,7 +2194,7 @@ var LexeraDashboard = (function () {
     setActiveBoardData: function(boardData) { activeBoardData = boardData; if (_rt) _rt.setState('activeBoardData', boardData); },
     setFullBoardData: function(boardData) { fullBoardData = boardData; if (_rt) _rt.setState('fullBoardData', boardData); },
     setBoards: function(nextBoards) { boards = nextBoards; if (_rt) _rt.setState('boards', nextBoards); },
-    setActiveWorkspaceIdState: function(id) { activeWorkspaceId = id; if (_rt) _rt.setState('activeWorkspaceId', id); refreshWorkspaceSettings(); },
+    setActiveWorkspaceIdState: function(id) { activeWorkspaceId = id; if (_rt) _rt.setState('activeWorkspaceId', id); refreshWorkspaceSettings(); OrderHelpers.refreshDashboardTagsFromBackend(); },
     setPendingExternalRebaseConflict: function(conflict) { pendingExternalRebaseConflict = conflict; },
     tauriInvoke: function(cmd, args) { return window.__TAURI__ && window.__TAURI__.core.invoke(cmd, args); },
     getSidebarTreeApi: function() { return getSidebarTreeApi(); },
@@ -8443,7 +8443,7 @@ var LexeraDashboard = (function () {
   function refreshWorkspaceSettings() {
     var wsId = activeWorkspaceId || '';
     if (!wsId || wsId === ALL_WORKSPACES_ID || !LexeraApi || typeof LexeraApi.request !== 'function') return;
-    LexeraApi.request('/config/settings?workspace=' + encodeURIComponent(wsId))
+    LexeraApi.request('/config/settings?workspace=' + encodeURIComponent(wsId), { timeoutMs: 3000 })
       .then(function (data) {
         if (data && data.settings) _cachedWorkspaceSettings = data.settings;
       })

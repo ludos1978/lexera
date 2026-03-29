@@ -1545,7 +1545,7 @@ var LexeraOrderHelpers = (function () {
     var workspaceId = _dep('activeWorkspaceId') || '';
     if (workspaceId === '__all__') workspaceId = '';
     var url = '/config/dashboard-tags' + (workspaceId ? '?workspace=' + encodeURIComponent(workspaceId) : '');
-    LexeraApi.request(url).then(function (data) {
+    LexeraApi.request(url, { timeoutMs: 3000 }).then(function (data) {
       if (data && Array.isArray(data.tags)) {
         _cachedDashboardTags = data.tags;
         try { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(data.tags)); } catch (_) { /* intentional */ }
@@ -2377,9 +2377,6 @@ var LexeraOrderHelpers = (function () {
     dashboardState.loading = true;
     if (!options.deferRender) renderDashboard();
 
-    // Refresh tag config from backend (best-effort, uses cache on failure)
-    refreshDashboardTagsFromBackend();
-
     var LexeraApi = _dep('LexeraApi');
     var query = dashboardState.query ? dashboardState.query.trim() : '';
     var calendarScopedQuery = isDashboardCalendarQuery(query);
@@ -2743,7 +2740,8 @@ var LexeraOrderHelpers = (function () {
     scheduleDashboardRefresh: scheduleDashboardRefresh,
     setupDashboardControls: setupDashboardControls,
     getCalendarTasks: getCalendarTasks,
-    renderStandaloneCalendarPanels: renderStandaloneCalendarPanels
+    renderStandaloneCalendarPanels: renderStandaloneCalendarPanels,
+    refreshDashboardTagsFromBackend: refreshDashboardTagsFromBackend
   };
 })();
 (typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {}).LexeraOrderHelpers = LexeraOrderHelpers;
