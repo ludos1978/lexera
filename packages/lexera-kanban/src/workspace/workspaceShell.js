@@ -4097,7 +4097,7 @@
     window.addEventListener('lexera-backend-connection-state-changed', handleBackendConnectionStateChanged);
 
     state.mounted = true;
-    state.backendConnected = !!document.querySelector('.log-panel-status .connection-status-btn.connected');
+    state.backendConnected = !!document.querySelector('.connection-status-btn.connected');
     state.didRestoreState = restoreState();
     applyPanelOnlyWindowState();
     ensureInitialPanelTab(state.initialPanelKind);

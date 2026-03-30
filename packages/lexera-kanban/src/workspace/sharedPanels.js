@@ -124,18 +124,17 @@
           '</div>' +
         '</div>' +
         '<div class="log-panel-actions">' +
+          '<button class="log-panel-status-btn connection-status-btn disconnected" type="button" title="Backend disconnected" aria-label="Backend disconnected">' +
+            '<span class="connection-dot" aria-hidden="true"></span>' +
+            '<span class="connection-status-label">Disconnected</span>' +
+          '</button>' +
           '<button class="log-panel-btn lexera-shared-log-refresh" title="Reload backend logs" type="button">Reload</button>' +
           '<button class="log-panel-btn lexera-shared-log-copy" title="Copy logs to clipboard" type="button">Copy</button>' +
           '<button class="log-panel-btn lexera-shared-log-clear" title="Clear log" type="button">Clear</button>' +
         '</div>' +
       '</div>' +
       '<div class="log-panel-status">' +
-        '<span id="status-msg" class="status-msg"></span>' +
-        '<button id="btn-connection-status" class="log-panel-status-btn connection-status-btn disconnected" type="button" title="Backend disconnected. Open backend settings" aria-label="Backend disconnected. Open backend settings">' +
-          '<span id="connection-dot" class="connection-dot" aria-hidden="true"></span>' +
-          '<span class="connection-status-label">Disconnected</span>' +
-        '</button>' +
-        '<button id="btn-inspector" class="log-panel-status-btn" type="button" title="Open Inspector (F12 / Ctrl+Shift+I / Alt+I)">&lt;&gt;</button>' +
+        '<span class="status-msg"></span>' +
       '</div>' +
       '<div class="log-panel-body">' +
         '<div class="log-panel-main view-loading">' +
