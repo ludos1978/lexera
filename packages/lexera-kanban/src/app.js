@@ -2061,11 +2061,14 @@ var LexeraDashboard = (function () {
           eventRevision: eventRevision,
           eventGeneration: eventGen
         });
+        updateSyncStatusIndicator('syncing');
         Promise.resolve()
           .then(function () { return loadBoard(activeBoardId); })
+          .then(function () { updateSyncStatusIndicator('connected'); })
           .catch(function (err) {
             logFrontendIssue('warn', 'sse.fileChanged.reload', 'Failed to reload clean board after external change', err);
             showNotification('Board file changed on disk. Reload failed.');
+            updateSyncStatusIndicator('connected');
           });
         return;
       }
@@ -2085,11 +2088,14 @@ var LexeraDashboard = (function () {
         eventGeneration: eventGen,
         loadedGeneration: _lastLoadedGeneration
       });
+      updateSyncStatusIndicator('syncing');
       Promise.resolve()
         .then(function () { return rebaseDirtyBoardFromServer(kind); })
+        .then(function () { updateSyncStatusIndicator('connected'); })
         .catch(function (err) {
           logFrontendIssue('warn', 'sse.fileChanged.rebase', 'Failed to rebase dirty board after external change', err);
           showNotification('Board file changed on disk. Rebase failed; your local draft was kept.');
+          updateSyncStatusIndicator('connected');
         });
     }
     if (kind === 'Resync') {
@@ -2097,10 +2103,13 @@ var LexeraDashboard = (function () {
         boardId: activeBoardId
       });
       if (activeBoardId) {
+        updateSyncStatusIndicator('syncing');
         Promise.resolve()
           .then(function () { return loadBoard(activeBoardId); })
+          .then(function () { updateSyncStatusIndicator('connected'); })
           .catch(function (err) {
             logFrontendIssue('warn', 'sse.resync', 'Failed to reload board after SSE resync', err);
+            updateSyncStatusIndicator('connected');
           });
       }
     }
@@ -2127,7 +2136,7 @@ var LexeraDashboard = (function () {
     get urlParams() { return urlParams; },
     get _lastLoadedRevision() { return _lastLoadedRevision; },
     get _lastLoadedGeneration() { return _lastLoadedGeneration; },
-    setConnectedState: function (v) { connected = v; if (_rt) _rt.setState('connected', v); if (v) { refreshWorkspaceSettings(); OrderHelpers.refreshDashboardTagsFromBackend(); } },
+    setConnectedState: function (v) { connected = v; if (_rt) _rt.setState('connected', v); if (!_headerSavingInProgress) updateSyncStatusIndicator(v ? 'connected' : 'disconnected'); if (v) { refreshWorkspaceSettings(); OrderHelpers.refreshDashboardTagsFromBackend(); } },
     setWorkspaces: function (v) { workspaces = v; if (_rt) _rt.setState('workspaces', v); },
     setBoards: function (v) { boards = v; if (_rt) _rt.setState('boards', v); },
     setRemoteBoards: function (v) { remoteBoards = v; if (_rt) _rt.setState('remoteBoards', v); },
@@ -3586,6 +3595,7 @@ var LexeraDashboard = (function () {
     html += '<button id="btn-pane-file-title" class="board-header-file-title' + (hasBoardFile ? ' has-board' : '') + '" title="' +
       escapeAttr(hasBoardFile ? boardFilePath : fileTitle) + '">' + escapeHtml(fileTitle) + '</button>';
     html += '<button class="burger-menu-btn board-menu-btn" id="btn-file-header-menu" title="File header settings">' + BURGER_MENU_ICON_HTML + '</button>';
+    html += '<span id="sync-status-indicator" class="sync-status-indicator ' + (connected ? 'connected' : 'disconnected') + '" title="' + (connected ? 'Connected' : 'Disconnected') + '"></span>';
     html += '</div>';
     html += '</div>';
 
@@ -5523,6 +5533,7 @@ var LexeraDashboard = (function () {
     _headerSavingInProgress = true;
     refreshBoardHeaderActionStates();
     clearTimeout(savingTimeout);
+    updateSyncStatusIndicator('saving');
   }
   function hideSaving() {
     clearTimeout(savingTimeout);
@@ -5530,6 +5541,26 @@ var LexeraDashboard = (function () {
       _headerSavingInProgress = false;
       refreshBoardHeaderActionStates();
     }, 500);
+    updateSyncStatusIndicator('saved');
+  }
+
+  // ── Sync status indicator ──────────────────────────────────────────
+  var _syncStatusStates = ['connected', 'disconnected', 'saving', 'saved', 'syncing'];
+  function updateSyncStatusIndicator(state) {
+    var el = document.getElementById('sync-status-indicator');
+    if (!el) return;
+    for (var i = 0; i < _syncStatusStates.length; i++) {
+      el.classList.remove(_syncStatusStates[i]);
+    }
+    el.classList.add(state);
+    var titles = {
+      connected: 'Connected',
+      disconnected: 'Disconnected',
+      saving: 'Saving\u2026',
+      saved: 'Saved',
+      syncing: 'Syncing\u2026'
+    };
+    el.title = titles[state] || state;
   }
 
   // Save coalescing: when a save is already in-flight, new requests are
