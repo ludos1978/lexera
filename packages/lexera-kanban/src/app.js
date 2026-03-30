@@ -9713,7 +9713,7 @@ var LexeraDashboard = (function () {
   // Click on card → select it (Cmd/Ctrl+click toggles, Shift+click selects range)
   _on(getElColumnsContainer(), 'click', function (e) {
     try {
-      if (e.target.closest('button, input, textarea, select, a, .card-menu-btn, .card-checkbox, .card-collapse-toggle, .column-fold-btn, .stack-fold-btn, .row-fold-btn')) return;
+      if (e.target.closest('button, input, textarea, select, a, .card-menu-btn, .card-checkbox, .card-collapse-toggle, .column-fold-btn, .stack-fold-btn, .row-fold-btn, .card-drag-handle, .drag-grip')) return;
       var cardEl = e.target.closest('.card');
       if (cardEl && !cardEl.classList.contains('editing')) {
         if (e.shiftKey) {
@@ -9904,9 +9904,70 @@ var LexeraDashboard = (function () {
       e.stopPropagation();
       return;
     }
+
+    // Card drag: initiated from the card drag handle or the card header row
+    var cardGrip = e.target.closest('.card-drag-handle, .drag-grip');
+    if (cardGrip) {
+      var cardEl = cardGrip.closest('.card');
+      if (cardEl) {
+        var colEl = cardEl.closest('.column');
+        var stackEl = colEl ? colEl.closest('.board-stack') : null;
+        var flatColIndex = colEl ? parseInt(colEl.getAttribute('data-col-index'), 10) : -1;
+        var colLocalIndex = colEl ? parseInt(colEl.getAttribute('data-col-local-index'), 10) : -1;
+        var rowIdx = stackEl ? parseInt(stackEl.getAttribute('data-row-index'), 10) : -1;
+        var stackIdx = stackEl ? parseInt(stackEl.getAttribute('data-stack-index'), 10) : -1;
+        var visibleCards = colEl ? colEl.querySelectorAll('.column-cards > .card:not(.hidden-card)') : [];
+        var cardIdx = Array.prototype.indexOf.call(visibleCards, cardEl);
+
+        DragDropHandlers.setCardDrag({
+          el: cardEl,
+          boardId: activeBoardId,
+          flatColIndex: flatColIndex,
+          colIndex: colLocalIndex,
+          rowIndex: rowIdx,
+          stackIndex: stackIdx,
+          cardIndex: cardIdx,
+          startX: e.clientX,
+          startY: e.clientY,
+          started: false,
+          ghost: null
+        });
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    }
     } catch (err) {
       logFrontendIssue('error', 'drag.ptr', 'Error in board mousedown handler', err);
     }
+  });
+
+  // Card drag: mousemove + mouseup
+  document.addEventListener('mousemove', function (e) {
+    var cd = DragDropHandlers ? DragDropHandlers.getCardDrag() : null;
+    if (!cd) return;
+    if (!cd.started) {
+      var dx = e.clientX - cd.startX;
+      var dy = e.clientY - cd.startY;
+      if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      cd.started = true;
+      startCardDrag(e);
+    }
+    if (cd.ghost) {
+      cd.ghost.style.left = (e.clientX + 8) + 'px';
+      cd.ghost.style.top = (e.clientY - 12) + 'px';
+    }
+    if (DragDropHandlers.updateCardDropTarget) DragDropHandlers.updateCardDropTarget(e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseup', function (e) {
+    var cd = DragDropHandlers ? DragDropHandlers.getCardDrag() : null;
+    if (!cd) return;
+    if (!cd.started) {
+      DragDropHandlers.setCardDrag(null);
+      return;
+    }
+    finishCardDrag(e.clientX, e.clientY);
+    cleanupCardDrag();
   });
 
   // Pointer drag: mousemove

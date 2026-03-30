@@ -6132,12 +6132,15 @@ select.dialog-input option,
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  flex: 1;
-  margin: 0 12px;
+  flex: 0 1 auto;
+  max-width: 40%;
+  margin: 0 8px;
+  pointer-events: none;
 }
 .log-panel-header.log-panel-has-error .log-panel-error-msg {
   display: inline;
   color: #fff;
+  opacity: 0.8;
 }
 
 .log-panel-header-main {
