@@ -472,3 +472,19 @@ Specs: `packages/agent/specs/plugins/diagram/SPEC.md`, `plugins/enhancer/SPEC.md
   - ~~it can have specific layouts~~ (done: c9b2cd8b — layout_preset field on WorkspaceEntry)
   - ~~it can have a specific theme~~ (done: c9b2cd8b — theme field on WorkspaceEntry, applied on workspace switch)
 - ~~Add workspace file/media search and indexing so users can search for files across the workspace when embedding images, documents, and media into cards, with format-aware results and batch selection.~~ (done: 825b77c5 — POST /search/files endpoint with workspace/category filtering, "Files" button in card editor toolbar opens search dialog with category tabs and clickable results inserting markdown embeds)
+
+## Session 2026-03-30
+
+- [x] ~~stack delete not removing until re-render~~ (c6d98022) — wrong variable names in DOM selector
+- [x] ~~dropdown menus broken~~ (0938d5cb) — restored missing HiddenItemsDropdown.init() call
+- [x] ~~tab too wide when single board~~ (69e0c590) — .ws-view-title flex:0 1 auto instead of 1 1 auto
+- [x] ~~Export: target folder, browse button, Save→Export~~ (b0b8de9c) — default to {board-folder}/_Export, browse_folder Tauri command, label fixed
+- [x] ~~canvas drag logging spam~~ (69e0c590) — ResizeObserver debounced timer now also checks for active drag
+- [x] ~~board switch lockup~~ (ce4201a0, dcbfeb1f) — dashboard refresh deferred after loadBoard, iframe cascade prevented
+- [x] ~~dashboard tag tree indentation~~ (ce4201a0) — section header padding aligned with tree nodes
+- [x] ~~unified hierarchical display style~~ (04733655) — hierarchical.css with shared base classes, dashboard tree aligned to tokens
+- [x] ~~visual theme not propagating to board iframes~~ (c1ba4713) — broadcasts data-visual-theme to all iframes
+- [x] ~~stats tab empty in logs~~ (c6d98022) — removed from index.html + sharedPanels.js
+- [x] ~~**Repository promotion**~~ (a681e184) — root package.json cleaned (211KB → 370B), VS Code extension manifest removed
+- [x] ~~**Style token file**~~ (2917651e) — tokens.css with typography, spacing, control size tokens. 112 font-size declarations migrated.
+- [x] ~~**Unify theme systems**~~ (7b79ca3d) — themes.js colors only, visualThemes.js board style only, workspace appearance maps to board style IDs, --font-ui from tokens.css
