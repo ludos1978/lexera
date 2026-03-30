@@ -1,0 +1,29 @@
+/* Lexera Kanban — Design Tokens
+   Central source of truth for typography, spacing, and control sizes.
+   All values scale with --ui-scale (defined in app.css :root).
+*/
+
+:root {
+  /* ── Typography ─────────────────────────────────────────────── */
+  --font-size-xs:   calc(9px  * var(--ui-scale));  /* badges, metadata, timestamps */
+  --font-size-sm:   calc(10px * var(--ui-scale));  /* secondary text, dashboard groups, log entries */
+  --font-size-md:   calc(11px * var(--ui-scale));  /* sidebar items, section headers */
+  --font-size-base: calc(13px * var(--ui-scale));  /* body text, card content, inputs */
+  --font-size-lg:   calc(15px * var(--ui-scale));  /* panel titles, board header */
+  --font-size-xl:   calc(18px * var(--ui-scale));  /* large headings (rare) */
+
+  --font-ui:   'Poppins', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  /* ── Application Spacing ────────────────────────────────────── */
+  --app-space-1: calc(2px  * var(--ui-scale));  /* tight gaps, dividers */
+  --app-space-2: calc(4px  * var(--ui-scale));  /* button gaps, inline spacing */
+  --app-space-3: calc(8px  * var(--ui-scale));  /* section padding, card padding */
+  --app-space-4: calc(12px * var(--ui-scale));  /* panel padding, group gaps */
+  --app-space-5: calc(16px * var(--ui-scale));  /* large section gaps, dialog padding */
+
+  /* ── Control Sizes ──────────────────────────────────────────── */
+  --control-height-sm: calc(22px * var(--ui-scale));  /* compact buttons, icon buttons */
+  --control-height-md: calc(28px * var(--ui-scale));  /* standard buttons, inputs */
+  --control-height-lg: calc(34px * var(--ui-scale));  /* large buttons, search fields */
+}
