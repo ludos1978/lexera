@@ -11,6 +11,7 @@ mod board;
 mod calendar;
 mod capture_api;
 mod config_api;
+mod dashboard;
 mod events;
 mod external_embed;
 mod file_ops;
@@ -40,6 +41,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   DELETE /boards/:boardId                   -> remove board from tracking
 ///   GET  /boards/:boardId/settings            -> read board settings only
 ///   PUT  /boards/:boardId/settings            -> update board settings only (merge)
+///   GET  /boards/:boardId/hierarchy           -> lightweight row/stack/column/card tree (+ ETag)
 ///   GET  /boards/:boardId/columns             -> full column data with cards (+ ETag)
 ///   POST /boards/:boardId/columns/:colIndex/cards -> add card
 ///   POST /boards/:boardId/media               -> upload media file
@@ -52,6 +54,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   POST /search/files                          -> search files across boards
 ///   GET  /search?q=term                       -> search cards
 ///   GET  /calendar/tasks                      -> all cards with due dates
+///   POST /dashboard/data                      -> dashboard query/todos/tags/calendar snapshot
 ///   GET  /config/theme                        -> current theme ID
 ///   PUT  /config/theme                        -> update theme ID
 ///   GET  /config/render-apps                  -> render application paths
@@ -77,10 +80,7 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             "/boards/{board_id}/find-file",
             axum::routing::post(file_ops::find_file),
         )
-        .route(
-            "/search/files",
-            axum::routing::post(file_ops::search_files),
-        )
+        .route("/search/files", axum::routing::post(file_ops::search_files))
         .route_layer(axum::middleware::from_fn_with_state(
             RateLimiter::new(FIND_FILE_RATE_LIMIT),
             rate_limit_middleware,
@@ -102,7 +102,15 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             "/boards",
             get(board::list_boards).post(board::add_board_endpoint),
         )
+        .route(
+            "/dashboard/data",
+            axum::routing::post(dashboard::dashboard_data),
+        )
         .route("/remote-boards", get(board::list_remote_boards))
+        .route(
+            "/boards/{board_id}/hierarchy",
+            get(board::get_board_hierarchy),
+        )
         .route("/boards/{board_id}/columns", get(board::get_board_columns))
         .route(
             "/boards/{board_id}/columns/{col_index}/cards",
@@ -162,7 +170,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
         )
         .route("/boards/{board_id}/file", get(file_ops::serve_file))
         .route("/boards/{board_id}/file-info", get(file_ops::file_info))
-        .route("/boards/{board_id}/file-info-batch", axum::routing::post(file_ops::file_info_batch))
+        .route(
+            "/boards/{board_id}/file-info-batch",
+            axum::routing::post(file_ops::file_info_batch),
+        )
         .route(
             "/boards/{board_id}/convert-path",
             axum::routing::post(file_ops::convert_path),
@@ -258,7 +269,10 @@ fn validate_board_id(id: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> 
     }
     if id.len() > MAX_BOARD_ID_LENGTH {
         log::warn!(target: "lexera.api.validate", "Rejected board ID exceeding {} chars (len={})", MAX_BOARD_ID_LENGTH, id.len());
-        return Err(err_bad_request(format!("Board ID too long (max {} characters)", MAX_BOARD_ID_LENGTH)));
+        return Err(err_bad_request(format!(
+            "Board ID too long (max {} characters)",
+            MAX_BOARD_ID_LENGTH
+        )));
     }
     if has_path_traversal(id) {
         log::warn!(target: "lexera.api.validate", "Rejected board ID with path traversal characters: {}", id);
@@ -302,22 +316,34 @@ fn log_api_issue(status: StatusCode, target: &'static str, message: impl AsRef<s
 
 /// Convenience constructor for a NOT_FOUND error response.
 pub(crate) fn err_not_found(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (StatusCode::NOT_FOUND, Json(ErrorResponse { error: msg.into() }))
+    (
+        StatusCode::NOT_FOUND,
+        Json(ErrorResponse { error: msg.into() }),
+    )
 }
 
 /// Convenience constructor for a BAD_REQUEST error response.
 pub(crate) fn err_bad_request(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: msg.into() }))
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse { error: msg.into() }),
+    )
 }
 
 /// Convenience constructor for an INTERNAL_SERVER_ERROR error response.
 pub(crate) fn err_internal(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: msg.into() }))
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse { error: msg.into() }),
+    )
 }
 
 /// Convenience constructor for a FORBIDDEN error response.
 pub(crate) fn err_forbidden(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (StatusCode::FORBIDDEN, Json(ErrorResponse { error: msg.into() }))
+    (
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse { error: msg.into() }),
+    )
 }
 
 /// Resolve a file path relative to the board's directory, or as absolute if it starts with /.
@@ -328,9 +354,10 @@ fn resolve_board_file(
     board_id: &str,
     file_path: &str,
 ) -> Result<std::path::PathBuf, (StatusCode, Json<ErrorResponse>)> {
-    let board_path = state.storage.get_board_path(board_id).ok_or_else(|| {
-        err_not_found("Board not found")
-    })?;
+    let board_path = state
+        .storage
+        .get_board_path(board_id)
+        .ok_or_else(|| err_not_found("Board not found"))?;
     let board_dir = board_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."));
@@ -342,14 +369,14 @@ fn resolve_board_file(
         board_dir.join(file_path)
     };
 
-    let canonical = resolved.canonicalize().map_err(|_| {
-        err_not_found("File not found")
-    })?;
+    let canonical = resolved
+        .canonicalize()
+        .map_err(|_| err_not_found("File not found"))?;
 
     // Verify the resolved path is within the board directory to prevent path traversal.
-    let canonical_board_dir = board_dir.canonicalize().map_err(|_| {
-        err_not_found("Board directory not found")
-    })?;
+    let canonical_board_dir = board_dir
+        .canonicalize()
+        .map_err(|_| err_not_found("Board directory not found"))?;
     if !canonical.starts_with(&canonical_board_dir) {
         log::warn!(
             target: "lexera.api.file",
@@ -358,7 +385,9 @@ fn resolve_board_file(
             canonical.display(),
             canonical_board_dir.display()
         );
-        return Err(err_forbidden("Access denied: path is outside the board directory"));
+        return Err(err_forbidden(
+            "Access denied: path is outside the board directory",
+        ));
     }
 
     Ok(canonical)

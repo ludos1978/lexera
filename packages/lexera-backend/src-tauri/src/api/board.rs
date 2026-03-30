@@ -30,7 +30,43 @@ fn storage_error_response(
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     };
     log_api_issue(status, target, format!("{}: {}", context, error));
-    (status, Json(ErrorResponse { error: error.to_string() }))
+    (
+        status,
+        Json(ErrorResponse {
+            error: error.to_string(),
+        }),
+    )
+}
+
+fn board_response_metadata(state: &AppState, board_id: &str) -> (u64, bool, String, String) {
+    let version = state.storage.get_board_version(board_id).unwrap_or(0);
+    let is_remote = state.storage.is_remote_board(board_id);
+    let revision = state
+        .storage
+        .get_board_revision_token(board_id)
+        .unwrap_or_else(|| format!("v{}", version));
+    let etag = format!("\"{}\"", revision);
+    (version, is_remote, revision, etag)
+}
+
+fn maybe_not_modified(
+    headers: &HeaderMap,
+    etag: &str,
+) -> Option<(StatusCode, HeaderMap, Json<serde_json::Value>)> {
+    if let Some(if_none_match) = headers.get("if-none-match") {
+        if let Ok(value) = if_none_match.to_str() {
+            if value == etag {
+                let mut resp_headers = HeaderMap::new();
+                insert_header_safe(&mut resp_headers, "etag", etag);
+                return Some((
+                    StatusCode::NOT_MODIFIED,
+                    resp_headers,
+                    Json(serde_json::json!({})),
+                ));
+            }
+        }
+    }
+    None
 }
 
 #[derive(Deserialize)]
@@ -136,27 +172,10 @@ pub async fn get_board_columns(
         err_not_found(error)
     })?;
 
-    let version = state.storage.get_board_version(&board_id).unwrap_or(0);
-    let is_remote = state.storage.is_remote_board(&board_id);
-    let revision = state
-        .storage
-        .get_board_revision_token(&board_id)
-        .unwrap_or_else(|| format!("v{}", version));
-    let etag = format!("\"{}\"", revision);
+    let (version, is_remote, revision, etag) = board_response_metadata(&state, &board_id);
 
-    // Check If-None-Match for conditional response
-    if let Some(if_none_match) = headers.get("if-none-match") {
-        if let Ok(value) = if_none_match.to_str() {
-            if value == etag {
-                let mut resp_headers = HeaderMap::new();
-                insert_header_safe(&mut resp_headers, "etag", &etag);
-                return Ok((
-                    StatusCode::NOT_MODIFIED,
-                    resp_headers,
-                    Json(serde_json::json!({})),
-                ));
-            }
-        }
+    if let Some(response) = maybe_not_modified(&headers, &etag) {
+        return Ok(response);
     }
 
     let columns: Vec<serde_json::Value> = board
@@ -204,6 +223,58 @@ pub async fn get_board_columns(
     ))
 }
 
+pub async fn get_board_hierarchy(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<(StatusCode, HeaderMap, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
+    let title = state.storage.read_board_title(&board_id).ok_or_else(|| {
+        let error = format!("Board not found: {}", board_id);
+        log_api_issue(
+            StatusCode::NOT_FOUND,
+            "lexera.api.get_board_hierarchy",
+            &error,
+        );
+        err_not_found(error)
+    })?;
+    let rows = state
+        .storage
+        .read_board_hierarchy(&board_id)
+        .ok_or_else(|| {
+            let error = format!("Board not found: {}", board_id);
+            log_api_issue(
+                StatusCode::NOT_FOUND,
+                "lexera.api.get_board_hierarchy",
+                &error,
+            );
+            err_not_found(error)
+        })?;
+
+    let (version, is_remote, revision, etag) = board_response_metadata(&state, &board_id);
+    if let Some(response) = maybe_not_modified(&headers, &etag) {
+        return Ok(response);
+    }
+    let generation = state.storage.get_board_generation(&board_id).unwrap_or(0);
+
+    let mut resp_headers = HeaderMap::new();
+    insert_header_safe(&mut resp_headers, "etag", &etag);
+
+    Ok((
+        StatusCode::OK,
+        resp_headers,
+        Json(serde_json::json!({
+            "boardId": board_id,
+            "title": title,
+            "rows": rows,
+            "version": version,
+            "revision": revision,
+            "generation": generation,
+            "isRemote": is_remote,
+        })),
+    ))
+}
+
 pub async fn add_card(
     State(state): State<AppState>,
     Path((board_id, col_index)): Path<(String, usize)>,
@@ -245,7 +316,10 @@ pub async fn add_card(
             storage_error_response(
                 e,
                 "lexera.api.add_card",
-                format!("Failed to add card to board {} column {}", board_id, col_index),
+                format!(
+                    "Failed to add card to board {} column {}",
+                    board_id, col_index
+                ),
             )
         })?;
 
@@ -263,7 +337,11 @@ pub async fn append_to_card(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
     if body.content.trim().is_empty() {
-        log_api_issue(StatusCode::BAD_REQUEST, "lexera.api.append_to_card", "Missing or empty content");
+        log_api_issue(
+            StatusCode::BAD_REQUEST,
+            "lexera.api.append_to_card",
+            "Missing or empty content",
+        );
         return Err(err_bad_request("Missing or empty content"));
     }
 
@@ -289,17 +367,19 @@ pub async fn write_board(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
     let write_result = state.storage.write_board(&board_id, &board).map_err(|e| {
-        storage_error_response(e, "lexera.api.write_board", format!("Failed to write board {}", board_id))
+        storage_error_response(
+            e,
+            "lexera.api.write_board",
+            format!("Failed to write board {}", board_id),
+        )
     })?;
     emit_main_file_changed(&state, &board_id);
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
-    let mut response = build_write_board_response(
-        &state, &board_id, write_result.merge_result, &board,
-    );
+    let mut response =
+        build_write_board_response(&state, &board_id, write_result.merge_result, &board);
     if let Some(ref redirected) = write_result.redirected_path {
-        response["redirectedPath"] = serde_json::Value::String(
-            redirected.to_string_lossy().to_string(),
-        );
+        response["redirectedPath"] =
+            serde_json::Value::String(redirected.to_string_lossy().to_string());
     }
     Ok(Json(response))
 }
@@ -319,7 +399,10 @@ pub async fn create_board_crashsave(
             storage_error_response(
                 e,
                 "lexera.api.create_board_crashsave",
-                format!("Failed to create crashsave for board {} (reason={})", board_id, reason),
+                format!(
+                    "Failed to create crashsave for board {} (reason={})",
+                    board_id, reason
+                ),
             )
         })?;
 
@@ -354,16 +437,11 @@ pub async fn write_board_with_base(
         })?;
     emit_main_file_changed(&state, &board_id);
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
-    let mut response = build_write_board_response(
-        &state,
-        &board_id,
-        write_result.merge_result,
-        &body.board,
-    );
+    let mut response =
+        build_write_board_response(&state, &board_id, write_result.merge_result, &body.board);
     if let Some(ref redirected) = write_result.redirected_path {
-        response["redirectedPath"] = serde_json::Value::String(
-            redirected.to_string_lossy().to_string(),
-        );
+        response["redirectedPath"] =
+            serde_json::Value::String(redirected.to_string_lossy().to_string());
     }
     Ok(Json(response))
 }
@@ -468,7 +546,11 @@ pub async fn import_live_sync_updates(
             "Failed to decode live sync update payload for session {}: {}",
             session_id, error
         );
-        log_api_issue(StatusCode::BAD_REQUEST, "lexera.api.live_sync.import", &message);
+        log_api_issue(
+            StatusCode::BAD_REQUEST,
+            "lexera.api.live_sync.import",
+            &message,
+        );
         err_bad_request(error.to_string())
     })?;
 
@@ -522,7 +604,10 @@ pub async fn add_board_endpoint(
         log_api_issue(
             StatusCode::BAD_REQUEST,
             "lexera.api.add_board",
-            format!("Rejected board add for {}: Only .md files are supported", body.file),
+            format!(
+                "Rejected board add for {}: Only .md files are supported",
+                body.file
+            ),
         );
         return Err(err_bad_request("Only .md files are supported"));
     }
@@ -575,10 +660,17 @@ pub async fn add_board_endpoint(
         }
         if cfg_changed {
             if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
-                log::error!("[lexera.api.add_board] Failed to save config after adding board {}: {}", board_id, e);
+                log::error!(
+                    "[lexera.api.add_board] Failed to save config after adding board {}: {}",
+                    board_id,
+                    e
+                );
                 // Roll back: remove board from in-memory storage so state stays consistent
                 let _ = state.storage.remove_board(&board_id);
-                return Err(err_internal(format!("Board added but config save failed: {}", e)));
+                return Err(err_internal(format!(
+                    "Board added but config save failed: {}",
+                    e
+                )));
             }
         }
     }
@@ -614,7 +706,11 @@ pub async fn remove_board_endpoint(
     let file_path = state.storage.get_board_path(&board_id);
 
     state.storage.remove_board(&board_id).map_err(|e| {
-        storage_error_response(e, "lexera.api.remove_board", format!("Failed to remove board {}", board_id))
+        storage_error_response(
+            e,
+            "lexera.api.remove_board",
+            format!("Failed to remove board {}", board_id),
+        )
     })?;
 
     // Unwatch the board file
@@ -1035,6 +1131,35 @@ kanban-plugin: board
     }
 
     #[tokio::test]
+    async fn get_hierarchy_for_added_board_returns_rows_without_full_board() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = write_board_file(tmp.path(), "hierarchy.md", MINIMAL_BOARD);
+        let state = test_state(tmp.path());
+        let token = register_test_user(&state);
+
+        let board_id = state.storage.add_board(&board_path).unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/boards/{}/hierarchy", board_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let rows = json["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["stacks"][0]["columns"].as_array().unwrap().len(), 2);
+        assert!(json.get("fullBoard").is_none());
+    }
+
+    #[tokio::test]
     async fn delete_board() {
         let tmp = tempfile::tempdir().unwrap();
         let board_path = write_board_file(tmp.path(), "del.md", MINIMAL_BOARD);
@@ -1169,15 +1294,15 @@ kanban-plugin: board
 
         // User adds a card to ColA
         let mut incoming = base.clone();
-        incoming.rows[0].stacks[0].columns[0].cards.push(
-            lexera_core::types::KanbanCard {
+        incoming.rows[0].stacks[0].columns[0]
+            .cards
+            .push(lexera_core::types::KanbanCard {
                 id: "new".into(),
                 content: "new-card".into(),
                 checked: false,
                 kid: Some("kid-new".into()),
                 params: HashMap::new(),
-            },
-        );
+            });
 
         let app = test_router(state.clone());
         let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
@@ -1185,8 +1310,14 @@ kanban-plugin: board
 
         let saved = state.storage.read_board(&board_id).unwrap();
         let col_a_cards: Vec<&str> = saved.rows[0].stacks[0].columns[0]
-            .cards.iter().map(|c| c.content.as_str()).collect();
-        assert!(col_a_cards.contains(&"new-card"), "new card should be saved");
+            .cards
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect();
+        assert!(
+            col_a_cards.contains(&"new-card"),
+            "new card should be saved"
+        );
         assert!(col_a_cards.contains(&"card-a1"), "existing cards preserved");
         assert!(col_a_cards.contains(&"card-a2"), "existing cards preserved");
     }
@@ -1199,7 +1330,9 @@ kanban-plugin: board
 
         // User removes card-a2
         let mut incoming = base.clone();
-        incoming.rows[0].stacks[0].columns[0].cards.retain(|c| c.content != "card-a2");
+        incoming.rows[0].stacks[0].columns[0]
+            .cards
+            .retain(|c| c.content != "card-a2");
 
         let app = test_router(state.clone());
         let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
@@ -1207,8 +1340,14 @@ kanban-plugin: board
 
         let saved = state.storage.read_board(&board_id).unwrap();
         let col_a_cards: Vec<&str> = saved.rows[0].stacks[0].columns[0]
-            .cards.iter().map(|c| c.content.as_str()).collect();
-        assert!(!col_a_cards.contains(&"card-a2"), "card-a2 should be removed");
+            .cards
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect();
+        assert!(
+            !col_a_cards.contains(&"card-a2"),
+            "card-a2 should be removed"
+        );
         assert!(col_a_cards.contains(&"card-a1"), "card-a1 preserved");
     }
 
@@ -1220,8 +1359,9 @@ kanban-plugin: board
 
         // User adds a new column to Stack1
         let mut incoming = base.clone();
-        incoming.rows[0].stacks[0].columns.push(
-            lexera_core::types::KanbanColumn {
+        incoming.rows[0].stacks[0]
+            .columns
+            .push(lexera_core::types::KanbanColumn {
                 id: "col-new".into(),
                 title: "NewCol".into(),
                 cards: vec![lexera_core::types::KanbanCard {
@@ -1233,8 +1373,7 @@ kanban-plugin: board
                 }],
                 include_source: None,
                 params: HashMap::new(),
-            },
-        );
+            });
 
         let app = test_router(state.clone());
         let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
@@ -1242,7 +1381,10 @@ kanban-plugin: board
 
         let saved = state.storage.read_board(&board_id).unwrap();
         let col_titles: Vec<&str> = saved.rows[0].stacks[0]
-            .columns.iter().map(|c| c.title.as_str()).collect();
+            .columns
+            .iter()
+            .map(|c| c.title.as_str())
+            .collect();
         assert!(col_titles.contains(&"NewCol"), "new column added");
         assert!(col_titles.contains(&"ColA"), "ColA preserved");
         assert!(col_titles.contains(&"ColB"), "ColB preserved");
@@ -1256,7 +1398,9 @@ kanban-plugin: board
 
         // User deletes ColB from Stack1
         let mut incoming = base.clone();
-        incoming.rows[0].stacks[0].columns.retain(|c| c.title != "ColB");
+        incoming.rows[0].stacks[0]
+            .columns
+            .retain(|c| c.title != "ColB");
 
         let app = test_router(state.clone());
         let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
@@ -1264,7 +1408,10 @@ kanban-plugin: board
 
         let saved = state.storage.read_board(&board_id).unwrap();
         let col_titles: Vec<&str> = saved.rows[0].stacks[0]
-            .columns.iter().map(|c| c.title.as_str()).collect();
+            .columns
+            .iter()
+            .map(|c| c.title.as_str())
+            .collect();
         assert!(!col_titles.contains(&"ColB"), "ColB removed");
         assert!(col_titles.contains(&"ColA"), "ColA preserved");
     }
@@ -1277,18 +1424,20 @@ kanban-plugin: board
 
         // User adds a new stack to Row1
         let mut incoming = base.clone();
-        incoming.rows[0].stacks.push(lexera_core::types::KanbanStack {
-            id: "stack-new".into(),
-            title: "NewStack".into(),
-            columns: vec![lexera_core::types::KanbanColumn {
-                id: "col-ns".into(),
-                title: "NSCol".into(),
-                cards: vec![],
-                include_source: None,
+        incoming.rows[0]
+            .stacks
+            .push(lexera_core::types::KanbanStack {
+                id: "stack-new".into(),
+                title: "NewStack".into(),
+                columns: vec![lexera_core::types::KanbanColumn {
+                    id: "col-ns".into(),
+                    title: "NSCol".into(),
+                    cards: vec![],
+                    include_source: None,
+                    params: HashMap::new(),
+                }],
                 params: HashMap::new(),
-            }],
-            params: HashMap::new(),
-        });
+            });
 
         let app = test_router(state.clone());
         let (status, _) = sync_save(app, &board_id, &base, &incoming, &token).await;
@@ -1296,7 +1445,10 @@ kanban-plugin: board
 
         let saved = state.storage.read_board(&board_id).unwrap();
         let stack_titles: Vec<&str> = saved.rows[0]
-            .stacks.iter().map(|s| s.title.as_str()).collect();
+            .stacks
+            .iter()
+            .map(|s| s.title.as_str())
+            .collect();
         assert!(stack_titles.contains(&"NewStack"), "new stack added");
         assert!(stack_titles.contains(&"Stack1"), "Stack1 preserved");
         assert!(stack_titles.contains(&"Stack2"), "Stack2 preserved");
@@ -1318,7 +1470,10 @@ kanban-plugin: board
 
         let saved = state.storage.read_board(&board_id).unwrap();
         let stack_titles: Vec<&str> = saved.rows[0]
-            .stacks.iter().map(|s| s.title.as_str()).collect();
+            .stacks
+            .iter()
+            .map(|s| s.title.as_str())
+            .collect();
         assert!(!stack_titles.contains(&"Stack2"), "Stack2 removed");
         assert!(stack_titles.contains(&"Stack1"), "Stack1 preserved");
     }
@@ -1430,8 +1585,7 @@ kanban-plugin: board
 
         // User moves card-a1 from ColA to ColB
         let mut incoming = base.clone();
-        let card = incoming.rows[0].stacks[0].columns[0]
-            .cards.remove(0); // card-a1
+        let card = incoming.rows[0].stacks[0].columns[0].cards.remove(0); // card-a1
         incoming.rows[0].stacks[0].columns[1].cards.push(card);
 
         let app = test_router(state.clone());
@@ -1440,9 +1594,15 @@ kanban-plugin: board
 
         let saved = state.storage.read_board(&board_id).unwrap();
         let col_a_cards: Vec<&str> = saved.rows[0].stacks[0].columns[0]
-            .cards.iter().map(|c| c.content.as_str()).collect();
+            .cards
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect();
         let col_b_cards: Vec<&str> = saved.rows[0].stacks[0].columns[1]
-            .cards.iter().map(|c| c.content.as_str()).collect();
+            .cards
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect();
         assert!(!col_a_cards.contains(&"card-a1"), "card-a1 moved from ColA");
         assert!(col_b_cards.contains(&"card-a1"), "card-a1 moved to ColB");
         assert!(col_b_cards.contains(&"card-b1"), "card-b1 still in ColB");
@@ -1456,15 +1616,15 @@ kanban-plugin: board
 
         // Edit 1: add a card
         let mut edit1 = base.clone();
-        edit1.rows[0].stacks[0].columns[0].cards.push(
-            lexera_core::types::KanbanCard {
+        edit1.rows[0].stacks[0].columns[0]
+            .cards
+            .push(lexera_core::types::KanbanCard {
                 id: "e1".into(),
                 content: "edit1-card".into(),
                 checked: false,
                 kid: Some("kid-e1".into()),
                 params: HashMap::new(),
-            },
-        );
+            });
 
         let app = test_router(state.clone());
         let (status, _) = sync_save(app, &board_id, &base, &edit1, &token).await;
@@ -1473,15 +1633,15 @@ kanban-plugin: board
         // Edit 2: read current state, then add another card
         let base2 = state.storage.read_board(&board_id).unwrap();
         let mut edit2 = base2.clone();
-        edit2.rows[0].stacks[0].columns[0].cards.push(
-            lexera_core::types::KanbanCard {
+        edit2.rows[0].stacks[0].columns[0]
+            .cards
+            .push(lexera_core::types::KanbanCard {
                 id: "e2".into(),
                 content: "edit2-card".into(),
                 checked: false,
                 kid: Some("kid-e2".into()),
                 params: HashMap::new(),
-            },
-        );
+            });
 
         let app2 = test_router(state.clone());
         let (status2, _) = sync_save(app2, &board_id, &base2, &edit2, &token).await;
@@ -1489,7 +1649,10 @@ kanban-plugin: board
 
         let saved = state.storage.read_board(&board_id).unwrap();
         let col_a_cards: Vec<&str> = saved.rows[0].stacks[0].columns[0]
-            .cards.iter().map(|c| c.content.as_str()).collect();
+            .cards
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect();
         assert!(col_a_cards.contains(&"card-a1"));
         assert!(col_a_cards.contains(&"card-a2"));
         assert!(col_a_cards.contains(&"edit1-card"));

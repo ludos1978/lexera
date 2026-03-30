@@ -78,7 +78,10 @@ pub async fn set_theme(
     }
 
     let theme = body.theme.clone();
-    mutate_config(&state, |cfg| { cfg.theme = Some(theme.clone()); Ok(()) })?;
+    mutate_config(&state, |cfg| {
+        cfg.theme = Some(theme.clone());
+        Ok(())
+    })?;
     log::info!("[config] Theme changed to '{}'", body.theme);
     Ok(Json(serde_json::json!({ "theme": body.theme })))
 }
@@ -309,7 +312,10 @@ pub async fn update_workspace_sync(
         }
     }
 
-    log::info!("[config] Updated workspace sync defaults for {}", workspace_id);
+    log::info!(
+        "[config] Updated workspace sync defaults for {}",
+        workspace_id
+    );
     notify_config_changed(&state);
     Ok(Json(serde_json::json!({
         "id": workspace_id,
@@ -343,7 +349,10 @@ pub async fn update_workspace_appearance(
             }
         }
         if let Err(e) = save_config(&config_path, &cfg) {
-            log::error!("Failed to save config after workspace appearance update: {}", e);
+            log::error!(
+                "Failed to save config after workspace appearance update: {}",
+                e
+            );
         }
     }
 
@@ -457,7 +466,9 @@ pub async fn assign_board_workspaces(
     }
 
     if workspace_ids.is_empty() {
-        return Err(err_bad_request("Board must belong to at least one workspace"));
+        return Err(err_bad_request(
+            "Board must belong to at least one workspace",
+        ));
     }
 
     let config_path = state.config_path.clone();
@@ -627,7 +638,10 @@ pub async fn set_render_apps(
         || ra.pdftoppm.is_some()
         || ra.mutool.is_some();
     let ra_val = if has_any { Some(ra.clone()) } else { None };
-    mutate_config(&state, |cfg| { cfg.render_apps = ra_val; Ok(()) })?;
+    mutate_config(&state, |cfg| {
+        cfg.render_apps = ra_val;
+        Ok(())
+    })?;
     log::info!("[config] Render application paths updated");
     Ok(Json(serde_json::json!({
         "drawio": ra.drawio,
@@ -669,10 +683,7 @@ fn lock_error() -> (StatusCode, Json<ErrorResponse>) {
 }
 
 /// Lock config, apply a mutation, save, and notify.
-fn mutate_config<F>(
-    state: &AppState,
-    mutate: F,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)>
+fn mutate_config<F>(state: &AppState, mutate: F) -> Result<(), (StatusCode, Json<ErrorResponse>)>
 where
     F: FnOnce(&mut crate::config::SyncConfig) -> Result<(), (StatusCode, Json<ErrorResponse>)>,
 {
@@ -697,11 +708,7 @@ pub async fn get_dashboard_tags(
     State(state): State<AppState>,
     axum::extract::Query(query): axum::extract::Query<DashboardTagsQuery>,
 ) -> Json<serde_json::Value> {
-    let default_tags: Vec<String> = vec![
-        "#important".into(),
-        "#blocked".into(),
-        "#review".into(),
-    ];
+    let default_tags: Vec<String> = vec!["#important".into(), "#blocked".into(), "#review".into()];
     let cfg = state.config.lock().ok();
     let tags = cfg
         .as_ref()
@@ -739,10 +746,17 @@ pub async fn set_dashboard_tags(
         .filter(|t| !t.is_empty())
         .collect();
     let ws_id = body.workspace.clone();
-    let tags_val = if tags.is_empty() { None } else { Some(tags.clone()) };
+    let tags_val = if tags.is_empty() {
+        None
+    } else {
+        Some(tags.clone())
+    };
     mutate_config(&state, |cfg| {
         if let Some(ref ws_id) = ws_id {
-            let ws = cfg.workspaces.iter_mut().find(|w| &w.id == ws_id)
+            let ws = cfg
+                .workspaces
+                .iter_mut()
+                .find(|w| &w.id == ws_id)
                 .ok_or_else(|| err_not_found(format!("Workspace not found: {}", ws_id)))?;
             ws.dashboard_tags = tags_val.clone();
         } else {
@@ -811,10 +825,17 @@ pub async fn set_settings(
         .filter(|(k, _)| !k.trim().is_empty())
         .collect();
     let ws_id = body.workspace.clone();
-    let settings_val = if settings.is_empty() { None } else { Some(settings.clone()) };
+    let settings_val = if settings.is_empty() {
+        None
+    } else {
+        Some(settings.clone())
+    };
     mutate_config(&state, |cfg| {
         if let Some(ref ws_id) = ws_id {
-            let ws = cfg.workspaces.iter_mut().find(|w| &w.id == ws_id)
+            let ws = cfg
+                .workspaces
+                .iter_mut()
+                .find(|w| &w.id == ws_id)
                 .ok_or_else(|| err_not_found(format!("Workspace not found: {}", ws_id)))?;
             ws.settings = settings_val.clone();
         } else {
@@ -882,7 +903,11 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
         let cfg = state.config.lock().unwrap().clone();
-        let ws = cfg.workspaces.iter().find(|entry| entry.id == "ws-1").unwrap();
+        let ws = cfg
+            .workspaces
+            .iter()
+            .find(|entry| entry.id == "ws-1")
+            .unwrap();
         assert_eq!(ws.bookmark_sync, Some(false));
         assert_eq!(ws.calendar_sync, Some(true));
         assert_eq!(ws.calendar_slug.as_deref(), Some("team"));
@@ -933,7 +958,11 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
         let cfg = state.config.lock().unwrap().clone();
-        let board = cfg.boards.iter().find(|entry| entry.file.ends_with("board.md")).unwrap();
+        let board = cfg
+            .boards
+            .iter()
+            .find(|entry| entry.file.ends_with("board.md"))
+            .unwrap();
         assert_eq!(board.xbel_name.as_deref(), Some("bookmarks.xbel"));
         assert_eq!(board.bookmark_sync, Some(true));
         assert_eq!(board.calendar_sync, Some(false));

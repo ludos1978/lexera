@@ -22,17 +22,20 @@ pub async fn sse_events(
             Some(Ok(Event::default().data(json)))
         }
         Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
-            log::warn!("[lexera.sse] Client lagged by {} events, sending resync hint", n);
-            Some(Ok(Event::default().event("resync").data(
-                format!("{{\"lagged\":{}}}", n),
-            )))
+            log::warn!(
+                "[lexera.sse] Client lagged by {} events, sending resync hint",
+                n
+            );
+            Some(Ok(Event::default()
+                .event("resync")
+                .data(format!("{{\"lagged\":{}}}", n))))
         }
     });
 
     let stream = stream.merge(tokio_stream::StreamExt::map(
-        tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
-            Duration::from_secs(SSE_KEEPALIVE_SECS),
-        )),
+        tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(Duration::from_secs(
+            SSE_KEEPALIVE_SECS,
+        ))),
         |_| Ok(Event::default().comment("keep-alive")),
     ));
 
@@ -120,7 +123,9 @@ mod tests {
     use lexera_core::watcher::types::BoardChangeEvent;
     use tower::ServiceExt;
 
-    use crate::test_helpers::{authed_get, body_json, get_request, register_test_user, test_router, test_state};
+    use crate::test_helpers::{
+        authed_get, body_json, get_request, register_test_user, test_router, test_state,
+    };
 
     // -- /events SSE endpoint tests --
 
@@ -291,11 +296,7 @@ mod tests {
         let state = test_state(tmp.path());
         let app = test_router(state);
 
-        crate::log_bridge::push_external_entry(
-            "info",
-            "lexera.test.logs",
-            "hello from logs test",
-        );
+        crate::log_bridge::push_external_entry("info", "lexera.test.logs", "hello from logs test");
 
         let resp = app.oneshot(get_request("/logs")).await.unwrap();
 

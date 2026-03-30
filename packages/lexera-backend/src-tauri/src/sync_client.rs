@@ -35,6 +35,14 @@ struct RemoteConnection {
     ws_task: JoinHandle<()>,
 }
 
+pub(crate) struct PendingRemoteConnection {
+    pub(crate) server_url: String,
+    pub(crate) remote_board_id: String,
+    pub(crate) local_board_id: String,
+    pub(crate) user_id: String,
+    pub(crate) auth_token: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RemoteBoardColumnsResponse {
@@ -200,16 +208,17 @@ impl SyncClientManager {
     /// 4. Connect WS and exchange CRDT data (with bearer token)
     ///
     /// Returns `(local_board_id, auth_token)` on success.
-    pub async fn connect(
-        &mut self,
+    pub fn is_connected(&self, local_board_id: &str) -> bool {
+        self.connections.contains_key(local_board_id)
+    }
+
+    pub(crate) async fn prepare_invite_connection(
         server_url: String,
         token: String,
         user_id: String,
         user_name: String,
         storage: Arc<LocalStorage>,
-        event_tx: broadcast::Sender<BoardChangeEvent>,
-        sync_hub: Arc<tokio::sync::Mutex<crate::sync_ws::BoardSyncHub>>,
-    ) -> Result<(String, Option<String>), String> {
+    ) -> Result<PendingRemoteConnection, String> {
         let server_url = server_url.trim_end_matches('/').to_string();
         let client = reqwest::Client::new();
 
@@ -268,14 +277,6 @@ impl SyncClientManager {
         // Generate a local board ID for the remote board
         let local_board_id = local_board_id_from_remote(&remote_board_id);
 
-        // Check if already connected
-        if self.connections.contains_key(&local_board_id) {
-            return Err(format!(
-                "Already connected to board {} on {}",
-                remote_board_id, server_url
-            ));
-        }
-
         // 3. Fetch the initial remote board snapshot before registering the local mirror.
         let mut initial_board = fetch_remote_board_snapshot(
             &client,
@@ -289,37 +290,26 @@ impl SyncClientManager {
         }
         storage.add_remote_board(&local_board_id, initial_board);
 
-        self.spawn_sync_connection(
+        Ok(PendingRemoteConnection {
             server_url,
             remote_board_id,
-            local_board_id.clone(),
+            local_board_id,
             user_id,
-            auth_token.clone(),
-            storage,
-            event_tx,
-            sync_hub,
-        );
-
-        Ok((local_board_id, auth_token))
+            auth_token: auth_token.clone(),
+        })
     }
 
     /// Reconnect to an already-known remote room without consuming an invite token again.
-    pub async fn reconnect_existing(
-        &mut self,
+    pub(crate) async fn prepare_existing_connection(
         server_url: String,
         remote_board_id: String,
         user_id: String,
         user_name: String,
         auth_token: Option<String>,
         storage: Arc<LocalStorage>,
-        event_tx: broadcast::Sender<BoardChangeEvent>,
-        sync_hub: Arc<tokio::sync::Mutex<crate::sync_ws::BoardSyncHub>>,
-    ) -> Result<String, String> {
+    ) -> Result<PendingRemoteConnection, String> {
         let server_url = server_url.trim_end_matches('/').to_string();
         let local_board_id = local_board_id_from_remote(&remote_board_id);
-        if self.connections.contains_key(&local_board_id) {
-            return Ok(local_board_id);
-        }
 
         let client = reqwest::Client::new();
         // Re-register may yield a fresh token if the old one was lost
@@ -340,24 +330,13 @@ impl SyncClientManager {
         }
         storage.add_remote_board(&local_board_id, initial_board);
 
-        self.spawn_sync_connection(
+        Ok(PendingRemoteConnection {
             server_url,
             remote_board_id,
-            local_board_id.clone(),
+            local_board_id: local_board_id.clone(),
             user_id,
-            effective_token,
-            storage,
-            event_tx,
-            sync_hub,
-        );
-        log::info!(
-            "[sync_client] Reconnected existing remote board {} as local {}",
-            local_board_id
-                .strip_prefix("remote-")
-                .unwrap_or(local_board_id.as_str()),
-            local_board_id
-        );
-        Ok(local_board_id)
+            auth_token: effective_token,
+        })
     }
 
     /// Disconnect from a remote board.
@@ -416,6 +395,30 @@ impl SyncClientManager {
                 ws_task,
             },
         );
+    }
+
+    pub(crate) fn register_prepared_connection(
+        &mut self,
+        pending: PendingRemoteConnection,
+        storage: Arc<LocalStorage>,
+        event_tx: broadcast::Sender<BoardChangeEvent>,
+        sync_hub: Arc<tokio::sync::Mutex<crate::sync_ws::BoardSyncHub>>,
+    ) -> String {
+        let local_board_id = pending.local_board_id.clone();
+        if self.connections.contains_key(&local_board_id) {
+            return local_board_id;
+        }
+        self.spawn_sync_connection(
+            pending.server_url,
+            pending.remote_board_id,
+            pending.local_board_id.clone(),
+            pending.user_id,
+            pending.auth_token,
+            storage,
+            event_tx,
+            sync_hub,
+        );
+        local_board_id
     }
 
     /// List all active remote connections.

@@ -987,25 +987,39 @@ async fn connect_remote(
         .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let mut client = state.sync_client.lock().await;
-    let (local_board_id, auth_token) = client
-        .connect(
-            body.server_url.clone(),
-            body.token.clone(),
-            state.local_user_id.clone(),
-            user_name,
+    let pending = crate::sync_client::SyncClientManager::prepare_invite_connection(
+        body.server_url.clone(),
+        body.token.clone(),
+        state.local_user_id.clone(),
+        user_name,
+        state.storage.clone(),
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::bad_request(&e)),
+        )
+    })?;
+
+    let local_board_id = pending.local_board_id.clone();
+    let auth_token = pending.auth_token.clone();
+    {
+        let mut client = state.sync_client.lock().await;
+        if client.is_connected(&local_board_id) {
+            return Ok(Json(serde_json::json!({
+                "success": true,
+                "local_board_id": local_board_id,
+                "persisted": false
+            })));
+        }
+        client.register_prepared_connection(
+            pending,
             state.storage.clone(),
             state.event_tx.clone(),
             state.sync_hub.clone(),
-        )
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::bad_request(&e)),
-            )
-        })?;
-
+        );
+    }
     let persisted = match persist_remote_connection(
         &state,
         &body.server_url,

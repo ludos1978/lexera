@@ -6,7 +6,10 @@ use axum::{
 use lexera_core::media::{content_type_for_ext, is_previewable, media_category};
 use serde::Deserialize;
 
-use super::{err_bad_request, err_internal, err_not_found, insert_header_safe, resolve_board_file, ErrorResponse};
+use super::{
+    err_bad_request, err_internal, err_not_found, insert_header_safe, resolve_board_file,
+    ErrorResponse,
+};
 use crate::state::AppState;
 
 /// Maximum directory depth for recursive file search.
@@ -88,8 +91,17 @@ pub async fn file_info(
                 .and_then(|p| p.parent())
                 .unwrap_or_else(|| std::path::Path::new("."));
             let resolved = board_dir.join(&params.path);
-            let exists = resolved.canonicalize().ok().map(|p| p.exists()).unwrap_or(false)
-                || resolved.with_extension("md").canonicalize().ok().map(|_| true).unwrap_or(false)
+            let exists = resolved
+                .canonicalize()
+                .ok()
+                .map(|p| p.exists())
+                .unwrap_or(false)
+                || resolved
+                    .with_extension("md")
+                    .canonicalize()
+                    .ok()
+                    .map(|_| true)
+                    .unwrap_or(false)
                 || resolved.is_dir();
             return Json(serde_json::json!({
                 "exists": exists,
@@ -155,26 +167,44 @@ pub async fn file_info_batch(
                 let meta = tokio::fs::metadata(&fp).await.ok();
                 let exists = meta.is_some();
                 let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-                let ext = fp.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase());
-                results.insert(path_str.clone(), serde_json::json!({
-                    "exists": exists,
-                    "path": path_str,
-                    "filename": fp.file_name().and_then(|s| s.to_str()).unwrap_or(""),
-                    "extension": ext.as_deref().unwrap_or(""),
-                    "size": size,
-                    "mediaCategory": media_category(ext.as_deref()),
-                }));
+                let ext = fp
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|s| s.to_lowercase());
+                results.insert(
+                    path_str.clone(),
+                    serde_json::json!({
+                        "exists": exists,
+                        "path": path_str,
+                        "filename": fp.file_name().and_then(|s| s.to_str()).unwrap_or(""),
+                        "extension": ext.as_deref().unwrap_or(""),
+                        "size": size,
+                        "mediaCategory": media_category(ext.as_deref()),
+                    }),
+                );
             }
             Err(_) => {
                 let dir_resolved = board_dir.join(path_str);
-                let exists = dir_resolved.canonicalize().ok().map(|p| p.exists()).unwrap_or(false)
-                    || dir_resolved.with_extension("md").canonicalize().ok().map(|_| true).unwrap_or(false)
+                let exists = dir_resolved
+                    .canonicalize()
+                    .ok()
+                    .map(|p| p.exists())
+                    .unwrap_or(false)
+                    || dir_resolved
+                        .with_extension("md")
+                        .canonicalize()
+                        .ok()
+                        .map(|_| true)
+                        .unwrap_or(false)
                     || dir_resolved.is_dir();
-                results.insert(path_str.clone(), serde_json::json!({
-                    "exists": exists,
-                    "external": true,
-                    "path": path_str,
-                }));
+                results.insert(
+                    path_str.clone(),
+                    serde_json::json!({
+                        "exists": exists,
+                        "external": true,
+                        "path": path_str,
+                    }),
+                );
             }
         }
     }
@@ -225,11 +255,20 @@ pub async fn find_file(
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    walk(&path, base, target, matches, depth + 1, max_depth, max_results);
+                    walk(
+                        &path,
+                        base,
+                        target,
+                        matches,
+                        depth + 1,
+                        max_depth,
+                        max_results,
+                    );
                 } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     if name.to_lowercase().contains(target) {
                         // Return path relative to the board directory
-                        let rel = path.strip_prefix(base)
+                        let rel = path
+                            .strip_prefix(base)
                             .map(|p| p.to_string_lossy().to_string())
                             .unwrap_or_else(|_| path.to_string_lossy().to_string());
                         matches.push(rel);
@@ -279,14 +318,15 @@ pub async fn search_files(
             .lock()
             .map_err(|_| err_internal("Failed to lock config"))?;
 
-        let boards_in_scope: Vec<&crate::config::BoardEntry> = if let Some(ref ws_id) = body.workspace_id {
-            cfg.boards
-                .iter()
-                .filter(|b| b.workspace_ids.iter().any(|id| id == ws_id))
-                .collect()
-        } else {
-            cfg.boards.iter().collect()
-        };
+        let boards_in_scope: Vec<&crate::config::BoardEntry> =
+            if let Some(ref ws_id) = body.workspace_id {
+                cfg.boards
+                    .iter()
+                    .filter(|b| b.workspace_ids.iter().any(|id| id == ws_id))
+                    .collect()
+            } else {
+                cfg.boards.iter().collect()
+            };
 
         boards_in_scope
             .iter()
@@ -354,10 +394,7 @@ pub async fn search_files(
                         if !name.to_lowercase().contains(target) {
                             continue;
                         }
-                        let ext = path
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .unwrap_or("");
+                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                         if let Some(ref cat) = category_filter {
                             if media_category(Some(ext)) != cat.as_str() {
                                 continue;
@@ -474,7 +511,9 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    use crate::test_helpers::{authed_get, body_json, register_test_user, setup_board, test_router};
+    use crate::test_helpers::{
+        authed_get, body_json, register_test_user, setup_board, test_router,
+    };
 
     #[tokio::test]
     async fn serve_file_returns_content() {
@@ -529,10 +568,7 @@ mod tests {
         let app = test_router(state);
         let resp = app
             .oneshot(authed_get(
-                &format!(
-                    "/boards/{}/file?path=../../../etc/passwd",
-                    board_id
-                ),
+                &format!("/boards/{}/file?path=../../../etc/passwd", board_id),
                 &token,
             ))
             .await
@@ -554,10 +590,7 @@ mod tests {
         let app = test_router(state);
         let resp = app
             .oneshot(authed_get(
-                &format!(
-                    "/boards/{}/file?path=/etc/passwd",
-                    board_id
-                ),
+                &format!("/boards/{}/file?path=/etc/passwd", board_id),
                 &token,
             ))
             .await

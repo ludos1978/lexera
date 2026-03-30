@@ -30,7 +30,7 @@ fn format_date(secs_since_epoch: i64) -> String {
     format!("{:04}-{:02}-{:02}", year, m, d)
 }
 
-fn compute_date_boundaries() -> (String, String, String) {
+pub(crate) fn compute_date_boundaries() -> (String, String, String) {
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -117,13 +117,20 @@ kanban-plugin: board
         let json = body_json(resp.into_body()).await;
         let results = json["results"].as_array().unwrap();
         // Should include both cards with dates, but not the "No date task"
-        assert_eq!(results.len(), 2, "Expected 2 cards with due dates, got: {:?}", results);
+        assert_eq!(
+            results.len(),
+            2,
+            "Expected 2 cards with due dates, got: {:?}",
+            results
+        );
         assert!(
             results.iter().all(|r| r["dueDate"].as_str().is_some()),
             "All results should have a dueDate"
         );
         assert!(
-            !results.iter().any(|r| r["cardContent"].as_str().unwrap().contains("No date")),
+            !results
+                .iter()
+                .any(|r| r["cardContent"].as_str().unwrap().contains("No date")),
             "Should not include cards without due dates"
         );
     }

@@ -7,7 +7,9 @@ use std::path::PathBuf;
 use self::backup::CrashsaveEntry;
 use crate::merge::merge::MergeResult;
 use crate::search::SearchOptions;
-use crate::types::{BoardInfo, KanbanBoard, PaginatedSearchResults, SearchResult};
+use crate::types::{
+    BoardInfo, KanbanBoard, KanbanRow, KanbanStack, PaginatedSearchResults, SearchResult,
+};
 
 /// Result of a board write operation.
 #[derive(Debug, Clone)]
@@ -27,12 +29,40 @@ pub trait BoardStorage: Send + Sync {
     /// Read and parse a board by its ID.
     fn read_board(&self, board_id: &str) -> Option<KanbanBoard>;
 
+    /// Read a board title without requiring a full editable snapshot.
+    fn read_board_title(&self, board_id: &str) -> Option<String> {
+        Some(self.read_board(board_id)?.title)
+    }
+
+    /// Read lightweight hierarchy rows for a board.
+    fn read_board_hierarchy(&self, board_id: &str) -> Option<Vec<KanbanRow>> {
+        let board = self.read_board(board_id)?;
+        if !board.rows.is_empty() {
+            return Some(board.rows);
+        }
+        if board.columns.is_empty() {
+            return Some(Vec::new());
+        }
+        Some(vec![KanbanRow {
+            id: format!("{}:legacy-row", board_id),
+            title: if board.title.trim().is_empty() {
+                "Board".to_string()
+            } else {
+                board.title.clone()
+            },
+            stacks: vec![KanbanStack {
+                id: format!("{}:legacy-stack", board_id),
+                title: "Default".to_string(),
+                columns: board.columns,
+                params: Default::default(),
+            }],
+            params: Default::default(),
+        }])
+    }
+
     /// Write a full board back to storage.
-    fn write_board(
-        &self,
-        board_id: &str,
-        board: &KanbanBoard,
-    ) -> Result<WriteResult, StorageError>;
+    fn write_board(&self, board_id: &str, board: &KanbanBoard)
+        -> Result<WriteResult, StorageError>;
 
     /// Add a card to a specific column in a board.
     fn add_card(&self, board_id: &str, col_index: usize, content: &str)
@@ -54,7 +84,12 @@ pub trait BoardStorage: Send + Sync {
         let _ = options;
         let results = self.search(query);
         let total = results.len();
-        PaginatedSearchResults { results, total, limit: total, offset: 0 }
+        PaginatedSearchResults {
+            results,
+            total,
+            limit: total,
+            offset: 0,
+        }
     }
 
     /// Return all cards that have a due date across all boards.
@@ -88,5 +123,4 @@ pub enum StorageError {
         merge_result: Box<MergeResult>,
         crashsave: Option<CrashsaveEntry>,
     },
-
 }

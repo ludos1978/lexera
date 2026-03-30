@@ -26,7 +26,10 @@ pub async fn list_capture_history(
     State(state): State<AppState>,
 ) -> Json<Vec<lexera_core::capture::CaptureEntry>> {
     let entries = with_clipboard_history(&state, |history| {
-        history.lock().map(|items| items.clone()).unwrap_or_default()
+        history
+            .lock()
+            .map(|items| items.clone())
+            .unwrap_or_default()
     })
     .unwrap_or_default();
     Json(entries)

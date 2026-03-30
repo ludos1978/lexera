@@ -17,7 +17,9 @@ use crate::state::AppState;
 pub fn extract_bearer_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
     let value = headers.get("authorization")?.to_str().ok()?;
     let token = value.strip_prefix("Bearer ")?;
-    if token.is_empty() { return None; }
+    if token.is_empty() {
+        return None;
+    }
     Some(token.to_string())
 }
 
@@ -42,7 +44,11 @@ fn extract_query_token(req: &Request) -> Option<String> {
         if key != "auth_token" && key != "token" {
             continue;
         }
-        let token = percent_decode_str(value).decode_utf8().ok()?.trim().to_string();
+        let token = percent_decode_str(value)
+            .decode_utf8()
+            .ok()?
+            .trim()
+            .to_string();
         if !token.is_empty() {
             return Some(token);
         }
@@ -153,5 +159,4 @@ mod tests {
             .unwrap();
         assert_eq!(super::extract_query_token(&req), None);
     }
-
 }

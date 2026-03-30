@@ -292,10 +292,7 @@ mod tests {
 
         let app = test_router(state);
         let resp = app
-            .oneshot(authed_get(
-                "/boards/nonexistent/media-manifest",
-                &token,
-            ))
+            .oneshot(authed_get("/boards/nonexistent/media-manifest", &token))
             .await
             .unwrap();
 
