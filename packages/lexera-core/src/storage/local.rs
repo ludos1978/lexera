@@ -1047,12 +1047,10 @@ impl LocalStorage {
     fn sync_board_include_sources(board: &mut KanbanBoard, board_dir: &Path) {
         for column in board.all_columns_mut() {
             if let Some(raw_path) = syntax::extract_include_path(&column.title) {
-                column.include_source = Some(IncludeSource {
-                    raw_path: raw_path.clone(),
-                    resolved_path: crate::include::resolver::resolve_include_path(
-                        &raw_path, board_dir,
-                    ),
-                });
+                column.include_source = Some(IncludeSource::new(
+                    raw_path.clone(),
+                    crate::include::resolver::resolve_include_path(&raw_path, board_dir),
+                ));
             } else {
                 column.include_source = None;
             }
@@ -3108,6 +3106,7 @@ impl LocalStorage {
 
         // Build include contents map by reading include files
         let mut include_contents = std::collections::HashMap::new();
+        let mut missing_includes = std::collections::HashSet::new();
         let column_titles: Vec<(usize, &str)> = all_cols
             .iter()
             .enumerate()
@@ -3145,6 +3144,7 @@ impl LocalStorage {
                             board_id,
                             e
                         );
+                        missing_includes.insert(raw_path);
                     }
                 }
             }
@@ -3162,7 +3162,18 @@ impl LocalStorage {
             include_contents,
             board_dir: board_dir.to_path_buf(),
         };
-        Ok(parser::parse_markdown_with_includes(content, &ctx))
+        let mut board = parser::parse_markdown_with_includes(content, &ctx);
+        // Mark columns whose include files were missing
+        if !missing_includes.is_empty() {
+            for col in board.all_columns_mut() {
+                if let Some(ref mut src) = col.include_source {
+                    if missing_includes.contains(src.raw_path.as_str()) {
+                        src.missing = true;
+                    }
+                }
+            }
+        }
+        Ok(board)
     }
 
     fn sync_include_map_for_board(&self, board_id: &str, board: &KanbanBoard, board_dir: &Path) {

@@ -8870,9 +8870,11 @@ var LexeraDashboard = (function () {
     var fullCol = getFullColumn(col.index);
     var includeIndicator = '';
     if (fullCol && fullCol.includeSource) {
+      var includeMissing = fullCol.includeSource.missing;
       includeIndicator =
-        '<button class="column-include-badge" type="button" data-include-path="' + escapeAttr(fullCol.includeSource.rawPath || '') + '"' +
-        ' title="Open include: ' + escapeAttr(fullCol.includeSource.rawPath || '') + '">&#128279;</button>';
+        '<button class="column-include-badge' + (includeMissing ? ' include-broken' : '') + '" type="button" data-include-path="' + escapeAttr(fullCol.includeSource.rawPath || '') + '"' +
+        ' title="' + (includeMissing ? 'Missing include: ' : 'Open include: ') + escapeAttr(fullCol.includeSource.rawPath || '') + '">' +
+        (includeMissing ? '&#9888;' : '&#128279;') + '</button>';
     }
 
     var header = document.createElement('div');

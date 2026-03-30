@@ -51,6 +51,15 @@ pub struct IncludeSource {
     pub raw_path: String,
     #[serde(skip)]
     pub resolved_path: PathBuf,
+    /// True when the include file could not be read (missing, permission error, etc.)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub missing: bool,
+}
+
+impl IncludeSource {
+    pub fn new(raw_path: String, resolved_path: PathBuf) -> Self {
+        Self { raw_path, resolved_path, missing: false }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -251,10 +260,7 @@ impl KanbanBoard {
 
     /// Total number of cards across all columns (rows + flat columns).
     pub fn total_card_count(&self) -> usize {
-        self.all_columns()
-            .iter()
-            .map(|col| col.cards.len())
-            .sum()
+        self.all_columns().iter().map(|col| col.cards.len()).sum()
     }
 
     pub fn revision_token(&self) -> Option<String> {
@@ -341,6 +347,8 @@ pub struct PaginatedSearchResults {
 pub struct PaginatedCalendarGroup {
     pub items: Vec<SearchResult>,
     pub total: usize,
+    pub limit: usize,
+    pub offset: usize,
 }
 
 /// Calendar tasks grouped by time period, matching the dashboard UI structure.
@@ -367,6 +375,7 @@ impl GroupedCalendarTasks {
         end_of_week_str: &str,
         two_weeks_str: &str,
         limit: Option<usize>,
+        offset: Option<usize>,
         truncate: Option<usize>,
     ) -> Self {
         let mut overdue = Vec::new();
@@ -396,12 +405,20 @@ impl GroupedCalendarTasks {
             }
         }
 
-        fn make_group(items: Vec<SearchResult>, limit: Option<usize>, truncate: Option<usize>) -> PaginatedCalendarGroup {
+        fn make_group(
+            items: Vec<SearchResult>,
+            limit: Option<usize>,
+            offset: Option<usize>,
+            truncate: Option<usize>,
+        ) -> PaginatedCalendarGroup {
             let total = items.len();
-            let mut capped = match limit {
-                Some(l) => items.into_iter().take(l).collect::<Vec<_>>(),
-                None => items,
-            };
+            let offset = offset.unwrap_or(0);
+            let limit = limit.unwrap_or(total.saturating_sub(offset));
+            let mut capped = items
+                .into_iter()
+                .skip(offset)
+                .take(limit)
+                .collect::<Vec<_>>();
             if let Some(max_chars) = truncate {
                 for r in &mut capped {
                     if r.card_content.len() > max_chars {
@@ -411,15 +428,20 @@ impl GroupedCalendarTasks {
                     }
                 }
             }
-            PaginatedCalendarGroup { items: capped, total }
+            PaginatedCalendarGroup {
+                items: capped,
+                total,
+                limit,
+                offset,
+            }
         }
 
         Self {
-            overdue: make_group(overdue, limit, truncate),
-            today: make_group(today, limit, truncate),
-            this_week: make_group(this_week, limit, truncate),
-            upcoming: make_group(upcoming, limit, truncate),
-            later: make_group(later, limit, truncate),
+            overdue: make_group(overdue, limit, offset, truncate),
+            today: make_group(today, limit, offset, truncate),
+            this_week: make_group(this_week, limit, offset, truncate),
+            upcoming: make_group(upcoming, limit, offset, truncate),
+            later: make_group(later, limit, offset, truncate),
         }
     }
 }

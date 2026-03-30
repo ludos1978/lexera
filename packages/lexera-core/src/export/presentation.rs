@@ -1217,10 +1217,7 @@ mod tests {
     // ======================================================================
 
     fn include_source(raw_path: &str) -> IncludeSource {
-        IncludeSource {
-            raw_path: raw_path.to_string(),
-            resolved_path: std::path::PathBuf::new(),
-        }
+        IncludeSource::new(raw_path.to_string(), std::path::PathBuf::new())
     }
 
     #[test]

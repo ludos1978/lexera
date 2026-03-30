@@ -923,10 +923,7 @@ mod tests {
             id: "c1".to_string(),
             title: "Col".to_string(),
             cards: vec![],
-            include_source: Some(IncludeSource {
-                raw_path: "./inc.md".to_string(),
-                resolved_path: std::path::PathBuf::from("/abs/inc.md"),
-            }),
+            include_source: Some(IncludeSource::new("./inc.md".to_string(), std::path::PathBuf::from("/abs/inc.md"))),
             params: HashMap::new(),
         };
         let board = make_legacy_board(vec![col]);

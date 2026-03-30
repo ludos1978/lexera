@@ -328,24 +328,22 @@ fn convert_legacy_columns_to_rows(parsed_columns: Vec<KanbanColumn>) -> Vec<Kanb
             groups
                 .into_iter()
                 .enumerate()
-                .map(|(stack_index, group)| {
-                    KanbanStack {
-                        id: generate_id("stack"),
-                        title: {
-                            let stack_title = group
-                                .first()
-                                .map(|column| column.title.trim())
-                                .filter(|title| !title.is_empty())
-                                .unwrap_or("");
-                            if stack_title.is_empty() {
-                                format!("Stack {}", stack_index + 1)
-                            } else {
-                                stack_title.to_string()
-                            }
-                        },
-                        columns: group,
-                        params: HashMap::new(),
-                    }
+                .map(|(stack_index, group)| KanbanStack {
+                    id: generate_id("stack"),
+                    title: {
+                        let stack_title = group
+                            .first()
+                            .map(|column| column.title.trim())
+                            .filter(|title| !title.is_empty())
+                            .unwrap_or("");
+                        if stack_title.is_empty() {
+                            format!("Stack {}", stack_index + 1)
+                        } else {
+                            stack_title.to_string()
+                        }
+                    },
+                    columns: group,
+                    params: HashMap::new(),
                 })
                 .collect()
         };
@@ -765,10 +763,7 @@ pub fn parse_markdown_with_includes(content: &str, ctx: &ParseContext) -> Kanban
             let resolved = resolve_include_path(&raw_path, &ctx.board_dir);
             let tags = syntax::strip_include(&col.title);
 
-            col.include_source = Some(IncludeSource {
-                raw_path: raw_path.clone(),
-                resolved_path: resolved,
-            });
+            col.include_source = Some(IncludeSource::new(raw_path.clone(), resolved));
 
             // Load cards from include file content
             if let Some(include_content) = ctx.include_contents.get(&raw_path) {
@@ -1504,7 +1499,10 @@ kanban-plugin: board
         let md1 = generate_markdown(&board1);
         let board2 = parse_markdown(&md1);
         let md2 = generate_markdown(&board2);
-        assert_eq!(md1, md2, "Legacy format markdown should be idempotent after first normalization");
+        assert_eq!(
+            md1, md2,
+            "Legacy format markdown should be idempotent after first normalization"
+        );
     }
 
     #[test]
@@ -1513,7 +1511,10 @@ kanban-plugin: board
         let md1 = generate_markdown(&board1);
         let board2 = parse_markdown(&md1);
         let md2 = generate_markdown(&board2);
-        assert_eq!(md1, md2, "New format markdown should be idempotent after first normalization");
+        assert_eq!(
+            md1, md2,
+            "New format markdown should be idempotent after first normalization"
+        );
     }
 
     #[test]
@@ -1641,7 +1642,10 @@ kanban-plugin: board
         assert_eq!(board.rows[0].title, "My Row");
         assert_eq!(board.rows[0].stacks[0].title, "My Stack");
         assert_eq!(board.rows[0].stacks[0].columns[0].title, "My Col");
-        assert_eq!(board.rows[0].stacks[0].columns[0].cards[0].content, "My Task");
+        assert_eq!(
+            board.rows[0].stacks[0].columns[0].cards[0].content,
+            "My Task"
+        );
     }
 
     #[test]
@@ -1651,7 +1655,9 @@ kanban-plugin: board
         assert!(board.rows[0].params.is_empty());
         assert!(board.rows[0].stacks[0].params.is_empty());
         assert!(board.rows[0].stacks[0].columns[0].params.is_empty());
-        assert!(board.rows[0].stacks[0].columns[0].cards[0].params.is_empty());
+        assert!(board.rows[0].stacks[0].columns[0].cards[0]
+            .params
+            .is_empty());
 
         let md_out = generate_markdown(&board);
         let board2 = parse_markdown(&md_out);
@@ -1728,7 +1734,10 @@ kanban-plugin: board
 
         let stack_b2 = &board2.rows[0].stacks[1];
         assert_eq!(stack_b2.params.get("x").map(|s| s.as_str()), Some("600"));
-        assert_eq!(stack_b2.params.get("dir").map(|s| s.as_str()), Some("vertical"));
+        assert_eq!(
+            stack_b2.params.get("dir").map(|s| s.as_str()),
+            Some("vertical")
+        );
 
         // Board should now be in kanban mode
         let settings2 = board2.board_settings.as_ref().unwrap();
