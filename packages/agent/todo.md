@@ -1,5 +1,8 @@
 # Lexera Kanban Todo
 
+- [ ] lexera_core::storage::local
+  [lexera.storage.include] Failed to read include file "/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-huge-test/How_Level_Design_Can_Tell_a_Stor.RwlnCn2EB9o.1080p/How_Level_Design_Can_Tell_a_Stor.RwlnCn2EB9o.1080p-summary.md" for board 22d8d19aa2ed: No such file or directory (os error 2) — column will appear empty
+
 - [x] ~~add status informations to all views~~ (a310c52c) — generic .view-loading/.view-empty CSS system + LexeraRuntime helpers
 
 - [x] ~~when closing a view the board re-renders~~ — investigated: no JS renderColumns() is called; the visual change is browser CSS reflow from the pane resizing, which is expected
@@ -255,7 +258,7 @@ See [spec-performance.md](spec-performance.md) for full spec.
 - [x] **Phase 2: Tiered startup hydration** — startup-prepared board state now loads summaries/hierarchy/search metadata first, defers CRDT hydration, and lazily hydrates persisted CRDT/snapshot state on first read/edit/sync use
 - [x] **Phase 3: Search index** — `BoardState` now maintains inverted candidate indexes for tags, temporal tags, checked/open state, and due buckets so `search` / `search_many` prefilter before full matching
 - [x] ~~**Phase 4: Delta undo**~~ — already implemented: boardDelta.js computes structural diffs (row/column/card level), undo stack stores compact deltas not full board clones
-- [ ] **Phase 5: Targeted DOM updates (expand)** — card edit, card add, card reorder without full re-render
+- [x] ~~**Phase 5: Targeted DOM updates (expand)**~~ (0ba07962) — card edit, add, reorder, checkbox toggle now skip renderColumns() with targeted element updates
 - [ ] **Phase 6: Virtual scrolling** — render only visible cards for 500+ card boards
 - [ ] **Phase 7: Delta sync on poll** — fetch only changed cards instead of full board on generation change
 - [ ] **Phase 8: Split board API contracts by use-case** — stop serving full board snapshots to every consumer; create separate summary, hierarchy/tree, dashboard, and editable snapshot contracts so sidebar/dashboard/search do not hit the same heavy payloads as board editing
