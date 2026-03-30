@@ -9383,6 +9383,8 @@ var LexeraDashboard = (function () {
               }
               clearTimeout(resizeTimer);
               resizeTimer = setTimeout(function () {
+                var pendingPtrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
+                if (pendingPtrDrag) return; // timer from pre-drag resize; skip during drag
                 var fullStack = findFullDataStack(rIdx, sIdx);
                 if (!fullStack) return;
                 var curW = fullStack.params && fullStack.params.w ? parseInt(fullStack.params.w, 10) : 0;
