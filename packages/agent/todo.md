@@ -3,13 +3,13 @@
 ## Bugs
 - [x] ~~stack delete not removing until re-render~~ (c6d98022) — wrong variable names in DOM selector
 - [x] ~~dropdown menus broken~~ (0938d5cb) — restored missing HiddenItemsDropdown.init() call
-- [ ] when a board is the only one on the screen have the tab-part (where the drag icon, the filename and the close icon are) only as wide as needed. the close button should not move to the right as far out as it does currently!
+- [x] ~~tab too wide when single board~~ (69e0c590) — .ws-view-title flex:0 1 auto instead of 1 1 auto
 - [x] ~~Export: target folder, browse button, Save→Export~~ (b0b8de9c) — default to {board-folder}/_Export, browse_folder Tauri command, label fixed
-- [ ] maybe it's the backend communication or the logs, but i can barely move an stack in the canvas mode. it keeps interrupting or doing weird things. it also gives about 20 log outputs per drag.
+- [x] ~~canvas drag logging spam~~ (69e0c590) — ResizeObserver debounced timer now also checks for active drag
 - [ ] The dashboard doesnt properly show all the setup elements from the open or selected boards!
-- [ ] switching boards sometimes doesnt show the board, it locks up and it doesnt show a result! the dashboard shows a busy icon, but the view stays empty!
-- [ ] the tree structure in the dashboard isnt nicely setup. some items (for example tags) show more left then the title of the "tagged items"! it must be nicely hierarchical!
-- [ ] we want a unified hierarchical display style! we currently have different styles in the worspace, dashboard, maybe also within the files config dialogue. it's a mess of styles. run a ux expert over this issue and analyze how we can unify it. if we need two systems thats fine, but currently we have to many different styles in use!
+- [x] ~~board switch lockup~~ (ce4201a0, dcbfeb1f) — dashboard refresh deferred after loadBoard, iframe cascade prevented
+- [x] ~~dashboard tag tree indentation~~ (ce4201a0) — section header padding aligned with tree nodes
+- [x] ~~unified hierarchical display style~~ (04733655) — hierarchical.css with shared base classes, dashboard tree aligned to tokens
 
 - [x] ~~visual theme not propagating to board iframes~~ (c1ba4713) — broadcasts data-visual-theme to all iframes
 - [x] ~~stats tab empty in logs~~ (c6d98022) — removed from index.html + sharedPanels.js
@@ -23,7 +23,7 @@
 - [ ] **App.js modularization** — 13,108 lines. Extract into state/, services/, views/, shell/ layers. No module should mix DOM rendering, localStorage, and API calls. Includes: reduce to orchestration, split frontend layers, settings service behind typed API.
 
 ## Architecture — Do Next
-- [ ] **Repository promotion** — clean root package.json (remove VS Code extension manifest), make packages/ the obvious product root
+- [x] ~~**Repository promotion**~~ (a681e184) — root package.json cleaned (211KB → 370B), VS Code extension manifest removed
 - [ ] **Real frontend state model** — replace ad-hoc globals + 80+ raw localStorage calls with DocumentSessionStore, ViewStateStore, SettingsStore. Separate shell state from board state.
 - [ ] **Unify shared packages** — merge or clearly separate packages/shared (TS types) vs packages/lexera-shared (browser JS/CSS). Replace copy-based sync-runtime-assets.mjs with real package.
 - [ ] **Remove iframe view composition** — replace in-window iframes + postMessage with native in-process view instances
@@ -33,7 +33,7 @@
 ## Style System — Do Next
 - [x] ~~**Style token file**~~ (2917651e) — tokens.css with typography, spacing, control size tokens. 112 font-size declarations migrated.
 - [ ] **Define two style layers** — Application Style (shell, menus, logs, settings) + Board Style (kanban/canvas content). No third overlapping layer.
-- [ ] **Unify theme systems** — merge themes.js + visualThemes.js + workspace appearance into one app theme + one board style system. One bounded board style object instead of scattered localStorage keys.
+- [x] ~~**Unify theme systems**~~ (7b79ca3d) — themes.js colors only, visualThemes.js board style only, workspace appearance maps to board style IDs, --font-ui from tokens.css
 - [ ] **Unify component primitives** — consolidate 4+ button families (.btn-icon, .sidebar-btn, .board-action-btn, .mgmt-btn) into shared variants (icon, primary, secondary, quiet). Same for selects/inputs.
 - [ ] **Extend consistent states** — .view-loading/.view-empty exist for some views. Apply to all surfaces with shared model for connected/loading/empty/error/selected.
 
