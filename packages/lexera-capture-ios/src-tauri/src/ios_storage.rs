@@ -522,10 +522,10 @@ impl BoardStorage for IosStorage {
     }
 
     fn search(&self, query: &str) -> Vec<SearchResult> {
-        self.search_with_options(query, SearchOptions::default())
+        self.search_with_options(query, SearchOptions::default()).results
     }
 
-    fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
+    fn search_with_options(&self, query: &str, options: SearchOptions) -> PaginatedSearchResults {
         let engine = SearchEngine::compile(query, options);
 
         let boards = self.boards.read().unwrap_or_else(|p| {
@@ -569,7 +569,20 @@ impl BoardStorage for IosStorage {
             }
         }
 
-        results
+        let total = results.len();
+        let offset = options.offset.unwrap_or(0);
+        let limit = options.limit.unwrap_or(50);
+        let mut page: Vec<SearchResult> = results.into_iter().skip(offset).take(limit).collect();
+        if let Some(max_chars) = options.truncate {
+            for r in &mut page {
+                if r.card_content.len() > max_chars {
+                    let end = r.card_content.floor_char_boundary(max_chars);
+                    r.card_content.truncate(end);
+                    r.card_content.push_str("…");
+                }
+            }
+        }
+        PaginatedSearchResults { results: page, total, limit, offset }
     }
 
     fn calendar_tasks(&self) -> Vec<SearchResult> {

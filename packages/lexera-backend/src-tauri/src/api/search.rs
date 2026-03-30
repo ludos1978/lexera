@@ -14,6 +14,9 @@ pub struct SearchQuery {
     case_sensitive: Option<bool>,
     #[serde(default, alias = "useRegex")]
     regex: Option<bool>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+    truncate: Option<usize>,
 }
 
 pub async fn search(
@@ -24,9 +27,18 @@ pub async fn search(
     let options = SearchOptions {
         case_sensitive: params.case_sensitive.unwrap_or(false),
         use_regex: params.regex.unwrap_or(false),
+        limit: params.limit,
+        offset: params.offset,
+        truncate: params.truncate,
     };
-    let results = state.storage.search_with_options(&query, options);
-    Json(serde_json::json!({ "query": query, "results": results }))
+    let paginated = state.storage.search_with_options(&query, options);
+    Json(serde_json::json!({
+        "query": query,
+        "results": paginated.results,
+        "total": paginated.total,
+        "limit": paginated.limit,
+        "offset": paginated.offset
+    }))
 }
 
 #[cfg(test)]

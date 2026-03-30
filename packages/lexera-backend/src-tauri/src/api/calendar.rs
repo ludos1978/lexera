@@ -1,8 +1,18 @@
-use axum::{extract::State, response::Json};
+use axum::{
+    extract::{Query, State},
+    response::Json,
+};
 use lexera_core::storage::BoardStorage;
 use lexera_core::types::GroupedCalendarTasks;
+use serde::Deserialize;
 
 use crate::state::AppState;
+
+#[derive(Deserialize)]
+pub struct CalendarQuery {
+    limit: Option<usize>,
+    truncate: Option<usize>,
+}
 
 fn format_date(secs_since_epoch: i64) -> String {
     let days = secs_since_epoch / 86400;
@@ -38,11 +48,22 @@ fn compute_date_boundaries() -> (String, String, String) {
 
 /// GET /calendar/tasks — return all cards with due dates, grouped by time period.
 /// Response includes both flat `results` array (backwards compat) and `groups` object
-/// with overdue/today/thisWeek/upcoming/later arrays.
-pub async fn calendar_tasks(State(state): State<AppState>) -> Json<serde_json::Value> {
+/// with overdue/today/thisWeek/upcoming/later groups, each with `items` and `total`.
+/// Query params: `limit` (max items per group), `truncate` (max chars of card_content).
+pub async fn calendar_tasks(
+    State(state): State<AppState>,
+    Query(params): Query<CalendarQuery>,
+) -> Json<serde_json::Value> {
     let results = state.storage.calendar_tasks();
     let (today_str, end_of_week_str, two_weeks_str) = compute_date_boundaries();
-    let groups = GroupedCalendarTasks::from_tasks(results.clone(), &today_str, &end_of_week_str, &two_weeks_str);
+    let groups = GroupedCalendarTasks::from_tasks(
+        results.clone(),
+        &today_str,
+        &end_of_week_str,
+        &two_weeks_str,
+        params.limit,
+        params.truncate,
+    );
     Json(serde_json::json!({
         "results": results,
         "groups": groups,

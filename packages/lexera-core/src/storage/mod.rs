@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use self::backup::CrashsaveEntry;
 use crate::merge::merge::MergeResult;
 use crate::search::SearchOptions;
-use crate::types::{BoardInfo, KanbanBoard, SearchResult};
+use crate::types::{BoardInfo, KanbanBoard, PaginatedSearchResults, SearchResult};
 
 /// Result of a board write operation.
 #[derive(Debug, Clone)]
@@ -49,10 +49,12 @@ pub trait BoardStorage: Send + Sync {
     /// Search cards across all boards.
     fn search(&self, query: &str) -> Vec<SearchResult>;
 
-    /// Search cards with explicit options (regex, case sensitivity).
-    fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
+    /// Search cards with explicit options (regex, case sensitivity, pagination, truncation).
+    fn search_with_options(&self, query: &str, options: SearchOptions) -> PaginatedSearchResults {
         let _ = options;
-        self.search(query)
+        let results = self.search(query);
+        let total = results.len();
+        PaginatedSearchResults { results, total, limit: total, offset: 0 }
     }
 
     /// Return all cards that have a due date across all boards.

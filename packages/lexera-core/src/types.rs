@@ -325,15 +325,33 @@ pub struct SearchResult {
     pub is_overdue: bool,
 }
 
+/// Paginated search results with total count for the full (unpaginated) result set.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedSearchResults {
+    pub results: Vec<SearchResult>,
+    pub total: usize,
+    pub limit: usize,
+    pub offset: usize,
+}
+
+/// A paginated group of calendar tasks with total count.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedCalendarGroup {
+    pub items: Vec<SearchResult>,
+    pub total: usize,
+}
+
 /// Calendar tasks grouped by time period, matching the dashboard UI structure.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupedCalendarTasks {
-    pub overdue: Vec<SearchResult>,
-    pub today: Vec<SearchResult>,
-    pub this_week: Vec<SearchResult>,
-    pub upcoming: Vec<SearchResult>,
-    pub later: Vec<SearchResult>,
+    pub overdue: PaginatedCalendarGroup,
+    pub today: PaginatedCalendarGroup,
+    pub this_week: PaginatedCalendarGroup,
+    pub upcoming: PaginatedCalendarGroup,
+    pub later: PaginatedCalendarGroup,
 }
 
 impl GroupedCalendarTasks {
@@ -341,7 +359,16 @@ impl GroupedCalendarTasks {
     /// `today_str` is YYYY-MM-DD for today.
     /// `end_of_week_str` is YYYY-MM-DD for the last day of the current week.
     /// `two_weeks_str` is YYYY-MM-DD for 14 days from now.
-    pub fn from_tasks(tasks: Vec<SearchResult>, today_str: &str, end_of_week_str: &str, two_weeks_str: &str) -> Self {
+    /// `limit` optionally caps the number of items returned per group.
+    /// `truncate` optionally caps `card_content` to that many chars.
+    pub fn from_tasks(
+        tasks: Vec<SearchResult>,
+        today_str: &str,
+        end_of_week_str: &str,
+        two_weeks_str: &str,
+        limit: Option<usize>,
+        truncate: Option<usize>,
+    ) -> Self {
         let mut overdue = Vec::new();
         let mut today = Vec::new();
         let mut this_week = Vec::new();
@@ -368,7 +395,32 @@ impl GroupedCalendarTasks {
                 later.push(task);
             }
         }
-        Self { overdue, today, this_week, upcoming, later }
+
+        fn make_group(items: Vec<SearchResult>, limit: Option<usize>, truncate: Option<usize>) -> PaginatedCalendarGroup {
+            let total = items.len();
+            let mut capped = match limit {
+                Some(l) => items.into_iter().take(l).collect::<Vec<_>>(),
+                None => items,
+            };
+            if let Some(max_chars) = truncate {
+                for r in &mut capped {
+                    if r.card_content.len() > max_chars {
+                        let end = r.card_content.floor_char_boundary(max_chars);
+                        r.card_content.truncate(end);
+                        r.card_content.push_str("…");
+                    }
+                }
+            }
+            PaginatedCalendarGroup { items: capped, total }
+        }
+
+        Self {
+            overdue: make_group(overdue, limit, truncate),
+            today: make_group(today, limit, truncate),
+            this_week: make_group(this_week, limit, truncate),
+            upcoming: make_group(upcoming, limit, truncate),
+            later: make_group(later, limit, truncate),
+        }
     }
 }
 

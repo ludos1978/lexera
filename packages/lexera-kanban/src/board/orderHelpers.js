@@ -993,7 +993,7 @@ var LexeraOrderHelpers = (function () {
     }
     _callDep('renderBoardList');
     refreshHeaderFileControls();
-    scheduleDashboardRefresh(3000);
+    scheduleDashboardRefresh(8000);
   }
 
   function setupWorkspaceShell() {
@@ -2384,9 +2384,11 @@ var LexeraOrderHelpers = (function () {
     return LexeraApi.checkStatus().catch(function () { return null; }).then(function (status) {
       if (refreshId !== dashboardRefreshSeq) return;
       if (!status) {
-        // Backend not ready — retry later
+        // Backend not ready — retry with exponential backoff
         dashboardState.loading = false;
-        scheduleDashboardRefresh(5000);
+        var retryDelay = Math.min(30000, 5000 * Math.pow(1.5, (dashboardState._retryCount || 0)));
+        dashboardState._retryCount = (dashboardState._retryCount || 0) + 1;
+        scheduleDashboardRefresh(retryDelay);
         return;
       }
       return _refreshDashboardDataCore(refreshId, options);
@@ -2402,11 +2404,15 @@ var LexeraOrderHelpers = (function () {
     // Batch requests in pairs to limit backend read-lock concurrency
     var queryResult, calendarResponse, todosResult, tagResults = [];
 
+    // Pagination options for dashboard requests
+    var dashSearchOpts = { limit: 30, truncate: 200 };
+    var dashCalendarOpts = { limit: 20 };
+
     // Batch 1: calendar + query search (2 concurrent)
     var queryPromise = query && !calendarScopedQuery
-      ? LexeraApi.search(query).catch(function () { return { results: [] }; })
+      ? LexeraApi.search(query, dashSearchOpts).catch(function () { return { results: [] }; })
       : Promise.resolve({ results: [] });
-    var calendarPromise = LexeraApi.getCalendarTasks().catch(function () { return { results: [] }; });
+    var calendarPromise = LexeraApi.getCalendarTasks(dashCalendarOpts).catch(function () { return { results: [] }; });
 
     return Promise.all([calendarPromise, queryPromise]).then(function (batch1) {
       if (refreshId !== dashboardRefreshSeq) return;
@@ -2414,9 +2420,9 @@ var LexeraOrderHelpers = (function () {
       queryResult = batch1[1] || { results: [] };
 
       // Batch 2: todos + first tag (2 concurrent)
-      var todosPromise = LexeraApi.search('is:open').catch(function () { return { results: [] }; });
+      var todosPromise = LexeraApi.search('is:open', dashSearchOpts).catch(function () { return { results: [] }; });
       var firstTagPromise = dashTags.length > 0
-        ? LexeraApi.search(dashTags[0]).then(function (r) { return { tag: dashTags[0], results: r.results || [] }; })
+        ? LexeraApi.search(dashTags[0], dashSearchOpts).then(function (r) { return { tag: dashTags[0], results: r.results || [] }; })
             .catch(function () { return { tag: dashTags[0], results: [] }; })
         : Promise.resolve(null);
       return Promise.all([todosPromise, firstTagPromise]);
@@ -2431,10 +2437,10 @@ var LexeraOrderHelpers = (function () {
         (function (i) {
           chain = chain.then(function () {
             if (refreshId !== dashboardRefreshSeq) return;
-            var p1 = LexeraApi.search(dashTags[i]).then(function (r) { return { tag: dashTags[i], results: r.results || [] }; })
+            var p1 = LexeraApi.search(dashTags[i], dashSearchOpts).then(function (r) { return { tag: dashTags[i], results: r.results || [] }; })
               .catch(function () { return { tag: dashTags[i], results: [] }; });
             var p2 = i + 1 < dashTags.length
-              ? LexeraApi.search(dashTags[i + 1]).then(function (r) { return { tag: dashTags[i + 1], results: r.results || [] }; })
+              ? LexeraApi.search(dashTags[i + 1], dashSearchOpts).then(function (r) { return { tag: dashTags[i + 1], results: r.results || [] }; })
                   .catch(function () { return { tag: dashTags[i + 1], results: [] }; })
               : Promise.resolve(null);
             return Promise.all([p1, p2]).then(function (pair) {
@@ -2455,14 +2461,24 @@ var LexeraOrderHelpers = (function () {
 
       dashboardState.results = limitedSearchResults(scopedQuery, 80);
 
+      // Store total counts from paginated responses
+      dashboardState.resultTotal = queryResult.total || (queryResult.results || []).length;
+
       // Use backend-provided time groups when available, fall back to client-side grouping
       var groups = calendarResponse.groups;
       if (groups) {
-        dashboardState.overdue = limitedSearchResults(filterDashboardResultsByScope(groups.overdue || []), 40);
-        dashboardState.today = limitedSearchResults(filterDashboardResultsByScope(groups.today || []), 40);
-        dashboardState.thisWeek = limitedSearchResults(filterDashboardResultsByScope(groups.thisWeek || []), 40);
-        dashboardState.upcoming = limitedSearchResults(filterDashboardResultsByScope(groups.upcoming || []), 40);
-        dashboardState.later = limitedSearchResults(filterDashboardResultsByScope(groups.later || []), 40);
+        var extractGroup = function (g) { return Array.isArray(g) ? g : (g && g.items) || []; };
+        var extractTotal = function (g) { return (g && g.total != null) ? g.total : (Array.isArray(g) ? g.length : ((g && g.items) || []).length); };
+        dashboardState.overdue = limitedSearchResults(filterDashboardResultsByScope(extractGroup(groups.overdue)), 40);
+        dashboardState.overdueTotal = extractTotal(groups.overdue);
+        dashboardState.today = limitedSearchResults(filterDashboardResultsByScope(extractGroup(groups.today)), 40);
+        dashboardState.todayTotal = extractTotal(groups.today);
+        dashboardState.thisWeek = limitedSearchResults(filterDashboardResultsByScope(extractGroup(groups.thisWeek)), 40);
+        dashboardState.thisWeekTotal = extractTotal(groups.thisWeek);
+        dashboardState.upcoming = limitedSearchResults(filterDashboardResultsByScope(extractGroup(groups.upcoming)), 40);
+        dashboardState.upcomingTotal = extractTotal(groups.upcoming);
+        dashboardState.later = limitedSearchResults(filterDashboardResultsByScope(extractGroup(groups.later)), 40);
+        dashboardState.laterTotal = extractTotal(groups.later);
       } else {
         // Fallback: client-side grouping (for older backends)
         var openCalendar = scopedCalendar.filter(function (item) { return item && item.checked !== true; });
@@ -2500,12 +2516,15 @@ var LexeraOrderHelpers = (function () {
         }
       }
       dashboardState.taggedGroups = taggedGroups;
+      dashboardState._retryCount = 0;
     }).catch(function (err) {
       if (refreshId !== dashboardRefreshSeq) return;
       _callDep('logFrontendIssue', 'error', 'dashboard.search', 'Failed to refresh', err);
       clearDashboardResults();
-      // Retry after 5 seconds if the backend was busy (startup lock contention)
-      scheduleDashboardRefresh(5000);
+      // Retry with exponential backoff if backend was busy
+      var retryDelay = Math.min(30000, 8000 * Math.pow(1.5, (dashboardState._retryCount || 0)));
+      dashboardState._retryCount = (dashboardState._retryCount || 0) + 1;
+      scheduleDashboardRefresh(retryDelay);
     }).then(function () {
       if (refreshId !== dashboardRefreshSeq) return;
       if (dashboardState) dashboardState.loading = false;

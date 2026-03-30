@@ -104,8 +104,9 @@ pub fn search(
     let options = SearchOptions {
         case_sensitive: case_sensitive.unwrap_or(false),
         use_regex: use_regex.unwrap_or(false),
+        ..Default::default()
     };
-    storage.search_with_options(&query, options)
+    storage.search_with_options(&query, options).results
 }
 
 #[tauri::command]

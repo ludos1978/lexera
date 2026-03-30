@@ -249,11 +249,18 @@ var LexeraApi = (function () {
     params.set('q', query || '');
     if (options && options.regex) params.set('regex', 'true');
     if (options && options.caseSensitive) params.set('caseSensitive', 'true');
+    if (options && options.limit != null) params.set('limit', String(options.limit));
+    if (options && options.offset != null) params.set('offset', String(options.offset));
+    if (options && options.truncate != null) params.set('truncate', String(options.truncate));
     return request('/search?' + params.toString(), { timeoutMs: DASHBOARD_TIMEOUT_MS });
   }
 
-  async function getCalendarTasks() {
-    return request('/calendar/tasks', { timeoutMs: DASHBOARD_TIMEOUT_MS });
+  async function getCalendarTasks(options) {
+    var params = new URLSearchParams();
+    if (options && options.limit != null) params.set('limit', String(options.limit));
+    if (options && options.truncate != null) params.set('truncate', String(options.truncate));
+    var qs = params.toString();
+    return request('/calendar/tasks' + (qs ? '?' + qs : ''), { timeoutMs: DASHBOARD_TIMEOUT_MS });
   }
 
   async function checkStatus() {
