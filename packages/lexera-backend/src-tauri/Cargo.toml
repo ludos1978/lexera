@@ -27,10 +27,14 @@ thiserror = "2"
 if-addrs = "0.13"
 percent-encoding = "2"
 rfd = "0.15"
+tower-service = "0.3"
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio", "http1", "http2", "server-auto"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+http = "1"
 tempfile = "3"
 
 [features]

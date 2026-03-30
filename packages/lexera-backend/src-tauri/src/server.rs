@@ -3,9 +3,14 @@ use crate::collab_api::collab_router;
 use crate::state::AppState;
 use crate::sync_ws::sync_router;
 /// HTTP server: spawns axum on a background tokio task.
+/// Supports both HTTP/1.1 and HTTP/2 cleartext (h2c) via hyper-util auto-detection.
+/// HTTP/2 eliminates the browser's 6-connection-per-origin limit by multiplexing
+/// all requests over a single TCP connection.
 use axum::extract::DefaultBodyLimit;
 use axum::Router;
+use hyper_util::rt::TokioIo;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_service::Service;
 
 /// Maximum request body size (50 MB). Boards can contain embedded images.
 const MAX_BODY_SIZE: usize = 50 * 1024 * 1024;
@@ -153,20 +158,58 @@ pub async fn spawn_server(
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
 
     tokio::spawn(async move {
-        let server = axum::serve(listener, app);
-        tokio::select! {
-            result = server => {
-                if let Err(e) = result {
-                    log::error!("HTTP server exited with error: {}", e);
-                }
-            }
-            _ = shutdown_rx.changed() => {
-                log::info!("[server] Shutdown signal received, stopping HTTP server");
-            }
-        }
+        serve_with_h2c(listener, app, &mut shutdown_rx).await;
     });
 
     Ok((actual_port, shutdown_tx))
+}
+
+/// Accept connections and serve each with HTTP/1.1+HTTP/2 auto-detection.
+/// h2c (HTTP/2 cleartext) lets WebView multiplex all requests over one TCP
+/// connection, eliminating the 6-connection-per-origin browser limit.
+async fn serve_with_h2c(
+    listener: tokio::net::TcpListener,
+    app: Router,
+    shutdown_rx: &mut tokio::sync::watch::Receiver<bool>,
+) {
+    loop {
+        tokio::select! {
+            result = listener.accept() => {
+                let (stream, _addr) = match result {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::warn!("[server] Accept error: {}", e);
+                        continue;
+                    }
+                };
+                let io = TokioIo::new(stream);
+                let svc = app.clone();
+                tokio::spawn(async move {
+                    let builder = hyper_util::server::conn::auto::Builder::new(
+                        hyper_util::rt::TokioExecutor::new(),
+                    );
+                    let conn = builder.serve_connection_with_upgrades(
+                        io,
+                        hyper::service::service_fn(move |req| {
+                            let mut s = svc.clone();
+                            async move { s.call(req).await }
+                        }),
+                    );
+                    if let Err(e) = conn.await {
+                        let msg = e.to_string();
+                        // Filter out noisy connection-reset errors
+                        if !msg.contains("connection reset") && !msg.contains("broken pipe") {
+                            log::debug!("[server] Connection error: {}", msg);
+                        }
+                    }
+                });
+            }
+            _ = shutdown_rx.changed() => {
+                log::info!("[server] Shutdown signal received, stopping HTTP server");
+                break;
+            }
+        }
+    }
 }
 
 /// Restart the HTTP server on a new bind address and port.
@@ -214,17 +257,7 @@ pub async fn restart_server(
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
 
     tokio::spawn(async move {
-        let server = axum::serve(listener, app);
-        tokio::select! {
-            result = server => {
-                if let Err(e) = result {
-                    log::error!("HTTP server exited with error: {}", e);
-                }
-            }
-            _ = shutdown_rx.changed() => {
-                log::info!("[server] Shutdown signal received, stopping HTTP server");
-            }
-        }
+        serve_with_h2c(listener, app, &mut shutdown_rx).await;
     });
 
     // Store new shutdown handle (short lock, no await after)
