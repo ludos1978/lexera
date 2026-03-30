@@ -1312,6 +1312,60 @@ var LexeraDashboard = (function () {
       }
     }, 3000);
 
+    // Initialize HiddenItemsDropdown module
+    if (window.HiddenItemsDropdown) {
+      HiddenItemsDropdown.init({
+        escapeHtml: escapeHtml,
+        escapeAttr: escapeAttr,
+        showNotification: showNotification,
+        logFrontendIssue: logFrontendIssue,
+        traceFrontendAction: traceFrontendAction,
+        getActiveBoardId: function () { return activeBoardId; },
+        getIncomingCaptureCache: function () { return incomingCaptureCache; },
+        collectHiddenItems: collectHiddenItems,
+        buildHiddenItemLocation: buildHiddenItemLocation,
+        updateHiddenItemTag: updateHiddenItemTag,
+        captureStableHiddenItemRestoreTarget: captureStableHiddenItemRestoreTarget,
+        restoreHiddenItemToCapturedTarget: restoreHiddenItemToCapturedTarget,
+        getCreationEntityLabel: getCreationEntityLabel,
+        buildCreationEntityDragIconHtml: buildCreationEntityDragIconHtml,
+        resolveCardDropTarget: resolveCardDropTarget,
+        showCardDropIndicator: showCardDropIndicator,
+        clearCardDropIndicators: clearCardDropIndicators,
+        clearCardDragOverHighlights: clearCardDragOverHighlights,
+        clearHeaderDropTargetHighlights: clearHeaderDropTargetHighlights,
+        clearSidebarDropHighlights: clearSidebarDropHighlights,
+        insertDropZoneIndicators: insertDropZoneIndicators,
+        removeDropZoneIndicators: removeDropZoneIndicators,
+        clearPtrDropIndicators: clearPtrDropIndicators,
+        updatePtrDropTargetByType: updatePtrDropTargetByType,
+        insertStackDropZones: insertStackDropZones,
+        removeStackDropZones: removeStackDropZones,
+        getElColumnsContainer: getElColumnsContainer,
+        isPointInsideRect: isPointInsideRect,
+        resolveHeaderCardCreationContext: resolveHeaderCardCreationContext,
+        resolveHeaderColumnCreationContext: resolveHeaderColumnCreationContext,
+        resolveHeaderStackCreationContext: resolveHeaderStackCreationContext,
+        resolveHeaderRowCreationContext: resolveHeaderRowCreationContext,
+        resolveHeaderCreationContext: resolveHeaderCreationContext,
+        handleCreationAction: handleCreationAction,
+        getHeaderCreationDragIndicatorType: getHeaderCreationDragIndicatorType,
+        updateHeaderCreationDragVisualsForTarget: updateHeaderCreationDragVisualsForTarget,
+        clearHeaderCreationDragVisuals: clearHeaderCreationDragVisuals,
+        addCardToActiveBoard: addCardToActiveBoard,
+        addRowFromContent: addRowFromContent,
+        addStackFromContent: addStackFromContent,
+        addColumnFromContent: addColumnFromContent,
+        sanitizeBuiltInDiagramFileName: sanitizeBuiltInDiagramFileName,
+        createBuiltInNamedFile: createBuiltInNamedFile,
+        refreshIncomingCaptureCache: refreshIncomingCaptureCache,
+        refreshBoardHeaderActionStates: refreshBoardHeaderActionStates,
+        formatIncomingCaptureTimestamp: formatIncomingCaptureTimestamp,
+        summarizeIncomingCaptureEntry: summarizeIncomingCaptureEntry,
+        prioritizeDrawioAndExcalidrawTemplates: prioritizeDrawioAndExcalidrawTemplates
+      });
+    }
+
     if ($searchInput) {
       $searchInput.addEventListener('input', onSearchInput);
       $searchInput.addEventListener('keydown', function (e) {
