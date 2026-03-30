@@ -1,3 +1,12 @@
+/**
+ * Board Style — controls board surface, separator, and density visual style.
+ *
+ * Each board style (classic, sleek, sleek-uniform, gap, lines) defines the
+ * visual treatment of cards, separators, and whitespace on the board.
+ * Applied via the data-visual-theme attribute on <html>.
+ *
+ * Color palette is a separate concern handled by themes.js (Application Theme layer).
+ */
 (function () {
   var VISUAL_THEMES = [
     {

@@ -1296,12 +1296,19 @@ var ManagementUI = (function () {
       html += renderWorkspaceSectionHeader(ws.id, 'appearance', 'Appearance');
       html += '<div class="mgmt-workspace-subsection' + (isWorkspaceSectionExpanded(ws.id, 'appearance') ? ' is-expanded' : '') + '" data-mgmt-ws-section-panel="' + esc(ws.id) + ':appearance">';
       html += '<div class="mgmt-sync-grid">';
-      html += '<label>Theme</label>';
+      html += '<label>Board Style</label>';
       html += '<select class="mgmt-field-input" id="mgmt-ws-theme-' + esc(ws.id) + '">';
       html += '<option value=""' + (!ws.theme ? ' selected' : '') + '>Default</option>';
-      var themeOptions = ['bordered', 'gap-highlight', 'lines'];
-      for (var t = 0; t < themeOptions.length; t++) {
-        html += '<option value="' + themeOptions[t] + '"' + (ws.theme === themeOptions[t] ? ' selected' : '') + '>' + themeOptions[t].charAt(0).toUpperCase() + themeOptions[t].slice(1) + '</option>';
+      var styleOptions = [
+        { value: 'classic', label: 'Classic' },
+        { value: 'sleek', label: 'Sleek' },
+        { value: 'sleek-uniform', label: 'Sleek Uniform' },
+        { value: 'gap', label: 'Gap' },
+        { value: 'lines', label: 'Lines' }
+      ];
+      for (var t = 0; t < styleOptions.length; t++) {
+        var normalizedWsTheme = (typeof normalizeLexeraVisualThemeId === 'function') ? normalizeLexeraVisualThemeId(ws.theme) : ws.theme;
+        html += '<option value="' + styleOptions[t].value + '"' + (normalizedWsTheme === styleOptions[t].value ? ' selected' : '') + '>' + styleOptions[t].label + '</option>';
       }
       html += '</select>';
       html += '<label>Layout Preset</label>';
