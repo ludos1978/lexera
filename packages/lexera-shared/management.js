@@ -67,6 +67,7 @@ var ManagementUI = (function () {
   var logFilter = 'all';
   var MAX_RENDERED_LOG_ENTRIES = 500;
   var workspaceSectionExpanded = {};
+  var workspaceInviteAccess = {};
 
   function queryFirst(selector) {
     var ids = Object.keys(mounts);
@@ -286,6 +287,20 @@ var ManagementUI = (function () {
     });
   }
 
+  function workspaceInvitePermissionMessage() {
+    return 'You can manage workspace invites only if you own at least one board in this workspace.';
+  }
+
+  function rememberWorkspaceInviteAccess() {
+    var next = {};
+    for (var i = 0; i < cachedWorkspaces.length; i++) {
+      var wsId = cachedWorkspaces[i] && cachedWorkspaces[i].id;
+      if (!wsId) continue;
+      if (workspaceInviteAccess[wsId]) next[wsId] = workspaceInviteAccess[wsId];
+    }
+    workspaceInviteAccess = next;
+  }
+
   function renderTriStateSelectHtml(attrs, value) {
     var current = value == null ? '' : String(Boolean(value));
     var attrText = attrs ? ' ' + attrs : '';
@@ -399,6 +414,7 @@ var ManagementUI = (function () {
       currentConfig = null;
       expandedBoardId = null;
       activeBoardTab = {};
+      workspaceInviteAccess = {};
       initialized = false;
       lastMutationAt = 0;
       logEntries = [];
@@ -841,7 +857,6 @@ var ManagementUI = (function () {
       case 'delete-workspace': deleteWorkspace(btn.getAttribute('data-mgmt-ws-id'), btn.getAttribute('data-mgmt-ws-name')); break;
       case 'toggle-workspace-section': toggleWorkspaceSection(btn.getAttribute('data-mgmt-ws-id'), btn.getAttribute('data-mgmt-ws-section')); break;
       case 'save-workspace-sync': saveWorkspaceSync(btn.getAttribute('data-mgmt-ws-id')); break;
-      case 'save-workspace-appearance': saveWorkspaceAppearance(btn.getAttribute('data-mgmt-ws-id')); break;
       case 'create-workspace-invite': createWorkspaceInvite(btn.getAttribute('data-mgmt-ws-id')); break;
       case 'revoke-workspace-invite': revokeWorkspaceInvite(btn.getAttribute('data-mgmt-ws-id'), btn.getAttribute('data-mgmt-token')); break;
       case 'save-board-sync': saveBoardSync(boardId); break;
@@ -1251,6 +1266,10 @@ var ManagementUI = (function () {
       cachedWorkspaces = [];
       cachedDefaultWorkspaceId = null;
     }
+    rememberWorkspaceInviteAccess();
+    if (callbacks && typeof callbacks.onWorkspacesLoaded === 'function') {
+      callbacks.onWorkspacesLoaded(cachedWorkspaces.slice(), cachedDefaultWorkspaceId);
+    }
     renderWorkspaces();
     populateDefaultWorkspaceSelect();
   }
@@ -1266,6 +1285,7 @@ var ManagementUI = (function () {
     for (var i = 0; i < cachedWorkspaces.length; i++) {
       var ws = cachedWorkspaces[i];
       var boardCount = typeof ws.board_count === 'number' ? ws.board_count : null;
+      var inviteAccess = workspaceInviteAccess[ws.id] || 'unknown';
       html += '<div class="mgmt-workspace-block">';
       html += '<div class="mgmt-workspace-row">';
       html += '<input class="mgmt-field-input mgmt-ws-name-input" data-mgmt-ws-name-id="' + esc(ws.id) + '" value="' + esc(ws.name) + '">';
@@ -1293,40 +1313,21 @@ var ManagementUI = (function () {
       html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="save-workspace-sync" data-mgmt-ws-id="' + esc(ws.id) + '">Save Sync Defaults</button>';
       html += '</div>';
       html += '</div>';
-      html += renderWorkspaceSectionHeader(ws.id, 'appearance', 'Appearance');
-      html += '<div class="mgmt-workspace-subsection' + (isWorkspaceSectionExpanded(ws.id, 'appearance') ? ' is-expanded' : '') + '" data-mgmt-ws-section-panel="' + esc(ws.id) + ':appearance">';
-      html += '<div class="mgmt-sync-grid">';
-      html += '<label>Board Style</label>';
-      html += '<select class="mgmt-field-input" id="mgmt-ws-theme-' + esc(ws.id) + '">';
-      html += '<option value=""' + (!ws.theme ? ' selected' : '') + '>Default</option>';
-      var styleOptions = [
-        { value: 'classic', label: 'Classic' },
-        { value: 'sleek', label: 'Sleek' },
-        { value: 'sleek-uniform', label: 'Sleek Uniform' },
-        { value: 'gap', label: 'Gap' },
-        { value: 'lines', label: 'Lines' }
-      ];
-      for (var t = 0; t < styleOptions.length; t++) {
-        var normalizedWsTheme = (typeof normalizeLexeraVisualThemeId === 'function') ? normalizeLexeraVisualThemeId(ws.theme) : ws.theme;
-        html += '<option value="' + styleOptions[t].value + '"' + (normalizedWsTheme === styleOptions[t].value ? ' selected' : '') + '>' + styleOptions[t].label + '</option>';
-      }
-      html += '</select>';
-      html += '<label>Layout Preset</label>';
-      html += '<input class="mgmt-field-input" type="text" id="mgmt-ws-layout-preset-' + esc(ws.id) + '" value="' + esc(ws.layoutPreset || '') + '" placeholder="Default">';
-      html += '</div>';
-      html += '<div class="mgmt-settings-actions">';
-      html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="save-workspace-appearance" data-mgmt-ws-id="' + esc(ws.id) + '">Save Appearance</button>';
-      html += '</div>';
-      html += '</div>';
       html += renderWorkspaceSectionHeader(ws.id, 'invites', 'Invitations');
       html += '<div class="mgmt-workspace-subsection' + (isWorkspaceSectionExpanded(ws.id, 'invites') ? ' is-expanded' : '') + '" data-mgmt-ws-section-panel="' + esc(ws.id) + ':invites">';
-      html += '<div class="mgmt-invite-controls">';
-      html += '<select class="mgmt-field-input mgmt-field-select-small" id="mgmt-ws-invite-role-' + esc(ws.id) + '">';
-      html += '<option value="editor">Editor</option><option value="viewer">Viewer</option>';
-      html += '</select>';
-      html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="create-workspace-invite" data-mgmt-ws-id="' + esc(ws.id) + '">Invite</button>';
-      html += '</div>';
-      html += '<div data-mgmt-ws-invites-list="' + esc(ws.id) + '"><span class="mgmt-list-empty">' + (isWorkspaceSectionExpanded(ws.id, 'invites') ? 'Loading...' : 'Expand to load invites') + '</span></div>';
+      if (inviteAccess !== 'forbidden') {
+        html += '<div class="mgmt-invite-controls">';
+        html += '<select class="mgmt-field-input mgmt-field-select-small" id="mgmt-ws-invite-role-' + esc(ws.id) + '">';
+        html += '<option value="editor">Editor</option><option value="viewer">Viewer</option>';
+        html += '</select>';
+        html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="create-workspace-invite" data-mgmt-ws-id="' + esc(ws.id) + '">Invite</button>';
+        html += '</div>';
+      }
+      html += '<div data-mgmt-ws-invites-list="' + esc(ws.id) + '"><span class="mgmt-list-empty">' + (
+        inviteAccess === 'forbidden'
+          ? workspaceInvitePermissionMessage()
+          : (isWorkspaceSectionExpanded(ws.id, 'invites') ? 'Loading...' : 'Expand to load invites')
+      ) + '</span></div>';
       html += '</div>';
       html += '</div>'; // end details fold
       html += '</div>';
@@ -1334,7 +1335,10 @@ var ManagementUI = (function () {
     el.innerHTML = html;
     // Only load invite data for expanded invitation sections.
     for (var wi = 0; wi < cachedWorkspaces.length; wi++) {
-      if (isWorkspaceSectionExpanded(cachedWorkspaces[wi].id, 'invites')) {
+      if (
+        isWorkspaceSectionExpanded(cachedWorkspaces[wi].id, 'invites') &&
+        workspaceInviteAccess[cachedWorkspaces[wi].id] !== 'forbidden'
+      ) {
         loadWorkspaceInvites(cachedWorkspaces[wi].id);
       }
     }
@@ -1447,49 +1451,56 @@ var ManagementUI = (function () {
     }
   }
 
-  async function saveWorkspaceAppearance(wsId) {
-    var themeSelect = queryFirst('#mgmt-ws-theme-' + wsId);
-    var layoutInput = queryFirst('#mgmt-ws-layout-preset-' + wsId);
-
-    var payload = {
-      theme: normalizeOptionalText(themeSelect && themeSelect.value),
-      layout_preset: normalizeOptionalText(layoutInput && layoutInput.value),
-    };
-
-    try {
-      await api.put('/config/workspaces/' + wsId + '/appearance', payload);
-      await loadWorkspaces();
-      notify('Workspace appearance saved');
-    } catch (e) {
-      notify('Failed to save workspace appearance: ' + (e.message || e));
-    }
-  }
-
   async function loadWorkspaceInvites(wsId) {
     if (!me) return;
     var el = queryFirst('[data-mgmt-ws-invites-list="' + wsId + '"]');
     if (!el) return;
+    if (workspaceInviteAccess[wsId] === 'forbidden') {
+      el.innerHTML = '<span class="mgmt-list-empty">' + workspaceInvitePermissionMessage() + '</span>';
+      return;
+    }
     try {
-      var invites = await api.get('/collab/workspaces/' + wsId + '/invites');
+      var invites = await api.get('/collab/workspaces/' + wsId + '/invites', {
+        suppressErrorStatuses: [403]
+      });
+      workspaceInviteAccess[wsId] = 'allowed';
       if (!invites || !invites.length) {
         el.innerHTML = '<span class="mgmt-list-empty">No active invites</span>';
         return;
       }
       el.innerHTML = renderInviteListHtml(invites, 'revoke-workspace-invite', 'data-mgmt-ws-id', wsId);
     } catch (e) {
-      el.innerHTML = '<span class="mgmt-list-empty">No active invites</span>';
+      if (e && e.status === 403) {
+        workspaceInviteAccess[wsId] = 'forbidden';
+        renderWorkspaces();
+        populateDefaultWorkspaceSelect();
+        return;
+      }
+      el.innerHTML = '<span class="mgmt-list-empty">Failed to load invites</span>';
     }
   }
 
   async function createWorkspaceInvite(wsId) {
     if (!me) return;
+    if (workspaceInviteAccess[wsId] === 'forbidden') {
+      notify(workspaceInvitePermissionMessage());
+      return;
+    }
     var roleSelect = queryFirst('#mgmt-ws-invite-role-' + wsId);
     var role = roleSelect ? roleSelect.value : 'editor';
     try {
       await api.post('/collab/workspaces/' + wsId + '/invites', { role: role });
+      workspaceInviteAccess[wsId] = 'allowed';
       await loadWorkspaceInvites(wsId);
       notify('Workspace invite created');
     } catch (e) {
+      if (e && e.status === 403) {
+        workspaceInviteAccess[wsId] = 'forbidden';
+        renderWorkspaces();
+        populateDefaultWorkspaceSelect();
+        notify(workspaceInvitePermissionMessage());
+        return;
+      }
       notify('Failed to create workspace invite: ' + (e.message || e));
     }
   }
@@ -1501,6 +1512,13 @@ var ManagementUI = (function () {
       await loadWorkspaceInvites(wsId);
       notify('Workspace invite revoked');
     } catch (e) {
+      if (e && e.status === 403) {
+        workspaceInviteAccess[wsId] = 'forbidden';
+        renderWorkspaces();
+        populateDefaultWorkspaceSelect();
+        notify(workspaceInvitePermissionMessage());
+        return;
+      }
       notify('Failed to revoke workspace invite: ' + (e.message || e));
     }
   }

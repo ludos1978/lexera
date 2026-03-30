@@ -118,6 +118,9 @@ var LexeraApi = (function () {
 
   async function request(path, options) {
     const method = options && options.method ? String(options.method).toUpperCase() : 'GET';
+    var suppressErrorStatuses = options && Array.isArray(options.suppressErrorStatuses)
+      ? options.suppressErrorStatuses
+      : null;
     const url = await discover();
     if (!url) {
       const error = new Error('Backend not available');
@@ -171,7 +174,10 @@ var LexeraApi = (function () {
       var error = new Error(errorMsg);
       error.status = res.status;
       if (payload) error.data = payload;
-      logApiIssue(res.status >= 500 ? 'error' : 'warn', 'api.request', method + ' ' + path + ' failed: ' + errorMsg, error);
+      var shouldSuppressStatusLog = suppressErrorStatuses && suppressErrorStatuses.indexOf(res.status) !== -1;
+      if (!shouldSuppressStatusLog) {
+        logApiIssue(res.status >= 500 ? 'error' : 'warn', 'api.request', method + ' ' + path + ' failed: ' + errorMsg, error);
+      }
       throw error;
     }
     try {

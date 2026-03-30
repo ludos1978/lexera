@@ -107,4 +107,35 @@ describe('LexeraPollingService', () => {
     expect(deps.LexeraApi.getBoardChanges).toHaveBeenCalledWith('board-1', 1);
     expect(deps.loadBoard).toHaveBeenCalledWith('board-1');
   });
+
+  it('refreshes workspace state after workspace reload', async () => {
+    const service = buildService();
+    const deps = buildDeps({
+      activeWorkspaceId: 'ws-1',
+      LexeraApi: {
+        checkStatus: vi.fn().mockResolvedValue(true),
+        request: vi.fn().mockResolvedValue({
+          workspaces: [{ id: 'ws-1', name: 'Workspace 1' }],
+          default_workspace: 'ws-1',
+        }),
+        getBoards: vi.fn().mockResolvedValue({
+          boards: [{ id: 'board-1', title: 'Board 1', generation: 2 }],
+        }),
+        getRemoteBoards: vi.fn().mockResolvedValue({ boards: [] }),
+        getBoardChanges: vi.fn().mockResolvedValue({
+          available: true,
+          delta: { rows: {} },
+          generation: 2,
+          revision: 'r-2',
+        }),
+      },
+    });
+
+    service.init(deps);
+    await service.poll();
+
+    expect(deps.setWorkspaces).toHaveBeenCalledWith([{ id: 'ws-1', name: 'Workspace 1' }]);
+    expect(deps.resolveActiveWorkspaceId).toHaveBeenCalledWith('ws-1');
+    expect(deps.renderWorkspaceSelect).toHaveBeenCalled();
+  });
 });

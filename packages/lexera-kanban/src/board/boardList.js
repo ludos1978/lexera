@@ -713,18 +713,6 @@ var LexeraBoardList = (function () {
     localStorage.setItem('lexera-active-workspace', _dep('activeWorkspaceId'));
   }
 
-  function applyWorkspaceAppearance(workspaceId) {
-    var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
-    if (!workspaceId || workspaceId === ALL_WORKSPACES_ID) return;
-    var workspaces = _dep('workspaces');
-    var ws = null;
-    for (var i = 0; i < workspaces.length; i++) {
-      if (workspaces[i].id === workspaceId) { ws = workspaces[i]; break; }
-    }
-    if (!ws) return;
-    if (ws.theme) _callDep('applyVisualTheme', ws.theme);
-  }
-
   function resolveActiveWorkspaceId(defaultWorkspaceId) {
     var activeWorkspaceId = _dep('activeWorkspaceId');
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
@@ -795,7 +783,6 @@ var LexeraBoardList = (function () {
       var selectEl = e.target.closest('.lexera-shared-workspace-select');
       if (!selectEl) return;
       setActiveWorkspaceId(selectEl.value);
-      applyWorkspaceAppearance(selectEl.value);
       renderWorkspaceSelect();
       renderBoardList();
     });
@@ -904,7 +891,6 @@ var LexeraBoardList = (function () {
 
     sel.onchange = function () {
       setActiveWorkspaceId(sel.value);
-      applyWorkspaceAppearance(sel.value);
       renderWorkspaceSelect();
       renderBoardList();
     };
@@ -978,7 +964,6 @@ var LexeraBoardList = (function () {
       upEl.innerHTML = '<div class="tree-node workspace-nav-item" data-tree-depth="0"><span class="workspace-nav-icon">\u2190</span> All Workspaces</div>';
       upEl.addEventListener('dblclick', function () {
         setActiveWorkspaceId(ALL_WORKSPACES_ID);
-        applyWorkspaceAppearance(ALL_WORKSPACES_ID);
         renderWorkspaceSelect();
         renderBoardList();
       });
@@ -1039,7 +1024,6 @@ var LexeraBoardList = (function () {
           wsHeader.addEventListener('dblclick', function (e) {
             e.stopPropagation();
             setActiveWorkspaceId(wsId);
-            applyWorkspaceAppearance(wsId);
             renderWorkspaceSelect();
             renderBoardList();
           });
@@ -1412,7 +1396,6 @@ var LexeraBoardList = (function () {
     refreshBoardHierarchyCache: refreshBoardHierarchyCache,
     cardPreviewText: cardPreviewText,
     setActiveWorkspaceId: setActiveWorkspaceId,
-    applyWorkspaceAppearance: applyWorkspaceAppearance,
     resolveActiveWorkspaceId: resolveActiveWorkspaceId,
     dispatchMirrorMouseEvent: dispatchMirrorMouseEvent,
     findCanonicalHierarchyTarget: findCanonicalHierarchyTarget,

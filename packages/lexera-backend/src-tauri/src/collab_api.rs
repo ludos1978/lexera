@@ -9,9 +9,11 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
+use lexera_core::storage::local::LocalStorage;
 use lexera_core::storage::BoardStorage;
 use lexera_core::watcher::types::BoardChangeEvent;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Minimum allowed port number for server configuration (ports below this are privileged).
@@ -200,6 +202,19 @@ fn require_invite_permission_in_state(
     require_invite_permission(&auth_service, room_id, user_id)
 }
 
+fn workspace_board_ids(state: &AppState, workspace_id: &str) -> Result<Vec<String>> {
+    let cfg = lock_arc(&state.config, "config")?;
+    Ok(cfg
+        .boards
+        .iter()
+        .filter(|board| board.workspace_ids.iter().any(|id| id == workspace_id))
+        .map(|board| {
+            let path = std::fs::canonicalize(&board.file).unwrap_or_else(|_| PathBuf::from(&board.file));
+            LocalStorage::board_id_from_path(&path)
+        })
+        .collect())
+}
+
 /// Check that the user is an owner of at least one board in the workspace.
 /// Workspace invites grant access to all boards, so only board owners may create them.
 fn require_workspace_invite_permission(
@@ -207,14 +222,7 @@ fn require_workspace_invite_permission(
     workspace_id: &str,
     user_id: &str,
 ) -> Result<()> {
-    let board_ids: Vec<String> = {
-        let cfg = lock_arc(&state.config, "config")?;
-        cfg.boards
-            .iter()
-            .filter(|b| b.workspace_ids.iter().any(|id| id == workspace_id))
-            .map(|b| b.file.clone())
-            .collect()
-    };
+    let board_ids = workspace_board_ids(state, workspace_id)?;
 
     let auth = lock_arc(&state.auth_service, "auth")?;
     let is_owner = board_ids
@@ -428,14 +436,7 @@ async fn accept_invite(
 
     if join.scope == "workspace" {
         // Workspace invite: add user to all boards in this workspace
-        let board_ids: Vec<String> = {
-            let cfg = lock_arc(&state.config, "config")?;
-            cfg.boards
-                .iter()
-                .filter(|b| b.workspace_ids.iter().any(|id| id == &join.room_id))
-                .map(|b| b.file.clone())
-                .collect()
-        };
+        let board_ids = workspace_board_ids(&state, &join.room_id)?;
 
         let mut auth_service = lock_arc(&state.auth_service, "auth")?;
         for board_id in &board_ids {
@@ -1403,6 +1404,7 @@ mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use axum::Router;
+    use lexera_core::config::{BoardEntry, WorkspaceEntry};
     use tower::ServiceExt;
 
     use crate::state::AppState;
@@ -1935,6 +1937,138 @@ mod tests {
         assert!(!returned_token.is_empty(), "auth_token must not be empty");
         // The returned token should be the acceptor's existing token
         assert_eq!(returned_token, acceptor_token);
+    }
+
+    #[tokio::test]
+    async fn create_workspace_invite_allows_owner_of_board_in_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = tmp.path().join("workspace-board.md");
+        std::fs::write(&board_path, crate::test_helpers::MINIMAL_BOARD).unwrap();
+
+        let state = test_state(tmp.path());
+        let board_id = state.storage.add_board(&board_path).unwrap();
+        let board_path = std::fs::canonicalize(&board_path).unwrap_or(board_path);
+
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.workspaces.push(WorkspaceEntry {
+                id: "ws-1".into(),
+                name: "Workspace".into(),
+                ..WorkspaceEntry::default()
+            });
+            cfg.boards.push(BoardEntry {
+                file: board_path.to_string_lossy().to_string(),
+                workspace_ids: vec!["ws-1".into()],
+                ..BoardEntry::default()
+            });
+        }
+
+        let owner_token = {
+            let mut auth = state.auth_service.lock().unwrap();
+            let token = auth
+                .register_user(crate::auth::User {
+                    id: "owner".into(),
+                    name: "Owner".into(),
+                    email: None,
+                })
+                .unwrap();
+            auth.add_to_room(&board_id, "owner", crate::auth::RoomRole::Owner, "test")
+                .unwrap();
+            token
+        };
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/workspaces/ws-1/invites")
+                    .header("authorization", format!("Bearer {}", owner_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::json!({ "role": "editor" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["scope"], "workspace");
+        assert_eq!(json["room_id"], "ws-1");
+    }
+
+    #[tokio::test]
+    async fn accept_workspace_invite_adds_user_to_board_ids_not_file_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = tmp.path().join("workspace-accept.md");
+        std::fs::write(&board_path, crate::test_helpers::MINIMAL_BOARD).unwrap();
+
+        let state = test_state(tmp.path());
+        let board_id = state.storage.add_board(&board_path).unwrap();
+        let board_path = std::fs::canonicalize(&board_path).unwrap_or(board_path);
+
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.workspaces.push(WorkspaceEntry {
+                id: "ws-accept".into(),
+                name: "Workspace Accept".into(),
+                ..WorkspaceEntry::default()
+            });
+            cfg.boards.push(BoardEntry {
+                file: board_path.to_string_lossy().to_string(),
+                workspace_ids: vec!["ws-accept".into()],
+                ..BoardEntry::default()
+            });
+        }
+
+        let invite_token = {
+            let mut invite_svc = state.invite_service.lock().unwrap();
+            invite_svc
+                .create_invite(
+                    crate::invite::CreateInviteRequest {
+                        room_id: "ws-accept".into(),
+                        inviter_id: "owner".into(),
+                        role: "viewer".into(),
+                        expires_in_hours: None,
+                        max_uses: Some(3),
+                        scope: "workspace".into(),
+                    },
+                    Some("Workspace Accept".into()),
+                )
+                .unwrap()
+                .token
+        };
+
+        let acceptor_token = {
+            let mut auth = state.auth_service.lock().unwrap();
+            auth.register_user(crate::auth::User {
+                id: "acceptor".into(),
+                name: "Acceptor".into(),
+                email: None,
+            })
+            .unwrap()
+        };
+
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/collab/invites/{}/accept", invite_token))
+                    .header("authorization", format!("Bearer {}", acceptor_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let auth = state.auth_service.lock().unwrap();
+        assert_eq!(
+            auth.get_role(&board_id, "acceptor"),
+            Some(crate::auth::RoomRole::Viewer)
+        );
+        assert_eq!(auth.get_role(&board_path.to_string_lossy(), "acceptor"), None);
     }
 
     #[tokio::test]

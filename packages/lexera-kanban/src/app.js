@@ -159,6 +159,7 @@ var LexeraDashboard = (function () {
     setIsEditing: function(v) { isEditing = v; },
     getSyncUserName: function() { return syncUserName; },
     getSyncUserId: function() { return syncUserId; },
+    shouldBroadcastEditingPresence: function() { return shouldBroadcastEditingPresence(activeBoardId); },
     queueCardDraftLiveSync: function(ci, fi, c) { queueCardDraftLiveSync(ci, fi, c); },
     queueEditingPresenceBroadcast: function(kid, pos, typing) { queueEditingPresenceBroadcast(kid, pos, typing); },
     handleTextareaTabIndent: function(e, ta) { return handleTextareaTabIndent(e, ta); },
@@ -199,6 +200,7 @@ var LexeraDashboard = (function () {
     LexeraApi: LexeraApi,
     getSyncUserName: function() { return syncUserName; },
     getSyncUserId: function() { return syncUserId; },
+    shouldBroadcastEditingPresence: function() { return shouldBroadcastEditingPresence(activeBoardId); },
     queueCardDraftLiveSync: function(ci, fi, c) { queueCardDraftLiveSync(ci, fi, c); },
     queueEditingPresenceBroadcast: function(kid, pos, typing) { queueEditingPresenceBroadcast(kid, pos, typing); },
     handleTextareaTabIndent: function(e, ta) { return handleTextareaTabIndent(e, ta); },
@@ -1237,7 +1239,22 @@ var LexeraDashboard = (function () {
   function getElEmptyState() { return _cachedEl('es', 'empty-state'); }
   function getElSearchResults() { return _cachedEl('sr', 'search-results'); }
   function getElLogPanel() { return _cachedEl('lp', 'log-panel'); }
-  function getElLogSettingsContainer() { return document.getElementById('backend-settings-container') || document.getElementById('mgmt-panel-body'); }
+  var elLogSettingsContainer = null;
+  var elLogSettingsPane = null;
+  function getElLogSettingsContainer() {
+    if (elLogSettingsContainer && document.body && document.body.contains(elLogSettingsContainer)) {
+      return elLogSettingsContainer;
+    }
+    var shellContainer =
+      document.querySelector('[data-shell-panel="backendSettings"] .lexera-shared-backend-settings-container') ||
+      document.querySelector('.lexera-shared-backend-settings-container') ||
+      document.getElementById('backend-settings-container');
+    if (shellContainer) {
+      elLogSettingsContainer = shellContainer;
+      return shellContainer;
+    }
+    return null;
+  }
   function getElMgmtPanel() { return _cachedEl('mp', 'mgmt-panel'); }
   function getElMgmtPanelBody() { return _cachedEl('mpb', 'mgmt-panel-body'); }
   function getElMgmtClose() { return _cachedEl('mgc', 'mgmt-close'); }
@@ -2375,7 +2392,6 @@ var LexeraDashboard = (function () {
   async function refreshBoardHierarchyCache(boardList) { return _bl('refreshBoardHierarchyCache', boardList); }
   function cardPreviewText(content) { return _bl('cardPreviewText', content); }
   function setActiveWorkspaceId(workspaceId) { _bl('setActiveWorkspaceId', workspaceId); }
-  function applyWorkspaceAppearance(workspaceId) { _bl('applyWorkspaceAppearance', workspaceId); }
   function resolveActiveWorkspaceId(defaultWorkspaceId) { _bl('resolveActiveWorkspaceId', defaultWorkspaceId); }
   function dispatchMirrorMouseEvent(targetEl, eventType, sourceEvent) { return _bl('dispatchMirrorMouseEvent', targetEl, eventType, sourceEvent); }
   function findCanonicalHierarchyTarget(sourceTarget) { return _bl('findCanonicalHierarchyTarget', sourceTarget); }
@@ -6677,7 +6693,7 @@ var LexeraDashboard = (function () {
   var mgmtInitialized = false;
   function getManagementUiContainer() {
     if (workspaceShellEnabled) {
-      return getElLogSettingsContainer() || getElMgmtPanelBody();
+      return getElLogSettingsContainer();
     }
     return getElMgmtPanelBody();
   }
@@ -6770,7 +6786,7 @@ var LexeraDashboard = (function () {
   }
 
   var mgmtApiAdapter = {
-    get: function (path) { return LexeraApi.request(path); },
+    get: function (path, options) { return LexeraApi.request(path, options); },
     post: function (path, body) {
       return LexeraApi.request(path, {
         method: 'POST',
@@ -6802,6 +6818,14 @@ var LexeraDashboard = (function () {
       return null;
     },
     onNotify: function (msg) { showNotification(msg); },
+    onWorkspacesLoaded: function (workspaceList, defaultWorkspaceId) {
+      var nextWorkspaces = Array.isArray(workspaceList) ? workspaceList : [];
+      workspaces = nextWorkspaces;
+      if (_rt) _rt.setState('workspaces', nextWorkspaces);
+      resolveActiveWorkspaceId(defaultWorkspaceId || null);
+      renderWorkspaceSelect();
+      renderBoardList();
+    },
     onConfirm: function (msg) { return showConfirmDialog(msg); },
     onBoardAdded: function () { poll(); },
     onBoardRemoved: function (boardId) {
@@ -6903,7 +6927,7 @@ var LexeraDashboard = (function () {
   }
 
   function getEmbeddedManagementUiOptions() {
-    if (workspaceShellEnabled) return getManagementUiPreset('backendSettings');
+    if (workspaceShellEnabled) return getManagementUiPreset('backendConfig');
     return getManagementUiPreset('combinedManagement');
   }
 
@@ -6992,6 +7016,7 @@ var LexeraDashboard = (function () {
     var preferredTab = getManagementTopTab(options.section, targetContext);
     rememberManagementTab(targetContext, preferredTab);
     if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.revealPanel === 'function') {
+      runInitManagementUI();
       WorkspaceShell.revealPanel(targetContext);
       applyPendingManagementTab(targetContext);
       return;
@@ -6999,6 +7024,11 @@ var LexeraDashboard = (function () {
     runInitManagementUI();
     applyPendingManagementTab('combinedManagement');
     if (getElMgmtPanel()) getElMgmtPanel().classList.add('open');
+  }
+
+  function runInitManagementUI() {
+    if (mgmtInitialized) return;
+    initManagementUI();
   }
 
   function closeManagementPanel() {
@@ -10033,11 +10063,12 @@ var LexeraDashboard = (function () {
       return;
     }
 
-    var boardItem = grip.closest('.board-item');
+    var boardItem = grip.closest('.board-item[data-board-index][data-board-id]');
     if (boardItem) {
       var boardIndex = parseInt(boardItem.getAttribute('data-board-index'), 10);
+      var boardId = String(boardItem.getAttribute('data-board-id') || '').trim();
       if (isNaN(boardIndex)) return;
-      var newPtrDrag = { type: 'board', source: { type: 'board', index: boardIndex }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: boardItem };
+      var newPtrDrag = { type: 'board', source: { type: 'board', index: boardIndex, boardId: boardId }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: boardItem };
       var boardStartTop = toTopFramePoint(window, e.clientX, e.clientY);
       if (boardStartTop) {
         newPtrDrag.startTopX = boardStartTop.x;

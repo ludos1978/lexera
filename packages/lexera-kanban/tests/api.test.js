@@ -414,6 +414,21 @@ describe('request', () => {
       expect.stringContaining('failed')
     );
   });
+
+  it('can suppress warning logs for expected error statuses while still throwing', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      text: () => Promise.resolve('Forbidden'),
+    });
+
+    await expect(Api.request('/collab/workspaces/ws-1/invites', {
+      suppressErrorStatuses: [403],
+    })).rejects.toThrow('403: Forbidden');
+
+    expect(mockLexeraLogWithTarget).not.toHaveBeenCalled();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
