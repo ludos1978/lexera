@@ -273,6 +273,7 @@ class ExportUI {
         this.initialOptions = null;
         this.eventsBound = false;
         this.suppressPresetReset = false;
+        this._userEditedTargetFolder = false;
     }
 
     // ── Public API ──────────────────────────────────────────────────────
@@ -557,15 +558,6 @@ class ExportUI {
         var format = this._val('export-format');
         var boardName = this.boardName || 'export';
 
-        // Build timestamp: YYYYMMDD-HHMM
-        var now = new Date();
-        var ts = now.getFullYear().toString()
-            + String(now.getMonth() + 1).padStart(2, '0')
-            + String(now.getDate()).padStart(2, '0')
-            + '-'
-            + String(now.getHours()).padStart(2, '0')
-            + String(now.getMinutes()).padStart(2, '0');
-
         // Build range label from selected export scopes
         var range = 'full';
         var selection = this.treeUI
@@ -582,7 +574,19 @@ class ExportUI {
         }
 
         var safeName = boardName.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 40);
-        input.value = safeName + '-' + ts + '-' + range;
+        input.value = safeName + '-' + range;
+
+        // Set default target folder to {board-folder}/_Export if user hasn't manually edited it
+        if (!this._userEditedTargetFolder) {
+            var targetInput = document.getElementById('export-target-folder');
+            if (targetInput) {
+                var boardFolder = this._deriveBoardFolder(this.boardData);
+                if (boardFolder) {
+                    var sep = boardFolder.indexOf('\\') >= 0 ? '\\' : '/';
+                    targetInput.value = boardFolder + sep + '_Export';
+                }
+            }
+        }
     }
 
     // ── Tool Availability ───────────────────────────────────────────────
@@ -779,7 +783,15 @@ class ExportUI {
             previewBtn.addEventListener('click', function () { self.executeExport('preview'); });
         }
 
-        // Browse button for target folder (uses Tauri dialog if available)
+        // Track manual edits to target folder input
+        var targetFolderInput = document.getElementById('export-target-folder');
+        if (targetFolderInput) {
+            targetFolderInput.addEventListener('input', function () {
+                self._userEditedTargetFolder = true;
+            });
+        }
+
+        // Browse button for target folder
         var browseBtn = document.getElementById('export-btn-browse');
         if (browseBtn) {
             browseBtn.addEventListener('click', async function () {
@@ -1202,23 +1214,36 @@ class ExportUI {
         return String(boardData.filePath || boardData.file || '').trim();
     }
 
+    _deriveBoardFolder(boardData) {
+        var filePath = this._deriveSourceFilePath(boardData);
+        if (!filePath) return '';
+        var normalized = filePath.replace(/\\/g, '/');
+        var lastSlash = normalized.lastIndexOf('/');
+        if (lastSlash < 0) return '';
+        // Return using original separators
+        return filePath.substring(0, lastSlash);
+    }
+
     /**
-     * Browse for a target folder using Tauri dialog if available.
+     * Browse for a target folder using the browse_folder Tauri command.
      */
     async _browseTargetFolder() {
         try {
-            if (window.__TAURI__ && window.__TAURI__.dialog && window.__TAURI__.dialog.open) {
-                var selected = await window.__TAURI__.dialog.open({
-                    directory: true,
-                    multiple: false,
+            if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+                var currentValue = this._val('export-target-folder') || '';
+                var selected = await window.__TAURI__.core.invoke('browse_folder', {
                     title: 'Select export target folder',
+                    defaultPath: currentValue || null,
                 });
                 if (selected) {
                     var input = document.getElementById('export-target-folder');
-                    if (input) input.value = selected;
+                    if (input) {
+                        input.value = selected;
+                        this._userEditedTargetFolder = true;
+                    }
                 }
             } else {
-                lexeraLog('warn', '[kanban.export.browse] Tauri dialog not available');
+                lexeraLog('warn', '[kanban.export.browse] Tauri invoke not available');
             }
         } catch (err) {
             lexeraLog('warn', '[kanban.export.browse] ' + (err.message || String(err)));

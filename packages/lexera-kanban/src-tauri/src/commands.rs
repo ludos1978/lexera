@@ -117,6 +117,28 @@ pub async fn browse_files(
     Ok(result)
 }
 
+/// Open a native folder browse dialog and return the selected folder path.
+#[tauri::command]
+pub async fn browse_folder(
+    title: Option<String>,
+    default_path: Option<String>,
+) -> Result<Option<String>, String> {
+    let mut builder = rfd::AsyncFileDialog::new();
+    if let Some(t) = &title {
+        builder = builder.set_title(t);
+    }
+    if let Some(p) = &default_path {
+        let path = std::path::PathBuf::from(p);
+        if path.exists() {
+            builder = builder.set_directory(&path);
+        }
+    }
+    match builder.pick_folder().await {
+        Some(f) => Ok(Some(f.path().to_string_lossy().to_string())),
+        None => Ok(None),
+    }
+}
+
 /// Open a file with the system default application.
 #[tauri::command]
 pub fn open_with_default_app(path: String) -> Result<(), String> {
