@@ -979,13 +979,27 @@ var LexeraOrderHelpers = (function () {
 
   function setShellActiveBoard(boardId) {
     // Guard against re-entrant calls (selectBoard → notifyParent → shell → here)
-    if (_shellBoardChangeInProgress) return;
+    if (_shellBoardChangeInProgress) {
+      _callDep('logFrontendIssue', 'debug', 'shell.board', 'setShellActiveBoard re-entrant, skipping', { boardId: boardId });
+      return;
+    }
     _shellBoardChangeInProgress = true;
     try {
+      var currentBoardId = _dep('activeBoardId');
+      _callDep('logFrontendIssue', 'info', 'shell.board', 'setShellActiveBoard called', {
+        boardId: boardId,
+        currentBoardId: currentBoardId,
+        hasSelectBoard: typeof _dep('selectBoard') === 'function'
+      });
       // The workspace shell notifies us that a different board tab is now active.
       // Use selectBoard (which calls loadBoard internally) for full lifecycle.
-      if (boardId && boardId !== _dep('activeBoardId')) {
-        _callDep('selectBoard', boardId);
+      if (boardId && boardId !== currentBoardId) {
+        var result = _callDep('selectBoard', boardId);
+        _callDep('logFrontendIssue', 'info', 'shell.board', 'selectBoard returned', {
+          boardId: boardId,
+          resultType: typeof result,
+          isPromise: !!(result && typeof result.then === 'function')
+        });
       } else if (!boardId) {
         _callDep('setActiveBoardId', null);
         _callDep('setActiveBoardData', null);
