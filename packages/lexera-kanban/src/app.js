@@ -2380,8 +2380,14 @@ var LexeraDashboard = (function () {
     }
     renderBoardList();
     refreshHeaderFileControls();
-    scheduleDashboardRefresh(60);
-    if (!options.skipLoad) await loadBoard(boardId);
+    if (!options.skipLoad) {
+      await loadBoard(boardId);
+      // Schedule dashboard refresh AFTER board is loaded — avoids race
+      // where dashboard queries while fullBoardData is still null
+      scheduleDashboardRefresh(60);
+    } else {
+      scheduleDashboardRefresh(60);
+    }
   }
 
   async function loadBoard(boardId) {

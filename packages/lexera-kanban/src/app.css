@@ -1246,7 +1246,9 @@ textarea {
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-secondary);
-  padding: 2px 0;
+  padding: 2px var(--space-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 .dashboard-empty {
   font-size: var(--font-size-sm);
@@ -6195,6 +6197,7 @@ select.dialog-input option,
 }
 .log-panel-header.log-panel-has-error .log-panel-tab.active {
   opacity: 1;
+  color: var(--text-bright);
 }
 .log-panel-error-msg {
   display: none;
@@ -6258,6 +6261,8 @@ select.dialog-input option,
 .log-panel-actions {
   display: flex;
   gap: var(--btn-gap);
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .log-panel-btn {

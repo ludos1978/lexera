@@ -993,7 +993,7 @@ var LexeraOrderHelpers = (function () {
     }
     _callDep('renderBoardList');
     refreshHeaderFileControls();
-    scheduleDashboardRefresh(8000);
+    scheduleDashboardRefresh(120);
   }
 
   function setupWorkspaceShell() {
@@ -1829,6 +1829,12 @@ var LexeraOrderHelpers = (function () {
               return _match;
             });
 
+            String(content).replace(/(^|[^!])\[([^\]]+)\]\(([^)]+)\)/g, function (_match, _prefix, _label, rawTarget) {
+              var parsed = _callDep('parseMarkdownTarget', rawTarget);
+              appendDashboardFileGroup(embedStore, 'embed', parsed && parsed.path ? parsed.path : rawTarget, contextLabel);
+              return _match;
+            });
+
             String(content).replace(/!!!include\(([^)]+)\)!!!/g, function (_match, rawIncludePath) {
               appendDashboardFileGroup(includeStore, 'include', rawIncludePath, contextLabel);
               return _match;
@@ -1837,6 +1843,64 @@ var LexeraOrderHelpers = (function () {
         }
       }
     }
+    return {
+      fileEmbeds: embedStore.list,
+      includedFiles: includeStore.list
+    };
+  }
+
+  function getDashboardInventoryContextLabelFromElement(el) {
+    var colEl = el && typeof el.closest === 'function' ? el.closest('.column') : null;
+    if (!colEl) return '';
+    var rawTitle = typeof colEl.getAttribute === 'function' ? String(colEl.getAttribute('data-col-title') || '').trim() : '';
+    if (!rawTitle && typeof colEl.querySelector === 'function') {
+      var titleEl = colEl.querySelector('.column-title');
+      rawTitle = titleEl && titleEl.textContent ? String(titleEl.textContent || '').trim() : '';
+    }
+    return removeIncludeSyntaxFromTitle(rawTitle);
+  }
+
+  function collectDashboardFileReferencesFromContainer(container) {
+    var embedStore = { list: [], byKey: {} };
+    var includeStore = { list: [], byKey: {} };
+    if (!container || typeof container.querySelectorAll !== 'function') {
+      return {
+        fileEmbeds: embedStore.list,
+        includedFiles: includeStore.list
+      };
+    }
+
+    var embedSelector = [
+      '.embed-container[data-file-path]',
+      '.inline-file-embed-container[data-file-path]',
+      '.link-path-overlay-container[data-file-path]',
+      '.image-path-overlay-container[data-file-path]',
+      '.video-path-overlay-container[data-file-path]',
+      '.wysiwyg-media[data-file-path]',
+      '.wysiwyg-media-block[data-file-path]'
+    ].join(', ');
+    var includeSelector = [
+      '.column-include-badge[data-include-path]',
+      '.include-inline-container[data-file-path]',
+      '.include-link-container[data-file-path]'
+    ].join(', ');
+
+    var embedEls = container.querySelectorAll(embedSelector);
+    for (var embedIdx = 0; embedIdx < embedEls.length; embedIdx++) {
+      var embedEl = embedEls[embedIdx];
+      var embedPath = typeof embedEl.getAttribute === 'function' ? embedEl.getAttribute('data-file-path') || '' : '';
+      appendDashboardFileGroup(embedStore, 'embed', embedPath, getDashboardInventoryContextLabelFromElement(embedEl));
+    }
+
+    var includeEls = container.querySelectorAll(includeSelector);
+    for (var includeIdx = 0; includeIdx < includeEls.length; includeIdx++) {
+      var includeEl = includeEls[includeIdx];
+      var includePath = typeof includeEl.getAttribute === 'function'
+        ? (includeEl.getAttribute('data-include-path') || includeEl.getAttribute('data-file-path') || '')
+        : '';
+      appendDashboardFileGroup(includeStore, 'include', includePath, getDashboardInventoryContextLabelFromElement(includeEl));
+    }
+
     return {
       fileEmbeds: embedStore.list,
       includedFiles: includeStore.list
@@ -1944,7 +2008,7 @@ var LexeraOrderHelpers = (function () {
     var state = ensureDashboardState();
     var boardId = _dep('activeBoardId') || '';
     var boardData = _dep('fullBoardData');
-    if (!boardId || !boardData || !_dep('connected')) {
+    if (!boardId || !_dep('connected')) {
       state.fileInventoryLoading = false;
       state.fileEmbeds = [];
       state.includedFiles = [];
@@ -1956,7 +2020,14 @@ var LexeraOrderHelpers = (function () {
       return Promise.resolve();
     }
 
-    var refs = collectDashboardFileReferences(boardData);
+    var refs = boardData
+      ? collectDashboardFileReferences(boardData)
+      : { fileEmbeds: [], includedFiles: [] };
+    if (!refs.fileEmbeds.length || !refs.includedFiles.length) {
+      var containerRefs = collectDashboardFileReferencesFromContainer(getDashboardBrokenScanContainer());
+      if (!refs.fileEmbeds.length) refs.fileEmbeds = containerRefs.fileEmbeds;
+      if (!refs.includedFiles.length) refs.includedFiles = containerRefs.includedFiles;
+    }
     var seq = ++dashboardFileInventorySeq;
     state.fileInventoryLoading = true;
     renderDashboardFileEmbedsList();
@@ -2401,8 +2472,9 @@ var LexeraOrderHelpers = (function () {
     return LexeraApi.checkStatus().catch(function () { return null; }).then(function (status) {
       if (refreshId !== dashboardRefreshSeq) return;
       if (!status) {
-        // Backend not ready — retry with exponential backoff
+        // Backend not ready — retry with exponential backoff, but re-render to clear loading indicator
         dashboardState.loading = false;
+        renderDashboard();
         var retryDelay = Math.min(30000, 5000 * Math.pow(1.5, (dashboardState._retryCount || 0)));
         dashboardState._retryCount = (dashboardState._retryCount || 0) + 1;
         scheduleDashboardRefresh(retryDelay);
@@ -2789,6 +2861,7 @@ var LexeraOrderHelpers = (function () {
     bindMirroredDashboardView: bindMirroredDashboardView,
     syncMirroredDashboardViews: syncMirroredDashboardViews,
     collectDashboardFileReferences: collectDashboardFileReferences,
+    collectDashboardFileReferencesFromContainer: collectDashboardFileReferencesFromContainer,
     collectDashboardFileEmbeds: collectDashboardFileEmbeds,
     collectDashboardIncludedFiles: collectDashboardIncludedFiles,
     scanBrokenElements: scanBrokenElements,
