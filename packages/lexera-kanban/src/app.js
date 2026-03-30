@@ -6912,17 +6912,52 @@ var LexeraDashboard = (function () {
   }
   window.openConnectionWindow = openConnectionWindow;
 
-  function showNotification(message) {
+  var _notificationQueue = [];
+  var _notificationActive = null;
+
+  /**
+   * Show a toast notification.
+   * @param {string} message — text to display
+   * @param {object} [opts] — optional: { variant: 'error'|'success'|'warn'|'info', duration: ms, action: { label, callback } }
+   */
+  function showNotification(message, opts) {
+    opts = opts || {};
+    _notificationQueue.push({ message: message, opts: opts });
+    if (!_notificationActive) _drainNotificationQueue();
+  }
+
+  function _drainNotificationQueue() {
+    if (_notificationQueue.length === 0) { _notificationActive = null; return; }
+    var item = _notificationQueue.shift();
     var el = document.createElement('div');
-    el.className = 'notification';
-    el.textContent = message;
+    var variant = item.opts.variant || 'info';
+    el.className = 'notification notification-' + variant;
+    var msgSpan = document.createElement('span');
+    msgSpan.className = 'notification-msg';
+    msgSpan.textContent = item.message;
+    el.appendChild(msgSpan);
+    if (item.opts.action && item.opts.action.label) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'notification-action';
+      btn.textContent = item.opts.action.label;
+      btn.addEventListener('click', function () {
+        if (typeof item.opts.action.callback === 'function') item.opts.action.callback();
+        el.classList.remove('visible');
+        setTimeout(function () { el.remove(); _drainNotificationQueue(); }, 200);
+      });
+      el.appendChild(btn);
+    }
     document.body.appendChild(el);
     el.offsetHeight; // force reflow
     el.classList.add('visible');
+    _notificationActive = el;
+    var duration = item.opts.duration || 3000;
     setTimeout(function () {
+      if (!el.isConnected) return;
       el.classList.remove('visible');
-      setTimeout(function () { el.remove(); }, 300);
-    }, 3000);
+      setTimeout(function () { el.remove(); _drainNotificationQueue(); }, 300);
+    }, duration);
   }
 
   function toggleInspector() {
@@ -8656,7 +8691,9 @@ var LexeraDashboard = (function () {
     titleContainer.className = 'card-title-container';
     var titleDisplay = document.createElement('div');
     titleDisplay.className = 'card-title-display';
-    titleDisplay.innerHTML = renderTitleInline(getCardTitle(getIncludeResolvedContent(card.content, colIndex)), activeBoardId);
+    var _cardTitleRaw = getCardTitle(getIncludeResolvedContent(card.content, colIndex));
+    titleDisplay.innerHTML = renderTitleInline(_cardTitleRaw, activeBoardId);
+    titleDisplay.title = _cardTitleRaw.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim();
     titleContainer.appendChild(titleDisplay);
     headerRow.appendChild(titleContainer);
     if (toggle) {
@@ -8913,7 +8950,7 @@ var LexeraDashboard = (function () {
     header.innerHTML =
       (isCanvasLayout ? '' : '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>') +
       buildCreationEntityDragIconHtml('column', ['title="Drag to move column"']) +
-      '<span class="column-title">' + renderTitleInline(displayTitle, activeBoardId, { allowIncludeDirectives: true }) + '</span>' +
+      '<span class="column-title" title="' + escapeAttr(displayTitle.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + renderTitleInline(displayTitle, activeBoardId, { allowIncludeDirectives: true }) + '</span>' +
       includeIndicator +
       '<span class="column-count">' + col.cards.length + (colLayout.wipLimit > 0 ? '/' + colLayout.wipLimit : '') + '</span>' +
       '<span class="column-header-actions">' +
@@ -9124,7 +9161,7 @@ var LexeraDashboard = (function () {
       rowHeader.innerHTML =
         '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
         buildCreationEntityDragIconHtml('row', ['title="Drag to move row"']) +
-        '<span class="board-row-title">' + renderTitleInline(rowDisplayTitle, activeBoardId, {}) + '</span>' +
+        '<span class="board-row-title" title="' + escapeAttr(rowDisplayTitle.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + renderTitleInline(rowDisplayTitle, activeBoardId, {}) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>' +
         '<span class="row-header-actions">' +
           '<button class="row-menu-btn burger-menu-btn" title="Row options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
@@ -9268,7 +9305,7 @@ var LexeraDashboard = (function () {
         stackHeader.innerHTML =
           (isCanvasLayout ? '' : '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>') +
           buildCreationEntityDragIconHtml('stack', ['title="Drag to move stack"']) +
-          '<span class="board-stack-title">' + (stackDisplayTitle ? renderTitleInline(stackDisplayTitle, activeBoardId, {}) : '&nbsp;') + '</span>' +
+          '<span class="board-stack-title" title="' + escapeAttr((stackDisplayTitle || '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + (stackDisplayTitle ? renderTitleInline(stackDisplayTitle, activeBoardId, {}) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
           '<span class="stack-header-actions">' +
             '<button class="stack-menu-btn burger-menu-btn" title="Stack options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +

@@ -5032,6 +5032,23 @@ select.dialog-input option,
   opacity: 1;
   transform: translateY(0);
 }
+.notification-error { border-left-color: var(--error); }
+.notification-success { border-left-color: var(--success); }
+.notification-warn { border-left-color: #e6a817; }
+.notification-info { border-left-color: var(--accent); }
+.notification-msg { flex: 1; }
+.notification-action {
+  margin-left: 12px;
+  background: none;
+  border: 1px solid var(--text-secondary);
+  border-radius: 3px;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: calc(11px * var(--ui-scale));
+}
+.notification-action:hover { background: var(--bg-primary); }
+.notification { display: flex; align-items: center; gap: 8px; max-width: 400px; }
 
 /* Card editing */
 .card.editing-overlay { border-color: var(--accent); }
