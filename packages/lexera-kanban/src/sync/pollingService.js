@@ -71,8 +71,13 @@ var LexeraPollingService = (function () {
         _callDep('logFrontendIssue', 'warn', 'boards.remote', 'Failed to load remote boards', err);
         _callDep('setRemoteBoards', []);
       }
-      await _callDep('refreshBoardHierarchyCache', _dep('boards'));
       _callDep('renderBoardList');
+      var hierarchyRefresh = _callDep('refreshBoardHierarchyCache', _dep('boards'));
+      if (hierarchyRefresh && typeof hierarchyRefresh.catch === 'function') {
+        hierarchyRefresh.catch(function (err) {
+          _callDep('logFrontendIssue', 'warn', 'hierarchy.cache', 'Failed to refresh board hierarchy cache', err);
+        });
+      }
       if (_dep('workspaceShellEnabled') && _dep('WorkspaceShell') && typeof _dep('WorkspaceShell').onBoardsUpdated === 'function') {
         _dep('WorkspaceShell').onBoardsUpdated(_dep('boards').concat(_dep('remoteBoards')));
       }

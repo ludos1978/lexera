@@ -574,12 +574,17 @@ var LexeraBoardList = (function () {
   // ─── Board hierarchy cache ────────────────────────────────────────
 
   var boardHierarchyCache = {};
+  var boardHierarchyInflight = {};
+  var BOARD_HIERARCHY_CACHE_STALE_MS = 60000;
+  var BOARD_HIERARCHY_REFRESH_CONCURRENCY = 2;
 
-  function setBoardHierarchyRows(boardId, fullBoard, fallbackTitle) {
+  function setBoardHierarchyRows(boardId, fullBoard, fallbackTitle, options) {
     if (!boardId) return;
+    options = options || {};
     boardHierarchyCache[boardId] = {
       rows: rowsForBoardData(fullBoard, fallbackTitle),
       updatedAt: Date.now(),
+      revision: options.revision || null,
     };
   }
 
@@ -595,6 +600,57 @@ var LexeraBoardList = (function () {
 
   function deleteBoardHierarchyCacheEntry(boardId) {
     delete boardHierarchyCache[boardId];
+    delete boardHierarchyInflight[boardId];
+  }
+
+  function touchBoardHierarchyCacheEntry(boardId) {
+    var cached = boardHierarchyCache[boardId];
+    if (!cached) return;
+    cached.updatedAt = Date.now();
+  }
+
+  function shouldHydrateBoardHierarchy(boardMeta, expandedIds, activeBoardId) {
+    if (!boardMeta || !boardMeta.id) return false;
+    if (boardMeta.id === activeBoardId) return true;
+    return Array.isArray(expandedIds) && expandedIds.indexOf(boardMeta.id) !== -1;
+  }
+
+  function shouldRefreshBoardHierarchyEntry(boardMeta, cached) {
+    if (!boardMeta || !boardMeta.id) return false;
+    if (!cached) return true;
+    if (boardHierarchyInflight[boardMeta.id]) return false;
+    return Date.now() - (cached.updatedAt || 0) >= BOARD_HIERARCHY_CACHE_STALE_MS;
+  }
+
+  function fetchBoardHierarchyEntry(boardMeta, LexeraApi) {
+    if (!boardMeta || !boardMeta.id || !LexeraApi) return Promise.resolve();
+    if (boardHierarchyInflight[boardMeta.id]) return boardHierarchyInflight[boardMeta.id];
+
+    var cached = boardHierarchyCache[boardMeta.id] || null;
+    var request = (cached && cached.revision)
+      ? LexeraApi.getBoardHierarchyCached(boardMeta.id, cached.revision)
+      : LexeraApi.getBoardHierarchy(boardMeta.id);
+
+    var promise = Promise.resolve(request).then(function (response) {
+      if (response && response.notModified) {
+        touchBoardHierarchyCacheEntry(boardMeta.id);
+        return;
+      }
+      setBoardHierarchyRows(
+        boardMeta.id,
+        response || null,
+        response && response.title ? response.title : (boardMeta.title || 'Board'),
+        { revision: response && response.revision ? response.revision : null }
+      );
+      _callDep('renderBoardList');
+    }).catch(function (err) {
+      lexeraLog('warn', '[hierarchy.cache] Failed to load board ' + boardMeta.id + ': ' + err.message);
+    }).finally(function () {
+      delete boardHierarchyInflight[boardMeta.id];
+    });
+
+    boardHierarchyInflight[boardMeta.id] = promise;
+    return promise;
   }
 
   async function refreshBoardHierarchyCache(boardList) {
@@ -602,6 +658,7 @@ var LexeraBoardList = (function () {
     var fullBoardData = _dep('fullBoardData');
     var activeBoardData = _dep('activeBoardData');
     var LexeraApi = _dep('LexeraApi');
+    var expandedIds = getSidebarExpandedBoards();
     var keep = {};
     for (var i = 0; i < boardList.length; i++) keep[boardList[i].id] = true;
     var cachedIds = Object.keys(boardHierarchyCache);
@@ -618,19 +675,31 @@ var LexeraBoardList = (function () {
           activeBoardData &&
           activeBoardData.rows
         ) {
-          setBoardHierarchyRows(boardMeta.id, fullBoardData, boardMeta.title || 'Board');
+          setBoardHierarchyRows(boardMeta.id, fullBoardData, boardMeta.title || 'Board', {
+            revision: activeBoardData.revision || null
+          });
           return;
         }
-        tasks.push(
-          LexeraApi.getBoardColumns(boardMeta.id).then(function (response) {
-            setBoardHierarchyRows(boardMeta.id, response.fullBoard || null, response.title || boardMeta.title || 'Board');
-          }).catch(function (err) {
-            lexeraLog('warn', '[hierarchy.cache] Failed to load board ' + boardMeta.id + ': ' + err.message);
-          })
-        );
+        if (!shouldHydrateBoardHierarchy(boardMeta, expandedIds, activeBoardId)) return;
+        var cached = boardHierarchyCache[boardMeta.id];
+        if (!shouldRefreshBoardHierarchyEntry(boardMeta, cached)) return;
+        tasks.push(boardMeta);
       })(boardList[k]);
     }
-    if (tasks.length > 0) await Promise.all(tasks);
+    if (tasks.length === 0) return;
+
+    var queueIndex = 0;
+    var workerCount = Math.min(BOARD_HIERARCHY_REFRESH_CONCURRENCY, tasks.length);
+    var workers = [];
+    for (var workerIndex = 0; workerIndex < workerCount; workerIndex++) {
+      workers.push((async function () {
+        while (queueIndex < tasks.length) {
+          var taskIndex = queueIndex++;
+          await fetchBoardHierarchyEntry(tasks[taskIndex], LexeraApi);
+        }
+      })());
+    }
+    await Promise.all(workers);
   }
 
   function cardPreviewText(content) {

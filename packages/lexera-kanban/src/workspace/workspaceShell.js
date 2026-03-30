@@ -673,6 +673,9 @@
     lastNotifiedBoardId: '',
     boardsById: {},
     frameCache: {},
+    loadedBoardFrames: {},
+    deferredBoardLoadQueue: [],
+    deferredBoardLoadTimer: 0,
     hooks: {},
     rootEl: null,
     toolbarEl: null,
@@ -1886,7 +1889,71 @@
     return '';
   }
 
-  function getOrCreateFrame(tab) {
+  function shouldLoadBoardFrame(tab, options) {
+    if (!tab || isPanelTab(tab)) return false;
+    if (options && options.shouldLoad === true) return true;
+    return !!state.loadedBoardFrames[tab.id];
+  }
+
+  function syncBoardFrameSource(view, tab, options) {
+    if (!view || !tab || isPanelTab(tab)) return;
+    var desiredSrc = getEmbeddedUrlForTab(tab);
+    var loadedSrc = view.getAttribute('data-loaded-src') || '';
+    view.setAttribute('data-src', desiredSrc);
+    view.setAttribute('title', getTabTitle(tab));
+    if (!shouldLoadBoardFrame(tab, options)) return;
+    state.loadedBoardFrames[tab.id] = true;
+    if (loadedSrc === desiredSrc) return;
+    view.src = desiredSrc;
+    view.setAttribute('data-loaded-src', desiredSrc);
+  }
+
+  function clearDeferredBoardFrameLoads() {
+    if (state.deferredBoardLoadTimer) {
+      clearTimeout(state.deferredBoardLoadTimer);
+      state.deferredBoardLoadTimer = 0;
+    }
+    state.deferredBoardLoadQueue = [];
+  }
+
+  function buildDeferredBoardFrameQueue() {
+    var queue = [];
+    visitTree(state.dockTree, function (node) {
+      if (!node || node.type !== 'tabs' || node.id === state.activeLeafId) return;
+      var activeTabId = node.activeTabId || (node.tabs && node.tabs[0] ? node.tabs[0].id : '');
+      if (!activeTabId) return;
+      var found = findTab(state.dockTree, activeTabId);
+      if (!found || !found.tab || isPanelTab(found.tab)) return;
+      if (state.loadedBoardFrames[found.tab.id]) return;
+      queue.push(found.tab.id);
+    });
+    return queue;
+  }
+
+  function pumpDeferredBoardFrameLoads() {
+    state.deferredBoardLoadTimer = 0;
+    if (!state.mounted || isPanelOnlyWindow()) return;
+    while (state.deferredBoardLoadQueue.length > 0) {
+      var nextTabId = state.deferredBoardLoadQueue.shift();
+      var found = findTab(state.dockTree, nextTabId);
+      if (!found || !found.tab || isPanelTab(found.tab)) continue;
+      var frame = getOrCreateFrame(found.tab, { shouldLoad: true });
+      syncBoardFrameSource(frame, found.tab, { shouldLoad: true });
+      break;
+    }
+    if (state.deferredBoardLoadQueue.length > 0) {
+      state.deferredBoardLoadTimer = setTimeout(pumpDeferredBoardFrameLoads, 700);
+    }
+  }
+
+  function scheduleDeferredBoardFrameLoads() {
+    clearDeferredBoardFrameLoads();
+    state.deferredBoardLoadQueue = buildDeferredBoardFrameQueue();
+    if (state.deferredBoardLoadQueue.length === 0) return;
+    state.deferredBoardLoadTimer = setTimeout(pumpDeferredBoardFrameLoads, 350);
+  }
+
+  function getOrCreateFrame(tab, options) {
     var view = state.frameCache[tab.id];
     if (isPanelTab(tab)) {
       if (!view) {
@@ -1913,20 +1980,17 @@
       view = document.createElement('iframe');
       view.className = 'workspace-shell-view workspace-shell-frame';
       view.setAttribute('data-tab-id', tab.id);
-      view.setAttribute('data-src', desiredSrc);
       view.setAttribute('title', getTabTitle(tab));
-      view.src = desiredSrc;
+      view.setAttribute('data-src', desiredSrc);
+      view.setAttribute('loading', 'lazy');
       view.addEventListener('pointerdown', function () {
         activateTab(tab.id);
       });
       state.frameCache[tab.id] = view;
+      syncBoardFrameSource(view, tab, options);
       return view;
     }
-    if (view.getAttribute('data-src') !== desiredSrc) {
-      view.setAttribute('data-src', desiredSrc);
-      view.src = desiredSrc;
-    }
-    view.setAttribute('title', getTabTitle(tab));
+    syncBoardFrameSource(view, tab, options);
     return view;
   }
 
@@ -1935,6 +1999,10 @@
     if (!frame) return;
     if (frame.parentNode) frame.parentNode.removeChild(frame);
     delete state.frameCache[tabId];
+    delete state.loadedBoardFrames[tabId];
+    state.deferredBoardLoadQueue = state.deferredBoardLoadQueue.filter(function (queuedTabId) {
+      return queuedTabId !== tabId;
+    });
   }
 
   function activateTab(tabId) {
@@ -2906,8 +2974,9 @@
     found.tab.viewKind = normalized;
     found.leaf.activeTabId = tabId;
     if (!options || options.activate !== false) state.activeLeafId = found.leaf.id;
-    var frame = getOrCreateFrame(found.tab);
+    var frame = getOrCreateFrame(found.tab, { shouldLoad: true });
     frame.setAttribute('data-src', '');
+    frame.removeAttribute('data-loaded-src');
     render();
     return true;
   }
@@ -3433,7 +3502,9 @@
       contentEl.appendChild(emptyEl);
     } else {
       for (var j = 0; j < node.tabs.length; j++) {
-        var frame = getOrCreateFrame(node.tabs[j]);
+        var frame = getOrCreateFrame(node.tabs[j], {
+          shouldLoad: node.tabs[j].id === node.activeTabId && node.id === state.activeLeafId
+        });
         frame.classList.toggle('is-active', node.tabs[j].id === node.activeTabId);
         contentEl.appendChild(frame);
       }
@@ -3544,7 +3615,9 @@
         }
         viewEl.setAttribute('data-panel-id', resolvePanelTarget(tab.panelId));
       } else {
-        viewEl.setAttribute('title', getTabTitle(tab));
+        syncBoardFrameSource(viewEl, tab, {
+          shouldLoad: tab.id === node.activeTabId && node.id === state.activeLeafId
+        });
       }
     }
 
@@ -3602,6 +3675,7 @@
       }
     }
     renderPanelDocks();
+    scheduleDeferredBoardFrameLoads();
     // Recalculate tab overflow after DOM updates
     requestAnimationFrame(function () {
       if (!state.rootEl) return;
@@ -3694,7 +3768,7 @@
       viewKind: options.viewKind
     });
     if (!tab) return false;
-    var frame = getOrCreateFrame(tab);
+    var frame = getOrCreateFrame(tab, { shouldLoad: true });
     function sendFocus() {
       if (!frame || !frame.contentWindow) return;
       frame.contentWindow.postMessage({
@@ -3718,8 +3792,10 @@
     if (data.type === 'lexera-pane-board-change') {
       var found = findTab(state.dockTree, data.pane);
       if (!found) return;
-      found.tab.boardId = data.boardId || found.tab.boardId;
-      activateTab(found.tab.id);
+      var nextBoardId = data.boardId || found.tab.boardId;
+      if (nextBoardId === found.tab.boardId) return;
+      found.tab.boardId = nextBoardId;
+      render();
       return;
     }
     if (data.type === 'lexera-pane-set-view-kind') {
@@ -3738,7 +3814,7 @@
   function forwardActionToActiveFrame(action) {
     var activeTab = getActiveTab();
     if (!activeTab) return false;
-    var frame = getOrCreateFrame(activeTab);
+    var frame = getOrCreateFrame(activeTab, { shouldLoad: true });
     if (!frame || !frame.contentWindow) return false;
     frame.contentWindow.postMessage({
       type: 'lexera-board-action',
@@ -3750,7 +3826,7 @@
   function getActiveBoardColumnsContainer() {
     var activeTab = getActiveTab();
     if (!activeTab || isPanelTab(activeTab)) return null;
-    var frame = state.frameCache[activeTab.id] || getOrCreateFrame(activeTab);
+    var frame = state.frameCache[activeTab.id] || getOrCreateFrame(activeTab, { shouldLoad: true });
     if (!frame) return null;
     try {
       var doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document) || null;

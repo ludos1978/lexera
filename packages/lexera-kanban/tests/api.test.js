@@ -448,6 +448,20 @@ describe('getBoardColumns', () => {
   });
 });
 
+describe('getBoardHierarchy', () => {
+  it('calls request with /boards/{id}/hierarchy', async () => {
+    const hierarchy = { rows: [] };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(hierarchy),
+    });
+
+    const result = await Api.getBoardHierarchy('board-42');
+    expect(result).toEqual(hierarchy);
+    expect(mockFetch.mock.calls[0][0]).toBe('http://localhost:13080/boards/board-42/hierarchy');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // getBoardColumnsCached — ETag / 304 handling
 // ═══════════════════════════════════════════════════════════════════════════
@@ -487,6 +501,32 @@ describe('getBoardColumnsCached', () => {
 
     const callArgs = mockFetch.mock.calls[0];
     expect(callArgs[1].headers['If-None-Match']).toBeUndefined();
+  });
+});
+
+describe('getBoardHierarchyCached', () => {
+  it('sends If-None-Match header when version is provided', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ rows: [] }),
+    });
+
+    await Api.getBoardHierarchyCached('b1', 'v5');
+
+    const callArgs = mockFetch.mock.calls[0];
+    expect(callArgs[1].headers['If-None-Match']).toBe('"v5"');
+    expect(callArgs[0]).toBe('http://localhost:13080/boards/b1/hierarchy');
+  });
+
+  it('returns notModified: true on 304 response', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 304,
+    });
+
+    const result = await Api.getBoardHierarchyCached('b1', 'v5');
+    expect(result).toEqual({ notModified: true, version: 'v5' });
   });
 });
 
@@ -577,6 +617,32 @@ describe('getCalendarTasks', () => {
 
     expect(result).toEqual({ results: [] });
     expect(mockFetch.mock.calls[0][0]).toBe('http://localhost:13080/calendar/tasks');
+  });
+});
+
+describe('getDashboardData', () => {
+  it('posts dashboard aggregation requests to /dashboard/data', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ query: { results: [] }, tags: [], calendar: { results: [] } }),
+    });
+
+    await Api.getDashboardData({
+      q: 'login',
+      tags: ['#important', '#blocked'],
+      searchLimit: 30,
+      calendarLimit: 20,
+    });
+
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe('http://localhost:13080/dashboard/data');
+    expect(opts.method).toBe('POST');
+    expect(JSON.parse(opts.body)).toEqual({
+      q: 'login',
+      tags: ['#important', '#blocked'],
+      searchLimit: 30,
+      calendarLimit: 20,
+    });
   });
 });
 

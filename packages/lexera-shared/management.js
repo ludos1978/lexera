@@ -91,11 +91,10 @@ var ManagementUI = (function () {
     return results;
   }
 
-  function anyMountHasTab(tabName) {
+  function anyMountShowingTopTab(tabName) {
     var ids = Object.keys(mounts);
     for (var i = 0; i < ids.length; i++) {
-      var opts = mounts[ids[i]].uiOptions;
-      if (opts && opts.topTabs && opts.topTabs.indexOf(tabName) !== -1) return true;
+      if (mounts[ids[i]].activeTopTab === tabName) return true;
     }
     return false;
   }
@@ -369,10 +368,12 @@ var ManagementUI = (function () {
       id: id,
       container: mc,
       uiOptions: buildUiOptions(options.ui),
+      activeTopTab: null,
       delegateHandler: null,
       delegateChangeHandler: null,
       keydownHandler: null
     };
+    mountObj.activeTopTab = mountObj.uiOptions.defaultTopTab;
     mounts[id] = mountObj;
     initialized = true;
     renderShellForMount(mountObj);
@@ -436,16 +437,16 @@ var ManagementUI = (function () {
     if (section === 'connections') { loadConnections(); return; }
     if (section === 'peers') { loadDiscoveredPeers(); return; }
     if (section === 'workspaces') { loadWorkspaces(); return; }
-    if (section === 'logs') { if (anyMountHasTab('logs')) loadLogs(); return; }
+    if (section === 'logs') { if (anyMountShowingTopTab('logs')) loadLogs(); return; }
     loadAllForMounts();
   }
 
   async function loadAllForMounts() {
-    var needsNetwork = anyMountHasTab('network');
-    var needsWorkspaces = anyMountHasTab('sharing') || anyMountHasTab('workspaces');
-    var needsBoards = anyMountHasTab('sharing') || anyMountHasTab('boards');
-    var needsConfig = anyMountHasTab('config');
-    var needsLogs = anyMountHasTab('logs');
+    var needsNetwork = anyMountShowingTopTab('network');
+    var needsWorkspaces = anyMountShowingTopTab('sharing') || anyMountShowingTopTab('workspaces');
+    var needsBoards = anyMountShowingTopTab('sharing') || anyMountShowingTopTab('boards');
+    var needsConfig = anyMountShowingTopTab('config');
+    var needsLogs = anyMountShowingTopTab('logs');
 
     if (needsNetwork) await loadIdentity();
     var initialLoads = [];
@@ -675,8 +676,10 @@ var ManagementUI = (function () {
         mc.querySelectorAll('.mgmt-top-tab').forEach(function (t) { t.classList.remove('active'); });
         mc.querySelectorAll('.mgmt-top-tab-content').forEach(function (c) { c.classList.remove('active'); });
         topTab.classList.add('active');
+        mountObj.activeTopTab = tabName;
         var panel = mc.querySelector('[data-mgmt-top-panel="' + tabName + '"]');
         if (panel) panel.classList.add('active');
+        loadAllForMounts();
         if (tabName === 'logs') renderLogs(false);
         return;
       }
@@ -1316,15 +1319,17 @@ var ManagementUI = (function () {
       html += '</select>';
       html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="create-workspace-invite" data-mgmt-ws-id="' + esc(ws.id) + '">Invite</button>';
       html += '</div>';
-      html += '<div data-mgmt-ws-invites-list="' + esc(ws.id) + '"><span class="mgmt-list-empty">Loading...</span></div>';
+      html += '<div data-mgmt-ws-invites-list="' + esc(ws.id) + '"><span class="mgmt-list-empty">' + (isWorkspaceSectionExpanded(ws.id, 'invites') ? 'Loading...' : 'Expand to load invites') + '</span></div>';
       html += '</div>';
       html += '</div>'; // end details fold
       html += '</div>';
     }
     el.innerHTML = html;
-    // Load workspace invites for each workspace
+    // Only load invite data for expanded invitation sections.
     for (var wi = 0; wi < cachedWorkspaces.length; wi++) {
-      loadWorkspaceInvites(cachedWorkspaces[wi].id);
+      if (isWorkspaceSectionExpanded(cachedWorkspaces[wi].id, 'invites')) {
+        loadWorkspaceInvites(cachedWorkspaces[wi].id);
+      }
     }
   }
 
@@ -1349,6 +1354,9 @@ var ManagementUI = (function () {
     if (!wsId || !section) return;
     setWorkspaceSectionExpanded(wsId, section, !isWorkspaceSectionExpanded(wsId, section));
     updateWorkspaceSectionUi(wsId, section);
+    if (section === 'invites' && isWorkspaceSectionExpanded(wsId, section)) {
+      loadWorkspaceInvites(wsId);
+    }
   }
 
   async function addWorkspace() {

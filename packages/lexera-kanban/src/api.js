@@ -186,16 +186,20 @@ var LexeraApi = (function () {
     return request('/boards');
   }
 
+  async function getBoardHierarchy(boardId) {
+    return request('/boards/' + boardId + '/hierarchy');
+  }
+
   async function getBoardColumns(boardId) {
     return request('/boards/' + boardId + '/columns');
   }
 
-  async function getBoardColumnsCached(boardId, revision) {
+  async function requestCachedJson(path, revision, target) {
     const url = await discover();
     if (!url) {
       const error = new Error('Backend not available');
-      logApiIssue('error', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns failed: backend not available', error, {
-        dedupeKey: 'api.getBoardColumnsCached.no-backend|' + boardId,
+      logApiIssue('error', target, 'GET ' + path + ' failed: backend not available', error, {
+        dedupeKey: target + '.no-backend|' + path,
         dedupeWindowMs: 3000
       });
       throw error;
@@ -207,15 +211,15 @@ var LexeraApi = (function () {
     var timeoutId = setTimeout(function () { controller.abort(); }, DEFAULT_TIMEOUT_MS);
     let res;
     try {
-      res = await fetch(url + '/boards/' + boardId + '/columns', { headers, signal: controller.signal });
+      res = await fetch(url + path, { headers, signal: controller.signal });
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        var timeoutError = new Error('Request timed out: GET /boards/' + boardId + '/columns');
-        logApiIssue('error', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns timed out after ' + DEFAULT_TIMEOUT_MS + 'ms', timeoutError);
+        var timeoutError = new Error('Request timed out: GET ' + path);
+        logApiIssue('error', target, 'GET ' + path + ' timed out after ' + DEFAULT_TIMEOUT_MS + 'ms', timeoutError);
         throw timeoutError;
       }
-      logApiIssue('error', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns transport failed', error);
+      logApiIssue('error', target, 'GET ' + path + ' transport failed', error);
       throw error;
     }
     clearTimeout(timeoutId);
@@ -225,15 +229,23 @@ var LexeraApi = (function () {
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);
       const error = new Error(`${res.status}: ${text}`);
-      logApiIssue(res.status >= 500 ? 'error' : 'warn', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns failed', error);
+      logApiIssue(res.status >= 500 ? 'error' : 'warn', target, 'GET ' + path + ' failed', error);
       throw error;
     }
     try {
       return await res.json();
     } catch (error) {
-      logApiIssue('error', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns returned invalid JSON', error);
+      logApiIssue('error', target, 'GET ' + path + ' returned invalid JSON', error);
       throw error;
     }
+  }
+
+  async function getBoardHierarchyCached(boardId, revision) {
+    return requestCachedJson('/boards/' + boardId + '/hierarchy', revision, 'api.getBoardHierarchyCached');
+  }
+
+  async function getBoardColumnsCached(boardId, revision) {
+    return requestCachedJson('/boards/' + boardId + '/columns', revision, 'api.getBoardColumnsCached');
   }
 
   async function addCard(boardId, colIndex, content) {
@@ -261,6 +273,15 @@ var LexeraApi = (function () {
     if (options && options.truncate != null) params.set('truncate', String(options.truncate));
     var qs = params.toString();
     return request('/calendar/tasks' + (qs ? '?' + qs : ''), { timeoutMs: DASHBOARD_TIMEOUT_MS });
+  }
+
+  async function getDashboardData(options) {
+    return request('/dashboard/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+      timeoutMs: DASHBOARD_TIMEOUT_MS,
+    });
   }
 
   async function checkStatus() {
@@ -863,9 +884,9 @@ var LexeraApi = (function () {
   }
 
   return {
-    discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
+    discover, request, getBoards, getBoardHierarchy, getBoardHierarchyCached, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
     probeExternalEmbed,
-    openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search, getCalendarTasks,
+    openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search, getCalendarTasks, getDashboardData,
     checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, fileInfoBatch, uploadMedia, addBoard, removeBoard,
     getCaptureHistory, removeCaptureEntry,
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate, sendEditingPresence,

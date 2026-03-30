@@ -2407,57 +2407,27 @@ var LexeraOrderHelpers = (function () {
     var query = dashboardState.query ? dashboardState.query.trim() : '';
     var calendarScopedQuery = isDashboardCalendarQuery(query);
     var dashTags = getDashboardTags();
-
-    // Batch requests in pairs to limit backend read-lock concurrency
-    var queryResult, calendarResponse, todosResult, tagResults = [];
+    var queryResult = { results: [] };
+    var calendarResponse = { results: [] };
+    var todosResult = { results: [] };
+    var tagResults = [];
 
     // Pagination options for dashboard requests
     var dashSearchOpts = { limit: 30, truncate: 200 };
     var dashCalendarOpts = { limit: 20 };
 
-    // Batch 1: calendar + query search (2 concurrent)
-    var queryPromise = query && !calendarScopedQuery
-      ? LexeraApi.search(query, dashSearchOpts).catch(function () { return { results: [] }; })
-      : Promise.resolve({ results: [] });
-    var calendarPromise = LexeraApi.getCalendarTasks(dashCalendarOpts).catch(function () { return { results: [] }; });
-
-    return Promise.all([calendarPromise, queryPromise]).then(function (batch1) {
+    return LexeraApi.getDashboardData({
+      q: query,
+      tags: dashTags,
+      searchLimit: dashSearchOpts.limit,
+      searchTruncate: dashSearchOpts.truncate,
+      calendarLimit: dashCalendarOpts.limit
+    }).then(function (data) {
       if (refreshId !== dashboardRefreshSeq) return;
-      calendarResponse = batch1[0] || {};
-      queryResult = batch1[1] || { results: [] };
-
-      // Batch 2: todos + first tag (2 concurrent)
-      var todosPromise = LexeraApi.search('is:open', dashSearchOpts).catch(function () { return { results: [] }; });
-      var firstTagPromise = dashTags.length > 0
-        ? LexeraApi.search(dashTags[0], dashSearchOpts).then(function (r) { return { tag: dashTags[0], results: r.results || [] }; })
-            .catch(function () { return { tag: dashTags[0], results: [] }; })
-        : Promise.resolve(null);
-      return Promise.all([todosPromise, firstTagPromise]);
-    }).then(function (batch2) {
-      if (refreshId !== dashboardRefreshSeq) return;
-      todosResult = (batch2 && batch2[0]) || { results: [] };
-      if (batch2 && batch2[1]) tagResults.push(batch2[1]);
-
-      // Batch 3: remaining tags (2 at a time)
-      var chain = Promise.resolve();
-      for (var ti = 1; ti < dashTags.length; ti += 2) {
-        (function (i) {
-          chain = chain.then(function () {
-            if (refreshId !== dashboardRefreshSeq) return;
-            var p1 = LexeraApi.search(dashTags[i], dashSearchOpts).then(function (r) { return { tag: dashTags[i], results: r.results || [] }; })
-              .catch(function () { return { tag: dashTags[i], results: [] }; });
-            var p2 = i + 1 < dashTags.length
-              ? LexeraApi.search(dashTags[i + 1], dashSearchOpts).then(function (r) { return { tag: dashTags[i + 1], results: r.results || [] }; })
-                  .catch(function () { return { tag: dashTags[i + 1], results: [] }; })
-              : Promise.resolve(null);
-            return Promise.all([p1, p2]).then(function (pair) {
-              if (pair[0]) tagResults.push(pair[0]);
-              if (pair[1]) tagResults.push(pair[1]);
-            });
-          });
-        })(ti);
-      }
-      return chain;
+      queryResult = (data && data.query) || { results: [] };
+      calendarResponse = (data && data.calendar) || { results: [] };
+      todosResult = (data && data.todos) || { results: [] };
+      tagResults = data && Array.isArray(data.tags) ? data.tags : [];
     }).then(function () {
       if (refreshId !== dashboardRefreshSeq) return;
 
