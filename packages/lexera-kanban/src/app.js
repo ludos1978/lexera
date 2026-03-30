@@ -6909,14 +6909,31 @@ var LexeraDashboard = (function () {
 
   function initManagementUI() {
     var managementContainer = getManagementUiContainer();
-    if (mgmtInitialized || !managementContainer) return;
+    if (mgmtInitialized || !managementContainer) {
+      traceFrontendAction('debug', 'mgmt.init', 'initManagementUI skipped', {
+        initialized: mgmtInitialized,
+        hasContainer: !!managementContainer
+      });
+      return;
+    }
+    if (typeof ManagementUI === 'undefined' || !ManagementUI) {
+      traceFrontendAction('warn', 'mgmt.init', 'ManagementUI not loaded yet — deferring init');
+      setTimeout(initManagementUI, 500);
+      return;
+    }
     mgmtInitialized = true;
-    ManagementUI.init({
-      container: managementContainer,
-      ui: getEmbeddedManagementUiOptions(),
-      api: mgmtApiAdapter,
-      callbacks: mgmtCallbacks,
-    });
+    try {
+      ManagementUI.init({
+        container: managementContainer,
+        ui: getEmbeddedManagementUiOptions(),
+        api: mgmtApiAdapter,
+        callbacks: mgmtCallbacks,
+      });
+    } catch (err) {
+      logFrontendIssue('error', 'mgmt.init', 'ManagementUI.init failed', err);
+      mgmtInitialized = false;
+      return;
+    }
     if (_rt) _rt.setViewLoading(managementContainer, false);
     applyPendingManagementTab(workspaceShellEnabled ? 'backendSettings' : 'combinedManagement', managementContainer);
   }

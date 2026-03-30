@@ -96,6 +96,22 @@
       /* ignore localStorage errors */
     }
 
+    // Broadcast visual theme to all board iframes (workspace shell panes)
+    if (typeof document !== 'undefined') {
+      var iframes = document.querySelectorAll('iframe');
+      for (var fi = 0; fi < iframes.length; fi++) {
+        try {
+          var iframeRoot = iframes[fi].contentDocument && iframes[fi].contentDocument.documentElement;
+          if (iframeRoot) {
+            iframeRoot.setAttribute('data-visual-theme', baseThemeId);
+            iframeRoot.setAttribute('data-visual-theme-variant', normalized);
+          }
+        } catch (e) {
+          // cross-origin iframes will throw — ignore
+        }
+      }
+    }
+
     return theme;
   }
 
