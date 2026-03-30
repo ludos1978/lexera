@@ -110,7 +110,8 @@ fn serialize_params(params: &HashMap<String, String>) -> io::Result<String> {
 
 fn write_params_to_map(map: &LoroMap, params: &HashMap<String, String>) -> io::Result<()> {
     let serialized = serialize_params(params)?;
-    map.insert("params", serialized.as_str()).map_err(loro_err)?;
+    map.insert("params", serialized.as_str())
+        .map_err(loro_err)?;
     Ok(())
 }
 
@@ -198,7 +199,9 @@ fn insert_card_data(cards_list: &LoroMovableList, data: &CardData) -> io::Result
     let card_map: LoroMap = cards_list
         .push_container(LoroMap::new())
         .map_err(loro_err)?;
-    card_map.insert("kid", data.kid.as_str()).map_err(loro_err)?;
+    card_map
+        .insert("kid", data.kid.as_str())
+        .map_err(loro_err)?;
     card_map
         .insert("content", data.content.as_str())
         .map_err(loro_err)?;
@@ -318,10 +321,7 @@ fn write_settings_to_map(
     for key in BOARD_SETTING_KEYS {
         if let Some(val) = settings.get_by_key(key) {
             map.insert(key, val.as_str()).map_err(loro_err)?;
-        } else if base_settings
-            .and_then(|bs| bs.get_by_key(key))
-            .is_some()
-        {
+        } else if base_settings.and_then(|bs| bs.get_by_key(key)).is_some() {
             // Key was present in base but removed — delete from CRDT
             let _ = map.delete(key);
         }
@@ -1270,7 +1270,11 @@ impl CrdtStore {
     /// incoming board (what the user saved), and current board (what the user
     /// started editing from) to correctly handle concurrent additions and
     /// intentional deletions.
-    fn sync_column_structure(&self, incoming: &KanbanBoard, current: &KanbanBoard) -> io::Result<()> {
+    fn sync_column_structure(
+        &self,
+        incoming: &KanbanBoard,
+        current: &KanbanBoard,
+    ) -> io::Result<()> {
         let root = self.doc.get_map("root");
         let format = get_string(&root, "format");
 
@@ -1306,16 +1310,23 @@ impl CrdtStore {
                         let row_map: LoroMap =
                             rows_list.push_container(LoroMap::new()).map_err(loro_err)?;
                         row_map.insert("id", row.id.as_str()).map_err(loro_err)?;
-                        row_map.insert("title", row.title.as_str()).map_err(loro_err)?;
+                        row_map
+                            .insert("title", row.title.as_str())
+                            .map_err(loro_err)?;
                         write_params_to_map(&row_map, &row.params)?;
                         let stacks_list: LoroMovableList = row_map
                             .insert_container("stacks", LoroMovableList::new())
                             .map_err(loro_err)?;
                         for stack in &row.stacks {
                             let stack_map: LoroMap = stacks_list
-                                .push_container(LoroMap::new()).map_err(loro_err)?;
-                            stack_map.insert("id", stack.id.as_str()).map_err(loro_err)?;
-                            stack_map.insert("title", stack.title.as_str()).map_err(loro_err)?;
+                                .push_container(LoroMap::new())
+                                .map_err(loro_err)?;
+                            stack_map
+                                .insert("id", stack.id.as_str())
+                                .map_err(loro_err)?;
+                            stack_map
+                                .insert("title", stack.title.as_str())
+                                .map_err(loro_err)?;
                             write_params_to_map(&stack_map, &stack.params)?;
                             let cols_list: LoroMovableList = stack_map
                                 .insert_container("columns", LoroMovableList::new())
@@ -1324,12 +1335,16 @@ impl CrdtStore {
                                 let data = ColumnData {
                                     id: col.id.clone(),
                                     title: col.title.clone(),
-                                    cards: col.cards.iter().map(|c| CardData {
-                                        kid: c.kid.clone().unwrap_or_default(),
-                                        content: card_identity::strip_kid(&c.content),
-                                        checked: c.checked,
-                                        params: c.params.clone(),
-                                    }).collect(),
+                                    cards: col
+                                        .cards
+                                        .iter()
+                                        .map(|c| CardData {
+                                            kid: c.kid.clone().unwrap_or_default(),
+                                            content: card_identity::strip_kid(&c.content),
+                                            checked: c.checked,
+                                            params: c.params.clone(),
+                                        })
+                                        .collect(),
                                     params: col.params.clone(),
                                 };
                                 insert_column_data(&cols_list, &data)?;
@@ -1350,9 +1365,13 @@ impl CrdtStore {
                             .unwrap_or(false)
                     });
                     let Some(ri) = pos else { continue };
-                    let Some(row_map) = get_map_at(&rows_list, ri) else { continue };
+                    let Some(row_map) = get_map_at(&rows_list, ri) else {
+                        continue;
+                    };
 
-                    row_map.insert("title", row.title.as_str()).map_err(loro_err)?;
+                    row_map
+                        .insert("title", row.title.as_str())
+                        .map_err(loro_err)?;
                     write_params_to_map(&row_map, &row.params)?;
 
                     // 3-way merge for stacks within this row
@@ -1490,10 +1509,15 @@ impl CrdtStore {
         let crdt_stack_id_set: HashSet<String> = crdt_stack_ids.iter().cloned().collect();
         for stack in incoming_stacks {
             if !crdt_stack_id_set.contains(&stack.id) {
-                let stack_map: LoroMap =
-                    stacks_list.push_container(LoroMap::new()).map_err(loro_err)?;
-                stack_map.insert("id", stack.id.as_str()).map_err(loro_err)?;
-                stack_map.insert("title", stack.title.as_str()).map_err(loro_err)?;
+                let stack_map: LoroMap = stacks_list
+                    .push_container(LoroMap::new())
+                    .map_err(loro_err)?;
+                stack_map
+                    .insert("id", stack.id.as_str())
+                    .map_err(loro_err)?;
+                stack_map
+                    .insert("title", stack.title.as_str())
+                    .map_err(loro_err)?;
                 write_params_to_map(&stack_map, &stack.params)?;
                 let cols_list: LoroMovableList = stack_map
                     .insert_container("columns", LoroMovableList::new())
@@ -1502,12 +1526,16 @@ impl CrdtStore {
                     let data = ColumnData {
                         id: col.id.clone(),
                         title: col.title.clone(),
-                        cards: col.cards.iter().map(|c| CardData {
-                            kid: c.kid.clone().unwrap_or_default(),
-                            content: card_identity::strip_kid(&c.content),
-                            checked: c.checked,
-                            params: c.params.clone(),
-                        }).collect(),
+                        cards: col
+                            .cards
+                            .iter()
+                            .map(|c| CardData {
+                                kid: c.kid.clone().unwrap_or_default(),
+                                content: card_identity::strip_kid(&c.content),
+                                checked: c.checked,
+                                params: c.params.clone(),
+                            })
+                            .collect(),
                         params: col.params.clone(),
                     };
                     insert_column_data(&cols_list, &data)?;
@@ -1527,15 +1555,19 @@ impl CrdtStore {
                     .unwrap_or(false)
             });
             let Some(si) = pos else { continue };
-            let Some(stack_map) = get_map_at(stacks_list, si) else { continue };
+            let Some(stack_map) = get_map_at(stacks_list, si) else {
+                continue;
+            };
 
-            stack_map.insert("title", stack.title.as_str()).map_err(loro_err)?;
+            stack_map
+                .insert("title", stack.title.as_str())
+                .map_err(loro_err)?;
             write_params_to_map(&stack_map, &stack.params)?;
 
             // 3-way merge for columns within this stack
             if let Some(cols_list) = get_movable_list(&stack_map, "columns") {
-                let current_stack = current_row
-                    .and_then(|r| r.stacks.iter().find(|s| s.id == stack.id));
+                let current_stack =
+                    current_row.and_then(|r| r.stacks.iter().find(|s| s.id == stack.id));
                 self.sync_columns_3way(&cols_list, &stack.columns, current_stack)?;
             }
         }
@@ -1564,8 +1596,7 @@ impl CrdtStore {
         for i in (0..cols_list.len()).rev() {
             if i < crdt_col_ids.len() {
                 let id = &crdt_col_ids[i];
-                if !incoming_col_ids.contains(id.as_str())
-                    && current_col_ids.contains(id.as_str())
+                if !incoming_col_ids.contains(id.as_str()) && current_col_ids.contains(id.as_str())
                 {
                     let _ = cols_list.delete(i, 1);
                 }
@@ -1579,12 +1610,16 @@ impl CrdtStore {
                 let data = ColumnData {
                     id: col.id.clone(),
                     title: col.title.clone(),
-                    cards: col.cards.iter().map(|c| CardData {
-                        kid: c.kid.clone().unwrap_or_default(),
-                        content: card_identity::strip_kid(&c.content),
-                        checked: c.checked,
-                        params: c.params.clone(),
-                    }).collect(),
+                    cards: col
+                        .cards
+                        .iter()
+                        .map(|c| CardData {
+                            kid: c.kid.clone().unwrap_or_default(),
+                            content: card_identity::strip_kid(&c.content),
+                            checked: c.checked,
+                            params: c.params.clone(),
+                        })
+                        .collect(),
                     params: col.params.clone(),
                 };
                 insert_column_data(cols_list, &data)?;
@@ -1603,9 +1638,13 @@ impl CrdtStore {
                     .unwrap_or(false)
             });
             let Some(ci) = pos else { continue };
-            let Some(col_map) = get_map_at(cols_list, ci) else { continue };
+            let Some(col_map) = get_map_at(cols_list, ci) else {
+                continue;
+            };
 
-            col_map.insert("title", col.title.as_str()).map_err(loro_err)?;
+            col_map
+                .insert("title", col.title.as_str())
+                .map_err(loro_err)?;
             write_params_to_map(&col_map, &col.params)?;
         }
 
@@ -2018,7 +2057,9 @@ mod tests {
                 vec![("Todo", vec![make_card("aaaa0001", "Task 1", false)])],
             )],
         )]);
-        board.rows[0].params.insert("h".to_string(), "640".to_string());
+        board.rows[0]
+            .params
+            .insert("h".to_string(), "640".to_string());
         board.rows[0].stacks[0]
             .params
             .insert("x".to_string(), "240".to_string());
@@ -2045,11 +2086,26 @@ mod tests {
         let restored = store.to_board();
 
         assert_eq!(restored.rows[0].params.get("h"), Some(&"640".to_string()));
-        assert_eq!(restored.rows[0].stacks[0].params.get("x"), Some(&"240".to_string()));
-        assert_eq!(restored.rows[0].stacks[0].params.get("y"), Some(&"180".to_string()));
-        assert_eq!(restored.rows[0].stacks[0].params.get("w"), Some(&"420".to_string()));
-        assert_eq!(restored.rows[0].stacks[0].params.get("h"), Some(&"260".to_string()));
-        assert_eq!(restored.rows[0].stacks[0].params.get("dir"), Some(&"row".to_string()));
+        assert_eq!(
+            restored.rows[0].stacks[0].params.get("x"),
+            Some(&"240".to_string())
+        );
+        assert_eq!(
+            restored.rows[0].stacks[0].params.get("y"),
+            Some(&"180".to_string())
+        );
+        assert_eq!(
+            restored.rows[0].stacks[0].params.get("w"),
+            Some(&"420".to_string())
+        );
+        assert_eq!(
+            restored.rows[0].stacks[0].params.get("h"),
+            Some(&"260".to_string())
+        );
+        assert_eq!(
+            restored.rows[0].stacks[0].params.get("dir"),
+            Some(&"row".to_string())
+        );
         assert_eq!(
             restored.rows[0].stacks[0].columns[0].params.get("w"),
             Some(&"2/3".to_string())
@@ -2074,7 +2130,9 @@ mod tests {
         let mut store = CrdtStore::from_board(&original).unwrap();
 
         let mut updated = original.clone();
-        updated.rows[0].params.insert("h".to_string(), "720".to_string());
+        updated.rows[0]
+            .params
+            .insert("h".to_string(), "720".to_string());
         updated.rows[0].stacks[0]
             .params
             .insert("x".to_string(), "512".to_string());
@@ -2101,11 +2159,26 @@ mod tests {
         let result = store.to_board();
 
         assert_eq!(result.rows[0].params.get("h"), Some(&"720".to_string()));
-        assert_eq!(result.rows[0].stacks[0].params.get("x"), Some(&"512".to_string()));
-        assert_eq!(result.rows[0].stacks[0].params.get("y"), Some(&"96".to_string()));
-        assert_eq!(result.rows[0].stacks[0].params.get("w"), Some(&"360".to_string()));
-        assert_eq!(result.rows[0].stacks[0].params.get("h"), Some(&"300".to_string()));
-        assert_eq!(result.rows[0].stacks[0].params.get("dir"), Some(&"row".to_string()));
+        assert_eq!(
+            result.rows[0].stacks[0].params.get("x"),
+            Some(&"512".to_string())
+        );
+        assert_eq!(
+            result.rows[0].stacks[0].params.get("y"),
+            Some(&"96".to_string())
+        );
+        assert_eq!(
+            result.rows[0].stacks[0].params.get("w"),
+            Some(&"360".to_string())
+        );
+        assert_eq!(
+            result.rows[0].stacks[0].params.get("h"),
+            Some(&"300".to_string())
+        );
+        assert_eq!(
+            result.rows[0].stacks[0].params.get("dir"),
+            Some(&"row".to_string())
+        );
         assert_eq!(
             result.rows[0].stacks[0].columns[0].params.get("w"),
             Some(&"50%".to_string())
@@ -5251,23 +5324,34 @@ mod tests {
 
     /// Helper: simulate a peer adding a row to an existing CRDT by creating
     /// a second board and applying it.
-    fn add_peer_row(store: &mut CrdtStore, base: &KanbanBoard, peer_row: (&str, Vec<(&str, Vec<(&str, Vec<KanbanCard>)>)>)) {
+    fn add_peer_row(
+        store: &mut CrdtStore,
+        base: &KanbanBoard,
+        peer_row: (&str, Vec<(&str, Vec<(&str, Vec<KanbanCard>)>)>),
+    ) {
         let mut peer_board = base.clone();
         peer_board.rows.push(KanbanRow {
             id: format!("row-{}", peer_row.0),
             title: peer_row.0.to_string(),
-            stacks: peer_row.1.into_iter().map(|(st, cols)| KanbanStack {
-                id: format!("stack-{}", st),
-                title: st.to_string(),
-                columns: cols.into_iter().map(|(ct, cards)| KanbanColumn {
-                    id: format!("col-{}", ct),
-                    title: ct.to_string(),
-                    cards,
-                    include_source: None,
+            stacks: peer_row
+                .1
+                .into_iter()
+                .map(|(st, cols)| KanbanStack {
+                    id: format!("stack-{}", st),
+                    title: st.to_string(),
+                    columns: cols
+                        .into_iter()
+                        .map(|(ct, cards)| KanbanColumn {
+                            id: format!("col-{}", ct),
+                            title: ct.to_string(),
+                            cards,
+                            include_source: None,
+                            params: HashMap::new(),
+                        })
+                        .collect(),
                     params: HashMap::new(),
-                }).collect(),
-                params: HashMap::new(),
-            }).collect(),
+                })
+                .collect(),
             params: HashMap::new(),
         });
         store.apply_board(&peer_board, base).unwrap();
@@ -5277,15 +5361,29 @@ mod tests {
     fn test_3way_preserves_unknown_rows() {
         // Base: Row A, Row B
         let base = make_new_format_board(vec![
-            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
-            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
+            (
+                "A",
+                vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+            ),
+            (
+                "B",
+                vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])],
+            ),
         ]);
         let mut store = CrdtStore::from_board(&base).unwrap();
 
         // Peer adds Row C (user never sees it)
-        add_peer_row(&mut store, &base, ("C", vec![
-            ("SC", vec![("ColC", vec![make_card("k003", "peer card", false)])])
-        ]));
+        add_peer_row(
+            &mut store,
+            &base,
+            (
+                "C",
+                vec![(
+                    "SC",
+                    vec![("ColC", vec![make_card("k003", "peer card", false)])],
+                )],
+            ),
+        );
 
         // User sends back the same base (didn't change anything, never saw C)
         let incoming = base.clone();
@@ -5298,7 +5396,9 @@ mod tests {
         assert_eq!(result.rows[1].title, "B");
         assert_eq!(result.rows[2].title, "C");
         // Verify peer's cards survived
-        let peer_cards: Vec<_> = result.rows[2].stacks[0].columns[0].cards.iter()
+        let peer_cards: Vec<_> = result.rows[2].stacks[0].columns[0]
+            .cards
+            .iter()
             .filter_map(|c| c.kid.as_deref())
             .collect();
         assert!(peer_cards.contains(&"k003"), "Peer card should survive");
@@ -5308,9 +5408,18 @@ mod tests {
     fn test_3way_deletes_intentionally_removed_rows() {
         // Base: Row A, Row B, Row C
         let base = make_new_format_board(vec![
-            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
-            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
-            ("C", vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])]),
+            (
+                "A",
+                vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+            ),
+            (
+                "B",
+                vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])],
+            ),
+            (
+                "C",
+                vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])],
+            ),
         ]);
         let mut store = CrdtStore::from_board(&base).unwrap();
 
@@ -5329,31 +5438,63 @@ mod tests {
     fn test_3way_combined_add_delete_preserve() {
         // Base: Row A, Row B, Row C
         let base = make_new_format_board(vec![
-            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
-            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
-            ("C", vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])]),
+            (
+                "A",
+                vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+            ),
+            (
+                "B",
+                vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])],
+            ),
+            (
+                "C",
+                vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])],
+            ),
         ]);
         let mut store = CrdtStore::from_board(&base).unwrap();
 
         // Peer adds Row D while user is editing
-        add_peer_row(&mut store, &base, ("D", vec![
-            ("SD", vec![("ColD", vec![make_card("k004", "peer card D", false)])])
-        ]));
+        add_peer_row(
+            &mut store,
+            &base,
+            (
+                "D",
+                vec![(
+                    "SD",
+                    vec![("ColD", vec![make_card("k004", "peer card D", false)])],
+                )],
+            ),
+        );
 
         // User deletes B, adds E (never saw D)
         let incoming = make_new_format_board(vec![
-            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
-            ("C", vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])]),
-            ("E", vec![("SE", vec![("ColE", vec![make_card("k005", "E", false)])])]),
+            (
+                "A",
+                vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+            ),
+            (
+                "C",
+                vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])],
+            ),
+            (
+                "E",
+                vec![("SE", vec![("ColE", vec![make_card("k005", "E", false)])])],
+            ),
         ]);
         store.apply_board(&incoming, &base).unwrap();
 
         let result = store.to_board();
         let row_titles: Vec<&str> = result.rows.iter().map(|r| r.title.as_str()).collect();
         assert!(row_titles.contains(&"A"), "A should remain");
-        assert!(!row_titles.contains(&"B"), "B should be deleted (user removed it)");
+        assert!(
+            !row_titles.contains(&"B"),
+            "B should be deleted (user removed it)"
+        );
         assert!(row_titles.contains(&"C"), "C should remain");
-        assert!(row_titles.contains(&"D"), "D should be preserved (peer added, user never saw)");
+        assert!(
+            row_titles.contains(&"D"),
+            "D should be preserved (peer added, user never saw)"
+        );
         assert!(row_titles.contains(&"E"), "E should be added (user added)");
         assert_eq!(result.rows.len(), 4);
     }
@@ -5361,12 +5502,13 @@ mod tests {
     #[test]
     fn test_3way_preserves_unknown_stacks() {
         // Base: Row R1 with stacks SA, SB
-        let base = make_new_format_board(vec![
-            ("R1", vec![
+        let base = make_new_format_board(vec![(
+            "R1",
+            vec![
                 ("SA", vec![("ColA", vec![make_card("k001", "A", false)])]),
                 ("SB", vec![("ColB", vec![make_card("k002", "B", false)])]),
-            ]),
-        ]);
+            ],
+        )]);
         let mut store = CrdtStore::from_board(&base).unwrap();
 
         // Peer adds stack SC to R1
@@ -5389,19 +5531,26 @@ mod tests {
         store.apply_board(&base, &base).unwrap();
 
         let result = store.to_board();
-        assert_eq!(result.rows[0].stacks.len(), 3, "Peer stack SC should be preserved");
-        let stack_titles: Vec<&str> = result.rows[0].stacks.iter().map(|s| s.title.as_str()).collect();
+        assert_eq!(
+            result.rows[0].stacks.len(),
+            3,
+            "Peer stack SC should be preserved"
+        );
+        let stack_titles: Vec<&str> = result.rows[0]
+            .stacks
+            .iter()
+            .map(|s| s.title.as_str())
+            .collect();
         assert!(stack_titles.contains(&"SC"));
     }
 
     #[test]
     fn test_3way_preserves_unknown_columns() {
         // Base: Row R1, Stack S1, Column ColA
-        let base = make_new_format_board(vec![
-            ("R1", vec![
-                ("S1", vec![("ColA", vec![make_card("k001", "A", false)])]),
-            ]),
-        ]);
+        let base = make_new_format_board(vec![(
+            "R1",
+            vec![("S1", vec![("ColA", vec![make_card("k001", "A", false)])])],
+        )]);
         let mut store = CrdtStore::from_board(&base).unwrap();
 
         // Peer adds ColB to S1
@@ -5419,31 +5568,53 @@ mod tests {
         store.apply_board(&base, &base).unwrap();
 
         let result = store.to_board();
-        assert_eq!(result.rows[0].stacks[0].columns.len(), 2, "Peer column ColB should be preserved");
-        let col_titles: Vec<&str> = result.rows[0].stacks[0].columns.iter().map(|c| c.title.as_str()).collect();
+        assert_eq!(
+            result.rows[0].stacks[0].columns.len(),
+            2,
+            "Peer column ColB should be preserved"
+        );
+        let col_titles: Vec<&str> = result.rows[0].stacks[0]
+            .columns
+            .iter()
+            .map(|c| c.title.as_str())
+            .collect();
         assert!(col_titles.contains(&"ColB"));
     }
 
     #[test]
     fn test_3way_preserves_cards_in_unknown_rows() {
         // Base: just Row A
-        let base = make_new_format_board(vec![
-            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
-        ]);
+        let base = make_new_format_board(vec![(
+            "A",
+            vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+        )]);
         let mut store = CrdtStore::from_board(&base).unwrap();
 
         // Peer adds Row X with multiple cards
-        add_peer_row(&mut store, &base, ("X", vec![
-            ("SX", vec![("ColX", vec![
-                make_card("kx01", "peer card 1", false),
-                make_card("kx02", "peer card 2", true),
-                make_card("kx03", "peer card 3", false),
-            ])])
-        ]));
+        add_peer_row(
+            &mut store,
+            &base,
+            (
+                "X",
+                vec![(
+                    "SX",
+                    vec![(
+                        "ColX",
+                        vec![
+                            make_card("kx01", "peer card 1", false),
+                            make_card("kx02", "peer card 2", true),
+                            make_card("kx03", "peer card 3", false),
+                        ],
+                    )],
+                )],
+            ),
+        );
 
         // User edits only Row A (adds a card), never sees Row X
         let mut incoming = base.clone();
-        incoming.rows[0].stacks[0].columns[0].cards.push(make_card("k002", "user added", false));
+        incoming.rows[0].stacks[0].columns[0]
+            .cards
+            .push(make_card("k002", "user added", false));
         store.apply_board(&incoming, &base).unwrap();
 
         let result = store.to_board();
@@ -5451,7 +5622,9 @@ mod tests {
 
         // Verify peer cards survived
         let peer_row = result.rows.iter().find(|r| r.title == "X").unwrap();
-        let peer_cards: Vec<_> = peer_row.stacks[0].columns[0].cards.iter()
+        let peer_cards: Vec<_> = peer_row.stacks[0].columns[0]
+            .cards
+            .iter()
             .filter_map(|c| c.kid.as_deref())
             .collect();
         assert_eq!(peer_cards.len(), 3, "All 3 peer cards should survive");
@@ -5461,24 +5634,38 @@ mod tests {
 
         // Verify user's card was added
         let user_row = result.rows.iter().find(|r| r.title == "A").unwrap();
-        let user_kids: Vec<_> = user_row.stacks[0].columns[0].cards.iter()
+        let user_kids: Vec<_> = user_row.stacks[0].columns[0]
+            .cards
+            .iter()
             .filter_map(|c| c.kid.as_deref())
             .collect();
-        assert!(user_kids.contains(&"k002"), "User's added card should be there");
+        assert!(
+            user_kids.contains(&"k002"),
+            "User's added card should be there"
+        );
     }
 
     #[test]
     fn test_3way_user_adds_row_while_peer_adds_row() {
         // Both user and peer independently add new rows
-        let base = make_new_format_board(vec![
-            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
-        ]);
+        let base = make_new_format_board(vec![(
+            "A",
+            vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+        )]);
         let mut store = CrdtStore::from_board(&base).unwrap();
 
         // Peer adds Row P
-        add_peer_row(&mut store, &base, ("P", vec![
-            ("SP", vec![("ColP", vec![make_card("kp01", "peer row", false)])])
-        ]));
+        add_peer_row(
+            &mut store,
+            &base,
+            (
+                "P",
+                vec![(
+                    "SP",
+                    vec![("ColP", vec![make_card("kp01", "peer row", false)])],
+                )],
+            ),
+        );
 
         // User adds Row U
         let mut incoming = base.clone();
@@ -5514,15 +5701,26 @@ mod tests {
         // Simulates the exact bug: hidden-deleted rows exist in CRDT
         // but frontend loads without them
         let full_board = make_new_format_board(vec![
-            ("Deleted1 #hidden-internal-deleted", vec![
-                ("Default", vec![("Col1", vec![make_card("k001", "trash", false)])]),
-            ]),
-            ("Board", vec![
-                ("Stack1", vec![("ColA", vec![
-                    make_card("k002", "visible card", false),
-                    make_card("k003", "another card", false),
-                ])]),
-            ]),
+            (
+                "Deleted1 #hidden-internal-deleted",
+                vec![(
+                    "Default",
+                    vec![("Col1", vec![make_card("k001", "trash", false)])],
+                )],
+            ),
+            (
+                "Board",
+                vec![(
+                    "Stack1",
+                    vec![(
+                        "ColA",
+                        vec![
+                            make_card("k002", "visible card", false),
+                            make_card("k003", "another card", false),
+                        ],
+                    )],
+                )],
+            ),
         ]);
         let mut store = CrdtStore::from_board(&full_board).unwrap();
 
@@ -5530,15 +5728,21 @@ mod tests {
         // scenario: current = what frontend started with = full board)
         // User edits only the Board row
         let mut incoming = full_board.clone();
-        incoming.rows[1].stacks[0].columns[0].cards.push(
-            make_card("k004", "user added card", false)
-        );
+        incoming.rows[1].stacks[0].columns[0].cards.push(make_card(
+            "k004",
+            "user added card",
+            false,
+        ));
 
         // current = full_board (frontend started with all rows)
         store.apply_board(&incoming, &full_board).unwrap();
 
         let result = store.to_board();
-        assert_eq!(result.rows.len(), 2, "Hidden-deleted row should still exist");
+        assert_eq!(
+            result.rows.len(),
+            2,
+            "Hidden-deleted row should still exist"
+        );
         assert_eq!(result.rows[0].title, "Deleted1 #hidden-internal-deleted");
     }
 
@@ -5548,29 +5752,45 @@ mod tests {
         // with a snapshot missing rows, then sends it as incoming.
         // With 3-way merge, if the rows were never in `current`, they're preserved.
         let full_board = make_new_format_board(vec![
-            ("HiddenRow #hidden-internal-deleted", vec![
-                ("Default", vec![("HCol", vec![make_card("kh01", "hidden card", false)])]),
-            ]),
-            ("Board", vec![
-                ("MainStack", vec![("MainCol", vec![
-                    make_card("km01", "main card 1", false),
-                    make_card("km02", "main card 2", false),
-                ])]),
-            ]),
+            (
+                "HiddenRow #hidden-internal-deleted",
+                vec![(
+                    "Default",
+                    vec![("HCol", vec![make_card("kh01", "hidden card", false)])],
+                )],
+            ),
+            (
+                "Board",
+                vec![(
+                    "MainStack",
+                    vec![(
+                        "MainCol",
+                        vec![
+                            make_card("km01", "main card 1", false),
+                            make_card("km02", "main card 2", false),
+                        ],
+                    )],
+                )],
+            ),
         ]);
         let mut store = CrdtStore::from_board(&full_board).unwrap();
 
         // Scenario: snapshot only has "Board" row (HiddenRow got lost somehow).
         // But `current` also only has "Board" row (because the snapshot was
         // adopted by the frontend as both fullBoardData AND saveBase).
-        let snapshot = make_new_format_board(vec![
-            ("Board", vec![
-                ("MainStack", vec![("MainCol", vec![
-                    make_card("km01", "main card 1", false),
-                    make_card("km02", "main card 2", false),
-                ])]),
-            ]),
-        ]);
+        let snapshot = make_new_format_board(vec![(
+            "Board",
+            vec![(
+                "MainStack",
+                vec![(
+                    "MainCol",
+                    vec![
+                        make_card("km01", "main card 1", false),
+                        make_card("km02", "main card 2", false),
+                    ],
+                )],
+            )],
+        )]);
 
         // current = snapshot (frontend started from the incomplete snapshot)
         // incoming = snapshot (user didn't change anything)
@@ -5578,7 +5798,11 @@ mod tests {
 
         let result = store.to_board();
         // HiddenRow should be preserved because it wasn't in `current`
-        assert_eq!(result.rows.len(), 2, "HiddenRow should be preserved (not in current, so not intentionally deleted)");
+        assert_eq!(
+            result.rows.len(),
+            2,
+            "HiddenRow should be preserved (not in current, so not intentionally deleted)"
+        );
         let titles: Vec<&str> = result.rows.iter().map(|r| r.title.as_str()).collect();
         assert!(titles.contains(&"HiddenRow #hidden-internal-deleted"));
         assert!(titles.contains(&"Board"));
@@ -5586,9 +5810,10 @@ mod tests {
 
     #[test]
     fn test_3way_user_renames_row_title() {
-        let base = make_new_format_board(vec![
-            ("OldTitle", vec![("S1", vec![("Col1", vec![make_card("k001", "card", false)])])]),
-        ]);
+        let base = make_new_format_board(vec![(
+            "OldTitle",
+            vec![("S1", vec![("Col1", vec![make_card("k001", "card", false)])])],
+        )]);
         let mut store = CrdtStore::from_board(&base).unwrap();
 
         let mut incoming = base.clone();
@@ -5603,17 +5828,35 @@ mod tests {
     #[test]
     fn test_3way_user_reorders_rows() {
         let base = make_new_format_board(vec![
-            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
-            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
-            ("C", vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])]),
+            (
+                "A",
+                vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+            ),
+            (
+                "B",
+                vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])],
+            ),
+            (
+                "C",
+                vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])],
+            ),
         ]);
         let mut store = CrdtStore::from_board(&base).unwrap();
 
         // User reorders: C, A, B
         let incoming = make_new_format_board(vec![
-            ("C", vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])]),
-            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
-            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
+            (
+                "C",
+                vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])],
+            ),
+            (
+                "A",
+                vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+            ),
+            (
+                "B",
+                vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])],
+            ),
         ]);
         store.apply_board(&incoming, &base).unwrap();
 
@@ -5628,14 +5871,28 @@ mod tests {
     fn test_3way_multiple_sequential_edits() {
         // Simulates a realistic editing session with multiple saves
         let base = make_new_format_board(vec![
-            ("R1", vec![("S1", vec![("Col1", vec![make_card("k001", "card1", false)])])]),
-            ("R2", vec![("S2", vec![("Col2", vec![make_card("k002", "card2", false)])])]),
+            (
+                "R1",
+                vec![(
+                    "S1",
+                    vec![("Col1", vec![make_card("k001", "card1", false)])],
+                )],
+            ),
+            (
+                "R2",
+                vec![(
+                    "S2",
+                    vec![("Col2", vec![make_card("k002", "card2", false)])],
+                )],
+            ),
         ]);
         let mut store = CrdtStore::from_board(&base).unwrap();
 
         // Edit 1: User adds a card to R1
         let mut edit1 = base.clone();
-        edit1.rows[0].stacks[0].columns[0].cards.push(make_card("k003", "new card", false));
+        edit1.rows[0].stacks[0].columns[0]
+            .cards
+            .push(make_card("k003", "new card", false));
         store.apply_board(&edit1, &base).unwrap();
         let after_edit1 = store.to_board();
 
@@ -5675,28 +5932,42 @@ mod tests {
 
         // Verify card from edit 1 survived
         let r1 = final_result.rows.iter().find(|r| r.title == "R1").unwrap();
-        assert!(r1.stacks[0].columns[0].cards.len() >= 2, "Added card should survive through edits");
+        assert!(
+            r1.stacks[0].columns[0].cards.len() >= 2,
+            "Added card should survive through edits"
+        );
     }
 
     #[test]
     fn test_3way_empty_current_preserves_all_crdt_items() {
         // When current is empty (e.g., first sync), nothing should be deleted
         let board = make_new_format_board(vec![
-            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
-            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
+            (
+                "A",
+                vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+            ),
+            (
+                "B",
+                vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])],
+            ),
         ]);
         let mut store = CrdtStore::from_board(&board).unwrap();
 
         // Empty current = first sync, incoming only has row A
-        let incoming = make_new_format_board(vec![
-            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
-        ]);
+        let incoming = make_new_format_board(vec![(
+            "A",
+            vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+        )]);
         let empty_current = make_new_format_board(vec![]);
 
         store.apply_board(&incoming, &empty_current).unwrap();
 
         let result = store.to_board();
         // Row B should be preserved because it wasn't in current
-        assert_eq!(result.rows.len(), 2, "Row B should be preserved (not in empty current)");
+        assert_eq!(
+            result.rows.len(),
+            2,
+            "Row B should be preserved (not in empty current)"
+        );
     }
 }

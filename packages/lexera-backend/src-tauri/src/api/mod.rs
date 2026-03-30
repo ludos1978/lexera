@@ -42,6 +42,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   GET  /boards/:boardId/settings            -> read board settings only
 ///   PUT  /boards/:boardId/settings            -> update board settings only (merge)
 ///   GET  /boards/:boardId/hierarchy           -> lightweight row/stack/column/card tree (+ ETag)
+///   GET  /boards/:boardId/changes?since_generation=N -> structural delta from cached generation
 ///   GET  /boards/:boardId/columns             -> full column data with cards (+ ETag)
 ///   POST /boards/:boardId/columns/:colIndex/cards -> add card
 ///   POST /boards/:boardId/media               -> upload media file
@@ -111,6 +112,7 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             "/boards/{board_id}/hierarchy",
             get(board::get_board_hierarchy),
         )
+        .route("/boards/{board_id}/changes", get(board::get_board_changes))
         .route("/boards/{board_id}/columns", get(board::get_board_columns))
         .route(
             "/boards/{board_id}/columns/{col_index}/cards",

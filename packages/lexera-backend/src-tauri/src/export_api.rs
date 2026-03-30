@@ -143,8 +143,8 @@ fn selected_board_for_export(
         next_board.columns.clear();
     } else {
         next_board.columns.retain(|column| {
-            let include = selected_ids.contains(column.id.as_str())
-                || selected_indexes.contains(&flat_index);
+            let include =
+                selected_ids.contains(column.id.as_str()) || selected_indexes.contains(&flat_index);
             flat_index += 1;
             include
         });
@@ -213,12 +213,9 @@ async fn export_presentation(
         custom_yaml: body.custom_yaml,
     };
 
-    let export_board = selected_board_for_export(
-        &filtered_board,
-        &body.column_ids,
-        &body.column_indexes,
-    )
-    .unwrap_or_else(|| filtered_board.clone());
+    let export_board =
+        selected_board_for_export(&filtered_board, &body.column_ids, &body.column_indexes)
+            .unwrap_or_else(|| filtered_board.clone());
 
     let markdown = presentation::from_board(&export_board, &options);
 
@@ -259,12 +256,9 @@ async fn export_document(
         ..PresentationOptions::default()
     };
 
-    let export_board = selected_board_for_export(
-        &filtered_board,
-        &body.column_ids,
-        &body.column_indexes,
-    )
-    .unwrap_or_else(|| filtered_board.clone());
+    let export_board =
+        selected_board_for_export(&filtered_board, &body.column_ids, &body.column_indexes)
+            .unwrap_or_else(|| filtered_board.clone());
 
     let markdown = presentation::to_document(&export_board, body.page_breaks, &options);
 
@@ -300,12 +294,9 @@ async fn export_filter(
     let filtered_board = filter_excluded_from_board(&board, &exclude_tags);
 
     // Generate markdown from filtered board
-    let export_board = selected_board_for_export(
-        &filtered_board,
-        &body.column_ids,
-        &body.column_indexes,
-    )
-    .unwrap_or_else(|| filtered_board.clone());
+    let export_board =
+        selected_board_for_export(&filtered_board, &body.column_ids, &body.column_indexes)
+            .unwrap_or_else(|| filtered_board.clone());
 
     let mut markdown = generate_markdown(&export_board);
 
@@ -418,12 +409,9 @@ mod tests {
     #[test]
     fn selected_board_for_export_filters_by_column_ids_and_keeps_hierarchy() {
         let board = sample_board();
-        let selected = selected_board_for_export(
-            &board,
-            &["col-2".to_string(), "col-4".to_string()],
-            &[],
-        )
-        .expect("selection should produce subset board");
+        let selected =
+            selected_board_for_export(&board, &["col-2".to_string(), "col-4".to_string()], &[])
+                .expect("selection should produce subset board");
 
         assert_eq!(selected.rows.len(), 2);
         assert_eq!(selected.rows[0].stacks.len(), 1);

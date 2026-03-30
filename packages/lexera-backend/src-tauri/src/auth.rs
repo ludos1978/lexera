@@ -137,10 +137,7 @@ impl AuthService {
         let key = (room_id.to_string(), user_id.to_string());
         self.memberships.insert(key, role);
 
-        let members = self
-            .room_members
-            .entry(room_id.to_string())
-            .or_default();
+        let members = self.room_members.entry(room_id.to_string()).or_default();
         if !members.iter().any(|id| id == user_id) {
             members.push(user_id.to_string());
         }
@@ -170,7 +167,10 @@ impl AuthService {
 
     /// Check if user can write (edit) a room
     pub fn can_write(&self, room_id: &str, user_id: &str) -> bool {
-        matches!(self.get_role(room_id, user_id), Some(RoomRole::Owner) | Some(RoomRole::Editor))
+        matches!(
+            self.get_role(room_id, user_id),
+            Some(RoomRole::Owner) | Some(RoomRole::Editor)
+        )
     }
 
     /// Check if user can invite others to a room
@@ -242,8 +242,7 @@ impl AuthService {
             tokens: self.tokens.clone(),
         };
 
-        let json = serde_json::to_string_pretty(&data)
-            .map_err(io::Error::other)?;
+        let json = serde_json::to_string_pretty(&data).map_err(io::Error::other)?;
 
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, &json)?;
@@ -683,11 +682,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("auth.json");
         // Simulate old auth.json without tokens field
-        std::fs::write(
-            &path,
-            r#"{"users":{},"memberships":[],"room_members":{}}"#,
-        )
-        .unwrap();
+        std::fs::write(&path, r#"{"users":{},"memberships":[],"room_members":{}}"#).unwrap();
 
         let svc = AuthService::load_from_file(&path).unwrap();
         // Should load without error, tokens map empty

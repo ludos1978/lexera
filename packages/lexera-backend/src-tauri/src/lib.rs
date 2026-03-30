@@ -1,7 +1,5 @@
 pub mod api;
 mod capture;
-#[cfg(test)]
-pub mod test_helpers;
 mod clipboard_watcher;
 /// Lexera Backend: Tauri setup, config loading, storage init, tray, HTTP server.
 mod config;
@@ -12,6 +10,8 @@ mod log_bridge;
 mod server;
 pub mod state;
 pub mod sync_client;
+#[cfg(test)]
+pub mod test_helpers;
 mod tray;
 
 // New collaboration modules
@@ -22,14 +22,12 @@ pub mod public;
 pub mod sync_ws;
 
 use crate::state::{AppState, ResolvedIncoming};
-use lexera_core::include::resolver::IncludeMap;
 use lexera_core::panic_util::panic_payload_to_string;
 use lexera_core::storage::local::LocalStorage;
 use lexera_core::watcher::file_watcher::FileWatcher;
 use lexera_core::watcher::types::BoardChangeEvent;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::RwLock;
 use tauri::Manager;
 use uuid::Uuid;
 
@@ -51,7 +49,10 @@ fn init_storage_and_boards(
     let board_entries: Vec<PathBuf> = match config.lock() {
         Ok(cfg) => cfg.boards.iter().map(|e| PathBuf::from(&e.file)).collect(),
         Err(e) => {
-            log::error!("[lexera.setup] Config mutex poisoned during board loading: {}", e);
+            log::error!(
+                "[lexera.setup] Config mutex poisoned during board loading: {}",
+                e
+            );
             return Vec::new();
         }
     };
@@ -65,14 +66,15 @@ fn init_storage_and_boards(
     // Prepare all boards in parallel: file I/O, parsing, CRDT loading happen
     // concurrently across threads. The boards RwLock is NOT acquired here.
     let prepared: Vec<_> = std::thread::scope(|s| {
-        let handles: Vec<_> = board_entries.iter().map(|path| {
-            s.spawn(|| {
-                storage.prepare_board_state(path)
-            })
-        }).collect();
+        let handles: Vec<_> = board_entries
+            .iter()
+            .map(|path| s.spawn(|| storage.prepare_board_state(path)))
+            .collect();
 
-        handles.into_iter().enumerate().filter_map(|(i, h)| {
-            match h.join() {
+        handles
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, h)| match h.join() {
                 Ok(Ok(pair)) => {
                     log::info!("Loaded board: {} -> {}", board_entries[i].display(), pair.0);
                     Some(pair)
@@ -89,14 +91,15 @@ fn init_storage_and_boards(
                     );
                     None
                 }
-            }
-        }).collect()
+            })
+            .collect()
     });
 
     // Collect canonical paths before batch insert (need file_path from state)
-    let board_paths: Vec<(String, PathBuf)> = prepared.iter().map(|(id, state)| {
-        (id.clone(), state.file_path.clone())
-    }).collect();
+    let board_paths: Vec<(String, PathBuf)> = prepared
+        .iter()
+        .map(|(id, state)| (id.clone(), state.file_path.clone()))
+        .collect();
 
     // Single write-lock acquisition for all boards
     if let Err(e) = storage.batch_add_boards(prepared) {
@@ -113,6 +116,26 @@ fn init_storage_and_boards(
     board_paths
 }
 
+pub(crate) fn sync_watcher_include_paths(
+    storage: &LocalStorage,
+    watcher: &mut FileWatcher,
+    target: &str,
+) {
+    let Some(include_map) = storage.include_map() else {
+        log::error!(
+            "[{}] Include map lock poisoned, skipping include watch sync",
+            target
+        );
+        return;
+    };
+
+    for path in include_map.all_include_paths() {
+        if let Err(error) = watcher.watch_include(&path) {
+            log::warn!("[{}] Failed to watch include {:?}: {}", target, path, error);
+        }
+    }
+}
+
 /// Resolve the incoming config (map file path to board ID).
 fn resolve_incoming(
     config: &std::sync::Mutex<config::SyncConfig>,
@@ -120,13 +143,16 @@ fn resolve_incoming(
 ) -> Option<ResolvedIncoming> {
     config.lock().ok()?.incoming.clone().and_then(|inc| {
         let inc_path = PathBuf::from(&inc.board);
-        board_paths.iter().find(|(_, p)| {
-            let canonical_inc = std::fs::canonicalize(&inc_path).unwrap_or(inc_path.clone());
-            *p == canonical_inc
-        }).map(|(id, _)| ResolvedIncoming {
-            board_id: id.clone(),
-            column: inc.column,
-        })
+        board_paths
+            .iter()
+            .find(|(_, p)| {
+                let canonical_inc = std::fs::canonicalize(&inc_path).unwrap_or(inc_path.clone());
+                *p == canonical_inc
+            })
+            .map(|(id, _)| ResolvedIncoming {
+                board_id: id.clone(),
+                column: inc.column,
+            })
     })
 }
 
@@ -137,38 +163,33 @@ fn setup_file_watcher(
     event_tx: &tokio::sync::broadcast::Sender<BoardChangeEvent>,
     shutdown_rx: &tokio::sync::watch::Receiver<bool>,
 ) -> Arc<std::sync::Mutex<Option<FileWatcher>>> {
-    let include_map = Arc::new(RwLock::new(IncludeMap::new()));
     let watcher_arc: Arc<std::sync::Mutex<Option<FileWatcher>>> =
         Arc::new(std::sync::Mutex::new(None));
 
-    let watcher_result = FileWatcher::new(include_map.clone());
+    let watcher_result = FileWatcher::new(storage.include_map_handle());
     if let Ok((mut watcher, _watcher_rx)) = watcher_result {
         for (board_id, path) in board_paths {
             if let Err(e) = watcher.watch_board(board_id, path) {
                 log::warn!("[lexera.watcher] Failed to watch board {}: {}", board_id, e);
             }
         }
-        if let Some(storage_map) = storage.include_map() {
-            for path in storage_map.all_include_paths() {
-                if let Err(e) = watcher.watch_include(&path) {
-                    log::warn!("[lexera.watcher] Failed to watch include {:?}: {}", path, e);
-                }
-            }
-        } else {
-            log::error!("[lexera.watcher] Include map lock poisoned, skipping include watches");
-        }
+        sync_watcher_include_paths(storage.as_ref(), &mut watcher, "lexera.watcher");
 
         let mut event_rx = watcher.event_sender().subscribe();
         match watcher_arc.lock() {
             Ok(mut guard) => *guard = Some(watcher),
             Err(e) => {
-                log::error!("[lexera.watcher] Watcher mutex poisoned, cannot store file watcher: {}", e);
+                log::error!(
+                    "[lexera.watcher] Watcher mutex poisoned, cannot store file watcher: {}",
+                    e
+                );
             }
         }
 
         let storage_for_events = storage.clone();
         let event_tx_for_forward = event_tx.clone();
         let mut event_shutdown_rx = shutdown_rx.clone();
+        let watcher_for_events = watcher_arc.clone();
 
         tauri::async_runtime::spawn(async move {
             loop {
@@ -186,6 +207,14 @@ fn setup_file_watcher(
                                         }
                                         if let Err(e) = storage_for_events.reload_board(board_id) {
                                             log::warn!("[lexera.events] Failed to reload board {}: {}", board_id, e);
+                                        } else if let Ok(mut watcher_guard) = watcher_for_events.lock() {
+                                            if let Some(ref mut watcher) = *watcher_guard {
+                                                sync_watcher_include_paths(
+                                                    storage_for_events.as_ref(),
+                                                    watcher,
+                                                    "lexera.events",
+                                                );
+                                            }
                                         }
                                     }
                                     BoardChangeEvent::IncludeFileChanged { board_ids, include_path } => {
@@ -194,8 +223,32 @@ fn setup_file_watcher(
                                             continue;
                                         }
                                         for bid in board_ids {
-                                            if let Err(e) = storage_for_events.reload_board(bid) {
-                                                log::warn!("[lexera.events] Failed to reload board {}: {}", bid, e);
+                                            match storage_for_events.reload_board_include_path(bid, include_path) {
+                                                Ok(true) => {
+                                                    log::info!(
+                                                        "[lexera.events] Refreshed include {:?} for board {} without full board reload",
+                                                        include_path,
+                                                        bid
+                                                    );
+                                                }
+                                                Ok(false) => {}
+                                                Err(e) => {
+                                                    log::warn!(
+                                                        "[lexera.events] Failed to refresh include {:?} for board {}: {}",
+                                                        include_path,
+                                                        bid,
+                                                        e
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        if let Ok(mut watcher_guard) = watcher_for_events.lock() {
+                                            if let Some(ref mut watcher) = *watcher_guard {
+                                                sync_watcher_include_paths(
+                                                    storage_for_events.as_ref(),
+                                                    watcher,
+                                                    "lexera.events",
+                                                );
                                             }
                                         }
                                     }
@@ -251,29 +304,47 @@ struct CollabServices {
 /// Initialize collaboration services from persisted state on disk.
 fn init_collab_services(collab_dir: &std::path::Path) -> CollabServices {
     if let Err(e) = std::fs::create_dir_all(collab_dir) {
-        log::error!("[collab] Failed to create collab dir {:?}: {}", collab_dir, e);
+        log::error!(
+            "[collab] Failed to create collab dir {:?}: {}",
+            collab_dir,
+            e
+        );
     }
 
     let auth_service = Arc::new(std::sync::Mutex::new(
-        crate::auth::AuthService::load_from_file(&collab_dir.join("auth.json")).unwrap_or_else(|e| {
-            log::warn!("[collab] Failed to load auth state: {}, starting empty", e);
-            crate::auth::AuthService::new()
-        }),
+        crate::auth::AuthService::load_from_file(&collab_dir.join("auth.json")).unwrap_or_else(
+            |e| {
+                log::warn!("[collab] Failed to load auth state: {}, starting empty", e);
+                crate::auth::AuthService::new()
+            },
+        ),
     ));
     let invite_service = Arc::new(std::sync::Mutex::new(
-        crate::invite::InviteService::load_from_file(&collab_dir.join("invites.json")).unwrap_or_else(|e| {
-            log::warn!("[collab] Failed to load invite state: {}, starting empty", e);
-            crate::invite::InviteService::new()
-        }),
+        crate::invite::InviteService::load_from_file(&collab_dir.join("invites.json"))
+            .unwrap_or_else(|e| {
+                log::warn!(
+                    "[collab] Failed to load invite state: {}, starting empty",
+                    e
+                );
+                crate::invite::InviteService::new()
+            }),
     ));
     let public_service = Arc::new(std::sync::Mutex::new(
-        crate::public::PublicRoomService::load_from_file(&collab_dir.join("public_rooms.json")).unwrap_or_else(|e| {
-            log::warn!("[collab] Failed to load public rooms state: {}, starting empty", e);
-            crate::public::PublicRoomService::new()
-        }),
+        crate::public::PublicRoomService::load_from_file(&collab_dir.join("public_rooms.json"))
+            .unwrap_or_else(|e| {
+                log::warn!(
+                    "[collab] Failed to load public rooms state: {}, starting empty",
+                    e
+                );
+                crate::public::PublicRoomService::new()
+            }),
     ));
 
-    CollabServices { auth_service, invite_service, public_service }
+    CollabServices {
+        auth_service,
+        invite_service,
+        public_service,
+    }
 }
 
 /// Register the local user as owner of all boards, ensuring they have a token.
@@ -293,7 +364,10 @@ fn bootstrap_local_user(
                     if auth.get_token_for_user(&local_user.id).is_none() {
                         match auth.generate_token_for_user(&local_user.id) {
                             Ok(token) => {
-                                log::info!("[identity] Generated token for existing user: {}…", &token[..8]);
+                                log::info!(
+                                    "[identity] Generated token for existing user: {}…",
+                                    &token[..8]
+                                );
                             }
                             Err(e) => {
                                 log::error!("[identity] Failed to generate token: {}", e);
@@ -303,20 +377,35 @@ fn bootstrap_local_user(
                 }
             }
             for (board_id, _) in board_paths {
-                auth.add_to_room(board_id, &local_user.id, crate::auth::RoomRole::Owner, "local")
-                    .unwrap_or_else(|e| {
-                        log::warn!("[identity] Failed to add owner to board {}: {}", board_id, e);
-                    });
+                auth.add_to_room(
+                    board_id,
+                    &local_user.id,
+                    crate::auth::RoomRole::Owner,
+                    "local",
+                )
+                .unwrap_or_else(|e| {
+                    log::warn!(
+                        "[identity] Failed to add owner to board {}: {}",
+                        board_id,
+                        e
+                    );
+                });
             }
         }
         Err(e) => {
-            log::error!("[identity] Auth service unavailable during bootstrap: {}", e);
+            log::error!(
+                "[identity] Auth service unavailable during bootstrap: {}",
+                e
+            );
         }
     }
     // Persist auth state immediately (token must survive a crash before periodic save)
     if let Ok(auth) = auth_service.lock() {
         if let Err(e) = auth.save_to_file(&collab_dir.join("auth.json")) {
-            log::error!("[identity] Failed to save auth state after bootstrap: {}", e);
+            log::error!(
+                "[identity] Failed to save auth state after bootstrap: {}",
+                e
+            );
         }
     }
 }
@@ -335,7 +424,9 @@ fn spawn_background_tasks(
     let invite_cleanup = invite_service.clone();
     let mut invite_shutdown_rx = shutdown_rx.clone();
     tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(INVITE_CLEANUP_INTERVAL_SECS));
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(
+            INVITE_CLEANUP_INTERVAL_SECS,
+        ));
         loop {
             tokio::select! {
                 _ = interval.tick() => {
@@ -368,7 +459,9 @@ fn spawn_background_tasks(
     let save_dir = collab_dir.to_path_buf();
     let mut save_shutdown_rx = shutdown_rx.clone();
     tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(PERIODIC_SAVE_INTERVAL_SECS));
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(
+            PERIODIC_SAVE_INTERVAL_SECS,
+        ));
         loop {
             tokio::select! {
                 _ = interval.tick() => {
@@ -424,7 +517,10 @@ fn restore_persisted_connections(
     let persisted = match config.lock() {
         Ok(cfg) => cfg.remote_connections.clone(),
         Err(e) => {
-            log::error!("[sync_client.restore] Failed to read persisted remote connections: {}", e);
+            log::error!(
+                "[sync_client.restore] Failed to read persisted remote connections: {}",
+                e
+            );
             return;
         }
     };
@@ -449,7 +545,9 @@ fn restore_persisted_connections(
                 continue;
             }
             let remote_board_id = if entry.remote_board_id.trim().is_empty() {
-                entry.local_board_id.strip_prefix("remote-")
+                entry
+                    .local_board_id
+                    .strip_prefix("remote-")
                     .unwrap_or(entry.local_board_id.as_str())
                     .to_string()
             } else {
@@ -532,7 +630,9 @@ fn restore_persisted_connections(
                         "[sync_client.restore] Restored connection local_board_id={} remote={} server={}",
                         local_board_id, remote_board_id, entry.server_url
                     );
-                    let _ = restore_state.event_tx.send(BoardChangeEvent::CollabConnectionChanged);
+                    let _ = restore_state
+                        .event_tx
+                        .send(BoardChangeEvent::CollabConnectionChanged);
                 }
                 Err(error) => {
                     log::error!(
@@ -581,7 +681,12 @@ fn spawn_http_server(
 
                 if discovery_bind != config::DEFAULT_BIND_ADDRESS {
                     if let Ok(mut disc) = discovery.lock() {
-                        disc.start(actual_port, discovery_user_id, discovery_user_name, event_tx_for_discovery);
+                        disc.start(
+                            actual_port,
+                            discovery_user_id,
+                            discovery_user_name,
+                            event_tx_for_discovery,
+                        );
                         log::info!("[discovery] Started LAN discovery");
                     }
                 } else {
@@ -703,13 +808,17 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
                     if let tauri_plugin_global_shortcut::ShortcutState::Pressed = event.state {
-                        let focus: tauri_plugin_global_shortcut::Shortcut = match "CmdOrCtrl+B".parse() {
-                            Ok(s) => s,
-                            Err(e) => {
-                                log::error!("[lexera.shortcut] Failed to parse CmdOrCtrl+B shortcut: {}", e);
-                                return;
-                            }
-                        };
+                        let focus: tauri_plugin_global_shortcut::Shortcut =
+                            match "CmdOrCtrl+B".parse() {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    log::error!(
+                                    "[lexera.shortcut] Failed to parse CmdOrCtrl+B shortcut: {}",
+                                    e
+                                );
+                                    return;
+                                }
+                            };
                         if *shortcut == focus {
                             capture::focus_capture_popup(app);
                         } else {
@@ -767,7 +876,8 @@ pub fn run() {
             let _ = app.global_shortcut().register("CmdOrCtrl+B");
 
             // ── File watcher ───────────────────────────────────────────────
-            let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<BoardChangeEvent>(EVENT_CHANNEL_CAPACITY);
+            let (event_tx, _event_rx) =
+                tokio::sync::broadcast::channel::<BoardChangeEvent>(EVENT_CHANNEL_CAPACITY);
             let watcher_arc = setup_file_watcher(&storage, &board_paths, &event_tx, &shutdown_rx);
 
             // ── Collaboration services ─────────────────────────────────────
@@ -780,14 +890,23 @@ pub fn run() {
 
             // ── Background tasks ───────────────────────────────────────────
             spawn_background_tasks(
-                &collab.invite_service, &collab.auth_service, &collab.public_service,
-                &config, &config_path, &collab_dir, &shutdown_rx,
+                &collab.invite_service,
+                &collab.auth_service,
+                &collab.public_service,
+                &config,
+                &config_path,
+                &collab_dir,
+                &shutdown_rx,
             );
 
             // ── App state ──────────────────────────────────────────────────
             let sync_hub = Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new()));
-            let sync_client = Arc::new(tokio::sync::Mutex::new(crate::sync_client::SyncClientManager::new()));
-            let discovery = Arc::new(std::sync::Mutex::new(crate::discovery::DiscoveryService::new()));
+            let sync_client = Arc::new(tokio::sync::Mutex::new(
+                crate::sync_client::SyncClientManager::new(),
+            ));
+            let discovery = Arc::new(std::sync::Mutex::new(
+                crate::discovery::DiscoveryService::new(),
+            ));
             let app_handle = app.handle().clone();
             let live_port = Arc::new(std::sync::Mutex::new(port));
             let server_shutdown: Arc<std::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>>> =
@@ -825,15 +944,26 @@ pub fn run() {
 
             // ── HTTP server & discovery ─────────────────────────────────────
             spawn_http_server(
-                app_state, server_shutdown, live_port, discovery, app_handle,
-                &bind_address, &local_user.id, &local_user.name, &event_tx,
+                app_state,
+                server_shutdown,
+                live_port,
+                discovery,
+                app_handle,
+                &bind_address,
+                &local_user.id,
+                &local_user.name,
+                &event_tx,
             );
 
             // ── Clipboard watcher ──────────────────────────────────────────
-            let clipboard_history: capture::ClipboardHistory = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let clipboard_history: capture::ClipboardHistory =
+                Arc::new(std::sync::Mutex::new(Vec::new()));
             app.manage(clipboard_history.clone());
             let app_handle_for_watcher = app.handle().clone();
-            let watcher_shutdown = clipboard_watcher::start_clipboard_watcher(&app_handle_for_watcher, clipboard_history);
+            let watcher_shutdown = clipboard_watcher::start_clipboard_watcher(
+                &app_handle_for_watcher,
+                clipboard_history,
+            );
             if watcher_shutdown.is_none() {
                 log::warn!("[lexera.clipboard_watcher] Clipboard watcher disabled");
             }
@@ -843,11 +973,9 @@ pub fn run() {
 
             // Periodically validate quick-capture position (catches display changes)
             let app_handle_for_capture = app.handle().clone();
-            std::thread::spawn(move || {
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs(10));
-                    capture::validate_capture_position(&app_handle_for_capture);
-                }
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                capture::validate_capture_position(&app_handle_for_capture);
             });
 
             Ok(())

@@ -194,6 +194,10 @@ var LexeraApi = (function () {
     return request('/boards/' + boardId + '/columns');
   }
 
+  async function getBoardChanges(boardId, sinceGeneration) {
+    return request('/boards/' + boardId + '/changes?since_generation=' + encodeURIComponent(String(sinceGeneration)));
+  }
+
   async function requestCachedJson(path, revision, target) {
     const url = await discover();
     if (!url) {
@@ -884,7 +888,7 @@ var LexeraApi = (function () {
   }
 
   return {
-    discover, request, getBoards, getBoardHierarchy, getBoardHierarchyCached, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
+    discover, request, getBoards, getBoardHierarchy, getBoardHierarchyCached, getBoardChanges, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
     probeExternalEmbed,
     openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search, getCalendarTasks, getDashboardData,
     checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, fileInfoBatch, uploadMedia, addBoard, removeBoard,

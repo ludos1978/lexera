@@ -157,12 +157,20 @@ pub fn compute_media_manifest(board_path: &Path) -> Vec<MediaManifestEntry> {
         let data = match std::fs::read(&path) {
             Ok(d) => d,
             Err(e) => {
-                log::warn!("[media] Failed to read {} for hashing: {}", path.display(), e);
+                log::warn!(
+                    "[media] Failed to read {} for hashing: {}",
+                    path.display(),
+                    e
+                );
                 continue;
             }
         };
         let hash = hex::encode(Sha256::digest(&data));
-        entries.push(MediaManifestEntry { name, sha256: hash, size });
+        entries.push(MediaManifestEntry {
+            name,
+            sha256: hash,
+            size,
+        });
     }
 
     entries.sort_by(|a, b| a.name.cmp(&b.name));
@@ -292,10 +300,7 @@ mod manifest_tests {
     #[test]
     fn diff_finds_missing_files() {
         let local = vec![entry("a.png", "aaa", 100)];
-        let remote = vec![
-            entry("a.png", "aaa", 100),
-            entry("b.png", "bbb", 200),
-        ];
+        let remote = vec![entry("a.png", "aaa", 100), entry("b.png", "bbb", 200)];
         let diff = diff_media_manifests(&local, &remote);
         assert_eq!(diff, vec!["b.png"]);
     }

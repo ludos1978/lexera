@@ -462,6 +462,20 @@ describe('getBoardHierarchy', () => {
   });
 });
 
+describe('getBoardChanges', () => {
+  it('calls request with /boards/{id}/changes?since_generation=N', async () => {
+    const delta = { available: true, delta: {} };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(delta),
+    });
+
+    const result = await Api.getBoardChanges('board-42', 7);
+    expect(result).toEqual(delta);
+    expect(mockFetch.mock.calls[0][0]).toBe('http://localhost:13080/boards/board-42/changes?since_generation=7');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // getBoardColumnsCached — ETag / 304 handling
 // ═══════════════════════════════════════════════════════════════════════════

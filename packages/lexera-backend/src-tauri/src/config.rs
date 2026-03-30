@@ -71,11 +71,19 @@ pub struct SyncConfig {
     #[serde(default, alias = "renderApps")]
     pub render_apps: Option<RenderAppsConfig>,
     /// Global default dashboard tag list (overridden per-workspace or per-board).
-    #[serde(default, alias = "dashboardTags", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "dashboardTags",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub dashboard_tags: Option<Vec<String>>,
     /// Global default frontend settings (columnWidth, tagVisibility, theme, etc.).
     /// Overridden per-workspace via workspaces[].settings, per-board via board YAML.
-    #[serde(default, alias = "defaultSettings", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "defaultSettings",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub default_settings: Option<std::collections::HashMap<String, String>>,
 }
 
@@ -186,7 +194,10 @@ pub async fn browse_files(
         builder = builder.set_title(title);
     }
     if let Some(extensions) = &extensions {
-        let extension_refs: Vec<&str> = extensions.iter().map(|extension| extension.as_str()).collect();
+        let extension_refs: Vec<&str> = extensions
+            .iter()
+            .map(|extension| extension.as_str())
+            .collect();
         builder = builder.add_filter("Files", &extension_refs);
     }
     let paths = if multiple.unwrap_or(false) {
@@ -377,8 +388,7 @@ pub fn save_config(path: &PathBuf, config: &SyncConfig) -> Result<(), std::io::E
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let json = serde_json::to_string_pretty(config)
-        .map_err(std::io::Error::other)?;
+    let json = serde_json::to_string_pretty(config).map_err(std::io::Error::other)?;
     fs::write(path, json)
 }
 

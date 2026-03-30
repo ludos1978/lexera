@@ -85,7 +85,6 @@ fn validate_user_id(id: &str) -> Result<String> {
 // Request/Response Types
 // ============================================================================
 
-
 #[derive(Deserialize)]
 struct CreateInviteBody {
     role: String,
@@ -151,10 +150,7 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
 
 /// Authenticate a request via bearer token.
 /// Validates the `Authorization: Bearer <token>` header against the AuthService.
-fn require_authenticated_user(
-    headers: &HeaderMap,
-    state: &AppState,
-) -> Result<String> {
+fn require_authenticated_user(headers: &HeaderMap, state: &AppState) -> Result<String> {
     if let Some(token) = extract_bearer_token(headers) {
         let auth = lock_arc(&state.auth_service, "auth")?;
         if let Some(user_id) = auth.validate_token(&token) {
@@ -828,10 +824,9 @@ async fn register_user(
                 StatusCode::CONFLICT,
                 Json(ErrorResponse::new("User ID already exists")),
             ),
-            crate::auth::AuthError::UserNotFound => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::not_found()),
-            ),
+            crate::auth::AuthError::UserNotFound => {
+                (StatusCode::NOT_FOUND, Json(ErrorResponse::not_found()))
+            }
         })?;
 
     drop(auth);
@@ -878,7 +873,9 @@ async fn get_me(State(state): State<AppState>) -> Result<Json<serde_json::Value>
             Json(ErrorResponse::new("Local user not found")),
         )
     })?;
-    let token = auth.get_token_for_user(&state.local_user_id).map(|t| t.to_string());
+    let token = auth
+        .get_token_for_user(&state.local_user_id)
+        .map(|t| t.to_string());
     Ok(Json(serde_json::json!({
         "id": user.id,
         "name": user.name,
@@ -1935,10 +1932,7 @@ mod tests {
             "accept_invite must return auth_token"
         );
         let returned_token = json["auth_token"].as_str().unwrap();
-        assert!(
-            !returned_token.is_empty(),
-            "auth_token must not be empty"
-        );
+        assert!(!returned_token.is_empty(), "auth_token must not be empty");
         // The returned token should be the acceptor's existing token
         assert_eq!(returned_token, acceptor_token);
     }

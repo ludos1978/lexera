@@ -6,22 +6,46 @@ use serde::{Deserialize, Serialize};
 pub struct WorkspaceEntry {
     pub id: String,
     pub name: String,
-    #[serde(default, alias = "bookmarkSync", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "bookmarkSync",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub bookmark_sync: Option<bool>,
-    #[serde(default, alias = "calendarSync", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "calendarSync",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub calendar_sync: Option<bool>,
-    #[serde(default, alias = "calendarSlug", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "calendarSlug",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub calendar_slug: Option<String>,
-    #[serde(default, alias = "calendarName", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "calendarName",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub calendar_name: Option<String>,
     /// Visual theme for this workspace (e.g. "bordered", "gap-highlight", "lines").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
     /// Layout preset name for this workspace.
-    #[serde(default, alias = "layoutPreset", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "layoutPreset",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub layout_preset: Option<String>,
     /// Dashboard tag list override for this workspace (e.g. ["#important", "#blocked"]).
-    #[serde(default, alias = "dashboardTags", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "dashboardTags",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub dashboard_tags: Option<Vec<String>>,
     /// Generic frontend settings overrides for this workspace (key → value).
     /// Keys match board YAML setting names (columnWidth, tagVisibility, etc.).
@@ -37,13 +61,29 @@ pub struct BoardEntry {
     pub name: Option<String>,
     #[serde(default, alias = "xbelName", skip_serializing_if = "Option::is_none")]
     pub xbel_name: Option<String>,
-    #[serde(default, alias = "bookmarkSync", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "bookmarkSync",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub bookmark_sync: Option<bool>,
-    #[serde(default, alias = "calendarSync", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "calendarSync",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub calendar_sync: Option<bool>,
-    #[serde(default, alias = "calendarSlug", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "calendarSlug",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub calendar_slug: Option<String>,
-    #[serde(default, alias = "calendarName", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "calendarName",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub calendar_name: Option<String>,
     /// Workspaces this board belongs to.  Backwards-compatible: reads the old
     /// single `workspace_id` field and promotes it into `workspace_ids`.

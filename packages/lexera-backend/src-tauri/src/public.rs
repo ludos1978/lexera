@@ -147,8 +147,7 @@ impl PublicRoomService {
             member_counts: self.member_counts.clone(),
         };
 
-        let json = serde_json::to_string_pretty(&data)
-            .map_err(io::Error::other)?;
+        let json = serde_json::to_string_pretty(&data).map_err(io::Error::other)?;
 
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, &json)?;

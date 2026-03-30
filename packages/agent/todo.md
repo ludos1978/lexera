@@ -259,12 +259,12 @@ See [spec-performance.md](spec-performance.md) for full spec.
 - [x] **Phase 3: Search index** — `BoardState` now maintains inverted candidate indexes for tags, temporal tags, checked/open state, and due buckets so `search` / `search_many` prefilter before full matching
 - [x] ~~**Phase 4: Delta undo**~~ — already implemented: boardDelta.js computes structural diffs (row/column/card level), undo stack stores compact deltas not full board clones
 - [x] ~~**Phase 5: Targeted DOM updates (expand)**~~ (0ba07962) — card edit, add, reorder, checkbox toggle now skip renderColumns() with targeted element updates
-- [ ] **Phase 6: Virtual scrolling** — render only visible cards for 500+ card boards
-- [ ] **Phase 7: Delta sync on poll** — fetch only changed cards instead of full board on generation change
-- [ ] **Phase 8: Split board API contracts by use-case** — stop serving full board snapshots to every consumer; create separate summary, hierarchy/tree, dashboard, and editable snapshot contracts so sidebar/dashboard/search do not hit the same heavy payloads as board editing
+- [x] ~~**Phase 6: Virtual scrolling**~~ — already implemented: `LexeraVirtualScroll` activates after `renderColumns()` and virtualises large column card lists behind placeholder sentinels
+- [x] **Phase 7: Delta sync on poll** — polling now requests `/boards/:id/changes?since_generation=...` first and applies compact board deltas before falling back to a full board reload
+- [x] **Phase 8: Split board API contracts by use-case** — board list, hierarchy, dashboard, poll delta, and editable snapshot paths are now separated so sidebar/dashboard refreshes no longer hit the full editable board payload contract
 - [x] **Phase 9: Cached board summary + hierarchy indexes** — `/boards` and `/boards/:id/hierarchy` now read maintained summary/tree data from `BoardState` instead of recomputing from full board snapshots
 - [x] **Phase 10: Backend dashboard aggregation** — dashboard search/todos/tag/calendar refreshes now collapse into one backend `/dashboard/data` endpoint backed by cached board search docs
-- [ ] **Phase 11: Include dependency graph** — storage and watcher now share one live include map and resync watched include paths on reload/save, but subtree-only invalidation still needs to replace full-board include reloads
+- [x] **Phase 11: Include dependency graph** — include watcher events now refresh only matching include-backed columns via `reload_board_include_path()` instead of forcing full board reloads
 
 ## Long Term — Architecture
 

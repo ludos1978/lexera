@@ -110,6 +110,7 @@ pub async fn dashboard_data(
         &end_of_week,
         &two_weeks_out,
         body.calendar_limit,
+        Some(0),
         body.calendar_truncate,
     );
 

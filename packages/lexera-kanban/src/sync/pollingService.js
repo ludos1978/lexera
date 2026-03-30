@@ -119,6 +119,34 @@ var LexeraPollingService = (function () {
             if (serverGen !== null && typeof pollGen === 'number' && serverGen === pollGen) {
               // Board hasn't changed — skip reload
             } else {
+              var deltaApplied = false;
+              if (
+                serverGen !== null &&
+                typeof pollGen === 'number' &&
+                serverGen > pollGen &&
+                _deps.LexeraApi &&
+                typeof _deps.LexeraApi.getBoardChanges === 'function'
+              ) {
+                try {
+                  var deltaPayload = await _deps.LexeraApi.getBoardChanges(activeBoardId, pollGen);
+                  deltaApplied = !!_callDep('applyPollingBoardDelta', activeBoardId, deltaPayload);
+                  if (!deltaApplied) {
+                    _callDep('traceFrontendAction', 'warn', 'poll.delta.unavailable', 'Polling delta unavailable; falling back to full board reload', {
+                      boardId: activeBoardId,
+                      loadedGeneration: pollGen,
+                      serverGeneration: serverGen,
+                      deltaAvailable: !!(deltaPayload && deltaPayload.available)
+                    });
+                  }
+                } catch (deltaErr) {
+                  _callDep('logFrontendIssue', 'warn', 'poll.delta', 'Failed to load board delta during polling refresh', deltaErr);
+                }
+              }
+              if (deltaApplied) {
+                _callDep('refreshHeaderFileControls');
+                _callDep('scheduleDashboardRefresh', 120);
+                return;
+              }
               _callDep('traceFrontendAction', 'info', 'poll.reload', 'Polling reload for active board (clean, generation changed)', {
                 boardId: activeBoardId,
                 revision: _dep('_lastLoadedRevision') || null,

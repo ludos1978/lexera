@@ -86,6 +86,19 @@ pub struct SearchEngine {
     week_end: NaiveDate,
 }
 
+#[derive(Debug, Clone)]
+pub struct SearchPrefilter {
+    pub required_tags: Vec<String>,
+    pub required_temporals: Vec<String>,
+    pub required_checked: Option<bool>,
+    pub required_due: Option<DueFilter>,
+    pub required_due_date: Option<NaiveDate>,
+    pub impossible: bool,
+    pub today: NaiveDate,
+    pub week_start: NaiveDate,
+    pub week_end: NaiveDate,
+}
+
 impl SearchEngine {
     pub fn compile(raw_query: &str, options: SearchOptions) -> Self {
         let query = raw_query.trim();
@@ -143,6 +156,70 @@ impl SearchEngine {
         self.terms.is_empty() && self.regex_mode.is_none() && !self.regex_invalid
     }
 
+    pub fn prefilter(&self) -> SearchPrefilter {
+        let mut filter = SearchPrefilter {
+            required_tags: Vec::new(),
+            required_temporals: Vec::new(),
+            required_checked: None,
+            required_due: None,
+            required_due_date: None,
+            impossible: self.regex_invalid,
+            today: self.today,
+            week_start: self.week_start,
+            week_end: self.week_end,
+        };
+
+        if self.regex_mode.is_some() || filter.impossible {
+            return filter;
+        }
+
+        for parsed in &self.terms {
+            if parsed.negate {
+                continue;
+            }
+            match &parsed.term {
+                SearchTerm::Tag(value) => {
+                    if !filter.required_tags.iter().any(|tag| tag == value) {
+                        filter.required_tags.push(value.clone());
+                    }
+                }
+                SearchTerm::Temporal(value) => {
+                    if !filter.required_temporals.iter().any(|tag| tag == value) {
+                        filter.required_temporals.push(value.clone());
+                    }
+                }
+                SearchTerm::IsChecked(value) => match filter.required_checked {
+                    Some(existing) if existing != *value => {
+                        filter.impossible = true;
+                        return filter;
+                    }
+                    None => filter.required_checked = Some(*value),
+                    _ => {}
+                },
+                SearchTerm::Due(mode) => {
+                    if !combine_due_filter(&mut filter, Some(*mode), None) {
+                        filter.impossible = true;
+                        return filter;
+                    }
+                }
+                SearchTerm::DueDate(date) => {
+                    if !combine_due_filter(&mut filter, None, Some(*date)) {
+                        filter.impossible = true;
+                        return filter;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if filter.required_due == Some(DueFilter::Overdue) && filter.required_checked == Some(true)
+        {
+            filter.impossible = true;
+        }
+
+        filter
+    }
+
     pub fn matches(&self, doc: &SearchDocument<'_>) -> bool {
         if self.regex_invalid {
             return false;
@@ -196,7 +273,11 @@ impl SearchEngine {
     fn matches_due(&self, mode: DueFilter, doc: &SearchDocument<'_>) -> bool {
         match mode {
             DueFilter::Any => doc.meta.due_date.is_some(),
-            DueFilter::Overdue => doc.meta.is_overdue,
+            DueFilter::Overdue => doc
+                .meta
+                .due_date
+                .map(|d| d < self.today && !doc.checked)
+                .unwrap_or(false),
             DueFilter::Today => doc.meta.due_date == Some(self.today),
             DueFilter::Week => doc
                 .meta
@@ -205,6 +286,80 @@ impl SearchEngine {
                 .unwrap_or(false),
             DueFilter::Future => doc.meta.due_date.map(|d| d > self.today).unwrap_or(false),
         }
+    }
+}
+
+fn combine_due_filter(
+    filter: &mut SearchPrefilter,
+    due_mode: Option<DueFilter>,
+    due_date: Option<NaiveDate>,
+) -> bool {
+    if let Some(date) = due_date {
+        if let Some(existing) = filter.required_due_date {
+            if existing != date {
+                return false;
+            }
+        }
+        if let Some(mode) = filter.required_due {
+            if !date_matches_due_filter(
+                date,
+                mode,
+                filter.today,
+                filter.week_start,
+                filter.week_end,
+            ) {
+                return false;
+            }
+        }
+        filter.required_due_date = Some(date);
+        return true;
+    }
+
+    let Some(mode) = due_mode else {
+        return true;
+    };
+
+    if let Some(date) = filter.required_due_date {
+        return date_matches_due_filter(
+            date,
+            mode,
+            filter.today,
+            filter.week_start,
+            filter.week_end,
+        );
+    }
+
+    match filter.required_due {
+        None => {
+            filter.required_due = Some(mode);
+            true
+        }
+        Some(existing) if existing == mode => true,
+        Some(DueFilter::Any) => {
+            filter.required_due = Some(mode);
+            true
+        }
+        Some(existing) if mode == DueFilter::Any => {
+            filter.required_due = Some(existing);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn date_matches_due_filter(
+    date: NaiveDate,
+    mode: DueFilter,
+    today: NaiveDate,
+    week_start: NaiveDate,
+    week_end: NaiveDate,
+) -> bool {
+    match mode {
+        DueFilter::Any => true,
+        DueFilter::Overdue => date < today,
+        DueFilter::Today => date == today,
+        DueFilter::Week => date >= week_start && date <= week_end,
+        DueFilter::Future => date > today,
     }
 }
 
@@ -434,9 +589,7 @@ fn wiki_link_regex() -> &'static Regex {
 
 fn bare_url_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r"(?:^|\s)(https?://[^\s>)\]]+)").expect("valid bare url regex")
-    })
+    RE.get_or_init(|| Regex::new(r"(?:^|\s)(https?://[^\s>)\]]+)").expect("valid bare url regex"))
 }
 
 /// Extract all links from card content: markdown links `[text](url)`,
@@ -446,7 +599,11 @@ pub fn extract_links(content: &str) -> Vec<String> {
 
     // Markdown links: [text](url "optional title")
     for cap in markdown_link_regex().captures_iter(content) {
-        let url = cap[2].split_whitespace().next().unwrap_or("").trim_matches('"');
+        let url = cap[2]
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim_matches('"');
         if !url.is_empty() && !links.iter().any(|l: &String| l == url) {
             links.push(url.to_string());
         }
@@ -673,6 +830,27 @@ mod tests {
             meta: &meta,
         };
         assert!(engine.matches(&doc));
+    }
+
+    #[test]
+    fn test_search_prefilter_extracts_indexable_terms() {
+        let engine = SearchEngine::compile(
+            "#finance @2026w09 is:open due:week",
+            SearchOptions::default(),
+        );
+        let filter = engine.prefilter();
+        assert!(!filter.impossible);
+        assert_eq!(filter.required_tags, vec!["#finance".to_string()]);
+        assert_eq!(filter.required_temporals, vec!["@2026w09".to_string()]);
+        assert_eq!(filter.required_checked, Some(false));
+        assert_eq!(filter.required_due, Some(DueFilter::Week));
+        assert_eq!(filter.required_due_date, None);
+    }
+
+    #[test]
+    fn test_search_prefilter_marks_checked_overdue_as_impossible() {
+        let engine = SearchEngine::compile("is:done due:overdue", SearchOptions::default());
+        assert!(engine.prefilter().impossible);
     }
 
     #[test]
@@ -1439,10 +1617,7 @@ mod tests {
     #[test]
     fn test_link_search_no_match() {
         let engine = SearchEngine::compile("l:gitlab.com", SearchOptions::default());
-        let meta = SearchCardMeta::from_card(
-            "Check [repo](https://github.com/user/repo)",
-            false,
-        );
+        let meta = SearchCardMeta::from_card("Check [repo](https://github.com/user/repo)", false);
         let doc = SearchDocument {
             board_title: "Dev",
             column_title: "Todo",
@@ -1470,10 +1645,7 @@ mod tests {
     #[test]
     fn test_link_search_negation() {
         let engine = SearchEngine::compile("task -l:github.com", SearchOptions::default());
-        let meta = SearchCardMeta::from_card(
-            "task with [link](https://github.com/repo)",
-            false,
-        );
+        let meta = SearchCardMeta::from_card("task with [link](https://github.com/repo)", false);
         let doc = SearchDocument {
             board_title: "A",
             column_title: "B",

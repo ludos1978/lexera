@@ -11,6 +11,7 @@ use crate::state::AppState;
 #[derive(Deserialize)]
 pub struct CalendarQuery {
     limit: Option<usize>,
+    offset: Option<usize>,
     truncate: Option<usize>,
 }
 
@@ -49,7 +50,7 @@ pub(crate) fn compute_date_boundaries() -> (String, String, String) {
 /// GET /calendar/tasks — return all cards with due dates, grouped by time period.
 /// Response includes both flat `results` array (backwards compat) and `groups` object
 /// with overdue/today/thisWeek/upcoming/later groups, each with `items` and `total`.
-/// Query params: `limit` (max items per group), `truncate` (max chars of card_content).
+/// Query params: `limit`, `offset` (per-group paging), `truncate` (max chars of card_content).
 pub async fn calendar_tasks(
     State(state): State<AppState>,
     Query(params): Query<CalendarQuery>,
@@ -62,6 +63,7 @@ pub async fn calendar_tasks(
         &end_of_week_str,
         &two_weeks_str,
         params.limit,
+        params.offset,
         params.truncate,
     );
     Json(serde_json::json!({
@@ -151,5 +153,46 @@ kanban-plugin: board
         let json = body_json(resp.into_body()).await;
         let results = json["results"].as_array().unwrap();
         assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn calendar_tasks_honors_limit_offset_and_truncate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = write_board_file(
+            tmp.path(),
+            "calendar-paged.md",
+            "\
+---
+kanban-plugin: board
+---
+
+## Backlog
+- [ ] Alpha scheduled item with a long description @2099-01-20
+- [ ] Beta scheduled item with a long description @2099-01-21
+- [ ] Gamma scheduled item with a long description @2099-01-22
+",
+        );
+        let state = test_state(tmp.path());
+        let token = register_test_user(&state);
+        state.storage.add_board(&board_path).unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(authed_get(
+                "/calendar/tasks?limit=1&offset=1&truncate=12",
+                &token,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let upcoming = &json["groups"]["later"];
+        assert_eq!(upcoming["total"], 3);
+        assert_eq!(upcoming["limit"], 1);
+        assert_eq!(upcoming["offset"], 1);
+        let items = upcoming["items"].as_array().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["cardContent"].as_str().unwrap(), "Beta schedul…");
     }
 }

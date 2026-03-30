@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::Json,
 };
@@ -100,6 +100,11 @@ pub struct LiveSyncImportBody {
 pub struct CrashsaveBoardBody {
     board: lexera_core::types::KanbanBoard,
     reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct BoardChangesQuery {
+    since_generation: u64,
 }
 
 pub async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -273,6 +278,40 @@ pub async fn get_board_hierarchy(
             "isRemote": is_remote,
         })),
     ))
+}
+
+pub async fn get_board_changes(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Query(query): Query<BoardChangesQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
+    let title = state.storage.read_board_title(&board_id).ok_or_else(|| {
+        let error = format!("Board not found: {}", board_id);
+        log_api_issue(
+            StatusCode::NOT_FOUND,
+            "lexera.api.get_board_changes",
+            &error,
+        );
+        err_not_found(error)
+    })?;
+
+    let (version, is_remote, revision, _) = board_response_metadata(&state, &board_id);
+    let generation = state.storage.get_board_generation(&board_id).unwrap_or(0);
+    let delta = state
+        .storage
+        .get_board_delta_since_generation(&board_id, query.since_generation);
+
+    Ok(Json(serde_json::json!({
+        "boardId": board_id,
+        "title": title,
+        "version": version,
+        "revision": revision,
+        "generation": generation,
+        "isRemote": is_remote,
+        "available": delta.is_some(),
+        "delta": delta,
+    })))
 }
 
 pub async fn add_card(
@@ -634,6 +673,11 @@ pub async fn add_board_endpoint(
                     e
                 );
             }
+            crate::sync_watcher_include_paths(
+                state.storage.as_ref(),
+                watcher,
+                "lexera.api.add_board",
+            );
         }
     }
 
@@ -809,6 +853,16 @@ pub async fn update_board_settings(
         )
     })?;
 
+    if let Ok(mut watcher_guard) = state.watcher.lock() {
+        if let Some(ref mut watcher) = *watcher_guard {
+            crate::sync_watcher_include_paths(
+                state.storage.as_ref(),
+                watcher,
+                "lexera.api.update_board_settings",
+            );
+        }
+    }
+
     // Broadcast change so SSE clients can react
     if let Err(error) = state.event_tx.send(
         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
@@ -948,6 +1002,11 @@ async fn broadcast_crdt_to_sync_hub(state: &AppState, board_id: &str) {
 }
 
 fn emit_main_file_changed(state: &AppState, board_id: &str) {
+    if let Ok(mut watcher_guard) = state.watcher.lock() {
+        if let Some(ref mut watcher) = *watcher_guard {
+            crate::sync_watcher_include_paths(state.storage.as_ref(), watcher, "lexera.api.board");
+        }
+    }
     if let Err(error) = state.event_tx.send(
         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
             board_id: board_id.to_string(),
@@ -1157,6 +1216,38 @@ kanban-plugin: board
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["stacks"][0]["columns"].as_array().unwrap().len(), 2);
         assert!(json.get("fullBoard").is_none());
+    }
+
+    #[tokio::test]
+    async fn get_board_changes_returns_delta_for_cached_generation_snapshot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = write_board_file(tmp.path(), "changes.md", MINIMAL_BOARD);
+        let state = test_state(tmp.path());
+        let token = register_test_user(&state);
+
+        let board_id = state.storage.add_board(&board_path).unwrap();
+        state
+            .storage
+            .add_card(&board_id, 0, "Delta API card")
+            .unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/boards/{}/changes?since_generation=0", board_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["available"], true);
+        assert!(json["delta"].is_object());
+        assert!(json["generation"].as_u64().unwrap() >= 1);
     }
 
     #[tokio::test]

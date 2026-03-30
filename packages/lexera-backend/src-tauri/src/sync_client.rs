@@ -227,10 +227,7 @@ impl SyncClientManager {
             register_remote_user(&client, &server_url, &user_id, &user_name).await?;
 
         // 2. Accept invite token — use register token for bearer auth.
-        let mut accept_req = client.post(format!(
-            "{}/collab/invites/{}/accept",
-            server_url, token
-        ));
+        let mut accept_req = client.post(format!("{}/collab/invites/{}/accept", server_url, token));
         if let Some(ref t) = register_token {
             accept_req = accept_req.header("authorization", format!("Bearer {}", t));
         }
@@ -370,7 +367,10 @@ impl SyncClientManager {
         let ws_url = if let Some(ref token) = auth_token {
             format!("{}/sync/{}?token={}", ws_base, remote_board_id, token)
         } else {
-            log::warn!("[sync_client] No auth token for remote board {} — WebSocket may fail", remote_board_id);
+            log::warn!(
+                "[sync_client] No auth token for remote board {} — WebSocket may fail",
+                remote_board_id
+            );
             format!("{}/sync/{}", ws_base, remote_board_id)
         };
 
@@ -380,8 +380,7 @@ impl SyncClientManager {
         let at = auth_token.clone();
         let ws_task = tokio::spawn(async move {
             run_sync_client_with_reconnect(
-                ws_url, user_id, local_bid, storage, event_tx, sync_hub,
-                srv_url, rem_bid, at,
+                ws_url, user_id, local_bid, storage, event_tx, sync_hub, srv_url, rem_bid, at,
             )
             .await;
         });
@@ -584,14 +583,17 @@ async fn run_sync_client(
                 if dl > 0 || ul > 0 {
                     log::info!(
                         "[sync_client] Initial media sync board={}: downloaded={} uploaded={}",
-                        local_board_id, dl, ul
+                        local_board_id,
+                        dl,
+                        ul
                     );
                 }
             }
             Err(e) => {
                 log::warn!(
                     "[sync_client] Initial media sync failed for {}: {}",
-                    local_board_id, e
+                    local_board_id,
+                    e
                 );
             }
         }
@@ -1041,7 +1043,10 @@ async fn fetch_remote_media_manifest(
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        return Err(format!("Media manifest fetch failed (HTTP {}): {}", status, text));
+        return Err(format!(
+            "Media manifest fetch failed (HTTP {}): {}",
+            status, text
+        ));
     }
     resp.json()
         .await
@@ -1114,10 +1119,7 @@ async fn upload_media_file(
         .map_err(|e| format!("MIME error: {}", e))?;
     let form = reqwest::multipart::Form::new().part("file", part);
 
-    let mut req = client.post(format!(
-        "{}/boards/{}/media",
-        server_url, remote_board_id
-    ));
+    let mut req = client.post(format!("{}/boards/{}/media", server_url, remote_board_id));
     if let Some(token) = auth_token {
         req = req.header("authorization", format!("Bearer {}", token));
     }
