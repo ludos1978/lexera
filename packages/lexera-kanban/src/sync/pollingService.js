@@ -187,8 +187,10 @@ var LexeraPollingService = (function () {
           if (!_dep('embeddedMode')) localStorage.removeItem('lexera-last-board');
           _callDep('renderMainView');
         }
-      } else if (!activeBoardId && !_dep('searchMode')) {
-        var lastBoard = _dep('embeddedMode') ? _dep('embeddedPreferredBoardId') : (_dep('urlParams').get('board') || localStorage.getItem('lexera-last-board'));
+      } else if (!activeBoardId && !_dep('searchMode') && !_dep('embeddedMode')) {
+        // Only auto-select last board in the top-level window — embedded
+        // iframes get their board from the workspace shell, not from polling.
+        var lastBoard = _dep('urlParams').get('board') || localStorage.getItem('lexera-last-board');
         if (lastBoard) {
           var found = _callDep('findBoardMeta', lastBoard);
           if (found) {

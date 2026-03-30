@@ -3789,7 +3789,15 @@
     var data = event && event.data;
     if (!data || !data.type) return;
     if (data.type === 'lexera-pane-activated') {
-      if (!findTab(state.dockTree, data.pane)) return;
+      var paneFound = findTabInAllTrees(data.pane);
+      if (!paneFound) return;
+      // Only activate if this pane isn't already the active tab in its leaf —
+      // prevents cascade where loading an iframe triggers tab activation which
+      // triggers board change notification which loads another board.
+      if (paneFound.leaf.activeTabId === data.pane &&
+          (paneFound.treeId !== 'center' || state.activeLeafId === paneFound.leaf.id)) {
+        return;
+      }
       activateTab(data.pane);
       return;
     }
