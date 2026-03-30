@@ -335,6 +335,7 @@ var LexeraDashboard = (function () {
     syncSidebarToView: function() { syncSidebarToView(); },
     reorderRows: function(s, t, b) { return reorderRows(s, t, b); },
     moveStack: function(fr, fs, tr, ts, b) { return moveStack(fr, fs, tr, ts, b); },
+    moveColumnWithinBoard: function(fr, fs, fc, tr, ts, tc, b) { return moveColumnWithinBoard(fr, fs, fc, tr, ts, tc, b); },
     getFullBoardData: function() { return fullBoardData; }
   });
   var currentTagVisibilityMode = 'allexcludinglayout';
@@ -6799,6 +6800,7 @@ var LexeraDashboard = (function () {
       api: mgmtApiAdapter,
       callbacks: mgmtCallbacks,
     });
+    if (_rt) _rt.setViewLoading(managementContainer, false);
     applyPendingManagementTab(workspaceShellEnabled ? 'backendSettings' : 'combinedManagement', managementContainer);
   }
 
@@ -6812,6 +6814,7 @@ var LexeraDashboard = (function () {
       api: mgmtApiAdapter,
       callbacks: mgmtCallbacks,
     });
+    if (_rt) _rt.setViewLoading(container, false);
     filesMountInitialized = true;
     applyPendingManagementTab('files', container);
   }

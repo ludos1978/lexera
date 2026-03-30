@@ -146,15 +146,14 @@ var LexeraKeyboardNavigation = (function () {
         _deps.renderColumns();
       }
     } else if ((key === 'ArrowUp' || key === 'ArrowDown') && e.ctrlKey && e.altKey && !focusedCardEl) {
-      // Ctrl+Alt+Arrow: reorder rows
+      // Ctrl+Alt+Up/Down: reorder rows
       if (!_deps.getFullBoardData || !_deps.reorderRows) return;
       var fbd = _deps.getFullBoardData();
       if (!fbd || !fbd.rows || fbd.rows.length < 2) return;
       e.preventDefault();
-      // Find focused row (first visible row by default, or row containing focused entity)
       var rowEls = columnsContainer ? columnsContainer.querySelectorAll('.board-row') : [];
       if (rowEls.length < 2) return;
-      var focusedRowIdx = 0; // default to first row
+      var focusedRowIdx = 0;
       if (focusedBoardEntityEl) {
         var rowEl = focusedBoardEntityEl.closest('.board-row');
         if (rowEl) {
@@ -166,6 +165,40 @@ var LexeraKeyboardNavigation = (function () {
       var targetIdx = key === 'ArrowUp' ? focusedRowIdx - 1 : focusedRowIdx + 1;
       if (targetIdx >= 0 && targetIdx < rowEls.length) {
         _deps.reorderRows(focusedRowIdx, targetIdx, key === 'ArrowUp');
+      }
+    } else if ((key === 'ArrowLeft' || key === 'ArrowRight') && e.ctrlKey && e.altKey && !focusedCardEl) {
+      // Ctrl+Alt+Left/Right: reorder stacks within a row, or columns within a stack
+      if (!columnsContainer) return;
+      e.preventDefault();
+      var direction = key === 'ArrowLeft' ? -1 : 1;
+      // Try to find a focused column or stack from focusedBoardEntityEl
+      var focusedCol = focusedBoardEntityEl ? focusedBoardEntityEl.closest('.column') : null;
+      var focusedStack = focusedBoardEntityEl ? focusedBoardEntityEl.closest('.board-stack') : null;
+      if (!focusedCol && !focusedStack && focusedCardEl) {
+        focusedCol = focusedCardEl.closest('.column');
+        focusedStack = focusedCardEl.closest('.board-stack');
+      }
+      if (focusedCol && focusedStack && _deps.moveColumnWithinBoard) {
+        // Reorder column within its stack
+        var stackContent = focusedStack.querySelector('.board-stack-content');
+        var cols = stackContent ? stackContent.querySelectorAll(':scope > .column') : [];
+        if (cols.length < 2) return;
+        var colIdx = Array.prototype.indexOf.call(cols, focusedCol);
+        var targetColIdx = colIdx + direction;
+        if (targetColIdx < 0 || targetColIdx >= cols.length) return;
+        var rowIdx = parseInt(focusedStack.getAttribute('data-row-index'), 10);
+        var stackIdx = parseInt(focusedStack.getAttribute('data-stack-index'), 10);
+        _deps.moveColumnWithinBoard(rowIdx, stackIdx, colIdx, rowIdx, stackIdx, targetColIdx, direction < 0);
+      } else if (focusedStack && _deps.moveStack) {
+        // Reorder stack within its row
+        var rowContent = focusedStack.closest('.board-row-content');
+        var stacks = rowContent ? rowContent.querySelectorAll(':scope > .board-stack') : [];
+        if (stacks.length < 2) return;
+        var stackIdx = Array.prototype.indexOf.call(stacks, focusedStack);
+        var targetStackIdx = stackIdx + direction;
+        if (targetStackIdx < 0 || targetStackIdx >= stacks.length) return;
+        var rowIdx = parseInt(focusedStack.getAttribute('data-row-index'), 10);
+        _deps.moveStack(rowIdx, stackIdx, rowIdx, targetStackIdx, direction < 0);
       }
     } else if (key === 'Escape' && _deps.getMgmtPanelOpen()) {
       e.preventDefault();
