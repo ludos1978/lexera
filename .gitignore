@@ -62,3 +62,4 @@ tests/kanban-project-test
 tests/kanban-GAMEDESIGN-LECTURE
 packages/target-check/debug
 packages/target-check
+package.json.vscode-archive
