@@ -162,6 +162,7 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
         )
         .route("/boards/{board_id}/file", get(file_ops::serve_file))
         .route("/boards/{board_id}/file-info", get(file_ops::file_info))
+        .route("/boards/{board_id}/file-info-batch", axum::routing::post(file_ops::file_info_batch))
         .route(
             "/boards/{board_id}/convert-path",
             axum::routing::post(file_ops::convert_path),

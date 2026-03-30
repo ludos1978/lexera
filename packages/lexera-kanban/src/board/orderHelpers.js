@@ -1957,31 +1957,38 @@ var LexeraOrderHelpers = (function () {
     renderDashboardFileEmbedsList();
     renderDashboardIncludedFilesList();
 
-    return Promise.all([
-      Promise.all((refs.fileEmbeds || []).map(function (item) {
-        return requestDashboardFileInfo(boardId, item.path).then(function (info) {
-          var status = info && info.exists === false ? 'missing' : (info ? 'exists' : 'unknown');
-          return Object.assign({}, item, {
-            status: status,
-            exists: status === 'exists',
-            fileInfo: info || null
-          });
-        });
-      })),
-      Promise.all((refs.includedFiles || []).map(function (item) {
-        return requestDashboardFileInfo(boardId, item.path).then(function (info) {
-          var status = info && info.exists === false ? 'missing' : (info ? 'exists' : 'unknown');
-          return Object.assign({}, item, {
-            status: status,
-            exists: status === 'exists',
-            fileInfo: info || null
-          });
-        });
-      }))
-    ]).then(function (resolved) {
+    // Collect all unique paths and batch-check them in a single API request
+    var allItems = (refs.fileEmbeds || []).concat(refs.includedFiles || []);
+    var uniquePaths = [];
+    var pathSet = {};
+    for (var pi = 0; pi < allItems.length; pi++) {
+      if (allItems[pi].path && !pathSet[allItems[pi].path]) {
+        pathSet[allItems[pi].path] = true;
+        uniquePaths.push(allItems[pi].path);
+      }
+    }
+
+    var batchApi = _dep('LexeraApi');
+    var batchPromise = batchApi && typeof batchApi.fileInfoBatch === 'function'
+      ? batchApi.fileInfoBatch(boardId, uniquePaths).catch(function () { return null; })
+      : Promise.resolve(null);
+
+    return batchPromise.then(function (batchResult) {
       if (seq !== dashboardFileInventorySeq) return;
-      state.fileEmbeds = resolved[0] || [];
-      state.includedFiles = resolved[1] || [];
+      var infoMap = batchResult && batchResult.results ? batchResult.results : {};
+
+      function resolveItem(item) {
+        var info = infoMap[item.path] || null;
+        var status = info && info.exists === false ? 'missing' : (info ? 'exists' : 'unknown');
+        return Object.assign({}, item, {
+          status: status,
+          exists: status === 'exists',
+          fileInfo: info
+        });
+      }
+
+      state.fileEmbeds = (refs.fileEmbeds || []).map(resolveItem);
+      state.includedFiles = (refs.includedFiles || []).map(resolveItem);
       state.brokenFiles = buildDashboardBrokenItems([], state.fileEmbeds, state.includedFiles);
       state.fileInventoryLoading = false;
       renderDashboardFileEmbedsList();

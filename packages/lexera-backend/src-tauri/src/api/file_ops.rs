@@ -132,6 +132,61 @@ pub async fn file_info(
     }))
 }
 
+/// POST /boards/{board_id}/file-info-batch -- check existence of multiple files in one request.
+/// Body: { "paths": ["file1.png", "include.md", ...] }
+/// Returns: { "results": { "file1.png": { "exists": true, ... }, "include.md": { "exists": false }, ... } }
+pub async fn file_info_batch(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Json(body): Json<FileInfoBatchBody>,
+) -> Json<serde_json::Value> {
+    let board_path = state.storage.get_board_path(&board_id);
+    let board_dir = board_path
+        .as_ref()
+        .and_then(|p| p.parent())
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
+
+    let mut results = serde_json::Map::new();
+    for path_str in &body.paths {
+        let resolved = resolve_board_file(&state, &board_id, path_str);
+        match resolved {
+            Ok(fp) => {
+                let meta = tokio::fs::metadata(&fp).await.ok();
+                let exists = meta.is_some();
+                let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+                let ext = fp.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase());
+                results.insert(path_str.clone(), serde_json::json!({
+                    "exists": exists,
+                    "path": path_str,
+                    "filename": fp.file_name().and_then(|s| s.to_str()).unwrap_or(""),
+                    "extension": ext.as_deref().unwrap_or(""),
+                    "size": size,
+                    "mediaCategory": media_category(ext.as_deref()),
+                }));
+            }
+            Err(_) => {
+                let dir_resolved = board_dir.join(path_str);
+                let exists = dir_resolved.canonicalize().ok().map(|p| p.exists()).unwrap_or(false)
+                    || dir_resolved.with_extension("md").canonicalize().ok().map(|_| true).unwrap_or(false)
+                    || dir_resolved.is_dir();
+                results.insert(path_str.clone(), serde_json::json!({
+                    "exists": exists,
+                    "external": true,
+                    "path": path_str,
+                }));
+            }
+        }
+    }
+    Json(serde_json::json!({ "results": results }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct FileInfoBatchBody {
+    #[serde(default)]
+    pub paths: Vec<String>,
+}
+
 /// POST /boards/{board_id}/find-file -- search for files matching a filename in the board dir tree.
 pub async fn find_file(
     State(state): State<AppState>,

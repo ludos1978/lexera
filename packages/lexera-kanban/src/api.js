@@ -290,6 +290,15 @@ var LexeraApi = (function () {
     return request('/boards/' + boardId + '/file-info?path=' + encodeURIComponent(path));
   }
 
+  async function fileInfoBatch(boardId, paths) {
+    return request('/boards/' + boardId + '/file-info-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths: paths }),
+      timeoutMs: DASHBOARD_TIMEOUT_MS,
+    });
+  }
+
   async function saveBoard(boardId, boardData) {
     return request('/boards/' + boardId, {
       method: 'PUT',
@@ -857,7 +866,7 @@ var LexeraApi = (function () {
     discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
     probeExternalEmbed,
     openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search, getCalendarTasks,
-    checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
+    checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, fileInfoBatch, uploadMedia, addBoard, removeBoard,
     getCaptureHistory, removeCaptureEntry,
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate, sendEditingPresence,
     getMe, updateMe, getServerInfo,
