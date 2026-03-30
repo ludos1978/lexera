@@ -1243,17 +1243,19 @@ textarea {
   margin: 4px 0;
 }
 .dashboard-tag-section-header {
+  /* inherits from hierarchical-section-header pattern */
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-secondary);
-  padding: 2px var(--space-2);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  padding: var(--app-space-1) var(--app-space-3);
 }
 .dashboard-empty {
+  /* inherits from hierarchical-empty pattern */
   font-size: var(--font-size-sm);
   color: var(--text-muted);
-  padding: 4px 0;
+  padding: var(--app-space-2) var(--app-space-3);
 }
 
 .dashboard-list {
@@ -1272,8 +1274,8 @@ textarea {
 }
 
 .dashboard-list.tree-view .tree-node {
-  min-height: calc(var(--btn-square-size) + 2px);
-  padding: var(--space-1) var(--space-2);
+  min-height: calc(var(--control-height-sm) + 2px);
+  padding: var(--app-space-1) var(--app-space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: var(--bg-primary);

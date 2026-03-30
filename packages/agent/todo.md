@@ -1,8 +1,8 @@
 # Lexera Kanban Todo
 
 ## Bugs
-- [ ] when i deleted a stack it wasnt removed, only after moving a card it disappeared after a full re-render (which is also not good that it does a full re-render).
-- [ ] the new, incoming, park, acrhive, trash dropdown menus dont work anymore!
+- [x] ~~stack delete not removing until re-render~~ (c6d98022) — wrong variable names in DOM selector
+- [x] ~~dropdown menus broken~~ (0938d5cb) — restored missing HiddenItemsDropdown.init() call
 - [ ] when a board is the only one on the screen have the tab-part (where the drag icon, the filename and the close icon are) only as wide as needed. the close button should not move to the right as far out as it does currently!
 - [x] ~~Export: target folder, browse button, Save→Export~~ (b0b8de9c) — default to {board-folder}/_Export, browse_folder Tauri command, label fixed
 - [ ] maybe it's the backend communication or the logs, but i can barely move an stack in the canvas mode. it keeps interrupting or doing weird things. it also gives about 20 log outputs per drag.
@@ -11,9 +11,9 @@
 - [ ] the tree structure in the dashboard isnt nicely setup. some items (for example tags) show more left then the title of the "tagged items"! it must be nicely hierarchical!
 - [ ] we want a unified hierarchical display style! we currently have different styles in the worspace, dashboard, maybe also within the files config dialogue. it's a mess of styles. run a ux expert over this issue and analyze how we can unify it. if we need two systems thats fine, but currently we have to many different styles in use!
 
-- [ ] changing the visual theme is editing the frontend, but not the board that is rendered! also in the workspace setting it should say Default (inherit from frontend)
-- [ ] the logs has a stats view, but it's empty. remove it from the logs. 
-- [ ] the backend settings are not showing any of the settings.
+- [x] ~~visual theme not propagating to board iframes~~ (c1ba4713) — broadcasts data-visual-theme to all iframes
+- [x] ~~stats tab empty in logs~~ (c6d98022) — removed from index.html + sharedPanels.js
+- [ ] the backend settings are not showing any of the settings — management init hardened with retry + error logging (c1ba4713), needs frontend log to diagnose further
 
 ## Active Features
 - [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)

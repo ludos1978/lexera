@@ -1,0 +1,120 @@
+/**
+ * Unified Hierarchical Display — shared base styles for all tree/list views.
+ *
+ * Used by: workspace sidebar, dashboard tree, management UI rows.
+ * All sizes use --ui-scale for zoom support.
+ */
+
+/* Base item: consistent padding, font, hover/active states */
+.hierarchical-item {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-2);
+  padding: var(--app-space-2) var(--app-space-3);
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  min-height: calc(var(--control-height-sm) + 2px);
+}
+
+.hierarchical-item:hover {
+  border-color: var(--border);
+  background: var(--bg-hover);
+}
+
+.hierarchical-item.active,
+.hierarchical-item.selected {
+  border-color: var(--accent);
+  background: var(--bg-active);
+}
+
+/* Title: truncates, takes available space */
+.hierarchical-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+/* Meta section: right-aligned counts, badges, actions */
+.hierarchical-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-1);
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.hierarchical-count {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Action buttons: hidden until item hover */
+.hierarchical-action {
+  width: var(--hierarchy-btn-size, calc(18px * var(--ui-scale)));
+  height: var(--hierarchy-btn-size, calc(18px * var(--ui-scale)));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--icon-btn-border, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--icon-btn-bg, var(--btn-bg));
+  color: var(--icon-btn-fg, var(--btn-fg));
+  opacity: 0;
+  transition: opacity 0.12s;
+  cursor: pointer;
+  padding: 0;
+}
+
+.hierarchical-item:hover .hierarchical-action {
+  opacity: 1;
+}
+
+.hierarchical-action:hover {
+  border-color: var(--icon-btn-border-hover, var(--text-secondary));
+  background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
+  color: var(--icon-btn-fg-hover, var(--text-bright));
+}
+
+/* Children container: indented, collapsible */
+.hierarchical-children {
+  display: none;
+  position: relative;
+}
+
+.hierarchical-children.expanded {
+  display: block;
+}
+
+/* Section header: uppercase group label */
+.hierarchical-section-header {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: var(--app-space-1) var(--app-space-3);
+}
+
+/* Empty state */
+.hierarchical-empty {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  padding: var(--app-space-2) var(--app-space-3);
+}
+
+/* Compact variant: tighter spacing for dense lists */
+.hierarchical-item.compact {
+  padding: var(--app-space-1) var(--app-space-2);
+  min-height: auto;
+  font-size: var(--font-size-sm);
+}
