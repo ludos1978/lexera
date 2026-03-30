@@ -979,7 +979,7 @@ var LexeraDashboard = (function () {
     getDirNameFromPath: function (p) { return getDirNameFromPath(p); },
     normalizePathForCompare: function (p) { return normalizePathForCompare(p); },
     showNotification: function (msg) { return showNotification(msg); },
-    selectBoard: function (id) { return selectBoard(id); },
+    selectBoard: function (id, opts) { return selectBoard(id, opts); },
     showInFinder: function (p) { return showInFinder(p); },
     THEMES: THEMES,
     getLexeraCurrentThemeId: function () { return getLexeraCurrentThemeId(); },
