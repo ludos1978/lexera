@@ -975,30 +975,25 @@ var LexeraOrderHelpers = (function () {
     // Placeholder for header sync status updates.
   }
 
+  var _shellBoardChangeInProgress = false;
+
   function setShellActiveBoard(boardId) {
-    var prevBoardId = _dep('activeBoardId');
-    _callDep('setActiveBoardId', boardId || null);
-    _callDep('setActiveBoardData', null);
-    _callDep('setFullBoardData', null);
-    _callDep('setPendingExternalRebaseConflict', null);
-    _callDep('setLastLoadedGeneration', null);
-    _callDep('setLastLoadedRevision', null);
-    _callDep('setAddCardColumn', null);
-    if (!_dep('embeddedMode')) {
-      if (boardId) {
-        localStorage.setItem('lexera-last-board', boardId);
-        _callDep('trackRecentBoard', boardId);
-      } else {
-        localStorage.removeItem('lexera-last-board');
+    // Guard against re-entrant calls (selectBoard → notifyParent → shell → here)
+    if (_shellBoardChangeInProgress) return;
+    _shellBoardChangeInProgress = true;
+    try {
+      // The workspace shell notifies us that a different board tab is now active.
+      // Use selectBoard (which calls loadBoard internally) for full lifecycle.
+      if (boardId && boardId !== _dep('activeBoardId')) {
+        _callDep('selectBoard', boardId);
+      } else if (!boardId) {
+        _callDep('setActiveBoardId', null);
+        _callDep('setActiveBoardData', null);
+        _callDep('setFullBoardData', null);
+        _callDep('renderMainView');
       }
-    }
-    _callDep('renderBoardList');
-    refreshHeaderFileControls();
-    // Load the board data — this was missing, causing boards to never render
-    if (boardId) {
-      _callDep('loadBoard', boardId);
-    } else {
-      _callDep('renderMainView');
+    } finally {
+      _shellBoardChangeInProgress = false;
     }
   }
 
