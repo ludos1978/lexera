@@ -976,6 +976,7 @@ var LexeraOrderHelpers = (function () {
   }
 
   function setShellActiveBoard(boardId) {
+    var prevBoardId = _dep('activeBoardId');
     _callDep('setActiveBoardId', boardId || null);
     _callDep('setActiveBoardData', null);
     _callDep('setFullBoardData', null);
@@ -993,7 +994,12 @@ var LexeraOrderHelpers = (function () {
     }
     _callDep('renderBoardList');
     refreshHeaderFileControls();
-    scheduleDashboardRefresh(120);
+    // Load the board data — this was missing, causing boards to never render
+    if (boardId) {
+      _callDep('loadBoard', boardId);
+    } else {
+      _callDep('renderMainView');
+    }
   }
 
   function setupWorkspaceShell() {
