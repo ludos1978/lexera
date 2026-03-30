@@ -3,11 +3,11 @@
 kanban-plugin: board
 
 fontSize: 1_0x
-generation: 4
+generation: 7
 contentHash: dc72d0136d3dbadda4febe898402ea054252e3c729714dd0a4b8f2cac4dabc39
-dependencyHash: be00f870fff96cb937a70fdc50d1a4db605b8d11c5fb0c1b61b4efb1bd6f5d24
-resolvedHash: 2ee3e838ce090e893ccef36cefb4fb8035243b8598821f80df613c6521d9f318
-writerId: 9b71870d-8972-4630-872a-02494c4a9a5e
+dependencyHash: 8c8135645deee9fa6e945c95513e798d97e52387cf2bf2d88d56991c2c2c83e2
+resolvedHash: 3d61c5c90206c40ab981164d05797a0dffbf9edc4848f6255554aff95a49f409
+writerId: 93a4c518-0316-4d6e-90db-8bef4827815e
 ---
 
 # Board

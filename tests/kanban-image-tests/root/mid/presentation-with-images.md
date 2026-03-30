@@ -1,15 +1,15 @@
 ## Title
 
-![](./green.png)
+![](root/green.png)
 
 ---
 
 ## Title 2
 
-![](low/red.png)
+![](root/mid/low/red.png)
 
 ---
 
 ## Title 3
 
-![](../blue.png)
+![](root/blue.png)

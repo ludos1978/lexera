@@ -14,6 +14,69 @@ KANBAN_DIR="$SCRIPT_DIR/packages/lexera-kanban"
 WEB_CLIPPER_DIR="$SCRIPT_DIR/packages/lexera-web-clipper"
 TARGET_DIR="$SCRIPT_DIR/packages/target"
 PATH_MARKER="$TARGET_DIR/.project-path"
+BACKEND_READY_PORTS=(13080 8083 1431 12080 14080 11080 15080)
+
+read_configured_backend_port() {
+  node <<'EOF'
+const fs = require('fs');
+const path = require('path');
+const configPath = path.join(process.env.HOME || '', '.config', 'lexera', 'sync.json');
+try {
+  const raw = fs.readFileSync(configPath, 'utf8');
+  const parsed = JSON.parse(raw);
+  const port = Number(parsed && parsed.port);
+  if (Number.isFinite(port) && port > 0) {
+    process.stdout.write(String(port));
+  }
+} catch (_) {}
+EOF
+}
+
+wait_for_backend_ready() {
+  local configured_port
+  local port
+  local host
+  local ready_url=""
+  local attempt
+  configured_port="$(read_configured_backend_port || true)"
+
+  for attempt in $(seq 1 60); do
+    for port in "${BACKEND_READY_PORTS[@]}"; do
+      if [[ -n "$configured_port" && "$port" != "$configured_port" ]]; then
+        continue
+      fi
+      for host in 127.0.0.1 localhost; do
+        if curl -sf "http://$host:$port/status" >/dev/null 2>&1 && \
+           curl -sf "http://$host:$port/collab/me" >/dev/null 2>&1; then
+          ready_url="http://$host:$port"
+          echo "$ready_url"
+          return 0
+        fi
+      done
+    done
+
+    # If the configured port did not work, fall back to the standard scan.
+    if [[ -n "$configured_port" ]]; then
+      for port in "${BACKEND_READY_PORTS[@]}"; do
+        if [[ "$port" == "$configured_port" ]]; then
+          continue
+        fi
+        for host in 127.0.0.1 localhost; do
+          if curl -sf "http://$host:$port/status" >/dev/null 2>&1 && \
+             curl -sf "http://$host:$port/collab/me" >/dev/null 2>&1; then
+            ready_url="http://$host:$port"
+            echo "$ready_url"
+            return 0
+          fi
+        done
+      done
+    fi
+
+    sleep 1
+  done
+
+  return 1
+}
 
 # ── Clean stale build cache if project folder was renamed ────────
 if [[ -d "$TARGET_DIR" ]]; then
@@ -76,7 +139,12 @@ echo "Starting lexera-backend..."
 
 # ── Wait for backend to compile and start ────────────────────────
 echo "Waiting for backend..."
-sleep 5
+BACKEND_READY_URL="$(wait_for_backend_ready || true)"
+if [[ -z "$BACKEND_READY_URL" ]]; then
+  echo "Backend did not become ready within 60 seconds."
+  exit 1
+fi
+echo "Backend ready at $BACKEND_READY_URL"
 
 # ── Start kanban ─────────────────────────────────────────────────
 echo "Starting lexera-kanban..."

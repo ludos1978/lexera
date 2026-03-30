@@ -241,12 +241,16 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 See [spec-performance.md](spec-performance.md) for full spec.
 
 - [ ] **Phase 1: Paginate & truncate API responses** — add `limit`/`offset`/`truncate` to search and calendar endpoints, reduce 1.1MB responses to ~50KB
-- [ ] **Phase 2: Parallel board loading** — use rayon/tokio to load N boards concurrently at startup instead of sequential
+- [ ] **Phase 2: Tiered startup hydration** — startup already loads boards in parallel and prepared board state now defers CRDT hydration; remaining step is to make first-open/editor paths lazily hydrate full CRDT/snapshot state only when a board is actually used
 - [ ] **Phase 3: Search index** — in-memory inverted index for tags, temporal tags, due dates — O(1) lookups instead of full scan
 - [ ] **Phase 4: Delta undo** — store per-card patches instead of full board JSON.stringify per mutation
 - [ ] **Phase 5: Targeted DOM updates (expand)** — card edit, card add, card reorder without full re-render
 - [ ] **Phase 6: Virtual scrolling** — render only visible cards for 500+ card boards
 - [ ] **Phase 7: Delta sync on poll** — fetch only changed cards instead of full board on generation change
+- [ ] **Phase 8: Split board API contracts by use-case** — stop serving full board snapshots to every consumer; create separate summary, hierarchy/tree, dashboard, and editable snapshot contracts so sidebar/dashboard/search do not hit the same heavy payloads as board editing
+- [x] **Phase 9: Cached board summary + hierarchy indexes** — `/boards` and `/boards/:id/hierarchy` now read maintained summary/tree data from `BoardState` instead of recomputing from full board snapshots
+- [x] **Phase 10: Backend dashboard aggregation** — dashboard search/todos/tag/calendar refreshes now collapse into one backend `/dashboard/data` endpoint backed by cached board search docs
+- [ ] **Phase 11: Include dependency graph** — track include-file dependencies explicitly and invalidate only affected boards/subtrees instead of reparsing/reloading whole boards for every include change
 
 ## Long Term — Architecture
 
