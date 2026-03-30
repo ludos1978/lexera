@@ -1,7 +1,6 @@
 # Lexera Kanban Todo
 
-- [ ] lexera_core::storage::local
-  [lexera.storage.include] Failed to read include file "/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-huge-test/How_Level_Design_Can_Tell_a_Stor.RwlnCn2EB9o.1080p/How_Level_Design_Can_Tell_a_Stor.RwlnCn2EB9o.1080p-summary.md" for board 22d8d19aa2ed: No such file or directory (os error 2) — column will appear empty
+- [x] ~~missing include file logged as ERROR~~ (7d0f9a68, 19cacdb3) — downgraded to warn, shown in dashboard broken elements
 
 - [x] ~~add status informations to all views~~ (a310c52c) — generic .view-loading/.view-empty CSS system + LexeraRuntime helpers
 
@@ -215,7 +214,7 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 
 - [x] **Extract backend lib.rs setup function** — extracted 570-line setup() closure into 8 named functions + `CollabServices` struct: `init_storage_and_boards`, `resolve_incoming`, `setup_file_watcher`, `init_collab_services`, `bootstrap_local_user`, `spawn_background_tasks`, `restore_persisted_connections`, `spawn_http_server`. All 903 Rust tests pass.
 
-- [ ] **Frontend modularization** — app.js reduced from 28K to ~12.7K lines (55% reduction). 35+ extracted modules. All listed extraction targets complete (canvas pan, card editing, context menus, search). Remaining app.js is core rendering, canvas visualization, event handling, live sync, and state management — deeply intertwined, harder to extract.
+- [ ] **Frontend modularization** — app.js currently 13,108 lines (down from 28K, 53% reduction). 35+ extracted modules. Remaining: core rendering, canvas, event handling, live sync, state management — deeply intertwined.
 
 - [x] **Fix duplicate code paths producing inconsistent results:**
   - [x] **CRDT card ID collision** — replaced inline `crdt-{hex_timestamp}` ID generation in `bridge.rs:read_card()` with `crate::parser::generate_id("crdt")` which uses atomic sequence counter for guaranteed uniqueness.
@@ -226,7 +225,7 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 
 ## Open — Features
 
-- [ ] file watcher, but we need a strong change handling from either user changes and file system (data storage backend) changes. plan with a multi-user system in mind and a system that is safe to never lose any data. it uses the known system of main file, included file we have in the version 1 system.
+- [x] ~~file watcher~~ — implemented: FileWatcher in lib.rs with setup_file_watcher(), event broadcast, include-backed column refresh. Remaining: subtree-only invalidation (tracked in Phase 11)
 
 - [ ] I am planning on adding other sources that could be used to directly integrate data into the kanban boards. Ideas that pop up are: RSS, EMail, Filesystem.
 
@@ -290,7 +289,7 @@ See [spec-performance.md](spec-performance.md) for full spec.
 
 - [x] if a board is switched to kanban mode, the canvas mode values must not be deleted. they can stay in the values and be ignored. also when saving! (verified: parser roundtrips all params regardless of mode, test added in parser.rs — `test_canvas_params_preserved_after_kanban_mode_switch`)
 
-- [ ] file watcher, but we need a strong change handling from eigther user changes and file system (data storage backend) changes. plan with a multi-user system in mind and a system that is save to never loose any data. it uses the known system of main file, included file we have in the version 1 syste
+- [x] ~~file watcher~~ (duplicate of L228, already implemented)
 
 - [x] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board as cards. It's should be using the same method as the quick capture. But it would also be good if it could access the browser data (cache, reader mode) (if the user is logged in somewhere or we cant access the data from playwright). What system would you suggest? 
   - ok, after searching the uer must move down with the arrows first to focus one of the results, only then does the movement within the results work. the same applies to pasting. pasting in the search will paste into the searcch field if that is selected. the currently selected content is pasted into the element on enter or on meta+v / ctrl+v . when opening the web clipper it depends on the user action. if it's an arrow movement we move within the boards, if it's pasting we paste the content into the search field as well as any letter or key other then arrow keys start the search
@@ -300,9 +299,9 @@ See [spec-performance.md](spec-performance.md) for full spec.
     - https://www.reddit.com/r/IndieDev/comments/1rwey0e/the_part_nobody_sees_is_the_most_important_part/
     - https://www.reddit.com/r/IndieDev/comments/1rwey0e/the_part_nobody_sees_is_the_most_important_part.rss
 
-- [ ] I am planning on adding other sources that could be used to directly integrate date into the kanban baords. Ideas that pop up are: RSS, EMail, Filesystem. 
+- [ ] ~~RSS, EMail, Filesystem sources~~ (duplicate of L230)
 
-- [ ] An mobile web clipper (something that can run on an ios and or android) would be best as well.
+- [ ] ~~Mobile web clipper~~ (duplicate of L232)
 
 - [x] combine the "Empty", "Template" and "Clipboard" into a "New". It's ordered by Row, Stack, Column, Card groups:
   - Row
