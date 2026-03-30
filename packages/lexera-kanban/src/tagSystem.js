@@ -292,6 +292,16 @@
         continue;
       }
 
+      // A hash tag must be # followed by a non-# non-space character;
+      // ##, ###, #### etc. are heading markers, not tags.
+      if (isHashTag) {
+        var nextCh = idx + 1 < source.length ? source.charAt(idx + 1) : '';
+        if (nextCh === '#' || nextCh === ' ' || nextCh === '\t' || nextCh === '') {
+          idx++;
+          continue;
+        }
+      }
+
       if (isTemporalBang) {
         var next = source.charAt(idx + 1);
         if (next === '#' || next === '@' || next === '&' || next === '|' || isTagTokenBoundaryChar(next)) {
@@ -344,6 +354,14 @@
         }
       }
       if (ch === '#' || ch === '@' || ch === '!') {
+        // Skip heading markers: ## ### #### and lone # followed by space
+        if (ch === '#') {
+          var nc = i + 1 < source.length ? source.charAt(i + 1) : '';
+          if (nc === '#' || nc === ' ' || nc === '\t' || nc === '') {
+            i++;
+            continue;
+          }
+        }
         var s = i;
         i++;
         while (i < source.length && !isTagExpressionBoundaryChar(source.charAt(i))) i++;
@@ -470,7 +488,7 @@
       if (token.charAt(0) === '@' || token.charAt(0) === '!') return '';
       token = '#' + token;
     }
-    if (!/^#[^\s&|!]+$/.test(token)) return '';
+    if (!/^#(?![# ])[^\s&|!]+$/.test(token)) return '';
     return token.toLowerCase();
   }
 

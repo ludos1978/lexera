@@ -88,7 +88,7 @@ var LexeraInlineRenderer = (function () {
         var label = rawTitle ? rawTitle.trim() : rawDocument.trim();
         return stashRenderedHtmlToken(htmlTokens, renderWikiLinkHtml(documentName, label, { withMenu: false }));
       });
-      safe = safe.replace(/(^|[\s&|!])(#[^\s&|!]+)/g, function (_, pre, tag) {
+      safe = safe.replace(/(^|[\s&|!])(#(?![# ])[^\s&|!]+)/g, function (_, pre, tag) {
         return pre + renderTagChipHtml(tag);
       });
       safe = safe.replace(/(^|\s)([!@](?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|\d{4}[-.]?(?:w|kw)\d{1,2}|(?:w|kw)\d{1,2}|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|:\d{1,2}-:\d{1,2}|\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}(?::\d{2})?(?:am|pm)?))/gi, function (_, pre, tag) {
@@ -287,7 +287,7 @@ var LexeraInlineRenderer = (function () {
       safe = safe.replace(/\{&gt;&gt;([^&]*?)&lt;&lt;\}/g, '<span class="critic critic-comment">$1</span>');
       safe = safe.replace(/\{==([^=]*?)==\}/g, '<mark class="critic critic-highlight">$1</mark>');
       safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
-      safe = safe.replace(/(^|[\s&|!])(#[^\s&|!]+)/g, function (_, pre, tag) {
+      safe = safe.replace(/(^|[\s&|!])(#(?![# ])[^\s&|!]+)/g, function (_, pre, tag) {
         return pre + renderTagChipHtml(tag);
       });
       safe = safe.replace(/(^|\s)([!@](?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|\d{4}[-.]?(?:w|kw)\d{1,2}|(?:w|kw)\d{1,2}|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|:\d{1,2}-:\d{1,2}|\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}(?::\d{2})?(?:am|pm)?))/gi, function (_, pre, tag) {
