@@ -1,77 +1,263 @@
-import { describe, it, expect } from 'vitest';
-import { createRequire } from 'node:module';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { loadIIFE } from './load-iife.js';
 
-const require = createRequire(import.meta.url);
-const H = require('../src/dashboard/dashboardTree.js');
+let DashboardTree;
 
-function makeTreeNode(attrs) {
-  const attrMap = Object.assign({}, attrs);
-  return {
-    getAttribute(name) {
-      return Object.prototype.hasOwnProperty.call(attrMap, name) ? attrMap[name] : null;
-    }
-  };
-}
+beforeAll(() => {
+  DashboardTree = loadIIFE('dashboard/dashboardTree.js', 'LexeraDashboardTree');
+});
 
-describe('buildDashboardResultTreeNodes', () => {
-  it('groups dashboard items by board and adds due labels as meta text', () => {
-    const nodes = H.buildDashboardResultTreeNodes([
+describe('dashboard tree builders', () => {
+  it('groups inventory items by context label into nested tree nodes', () => {
+    const nodes = DashboardTree.buildDashboardInventoryTreeNodes([
       {
-        boardId: 'board-a',
-        boardTitle: 'Board A',
-        cardId: 'card-1',
-        cardContent: 'Alpha task',
-        columnTitle: 'Todo',
-        dueDate: '2026-03-14'
+        kind: 'embed',
+        path: 'docs/spec.pdf',
+        count: 2,
+        firstContextLabel: 'Attachments',
+        status: 'missing'
       },
       {
-        boardId: 'board-a',
-        boardTitle: 'Board A',
-        cardId: 'card-2',
-        cardContent: 'Beta task',
-        columnTitle: 'Doing',
-        displayDate: 'Today'
+        kind: 'embed',
+        path: 'docs/notes.md',
+        count: 1,
+        firstContextLabel: 'Attachments',
+        status: 'exists'
       },
       {
-        boardId: 'board-b',
-        boardTitle: 'Board B',
-        cardId: 'card-3',
-        cardContent: 'Gamma task',
-        columnTitle: 'Done'
+        kind: 'embed',
+        path: 'media/preview.png',
+        count: 1,
+        firstContextLabel: 'Gallery',
+        status: 'unknown'
       }
     ]);
 
-    expect(nodes).toHaveLength(2);
-    expect(nodes[0].label).toBe('Board A');
-    expect(nodes[0].count).toBe(2);
-    expect(nodes[0].expanded).toBe(true);
-    expect(nodes[0].children).toHaveLength(2);
-    expect(nodes[0].children[0].type).toBe('dashboard-result');
-    expect(nodes[0].children[0].count).toBe('2026-03-14');
-    expect(nodes[0].children[1].count).toBe('Today');
-    expect(nodes[1].label).toBe('Board B');
-    expect(nodes[1].count).toBe(1);
+    expect(nodes).toEqual([
+      {
+        id: 'dashboard-context-attachments',
+        label: 'Attachments',
+        count: 2,
+        type: 'dashboard-group',
+        expanded: true,
+        hasToggle: true,
+        grip: false,
+        attrs: {
+          'data-dashboard-target': 'context'
+        },
+        children: [
+          {
+            id: null,
+            label: 'docs/spec.pdf',
+            count: 'Missing · x2',
+            type: 'dashboard-file',
+            expanded: false,
+            hasToggle: false,
+            grip: false,
+            attrs: {
+              'data-dashboard-target': 'file',
+              'data-dashboard-status': 'missing',
+              title: 'docs/spec.pdf / Attachments / Missing / 2 references'
+            }
+          },
+          {
+            id: null,
+            label: 'docs/notes.md',
+            count: 'Exists',
+            type: 'dashboard-file',
+            expanded: false,
+            hasToggle: false,
+            grip: false,
+            attrs: {
+              'data-dashboard-target': 'file',
+              'data-dashboard-status': 'exists',
+              title: 'docs/notes.md / Attachments / Exists'
+            }
+          }
+        ]
+      },
+      {
+        id: 'dashboard-context-gallery',
+        label: 'Gallery',
+        count: 1,
+        type: 'dashboard-group',
+        expanded: true,
+        hasToggle: true,
+        grip: false,
+        attrs: {
+          'data-dashboard-target': 'context'
+        },
+        children: [
+          {
+            id: null,
+            label: 'media/preview.png',
+            count: 'Unknown',
+            type: 'dashboard-file',
+            expanded: false,
+            hasToggle: false,
+            grip: false,
+            attrs: {
+              'data-dashboard-target': 'file',
+              'data-dashboard-status': 'unknown',
+              title: 'media/preview.png / Gallery / Unknown'
+            }
+          }
+        ]
+      }
+    ]);
   });
-});
 
-describe('buildDashboardNavResultFromTreeNode', () => {
-  it('parses navigation attrs from a dashboard result tree node', () => {
-    const result = H.buildDashboardNavResultFromTreeNode(makeTreeNode({
-      'data-dashboard-board-id': 'board-7',
-      'data-dashboard-card-id': 'card-99',
-      'data-dashboard-column-index': '4',
-      'data-dashboard-row-index': '1',
-      'data-dashboard-stack-index': '2',
-      'data-dashboard-column-title': 'Backlog'
-    }));
+  it('groups broken items by type and preserves navigation attributes on leaves', () => {
+    const nodes = DashboardTree.buildDashboardBrokenTreeNodes([
+      {
+        type: 'image',
+        src: 'media/missing.png',
+        colIndex: 2,
+        cardIndex: 5,
+        count: 3
+      },
+      {
+        type: 'include',
+        src: 'docs/missing.md',
+        reason: 'File not found'
+      }
+    ]);
 
-    expect(result).toEqual({
-      boardId: 'board-7',
-      cardId: 'card-99',
-      columnIndex: 4,
-      rowIndex: 1,
-      stackIndex: 2,
-      columnTitle: 'Backlog'
-    });
+    expect(nodes).toEqual([
+      {
+        id: 'dashboard-broken-image',
+        label: 'Image',
+        count: 1,
+        type: 'dashboard-group',
+        expanded: true,
+        hasToggle: true,
+        grip: false,
+        attrs: {
+          'data-dashboard-target': 'broken-group',
+          'data-dashboard-broken-type': 'image'
+        },
+        children: [
+          {
+            id: null,
+            label: 'media/missing.png',
+            count: 'x3',
+            type: 'dashboard-broken',
+            expanded: false,
+            hasToggle: false,
+            grip: false,
+            attrs: {
+              'data-dashboard-target': 'broken',
+              'data-dashboard-col-index': '2',
+              'data-dashboard-card-index': '5',
+              'data-dashboard-broken-type': 'image',
+              title: 'media/missing.png / Image / 3 occurrences'
+            }
+          }
+        ]
+      },
+      {
+        id: 'dashboard-broken-include',
+        label: 'Include',
+        count: 1,
+        type: 'dashboard-group',
+        expanded: true,
+        hasToggle: true,
+        grip: false,
+        attrs: {
+          'data-dashboard-target': 'broken-group',
+          'data-dashboard-broken-type': 'include'
+        },
+        children: [
+          {
+            id: null,
+            label: 'docs/missing.md',
+            count: null,
+            type: 'dashboard-broken',
+            expanded: false,
+            hasToggle: false,
+            grip: false,
+            attrs: {
+              'data-dashboard-target': 'broken',
+              'data-dashboard-col-index': null,
+              'data-dashboard-card-index': null,
+              'data-dashboard-broken-type': 'include',
+              title: 'docs/missing.md / Include / File not found'
+            }
+          }
+        ]
+      }
+    ]);
+  });
+
+  it('builds tagged dashboard trees with tag roots above board result groups', () => {
+    const nodes = DashboardTree.buildDashboardTaggedTreeNodes([
+      {
+        tag: '#blocked',
+        items: [
+          {
+            boardId: 'board-1',
+            boardTitle: 'Project Board',
+            cardId: 'card-1',
+            cardContent: 'Fix release blocker',
+            columnTitle: 'Doing',
+            rowIndex: 0,
+            stackIndex: 1,
+            columnIndex: 2
+          }
+        ]
+      }
+    ]);
+
+    expect(nodes).toEqual([
+      {
+        id: 'dashboard-tag-blocked',
+        label: '#blocked',
+        count: 1,
+        type: 'dashboard-group',
+        expanded: true,
+        hasToggle: true,
+        grip: false,
+        attrs: {
+          'data-dashboard-target': 'tag',
+          'data-dashboard-tag': '#blocked'
+        },
+        children: [
+          {
+            id: 'dashboard-group-board-1',
+            label: 'Project Board',
+            count: 1,
+            type: 'dashboard-group',
+            expanded: true,
+            hasToggle: true,
+            grip: false,
+            attrs: {
+              'data-dashboard-target': 'board',
+              'data-dashboard-board-id': 'board-1'
+            },
+            children: [
+              {
+                id: null,
+                label: 'Fix release blocker',
+                count: null,
+                type: 'dashboard-result',
+                expanded: false,
+                hasToggle: false,
+                grip: false,
+                attrs: {
+                  'data-dashboard-target': 'result',
+                  'data-dashboard-board-id': 'board-1',
+                  'data-dashboard-card-id': 'card-1',
+                  'data-dashboard-column-index': '2',
+                  'data-dashboard-row-index': '0',
+                  'data-dashboard-stack-index': '1',
+                  'data-dashboard-column-title': 'Doing',
+                  title: 'Project Board / Row 1 / Stack 2 / Doing'
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]);
   });
 });

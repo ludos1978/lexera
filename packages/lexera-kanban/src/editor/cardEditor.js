@@ -129,21 +129,27 @@ var CardEditor = (function () {
     return mode === 'dual' || mode === 'preview';
   }
 
-  function updateCardEditorTitle(value, resolvedContent) {
+  function updateCardEditorTitle(value, resolvedContent, options) {
+    options = options || {};
     if (!currentCardEditor || !currentCardEditor.dialog) return;
     var titleEl = currentCardEditor.dialog.querySelector('.card-editor-title-text');
     if (!titleEl) return;
-    var resolved = typeof resolvedContent === 'string'
-      ? resolvedContent
-      : _deps.getIncludeResolvedContent(String(value || ''), currentCardEditor.colIndex);
-    titleEl.textContent = _deps.getCardTitle(_deps.stripInternalHiddenTags(resolved)).trim() || 'Untitled';
+    var titleSource;
+    if (typeof resolvedContent === 'string') {
+      titleSource = resolvedContent;
+    } else if (options.preferRaw) {
+      titleSource = String(value || '');
+    } else {
+      titleSource = _deps.getIncludeResolvedContent(String(value || ''), currentCardEditor.colIndex);
+    }
+    titleEl.textContent = _deps.getCardTitle(_deps.stripInternalHiddenTags(titleSource)).trim() || 'Untitled';
   }
 
   function scheduleCardEditorPreviewRefresh(options) {
     options = options || {};
     if (!currentCardEditor) return;
     var value = currentCardEditor.textarea ? currentCardEditor.textarea.value : '';
-    updateCardEditorTitle(value);
+    updateCardEditorTitle(value, null, { preferRaw: true });
     if (!shouldRenderCardEditorPreview()) {
       clearScheduledCardEditorPreviewRefresh();
       return;
@@ -854,7 +860,7 @@ var CardEditor = (function () {
 
     // Broadcast editing presence when opening overlay editor
     var LexeraApi = _deps.LexeraApi;
-    if (card.kid && LexeraApi.isSyncConnected()) {
+    if (card.kid && typeof _deps.shouldBroadcastEditingPresence === 'function' && _deps.shouldBroadcastEditingPresence()) {
       LexeraApi.sendEditingPresence(card.kid, _deps.getSyncUserName() || _deps.getSyncUserId(), textarea.selectionStart, false);
     }
 
@@ -1047,7 +1053,7 @@ var CardEditor = (function () {
       _deps.applyRenderedHtmlCommentVisibility(currentCardEditor.preview, _deps.getCurrentHtmlCommentRenderMode());
       _deps.applyRenderedTagVisibility(currentCardEditor.preview, _deps.getCurrentTagVisibilityMode());
     }
-    updateCardEditorTitle(value, resolved);
+    updateCardEditorTitle(value, resolved, { preferRaw: !shouldRenderPreview });
   }
 
   async function closeCardEditorOverlay(options) {

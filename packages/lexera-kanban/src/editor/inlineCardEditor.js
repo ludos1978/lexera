@@ -99,7 +99,7 @@ var InlineCardEditor = (function () {
 
     // Broadcast editing presence when opening inline editor
     var LexeraApi = _deps.LexeraApi;
-    if (card.kid && LexeraApi.isSyncConnected()) {
+    if (card.kid && typeof _deps.shouldBroadcastEditingPresence === 'function' && _deps.shouldBroadcastEditingPresence()) {
       LexeraApi.sendEditingPresence(card.kid, _deps.getSyncUserName() || _deps.getSyncUserId(), textarea.selectionStart, false);
     }
 

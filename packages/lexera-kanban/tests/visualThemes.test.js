@@ -32,10 +32,16 @@ function loadVisualThemeWindow(initialStorage = {}) {
   const window = {};
   const documentElement = createDocumentElement();
   const localStorage = createStorage(initialStorage);
+  const document = {
+    documentElement,
+    querySelectorAll() {
+      return [];
+    }
+  };
 
   loadIIFE('visualThemes.js', 'window', {
     window,
-    document: { documentElement },
+    document,
     localStorage
   });
 

@@ -97,6 +97,8 @@ var LexeraEmbedMenu = (function () {
   var currentTagVisibilityMode = 'allexcludinglayout';
   var exportToolStatusCache = { renderers: { rows: [] } };
   var embeddedMode = false;
+  var includeResolvedContentCache = new Map();
+  var MAX_INCLUDE_RESOLVED_CONTENT_CACHE_ENTRIES = 128;
   // hasTauri is defined in the extracted body via resolveTauriInternals()
   var LexeraApi = null;
   var ContentEnhancerRegistry = null;
@@ -1353,10 +1355,24 @@ var LexeraEmbedMenu = (function () {
     return rewritten;
   }
 
+  function getCachedIncludeResolvedContent(content, includeFilePath) {
+    var cacheKey = String(includeFilePath || '') + '\n@@\n' + String(content || '');
+    if (includeResolvedContentCache.has(cacheKey)) {
+      return includeResolvedContentCache.get(cacheKey);
+    }
+    var resolved = resolveMarkdownRelativeTargets(content, includeFilePath);
+    includeResolvedContentCache.set(cacheKey, resolved);
+    if (includeResolvedContentCache.size > MAX_INCLUDE_RESOLVED_CONTENT_CACHE_ENTRIES) {
+      var firstKey = includeResolvedContentCache.keys().next();
+      if (!firstKey.done) includeResolvedContentCache.delete(firstKey.value);
+    }
+    return resolved;
+  }
+
   function getIncludeResolvedContent(content, colIndex) {
     var col = getFullColumn(colIndex);
     if (col && col.includeSource && col.includeSource.rawPath) {
-      return resolveMarkdownRelativeTargets(content, col.includeSource.rawPath);
+      return getCachedIncludeResolvedContent(content, col.includeSource.rawPath);
     }
     return content;
   }
@@ -4241,6 +4257,7 @@ var LexeraEmbedMenu = (function () {
     } else {
       _deps = deps || {};
     }
+    includeResolvedContentCache.clear();
     _syncState();
   }
 

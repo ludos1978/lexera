@@ -108,6 +108,28 @@ var LEXERA_THEMES = [
 
 var _lexeraCurrentThemeId = null;
 
+function applyLexeraThemePaletteToRoot(root, palette, isDark) {
+  if (!root || !root.style || !palette) return;
+  var keys = Object.keys(palette);
+  for (var i = 0; i < keys.length; i++) {
+    root.style.setProperty(keys[i], palette[keys[i]]);
+  }
+  root.style.colorScheme = isDark ? 'dark' : 'light';
+}
+
+function broadcastLexeraThemePalette(documentRef, palette, isDark) {
+  if (!documentRef || typeof documentRef.querySelectorAll !== 'function') return;
+  var iframes = documentRef.querySelectorAll('iframe');
+  for (var i = 0; i < iframes.length; i++) {
+    try {
+      var iframeRoot = iframes[i].contentDocument && iframes[i].contentDocument.documentElement;
+      applyLexeraThemePaletteToRoot(iframeRoot, palette, isDark);
+    } catch (err) {
+      // Ignore cross-origin iframe access failures.
+    }
+  }
+}
+
 function applyLexeraTheme(themeId) {
   var theme = null;
   for (var i = 0; i < LEXERA_THEMES.length; i++) {
@@ -120,11 +142,8 @@ function applyLexeraTheme(themeId) {
   var palette = isDark ? theme.dark : theme.light;
   var root = document.documentElement;
 
-  var keys = Object.keys(palette);
-  for (var i = 0; i < keys.length; i++) {
-    root.style.setProperty(keys[i], palette[keys[i]]);
-  }
-  root.style.colorScheme = isDark ? 'dark' : 'light';
+  applyLexeraThemePaletteToRoot(root, palette, isDark);
+  broadcastLexeraThemePalette(document, palette, isDark);
 
   localStorage.setItem('lexera-theme', theme.id);
 

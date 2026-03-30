@@ -1646,10 +1646,14 @@ var LexeraDragDropHandlers = (function () {
         applyStackDropByPoint(src, mx, my);
       }
     } else if (type === 'board') {
-      var t = ptrFindDropTarget(getElBoardList().querySelectorAll('.board-item'), mx, my, true);
+      var t = ptrFindDropTarget(getElBoardList().querySelectorAll('.board-item[data-board-index][data-board-id]'), mx, my, true);
       if (t) {
         var targetIdx = parseInt(t.node.getAttribute('data-board-index'), 10);
-        if (src.index !== targetIdx) _deps.reorderBoards(src.index, targetIdx, t.before);
+        var targetBoardId = String(t.node.getAttribute('data-board-id') || '').trim();
+        var sourceBoardId = src && src.boardId ? String(src.boardId || '').trim() : '';
+        if ((sourceBoardId && sourceBoardId !== targetBoardId) || (!sourceBoardId && src.index !== targetIdx)) {
+          _deps.reorderBoards(sourceBoardId || src.index, targetBoardId || targetIdx, t.before);
+        }
       }
     } else if (type === 'column' || type === 'tree-column') {
       executeColumnPtrDrop(mx, my, src);

@@ -433,10 +433,48 @@ var LexeraOrderHelpers = (function () {
     return result;
   }
 
-  function reorderBoards(sourceIdx, targetIdx, insertBefore) {
-    var orderedBoards = getOrderedItems(_dep('boards'), 'lexera-board-order', function (b) { return b.id; });
-    var newOrder = reorderItems(orderedBoards, sourceIdx, targetIdx, insertBefore);
-    saveOrder(newOrder, 'lexera-board-order', function (b) { return b.id; });
+  function normalizeReorderBoardList(boards) {
+    var list = Array.isArray(boards) ? boards : [];
+    var normalized = [];
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i] || !list[i].id) continue;
+      normalized.push(list[i]);
+    }
+    return normalized;
+  }
+
+  function resolveBoardReorderId(ref, orderedBoards) {
+    if (ref == null) return '';
+    if (typeof ref === 'string') return String(ref).trim();
+    if (typeof ref === 'object' && ref.boardId) return String(ref.boardId).trim();
+    if (typeof ref === 'number' && isFinite(ref) && ref >= 0 && ref < orderedBoards.length) {
+      return orderedBoards[ref] && orderedBoards[ref].id ? String(orderedBoards[ref].id).trim() : '';
+    }
+    return '';
+  }
+
+  function reorderIds(orderIds, sourceId, targetId, insertBefore) {
+    var ids = Array.isArray(orderIds) ? orderIds.slice() : [];
+    var sourceIdx = ids.indexOf(sourceId);
+    var targetIdx = ids.indexOf(targetId);
+    if (sourceIdx === -1 || targetIdx === -1 || sourceIdx === targetIdx) return ids;
+    var moved = ids.splice(sourceIdx, 1)[0];
+    if (sourceIdx < targetIdx) targetIdx -= 1;
+    var insertIdx = insertBefore ? targetIdx : targetIdx + 1;
+    if (insertIdx < 0) insertIdx = 0;
+    if (insertIdx > ids.length) insertIdx = ids.length;
+    ids.splice(insertIdx, 0, moved);
+    return ids;
+  }
+
+  function reorderBoards(sourceRef, targetRef, insertBefore) {
+    var orderedBoards = getOrderedItems(normalizeReorderBoardList(_dep('boards')), 'lexera-board-order', function (b) { return b.id; });
+    var sourceId = resolveBoardReorderId(sourceRef, orderedBoards);
+    var targetId = resolveBoardReorderId(targetRef, orderedBoards);
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    var orderedIds = orderedBoards.map(function (b) { return b.id; });
+    var newOrder = reorderIds(orderedIds, sourceId, targetId, insertBefore);
+    localStorage.setItem('lexera-board-order', JSON.stringify(newOrder));
     _callDep('renderBoardList');
   }
 
@@ -1923,6 +1961,70 @@ var LexeraOrderHelpers = (function () {
     return Promise.resolve(null);
   }
 
+  function focusDashboardBrokenTarget(colIndex, cardIndex) {
+    if (colIndex == null || isNaN(colIndex) || colIndex < 0) return;
+    var container = getDashboardBrokenScanContainer();
+    if (!container) return;
+    var cardEl = cardIndex != null && !isNaN(cardIndex) && cardIndex >= 0
+      ? container.querySelector('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]')
+      : container.querySelector('.column[data-col-index="' + colIndex + '"]');
+    if (cardEl) {
+      cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      cardEl.classList.add('highlight-flash');
+      setTimeout(function () { cardEl.classList.remove('highlight-flash'); }, 1500);
+    }
+  }
+
+  function bindDashboardTreeInteractions(targetEl) {
+    if (!targetEl || targetEl.__dashboardTreeClickBound) return;
+    var TreeView = _dep('TreeView');
+    targetEl.addEventListener('click', function (e) {
+      var toggle = e.target.closest('.tree-toggle');
+      if (toggle && targetEl.contains(toggle)) {
+        var toggleNode = toggle.closest('.tree-node');
+        if (toggleNode) TreeView.toggleNode(toggleNode);
+        return;
+      }
+      var node = e.target.closest('.tree-node[data-dashboard-target]');
+      if (!node || !targetEl.contains(node)) return;
+      var target = String(node.getAttribute('data-dashboard-target') || '').trim();
+      if (target === 'result') {
+        var navResult = _callDep('getDashboardTreeApi').buildDashboardNavResultFromTreeNode(node);
+        if (navResult) _callDep('navigateToSearchResult', navResult);
+        return;
+      }
+      if (target === 'broken') {
+        var colIndex = parseInt(node.getAttribute('data-dashboard-col-index'), 10);
+        var cardIndexRaw = node.getAttribute('data-dashboard-card-index');
+        var cardIndex = cardIndexRaw != null && cardIndexRaw !== '' ? parseInt(cardIndexRaw, 10) : null;
+        if (!isNaN(colIndex)) focusDashboardBrokenTarget(colIndex, cardIndex);
+      }
+    });
+    targetEl.__dashboardTreeClickBound = true;
+  }
+
+  function renderDashboardTreeItems(targetEl, treeNodes, emptyText, options) {
+    options = options || {};
+    if (!targetEl) return;
+    targetEl.innerHTML = '';
+
+    if (!treeNodes || treeNodes.length === 0) {
+      setDashboardGroupEmptyState(targetEl, !!options.collapseWhenEmpty);
+      var empty = document.createElement('div');
+      empty.className = 'dashboard-empty';
+      empty.textContent = emptyText;
+      targetEl.appendChild(empty);
+      return;
+    }
+    setDashboardGroupEmptyState(targetEl, false);
+    var TreeView = _dep('TreeView');
+    TreeView.render(targetEl, treeNodes, {
+      escapeHtml: _dep('escapeHtml'),
+      variant: 'compact'
+    });
+    bindDashboardTreeInteractions(targetEl);
+  }
+
   function renderDashboardFileInventoryList(targetEl, items, emptyText) {
     if (!targetEl) return;
     var state = ensureDashboardState();
@@ -1936,27 +2038,12 @@ var LexeraOrderHelpers = (function () {
       targetEl.innerHTML = '<div class="dashboard-empty">' + escapeCalHtml(emptyText) + '</div>';
       return;
     }
-    var html = '';
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      var status = item.status || 'unknown';
-      var statusLabel = status === 'missing' ? 'Missing' : (status === 'exists' ? 'Exists' : 'Unknown');
-      var kindLabel = item.kind === 'include'
-        ? 'Include'
-        : (item.mediaCategory ? item.mediaCategory.charAt(0).toUpperCase() + item.mediaCategory.slice(1) : 'Embed');
-      var meta = item.count > 1
-        ? ((item.firstContextLabel || kindLabel) + ' +' + (item.count - 1) + ' more')
-        : (item.firstContextLabel || kindLabel);
-      html += '<div class="dashboard-file-item">';
-      html += '<div class="dashboard-file-header">';
-      html += '<span class="dashboard-file-kind">' + escapeCalHtml(kindLabel) + '</span>';
-      html += '<span class="dashboard-file-status dashboard-file-status-' + escapeCalHtml(status) + '">' + escapeCalHtml(statusLabel) + '</span>';
-      html += '</div>';
-      html += '<div class="dashboard-file-path">' + escapeCalHtml(item.path) + '</div>';
-      html += '<div class="dashboard-file-meta">' + escapeCalHtml(meta) + '</div>';
-      html += '</div>';
-    }
-    targetEl.innerHTML = html;
+    renderDashboardTreeItems(
+      targetEl,
+      _callDep('getDashboardTreeApi').buildDashboardInventoryTreeNodes(items),
+      emptyText,
+      {}
+    );
   }
 
   function buildDashboardBrokenItems(runtimeItems, embedItems, includeItems) {
@@ -2189,44 +2276,12 @@ var LexeraOrderHelpers = (function () {
       scheduleMirroredDashboardSync();
       return;
     }
-    el.innerHTML = '';
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      var label = item.type.charAt(0).toUpperCase() + item.type.slice(1);
-      var src = item.src;
-      if (src.length > 50) src = '\u2026' + src.slice(-47);
-      var row = document.createElement('div');
-      row.className = 'dashboard-broken-item';
-      if (typeof item.colIndex === 'number' && item.colIndex >= 0) {
-        row.setAttribute('data-col-index', String(item.colIndex));
-        if (typeof item.cardIndex === 'number' && item.cardIndex >= 0) {
-          row.setAttribute('data-card-index', String(item.cardIndex));
-        }
-        row.style.cursor = 'pointer';
-      }
-      row.innerHTML = '<span class="broken-type">' + escapeCalHtml(label) + '</span> ' +
-        '<span class="broken-src">' + escapeCalHtml(src) + '</span>' +
-        (item.count > 1 ? ' <span class="dashboard-file-count">x' + escapeCalHtml(String(item.count)) + '</span>' : '');
-      el.appendChild(row);
-    }
-    // Click handler: focus the card containing the broken element
-    el.addEventListener('click', function (e) {
-      var row = e.target.closest('.dashboard-broken-item[data-col-index]');
-      if (!row) return;
-      var ci = parseInt(row.getAttribute('data-col-index'), 10);
-      var cj = row.getAttribute('data-card-index') != null ? parseInt(row.getAttribute('data-card-index'), 10) : -1;
-      if (isNaN(ci) || ci < 0) return;
-      var container = getDashboardBrokenScanContainer();
-      if (!container) return;
-      var cardEl = cj >= 0
-        ? container.querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + cj + '"]')
-        : container.querySelector('.column[data-col-index="' + ci + '"]');
-      if (cardEl) {
-        cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        cardEl.classList.add('highlight-flash');
-        setTimeout(function () { cardEl.classList.remove('highlight-flash'); }, 1500);
-      }
-    });
+    renderDashboardTreeItems(
+      el,
+      _callDep('getDashboardTreeApi').buildDashboardBrokenTreeNodes(items),
+      'No broken elements',
+      {}
+    );
     scheduleMirroredDashboardSync();
   }
 
@@ -2298,41 +2353,12 @@ var LexeraOrderHelpers = (function () {
   }
 
   function renderDashboardResultItems(targetEl, items, emptyText, options) {
-    options = options || {};
-    if (!targetEl) return;
-    targetEl.innerHTML = '';
-
-    if (!items || items.length === 0) {
-      setDashboardGroupEmptyState(targetEl, !!options.collapseWhenEmpty);
-      var empty = document.createElement('div');
-      empty.className = 'dashboard-empty';
-      empty.textContent = emptyText;
-      targetEl.appendChild(empty);
-      return;
-    }
-    setDashboardGroupEmptyState(targetEl, false);
-    var treeNodes = _callDep('getDashboardTreeApi').buildDashboardResultTreeNodes(items);
-    var TreeView = _dep('TreeView');
-    TreeView.render(targetEl, treeNodes, {
-      escapeHtml: _dep('escapeHtml'),
-      variant: 'compact'
-    });
-    if (!targetEl.__dashboardTreeClickBound) {
-      targetEl.addEventListener('click', function (e) {
-        var toggle = e.target.closest('.tree-toggle');
-        if (toggle && targetEl.contains(toggle)) {
-          var toggleNode = toggle.closest('.tree-node');
-          if (toggleNode) TreeView.toggleNode(toggleNode);
-          return;
-        }
-        var node = e.target.closest('.tree-node[data-dashboard-target="result"]');
-        if (!node || !targetEl.contains(node)) return;
-        var navResult = _callDep('getDashboardTreeApi').buildDashboardNavResultFromTreeNode(node);
-        if (!navResult) return;
-        _callDep('navigateToSearchResult', navResult);
-      });
-      targetEl.__dashboardTreeClickBound = true;
-    }
+    renderDashboardTreeItems(
+      targetEl,
+      _callDep('getDashboardTreeApi').buildDashboardResultTreeNodes(items),
+      emptyText,
+      options
+    );
   }
 
   function renderDashboard() {
@@ -2386,28 +2412,12 @@ var LexeraOrderHelpers = (function () {
     var taggedEl = _callDep('getElDashboardTaggedList');
     if (taggedEl) {
       var groups = dashboardState.taggedGroups || [];
-      setDashboardGroupEmptyState(taggedEl, groups.length === 0);
-      if (groups.length === 0) {
-        taggedEl.innerHTML = '<div class="dashboard-empty">No tags configured</div>';
-      } else {
-        taggedEl.innerHTML = '';
-        for (var tgi = 0; tgi < groups.length; tgi++) {
-          var grp = groups[tgi];
-          var section = document.createElement('div');
-          section.className = 'dashboard-tag-section';
-          var header = document.createElement('div');
-          header.className = 'dashboard-tag-section-header';
-          header.textContent = grp.tag + ' (' + grp.items.length + ')';
-          section.appendChild(header);
-          if (grp.items.length > 0) {
-            var list = document.createElement('div');
-            list.className = 'dashboard-list';
-            renderDashboardResultItems(list, grp.items, '', {});
-            section.appendChild(list);
-          }
-          taggedEl.appendChild(section);
-        }
-      }
+      renderDashboardTreeItems(
+        taggedEl,
+        _callDep('getDashboardTreeApi').buildDashboardTaggedTreeNodes(groups),
+        scopeHint || loadingNote || 'No tagged items',
+        { collapseWhenEmpty: !dashboardState.loading }
+      );
     }
     renderDashboardFileEmbedsList();
     renderDashboardIncludedFilesList();
