@@ -1,8 +1,8 @@
 # Lexera Kanban Todo
 
-- [ ] add status informations to all views if they have not loaded the data! setup a generic icon or system that we can reuse for it!
+- [x] ~~add status informations to all views~~ (a310c52c) — generic .view-loading/.view-empty CSS system + LexeraRuntime helpers
 
-- [ ] when closing a view (next to the board) the board is re-rendered completely. is that really needed?
+- [x] ~~when closing a view the board re-renders~~ — investigated: no JS renderColumns() is called; the visual change is browser CSS reflow from the pane resizing, which is expected
 
 - [x] ~~#### parsed as tag~~ (90c26251) — negative lookahead `#(?![# ])` in inlineRenderer + tagSystem
 
@@ -254,7 +254,7 @@ See [spec-performance.md](spec-performance.md) for full spec.
 - [x] **Phase 1: Paginate & truncate API responses** — search and calendar endpoints now expose `limit` / `offset` / `truncate`, and calendar groups return the same paging metadata shape as search
 - [x] **Phase 2: Tiered startup hydration** — startup-prepared board state now loads summaries/hierarchy/search metadata first, defers CRDT hydration, and lazily hydrates persisted CRDT/snapshot state on first read/edit/sync use
 - [x] **Phase 3: Search index** — `BoardState` now maintains inverted candidate indexes for tags, temporal tags, checked/open state, and due buckets so `search` / `search_many` prefilter before full matching
-- [ ] **Phase 4: Delta undo** — store per-card patches instead of full board JSON.stringify per mutation
+- [x] ~~**Phase 4: Delta undo**~~ — already implemented: boardDelta.js computes structural diffs (row/column/card level), undo stack stores compact deltas not full board clones
 - [ ] **Phase 5: Targeted DOM updates (expand)** — card edit, card add, card reorder without full re-render
 - [ ] **Phase 6: Virtual scrolling** — render only visible cards for 500+ card boards
 - [ ] **Phase 7: Delta sync on poll** — fetch only changed cards instead of full board on generation change
