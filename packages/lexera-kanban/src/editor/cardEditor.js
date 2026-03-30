@@ -1092,7 +1092,11 @@ var CardEditor = (function () {
 
     _deps.pushUndo();
     col.cards[fullCardIdx].content = newContent;
-    await _deps.persistBoardMutation();
+    var visibleIdx = cardEl ? parseInt(cardEl.getAttribute('data-card-index') || '-1', 10) : -1;
+    await _deps.persistBoardMutation({ skipRender: true });
+    if (visibleIdx >= 0) {
+      _deps.updateCardElementInPlace(colIndex, visibleIdx);
+    }
     await _deps.flushDeferredBoardRefresh({ refreshSidebar: true });
   }
 

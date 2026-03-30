@@ -168,7 +168,8 @@ var LexeraDashboard = (function () {
     revertCardDraftLiveSync: function(ci, fi, orig) { return revertCardDraftLiveSync(ci, fi, orig); },
     flushDeferredBoardRefresh: function(opts) { return flushDeferredBoardRefresh(opts); },
     pushUndo: function() { pushUndo(); },
-    persistBoardMutation: function() { return persistBoardMutation(); },
+    persistBoardMutation: function(opts) { return persistBoardMutation(opts); },
+    updateCardElementInPlace: function(ci, vi) { updateCardElementInPlace(ci, vi); },
     getIncludeResolvedContent: function(content, colIndex) { return getIncludeResolvedContent(content, colIndex); },
     renderCardContent: function(content, boardId, col, opts) { return renderCardContent(content, boardId, col, opts); },
     renderTitleInline: function(title, boardId) { return renderTitleInline(title, boardId); },
@@ -2150,6 +2151,7 @@ var LexeraDashboard = (function () {
     scheduleDashboardRefresh: function (ms) { scheduleDashboardRefresh(ms); },
     isBoardDirty: function () { return isBoardDirty(); },
     loadBoard: function (id) { return loadBoard(id); },
+    applyPollingBoardDelta: function (boardId, payload) { return applyPollingBoardDelta(boardId, payload); },
     renderMainView: function () { renderMainView(); },
     selectBoard: function (id) { return selectBoard(id); },
     closeLiveSyncSession: function (id) { return closeLiveSyncSession(id); },
@@ -6939,6 +6941,35 @@ var LexeraDashboard = (function () {
   function applyBoardDelta(board, delta, reverse) { return getBoardDeltaApi().applyBoardDelta(board, delta, reverse); }
   function estimateDeltaSize(delta) { return getBoardDeltaApi().estimateDeltaSize(delta); }
 
+  function applyPollingBoardDelta(boardId, payload) {
+    if (!boardId || boardId !== activeBoardId || !fullBoardData || !activeBoardData || !payload || !payload.available || !payload.delta) {
+      return false;
+    }
+    applyBoardDelta(fullBoardData, payload.delta, false);
+    setBoardSaveBase(fullBoardData, fullBoardData);
+    activeBoardData.fullBoard = fullBoardData;
+    if (typeof payload.title === 'string') activeBoardData.title = payload.title;
+    if (typeof payload.version === 'number') activeBoardData.version = payload.version;
+    if (typeof payload.generation === 'number') {
+      activeBoardData.generation = payload.generation;
+      _lastLoadedGeneration = payload.generation;
+    }
+    if (payload.revision) {
+      activeBoardData.revision = payload.revision;
+      _lastLoadedRevision = payload.revision;
+    }
+    if (typeof payload.isRemote === 'boolean') activeBoardData.isRemote = payload.isRemote;
+    updateDisplayFromFullBoard();
+    renderMainView();
+    traceFrontendAction('info', 'poll.delta', 'Applied polled board delta without full reload', {
+      boardId: boardId,
+      generation: activeBoardData.generation || null,
+      revision: activeBoardData.revision || null,
+      summary: summarizeBoardHierarchy(fullBoardData)
+    });
+    return true;
+  }
+
 
   /**
    * Finalize any pending undo snapshot by computing the delta
@@ -8555,6 +8586,264 @@ var LexeraDashboard = (function () {
   }
 
   /**
+   * Build a single card DOM element with all event listeners attached.
+   * Reused by buildColumnElement (full render) and targeted DOM updates.
+   */
+  function buildCardElement(card, colIndex, visibleCardIndex, collapsedCards) {
+    var isCanvasLayout = isCanvasBoardLayout();
+    var cardId = String(card.id);
+    var cardEl = document.createElement('div');
+    cardEl.className = 'card' + (card.checked ? ' checked' : '');
+    cardEl.setAttribute('data-col-index', colIndex.toString());
+    cardEl.setAttribute('data-card-index', visibleCardIndex.toString());
+    cardEl.setAttribute('data-card-id', cardId);
+    if (card.kid) cardEl.setAttribute('data-card-kid', card.kid);
+    var isCollapsed = !isCanvasLayout && Array.isArray(collapsedCards) && collapsedCards.indexOf(cardId) !== -1;
+    if (isCollapsed) cardEl.classList.add('collapsed');
+    var cardParams = card.params || {};
+    if (cardParams.span) cardEl.setAttribute('data-card-span', cardParams.span);
+
+    var headerRow = document.createElement('div');
+    headerRow.className = 'card-header';
+
+    var toggle = null;
+    if (!isCanvasLayout) {
+      toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'card-collapse-toggle fold-btn' + (isCollapsed ? '' : ' expanded');
+      toggle.textContent = '\u25B6';
+      headerRow.appendChild(toggle);
+    }
+
+    var dragHandle = document.createElement('div');
+    dragHandle.className = 'card-drag-handle entity-drag-icon entity-drag-icon-card';
+    dragHandle.innerHTML = getCreationEntityDragIconSvg('card');
+    dragHandle.title = 'Drag to move card';
+    headerRow.appendChild(dragHandle);
+
+    var titleContainer = document.createElement('div');
+    titleContainer.className = 'card-title-container';
+    var titleDisplay = document.createElement('div');
+    titleDisplay.className = 'card-title-display';
+    titleDisplay.innerHTML = renderTitleInline(getCardTitle(getIncludeResolvedContent(card.content, colIndex)), activeBoardId);
+    titleContainer.appendChild(titleDisplay);
+    headerRow.appendChild(titleContainer);
+    if (toggle) {
+      (function (toggleEl, el) {
+        toggleEl.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (e.altKey) {
+            var column = el.closest('.column');
+            if (column) {
+              var anyOtherExpanded = false;
+              var allCards = column.querySelectorAll('.card');
+              for (var ai = 0; ai < allCards.length; ai++) {
+                if (allCards[ai] === el) continue;
+                if (!allCards[ai].classList.contains('collapsed')) { anyOtherExpanded = true; break; }
+              }
+              for (var ai = 0; ai < allCards.length; ai++) {
+                if (allCards[ai] === el) continue;
+                allCards[ai].classList.toggle('collapsed', anyOtherExpanded);
+                var t = allCards[ai].querySelector('.card-collapse-toggle');
+                if (t) t.classList.toggle('expanded', !anyOtherExpanded);
+              }
+            }
+          } else {
+            el.classList.toggle('collapsed');
+            toggleEl.classList.toggle('expanded');
+          }
+          saveCardCollapseState(activeBoardId);
+        });
+      })(toggle, cardEl);
+    }
+
+    var cardDueDate = extractFirstTemporalDateValue(card.content || '');
+    if (cardDueDate) {
+      var dueBadge = document.createElement('span');
+      var todayStr = formatDate(new Date());
+      var isOverdue = cardDueDate < todayStr;
+      var isDueToday = cardDueDate === todayStr;
+      dueBadge.className = 'card-due-badge' + (isOverdue ? ' overdue' : '') + (isDueToday ? ' due-today' : '');
+      dueBadge.textContent = cardDueDate;
+      dueBadge.title = isOverdue ? 'Overdue' : isDueToday ? 'Due today' : 'Due ' + cardDueDate;
+      headerRow.appendChild(dueBadge);
+    }
+
+    var checkboxStats = countCheckboxes(card.content || '');
+    if (checkboxStats.total > 0) {
+      var progressBadge = document.createElement('span');
+      progressBadge.className = 'card-progress-badge' + (checkboxStats.checked === checkboxStats.total ? ' complete' : '');
+      progressBadge.textContent = checkboxStats.checked + '/' + checkboxStats.total;
+      progressBadge.title = checkboxStats.checked + ' of ' + checkboxStats.total + ' tasks completed';
+      headerRow.appendChild(progressBadge);
+    }
+
+    var menuBtn = document.createElement('button');
+    menuBtn.className = 'card-menu-btn burger-menu-btn';
+    menuBtn.innerHTML = BURGER_MENU_ICON_HTML;
+    menuBtn.title = 'Card options';
+    menuBtn.setAttribute('aria-haspopup', 'menu');
+    headerRow.appendChild(menuBtn);
+
+    cardEl.appendChild(headerRow);
+
+    var contentBody = document.createElement('div');
+    contentBody.className = 'card-content';
+    contentBody.innerHTML = renderCardContent(getIncludeResolvedContent(card.content, colIndex), activeBoardId, null, {
+      skipFirstLineTagStyle: true
+    });
+    cardEl.appendChild(contentBody);
+
+    (function (el, ci, cj, btn) {
+      el.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showCardContextMenu(e.clientX, e.clientY, ci, cj);
+      });
+      el.addEventListener('change', function (e) {
+        if (!e.target.classList.contains('card-checkbox')) return;
+        e.stopPropagation();
+        toggleCheckbox(ci, cj, parseInt(e.target.getAttribute('data-line'), 10), e.target.checked);
+      });
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var rect = btn.getBoundingClientRect();
+        showCardContextMenu(rect.right, rect.bottom, ci, cj);
+      });
+    })(cardEl, colIndex, visibleCardIndex, menuBtn);
+    applyTagStyleToEntity(cardEl, getCardContainerStyleSource(card.content || ''));
+    return cardEl;
+  }
+
+  /**
+   * Update a card element in-place after content edit, without re-rendering the full board.
+   * Replaces the old card element with a freshly built one to ensure all badges,
+   * tags, and event listeners are correct.
+   */
+  function updateCardElementInPlace(colIndex, visibleCardIndex) {
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var fullIdx = getFullCardIndex(col, visibleCardIndex);
+    if (fullIdx === -1) return;
+    var card = col.cards[fullIdx];
+    if (!card) return;
+    var oldEl = findVisibleCardElement(colIndex, visibleCardIndex);
+    if (!oldEl) return;
+    var collapsedCards = getCollapsedCards(activeBoardId, activeBoardData ? activeBoardData.rows : []);
+    var newEl = buildCardElement(card, colIndex, visibleCardIndex, collapsedCards);
+    // Preserve editing classes if the card was being edited
+    if (oldEl.classList.contains('editing')) newEl.classList.add('editing');
+    if (oldEl.classList.contains('editing-inline')) newEl.classList.add('editing-inline');
+    if (oldEl.classList.contains('editing-overlay')) newEl.classList.add('editing-overlay');
+    oldEl.parentNode.replaceChild(newEl, oldEl);
+    enhanceEmbeddedContent(newEl);
+    applyRenderedHtmlCommentVisibility(newEl, currentHtmlCommentRenderMode);
+    applyRenderedTagVisibility(newEl, currentTagVisibilityMode);
+    attachRenderedTagInteractions(newEl);
+  }
+
+  /**
+   * Insert a new card DOM element at the given visible position in a column,
+   * without re-rendering the full board. Updates card-index attributes on
+   * subsequent sibling cards and the column count badge.
+   */
+  function insertCardElementAtPosition(colIndex, visibleCardIndex, card) {
+    var cardsContainer = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + colIndex + '"]');
+    if (!cardsContainer) return false;
+    var collapsedCards = getCollapsedCards(activeBoardId, activeBoardData ? activeBoardData.rows : []);
+    var newEl = buildCardElement(card, colIndex, visibleCardIndex, collapsedCards);
+    var existingCards = cardsContainer.querySelectorAll('.card');
+    if (visibleCardIndex < existingCards.length) {
+      cardsContainer.insertBefore(newEl, existingCards[visibleCardIndex]);
+    } else {
+      cardsContainer.appendChild(newEl);
+    }
+    // Re-index subsequent cards
+    var allCards = cardsContainer.querySelectorAll('.card');
+    for (var k = visibleCardIndex; k < allCards.length; k++) {
+      allCards[k].setAttribute('data-card-index', k.toString());
+    }
+    enhanceEmbeddedContent(newEl);
+    applyRenderedHtmlCommentVisibility(newEl, currentHtmlCommentRenderMode);
+    applyRenderedTagVisibility(newEl, currentTagVisibilityMode);
+    attachRenderedTagInteractions(newEl);
+    // Update column card count badge
+    updateColumnCountBadge(colIndex);
+    return true;
+  }
+
+  /**
+   * Update the column-count badge text for a given flat column index.
+   */
+  function updateColumnCountBadge(colIndex) {
+    var colEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + colIndex + '"]');
+    if (!colEl) return;
+    var columnEl = colEl.closest('.column');
+    if (!columnEl) return;
+    var countEl = columnEl.querySelector('.column-count');
+    if (!countEl) return;
+    var cardCount = colEl.querySelectorAll('.card').length;
+    var col = getFullColumn(colIndex);
+    var wipLimit = 0;
+    if (col) {
+      var layout = getColumnLayoutTags(col.title || '');
+      wipLimit = layout.wipLimit || 0;
+    }
+    countEl.textContent = cardCount + (wipLimit > 0 ? '/' + wipLimit : '');
+    if (columnEl && wipLimit > 0) {
+      columnEl.classList.toggle('wip-exceeded', cardCount > wipLimit);
+    }
+  }
+
+  /**
+   * Reorder card DOM nodes within the same column after a same-column card move,
+   * without re-rendering the full board. Updates data-card-index attributes.
+   */
+  function reorderCardElements(colIndex, fromVisibleIdx, toVisibleIdx) {
+    var cardsContainer = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + colIndex + '"]');
+    if (!cardsContainer) return false;
+    var cards = cardsContainer.querySelectorAll('.card');
+    if (fromVisibleIdx < 0 || fromVisibleIdx >= cards.length) return false;
+    if (toVisibleIdx < 0 || toVisibleIdx >= cards.length) return false;
+    if (fromVisibleIdx === toVisibleIdx) return true;
+    var movedEl = cards[fromVisibleIdx];
+    if (toVisibleIdx > fromVisibleIdx) {
+      var refEl = cards[toVisibleIdx];
+      cardsContainer.insertBefore(movedEl, refEl.nextSibling);
+    } else {
+      cardsContainer.insertBefore(movedEl, cards[toVisibleIdx]);
+    }
+    // Re-index all cards in this column
+    var allCards = cardsContainer.querySelectorAll('.card');
+    for (var k = 0; k < allCards.length; k++) {
+      allCards[k].setAttribute('data-card-index', k.toString());
+    }
+    return true;
+  }
+
+  /**
+   * Remove the inline add-card composer form from a column and replace with
+   * the "+ Add card" creation source button. Used after targeted card insertion.
+   */
+  function removeAddCardComposer(colIndex) {
+    var cardsContainer = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + colIndex + '"]');
+    if (!cardsContainer) return;
+    var columnEl = cardsContainer.closest('.column');
+    if (!columnEl) return;
+    var footer = columnEl.querySelector('.column-footer');
+    if (!footer) return;
+    var textarea = footer.querySelector('.add-card-input');
+    if (!textarea) return;
+    footer.innerHTML = '';
+    var cardSource = renderCreationSource('card', { colIndex: colIndex }, {
+      btnClass: 'add-card-btn',
+      btnText: '+ Add card',
+      wrapperClass: 'creation-source-card'
+    });
+    footer.appendChild(cardSource);
+  }
+
+  /**
    * Build a single column element (header, cards, footer) — shared by both formats.
    */
   function buildColumnElement(col, foldedCols, collapsedCards, rowIdx, stackIdx, colLocalIdx, colFullIdx) {
@@ -8647,133 +8936,7 @@ var LexeraDashboard = (function () {
     cardsEl.className = 'column-cards';
     cardsEl.setAttribute('data-col-index', col.index.toString());
     for (var j = 0; j < col.cards.length; j++) {
-      var card = col.cards[j];
-      var cardId = String(card.id);
-      var cardEl = document.createElement('div');
-      cardEl.className = 'card' + (card.checked ? ' checked' : '');
-      cardEl.setAttribute('data-col-index', col.index.toString());
-      cardEl.setAttribute('data-card-index', j.toString());
-      cardEl.setAttribute('data-card-id', cardId);
-      if (card.kid) cardEl.setAttribute('data-card-kid', card.kid);
-      var isCollapsed = !isCanvasLayout && collapsedCards.indexOf(cardId) !== -1;
-      if (isCollapsed) cardEl.classList.add('collapsed');
-      // Canvas layout: apply card span param
-      var cardParams = card.params || {};
-      if (cardParams.span) cardEl.setAttribute('data-card-span', cardParams.span);
-
-      // --- Card Header Row ---
-      var headerRow = document.createElement('div');
-      headerRow.className = 'card-header';
-
-      var toggle = null;
-      if (!isCanvasLayout) {
-        toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'card-collapse-toggle fold-btn' + (isCollapsed ? '' : ' expanded');
-        toggle.textContent = '\u25B6';
-        headerRow.appendChild(toggle);
-      }
-
-      var dragHandle = document.createElement('div');
-      dragHandle.className = 'card-drag-handle entity-drag-icon entity-drag-icon-card';
-      dragHandle.innerHTML = getCreationEntityDragIconSvg('card');
-      dragHandle.title = 'Drag to move card';
-      headerRow.appendChild(dragHandle);
-
-      var titleContainer = document.createElement('div');
-      titleContainer.className = 'card-title-container';
-      var titleDisplay = document.createElement('div');
-      titleDisplay.className = 'card-title-display';
-      titleDisplay.innerHTML = renderTitleInline(getCardTitle(getIncludeResolvedContent(card.content, col.index)), activeBoardId);
-      titleContainer.appendChild(titleDisplay);
-      headerRow.appendChild(titleContainer);
-      if (toggle) {
-        (function (toggleEl, el) {
-          toggleEl.addEventListener('click', function (e) {
-            e.stopPropagation();
-            if (e.altKey) {
-              // Alt+click: fold/unfold all OTHER cards in the same column (not the clicked one)
-              var column = el.closest('.column');
-              if (column) {
-                var anyOtherExpanded = false;
-                var allCards = column.querySelectorAll('.card');
-                for (var ai = 0; ai < allCards.length; ai++) {
-                  if (allCards[ai] === el) continue;
-                  if (!allCards[ai].classList.contains('collapsed')) { anyOtherExpanded = true; break; }
-                }
-                for (var ai = 0; ai < allCards.length; ai++) {
-                  if (allCards[ai] === el) continue;
-                  allCards[ai].classList.toggle('collapsed', anyOtherExpanded);
-                  var t = allCards[ai].querySelector('.card-collapse-toggle');
-                  if (t) t.classList.toggle('expanded', !anyOtherExpanded);
-                }
-              }
-            } else {
-              el.classList.toggle('collapsed');
-              toggleEl.classList.toggle('expanded');
-            }
-            saveCardCollapseState(activeBoardId);
-          });
-        })(toggle, cardEl);
-      }
-
-      var cardDueDate = extractFirstTemporalDateValue(card.content || '');
-      if (cardDueDate) {
-        var dueBadge = document.createElement('span');
-        var todayStr = formatDate(new Date());
-        var isOverdue = cardDueDate < todayStr;
-        var isDueToday = cardDueDate === todayStr;
-        dueBadge.className = 'card-due-badge' + (isOverdue ? ' overdue' : '') + (isDueToday ? ' due-today' : '');
-        dueBadge.textContent = cardDueDate;
-        dueBadge.title = isOverdue ? 'Overdue' : isDueToday ? 'Due today' : 'Due ' + cardDueDate;
-        headerRow.appendChild(dueBadge);
-      }
-
-      var checkboxStats = countCheckboxes(card.content || '');
-      if (checkboxStats.total > 0) {
-        var progressBadge = document.createElement('span');
-        progressBadge.className = 'card-progress-badge' + (checkboxStats.checked === checkboxStats.total ? ' complete' : '');
-        progressBadge.textContent = checkboxStats.checked + '/' + checkboxStats.total;
-        progressBadge.title = checkboxStats.checked + ' of ' + checkboxStats.total + ' tasks completed';
-        headerRow.appendChild(progressBadge);
-      }
-
-      var menuBtn = document.createElement('button');
-      menuBtn.className = 'card-menu-btn burger-menu-btn';
-      menuBtn.innerHTML = BURGER_MENU_ICON_HTML;
-      menuBtn.title = 'Card options';
-      menuBtn.setAttribute('aria-haspopup', 'menu');
-      headerRow.appendChild(menuBtn);
-
-      cardEl.appendChild(headerRow);
-
-      // --- Card Content Body ---
-      var contentBody = document.createElement('div');
-      contentBody.className = 'card-content';
-      contentBody.innerHTML = renderCardContent(getIncludeResolvedContent(card.content, col.index), activeBoardId, null, {
-        skipFirstLineTagStyle: true
-      });
-      cardEl.appendChild(contentBody);
-
-      (function (el, ci, cj, btn) {
-        el.addEventListener('contextmenu', function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          showCardContextMenu(e.clientX, e.clientY, ci, cj);
-        });
-        el.addEventListener('change', function (e) {
-          if (!e.target.classList.contains('card-checkbox')) return;
-          e.stopPropagation();
-          toggleCheckbox(ci, cj, parseInt(e.target.getAttribute('data-line'), 10), e.target.checked);
-        });
-        btn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          var rect = btn.getBoundingClientRect();
-          showCardContextMenu(rect.right, rect.bottom, ci, cj);
-        });
-      })(cardEl, col.index, j, menuBtn);
-      applyTagStyleToEntity(cardEl, getCardContainerStyleSource(card.content || ''));
-      cardsEl.appendChild(cardEl);
+      cardsEl.appendChild(buildCardElement(col.cards[j], col.index, j, collapsedCards));
     }
     colEl.appendChild(cardsEl);
 
@@ -9373,13 +9536,22 @@ var LexeraDashboard = (function () {
       var resolvedInsertIdx = resolveInsertCardIndex(column, atCardIndex, insertMode === 'full' ? 'full' : 'visible');
       if (resolvedInsertIdx >= 0) insertAt = resolvedInsertIdx;
     }
-    column.cards.splice(insertAt, 0, {
+    var newCard = {
       id: 'card-' + Date.now(),
       content: content,
       checked: false
-    });
+    };
+    column.cards.splice(insertAt, 0, newCard);
     addCardColumn = null;
-    await persistBoardMutation();
+    await persistBoardMutation({ skipRender: true });
+    // Find the visible index of the newly added card
+    var visibleIdx = findVisibleCardIndexById(colIndex, newCard.id);
+    if (visibleIdx >= 0) {
+      insertCardElementAtPosition(colIndex, visibleIdx, newCard);
+      removeAddCardComposer(colIndex);
+    } else {
+      renderColumns();
+    }
     return true;
   }
 
@@ -9418,7 +9590,13 @@ var LexeraDashboard = (function () {
       if (resolvedInsert >= 0) insertAt = resolvedInsert;
     }
     column.cards.splice(insertAt, 0, card);
-    var saved = await persistBoardMutation();
+    var saved = await persistBoardMutation({ skipRender: true });
+    var visibleIdx = findVisibleCardIndexById(colIndex, card.id);
+    if (visibleIdx >= 0) {
+      insertCardElementAtPosition(colIndex, visibleIdx, card);
+    } else {
+      renderColumns();
+    }
     traceFrontendAction(saved ? 'info' : 'warn', 'card.create', saved ? 'Persisted blank card' : 'Blank card persist reported failure', {
       boardId: activeBoardId || null,
       colIndex: colIndex,
@@ -9443,7 +9621,14 @@ var LexeraDashboard = (function () {
       insertAt = column.cards.length;
     }
     column.cards.splice(insertAt, 0, card);
-    return await persistBoardMutation();
+    await persistBoardMutation({ skipRender: true });
+    var visibleIdx = findVisibleCardIndexById(colIndex, card.id);
+    if (visibleIdx >= 0) {
+      insertCardElementAtPosition(colIndex, visibleIdx, card);
+    } else {
+      renderColumns();
+    }
+    return true;
   }
 
   async function submitCard(colIndex, content) {
@@ -9469,7 +9654,13 @@ var LexeraDashboard = (function () {
       pushUndo();
       var card = { id: 'card-' + Date.now(), content: text.trim(), checked: false };
       column.cards.push(card);
-      await persistBoardMutation();
+      await persistBoardMutation({ skipRender: true });
+      var visibleIdx = findVisibleCardIndexById(colIndex, card.id);
+      if (visibleIdx >= 0) {
+        insertCardElementAtPosition(colIndex, visibleIdx, card);
+      } else {
+        renderColumns();
+      }
       showNotification('Pasted as new card');
     } catch (err) {
       showNotification('Clipboard access denied');
@@ -9494,7 +9685,13 @@ var LexeraDashboard = (function () {
       pushUndo();
       var card = { id: 'card-' + Date.now(), content: content, checked: false };
       column.cards.push(card);
-      await persistBoardMutation();
+      await persistBoardMutation({ skipRender: true });
+      var visibleIdx = findVisibleCardIndexById(targetCol, card.id);
+      if (visibleIdx >= 0) {
+        insertCardElementAtPosition(targetCol, visibleIdx, card);
+      } else {
+        renderColumns();
+      }
       showNotification('Smart pasted as new card');
     } catch (err) {
       showNotification('Clipboard access denied');
@@ -10683,6 +10880,23 @@ var LexeraDashboard = (function () {
       removeEmptyStacksAndRowsInBoard(sourceBoardData);
       if (sourceBoardData !== targetBoardData) removeEmptyStacksAndRowsInBoard(targetBoardData);
 
+      // Same-column reorder on the active board: targeted DOM update
+      var isSameColumnOnActiveBoard = source.boardId === activeBoardId &&
+        target.boardId === activeBoardId &&
+        sourceBoardData === targetBoardData &&
+        sourceRef.column === targetRef.column;
+      if (isSameColumnOnActiveBoard) {
+        await persistBoardMutation({ skipRender: true });
+        var srcVisible = typeof source.cardIndex === 'number' ? source.cardIndex : -1;
+        var dstVisible = findVisibleCardIndexById(source.flatColIndex, movedCard.id);
+        if (srcVisible >= 0 && dstVisible >= 0) {
+          reorderCardElements(source.flatColIndex, srcVisible, dstVisible);
+        } else {
+          renderColumns();
+        }
+        return;
+      }
+
       var changedBoards = {};
       changedBoards[source.boardId] = sourceBoardData;
       if (target.boardId !== source.boardId) changedBoards[target.boardId] = targetBoardData;
@@ -10699,6 +10913,22 @@ var LexeraDashboard = (function () {
         if (visible === visibleIdx) return i;
         visible++;
       }
+    }
+    return -1;
+  }
+
+  /**
+   * Find the visible card index for a card by its ID within a full column.
+   * Returns -1 if not found or the card is archived/deleted.
+   */
+  function findVisibleCardIndexById(colIndex, cardId) {
+    var col = getFullColumn(colIndex);
+    if (!col || !col.cards) return -1;
+    var visible = 0;
+    for (var i = 0; i < col.cards.length; i++) {
+      if (is_archived_or_deleted(col.cards[i].content)) continue;
+      if (col.cards[i].id === cardId) return visible;
+      visible++;
     }
     return -1;
   }
@@ -10790,7 +11020,8 @@ var LexeraDashboard = (function () {
       lines[lineIndex] = lines[lineIndex].replace(/\[([xX])\]/, '[ ]');
     }
     card.content = lines.join('\n');
-    await persistBoardMutation();
+    await persistBoardMutation({ skipRender: true });
+    updateCardElementInPlace(colIndex, cardIndex);
   }
 
   // --- Card Context Menu (delegated to CardContextMenu module) ---

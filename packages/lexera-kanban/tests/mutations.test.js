@@ -178,6 +178,7 @@ function loadMutationHarness() {
     extractFunctionAny('function mutateEntityHeaderTags('),
     extractFunctionAny('function removeEmptyStacksAndRowsInBoard('),
     extractFunctionAny('function removeEmptyStacksAndRows()'),
+    extractFunctionAny('function findVisibleCardIndexById('),
   ].join('\n\n');
 
   // --- Mutation functions ---
@@ -268,6 +269,13 @@ function loadMutationHarness() {
       return visIdx;
     }
     function applyDefaultCanvasPlacementToStack(row, stack) { return stack; }
+    function renderColumns() {}
+    function insertCardElementAtPosition() { return false; }
+    function removeAddCardComposer() {}
+    function updateCardElementInPlace() {}
+    function reorderCardElements() { return false; }
+    function updateColumnCountBadge() {}
+    var addCardColumn = null;
     function getCanvasStackDropApi() {
       return {
         applyCanvasDropPositionToStack: function (targetBoardId, currentActiveBoardId, isCanvasLayout, target, stack) {
