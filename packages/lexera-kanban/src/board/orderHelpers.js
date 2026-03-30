@@ -975,35 +975,21 @@ var LexeraOrderHelpers = (function () {
     // Placeholder for header sync status updates.
   }
 
-  var _shellBoardChangeInProgress = false;
-
   function setShellActiveBoard(boardId) {
-    // Guard against re-entrant calls and duplicate calls for the same board.
-    // selectBoard is async — set activeBoardId synchronously first so
-    // subsequent calls see the correct current board and don't re-trigger.
-    var currentBoardId = _dep('activeBoardId');
-    if (_shellBoardChangeInProgress || (boardId && boardId === currentBoardId)) return;
-    _shellBoardChangeInProgress = true;
-
-    if (boardId) {
-      // Set the board ID immediately so re-entrant calls see it
-      _callDep('setActiveBoardId', boardId);
-      // selectBoard with forceLocalBoardLoad: true bypasses the
-      // WorkspaceShell.openBoard redirect (which would loop back here).
-      // The shell already activated the tab — we just need the data loaded.
-      var p = _callDep('selectBoard', boardId, { forceLocalBoardLoad: true });
-      if (p && typeof p.then === 'function') {
-        p.finally(function () { _shellBoardChangeInProgress = false; });
-      } else {
-        _shellBoardChangeInProgress = false;
+    // The workspace shell notifies us that a different board tab is now active.
+    // Boards are loaded inside iframes — we do NOT load board data in the
+    // parent window. We only update the sidebar to highlight the active board
+    // and refresh the dashboard scope.
+    _callDep('setActiveBoardId', boardId || null);
+    if (!_dep('embeddedMode')) {
+      if (boardId) {
+        localStorage.setItem('lexera-last-board', boardId);
+        _callDep('trackRecentBoard', boardId);
       }
-    } else {
-      _callDep('setActiveBoardId', null);
-      _callDep('setActiveBoardData', null);
-      _callDep('setFullBoardData', null);
-      _callDep('renderMainView');
-      _shellBoardChangeInProgress = false;
     }
+    _callDep('renderBoardList');
+    refreshHeaderFileControls();
+    scheduleDashboardRefresh(120);
   }
 
   function setupWorkspaceShell() {
