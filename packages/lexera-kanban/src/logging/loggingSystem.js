@@ -427,6 +427,21 @@ function syncLogCount() {
   for (var i = 0; i < titles.length; i++) titles[i].textContent = text;
 }
 
+function clearLogPanelLoading() {
+  var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+  if (!rt) return;
+  var roots = getSharedLogRoots();
+  for (var i = 0; i < roots.length; i++) {
+    var el = roots[i].querySelector('.log-panel-main');
+    if (el) rt.setViewLoading(el, false);
+  }
+  var canonical = document.getElementById('log-panel');
+  if (canonical) {
+    var canonicalMain = canonical.querySelector('.log-panel-main');
+    if (canonicalMain) rt.setViewLoading(canonicalMain, false);
+  }
+}
+
 function appendLogEntry(source, entry) {
   var entries = getLogEntries(source);
   var lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
@@ -437,6 +452,8 @@ function appendLogEntry(source, entry) {
     updateLastLogEntryRepeat(source, lastEntry);
     return;
   }
+
+  clearLogPanelLoading();
 
   entries.push(entry);
   if (entries.length > LOG_MAX) entries.shift();
@@ -474,6 +491,7 @@ function updateLastLogEntryRepeat(source, entry) {
 }
 
 function replaceLogEntries(source, entries) {
+  clearLogPanelLoading();
   var nextEntries = (entries || []).slice(-LOG_MAX);
   var target = getLogEntries(source);
   target.length = 0;

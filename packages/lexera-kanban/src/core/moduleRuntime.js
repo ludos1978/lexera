@@ -154,6 +154,24 @@ var LexeraRuntime = (function () {
     return { found: found, missing: missing, total: KNOWN_MODULES.length };
   }
 
+  // ── View loading/empty state helpers ─────────────────────────────
+  function setViewLoading(container, loading) {
+    if (!container) return;
+    container.classList.toggle('view-loading', !!loading);
+    if (loading) container.classList.remove('view-empty');
+  }
+
+  function setViewEmpty(container, empty, message) {
+    if (!container) return;
+    container.classList.toggle('view-empty', !!empty);
+    if (empty && message) {
+      container.setAttribute('data-empty-message', message);
+    } else if (!empty) {
+      container.removeAttribute('data-empty-message');
+    }
+    if (empty) container.classList.remove('view-loading');
+  }
+
   // ── Public API ──────────────────────────────────────────────────
   return {
     // State store
@@ -172,7 +190,10 @@ var LexeraRuntime = (function () {
     getModule: getModule,
     discoverModules: discoverModules,
     getStartupReport: getStartupReport,
-    KNOWN_MODULES: KNOWN_MODULES
+    KNOWN_MODULES: KNOWN_MODULES,
+    // View state helpers
+    setViewLoading: setViewLoading,
+    setViewEmpty: setViewEmpty
   };
 })();
 window.LexeraRuntime = LexeraRuntime;

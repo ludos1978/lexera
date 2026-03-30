@@ -43,7 +43,7 @@
           '<button class="sidebar-btn lexera-shared-workspace-menu" title="Hierarchy options" type="button">&#9776;</button>' +
         '</div>' +
       '</div>' +
-      '<div class="board-list lexera-shared-board-list"></div>';
+      '<div class="board-list lexera-shared-board-list view-loading"></div>';
     return root;
   }
 
@@ -71,7 +71,7 @@
           '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open #hidden-internal-parked" type="button"><span class="chip-icon">&#9646;</span>Parked</button>' +
         '</div>' +
       '</div>' +
-      '<div class="sidebar-dashboard-body">' +
+      '<div class="sidebar-dashboard-body view-loading">' +
         '<div class="dashboard-group">' +
           '<div class="dashboard-group-header">Pinned Searches</div>' +
           '<div class="dashboard-list lexera-shared-dashboard-pinned"></div>' +
@@ -139,7 +139,7 @@
         '<button id="btn-inspector" class="log-panel-status-btn" type="button" title="Open Inspector (F12 / Ctrl+Shift+I / Alt+I)">&lt;&gt;</button>' +
       '</div>' +
       '<div class="log-panel-body">' +
-        '<div class="log-panel-main">' +
+        '<div class="log-panel-main view-loading">' +
           '<div class="log-entries lexera-shared-log-entries-backend"></div>' +
           '<div class="log-entries lexera-shared-log-entries-frontend hidden"></div>' +
           '<div class="log-entries lexera-shared-log-entries-stats hidden"></div>' +
@@ -151,7 +151,7 @@
   function createBackendSettingsPanelElement(instanceId) {
     var root = createPanelRoot('shell-settings-panel lexera-shared-panel lexera-shared-panel-backend-settings', 'backendSettings', instanceId);
     root.innerHTML =
-      '<div class="shell-settings-container lexera-shared-backend-settings-container"></div>';
+      '<div class="shell-settings-container lexera-shared-backend-settings-container view-loading"></div>';
     return root;
   }
 
@@ -340,7 +340,7 @@
           '</div>' +
         '</div>' +
       '</div>' +
-      '<div class="calendar-panel-body">' +
+      '<div class="calendar-panel-body view-loading">' +
         '<div class="dashboard-calendar lexera-shared-calendar-week-view"></div>' +
         '<div class="dashboard-list lexera-shared-calendar-task-list"></div>' +
       '</div>';
@@ -361,7 +361,7 @@
           '</div>' +
         '</div>' +
       '</div>' +
-      '<div class="calendar-panel-body">' +
+      '<div class="calendar-panel-body view-loading">' +
         '<div class="dashboard-calendar lexera-shared-calendar-month-view"></div>' +
         '<div class="dashboard-list lexera-shared-calendar-task-list"></div>' +
       '</div>';
@@ -371,7 +371,7 @@
   function createFilesPanelElement(instanceId) {
     var root = createPanelRoot('shell-settings-panel lexera-shared-panel lexera-shared-panel-files', 'files', instanceId);
     root.innerHTML =
-      '<div class="shell-settings-container lexera-shared-files-container"></div>';
+      '<div class="shell-settings-container lexera-shared-files-container view-loading"></div>';
     return root;
   }
 

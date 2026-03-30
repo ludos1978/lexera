@@ -950,6 +950,8 @@ var LexeraBoardList = (function () {
   function renderBoardList() {
     var boardListEl = getElBoardList();
     // console.log('[ws-debug] renderBoardList: boardListEl=' + (boardListEl ? 'id=' + boardListEl.id + ' connected=' + boardListEl.isConnected + ' parent=' + (boardListEl.parentNode ? boardListEl.parentNode.className.substring(0, 40) : 'null') : 'NULL'));
+    var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+    if (rt) rt.setViewLoading(boardListEl, false);
     boardListEl.innerHTML = '';
     var activeWorkspaceId = _dep('activeWorkspaceId');
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
@@ -1308,6 +1310,9 @@ var LexeraBoardList = (function () {
         boardListEl.appendChild(rbEl);
       }
     }
+
+    var hasBoardItems = boardListEl.children.length > 0;
+    if (rt) rt.setViewEmpty(boardListEl, !hasBoardItems, 'No boards');
 
     syncMirroredWorkspaceViews();
   }

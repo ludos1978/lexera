@@ -1719,8 +1719,11 @@ var LexeraOrderHelpers = (function () {
 
   function renderStandaloneCalendarPanels(tasks) {
     if (!window.LexeraSharedPanels) return;
+    var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
     var weekRoots = window.LexeraSharedPanels.getRoots('weekCalendar');
     for (var w = 0; w < weekRoots.length; w++) {
+      var weekBody = weekRoots[w].querySelector('.calendar-panel-body');
+      if (rt && weekBody) rt.setViewLoading(weekBody, false);
       var weekEl = weekRoots[w].querySelector('.lexera-shared-calendar-week-view');
       var weekTaskEl = weekRoots[w].querySelector('.lexera-shared-calendar-task-list');
       renderWeekTimeline(weekEl, tasks);
@@ -1728,6 +1731,8 @@ var LexeraOrderHelpers = (function () {
     }
     var monthRoots = window.LexeraSharedPanels.getRoots('monthCalendar');
     for (var m = 0; m < monthRoots.length; m++) {
+      var monthBody = monthRoots[m].querySelector('.calendar-panel-body');
+      if (rt && monthBody) rt.setViewLoading(monthBody, false);
       var monthEl = monthRoots[m].querySelector('.lexera-shared-calendar-month-view');
       var monthTaskEl = monthRoots[m].querySelector('.lexera-shared-calendar-task-list');
       renderMonthCalendar(monthEl, tasks);
@@ -2271,6 +2276,11 @@ var LexeraOrderHelpers = (function () {
     renderStandaloneCalendarPanels(allCalendar);
 
     if (!_callDep('getElDashboardRoot')) return;
+
+    // Clear loading state on the dashboard body
+    var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+    var dashBody = _callDep('getElDashboardRoot') ? _callDep('getElDashboardRoot').querySelector('.sidebar-dashboard-body') : null;
+    if (rt && dashBody) rt.setViewLoading(dashBody, !!dashboardState.loading);
 
     var scopeHint = scopeHintForDashboard();
     var loadingNote = dashboardState.loading ? 'Loading...' : null;

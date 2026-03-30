@@ -1,5 +1,16 @@
 # Lexera Kanban Todo
 
+- [ ] add status informations to all views if they have not loaded the data! setup a generic icon or system that we can reuse for it!
+
+- [ ] when closing a view (next to the board) the board is re-rendered completely. is that really needed?
+
+- [x] ~~#### parsed as tag~~ (90c26251) — negative lookahead `#(?![# ])` in inlineRenderer + tagSystem
+
+- [x] ~~log viewer layout shift on error~~ (add4c117) — error indicator flex:0 + max-width:40%
+
+- [x] ~~can't drag cards~~ (add4c117) — restored card drag mousedown/mousemove/mouseup handlers
+
+
 - [x] ~~the dashboard search tag list now supports per-workspace overrides via GET/PUT /config/dashboard-tags?workspace={id}, with 3-tier resolution (workspace > global > default)~~ (2e2c2784)
 
 - [x] ~~Settings architecture analysis complete~~ — see [analysis-settings-architecture.md](analysis-settings-architecture.md). Audit found ~90 localStorage keys, ~20 board YAML settings, ~30 backend config fields. Proposed 3-tier resolution (board > workspace > global) and migration path.
@@ -114,7 +125,7 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 - [x] ~~Remove hardcoded Mermaid CDN URL — now configurable via localStorage `lexera-mermaid-url`~~ (this commit)
 - [x] ~~Keyboard card move: Alt+Arrow moves cards between columns/positions (already implemented in keyboardNavigation.js)~~
 - [x] ~~Add keyboard reorder for rows: Ctrl+Alt+Up/Down moves the focused row up/down~~ (this commit)
-- [ ] Add keyboard reorder for columns and stacks within rows
+- [x] ~~Add keyboard reorder for columns and stacks within rows~~ (701740a9) — Ctrl+Alt+Left/Right
 - [x] ~~Export dialog form inputs already have proper `<label for="">` and wrapping `<label>` associations~~ (verified)
 
 ## High Priority — Security & Reliability
@@ -240,9 +251,9 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 
 See [spec-performance.md](spec-performance.md) for full spec.
 
-- [ ] **Phase 1: Paginate & truncate API responses** — add `limit`/`offset`/`truncate` to search and calendar endpoints, reduce 1.1MB responses to ~50KB
-- [ ] **Phase 2: Tiered startup hydration** — startup already loads boards in parallel and prepared board state now defers CRDT hydration; remaining step is to make first-open/editor paths lazily hydrate full CRDT/snapshot state only when a board is actually used
-- [ ] **Phase 3: Search index** — in-memory inverted index for tags, temporal tags, due dates — O(1) lookups instead of full scan
+- [x] **Phase 1: Paginate & truncate API responses** — search and calendar endpoints now expose `limit` / `offset` / `truncate`, and calendar groups return the same paging metadata shape as search
+- [x] **Phase 2: Tiered startup hydration** — startup-prepared board state now loads summaries/hierarchy/search metadata first, defers CRDT hydration, and lazily hydrates persisted CRDT/snapshot state on first read/edit/sync use
+- [x] **Phase 3: Search index** — `BoardState` now maintains inverted candidate indexes for tags, temporal tags, checked/open state, and due buckets so `search` / `search_many` prefilter before full matching
 - [ ] **Phase 4: Delta undo** — store per-card patches instead of full board JSON.stringify per mutation
 - [ ] **Phase 5: Targeted DOM updates (expand)** — card edit, card add, card reorder without full re-render
 - [ ] **Phase 6: Virtual scrolling** — render only visible cards for 500+ card boards
@@ -250,7 +261,7 @@ See [spec-performance.md](spec-performance.md) for full spec.
 - [ ] **Phase 8: Split board API contracts by use-case** — stop serving full board snapshots to every consumer; create separate summary, hierarchy/tree, dashboard, and editable snapshot contracts so sidebar/dashboard/search do not hit the same heavy payloads as board editing
 - [x] **Phase 9: Cached board summary + hierarchy indexes** — `/boards` and `/boards/:id/hierarchy` now read maintained summary/tree data from `BoardState` instead of recomputing from full board snapshots
 - [x] **Phase 10: Backend dashboard aggregation** — dashboard search/todos/tag/calendar refreshes now collapse into one backend `/dashboard/data` endpoint backed by cached board search docs
-- [ ] **Phase 11: Include dependency graph** — track include-file dependencies explicitly and invalidate only affected boards/subtrees instead of reparsing/reloading whole boards for every include change
+- [ ] **Phase 11: Include dependency graph** — storage and watcher now share one live include map and resync watched include paths on reload/save, but subtree-only invalidation still needs to replace full-board include reloads
 
 ## Long Term — Architecture
 

@@ -9517,5 +9517,58 @@ select.export-input {
   text-align: left;
 }
 
+/* ── View loading / empty state indicators ────────────────────────── */
+@keyframes view-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+.view-loading {
+  position: relative;
+  min-height: 48px;
+}
+
+.view-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: view-loading-spin 0.7s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.view-loading > * {
+  opacity: 0.3;
+}
+
+.view-empty {
+  position: relative;
+  min-height: 48px;
+}
+
+.view-empty::after {
+  content: attr(data-empty-message);
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.view-empty > * {
+  opacity: 0.3;
+}
+
 /* ── Utility: must be last to win by source order at (0,1,0) ─────── */
 .hidden { display: none; }
