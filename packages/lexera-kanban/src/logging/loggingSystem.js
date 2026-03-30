@@ -389,11 +389,13 @@ function showLogPanelErrorIndicator(message) {
     var header = headers[i];
     header.classList.add('log-panel-has-error');
     var msgEl = header.querySelector('.log-panel-error-msg');
+    var actionsEl = header.querySelector('.log-panel-actions');
     if (!msgEl) {
       msgEl = document.createElement('span');
       msgEl.className = 'log-panel-error-msg';
-      header.appendChild(msgEl);
     }
+    if (actionsEl) header.insertBefore(msgEl, actionsEl);
+    else if (msgEl.parentNode !== header) header.appendChild(msgEl);
     msgEl.textContent = message;
   }
 }
@@ -768,6 +770,9 @@ function openBackendLogStream() {
 }
 
 function connectBackendLogStreamIfReady() {
+  // Skip in embedded iframes — only the top-level window manages log connections
+  var urlParams = typeof URLSearchParams !== 'undefined' ? new URLSearchParams(window.location.search || '') : null;
+  if (urlParams && urlParams.get('embedded') === '1') return;
   if (backendLogEventSource || backendLogConnectPending || !window.LexeraApi || typeof LexeraApi.discover !== 'function') {
     return;
   }

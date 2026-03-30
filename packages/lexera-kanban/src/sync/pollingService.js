@@ -42,8 +42,12 @@ var LexeraPollingService = (function () {
       return;
     }
 
-    _callDep('connectSSEIfReady');
-    _callDep('connectBackendLogStreamIfReady');
+    // Only the top-level window should manage SSE and log streams — embedded
+    // iframes (multi-board workspace) must not open duplicate connections.
+    if (!_dep('embeddedMode')) {
+      _callDep('connectSSEIfReady');
+      _callDep('connectBackendLogStreamIfReady');
+    }
 
     try {
       // Load workspaces
