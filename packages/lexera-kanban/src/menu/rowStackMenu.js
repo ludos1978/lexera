@@ -750,7 +750,7 @@ var LexeraRowStackMenu = (function () {
     deps.pushUndo();
     stack.title = nextTitle;
     var container = (typeof deps !== 'undefined' && deps && typeof deps.getElColumnsContainer === 'function') ? deps.getElColumnsContainer() : null;
-    var stackEl = container ? container.querySelector('.board-stack[data-row-index="' + rowIdx + '"][data-stack-index="' + stackIdx + '"]') : null;
+    var stackEl = container ? container.querySelector('.board-stack[data-row-index="' + displayRowIdx + '"][data-stack-index="' + displayStackIdx + '"]') : null;
     if (stackEl) stackEl.style.display = 'none';
     await deps.persistBoardMutation({ skipRender: !!stackEl });
   }

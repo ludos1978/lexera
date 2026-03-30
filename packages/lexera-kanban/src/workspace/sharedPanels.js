@@ -121,7 +121,6 @@
           '<div class="log-panel-tabs">' +
             '<button class="log-panel-tab lexera-shared-log-tab-backend active" type="button">Backend</button>' +
             '<button class="log-panel-tab lexera-shared-log-tab-frontend" type="button">Frontend</button>' +
-            '<button class="log-panel-tab lexera-shared-log-tab-stats" type="button">Stats</button>' +
           '</div>' +
         '</div>' +
         '<div class="log-panel-actions">' +
@@ -142,7 +141,6 @@
         '<div class="log-panel-main view-loading">' +
           '<div class="log-entries lexera-shared-log-entries-backend"></div>' +
           '<div class="log-entries lexera-shared-log-entries-frontend hidden"></div>' +
-          '<div class="log-entries lexera-shared-log-entries-stats hidden"></div>' +
         '</div>' +
       '</div>';
     return root;
