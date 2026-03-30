@@ -11,7 +11,7 @@
 
 - [x] ~~quick capture focus fix: 200ms delay after creation + retry focus on macOS~~ (this commit)
 
-- [x] ~~put the monthly and weekly calendar into separate views~~ (87ddcfdf) — standalone weekCalendar and monthCalendar panels placeable anywhere in workspace shell
+- [x] ~~put the monthly and weekly calendar into separate views~~ (87ddcfdf) — standalone weekCalendar and monthCalendar panels placeable anywhere in workspace shella  q≤
 - [x] ~~weekly calendar shows horizontal timeline (today+6 days); dashboard groups have fold/unfold with localStorage persistence~~ (this commit)
 
 - [x] ~~Research: Office doc viewer for !!!include(file.docx)!!!~~ — see [research-office-doc-viewer.md](research-office-doc-viewer.md). Recommended: docx-preview (docx), SheetJS CE (xlsx), @jvmr/pptx-to-html (pptx). Total ~600KB, zero native deps, fully offline.
@@ -235,6 +235,18 @@ Goal: migrate from ad-hoc dep injection (getters that break on copy) to the shar
 - [ ] **Content-addressed binary storage** — current media is path-based filesystem (`{board}-Media/`). No dedup across boards, no version history. If large file sync becomes a need, evaluate BLAKE3 + FastCDC chunking. Not needed for typical kanban media (screenshots, logos, PDFs under 20MB).
 
 - [ ] **WAN/internet collaboration** — current architecture is LAN-only (UDP discovery, WebSocket over localhost/LAN). If WAN is needed, evaluate: iroh (P2P with NAT traversal, but pre-1.0), relay server, or simple VPN recommendation. Don't add P2P infrastructure until there's a proven need.
+
+## High Priority — Performance (Large Board Handling)
+
+See [spec-performance.md](spec-performance.md) for full spec.
+
+- [ ] **Phase 1: Paginate & truncate API responses** — add `limit`/`offset`/`truncate` to search and calendar endpoints, reduce 1.1MB responses to ~50KB
+- [ ] **Phase 2: Parallel board loading** — use rayon/tokio to load N boards concurrently at startup instead of sequential
+- [ ] **Phase 3: Search index** — in-memory inverted index for tags, temporal tags, due dates — O(1) lookups instead of full scan
+- [ ] **Phase 4: Delta undo** — store per-card patches instead of full board JSON.stringify per mutation
+- [ ] **Phase 5: Targeted DOM updates (expand)** — card edit, card add, card reorder without full re-render
+- [ ] **Phase 6: Virtual scrolling** — render only visible cards for 500+ card boards
+- [ ] **Phase 7: Delta sync on poll** — fetch only changed cards instead of full board on generation change
 
 ## Long Term — Architecture
 
