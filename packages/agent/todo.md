@@ -3,6 +3,8 @@
 ## Bugs
 - [x] ~~Export: target folder, browse button, Save→Export~~ (b0b8de9c) — default to {board-folder}/_Export, browse_folder Tauri command, label fixed
 - [ ] maybe it's the backend communication or the logs, but i can barely move an stack in the canvas mode. it keeps interrupting or doing weird things. it also gives about 20 log outputs per drag.
+- The dashboard doesnt properly show all the setup elements from the open or selected boards!
+- switching boards sometimes doesnt show the board, it locks up and it doesnt show a result! the dashboard shows a busy icon, but the view stays empty!
 
 ## Active Features
 - [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)
@@ -20,7 +22,7 @@
 - [ ] **Parser shared fixtures** — Rust parser is authoritative (1,751 lines). Add shared test fixtures to validate TS parser (337 lines) against it instead of hand-maintained parity.
 
 ## Style System — Do Next
-- [ ] **Style token file** — create one canonical token source for typography (--font-size-xs/sm/md/lg) + spacing (--app-space-1 to 5) + control sizes. All sizes use --ui-scale.
+- [x] ~~**Style token file**~~ (2917651e) — tokens.css with typography, spacing, control size tokens. 112 font-size declarations migrated.
 - [ ] **Define two style layers** — Application Style (shell, menus, logs, settings) + Board Style (kanban/canvas content). No third overlapping layer.
 - [ ] **Unify theme systems** — merge themes.js + visualThemes.js + workspace appearance into one app theme + one board style system. One bounded board style object instead of scattered localStorage keys.
 - [ ] **Unify component primitives** — consolidate 4+ button families (.btn-icon, .sidebar-btn, .board-action-btn, .mgmt-btn) into shared variants (icon, primary, secondary, quiet). Same for selects/inputs.
