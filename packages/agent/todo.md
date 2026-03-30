@@ -1,7 +1,8 @@
 # Lexera Kanban Todo
 
 ## Bugs
-- [ ] Export: target folder default should be `{board-folder}/_Export/{board-name}-{columns}/`, verify browse folder works
+- [x] ~~Export: target folder, browse button, Save→Export~~ (b0b8de9c) — default to {board-folder}/_Export, browse_folder Tauri command, label fixed
+- [ ] maybe it's the backend communication or the logs, but i can barely move an stack in the canvas mode. it keeps interrupting or doing weird things. it also gives about 20 log outputs per drag.
 
 ## Active Features
 - [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)
