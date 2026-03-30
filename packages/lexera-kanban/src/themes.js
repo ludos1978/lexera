@@ -1,12 +1,19 @@
 /**
- * Shared theme definitions for all Lexera UIs (kanban, connection-settings, quick-capture).
+ * Application Theme — controls color palette only.
+ *
+ * Each theme defines light and dark color palettes (backgrounds, borders,
+ * text, accent, scrollbar, button, and input colors). Themes do NOT set
+ * typography — the application font is controlled by --font-ui in tokens.css.
+ *
+ * Board visual style (classic, sleek, gap, lines) is a separate concern
+ * handled by visualThemes.js (Board Style layer).
+ *
  * Provides LEXERA_THEMES array and applyLexeraTheme() function.
  */
 /* eslint-disable no-unused-vars */
 var LEXERA_THEMES = [
   {
     id: 'lexera', name: 'Lexera',
-    font: "'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
     light: {
       '--bg-primary': '#ffffff', '--bg-secondary': '#f3f3f3', '--bg-tertiary': '#e8e8e8',
       '--bg-hover': '#e0e0e0', '--bg-active': '#cce5ff', '--border': '#d4d4d4',
@@ -30,7 +37,6 @@ var LEXERA_THEMES = [
   },
   {
     id: 'mono', name: 'Mono',
-    font: "'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
     light: {
       '--bg-primary': '#fafafa', '--bg-secondary': '#f0f0f0', '--bg-tertiary': '#e4e4e4',
       '--bg-hover': '#dcdcdc', '--bg-active': '#c8dff0', '--border': '#cccccc',
@@ -54,7 +60,6 @@ var LEXERA_THEMES = [
   },
   {
     id: 'warm', name: 'Warm',
-    font: "Georgia, 'Times New Roman', serif",
     light: {
       '--bg-primary': '#fdf6e3', '--bg-secondary': '#f5eedc', '--bg-tertiary': '#eee8d5',
       '--bg-hover': '#e8dfca', '--bg-active': '#ddd6c1', '--border': '#d6cdb7',
@@ -78,7 +83,6 @@ var LEXERA_THEMES = [
   },
   {
     id: 'nord', name: 'Nord',
-    font: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     light: {
       '--bg-primary': '#eceff4', '--bg-secondary': '#e5e9f0', '--bg-tertiary': '#d8dee9',
       '--bg-hover': '#d0d6e1', '--bg-active': '#c8d0e0', '--border': '#c8ced9',
@@ -120,7 +124,6 @@ function applyLexeraTheme(themeId) {
   for (var i = 0; i < keys.length; i++) {
     root.style.setProperty(keys[i], palette[keys[i]]);
   }
-  root.style.setProperty('--theme-font', theme.font);
   root.style.colorScheme = isDark ? 'dark' : 'light';
 
   localStorage.setItem('lexera-theme', theme.id);

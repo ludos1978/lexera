@@ -159,6 +159,7 @@ body {
 
 .log-panel-header.log-panel-has-error .log-panel-tab.active {
   opacity: 1;
+  color: var(--text-bright);
 }
 
 .log-panel-error-msg {
@@ -221,6 +222,8 @@ body {
 .log-panel-actions {
   display: flex;
   gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .log-panel-btn {

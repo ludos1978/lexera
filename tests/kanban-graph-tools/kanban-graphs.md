@@ -3,18 +3,22 @@
 kanban-plugin: board
 
 fontSize: 1_0x
-generation: 288
-contentHash: 82c06638d6f255ba79da557dc6f00d23225476855e07a08ac0346609b0d1a009
-resolvedHash: 83388e6996d5e0862f06a911bff6496ac90cd83cf172c0330f5c8b933728d628
-writerId: 3e7c88a6-9077-4187-9f1a-cf48270b084c
+generation: 971
+contentHash: cc0f10d38e2212a16530fa33e241b8cc92c1526ff7588542439ba183fe061739
+resolvedHash: f4ea696da521206debe7a106b992547237176dd3690b9678c25d184741555d87
+writerId: 63d2b5e3-b89d-45bf-9324-5b743fd96ac0
 stickyStackMode: top
 ---
 
 # ROW
 
-## PlantUML Diagram Tests {w:220, x:-231, y:-197}
+## PlantUML Diagram Tests {w:385, x:-576, y:-265}
 
 ### PlantUML Diagram Tests
+- [ ] draw
+  ![draw.drawio](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/draw.drawio)
+- [ ] excali
+  ![excali.excalidraw](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/excali.excalidraw)
 - [ ] ## graph styles
   This file tests various Mermaid diagram types for the Markdown Kanban extension. 
 - [ ] Test 1: Simple Flowchart
@@ -125,7 +129,7 @@ stickyStackMode: top
   
 - [ ] the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
 
-## Mermaid Diagram Tests 13 {w:220, x:79, y:-204}
+## Mermaid Diagram Tests 13 {w:217, x:74, y:-401}
 
 ### Mermaid Diagram Tests 13
 - [ ] Test 1: Simple Sequence Diagram
@@ -192,13 +196,9 @@ stickyStackMode: top
   
   
 
-## includes {w:220, x:348, y:-196}
+## includes {w:217, x:701, y:-48}
 
 ### includes
-- [ ] excali
-  ![excali.excalidraw](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/excali.excalidraw)
-- [ ] draw
-  ![draw.drawio](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/draw.drawio)
 - [ ] the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
 - [ ] the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
 

@@ -5,6 +5,7 @@ var InlineCardEditor = (function () {
 
   // Module-owned state
   var currentInlineCardEditor = null;
+  var inlineTextareaResizeFrame = null;
 
   function init(deps) {
     if (typeof window !== 'undefined' && window.LexeraRuntime) {
@@ -19,6 +20,22 @@ var InlineCardEditor = (function () {
     if (!textarea) return;
     textarea.style.height = 'auto';
     textarea.style.height = textarea.scrollHeight + 'px';
+  }
+
+  function clearScheduledInlineCardTextareaResize() {
+    if (inlineTextareaResizeFrame != null) {
+      cancelAnimationFrame(inlineTextareaResizeFrame);
+      inlineTextareaResizeFrame = null;
+    }
+  }
+
+  function scheduleInlineCardTextareaResize(textarea) {
+    if (!textarea) return;
+    clearScheduledInlineCardTextareaResize();
+    inlineTextareaResizeFrame = requestAnimationFrame(function () {
+      inlineTextareaResizeFrame = null;
+      autoResizeInlineCardTextarea(textarea);
+    });
   }
 
   function shouldKeepInlineEditorOpenOnBlur() {
@@ -88,7 +105,7 @@ var InlineCardEditor = (function () {
 
     textarea.addEventListener('input', function () {
       try {
-      autoResizeInlineCardTextarea(textarea);
+      scheduleInlineCardTextareaResize(textarea);
       _deps.queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
       if (card.kid) _deps.queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, true);
       } catch (err) {
@@ -157,6 +174,7 @@ var InlineCardEditor = (function () {
     if (!currentInlineCardEditor) return Promise.resolve();
     var editor = currentInlineCardEditor;
     currentInlineCardEditor = null;
+    clearScheduledInlineCardTextareaResize();
     _deps.setIsEditing(false);
     // Clear editing presence
     _deps.clearEditingPresenceQueue();
@@ -197,6 +215,7 @@ var InlineCardEditor = (function () {
     enterInlineCardEditMode: enterInlineCardEditMode,
     closeInlineCardEditor: closeInlineCardEditor,
     autoResizeInlineCardTextarea: autoResizeInlineCardTextarea,
+    scheduleInlineCardTextareaResize: scheduleInlineCardTextareaResize,
     shouldKeepInlineEditorOpenOnBlur: shouldKeepInlineEditorOpenOnBlur,
     shouldCancelInlineEditorOnEscape: shouldCancelInlineEditorOnEscape,
     getCurrentInlineCardEditor: getCurrentInlineCardEditor,

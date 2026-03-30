@@ -1,10 +1,15 @@
 # Lexera Kanban Todo
 
 ## Bugs
+- [ ] when a board is the only one on the screen have the tab-part (where the drag icon, the filename and the close icon are) only as wide as needed. the close button should not move to the right as far out as it does currently!
 - [x] ~~Export: target folder, browse button, Save→Export~~ (b0b8de9c) — default to {board-folder}/_Export, browse_folder Tauri command, label fixed
 - [ ] maybe it's the backend communication or the logs, but i can barely move an stack in the canvas mode. it keeps interrupting or doing weird things. it also gives about 20 log outputs per drag.
-- The dashboard doesnt properly show all the setup elements from the open or selected boards!
-- switching boards sometimes doesnt show the board, it locks up and it doesnt show a result! the dashboard shows a busy icon, but the view stays empty!
+- [ ] The dashboard doesnt properly show all the setup elements from the open or selected boards!
+- [ ] switching boards sometimes doesnt show the board, it locks up and it doesnt show a result! the dashboard shows a busy icon, but the view stays empty!
+- [ ] the tree structure in the dashboard isnt nicely setup. some items (for example tags) show more left then the title of the "tagged items"! it must be nicely hierarchical!
+- [ ] we want a unified hierarchical display style! we currently have different styles in the worspace, dashboard, maybe also within the files config dialogue. it's a mess of styles. run a ux expert over this issue and analyze how we can unify it. if we need two systems thats fine, but currently we have to many different styles in use!
+
+- [ ] changing the visual theme is editing the frontend, but not the board that is rendered! also in the workspace setting it should say Default (inherit from frontend)
 
 ## Active Features
 - [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)

@@ -46,6 +46,10 @@ function loadAppUtils() {
   const inlineCardEditorSource = readFileSync(resolve(srcDir, 'editor', 'inlineCardEditor.js'), 'utf-8');
   const inlineCardEditorLines = inlineCardEditorSource.split('\n');
 
+  // Load cardEditor module for extracted preview helpers
+  const cardEditorSource = readFileSync(resolve(srcDir, 'editor', 'cardEditor.js'), 'utf-8');
+  const cardEditorLines = cardEditorSource.split('\n');
+
   // Load rowStackMenu module for functions extracted from app.js
   const rsmSource = readFileSync(resolve(srcDir, 'menu', 'rowStackMenu.js'), 'utf-8');
   const rsmLines = rsmSource.split('\n');
@@ -125,8 +129,13 @@ function loadAppUtils() {
     extractFunction(findLine('function reconstructColumnTitle(')),
     extractFunction(findLine('function reorderItems(')),
     extractFunction(findLine('function normalizeDroppedPath(')),
+    extractFunction(findLine('function getRemoteBoardPresenceCount(')),
+    extractFunction(findLine('function shouldLiveSyncCardDraft(')),
+    extractFunction(findLine('function shouldBroadcastEditingPresence(')),
     extractFunctionFrom(inlineCardEditorLines, findLineIn(inlineCardEditorLines, 'function shouldKeepInlineEditorOpenOnBlur(')),
     extractFunctionFrom(inlineCardEditorLines, findLineIn(inlineCardEditorLines, 'function shouldCancelInlineEditorOnEscape(')),
+    extractFunctionFrom(cardEditorLines, findLineIn(cardEditorLines, 'function normalizeCardEditorMode(')),
+    extractFunctionFrom(cardEditorLines, findLineIn(cardEditorLines, 'function shouldRenderCardEditorPreview(')),
     extractFunctionFrom(pollingServiceLines, findLineIn(pollingServiceLines, 'function syncConnectionStatusButton(')),
   ];
 
@@ -134,7 +143,21 @@ function loadAppUtils() {
     var OrderHelpers = (typeof globalThis !== 'undefined' && globalThis.LexeraOrderHelpers) || null;
     var LexeraTagSystem = globalThis.LexeraTagSystem || null;
     var PathUtils = globalThis.LexeraPathUtils;
-    var _deps = { sanitizeBuiltInDiagramFileName: function(n, e, f) { return sanitizeBuiltInDiagramFileName(n, e, f); } };
+    var window = globalThis.window || {};
+    var _deps = {
+      sanitizeBuiltInDiagramFileName: function(n, e, f) { return sanitizeBuiltInDiagramFileName(n, e, f); },
+      isWysiwygEditorEnabled: function () { return false; }
+    };
+    var boardPresenceCache = {};
+    var syncUserId = '';
+    var __testCanUseLiveSync = true;
+    var __testSyncConnected = true;
+    var LexeraApi = {
+      isSyncConnected: function () { return __testSyncConnected; }
+    };
+    function canUseLiveSync(boardId) {
+      return !!(__testCanUseLiveSync && boardId);
+    }
 
     // Initialize OrderHelpers with extracted functions so delegation stubs work
     if (OrderHelpers && typeof OrderHelpers.init === 'function') {
@@ -181,7 +204,15 @@ function loadAppUtils() {
       normalizeDroppedPath,
       shouldKeepInlineEditorOpenOnBlur,
       shouldCancelInlineEditorOnEscape,
+      shouldRenderCardEditorPreview,
+      getRemoteBoardPresenceCount,
+      shouldLiveSyncCardDraft,
+      shouldBroadcastEditingPresence,
       syncConnectionStatusButton,
+      __setBoardPresenceCache: function (value) { boardPresenceCache = value || {}; },
+      __setSyncUserId: function (value) { syncUserId = value || ''; },
+      __setCanUseLiveSync: function (value) { __testCanUseLiveSync = !!value; },
+      __setSyncConnected: function (value) { __testSyncConnected = !!value; },
     };
   `;
 
@@ -741,6 +772,56 @@ describe('shouldCancelInlineEditorOnEscape', () => {
   it('returns false for other keys or missing events', () => {
     expect(U.shouldCancelInlineEditorOnEscape({ key: 'Enter' })).toBe(false);
     expect(U.shouldCancelInlineEditorOnEscape(null)).toBe(false);
+  });
+});
+
+describe('shouldRenderCardEditorPreview', () => {
+  it('renders the preview only for dual and preview modes', () => {
+    expect(U.shouldRenderCardEditorPreview('dual')).toBe(true);
+    expect(U.shouldRenderCardEditorPreview('preview')).toBe(true);
+    expect(U.shouldRenderCardEditorPreview('markdown')).toBe(false);
+  });
+});
+
+describe('live draft sync guards', () => {
+  it('counts only remote collaborators for board presence', () => {
+    U.__setBoardPresenceCache({
+      boardA: ['self-user', 'peer-a', 'peer-b'],
+      boardB: ['self-user']
+    });
+    U.__setSyncUserId('self-user');
+
+    expect(U.getRemoteBoardPresenceCount('boardA')).toBe(2);
+    expect(U.getRemoteBoardPresenceCount('boardB')).toBe(0);
+    expect(U.getRemoteBoardPresenceCount('missing')).toBe(0);
+  });
+
+  it('allows live draft sync only when live sync is active and a remote collaborator is present', () => {
+    U.__setBoardPresenceCache({ boardA: ['self-user', 'peer-a'] });
+    U.__setSyncUserId('self-user');
+    U.__setCanUseLiveSync(true);
+    expect(U.shouldLiveSyncCardDraft('boardA')).toBe(true);
+
+    U.__setBoardPresenceCache({ boardA: ['self-user'] });
+    expect(U.shouldLiveSyncCardDraft('boardA')).toBe(false);
+
+    U.__setBoardPresenceCache({ boardA: ['self-user', 'peer-a'] });
+    U.__setCanUseLiveSync(false);
+    expect(U.shouldLiveSyncCardDraft('boardA')).toBe(false);
+  });
+
+  it('broadcasts editing presence only when sync is connected and a remote collaborator is present', () => {
+    U.__setBoardPresenceCache({ boardA: ['self-user', 'peer-a'] });
+    U.__setSyncUserId('self-user');
+    U.__setSyncConnected(true);
+    expect(U.shouldBroadcastEditingPresence('boardA')).toBe(true);
+
+    U.__setBoardPresenceCache({ boardA: ['self-user'] });
+    expect(U.shouldBroadcastEditingPresence('boardA')).toBe(false);
+
+    U.__setBoardPresenceCache({ boardA: ['self-user', 'peer-a'] });
+    U.__setSyncConnected(false);
+    expect(U.shouldBroadcastEditingPresence('boardA')).toBe(false);
   });
 });
 

@@ -38,6 +38,22 @@ function createFakeElement(options = {}) {
     },
     closest(selector) {
       if (selector === '.card') return options.card || null;
+      if (options.closestSelectors && Object.prototype.hasOwnProperty.call(options.closestSelectors, selector)) {
+        return options.closestSelectors[selector];
+      }
+      return null;
+    }
+  };
+}
+
+function createFakeColumn(title) {
+  return {
+    getAttribute(name) {
+      if (name === 'data-col-title') return title;
+      return '';
+    },
+    querySelector(selector) {
+      if (selector === '.column-title') return { textContent: title };
       return null;
     }
   };
@@ -186,6 +202,123 @@ describe('dashboard inventory helpers', () => {
         path: 'docs/nested.md',
         count: 1,
         firstContextLabel: 'Imported Notes',
+        extension: 'md',
+        mediaCategory: ''
+      }
+    ]);
+  });
+
+  it('collects local markdown file links as file embeds while skipping external links', () => {
+    const refs = OrderHelpers.collectDashboardFileReferences({
+      rows: [
+        {
+          stacks: [
+            {
+              columns: [
+                {
+                  title: 'Attachments',
+                  cards: [
+                    {
+                      content: [
+                        '[Deck](slides/plan.pdf)',
+                        '[Local Notes](docs/reference.md)',
+                        '[Remote](https://example.com/reference.pdf)',
+                        '[Jump](#overview)'
+                      ].join('\n')
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(refs.fileEmbeds).toEqual([
+      {
+        kind: 'embed',
+        path: 'slides/plan.pdf',
+        count: 1,
+        firstContextLabel: 'Attachments',
+        extension: 'pdf',
+        mediaCategory: ''
+      },
+      {
+        kind: 'embed',
+        path: 'docs/reference.md',
+        count: 1,
+        firstContextLabel: 'Attachments',
+        extension: 'md',
+        mediaCategory: ''
+      }
+    ]);
+  });
+
+  it('collects file embeds and included files from the rendered board container', () => {
+    const column = createFakeColumn('Attachments !!!include(notes/include.md)!!!');
+    const embedCard = createFakeCard(4, 1);
+    const embedContainer = createFakeElement({
+      attributes: { 'data-file-path': 'docs/spec.pdf' },
+      card: embedCard,
+      closestSelectors: { '.column': column }
+    });
+    const linkContainer = createFakeElement({
+      attributes: { 'data-file-path': 'docs/reference.md' },
+      card: embedCard,
+      closestSelectors: { '.column': column }
+    });
+    const includeBadge = createFakeElement({
+      attributes: { 'data-include-path': 'notes/include.md' },
+      closestSelectors: { '.column': column }
+    });
+    const inlineInclude = createFakeElement({
+      attributes: { 'data-file-path': 'notes/nested.md' },
+      closestSelectors: { '.column': column }
+    });
+    const container = {
+      querySelectorAll(selector) {
+        if (selector.includes('.embed-container')) return [embedContainer, linkContainer];
+        if (selector.includes('.column-include-badge')) return [includeBadge, inlineInclude];
+        return [];
+      }
+    };
+
+    const refs = OrderHelpers.collectDashboardFileReferencesFromContainer(container);
+
+    expect(refs.fileEmbeds).toEqual([
+      {
+        kind: 'embed',
+        path: 'docs/spec.pdf',
+        count: 1,
+        firstContextLabel: 'Attachments',
+        extension: 'pdf',
+        mediaCategory: ''
+      },
+      {
+        kind: 'embed',
+        path: 'docs/reference.md',
+        count: 1,
+        firstContextLabel: 'Attachments',
+        extension: 'md',
+        mediaCategory: ''
+      }
+    ]);
+
+    expect(refs.includedFiles).toEqual([
+      {
+        kind: 'include',
+        path: 'notes/include.md',
+        count: 1,
+        firstContextLabel: 'Attachments',
+        extension: 'md',
+        mediaCategory: ''
+      },
+      {
+        kind: 'include',
+        path: 'notes/nested.md',
+        count: 1,
+        firstContextLabel: 'Attachments',
         extension: 'md',
         mediaCategory: ''
       }

@@ -2008,9 +2008,12 @@
   function activateTab(tabId) {
     var found = findTabInAllTrees(tabId);
     if (!found) return false;
+    var didChange = found.leaf.activeTabId !== tabId ||
+      (found.treeId === 'center' && state.activeLeafId !== found.leaf.id);
     found.leaf.activeTabId = tabId;
     if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
     render();
+    if (didChange) notifyActiveBoardChanged();
     return true;
   }
 
@@ -3374,7 +3377,6 @@
       var ownerTabset = tabEl.closest('.workspace-shell-tabset');
       if (ownerTabset) {
         state.activeLeafId = ownerTabset.getAttribute('data-node-id') || state.activeLeafId;
-        notifyActiveBoardChanged();
         renderToolbar();
         persistState();
       }
@@ -3728,6 +3730,7 @@
       existing.leaf.activeTabId = existing.tab.id;
       state.activeLeafId = existing.leaf.id;
       render();
+      notifyActiveBoardChanged();
       return existing.tab;
     }
     var targetLeaf = getActiveLeaf() || getFirstLeaf(state.dockTree);
@@ -3740,6 +3743,7 @@
     targetLeaf.activeTabId = tab.id;
     state.activeLeafId = targetLeaf.id;
     render();
+    notifyActiveBoardChanged();
     return tab;
   }
 
@@ -3796,6 +3800,7 @@
       if (nextBoardId === found.tab.boardId) return;
       found.tab.boardId = nextBoardId;
       render();
+      notifyActiveBoardChanged();
       return;
     }
     if (data.type === 'lexera-pane-set-view-kind') {

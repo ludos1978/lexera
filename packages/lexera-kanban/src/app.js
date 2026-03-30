@@ -45,6 +45,7 @@ var LexeraDashboard = (function () {
   var isEditing = false;
   var CardEditorModule = window.CardEditor;
   var InlineCardEditorModule = window.InlineCardEditor;
+  var LIVE_DRAFT_SYNC_DEBOUNCE_MS = 1200;
   var pendingExternalRebaseConflict = null;
   var pendingRefresh = false;
   var eventSource = null;
@@ -1553,6 +1554,29 @@ var LexeraDashboard = (function () {
     );
   }
 
+  function getRemoteBoardPresenceCount(boardId) {
+    var onlineUsers = boardPresenceCache[boardId];
+    if (!Array.isArray(onlineUsers) || onlineUsers.length === 0) return 0;
+    var remoteCount = 0;
+    for (var i = 0; i < onlineUsers.length; i++) {
+      if (!onlineUsers[i] || onlineUsers[i] === syncUserId) continue;
+      remoteCount++;
+    }
+    return remoteCount;
+  }
+
+  function shouldLiveSyncCardDraft(boardId) {
+    return canUseLiveSync(boardId) && getRemoteBoardPresenceCount(boardId) > 0;
+  }
+
+  function shouldBroadcastEditingPresence(boardId) {
+    return !!(
+      boardId &&
+      LexeraApi.isSyncConnected() &&
+      getRemoteBoardPresenceCount(boardId) > 0
+    );
+  }
+
   async function closeLiveSyncSession(boardId) {
     var session = getLiveSyncSession(boardId);
     if (!session) return;
@@ -1774,14 +1798,14 @@ var LexeraDashboard = (function () {
   }
 
   async function syncCardDraftToLiveSession(colIndex, fullCardIdx, content) {
-    if (!canUseLiveSync(activeBoardId) || !fullBoardData) return false;
+    if (!shouldLiveSyncCardDraft(activeBoardId) || !fullBoardData) return false;
     var draftBoard = cloneBoardWithDraftCardContent(fullBoardData, colIndex, fullCardIdx, content);
     if (!draftBoard) return false;
     return applyBoardToLiveSyncSession(activeBoardId, draftBoard, { skipBoardReplace: true });
   }
 
   function queueCardDraftLiveSync(colIndex, fullCardIdx, content) {
-    if (!canUseLiveSync(activeBoardId)) return;
+    if (!shouldLiveSyncCardDraft(activeBoardId)) return;
     liveDraftSyncRequest = {
       boardId: activeBoardId,
       colIndex: colIndex,
@@ -1797,12 +1821,12 @@ var LexeraDashboard = (function () {
       syncCardDraftToLiveSession(request.colIndex, request.fullCardIdx, request.content).catch(function (err) {
         logFrontendIssue('error', 'live-sync', 'Failed to sync card draft', err);
       });
-    }, 250);
+    }, LIVE_DRAFT_SYNC_DEBOUNCE_MS);
   }
 
   async function revertCardDraftLiveSync(colIndex, fullCardIdx, originalContent) {
     clearPendingCardDraftSync();
-    if (!canUseLiveSync(activeBoardId)) return false;
+    if (!shouldLiveSyncCardDraft(activeBoardId)) return false;
     return syncCardDraftToLiveSession(colIndex, fullCardIdx, originalContent);
   }
 
@@ -1980,7 +2004,7 @@ var LexeraDashboard = (function () {
   var editingPresenceRequest = null;
 
   function queueEditingPresenceBroadcast(cardKid, cursorPos, isTyping) {
-    if (!cardKid || !LexeraApi.isSyncConnected()) return;
+    if (!cardKid || !shouldBroadcastEditingPresence(activeBoardId)) return;
     editingPresenceRequest = { cardKid: cardKid, cursorPos: cursorPos, isTyping: isTyping };
     if (editingPresenceTimer) return;
     editingPresenceTimer = setTimeout(function () {

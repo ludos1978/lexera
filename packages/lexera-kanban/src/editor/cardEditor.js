@@ -7,6 +7,8 @@ var CardEditor = (function () {
   var currentCardEditor = null;
   var cardEditorMode = null;
   var cardEditorFontScale = 1;
+  var cardEditorPreviewRefreshTimer = null;
+  var CARD_EDITOR_PREVIEW_INPUT_DEBOUNCE_MS = 120;
 
   function init(deps) {
     if (typeof window !== 'undefined' && window.LexeraRuntime) {
@@ -113,6 +115,49 @@ var CardEditor = (function () {
       }
     }
     if (!options.skipPreviewRefresh) refreshCardEditorPreview();
+  }
+
+  function clearScheduledCardEditorPreviewRefresh() {
+    if (cardEditorPreviewRefreshTimer) {
+      clearTimeout(cardEditorPreviewRefreshTimer);
+      cardEditorPreviewRefreshTimer = null;
+    }
+  }
+
+  function shouldRenderCardEditorPreview(mode) {
+    mode = normalizeCardEditorMode(mode || (currentCardEditor ? currentCardEditor.mode : ''));
+    return mode === 'dual' || mode === 'preview';
+  }
+
+  function updateCardEditorTitle(value, resolvedContent) {
+    if (!currentCardEditor || !currentCardEditor.dialog) return;
+    var titleEl = currentCardEditor.dialog.querySelector('.card-editor-title-text');
+    if (!titleEl) return;
+    var resolved = typeof resolvedContent === 'string'
+      ? resolvedContent
+      : _deps.getIncludeResolvedContent(String(value || ''), currentCardEditor.colIndex);
+    titleEl.textContent = _deps.getCardTitle(_deps.stripInternalHiddenTags(resolved)).trim() || 'Untitled';
+  }
+
+  function scheduleCardEditorPreviewRefresh(options) {
+    options = options || {};
+    if (!currentCardEditor) return;
+    var value = currentCardEditor.textarea ? currentCardEditor.textarea.value : '';
+    updateCardEditorTitle(value);
+    if (!shouldRenderCardEditorPreview()) {
+      clearScheduledCardEditorPreviewRefresh();
+      return;
+    }
+    clearScheduledCardEditorPreviewRefresh();
+    if (options.immediate) {
+      refreshCardEditorPreview({ forceRender: true });
+      return;
+    }
+    cardEditorPreviewRefreshTimer = setTimeout(function () {
+      cardEditorPreviewRefreshTimer = null;
+      if (!currentCardEditor) return;
+      refreshCardEditorPreview({ forceRender: true });
+    }, CARD_EDITOR_PREVIEW_INPUT_DEBOUNCE_MS);
   }
 
   function updateCardEditorWysiwygToolbar(selectionState) {
@@ -354,7 +399,7 @@ var CardEditor = (function () {
         onChange: function (markdown) {
           if (!currentCardEditor || currentCardEditor.suppressWysiwygChange) return;
           if (currentCardEditor.textarea) currentCardEditor.textarea.value = markdown || '';
-          refreshCardEditorPreview();
+          scheduleCardEditorPreviewRefresh();
           _deps.queueCardDraftLiveSync(currentCardEditor.colIndex, currentCardEditor.fullCardIdx, markdown || '');
         },
         onSelectionChange: function (selectionState) {
@@ -648,7 +693,10 @@ var CardEditor = (function () {
     } else {
       updateCardEditorWysiwygToolbar(null);
     }
-    if (mode === 'preview') {
+    if (shouldRenderCardEditorPreview(mode)) {
+      refreshCardEditorPreview({ forceRender: true });
+    } else {
+      clearScheduledCardEditorPreviewRefresh();
       refreshCardEditorPreview();
     }
     cardEditorMode = mode;
@@ -812,7 +860,7 @@ var CardEditor = (function () {
 
     textarea.addEventListener('input', function () {
       try {
-      refreshCardEditorPreview();
+      scheduleCardEditorPreviewRefresh();
       _deps.queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
       if (card.kid) _deps.queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, true);
       } catch (err) {
@@ -835,7 +883,7 @@ var CardEditor = (function () {
       var lineIndex = parseInt(e.target.getAttribute('data-line'), 10);
       if (!isFinite(lineIndex)) return;
       textarea.value = updateCheckboxLineInText(textarea.value, lineIndex, e.target.checked);
-      refreshCardEditorPreview();
+      refreshCardEditorPreview({ forceRender: true });
       _deps.queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
     });
     dialog.addEventListener('dragover', function (e) {
@@ -968,7 +1016,7 @@ var CardEditor = (function () {
       }
     });
 
-    refreshCardEditorPreview();
+    updateCardEditorTitle(textarea.value);
     applyCardEditorMode(currentCardEditor.mode);
     requestAnimationFrame(function () {
       if (currentCardEditor && currentCardEditor.mode === 'wysiwyg') {
@@ -985,24 +1033,21 @@ var CardEditor = (function () {
     });
   }
 
-  function refreshCardEditorPreview() {
+  function refreshCardEditorPreview(options) {
+    options = options || {};
     if (!currentCardEditor) return;
     var value = currentCardEditor.textarea ? currentCardEditor.textarea.value : '';
-    if (currentCardEditor.preview) {
-      var resolved = _deps.getIncludeResolvedContent(value, currentCardEditor.colIndex);
+    var shouldRenderPreview = !!options.forceRender || shouldRenderCardEditorPreview();
+    var resolved = null;
+    if (shouldRenderPreview && currentCardEditor.preview) {
+      resolved = _deps.getIncludeResolvedContent(value, currentCardEditor.colIndex);
       var activeBoardId = _deps.getActiveBoardId();
       currentCardEditor.preview.innerHTML = _deps.renderCardContent(resolved, activeBoardId, null, { skipFirstLineTagStyle: true });
       _deps.enhanceEmbeddedContent(currentCardEditor.preview);
       _deps.applyRenderedHtmlCommentVisibility(currentCardEditor.preview, _deps.getCurrentHtmlCommentRenderMode());
       _deps.applyRenderedTagVisibility(currentCardEditor.preview, _deps.getCurrentTagVisibilityMode());
     }
-    var titleEl = currentCardEditor.dialog
-      ? currentCardEditor.dialog.querySelector('.card-editor-title-text')
-      : null;
-    if (titleEl) {
-      var resolvedForTitle = _deps.getIncludeResolvedContent(value, currentCardEditor.colIndex);
-      titleEl.textContent = _deps.getCardTitle(_deps.stripInternalHiddenTags(resolvedForTitle)).trim() || 'Untitled';
-    }
+    updateCardEditorTitle(value, resolved);
   }
 
   async function closeCardEditorOverlay(options) {
@@ -1023,6 +1068,7 @@ var CardEditor = (function () {
     if (editor.resizeHandler) {
       window.removeEventListener('resize', editor.resizeHandler);
     }
+    clearScheduledCardEditorPreviewRefresh();
     destroyCardEditorWysiwyg(editor);
     window.currentTaskIncludeContext = null;
     window.currentFilePath = '';
