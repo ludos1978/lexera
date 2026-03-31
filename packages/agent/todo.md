@@ -17,9 +17,9 @@
 - [x] ~~**Buffered writes**~~ (7c614dcb) — BufWriter, flush every 100 lines or 2s periodic
 - [x] ~~**Measure + clean draft storage**~~ (56485a2c) — WebKit localStorage at ~/Library/WebKit/lexera-kanban/ = 2.1MB. Added pruneOrphanedDrafts to clean drafts for removed boards.
 - [ ] **Instrument write amplification per save** — add counters/metrics for bytes written across backups, include files, main markdown, `.md.crdt`, crashsaves, and config/auth/invite/public saves so disk cost is visible per operation.
-- [ ] **Reduce board-save amplification** — one local save can copy the existing board into `.lexera-backups`, rewrite include files, atomically rewrite the main markdown with fsync, and rewrite `.md.crdt`. Check whether backups can be rate-limited or content-hash gated and whether unchanged include files can skip writes.
+- [x] ~~**Reduce board-save amplification**~~ (ed9cdfec) — main file, include files, and CRDT now skip writes if content unchanged (hash compare before write)
 - [ ] **Verify there is no write-loop under active editing** — idle sampling showed no ongoing board rewrites, but active edit sessions still need a timed probe to confirm there is no watcher reload / CRDT rewrite / autosave loop causing repeated disk bursts.
-- [ ] **Audit crashsave retention** — crashsave creation exists, but retention/cleanup needs explicit verification so failed save storms cannot fill disk over time.
+- [x] ~~**Crashsave retention**~~ (ed9cdfec) — rotate_crashsaves keeps max 5 per board, list_crashsaves + 2 new tests
 - [ ] **Add a disk-usage diagnostics view or command** — expose current log size, backup size, crashsave count, `.md.crdt` totals, and draft-storage footprint so disk growth is visible without manual filesystem inspection.
 
 ## Architecture — Do Next
