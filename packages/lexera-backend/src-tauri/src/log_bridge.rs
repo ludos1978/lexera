@@ -3,8 +3,9 @@ use log::{Log, Metadata, Record, SetLoggerError};
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use tokio::sync::broadcast;
 
@@ -12,6 +13,14 @@ use tokio::sync::broadcast;
 const MAX_LOG_ENTRIES: usize = 2000;
 /// Capacity of the log broadcast channel for live log streaming.
 const LOG_BROADCAST_CAPACITY: usize = 512;
+/// Maximum log file size before rotation (10 MB).
+const MAX_LOG_FILE_SIZE: u64 = 10 * 1024 * 1024;
+/// Maximum number of rotated log files to keep (backend.log.1, .2).
+const MAX_ROTATED_FILES: usize = 2;
+/// Flush the buffered writer every N lines.
+const FLUSH_INTERVAL_LINES: u64 = 100;
+/// Flush the buffered writer every N seconds.
+const FLUSH_INTERVAL_SECS: u64 = 2;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,7 +65,11 @@ static LOG_HUB: LazyLock<BackendLogHub> = LazyLock::new(|| {
 
 struct BackendLogFile {
     path: PathBuf,
-    file: Mutex<Option<File>>,
+    writer: Mutex<Option<BufWriter<File>>>,
+    /// Lines written since last flush.
+    lines_since_flush: AtomicU64,
+    /// Current file size estimate (bytes written since open/rotation).
+    current_size: AtomicU64,
 }
 
 impl BackendLogFile {
@@ -66,10 +79,23 @@ impl BackendLogFile {
             .join(crate::config::CONFIG_DIR_NAME)
             .join("logs")
             .join("backend.log");
-        let file = Self::open(&path).ok();
+
+        // Rotate on startup if the existing file is too large.
+        Self::rotate_if_needed_at_path(&path);
+
+        let (writer, size) = match Self::open(&path) {
+            Ok(file) => {
+                let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+                (Some(BufWriter::new(file)), size)
+            }
+            Err(_) => (None, 0),
+        };
+
         Self {
             path,
-            file: Mutex::new(file),
+            writer: Mutex::new(writer),
+            lines_since_flush: AtomicU64::new(0),
+            current_size: AtomicU64::new(size),
         }
     }
 
@@ -80,23 +106,100 @@ impl BackendLogFile {
         OpenOptions::new().create(true).append(true).open(path)
     }
 
+    /// Rotate log files at the given path if the current file exceeds the size limit.
+    fn rotate_if_needed_at_path(path: &Path) {
+        let size = match fs::metadata(path) {
+            Ok(m) => m.len(),
+            Err(_) => return,
+        };
+        if size <= MAX_LOG_FILE_SIZE {
+            return;
+        }
+        Self::do_rotate(path);
+    }
+
+    /// Perform the actual rotation: shift .1 -> .2, current -> .1, etc.
+    /// Deletes files beyond MAX_ROTATED_FILES.
+    fn do_rotate(base_path: &Path) {
+        let base = base_path.to_string_lossy().to_string();
+
+        // Delete the oldest if it exists (e.g. backend.log.2).
+        let oldest = format!("{}.{}", base, MAX_ROTATED_FILES);
+        let _ = fs::remove_file(&oldest);
+
+        // Shift existing rotated files up by one.
+        for i in (1..MAX_ROTATED_FILES).rev() {
+            let from = format!("{}.{}", base, i);
+            let to = format!("{}.{}", base, i + 1);
+            let _ = fs::rename(&from, &to);
+        }
+
+        // Rotate current -> .1.
+        let _ = fs::rename(base_path, format!("{}.1", base));
+    }
+
+    /// Check size and rotate if necessary. Called with lock held; reopens the file.
+    fn maybe_rotate(&self, guard: &mut Option<BufWriter<File>>) {
+        let size = self.current_size.load(Ordering::Relaxed);
+        if size <= MAX_LOG_FILE_SIZE {
+            return;
+        }
+
+        // Drop the current writer so the file handle is closed before rename.
+        *guard = None;
+
+        Self::do_rotate(&self.path);
+
+        // Reopen a fresh file.
+        if let Ok(file) = Self::open(&self.path) {
+            *guard = Some(BufWriter::new(file));
+        }
+        self.current_size.store(0, Ordering::Relaxed);
+        self.lines_since_flush.store(0, Ordering::Relaxed);
+    }
+
     fn append_entry(&self, entry: &BackendLogEntry) {
-        let mut guard = match self.file.lock() {
+        let mut guard = match self.writer.lock() {
             Ok(guard) => guard,
             Err(_) => return,
         };
         if guard.is_none() {
             if let Ok(file) = Self::open(&self.path) {
-                *guard = Some(file);
+                let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+                self.current_size.store(size, Ordering::Relaxed);
+                *guard = Some(BufWriter::new(file));
             } else {
                 return;
             }
         }
-        if let Some(file) = guard.as_mut() {
+
+        // Check for rotation before writing.
+        self.maybe_rotate(&mut guard);
+
+        if let Some(writer) = guard.as_mut() {
             let line = format_log_line(entry);
-            let _ = file.write_all(line.as_bytes());
-            let _ = file.write_all(b"\n");
-            let _ = file.flush();
+            let bytes = line.as_bytes();
+            let _ = writer.write_all(bytes);
+            let _ = writer.write_all(b"\n");
+
+            self.current_size
+                .fetch_add(bytes.len() as u64 + 1, Ordering::Relaxed);
+
+            let lines = self.lines_since_flush.fetch_add(1, Ordering::Relaxed) + 1;
+            if lines >= FLUSH_INTERVAL_LINES {
+                let _ = writer.flush();
+                self.lines_since_flush.store(0, Ordering::Relaxed);
+            }
+        }
+    }
+
+    /// Explicitly flush the buffered writer. Called by the periodic flush task.
+    fn flush(&self) {
+        if let Ok(mut guard) = self.writer.lock() {
+            if let Some(writer) = guard.as_mut() {
+                let _ = writer.flush();
+                self.lines_since_flush.store(0, Ordering::Relaxed);
+            }
         }
     }
 }
@@ -148,22 +251,44 @@ impl Log for BroadcastLogger {
     }
 }
 
+/// Spawn a background task that flushes the log file every FLUSH_INTERVAL_SECS seconds.
+fn spawn_periodic_flush() {
+    std::thread::Builder::new()
+        .name("log-flush".into())
+        .spawn(|| loop {
+            std::thread::sleep(std::time::Duration::from_secs(FLUSH_INTERVAL_SECS));
+            LOG_FILE.flush();
+        })
+        .ok();
+}
+
 pub fn init() -> Result<(), SetLoggerError> {
     let _ = &*LOG_FILE;
+
+    let filter = "info,\
+        tracing::span=warn,\
+        loro_internal=warn,\
+        lexera_core::storage::local=warn";
+
     let mut builder =
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(filter));
     builder.target(Target::Pipe(Box::new(io::sink())));
     let logger = Box::leak(Box::new(BroadcastLogger {
         inner: builder.build(),
     }));
     log::set_logger(logger)?;
     log::set_max_level(log::LevelFilter::Trace);
+
+    spawn_periodic_flush();
+
     log::info!(
         target: "lexera.log_bridge",
-        "Backend logger initialized (buffer_capacity={}, broadcast_capacity={}, file={})",
+        "Backend logger initialized (buffer_capacity={}, broadcast_capacity={}, file={}, max_file_size={}MB, max_rotated={})",
         MAX_LOG_ENTRIES,
         LOG_BROADCAST_CAPACITY,
-        log_file_path()
+        log_file_path(),
+        MAX_LOG_FILE_SIZE / (1024 * 1024),
+        MAX_ROTATED_FILES
     );
     Ok(())
 }
