@@ -1,3 +1,38 @@
+/* ═══════════════════════════════════════════════════════════════════
+ * STYLE ARCHITECTURE — Two Layers
+ *
+ * Layer 1: APPLICATION STYLE
+ *   Shell chrome, menus, panels, logs, settings, dialogs, sidebar.
+ *   Scoped under: body, .workspace-shell, .sidebar, .log-panel,
+ *   .mgmt-*, .dialog-*, .settings-*
+ *   Tokens: --bg-*, --text-*, --border, --accent, --btn-*
+ *
+ * Layer 2: BOARD STYLE
+ *   Kanban/canvas content: rows, stacks, columns, cards, embeds.
+ *   Scoped under: .columns-container, .board-row, .column, .card
+ *   Tokens: --card-*, --column-*, visual theme overrides
+ *
+ * Rules:
+ *   - No style should target both layers
+ *   - Application tokens cascade into board content via inheritance
+ *   - Visual themes only override board-layer tokens
+ *   - Shared primitives (.btn, .btn-icon) belong to application layer
+ *
+ * Violations (to fix later):
+ *   The "sleek" visual theme currently targets BOTH layers.
+ *   Application-layer selectors inside [data-visual-theme="sleek"]:
+ *     - body, .header, .header-main (lines ~7757-7779)
+ *     - .sidebar, .sidebar-header, .board-list (lines ~7779-7901)
+ *     - .board-header (line ~8062)
+ *     - .btn-icon, .sidebar-btn, .board-action-btn (lines ~8084-8111)
+ *     - .log-panel, .log-panel-header, .log-panel-tab (lines ~9076-9136)
+ *     - .mgmt-panel, .mgmt-panel-header (lines ~9141-9161)
+ *     - .connection-status-btn (lines ~9060-9072)
+ *     - .dashboard-* sidebar elements (lines ~9161-9216)
+ *   These should be separated so the visual theme only touches board
+ *   layer, and a separate "app chrome" theme handles shell styling.
+ * ═══════════════════════════════════════════════════════════════════ */
+
 /* Lexera Kanban — Dark theme, VS Code inspired */
 
 @font-face { font-family: 'Poppins'; src: url('fonts/Poppins-Light.ttf') format('truetype'); font-weight: 300; font-style: normal; font-display: swap; }
