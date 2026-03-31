@@ -9069,27 +9069,32 @@ var LexeraDashboard = (function () {
     getElColumnsContainer().classList.add('new-format');
     renderNewFormatBoard();
     var isCanvas = isCanvasBoardLayout();
-    if (isCanvas) {
-      syncCanvasRowBounds(getElColumnsContainer());
-      requestAnimationFrame(function () {
-        syncCanvasRowBounds(getElColumnsContainer());
-      });
-    } else {
+    if (!isCanvas) {
       clearLayoutLockStyles();
-      syncRenderedRowWidths();
-      requestAnimationFrame(syncRenderedRowWidths);
     }
 
-    enhanceEmbeddedContent(getElColumnsContainer());
-    applyRenderedHtmlCommentVisibility(getElColumnsContainer(), currentHtmlCommentRenderMode);
-    applyRenderedTagVisibility(getElColumnsContainer(), currentTagVisibilityMode);
-    attachRenderedTagInteractions(getElColumnsContainer());
-
-    syncSidebarToView();
-    updateCardEditingIndicators();
-    refreshBoardHeaderActionStates();
-
-    vsActivate();
+    // Batch all post-render DOM work into a single rAF to avoid multiple
+    // forced layouts / reflows.  Each helper scans the board subtree, so
+    // running them synchronously right after innerHTML assignment causes
+    // the browser to recalculate layout once per call.  A single rAF
+    // defers them all until the next frame and lets the browser coalesce
+    // the reads/writes.
+    requestAnimationFrame(function () {
+      var container = getElColumnsContainer();
+      if (isCanvas) {
+        syncCanvasRowBounds(container);
+      } else {
+        syncRenderedRowWidths();
+      }
+      enhanceEmbeddedContent(container);
+      applyRenderedHtmlCommentVisibility(container, currentHtmlCommentRenderMode);
+      applyRenderedTagVisibility(container, currentTagVisibilityMode);
+      attachRenderedTagInteractions(container);
+      syncSidebarToView();
+      updateCardEditingIndicators();
+      refreshBoardHeaderActionStates();
+      vsActivate();
+    });
     } catch (err) {
       logFrontendIssue('error', 'render', 'Failed to render columns', err);
     }
