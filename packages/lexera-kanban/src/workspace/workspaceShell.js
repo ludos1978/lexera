@@ -2836,13 +2836,24 @@
       if (isPanelIntegrated(panelId)) continue;
       var panelEl = getPanelElement(panelId);
       if (panelEl) {
-        panelEl.classList.remove('hidden');
-        if (panelTab.id === node.activeTabId) {
-          panelEl.style.display = '';
-        } else {
-          panelEl.style.display = 'none';
+        // When dock is folded (hover overlay), use a static snapshot for heavy
+        // panels like dashboard to avoid detaching/reattaching the live DOM
+        // subtree on every hover cycle.
+        var isFoldedOverlay = state.dockSizes[dockId] === 0;
+        var panelKind = getPanelKind(panelId);
+        var useSnapshot = isFoldedOverlay && panelKind === 'dashboard';
+        var insertEl = useSnapshot ? panelEl.cloneNode(true) : panelEl;
+        if (useSnapshot) {
+          insertEl.setAttribute('data-fold-snapshot', '1');
+          insertEl.removeAttribute('id');
         }
-        contentEl.appendChild(panelEl);
+        insertEl.classList.remove('hidden');
+        if (panelTab.id === node.activeTabId) {
+          insertEl.style.display = '';
+        } else {
+          insertEl.style.display = 'none';
+        }
+        contentEl.appendChild(insertEl);
       }
     }
     tabsetEl.appendChild(contentEl);
