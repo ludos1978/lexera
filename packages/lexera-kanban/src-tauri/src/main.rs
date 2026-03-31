@@ -262,6 +262,7 @@ fn main() {
             commands::browse_files,
             commands::browse_folder,
             commands::rename_path,
+            commands::discover_visual_themes,
             commands::read_text_file,
             commands::write_text_file,
             commands::read_keybindings,

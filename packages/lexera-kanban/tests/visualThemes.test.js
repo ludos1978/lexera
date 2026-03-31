@@ -28,16 +28,94 @@ function createDocumentElement() {
   };
 }
 
-function loadVisualThemeWindow(initialStorage = {}) {
-  const window = {};
+function createMockDocument() {
   const documentElement = createDocumentElement();
-  const localStorage = createStorage(initialStorage);
-  const document = {
-    documentElement,
-    querySelectorAll() {
-      return [];
+  const headChildren = [];
+  const head = {
+    appendChild(node) {
+      if (headChildren.indexOf(node) === -1) headChildren.push(node);
+      node.parentNode = head;
+      return node;
+    },
+    removeChild(node) {
+      const idx = headChildren.indexOf(node);
+      if (idx !== -1) headChildren.splice(idx, 1);
+      node.parentNode = null;
+      return node;
     }
   };
+
+  const document = {
+    documentElement,
+    head,
+    createElement(tagName) {
+      return {
+        tagName: String(tagName || '').toUpperCase(),
+        attributes: {},
+        id: '',
+        textContent: '',
+        parentNode: null,
+        setAttribute(name, value) {
+          this.attributes[name] = String(value);
+        },
+        getAttribute(name) {
+          return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null;
+        }
+      };
+    },
+    getElementById(id) {
+      for (let i = 0; i < headChildren.length; i++) {
+        if (headChildren[i].id === id) return headChildren[i];
+      }
+      return null;
+    },
+    querySelectorAll(selector) {
+      return selector === 'iframe' ? [] : [];
+    }
+  };
+
+  return { document, documentElement, headChildren };
+}
+
+function createWindow(overrides = {}) {
+  const listeners = {};
+  return Object.assign({
+    addEventListener(name, fn) {
+      if (!listeners[name]) listeners[name] = [];
+      listeners[name].push(fn);
+    },
+    dispatchEvent(event) {
+      const name = event && event.type ? event.type : '';
+      const handlers = listeners[name] || [];
+      for (let i = 0; i < handlers.length; i++) handlers[i](event);
+      return true;
+    },
+    CustomEvent: function CustomEvent(type, init) {
+      this.type = type;
+      this.detail = init && init.detail;
+    }
+  }, overrides);
+}
+
+function flushPromises() {
+  return Promise.resolve().then(() => Promise.resolve());
+}
+
+function loadVisualThemeWindow(options = {}) {
+  const window = createWindow(options.windowOverrides || {});
+  const { document, documentElement, headChildren } = createMockDocument();
+  const localStorage = createStorage(options.initialStorage || {});
+
+  if (options.discovery) {
+    window.LexeraBackendDiscovery = {
+      canUseTauriInvoke() {
+        return true;
+      },
+      invokeTauri(command, args) {
+        return options.discovery(command, args || {});
+      }
+    };
+  }
 
   loadIIFE('visualThemes.js', 'window', {
     window,
@@ -45,49 +123,67 @@ function loadVisualThemeWindow(initialStorage = {}) {
     localStorage
   });
 
-  return { window, documentElement, localStorage };
+  return { window, document, documentElement, headChildren, localStorage };
 }
 
 describe('visualThemes', () => {
-  it('migrates the removed sleek theme to sleek uniform and exposes only supported options', () => {
-    const { window, documentElement, localStorage } = loadVisualThemeWindow({ 'lexera-visual-theme': 'sleek' });
+  it('migrates removed built-in aliases to sleek-uniform', async () => {
+    const { window, documentElement, localStorage } = loadVisualThemeWindow({
+      initialStorage: { 'lexera-visual-theme': 'lines' }
+    });
+
+    await flushPromises();
 
     expect(window.getLexeraCurrentVisualThemeId()).toBe('sleek-uniform');
     expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
     expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('sleek-uniform');
+    expect(documentElement.getAttribute('data-visual-theme-lineage')).toBe('sleek-uniform');
     expect(localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
     expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['classic', 'sleek-uniform']);
   });
 
-  it('migrates legacy board-theme storage into sleek uniform', () => {
-    const { window, documentElement, localStorage } = loadVisualThemeWindow({ 'lexera-board-theme': 'gap-highlight' });
-
-    expect(window.getLexeraCurrentVisualThemeId()).toBe('sleek-uniform');
-    expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
-    expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('sleek-uniform');
-    expect(localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
-  });
-
-  it('normalizes removed aliases to sleek uniform and persists the unified storage key', () => {
-    const { window, documentElement, localStorage } = loadVisualThemeWindow({ 'lexera-visual-theme': 'sleek' });
-
-    const applied = window.applyLexeraVisualTheme('lines');
-
-    expect(applied).toEqual({
-      id: 'sleek-uniform',
-      baseId: 'sleek',
-      name: 'Sleek Uniform',
-      description: 'Sleek layout copy for unified typography'
+  it('discovers user themes from the config directory and loads their css inline', async () => {
+    const themeCss = ':root[data-visual-theme-lineage~="midnight-grid"] { --board-font-size: 99px; }';
+    const { window, documentElement, headChildren, localStorage } = loadVisualThemeWindow({
+      initialStorage: { 'lexera-visual-theme': 'midnight-grid' },
+      discovery(command, args) {
+        if (command === 'discover_visual_themes') {
+          return Promise.resolve({
+            rootPath: '/config/lexera/themes',
+            themes: [
+              {
+                id: 'midnight-grid',
+                name: 'Midnight Grid',
+                description: 'User theme',
+                extends: 'sleek-uniform',
+                cssPath: '/config/lexera/themes/midnight-grid/theme.css',
+                rootPath: '/config/lexera/themes/midnight-grid',
+                source: 'user'
+              }
+            ]
+          });
+        }
+        if (command === 'read_text_file') {
+          expect(args.path).toBe('/config/lexera/themes/midnight-grid/theme.css');
+          return Promise.resolve(themeCss);
+        }
+        return Promise.reject(new Error('Unexpected command: ' + command));
+      }
     });
-    expect(window.getLexeraCurrentVisualThemeId()).toBe('sleek-uniform');
+
+    await window.refreshLexeraVisualThemes();
+    await flushPromises();
+
+    expect(window.getLexeraVisualThemesDirectory()).toBe('/config/lexera/themes');
+    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['classic', 'sleek-uniform', 'midnight-grid']);
+    expect(window.getLexeraCurrentVisualThemeId()).toBe('midnight-grid');
     expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
-    expect(localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
-  });
+    expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('midnight-grid');
+    expect(documentElement.getAttribute('data-visual-theme-lineage')).toBe('sleek-uniform midnight-grid');
+    expect(localStorage.getItem('lexera-visual-theme')).toBe('midnight-grid');
 
-  it('maps the removed bordered alias back to classic', () => {
-    const { window, documentElement } = loadVisualThemeWindow({ 'lexera-visual-theme': 'bordered' });
-
-    expect(window.getLexeraCurrentVisualThemeId()).toBe('classic');
-    expect(documentElement.getAttribute('data-visual-theme')).toBe('classic');
+    const styleNode = headChildren.find(node => node.id === 'lexera-visual-theme-user-style');
+    expect(styleNode).toBeTruthy();
+    expect(styleNode.textContent).toContain('--board-font-size: 99px;');
   });
 });

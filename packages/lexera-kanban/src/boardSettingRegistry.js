@@ -24,9 +24,11 @@
     buildMenuItems: function (id, currentValue) {
       var desc = descriptors[id];
       if (!desc || !desc.options) return [];
+      var options = typeof desc.options === 'function' ? desc.options() : desc.options;
+      if (!Array.isArray(options)) return [];
       var items = [];
-      for (var i = 0; i < desc.options.length; i++) {
-        var opt = desc.options[i];
+      for (var i = 0; i < options.length; i++) {
+        var opt = options[i];
         if (opt && opt.separator) { items.push({ separator: true }); continue; }
         items.push({
           id: desc.actionPrefix + ':' + opt.value,

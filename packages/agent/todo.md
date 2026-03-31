@@ -35,6 +35,8 @@
 
 - [ ] the visibility of the board is somehow limited to the size of the view. even if i scroll to the right everything after the width of the viewt is overlayed or somehow hidden!
 
+- [ ] when the log view is folded it should show the same connected symbol as when unfolded, just in the one header line it shows. alignments should also stay in the right. number of logs should also be displayed (might be useful for performance issue debugging). if we have other important status informations it should go there (put that into the specs). for example the number of connected users in the current board. running processes. amount of backend calls currently avaiting a response!
+
 ## Disk / IO Audit — Do Next
 - [x] ~~**Log rotation + retention**~~ (7c614dcb) — 10MB size limit, 2 rotated files, startup rotation
 - [x] ~~**Lower log volume**~~ (7c614dcb) — noisy targets (tracing::span, loro_internal, storage) filtered to warn

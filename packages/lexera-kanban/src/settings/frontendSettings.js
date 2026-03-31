@@ -94,8 +94,9 @@
 
       // Visual theme select
       var visualThemeSelect = q(root, 'visual-theme');
-      if (visualThemeSelect && visualThemeSelect.options.length === 0) {
+      if (visualThemeSelect) {
         var vThemes = opts && opts.getVisualThemes ? opts.getVisualThemes() : [];
+        visualThemeSelect.innerHTML = '';
         for (var vi = 0; vi < vThemes.length; vi++) {
           var vOpt = document.createElement('option');
           vOpt.value = vThemes[vi].id;

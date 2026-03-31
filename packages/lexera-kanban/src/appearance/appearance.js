@@ -31,9 +31,23 @@ var LexeraAppearance = (function () {
   var VISUAL_THEMES = (typeof LEXERA_VISUAL_THEMES !== 'undefined') ? LEXERA_VISUAL_THEMES : [
     { id: 'classic', name: 'Classic', description: 'Balanced Lexera layout' }
   ];
-  var VISUAL_THEME_LABELS = {};
-  for (var visualThemeIdx = 0; visualThemeIdx < VISUAL_THEMES.length; visualThemeIdx++) {
-    VISUAL_THEME_LABELS[VISUAL_THEMES[visualThemeIdx].id] = VISUAL_THEMES[visualThemeIdx].name;
+  var VISUAL_THEME_LABELS = (typeof LEXERA_VISUAL_THEME_LABELS !== 'undefined') ? LEXERA_VISUAL_THEME_LABELS : {};
+
+  function rebuildVisualThemeLabels() {
+    var keys = Object.keys(VISUAL_THEME_LABELS);
+    var idx;
+    for (idx = 0; idx < keys.length; idx++) delete VISUAL_THEME_LABELS[keys[idx]];
+    for (idx = 0; idx < VISUAL_THEMES.length; idx++) {
+      VISUAL_THEME_LABELS[VISUAL_THEMES[idx].id] = VISUAL_THEMES[idx].name;
+    }
+  }
+  rebuildVisualThemeLabels();
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('lexera-visual-themes-changed', function () {
+      rebuildVisualThemeLabels();
+      _callDep('renderFrontendSettingsPanel');
+    });
   }
 
   function applyVisualTheme(themeId) {

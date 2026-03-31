@@ -1,7 +1,7 @@
 /// Tauri commands for the kanban viewer.
 use base64::Engine;
 use clipboard_rs::{common::RustImage, Clipboard, ClipboardContext as CrsContext};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -276,6 +276,189 @@ fn resolve_fs_path(path: &str) -> Result<std::path::PathBuf, String> {
             .map_err(|e| format!("Cannot resolve path: {}", e))
             .map(|cwd| cwd.join(raw))
     }
+}
+
+fn visual_themes_path() -> std::path::PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("lexera")
+        .join("themes")
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VisualThemeManifestFile {
+    id: Option<String>,
+    name: Option<String>,
+    description: Option<String>,
+    extends: Option<String>,
+    base_id: Option<String>,
+    css_file: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualThemeManifest {
+    id: String,
+    name: String,
+    description: String,
+    extends: Option<String>,
+    base_id: Option<String>,
+    css_path: Option<String>,
+    root_path: String,
+    source: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualThemeDiscovery {
+    root_path: String,
+    themes: Vec<VisualThemeManifest>,
+}
+
+fn normalize_theme_id(value: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+    for ch in value.trim().chars() {
+        let lower = ch.to_ascii_lowercase();
+        if lower.is_ascii_alphanumeric() {
+            out.push(lower);
+            prev_dash = false;
+        } else if (lower == '-' || lower == '_' || lower == ' ') && !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+fn prettify_theme_name(id: &str) -> String {
+    let mut words = Vec::new();
+    for part in id.split('-') {
+        let trimmed = part.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mut chars = trimmed.chars();
+        if let Some(first) = chars.next() {
+            let mut word = String::new();
+            word.push(first.to_ascii_uppercase());
+            word.push_str(chars.as_str());
+            words.push(word);
+        }
+    }
+    if words.is_empty() {
+        "Custom Theme".to_string()
+    } else {
+        words.join(" ")
+    }
+}
+
+#[tauri::command]
+pub fn discover_visual_themes() -> Result<VisualThemeDiscovery, String> {
+    let root = visual_themes_path();
+    std::fs::create_dir_all(&root)
+        .map_err(|e| format!("Failed to create visual themes directory '{}': {}", root.to_string_lossy(), e))?;
+
+    let mut themes = Vec::new();
+    let entries = std::fs::read_dir(&root)
+        .map_err(|e| format!("Failed to read visual themes directory '{}': {}", root.to_string_lossy(), e))?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let manifest_path = path.join("theme.json");
+        if !manifest_path.is_file() {
+            continue;
+        }
+
+        let raw = match std::fs::read_to_string(&manifest_path) {
+            Ok(content) => content,
+            Err(err) => {
+                log::warn!(
+                    "Failed to read visual theme manifest '{}': {}",
+                    manifest_path.to_string_lossy(),
+                    err
+                );
+                continue;
+            }
+        };
+
+        let manifest_file: VisualThemeManifestFile = match serde_json::from_str(&raw) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                log::warn!(
+                    "Failed to parse visual theme manifest '{}': {}",
+                    manifest_path.to_string_lossy(),
+                    err
+                );
+                continue;
+            }
+        };
+
+        let folder_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("theme");
+        let id_source = manifest_file.id.as_deref().unwrap_or(folder_name);
+        let id = normalize_theme_id(id_source);
+        if id.is_empty() {
+            log::warn!(
+                "Skipping visual theme with invalid id in '{}'",
+                manifest_path.to_string_lossy()
+            );
+            continue;
+        }
+
+        let name = manifest_file
+            .name
+            .unwrap_or_else(|| prettify_theme_name(&id));
+        let description = manifest_file.description.unwrap_or_default();
+        let extends = manifest_file
+            .extends
+            .as_deref()
+            .map(normalize_theme_id)
+            .filter(|value| !value.is_empty());
+        let base_id = manifest_file
+            .base_id
+            .as_deref()
+            .map(normalize_theme_id)
+            .filter(|value| !value.is_empty());
+
+        let css_file = manifest_file.css_file.unwrap_or_else(|| "theme.css".to_string());
+        let css_candidate = path.join(css_file);
+        let css_path = if css_candidate.is_file() {
+            Some(css_candidate.to_string_lossy().to_string())
+        } else {
+            None
+        };
+
+        themes.push(VisualThemeManifest {
+            id,
+            name,
+            description,
+            extends,
+            base_id,
+            css_path,
+            root_path: path.to_string_lossy().to_string(),
+            source: "user".to_string(),
+        });
+    }
+
+    themes.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    Ok(VisualThemeDiscovery {
+        root_path: root.to_string_lossy().to_string(),
+        themes,
+    })
 }
 
 #[tauri::command]
