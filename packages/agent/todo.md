@@ -37,7 +37,7 @@
 
 ## Style System — Do Next
 - [ ] **Define two style layers** — Application Style (shell, menus, logs, settings) + Board Style (kanban/canvas content). No third overlapping layer.
-- [ ] **Unify component primitives** — consolidate 4+ button families (.btn-icon, .sidebar-btn, .board-action-btn, .mgmt-btn) into shared variants (icon, primary, secondary, quiet). Same for selects/inputs.
+- [x] ~~**Unify component primitives**~~ (1aea8ea1) — shared .btn base + primary/secondary/quiet/danger variants, existing classes inherit
 - [ ] **Extend consistent states** — .view-loading/.view-empty exist for some views. Apply to all surfaces with shared model for connected/loading/empty/error/selected.
 
 ## Deferred (revisit when needed)
