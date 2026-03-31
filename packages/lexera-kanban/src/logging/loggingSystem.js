@@ -465,6 +465,13 @@ function appendLogEntry(source, entry) {
 
   if (entry.level === 'error') {
     showLogPanelErrorIndicator(entry.message || 'Unknown error');
+    var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+    if (rt) {
+      var logMains = document.querySelectorAll('.log-panel-main');
+      for (var lm = 0; lm < logMains.length; lm++) {
+        rt.setViewError(logMains[lm], true, entry.message || 'Error');
+      }
+    }
   }
 
   var panel = getLogContainer(source);
@@ -582,7 +589,16 @@ function runInitManagementUI() {
 }
 
 function setLogPanelVisibility(visible) {
-  if (visible) clearLogPanelErrorIndicator();
+  if (visible) {
+    clearLogPanelErrorIndicator();
+    var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+    if (rt) {
+      var logMains = document.querySelectorAll('.log-panel-main');
+      for (var lm = 0; lm < logMains.length; lm++) {
+        rt.setViewError(logMains[lm], false);
+      }
+    }
+  }
   var panel = getElLogPanel();
   if (!panel) return;
   var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;

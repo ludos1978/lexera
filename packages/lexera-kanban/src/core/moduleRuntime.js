@@ -172,6 +172,22 @@ var LexeraRuntime = (function () {
     if (empty) container.classList.remove('view-loading');
   }
 
+  function setViewError(container, error, message) {
+    if (!container) return;
+    container.classList.toggle('view-error', !!error);
+    if (error && message) {
+      container.setAttribute('data-error-message', message);
+    } else if (!error) {
+      container.removeAttribute('data-error-message');
+    }
+  }
+
+  function setViewConnected(container, connected) {
+    if (!container) return;
+    container.classList.toggle('view-connected', !!connected);
+    container.classList.toggle('view-disconnected', !connected);
+  }
+
   // ── Public API ──────────────────────────────────────────────────
   return {
     // State store
@@ -193,7 +209,9 @@ var LexeraRuntime = (function () {
     KNOWN_MODULES: KNOWN_MODULES,
     // View state helpers
     setViewLoading: setViewLoading,
-    setViewEmpty: setViewEmpty
+    setViewEmpty: setViewEmpty,
+    setViewError: setViewError,
+    setViewConnected: setViewConnected
   };
 })();
 window.LexeraRuntime = LexeraRuntime;

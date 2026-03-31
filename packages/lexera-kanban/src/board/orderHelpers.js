@@ -2400,10 +2400,13 @@ var LexeraOrderHelpers = (function () {
 
     if (!_callDep('getElDashboardRoot')) return;
 
-    // Clear loading state on the dashboard body
+    // Clear loading / connection state on the dashboard body
     var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
     var dashBody = _callDep('getElDashboardRoot') ? _callDep('getElDashboardRoot').querySelector('.sidebar-dashboard-body') : null;
-    if (rt && dashBody) rt.setViewLoading(dashBody, !!dashboardState.loading);
+    if (rt && dashBody) {
+      rt.setViewLoading(dashBody, !!dashboardState.loading);
+      rt.setViewConnected(dashBody, !!_dep('connected'));
+    }
 
     var scopeHint = scopeHintForDashboard();
     var loadingNote = dashboardState.loading ? 'Loading...' : null;
@@ -2517,12 +2520,18 @@ var LexeraOrderHelpers = (function () {
       if (!status) {
         // Backend not ready — retry with exponential backoff, but re-render to clear loading indicator
         dashboardState.loading = false;
+        var rtErr = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+        var dashBodyErr = _callDep('getElDashboardRoot') ? _callDep('getElDashboardRoot').querySelector('.sidebar-dashboard-body') : null;
+        if (rtErr && dashBodyErr) rtErr.setViewError(dashBodyErr, true, 'Backend not ready');
         renderDashboard();
         var retryDelay = Math.min(30000, 5000 * Math.pow(1.5, (dashboardState._retryCount || 0)));
         dashboardState._retryCount = (dashboardState._retryCount || 0) + 1;
         scheduleDashboardRefresh(retryDelay);
         return;
       }
+      var rtOk = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+      var dashBodyOk = _callDep('getElDashboardRoot') ? _callDep('getElDashboardRoot').querySelector('.sidebar-dashboard-body') : null;
+      if (rtOk && dashBodyOk) rtOk.setViewError(dashBodyOk, false);
       return _refreshDashboardDataCore(refreshId, options);
     });
   }
