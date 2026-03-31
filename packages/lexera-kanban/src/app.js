@@ -8804,6 +8804,7 @@ var LexeraDashboard = (function () {
     applyRenderedHtmlCommentVisibility(newEl, currentHtmlCommentRenderMode);
     applyRenderedTagVisibility(newEl, currentTagVisibilityMode);
     attachRenderedTagInteractions(newEl);
+    vsRemeasureColumn(colIndex);
   }
 
   /**
@@ -11298,6 +11299,7 @@ var LexeraDashboard = (function () {
   function vsTeardown() { if (VirtualScroll) VirtualScroll.teardown(); }
   function vsMaterialiseAll() { if (VirtualScroll) VirtualScroll.materialiseAll(); }
   function vsRestoreAfterDrag() { if (VirtualScroll) VirtualScroll.restoreAfterDrag(); }
+  function vsRemeasureColumn(colIndex) { if (VirtualScroll) VirtualScroll.remeasureColumn(colIndex); }
 
   // ===== Action Registry Registrations =====
   if (ActionRegistry) {

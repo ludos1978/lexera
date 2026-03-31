@@ -1238,6 +1238,76 @@ var LexeraOrderHelpers = (function () {
   var _brokenScanPending = false;         // true while a deferred broken scan is queued
   var _brokenScanBoardId = null;          // board ID when scan was scheduled
 
+  // ── Dashboard data cache: avoids blank dashboard on tab switches ──
+  // Keyed by boardId + scope + query, stores processed dashboardState snapshot.
+  var _dashboardDataCache = {};
+  var _DASHBOARD_DATA_CACHE_MAX = 8;
+
+  function _dashboardCacheKey() {
+    var boardId = _dep('activeBoardId') || '__none__';
+    var scope = dashboardState ? (dashboardState.scope || 'active') : 'active';
+    var query = dashboardState ? (dashboardState.query || '') : '';
+    return boardId + '|' + scope + '|' + query;
+  }
+
+  function _saveDashboardDataToCache() {
+    if (!dashboardState) return;
+    var key = _dashboardCacheKey();
+    var snapshot = {
+      results: dashboardState.results,
+      resultTotal: dashboardState.resultTotal,
+      overdue: dashboardState.overdue,
+      overdueTotal: dashboardState.overdueTotal,
+      today: dashboardState.today,
+      todayTotal: dashboardState.todayTotal,
+      thisWeek: dashboardState.thisWeek,
+      thisWeekTotal: dashboardState.thisWeekTotal,
+      upcoming: dashboardState.upcoming,
+      upcomingTotal: dashboardState.upcomingTotal,
+      later: dashboardState.later,
+      laterTotal: dashboardState.laterTotal,
+      todos: dashboardState.todos,
+      taggedGroups: dashboardState.taggedGroups,
+      _ts: Date.now()
+    };
+    _dashboardDataCache[key] = snapshot;
+    // Evict oldest entries when cache exceeds max size
+    var keys = Object.keys(_dashboardDataCache);
+    if (keys.length > _DASHBOARD_DATA_CACHE_MAX) {
+      var oldest = keys[0];
+      var oldestTs = _dashboardDataCache[oldest]._ts;
+      for (var ki = 1; ki < keys.length; ki++) {
+        if (_dashboardDataCache[keys[ki]]._ts < oldestTs) {
+          oldest = keys[ki];
+          oldestTs = _dashboardDataCache[keys[ki]]._ts;
+        }
+      }
+      delete _dashboardDataCache[oldest];
+    }
+  }
+
+  function _restoreDashboardDataFromCache() {
+    if (!dashboardState) return false;
+    var key = _dashboardCacheKey();
+    var snapshot = _dashboardDataCache[key];
+    if (!snapshot) return false;
+    dashboardState.results = snapshot.results || [];
+    dashboardState.resultTotal = snapshot.resultTotal;
+    dashboardState.overdue = snapshot.overdue || [];
+    dashboardState.overdueTotal = snapshot.overdueTotal;
+    dashboardState.today = snapshot.today || [];
+    dashboardState.todayTotal = snapshot.todayTotal;
+    dashboardState.thisWeek = snapshot.thisWeek || [];
+    dashboardState.thisWeekTotal = snapshot.thisWeekTotal;
+    dashboardState.upcoming = snapshot.upcoming || [];
+    dashboardState.upcomingTotal = snapshot.upcomingTotal;
+    dashboardState.later = snapshot.later || [];
+    dashboardState.laterTotal = snapshot.laterTotal;
+    dashboardState.todos = snapshot.todos || [];
+    dashboardState.taggedGroups = snapshot.taggedGroups || [];
+    return true;
+  }
+
   // ── Dashboard render-cache: skip DOM rebuild when data is unchanged ──
   // Simple dirty-flag for dashboard sections: generation counter bumped on data change.
   var _dashboardRenderGeneration = 0;
@@ -2657,32 +2727,23 @@ var LexeraOrderHelpers = (function () {
       return Promise.resolve();
     }
     var refreshId = ++dashboardRefreshSeq;
+
+    // Show cached data immediately if available (avoids blank dashboard)
+    var hadCache = _restoreDashboardDataFromCache();
     dashboardState.loading = true;
-    if (!options.deferRender) renderDashboard();
+    if (hadCache) {
+      // Render stale data right away so the user sees content instantly
+      renderDashboard();
+    } else if (!options.deferRender) {
+      renderDashboard();
+    }
 
-    var LexeraApi = _dep('LexeraApi');
+    // Start file inventory in parallel with main data fetch
+    refreshDashboardFileInventory();
 
-    // Check backend readiness before firing heavy queries — if /status
-    // times out, the backend is still loading boards (write lock held)
-    return LexeraApi.checkStatus().catch(function () { return null; }).then(function (status) {
-      if (refreshId !== dashboardRefreshSeq) return;
-      if (!status) {
-        // Backend not ready — retry with exponential backoff, but re-render to clear loading indicator
-        dashboardState.loading = false;
-        var rtErr = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
-        var dashBodyErr = _callDep('getElDashboardRoot') ? _callDep('getElDashboardRoot').querySelector('.sidebar-dashboard-body') : null;
-        if (rtErr && dashBodyErr) rtErr.setViewError(dashBodyErr, true, 'Backend not ready');
-        renderDashboard();
-        var retryDelay = Math.min(30000, 5000 * Math.pow(1.5, (dashboardState._retryCount || 0)));
-        dashboardState._retryCount = (dashboardState._retryCount || 0) + 1;
-        scheduleDashboardRefresh(retryDelay);
-        return;
-      }
-      var rtOk = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
-      var dashBodyOk = _callDep('getElDashboardRoot') ? _callDep('getElDashboardRoot').querySelector('.sidebar-dashboard-body') : null;
-      if (rtOk && dashBodyOk) rtOk.setViewError(dashBodyOk, false);
-      return _refreshDashboardDataCore(refreshId, options);
-    });
+    // Fire getDashboardData directly — no blocking checkStatus() call.
+    // Backend readiness is detected by catch on the actual data request.
+    return _refreshDashboardDataCore(refreshId, options);
   }
 
   function _refreshDashboardDataCore(refreshId, options) {
@@ -2777,9 +2838,24 @@ var LexeraOrderHelpers = (function () {
       }
       dashboardState.taggedGroups = taggedGroups;
       dashboardState._retryCount = 0;
+      // Cache processed data for instant display on tab switches
+      _saveDashboardDataToCache();
     }).catch(function (err) {
       if (refreshId !== dashboardRefreshSeq) return;
-      _callDep('logFrontendIssue', 'error', 'dashboard.search', 'Failed to refresh', err);
+      // Detect backend-not-ready (network error, timeout, 503) vs real failures
+      var isBackendDown = err && (
+        err.name === 'AbortError' ||
+        err.message === 'Failed to fetch' ||
+        (err.status && err.status >= 500)
+      );
+      if (isBackendDown) {
+        _callDep('logFrontendIssue', 'warn', 'dashboard.search', 'Backend not ready', err);
+        var rtErr = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+        var dashBodyErr = _callDep('getElDashboardRoot') ? _callDep('getElDashboardRoot').querySelector('.sidebar-dashboard-body') : null;
+        if (rtErr && dashBodyErr) rtErr.setViewError(dashBodyErr, true, 'Backend not ready');
+      } else {
+        _callDep('logFrontendIssue', 'error', 'dashboard.search', 'Failed to refresh', err);
+      }
       clearDashboardResults();
       // Retry with exponential backoff if backend was busy
       var retryDelay = Math.min(30000, 8000 * Math.pow(1.5, (dashboardState._retryCount || 0)));
@@ -2788,6 +2864,9 @@ var LexeraOrderHelpers = (function () {
     }).then(function () {
       if (refreshId !== dashboardRefreshSeq) return;
       if (dashboardState) dashboardState.loading = false;
+      var rtOk = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+      var dashBodyOk = _callDep('getElDashboardRoot') ? _callDep('getElDashboardRoot').querySelector('.sidebar-dashboard-body') : null;
+      if (rtOk && dashBodyOk) rtOk.setViewError(dashBodyOk, false);
       markFileInventoryDirty();
       renderDashboard();
     });
