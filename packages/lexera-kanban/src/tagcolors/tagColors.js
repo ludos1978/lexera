@@ -535,7 +535,7 @@
       // Only border, no bar/badge/background
     } else if (styleRole === 'effect') {
       if (normalized === 'exclude') {
-        descriptor.opacity = '0.55';
+        descriptor.opacity = '0.20';
         descriptor.pattern = 'stripes';
       } else if (normalized === 'private') {
         descriptor.opacity = '0.72';
