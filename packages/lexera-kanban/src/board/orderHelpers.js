@@ -1204,6 +1204,41 @@ var LexeraOrderHelpers = (function () {
   var dashboardFileInventorySeq = 0;
   var dashboardMirrorSyncQueued = false;
 
+  // ── Dashboard render-cache: skip DOM rebuild when data is unchanged ──
+  // Maps a cache-key (section name) to the last JSON fingerprint rendered.
+  var _dashboardRenderCache = {};
+
+  /**
+   * Compute a lightweight fingerprint string for dashboard section data.
+   * Returns a string that changes whenever the visual output would change.
+   */
+  function _dashboardFingerprint(data, extra) {
+    try {
+      var base = JSON.stringify(data);
+      return extra ? base + '|' + extra : base;
+    } catch (_) {
+      // If stringify fails (e.g. circular), always re-render
+      return Math.random().toString(36);
+    }
+  }
+
+  /**
+   * Check whether a section's fingerprint matches the cached value.
+   * If it matches, return true (skip render). Otherwise store and return false.
+   */
+  function _dashboardCacheHit(cacheKey, fingerprint) {
+    if (_dashboardRenderCache[cacheKey] === fingerprint) return true;
+    _dashboardRenderCache[cacheKey] = fingerprint;
+    return false;
+  }
+
+  /**
+   * Invalidate (clear) the entire dashboard render cache, e.g. on board switch.
+   */
+  function invalidateDashboardRenderCache() {
+    _dashboardRenderCache = {};
+  }
+
   function normalizeDashboardScope(scope) {
     return scope === 'all' ? 'all' : 'active';
   }
@@ -2036,6 +2071,14 @@ var LexeraOrderHelpers = (function () {
   function renderDashboardTreeItems(targetEl, treeNodes, emptyText, options) {
     options = options || {};
     if (!targetEl) return;
+
+    // ── change detection: skip rebuild if data hasn't changed ──
+    var cacheKey = options._cacheKey || (targetEl.id || '') || null;
+    if (cacheKey) {
+      var fp = _dashboardFingerprint(treeNodes, emptyText + '|' + (options.collapseWhenEmpty ? '1' : '0'));
+      if (_dashboardCacheHit(cacheKey, fp)) return;
+    }
+
     targetEl.innerHTML = '';
 
     if (!treeNodes || treeNodes.length === 0) {
@@ -2059,6 +2102,12 @@ var LexeraOrderHelpers = (function () {
     if (!targetEl) return;
     var state = ensureDashboardState();
     var loading = !!(state && state.fileInventoryLoading);
+
+    // ── change detection: skip rebuild if data hasn't changed ──
+    var cacheKey = 'inv_' + (targetEl.id || emptyText);
+    var fp = _dashboardFingerprint(items, loading ? 'loading' : 'ready');
+    if (_dashboardCacheHit(cacheKey, fp)) return;
+
     setDashboardGroupEmptyState(targetEl, !loading && (!items || items.length === 0));
     if (loading && (!items || items.length === 0)) {
       targetEl.innerHTML = '<div class="dashboard-empty">Loading...</div>';
@@ -2072,7 +2121,7 @@ var LexeraOrderHelpers = (function () {
       targetEl,
       _callDep('getDashboardTreeApi').buildDashboardInventoryTreeNodes(items),
       emptyText,
-      {}
+      { _cacheKey: null } // already cached at this level, skip inner cache
     );
   }
 
@@ -2300,6 +2349,11 @@ var LexeraOrderHelpers = (function () {
       dashboardState && dashboardState.fileEmbeds ? dashboardState.fileEmbeds : [],
       dashboardState && dashboardState.includedFiles ? dashboardState.includedFiles : []
     );
+
+    // ── change detection: skip rebuild if data hasn't changed ──
+    var fp = _dashboardFingerprint(items);
+    if (_dashboardCacheHit('broken', fp)) return;
+
     setDashboardGroupEmptyState(el, items.length === 0);
     if (items.length === 0) {
       el.innerHTML = '<div class="dashboard-empty">No broken elements</div>';
@@ -2310,13 +2364,19 @@ var LexeraOrderHelpers = (function () {
       el,
       _callDep('getDashboardTreeApi').buildDashboardBrokenTreeNodes(items),
       'No broken elements',
-      {}
+      { _cacheKey: null } // already cached at this level
     );
     scheduleMirroredDashboardSync();
   }
 
   function renderDashboardPinnedList() {
     if (!_callDep('getElDashboardPinnedList')) return;
+
+    // ── change detection: skip rebuild if pinned data hasn't changed ──
+    var pinnedData = dashboardState ? { q: dashboardState.pinnedQueries, a: dashboardState.activePinnedQuery } : null;
+    var fp = _dashboardFingerprint(pinnedData);
+    if (_dashboardCacheHit('pinned', fp)) return;
+
     _callDep('getElDashboardPinnedList').innerHTML = '';
     if (!dashboardState || !dashboardState.pinnedQueries || dashboardState.pinnedQueries.length === 0) {
       setDashboardGroupEmptyState(_callDep('getElDashboardPinnedList'), true);
@@ -2416,7 +2476,7 @@ var LexeraOrderHelpers = (function () {
       _callDep('getElDashboardResultsList'),
       dashboardState.results,
       scopeHint || loadingNote || (dashboardState.query ? 'No matching tasks' : 'Type a query to search'),
-      { collapseWhenEmpty: !dashboardState.loading && !dashboardState.query }
+      { collapseWhenEmpty: !dashboardState.loading && !dashboardState.query, _cacheKey: 'results' }
     );
 
     // Calendar views inside dashboard panel
@@ -2428,7 +2488,7 @@ var LexeraOrderHelpers = (function () {
       _callDep('getElDashboardOverdueList'),
       dashboardState.overdue,
       scopeHint || loadingNote || 'No overdue tasks',
-      { collapseWhenEmpty: !dashboardState.loading }
+      { collapseWhenEmpty: !dashboardState.loading, _cacheKey: 'overdue' }
     );
     // "Upcoming" combines today + this week + upcoming + later (non-overdue)
     var allUpcoming = (dashboardState.today || []).concat(
@@ -2436,11 +2496,11 @@ var LexeraOrderHelpers = (function () {
     var upcomingEl = _callDep('getElDashboardUpcomingList');
     renderDashboardResultItems(upcomingEl, allUpcoming,
       scopeHint || loadingNote || 'No upcoming tasks',
-      { collapseWhenEmpty: !dashboardState.loading });
+      { collapseWhenEmpty: !dashboardState.loading, _cacheKey: 'upcoming' });
     var todosEl = _callDep('getElDashboardTodosList');
     renderDashboardResultItems(todosEl, dashboardState.todos,
       scopeHint || loadingNote || 'No open tasks',
-      { collapseWhenEmpty: !dashboardState.loading });
+      { collapseWhenEmpty: !dashboardState.loading, _cacheKey: 'todos' });
     // Tagged items — render each tag group
     var taggedEl = _callDep('getElDashboardTaggedList');
     if (taggedEl) {
@@ -2449,7 +2509,7 @@ var LexeraOrderHelpers = (function () {
         taggedEl,
         _callDep('getDashboardTreeApi').buildDashboardTaggedTreeNodes(groups),
         scopeHint || loadingNote || 'No tagged items',
-        { collapseWhenEmpty: !dashboardState.loading }
+        { collapseWhenEmpty: !dashboardState.loading, _cacheKey: 'tagged' }
       );
     }
     renderDashboardFileEmbedsList();
@@ -2488,6 +2548,7 @@ var LexeraOrderHelpers = (function () {
     dashboardState.later = [];
     dashboardState.todos = [];
     dashboardState.taggedGroups = [];
+    invalidateDashboardRenderCache();
   }
 
   function refreshDashboardData(options) {
@@ -2927,7 +2988,8 @@ var LexeraOrderHelpers = (function () {
     setupDashboardControls: setupDashboardControls,
     getCalendarTasks: getCalendarTasks,
     renderStandaloneCalendarPanels: renderStandaloneCalendarPanels,
-    refreshDashboardTagsFromBackend: refreshDashboardTagsFromBackend
+    refreshDashboardTagsFromBackend: refreshDashboardTagsFromBackend,
+    invalidateDashboardRenderCache: invalidateDashboardRenderCache
   };
 })();
 (typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {}).LexeraOrderHelpers = LexeraOrderHelpers;
