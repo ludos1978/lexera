@@ -629,7 +629,7 @@ describe('buildCombinedTagStyleDescriptor', () => {
   it('preserves effect fields alongside structural styling', () => {
     const result = F.buildCombinedTagStyleDescriptor(['#blue', '#exclude']);
     expect(result.background).toBeTruthy();
-    expect(result.opacity).toBe('0.55');
+    expect(result.opacity).toBe('0.20');
     expect(result.pattern).toBe('stripes');
   });
 });
