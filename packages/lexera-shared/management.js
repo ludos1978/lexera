@@ -68,6 +68,8 @@ var ManagementUI = (function () {
   var MAX_RENDERED_LOG_ENTRIES = 500;
   var workspaceSectionExpanded = {};
   var workspaceInviteAccess = {};
+  // Config panel state: { type: 'workspace'|'board', id: string } or null
+  var configSelectedItem = null;
 
   function queryFirst(selector) {
     var ids = Object.keys(mounts);
@@ -119,7 +121,7 @@ var ManagementUI = (function () {
     return null;
   }
 
-  var VALID_TABS = ['sharing', 'network', 'config', 'logs', 'workspaces', 'boards'];
+  var VALID_TABS = ['sharing', 'network', 'config', 'logs', 'workspaces', 'boards', 'workspace-config'];
   var UI_PRESETS = {
     combinedManagement: {
       topTabs: ['sharing', 'network', 'config', 'logs'],
@@ -134,14 +136,15 @@ var ManagementUI = (function () {
       defaultTopTab: 'network'
     },
     files: {
-      topTabs: ['workspaces', 'boards'],
-      defaultTopTab: 'workspaces'
+      topTabs: ['workspace-config'],
+      defaultTopTab: 'workspace-config'
     }
   };
   var SECTION_SURFACE_IDS = {
     sharing: 'files',
     workspaces: 'files',
     boards: 'files',
+    'workspace-config': 'files',
     network: 'backendSettings',
     config: 'backendSettings',
     logs: 'backendSettings'
@@ -177,7 +180,7 @@ var ManagementUI = (function () {
   function getTopTabForContext(sectionName, contextName) {
     var section = sectionName || '';
     if (contextName === 'files') {
-      if (section === 'boards' || section === 'workspaces') return section;
+      if (section === 'boards' || section === 'workspaces' || section === 'workspace-config') return section;
       return UI_PRESETS.files.defaultTopTab;
     }
     if (contextName === 'backendSettings') {
@@ -410,6 +413,7 @@ var ManagementUI = (function () {
       expandedBoardId = null;
       activeBoardTab = {};
       workspaceInviteAccess = {};
+      configSelectedItem = null;
       initialized = false;
       lastMutationAt = 0;
       logEntries = [];
@@ -438,16 +442,25 @@ var ManagementUI = (function () {
     m.boardsDragoverHandler = null;
     m.boardsDragleaveHandler = null;
     m.boardsDropHandler = null;
+    var ct = m.container && m.container.querySelector('#mgmt-config-tree');
+    if (ct) {
+      if (m.configTreeDragoverHandler) ct.removeEventListener('dragover', m.configTreeDragoverHandler);
+      if (m.configTreeDragleaveHandler) ct.removeEventListener('dragleave', m.configTreeDragleaveHandler);
+      if (m.configTreeDropHandler) ct.removeEventListener('drop', m.configTreeDropHandler);
+    }
+    m.configTreeDragoverHandler = null;
+    m.configTreeDragleaveHandler = null;
+    m.configTreeDropHandler = null;
   }
 
   function refresh(section) {
     if (!initialized) return;
     // Skip full refreshes that are self-echoes from our own mutations
     if (!section && Date.now() - lastMutationAt < SELF_ECHO_WINDOW_MS) return;
-    if (section === 'boards') { loadMyBoards(); return; }
+    if (section === 'boards') { loadMyBoards().then(function () { if (anyMountShowingTopTab('workspace-config')) renderConfigPanel(); }); return; }
     if (section === 'connections') { loadConnections(); return; }
     if (section === 'peers') { loadDiscoveredPeers(); return; }
-    if (section === 'workspaces') { loadWorkspaces(); return; }
+    if (section === 'workspaces') { loadWorkspaces().then(function () { if (anyMountShowingTopTab('workspace-config')) renderConfigPanel(); }); return; }
     if (section === 'logs') { if (anyMountShowingTopTab('logs')) loadLogs(); return; }
     loadAllForMounts();
   }
@@ -456,17 +469,19 @@ var ManagementUI = (function () {
     var needsNetwork = anyMountShowingTopTab('network');
     var needsWorkspaces = anyMountShowingTopTab('sharing') || anyMountShowingTopTab('workspaces');
     var needsBoards = anyMountShowingTopTab('sharing') || anyMountShowingTopTab('boards');
+    var needsWsConfig = anyMountShowingTopTab('workspace-config');
     var needsConfig = anyMountShowingTopTab('config');
     var needsLogs = anyMountShowingTopTab('logs');
 
     if (needsNetwork) await loadIdentity();
     var initialLoads = [];
     if (needsNetwork) { initialLoads.push(loadServerInfo()); initialLoads.push(loadNetworkInterfaces()); }
-    if (needsWorkspaces || needsBoards) initialLoads.push(loadWorkspaces());
+    if (needsWorkspaces || needsBoards || needsWsConfig) initialLoads.push(loadWorkspaces());
     if (needsLogs) initialLoads.push(loadLogs());
     await Promise.all(initialLoads);
-    if (needsBoards) await loadMyBoards();
+    if (needsBoards || needsWsConfig) await loadMyBoards();
     if (needsNetwork) { await loadConnections(); await loadDiscoveredPeers(); }
+    if (needsWsConfig) renderConfigPanel();
   }
 
   // ── Shell HTML ──
@@ -523,6 +538,7 @@ var ManagementUI = (function () {
     html += tabBtn('sharing', 'Sharing');
     html += tabBtn('workspaces', 'Workspaces');
     html += tabBtn('boards', 'Boards');
+    html += tabBtn('workspace-config', 'Workspaces');
     html += tabBtn('network', 'Network');
     html += tabBtn('config', 'Configuration');
     html += tabBtn('logs', 'Logs');
@@ -547,6 +563,18 @@ var ManagementUI = (function () {
     if (isTab('boards')) {
       html += tabOpen('boards');
       html += renderBoardsSection();
+      html += '</div>';
+    }
+
+    // ── Workspace Config tab (two-panel layout) ──
+    if (isTab('workspace-config')) {
+      html += tabOpen('workspace-config');
+      html += '<div class="mgmt-config-layout">';
+      html += '<div class="mgmt-config-tree" id="mgmt-config-tree"></div>';
+      html += '<div class="mgmt-config-inspector" id="mgmt-config-inspector">';
+      html += '<div class="mgmt-list-empty">Select a workspace or board</div>';
+      html += '</div>';
+      html += '</div>';
       html += '</div>';
     }
 
@@ -763,6 +791,13 @@ var ManagementUI = (function () {
         assignBoardWorkspaces(boardId, selectedIds);
         return;
       }
+
+      // Config panel workspace assignment checkboxes
+      var cfgWsCheckbox = e.target.closest('[data-mgmt-cfg-ws-toggle]');
+      if (cfgWsCheckbox && cfgWsCheckbox.tagName === 'INPUT') {
+        handleConfigWorkspaceAssignment(cfgWsCheckbox);
+        return;
+      }
     };
 
     document.addEventListener('click', mountObj.delegateHandler);
@@ -804,6 +839,45 @@ var ManagementUI = (function () {
       boardsSection.addEventListener('dragleave', mountObj.boardsDragleaveHandler);
       boardsSection.addEventListener('drop', mountObj.boardsDropHandler);
     }
+
+    // Drag-and-drop .md files onto config tree workspace nodes
+    var configTree = mc.querySelector('#mgmt-config-tree');
+    if (configTree) {
+      mountObj.configTreeDragoverHandler = function (e) {
+        if (!e.dataTransfer || !e.dataTransfer.types) return;
+        if (e.dataTransfer.types.indexOf('Files') === -1) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        var wsNode = e.target.closest('[data-mgmt-config-type="workspace"]');
+        // Remove highlight from all nodes first
+        var allNodes = configTree.querySelectorAll('.mgmt-config-tree-node');
+        for (var n = 0; n < allNodes.length; n++) allNodes[n].classList.remove('mgmt-drop-active');
+        if (wsNode) wsNode.classList.add('mgmt-drop-active');
+      };
+      mountObj.configTreeDragleaveHandler = function (e) {
+        var wsNode = e.target.closest('[data-mgmt-config-type="workspace"]');
+        if (wsNode && !wsNode.contains(e.relatedTarget)) {
+          wsNode.classList.remove('mgmt-drop-active');
+        }
+        if (!configTree.contains(e.relatedTarget)) {
+          var allNodes = configTree.querySelectorAll('.mgmt-config-tree-node');
+          for (var n = 0; n < allNodes.length; n++) allNodes[n].classList.remove('mgmt-drop-active');
+        }
+      };
+      mountObj.configTreeDropHandler = function (e) {
+        var allNodes = configTree.querySelectorAll('.mgmt-config-tree-node');
+        for (var n = 0; n < allNodes.length; n++) allNodes[n].classList.remove('mgmt-drop-active');
+        var wsNode = e.target.closest('[data-mgmt-config-type="workspace"]');
+        var targetWsId = wsNode ? wsNode.getAttribute('data-mgmt-config-id') : null;
+        var paths = extractMdPathsFromDataTransfer(e.dataTransfer);
+        if (paths.length === 0) return;
+        e.preventDefault();
+        configDropBoardsOnWorkspace(paths, targetWsId);
+      };
+      configTree.addEventListener('dragover', mountObj.configTreeDragoverHandler);
+      configTree.addEventListener('dragleave', mountObj.configTreeDragleaveHandler);
+      configTree.addEventListener('drop', mountObj.configTreeDropHandler);
+    }
   }
 
   function handleAction(btn) {
@@ -834,6 +908,9 @@ var ManagementUI = (function () {
       case 'create-workspace-invite': createWorkspaceInvite(btn.getAttribute('data-mgmt-ws-id')); break;
       case 'revoke-workspace-invite': revokeWorkspaceInvite(btn.getAttribute('data-mgmt-ws-id'), btn.getAttribute('data-mgmt-token')); break;
       case 'save-board-sync': saveBoardSync(boardId); break;
+      default:
+        handleConfigAction(action, btn);
+        break;
     }
   }
 
@@ -1449,15 +1526,15 @@ var ManagementUI = (function () {
   // ── My Boards ──
 
   async function loadMyBoards() {
-    var el = queryFirst('#mgmt-boards-list');
-    if (!el) return;
     try {
       var data = await api.get('/boards');
       var boards = Array.isArray(data) ? data : (data.boards || []);
       cachedBoards = boards;
-      renderMyBoards(el, boards);
+      var el = queryFirst('#mgmt-boards-list');
+      if (el) renderMyBoards(el, boards);
     } catch (e) {
-      el.innerHTML = '<div class="mgmt-list-empty">Failed to load boards</div>';
+      var el = queryFirst('#mgmt-boards-list');
+      if (el) el.innerHTML = '<div class="mgmt-list-empty">Failed to load boards</div>';
     }
   }
 
@@ -1966,6 +2043,504 @@ var ManagementUI = (function () {
     } catch (e) {
       if (statusEl) { statusEl.className = 'mgmt-status error'; statusEl.textContent = e.message || String(e); }
     }
+  }
+
+  // ── Config Panel (two-panel workspace/board view) ──
+
+  function renderConfigPanel() {
+    renderConfigTree();
+    renderConfigInspector();
+  }
+
+  function renderConfigTree() {
+    var el = queryFirst('#mgmt-config-tree');
+    if (!el) return;
+
+    var html = '';
+    for (var i = 0; i < cachedWorkspaces.length; i++) {
+      var ws = cachedWorkspaces[i];
+      var isDefault = ws.id === cachedDefaultWorkspaceId;
+      var isSelected = configSelectedItem && configSelectedItem.type === 'workspace' && configSelectedItem.id === ws.id;
+      var wsBoards = cachedBoards.filter(function (b) {
+        var wsIds = getBoardWorkspaceIds(b);
+        return wsIds.indexOf(ws.id) >= 0;
+      });
+
+      html += '<div class="mgmt-config-tree-node' + (isSelected ? ' selected' : '') + '"'
+        + ' data-mgmt-action="config-select" data-mgmt-config-type="workspace" data-mgmt-config-id="' + esc(ws.id) + '">';
+      html += '<span class="mgmt-config-tree-icon">&#128193;</span>';
+      html += '<span class="mgmt-config-tree-label">' + esc(ws.name) + '</span>';
+      html += '<span class="mgmt-config-tree-badge">' + wsBoards.length + '</span>';
+      if (isDefault) html += '<span class="mgmt-config-tree-default" title="Default workspace">&#9733;</span>';
+      html += '</div>';
+
+      for (var j = 0; j < wsBoards.length; j++) {
+        var b = wsBoards[j];
+        var boardName = b.title || (b.filePath || b.file_path || b.id || '').split('/').pop().replace('.md', '') || 'Untitled';
+        var isBoardSelected = configSelectedItem && configSelectedItem.type === 'board' && configSelectedItem.id === b.id;
+        html += '<div class="mgmt-config-tree-node mgmt-config-tree-child' + (isBoardSelected ? ' selected' : '') + '"'
+          + ' data-mgmt-action="config-select" data-mgmt-config-type="board" data-mgmt-config-id="' + esc(b.id) + '">';
+        html += '<span class="mgmt-config-tree-icon">&#128196;</span>';
+        html += '<span class="mgmt-config-tree-label">' + esc(boardName) + '</span>';
+        html += '</div>';
+      }
+    }
+
+    // Unassigned boards (not in any workspace)
+    var unassigned = cachedBoards.filter(function (b) {
+      var wsIds = getBoardWorkspaceIds(b);
+      for (var k = 0; k < wsIds.length; k++) {
+        for (var m = 0; m < cachedWorkspaces.length; m++) {
+          if (cachedWorkspaces[m].id === wsIds[k]) return false;
+        }
+      }
+      return wsIds.length === 0 || true;
+    });
+    // Actually, filter boards whose workspace IDs don't match any existing workspace
+    unassigned = cachedBoards.filter(function (b) {
+      var wsIds = getBoardWorkspaceIds(b);
+      if (wsIds.length === 0) return true;
+      for (var k = 0; k < wsIds.length; k++) {
+        for (var m = 0; m < cachedWorkspaces.length; m++) {
+          if (cachedWorkspaces[m].id === wsIds[k]) return false;
+        }
+      }
+      return true;
+    });
+    if (unassigned.length > 0) {
+      html += '<div class="mgmt-config-tree-divider"></div>';
+      html += '<div class="mgmt-config-tree-heading">Unassigned</div>';
+      for (var u = 0; u < unassigned.length; u++) {
+        var ub = unassigned[u];
+        var ubName = ub.title || (ub.filePath || ub.file_path || ub.id || '').split('/').pop().replace('.md', '') || 'Untitled';
+        var isUbSelected = configSelectedItem && configSelectedItem.type === 'board' && configSelectedItem.id === ub.id;
+        html += '<div class="mgmt-config-tree-node' + (isUbSelected ? ' selected' : '') + '"'
+          + ' data-mgmt-action="config-select" data-mgmt-config-type="board" data-mgmt-config-id="' + esc(ub.id) + '">';
+        html += '<span class="mgmt-config-tree-icon">&#128196;</span>';
+        html += '<span class="mgmt-config-tree-label">' + esc(ubName) + '</span>';
+        html += '</div>';
+      }
+    }
+
+    html += '<div class="mgmt-config-tree-add">';
+    html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="config-add-workspace">+ Add Workspace</button>';
+    html += '</div>';
+
+    el.innerHTML = html;
+  }
+
+  function renderConfigInspector() {
+    var el = queryFirst('#mgmt-config-inspector');
+    if (!el) return;
+
+    if (!configSelectedItem) {
+      el.innerHTML = '<div class="mgmt-list-empty">Select a workspace or board</div>';
+      return;
+    }
+
+    if (configSelectedItem.type === 'workspace') {
+      renderConfigWorkspaceInspector(el, configSelectedItem.id);
+    } else if (configSelectedItem.type === 'board') {
+      renderConfigBoardInspector(el, configSelectedItem.id);
+    }
+  }
+
+  function renderConfigWorkspaceInspector(el, wsId) {
+    var ws = null;
+    for (var i = 0; i < cachedWorkspaces.length; i++) {
+      if (cachedWorkspaces[i].id === wsId) { ws = cachedWorkspaces[i]; break; }
+    }
+    if (!ws) {
+      el.innerHTML = '<div class="mgmt-list-empty">Workspace not found</div>';
+      return;
+    }
+    var isDefault = ws.id === cachedDefaultWorkspaceId;
+    var inviteAccess = workspaceInviteAccess[wsId] || 'unknown';
+
+    var html = '';
+    html += '<div class="mgmt-section">';
+    html += '<div class="mgmt-section-title">Workspace</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-field-label">Name</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-ws-name-' + esc(wsId) + '" value="' + esc(ws.name) + '">';
+    html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="config-rename-workspace" data-mgmt-ws-id="' + esc(wsId) + '">Rename</button>';
+    html += '</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-check-label"><input type="checkbox" id="mgmt-cfg-ws-default-' + esc(wsId) + '"' + (isDefault ? ' checked' : '') + ' data-mgmt-action="config-set-default-ws" data-mgmt-ws-id="' + esc(wsId) + '"> Default workspace</label>';
+    html += '</div>';
+    html += '</div>';
+
+    // Sync settings
+    html += '<div class="mgmt-section">';
+    html += '<div class="mgmt-section-title">Sync Defaults</div>';
+    html += '<div class="mgmt-sync-grid">';
+    html += '<label>Bookmark Sync</label>';
+    html += renderTriStateSelectHtml('id="mgmt-cfg-ws-bookmark-sync-' + esc(wsId) + '"', ws.bookmarkSync);
+    html += '<label>Calendar Sync</label>';
+    html += renderTriStateSelectHtml('id="mgmt-cfg-ws-calendar-sync-' + esc(wsId) + '"', ws.calendarSync);
+    html += '<label>Calendar Slug</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-ws-calendar-slug-' + esc(wsId) + '" value="' + esc(ws.calendarSlug || '') + '" placeholder="Optional">';
+    html += '<label>Calendar Name</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-ws-calendar-name-' + esc(wsId) + '" value="' + esc(ws.calendarName || '') + '" placeholder="Optional">';
+    html += '</div>';
+    html += '<div class="mgmt-settings-actions">';
+    html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="config-save-ws-sync" data-mgmt-ws-id="' + esc(wsId) + '">Save</button>';
+    html += '</div>';
+    html += '</div>';
+
+    // Invitations
+    html += '<div class="mgmt-section">';
+    html += '<div class="mgmt-section-title">Invitations</div>';
+    if (inviteAccess !== 'forbidden') {
+      html += '<div class="mgmt-invite-controls">';
+      html += '<select class="mgmt-field-input mgmt-field-select-small" id="mgmt-cfg-ws-invite-role-' + esc(wsId) + '">';
+      html += '<option value="editor">Editor</option><option value="viewer">Viewer</option>';
+      html += '</select>';
+      html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="config-create-ws-invite" data-mgmt-ws-id="' + esc(wsId) + '">Invite</button>';
+      html += '</div>';
+    }
+    html += '<div data-mgmt-cfg-ws-invites="' + esc(wsId) + '"><span class="mgmt-list-empty">'
+      + (inviteAccess === 'forbidden' ? workspaceInvitePermissionMessage() : 'Loading...')
+      + '</span></div>';
+    html += '</div>';
+
+    // Delete
+    html += '<div class="mgmt-section">';
+    html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-danger" data-mgmt-action="config-delete-workspace" data-mgmt-ws-id="' + esc(wsId) + '" data-mgmt-ws-name="' + esc(ws.name) + '">Delete Workspace</button>';
+    html += '</div>';
+
+    el.innerHTML = html;
+
+    // Load invites
+    if (inviteAccess !== 'forbidden') {
+      loadConfigWorkspaceInvites(wsId);
+    }
+  }
+
+  function renderConfigBoardInspector(el, boardId) {
+    var board = null;
+    for (var i = 0; i < cachedBoards.length; i++) {
+      if (cachedBoards[i].id === boardId) { board = cachedBoards[i]; break; }
+    }
+    if (!board) {
+      el.innerHTML = '<div class="mgmt-list-empty">Board not found</div>';
+      return;
+    }
+    var boardName = board.title || (board.filePath || board.file_path || board.id || '').split('/').pop().replace('.md', '') || 'Untitled';
+    var filePath = board.filePath || board.file_path || '';
+    var boardWsIds = getBoardWorkspaceIds(board);
+
+    var html = '';
+    html += '<div class="mgmt-section">';
+    html += '<div class="mgmt-section-title">Board</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-field-label">Title</label>';
+    html += '<span style="font-size:12px;color:var(--text-primary)">' + esc(boardName) + '</span>';
+    html += '</div>';
+    if (filePath) {
+      html += '<div class="mgmt-field-row">';
+      html += '<label class="mgmt-field-label">File</label>';
+      html += '<span style="font-size:11px;color:var(--text-secondary);font-family:monospace;word-break:break-all">' + esc(filePath) + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Workspace assignments
+    if (cachedWorkspaces.length > 0) {
+      html += '<div class="mgmt-section">';
+      html += '<div class="mgmt-section-title">Workspace Assignment</div>';
+      for (var wi = 0; wi < cachedWorkspaces.length; wi++) {
+        var ws = cachedWorkspaces[wi];
+        var checked = boardWsIds.indexOf(ws.id) >= 0;
+        html += '<div class="mgmt-field-row">';
+        html += '<label class="mgmt-check-label"><input type="checkbox"' + (checked ? ' checked' : '')
+          + ' data-mgmt-cfg-ws-toggle="' + esc(ws.id) + '" data-mgmt-cfg-ws-board="' + esc(boardId) + '"> ' + esc(ws.name) + '</label>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    // Sync overrides
+    html += '<div class="mgmt-section">';
+    html += '<div class="mgmt-section-title">Sync Overrides</div>';
+    html += '<div class="mgmt-sync-grid">';
+    html += '<label>XBEL Name</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-board-xbel-name-' + esc(boardId) + '" value="' + esc(board.xbelName || board.xbel_name || '') + '" placeholder="Optional">';
+    html += '<label>Bookmark Sync</label>';
+    html += renderTriStateSelectHtml('id="mgmt-cfg-board-bookmark-sync-' + esc(boardId) + '"', board.bookmarkSync != null ? board.bookmarkSync : board.bookmark_sync);
+    html += '<label>Calendar Sync</label>';
+    html += renderTriStateSelectHtml('id="mgmt-cfg-board-calendar-sync-' + esc(boardId) + '"', board.calendarSync != null ? board.calendarSync : board.calendar_sync);
+    html += '<label>Calendar Slug</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-board-calendar-slug-' + esc(boardId) + '" value="' + esc(board.calendarSlug || board.calendar_slug || '') + '" placeholder="Optional">';
+    html += '<label>Calendar Name</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-board-calendar-name-' + esc(boardId) + '" value="' + esc(board.calendarName || board.calendar_name || '') + '" placeholder="Optional">';
+    html += '</div>';
+    html += '<div class="mgmt-settings-actions">';
+    html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="config-save-board-sync" data-mgmt-board="' + esc(boardId) + '">Save</button>';
+    html += '</div>';
+    html += '</div>';
+
+    el.innerHTML = html;
+  }
+
+  async function loadConfigWorkspaceInvites(wsId) {
+    if (!me) return;
+    var el = queryFirst('[data-mgmt-cfg-ws-invites="' + wsId + '"]');
+    if (!el) return;
+    if (workspaceInviteAccess[wsId] === 'forbidden') {
+      el.innerHTML = '<span class="mgmt-list-empty">' + workspaceInvitePermissionMessage() + '</span>';
+      return;
+    }
+    try {
+      var invites = await api.get('/collab/workspaces/' + wsId + '/invites', { suppressErrorStatuses: [403] });
+      workspaceInviteAccess[wsId] = 'allowed';
+      if (!invites || !invites.length) {
+        el.innerHTML = '<span class="mgmt-list-empty">No active invites</span>';
+        return;
+      }
+      el.innerHTML = renderInviteListHtml(invites, 'config-revoke-ws-invite', 'data-mgmt-ws-id', wsId);
+    } catch (e) {
+      if (e && e.status === 403) {
+        workspaceInviteAccess[wsId] = 'forbidden';
+        renderConfigInspector();
+        return;
+      }
+      el.innerHTML = '<span class="mgmt-list-empty">Failed to load invites</span>';
+    }
+  }
+
+  function handleConfigAction(action, btn) {
+    var wsId = btn.getAttribute('data-mgmt-ws-id');
+    var boardId = btn.getAttribute('data-mgmt-board');
+    var configType = btn.getAttribute('data-mgmt-config-type');
+    var configId = btn.getAttribute('data-mgmt-config-id');
+
+    switch (action) {
+      case 'config-select':
+        configSelectedItem = { type: configType, id: configId };
+        renderConfigPanel();
+        break;
+      case 'config-add-workspace':
+        configAddWorkspace();
+        break;
+      case 'config-rename-workspace':
+        configRenameWorkspace(wsId);
+        break;
+      case 'config-set-default-ws':
+        configSetDefaultWorkspace(wsId);
+        break;
+      case 'config-delete-workspace':
+        configDeleteWorkspace(wsId, btn.getAttribute('data-mgmt-ws-name'));
+        break;
+      case 'config-save-ws-sync':
+        configSaveWorkspaceSync(wsId);
+        break;
+      case 'config-create-ws-invite':
+        configCreateWorkspaceInvite(wsId);
+        break;
+      case 'config-revoke-ws-invite':
+        configRevokeWorkspaceInvite(wsId, btn.getAttribute('data-mgmt-token'));
+        break;
+      case 'config-save-board-sync':
+        configSaveBoardSync(boardId);
+        break;
+      default:
+        return false;
+    }
+    return true;
+  }
+
+  async function configAddWorkspace() {
+    var name = 'New Workspace';
+    try {
+      var result = await api.post('/config/workspaces', { name: name });
+      await loadWorkspaces();
+      await loadMyBoards();
+      // Select the new workspace
+      if (cachedWorkspaces.length > 0) {
+        configSelectedItem = { type: 'workspace', id: cachedWorkspaces[cachedWorkspaces.length - 1].id };
+      }
+      renderConfigPanel();
+      notify('Workspace created');
+    } catch (e) {
+      notify('Failed to create workspace: ' + (e.message || e));
+    }
+  }
+
+  async function configRenameWorkspace(wsId) {
+    var input = queryFirst('#mgmt-cfg-ws-name-' + wsId);
+    if (!input) return;
+    var name = input.value.trim();
+    if (!name) return;
+    try {
+      await api.put('/config/workspaces/' + wsId, { name: name });
+      await loadWorkspaces();
+      renderConfigPanel();
+      notify('Workspace renamed');
+    } catch (e) {
+      notify('Failed to rename workspace: ' + (e.message || e));
+    }
+  }
+
+  async function configSetDefaultWorkspace(wsId) {
+    var checkbox = queryFirst('#mgmt-cfg-ws-default-' + wsId);
+    var newDefault = checkbox && checkbox.checked ? wsId : null;
+    try {
+      var result = await api.put('/config/default-workspace', { workspace_id: newDefault });
+      cachedDefaultWorkspaceId = result && result.default_workspace ? result.default_workspace : newDefault;
+      renderConfigPanel();
+    } catch (e) {
+      notify('Failed to set default workspace: ' + (e.message || e));
+    }
+  }
+
+  async function configDeleteWorkspace(wsId, wsName) {
+    confirm('Delete workspace "' + wsName + '"?\nBoards will be moved to the default workspace.', function () {
+      api.delete('/config/workspaces/' + wsId).then(function () {
+        if (configSelectedItem && configSelectedItem.type === 'workspace' && configSelectedItem.id === wsId) {
+          configSelectedItem = null;
+        }
+        loadWorkspaces().then(function () {
+          loadMyBoards().then(function () {
+            renderConfigPanel();
+          });
+        });
+        notify('Workspace deleted');
+      }).catch(function (e) {
+        notify('Failed to delete workspace: ' + (e.message || e));
+      });
+    });
+  }
+
+  async function configSaveWorkspaceSync(wsId) {
+    var payload = {
+      bookmarkSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-ws-bookmark-sync-' + wsId)),
+      calendarSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-ws-calendar-sync-' + wsId)),
+      calendarSlug: normalizeOptionalText((queryFirst('#mgmt-cfg-ws-calendar-slug-' + wsId) || {}).value),
+      calendarName: normalizeOptionalText((queryFirst('#mgmt-cfg-ws-calendar-name-' + wsId) || {}).value),
+    };
+    try {
+      await api.put('/config/workspaces/' + wsId + '/sync', payload);
+      await loadWorkspaces();
+      renderConfigPanel();
+      notify('Workspace sync defaults saved');
+    } catch (e) {
+      notify('Failed to save workspace sync defaults: ' + (e.message || e));
+    }
+  }
+
+  async function configCreateWorkspaceInvite(wsId) {
+    if (!me) return;
+    if (workspaceInviteAccess[wsId] === 'forbidden') {
+      notify(workspaceInvitePermissionMessage());
+      return;
+    }
+    var roleSelect = queryFirst('#mgmt-cfg-ws-invite-role-' + wsId);
+    var role = roleSelect ? roleSelect.value : 'editor';
+    try {
+      await api.post('/collab/workspaces/' + wsId + '/invites', { role: role });
+      workspaceInviteAccess[wsId] = 'allowed';
+      await loadConfigWorkspaceInvites(wsId);
+      notify('Workspace invite created');
+    } catch (e) {
+      if (e && e.status === 403) {
+        workspaceInviteAccess[wsId] = 'forbidden';
+        renderConfigInspector();
+        notify(workspaceInvitePermissionMessage());
+        return;
+      }
+      notify('Failed to create workspace invite: ' + (e.message || e));
+    }
+  }
+
+  async function configRevokeWorkspaceInvite(wsId, token) {
+    if (!me) return;
+    try {
+      await api.delete('/collab/workspaces/' + wsId + '/invites/' + token);
+      await loadConfigWorkspaceInvites(wsId);
+      notify('Workspace invite revoked');
+    } catch (e) {
+      if (e && e.status === 403) {
+        workspaceInviteAccess[wsId] = 'forbidden';
+        renderConfigInspector();
+        notify(workspaceInvitePermissionMessage());
+        return;
+      }
+      notify('Failed to revoke workspace invite: ' + (e.message || e));
+    }
+  }
+
+  async function configSaveBoardSync(boardId) {
+    var payload = {
+      xbelName: normalizeOptionalText((queryFirst('#mgmt-cfg-board-xbel-name-' + boardId) || {}).value),
+      bookmarkSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-board-bookmark-sync-' + boardId)),
+      calendarSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-board-calendar-sync-' + boardId)),
+      calendarSlug: normalizeOptionalText((queryFirst('#mgmt-cfg-board-calendar-slug-' + boardId) || {}).value),
+      calendarName: normalizeOptionalText((queryFirst('#mgmt-cfg-board-calendar-name-' + boardId) || {}).value),
+    };
+    try {
+      await api.put('/config/boards/' + boardId + '/sync', payload);
+      await loadMyBoards();
+      renderConfigPanel();
+      notify('Board sync overrides saved');
+    } catch (e) {
+      notify('Failed to save board sync overrides: ' + (e.message || e));
+    }
+  }
+
+  async function configDropBoardsOnWorkspace(paths, targetWsId) {
+    if (!paths.length) return;
+    var added = 0;
+    for (var i = 0; i < paths.length; i++) {
+      try {
+        await api.post('/boards', { file: paths[i] });
+        added++;
+      } catch (e) {
+        notify('Failed to add: ' + paths[i].split('/').pop() + ' — ' + (e.message || e));
+      }
+    }
+    if (added > 0) {
+      await loadMyBoards();
+      // If a workspace was targeted, assign the new boards to it
+      if (targetWsId) {
+        for (var j = 0; j < cachedBoards.length; j++) {
+          var b = cachedBoards[j];
+          var bPath = b.filePath || b.file_path || '';
+          for (var k = 0; k < paths.length; k++) {
+            if (bPath && bPath === paths[k]) {
+              var currentWsIds = getBoardWorkspaceIds(b);
+              if (currentWsIds.indexOf(targetWsId) < 0) {
+                currentWsIds.push(targetWsId);
+                try { await api.put('/config/boards/' + b.id + '/workspaces', { workspace_ids: currentWsIds }); } catch (e) { /* ignore */ }
+              }
+            }
+          }
+        }
+        await loadMyBoards();
+      }
+      renderConfigPanel();
+      notify(added + ' board' + (added > 1 ? 's' : '') + ' added');
+      if (callbacks && typeof callbacks.onBoardAdded === 'function') callbacks.onBoardAdded();
+    }
+  }
+
+  function handleConfigWorkspaceAssignment(checkbox) {
+    var boardId = checkbox.getAttribute('data-mgmt-cfg-ws-board');
+    var inspectorEl = queryFirst('#mgmt-config-inspector');
+    if (!inspectorEl) return;
+    var checkboxes = inspectorEl.querySelectorAll('input[data-mgmt-cfg-ws-toggle][data-mgmt-cfg-ws-board="' + boardId + '"]');
+    var selectedIds = [];
+    for (var i = 0; i < checkboxes.length; i++) {
+      if (checkboxes[i].checked) selectedIds.push(checkboxes[i].getAttribute('data-mgmt-cfg-ws-toggle'));
+    }
+    if (selectedIds.length === 0) {
+      checkbox.checked = true;
+      notify('Board must belong to at least one workspace');
+      return;
+    }
+    assignBoardWorkspaces(boardId, selectedIds).then(function () {
+      renderConfigTree();
+    });
   }
 
   // ── Public API ──
