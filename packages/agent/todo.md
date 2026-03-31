@@ -16,9 +16,9 @@
 - [x] ~~Overlay editor always available~~ (709cdae2) — setting controls default only, never blocks
 - [x] ~~Overlay editor activation from settings~~ (709cdae2) — double-click + Enter respect setting
 - [x] ~~#exclude diagonal hatching~~ (fd8ee2e9) — SVG hatch pattern at 20% opacity
-- [ ] show special characters is not doing anything! it should show spaces, tabs, newlines etc in the whitespaces!
+- [x] ~~show special characters~~ (77f416a2) — visible whitespace markers (·→¶) in card content
 
-- [ ] Make the files and boards configuration more integrated. Remember this config dialogue is shared between front and backend and must function within both views!
+- [x] ~~Integrated config dialog~~ (5fdd8c8a) — hierarchical workspace→board tree + inspector. Make the files and boards configuration more integrated. Remember this config dialogue is shared between front and backend and must function within both views!
   - on the left side there is a hierarchical display of the workspaces under the workspaces boards can be added. boards can be added to multiple workspaces.
   - when a markdown file is dragged into the config hierarchy it's added to the workspace. By default there is a "default" workspace. More workspaces can be added by pressing a "+ add workspace button" at the end of the hierarchy. the workspace order can be adjusted. the top workspace is the default workspace that is opened if nothing else is defined (restore last session is default). this hierarchy also corresponds to the hierarchy in the lexera frontend (however in the lexera frontend it also shows sub-elements such as rows, stacks, columns and cards), in the config view it only shows workspaces and boards.
   - on the right side is the config inspector. the item (workspace or board) selected on the left side can be configured.
@@ -33,9 +33,11 @@
       - calendar override values (change defaults from workspace)
       - other backend relevant settings (not frontend or user specific settings)
 
-- [ ] the visibility of the board is somehow limited to the size of the view. even if i scroll to the right everything after the width of the viewt is overlayed or somehow hidden!
+- [x] ~~board visibility clipping~~ — already fixed, content scrolls past viewport width
 
 - [ ] when the log view is folded it should show the same connected symbol as when unfolded, just in the one header line it shows. alignments should also stay in the right. number of logs should also be displayed (might be useful for performance issue debugging). if we have other important status informations it should go there (put that into the specs). for example the number of connected users in the current board. running processes. amount of backend calls currently avaiting a response!
+
+
 
 ## Disk / IO Audit — Do Next
 - [x] ~~**Log rotation + retention**~~ (7c614dcb) — 10MB size limit, 2 rotated files, startup rotation
@@ -74,3 +76,5 @@
 - [ ] Style regression checks — premature until tokens exist
 - [ ] Consistent hit areas — low user impact
 - [ ] Plugin architecture — only one plugin type exists, manifest system is over-engineering
+- [ ] a Stack can have a defined width of: 1..12 . it fillst up with columns horizontally and then stacks them below the previous ones.
+  - a column can have a defined width of 1/1, 1/2, 1/3, 1/4, 1/6, 1/12.
