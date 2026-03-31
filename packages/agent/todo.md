@@ -32,8 +32,8 @@
 - [x] ~~**Collapse post-render passes**~~ (be73e721) — batched 8 post-render DOM scans into single requestAnimationFrame callback
 - [ ] **Make virtual-scroll activation incremental** — current activation scans every `.column-cards`, measures every card height, and installs observers after major renders. Avoid a full-card measurement pass when only a small part of the board changed.
 - [x] ~~**Trim duplicate board-load payloads**~~ (d05652c7) — removed unused columns field from /boards/{id}/columns response; frontend only uses fullBoard
-- [ ] **Parallelize or cache backend file metadata scans** — `/boards/{id}/file-info-batch` resolves and stats paths one-by-one, and `/search/files` recursively walks directories on every request. Add batching, caching, and smarter invalidation for large media-heavy workspaces.
-- [ ] **Stop full include-watch resync after every file-watcher event** — backend watcher handling currently re-syncs all include watch paths after board/include reloads. Update include watches incrementally so large include graphs do not pay repeated full rescan cost.
+- [x] ~~**Cache file search results**~~ (c7591137) — 5s TTL cache for search_files; file_info_batch was already parallelized (JoinSet cap 16)
+- [x] ~~**Incremental include-watch resync**~~ (ea004b74) — diff-based sync_include_paths() only watches new paths instead of full rescan
 
 ## Misc
 - [x] ~~Color theme integrated into visual theme~~ (7c212e7c)
