@@ -23,10 +23,45 @@ var LexeraDragDropHandlers = (function () {
   var DRAG_THRESHOLD = 5;
   var dragLayoutLocks = null;
   var crossViewBridge = null;
+  var _dragRectCache = null; // Array of { el, rect } cached at drag start
 
   // --- Dependency accessors ---
   function getElColumnsContainer() { return _deps.getElColumnsContainer(); }
   function getElBoardList() { return _deps.getElBoardList(); }
+
+  // --- Geometry Rect Cache ---
+  // Caches bounding rects at drag start so mousemove hit-testing avoids
+  // repeated live DOM geometry queries (getBoundingClientRect).
+
+  function cacheDropTargetGeometry() {
+    _dragRectCache = [];
+    var containers = [getElColumnsContainer(), getElBoardList(), document.body];
+    for (var c = 0; c < containers.length; c++) {
+      if (!containers[c]) continue;
+      var targets = containers[c].querySelectorAll(
+        '.column, .column-cards, .board-row, .board-stack, .stack-drop-zone, ' +
+        '.card, .card:not(.dragging), ' +
+        '.tree-node, .board-item, .tree-children.tree-stack-drop-zone, ' +
+        '#btn-incoming, #btn-parked, #btn-archived, #btn-trash'
+      );
+      for (var i = 0; i < targets.length; i++) {
+        _dragRectCache.push({ el: targets[i], rect: targets[i].getBoundingClientRect() });
+      }
+    }
+  }
+
+  function clearDropTargetGeometryCache() {
+    _dragRectCache = null;
+  }
+
+  function getCachedRect(el) {
+    if (_dragRectCache) {
+      for (var i = 0; i < _dragRectCache.length; i++) {
+        if (_dragRectCache[i].el === el) return _dragRectCache[i].rect;
+      }
+    }
+    return el.getBoundingClientRect();
+  }
 
   // --- Board Layout Lock ---
 
@@ -81,7 +116,7 @@ var LexeraDragDropHandlers = (function () {
 
   function findNodeAtPoint(nodeList, mx, my) {
     for (var i = 0; i < nodeList.length; i++) {
-      var rect = nodeList[i].getBoundingClientRect();
+      var rect = getCachedRect(nodeList[i]);
       if (isPointInsideRect(mx, my, rect)) return nodeList[i];
     }
     return null;
@@ -223,7 +258,7 @@ var LexeraDragDropHandlers = (function () {
   function findCardInsertIndex(mouseY, cardsEl) {
     var cards = cardsEl.querySelectorAll('.card:not(.dragging)');
     for (var i = 0; i < cards.length; i++) {
-      var rect = cards[i].getBoundingClientRect();
+      var rect = getCachedRect(cards[i]);
       if (mouseY < rect.top + rect.height / 2) {
         return i;
       }
@@ -240,12 +275,12 @@ var LexeraDragDropHandlers = (function () {
       document.body.appendChild(indicator);
     }
     var cards = cardsEl.querySelectorAll('.card:not(.dragging)');
-    var containerRect = cardsEl.getBoundingClientRect();
+    var containerRect = getCachedRect(cardsEl);
     var y;
     if (insertIdx < cards.length && cards[insertIdx]) {
-      y = cards[insertIdx].getBoundingClientRect().top;
+      y = getCachedRect(cards[insertIdx]).top;
     } else if (cards.length > 0) {
-      y = cards[cards.length - 1].getBoundingClientRect().bottom;
+      y = getCachedRect(cards[cards.length - 1]).bottom;
     } else {
       y = containerRect.top + 8;
     }
@@ -278,16 +313,16 @@ var LexeraDragDropHandlers = (function () {
     var parkedBtn = document.getElementById('btn-parked');
     var archiveBtn = document.getElementById('btn-archived');
     var trashBtn = document.getElementById('btn-trash');
-    if (incomingBtn && isPointInsideRect(mx, my, incomingBtn.getBoundingClientRect())) {
+    if (incomingBtn && isPointInsideRect(mx, my, getCachedRect(incomingBtn))) {
       return { kind: 'header-incoming', sidebarNode: null, container: null };
     }
-    if (parkedBtn && isPointInsideRect(mx, my, parkedBtn.getBoundingClientRect())) {
+    if (parkedBtn && isPointInsideRect(mx, my, getCachedRect(parkedBtn))) {
       return { kind: 'header-park', sidebarNode: null, container: null };
     }
-    if (archiveBtn && isPointInsideRect(mx, my, archiveBtn.getBoundingClientRect())) {
+    if (archiveBtn && isPointInsideRect(mx, my, getCachedRect(archiveBtn))) {
       return { kind: 'header-archive', sidebarNode: null, container: null };
     }
-    if (trashBtn && isPointInsideRect(mx, my, trashBtn.getBoundingClientRect())) {
+    if (trashBtn && isPointInsideRect(mx, my, getCachedRect(trashBtn))) {
       return { kind: 'header-trash', sidebarNode: null, container: null };
     }
 
@@ -459,6 +494,7 @@ var LexeraDragDropHandlers = (function () {
   function startCardDrag(e) {
     var el = cardDrag.el;
     lockBoardLayoutForDrag();
+    cacheDropTargetGeometry();
     startCrossViewBridge('card');
     el.classList.add('dragging');
     _deps.insertDropZoneIndicators('card');
@@ -592,6 +628,7 @@ var LexeraDragDropHandlers = (function () {
     }
     stopCrossViewBridge();
     unlockBoardLayoutForDrag();
+    clearDropTargetGeometryCache();
     _deps.vsRestoreAfterDrag();
   }
 
@@ -1063,7 +1100,7 @@ var LexeraDragDropHandlers = (function () {
 
   function resolveDropTarget(nodeList, mx, my, vertical) {
     for (var i = 0; i < nodeList.length; i++) {
-      var rect = nodeList[i].getBoundingClientRect();
+      var rect = getCachedRect(nodeList[i]);
       if (isPointInsideRect(mx, my, rect)) {
         var before = vertical ? (my < rect.top + rect.height / 2) : (mx < rect.left + rect.width / 2);
         return { node: nodeList[i], before: before };
@@ -1072,7 +1109,7 @@ var LexeraDragDropHandlers = (function () {
 
     var lastInRange = null;
     for (var i = 0; i < nodeList.length; i++) {
-      var rect = nodeList[i].getBoundingClientRect();
+      var rect = getCachedRect(nodeList[i]);
       var inCross = vertical ? (mx >= rect.left && mx <= rect.right) : (my >= rect.top && my <= rect.bottom);
       if (!inCross) continue;
       if (vertical ? (my <= rect.top) : (mx <= rect.left)) {
@@ -1088,7 +1125,7 @@ var LexeraDragDropHandlers = (function () {
 
   function resolveDropTargetStrict(nodeList, mx, my, vertical) {
     for (var i = 0; i < nodeList.length; i++) {
-      var rect = nodeList[i].getBoundingClientRect();
+      var rect = getCachedRect(nodeList[i]);
       if (isPointInsideRect(mx, my, rect)) {
         var before = vertical ? (my < rect.top + rect.height / 2) : (mx < rect.left + rect.width / 2);
         return { node: nodeList[i], before: before };
@@ -1125,7 +1162,7 @@ var LexeraDragDropHandlers = (function () {
     }
     var column = findDraggableColumnAt(mx, my);
     if (column) {
-      var colRect = column.getBoundingClientRect();
+      var colRect = getCachedRect(column);
       var stackEl = column.closest('.board-stack');
       if (_deps.isHorizontalCanvasStackElement(stackEl)) {
         if (mx < colRect.left + colRect.width / 2) {
@@ -1171,10 +1208,10 @@ var LexeraDragDropHandlers = (function () {
     var parkedBtn = document.getElementById('btn-parked');
     var archiveBtn = document.getElementById('btn-archived');
     var trashBtn = document.getElementById('btn-trash');
-    if (incomingBtn && isPointInsideRect(mx, my, incomingBtn.getBoundingClientRect())) return '#hidden-internal-incoming';
-    if (parkedBtn && isPointInsideRect(mx, my, parkedBtn.getBoundingClientRect())) return '#hidden-internal-parked';
-    if (archiveBtn && isPointInsideRect(mx, my, archiveBtn.getBoundingClientRect())) return '#hidden-internal-archived';
-    if (trashBtn && isPointInsideRect(mx, my, trashBtn.getBoundingClientRect())) return '#hidden-internal-deleted';
+    if (incomingBtn && isPointInsideRect(mx, my, getCachedRect(incomingBtn))) return '#hidden-internal-incoming';
+    if (parkedBtn && isPointInsideRect(mx, my, getCachedRect(parkedBtn))) return '#hidden-internal-parked';
+    if (archiveBtn && isPointInsideRect(mx, my, getCachedRect(archiveBtn))) return '#hidden-internal-archived';
+    if (trashBtn && isPointInsideRect(mx, my, getCachedRect(trashBtn))) return '#hidden-internal-deleted';
     return null;
   }
 
@@ -1243,7 +1280,7 @@ var LexeraDragDropHandlers = (function () {
     var activeBoardId = _deps.getActiveBoardId();
     var boardRowNode = findNodeAtPoint(getElColumnsContainer().querySelectorAll('.board-row'), mx, my);
     if (boardRowNode) {
-      var boardRect = boardRowNode.getBoundingClientRect();
+      var boardRect = getCachedRect(boardRowNode);
       var boardEdge = Math.min(40, boardRect.height * 0.25);
       if (my > boardRect.top + boardEdge && my < boardRect.bottom - boardEdge) {
         var boardRowIdx = parseInt(boardRowNode.getAttribute('data-row-index'), 10);
@@ -1260,7 +1297,7 @@ var LexeraDragDropHandlers = (function () {
 
     var treeRowNode = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my);
     if (treeRowNode) {
-      var treeRect = treeRowNode.getBoundingClientRect();
+      var treeRect = getCachedRect(treeRowNode);
       var treeEdge = Math.min(16, treeRect.height * 0.25);
       if (my > treeRect.top + treeEdge && my < treeRect.bottom - treeEdge) {
         var treeBoardId = treeRowNode.getAttribute('data-board-id') || activeBoardId;
@@ -1704,7 +1741,7 @@ var LexeraDragDropHandlers = (function () {
     }
     var column = findDraggableColumnAt(mx, my);
     if (column) {
-      var colRect = column.getBoundingClientRect();
+      var colRect = getCachedRect(column);
       var stackEl = column.closest('.board-stack');
       var targetRowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
       var targetStackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
@@ -1827,6 +1864,7 @@ var LexeraDragDropHandlers = (function () {
     clearHeaderDropTargetHighlights();
     stopCrossViewBridge();
     unlockBoardLayoutForDrag();
+    clearDropTargetGeometryCache();
     if (ptrDrag) {
       if (ptrDrag.el) {
         ptrDrag.el.classList.remove('dragging');
@@ -1921,6 +1959,10 @@ var LexeraDragDropHandlers = (function () {
     // Board layout lock
     lockBoardLayoutForDrag: lockBoardLayoutForDrag,
     unlockBoardLayoutForDrag: unlockBoardLayoutForDrag,
+
+    // Geometry rect cache
+    cacheDropTargetGeometry: cacheDropTargetGeometry,
+    clearDropTargetGeometryCache: clearDropTargetGeometryCache,
 
     // Card drop indicators
     clearCardDropIndicators: clearCardDropIndicators,
