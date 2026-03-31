@@ -691,6 +691,7 @@
     bottomDockEl: null,
     panelDropOverlayEl: null,
     lastStructureSignature: '',
+    lastSideDockSignatures: { left: '', right: '', bottom: '' },
     foldedPanes: {},
     backendConnected: false,
     panelElements: null,
@@ -2883,23 +2884,175 @@
     else renderSideDockTabset(node, parentEl, dockId);
   }
 
-  function renderSideDock(dockId, hostEl) {
-    if (!hostEl) return;
-    // Remove tree content but preserve fold strip
-    var children = hostEl.children;
-    for (var i = children.length - 1; i >= 0; i--) {
-      if (!children[i].classList.contains('ws-fold-strip')) {
-        hostEl.removeChild(children[i]);
+  function buildSideDockStructureSignature(dockId) {
+    var tree = state.sideDocks[dockId];
+    if (!tree || countTreeTabs(tree) === 0) return '';
+    var sig = buildStructureSignature(tree);
+    // Include dock size (affects snapshot logic) and fold state
+    sig += '|ds:' + (state.dockSizes[dockId] || 0);
+    var folds = [];
+    visitTree(tree, function (node) {
+      if (node.type !== 'tabs') return;
+      if (state.foldedPanes[node.id]) folds.push(node.id);
+    });
+    if (folds.length) sig += '|fold:' + folds.join(',');
+    // Include panel visibility (adding/removing panels requires rebuild)
+    var visBits = [];
+    visitTree(tree, function (node) {
+      if (node.type !== 'tabs') return;
+      for (var t = 0; t < node.tabs.length; t++) {
+        if (isPanelTab(node.tabs[t])) {
+          var pid = resolvePanelTarget(node.tabs[t].panelId);
+          visBits.push(pid + ':' + (state.panelVisibility[pid] ? '1' : '0'));
+        }
+      }
+    });
+    sig += '|vis:' + visBits.join(',');
+    return sig;
+  }
+
+  function syncSideDockTabsetDom(node, dockId) {
+    var hostEl = dockId === 'left' ? state.leftDockEl :
+                 dockId === 'right' ? state.rightDockEl : state.bottomDockEl;
+    if (!hostEl) return false;
+    var tabsetEl = hostEl.querySelector('.workspace-shell-tabset[data-node-id="' + node.id + '"]');
+    if (!tabsetEl) return false;
+
+    // Determine active tab for this tabset
+    var activeTab = null;
+    for (var i = 0; i < node.tabs.length; i++) {
+      if (node.tabs[i].id === node.activeTabId) { activeTab = node.tabs[i]; break; }
+    }
+    if (!activeTab && node.tabs.length > 0) activeTab = node.tabs[0];
+    var activePanelId = activeTab && isPanelTab(activeTab) ? resolvePanelTarget(activeTab.panelId) : '';
+
+    // Update data-panel-id
+    if (activePanelId) tabsetEl.setAttribute('data-panel-id', activePanelId);
+    else tabsetEl.removeAttribute('data-panel-id');
+
+    // Update is-active class
+    var containsActive = false;
+    for (var a = 0; a < node.tabs.length; a++) {
+      if (isPanelTab(node.tabs[a]) && resolvePanelTarget(node.tabs[a].panelId) === state.activePanelId) {
+        containsActive = true; break;
       }
     }
+    tabsetEl.classList.toggle('is-active', containsActive);
+
+    // Update header tab active states
+    var headerEl = tabsetEl.querySelector('.ws-view-header');
+    if (!headerEl) return false;
+    var tabsEl = headerEl.querySelector('.ws-view-tabs');
+    if (tabsEl) {
+      var tabBtns = tabsEl.querySelectorAll('.ws-view-tab');
+      if (tabBtns.length !== node.tabs.length) return false;
+      for (var h = 0; h < node.tabs.length; h++) {
+        var tab = node.tabs[h];
+        var tabPanelId = isPanelTab(tab) ? resolvePanelTarget(tab.panelId) : '';
+        var btnId = tabPanelId || tab.id;
+        // Find matching button
+        var btn = tabsEl.querySelector('.ws-view-tab[data-ws-panel-id="' + btnId + '"]');
+        if (!btn) return false;
+        btn.classList.toggle('is-active', tabPanelId === state.activePanelId);
+      }
+    }
+
+    // Update header drag handle and close button
+    var activeItemId = activePanelId || (activeTab ? activeTab.id : '');
+    var dragEl = headerEl.querySelector('.ws-view-drag');
+    if (dragEl) dragEl.setAttribute('data-ws-panel-drag-handle', activeItemId);
+    var closeEl = headerEl.querySelector('.ws-view-close');
+    if (closeEl) closeEl.setAttribute('data-ws-panel-id', activeItemId);
+
+    // Update panel content display states
+    var contentEl = tabsetEl.querySelector('.workspace-shell-panel-content');
+    if (!contentEl) return false;
+    var panelChildren = contentEl.querySelectorAll('[data-shell-panel-instance]');
+    // Count expected visible panels
+    var expectedCount = 0;
+    for (var ci = 0; ci < node.tabs.length; ci++) {
+      var pt = node.tabs[ci];
+      if (!isPanelTab(pt)) continue;
+      var pid = resolvePanelTarget(pt.panelId);
+      if (!pid || !state.panelVisibility[pid] || isPanelIntegrated(pid)) continue;
+      expectedCount++;
+    }
+    if (panelChildren.length !== expectedCount) return false;
+
+    for (var ci2 = 0; ci2 < node.tabs.length; ci2++) {
+      var panelTab = node.tabs[ci2];
+      if (!isPanelTab(panelTab)) continue;
+      var panelId = resolvePanelTarget(panelTab.panelId);
+      if (!panelId || !state.panelVisibility[panelId] || isPanelIntegrated(panelId)) continue;
+      var panelEl = contentEl.querySelector('[data-shell-panel-instance="' + panelId + '"]');
+      if (!panelEl) return false;
+      if (panelTab.id === node.activeTabId) {
+        panelEl.style.display = '';
+      } else {
+        panelEl.style.display = 'none';
+      }
+    }
+
+    // Update logs status bar in header
+    if (activePanelId && getPanelKind(activePanelId) === 'logs') {
+      moveLogsStatusToHeader(activePanelId, headerEl);
+    }
+
+    return true;
+  }
+
+  function syncSideDockDom(dockId, hostEl) {
+    if (!hostEl) return false;
+    var tree = state.sideDocks[dockId];
+    if (!tree || countTreeTabs(tree) === 0) return false;
+    var success = true;
+    var expectedLeafCount = 0;
+    visitTree(tree, function (node) {
+      if (node.type !== 'tabs') return;
+      expectedLeafCount++;
+      if (!syncSideDockTabsetDom(node, dockId)) success = false;
+    });
+    if (!success) return false;
+    var renderedLeafCount = hostEl.querySelectorAll('.workspace-shell-tabset').length;
+    return renderedLeafCount === expectedLeafCount;
+  }
+
+  function renderSideDock(dockId, hostEl) {
+    if (!hostEl) return;
     var tree = state.sideDocks[dockId];
     hostEl.setAttribute('data-dock', dockId);
     if (!tree || countTreeTabs(tree) === 0) {
       hostEl.classList.add('is-hidden');
       hostEl.classList.remove('is-visible', 'is-folded', 'is-fold-hover');
+      // Remove tree content but preserve fold strip
+      var children = hostEl.children;
+      for (var i = children.length - 1; i >= 0; i--) {
+        if (!children[i].classList.contains('ws-fold-strip')) {
+          hostEl.removeChild(children[i]);
+        }
+      }
+      state.lastSideDockSignatures[dockId] = '';
       return;
     }
+    // Try patching in place when structure hasn't changed
+    var sig = buildSideDockStructureSignature(dockId);
+    var hasContent = false;
+    for (var c = 0; c < hostEl.children.length; c++) {
+      if (!hostEl.children[c].classList.contains('ws-fold-strip')) { hasContent = true; break; }
+    }
+    var canPatch = sig === state.lastSideDockSignatures[dockId] && hasContent;
+    if (canPatch && syncSideDockDom(dockId, hostEl)) {
+      return;
+    }
+    // Full rebuild — remove tree content but preserve fold strip
+    var ch = hostEl.children;
+    for (var j = ch.length - 1; j >= 0; j--) {
+      if (!ch[j].classList.contains('ws-fold-strip')) {
+        hostEl.removeChild(ch[j]);
+      }
+    }
     renderSideDockNode(tree, hostEl, dockId);
+    state.lastSideDockSignatures[dockId] = sig;
   }
 
   function renderPanelDocks() {
