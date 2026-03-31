@@ -9,7 +9,7 @@
 - [ ] Mobile web clipper — finish lexera-capture-ios
 
 ## Code Quality
-- [ ] **App.js modularization** — 13,108 lines. Extract into state/, services/, views/, shell/ layers. No module should mix DOM rendering, localStorage, and API calls. Includes: reduce to orchestration, split frontend layers, settings service behind typed API.
+- [ ] **App.js modularization** — 12,141 lines (down from 25K+). Remaining: Main View (~6600 lines core rendering), Card Collapse (~436), Media Category (~75), Util (~106). Main View is the primary extraction target.
 
 ## Misc
 - [x] ~~Color theme integrated into visual theme~~ (7c212e7c)
