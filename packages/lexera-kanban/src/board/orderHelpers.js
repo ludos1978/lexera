@@ -287,6 +287,7 @@ var LexeraOrderHelpers = (function () {
   }
 
   function saveOrder(items, storageKey, idFn) {
+    if (!Array.isArray(items)) return;
     localStorage.setItem(storageKey, JSON.stringify(items.map(idFn)));
   }
 
@@ -468,7 +469,12 @@ var LexeraOrderHelpers = (function () {
   }
 
   function reorderBoards(sourceRef, targetRef, insertBefore) {
-    var orderedBoards = getOrderedItems(normalizeReorderBoardList(_dep('boards')), 'lexera-board-order', function (b) { return b.id; });
+    var boardList = _dep('boards');
+    if (!Array.isArray(boardList)) {
+      _callDep('logFrontendIssue', 'warn', 'boards.reorder', 'boards dep is not an array', { type: typeof boardList });
+      return;
+    }
+    var orderedBoards = getOrderedItems(normalizeReorderBoardList(boardList), 'lexera-board-order', function (b) { return b.id; });
     var sourceId = resolveBoardReorderId(sourceRef, orderedBoards);
     var targetId = resolveBoardReorderId(targetRef, orderedBoards);
     if (!sourceId || !targetId || sourceId === targetId) return;
