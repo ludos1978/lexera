@@ -1,0 +1,12 @@
+{
+  "valid": true,
+  "format": "legacy",
+  "columnCount": 2,
+  "columns": [
+    { "title": "Regular Column", "cardCount": 1 },
+    { "title": "!!!include(slides.md)!!!", "cardCount": 0 }
+  ],
+  "cards": [
+    { "column": 0, "index": 0, "content": "Normal task", "checked": false }
+  ]
+}

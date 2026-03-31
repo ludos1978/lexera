@@ -1,0 +1,18 @@
+{
+  "valid": true,
+  "format": "legacy",
+  "columnCount": 2,
+  "columns": [
+    { "title": "Backlog", "cardCount": 1 },
+    { "title": "Active", "cardCount": 1 }
+  ],
+  "cards": [
+    { "column": 0, "index": 0, "content": "Research topic", "checked": false },
+    { "column": 1, "index": 0, "content": "Write draft", "checked": false }
+  ],
+  "boardSettings": {
+    "columnWidth": "350px",
+    "fontSize": "14px",
+    "layoutRows": 2
+  }
+}

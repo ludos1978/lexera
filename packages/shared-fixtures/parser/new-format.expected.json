@@ -1,0 +1,40 @@
+{
+  "valid": true,
+  "format": "new",
+  "columnCount": 3,
+  "columns": [
+    { "title": "Todo", "cardCount": 2 },
+    { "title": "In Progress", "cardCount": 1 },
+    { "title": "Backlog", "cardCount": 1 }
+  ],
+  "cards": [
+    { "column": 0, "index": 0, "content": "Build UI", "checked": false },
+    { "column": 0, "index": 1, "content": "Design mockup", "checked": true },
+    { "column": 1, "index": 0, "content": "Implement parser", "checked": false },
+    { "column": 2, "index": 0, "content": "Setup DB", "checked": false }
+  ],
+  "rowCount": 1,
+  "rows": [
+    {
+      "title": "Work",
+      "stackCount": 2,
+      "stacks": [
+        {
+          "title": "Frontend",
+          "columnCount": 2,
+          "columns": [
+            { "title": "Todo", "cardCount": 2 },
+            { "title": "In Progress", "cardCount": 1 }
+          ]
+        },
+        {
+          "title": "Backend",
+          "columnCount": 1,
+          "columns": [
+            { "title": "Backlog", "cardCount": 1 }
+          ]
+        }
+      ]
+    }
+  ]
+}

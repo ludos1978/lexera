@@ -1,0 +1,29 @@
+{
+  "valid": true,
+  "format": "new",
+  "columnCount": 1,
+  "columns": [
+    { "title": "Tasks", "cardCount": 3 }
+  ],
+  "cards": [
+    { "column": 0, "index": 0, "content": "Fix login #bug #urgent", "checked": false },
+    { "column": 0, "index": 1, "content": "Add search #feature", "checked": false, "params": { "span": "2" } },
+    { "column": 0, "index": 2, "content": "Update docs #docs", "checked": true }
+  ],
+  "rowCount": 1,
+  "rows": [
+    {
+      "title": "Sprint",
+      "stackCount": 1,
+      "stacks": [
+        {
+          "title": "Dev",
+          "columnCount": 1,
+          "columns": [
+            { "title": "Tasks", "cardCount": 3 }
+          ]
+        }
+      ]
+    }
+  ]
+}

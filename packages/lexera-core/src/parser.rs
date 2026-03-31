@@ -1127,6 +1127,7 @@ fn meta_value_for_key(meta: &GenerationMeta, key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::{Deserialize, Serialize};
 
     const SAMPLE_BOARD: &str = "\
 ---
@@ -1747,5 +1748,253 @@ kanban-plugin: board
         assert!(md_out.contains("boardLayout: kanban"));
         assert!(md_out.contains("{h:300, w:400, x:100, y:200}"));
         assert!(md_out.contains("{dir:vertical,"));
+    }
+
+    // ── Shared fixture tests ─────────────────────────────────────────
+    //
+    // Each fixture in `packages/shared-fixtures/parser/` consists of a `.md`
+    // file and a `.expected.json` file.  The Rust parser is authoritative:
+    // we parse the `.md`, convert the result into the fixture JSON schema,
+    // and assert equality with the expected JSON.
+
+    /// Fixture-format column summary.
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    struct FixtureColumn {
+        title: String,
+        card_count: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        has_include: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        include_path: Option<String>,
+    }
+
+    /// Fixture-format card.
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct FixtureCard {
+        column: usize,
+        index: usize,
+        content: String,
+        checked: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        params: Option<HashMap<String, String>>,
+    }
+
+    /// Fixture-format stack (for new-format boards).
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    struct FixtureStack {
+        title: String,
+        column_count: usize,
+        columns: Vec<FixtureColumn>,
+    }
+
+    /// Fixture-format row (for new-format boards).
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    struct FixtureRow {
+        title: String,
+        stack_count: usize,
+        stacks: Vec<FixtureStack>,
+    }
+
+    /// Top-level fixture structure.
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    struct FixtureBoard {
+        valid: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
+        column_count: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        columns: Option<Vec<FixtureColumn>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cards: Option<Vec<FixtureCard>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        board_settings: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        row_count: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        rows: Option<Vec<FixtureRow>>,
+    }
+
+    /// Convert a parsed `KanbanBoard` into the shared fixture schema.
+    fn board_to_fixture(board: &KanbanBoard) -> FixtureBoard {
+        let format_str = match board.format_hint {
+            BoardFormat::Legacy => "legacy",
+            BoardFormat::New => "new",
+        };
+
+        let all_cols: Vec<&KanbanColumn> = board.all_columns();
+
+        // Build flat column summaries
+        let fixture_columns: Vec<FixtureColumn> = all_cols
+            .iter()
+            .map(|col| {
+                let has_include = col.include_source.is_some();
+                FixtureColumn {
+                    title: col.title.clone(),
+                    card_count: col.cards.len(),
+                    has_include: if has_include { Some(true) } else { None },
+                    include_path: col
+                        .include_source
+                        .as_ref()
+                        .map(|inc| inc.raw_path.clone()),
+                }
+            })
+            .collect();
+
+        // Build flat card list
+        let mut fixture_cards: Vec<FixtureCard> = Vec::new();
+        for (col_idx, col) in all_cols.iter().enumerate() {
+            for (card_idx, card) in col.cards.iter().enumerate() {
+                fixture_cards.push(FixtureCard {
+                    column: col_idx,
+                    index: card_idx,
+                    content: card.content.clone(),
+                    checked: card.checked,
+                    params: if card.params.is_empty() {
+                        None
+                    } else {
+                        Some(card.params.clone())
+                    },
+                });
+            }
+        }
+
+        // Build row/stack hierarchy for new-format boards
+        let (row_count, fixture_rows) = if board.format_hint == BoardFormat::New
+            && board.has_explicit_hierarchy()
+        {
+            let rows: Vec<FixtureRow> = board
+                .rows
+                .iter()
+                .map(|row| FixtureRow {
+                    title: row.title.clone(),
+                    stack_count: row.stacks.len(),
+                    stacks: row
+                        .stacks
+                        .iter()
+                        .map(|stack| FixtureStack {
+                            title: stack.title.clone(),
+                            column_count: stack.columns.len(),
+                            columns: stack
+                                .columns
+                                .iter()
+                                .map(|col| FixtureColumn {
+                                    title: col.title.clone(),
+                                    card_count: col.cards.len(),
+                                    has_include: None,
+                                    include_path: None,
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                })
+                .collect();
+            (Some(rows.len()), Some(rows))
+        } else {
+            (None, None)
+        };
+
+        // Board settings (only include if any field is set)
+        let board_settings = board.board_settings.as_ref().and_then(|bs| {
+            let val = serde_json::to_value(bs).ok()?;
+            if val == serde_json::json!({}) {
+                None
+            } else {
+                Some(val)
+            }
+        });
+
+        FixtureBoard {
+            valid: board.valid,
+            format: if board.valid { Some(format_str.to_string()) } else { None },
+            column_count: all_cols.len(),
+            columns: if fixture_columns.is_empty() {
+                None
+            } else {
+                Some(fixture_columns)
+            },
+            cards: if fixture_cards.is_empty() {
+                None
+            } else {
+                Some(fixture_cards)
+            },
+            board_settings,
+            row_count,
+            rows: fixture_rows,
+        }
+    }
+
+    /// Find the shared-fixtures/parser directory relative to the workspace.
+    fn fixtures_dir() -> std::path::PathBuf {
+        // The test is compiled from packages/lexera-core; Cargo sets
+        // CARGO_MANIFEST_DIR to that crate directory.
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest.parent().unwrap().join("shared-fixtures").join("parser")
+    }
+
+    #[test]
+    fn test_shared_fixtures() {
+        let dir = fixtures_dir();
+        assert!(dir.exists(), "Fixtures directory not found: {:?}", dir);
+
+        let mut md_files: Vec<_> = std::fs::read_dir(&dir)
+            .expect("Cannot read fixtures directory")
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        md_files.sort();
+        assert!(!md_files.is_empty(), "No fixture .md files found");
+
+        let mut failures: Vec<String> = Vec::new();
+
+        for md_path in &md_files {
+            let stem = md_path.file_stem().unwrap().to_str().unwrap();
+            let expected_path = dir.join(format!("{}.expected.json", stem));
+            assert!(
+                expected_path.exists(),
+                "Missing expected JSON for fixture: {}",
+                stem
+            );
+
+            let md_content = std::fs::read_to_string(md_path)
+                .unwrap_or_else(|e| panic!("Cannot read {}: {}", md_path.display(), e));
+            let expected_json = std::fs::read_to_string(&expected_path)
+                .unwrap_or_else(|e| panic!("Cannot read {}: {}", expected_path.display(), e));
+
+            let board = parse_markdown(&md_content);
+            let actual = board_to_fixture(&board);
+            let expected: FixtureBoard = serde_json::from_str(&expected_json)
+                .unwrap_or_else(|e| panic!("Invalid JSON in {}: {}", expected_path.display(), e));
+
+            if actual != expected {
+                let actual_json =
+                    serde_json::to_string_pretty(&actual).unwrap();
+                failures.push(format!(
+                    "FIXTURE MISMATCH: {}\n  expected: {}\n  actual:   {}",
+                    stem,
+                    expected_json.trim(),
+                    actual_json
+                ));
+            }
+        }
+
+        if !failures.is_empty() {
+            panic!(
+                "{} fixture(s) failed:\n\n{}",
+                failures.len(),
+                failures.join("\n\n")
+            );
+        }
     }
 }

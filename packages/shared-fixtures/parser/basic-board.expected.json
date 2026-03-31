@@ -1,0 +1,14 @@
+{
+  "valid": true,
+  "format": "legacy",
+  "columnCount": 2,
+  "columns": [
+    { "title": "Todo", "cardCount": 2 },
+    { "title": "Done", "cardCount": 1 }
+  ],
+  "cards": [
+    { "column": 0, "index": 0, "content": "Buy milk", "checked": false },
+    { "column": 0, "index": 1, "content": "Write tests", "checked": true },
+    { "column": 1, "index": 0, "content": "Ship feature", "checked": true }
+  ]
+}
