@@ -8,9 +8,23 @@ use crate::sync_ws::BoardSyncHub;
 use lexera_core::storage::local::LocalStorage;
 use lexera_core::watcher::file_watcher::FileWatcher;
 use lexera_core::watcher::types::BoardChangeEvent;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::broadcast;
+
+/// Time-based cache entry for file search results.
+#[derive(Clone)]
+pub struct FileSearchCacheEntry {
+    pub results: Vec<serde_json::Value>,
+    pub created_at: std::time::Instant,
+}
+
+/// Cache key for file search: (query, workspace_id, category).
+pub type FileSearchCacheKey = (String, Option<String>, Option<String>);
+
+/// TTL for file search cache entries.
+pub const FILE_SEARCH_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Resolved incoming config with board ID instead of file path.
 #[derive(Clone, Debug, serde::Serialize)]
@@ -96,4 +110,6 @@ pub struct AppState {
     pub collab_dir: PathBuf,
     /// Global shutdown signal — send `true` to cancel all background tasks.
     pub shutdown_tx: tokio::sync::watch::Sender<bool>,
+    /// Time-based cache for /search/files to avoid repeated directory walks during board load.
+    pub file_search_cache: Arc<std::sync::Mutex<HashMap<FileSearchCacheKey, FileSearchCacheEntry>>>,
 }

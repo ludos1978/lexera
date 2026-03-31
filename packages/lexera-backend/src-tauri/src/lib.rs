@@ -935,6 +935,7 @@ pub fn run() {
                 clipboard_history: None,
                 collab_dir,
                 shutdown_tx,
+                file_search_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             };
 
             app.manage(app_state.clone());

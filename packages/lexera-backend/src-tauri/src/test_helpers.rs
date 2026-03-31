@@ -38,6 +38,7 @@ pub fn test_state(tmp: &std::path::Path) -> AppState {
         clipboard_history: None,
         collab_dir: tmp.join("collab"),
         shutdown_tx,
+        file_search_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     }
 }
 

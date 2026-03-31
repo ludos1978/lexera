@@ -457,6 +457,7 @@ pub async fn find_file(
 
 /// POST /search/files -- search for files across all boards (optionally filtered by workspace).
 /// Returns results with board context, media category, and relative paths suitable for embedding.
+/// Results are cached for 5 seconds to avoid repeated directory walks during rapid board loads.
 pub async fn search_files(
     State(state): State<AppState>,
     Json(body): Json<SearchFilesBody>,
@@ -464,6 +465,24 @@ pub async fn search_files(
     let query = body.query.trim().to_string();
     if query.is_empty() {
         return Err(err_bad_request("Search query must not be empty"));
+    }
+
+    // Check the time-based cache for a recent identical request.
+    let cache_key: crate::state::FileSearchCacheKey =
+        (query.clone(), body.workspace_id.clone(), body.category.clone());
+    {
+        let cache = state
+            .file_search_cache
+            .lock()
+            .map_err(|_| err_internal("Failed to lock search cache"))?;
+        if let Some(entry) = cache.get(&cache_key) {
+            if entry.created_at.elapsed() < crate::state::FILE_SEARCH_CACHE_TTL {
+                return Ok(Json(serde_json::json!({
+                    "query": body.query,
+                    "results": entry.results,
+                })));
+            }
+        }
     }
 
     // Collect board IDs and their paths, filtered by workspace if specified.
@@ -553,6 +572,22 @@ pub async fn search_files(
             if results.len() >= max_total {
                 break;
             }
+        }
+    }
+
+    // Store results in the cache and evict stale entries.
+    {
+        if let Ok(mut cache) = state.file_search_cache.lock() {
+            cache.retain(|_, entry| {
+                entry.created_at.elapsed() < crate::state::FILE_SEARCH_CACHE_TTL
+            });
+            cache.insert(
+                cache_key,
+                crate::state::FileSearchCacheEntry {
+                    results: results.clone(),
+                    created_at: std::time::Instant::now(),
+                },
+            );
         }
     }
 
