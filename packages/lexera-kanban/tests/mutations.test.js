@@ -47,6 +47,10 @@ function loadMutationHarness() {
   const dndSource = readFileSync(resolve(srcDir, 'dragdrop', 'dndMutations.js'), 'utf-8');
   const dndLines = dndSource.split('\n');
 
+  // Load dndListeners.js for cross-board move + resolve functions extracted from app.js
+  const dndListenersSource = readFileSync(resolve(srcDir, 'dragdrop', 'dndListeners.js'), 'utf-8');
+  const dndListenersLines = dndListenersSource.split('\n');
+
   function extractFunctionFrom(sourceLines, startLine) {
     let depth = 0;
     let started = false;
@@ -97,6 +101,14 @@ function loadMutationHarness() {
       raw = raw.replace(/\bfullBoardData\(\)/g, 'fullBoardData');
       raw = raw.replace(/\bactiveBoardData\(\)/g, 'activeBoardData');
       raw = raw.replace(/\bactiveBoardId\(\)/g, 'activeBoardId');
+      return raw;
+    }
+    idx = findLineIn(dndListenersLines, pattern);
+    if (idx > 0) {
+      var raw = extractFunctionFrom(dndListenersLines, idx);
+      raw = raw.replace(/_deps\.([\w]+)/g, '$1');
+      raw = raw.replace(/\bgetActiveBoardId\(\)/g, 'activeBoardId');
+      raw = raw.replace(/\bgetFullBoardData\(\)/g, 'fullBoardData');
       return raw;
     }
     idx = findLineIn(lines, pattern);
@@ -162,9 +174,9 @@ function loadMutationHarness() {
     extractFunction(findLine('function ensureCardTargetColumnForMutation(')),
     extractFunction(findLine('function cleanupUnnamedStructuralContainersInBoard(')),
     extractFunctionAny('function resolveTagTarget('),
-    extractFunction(findLine('function resolveColumnLocationForMutation(')),
-    extractFunction(findLine('function resolveStackForMutation(')),
-    extractFunction(findLine('function resolveRowForMutation(')),
+    extractFunctionAny('function resolveColumnLocationForMutation('),
+    extractFunctionAny('function resolveStackForMutation('),
+    extractFunctionAny('function resolveRowForMutation('),
     extractFunction(findLine('function resolveColumnRefForCardMutation(')),
     extractFunction(findLine('function resolveSourceCardIndex(')),
     extractFunction(findLine('function resolveInsertCardIndex(')),
@@ -233,6 +245,7 @@ function loadMutationHarness() {
   `;
 
   const wrappedSource = `
+    var DndListeners = (typeof window !== 'undefined' && window.LexeraDndListeners) || (typeof globalThis !== 'undefined' && globalThis.LexeraDndListeners) || null;
     // --- Injectable closure state ---
     var fullBoardData, activeBoardData, activeBoardId;
     var boardStore = {};
@@ -339,6 +352,25 @@ function loadMutationHarness() {
         resolveRowForMutation: typeof resolveRowForMutation === 'function' ? resolveRowForMutation : function () { return null; },
         resolveStackForMutation: typeof resolveStackForMutation === 'function' ? resolveStackForMutation : function () { return null; },
         resolveColumnRefForCardMutation: typeof resolveColumnRefForCardMutation === 'function' ? resolveColumnRefForCardMutation : function () { return null; }
+      });
+    }
+
+    // Initialize DndListeners with test mock deps so delegation stubs work
+    if (DndListeners && typeof DndListeners.init === 'function') {
+      DndListeners.init({
+        getActiveBoardId: function () { return activeBoardId; },
+        getFullBoardData: function () { return fullBoardData; },
+        loadBoardDataForMutation: loadBoardDataForMutation,
+        commitBoardMutations: commitBoardMutations,
+        pushUndo: function () { pushUndo(); },
+        persistBoardMutation: function (opts) { return persistBoardMutation(opts); },
+        isCanvasBoardLayout: isCanvasBoardLayout,
+        getCanvasStackDropApi: getCanvasStackDropApi,
+        getAllColumnsFromBoardData: typeof getAllColumnsFromBoardData === 'function' ? getAllColumnsFromBoardData : function (bd) { return (bd && bd.columns) || []; },
+        getDisplayOrderedColumnEntries: typeof getDisplayOrderedColumnEntries === 'function' ? getDisplayOrderedColumnEntries : function (c) { return c; },
+        stripInternalHiddenTags: typeof stripInternalHiddenTags === 'function' ? stripInternalHiddenTags : function (t) { return t; },
+        stripHtmlComments: typeof stripHtmlComments === 'function' ? stripHtmlComments : function (t) { return t; },
+        addColumnToStack: typeof addColumnToStack === 'function' ? addColumnToStack : function () {}
       });
     }
 
