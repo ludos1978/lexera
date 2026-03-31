@@ -13,6 +13,7 @@ var LexeraBoardList = (function () {
   // --- Dependencies (injected via init) ---
   var _deps = {};
   var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+  var _Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   // Read deps — runtime state takes priority over injected deps for shared state
   function _dep(name) {
@@ -29,12 +30,14 @@ var LexeraBoardList = (function () {
   // ─── Sidebar expanded boards ──────────────────────────────────────
 
   function getSidebarExpandedBoards() {
+    if (_Settings) return _Settings.get('sidebarExpanded') || [];
     try { return JSON.parse(localStorage.getItem('lexera-sidebar-expanded') || '[]'); } catch (e) {
       logFrontendIssue('warn', 'sidebar.state', 'Failed to read expanded sidebar boards', e);
       return [];
     }
   }
   function saveSidebarExpandedBoards(ids) {
+    if (_Settings) { _Settings.set('sidebarExpanded', ids); return; }
     localStorage.setItem('lexera-sidebar-expanded', JSON.stringify(ids));
   }
 
@@ -42,7 +45,7 @@ var LexeraBoardList = (function () {
 
   function getSidebarTreeState(boardId) {
     try {
-      var all = JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
+      var all = _Settings ? (_Settings.get('sidebarTreeState') || {}) : JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
       return all[boardId] || { rows: [], stacks: [], columns: [] };
     } catch (e) {
       logFrontendIssue('warn', 'sidebar.tree', 'Failed to read sidebar tree state for board ' + boardId, e);
@@ -52,7 +55,7 @@ var LexeraBoardList = (function () {
 
   function hasSidebarTreeState(boardId) {
     try {
-      var all = JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
+      var all = _Settings ? (_Settings.get('sidebarTreeState') || {}) : JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
       return Object.prototype.hasOwnProperty.call(all, boardId);
     } catch (e) {
       logFrontendIssue('warn', 'sidebar.tree', 'Failed to check sidebar tree state for board ' + boardId, e);
@@ -62,9 +65,10 @@ var LexeraBoardList = (function () {
 
   function saveSidebarTreeState(boardId, state) {
     try {
-      var all = JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
+      var all = _Settings ? (_Settings.get('sidebarTreeState') || {}) : JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
       all[boardId] = state;
-      localStorage.setItem('lexera-sidebar-tree-state', JSON.stringify(all));
+      if (_Settings) { _Settings.set('sidebarTreeState', all); }
+      else { localStorage.setItem('lexera-sidebar-tree-state', JSON.stringify(all)); }
     } catch (e) {
       logFrontendIssue('warn', 'sidebar.tree', 'Failed to persist sidebar tree state for board ' + boardId, e);
     }
@@ -280,7 +284,7 @@ var LexeraBoardList = (function () {
       try {
         var bd = _dep('fullBoardData') || boardData;
         var baseBoard = getBoardSaveBase(bd) || bd;
-        localStorage.setItem(boardDraftStorageKey(boardId), JSON.stringify({
+        var draftPayload = {
           savedAt: Date.now(),
           revision: _dep('_lastLoadedRevision') || (function () {
             var abd = _dep('activeBoardData');
@@ -288,7 +292,9 @@ var LexeraBoardList = (function () {
           })(),
           board: cloneBoardData(bd),
           baseBoard: cloneBoardData(baseBoard)
-        }));
+        };
+        if (_Settings) { _Settings.setForBoard('boardDraft', boardId, draftPayload); }
+        else { localStorage.setItem(boardDraftStorageKey(boardId), JSON.stringify(draftPayload)); }
       } catch (err) {
         logFrontendIssue('warn', 'board.draft.save', 'Failed to persist local board draft', err);
       }
@@ -298,6 +304,10 @@ var LexeraBoardList = (function () {
   function loadLocalBoardDraft(boardId) {
     if (!boardId) return null;
     try {
+      if (_Settings) {
+        var parsed = _Settings.getForBoard('boardDraft', boardId);
+        return parsed && parsed.board ? parsed : null;
+      }
       var raw = localStorage.getItem(boardDraftStorageKey(boardId));
       if (!raw) return null;
       var parsed = JSON.parse(raw);
@@ -311,6 +321,7 @@ var LexeraBoardList = (function () {
   function clearLocalBoardDraft(boardId) {
     if (!boardId) return;
     try {
+      if (_Settings) { _Settings.removeForBoard('boardDraft', boardId); return; }
       localStorage.removeItem(boardDraftStorageKey(boardId));
     } catch (err) {
       logFrontendIssue('warn', 'board.draft.clear', 'Failed to clear local board draft', err);
@@ -336,8 +347,10 @@ var LexeraBoardList = (function () {
         }
       }
       for (var j = 0; j < keysToRemove.length; j++) {
-        localStorage.removeItem(keysToRemove[j]);
-        logFrontendIssue('info', 'board.draft.prune', 'Removed orphaned draft for board ' + keysToRemove[j].slice(PREFIX.length));
+        var pruneBoardId = keysToRemove[j].slice(PREFIX.length);
+        if (_Settings) { _Settings.removeForBoard('boardDraft', pruneBoardId); }
+        else { localStorage.removeItem(keysToRemove[j]); }
+        logFrontendIssue('info', 'board.draft.prune', 'Removed orphaned draft for board ' + pruneBoardId);
       }
     } catch (err) {
       logFrontendIssue('warn', 'board.draft.prune', 'Failed to prune orphaned drafts', err);
@@ -737,7 +750,8 @@ var LexeraBoardList = (function () {
 
   function setActiveWorkspaceId(workspaceId) {
     _callDep('setActiveWorkspaceIdState', workspaceId || _dep('ALL_WORKSPACES_ID'));
-    localStorage.setItem('lexera-active-workspace', _dep('activeWorkspaceId'));
+    if (_Settings) { _Settings.set('activeWorkspace', _dep('activeWorkspaceId')); }
+    else { localStorage.setItem('lexera-active-workspace', _dep('activeWorkspaceId')); }
   }
 
   function resolveActiveWorkspaceId(defaultWorkspaceId) {
@@ -943,7 +957,8 @@ var LexeraBoardList = (function () {
       _callDep('setActiveBoardId', null);
       _callDep('setActiveBoardData', null);
       _callDep('setFullBoardData', null);
-      localStorage.removeItem('lexera-last-board');
+      if (_Settings) { _Settings.set('lastBoard', ''); }
+      else { localStorage.removeItem('lexera-last-board'); }
     }
     renderBoardList();
     _callDep('renderMainView');

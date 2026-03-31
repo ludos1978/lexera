@@ -10,6 +10,7 @@ var LexeraPollingService = (function () {
 
   // --- Dependencies (injected via init) ---
   var _deps = {};
+  var _Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   function _dep(name) {
     return _deps[name];
@@ -94,7 +95,7 @@ var LexeraPollingService = (function () {
           if (!_dep('activeBoardId')) {
             var initialBoardId = _dep('embeddedMode')
               ? _dep('embeddedPreferredBoardId')
-              : (_dep('urlParams').get('board') || localStorage.getItem('lexera-last-board') || (_dep('boards')[0] && _dep('boards')[0].id) || '');
+              : (_dep('urlParams').get('board') || (_Settings ? _Settings.get('lastBoard') : localStorage.getItem('lexera-last-board')) || (_dep('boards')[0] && _dep('boards')[0].id) || '');
             if (initialBoardId && _callDep('findBoardMeta', initialBoardId) && typeof _dep('WorkspaceShell').ensureInitialTab === 'function') {
               _dep('WorkspaceShell').ensureInitialTab(initialBoardId);
             }
@@ -184,7 +185,10 @@ var LexeraPollingService = (function () {
           _callDep('setFullBoardData', null);
           _callDep('setLastLoadedGeneration', null);
           _callDep('setLastLoadedRevision', null);
-          if (!_dep('embeddedMode')) localStorage.removeItem('lexera-last-board');
+          if (!_dep('embeddedMode')) {
+            if (_Settings) { _Settings.set('lastBoard', ''); }
+            else { localStorage.removeItem('lexera-last-board'); }
+          }
           _callDep('renderMainView');
         }
       } else if (!activeBoardId && !_dep('searchMode')) {
@@ -193,7 +197,7 @@ var LexeraPollingService = (function () {
         // - Top-level window: use last board from localStorage
         var lastBoard = _dep('embeddedMode')
           ? _dep('embeddedPreferredBoardId')
-          : (_dep('urlParams').get('board') || localStorage.getItem('lexera-last-board'));
+          : (_dep('urlParams').get('board') || (_Settings ? _Settings.get('lastBoard') : localStorage.getItem('lexera-last-board')));
         if (lastBoard) {
           var found = _callDep('findBoardMeta', lastBoard);
           if (found) {
