@@ -547,7 +547,7 @@ var LexeraDashboard = (function () {
   function setOverlayEditorEnabled(v) { if (Appearance) Appearance.setOverlayEditorEnabled(v); }
   function isSpecialCharactersVisible() { return Appearance ? Appearance.isSpecialCharactersVisible() : false; }
   function applySpecialCharactersVisibilitySetting() { if (Appearance) Appearance.applySpecialCharactersVisibilitySetting(); }
-  function setSpecialCharactersVisible(v) { if (Appearance) Appearance.setSpecialCharactersVisible(v); }
+  function setSpecialCharactersVisible(v) { if (Appearance) Appearance.setSpecialCharactersVisible(v); renderColumns(); }
   function isMarpSettingsEnabled() { return Appearance ? Appearance.isMarpSettingsEnabled() : true; }
   function setMarpSettingsEnabled(v) { if (Appearance) Appearance.setMarpSettingsEnabled(v); }
   function syncMenuCheckStates() { if (Appearance) Appearance.syncMenuCheckStates(); }
@@ -6597,6 +6597,12 @@ var LexeraDashboard = (function () {
     return false;
   }
 
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('lexera-visual-themes-changed', function () {
+      renderFrontendSettingsPanel();
+    });
+  }
+
   function initFrontendSettingsPanel(panelEl) {
     if (FrontendSettings) return FrontendSettings.init(buildFrontendSettingsOptions(), panelEl);
     return false;
@@ -11402,12 +11408,14 @@ var LexeraDashboard = (function () {
         var label = (applied && applied.name) || VISUAL_THEME_LABELS[String(raw || '').trim()] || String(raw || 'sleek-uniform');
         showNotification('Visual theme: ' + label);
       },
-      options: VISUAL_THEMES.map(function (theme) {
-        return {
-          value: theme.id,
-          label: theme.name + (theme.description ? ' \u2014 ' + theme.description : '')
-        };
-      })
+      options: function () {
+        return VISUAL_THEMES.map(function (theme) {
+          return {
+            value: theme.id,
+            label: theme.name + (theme.description ? ' \u2014 ' + theme.description : '')
+          };
+        });
+      }
     });
 
     // Auto-wire board setting action handlers from descriptors

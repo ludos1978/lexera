@@ -72,6 +72,26 @@ var LexeraCardContentRenderer = (function () {
     return out;
   }
 
+  /**
+   * Post-process rendered HTML to insert visible whitespace markers.
+   * Replaces space/tab characters in text segments (outside HTML tags) with
+   * styled spans so they become visible when "show special characters" is on.
+   * Also inserts a newline marker (¶) before each <br> tag.
+   */
+  function decorateSpecialChars(html) {
+    // Insert ¶ marker before <br> tags
+    var result = html.replace(/<br\s*\/?>/gi, '<span class="ws-nl">\u00b6</span><br>');
+    // Replace spaces and tabs in text segments (outside HTML tags)
+    result = result.replace(/([^<]*)(<[^>]*>|$)/g, function (match, text, tag) {
+      if (!text) return match;
+      var decorated = text
+        .replace(/ /g, '<span class="ws-sp">\u00b7</span>')
+        .replace(/\t/g, '<span class="ws-tab">\u2192</span>');
+      return decorated + tag;
+    });
+    return result;
+  }
+
   function renderCardContent(content, boardId, renderState, options) {
     var escapeHtml = _deps.escapeHtml;
     var escapeAttr = _deps.escapeAttr;
@@ -358,6 +378,11 @@ var LexeraCardContentRenderer = (function () {
       }
       html += '</ol></div>';
     }
+    // Apply visible whitespace markers when "show special characters" is active
+    if (!options.nested && typeof document !== 'undefined' && document.body &&
+        document.body.classList.contains('show-special-characters')) {
+      html = decorateSpecialChars(html);
+    }
     return html;
     } finally {
       renderState.nestedDepth = previousNestedDepth;
@@ -366,6 +391,7 @@ var LexeraCardContentRenderer = (function () {
 
   return {
     init: init,
+    decorateSpecialChars: decorateSpecialChars,
     renderCardContent: renderCardContent,
     renderTable: renderTable,
     renderInline: renderInline,

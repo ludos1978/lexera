@@ -2284,6 +2284,28 @@ body.show-special-characters .card-editor-textarea {
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-muted) 22%, transparent);
 }
 
+/* Visible whitespace markers injected by the card content renderer */
+body.show-special-characters .card-content .ws-sp,
+body.show-special-characters .card-content .ws-tab,
+body.show-special-characters .card-content .ws-nl {
+  color: var(--text-muted, #888);
+  opacity: 0.55;
+  font-size: 0.85em;
+  pointer-events: none;
+  user-select: none;
+}
+body.show-special-characters .card-content .ws-sp {
+  letter-spacing: -0.15em;
+}
+body.show-special-characters .card-content .ws-tab {
+  margin: 0 0.15em;
+}
+body.show-special-characters .card-content .ws-nl {
+  opacity: 0.4;
+  font-size: 0.75em;
+  vertical-align: text-top;
+}
+
 .columns-container {
   flex: 1;
   display: flex;
@@ -8707,14 +8729,16 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .columns-container.new-format {
-  align-items: stretch;
-  min-width: 100%;
+  align-items: flex-start;
+  min-width: 0;
   width: 100%;
-  max-width: 100%;
+  max-width: none;
 }
 
 :root[data-visual-theme="sleek"] .columns-container.new-format .board-row {
-  align-self: stretch;
+  align-self: flex-start;
+  width: max-content;
+  max-width: none;
 }
 
 :root[data-visual-theme="sleek"] .columns-container.layout-canvas .board-row {
@@ -8971,64 +8995,64 @@ select.export-input {
 }
 
 /* Sleek Uniform keeps the sleek layout, but flattens board/canvas typography. */
-:root[data-visual-theme-variant="sleek-uniform"] .columns-container {
+:root[data-visual-theme-lineage~="sleek-uniform"] .columns-container {
   --sleek-uniform-font-size: var(--board-font-size, calc(12px * var(--ui-scale)));
   --sleek-uniform-line-height: 1.32;
 }
 
-:root[data-visual-theme-variant="sleek-uniform"] .board-row-title,
-:root[data-visual-theme-variant="sleek-uniform"] .board-row-count,
-:root[data-visual-theme-variant="sleek-uniform"] .board-row-footer-summary,
-:root[data-visual-theme-variant="sleek-uniform"] .board-stack-title,
-:root[data-visual-theme-variant="sleek-uniform"] .board-stack-count,
-:root[data-visual-theme-variant="sleek-uniform"] .board-stack-footer-summary,
-:root[data-visual-theme-variant="sleek-uniform"] .board-header,
-:root[data-visual-theme-variant="sleek-uniform"] .board-header-file-title,
-:root[data-visual-theme-variant="sleek-uniform"] .column-header,
-:root[data-visual-theme-variant="sleek-uniform"] .column-include-badge,
-:root[data-visual-theme-variant="sleek-uniform"] .column-count,
-:root[data-visual-theme-variant="sleek-uniform"] .column-rename-input,
-:root[data-visual-theme-variant="sleek-uniform"] .card,
-:root[data-visual-theme-variant="sleek-uniform"] .card-menu-label,
-:root[data-visual-theme-variant="sleek-uniform"] .card-title-display,
-:root[data-visual-theme-variant="sleek-uniform"] .card-due-badge,
-:root[data-visual-theme-variant="sleek-uniform"] .card-progress-badge,
-:root[data-visual-theme-variant="sleek-uniform"] .card .tag,
-:root[data-visual-theme-variant="sleek-uniform"] .card-title-display .tag,
-:root[data-visual-theme-variant="sleek-uniform"] .card h1,
-:root[data-visual-theme-variant="sleek-uniform"] .card h2,
-:root[data-visual-theme-variant="sleek-uniform"] .card h3,
-:root[data-visual-theme-variant="sleek-uniform"] .card code,
-:root[data-visual-theme-variant="sleek-uniform"] .card .code-block,
-:root[data-visual-theme-variant="sleek-uniform"] .card .md-table,
-:root[data-visual-theme-variant="sleek-uniform"] .card .mermaid-placeholder,
-:root[data-visual-theme-variant="sleek-uniform"] .card .mermaid-error,
-:root[data-visual-theme-variant="sleek-uniform"] .card .media-caption,
-:root[data-visual-theme-variant="sleek-uniform"] .column-title .temporal-tag,
-:root[data-visual-theme-variant="sleek-uniform"] .column-title .kanban-temporal-tag,
-:root[data-visual-theme-variant="sleek-uniform"] .card-title-display .temporal-tag,
-:root[data-visual-theme-variant="sleek-uniform"] .card-title-display .kanban-temporal-tag,
-:root[data-visual-theme-variant="sleek-uniform"] .card .temporal-tag,
-:root[data-visual-theme-variant="sleek-uniform"] .card .kanban-temporal-tag,
-:root[data-visual-theme-variant="sleek-uniform"] .card .html-comment,
-:root[data-visual-theme-variant="sleek-uniform"] .card .embed-container.embed-broken,
-:root[data-visual-theme-variant="sleek-uniform"] .card .external-embed-label,
-:root[data-visual-theme-variant="sleek-uniform"] .card .external-embed-heading,
-:root[data-visual-theme-variant="sleek-uniform"] .card .external-embed-url,
-:root[data-visual-theme-variant="sleek-uniform"] .card .external-embed-message,
-:root[data-visual-theme-variant="sleek-uniform"] .card .external-embed-reason,
-:root[data-visual-theme-variant="sleek-uniform"] .card-edit-input,
-:root[data-visual-theme-variant="sleek-uniform"] .card-inline-textarea {
+:root[data-visual-theme-lineage~="sleek-uniform"] .board-row-title,
+:root[data-visual-theme-lineage~="sleek-uniform"] .board-row-count,
+:root[data-visual-theme-lineage~="sleek-uniform"] .board-row-footer-summary,
+:root[data-visual-theme-lineage~="sleek-uniform"] .board-stack-title,
+:root[data-visual-theme-lineage~="sleek-uniform"] .board-stack-count,
+:root[data-visual-theme-lineage~="sleek-uniform"] .board-stack-footer-summary,
+:root[data-visual-theme-lineage~="sleek-uniform"] .board-header,
+:root[data-visual-theme-lineage~="sleek-uniform"] .board-header-file-title,
+:root[data-visual-theme-lineage~="sleek-uniform"] .column-header,
+:root[data-visual-theme-lineage~="sleek-uniform"] .column-include-badge,
+:root[data-visual-theme-lineage~="sleek-uniform"] .column-count,
+:root[data-visual-theme-lineage~="sleek-uniform"] .column-rename-input,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-menu-label,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-title-display,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-due-badge,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-progress-badge,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .tag,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-title-display .tag,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card h1,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card h2,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card h3,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card code,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .code-block,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .md-table,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .mermaid-placeholder,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .mermaid-error,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .media-caption,
+:root[data-visual-theme-lineage~="sleek-uniform"] .column-title .temporal-tag,
+:root[data-visual-theme-lineage~="sleek-uniform"] .column-title .kanban-temporal-tag,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-title-display .temporal-tag,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-title-display .kanban-temporal-tag,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .temporal-tag,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .kanban-temporal-tag,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .html-comment,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .embed-container.embed-broken,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .external-embed-label,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .external-embed-heading,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .external-embed-url,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .external-embed-message,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card .external-embed-reason,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-edit-input,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-inline-textarea {
   font-size: var(--sleek-uniform-font-size);
 }
 
-:root[data-visual-theme-variant="sleek-uniform"] .card,
-:root[data-visual-theme-variant="sleek-uniform"] .board-header,
-:root[data-visual-theme-variant="sleek-uniform"] .board-header-file-title,
-:root[data-visual-theme-variant="sleek-uniform"] .card-title-display,
-:root[data-visual-theme-variant="sleek-uniform"] .card-edit-input,
-:root[data-visual-theme-variant="sleek-uniform"] .card-inline-textarea,
-:root[data-visual-theme-variant="sleek-uniform"] .column-header {
+:root[data-visual-theme-lineage~="sleek-uniform"] .card,
+:root[data-visual-theme-lineage~="sleek-uniform"] .board-header,
+:root[data-visual-theme-lineage~="sleek-uniform"] .board-header-file-title,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-title-display,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-edit-input,
+:root[data-visual-theme-lineage~="sleek-uniform"] .card-inline-textarea,
+:root[data-visual-theme-lineage~="sleek-uniform"] .column-header {
   line-height: var(--sleek-uniform-line-height);
 }
 
