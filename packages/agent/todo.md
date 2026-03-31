@@ -12,9 +12,10 @@
 - [ ] **App.js modularization** — 13,108 lines. Extract into state/, services/, views/, shell/ layers. No module should mix DOM rendering, localStorage, and API calls. Includes: reduce to orchestration, split frontend layers, settings service behind typed API.
 
 ## Misc
-- [ ] Remove the color theme in the frontend settings and the application in general, this should be part of the visual theme (integrate the lexera color theme into the other theme settings). But a visual theme must allways have a dark and a bright setting!
-- [ ] The overlay editor CANNOT BE DISABLED IN THE HEADER SETTINGS. It is allways available, but it's just not the default editor to use if the settings is disabled! REMEMBER THIS in the specs!
-- [ ] activating the overlay editor in the frontend settings doesnt change the editor used to modify cards! when active it should open an overlay where the user can edit the card in a much larger view!
+- [x] ~~Color theme integrated into visual theme~~ (7c212e7c)
+- [x] ~~Overlay editor always available~~ (709cdae2) — setting controls default only, never blocks
+- [x] ~~Overlay editor activation from settings~~ (709cdae2) — double-click + Enter respect setting
+- [ ] if something has the tag #exclude it should get a "schräg schraffiert ausgegraut zu 20%" style applied! #exclude is also a tag that is by default added to the ta
 
 ## Disk / IO Audit — Do Next
 - [x] ~~**Log rotation + retention**~~ (7c614dcb) — 10MB size limit, 2 rotated files, startup rotation
