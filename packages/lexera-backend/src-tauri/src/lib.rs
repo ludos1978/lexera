@@ -129,9 +129,23 @@ pub(crate) fn sync_watcher_include_paths(
         return;
     };
 
-    for path in include_map.all_include_paths() {
-        if let Err(error) = watcher.watch_include(&path) {
-            log::warn!("[{}] Failed to watch include {:?}: {}", target, path, error);
+    let desired = include_map.all_include_paths();
+    match watcher.sync_include_paths(&desired) {
+        Ok(count) => {
+            if count > 0 {
+                log::info!(
+                    "[{}] Synced include watch paths: {} new path(s) watched",
+                    target,
+                    count
+                );
+            }
+        }
+        Err(error) => {
+            log::warn!(
+                "[{}] Failed to sync include watch paths: {}",
+                target,
+                error
+            );
         }
     }
 }

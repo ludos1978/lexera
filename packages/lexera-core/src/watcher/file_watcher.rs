@@ -23,6 +23,8 @@ struct PathMapping {
     main_files: HashMap<PathBuf, String>,
     /// watched parent directories (to avoid duplicate watches)
     watched_dirs: std::collections::HashSet<PathBuf>,
+    /// include file paths currently being watched (canonical paths)
+    watched_includes: std::collections::HashSet<PathBuf>,
 }
 
 /// File watcher that monitors board and include files for changes.
@@ -111,6 +113,45 @@ impl FileWatcher {
             canonical
         );
         Ok(())
+    }
+
+    /// Sync watched include paths with the current desired set.
+    /// Only watches newly added paths; already-watched paths are skipped.
+    /// Returns the number of newly watched paths.
+    pub fn sync_include_paths(&mut self, desired: &[PathBuf]) -> Result<usize, notify::Error> {
+        let desired_set: std::collections::HashSet<PathBuf> = desired
+            .iter()
+            .map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()))
+            .collect();
+
+        // Determine which paths are new (not yet watched)
+        let new_paths: Vec<PathBuf> = {
+            let mapping = self.path_mapping.read().map_err(|e| {
+                log::error!(
+                    "[lexera.watcher.sync_includes] Path mapping lock poisoned: {}",
+                    e
+                );
+                notify::Error::generic("Path mapping lock poisoned")
+            })?;
+            desired_set
+                .iter()
+                .filter(|p| !mapping.watched_includes.contains(*p))
+                .cloned()
+                .collect()
+        };
+
+        let mut count = 0;
+        for path in &new_paths {
+            self.ensure_watched(path)?;
+            count += 1;
+        }
+
+        // Update the tracked set to match the desired set
+        if let Ok(mut mapping) = self.path_mapping.write() {
+            mapping.watched_includes = desired_set;
+        }
+
+        Ok(count)
     }
 
     /// Stop watching a file path.
