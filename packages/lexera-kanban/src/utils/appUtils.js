@@ -2,6 +2,7 @@ var LexeraAppUtils = (function () {
   'use strict';
   var _deps = {};
   var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+  var _Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   function init(deps) {
     if (typeof window !== 'undefined' && window.LexeraRuntime) {
@@ -52,7 +53,7 @@ var LexeraAppUtils = (function () {
         return new Promise(function (resolve, reject) {
           var script = document.createElement('script');
           var mermaidUrl = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
-          try { var custom = localStorage.getItem('lexera-mermaid-url'); if (custom) mermaidUrl = custom; } catch (_) { /* intentional: localStorage unavailable */ }
+          try { var custom = _Settings ? _Settings.get('mermaidUrl') : localStorage.getItem('lexera-mermaid-url'); if (custom) mermaidUrl = custom; } catch (_) { /* intentional: localStorage unavailable */ }
           script.src = mermaidUrl;
           script.onload = function () {
             mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose', fontFamily: 'inherit' });

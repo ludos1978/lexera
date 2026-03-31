@@ -4,7 +4,8 @@
 var frontendLogEntries = [];
 var backendLogEntries = [];
 var LOG_MAX = 1000;
-var storedLogSource = (function () { try { return localStorage.getItem('lexera-log-source'); } catch (_) { return null; } })();
+var _LogSettings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
+var storedLogSource = _LogSettings ? _LogSettings.get('logSource') : (function () { try { return localStorage.getItem('lexera-log-source'); } catch (_) { return null; } })();
 var activeLogSource = storedLogSource === 'backend' ? 'backend' : 'frontend';
 var backendLogLoaded = false;
 var backendLogEventSource = null;
@@ -530,7 +531,8 @@ function copyActiveLogsToClipboard(copyBtn) {
 function setActiveLogSource(source) {
   if (source !== 'frontend' && source !== 'stats') source = 'backend';
   activeLogSource = source;
-  localStorage.setItem('lexera-log-source', activeLogSource);
+  if (_LogSettings) _LogSettings.set('logSource', activeLogSource);
+  else try { localStorage.setItem('lexera-log-source', activeLogSource); } catch (_) {}
 
   var backendBtn = getElLogTabBackend();
   var frontendBtn = getElLogTabFrontend();

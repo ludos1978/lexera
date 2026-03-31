@@ -6,6 +6,7 @@
   'use strict';
 
   var deps = {};
+  var _Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   var TAG_COLORS = {
     '#comment': '#d4883c',
@@ -76,7 +77,7 @@
   ];
 
   try {
-    var storedTagColorOverrides = JSON.parse(localStorage.getItem('lexera-tag-color-overrides') || '{}');
+    var storedTagColorOverrides = _Settings ? _Settings.get('tagColorOverrides') : JSON.parse(localStorage.getItem('lexera-tag-color-overrides') || '{}');
     if (storedTagColorOverrides && typeof storedTagColorOverrides === 'object') {
       for (var storedTagKey in storedTagColorOverrides) {
         if (!Object.prototype.hasOwnProperty.call(storedTagColorOverrides, storedTagKey)) continue;
@@ -251,10 +252,12 @@
 
   function loadTagStyleConfig() {
     try {
-      var stored = localStorage.getItem('lexera-tag-style-config');
-      if (stored) {
-        var parsed = JSON.parse(stored);
-        if (parsed && typeof parsed === 'object') {
+      var parsed = _Settings ? _Settings.get('tagStyleConfig') : null;
+      if (!parsed) {
+        var stored = localStorage.getItem('lexera-tag-style-config');
+        if (stored) parsed = JSON.parse(stored);
+      }
+      if (parsed && typeof parsed === 'object') {
           if (parsed.preset && TAG_STYLE_PRESETS[parsed.preset]) {
             _activeTagStylePreset = parsed.preset;
           }
@@ -264,7 +267,6 @@
           if (parsed.tagOverrides && typeof parsed.tagOverrides === 'object') {
             _tagStyleUserOverrides.tagOverrides = parsed.tagOverrides;
           }
-        }
       }
     } catch (err) {
       // ignore
@@ -276,7 +278,8 @@
       var config = { preset: _activeTagStylePreset };
       if (_tagStyleUserOverrides.categoryRoles) config.categoryRoles = _tagStyleUserOverrides.categoryRoles;
       if (_tagStyleUserOverrides.tagOverrides) config.tagOverrides = _tagStyleUserOverrides.tagOverrides;
-      localStorage.setItem('lexera-tag-style-config', JSON.stringify(config));
+      if (_Settings) _Settings.set('tagStyleConfig', config);
+      else localStorage.setItem('lexera-tag-style-config', JSON.stringify(config));
     } catch (err) {
       // ignore
     }

@@ -2,6 +2,7 @@ var CardEditor = (function () {
   'use strict';
   var _deps = {};
   var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+  var _Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   // Module-owned state
   var currentCardEditor = null;
@@ -201,7 +202,7 @@ var CardEditor = (function () {
     var normalizedScale = normalizeCardEditorFontScale(scale);
     cardEditorFontScale = normalizedScale;
     if (!currentCardEditor || !currentCardEditor.dialog) {
-      if (persist !== false) localStorage.setItem('lexera-card-editor-font-scale', String(normalizedScale));
+      if (persist !== false) (_Settings ? _Settings.set('cardEditorFontScale', normalizedScale) : localStorage.setItem('lexera-card-editor-font-scale', String(normalizedScale)));
       return;
     }
     currentCardEditor.fontScale = normalizedScale;
@@ -209,7 +210,7 @@ var CardEditor = (function () {
     if (currentCardEditor.textarea) currentCardEditor.textarea.style.fontSize = 'calc(14px * ' + normalizedScale + ')';
     if (currentCardEditor.preview) currentCardEditor.preview.style.fontSize = 'calc(14px * ' + normalizedScale + ')';
     if (currentCardEditor.wysiwygWrap) currentCardEditor.wysiwygWrap.style.fontSize = 'calc(1em * ' + normalizedScale + ')';
-    if (persist !== false) localStorage.setItem('lexera-card-editor-font-scale', String(normalizedScale));
+    if (persist !== false) (_Settings ? _Settings.set('cardEditorFontScale', normalizedScale) : localStorage.setItem('lexera-card-editor-font-scale', String(normalizedScale)));
   }
 
   function openCardEditorFontScaleMenu(anchorEl) {
@@ -528,8 +529,9 @@ var CardEditor = (function () {
   }
 
   function normalizeCardEditorMode(mode) {
-    if (mode === 'markdown' || mode === 'preview') return mode;
-    if (mode === 'wysiwyg' && _deps.isWysiwygEditorEnabled() && typeof window.WysiwygEditor === 'function') return mode;
+    if (mode === 'markdown' || mode === 'preview' || mode === 'dual') return mode;
+    if (mode === 'side-by-side') return 'dual';
+    if (mode === 'wysiwyg' && typeof window.WysiwygEditor === 'function') return mode;
     return 'dual';
   }
 
@@ -706,7 +708,8 @@ var CardEditor = (function () {
       refreshCardEditorPreview();
     }
     cardEditorMode = mode;
-    localStorage.setItem('lexera-card-editor-mode', mode);
+    if (_Settings) _Settings.set('cardEditorMode', mode);
+    else localStorage.setItem('lexera-card-editor-mode', mode);
   }
 
   function enterCardEditMode(cardEl, colIndex, cardIndex) {
@@ -728,7 +731,7 @@ var CardEditor = (function () {
     overlay.className = 'dialog-overlay card-editor-overlay';
     var dialog = document.createElement('div');
     dialog.className = 'dialog card-editor-dialog';
-    var allowWysiwygMode = _deps.isWysiwygEditorEnabled() && typeof window.WysiwygEditor === 'function';
+    var allowWysiwygMode = typeof window.WysiwygEditor === 'function';
     dialog.innerHTML =
       '<div class="card-editor-header">' +
         '<div class="card-editor-header-main">' +
@@ -819,7 +822,7 @@ var CardEditor = (function () {
       originalContent: card.content || '',
       boardId: activeBoardId || '',
       fontScale: normalizeCardEditorFontScale(cardEditorFontScale),
-      mode: normalizeCardEditorMode(cardEditorMode || localStorage.getItem('lexera-card-editor-mode') || 'dual')
+      mode: normalizeCardEditorMode(cardEditorMode || (_Settings ? _Settings.get('cardEditorMode') : localStorage.getItem('lexera-card-editor-mode')) || 'dual')
     };
     syncCardEditorWysiwygContext(currentCardEditor);
     applyCardEditorFontScale(currentCardEditor.fontScale, false);
@@ -943,7 +946,7 @@ var CardEditor = (function () {
           e.preventDefault();
           applyCardEditorMode('preview');
         } else if (e.key === '4') {
-          if (_deps.isWysiwygEditorEnabled() && typeof window.WysiwygEditor === 'function') {
+          if (typeof window.WysiwygEditor === 'function') {
             e.preventDefault();
             applyCardEditorMode('wysiwyg');
           }
@@ -997,7 +1000,7 @@ var CardEditor = (function () {
           return;
         }
         if (e.key === '4') {
-          if (_deps.isWysiwygEditorEnabled() && typeof window.WysiwygEditor === 'function') {
+          if (typeof window.WysiwygEditor === 'function') {
             e.preventDefault();
             applyCardEditorMode('wysiwyg');
           }

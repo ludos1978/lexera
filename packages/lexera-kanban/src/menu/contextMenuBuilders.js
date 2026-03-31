@@ -2,6 +2,7 @@ var ContextMenuBuilders = (function () {
   'use strict';
 
   var deps = {};
+  var _Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   // ── Tag category menu constants ────────────────────────────────────────
 
@@ -92,18 +93,20 @@ var ContextMenuBuilders = (function () {
 
   function getTagGroupsForScope(scope) {
     try {
-      var stored = localStorage.getItem('lexera-tag-groups-' + scope);
-      if (stored) {
-        var parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      var parsed = _Settings ? _Settings.getScoped('tagGroups', scope) : null;
+      if (!parsed) {
+        var stored = localStorage.getItem('lexera-tag-groups-' + scope);
+        if (stored) parsed = JSON.parse(stored);
       }
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     } catch (err) { console.warn('[tag-groups] Failed to read tag groups for ' + scope, err); }
     return DEFAULT_TAG_GROUPS[scope] || TAG_CATEGORY_MENU_ORDER;
   }
 
   function setTagGroupsForScope(scope, groups) {
     try {
-      localStorage.setItem('lexera-tag-groups-' + scope, JSON.stringify(groups));
+      if (_Settings) _Settings.setScoped('tagGroups', scope, groups);
+      else localStorage.setItem('lexera-tag-groups-' + scope, JSON.stringify(groups));
     } catch (err) { console.warn('[tag-groups] Failed to save tag groups', err); }
   }
 
