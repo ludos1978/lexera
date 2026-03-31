@@ -563,7 +563,7 @@ var LexeraDashboard = (function () {
   function setOverlayEditorEnabled(v) { if (Appearance) Appearance.setOverlayEditorEnabled(v); }
   function isSpecialCharactersVisible() { return Appearance ? Appearance.isSpecialCharactersVisible() : false; }
   function applySpecialCharactersVisibilitySetting() { if (Appearance) Appearance.applySpecialCharactersVisibilitySetting(); }
-  function setSpecialCharactersVisible(v) { if (Appearance) Appearance.setSpecialCharactersVisible(v); renderColumns(); }
+  function setSpecialCharactersVisible(v) { if (Appearance) Appearance.setSpecialCharactersVisible(v); }
   function syncMenuCheckStates() { if (Appearance) Appearance.syncMenuCheckStates(); }
 
   // DOM refs — static elements use lazy-init getters (see top of file)
@@ -2198,7 +2198,10 @@ var LexeraDashboard = (function () {
     buildHierarchyFocusTargetFromTreeNode: function(node, boardId) { return buildHierarchyFocusTargetFromTreeNode(node, boardId); },
     navigateToHierarchyTarget: function(target) { return navigateToHierarchyTarget(target); },
     targetClosest: function(target, selector) { return targetClosest(target, selector); },
-    cleanupBoardBeforeSidebarClose: function(boardId) { return cleanupBoardBeforeSidebarClose(boardId); }
+    cleanupBoardBeforeSidebarClose: function(boardId) { return cleanupBoardBeforeSidebarClose(boardId); },
+    updateCardElementInPlace: function(colIndex, visibleCardIndex) { updateCardElementInPlace(colIndex, visibleCardIndex); },
+    findVisibleCardIndexById: function(colIndex, cardId) { return findVisibleCardIndexById(colIndex, cardId); },
+    updateColumnCountBadge: function(colIndex) { updateColumnCountBadge(colIndex); }
   });
   // Safe BoardList delegate — returns undefined if BoardList not yet loaded
   function _bl(method) {
@@ -6593,13 +6596,18 @@ var LexeraDashboard = (function () {
       getHtmlCommentMode: function () { return getBoardSettingValue('htmlCommentRenderMode', 'hidden'); },
       setHtmlCommentMode: function (v) {
         try { localStorage.setItem('lexera-default-htmlCommentRenderMode', v); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
-        renderColumns();
+        var container = getElColumnsContainer();
+        currentHtmlCommentRenderMode = normalizeHtmlCommentRenderMode(v);
+        container.classList.remove('html-comments-hide', 'html-comments-dim');
+        if (currentHtmlCommentRenderMode === 'hidden') container.classList.add('html-comments-hide');
+        if (currentHtmlCommentRenderMode === 'dim') container.classList.add('html-comments-dim');
+        applyRenderedHtmlCommentVisibility(container, currentHtmlCommentRenderMode);
         renderFrontendSettingsPanel();
       },
       getHtmlContentMode: function () { return getBoardSettingValue('htmlContentRenderMode', 'html'); },
       setHtmlContentMode: function (v) {
         try { localStorage.setItem('lexera-default-htmlContentRenderMode', v); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
-        renderColumns();
+        reRenderAllCardDisplayStates();
         renderFrontendSettingsPanel();
       },
       // Sidebar
@@ -9055,6 +9063,25 @@ var LexeraDashboard = (function () {
     }
     applyTagStyleToEntity(colEl, col.title || '');
     return colEl;
+  }
+
+  function reRenderAllCardDisplayStates() {
+    var container = getElColumnsContainer();
+    if (!container || !activeBoardData) return;
+    var columns = activeBoardData.columns || [];
+    var cards = container.querySelectorAll('.card');
+    for (var i = 0; i < cards.length; i++) {
+      var cardEl = cards[i];
+      var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
+      var cardIndex = parseInt(cardEl.getAttribute('data-card-index') || '-1', 10);
+      if (colIndex < 0 || cardIndex < 0) continue;
+      var col = null;
+      for (var c = 0; c < columns.length; c++) {
+        if (columns[c].index === colIndex) { col = columns[c]; break; }
+      }
+      if (!col || cardIndex >= col.cards.length) continue;
+      renderCardDisplayState(cardEl, col.cards[cardIndex].content);
+    }
   }
 
   function renderColumns() {

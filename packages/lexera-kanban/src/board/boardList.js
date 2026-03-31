@@ -399,6 +399,153 @@ var LexeraBoardList = (function () {
     return setBoardSaveBase(boardData, boardData);
   }
 
+  // ─── Live sync incremental update helpers ─────────────────────────
+
+  /**
+   * Check whether a board delta contains only card-content modifications
+   * (no structural changes like column/row/stack adds, removes, or reorders).
+   * Returns true when it is safe to skip renderColumns() and use
+   * updateCardElementInPlace() for each changed card instead.
+   */
+  function isDeltaCardContentOnly(delta) {
+    if (!delta) return true;
+    // Any top-level scalar or settings change requires full render
+    var scalarKeys = ['valid', 'title', 'yamlHeader', 'kanbanFooter'];
+    for (var k = 0; k < scalarKeys.length; k++) {
+      if (delta[scalarKeys[k]]) return false;
+    }
+    if (delta.boardSettings) return false;
+    // Flat columns format (legacy)
+    if (delta.columns) {
+      if (!isIdArrayDeltaCardContentOnly(delta.columns)) return false;
+    }
+    // Hierarchical rows format
+    if (delta.rows) {
+      if (!isIdArrayDeltaModifiedOnly(delta.rows, isRowDeltaCardContentOnly)) return false;
+    }
+    return true;
+  }
+
+  /** Check that an id-array delta has no adds, removes, or reorders — only modifications. */
+  function isIdArrayDeltaModifiedOnly(idArrayDelta, itemCheckFn) {
+    if (!idArrayDelta) return true;
+    if (idArrayDelta.added || idArrayDelta.removed) return false;
+    if (idArrayDelta.oldOrder || idArrayDelta.newOrder) return false;
+    if (idArrayDelta.modified) {
+      for (var id in idArrayDelta.modified) {
+        if (!itemCheckFn(idArrayDelta.modified[id])) return false;
+      }
+    }
+    return true;
+  }
+
+  function isRowDeltaCardContentOnly(rowDelta) {
+    if (!rowDelta) return true;
+    if (rowDelta.title) return false;
+    if (rowDelta.stacks) {
+      if (!isIdArrayDeltaModifiedOnly(rowDelta.stacks, isStackDeltaCardContentOnly)) return false;
+    }
+    return true;
+  }
+
+  function isStackDeltaCardContentOnly(stackDelta) {
+    if (!stackDelta) return true;
+    if (stackDelta.title) return false;
+    if (stackDelta.columns) {
+      if (!isIdArrayDeltaCardContentOnly(stackDelta.columns)) return false;
+    }
+    return true;
+  }
+
+  function isIdArrayDeltaCardContentOnly(colsDelta) {
+    if (!colsDelta) return true;
+    if (colsDelta.added || colsDelta.removed) return false;
+    if (colsDelta.oldOrder || colsDelta.newOrder) return false;
+    if (colsDelta.modified) {
+      for (var id in colsDelta.modified) {
+        var colDelta = colsDelta.modified[id];
+        if (colDelta.title || colDelta.include_source) return false;
+        if (colDelta.cards) {
+          if (colDelta.cards.added || colDelta.cards.removed) return false;
+          if (colDelta.cards.oldOrder || colDelta.cards.newOrder) return false;
+          // cards.modified is fine — those are content-only changes
+        }
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Collect all modified card IDs from a card-content-only delta,
+   * grouped by their column ID.
+   * Returns an array of { columnId, cardIds: [cardId, ...] }.
+   */
+  function collectModifiedCardIdsFromDelta(delta, boardData) {
+    var result = [];
+    // Hierarchical format (rows > stacks > columns > cards)
+    if (delta.rows && delta.rows.modified) {
+      var rows = boardData.rows || [];
+      for (var rowId in delta.rows.modified) {
+        var rowDelta = delta.rows.modified[rowId];
+        if (!rowDelta.stacks || !rowDelta.stacks.modified) continue;
+        for (var stackId in rowDelta.stacks.modified) {
+          var stackDelta = rowDelta.stacks.modified[stackId];
+          if (!stackDelta.columns || !stackDelta.columns.modified) continue;
+          for (var colId in stackDelta.columns.modified) {
+            var colDelta = stackDelta.columns.modified[colId];
+            if (!colDelta.cards || !colDelta.cards.modified) continue;
+            var cardIds = [];
+            for (var cardId in colDelta.cards.modified) {
+              cardIds.push(cardId);
+            }
+            if (cardIds.length > 0) result.push({ columnId: colId, cardIds: cardIds });
+          }
+        }
+      }
+    }
+    // Flat columns format (legacy)
+    if (delta.columns && delta.columns.modified) {
+      for (var fColId in delta.columns.modified) {
+        var fColDelta = delta.columns.modified[fColId];
+        if (!fColDelta.cards || !fColDelta.cards.modified) continue;
+        var fCardIds = [];
+        for (var fCardId in fColDelta.cards.modified) {
+          fCardIds.push(fCardId);
+        }
+        if (fCardIds.length > 0) result.push({ columnId: fColId, cardIds: fCardIds });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Try to apply a card-content-only delta incrementally by updating
+   * individual card DOM elements instead of re-rendering the full board.
+   * Returns true if successful, false if a full render is needed.
+   */
+  function tryIncrementalCardUpdate(delta, boardData) {
+    var modifiedGroups = collectModifiedCardIdsFromDelta(delta, boardData);
+    if (modifiedGroups.length === 0) return true;
+    // Build a map from column ID to flat column index
+    var allCols = _callDep('getAllColumnsFromBoardData', boardData);
+    var colIdToIndex = {};
+    for (var ci = 0; ci < allCols.length; ci++) {
+      colIdToIndex[allCols[ci].id] = ci;
+    }
+    for (var g = 0; g < modifiedGroups.length; g++) {
+      var group = modifiedGroups[g];
+      var colIndex = colIdToIndex[group.columnId];
+      if (colIndex === undefined) return false;
+      for (var c = 0; c < group.cardIds.length; c++) {
+        var visIdx = _callDep('findVisibleCardIndexById', colIndex, group.cardIds[c]);
+        if (visIdx === -1) continue; // card is archived/deleted, skip
+        _callDep('updateCardElementInPlace', colIndex, visIdx);
+      }
+      _callDep('updateColumnCountBadge', colIndex);
+    }
+    return true;
+  }
+
   // ─── Live sync snapshot ───────────────────────────────────────────
 
   function applyLiveSyncBoardSnapshot(boardId, boardData, options) {
@@ -425,6 +572,8 @@ var LexeraBoardList = (function () {
         replaceLocalBoard: replaceLocalBoard
       });
     }
+    // Capture old board for incremental delta computation
+    var oldBoardForDelta = (replaceLocalBoard && fullBoardData) ? cloneBoardData(fullBoardData) : null;
     if (replaceLocalBoard) {
       fullBoardData = cloneBoardData(canonicalBoard);
       _callDep('ensureBoardRowsForMutation', fullBoardData, _callDep('getMutationBoardTitle', boardId, fullBoardData));
@@ -454,9 +603,26 @@ var LexeraBoardList = (function () {
     if (options.refreshMainView) {
       _callDep('renderMainView');
     } else {
-      _callDep('applyBoardSettings');
-      _callDep('renderColumns');
-      renderBoardList();
+      // Try incremental card update when only card content changed
+      var didIncrementalUpdate = false;
+      if (oldBoardForDelta && fullBoardData) {
+        var BoardDelta = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta) ? globalThis.LexeraBoardDelta : null;
+        if (BoardDelta) {
+          var liveSyncDelta = BoardDelta.computeBoardDelta(oldBoardForDelta, fullBoardData);
+          if (isDeltaCardContentOnly(liveSyncDelta)) {
+            _callDep('applyBoardSettings');
+            didIncrementalUpdate = tryIncrementalCardUpdate(liveSyncDelta, fullBoardData);
+            if (didIncrementalUpdate) {
+              renderBoardList();
+            }
+          }
+        }
+      }
+      if (!didIncrementalUpdate) {
+        _callDep('applyBoardSettings');
+        _callDep('renderColumns');
+        renderBoardList();
+      }
     }
     _callDep('refreshHeaderFileControls');
     _callDep('scheduleDashboardRefresh', 80);
