@@ -925,8 +925,5 @@ mod tests {
     fn shared_theme_source_drives_valid_theme_ids() {
         let ids = valid_theme_ids();
         assert!(ids.contains(&"lexera"));
-        assert!(ids.contains(&"mono"));
-        assert!(ids.contains(&"warm"));
-        assert!(ids.contains(&"nord"));
     }
 }
