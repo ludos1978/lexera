@@ -5,13 +5,11 @@
 ## Active Features
 - [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)
 - [ ] Mobile web clipper — finish lexera-capture-ios
-- [ ] Parallel requests/processing — identify remaining bottlenecks
 
 ## Code Quality
-- [ ] **App.js modularization** — 11,927 lines. Main View (~6600 lines) is the last major section.
+- [ ] **App.js modularization** — ~11,500 lines. Main View (~6200 lines) remaining. Board settings extracted. Next: board header, canvas ops, management UI wiring.
 
 ## Architecture
-- [ ] **Unify shared packages** — packages/shared (TS types) vs lexera-shared (runtime JS). No code overlap but backend discovery is duplicated. Recommendation: clarify boundaries + deduplicate.
 - [ ] **Remove iframe view composition** — replace iframes + postMessage with in-process views
 
 ## Deferred
