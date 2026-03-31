@@ -2435,13 +2435,20 @@ var LexeraOrderHelpers = (function () {
 
   function ensureDashboardState() {
     if (!dashboardState) dashboardState = _dep('dashboardState');
-    if (!dashboardState) dashboardState = {
-      query: '', scope: 'active', loading: false,
+    if (!dashboardState) {
+      // Default scope: 'all' in workspace shell (multiple boards visible),
+      // 'active' in single-board mode
+      var defaultScope = _dep('workspaceShellEnabled') ? 'all' : 'active';
+      var storedScope = null;
+      try { storedScope = localStorage.getItem('lexera-dashboard-scope'); } catch (_) {}
+      dashboardState = {
+      query: '', scope: normalizeDashboardScope(storedScope || defaultScope), loading: false,
       results: [], overdue: [], today: [], thisWeek: [],
       upcoming: [], later: [], todos: [], taggedGroups: [],
       pinnedQueries: [], activePinnedQuery: '',
       fileInventoryLoading: false, fileEmbeds: [], includedFiles: [], brokenFiles: []
     };
+    }
     return dashboardState;
   }
 
