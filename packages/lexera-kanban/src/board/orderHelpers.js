@@ -1235,23 +1235,22 @@ var LexeraOrderHelpers = (function () {
   var _fileInventoryDataStamp = 0;        // incremented when board data changes
   var _fileInventoryLastStamp = -1;       // stamp of last completed file inventory
   var _brokenScanPending = false;         // true while a deferred broken scan is queued
+  var _brokenScanBoardId = null;          // board ID when scan was scheduled
 
   // ── Dashboard render-cache: skip DOM rebuild when data is unchanged ──
-  // Maps a cache-key (section name) to the last JSON fingerprint rendered.
-  var _dashboardRenderCache = {};
+  // Simple dirty-flag for dashboard sections: generation counter bumped on data change.
+  var _dashboardRenderGeneration = 0;
+  var _dashboardRenderedGeneration = {};
 
   /**
-   * Compute a lightweight fingerprint string for dashboard section data.
-   * Returns a string that changes whenever the visual output would change.
+   * Cheap fingerprint: item count + first/last IDs. Avoids JSON.stringify cost.
    */
   function _dashboardFingerprint(data, extra) {
-    try {
-      var base = JSON.stringify(data);
-      return extra ? base + '|' + extra : base;
-    } catch (_) {
-      // If stringify fails (e.g. circular), always re-render
-      return Math.random().toString(36);
-    }
+    if (!Array.isArray(data) || data.length === 0) return '0';
+    var first = data[0];
+    var last = data[data.length - 1];
+    var fp = data.length + ':' + (first.id || first.title || '') + ':' + (last.id || last.title || '');
+    return extra ? fp + '|' + extra : fp;
   }
 
   /**
@@ -1259,8 +1258,8 @@ var LexeraOrderHelpers = (function () {
    * If it matches, return true (skip render). Otherwise store and return false.
    */
   function _dashboardCacheHit(cacheKey, fingerprint) {
-    if (_dashboardRenderCache[cacheKey] === fingerprint) return true;
-    _dashboardRenderCache[cacheKey] = fingerprint;
+    if (_dashboardRenderedGeneration[cacheKey] === fingerprint) return true;
+    _dashboardRenderedGeneration[cacheKey] = fingerprint;
     return false;
   }
 
@@ -1268,7 +1267,8 @@ var LexeraOrderHelpers = (function () {
    * Invalidate (clear) the entire dashboard render cache, e.g. on board switch.
    */
   function invalidateDashboardRenderCache() {
-    _dashboardRenderCache = {};
+    _dashboardRenderGeneration++;
+    _dashboardRenderedGeneration = {};
     markFileInventoryDirty();
   }
 
@@ -2439,8 +2439,11 @@ var LexeraOrderHelpers = (function () {
   function scheduleDeferredBrokenScan() {
     if (_brokenScanPending) return;
     _brokenScanPending = true;
+    _brokenScanBoardId = _dep('activeBoardId');
     var run = function () {
       _brokenScanPending = false;
+      // Skip if board changed since scan was scheduled
+      if (_brokenScanBoardId !== _dep('activeBoardId')) return;
       _cachedBrokenDomItems = scanBrokenElements();
       renderDashboardBrokenList();
     };
