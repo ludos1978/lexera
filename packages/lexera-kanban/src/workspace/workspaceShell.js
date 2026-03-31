@@ -3784,6 +3784,9 @@
     // Board changes are notified from explicit user actions (tab click,
     // board open) via their own handlers.
     persistState();
+    if (state.hooks && typeof state.hooks.onAfterRender === 'function') {
+      state.hooks.onAfterRender();
+    }
   }
 
   function pruneMissingBoards() {

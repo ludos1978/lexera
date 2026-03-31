@@ -863,6 +863,7 @@ var LexeraDashboard = (function () {
     getElDashboardBrokenList: function () { return getElDashboardBrokenList(); },
     getElDashboardIncludedList: function () { return getElDashboardIncludedList(); },
     getSharedPanelRoots: function (kind) { return getSharedPanelRoots(kind); },
+    syncMirroredWorkspaceViews: function () { return syncMirroredWorkspaceViews(); },
     getDashboardTreeApi: function () { return getDashboardTreeApi(); },
     TreeView: TreeView,
     navigateToSearchResult: function (r) { return navigateToSearchResult(r); },
