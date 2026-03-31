@@ -1660,27 +1660,44 @@ impl LocalStorage {
 
         // CRDT save: best-effort after successful disk write.
         // If it fails, the CRDT will be rebuilt from markdown on next reload.
+        // Skip the write when the serialized bytes are identical to what is
+        // already on disk, avoiding unnecessary IO.
         if let Some(ref c) = crdt {
             let crdt_path = file_path.with_extension("md.crdt");
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                c.save_to_file(&crdt_path)
-            }));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.save()));
             match result {
+                Ok(Ok(new_bytes)) => {
+                    let unchanged = crdt_path
+                        .exists()
+                        .then(|| fs::read(&crdt_path).ok())
+                        .flatten()
+                        .map(|existing| existing == new_bytes)
+                        .unwrap_or(false);
+
+                    if !unchanged {
+                        if let Err(e) = fs::write(&crdt_path, &new_bytes) {
+                            log::error!(
+                                "[lexera.crdt] Failed to save CRDT file for board {}: {}",
+                                board_id,
+                                e
+                            );
+                        }
+                    }
+                }
                 Ok(Err(e)) => {
                     log::error!(
-                        "[lexera.crdt] Failed to save CRDT file for board {}: {}",
+                        "[lexera.crdt] Failed to serialize CRDT for board {}: {}",
                         board_id,
                         e
                     );
                 }
                 Err(panic_payload) => {
                     log::error!(
-                        "[lexera.crdt] Loro panicked during save_to_file for board {}: {}",
+                        "[lexera.crdt] Loro panicked during save for board {}: {}",
                         board_id,
                         panic_payload_to_string(panic_payload.as_ref())
                     );
                 }
-                Ok(Ok(())) => {}
             }
         }
 
@@ -3210,6 +3227,15 @@ impl LocalStorage {
         let resolved_path = include_source.resolved_path.clone();
         let slide_content = slide_parser::generate_slides(&column.cards);
 
+        // Skip write if the file already has identical content.
+        if resolved_path.exists() {
+            if let Ok(existing) = fs::read_to_string(&resolved_path) {
+                if existing == slide_content {
+                    return Ok(());
+                }
+            }
+        }
+
         Self::atomic_write(&resolved_path, &slide_content)?;
 
         // Register self-write fingerprint AFTER successful write so that a
@@ -3235,23 +3261,32 @@ impl LocalStorage {
 
         // Write include files FIRST so that if any include write fails,
         // the main board file is still consistent with the previous state.
+        // (write_include_column skips unchanged includes internally.)
         for column in board.all_columns() {
             if column.include_source.is_some() {
                 self.write_include_column(column)?;
             }
         }
 
-        // Write main board file last — only after all includes succeeded.
-        Self::atomic_write(file_path, &markdown)?;
+        // Skip main board write if the file already has identical content.
+        let disk_unchanged = file_path.exists()
+            && fs::read_to_string(file_path)
+                .map(|existing| existing == markdown)
+                .unwrap_or(false);
 
-        // Register self-write fingerprint AFTER successful write so that a
-        // failed write doesn't suppress legitimate external file-watcher events.
-        match self.self_write_tracker.lock() {
-            Ok(mut tracker) => tracker.register(file_path, &markdown),
-            Err(e) => log::error!(
-                "[lexera.storage.write] Self-write tracker lock poisoned: {}",
-                e
-            ),
+        if !disk_unchanged {
+            // Write main board file last — only after all includes succeeded.
+            Self::atomic_write(file_path, &markdown)?;
+
+            // Register self-write fingerprint AFTER successful write so that a
+            // failed write doesn't suppress legitimate external file-watcher events.
+            match self.self_write_tracker.lock() {
+                Ok(mut tracker) => tracker.register(file_path, &markdown),
+                Err(e) => log::error!(
+                    "[lexera.storage.write] Self-write tracker lock poisoned: {}",
+                    e
+                ),
+            }
         }
 
         let board_dir = file_path.parent().unwrap_or(Path::new("."));

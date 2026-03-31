@@ -156,6 +156,9 @@ impl BackupManager {
 
     /// Create a crashsave file beside the original board file using the
     /// required `{filename}-crashsave-{YYYYMMDD-HHmmss}.md` format.
+    ///
+    /// After writing, rotates old crashsaves so at most
+    /// [`DEFAULT_KEEP_COUNT`] remain per board.
     pub fn create_crashsave(
         board_path: &Path,
         content: &str,
@@ -170,11 +173,86 @@ impl BackupManager {
         let crashsave_path = parent.join(&filename);
         Self::atomic_write_text(&crashsave_path, content)?;
 
+        // Best-effort rotation — don't fail the save if cleanup errors.
+        if let Err(e) = Self::rotate_crashsaves(board_path, DEFAULT_KEEP_COUNT) {
+            log::warn!(
+                "[lexera.backup] Failed to rotate crashsaves for {:?}: {}",
+                board_path,
+                e
+            );
+        }
+
         Ok(CrashsaveEntry {
             path: crashsave_path,
             filename,
             timestamp,
         })
+    }
+
+    /// List all crashsave files for the given board, sorted newest first.
+    pub fn list_crashsaves(board_path: &Path) -> Result<Vec<CrashsaveEntry>, std::io::Error> {
+        let parent = board_path.parent().unwrap_or(Path::new("."));
+        if !parent.exists() {
+            return Ok(Vec::new());
+        }
+
+        let file_stem = board_path
+            .file_stem()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "board".to_string());
+        let prefix = format!("{}-crashsave-", file_stem);
+
+        let mut entries: Vec<CrashsaveEntry> = Vec::new();
+
+        for dir_entry in fs::read_dir(parent)? {
+            let dir_entry = dir_entry?;
+            let name = dir_entry.file_name().to_string_lossy().to_string();
+
+            if !name.starts_with(&prefix) || !name.ends_with(".md") {
+                continue;
+            }
+
+            let metadata = dir_entry.metadata()?;
+            if !metadata.is_file() {
+                continue;
+            }
+
+            // Extract timestamp between prefix and ".md" suffix.
+            let ts = name[prefix.len()..name.len() - 3].to_string();
+
+            entries.push(CrashsaveEntry {
+                path: dir_entry.path(),
+                filename: name,
+                timestamp: ts,
+            });
+        }
+
+        // Sort by timestamp descending (newest first).
+        entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+        Ok(entries)
+    }
+
+    /// Rotate crashsaves for a board, keeping at most `keep` newest files.
+    fn rotate_crashsaves(board_path: &Path, keep: usize) -> Result<(), std::io::Error> {
+        let mut entries = Self::list_crashsaves(board_path)?;
+
+        if entries.len() <= keep {
+            return Ok(());
+        }
+
+        let to_delete = entries.split_off(keep);
+        for entry in to_delete {
+            if let Err(e) = fs::remove_file(&entry.path) {
+                log::warn!(
+                    "[lexera.backup] Failed to remove old crashsave {:?}: {}",
+                    entry.path,
+                    e
+                );
+            }
+        }
+
+        Ok(())
     }
 
     /// Rotate backups for the given board file, keeping only the `keep` most
@@ -346,6 +424,54 @@ mod tests {
             fs::read_to_string(&crashsave.path).unwrap(),
             "# Recovered Board\n"
         );
+    }
+
+    #[test]
+    fn test_list_crashsaves_returns_sorted_entries() {
+        let dir = tempdir().unwrap();
+        let board = write_board(dir.path(), "project.md", "content");
+
+        // Manually create crashsave files with known timestamps.
+        let timestamps = ["20260101-100000", "20260303-120000", "20260215-083000"];
+        for ts in &timestamps {
+            let name = format!("project-crashsave-{}.md", ts);
+            fs::write(dir.path().join(&name), "crash content").unwrap();
+        }
+
+        let entries = BackupManager::list_crashsaves(&board).unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].timestamp, "20260303-120000");
+        assert_eq!(entries[1].timestamp, "20260215-083000");
+        assert_eq!(entries[2].timestamp, "20260101-100000");
+    }
+
+    #[test]
+    fn test_rotate_crashsaves_keeps_only_n() {
+        let dir = tempdir().unwrap();
+        let board = write_board(dir.path(), "project.md", "content");
+
+        // Create 7 crashsave files.
+        let timestamps = [
+            "20260101-010000",
+            "20260102-010000",
+            "20260103-010000",
+            "20260104-010000",
+            "20260105-010000",
+            "20260106-010000",
+            "20260107-010000",
+        ];
+        for ts in &timestamps {
+            let name = format!("project-crashsave-{}.md", ts);
+            fs::write(dir.path().join(&name), "crash content").unwrap();
+        }
+
+        BackupManager::rotate_crashsaves(&board, 3).unwrap();
+
+        let remaining = BackupManager::list_crashsaves(&board).unwrap();
+        assert_eq!(remaining.len(), 3, "Should keep exactly 3 crashsaves");
+        assert_eq!(remaining[0].timestamp, "20260107-010000");
+        assert_eq!(remaining[1].timestamp, "20260106-010000");
+        assert_eq!(remaining[2].timestamp, "20260105-010000");
     }
 
     #[test]
