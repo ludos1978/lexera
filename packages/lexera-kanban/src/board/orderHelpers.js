@@ -16,6 +16,7 @@ var LexeraOrderHelpers = (function () {
   // --- Dependencies (injected via init) ---
   var _deps = {};
   var _rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+  var _Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   // Read deps — runtime state takes priority for shared state keys
   function _dep(name) {
@@ -272,10 +273,16 @@ var LexeraOrderHelpers = (function () {
   // ─── Ordering / sorting helpers ───────────────────────────────────────
 
   function getOrderedItems(items, storageKey, idFn) {
-    var saved = localStorage.getItem(storageKey);
-    if (!saved) return items;
+    var order;
     try {
-      var order = JSON.parse(saved);
+      if (_Settings && storageKey === 'lexera-board-order') {
+        order = _Settings.get('boardOrder');
+      } else {
+        var saved = localStorage.getItem(storageKey);
+        if (!saved) return items;
+        order = JSON.parse(saved);
+      }
+      if (!Array.isArray(order) || order.length === 0) return items;
       var map = {};
       for (var i = 0; i < order.length; i++) map[order[i]] = i;
       return items.slice().sort(function (a, b) {
@@ -288,7 +295,12 @@ var LexeraOrderHelpers = (function () {
 
   function saveOrder(items, storageKey, idFn) {
     if (!Array.isArray(items)) return;
-    localStorage.setItem(storageKey, JSON.stringify(items.map(idFn)));
+    var ids = items.map(idFn);
+    if (_Settings && storageKey === 'lexera-board-order') {
+      _Settings.set('boardOrder', ids);
+    } else {
+      localStorage.setItem(storageKey, JSON.stringify(ids));
+    }
   }
 
   // ─── Fold-state helpers (delegated to foldState module) ───────────────
@@ -480,7 +492,7 @@ var LexeraOrderHelpers = (function () {
     if (!sourceId || !targetId || sourceId === targetId) return;
     var orderedIds = orderedBoards.map(function (b) { return b.id; });
     var newOrder = reorderIds(orderedIds, sourceId, targetId, insertBefore);
-    localStorage.setItem('lexera-board-order', JSON.stringify(newOrder));
+    if (_Settings) { _Settings.set('boardOrder', newOrder); } else { localStorage.setItem('lexera-board-order', JSON.stringify(newOrder)); }
     _callDep('renderBoardList');
   }
 
@@ -765,12 +777,12 @@ var LexeraOrderHelpers = (function () {
       },
       onEnd: function () {
         _callDep('getElSidebar').classList.remove('resizing-sections');
-        localStorage.setItem('lexera-sidebar-split-ratio', String(normalizeSidebarSplitRatio(_dep('sidebarSplitRatio'))));
+        if (_Settings) { _Settings.set('sidebarSplitRatio', normalizeSidebarSplitRatio(_dep('sidebarSplitRatio'))); } else { localStorage.setItem('lexera-sidebar-split-ratio', String(normalizeSidebarSplitRatio(_dep('sidebarSplitRatio')))); }
         applySidebarSectionLayout();
       },
       onDoubleClick: function () {
         _callDep('setSidebarSplitRatio', 0.5);
-        localStorage.setItem('lexera-sidebar-split-ratio', '0.5');
+        if (_Settings) { _Settings.set('sidebarSplitRatio', 0.5); } else { localStorage.setItem('lexera-sidebar-split-ratio', '0.5'); }
         applySidebarSectionLayout();
       }
     });
@@ -810,13 +822,13 @@ var LexeraOrderHelpers = (function () {
       },
       onEnd: function () {
         _callDep('getElLayout').classList.remove('resizing-sidebar-width');
-        localStorage.setItem('lexera-sidebar-width', String(_dep('sidebarWidth')));
+        if (_Settings) { _Settings.set('sidebarWidth', _dep('sidebarWidth')); } else { localStorage.setItem('lexera-sidebar-width', String(_dep('sidebarWidth'))); }
         applySidebarSectionLayout();
       },
       onDoubleClick: function () {
         _callDep('setSidebarWidth', SIDEBAR_DEFAULT);
         document.documentElement.style.setProperty('--sidebar-width', SIDEBAR_DEFAULT + 'px');
-        localStorage.setItem('lexera-sidebar-width', String(SIDEBAR_DEFAULT));
+        if (_Settings) { _Settings.set('sidebarWidth', SIDEBAR_DEFAULT); } else { localStorage.setItem('lexera-sidebar-width', String(SIDEBAR_DEFAULT)); }
         applySidebarSectionLayout();
       }
     });
@@ -936,7 +948,7 @@ var LexeraOrderHelpers = (function () {
 
   function setHeaderSearchExpanded(expanded, options) {
     _callDep('setHeaderSearchExpandedState', !!expanded);
-    localStorage.setItem('lexera-header-search-expanded', expanded ? 'true' : 'false');
+    if (_Settings) { _Settings.set('headerSearchExpanded', !!expanded); } else { localStorage.setItem('lexera-header-search-expanded', expanded ? 'true' : 'false'); }
     updateHeaderSearchVisibility(options);
   }
 
@@ -1027,7 +1039,7 @@ var LexeraOrderHelpers = (function () {
     _callDep('setActiveBoardId', boardId || null);
     if (!_dep('embeddedMode')) {
       if (boardId) {
-        localStorage.setItem('lexera-last-board', boardId);
+        if (_Settings) { _Settings.set('lastBoard', boardId); } else { localStorage.setItem('lexera-last-board', boardId); }
         _callDep('trackRecentBoard', boardId);
       }
     }
@@ -1178,7 +1190,7 @@ var LexeraOrderHelpers = (function () {
   function ensureSidebarTreeDefaultState() {
     var versionKey = 'lexera-sidebar-tree-default-v2';
     if (localStorage.getItem(versionKey) === '1') return;
-    localStorage.removeItem('lexera-sidebar-tree-state');
+    if (_Settings) { _Settings.set('sidebarTreeState', null); } else { localStorage.removeItem('lexera-sidebar-tree-state'); }
     localStorage.setItem(versionKey, '1');
   }
 
@@ -1198,7 +1210,7 @@ var LexeraOrderHelpers = (function () {
 
   function loadDashboardPinnedQueries() {
     try {
-      var raw = JSON.parse(localStorage.getItem('lexera-dashboard-pinned-queries') || '[]');
+      var raw = _Settings ? _Settings.get('dashboardPinnedQueries') : JSON.parse(localStorage.getItem('lexera-dashboard-pinned-queries') || '[]');
       if (!Array.isArray(raw)) return [];
       var out = [];
       for (var i = 0; i < raw.length; i++) {
@@ -1215,10 +1227,17 @@ var LexeraOrderHelpers = (function () {
 
   function persistDashboardPrefs() {
     if (!dashboardState) return;
-    localStorage.setItem('lexera-dashboard-query', dashboardState.query || '');
-    localStorage.setItem('lexera-dashboard-scope', normalizeDashboardScope(dashboardState.scope));
-    localStorage.setItem('lexera-dashboard-active-pinned', dashboardState.activePinnedQuery || '');
-    localStorage.setItem('lexera-dashboard-pinned-queries', JSON.stringify(dashboardState.pinnedQueries || []));
+    if (_Settings) {
+      _Settings.set('dashboardQuery', dashboardState.query || '');
+      _Settings.set('dashboardScope', normalizeDashboardScope(dashboardState.scope));
+      _Settings.set('dashboardActivePinned', dashboardState.activePinnedQuery || '');
+      _Settings.set('dashboardPinnedQueries', dashboardState.pinnedQueries || []);
+    } else {
+      localStorage.setItem('lexera-dashboard-query', dashboardState.query || '');
+      localStorage.setItem('lexera-dashboard-scope', normalizeDashboardScope(dashboardState.scope));
+      localStorage.setItem('lexera-dashboard-active-pinned', dashboardState.activePinnedQuery || '');
+      localStorage.setItem('lexera-dashboard-pinned-queries', JSON.stringify(dashboardState.pinnedQueries || []));
+    }
   }
 
   function setDashboardScope(scope) {
@@ -1555,10 +1574,15 @@ var LexeraOrderHelpers = (function () {
   function getDashboardTags() {
     if (_cachedDashboardTags && Array.isArray(_cachedDashboardTags)) return _cachedDashboardTags;
     try {
-      var stored = localStorage.getItem('lexera-dashboard-tags');
-      if (stored) {
-        var parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
+      if (_Settings) {
+        var settingsVal = _Settings.get('dashboardTags');
+        if (Array.isArray(settingsVal)) return settingsVal;
+      } else {
+        var raw = localStorage.getItem('lexera-dashboard-tags');
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        }
       }
     } catch (err) { _callDep('logFrontendIssue', 'warn', 'dashboard.tags', 'Failed to read dashboard tags', err); }
     return ['#important', '#blocked', '#review'];
@@ -1566,7 +1590,7 @@ var LexeraOrderHelpers = (function () {
 
   function setDashboardTags(tags) {
     _cachedDashboardTags = tags;
-    try { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(tags)); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
+    try { if (_Settings) { _Settings.set('dashboardTags', tags); } else { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(tags)); } } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
     var LexeraApi = _dep('LexeraApi');
     var workspaceId = _dep('activeWorkspaceId') || null;
     if (workspaceId === '__all__') workspaceId = null;
@@ -1588,7 +1612,7 @@ var LexeraOrderHelpers = (function () {
     LexeraApi.request(url, { timeoutMs: 3000 }).then(function (data) {
       if (data && Array.isArray(data.tags)) {
         _cachedDashboardTags = data.tags;
-        try { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(data.tags)); } catch (_) { /* intentional */ }
+        try { if (_Settings) { _Settings.set('dashboardTags', data.tags); } else { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(data.tags)); } } catch (_) { /* intentional */ }
       }
     }).catch(function () { /* use cached/localStorage fallback */ });
   }
@@ -2440,7 +2464,7 @@ var LexeraOrderHelpers = (function () {
       // 'active' in single-board mode
       var defaultScope = _dep('workspaceShellEnabled') ? 'all' : 'active';
       var storedScope = null;
-      try { storedScope = localStorage.getItem('lexera-dashboard-scope'); } catch (_) {}
+      try { storedScope = _Settings ? _Settings.get('dashboardScope') : localStorage.getItem('lexera-dashboard-scope'); } catch (_) {}
       dashboardState = {
       query: '', scope: normalizeDashboardScope(storedScope || defaultScope), loading: false,
       results: [], overdue: [], today: [], thisWeek: [],
@@ -2742,14 +2766,14 @@ var LexeraOrderHelpers = (function () {
         if (header) collapsed.push(header.textContent.trim());
       }
     }
-    try { localStorage.setItem('lexera-dashboard-collapsed', JSON.stringify(collapsed)); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
+    try { if (_Settings) { _Settings.set('dashboardCollapsed', collapsed); } else { localStorage.setItem('lexera-dashboard-collapsed', JSON.stringify(collapsed)); } } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
   }
 
   function restoreDashboardFoldState() {
     var root = _callDep('getElDashboardRoot');
     if (!root) return;
     var stored;
-    try { stored = JSON.parse(localStorage.getItem('lexera-dashboard-collapsed')); } catch (_) { return; }
+    try { stored = _Settings ? _Settings.get('dashboardCollapsed') : JSON.parse(localStorage.getItem('lexera-dashboard-collapsed')); } catch (_) { return; }
     if (!Array.isArray(stored) || stored.length === 0) return;
     var groups = root.querySelectorAll('.dashboard-group');
     for (var i = 0; i < groups.length; i++) {
