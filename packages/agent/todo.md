@@ -1,26 +1,8 @@
 # Lexera Kanban Todo
 
 ## Bugs
-- [ ] The dashboard doesnt properly show all the setup elements from the open or selected boards!
-- [ ] make "[data-visual-theme="gap"] .columns-container" padding 8px
-- [ ] the backend settings are not showing any of the settings — management init hardened with retry + error logging (c1ba4713), needs frontend log to diagnose further
-- [ ] changing the appearance in the workspaces isnt modifying the theme of the kanban view!
-- [ ] delete row isnt working (or it's just not updating immediately)
-- [ ] make a proper hierarchical structure in the dashboard, which indents every sub-item by an block (which can show hierarchical helper lines)
-- [ ] the hierarchy in the workspaces isnt showing the kanban/canvas contents anymore. i cant re-order the items in the list. and it's not a unified hierarchy!
-- [ ] ERROR
-  FRONTEND
-  drag.ptr
-  Error in ptr mouseup handler: @http://127.0.0.1:1431/board/orderHelpers.js:439:70
-  map@[native code]
-  saveOrder@http://127.0.0.1:1431/board/orderHelpers.js:290:62
-  reorderBoards@http://127.0.0.1:1431/board/orderHelpers.js:439:14
-  @http://127.0.0.1:1431/app.js:1097:74
-  reorderBoards@http://127.0.0.1:1431/app.js:1162:97
-  reorderBoards@http://127.0.0.1:1431/app.js:129:71
-  executePtrDrop@http://127.0.0.1:1431/dragdrop/dragDropHandlers.js:1652:57
-  executePtrDrop@http://127.0.0.1:1431/app.js:9952:90
-  @http://127.0.0.1:1431/app.js:10452:19
+- [ ] The dashboard doesnt properly show all the setup elements from the open or selected boards — filterDashboardResultsByScope exists but may filter incorrectly
+- [ ] reorderBoards drag error at orderHelpers.js:439 — map() on orderedBoards may fail if array is undefined
 
 ## Active Features
 - [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)
@@ -28,6 +10,17 @@
 
 ## Code Quality
 - [ ] **App.js modularization** — 13,108 lines. Extract into state/, services/, views/, shell/ layers. No module should mix DOM rendering, localStorage, and API calls. Includes: reduce to orchestration, split frontend layers, settings service behind typed API.
+
+## Disk / IO Audit — Do Next
+- [ ] **Add backend log rotation + retention** — `~/Library/Application Support/lexera/logs/backend.log` reached about 215 MB / 912k lines during local use. Add size-based rotation, retention, and optional truncation on startup.
+- [ ] **Lower default backend log volume** — current logger defaults to `info` and writes very chatty targets (`lexera.storage.read_board`, `tracing::span`, `loro_internal::*`, watcher include logs) into `backend.log`. Move those targets to debug/trace or filter them out by default.
+- [ ] **Stop flushing backend.log on every line** — `log_bridge.rs` appends and `flush()`es every entry. Batch or buffered writes are needed to reduce constant small-write pressure.
+- [ ] **Measure real on-disk WebView draft storage** — local-board edits persist a full `board` snapshot plus `baseBoard` into `localStorage` every 500 ms debounce. Find the actual Tauri/WebKit storage path on macOS, measure its growth, and cap/clean old drafts.
+- [ ] **Instrument write amplification per save** — add counters/metrics for bytes written across backups, include files, main markdown, `.md.crdt`, crashsaves, and config/auth/invite/public saves so disk cost is visible per operation.
+- [ ] **Reduce board-save amplification** — one local save can copy the existing board into `.lexera-backups`, rewrite include files, atomically rewrite the main markdown with fsync, and rewrite `.md.crdt`. Check whether backups can be rate-limited or content-hash gated and whether unchanged include files can skip writes.
+- [ ] **Verify there is no write-loop under active editing** — idle sampling showed no ongoing board rewrites, but active edit sessions still need a timed probe to confirm there is no watcher reload / CRDT rewrite / autosave loop causing repeated disk bursts.
+- [ ] **Audit crashsave retention** — crashsave creation exists, but retention/cleanup needs explicit verification so failed save storms cannot fill disk over time.
+- [ ] **Add a disk-usage diagnostics view or command** — expose current log size, backup size, crashsave count, `.md.crdt` totals, and draft-storage footprint so disk growth is visible without manual filesystem inspection.
 
 ## Architecture — Do Next
 - [ ] **Real frontend state model** — replace ad-hoc globals + 80+ raw localStorage calls with DocumentSessionStore, ViewStateStore, SettingsStore. Separate shell state from board state.

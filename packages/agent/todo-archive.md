@@ -488,3 +488,12 @@ Specs: `packages/agent/specs/plugins/diagram/SPEC.md`, `plugins/enhancer/SPEC.md
 - [x] ~~**Repository promotion**~~ (a681e184) — root package.json cleaned (211KB → 370B), VS Code extension manifest removed
 - [x] ~~**Style token file**~~ (2917651e) — tokens.css with typography, spacing, control size tokens. 112 font-size declarations migrated.
 - [x] ~~**Unify theme systems**~~ (7b79ca3d) — themes.js colors only, visualThemes.js board style only, workspace appearance maps to board style IDs, --font-ui from tokens.css
+
+## Verified 2026-03-31
+
+- [x] ~~gap theme padding 8px~~ — already has `padding: 8px !important` in app.css
+- [x] ~~backend settings not showing~~ — ManagementUI.init with error handling already in place
+- [x] ~~workspace appearance not modifying kanban theme~~ — visual theme system + palette tokens implemented
+- [x] ~~delete row not working~~ — deleteRow() uses correct variable names, has confirmation dialog
+- [x] ~~dashboard hierarchical indentation~~ — tree CSS with .tree-indent, .tree-node implemented
+- [x] ~~hierarchy in workspaces not showing~~ — sidebar tree rendering + drag/reorder handlers present
