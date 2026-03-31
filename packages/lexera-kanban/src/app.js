@@ -1371,17 +1371,20 @@ var LexeraDashboard = (function () {
     poll().catch(function (err) {
       logFrontendIssue('error', 'init.poll', 'Initial poll failed', err);
     });
+    // Embedded iframes only delta-sync their own board — no workspace/board
+    // list/remote-boards fetching — so they can poll much less frequently.
+    var pollMs = embeddedMode ? 15000 : 5000;
     pollInterval = setInterval(function () {
       poll().catch(function (err) {
         logFrontendIssue('error', 'poll.interval', 'Poll interval failed', err);
       });
-    }, 5000);
+    }, pollMs);
     } catch (err) {
       logFrontendIssue('error', 'init', 'App initialization failed — some features may be unavailable', err);
       // Still try to start polling so boards can load even if UI setup partially failed
       try {
         poll().catch(function () {});
-        if (!pollInterval) pollInterval = setInterval(function () { poll().catch(function () {}); }, 5000);
+        if (!pollInterval) pollInterval = setInterval(function () { poll().catch(function () {}); }, embeddedMode ? 15000 : 5000);
       } catch (err) {
         logFrontendIssue('error', 'init.poll.recovery', 'Failed to start recovery poll after init error', err);
       }
@@ -2326,15 +2329,15 @@ var LexeraDashboard = (function () {
       }
       notifyParentPaneActivated();
     }
-    renderBoardList();
+    if (!embeddedMode) renderBoardList();
     refreshHeaderFileControls();
     if (!options.skipLoad) {
       await loadBoard(boardId);
       // Schedule dashboard refresh AFTER board is loaded — avoids race
       // where dashboard queries while fullBoardData is still null
-      scheduleDashboardRefresh(60);
+      if (!embeddedMode) scheduleDashboardRefresh(60);
     } else {
-      scheduleDashboardRefresh(60);
+      if (!embeddedMode) scheduleDashboardRefresh(60);
     }
   }
 
