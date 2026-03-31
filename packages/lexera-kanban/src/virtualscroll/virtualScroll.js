@@ -27,9 +27,32 @@
   /** Single IntersectionObserver shared by all virtualised columns. */
   var vsObserver = null;
 
+  /**
+   * Generation counter incremented on each full activate() call.
+   * Each measured column is stamped with the current generation so that
+   * activate() can skip columns that have not changed since the last pass.
+   */
+  var vsGeneration = 0;
+
   /** Root element used for IntersectionObserver (the scroll container). */
   function vsGetRoot() {
     return deps.getColumnsContainer ? deps.getColumnsContainer() : null;
+  }
+
+  /**
+   * Ensure the shared IntersectionObserver exists.  Re-uses an existing
+   * observer if one is already active, so incremental activate calls do
+   * not destroy it.
+   */
+  function vsEnsureObserver() {
+    if (vsObserver) return;
+    var root = vsGetRoot();
+    if (!root) return;
+    vsObserver = new IntersectionObserver(vsHandleIntersections, {
+      root: root,
+      rootMargin: '600px 0px 600px 0px',
+      threshold: 0
+    });
   }
 
   /**
@@ -42,90 +65,219 @@
       vsObserver = null;
     }
     vsColumnStates.clear();
+    vsGeneration++;
+  }
+
+  /**
+   * Tear down virtual-scrolling state for a single column container.
+   * Unobserves all sentinels/cards belonging to that column and removes
+   * the state entry, but leaves other columns untouched.
+   */
+  function vsTeardownColumn(container) {
+    var state = vsColumnStates.get(container);
+    if (!state) return;
+    if (vsObserver) {
+      state.sentinels.forEach(function (info, sentinel) {
+        vsObserver.unobserve(sentinel);
+        vsObserver.unobserve(info.cardEl);
+      });
+    }
+    // Swap all virtualised cards back in so the DOM is clean
+    state.sentinels.forEach(function (info, sentinel) {
+      if (sentinel.parentNode && state.virtualised.has(info.cardEl)) {
+        sentinel.parentNode.replaceChild(info.cardEl, sentinel);
+      }
+    });
+    vsColumnStates.delete(container);
+    var colEl = container.closest('.column');
+    if (colEl) colEl.classList.remove('virtual-scrolling');
+  }
+
+  /**
+   * Set up virtual scrolling for a single column-cards container.
+   * Assumes the shared observer already exists (call vsEnsureObserver first).
+   */
+  function vsSetupColumn(container, cards) {
+    var colEl = container.closest('.column');
+    if (colEl) colEl.classList.add('virtual-scrolling');
+
+    var state = {
+      container: container,
+      /** Map from sentinel element -> { cardEl, height } */
+      sentinels: new Map(),
+      /** Set of card elements currently replaced by placeholders */
+      virtualised: new Set(),
+      /** Card count at time of measurement, used to detect changes */
+      cardCount: cards.length,
+      /** Generation at time of measurement */
+      generation: vsGeneration
+    };
+    vsColumnStates.set(container, state);
+
+    // Measure every card, create a sentinel for each, then replace
+    // non-visible cards with their sentinels.
+    for (var j = 0; j < cards.length; j++) {
+      var card = cards[j];
+      var height = card.offsetHeight;
+      // Create a lightweight sentinel (placeholder) element
+      var sentinel = document.createElement('div');
+      sentinel.className = 'vs-placeholder';
+      sentinel.style.height = height + 'px';
+      // Store the real card's data attributes on the sentinel so it can
+      // be identified if needed.
+      sentinel.setAttribute('data-vs-card-id', card.getAttribute('data-card-id') || '');
+      sentinel.setAttribute('data-vs-col-index', card.getAttribute('data-col-index') || '');
+      sentinel.setAttribute('data-vs-card-index', card.getAttribute('data-card-index') || '');
+
+      state.sentinels.set(sentinel, { cardEl: card, height: height });
+
+      // Start by observing every card AND its sentinel.  Cards that are
+      // currently visible stay rendered; those off-screen will be swapped
+      // out in the first intersection callback.
+      vsObserver.observe(card);
+    }
+
+    // Use requestAnimationFrame to let the observer fire its initial
+    // batch, then do the first swap pass.
+    (function (st) {
+      requestAnimationFrame(function () {
+        vsInitialSwap(st);
+      });
+    })(state);
   }
 
   /**
    * Scan all rendered columns and activate virtual scrolling on those whose
    * card count exceeds the threshold.  Must be called AFTER the DOM is fully
    * built by renderColumns() (including content enhancement).
+   *
+   * Incremental: columns that were already measured in a previous pass and
+   * whose card count has not changed are skipped entirely.
    */
   function vsActivate() {
-    vsTeardown();
+    vsGeneration++;
 
     var root = vsGetRoot();
     if (!root) return;
 
-    // Collect qualifying column-cards containers
+    // Collect all current column-cards containers so we can detect removed ones
     var allCardsContainers = root.querySelectorAll('.column-cards');
+    var currentContainers = new Set();
     var qualifying = [];
     for (var i = 0; i < allCardsContainers.length; i++) {
       var container = allCardsContainers[i];
+      currentContainers.add(container);
       var cards = container.querySelectorAll(':scope > .card');
       if (cards.length > VIRTUAL_SCROLL_CARD_THRESHOLD) {
         qualifying.push({ container: container, cards: cards });
       }
     }
 
-    if (qualifying.length === 0) return;
-
-    // Create the shared IntersectionObserver.
-    // rootMargin adds a generous buffer zone above and below so cards are
-    // rendered before they actually scroll into view.
-    vsObserver = new IntersectionObserver(vsHandleIntersections, {
-      root: root,
-      rootMargin: '600px 0px 600px 0px',
-      threshold: 0
+    // Tear down state for columns that no longer exist in the DOM, or that
+    // have dropped below the threshold
+    var toRemove = [];
+    vsColumnStates.forEach(function (state, key) {
+      if (!currentContainers.has(key)) {
+        toRemove.push(key);
+      }
     });
+    for (var r = 0; r < toRemove.length; r++) {
+      vsTeardownColumn(toRemove[r]);
+    }
+    // Also tear down columns that dropped below threshold
+    vsColumnStates.forEach(function (state, key) {
+      if (!qualifying.some(function (q) { return q.container === key; })) {
+        vsTeardownColumn(key);
+      }
+    });
+
+    if (qualifying.length === 0) {
+      // No qualifying columns — tear down the observer if it exists
+      if (vsObserver) {
+        vsObserver.disconnect();
+        vsObserver = null;
+      }
+      return;
+    }
+
+    vsEnsureObserver();
 
     for (var q = 0; q < qualifying.length; q++) {
       var info = qualifying[q];
-      var colEl = info.container.closest('.column');
-      if (colEl) colEl.classList.add('virtual-scrolling');
+      var existingState = vsColumnStates.get(info.container);
 
-      var state = {
-        container: info.container,
-        /** Map from sentinel element → { cardEl, height } */
-        sentinels: new Map(),
-        /** Set of card elements currently replaced by placeholders */
-        virtualised: new Set()
-      };
-      vsColumnStates.set(info.container, state);
-
-      // Measure every card, create a sentinel for each, then replace
-      // non-visible cards with their sentinels.
-      var cards = info.cards;
-      for (var j = 0; j < cards.length; j++) {
-        var card = cards[j];
-        var height = card.offsetHeight;
-        // Create a lightweight sentinel (placeholder) element
-        var sentinel = document.createElement('div');
-        sentinel.className = 'vs-placeholder';
-        sentinel.style.height = height + 'px';
-        // Store the real card's data attributes on the sentinel so it can
-        // be identified if needed.
-        sentinel.setAttribute('data-vs-card-id', card.getAttribute('data-card-id') || '');
-        sentinel.setAttribute('data-vs-col-index', card.getAttribute('data-col-index') || '');
-        sentinel.setAttribute('data-vs-card-index', card.getAttribute('data-card-index') || '');
-
-        state.sentinels.set(sentinel, { cardEl: card, height: height });
-
-        // Start by observing every card AND its sentinel.  Cards that are
-        // currently visible stay rendered; those off-screen will be swapped
-        // out in the first intersection callback.
-        vsObserver.observe(card);
-        // We don't replace cards yet — the IntersectionObserver callback
-        // will fire immediately (synchronously after observe on rAF) and
-        // handle the swap for off-screen cards.
+      // Skip this column if it already has state and the card count matches
+      if (existingState && existingState.cardCount === info.cards.length) {
+        // Stamp with current generation so it survives future prune passes
+        existingState.generation = vsGeneration;
+        continue;
       }
 
-      // Use requestAnimationFrame to let the observer fire its initial
-      // batch, then do the first swap pass.
-      (function (st) {
-        requestAnimationFrame(function () {
-          vsInitialSwap(st);
-        });
-      })(state);
+      // Column is new or card count changed — tear down old state and re-setup
+      if (existingState) {
+        vsTeardownColumn(info.container);
+      }
+      vsSetupColumn(info.container, info.cards);
     }
+  }
+
+  /**
+   * Re-measure a single column after a card was updated in place.
+   * Finds the column state by colIndex attribute, then updates the
+   * sentinel mapping for any card that was replaced in the DOM.
+   */
+  function vsRemeasureColumn(colIndex) {
+    var root = vsGetRoot();
+    if (!root) return;
+    var container = root.querySelector('.column-cards[data-col-index="' + colIndex + '"]');
+    if (!container) return;
+
+    var state = vsColumnStates.get(container);
+    if (!state) return;
+
+    // Build a map of card-id -> current sentinel for fast lookup
+    var cardIdToSentinel = new Map();
+    state.sentinels.forEach(function (info, sentinel) {
+      var cardId = sentinel.getAttribute('data-vs-card-id') || '';
+      if (cardId) cardIdToSentinel.set(cardId, sentinel);
+    });
+
+    // Scan current cards in the container (includes non-virtualised cards)
+    var currentCards = container.querySelectorAll(':scope > .card');
+    for (var i = 0; i < currentCards.length; i++) {
+      var card = currentCards[i];
+      var cardId = card.getAttribute('data-card-id') || '';
+      if (!cardId) continue;
+
+      var existingSentinel = cardIdToSentinel.get(cardId);
+      if (!existingSentinel) continue;
+
+      var oldInfo = state.sentinels.get(existingSentinel);
+      if (!oldInfo) continue;
+
+      // Check if the card element was replaced (new DOM node for same card-id)
+      if (oldInfo.cardEl !== card) {
+        // Update the sentinel mapping to point to the new card element
+        if (vsObserver) {
+          vsObserver.unobserve(oldInfo.cardEl);
+          vsObserver.observe(card);
+        }
+        oldInfo.cardEl = card;
+        state.virtualised.delete(oldInfo.cardEl);
+      }
+
+      // Update the sentinel height to match the (possibly resized) card
+      var newHeight = card.offsetHeight;
+      if (newHeight !== oldInfo.height) {
+        oldInfo.height = newHeight;
+        existingSentinel.style.height = newHeight + 'px';
+      }
+    }
+
+    // Update card count in case cards were added/removed
+    var allCards = container.querySelectorAll(':scope > .card');
+    var allPlaceholders = container.querySelectorAll(':scope > .vs-placeholder');
+    state.cardCount = allCards.length + allPlaceholders.length;
   }
 
   /**
@@ -315,6 +467,8 @@
     },
     activate: vsActivate,
     teardown: vsTeardown,
+    teardownColumn: vsTeardownColumn,
+    remeasureColumn: vsRemeasureColumn,
     materialiseAll: vsMaterialiseAll,
     restoreAfterDrag: vsRestoreAfterDrag
   };
