@@ -3,7 +3,7 @@
 ## Bugs
 - [x] ~~Dashboard scope~~ (35db71de) — defaults to all in workspace shell mode
 - [x] ~~reorderBoards crash~~ (cd849d0a) — guard against non-array boards dep
-- [ ] changing the order of boards in the workspace view isnt working.
+- [x] ~~board reorder not working~~ (16494248) — fingerprint cache blocked re-render after reorder; now invalidates before renderBoardList()
 
 ## Active Features
 - [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)
