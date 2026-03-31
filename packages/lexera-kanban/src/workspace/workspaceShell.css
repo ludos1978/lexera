@@ -336,6 +336,44 @@
   background: #ef4444;
 }
 
+/* ── Folded log status badges ── */
+.ws-fold-status-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ws-fold-status-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.ws-fold-status-dot.is-connected {
+  background: #22c55e;
+}
+.ws-fold-status-dot.is-disconnected {
+  background: #ef4444;
+}
+.ws-fold-badge {
+  flex-shrink: 0;
+}
+/* Pipe separator between visible badges via ::before */
+.ws-fold-badge + .ws-fold-badge::before {
+  content: '|';
+  margin-right: 6px;
+  color: var(--border);
+}
+.ws-fold-badge-api {
+  color: var(--accent, var(--text-muted));
+}
+
 .ws-fold-indicator.is-drag-handle {
   font-size: var(--icon-glyph-size);
   letter-spacing: -1.5px;

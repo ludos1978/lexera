@@ -1463,12 +1463,48 @@
       }
       zone.appendChild(indicator);
 
-      var label = document.createElement('span');
-      label.className = 'ws-fold-zone-label';
-      label.textContent = kind === 'logs'
-        ? (getPanelTitle(panelId) + ' · ' + (state.backendConnected ? 'Connected' : 'Disconnected'))
-        : getPanelTitle(panelId);
-      zone.appendChild(label);
+      if (kind === 'logs') {
+        // Build rich status badges for the folded log strip
+        var badgesEl = document.createElement('span');
+        badgesEl.className = 'ws-fold-status-badges';
+
+        var statusData = typeof window.getLogFoldedStatusData === 'function'
+          ? window.getLogFoldedStatusData()
+          : { connected: state.backendConnected, logCount: 0, userCount: 0, inFlightCount: 0 };
+
+        var dotSpan = document.createElement('span');
+        dotSpan.className = 'ws-fold-status-dot' + (statusData.connected ? ' is-connected' : ' is-disconnected');
+        badgesEl.appendChild(dotSpan);
+
+        var connSpan = document.createElement('span');
+        connSpan.className = 'ws-fold-badge ws-fold-badge-conn';
+        connSpan.textContent = statusData.connected ? 'Connected' : 'Disconnected';
+        badgesEl.appendChild(connSpan);
+
+        var logsSpan = document.createElement('span');
+        logsSpan.className = 'ws-fold-badge ws-fold-badge-logs';
+        logsSpan.textContent = statusData.logCount + ' logs';
+        badgesEl.appendChild(logsSpan);
+
+        var usersSpan = document.createElement('span');
+        usersSpan.className = 'ws-fold-badge ws-fold-badge-users';
+        usersSpan.textContent = statusData.userCount + (statusData.userCount === 1 ? ' user' : ' users');
+        if (statusData.userCount === 0) usersSpan.style.display = 'none';
+        badgesEl.appendChild(usersSpan);
+
+        var apiSpan = document.createElement('span');
+        apiSpan.className = 'ws-fold-badge ws-fold-badge-api';
+        apiSpan.textContent = statusData.inFlightCount + ' pending';
+        if (statusData.inFlightCount === 0) apiSpan.style.display = 'none';
+        badgesEl.appendChild(apiSpan);
+
+        zone.appendChild(badgesEl);
+      } else {
+        var label = document.createElement('span');
+        label.className = 'ws-fold-zone-label';
+        label.textContent = getPanelTitle(panelId);
+        zone.appendChild(label);
+      }
 
       strip.appendChild(zone);
     }

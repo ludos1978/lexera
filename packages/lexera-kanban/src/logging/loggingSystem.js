@@ -477,6 +477,7 @@ function appendLogEntry(source, entry) {
   }
   if (source === activeLogSource) syncLogCount();
   syncMirroredLogViews();
+  updateFoldedLogStatusBadges();
 }
 
 function updateLastLogEntryRepeat(source, entry) {
@@ -509,6 +510,7 @@ function replaceLogEntries(source, entries) {
   panel.scrollTop = panel.scrollHeight;
   if (source === activeLogSource) syncLogCount();
   syncMirroredLogViews();
+  updateFoldedLogStatusBadges();
 }
 
 function copyActiveLogsToClipboard(copyBtn) {
@@ -918,6 +920,79 @@ document.addEventListener('DOMContentLoaded', function () {
   // connectBackendLogStreamIfReady() will be called from setActiveLogSource()
   // or setLogPanelVisibility() when the backend tab is selected.
 });
+
+/**
+ * Gather status data for the folded log strip.
+ * Returns { connected, logCount, userCount, inFlightCount }.
+ */
+function getLogFoldedStatusData() {
+  var connected = backendConnectionState;
+  var logCount = frontendLogEntries.length + backendLogEntries.length;
+
+  // Board presence: count users on the active board
+  var userCount = 0;
+  var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
+  if (rt && rt.state) {
+    var activeBoardId = rt.state.activeBoardId;
+    var cache = rt.state.boardPresenceCache;
+    if (activeBoardId && cache && cache[activeBoardId]) {
+      userCount = cache[activeBoardId].length;
+    }
+  }
+
+  // In-flight API calls
+  var inFlightCount = 0;
+  var api = typeof window !== 'undefined' ? window.LexeraApi : null;
+  if (api && typeof api.getInFlightCount === 'function') {
+    inFlightCount = api.getInFlightCount();
+  }
+
+  return { connected: connected, logCount: logCount, userCount: userCount, inFlightCount: inFlightCount };
+}
+
+/**
+ * Update all .ws-fold-status-badges elements in the DOM with current data.
+ */
+function updateFoldedLogStatusBadges() {
+  var containers = document.querySelectorAll('.ws-fold-status-badges');
+  if (containers.length === 0) return;
+  var data = getLogFoldedStatusData();
+  for (var i = 0; i < containers.length; i++) {
+    var el = containers[i];
+    var dotEl = el.querySelector('.ws-fold-status-dot');
+    if (dotEl) {
+      dotEl.classList.toggle('is-connected', data.connected);
+      dotEl.classList.toggle('is-disconnected', !data.connected);
+    }
+    var connLabel = el.querySelector('.ws-fold-badge-conn');
+    if (connLabel) connLabel.textContent = data.connected ? 'Connected' : 'Disconnected';
+    var logsBadge = el.querySelector('.ws-fold-badge-logs');
+    if (logsBadge) logsBadge.textContent = data.logCount + ' logs';
+    var usersBadge = el.querySelector('.ws-fold-badge-users');
+    if (usersBadge) {
+      usersBadge.textContent = data.userCount + (data.userCount === 1 ? ' user' : ' users');
+      usersBadge.style.display = data.userCount > 0 ? '' : 'none';
+    }
+    var apiBadge = el.querySelector('.ws-fold-badge-api');
+    if (apiBadge) {
+      apiBadge.textContent = data.inFlightCount + ' pending';
+      apiBadge.style.display = data.inFlightCount > 0 ? '' : 'none';
+    }
+  }
+  // Also update fold indicator dots in the fold strip
+  var dots = document.querySelectorAll('.ws-fold-dot');
+  for (var d = 0; d < dots.length; d++) {
+    dots[d].classList.toggle('is-connected', data.connected);
+    dots[d].classList.toggle('is-disconnected', !data.connected);
+  }
+}
+
+window.getLogFoldedStatusData = getLogFoldedStatusData;
+window.updateFoldedLogStatusBadges = updateFoldedLogStatusBadges;
+
+// Listen for events that should trigger fold badge updates
+window.addEventListener('lexera-api-inflight-changed', updateFoldedLogStatusBadges);
+window.addEventListener('lexera-backend-connection-state-changed', updateFoldedLogStatusBadges);
 
 function toggleLogPanel() {
   setLogPanelVisibility(!isLogPanelVisible());

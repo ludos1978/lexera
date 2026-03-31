@@ -116,6 +116,19 @@ var LexeraApi = (function () {
   var LONG_TIMEOUT_MS = 30000;
   var DASHBOARD_TIMEOUT_MS = 8000;
 
+  var inFlightCount = 0;
+
+  function changeInFlight(delta) {
+    inFlightCount = Math.max(0, inFlightCount + delta);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('lexera-api-inflight-changed', {
+        detail: { count: inFlightCount }
+      }));
+    }
+  }
+
+  function getInFlightCount() { return inFlightCount; }
+
   async function request(path, options) {
     const method = options && options.method ? String(options.method).toUpperCase() : 'GET';
     var suppressErrorStatuses = options && Array.isArray(options.suppressErrorStatuses)
@@ -140,11 +153,13 @@ var LexeraApi = (function () {
     var timeoutId = setTimeout(function () { controller.abort(); }, timeoutMs);
     var fetchOptions = Object.assign({}, options, { signal: controller.signal });
     fetchOptions.headers = authHeaders(fetchOptions.headers);
+    changeInFlight(+1);
     let res;
     try {
       res = await fetch(url + path, fetchOptions);
     } catch (error) {
       clearTimeout(timeoutId);
+      changeInFlight(-1);
       if (error.name === 'AbortError') {
         var timeoutError = new Error('Request timed out: ' + method + ' ' + path);
         logApiIssue('error', 'api.request', method + ' ' + path + ' timed out after ' + timeoutMs + 'ms', timeoutError);
@@ -154,6 +169,7 @@ var LexeraApi = (function () {
       throw error;
     }
     clearTimeout(timeoutId);
+    changeInFlight(-1);
     if (!res.ok) {
       var payload = null;
       var text = '';
@@ -219,11 +235,13 @@ var LexeraApi = (function () {
     if (revision != null) headers['If-None-Match'] = '"' + revision + '"';
     var controller = new AbortController();
     var timeoutId = setTimeout(function () { controller.abort(); }, DEFAULT_TIMEOUT_MS);
+    changeInFlight(+1);
     let res;
     try {
       res = await fetch(url + path, { headers, signal: controller.signal });
     } catch (error) {
       clearTimeout(timeoutId);
+      changeInFlight(-1);
       if (error.name === 'AbortError') {
         var timeoutError = new Error('Request timed out: GET ' + path);
         logApiIssue('error', target, 'GET ' + path + ' timed out after ' + DEFAULT_TIMEOUT_MS + 'ms', timeoutError);
@@ -233,6 +251,7 @@ var LexeraApi = (function () {
       throw error;
     }
     clearTimeout(timeoutId);
+    changeInFlight(-1);
     if (res.status === 304) {
       return { notModified: true, version: revision };
     }
@@ -909,6 +928,7 @@ var LexeraApi = (function () {
     getNetworkInterfaces, updateServerConfig,
     getConnections, connectRemote, disconnectRemote, getDiscoveredPeers,
     getTheme, setTheme,
+    getInFlightCount: getInFlightCount,
     _setTestToken: function(t) { bearerToken = t; bearerTokenPromise = null; },
   };
 })();
