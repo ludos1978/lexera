@@ -116,7 +116,6 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&CheckMenuItemBuilder::with_id("view-special-chars", "Show Special Characters").build(app)?)
         .item(&CheckMenuItemBuilder::with_id("view-marp-settings", "Show Marp Settings").build(app)?)
         .item(&CheckMenuItemBuilder::with_id("view-overlay-editor", "Overlay Editor").build(app)?)
-        .item(&CheckMenuItemBuilder::with_id("view-wysiwyg-editor", "WYSIWYG Editor").build(app)?)
         .separator()
         .item(&zoom_sub)
         .separator()
@@ -125,8 +124,8 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
 
     // ── Format menu ──
     let visual_style_sub = SubmenuBuilder::new(app, "Visual Style")
-        .item(&MenuItemBuilder::with_id("fmt-theme-bordered", "Bordered").build(app)?)
-        .item(&MenuItemBuilder::with_id("fmt-theme-gap-highlight", "Gap Highlight").build(app)?)
+        .item(&MenuItemBuilder::with_id("fmt-theme-classic", "Classic").build(app)?)
+        .item(&MenuItemBuilder::with_id("fmt-theme-sleek-uniform", "Sleek Uniform").build(app)?)
         .build()?;
 
     let tag_style_sub = SubmenuBuilder::new(app, "Tag Style Preset")
@@ -368,7 +367,6 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("view-special-chars", "toggle-special-chars"),
     ("view-marp-settings", "toggle-marp-settings"),
     ("view-overlay-editor", "toggle-overlay-editor"),
-    ("view-wysiwyg-editor", "toggle-wysiwyg-editor"),
     // View – zoom
     ("view-zoom-in", "zoom-in"),
     ("view-zoom-out", "zoom-out"),
@@ -376,8 +374,8 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     // View – inspector
     ("view-inspector", "toggle-inspector"),
     // Format – visual style
-    ("fmt-theme-bordered", "set-board-theme:bordered"),
-    ("fmt-theme-gap-highlight", "set-board-theme:gap-highlight"),
+    ("fmt-theme-classic", "set-board-theme:classic"),
+    ("fmt-theme-sleek-uniform", "set-board-theme:sleek-uniform"),
     // Format – tag style
     ("fmt-tag-style-default", "set-tag-style-preset:default"),
     ("fmt-tag-style-minimal", "set-tag-style-preset:minimal"),

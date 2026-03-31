@@ -212,7 +212,6 @@ var LexeraDashboard = (function () {
     LexeraApi: LexeraApi,
     showNativeMenu: function(items, x, y) { return showNativeMenu(items, x, y); },
     escapeHtml: function(s) { return escapeHtml(s); },
-    isWysiwygEditorEnabled: function() { return isWysiwygEditorEnabled(); },
     isOverlayEditorEnabled: function() { return isOverlayEditorEnabled(); },
     setIsEditing: function(v) { isEditing = v; },
     getSyncUserName: function() { return syncUserName; },
@@ -545,8 +544,6 @@ var LexeraDashboard = (function () {
   function nudgeUiScale(delta) { var r = Appearance ? Appearance.nudgeUiScale(delta) : false; if (Appearance) $uiScale = Appearance.getUiScale(); return r; }
   function isOverlayEditorEnabled() { return Appearance ? Appearance.isOverlayEditorEnabled() : true; }
   function setOverlayEditorEnabled(v) { if (Appearance) Appearance.setOverlayEditorEnabled(v); }
-  function isWysiwygEditorEnabled() { return Appearance ? Appearance.isWysiwygEditorEnabled() : true; }
-  function setWysiwygEditorEnabled(v) { if (Appearance) Appearance.setWysiwygEditorEnabled(v); }
   function isSpecialCharactersVisible() { return Appearance ? Appearance.isSpecialCharactersVisible() : false; }
   function applySpecialCharactersVisibilitySetting() { if (Appearance) Appearance.applySpecialCharactersVisibilitySetting(); }
   function setSpecialCharactersVisible(v) { if (Appearance) Appearance.setSpecialCharactersVisible(v); }
@@ -5339,7 +5336,6 @@ var LexeraDashboard = (function () {
       { id: 'set-html-content', label: 'HTML Content', items: buildSettingMenuItems('htmlContent') },
       { id: 'toggle-special-chars', label: 'Show Special Characters', checked: isSpecialCharactersVisible() },
       { id: 'toggle-overlay-editor', label: 'Overlay Editor', checked: isOverlayEditorEnabled() },
-      { id: 'toggle-wysiwyg-editor', label: 'WYSIWYG Editor', checked: isWysiwygEditorEnabled() },
       { separator: true },
       // Actions
       { id: 'export-board', label: 'Export' }
@@ -6544,7 +6540,10 @@ var LexeraDashboard = (function () {
       getOptions: function () { return buildFrontendSettingsOptions(); },
       // Visual theme
       getVisualThemes: function () { return Array.isArray(VISUAL_THEMES) ? VISUAL_THEMES : []; },
-      getCurrentVisualThemeId: function () { return localStorage.getItem('lexera-visual-theme') || 'sleek-uniform'; },
+      getCurrentVisualThemeId: function () {
+        return (typeof getLexeraCurrentVisualThemeId === 'function' && getLexeraCurrentVisualThemeId()) ||
+          localStorage.getItem('lexera-visual-theme') || 'sleek-uniform';
+      },
       applyVisualTheme: function (id) { applyVisualTheme(id); },
       // UI scale
       getUiScale: function () { return $uiScale; },
@@ -6578,11 +6577,9 @@ var LexeraDashboard = (function () {
       applySidebarDisplayOptions: applySidebarTreeDisplayOptions,
       // Editor toggles
       isOverlayEditorEnabled: isOverlayEditorEnabled,
-      isWysiwygEditorEnabled: isWysiwygEditorEnabled,
       isMarpSettingsEnabled: isMarpSettingsEnabled,
       isSpecialCharactersVisible: isSpecialCharactersVisible,
       setOverlayEditorEnabled: setOverlayEditorEnabled,
-      setWysiwygEditorEnabled: setWysiwygEditorEnabled,
       setMarpSettingsEnabled: setMarpSettingsEnabled,
       setSpecialCharactersVisible: setSpecialCharactersVisible,
       syncMenuCheckStates: syncMenuCheckStates,
@@ -11394,13 +11391,13 @@ var LexeraDashboard = (function () {
     });
     BoardSettingRegistry.register({
       id: 'visualTheme', label: 'Visual Theme', category: 'display',
-      settingsKey: null, actionPrefix: 'set-visual-theme', defaultValue: 'classic',
+      settingsKey: null, actionPrefix: 'set-visual-theme', defaultValue: 'sleek-uniform',
       getCurrentValue: function () {
-        return (typeof getLexeraCurrentVisualThemeId === 'function' && getLexeraCurrentVisualThemeId()) || 'classic';
+        return (typeof getLexeraCurrentVisualThemeId === 'function' && getLexeraCurrentVisualThemeId()) || 'sleek-uniform';
       },
       handler: function (raw) {
         var applied = applyVisualTheme(raw);
-        var label = (applied && applied.name) || VISUAL_THEME_LABELS[String(raw || '').trim()] || String(raw || 'classic');
+        var label = (applied && applied.name) || VISUAL_THEME_LABELS[String(raw || '').trim()] || String(raw || 'sleek-uniform');
         showNotification('Visual theme: ' + label);
       },
       options: VISUAL_THEMES.map(function (theme) {
@@ -11465,7 +11462,6 @@ var LexeraDashboard = (function () {
     // Feature toggles
     // pin-headers/unpin-headers actions removed — always sticky at top
     ActionRegistry.register('board', 'toggle-overlay-editor', function () { setOverlayEditorEnabled(!isOverlayEditorEnabled()); syncMenuCheckStates(); });
-    ActionRegistry.register('board', 'toggle-wysiwyg-editor', function () { setWysiwygEditorEnabled(!isWysiwygEditorEnabled()); syncMenuCheckStates(); });
     ActionRegistry.register('board', 'toggle-special-chars', function () { setSpecialCharactersVisible(!isSpecialCharactersVisible()); syncMenuCheckStates(); });
     ActionRegistry.register('board', 'toggle-marp-settings', function () { setMarpSettingsEnabled(!isMarpSettingsEnabled()); syncMenuCheckStates(); });
     ActionRegistry.register('board', 'toggle-html-comments', function () {

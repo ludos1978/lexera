@@ -252,10 +252,6 @@
             '<span>Overlay editor</span>' +
           '</label>' +
           '<label class="frontend-settings-toggle">' +
-            '<input class="lexera-shared-frontend-settings-wysiwyg-editor" type="checkbox">' +
-            '<span>WYSIWYG editor</span>' +
-          '</label>' +
-          '<label class="frontend-settings-toggle">' +
             '<input class="lexera-shared-frontend-settings-marp-settings" type="checkbox">' +
             '<span>Show Marp settings</span>' +
           '</label>' +

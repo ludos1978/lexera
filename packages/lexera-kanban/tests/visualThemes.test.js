@@ -49,25 +49,29 @@ function loadVisualThemeWindow(initialStorage = {}) {
 }
 
 describe('visualThemes', () => {
-  it('restores the saved sleek visual theme and applies the root attribute on load', () => {
-    const { window, documentElement } = loadVisualThemeWindow({ 'lexera-visual-theme': 'sleek' });
-
-    expect(window.getLexeraCurrentVisualThemeId()).toBe('sleek');
-    expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
-    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['classic', 'sleek', 'sleek-uniform', 'gap', 'lines']);
-  });
-
-  it('migrates legacy board-theme storage into the unified visual theme', () => {
-    const { window, documentElement } = loadVisualThemeWindow({ 'lexera-board-theme': 'gap-highlight' });
-
-    expect(window.getLexeraCurrentVisualThemeId()).toBe('gap');
-    expect(documentElement.getAttribute('data-visual-theme')).toBe('gap');
-  });
-
-  it('normalizes aliases back to classic and persists the unified storage key', () => {
+  it('migrates the removed sleek theme to sleek uniform and exposes only supported options', () => {
     const { window, documentElement, localStorage } = loadVisualThemeWindow({ 'lexera-visual-theme': 'sleek' });
 
-    const applied = window.applyLexeraVisualTheme('legacy');
+    expect(window.getLexeraCurrentVisualThemeId()).toBe('sleek-uniform');
+    expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
+    expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('sleek-uniform');
+    expect(localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
+    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['classic', 'sleek-uniform']);
+  });
+
+  it('migrates legacy board-theme storage into sleek uniform', () => {
+    const { window, documentElement, localStorage } = loadVisualThemeWindow({ 'lexera-board-theme': 'gap-highlight' });
+
+    expect(window.getLexeraCurrentVisualThemeId()).toBe('sleek-uniform');
+    expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
+    expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('sleek-uniform');
+    expect(localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
+  });
+
+  it('normalizes removed aliases to sleek uniform and persists the unified storage key', () => {
+    const { window, documentElement, localStorage } = loadVisualThemeWindow({ 'lexera-visual-theme': 'sleek' });
+
+    const applied = window.applyLexeraVisualTheme('lines');
 
     expect(applied).toEqual({
       id: 'sleek-uniform',

@@ -51,6 +51,10 @@ describe('SettingsStore', () => {
       expect(Settings.get('specialCharsVisible')).toBe(false);
     });
 
+    it('returns the default overlay editor mode when unset', () => {
+      expect(Settings.get('cardEditorMode')).toBe('dual');
+    });
+
     it('returns default for unset json setting', () => {
       expect(Settings.get('sidebarExpanded')).toEqual([]);
       expect(Settings.get('tagColorOverrides')).toEqual({});

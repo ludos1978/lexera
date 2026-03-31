@@ -24,6 +24,8 @@
 }(typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : this), function () {
   'use strict';
 
+  var Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
+
   var _deps = {};
 
   var sidebarSyncEnabled = false;
@@ -146,7 +148,8 @@
   // Sidebar hierarchy burger menu — replaces individual sync/lock buttons
   function toggleSidebarSync() {
     sidebarSyncEnabled = !sidebarSyncEnabled;
-    localStorage.setItem('lexera-sidebar-sync', sidebarSyncEnabled ? 'true' : 'false');
+    if (Settings) Settings.set('sidebarSync', sidebarSyncEnabled);
+    else localStorage.setItem('lexera-sidebar-sync', sidebarSyncEnabled ? 'true' : 'false');
     if (sidebarSyncEnabled) syncSidebarToView();
     else {
       var boardList = getBoardList();
@@ -159,7 +162,8 @@
 
   function toggleSidebarLock() {
     hierarchyLocked = !hierarchyLocked;
-    localStorage.setItem('lexera-hierarchy-locked', hierarchyLocked ? 'true' : 'false');
+    if (Settings) Settings.set('hierarchyLocked', hierarchyLocked);
+    else localStorage.setItem('lexera-hierarchy-locked', hierarchyLocked ? 'true' : 'false');
     doRenderBoardList();
   }
 
@@ -234,8 +238,8 @@
     } else {
       _deps = deps || {};
     }
-    sidebarSyncEnabled = localStorage.getItem('lexera-sidebar-sync') === 'true';
-    hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') === 'true';
+    sidebarSyncEnabled = Settings ? Settings.get('sidebarSync') : localStorage.getItem('lexera-sidebar-sync') === 'true';
+    hierarchyLocked = Settings ? Settings.get('hierarchyLocked') : localStorage.getItem('lexera-hierarchy-locked') === 'true';
     bindScrollSync();
     bindMenuButton();
   }

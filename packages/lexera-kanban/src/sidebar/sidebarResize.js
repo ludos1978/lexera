@@ -7,12 +7,14 @@
 var LexeraSidebarResize = (function () {
   'use strict';
 
+  var Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
+
   // ═══════════════════════════════════════════════════════════════════════════
   // State
   // ═══════════════════════════════════════════════════════════════════════════
 
-  var sidebarSplitRatio = parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
-  var sidebarWidth = parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0;
+  var sidebarSplitRatio = Settings ? Settings.get('sidebarSplitRatio') : parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
+  var sidebarWidth = Settings ? Settings.get('sidebarWidth') : (parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0);
 
   // Injected via init()
   var _isWorkspaceShellEnabled = function () { return false; };
@@ -202,12 +204,14 @@ var LexeraSidebarResize = (function () {
       },
       onEnd: function () {
         getElSidebar().classList.remove('resizing-sections');
-        localStorage.setItem('lexera-sidebar-split-ratio', String(normalizeSidebarSplitRatio(sidebarSplitRatio)));
+        if (Settings) Settings.set('sidebarSplitRatio', normalizeSidebarSplitRatio(sidebarSplitRatio));
+        else localStorage.setItem('lexera-sidebar-split-ratio', String(normalizeSidebarSplitRatio(sidebarSplitRatio)));
         applySidebarSectionLayout();
       },
       onDoubleClick: function () {
         sidebarSplitRatio = 0.5;
-        localStorage.setItem('lexera-sidebar-split-ratio', '0.5');
+        if (Settings) Settings.set('sidebarSplitRatio', 0.5);
+        else localStorage.setItem('lexera-sidebar-split-ratio', '0.5');
         applySidebarSectionLayout();
       }
     });
@@ -251,13 +255,15 @@ var LexeraSidebarResize = (function () {
       },
       onEnd: function () {
         getElLayout().classList.remove('resizing-sidebar-width');
-        localStorage.setItem('lexera-sidebar-width', String(sidebarWidth));
+        if (Settings) Settings.set('sidebarWidth', sidebarWidth);
+        else localStorage.setItem('lexera-sidebar-width', String(sidebarWidth));
         applySidebarSectionLayout();
       },
       onDoubleClick: function () {
         sidebarWidth = SIDEBAR_DEFAULT;
         document.documentElement.style.setProperty('--sidebar-width', SIDEBAR_DEFAULT + 'px');
-        localStorage.setItem('lexera-sidebar-width', String(SIDEBAR_DEFAULT));
+        if (Settings) Settings.set('sidebarWidth', SIDEBAR_DEFAULT);
+        else localStorage.setItem('lexera-sidebar-width', String(SIDEBAR_DEFAULT));
         applySidebarSectionLayout();
       }
     });

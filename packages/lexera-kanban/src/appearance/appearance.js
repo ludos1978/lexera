@@ -2,13 +2,15 @@
  * LexeraAppearance — Appearance settings extracted from LexeraDashboard.
  *
  * Provides: theme application, visual themes, sidebar tree display options,
- * UI scale, overlay/wysiwyg editor toggles, special characters visibility,
+ * UI scale, overlay editor toggle, special characters visibility,
  * Marp settings, and menu check-state sync.
  *
  * IIFE module — no const/let, no ES imports.
  */
 var LexeraAppearance = (function () {
   'use strict';
+
+  var Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   // --- Dependencies (injected via init) ---
   var _deps = {};
@@ -59,6 +61,9 @@ var LexeraAppearance = (function () {
   }
 
   function readStoredSidebarTreeDisplayOptions() {
+    if (Settings) {
+      return normalizeSidebarTreeDisplayOptions(Settings.get('sidebarTreeDisplay'));
+    }
     try {
       var raw = localStorage.getItem('lexera-sidebar-tree-display');
       if (!raw) return normalizeSidebarTreeDisplayOptions(DEFAULT_SIDEBAR_TREE_DISPLAY_OPTIONS);
@@ -78,10 +83,14 @@ var LexeraAppearance = (function () {
       root.setAttribute('data-sidebar-tree-presence', sidebarTreeDisplayOptions.presence ? 'on' : 'off');
       root.setAttribute('data-sidebar-tree-grips', sidebarTreeDisplayOptions.grips ? 'on' : 'off');
     }
-    try {
-      localStorage.setItem('lexera-sidebar-tree-display', JSON.stringify(sidebarTreeDisplayOptions));
-    } catch (err) {
-      /* ignore localStorage errors */
+    if (Settings) {
+      Settings.set('sidebarTreeDisplay', sidebarTreeDisplayOptions);
+    } else {
+      try {
+        localStorage.setItem('lexera-sidebar-tree-display', JSON.stringify(sidebarTreeDisplayOptions));
+      } catch (err) {
+        /* ignore localStorage errors */
+      }
     }
     _callDep('renderFrontendSettingsPanel');
     return getSidebarTreeDisplayOptions();
@@ -176,7 +185,7 @@ var LexeraAppearance = (function () {
   // (base variables are already re-applied by themes.js listener)
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
     var themeId = (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
-                  localStorage.getItem('lexera-theme') || 'lexera';
+                  (Settings ? Settings.get('theme') : localStorage.getItem('lexera-theme')) || 'lexera';
     applyTheme(themeId);
   });
 
@@ -196,7 +205,11 @@ var LexeraAppearance = (function () {
     var normalized = normalizeUiScale(scale);
     _uiScale = normalized;
     document.documentElement.style.setProperty('--ui-scale', String(normalized));
-    localStorage.setItem('lexera-ui-scale', String(normalized));
+    if (Settings) {
+      Settings.set('uiScale', normalized);
+    } else {
+      localStorage.setItem('lexera-ui-scale', String(normalized));
+    }
   }
 
   function getUiScale() {
@@ -218,11 +231,16 @@ var LexeraAppearance = (function () {
   // ─── Editor toggles ──────────────────────────────────────────────────
 
   function isOverlayEditorEnabled() {
+    if (Settings) return Settings.get('overlayEditorEnabled');
     return localStorage.getItem('lexera-overlay-editor-enabled') !== 'false';
   }
 
   function setOverlayEditorEnabled(enabled) {
-    localStorage.setItem('lexera-overlay-editor-enabled', enabled ? 'true' : 'false');
+    if (Settings) {
+      Settings.set('overlayEditorEnabled', !!enabled);
+    } else {
+      localStorage.setItem('lexera-overlay-editor-enabled', enabled ? 'true' : 'false');
+    }
     if (!enabled) {
       var CardEditorModule = _dep('CardEditorModule');
       if (CardEditorModule && CardEditorModule.getCurrentCardEditor()) {
@@ -232,23 +250,10 @@ var LexeraAppearance = (function () {
     _callDep('renderFrontendSettingsPanel');
   }
 
-  function isWysiwygEditorEnabled() {
-    return localStorage.getItem('lexera-wysiwyg-editor-enabled') !== 'false';
-  }
-
-  function setWysiwygEditorEnabled(enabled) {
-    localStorage.setItem('lexera-wysiwyg-editor-enabled', enabled ? 'true' : 'false');
-    var CardEditorModule = _dep('CardEditorModule');
-    var _cardEditor = CardEditorModule ? CardEditorModule.getCurrentCardEditor() : null;
-    if (!enabled && _cardEditor && _cardEditor.mode === 'wysiwyg') {
-      _callDep('applyCardEditorMode', 'dual');
-    }
-    _callDep('renderFrontendSettingsPanel');
-  }
-
   // ─── Special characters visibility ────────────────────────────────────
 
   function isSpecialCharactersVisible() {
+    if (Settings) return Settings.get('specialCharsVisible');
     return localStorage.getItem('lexera-show-special-characters') === 'true';
   }
 
@@ -257,7 +262,11 @@ var LexeraAppearance = (function () {
   }
 
   function setSpecialCharactersVisible(enabled) {
-    localStorage.setItem('lexera-show-special-characters', enabled ? 'true' : 'false');
+    if (Settings) {
+      Settings.set('specialCharsVisible', !!enabled);
+    } else {
+      localStorage.setItem('lexera-show-special-characters', enabled ? 'true' : 'false');
+    }
     applySpecialCharactersVisibilitySetting();
     _callDep('renderFrontendSettingsPanel');
   }
@@ -265,11 +274,16 @@ var LexeraAppearance = (function () {
   // ─── Marp settings ───────────────────────────────────────────────────
 
   function isMarpSettingsEnabled() {
+    if (Settings) return Settings.get('marpSettingsEnabled');
     return localStorage.getItem('lexera-show-marp-settings') !== 'false';
   }
 
   function setMarpSettingsEnabled(enabled) {
-    localStorage.setItem('lexera-show-marp-settings', enabled ? 'true' : 'false');
+    if (Settings) {
+      Settings.set('marpSettingsEnabled', !!enabled);
+    } else {
+      localStorage.setItem('lexera-show-marp-settings', enabled ? 'true' : 'false');
+    }
     _callDep('renderFrontendSettingsPanel');
   }
 
@@ -281,8 +295,7 @@ var LexeraAppearance = (function () {
     var states = {
       'view-special-chars': isSpecialCharactersVisible(),
       'view-marp-settings': isMarpSettingsEnabled(),
-      'view-overlay-editor': isOverlayEditorEnabled(),
-      'view-wysiwyg-editor': isWysiwygEditorEnabled()
+      'view-overlay-editor': isOverlayEditorEnabled()
     };
     Object.keys(states).forEach(function (id) {
       _callDep('tauriInvoke', 'set_menu_check_state', { id: id, checked: states[id] });
@@ -292,9 +305,12 @@ var LexeraAppearance = (function () {
   // ─── Boot-time apply ──────────────────────────────────────────────────
 
   function applyInitialSettings() {
-    applyVisualTheme(localStorage.getItem('lexera-visual-theme') || 'sleek-uniform');
-    applyTheme(localStorage.getItem('lexera-theme') || 'lexera');
-    _uiScale = normalizeUiScale(localStorage.getItem('lexera-ui-scale') || '0.95');
+    var visualTheme = Settings ? Settings.get('visualTheme') : (localStorage.getItem('lexera-visual-theme') || 'sleek-uniform');
+    var themeId = Settings ? Settings.get('theme') : (localStorage.getItem('lexera-theme') || 'lexera');
+    var uiScaleRaw = Settings ? Settings.get('uiScale') : (localStorage.getItem('lexera-ui-scale') || '0.95');
+    applyVisualTheme(visualTheme);
+    applyTheme(themeId);
+    _uiScale = normalizeUiScale(uiScaleRaw);
     applyUiScale(_uiScale);
     applySpecialCharactersVisibilitySetting();
   }
@@ -333,8 +349,6 @@ var LexeraAppearance = (function () {
     // Editor toggles
     isOverlayEditorEnabled: isOverlayEditorEnabled,
     setOverlayEditorEnabled: setOverlayEditorEnabled,
-    isWysiwygEditorEnabled: isWysiwygEditorEnabled,
-    setWysiwygEditorEnabled: setWysiwygEditorEnabled,
     // Special characters
     isSpecialCharactersVisible: isSpecialCharactersVisible,
     applySpecialCharactersVisibilitySetting: applySpecialCharactersVisibilitySetting,

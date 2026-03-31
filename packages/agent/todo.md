@@ -16,6 +16,7 @@
 - [x] ~~Overlay editor always available~~ (709cdae2) — setting controls default only, never blocks
 - [x] ~~Overlay editor activation from settings~~ (709cdae2) — double-click + Enter respect setting
 - [x] ~~#exclude diagonal hatching~~ (fd8ee2e9) — SVG hatch pattern at 20% opacity
+- [ ] show special characters is not doing anything! it should show spaces, tabs, newlines etc in the whitespaces!
 
 ## Disk / IO Audit — Do Next
 - [x] ~~**Log rotation + retention**~~ (7c614dcb) — 10MB size limit, 2 rotated files, startup rotation
@@ -41,7 +42,6 @@
 - [ ] **Extend consistent states** — .view-loading/.view-empty exist for some views. Apply to all surfaces with shared model for connected/loading/empty/error/selected.
 
 ## Deferred (revisit when needed)
-- [ ] Glaxnimate animation viewer — niche format, no user demand yet
 - [ ] Email + Filesystem data sources — filesystem watcher exists, email is large scope
 - [ ] Office doc editor (OfficeIMO etc.) — no mature open-source browser editor exists yet
 - [ ] Frontend build pipeline — raw serving works fine in Tauri, blocked by app.js split

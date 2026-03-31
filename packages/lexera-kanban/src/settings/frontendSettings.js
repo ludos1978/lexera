@@ -149,7 +149,6 @@
       // Toggles
       var toggleMap = [
         ['overlay-editor', opts && opts.isOverlayEditorEnabled],
-        ['wysiwyg-editor', opts && opts.isWysiwygEditorEnabled],
         ['marp-settings', opts && opts.isMarpSettingsEnabled],
         ['special-chars', opts && opts.isSpecialCharactersVisible]
       ];
@@ -210,7 +209,6 @@
 
     // Checkbox toggles
     bindToggle('overlay-editor', 'setOverlayEditorEnabled');
-    bindToggle('wysiwyg-editor', 'setWysiwygEditorEnabled');
     bindToggle('marp-settings', 'setMarpSettingsEnabled');
     bindToggle('special-chars', 'setSpecialCharactersVisible');
 

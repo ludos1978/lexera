@@ -8,6 +8,8 @@
 var LexeraCardCollapse = (function () {
   'use strict';
 
+  var Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
+
   // --- Dependencies (injected via init) ---
   var _deps = {};
 
@@ -38,16 +40,12 @@ var LexeraCardCollapse = (function () {
   }
 
   function getCollapsedCards(boardId, rows) {
-    var collapsedKey = 'lexera-card-collapsed:' + boardId;
     var legacyExpandedKey = 'lexera-card-expanded:' + boardId;
-    var saved = localStorage.getItem(collapsedKey);
-    if (saved) {
-      try {
-        var parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.map(function (id) { return String(id); });
-      } catch (e) {
-        _callDep('logFrontendIssue', 'warn', 'cards.collapse', 'Failed to parse collapsed card state for board ' + boardId, e);
-      }
+    var saved = Settings
+      ? Settings.getForBoard('cardCollapsed', boardId)
+      : (function () { try { var r = localStorage.getItem('lexera-card-collapsed:' + boardId); return r ? JSON.parse(r) : null; } catch (e) { return null; } })();
+    if (saved && Array.isArray(saved) && saved.length > 0) {
+      return saved.map(function (id) { return String(id); });
     }
 
     // Legacy migration: old state stored expanded IDs. Convert to collapsed IDs.
@@ -65,7 +63,11 @@ var LexeraCardCollapse = (function () {
           for (var j = 0; j < allIds.length; j++) {
             if (!expandedSet[allIds[j]]) migratedCollapsed.push(allIds[j]);
           }
-          localStorage.setItem(collapsedKey, JSON.stringify(migratedCollapsed));
+          if (Settings) {
+            Settings.setForBoard('cardCollapsed', boardId, migratedCollapsed);
+          } else {
+            localStorage.setItem('lexera-card-collapsed:' + boardId, JSON.stringify(migratedCollapsed));
+          }
           localStorage.removeItem(legacyExpandedKey);
           return migratedCollapsed;
         }
@@ -89,7 +91,11 @@ var LexeraCardCollapse = (function () {
         collapsed.push(cards[i].getAttribute('data-card-id'));
       }
     }
-    localStorage.setItem('lexera-card-collapsed:' + boardId, JSON.stringify(collapsed));
+    if (Settings) {
+      Settings.setForBoard('cardCollapsed', boardId, collapsed);
+    } else {
+      localStorage.setItem('lexera-card-collapsed:' + boardId, JSON.stringify(collapsed));
+    }
     // Remove legacy key so new default-open semantics apply consistently.
     localStorage.removeItem('lexera-card-expanded:' + boardId);
   }

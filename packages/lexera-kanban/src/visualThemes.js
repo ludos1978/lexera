@@ -2,12 +2,14 @@
  * Visual Theme — controls board surface, separator, density, and the built-in
  * Lexera application palette.
  *
- * Each board style (classic, sleek, sleek-uniform, gap, lines) defines the
- * visual treatment of cards, separators, and whitespace on the board while the
- * integrated palette provides both light and dark variants.
- * Applied via the data-visual-theme attribute on <html>.
+ * Public board styles are limited to classic and sleek-uniform. The
+ * sleek-uniform variant still reuses the historical "sleek" base selectors in
+ * CSS, so it applies data-visual-theme="sleek" with a dedicated
+ * data-visual-theme-variant marker.
  */
 (function () {
+  var Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
+
   var colorSchemeMedia = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
     ? window.matchMedia('(prefers-color-scheme: dark)')
     : null;
@@ -18,25 +20,10 @@
       description: 'Balanced Lexera layout'
     },
     {
-      id: 'sleek',
-      name: 'Sleek',
-      description: 'Swiss-style minimal layout'
-    },
-    {
       id: 'sleek-uniform',
       baseId: 'sleek',
       name: 'Sleek Uniform',
       description: 'Sleek layout copy for unified typography'
-    },
-    {
-      id: 'gap',
-      name: 'Gap',
-      description: 'Whitespace and separators over boxes'
-    },
-    {
-      id: 'lines',
-      name: 'Lines',
-      description: 'Clean line separators, no boxes'
     }
   ];
 
@@ -44,11 +31,11 @@
     var source = String(value || '').trim().toLowerCase();
     if (!source || source === 'default' || source === 'legacy') return 'sleek-uniform';
     if (source === 'classic') return 'classic';
-    if (source === 'sleek' || source === 'minimal' || source === 'modern') return 'sleek';
+    if (source === 'sleek' || source === 'minimal' || source === 'modern') return 'sleek-uniform';
     if (source === 'sleek-uniform' || source === 'sleekuniform' || source === 'uniform') return 'sleek-uniform';
     if (source === 'bordered' || source === 'boxed' || source === 'outline') return 'classic';
-    if (source === 'gap' || source === 'gap-highlight' || source === 'gaphighlight') return 'gap';
-    if (source === 'lines' || source === 'line' || source === 'line-separator') return 'lines';
+    if (source === 'gap' || source === 'gap-highlight' || source === 'gaphighlight') return 'sleek-uniform';
+    if (source === 'lines' || source === 'line' || source === 'line-separator') return 'sleek-uniform';
     return 'sleek-uniform';
   }
 
@@ -62,13 +49,12 @@
 
   function readStoredVisualThemeId() {
     try {
-      var stored = localStorage.getItem('lexera-visual-theme');
+      var stored = Settings ? Settings.get('visualTheme') : localStorage.getItem('lexera-visual-theme');
       if (stored) return stored;
 
       var legacyTemplate = localStorage.getItem('lexera-ui-template');
       if (legacyTemplate) {
-        var normalizedLegacyTemplate = normalizeLexeraVisualThemeId(legacyTemplate);
-        if (normalizedLegacyTemplate === 'sleek') return 'sleek';
+        return normalizeLexeraVisualThemeId(legacyTemplate);
       }
 
       var legacyBoardTheme = localStorage.getItem('lexera-board-theme');
@@ -98,7 +84,11 @@
     }
 
     try {
-      localStorage.setItem('lexera-visual-theme', normalized);
+      if (Settings) {
+        Settings.set('visualTheme', normalized);
+      } else {
+        localStorage.setItem('lexera-visual-theme', normalized);
+      }
     } catch (err) {
       /* ignore localStorage errors */
     }

@@ -29,7 +29,6 @@ var LexeraSettings = (function () {
     theme:                { key: 'lexera-theme',                  type: 'string',  default: 'lexera' },
     uiScale:              { key: 'lexera-ui-scale',               type: 'number',  default: 1 },
     overlayEditorEnabled: { key: 'lexera-overlay-editor-enabled', type: 'boolean', default: true },
-    wysiwygEditorEnabled: { key: 'lexera-wysiwyg-editor-enabled', type: 'boolean', default: true },
     specialCharsVisible:  { key: 'lexera-show-special-characters',type: 'boolean', default: false },
     marpSettingsEnabled:  { key: 'lexera-show-marp-settings',     type: 'boolean', default: true },
 
@@ -61,7 +60,7 @@ var LexeraSettings = (function () {
     boardOrder:           { key: 'lexera-board-order',            type: 'json',    default: [] },
 
     // --- Editor ---
-    cardEditorMode:       { key: 'lexera-card-editor-mode',       type: 'string',  default: 'side-by-side' },
+    cardEditorMode:       { key: 'lexera-card-editor-mode',       type: 'string',  default: 'dual' },
     cardEditorFontScale:  { key: 'lexera-card-editor-font-scale', type: 'number',  default: 1 },
 
     // --- Tag styling ---
