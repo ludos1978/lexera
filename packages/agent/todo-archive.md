@@ -497,3 +497,26 @@ Specs: `packages/agent/specs/plugins/diagram/SPEC.md`, `plugins/enhancer/SPEC.md
 - [x] ~~delete row not working~~ — deleteRow() uses correct variable names, has confirmation dialog
 - [x] ~~dashboard hierarchical indentation~~ — tree CSS with .tree-indent, .tree-node implemented
 - [x] ~~hierarchy in workspaces not showing~~ — sidebar tree rendering + drag/reorder handlers present
+
+## Session: Architecture + Performance + Features
+- [x] ~~Dashboard scope~~ (35db71de), ~~reorderBoards crash~~ (cd849d0a), ~~board reorder~~ (16494248)
+- [x] ~~SettingsStore~~ (ac3103cb) — 32+ keys, 15 modules migrated, 128 calls
+- [x] ~~Parser shared fixtures~~ (69946a76) — 7 fixtures validated against Rust parser
+- [x] ~~View states extended~~ (1b2b5d95) — .view-error + .view-disconnected
+- [x] ~~Special characters~~ (77f416a2), ~~marp toggle removed~~ (5054580d)
+- [x] ~~Config dialog~~ (5fdd8c8a), ~~board clipping~~ (0d5f2476), ~~log status bar~~ (e4d95166)
+- [x] ~~Dashboard chip buttons~~ (a03a776c), ~~theme test fix~~ (c73ab47c)
+- [x] ~~Fold hover + cached sizing~~ (ee6be11a)
+- [x] ~~Dashboard list rebuild cache~~ (b79f437a)
+- [x] ~~Mirror cloning skip invisible~~ (944ddb3e)
+- [x] ~~Broken scan deferred + inventory cached~~ (92606536)
+- [x] ~~Polling UI churn~~ (e18b429a)
+- [x] ~~Embedded iframe interval~~ (6208eb5d)
+- [x] ~~Post-render passes batched~~ (be73e721)
+- [x] ~~Board-load payload trimmed~~ (d05652c7)
+- [x] ~~File search cache~~ (c7591137)
+- [x] ~~Include-watch incremental~~ (ea004b74)
+- [x] ~~Sidebar tree incremental~~ (0ae134e2)
+- [x] ~~Dashboard preview lightweight~~ (dcb2dafe)
+- [x] ~~Drag geometry cached~~ (9b6ac7cc)
+- [x] ~~Perf audit fixes~~ (ff4942ed) — cheap hash, broken scan race fix
