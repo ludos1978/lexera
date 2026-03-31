@@ -18,6 +18,8 @@
 - [x] ~~#exclude diagonal hatching~~ (fd8ee2e9) — SVG hatch pattern at 20% opacity
 - [x] ~~show special characters~~ (77f416a2) — visible whitespace markers (·→¶) in card content
 
+- [ ] remove the "show marp settings" option in the frontend config and all related code to hide the marp settings. we need the marp functionality intact, but not the option to disable it!
+
 - [x] ~~Integrated config dialog~~ (5fdd8c8a) — hierarchical workspace→board tree + inspector. Make the files and boards configuration more integrated. Remember this config dialogue is shared between front and backend and must function within both views!
   - on the left side there is a hierarchical display of the workspaces under the workspaces boards can be added. boards can be added to multiple workspaces.
   - when a markdown file is dragged into the config hierarchy it's added to the workspace. By default there is a "default" workspace. More workspaces can be added by pressing a "+ add workspace button" at the end of the hierarchy. the workspace order can be adjusted. the top workspace is the default workspace that is opened if nothing else is defined (restore last session is default). this hierarchy also corresponds to the hierarchy in the lexera frontend (however in the lexera frontend it also shows sub-elements such as rows, stacks, columns and cards), in the config view it only shows workspaces and boards.
@@ -35,7 +37,7 @@
 
 - [x] ~~board visibility clipping~~ — already fixed, content scrolls past viewport width
 
-- [ ] when the log view is folded it should show the same connected symbol as when unfolded, just in the one header line it shows. alignments should also stay in the right. number of logs should also be displayed (might be useful for performance issue debugging). if we have other important status informations it should go there (put that into the specs). for example the number of connected users in the current board. running processes. amount of backend calls currently avaiting a response!
+- [x] ~~folded log status bar~~ (e4d95166) — shows [●] Connected | log count | user count | pending API calls when folded
 
 
 
