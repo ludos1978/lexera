@@ -1,3 +1,17 @@
+/**
+ * AUTHORITATIVE backend discovery module for Tauri apps (lexera-kanban, lexera-backend).
+ *
+ * This is the single source of truth for backend URL discovery in the Tauri runtime.
+ * Copied into each app's src/ by the sync-runtime-assets script at build time.
+ *
+ * A parallel TypeScript implementation exists in packages/shared/src/webClipper.ts
+ * for the browser-only web clipper extension. That variant cannot import this IIFE
+ * module, so it maintains its own implementation. Both MUST use the same port
+ * candidate list: [13080, 8083, 1431, 12080, 14080, 11080, 15080].
+ *
+ * If you change DEFAULT_PORT_CANDIDATES here, update LEXERA_BACKEND_PORT_CANDIDATES
+ * in packages/shared/src/webClipper.ts to match.
+ */
 (function (root, factory) {
   var api = factory(root);
   if (typeof module === 'object' && module.exports) {

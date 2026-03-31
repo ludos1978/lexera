@@ -1,3 +1,15 @@
+/**
+ * Backend discovery constants and functions for the browser-only web clipper.
+ *
+ * This is a browser-variant of the discovery logic. The authoritative Tauri
+ * implementation lives in packages/lexera-shared/backendDiscovery.js (plain JS
+ * IIFE with Tauri invoke support). This TypeScript module cannot import that
+ * IIFE, so it maintains its own implementation for the browser extension runtime.
+ *
+ * Both MUST use the same port candidate list. If you change
+ * LEXERA_BACKEND_PORT_CANDIDATES here, update DEFAULT_PORT_CANDIDATES in
+ * packages/lexera-shared/backendDiscovery.js to match.
+ */
 export const LEXERA_BACKEND_PORT_CANDIDATES = [13080, 8083, 1431, 12080, 14080, 11080, 15080];
 
 export const DEFAULT_WEB_CLIPPER_MODE = 'article';
