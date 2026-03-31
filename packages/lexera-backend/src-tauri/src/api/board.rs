@@ -4,7 +4,6 @@ use axum::{
     response::Json,
 };
 use lexera_core::storage::{BoardStorage, StorageError};
-use lexera_core::types::is_archived_or_deleted;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -183,32 +182,6 @@ pub async fn get_board_columns(
         return Ok(response);
     }
 
-    let columns: Vec<serde_json::Value> = board
-        .all_columns()
-        .iter()
-        .enumerate()
-        .filter(|(_, col)| !is_archived_or_deleted(&col.title))
-        .map(|(index, col)| {
-            let cards: Vec<serde_json::Value> = col
-                .cards
-                .iter()
-                .filter(|c| !is_archived_or_deleted(&c.content))
-                .map(|c| {
-                    serde_json::json!({
-                        "id": c.id,
-                        "content": c.content,
-                        "checked": c.checked,
-                    })
-                })
-                .collect();
-            serde_json::json!({
-                "index": index,
-                "title": col.title,
-                "cards": cards,
-            })
-        })
-        .collect();
-
     let mut resp_headers = HeaderMap::new();
     insert_header_safe(&mut resp_headers, "etag", &etag);
 
@@ -218,7 +191,6 @@ pub async fn get_board_columns(
         Json(serde_json::json!({
             "boardId": board_id,
             "title": board.title,
-            "columns": columns,
             "version": version,
             "revision": revision,
             "generation": state.storage.get_board_generation(&board_id).unwrap_or(0),
@@ -1180,7 +1152,12 @@ kanban-plugin: board
 
         assert_eq!(resp.status(), StatusCode::OK);
         let json = body_json(resp.into_body()).await;
-        let columns = json["columns"].as_array().unwrap();
+        // columns field was removed — board data is available via fullBoard only
+        assert!(json.get("columns").is_none());
+        let full_board = &json["fullBoard"];
+        let columns = full_board["rows"][0]["stacks"][0]["columns"]
+            .as_array()
+            .unwrap();
         assert_eq!(columns.len(), 2);
         assert_eq!(columns[0]["title"].as_str().unwrap(), "Todo");
         assert_eq!(columns[1]["title"].as_str().unwrap(), "Done");
