@@ -10555,155 +10555,31 @@ var LexeraDashboard = (function () {
   var KNOWN_EXTERNAL_EMBED_PATTERNS = _EmbedMenu ? _EmbedMenu.KNOWN_EXTERNAL_EMBED_PATTERNS : [];
   var IMAGE_EMBED_EXTENSIONS = _EmbedMenu ? _EmbedMenu.IMAGE_EMBED_EXTENSIONS : /\.(png|jpg|jpeg|gif|webp|avif|svg)$/i;
 
-  // --- Media Category ---
+  // --- Media Category (delegated to LexeraMediaCategory) ---
 
-  function getMediaCategory(ext) {
-    if (!ext) return 'unknown';
-    ext = ext.toLowerCase();
-    var cats = {
-      image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif'],
-      video: ['mp4', 'webm', 'mov', 'avi', 'mkv'],
-      audio: ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'],
-      document: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ods', 'ppt', 'pptx', 'txt', 'md', 'csv', 'json', 'epub'],
-    };
-    for (var cat in cats) {
-      if (cats[cat].indexOf(ext) !== -1) return cat;
+  var _MediaCategory = typeof LexeraMediaCategory !== 'undefined' ? LexeraMediaCategory : null;
+  function _initMediaCategory() {
+    if (_MediaCategory && _MediaCategory.init) {
+      _MediaCategory.init({
+        isExternalHttpUrl: isExternalHttpUrl,
+        normalizeFilePathForDetection: normalizeFilePathForDetection,
+        getFileNameFromPath: getFileNameFromPath
+      });
     }
-    return 'unknown';
   }
 
-  function inferExternalMediaCategoryFromUrl(url) {
-    if (!isExternalHttpUrl(url)) return '';
-    try {
-      var parsed = new URL(String(url || ''));
-      var host = (parsed.hostname || '').toLowerCase();
-      if (
-        /(^|\.)googleusercontent\.com$/.test(host) ||
-        /(^|\.)ggpht\.com$/.test(host) ||
-        /(^|\.)ytimg\.com$/.test(host)
-      ) {
-        return 'image';
-      }
-      var formatHint = (
-        parsed.searchParams.get('format') ||
-        parsed.searchParams.get('fm') ||
-        parsed.searchParams.get('mime')
-      );
-      var hintedExt = getFileExtension(formatHint || '');
-      if (hintedExt) return getMediaCategory(hintedExt);
-    } catch (err) {
-      return '';
-    }
-    return '';
-  }
+  function getMediaCategory(ext) { return _MediaCategory ? _MediaCategory.getMediaCategory(ext) : 'unknown'; }
+  function inferExternalMediaCategoryFromUrl(url) { return _MediaCategory ? _MediaCategory.inferExternalMediaCategoryFromUrl(url) : ''; }
+  function getFileExtension(path) { return _MediaCategory ? _MediaCategory.getFileExtension(path) : ''; }
+  function getInlineFileEmbedExtension(path) { return _MediaCategory ? _MediaCategory.getInlineFileEmbedExtension(path) : ''; }
+  _initMediaCategory();
 
-  function getFileExtension(path) {
-    var value = normalizeFilePathForDetection(path);
-    if (!value) return '';
-    var fileName = getFileNameFromPath(value);
-    var dot = fileName.lastIndexOf('.');
-    if (dot <= 0 || dot === fileName.length - 1) return '';
-    return fileName.substring(dot + 1).toLowerCase();
-  }
-
-  var INLINE_FILE_EMBED_EXTENSIONS = {
-    md: true,
-    markdown: true,
-    txt: true,
-    log: true,
-    csv: true,
-    tsv: true,
-    json: true,
-    yaml: true,
-    yml: true,
-    toml: true,
-    ini: true,
-    cfg: true,
-    conf: true,
-    xml: true,
-    html: true,
-    htm: true
-  };
-
-  function getInlineFileEmbedExtension(path) {
-    var ext = getFileExtension(path);
-    return INLINE_FILE_EMBED_EXTENSIONS[ext] ? ext : '';
-  }
-
-  // --- Card Collapse ---
-
-  function collectBoardCardIds(rows) {
-    var ids = [];
-    if (!Array.isArray(rows)) return ids;
-    for (var r = 0; r < rows.length; r++) {
-      var stacks = Array.isArray(rows[r].stacks) ? rows[r].stacks : [];
-      for (var s = 0; s < stacks.length; s++) {
-        var cols = Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
-        for (var c = 0; c < cols.length; c++) {
-          var cards = Array.isArray(cols[c].cards) ? cols[c].cards : [];
-          for (var i = 0; i < cards.length; i++) {
-            ids.push(String(cards[i].id));
-          }
-        }
-      }
-    }
-    return ids;
-  }
-
-  function getCollapsedCards(boardId, rows) {
-    var collapsedKey = 'lexera-card-collapsed:' + boardId;
-    var legacyExpandedKey = 'lexera-card-expanded:' + boardId;
-    var saved = localStorage.getItem(collapsedKey);
-    if (saved) {
-      try {
-        var parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.map(function (id) { return String(id); });
-      } catch (e) {
-        logFrontendIssue('warn', 'cards.collapse', 'Failed to parse collapsed card state for board ' + boardId, e);
-      }
-    }
-
-    // Legacy migration: old state stored expanded IDs. Convert to collapsed IDs.
-    var legacy = localStorage.getItem(legacyExpandedKey);
-    if (legacy) {
-      try {
-        var expanded = JSON.parse(legacy);
-        if (Array.isArray(expanded)) {
-          var expandedSet = {};
-          for (var i = 0; i < expanded.length; i++) {
-            expandedSet[String(expanded[i])] = true;
-          }
-          var allIds = collectBoardCardIds(rows);
-          var migratedCollapsed = [];
-          for (var j = 0; j < allIds.length; j++) {
-            if (!expandedSet[allIds[j]]) migratedCollapsed.push(allIds[j]);
-          }
-          localStorage.setItem(collapsedKey, JSON.stringify(migratedCollapsed));
-          localStorage.removeItem(legacyExpandedKey);
-          return migratedCollapsed;
-        }
-      } catch (e) {
-        logFrontendIssue('warn', 'cards.collapse', 'Failed to migrate legacy expanded card state for board ' + boardId, e);
-      }
-      localStorage.removeItem(legacyExpandedKey);
-    }
-
-    // Default behavior: cards are open unless explicitly collapsed.
-    return [];
-  }
-
-  function saveCardCollapseState(boardId) {
-    var collapsed = [];
-    var cards = getElColumnsContainer().querySelectorAll('.card[data-card-id]');
-    for (var i = 0; i < cards.length; i++) {
-      if (cards[i].classList.contains('collapsed')) {
-        collapsed.push(cards[i].getAttribute('data-card-id'));
-      }
-    }
-    localStorage.setItem('lexera-card-collapsed:' + boardId, JSON.stringify(collapsed));
-    // Remove legacy key so new default-open semantics apply consistently.
-    localStorage.removeItem('lexera-card-expanded:' + boardId);
-  }
+  // --- Card Collapse --- (delegated to LexeraCardCollapse module)
+  var CardCollapse = window.LexeraCardCollapse;
+  if (CardCollapse) CardCollapse.init({ logFrontendIssue: function () { return logFrontendIssue.apply(null, arguments); }, getElColumnsContainer: function () { return getElColumnsContainer(); } });
+  function collectBoardCardIds(rows) { return CardCollapse ? CardCollapse.collectBoardCardIds(rows) : []; }
+  function getCollapsedCards(boardId, rows) { return CardCollapse ? CardCollapse.getCollapsedCards(boardId, rows) : []; }
+  function saveCardCollapseState(boardId) { if (CardCollapse) CardCollapse.saveCardCollapseState(boardId); }
 
   // --- Tag Colors --- (delegated to LexeraTagColors module)
   var TagColors = window.LexeraTagColors;
@@ -11066,111 +10942,21 @@ var LexeraDashboard = (function () {
     return helpers.renderTitleInline(text, boardId, options);
   }
 
-  // --- Util ---
+  // --- Util (delegated to LexeraAppUtils module – utils/appUtils.js) ---
 
-  function renderTable(lines, startIdx, boardId, renderState) {
-    if (CardContentRenderer) return CardContentRenderer.renderTable(lines, startIdx, boardId, renderState);
-    return '';
-  }
+  var _AppUtils = typeof LexeraAppUtils !== 'undefined' ? LexeraAppUtils : null;
 
-  function flushPendingDiagramQueues() {
-    if (DiagramRegistry) DiagramRegistry.flush();
-  }
+  function renderTable(lines, startIdx, boardId, renderState) { return _AppUtils ? _AppUtils.renderTable(lines, startIdx, boardId, renderState) : ''; }
+  function flushPendingDiagramQueues() { if (_AppUtils) _AppUtils.flushPendingDiagramQueues(); }
+  function escapeRegex(str) { return _AppUtils ? _AppUtils.escapeRegex(str) : String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function applyAbbreviationsToHtml(html, abbrDefs) { return _AppUtils ? _AppUtils.applyAbbreviationsToHtml(html, abbrDefs) : html; }
 
-  if (DiagramRegistry) {
-    DiagramRegistry.register({
-      id: 'mermaid',
-      languages: ['mermaid'],
-      _ready: false,
-      _loading: false,
-      isReady: function () { return this._ready; },
-      init: function () {
-        var self = this;
-        if (self._ready) return Promise.resolve();
-        if (self._loading) return new Promise(function (resolve) {
-          var check = setInterval(function () { if (self._ready) { clearInterval(check); resolve(); } }, 50);
-        });
-        self._loading = true;
-        return new Promise(function (resolve, reject) {
-          var script = document.createElement('script');
-          var mermaidUrl = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
-          try { var custom = localStorage.getItem('lexera-mermaid-url'); if (custom) mermaidUrl = custom; } catch (_) { /* intentional: localStorage unavailable */ }
-          script.src = mermaidUrl;
-          script.onload = function () {
-            mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose', fontFamily: 'inherit' });
-            self._ready = true;
-            self._loading = false;
-            resolve();
-          };
-          script.onerror = function () {
-            self._loading = false;
-            reject(new Error('Failed to load Mermaid library'));
-          };
-          document.head.appendChild(script);
-        });
-      },
-      render: function (id, code) {
-        return mermaid.render(id + '-svg', code).then(function (result) { return result.svg; });
-      },
-      placeholder: function (id) {
-        return '<div class="mermaid-placeholder" id="' + id + '">Loading diagram...</div>';
-      },
-      menuItems: function () {
-        return [
-          { id: 'copy-svg', label: 'Copy SVG' },
-          { id: 'copy-code', label: 'Copy Mermaid Code' },
-        ];
-      },
-      handleMenuAction: function (action, container) {
-        handleDiagramAction(action, container);
-      }
-    });
-
-    DiagramRegistry.register({
-      id: 'plantuml',
-      languages: ['plantuml', 'puml'],
-      _ready: true,
-      isReady: function () { return true; },
-      init: function () { return Promise.resolve(); },
-      render: function (id, code, boardId) {
-        return requestRenderedPlantUmlSvg(boardId, code);
-      },
-      placeholder: function (id, code) {
-        return '<div class="plantuml-placeholder" id="' + id + '"><div class="plantuml-title">PlantUML</div><pre class="code-block"><code class="language-plantuml">' + escapeHtml(code) + '</code></pre></div>';
-      },
-      menuItems: function () {
-        return [
-          { id: 'copy-svg', label: 'Copy SVG' },
-          { id: 'copy-code', label: 'Copy PlantUML Code' },
-        ];
-      },
-      handleMenuAction: function (action, container) {
-        handleDiagramAction(action, container);
-      }
-    });
-  }
-
-  function escapeRegex(str) {
-    return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  function applyAbbreviationsToHtml(html, abbrDefs) {
-    var keys = Object.keys(abbrDefs || {});
-    if (!html || keys.length === 0) return html;
-    keys.sort(function (a, b) { return b.length - a.length; });
-    var parts = String(html).split(/(<[^>]+>)/g);
-    for (var i = 0; i < parts.length; i++) {
-      if (!parts[i] || parts[i].charAt(0) === '<') continue;
-      for (var j = 0; j < keys.length; j++) {
-        var key = keys[j];
-        var pattern = new RegExp('(^|[^\\w])(' + escapeRegex(key) + ')(?=[^\\w]|$)', 'g');
-        parts[i] = parts[i].replace(pattern, function (_, pre, match) {
-          return pre + '<abbr title="' + escapeAttr(abbrDefs[key]) + '">' + match + '</abbr>';
-        });
-      }
-    }
-    return parts.join('');
-  }
+  if (_AppUtils) _AppUtils.init({
+    handleDiagramAction: handleDiagramAction,
+    requestRenderedPlantUmlSvg: requestRenderedPlantUmlSvg,
+    escapeHtml: escapeHtml,
+    escapeAttr: escapeAttr
+  });
 
   // --- CardContentRenderer init (must be after getInlineRendererHelpers, buildTagStyledLineHtml, etc.) ---
   if (CardContentRenderer) CardContentRenderer.init({

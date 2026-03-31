@@ -30,6 +30,10 @@ function loadMutationFunctions() {
   const orderHelpersSource = readFileSync(resolve(srcDir, 'board', 'orderHelpers.js'), 'utf-8');
   new Function(orderHelpersSource)();
 
+  // Load AppUtils so delegation stubs in app.js can reference it
+  const appUtilsSource = readFileSync(resolve(srcDir, 'utils', 'appUtils.js'), 'utf-8');
+  new Function(appUtilsSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
@@ -248,6 +252,7 @@ function loadMutationFunctions() {
 
   const wrappedSource = `
     var OrderHelpers = (typeof globalThis !== 'undefined' && globalThis.LexeraOrderHelpers) || null;
+    var _AppUtils = (typeof globalThis !== 'undefined' && globalThis.LexeraAppUtils) || null;
     var PathUtils = globalThis.LexeraPathUtils;
     var TagColors = globalThis.LexeraTagColors;
     var LexeraTagSystem = globalThis.LexeraTagSystem || null;

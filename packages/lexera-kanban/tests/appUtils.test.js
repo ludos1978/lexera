@@ -32,6 +32,12 @@ function loadAppUtils() {
   const orderHelpersSource = readFileSync(resolve(srcDir, 'board', 'orderHelpers.js'), 'utf-8');
   new Function(orderHelpersSource)();
 
+  // Load MediaCategory and AppUtils so delegation stubs in app.js can reference them
+  const mediaCategorySource = readFileSync(resolve(srcDir, 'utils', 'mediaCategory.js'), 'utf-8');
+  new Function(mediaCategorySource)();
+  const appUtilsModSource = readFileSync(resolve(srcDir, 'utils', 'appUtils.js'), 'utf-8');
+  new Function(appUtilsModSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
@@ -141,6 +147,8 @@ function loadAppUtils() {
 
   const wrappedSource = `
     var OrderHelpers = (typeof globalThis !== 'undefined' && globalThis.LexeraOrderHelpers) || null;
+    var _MediaCategory = (typeof globalThis !== 'undefined' && globalThis.LexeraMediaCategory) || null;
+    var _AppUtils = (typeof globalThis !== 'undefined' && globalThis.LexeraAppUtils) || null;
     var LexeraTagSystem = globalThis.LexeraTagSystem || null;
     var PathUtils = globalThis.LexeraPathUtils;
     var window = globalThis.window || {};
@@ -172,7 +180,17 @@ function loadAppUtils() {
         getBoardSettingValue: function () { return 'kanban'; }
       });
     }
+
     ${fnDefs.join('\n\n')}
+
+    // Initialize MediaCategory with deps so delegation stubs work
+    if (_MediaCategory && typeof _MediaCategory.init === 'function') {
+      _MediaCategory.init({
+        isExternalHttpUrl: typeof isExternalHttpUrl === 'function' ? isExternalHttpUrl : function (u) { return /^https?:\\/\\//i.test(u || ''); },
+        normalizeFilePathForDetection: typeof normalizeFilePathForDetection === 'function' ? normalizeFilePathForDetection : function (p) { return String(p || '').split('?')[0].split('#')[0]; },
+        getFileNameFromPath: typeof getFileNameFromPath === 'function' ? getFileNameFromPath : function (p) { return String(p || '').split('/').pop() || ''; }
+      });
+    }
 
     return {
       normalizeLogMessage,
