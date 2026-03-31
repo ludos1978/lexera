@@ -12,6 +12,8 @@
 - [ ] **App.js modularization** — 11,927 lines (down from 25K+). Remaining: Main View (~6600 lines core rendering) is the only major section left. All small sections extracted.
 
 ## Performance — Do Next
+- [ ] **Replace full board rerenders with targeted patching** — `renderColumns()` still clears and rebuilds the entire board DOM for many small mutations. Add row/stack/column/card-level patch rendering so edits do not pay full-board cost.
+- [ ] **Stop rebuilding the full board/workspace sidebar tree on routine refreshes** — `renderBoardList()` clears and rebuilds the entire hierarchy, and hierarchy hydration can trigger more rerenders while polling. Make sidebar updates keyed and incremental.
 - [ ] **Fold hover must stop rerendering side docks** — `workspaceShell.js` currently rebuilds the dock subtree on folded hover open and on per-zone hover changes. Hover should switch active preview state without `rerenderDockTree()`.
 - [ ] **Remove forced `max-content` hover measurement** — folded hover currently sets overlay size to `max-content` and immediately reads `offsetWidth` / `offsetHeight`, forcing layout on heavy panels. Replace with cached or bounded sizing that does not synchronously measure the full subtree on every hover.
 - [ ] **Make folded dashboard preview lightweight** — hovering the folded dashboard currently reattaches a large live dashboard DOM subtree into the dock preview. Add a lighter preview path or keep the panel mounted so hover does not move and rebuild the whole dashboard surface.
@@ -19,6 +21,9 @@
 - [ ] **Reduce mirrored dashboard cloning cost** — shared dashboard roots currently clone every canonical dashboard list into every mirror root on sync. Replace `cloneChildrenInto()` full-list cloning with targeted syncing, or only sync visible / active dashboard mirrors.
 - [ ] **Take broken-element scanning out of the hot render path** — dashboard refresh currently scans the active board DOM for broken embeds/includes and re-renders that section during the main dashboard render cycle. Move this to a deferred or cached pass so hover/open is not blocked by board-wide DOM queries.
 - [ ] **Separate dashboard refresh from hover activation** — opening or previewing the dashboard should never trigger board-scale work such as file inventory refresh, broken-element refresh, or mirror syncing unless the data actually changed.
+- [ ] **Reduce polling-triggered UI churn** — the polling loop refreshes workspaces, board lists, remote boards, hierarchy caches, and dashboard state on a short interval. Decouple lightweight health checks from expensive UI refresh and background hydration.
+- [ ] **Rework drag/drop hit-testing and layout locking for large boards** — pointer drag currently locks many board nodes, inserts indicators, and repeatedly scans live DOM geometry on global `mousemove`. Cache geometry per drag and avoid full-board queries per move.
+- [ ] **Reduce workspace shell panel move/iframe overhead** — shell tab and dock rendering still moves panel DOM around and keeps iframe-backed board views. Cut DOM shuffling on tab activation and continue the path away from iframe-based in-window composition.
 
 ## Misc
 - [x] ~~Color theme integrated into visual theme~~ (7c212e7c)
@@ -67,12 +72,12 @@
 - [ ] **Unify shared packages** — merge or clearly separate packages/shared (TS types) vs packages/lexera-shared (browser JS/CSS). Replace copy-based sync-runtime-assets.mjs with real package.
 - [ ] **Remove iframe view composition** — replace in-window iframes + postMessage with native in-process view instances
 - [ ] **Backend config + service cleanup** — extract ConfigService (lock/mutate/save/notify) from raw Mutex<SyncConfig>. Continue AppState decomposition into narrower services.
-- [ ] **Parser shared fixtures** — Rust parser is authoritative (1,751 lines). Add shared test fixtures to validate TS parser (337 lines) against it instead of hand-maintained parity.
+- [x] ~~**Parser shared fixtures**~~ (69946a76) — 7 fixture pairs validated against Rust parser. 6 expected files corrected to match authoritative output.
 
 ## Style System — Do Next
 - [ ] **Define two style layers** — Application Style (shell, menus, logs, settings) + Board Style (kanban/canvas content). No third overlapping layer.
 - [x] ~~**Unify component primitives**~~ (1aea8ea1) — shared .btn base + primary/secondary/quiet/danger variants, existing classes inherit
-- [ ] **Extend consistent states** — .view-loading/.view-empty exist for some views. Apply to all surfaces with shared model for connected/loading/empty/error/selected.
+- [x] ~~**Extend consistent states**~~ (1b2b5d95) — added .view-error + .view-disconnected helpers and CSS. Applied to dashboard and log panel surfaces.
 
 ## Deferred (revisit when needed)
 - [ ] Email + Filesystem data sources — filesystem watcher exists, email is large scope
