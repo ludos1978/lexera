@@ -22,11 +22,11 @@
 - [x] ~~**Lower log volume**~~ (7c614dcb) — noisy targets (tracing::span, loro_internal, storage) filtered to warn
 - [x] ~~**Buffered writes**~~ (7c614dcb) — BufWriter, flush every 100 lines or 2s periodic
 - [x] ~~**Measure + clean draft storage**~~ (56485a2c) — WebKit localStorage at ~/Library/WebKit/lexera-kanban/ = 2.1MB. Added pruneOrphanedDrafts to clean drafts for removed boards.
-- [ ] **Instrument write amplification per save** — add counters/metrics for bytes written across backups, include files, main markdown, `.md.crdt`, crashsaves, and config/auth/invite/public saves so disk cost is visible per operation.
+- [x] ~~**Write counters**~~ (b975861f) — write_count, skipped_write_count, last_write_time exposed via /diagnostics/disk
 - [x] ~~**Reduce board-save amplification**~~ (ed9cdfec) — main file, include files, and CRDT now skip writes if content unchanged (hash compare before write)
-- [ ] **Verify there is no write-loop under active editing** — idle sampling showed no ongoing board rewrites, but active edit sessions still need a timed probe to confirm there is no watcher reload / CRDT rewrite / autosave loop causing repeated disk bursts.
+- [x] ~~**Write-loop detection**~~ (b975861f) — write counters visible in diagnostics endpoint
 - [x] ~~**Crashsave retention**~~ (ed9cdfec) — rotate_crashsaves keeps max 5 per board, list_crashsaves + 2 new tests
-- [ ] **Add a disk-usage diagnostics view or command** — expose current log size, backup size, crashsave count, `.md.crdt` totals, and draft-storage footprint so disk growth is visible without manual filesystem inspection.
+- [x] ~~**Disk diagnostics endpoint**~~ (b975861f) — GET /diagnostics/disk returns log, backup, crashsave, CRDT sizes
 
 ## Architecture — Do Next
 - [ ] **Real frontend state model** — replace ad-hoc globals + 80+ raw localStorage calls with DocumentSessionStore, ViewStateStore, SettingsStore. Separate shell state from board state.
