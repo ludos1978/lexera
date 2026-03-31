@@ -3,6 +3,85 @@
    All values scale with --ui-scale (defined in app.css :root).
 */
 
+/* ── Shared Button Base Classes ──────────────────────────────── */
+
+/* Base reset: every interactive button should carry .btn or match :where(.btn) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 4px);
+  background: var(--btn-bg, #e0e0e0);
+  color: var(--btn-fg, #333);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+              color 0.14s ease, opacity 0.14s ease, transform 0.05s ease;
+}
+.btn:hover {
+  background: var(--btn-bg-hover, #d0d0d0);
+  color: var(--text-primary, #222);
+  border-color: var(--text-secondary, #666);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent, cornflowerblue);
+  outline-offset: 1px;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Primary — accent-colored for main actions */
+.btn-primary {
+  background: var(--accent, cornflowerblue);
+  border-color: var(--accent, cornflowerblue);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--accent-hover, #4a7fd4);
+  border-color: var(--accent-hover, #4a7fd4);
+}
+
+/* Secondary — subtle border, for secondary actions */
+.btn-secondary {
+  background: var(--bg-tertiary, #f0f0f0);
+  border-color: var(--border, #ccc);
+  color: var(--text-primary, #222);
+}
+.btn-secondary:hover {
+  background: var(--bg-hover, #e5e5e5);
+}
+
+/* Quiet — minimal, text-only appearance */
+.btn-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary, #666);
+}
+.btn-quiet:hover {
+  background: var(--bg-hover, #e5e5e5);
+  color: var(--text-primary, #222);
+}
+
+/* Danger — error/destructive color */
+.btn-danger {
+  color: var(--error, #f44747);
+  border-color: rgba(244, 71, 71, 0.45);
+}
+.btn-danger:hover {
+  border-color: var(--error, #f44747);
+  background: rgba(244, 71, 71, 0.14);
+}
+
 :root {
   /* ── Typography ─────────────────────────────────────────────── */
   --font-size-xs:   calc(9px  * var(--ui-scale));  /* badges, metadata, timestamps */

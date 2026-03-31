@@ -283,6 +283,51 @@ textarea {
   border-color: rgba(211, 47, 47, 0.52);
 }
 
+/* ── Wire existing button families to shared .btn base (tokens.css) ── */
+/* :where() keeps specificity at 0 so existing class rules always win. */
+:where(.board-action-btn),
+:where(.log-panel-btn),
+:where(.export-action-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+              color 0.14s ease, opacity 0.14s ease, transform 0.05s ease;
+}
+:where(.board-action-btn):hover,
+:where(.log-panel-btn):hover,
+:where(.export-action-btn):hover {
+  background: var(--btn-bg-hover);
+  color: var(--text-primary);
+}
+:where(.board-action-btn):focus-visible,
+:where(.log-panel-btn):focus-visible,
+:where(.export-action-btn):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+:where(.board-action-btn):active,
+:where(.log-panel-btn):active,
+:where(.export-action-btn):active {
+  transform: translateY(1px);
+}
+:where(.board-action-btn):disabled,
+:where(.log-panel-btn):disabled,
+:where(.export-action-btn):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Unified icon button style (used across header/sidebar/board controls). */
 .btn-icon,
 .sidebar-btn,
@@ -2090,29 +2135,16 @@ body.embedded-mode .columns-container {
   flex: 0 0 1px;
 }
 
+/* .board-action-btn inherits .btn base from tokens.css */
 .board-action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   gap: calc(4px * var(--ui-scale));
   min-height: var(--btn-square-size);
-  background: var(--btn-bg);
-  border: 1px solid var(--border);
-  color: var(--btn-fg);
-  border-radius: var(--radius-md);
   padding: 0 calc(7px * var(--ui-scale));
   font-size: calc(10.5px * var(--ui-scale));
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  font-family: inherit;
-  white-space: nowrap;
 }
 
 .board-action-btn:hover {
-  color: var(--text-primary);
   border-color: var(--icon-btn-border-hover, var(--accent));
-  background: var(--btn-bg-hover);
 }
 
 .board-action-btn:disabled {
@@ -6308,18 +6340,12 @@ select.dialog-input option,
   flex-shrink: 0;
 }
 
+/* .log-panel-btn inherits .btn base from tokens.css */
 .log-panel-btn {
-  background: var(--btn-bg);
-  border: 1px solid var(--border);
-  color: var(--btn-fg);
   padding: 2px 8px;
   border-radius: 3px;
-  cursor: pointer;
   font-size: var(--font-size-md);
-}
-
-.log-panel-btn:hover {
-  background: var(--btn-bg-hover);
+  font-weight: normal;
 }
 
 /* Status bar integrated into logs panel header */
@@ -7589,32 +7615,19 @@ select.export-input {
   color: var(--text-secondary);
 }
 
-/* Buttons */
+/* .export-action-btn inherits .btn base from tokens.css */
 .export-action-btn {
   padding: 4px 12px;
   font-size: 12px;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  border: 1px solid var(--border);
-  background: var(--btn-bg);
-  color: var(--btn-fg);
+  font-weight: normal;
 }
 
-.export-action-btn:hover {
-  background: var(--btn-bg-hover);
-}
-
-.export-action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
+/* .export-action-primary maps to .btn-primary pattern */
 .export-action-primary {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
 }
-
 .export-action-primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
