@@ -3021,6 +3021,7 @@ li.tag-line-styled {
   width: auto;
   min-width: 100%;
   max-width: none;
+  overflow: visible;
 }
 
 /*
