@@ -493,6 +493,7 @@ var LexeraOrderHelpers = (function () {
     var orderedIds = orderedBoards.map(function (b) { return b.id; });
     var newOrder = reorderIds(orderedIds, sourceId, targetId, insertBefore);
     if (_Settings) { _Settings.set('boardOrder', newOrder); } else { localStorage.setItem('lexera-board-order', JSON.stringify(newOrder)); }
+    _callDep('invalidateBoardListFingerprint');
     _callDep('renderBoardList');
   }
 

@@ -761,6 +761,7 @@ var LexeraDashboard = (function () {
     persistBoardMutation: function (opts) { return persistBoardMutation(opts); },
     get boards() { return boards; },
     renderBoardList: function () { return renderBoardList(); },
+    invalidateBoardListFingerprint: function () { return _bl('invalidateBoardListFingerprint'); },
     renderColumns: function () { return renderColumns(); },
     getFoldStateApi: function () { return getFoldStateApi(); },
     getElColumnsContainer: function () { return getElColumnsContainer(); },
