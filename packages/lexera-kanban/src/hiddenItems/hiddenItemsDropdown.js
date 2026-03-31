@@ -657,12 +657,10 @@ var HiddenItemsDropdown = (function () {
       _deps.showNotification('No content available');
       return false;
     }
-    if (entityType === 'card' && context && context.colIndex !== undefined && _deps.getActiveBoardId()) {
+    if (entityType === 'card' && context && _deps.getActiveBoardId()) {
       await _deps.addCardToActiveBoard(
-        context.colIndex,
-        normalized,
-        context.atCardIndex,
-        context.insertMode
+        context,
+        normalized
       );
       return true;
     }
@@ -675,8 +673,18 @@ var HiddenItemsDropdown = (function () {
       return true;
     }
     if (entityType === 'column') {
-      await _deps.addColumnFromContent(context && context.rowIdx, context && context.stackIdx, normalized, context && context.atColIdx);
-      return true;
+      if (context && context.stackIdx != null) {
+        await _deps.addColumnFromContent(context.rowIdx, context.stackIdx, normalized, context.atColIdx);
+        return true;
+      }
+      if (context && context.rowIdx != null) {
+        await _deps.addStackFromContent(context.rowIdx, normalized, context.atStackIdx);
+        return true;
+      }
+      if (context && context.atIndex != null) {
+        await _deps.addRowFromContent(normalized, context.atIndex);
+        return true;
+      }
     }
     _deps.showNotification('No insertion target available');
     return false;

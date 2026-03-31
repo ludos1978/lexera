@@ -267,8 +267,8 @@ var LexeraRowStackMenu = (function () {
     if (action === 'empty') {
       if (entityType === 'card') {
         return deps.addEmptyCardToActiveBoard(
-          context && context.colIndex,
-          context && context.atCardIndex,
+          context || null,
+          context && typeof context.atCardIndex === 'number' ? context.atCardIndex : context && context.insertIdx,
           context && context.insertMode
         );
       }
@@ -277,7 +277,13 @@ var LexeraRowStackMenu = (function () {
       } else if (entityType === 'stack') {
         addStackToRow(context.rowIdx, context.atStackIdx);
       } else if (entityType === 'column') {
-        addColumnToStack(context.rowIdx, context.stackIdx, context.atColIdx);
+        if (context && context.stackIdx != null) {
+          addColumnToStack(context.rowIdx, context.stackIdx, context.atColIdx);
+        } else if (context && context.rowIdx != null) {
+          addStackToRow(context.rowIdx, context.atStackIdx);
+        } else if (context && context.atIndex != null) {
+          addRow(context.atIndex);
+        }
       }
       return;
     }
@@ -290,19 +296,23 @@ var LexeraRowStackMenu = (function () {
           deps.lexeraLog('warn', 'Clipboard is empty');
           return;
         }
-        if (entityType === 'card' && context && context.colIndex !== undefined && deps.getActiveBoardId()) {
+        if (entityType === 'card' && context && deps.getActiveBoardId()) {
           await deps.addCardToActiveBoard(
-            context.colIndex,
-            text.trim(),
-            context.atCardIndex,
-            context.insertMode
+            context,
+            text.trim()
           );
         } else if (entityType === 'row') {
           await addRowFromContent(text.trim(), context.atIndex);
         } else if (entityType === 'stack') {
           await addStackFromContent(context.rowIdx, text.trim(), context.atStackIdx);
         } else if (entityType === 'column') {
-          await addColumnFromContent(context.rowIdx, context.stackIdx, text.trim(), context.atColIdx);
+          if (context && context.stackIdx != null) {
+            await addColumnFromContent(context.rowIdx, context.stackIdx, text.trim(), context.atColIdx);
+          } else if (context && context.rowIdx != null) {
+            await addStackFromContent(context.rowIdx, text.trim(), context.atStackIdx);
+          } else if (context && context.atIndex != null) {
+            await addRowFromContent(text.trim(), context.atIndex);
+          }
         }
       } catch (err) {
         deps.lexeraLog('warn', 'Clipboard read failed: ' + err.message);
@@ -320,12 +330,10 @@ var LexeraRowStackMenu = (function () {
         }
         var diagramCardContent = await buildBuiltInDiagramTemplateCardContent(templateId);
         if (!diagramCardContent) return;
-        if (deps.getActiveBoardId() && context && context.colIndex !== undefined) {
+        if (deps.getActiveBoardId() && context) {
           await deps.addCardToActiveBoard(
-            context.colIndex,
-            diagramCardContent,
-            context.atCardIndex,
-            context.insertMode
+            context,
+            diagramCardContent
           );
         }
         return;
@@ -355,17 +363,38 @@ var LexeraRowStackMenu = (function () {
         // Build entity and insert
         if (entityType === 'card') {
           var card = LexeraTemplates.buildCardFromTemplate(parsed, values);
-          if (deps.getActiveBoardId() && context.colIndex !== undefined) {
+          if (deps.getActiveBoardId() && context) {
             await deps.addCardToActiveBoard(
-              context.colIndex,
-              card.content,
-              context.atCardIndex,
-              context.insertMode
+              context,
+              card.content
             );
           }
         } else if (entityType === 'column') {
           var cols = LexeraTemplates.buildColumnFromTemplate(parsed, values);
-          insertTemplateColumns(context.rowIdx, context.stackIdx, cols, context.atColIdx);
+          if (context && context.stackIdx != null) {
+            insertTemplateColumns(context.rowIdx, context.stackIdx, cols, context.atColIdx);
+          } else if (context && context.rowIdx != null) {
+            var stackTs = Date.now();
+            var stackTpl = {
+              id: 'stack-' + stackTs,
+              title: 'New Stack',
+              columns: cols
+            };
+            insertTemplateStack(context.rowIdx, stackTpl, context.atStackIdx);
+          } else if (context && context.atIndex != null) {
+            var rowTs = Date.now();
+            var rowTpl = {
+              id: 'row-' + rowTs,
+              title: 'New Row',
+              stacks: [{
+                id: 'stack-' + rowTs,
+                title: 'New Stack',
+                columns: cols
+              }]
+            };
+            deps.applyDefaultCanvasPlacementToStack(rowTpl, rowTpl.stacks[0]);
+            insertTemplateRow(context.atIndex, rowTpl);
+          }
         } else if (entityType === 'stack') {
           var stackTpl = LexeraTemplates.buildStackFromTemplate(parsed, values);
           insertTemplateStack(context.rowIdx, stackTpl, context.atStackIdx);

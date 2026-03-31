@@ -261,6 +261,11 @@
   background: var(--bg-hover);
 }
 
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"] .ws-fold-zone.ws-fold-zone-status {
+  justify-content: flex-start;
+  padding: 0 6px;
+}
+
 /* Fold indicator icon inside a zone */
 .ws-fold-indicator {
   flex: 0 0 auto;

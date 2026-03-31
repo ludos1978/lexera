@@ -75,6 +75,7 @@
   }
 
   var nextId = createIdFactory();
+  var FOLD_HOVER_OPEN_DELAY_MS = 40;
 
   function createBoardTab(boardId, viewKind) {
     return {
@@ -1441,29 +1442,32 @@
       zone.setAttribute('data-ws-action', 'expand-collapsed-dock');
       zone.title = getPanelTitle(panelId);
 
-      var indicator = document.createElement('span');
-      indicator.className = 'ws-fold-indicator';
-      if (panelId === state.activePanelId) indicator.classList.add('is-active');
+      if (!(kind === 'logs' && dockId === 'bottom')) {
+        var indicator = document.createElement('span');
+        indicator.className = 'ws-fold-indicator';
+        if (panelId === state.activePanelId) indicator.classList.add('is-active');
 
-      // Logs: show connection dot inside indicator
-      if (kind === 'logs') {
-        var dot = document.createElement('span');
-        dot.className = 'ws-fold-dot';
-        if (state.backendConnected) {
-          dot.classList.add('is-connected');
+        // Logs: show connection dot inside indicator
+        if (kind === 'logs') {
+          var dot = document.createElement('span');
+          dot.className = 'ws-fold-dot';
+          if (state.backendConnected) {
+            dot.classList.add('is-connected');
+          } else {
+            dot.classList.add('is-disconnected');
+          }
+          indicator.appendChild(dot);
+        } else if (dockId === 'left' || dockId === 'right') {
+          indicator.classList.add('is-drag-handle');
+          indicator.innerHTML = '&#8942;&#8942;';
         } else {
-          dot.classList.add('is-disconnected');
+          indicator.textContent = getFoldIndicatorContent(panelId);
         }
-        indicator.appendChild(dot);
-      } else if (dockId === 'left' || dockId === 'right') {
-        indicator.classList.add('is-drag-handle');
-        indicator.innerHTML = '&#8942;&#8942;';
-      } else {
-        indicator.textContent = getFoldIndicatorContent(panelId);
+        zone.appendChild(indicator);
       }
-      zone.appendChild(indicator);
 
-      if (kind === 'logs') {
+      if (kind === 'logs' && dockId === 'bottom') {
+        zone.classList.add('ws-fold-zone-status');
         // Build rich status badges for the folded log strip
         var badgesEl = document.createElement('span');
         badgesEl.className = 'ws-fold-status-badges';
@@ -1511,7 +1515,7 @@
 
     // Move logs status bar into fold strip so it's visible when collapsed
     for (var si = 0; si < panelIds.length; si++) {
-      if (getPanelKind(panelIds[si]) === 'logs') {
+      if (dockId === 'bottom' && getPanelKind(panelIds[si]) === 'logs') {
         // Status may be in the panel element or already moved to the ws-view-header
         var statusEl = dockEl.querySelector('.log-panel-status');
         if (!statusEl) {
@@ -1567,6 +1571,25 @@
       measureAndApplyOverlaySize();
     }
 
+    function clearHoverTimer() {
+      if (!hoverTimer) return;
+      clearTimeout(hoverTimer);
+      hoverTimer = null;
+    }
+
+    function scheduleShowHover(panelId, delayMs) {
+      clearHoverTimer();
+      var waitMs = typeof delayMs === 'number' && delayMs > 0 ? delayMs : 0;
+      if (waitMs === 0) {
+        showHover(panelId);
+        return;
+      }
+      hoverTimer = setTimeout(function () {
+        hoverTimer = null;
+        showHover(panelId);
+      }, waitMs);
+    }
+
     function rerenderDockTree() {
       var tree = state.sideDocks[dockId];
       if (!tree) return;
@@ -1597,9 +1620,7 @@
     dockEl.addEventListener('mouseenter', function () {
       if (!dockEl.classList.contains('is-folded')) return;
       if (dockEl.classList.contains('is-fold-locked')) return;
-      hoverTimer = setTimeout(function () {
-        showHover(null);
-      }, 180);
+      scheduleShowHover(null, FOLD_HOVER_OPEN_DELAY_MS);
     });
 
     // Per-zone mouseover: switch active panel when moving between zones
@@ -1610,10 +1631,7 @@
       var panelId = zone.getAttribute('data-ws-panel-id');
       if (!panelId || panelId === activeHoverPanelId) return;
       if (!dockEl.classList.contains('is-fold-hover')) {
-        clearTimeout(hoverTimer);
-        hoverTimer = setTimeout(function () {
-          showHover(panelId);
-        }, 180);
+        scheduleShowHover(panelId, 0);
       } else {
         activatePanelTab(panelId);
         activeHoverPanelId = panelId;
@@ -1623,7 +1641,7 @@
     });
 
     dockEl.addEventListener('mouseleave', function () {
-      clearTimeout(hoverTimer);
+      clearHoverTimer();
       activeHoverPanelId = null;
       dockEl.classList.remove('is-fold-hover');
       // Clean up inline size from measurement

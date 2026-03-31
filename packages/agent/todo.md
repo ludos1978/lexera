@@ -11,6 +11,15 @@
 ## Code Quality
 - [ ] **App.js modularization** — 11,927 lines (down from 25K+). Remaining: Main View (~6600 lines core rendering) is the only major section left. All small sections extracted.
 
+## Performance — Do Next
+- [ ] **Fold hover must stop rerendering side docks** — `workspaceShell.js` currently rebuilds the dock subtree on folded hover open and on per-zone hover changes. Hover should switch active preview state without `rerenderDockTree()`.
+- [ ] **Remove forced `max-content` hover measurement** — folded hover currently sets overlay size to `max-content` and immediately reads `offsetWidth` / `offsetHeight`, forcing layout on heavy panels. Replace with cached or bounded sizing that does not synchronously measure the full subtree on every hover.
+- [ ] **Make folded dashboard preview lightweight** — hovering the folded dashboard currently reattaches a large live dashboard DOM subtree into the dock preview. Add a lighter preview path or keep the panel mounted so hover does not move and rebuild the whole dashboard surface.
+- [ ] **Stop full dashboard list rebuilds on every refresh** — dashboard render paths clear sections with `innerHTML = ''` and rebuild tree DOM from scratch. Patch only changed groups or add keyed incremental rendering for results, overdue, upcoming, todos, tagged, embeds, broken, and included lists.
+- [ ] **Reduce mirrored dashboard cloning cost** — shared dashboard roots currently clone every canonical dashboard list into every mirror root on sync. Replace `cloneChildrenInto()` full-list cloning with targeted syncing, or only sync visible / active dashboard mirrors.
+- [ ] **Take broken-element scanning out of the hot render path** — dashboard refresh currently scans the active board DOM for broken embeds/includes and re-renders that section during the main dashboard render cycle. Move this to a deferred or cached pass so hover/open is not blocked by board-wide DOM queries.
+- [ ] **Separate dashboard refresh from hover activation** — opening or previewing the dashboard should never trigger board-scale work such as file inventory refresh, broken-element refresh, or mirror syncing unless the data actually changed.
+
 ## Misc
 - [x] ~~Color theme integrated into visual theme~~ (7c212e7c)
 - [x] ~~Overlay editor always available~~ (709cdae2) — setting controls default only, never blocks

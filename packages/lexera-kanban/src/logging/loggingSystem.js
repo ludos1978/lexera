@@ -502,12 +502,13 @@ function replaceLogEntries(source, entries) {
   Array.prototype.push.apply(target, nextEntries);
 
   var panel = getLogContainer(source);
-  if (!panel) return;
-  panel.innerHTML = '';
-  for (var i = 0; i < nextEntries.length; i++) {
-    panel.appendChild(renderLogEntry(source, nextEntries[i]));
+  if (panel) {
+    panel.innerHTML = '';
+    for (var i = 0; i < nextEntries.length; i++) {
+      panel.appendChild(renderLogEntry(source, nextEntries[i]));
+    }
+    panel.scrollTop = panel.scrollHeight;
   }
-  panel.scrollTop = panel.scrollHeight;
   if (source === activeLogSource) syncLogCount();
   syncMirroredLogViews();
   updateFoldedLogStatusBadges();
@@ -989,6 +990,12 @@ function updateFoldedLogStatusBadges() {
 
 window.getLogFoldedStatusData = getLogFoldedStatusData;
 window.updateFoldedLogStatusBadges = updateFoldedLogStatusBadges;
+
+var foldedLogRuntime = typeof window !== 'undefined' ? window.LexeraRuntime : null;
+if (foldedLogRuntime && typeof foldedLogRuntime.onStateChange === 'function') {
+  foldedLogRuntime.onStateChange('activeBoardId', updateFoldedLogStatusBadges);
+  foldedLogRuntime.onStateChange('boardPresenceCache', updateFoldedLogStatusBadges);
+}
 
 // Listen for events that should trigger fold badge updates
 window.addEventListener('lexera-api-inflight-changed', updateFoldedLogStatusBadges);

@@ -3,10 +3,10 @@
 kanban-plugin: board
 
 fontSize: 1_0x
-generation: 29
-contentHash: c340f65c8bba2d9156fc43783f92a9923d2bae5b61bafe07ef40388200c117eb
-resolvedHash: 23305ac83a2651c74017c205a32058248e84d74fa9bad4bb741fa0ac7cd21954
-writerId: 14a137ae-66bd-4843-a94e-5e2ca6c2bf46
+generation: 33
+contentHash: 726b857f18189b2a4a3b8ddaacb621cec8cac60d0bc0db3ca12e64d0f95ab4f8
+resolvedHash: 266f6e7336d110319bd14fbfedd39a526f7952f115669289db08c1b696e05bd8
+writerId: 9156a38b-d4ea-427c-a4b4-6db24e5d4b40
 columnWidth: 450px
 ---
 
@@ -25,5 +25,18 @@ columnWidth: 450px
 
 ### 
 - [ ] Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam
+
+# New Row
+
+## Default
+
+### New Column
+
+## New Stack
+
+### New Column
+- [ ] 
+
+### New Column
 
 
