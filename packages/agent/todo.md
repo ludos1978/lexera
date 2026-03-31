@@ -11,6 +11,7 @@
 - [ ] the dashboard takes long to populate. can we somehow massively improve that?
 - [ ] could the tauri frontend benefit from parallel requests and processing? i think it's slow in a lot of areas, but i am unsure what the best approach is to increase performance 10fold!
 
+- [ ] create a list of functions we have in the code and make a short description for each. who uses it, what it does what is it calling. in a second iteration compare all features and check for refactoring opportunities of the code!
 
 ## Code Quality
 - [ ] **App.js modularization** — 11,927 lines (down from 25K+). Remaining: Main View (~6600 lines core rendering) is the only major section left. All small sections extracted.
@@ -18,10 +19,9 @@
 ## Performance — Do Next
 - [ ] **Replace full board rerenders with targeted patching** — `renderColumns()` still clears and rebuilds the entire board DOM for many small mutations. Add row/stack/column/card-level patch rendering so edits do not pay full-board cost.
 - [ ] **Stop rebuilding the full board/workspace sidebar tree on routine refreshes** — `renderBoardList()` clears and rebuilds the entire hierarchy, and hierarchy hydration can trigger more rerenders while polling. Make sidebar updates keyed and incremental.
-- [ ] **Fold hover must stop rerendering side docks** — `workspaceShell.js` currently rebuilds the dock subtree on folded hover open and on per-zone hover changes. Hover should switch active preview state without `rerenderDockTree()`.
-- [ ] **Remove forced `max-content` hover measurement** — folded hover currently sets overlay size to `max-content` and immediately reads `offsetWidth` / `offsetHeight`, forcing layout on heavy panels. Replace with cached or bounded sizing that does not synchronously measure the full subtree on every hover.
+- [x] ~~**Fold hover stop rerendering + cached sizing**~~ (ee6be11a) — DOM class toggle instead of rerenderDockTree(), cached pre-fold dimensions instead of forced max-content measurement
 - [ ] **Make folded dashboard preview lightweight** — hovering the folded dashboard currently reattaches a large live dashboard DOM subtree into the dock preview. Add a lighter preview path or keep the panel mounted so hover does not move and rebuild the whole dashboard surface.
-- [ ] **Stop full dashboard list rebuilds on every refresh** — dashboard render paths clear sections with `innerHTML = ''` and rebuild tree DOM from scratch. Patch only changed groups or add keyed incremental rendering for results, overdue, upcoming, todos, tagged, embeds, broken, and included lists.
+- [x] ~~**Stop full dashboard list rebuilds**~~ (b79f437a) — fingerprint-based render cache skips unchanged section rebuilds
 - [ ] **Reduce mirrored dashboard cloning cost** — shared dashboard roots currently clone every canonical dashboard list into every mirror root on sync. Replace `cloneChildrenInto()` full-list cloning with targeted syncing, or only sync visible / active dashboard mirrors.
 - [ ] **Take broken-element scanning out of the hot render path** — dashboard refresh currently scans the active board DOM for broken embeds/includes and re-renders that section during the main dashboard render cycle. Move this to a deferred or cached pass so hover/open is not blocked by board-wide DOM queries.
 - [ ] **Separate dashboard refresh from hover activation** — opening or previewing the dashboard should never trigger board-scale work such as file inventory refresh, broken-element refresh, or mirror syncing unless the data actually changed.
@@ -42,7 +42,7 @@
 - [x] ~~#exclude diagonal hatching~~ (fd8ee2e9) — SVG hatch pattern at 20% opacity
 - [x] ~~show special characters~~ (77f416a2) — visible whitespace markers (·→¶) in card content
 
-- [ ] remove the "show marp settings" option in the frontend config and all related code to hide the marp settings. we need the marp functionality intact, but not the option to disable it!
+- [x] ~~remove marp settings toggle~~ (5054580d) — option removed, marp always enabled, all functionality intact
 
 - [x] ~~Integrated config dialog~~ (5fdd8c8a) — hierarchical workspace→board tree + inspector. Make the files and boards configuration more integrated. Remember this config dialogue is shared between front and backend and must function within both views!
   - on the left side there is a hierarchical display of the workspaces under the workspaces boards can be added. boards can be added to multiple workspaces.
