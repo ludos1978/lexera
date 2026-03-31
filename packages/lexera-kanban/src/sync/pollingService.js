@@ -30,6 +30,24 @@ var LexeraPollingService = (function () {
     }
   }
 
+  // --- Change-detection fingerprints ---
+  // Light fingerprint: serialize id+title (or id+name) of each item.
+  // Much cheaper than full deep-equal but catches additions, removals,
+  // renames, and reorders — which are the cases that matter for UI.
+  var _lastWorkspacesFingerprint = '';
+  var _lastBoardsFingerprint = '';
+  var _lastRemoteBoardsFingerprint = '';
+
+  function fingerprint(list, titleKey) {
+    if (!Array.isArray(list) || list.length === 0) return '0';
+    var parts = [];
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      parts.push((item.id || '') + ':' + (item[titleKey || 'title'] || '') + ':' + (item.generation !== undefined ? item.generation : ''));
+    }
+    return list.length + '|' + parts.join(',');
+  }
+
   // --- Polling ---
 
   async function poll() {
@@ -52,38 +70,59 @@ var LexeraPollingService = (function () {
 
     try {
       // Load workspaces
+      var workspacesChanged = false;
       try {
         var wsData = await _deps.LexeraApi.request('/config/workspaces');
         var wsList = Array.isArray(wsData.workspaces) ? wsData.workspaces : [];
-        _callDep('setWorkspaces', wsList);
-        _callDep('resolveActiveWorkspaceId', wsData.default_workspace || null);
-        _callDep('renderWorkspaceSelect');
+        var wsFp = fingerprint(wsList, 'name');
+        if (wsFp !== _lastWorkspacesFingerprint) {
+          _lastWorkspacesFingerprint = wsFp;
+          workspacesChanged = true;
+          _callDep('setWorkspaces', wsList);
+          _callDep('resolveActiveWorkspaceId', wsData.default_workspace || null);
+          _callDep('renderWorkspaceSelect');
+        }
       } catch (err) {
         _callDep('logFrontendIssue', 'warn', 'poll.workspaces', 'Failed to load workspaces', err);
       }
 
       var data = await _deps.LexeraApi.getBoards();
       var boardsList = data.boards || [];
-      _callDep('setBoards', boardsList);
+      var boardsFp = fingerprint(boardsList, 'title');
+      var boardsChanged = boardsFp !== _lastBoardsFingerprint;
+      if (boardsChanged) {
+        _lastBoardsFingerprint = boardsFp;
+        _callDep('setBoards', boardsList);
+      }
+      var remoteBoardsChanged = false;
       try {
         var rb = await _deps.LexeraApi.getRemoteBoards();
         var remoteBoardsList = (rb.boards || []).map(function (board) {
           if (board) board.isRemote = true;
           return board;
         });
-        _callDep('setRemoteBoards', remoteBoardsList);
+        var remoteFp = fingerprint(remoteBoardsList, 'title');
+        remoteBoardsChanged = remoteFp !== _lastRemoteBoardsFingerprint;
+        if (remoteBoardsChanged) {
+          _lastRemoteBoardsFingerprint = remoteFp;
+          _callDep('setRemoteBoards', remoteBoardsList);
+        }
       } catch (err) {
         _callDep('logFrontendIssue', 'warn', 'boards.remote', 'Failed to load remote boards', err);
         _callDep('setRemoteBoards', []);
+        _lastRemoteBoardsFingerprint = '';
+        remoteBoardsChanged = true;
       }
-      _callDep('renderBoardList');
-      var hierarchyRefresh = _callDep('refreshBoardHierarchyCache', _dep('boards'));
+      if (workspacesChanged || boardsChanged || remoteBoardsChanged) {
+        _callDep('renderBoardList');
+      }
+      var hierarchyRefresh = boardsChanged ? _callDep('refreshBoardHierarchyCache', _dep('boards')) : null;
       if (hierarchyRefresh && typeof hierarchyRefresh.catch === 'function') {
         hierarchyRefresh.catch(function (err) {
           _callDep('logFrontendIssue', 'warn', 'hierarchy.cache', 'Failed to refresh board hierarchy cache', err);
         });
       }
-      if (_dep('workspaceShellEnabled') && _dep('WorkspaceShell') && typeof _dep('WorkspaceShell').onBoardsUpdated === 'function') {
+      if ((boardsChanged || remoteBoardsChanged) && _dep('workspaceShellEnabled') && _dep('WorkspaceShell') && typeof _dep('WorkspaceShell').onBoardsUpdated === 'function') {
         _dep('WorkspaceShell').onBoardsUpdated(_dep('boards').concat(_dep('remoteBoards')));
       }
       if (_dep('workspaceShellEnabled')) {
@@ -248,11 +287,19 @@ var LexeraPollingService = (function () {
     }
   }
 
+  /** Force the next poll to treat all data as changed (e.g. after user-triggered refresh). */
+  function resetFingerprints() {
+    _lastWorkspacesFingerprint = '';
+    _lastBoardsFingerprint = '';
+    _lastRemoteBoardsFingerprint = '';
+  }
+
   return {
     init: init,
     poll: poll,
     setConnected: setConnected,
-    syncConnectionStatusButton: syncConnectionStatusButton
+    syncConnectionStatusButton: syncConnectionStatusButton,
+    resetFingerprints: resetFingerprints
   };
 })();
 window.LexeraPollingService = LexeraPollingService;

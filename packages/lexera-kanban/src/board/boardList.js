@@ -852,32 +852,36 @@ var LexeraBoardList = (function () {
     });
   }
 
+  function isMirrorRootVisible(rootEl) {
+    return rootEl.offsetParent !== null;
+  }
+
   function syncMirroredWorkspaceViews() {
     var workspaceRoots = _callDep('getSharedPanelRoots', 'hierarchy');
     var normalizedWorkspaceRoots = Array.isArray(workspaceRoots) ? workspaceRoots : [];
     var workspaceRootCount = normalizedWorkspaceRoots.length;
-    // console.log('[ws-debug] syncMirroredWorkspaceViews: sharedRoots=' + workspaceRootCount);
     if (!workspaceRootCount) return;
     var activeWorkspaceId = _dep('activeWorkspaceId');
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var canonicalSelect = document.getElementById('workspace-select');
     var canonicalBoardList = getElBoardList();
-    // console.log('[ws-debug] syncMirror: canonicalSelect=' + (canonicalSelect ? 'children=' + canonicalSelect.children.length + ' connected=' + canonicalSelect.isConnected : 'NULL') + ', canonicalBoardList=' + (canonicalBoardList ? 'children=' + canonicalBoardList.children.length + ' connected=' + canonicalBoardList.isConnected : 'NULL'));
     for (var i = 0; i < workspaceRootCount; i++) {
       var rootEl = normalizedWorkspaceRoots[i];
       if (!rootEl) continue;
+      if (!isMirrorRootVisible(rootEl)) {
+        rootEl.setAttribute('data-mirror-stale', 'true');
+        continue;
+      }
+      rootEl.removeAttribute('data-mirror-stale');
       bindMirroredWorkspaceView(rootEl);
       var selectEl = rootEl.querySelector('.lexera-shared-workspace-select');
       var boardListEl = rootEl.querySelector('.lexera-shared-board-list');
-      // console.log('[ws-debug] syncMirror[' + i + ']: root=' + rootEl.className.substring(0, 50) + ', selectEl=' + !!selectEl + ', boardListEl=' + !!boardListEl);
       if (selectEl && canonicalSelect) {
         selectEl.innerHTML = canonicalSelect.innerHTML;
         selectEl.value = activeWorkspaceId || canonicalSelect.value || ALL_WORKSPACES_ID;
-        // console.log('[ws-debug] syncMirror[' + i + ']: synced select, options=' + selectEl.children.length);
       }
       if (boardListEl && canonicalBoardList) {
         boardListEl.innerHTML = canonicalBoardList.innerHTML;
-        // console.log('[ws-debug] syncMirror[' + i + ']: synced boardList, items=' + boardListEl.children.length);
       }
     }
   }
@@ -975,23 +979,56 @@ var LexeraBoardList = (function () {
 
   // ─── Board list rendering ─────────────────────────────────────────
 
+  // Fingerprint of the last successful renderBoardList call.
+  // If the inputs haven't changed we skip the expensive DOM rebuild.
+  var _lastRenderFingerprint = '';
+
+  function _buildRenderFingerprint(boards, remoteBoards, workspaces, activeWorkspaceId, activeBoardId) {
+    var parts = [activeWorkspaceId || '', activeBoardId || ''];
+    var i;
+    if (boards) for (i = 0; i < boards.length; i++) parts.push(boards[i].id + ':' + (boards[i].title || '') + ':' + (boards[i].generation !== undefined ? boards[i].generation : ''));
+    parts.push('|R|');
+    if (remoteBoards) for (i = 0; i < remoteBoards.length; i++) parts.push(remoteBoards[i].id + ':' + (remoteBoards[i].title || ''));
+    parts.push('|W|');
+    if (workspaces) for (i = 0; i < workspaces.length; i++) parts.push(workspaces[i].id + ':' + (workspaces[i].name || ''));
+    // Include sidebar expanded state so fold toggles always trigger a re-render
+    parts.push('|E|');
+    var expanded = getSidebarExpandedBoards();
+    if (expanded.length > 0) parts.push(expanded.join(';'));
+    return parts.join(',');
+  }
+
+  /** Call with true to bypass the fingerprint check (e.g. after fold toggle). */
+  function invalidateBoardListFingerprint() {
+    _lastRenderFingerprint = '';
+  }
+
   function renderBoardList() {
     var boardListEl = getElBoardList();
     // console.log('[ws-debug] renderBoardList: boardListEl=' + (boardListEl ? 'id=' + boardListEl.id + ' connected=' + boardListEl.isConnected + ' parent=' + (boardListEl.parentNode ? boardListEl.parentNode.className.substring(0, 40) : 'null') : 'NULL'));
     var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
     if (rt) rt.setViewLoading(boardListEl, false);
-    boardListEl.innerHTML = '';
+
     var activeWorkspaceId = _dep('activeWorkspaceId');
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var boards = _dep('boards');
     var remoteBoards = _dep('remoteBoards');
     var activeBoardId = _dep('activeBoardId');
+
+    // Skip expensive DOM rebuild if nothing changed since last render
+    var workspaces = _dep('workspaces') || [];
+    var renderFp = _buildRenderFingerprint(boards, remoteBoards, workspaces, activeWorkspaceId, activeBoardId);
+    if (renderFp === _lastRenderFingerprint && boardListEl.childNodes.length > 0) {
+      return;
+    }
+    _lastRenderFingerprint = renderFp;
+
     var SidebarSync = _dep('SidebarSync');
     var tv = _dep('TreeView');
     var workspaceShellEnabled = _dep('workspaceShellEnabled');
     var WorkspaceShell = _dep('WorkspaceShell');
 
-    var workspaces = _dep('workspaces') || [];
+    boardListEl.innerHTML = '';
     var isAllView = !activeWorkspaceId || activeWorkspaceId === ALL_WORKSPACES_ID;
     var filteredBoards = isAllView
       ? boards
@@ -1450,7 +1487,8 @@ var LexeraBoardList = (function () {
     renderWorkspaceSelect: renderWorkspaceSelect,
     getBoardWorkspaceIds: getBoardWorkspaceIds,
     removeBoardFromSidebar: removeBoardFromSidebar,
-    renderBoardList: renderBoardList
+    renderBoardList: renderBoardList,
+    invalidateBoardListFingerprint: invalidateBoardListFingerprint
   };
 })();
 window.LexeraBoardList = LexeraBoardList;
