@@ -317,6 +317,33 @@ var LexeraBoardList = (function () {
     }
   }
 
+  /**
+   * Remove draft entries for boards that no longer exist in the board list.
+   * Called during board list refresh to prevent unbounded localStorage growth.
+   */
+  function pruneOrphanedDrafts(boardIds) {
+    if (!boardIds || !Array.isArray(boardIds)) return;
+    var idSet = {};
+    for (var i = 0; i < boardIds.length; i++) idSet[boardIds[i]] = true;
+    var PREFIX = 'lexera-board-draft:';
+    try {
+      var keysToRemove = [];
+      for (var k = 0; k < localStorage.length; k++) {
+        var key = localStorage.key(k);
+        if (key && key.indexOf(PREFIX) === 0) {
+          var draftBoardId = key.slice(PREFIX.length);
+          if (!idSet[draftBoardId]) keysToRemove.push(key);
+        }
+      }
+      for (var j = 0; j < keysToRemove.length; j++) {
+        localStorage.removeItem(keysToRemove[j]);
+        logFrontendIssue('info', 'board.draft.prune', 'Removed orphaned draft for board ' + keysToRemove[j].slice(PREFIX.length));
+      }
+    } catch (err) {
+      logFrontendIssue('warn', 'board.draft.prune', 'Failed to prune orphaned drafts', err);
+    }
+  }
+
   function boardCardSummary(bd) {
     if (!bd) return '(null)';
     var cols = (bd.rows && bd.rows.length > 0)
@@ -1297,6 +1324,10 @@ var LexeraBoardList = (function () {
 
     var hasBoardItems = boardListEl.children.length > 0;
     if (rt) rt.setViewEmpty(boardListEl, !hasBoardItems, 'No boards');
+
+    // Clean up draft entries for boards that no longer exist
+    var allBoardIds = (boards || []).map(function (b) { return b.id; });
+    pruneOrphanedDrafts(allBoardIds);
 
     syncMirroredWorkspaceViews();
   }
