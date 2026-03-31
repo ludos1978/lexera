@@ -209,7 +209,8 @@ fn workspace_board_ids(state: &AppState, workspace_id: &str) -> Result<Vec<Strin
         .iter()
         .filter(|board| board.workspace_ids.iter().any(|id| id == workspace_id))
         .map(|board| {
-            let path = std::fs::canonicalize(&board.file).unwrap_or_else(|_| PathBuf::from(&board.file));
+            let path =
+                std::fs::canonicalize(&board.file).unwrap_or_else(|_| PathBuf::from(&board.file));
             LocalStorage::board_id_from_path(&path)
         })
         .collect())
@@ -1985,7 +1986,9 @@ mod tests {
                     .uri("/collab/workspaces/ws-1/invites")
                     .header("authorization", format!("Bearer {}", owner_token))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::json!({ "role": "editor" }).to_string()))
+                    .body(Body::from(
+                        serde_json::json!({ "role": "editor" }).to_string(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -2068,7 +2071,10 @@ mod tests {
             auth.get_role(&board_id, "acceptor"),
             Some(crate::auth::RoomRole::Viewer)
         );
-        assert_eq!(auth.get_role(&board_path.to_string_lossy(), "acceptor"), None);
+        assert_eq!(
+            auth.get_role(&board_path.to_string_lossy(), "acceptor"),
+            None
+        );
     }
 
     #[tokio::test]

@@ -16,6 +16,10 @@ use crate::state::AppState;
 const FILE_SEARCH_MAX_DEPTH: usize = 5;
 /// Maximum number of matching files returned by find-file.
 const FILE_SEARCH_MAX_RESULTS: usize = 20;
+/// Maximum number of boards searched in parallel for global file search.
+const FILE_SEARCH_BOARD_CONCURRENCY: usize = 8;
+/// Maximum number of concurrent file metadata lookups for batch requests.
+const FILE_INFO_BATCH_MAX_CONCURRENCY: usize = 16;
 /// Cache-Control header value for served static files (1 hour).
 const STATIC_FILE_CACHE_CONTROL: &str = "public, max-age=3600";
 
@@ -42,6 +46,256 @@ pub struct SearchFilesBody {
     workspace_id: Option<String>,
     #[serde(default)]
     category: Option<String>, // "image", "video", "audio", "document", or empty for all
+}
+
+#[derive(Clone)]
+struct BoardSearchScope {
+    board_id: String,
+    board_name: String,
+    board_dir: std::path::PathBuf,
+}
+
+struct MatchedRelativeFile {
+    relative_path: String,
+    extension: String,
+}
+
+struct ResolvedBoardFileMetadata {
+    exists: bool,
+    filename: String,
+    extension: String,
+    size: u64,
+    last_modified: u64,
+    last_modified_ms: u64,
+    media_category: &'static str,
+    previewable: bool,
+}
+
+fn filename_string(path: &std::path::Path) -> String {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn external_board_path_exists(board_dir: &std::path::Path, path_str: &str) -> bool {
+    let resolved = board_dir.join(path_str);
+    resolved
+        .canonicalize()
+        .ok()
+        .map(|p| p.exists())
+        .unwrap_or(false)
+        || resolved
+            .with_extension("md")
+            .canonicalize()
+            .ok()
+            .map(|_| true)
+            .unwrap_or(false)
+        || resolved.is_dir()
+}
+
+async fn inspect_resolved_board_file(file_path: &std::path::Path) -> ResolvedBoardFileMetadata {
+    let extension = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+    let ext_ref = if extension.is_empty() {
+        None
+    } else {
+        Some(extension.as_str())
+    };
+    let category = media_category(ext_ref);
+    let previewable = is_previewable(ext_ref);
+    let meta = tokio::fs::metadata(file_path).await.ok();
+    let exists = meta.is_some();
+    let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+    let last_modified = meta
+        .as_ref()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let last_modified_ms = meta
+        .as_ref()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    ResolvedBoardFileMetadata {
+        exists,
+        filename: filename_string(file_path),
+        extension,
+        size,
+        last_modified,
+        last_modified_ms,
+        media_category: category,
+        previewable,
+    }
+}
+
+fn build_external_file_info_json(
+    board_dir: &std::path::Path,
+    path_str: &str,
+    include_filename: bool,
+) -> serde_json::Value {
+    let exists = external_board_path_exists(board_dir, path_str);
+    let mut payload = serde_json::Map::new();
+    payload.insert("exists".to_string(), serde_json::json!(exists));
+    payload.insert("external".to_string(), serde_json::json!(true));
+    payload.insert("path".to_string(), serde_json::json!(path_str));
+    if include_filename {
+        payload.insert(
+            "filename".to_string(),
+            serde_json::json!(filename_string(std::path::Path::new(path_str))),
+        );
+    }
+    serde_json::Value::Object(payload)
+}
+
+async fn build_batch_file_info_entry(
+    state: AppState,
+    board_id: String,
+    board_dir: std::path::PathBuf,
+    path_str: String,
+) -> (String, serde_json::Value) {
+    let resolved = resolve_board_file(&state, &board_id, &path_str);
+    match resolved {
+        Ok(fp) => {
+            let metadata = inspect_resolved_board_file(&fp).await;
+            (
+                path_str.clone(),
+                serde_json::json!({
+                    "exists": metadata.exists,
+                    "path": path_str,
+                    "filename": metadata.filename,
+                    "extension": metadata.extension,
+                    "size": metadata.size,
+                    "mediaCategory": metadata.media_category,
+                }),
+            )
+        }
+        Err(_) => (
+            path_str.clone(),
+            build_external_file_info_json(&board_dir, &path_str, false),
+        ),
+    }
+}
+
+fn collect_board_file_search_matches(
+    board_dir: &std::path::Path,
+    target: &str,
+    category_filter: &Option<String>,
+    max_results: usize,
+) -> Vec<MatchedRelativeFile> {
+    let mut results: Vec<MatchedRelativeFile> = Vec::new();
+
+    fn walk_search(
+        dir: &std::path::Path,
+        base: &std::path::Path,
+        target: &str,
+        category_filter: &Option<String>,
+        results: &mut Vec<MatchedRelativeFile>,
+        depth: usize,
+        max_results: usize,
+    ) {
+        if depth > FILE_SEARCH_MAX_DEPTH || results.len() >= max_results {
+            return;
+        }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk_search(
+                    &path,
+                    base,
+                    target,
+                    category_filter,
+                    results,
+                    depth + 1,
+                    max_results,
+                );
+            } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if !name.to_lowercase().contains(target) {
+                    continue;
+                }
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if let Some(ref cat) = category_filter {
+                    if media_category(Some(ext)) != cat.as_str() {
+                        continue;
+                    }
+                }
+                let rel = path
+                    .strip_prefix(base)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| path.to_string_lossy().to_string());
+                results.push(MatchedRelativeFile {
+                    relative_path: rel,
+                    extension: ext.to_string(),
+                });
+                if results.len() >= max_results {
+                    return;
+                }
+            }
+        }
+    }
+
+    walk_search(
+        board_dir,
+        board_dir,
+        target,
+        category_filter,
+        &mut results,
+        0,
+        max_results,
+    );
+    results
+}
+
+fn build_file_search_result_json(
+    board_id: &str,
+    board_name: &str,
+    matched: MatchedRelativeFile,
+) -> serde_json::Value {
+    let filename = filename_string(std::path::Path::new(&matched.relative_path));
+    serde_json::json!({
+        "boardId": board_id,
+        "boardName": board_name,
+        "path": matched.relative_path,
+        "filename": filename,
+        "category": media_category(Some(matched.extension.as_str())),
+        "previewable": is_previewable(Some(matched.extension.as_str())),
+    })
+}
+
+async fn search_board_file_results(
+    board_index: usize,
+    board_id: String,
+    board_name: String,
+    board_dir: std::path::PathBuf,
+    target: String,
+    category_filter: Option<String>,
+    max_results: usize,
+) -> (usize, Vec<serde_json::Value>) {
+    let matches = tokio::task::spawn_blocking(move || {
+        collect_board_file_search_matches(&board_dir, &target, &category_filter, max_results)
+    })
+    .await
+    .unwrap_or_default();
+
+    let mut results = Vec::with_capacity(matches.len());
+    for matched in matches {
+        results.push(build_file_search_result_json(
+            &board_id,
+            &board_name,
+            matched,
+        ));
+    }
+
+    (board_index, results)
 }
 
 /// GET /boards/{board_id}/file?path=... -- serve any file relative to the board directory.
@@ -90,57 +344,21 @@ pub async fn file_info(
                 .as_ref()
                 .and_then(|p| p.parent())
                 .unwrap_or_else(|| std::path::Path::new("."));
-            let resolved = board_dir.join(&params.path);
-            let exists = resolved
-                .canonicalize()
-                .ok()
-                .map(|p| p.exists())
-                .unwrap_or(false)
-                || resolved
-                    .with_extension("md")
-                    .canonicalize()
-                    .ok()
-                    .map(|_| true)
-                    .unwrap_or(false)
-                || resolved.is_dir();
-            return Json(serde_json::json!({
-                "exists": exists,
-                "external": true,
-                "path": params.path,
-                "filename": std::path::Path::new(&params.path).file_name().and_then(|s| s.to_str()).unwrap_or(""),
-            }));
+            return Json(build_external_file_info_json(board_dir, &params.path, true));
         }
     };
-    let ext = fp
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.to_lowercase());
-    let ext_ref = ext.as_deref();
-    let meta = tokio::fs::metadata(&fp).await.ok();
-    let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-    let last_modified = meta
-        .as_ref()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let last_modified_ms = meta
-        .as_ref()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+    let metadata = inspect_resolved_board_file(&fp).await;
 
     Json(serde_json::json!({
-        "exists": true,
+        "exists": metadata.exists,
         "path": params.path,
-        "filename": fp.file_name().and_then(|s| s.to_str()).unwrap_or(""),
-        "extension": ext.as_deref().unwrap_or(""),
-        "size": size,
-        "lastModified": last_modified,
-        "lastModifiedMs": last_modified_ms,
-        "mediaCategory": media_category(ext_ref),
-        "previewable": is_previewable(ext_ref),
+        "filename": metadata.filename,
+        "extension": metadata.extension,
+        "size": metadata.size,
+        "lastModified": metadata.last_modified,
+        "lastModifiedMs": metadata.last_modified_ms,
+        "mediaCategory": metadata.media_category,
+        "previewable": metadata.previewable,
     }))
 }
 
@@ -160,51 +378,34 @@ pub async fn file_info_batch(
         .to_path_buf();
 
     let mut results = serde_json::Map::new();
-    for path_str in &body.paths {
-        let resolved = resolve_board_file(&state, &board_id, path_str);
-        match resolved {
-            Ok(fp) => {
-                let meta = tokio::fs::metadata(&fp).await.ok();
-                let exists = meta.is_some();
-                let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-                let ext = fp
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|s| s.to_lowercase());
-                results.insert(
-                    path_str.clone(),
-                    serde_json::json!({
-                        "exists": exists,
-                        "path": path_str,
-                        "filename": fp.file_name().and_then(|s| s.to_str()).unwrap_or(""),
-                        "extension": ext.as_deref().unwrap_or(""),
-                        "size": size,
-                        "mediaCategory": media_category(ext.as_deref()),
-                    }),
-                );
+    let mut join_set = tokio::task::JoinSet::new();
+    for path_str in body.paths {
+        join_set.spawn(build_batch_file_info_entry(
+            state.clone(),
+            board_id.clone(),
+            board_dir.clone(),
+            path_str,
+        ));
+        while join_set.len() >= FILE_INFO_BATCH_MAX_CONCURRENCY {
+            if let Some(joined) = join_set.join_next().await {
+                match joined {
+                    Ok((path, value)) => {
+                        results.insert(path, value);
+                    }
+                    Err(err) => {
+                        log::warn!("file_info_batch task failed: {}", err);
+                    }
+                }
             }
-            Err(_) => {
-                let dir_resolved = board_dir.join(path_str);
-                let exists = dir_resolved
-                    .canonicalize()
-                    .ok()
-                    .map(|p| p.exists())
-                    .unwrap_or(false)
-                    || dir_resolved
-                        .with_extension("md")
-                        .canonicalize()
-                        .ok()
-                        .map(|_| true)
-                        .unwrap_or(false)
-                    || dir_resolved.is_dir();
-                results.insert(
-                    path_str.clone(),
-                    serde_json::json!({
-                        "exists": exists,
-                        "external": true,
-                        "path": path_str,
-                    }),
-                );
+        }
+    }
+    while let Some(joined) = join_set.join_next().await {
+        match joined {
+            Ok((path, value)) => {
+                results.insert(path, value);
+            }
+            Err(err) => {
+                log::warn!("file_info_batch task failed: {}", err);
             }
         }
     }
@@ -234,62 +435,16 @@ pub async fn find_file(
     let target = body.filename.to_lowercase();
 
     let matches = tokio::task::spawn_blocking(move || {
-        let mut matches = Vec::new();
-
-        fn walk(
-            dir: &std::path::Path,
-            base: &std::path::Path,
-            target: &str,
-            matches: &mut Vec<String>,
-            depth: usize,
-            max_depth: usize,
-            max_results: usize,
-        ) {
-            if depth > max_depth {
-                return;
-            }
-            let entries = match std::fs::read_dir(dir) {
-                Ok(e) => e,
-                Err(_) => return,
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    walk(
-                        &path,
-                        base,
-                        target,
-                        matches,
-                        depth + 1,
-                        max_depth,
-                        max_results,
-                    );
-                } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.to_lowercase().contains(target) {
-                        // Return path relative to the board directory
-                        let rel = path
-                            .strip_prefix(base)
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_else(|_| path.to_string_lossy().to_string());
-                        matches.push(rel);
-                        if matches.len() >= max_results {
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-
-        walk(
-            &board_dir,
+        let category_filter = None;
+        collect_board_file_search_matches(
             &board_dir,
             &target,
-            &mut matches,
-            0,
-            FILE_SEARCH_MAX_DEPTH,
+            &category_filter,
             FILE_SEARCH_MAX_RESULTS,
-        );
-        matches
+        )
+        .into_iter()
+        .map(|matched| matched.relative_path)
+        .collect::<Vec<String>>()
     })
     .await
     .unwrap_or_default();
@@ -312,7 +467,7 @@ pub async fn search_files(
     }
 
     // Collect board IDs and their paths, filtered by workspace if specified.
-    let board_dirs: Vec<(String, String, std::path::PathBuf)> = {
+    let board_dirs: Vec<BoardSearchScope> = {
         let cfg = state
             .config
             .lock()
@@ -343,108 +498,63 @@ pub async fn search_files(
                             .map(|s| s.to_string())
                     })
                     .unwrap_or_else(|| "Untitled".to_string());
-                let board_id =
-                    lexera_core::storage::local::LocalStorage::board_id_from_path(&file_path);
-                Some((board_id, board_name, board_dir.to_path_buf()))
+                Some(BoardSearchScope {
+                    board_id: lexera_core::storage::local::LocalStorage::board_id_from_path(
+                        &file_path,
+                    ),
+                    board_name,
+                    board_dir: board_dir.to_path_buf(),
+                })
             })
             .collect()
     };
 
     let category_filter = body.category.clone();
     let target = query.to_lowercase();
+    let max_total = 50usize;
+    let mut results: Vec<serde_json::Value> = Vec::new();
 
-    let results = tokio::task::spawn_blocking(move || {
-        let mut results: Vec<serde_json::Value> = Vec::new();
-        let max_total = 50usize;
+    for (chunk_index, board_chunk) in board_dirs.chunks(FILE_SEARCH_BOARD_CONCURRENCY).enumerate() {
+        if results.len() >= max_total {
+            break;
+        }
+        let remaining = max_total - results.len();
+        let mut join_set = tokio::task::JoinSet::new();
 
-        for (board_id, board_name, board_dir) in &board_dirs {
+        for (offset, scope) in board_chunk.iter().cloned().enumerate() {
+            let board_index = chunk_index * FILE_SEARCH_BOARD_CONCURRENCY + offset;
+            join_set.spawn(search_board_file_results(
+                board_index,
+                scope.board_id,
+                scope.board_name,
+                scope.board_dir,
+                target.clone(),
+                category_filter.clone(),
+                remaining,
+            ));
+        }
+
+        let mut chunk_results: Vec<(usize, Vec<serde_json::Value>)> = Vec::new();
+        while let Some(joined) = join_set.join_next().await {
+            match joined {
+                Ok(entry) => chunk_results.push(entry),
+                Err(err) => log::warn!("search_files task failed: {}", err),
+            }
+        }
+        chunk_results.sort_by_key(|(board_index, _)| *board_index);
+
+        for (_, board_results) in chunk_results {
+            for item in board_results {
+                results.push(item);
+                if results.len() >= max_total {
+                    break;
+                }
+            }
             if results.len() >= max_total {
                 break;
             }
-
-            fn walk_search(
-                dir: &std::path::Path,
-                base: &std::path::Path,
-                target: &str,
-                category_filter: &Option<String>,
-                results: &mut Vec<(String, String)>,
-                depth: usize,
-                max_results: usize,
-            ) {
-                if depth > 5 || results.len() >= max_results {
-                    return;
-                }
-                let entries = match std::fs::read_dir(dir) {
-                    Ok(e) => e,
-                    Err(_) => return,
-                };
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        walk_search(
-                            &path,
-                            base,
-                            target,
-                            category_filter,
-                            results,
-                            depth + 1,
-                            max_results,
-                        );
-                    } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if !name.to_lowercase().contains(target) {
-                            continue;
-                        }
-                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                        if let Some(ref cat) = category_filter {
-                            if media_category(Some(ext)) != cat.as_str() {
-                                continue;
-                            }
-                        }
-                        let rel = path
-                            .strip_prefix(base)
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_else(|_| path.to_string_lossy().to_string());
-                        results.push((rel, ext.to_string()));
-                        if results.len() >= max_results {
-                            return;
-                        }
-                    }
-                }
-            }
-
-            let remaining = max_total - results.len();
-            let mut board_matches: Vec<(String, String)> = Vec::new();
-            walk_search(
-                board_dir,
-                board_dir,
-                &target,
-                &category_filter,
-                &mut board_matches,
-                0,
-                remaining,
-            );
-
-            for (rel_path, ext) in board_matches {
-                let cat = media_category(Some(&ext));
-                let filename = std::path::Path::new(&rel_path)
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or(&rel_path)
-                    .to_string();
-                results.push(serde_json::json!({
-                    "boardId": board_id,
-                    "boardName": board_name,
-                    "path": rel_path,
-                    "filename": filename,
-                    "category": cat,
-                    "previewable": is_previewable(Some(&ext)),
-                }));
-            }
         }
-        results
-    })
-    .await
-    .unwrap_or_default();
+    }
 
     Ok(Json(serde_json::json!({
         "query": body.query,
@@ -511,8 +621,10 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
+    use crate::config::BoardEntry;
     use crate::test_helpers::{
-        authed_get, body_json, register_test_user, setup_board, test_router,
+        authed_get, body_json, register_test_user, setup_board, test_router, test_state,
+        MINIMAL_BOARD,
     };
 
     #[tokio::test]
@@ -557,6 +669,107 @@ mod tests {
         assert_eq!(json["exists"], true);
         assert_eq!(json["size"], 5);
         assert_eq!(json["filename"], "data.txt");
+    }
+
+    #[tokio::test]
+    async fn file_info_batch_returns_metadata_for_multiple_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("data.txt"), "12345").unwrap();
+        std::fs::write(tmp.path().join("image.png"), "png").unwrap();
+        let (state, board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(format!("/boards/{}/file-info-batch", board_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::json!({
+                            "paths": ["data.txt", "image.png", "missing.file"]
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["results"]["data.txt"]["exists"], true);
+        assert_eq!(json["results"]["data.txt"]["size"], 5);
+        assert_eq!(json["results"]["data.txt"]["filename"], "data.txt");
+        assert_eq!(json["results"]["image.png"]["exists"], true);
+        assert_eq!(json["results"]["image.png"]["mediaCategory"], "image");
+        assert_eq!(json["results"]["missing.file"]["exists"], false);
+    }
+
+    #[tokio::test]
+    async fn search_files_returns_filtered_results_with_board_context() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_a_dir = tmp.path().join("board-a");
+        let board_b_dir = tmp.path().join("board-b");
+        std::fs::create_dir_all(board_a_dir.join("assets")).unwrap();
+        std::fs::create_dir_all(board_b_dir.join("docs")).unwrap();
+        let board_a_file = board_a_dir.join("board.md");
+        let board_b_file = board_b_dir.join("board.md");
+        std::fs::write(&board_a_file, MINIMAL_BOARD).unwrap();
+        std::fs::write(&board_b_file, MINIMAL_BOARD).unwrap();
+        std::fs::write(board_a_dir.join("assets").join("match-image.png"), "png").unwrap();
+        std::fs::write(board_a_dir.join("assets").join("match-note.txt"), "note").unwrap();
+        std::fs::write(board_b_dir.join("docs").join("match-image.png"), "png").unwrap();
+
+        let state = test_state(tmp.path());
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.boards = vec![
+                BoardEntry {
+                    file: board_a_file.to_string_lossy().to_string(),
+                    name: Some("Board A".to_string()),
+                    ..BoardEntry::default()
+                },
+                BoardEntry {
+                    file: board_b_file.to_string_lossy().to_string(),
+                    name: Some("Board B".to_string()),
+                    ..BoardEntry::default()
+                },
+            ];
+        }
+        let token = register_test_user(&state);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/search/files")
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::json!({
+                            "query": "match",
+                            "category": "image",
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let results = json["results"].as_array().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["boardName"], "Board A");
+        assert_eq!(results[0]["path"], "assets/match-image.png");
+        assert_eq!(results[1]["boardName"], "Board B");
+        assert_eq!(results[1]["path"], "docs/match-image.png");
+        assert!(results.iter().all(|item| item["category"] == "image"));
     }
 
     #[tokio::test]

@@ -48,6 +48,69 @@ var LexeraPollingService = (function () {
     return list.length + '|' + parts.join(',');
   }
 
+  function finalizePollUi(delayMs) {
+    _callDep('refreshHeaderFileControls');
+    if (!_dep('embeddedMode')) _callDep('scheduleDashboardRefresh', delayMs);
+  }
+
+  async function pollEmbeddedBoard() {
+    var targetBoardId = _dep('activeBoardId') || _dep('embeddedPreferredBoardId') || (_dep('urlParams') && _dep('urlParams').get('board')) || '';
+    if (!targetBoardId || _dep('searchMode')) {
+      finalizePollUi(0);
+      return;
+    }
+
+    if (!_dep('activeBoardId') || _dep('activeBoardId') !== targetBoardId) {
+      await _callDep('selectBoard', targetBoardId);
+      finalizePollUi(0);
+      return;
+    }
+
+    if (_callDep('isBoardDirty') || _dep('isEditing')) {
+      _callDep('traceFrontendAction', 'warn', 'poll.embedded.skipDirty', 'Skipped embedded polling reload because active board is dirty or being edited', {
+        boardId: targetBoardId,
+        dirty: _callDep('isBoardDirty'),
+        editing: _dep('isEditing'),
+        generation: _dep('_lastLoadedGeneration'),
+        revision: _dep('_lastLoadedRevision') || null
+      });
+      finalizePollUi(0);
+      return;
+    }
+
+    var pollGen = _dep('_lastLoadedGeneration');
+    var deltaApplied = false;
+    if (
+      typeof pollGen === 'number' &&
+      _deps.LexeraApi &&
+      typeof _deps.LexeraApi.getBoardChanges === 'function'
+    ) {
+      try {
+        var deltaPayload = await _deps.LexeraApi.getBoardChanges(targetBoardId, pollGen);
+        if (deltaPayload && typeof deltaPayload.generation === 'number' && deltaPayload.generation === pollGen) {
+          finalizePollUi(0);
+          return;
+        }
+        deltaApplied = !!_callDep('applyPollingBoardDelta', targetBoardId, deltaPayload);
+        if (!deltaApplied) {
+          _callDep('traceFrontendAction', 'warn', 'poll.embedded.delta.unavailable', 'Embedded polling delta unavailable; falling back to full board reload', {
+            boardId: targetBoardId,
+            loadedGeneration: pollGen,
+            serverGeneration: deltaPayload && typeof deltaPayload.generation === 'number' ? deltaPayload.generation : null,
+            deltaAvailable: !!(deltaPayload && deltaPayload.available)
+          });
+        }
+      } catch (deltaErr) {
+        _callDep('logFrontendIssue', 'warn', 'poll.embedded.delta', 'Failed to load embedded board delta during polling refresh', deltaErr);
+      }
+    }
+
+    if (!deltaApplied) {
+      await _callDep('loadBoard', targetBoardId);
+    }
+    finalizePollUi(0);
+  }
+
   // --- Polling ---
 
   async function poll() {
@@ -66,6 +129,16 @@ var LexeraPollingService = (function () {
     if (!_dep('embeddedMode')) {
       _callDep('connectSSEIfReady');
       _callDep('connectBackendLogStreamIfReady');
+    }
+
+    if (_dep('embeddedMode')) {
+      try {
+        await pollEmbeddedBoard();
+      } catch (err) {
+        _callDep('logFrontendIssue', 'warn', 'poll.embedded.refresh', 'Failed to refresh embedded board state', err);
+        finalizePollUi(0);
+      }
+      return;
     }
 
     try {
@@ -141,7 +214,7 @@ var LexeraPollingService = (function () {
           }
         }
         _callDep('refreshHeaderFileControls');
-        _callDep('scheduleDashboardRefresh', 120);
+        finalizePollUi(120);
         return;
       }
 
@@ -187,8 +260,7 @@ var LexeraPollingService = (function () {
                 }
               }
               if (deltaApplied) {
-                _callDep('refreshHeaderFileControls');
-                _callDep('scheduleDashboardRefresh', 120);
+                finalizePollUi(120);
                 return;
               }
               _callDep('traceFrontendAction', 'info', 'poll.reload', 'Polling reload for active board (clean, generation changed)', {
@@ -244,13 +316,11 @@ var LexeraPollingService = (function () {
           }
         }
       }
-      _callDep('refreshHeaderFileControls');
-      _callDep('scheduleDashboardRefresh', 120);
+      finalizePollUi(120);
     } catch (err) {
       _callDep('logFrontendIssue', 'warn', 'poll.refresh', 'Failed to refresh board list or active board state', err);
       // keep previous state
-      _callDep('refreshHeaderFileControls');
-      _callDep('scheduleDashboardRefresh', 250);
+      finalizePollUi(250);
     }
   }
 

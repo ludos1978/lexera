@@ -87,9 +87,7 @@ pub async fn disk_diagnostics(State(state): State<AppState>) -> Json<DiskDiagnos
     // Log file diagnostics
     let log_path_str = crate::log_bridge::log_file_path();
     let log_path = Path::new(&log_path_str);
-    let log_size = std::fs::metadata(log_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let log_size = std::fs::metadata(log_path).map(|m| m.len()).unwrap_or(0);
 
     // Count rotated log files (backend.log.1, backend.log.2, ...)
     let mut log_rotated_count: u64 = 0;

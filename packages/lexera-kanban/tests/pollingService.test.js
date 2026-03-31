@@ -138,4 +138,75 @@ describe('LexeraPollingService', () => {
     expect(deps.resolveActiveWorkspaceId).toHaveBeenCalledWith('ws-1');
     expect(deps.renderWorkspaceSelect).toHaveBeenCalled();
   });
+
+  it('skips global workspace and sidebar refreshes in embedded mode', async () => {
+    const service = buildService();
+    const deps = buildDeps({
+      embeddedMode: true,
+      embeddedPreferredBoardId: 'board-1',
+    });
+
+    service.init(deps);
+    await service.poll();
+
+    expect(deps.LexeraApi.request).not.toHaveBeenCalled();
+    expect(deps.LexeraApi.getBoards).not.toHaveBeenCalled();
+    expect(deps.LexeraApi.getRemoteBoards).not.toHaveBeenCalled();
+    expect(deps.renderBoardList).not.toHaveBeenCalled();
+    expect(deps.refreshBoardHierarchyCache).not.toHaveBeenCalled();
+    expect(deps.LexeraApi.getBoardChanges).toHaveBeenCalledWith('board-1', 1);
+    expect(deps.applyPollingBoardDelta).toHaveBeenCalledWith(
+      'board-1',
+      expect.objectContaining({
+        available: true,
+        generation: 2,
+      })
+    );
+    expect(deps.scheduleDashboardRefresh).not.toHaveBeenCalled();
+  });
+
+  it('does not rerender embedded boards when generation is unchanged', async () => {
+    const service = buildService();
+    const deps = buildDeps({
+      embeddedMode: true,
+      embeddedPreferredBoardId: 'board-1',
+      LexeraApi: {
+        checkStatus: vi.fn().mockResolvedValue(true),
+        request: vi.fn(),
+        getBoards: vi.fn(),
+        getRemoteBoards: vi.fn(),
+        getBoardChanges: vi.fn().mockResolvedValue({
+          available: true,
+          delta: {},
+          generation: 1,
+          revision: 'r-1',
+        }),
+      },
+    });
+
+    service.init(deps);
+    await service.poll();
+
+    expect(deps.LexeraApi.getBoardChanges).toHaveBeenCalledWith('board-1', 1);
+    expect(deps.applyPollingBoardDelta).not.toHaveBeenCalled();
+    expect(deps.loadBoard).not.toHaveBeenCalled();
+    expect(deps.scheduleDashboardRefresh).not.toHaveBeenCalled();
+  });
+
+  it('selects the embedded preferred board without loading workspace lists', async () => {
+    const service = buildService();
+    const deps = buildDeps({
+      embeddedMode: true,
+      activeBoardId: null,
+      embeddedPreferredBoardId: 'board-2',
+    });
+
+    service.init(deps);
+    await service.poll();
+
+    expect(deps.selectBoard).toHaveBeenCalledWith('board-2');
+    expect(deps.LexeraApi.request).not.toHaveBeenCalled();
+    expect(deps.LexeraApi.getBoards).not.toHaveBeenCalled();
+    expect(deps.LexeraApi.getRemoteBoards).not.toHaveBeenCalled();
+  });
 });

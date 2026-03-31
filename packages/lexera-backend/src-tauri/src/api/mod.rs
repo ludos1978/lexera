@@ -240,10 +240,7 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
     // Unauthenticated routes — health check, templates, logs, diagnostics, external embeds
     Router::new()
         .route("/status", get(events::status))
-        .route(
-            "/diagnostics/disk",
-            get(diagnostics::disk_diagnostics),
-        )
+        .route("/diagnostics/disk", get(diagnostics::disk_diagnostics))
         .route(
             "/open-connection-window",
             axum::routing::post(events::open_connection_window),

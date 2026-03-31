@@ -45,10 +45,12 @@ fn normalize_board(mut board: KanbanBoard, board_dir: &Path) -> KanbanBoard {
             }
         }
 
-        column.include_source =
-            syntax::extract_include_path(&column.title).map(|raw_path| {
-                IncludeSource::new(raw_path.clone(), resolver::resolve_include_path(&raw_path, board_dir))
-            });
+        column.include_source = syntax::extract_include_path(&column.title).map(|raw_path| {
+            IncludeSource::new(
+                raw_path.clone(),
+                resolver::resolve_include_path(&raw_path, board_dir),
+            )
+        });
     }
     board.reconcile_format_hint();
     board
