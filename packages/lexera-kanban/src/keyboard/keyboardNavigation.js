@@ -66,7 +66,8 @@ var LexeraKeyboardNavigation = (function () {
       e.preventDefault();
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      _deps.openCardEditor(focusedCardEl, ci, cj, 'inline');
+      var editorMode = _deps.isOverlayEditorEnabled && _deps.isOverlayEditorEnabled() ? 'overlay' : 'inline';
+      _deps.openCardEditor(focusedCardEl, ci, cj, editorMode);
     } else if (key === 'Home' && focusedCardEl) {
       if (!columnsContainer) return;
       e.preventDefault();

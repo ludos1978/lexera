@@ -470,10 +470,13 @@ var LexeraDashboard = (function () {
     }
   });
 
-  // --- Themes ---
-  // LEXERA_THEMES and applyLexeraTheme are provided by the shared themes.js script.
-  // THEMES is an alias for backward compatibility within app.js.
-  var THEMES = (typeof LEXERA_THEMES !== 'undefined') ? LEXERA_THEMES : [];
+  // --- Appearance ---
+  // The standalone color-theme choice has been removed. The built-in Lexera
+  // palette is applied as part of the visual-theme flow, while still exposing
+  // light and dark variants through the shared theme runtime.
+  var THEMES = (typeof LEXERA_THEMES !== 'undefined' && Array.isArray(LEXERA_THEMES) && LEXERA_THEMES.length)
+    ? LEXERA_THEMES
+    : [{ id: 'lexera', name: 'Lexera', light: {}, dark: {} }];
   var VISUAL_THEMES = (typeof LEXERA_VISUAL_THEMES !== 'undefined') ? LEXERA_VISUAL_THEMES : [
     { id: 'classic', name: 'Classic', description: 'Balanced Lexera layout' }
   ];
@@ -482,11 +485,17 @@ var LexeraDashboard = (function () {
     VISUAL_THEME_LABELS[VISUAL_THEMES[visualThemeIdx].id] = VISUAL_THEMES[visualThemeIdx].name;
   }
 
+  function getApplicationTheme() {
+    return THEMES[0] || { id: 'lexera', name: 'Lexera', light: {}, dark: {} };
+  }
+
   function applyVisualTheme(themeId) {
+    var applied = null;
     if (typeof applyLexeraVisualTheme === 'function') {
-      return applyLexeraVisualTheme(themeId);
+      applied = applyLexeraVisualTheme(themeId);
     }
-    return null;
+    applyApplicationAppearance();
+    return applied;
   }
 
   var DEFAULT_SIDEBAR_TREE_DISPLAY_OPTIONS = {
@@ -559,19 +568,13 @@ var LexeraDashboard = (function () {
 
   applySidebarTreeDisplayOptions(sidebarTreeDisplayOptions);
 
-  function applyTheme(themeId) {
-    // Use shared theme applier for base CSS variables
-    if (typeof applyLexeraTheme === 'function') {
-      applyLexeraTheme(themeId);
-    }
+  function applyApplicationAppearance() {
+    var theme = getApplicationTheme();
 
-    // Find the active theme and palette for kanban-specific derived tokens
-    var theme = null;
-    for (var i = 0; i < THEMES.length; i++) {
-      if (THEMES[i].id === themeId) { theme = THEMES[i]; break; }
+    // Use shared theme applier for base CSS variables.
+    if (typeof applyLexeraTheme === 'function') {
+      applyLexeraTheme(theme.id);
     }
-    if (!theme) theme = THEMES[0];
-    if (!theme) return;
 
     var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     var palette = isDark ? theme.dark : theme.light;
@@ -600,29 +603,15 @@ var LexeraDashboard = (function () {
     root.style.setProperty('--icon-btn-fg', palette['--text-bright'] || palette['--btn-fg'] || '');
     root.style.setProperty('--icon-btn-fg-hover', palette['--text-bright'] || palette['--text-primary'] || '');
 
-    // Update theme selector if present
-    var themeSelectors = [
-      document.getElementById('theme-select'),
-      document.getElementById('mgmt-theme-select'),
-      document.getElementById('frontend-settings-theme-select')
-    ];
-    for (var selIndex = 0; selIndex < themeSelectors.length; selIndex++) {
-      var sel = themeSelectors[selIndex];
-      if (sel && sel.value !== theme.id) sel.value = theme.id;
-    }
-
     if (typeof applyBoardSettings === 'function') {
       applyBoardSettings();
     }
     renderFrontendSettingsPanel();
   }
 
-  // Re-apply kanban-specific derived tokens on OS light/dark switch
-  // (base variables are already re-applied by themes.js listener)
+  // Re-apply derived tokens when the OS light/dark preference changes.
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-    var themeId = (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
-                  localStorage.getItem('lexera-theme') || 'lexera';
-    applyTheme(themeId);
+    applyApplicationAppearance();
   });
 
   // DOM refs — static elements use lazy-init getters (see top of file)
@@ -634,7 +623,6 @@ var LexeraDashboard = (function () {
 
   // Apply on load after DOM refs exist so board settings can safely re-apply theme-derived styles.
   applyVisualTheme(localStorage.getItem('lexera-visual-theme') || 'sleek-uniform');
-  applyTheme(localStorage.getItem('lexera-theme') || 'lexera');
   $uiScale = normalizeUiScale(localStorage.getItem('lexera-ui-scale') || '0.95');
   applyUiScale($uiScale);
   applySpecialCharactersVisibilitySetting();
@@ -6703,13 +6691,6 @@ var LexeraDashboard = (function () {
   function buildFrontendSettingsOptions() {
     return {
       getOptions: function () { return buildFrontendSettingsOptions(); },
-      // Color theme
-      getThemes: function () { return Array.isArray(THEMES) ? THEMES : []; },
-      getCurrentThemeId: function () {
-        return (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
-          localStorage.getItem('lexera-theme') || 'lexera';
-      },
-      applyTheme: applyTheme,
       // Visual theme
       getVisualThemes: function () { return Array.isArray(VISUAL_THEMES) ? VISUAL_THEMES : []; },
       getCurrentVisualThemeId: function () { return localStorage.getItem('lexera-visual-theme') || 'sleek-uniform'; },
@@ -6807,9 +6788,6 @@ var LexeraDashboard = (function () {
   };
 
   var mgmtCallbacks = {
-    onThemeChange: function (themeId) {
-      if (typeof applyTheme === 'function') applyTheme(themeId);
-    },
     openLogStream: function () {
       // In the kanban app, backend logs are handled by loggingSystem.js
       // which manages its own SSE connection lazily. Returning null tells
@@ -6855,9 +6833,6 @@ var LexeraDashboard = (function () {
       }
     },
     onServerRestarted: function () {},
-    getThemes: function () {
-      return typeof LEXERA_THEMES !== 'undefined' ? LEXERA_THEMES : [];
-    },
   };
 
   var pendingManagementTabByContext = {
@@ -10169,7 +10144,7 @@ var LexeraDashboard = (function () {
         var cardIndex = parseInt(cardEl.getAttribute('data-card-index'), 10);
         if (!isNaN(colIndex) && !isNaN(cardIndex)) {
           e.stopPropagation();
-          openCardEditor(cardEl, colIndex, cardIndex, 'inline');
+          openCardEditor(cardEl, colIndex, cardIndex, isOverlayEditorEnabled() ? 'overlay' : 'inline');
         }
         return;
       }
@@ -12933,7 +12908,7 @@ var LexeraDashboard = (function () {
       if (els.length > 0) openCardEditor(els[0], ctx.colIndex, ctx.cardIndex, 'inline');
     });
     ActionRegistry.register('card', 'edit-overlay', function (action, ctx) {
-      if (!isOverlayEditorEnabled()) { showNotification('Overlay editor is disabled in header settings'); return; }
+      // Overlay editor is always available — the setting only controls the DEFAULT editor
       var els = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"][data-card-index="' + ctx.cardIndex + '"]');
       if (els.length > 0) openCardEditor(els[0], ctx.colIndex, ctx.cardIndex, 'overlay');
     });
