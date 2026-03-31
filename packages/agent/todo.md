@@ -28,11 +28,12 @@
 - [x] ~~File search cache~~ (c7591137)
 - [x] ~~Include-watch incremental~~ (ea004b74)
 
+- [x] ~~Sidebar tree incremental~~ (0ae134e2) — keyed DOM reconciliation
+- [x] ~~Dashboard preview lightweight~~ (dcb2dafe) — clone snapshot instead of moving live DOM
+- [x] ~~Drag geometry cached~~ (9b6ac7cc) — rects cached at drag start
+
 ### Open
 - [ ] **Replace full board rerenders with targeted patching** — renderColumns() clears and rebuilds entire board DOM for small mutations
-- [ ] **Sidebar tree incremental updates** — renderBoardList() clears and rebuilds entire hierarchy on polling
-- [ ] **Lightweight folded dashboard preview** — hovering reattaches large live DOM subtree
-- [ ] **Drag/drop geometry caching** — cache hit-test geometry per drag instead of per-mousemove
 - [ ] **Virtual-scroll incremental activation** — avoid full card measurement when only part changed
 - [ ] **Reduce shell panel/iframe overhead** — cut DOM shuffling on tab activation
 
