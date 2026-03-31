@@ -6,6 +6,7 @@
 var LexeraDashboard = (function () {
   var PathUtils = window.LexeraPathUtils;
   var _rt = window.LexeraRuntime;
+  var Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   // ── Shared state — bridged to LexeraRuntime for cross-module access ──
   // Modules read via _rt.state.xxx; app.js writes via the setter helpers below.
@@ -13,7 +14,7 @@ var LexeraDashboard = (function () {
     _rt.defineState('boards', []);
     _rt.defineState('remoteBoards', []);
     _rt.defineState('workspaces', []);
-    _rt.defineState('activeWorkspaceId', localStorage.getItem('lexera-active-workspace') || null);
+    _rt.defineState('activeWorkspaceId', (Settings ? Settings.get('activeWorkspace') : localStorage.getItem('lexera-active-workspace')) || null);
     _rt.defineState('activeBoardId', null);
     _rt.defineState('activeBoardData', null);
     _rt.defineState('fullBoardData', null);
@@ -29,7 +30,7 @@ var LexeraDashboard = (function () {
   let remoteBoards = [];
   let workspaces = [];
   const ALL_WORKSPACES_ID = '__all__';
-  let activeWorkspaceId = localStorage.getItem('lexera-active-workspace') || null;
+  let activeWorkspaceId = (Settings ? Settings.get('activeWorkspace') : localStorage.getItem('lexera-active-workspace')) || null;
   let activeBoardId = null;
   let activeBoardData = null;
   let fullBoardData = null;
@@ -413,9 +414,9 @@ var LexeraDashboard = (function () {
   var workspaceShellEnabled = !embeddedMode && !!(WorkspaceShell && typeof WorkspaceShell.isEnabled === 'function' && WorkspaceShell.isEnabled());
   if (_rt) _rt.setState('workspaceShellEnabled', workspaceShellEnabled);
   var SidebarResize = window.LexeraSidebarResize;
-  var sidebarSplitRatio = parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
-  var sidebarWidth = parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0;
-  var headerSearchExpanded = localStorage.getItem('lexera-header-search-expanded') === 'true';
+  var sidebarSplitRatio = Settings ? Settings.get('sidebarSplitRatio') : parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
+  var sidebarWidth = Settings ? Settings.get('sidebarWidth') : (parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0);
+  var headerSearchExpanded = Settings ? Settings.get('headerSearchExpanded') : localStorage.getItem('lexera-header-search-expanded') === 'true';
   var $foldAllBtn = null;
   var $foldAllCardsBtn = null;
   // $pinHeadersBtn removed — column headers always sticky
@@ -451,10 +452,10 @@ var LexeraDashboard = (function () {
   };
   var $uiScale = 1;
   var dashboardState = {
-    query: localStorage.getItem('lexera-dashboard-query') || '',
-    scope: localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active',
+    query: Settings ? Settings.get('dashboardQuery') : (localStorage.getItem('lexera-dashboard-query') || ''),
+    scope: Settings ? (Settings.get('dashboardScope') === 'all' ? 'all' : 'active') : (localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active'),
     pinnedQueries: [],
-    activePinnedQuery: localStorage.getItem('lexera-dashboard-active-pinned') || '',
+    activePinnedQuery: Settings ? Settings.get('dashboardActivePinned') : (localStorage.getItem('lexera-dashboard-active-pinned') || ''),
     loading: false,
     results: [],
     deadlines: [],
@@ -508,15 +509,15 @@ var LexeraDashboard = (function () {
         event.key === 'lexera-dashboard-active-pinned' ||
         event.key === 'lexera-dashboard-pinned-queries'
       ) {
-        dashboardState.query = localStorage.getItem('lexera-dashboard-query') || '';
-        dashboardState.scope = localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active';
-        dashboardState.activePinnedQuery = localStorage.getItem('lexera-dashboard-active-pinned') || '';
+        dashboardState.query = Settings ? Settings.get('dashboardQuery') : (localStorage.getItem('lexera-dashboard-query') || '');
+        dashboardState.scope = Settings ? (Settings.get('dashboardScope') === 'all' ? 'all' : 'active') : (localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active');
+        dashboardState.activePinnedQuery = Settings ? Settings.get('dashboardActivePinned') : (localStorage.getItem('lexera-dashboard-active-pinned') || '');
         dashboardState.pinnedQueries = loadDashboardPinnedQueries();
         renderDashboard();
         scheduleDashboardRefresh(0);
       }
       if (event.key === 'lexera-dock-panel' && event.newValue) {
-        localStorage.removeItem('lexera-dock-panel');
+        if (Settings) Settings.set('dockPanel', null); else localStorage.removeItem('lexera-dock-panel');
         var shell = window.LexeraWorkspaceShell;
         if (shell && typeof shell.revealPanel === 'function') {
           shell.revealPanel(event.newValue);
@@ -723,7 +724,7 @@ var LexeraDashboard = (function () {
       return !!SidebarSync.isHierarchyLocked();
     }
     try {
-      return localStorage.getItem('lexera-hierarchy-locked') === 'true';
+      return Settings ? Settings.get('hierarchyLocked') : localStorage.getItem('lexera-hierarchy-locked') === 'true';
     } catch (err) {
       return false;
     }
@@ -2291,7 +2292,7 @@ var LexeraDashboard = (function () {
     addCardColumn = null;
     resetBoardDirtyState('selectBoard-switch', boardId);
     if (!embeddedMode) {
-      localStorage.setItem('lexera-last-board', boardId);
+      if (Settings) Settings.set('lastBoard', boardId); else localStorage.setItem('lexera-last-board', boardId);
       trackRecentBoard(boardId);
     } else {
       embeddedPreferredBoardId = boardId;
@@ -6542,7 +6543,7 @@ var LexeraDashboard = (function () {
       getVisualThemes: function () { return Array.isArray(VISUAL_THEMES) ? VISUAL_THEMES : []; },
       getCurrentVisualThemeId: function () {
         return (typeof getLexeraCurrentVisualThemeId === 'function' && getLexeraCurrentVisualThemeId()) ||
-          localStorage.getItem('lexera-visual-theme') || 'sleek-uniform';
+          (Settings ? Settings.get('visualTheme') : localStorage.getItem('lexera-visual-theme')) || 'sleek-uniform';
       },
       applyVisualTheme: function (id) { applyVisualTheme(id); },
       // UI scale
@@ -6661,7 +6662,7 @@ var LexeraDashboard = (function () {
         activeBoardId = null;
         activeBoardData = null;
         fullBoardData = null;
-        localStorage.removeItem('lexera-last-board');
+        if (Settings) Settings.set('lastBoard', null); else localStorage.removeItem('lexera-last-board');
       }
       renderBoardList();
       renderMainView();
@@ -8254,7 +8255,7 @@ var LexeraDashboard = (function () {
 
   function persistTagColorOverrides() {
     try {
-      localStorage.setItem('lexera-tag-color-overrides', JSON.stringify(TAG_COLORS));
+      if (Settings) Settings.set('tagColorOverrides', TAG_COLORS); else localStorage.setItem('lexera-tag-color-overrides', JSON.stringify(TAG_COLORS));
     } catch (err) {
       logFrontendIssue('warn', 'tag.color.persist', 'Failed to persist tag color overrides', err);
     }
@@ -11224,6 +11225,7 @@ var LexeraDashboard = (function () {
     var LAYOUT_PRESETS_STORAGE_KEY = 'lexera-layout-presets';
 
     function getSavedLayoutPresets() {
+      if (Settings) return Settings.get('layoutPresets') || {};
       try { return JSON.parse(localStorage.getItem(LAYOUT_PRESETS_STORAGE_KEY)) || {}; }
       catch (_) { return {}; } /* localStorage/JSON parse fallback */
     }
@@ -11231,13 +11233,13 @@ var LexeraDashboard = (function () {
     function saveLayoutPreset(name, settings) {
       var presets = getSavedLayoutPresets();
       presets[name] = settings;
-      localStorage.setItem(LAYOUT_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+      if (Settings) Settings.set('layoutPresets', presets); else localStorage.setItem(LAYOUT_PRESETS_STORAGE_KEY, JSON.stringify(presets));
     }
 
     function deleteLayoutPreset(name) {
       var presets = getSavedLayoutPresets();
       delete presets[name];
-      localStorage.setItem(LAYOUT_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+      if (Settings) Settings.set('layoutPresets', presets); else localStorage.setItem(LAYOUT_PRESETS_STORAGE_KEY, JSON.stringify(presets));
     }
 
     function captureCurrentLayoutSettings() {
