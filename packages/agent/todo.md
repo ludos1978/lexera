@@ -1,8 +1,8 @@
 # Lexera Kanban Todo
 
 ## Bugs
-- [ ] The dashboard doesnt properly show all the setup elements from the open or selected boards — filterDashboardResultsByScope exists but may filter incorrectly
-- [ ] reorderBoards drag error at orderHelpers.js:439 — map() on orderedBoards may fail if array is undefined
+- [x] ~~Dashboard scope~~ (35db71de) — defaults to all in workspace shell mode
+- [x] ~~reorderBoards crash~~ (cd849d0a) — guard against non-array boards dep
 
 ## Active Features
 - [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)
@@ -15,7 +15,7 @@
 - [x] ~~Color theme integrated into visual theme~~ (7c212e7c)
 - [x] ~~Overlay editor always available~~ (709cdae2) — setting controls default only, never blocks
 - [x] ~~Overlay editor activation from settings~~ (709cdae2) — double-click + Enter respect setting
-- [ ] if something has the tag #exclude it should get a "schräg schraffiert ausgegraut zu 20%" style applied! #exclude is also a tag that is by default added to the ta
+- [x] ~~#exclude diagonal hatching~~ (fd8ee2e9) — SVG hatch pattern at 20% opacity
 
 ## Disk / IO Audit — Do Next
 - [x] ~~**Log rotation + retention**~~ (7c614dcb) — 10MB size limit, 2 rotated files, startup rotation
