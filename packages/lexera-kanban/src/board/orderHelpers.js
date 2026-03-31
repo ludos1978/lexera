@@ -1048,6 +1048,31 @@ var LexeraOrderHelpers = (function () {
     scheduleDashboardRefresh(120);
   }
 
+  function flushStaleMirrors() {
+    var hasStaleDashboard = false;
+    var hasStaleHierarchy = false;
+    var dashboardRoots = _callDep('getSharedPanelRoots', 'dashboard');
+    if (dashboardRoots) {
+      for (var d = 0; d < dashboardRoots.length; d++) {
+        if (dashboardRoots[d] && dashboardRoots[d].getAttribute('data-mirror-stale') === 'true' && isMirrorRootVisible(dashboardRoots[d])) {
+          hasStaleDashboard = true;
+          break;
+        }
+      }
+    }
+    var hierarchyRoots = _callDep('getSharedPanelRoots', 'hierarchy');
+    if (hierarchyRoots) {
+      for (var h = 0; h < hierarchyRoots.length; h++) {
+        if (hierarchyRoots[h] && hierarchyRoots[h].getAttribute('data-mirror-stale') === 'true' && isMirrorRootVisible(hierarchyRoots[h])) {
+          hasStaleHierarchy = true;
+          break;
+        }
+      }
+    }
+    if (hasStaleDashboard) syncMirroredDashboardViews();
+    if (hasStaleHierarchy) _callDep('syncMirroredWorkspaceViews');
+  }
+
   function setupWorkspaceShell() {
     if (!_dep('workspaceShellEnabled') || !_dep('WorkspaceShell')) return;
     var shell = _dep('WorkspaceShell');
@@ -1055,6 +1080,9 @@ var LexeraOrderHelpers = (function () {
       getMainContent: _dep('getElMainContent'),
       onActiveBoardChanged: function (boardId) {
         setShellActiveBoard(boardId || null);
+      },
+      onAfterRender: function () {
+        flushStaleMirrors();
       },
       openWindow: function (payload) {
         if (!_dep('hasTauri')) return Promise.reject(new Error('Tauri unavailable'));
@@ -1203,6 +1231,10 @@ var LexeraOrderHelpers = (function () {
   var dashboardRefreshSeq = 0;
   var dashboardFileInventorySeq = 0;
   var dashboardMirrorSyncQueued = false;
+  var _fileInventoryBoardId = null;       // board ID of last successful file inventory
+  var _fileInventoryDataStamp = 0;        // incremented when board data changes
+  var _fileInventoryLastStamp = -1;       // stamp of last completed file inventory
+  var _brokenScanPending = false;         // true while a deferred broken scan is queued
 
   // ── Dashboard render-cache: skip DOM rebuild when data is unchanged ──
   // Maps a cache-key (section name) to the last JSON fingerprint rendered.
@@ -1237,6 +1269,7 @@ var LexeraOrderHelpers = (function () {
    */
   function invalidateDashboardRenderCache() {
     _dashboardRenderCache = {};
+    markFileInventoryDirty();
   }
 
   function normalizeDashboardScope(scope) {
@@ -1542,6 +1575,10 @@ var LexeraOrderHelpers = (function () {
     return null;
   }
 
+  function isMirrorRootVisible(rootEl) {
+    return rootEl.offsetParent !== null;
+  }
+
   function syncMirroredDashboardViews() {
     var dashboardRoots = _callDep('getSharedPanelRoots', 'dashboard');
     if (!dashboardRoots || !dashboardRoots.length || !_callDep('getElDashboardRoot')) return;
@@ -1549,6 +1586,11 @@ var LexeraOrderHelpers = (function () {
     for (var i = 0; i < dashboardRoots.length; i++) {
       var rootEl = dashboardRoots[i];
       if (!rootEl) continue;
+      if (!isMirrorRootVisible(rootEl)) {
+        rootEl.setAttribute('data-mirror-stale', 'true');
+        continue;
+      }
+      rootEl.removeAttribute('data-mirror-stale');
       bindMirroredDashboardView(rootEl);
       var searchEl = rootEl.querySelector('.lexera-shared-dashboard-search');
       var scopeEl = rootEl.querySelector('.lexera-shared-dashboard-scope');
@@ -2166,11 +2208,17 @@ var LexeraOrderHelpers = (function () {
     return items;
   }
 
-  function refreshDashboardFileInventory() {
+  function markFileInventoryDirty() {
+    _fileInventoryDataStamp++;
+  }
+
+  function refreshDashboardFileInventory(forceRefresh) {
     var state = ensureDashboardState();
     var boardId = _dep('activeBoardId') || '';
     var boardData = _dep('fullBoardData');
     if (!boardId || !_dep('connected')) {
+      _fileInventoryBoardId = null;
+      _fileInventoryLastStamp = -1;
       state.fileInventoryLoading = false;
       state.fileEmbeds = [];
       state.includedFiles = [];
@@ -2179,6 +2227,11 @@ var LexeraOrderHelpers = (function () {
       renderDashboardIncludedFilesList();
       renderDashboardBrokenList();
       scheduleMirroredDashboardSync();
+      return Promise.resolve();
+    }
+
+    // Skip if the board and data stamp haven't changed since last successful refresh
+    if (!forceRefresh && boardId === _fileInventoryBoardId && _fileInventoryDataStamp === _fileInventoryLastStamp) {
       return Promise.resolve();
     }
 
@@ -2229,6 +2282,8 @@ var LexeraOrderHelpers = (function () {
       state.includedFiles = (refs.includedFiles || []).map(resolveItem);
       state.brokenFiles = buildDashboardBrokenItems([], state.fileEmbeds, state.includedFiles);
       state.fileInventoryLoading = false;
+      _fileInventoryBoardId = boardId;
+      _fileInventoryLastStamp = _fileInventoryDataStamp;
       renderDashboardFileEmbedsList();
       renderDashboardIncludedFilesList();
       renderDashboardBrokenList();
@@ -2341,11 +2396,18 @@ var LexeraOrderHelpers = (function () {
     scheduleMirroredDashboardSync();
   }
 
+  var _cachedBrokenDomItems = [];   // last DOM-scan results
+
+  /**
+   * Render the broken-elements list using cached DOM-scan results and
+   * file-inventory data.  The expensive DOM scan is NOT run here — it is
+   * triggered separately via scheduleDeferredBrokenScan().
+   */
   function renderDashboardBrokenList() {
     var el = _callDep('getElDashboardBrokenList');
     if (!el) return;
     var items = buildDashboardBrokenItems(
-      scanBrokenElements(),
+      _cachedBrokenDomItems,
       dashboardState && dashboardState.fileEmbeds ? dashboardState.fileEmbeds : [],
       dashboardState && dashboardState.includedFiles ? dashboardState.includedFiles : []
     );
@@ -2367,6 +2429,26 @@ var LexeraOrderHelpers = (function () {
       { _cacheKey: null } // already cached at this level
     );
     scheduleMirroredDashboardSync();
+  }
+
+  /**
+   * Run the expensive broken-element DOM scan off the hot render path.
+   * Uses requestIdleCallback (with setTimeout fallback) so the main
+   * render cycle is never blocked by querySelectorAll over the board.
+   */
+  function scheduleDeferredBrokenScan() {
+    if (_brokenScanPending) return;
+    _brokenScanPending = true;
+    var run = function () {
+      _brokenScanPending = false;
+      _cachedBrokenDomItems = scanBrokenElements();
+      renderDashboardBrokenList();
+    };
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(run, { timeout: 500 });
+    } else {
+      setTimeout(run, 80);
+    }
   }
 
   function renderDashboardPinnedList() {
@@ -2515,8 +2597,10 @@ var LexeraOrderHelpers = (function () {
     renderDashboardFileEmbedsList();
     renderDashboardIncludedFilesList();
     renderDashboardBrokenList();
+    // File inventory only re-fetches when data actually changed (dirty flag)
     refreshDashboardFileInventory();
-    scheduleDashboardBrokenRefresh(300);
+    // Broken-element DOM scan runs off the hot path via requestIdleCallback
+    scheduleDeferredBrokenScan();
     scheduleMirroredDashboardSync();
   }
 
@@ -2700,6 +2784,7 @@ var LexeraOrderHelpers = (function () {
     }).then(function () {
       if (refreshId !== dashboardRefreshSeq) return;
       if (dashboardState) dashboardState.loading = false;
+      markFileInventoryDirty();
       renderDashboard();
     });
   }
@@ -2989,7 +3074,8 @@ var LexeraOrderHelpers = (function () {
     getCalendarTasks: getCalendarTasks,
     renderStandaloneCalendarPanels: renderStandaloneCalendarPanels,
     refreshDashboardTagsFromBackend: refreshDashboardTagsFromBackend,
-    invalidateDashboardRenderCache: invalidateDashboardRenderCache
+    invalidateDashboardRenderCache: invalidateDashboardRenderCache,
+    markFileInventoryDirty: markFileInventoryDirty
   };
 })();
 (typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {}).LexeraOrderHelpers = LexeraOrderHelpers;
