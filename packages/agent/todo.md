@@ -8,6 +8,10 @@
 - [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)
 - [ ] Mobile web clipper — finish lexera-capture-ios
 
+- [ ] the dashboard takes long to populate. can we somehow massively improve that?
+- [ ] could the tauri frontend benefit from parallel requests and processing? i think it's slow in a lot of areas, but i am unsure what the best approach is to increase performance 10fold!
+
+
 ## Code Quality
 - [ ] **App.js modularization** — 11,927 lines (down from 25K+). Remaining: Main View (~6600 lines core rendering) is the only major section left. All small sections extracted.
 
@@ -22,8 +26,14 @@
 - [ ] **Take broken-element scanning out of the hot render path** — dashboard refresh currently scans the active board DOM for broken embeds/includes and re-renders that section during the main dashboard render cycle. Move this to a deferred or cached pass so hover/open is not blocked by board-wide DOM queries.
 - [ ] **Separate dashboard refresh from hover activation** — opening or previewing the dashboard should never trigger board-scale work such as file inventory refresh, broken-element refresh, or mirror syncing unless the data actually changed.
 - [ ] **Reduce polling-triggered UI churn** — the polling loop refreshes workspaces, board lists, remote boards, hierarchy caches, and dashboard state on a short interval. Decouple lightweight health checks from expensive UI refresh and background hydration.
+- [ ] **Stop embedded iframe views from running full app polling** — workspace-shell iframes still run the generic poll loop, which means each open embedded board can fetch workspaces, board lists, remote boards, and hierarchy data on its own interval. Embedded views should use a much lighter mode or consume parent-managed state.
 - [ ] **Rework drag/drop hit-testing and layout locking for large boards** — pointer drag currently locks many board nodes, inserts indicators, and repeatedly scans live DOM geometry on global `mousemove`. Cache geometry per drag and avoid full-board queries per move.
 - [ ] **Reduce workspace shell panel move/iframe overhead** — shell tab and dock rendering still moves panel DOM around and keeps iframe-backed board views. Cut DOM shuffling on tab activation and continue the path away from iframe-based in-window composition.
+- [ ] **Collapse post-render board enhancement passes** — after each board rebuild the frontend re-runs embed enhancement, tag visibility, comment visibility, row-width syncing, and virtual-scroll activation over the rendered subtree. Combine or defer these passes so a single render does not trigger several full DOM scans.
+- [ ] **Make virtual-scroll activation incremental** — current activation scans every `.column-cards`, measures every card height, and installs observers after major renders. Avoid a full-card measurement pass when only a small part of the board changed.
+- [ ] **Trim duplicate board-load payloads** — `/boards/{id}/columns` currently serializes both filtered `columns` and the full board object, while the frontend load path mainly consumes `fullBoard`. Remove duplicated response fields or split endpoints by consumer.
+- [ ] **Parallelize or cache backend file metadata scans** — `/boards/{id}/file-info-batch` resolves and stats paths one-by-one, and `/search/files` recursively walks directories on every request. Add batching, caching, and smarter invalidation for large media-heavy workspaces.
+- [ ] **Stop full include-watch resync after every file-watcher event** — backend watcher handling currently re-syncs all include watch paths after board/include reloads. Update include watches incrementally so large include graphs do not pay repeated full rescan cost.
 
 ## Misc
 - [x] ~~Color theme integrated into visual theme~~ (7c212e7c)
