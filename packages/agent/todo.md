@@ -13,7 +13,7 @@
 - [ ] **App.js modularization** — 11,927 lines. Main View (~6600 lines) is the last major section.
 
 ## Performance
-- [ ] **Replace full board rerenders with targeted patching** — renderColumns() clears and rebuilds entire board DOM for small mutations
+- [x] ~~**Targeted board patching**~~ (efb021c3, 4023fb42) — settings/add-card use DOM ops, live sync uses incremental card updates
 - [ ] **Virtual-scroll incremental activation** — avoid full card measurement when only part changed
 - [ ] **Reduce shell panel/iframe overhead** — cut DOM shuffling on tab activation
 
