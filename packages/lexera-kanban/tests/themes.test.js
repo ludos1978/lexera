@@ -9,6 +9,9 @@ function createStorage(initialValues = {}) {
     },
     setItem(key, value) {
       store[key] = String(value);
+    },
+    removeItem(key) {
+      delete store[key];
     }
   };
 }
@@ -59,21 +62,32 @@ function loadThemeWindow({ storage = {}, isDark = false, iframes = [] } = {}) {
 }
 
 describe('themes', () => {
-  it('applies the selected palette to same-origin iframe roots', () => {
+  it('applies the integrated lexera palette to same-origin iframe roots and clears legacy selection', () => {
     const iframeRoot = createStyledDocumentElement();
     const iframes = [
       { contentDocument: { documentElement: iframeRoot } }
     ];
-    const { themeRuntime, documentElement, localStorage } = loadThemeWindow({ iframes });
+    const { themeRuntime, documentElement, localStorage } = loadThemeWindow({
+      iframes,
+      storage: { 'lexera-theme': 'warm' }
+    });
 
     const applied = themeRuntime.applyLexeraTheme('warm');
 
-    expect(applied.id).toBe('warm');
-    expect(documentElement.style.getPropertyValue('--bg-primary')).toBe('#fdf6e3');
+    expect(applied.id).toBe('lexera');
+    expect(documentElement.style.getPropertyValue('--bg-primary')).toBe('#ffffff');
     expect(documentElement.style.colorScheme).toBe('light');
-    expect(iframeRoot.style.getPropertyValue('--bg-primary')).toBe('#fdf6e3');
+    expect(iframeRoot.style.getPropertyValue('--bg-primary')).toBe('#ffffff');
     expect(iframeRoot.style.colorScheme).toBe('light');
-    expect(localStorage.getItem('lexera-theme')).toBe('warm');
+    expect(localStorage.getItem('lexera-theme')).toBe(null);
+  });
+
+  it('uses the dark palette variant when the OS color scheme is dark', () => {
+    const { themeRuntime, documentElement } = loadThemeWindow({ isDark: true });
+
+    expect(() => themeRuntime.applyLexeraTheme('lexera')).not.toThrow();
+    expect(documentElement.style.getPropertyValue('--bg-primary')).toBe('#1e1e1e');
+    expect(documentElement.style.colorScheme).toBe('dark');
   });
 
   it('ignores inaccessible iframe documents while still applying the root theme', () => {
@@ -85,6 +99,6 @@ describe('themes', () => {
     const { themeRuntime, documentElement } = loadThemeWindow({ iframes: [inaccessibleIframe] });
 
     expect(() => themeRuntime.applyLexeraTheme('mono')).not.toThrow();
-    expect(documentElement.style.getPropertyValue('--bg-primary')).toBe('#fafafa');
+    expect(documentElement.style.getPropertyValue('--bg-primary')).toBe('#ffffff');
   });
 });

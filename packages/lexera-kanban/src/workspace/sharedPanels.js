@@ -163,10 +163,6 @@
         '<div class="mgmt-section" data-frontend-settings-section="appearance">' +
           '<div class="mgmt-section-title">Appearance</div>' +
           '<div class="mgmt-field-row">' +
-            '<label class="mgmt-field-label">Color Theme</label>' +
-            '<select class="mgmt-field-input lexera-shared-frontend-settings-theme-select"></select>' +
-          '</div>' +
-          '<div class="mgmt-field-row">' +
             '<label class="mgmt-field-label">Visual Theme</label>' +
             '<select class="mgmt-field-input lexera-shared-frontend-settings-visual-theme"></select>' +
           '</div>' +

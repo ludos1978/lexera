@@ -62,7 +62,7 @@
 
   // Apply theme immediately from localStorage
   if (typeof applyLexeraTheme === 'function') {
-    applyLexeraTheme(localStorage.getItem('lexera-theme') || 'lexera');
+    applyLexeraTheme('lexera');
   }
 
   function requireBackendDiscoveryMethod(name) {

@@ -123,23 +123,19 @@ var ManagementUI = (function () {
   var UI_PRESETS = {
     combinedManagement: {
       topTabs: ['sharing', 'network', 'config', 'logs'],
-      defaultTopTab: 'network',
-      themeEnabled: false
+      defaultTopTab: 'network'
     },
     backendSettings: {
       topTabs: ['network', 'config', 'logs'],
-      defaultTopTab: 'network',
-      themeEnabled: false
+      defaultTopTab: 'network'
     },
     backendConfig: {
       topTabs: ['network', 'config'],
-      defaultTopTab: 'network',
-      themeEnabled: false
+      defaultTopTab: 'network'
     },
     files: {
       topTabs: ['workspaces', 'boards'],
-      defaultTopTab: 'workspaces',
-      themeEnabled: false
+      defaultTopTab: 'workspaces'
     }
   };
   var SECTION_SURFACE_IDS = {
@@ -205,8 +201,7 @@ var ManagementUI = (function () {
     return {
       topTabs: topTabs,
       defaultTopTab: defaultTopTab,
-      logsEnabled: topTabs.indexOf('logs') !== -1,
-      themeEnabled: options.themeEnabled !== false
+      logsEnabled: topTabs.indexOf('logs') !== -1
     };
   }
 
@@ -468,7 +463,6 @@ var ManagementUI = (function () {
     var initialLoads = [];
     if (needsNetwork) { initialLoads.push(loadServerInfo()); initialLoads.push(loadNetworkInterfaces()); }
     if (needsWorkspaces || needsBoards) initialLoads.push(loadWorkspaces());
-    if (needsConfig) initialLoads.push(loadTheme());
     if (needsLogs) initialLoads.push(loadLogs());
     await Promise.all(initialLoads);
     if (needsBoards) await loadMyBoards();
@@ -634,20 +628,6 @@ var ManagementUI = (function () {
     if (isTab('config')) {
       html += tabOpen('config');
 
-    if (opts && opts.themeEnabled) {
-      html += '<div class="mgmt-section" data-mgmt-section="theme">';
-      html += '<div class="mgmt-section-title">Theme</div>';
-      html += '<div class="mgmt-field-row">';
-      html += '<label class="mgmt-field-label">Theme</label>';
-      html += '<select class="mgmt-field-input" id="mgmt-theme-select"></select>';
-      html += '</div>';
-      html += '<div class="mgmt-field-row">';
-      html += '<label class="mgmt-field-label">Mode</label>';
-      html += '<span id="mgmt-color-mode" class="mgmt-info-text" style="margin:0">Auto (follows system)</span>';
-      html += '</div>';
-      html += '</div>';
-    }
-
       html += '</div>'; // end config tab
     }
 
@@ -760,12 +740,6 @@ var ManagementUI = (function () {
       if (logFilterSelect) {
         logFilter = logFilterSelect.value || 'all';
         renderLogs();
-        return;
-      }
-
-      var themeSelect = e.target.closest('#mgmt-theme-select');
-      if (themeSelect) {
-        saveTheme(themeSelect.value);
         return;
       }
 
@@ -1036,57 +1010,6 @@ var ManagementUI = (function () {
         callbacks.onServerRestarted(bindAddr, port);
       }
     }
-  }
-
-  // ── Theme ──
-
-  async function loadTheme() {
-    var themeId = 'lexera';
-    try {
-      var data = await api.get('/config/theme');
-      themeId = data.theme || 'lexera';
-    } catch (e) {
-      themeId = localStorage.getItem('lexera-theme') || 'lexera';
-    }
-
-    populateThemeSelect(themeId);
-
-    if (callbacks && typeof callbacks.onThemeChange === 'function') {
-      callbacks.onThemeChange(themeId);
-    }
-  }
-
-  function populateThemeSelect(currentThemeId) {
-    var select = queryFirst('#mgmt-theme-select');
-    if (!select) return;
-    select.innerHTML = '';
-
-    var themes = (callbacks && typeof callbacks.getThemes === 'function') ? callbacks.getThemes() : [];
-    if (typeof LEXERA_THEMES !== 'undefined' && !themes.length) themes = LEXERA_THEMES;
-
-    for (var i = 0; i < themes.length; i++) {
-      var t = themes[i];
-      var opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = t.name;
-      if (t.id === currentThemeId) opt.selected = true;
-      select.appendChild(opt);
-    }
-
-    var modeEl = queryFirst('#mgmt-color-mode');
-    if (modeEl) {
-      var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      modeEl.textContent = isDark ? 'Dark (system)' : 'Light (system)';
-    }
-  }
-
-  async function saveTheme(themeId) {
-    if (callbacks && typeof callbacks.onThemeChange === 'function') {
-      callbacks.onThemeChange(themeId);
-    }
-    try {
-      await api.put('/config/theme', { theme: themeId });
-    } catch (e) { /* ignore */ }
   }
 
   // ── Logs ──

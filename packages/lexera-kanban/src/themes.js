@@ -1,14 +1,13 @@
 /**
- * Application Theme — controls color palette only.
+ * Base application palette.
  *
- * Each theme defines light and dark color palettes (backgrounds, borders,
- * text, accent, scrollbar, button, and input colors). Themes do NOT set
- * typography — the application font is controlled by --font-ui in tokens.css.
+ * The application no longer exposes a separate color-theme choice. The built-in
+ * Lexera palette is applied as part of the visual-theme flow, while still
+ * providing both light and dark variants based on the OS color-scheme.
  *
- * Board visual style (classic, sleek, gap, lines) is a separate concern
- * handled by visualThemes.js (Board Style layer).
- *
- * Provides LEXERA_THEMES array and applyLexeraTheme() function.
+ * This file intentionally keeps the old API shape (`LEXERA_THEMES`,
+ * `applyLexeraTheme()`) so existing runtime code can keep calling into it
+ * without a parallel migration path.
  */
 /* eslint-disable no-unused-vars */
 var LEXERA_THEMES = [
@@ -34,79 +33,10 @@ var LEXERA_THEMES = [
       '--btn-bg': '#3a3d41', '--btn-bg-hover': '#45494e', '--btn-fg': '#e0e0e0',
       '--input-bg': '#3c3c3c', '--input-border': '#5a5a5a'
     }
-  },
-  {
-    id: 'mono', name: 'Mono',
-    light: {
-      '--bg-primary': '#fafafa', '--bg-secondary': '#f0f0f0', '--bg-tertiary': '#e4e4e4',
-      '--bg-hover': '#dcdcdc', '--bg-active': '#c8dff0', '--border': '#cccccc',
-      '--text-primary': '#2e2e2e', '--text-secondary': '#6e6e6e', '--text-bright': '#111111', '--text-muted': '#888888',
-      '--accent': '#0969da', '--accent-hover': '#0550ae', '--success': '#1a7f37', '--error': '#cf222e',
-      '--card-bg': '#fafafa', '--card-border': '#d0d0d0', '--card-checked': '#eeeeee',
-      '--scrollbar-thumb': '#c0c0c0', '--scrollbar-thumb-hover': '#a8a8a8', '--scrollbar-track': 'transparent',
-      '--btn-bg': '#e2e2e2', '--btn-bg-hover': '#d2d2d2', '--btn-fg': '#2e2e2e',
-      '--input-bg': '#ffffff', '--input-border': '#c0c0c0'
-    },
-    dark: {
-      '--bg-primary': '#0d1117', '--bg-secondary': '#161b22', '--bg-tertiary': '#21262d',
-      '--bg-hover': '#30363d', '--bg-active': '#1f3a5f', '--border': '#30363d',
-      '--text-primary': '#e6edf3', '--text-secondary': '#b1bac4', '--text-bright': '#ffffff', '--text-muted': '#8b949e',
-      '--accent': '#58a6ff', '--accent-hover': '#79c0ff', '--success': '#3fb950', '--error': '#f85149',
-      '--card-bg': '#0d1117', '--card-border': '#30363d', '--card-checked': '#161b22',
-      '--scrollbar-thumb': '#484f58', '--scrollbar-thumb-hover': '#616873', '--scrollbar-track': 'transparent',
-      '--btn-bg': '#21262d', '--btn-bg-hover': '#30363d', '--btn-fg': '#c9d1d9',
-      '--input-bg': '#0d1117', '--input-border': '#30363d'
-    }
-  },
-  {
-    id: 'warm', name: 'Warm',
-    light: {
-      '--bg-primary': '#fdf6e3', '--bg-secondary': '#f5eedc', '--bg-tertiary': '#eee8d5',
-      '--bg-hover': '#e8dfca', '--bg-active': '#ddd6c1', '--border': '#d6cdb7',
-      '--text-primary': '#5b4636', '--text-secondary': '#8a7560', '--text-bright': '#3b2a1a', '--text-muted': '#a09080',
-      '--accent': '#b58900', '--accent-hover': '#a07800', '--success': '#859900', '--error': '#dc322f',
-      '--card-bg': '#fdf6e3', '--card-border': '#d6cdb7', '--card-checked': '#f0e8d4',
-      '--scrollbar-thumb': '#c8bfa8', '--scrollbar-thumb-hover': '#b2a78d', '--scrollbar-track': 'transparent',
-      '--btn-bg': '#eee8d5', '--btn-bg-hover': '#e0d8c2', '--btn-fg': '#5b4636',
-      '--input-bg': '#fdf6e3', '--input-border': '#d6cdb7'
-    },
-    dark: {
-      '--bg-primary': '#2b2018', '--bg-secondary': '#33261c', '--bg-tertiary': '#3d2e22',
-      '--bg-hover': '#483828', '--bg-active': '#4a3520', '--border': '#5a4530',
-      '--text-primary': '#e8d8c0', '--text-secondary': '#c0aa88', '--text-bright': '#fff5e0', '--text-muted': '#9a8868',
-      '--accent': '#d4a017', '--accent-hover': '#e8b830', '--success': '#a8b820', '--error': '#e8503a',
-      '--card-bg': '#2b2018', '--card-border': '#5a4530', '--card-checked': '#33261c',
-      '--scrollbar-thumb': '#5a4a35', '--scrollbar-thumb-hover': '#725c43', '--scrollbar-track': 'transparent',
-      '--btn-bg': '#3d2e22', '--btn-bg-hover': '#483828', '--btn-fg': '#d4c4a8',
-      '--input-bg': '#33261c', '--input-border': '#5a4530'
-    }
-  },
-  {
-    id: 'nord', name: 'Nord',
-    light: {
-      '--bg-primary': '#eceff4', '--bg-secondary': '#e5e9f0', '--bg-tertiary': '#d8dee9',
-      '--bg-hover': '#d0d6e1', '--bg-active': '#c8d0e0', '--border': '#c8ced9',
-      '--text-primary': '#2e3440', '--text-secondary': '#4c566a', '--text-bright': '#1a1e28', '--text-muted': '#7b88a0',
-      '--accent': '#5e81ac', '--accent-hover': '#4c6d96', '--success': '#a3be8c', '--error': '#bf616a',
-      '--card-bg': '#eceff4', '--card-border': '#d0d6e1', '--card-checked': '#e0e4ec',
-      '--scrollbar-thumb': '#b8c0cc', '--scrollbar-thumb-hover': '#a6afbc', '--scrollbar-track': 'transparent',
-      '--btn-bg': '#d8dee9', '--btn-bg-hover': '#c8ced9', '--btn-fg': '#2e3440',
-      '--input-bg': '#eceff4', '--input-border': '#c8ced9'
-    },
-    dark: {
-      '--bg-primary': '#2e3440', '--bg-secondary': '#3b4252', '--bg-tertiary': '#434c5e',
-      '--bg-hover': '#4c566a', '--bg-active': '#3d4a5e', '--border': '#4c566a',
-      '--text-primary': '#e5e9f0', '--text-secondary': '#a3b8d0', '--text-bright': '#ffffff', '--text-muted': '#8090a8',
-      '--accent': '#88c0d0', '--accent-hover': '#8fbcbb', '--success': '#a3be8c', '--error': '#bf616a',
-      '--card-bg': '#2e3440', '--card-border': '#4c566a', '--card-checked': '#3b4252',
-      '--scrollbar-thumb': '#4c566a', '--scrollbar-thumb-hover': '#5c6980', '--scrollbar-track': 'transparent',
-      '--btn-bg': '#434c5e', '--btn-bg-hover': '#4c566a', '--btn-fg': '#d8dee9',
-      '--input-bg': '#3b4252', '--input-border': '#4c566a'
-    }
   }
 ];
 
-var _lexeraCurrentThemeId = null;
+var _lexeraCurrentThemeId = 'lexera';
 
 function applyLexeraThemePaletteToRoot(root, palette, isDark) {
   if (!root || !root.style || !palette) return;
@@ -130,12 +60,20 @@ function broadcastLexeraThemePalette(documentRef, palette, isDark) {
   }
 }
 
-function applyLexeraTheme(themeId) {
-  var theme = null;
-  for (var i = 0; i < LEXERA_THEMES.length; i++) {
-    if (LEXERA_THEMES[i].id === themeId) { theme = LEXERA_THEMES[i]; break; }
+function getLexeraBaseTheme() {
+  return LEXERA_THEMES[0];
+}
+
+function clearLegacyThemeSelection() {
+  try {
+    localStorage.removeItem('lexera-theme');
+  } catch (err) {
+    /* ignore localStorage errors */
   }
-  if (!theme) theme = LEXERA_THEMES[0];
+}
+
+function applyLexeraTheme(themeId) {
+  var theme = getLexeraBaseTheme();
   _lexeraCurrentThemeId = theme.id;
 
   var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -144,8 +82,7 @@ function applyLexeraTheme(themeId) {
 
   applyLexeraThemePaletteToRoot(root, palette, isDark);
   broadcastLexeraThemePalette(document, palette, isDark);
-
-  localStorage.setItem('lexera-theme', theme.id);
+  clearLegacyThemeSelection();
 
   return theme;
 }
@@ -156,5 +93,5 @@ function getLexeraCurrentThemeId() {
 
 // Re-apply on OS light/dark switch
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-  applyLexeraTheme(_lexeraCurrentThemeId || localStorage.getItem('lexera-theme') || 'lexera');
+  applyLexeraTheme(_lexeraCurrentThemeId || 'lexera');
 });

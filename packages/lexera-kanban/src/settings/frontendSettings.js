@@ -92,21 +92,6 @@
       if (!root) continue;
       var opts = getOptionsForPanel(root) || options;
 
-      // Color theme select
-      var themeSelect = q(root, 'theme-select');
-      if (themeSelect && themeSelect.options.length === 0) {
-        var themes = opts && opts.getThemes ? opts.getThemes() : [];
-        for (var i = 0; i < themes.length; i++) {
-          var opt = document.createElement('option');
-          opt.value = themes[i].id;
-          opt.textContent = themes[i].label || themes[i].name || themes[i].id;
-          themeSelect.appendChild(opt);
-        }
-      }
-      if (themeSelect && opts && typeof opts.getCurrentThemeId === 'function') {
-        themeSelect.value = opts.getCurrentThemeId();
-      }
-
       // Visual theme select
       var visualThemeSelect = q(root, 'visual-theme');
       if (visualThemeSelect && visualThemeSelect.options.length === 0) {
@@ -191,16 +176,6 @@
   }
 
   function bindPanel(panel, getOptions) {
-    var themeSelect = q(panel, 'theme-select');
-    if (themeSelect) {
-      themeSelect.addEventListener('change', function () {
-        var opts = getOptions();
-        if (opts && typeof opts.applyTheme === 'function') {
-          opts.applyTheme(themeSelect.value || 'lexera');
-        }
-      });
-    }
-
     function bindToggle(cls, setterKey) {
       var input = q(panel, cls);
       if (!input) return;

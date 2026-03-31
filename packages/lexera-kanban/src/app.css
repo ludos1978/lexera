@@ -133,7 +133,7 @@
   --tree-toggle-fg-hover: var(--text-bright);
 }
 
-/* Dark theme vars are applied by JS via applyTheme() */
+/* Integrated light/dark appearance vars are applied by JS via the visual-theme flow. */
 
 * {
   margin: 0;

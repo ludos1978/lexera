@@ -18,7 +18,7 @@
   };
 
   if (typeof applyLexeraTheme === 'function') {
-    applyLexeraTheme(localStorage.getItem('lexera-theme') || 'lexera');
+    applyLexeraTheme('lexera');
   }
 
   function requireManagementUiMethod(name) {
@@ -295,9 +295,6 @@
 
   function getManagementCallbacks() {
     return {
-      onThemeChange: function (themeId) {
-        if (typeof applyLexeraTheme === 'function') applyLexeraTheme(themeId);
-      },
       openLogStream: openLogStream,
       onNotify: function (msg) {
         console.info('[management]', msg);
@@ -313,9 +310,6 @@
         if (typeof window.setLogBackendConnectionState === 'function') {
           window.setLogBackendConnectionState(true);
         }
-      },
-      getThemes: function () {
-        return typeof LEXERA_THEMES !== 'undefined' ? LEXERA_THEMES : [];
       }
     };
   }

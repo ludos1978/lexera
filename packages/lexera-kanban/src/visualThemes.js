@@ -1,13 +1,16 @@
 /**
- * Board Style — controls board surface, separator, and density visual style.
+ * Visual Theme — controls board surface, separator, density, and the built-in
+ * Lexera application palette.
  *
  * Each board style (classic, sleek, sleek-uniform, gap, lines) defines the
- * visual treatment of cards, separators, and whitespace on the board.
+ * visual treatment of cards, separators, and whitespace on the board while the
+ * integrated palette provides both light and dark variants.
  * Applied via the data-visual-theme attribute on <html>.
- *
- * Color palette is a separate concern handled by themes.js (Application Theme layer).
  */
 (function () {
+  var colorSchemeMedia = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)')
+    : null;
   var VISUAL_THEMES = [
     {
       id: 'classic',
@@ -90,6 +93,10 @@
       root.setAttribute('data-visual-theme-variant', normalized);
     }
 
+    if (typeof applyLexeraTheme === 'function') {
+      applyLexeraTheme('lexera');
+    }
+
     try {
       localStorage.setItem('lexera-visual-theme', normalized);
     } catch (err) {
@@ -128,5 +135,11 @@
     applyLexeraVisualTheme(readStoredVisualThemeId());
   } catch (err) {
     applyLexeraVisualTheme('sleek-uniform');
+  }
+
+  if (colorSchemeMedia && typeof colorSchemeMedia.addEventListener === 'function') {
+    colorSchemeMedia.addEventListener('change', function () {
+      applyLexeraVisualTheme(currentThemeId || readStoredVisualThemeId());
+    });
   }
 })();
