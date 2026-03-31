@@ -1555,6 +1555,8 @@
     dockEl.__wsFoldBound = true;
     var hoverTimer = null;
     var activeHoverPanelId = null;
+    var dockTreeBuilt = false;
+    var cachedOverlaySize = 0;
 
     function activatePanelTab(panelId) {
       var found = findPanelInAllTrees(panelId);
@@ -1563,11 +1565,52 @@
       }
     }
 
+    /**
+     * Switch the visible panel inside the already-rendered dock tree DOM.
+     * Toggles display on panel elements and is-selected on tab headers
+     * without rebuilding the tree.
+     */
+    function switchActivePanelInDom(panelId) {
+      var tabsets = dockEl.querySelectorAll(':scope > .workspace-shell-node .workspace-shell-tabset, :scope > .workspace-shell-tabset');
+      for (var ts = 0; ts < tabsets.length; ts++) {
+        var tabsetEl = tabsets[ts];
+        // Update tab header selection
+        var tabs = tabsetEl.querySelectorAll('.ws-view-header .ws-view-tab');
+        for (var t = 0; t < tabs.length; t++) {
+          var tabPanelAttr = tabs[t].getAttribute('data-ws-panel-id');
+          tabs[t].classList.toggle('is-selected', tabPanelAttr === panelId);
+        }
+        // Toggle panel content visibility
+        var contentEl = tabsetEl.querySelector('.workspace-shell-panel-content');
+        if (!contentEl) continue;
+        var panels = contentEl.children;
+        for (var p = 0; p < panels.length; p++) {
+          var child = panels[p];
+          if (child.classList.contains('workspace-shell-drop-overlay')) continue;
+          var childPanelId = child.getAttribute('data-panel-id') || child.id || '';
+          if (childPanelId === panelId || childPanelId === 'panel-' + panelId) {
+            child.style.display = '';
+          } else {
+            child.style.display = 'none';
+          }
+        }
+      }
+    }
+
+    function buildDockTree() {
+      var tree = state.sideDocks[dockId];
+      if (!tree) return;
+      var treeNodes = dockEl.querySelectorAll(':scope > .workspace-shell-node');
+      for (var n = 0; n < treeNodes.length; n++) treeNodes[n].parentNode.removeChild(treeNodes[n]);
+      renderSideDockNode(tree, dockEl, dockId);
+      dockTreeBuilt = true;
+    }
+
     function showHover(panelId) {
       if (panelId) activatePanelTab(panelId);
       activeHoverPanelId = panelId;
       dockEl.classList.add('is-fold-hover');
-      rerenderDockTree();
+      buildDockTree();
       measureAndApplyOverlaySize();
     }
 
@@ -1590,30 +1633,26 @@
       }, waitMs);
     }
 
-    function rerenderDockTree() {
-      var tree = state.sideDocks[dockId];
-      if (!tree) return;
-      var treeNodes = dockEl.querySelectorAll(':scope > .workspace-shell-node');
-      for (var n = 0; n < treeNodes.length; n++) treeNodes[n].parentNode.removeChild(treeNodes[n]);
-      renderSideDockNode(tree, dockEl, dockId);
-    }
-
     function measureAndApplyOverlaySize() {
       var node = dockEl.querySelector(':scope > .workspace-shell-node');
       if (!node) return;
       var isHorizontal = dockId === 'bottom';
       var prop = isHorizontal ? 'height' : 'width';
-      var offsetProp = isHorizontal ? 'offsetHeight' : 'offsetWidth';
+      // Reuse cached size if already measured during this hover session
+      if (cachedOverlaySize > 0) {
+        node.style[prop] = cachedOverlaySize + 'px';
+        return;
+      }
       var minSize = isHorizontal ? 120 : 200;
       var maxSize = isHorizontal
         ? Math.round(window.innerHeight * 0.6)
         : Math.round(window.innerWidth * 0.6);
-      // Use max-content to let the content determine its natural size.
-      // This forces all flex/grid children to size to their content
-      // rather than collapsing via min-width:0.
-      node.style[prop] = 'max-content';
-      var natural = node[offsetProp];
+      // Use the restore size (pre-fold dimension) instead of
+      // forcing a synchronous layout with max-content + offsetWidth.
+      var storedSize = state.dockRestoreSizes[dockId] || state.dockSizes[dockId] || 0;
+      var natural = storedSize > 0 ? storedSize : minSize;
       var size = Math.max(minSize, Math.min(natural, maxSize));
+      cachedOverlaySize = size;
       node.style[prop] = size + 'px';
     }
 
@@ -1633,16 +1672,18 @@
       if (!dockEl.classList.contains('is-fold-hover')) {
         scheduleShowHover(panelId, 0);
       } else {
+        // Dock tree already built — just switch the active panel in-place
         activatePanelTab(panelId);
         activeHoverPanelId = panelId;
-        rerenderDockTree();
-        measureAndApplyOverlaySize();
+        switchActivePanelInDom(panelId);
       }
     });
 
     dockEl.addEventListener('mouseleave', function () {
       clearHoverTimer();
       activeHoverPanelId = null;
+      dockTreeBuilt = false;
+      cachedOverlaySize = 0;
       dockEl.classList.remove('is-fold-hover');
       // Clean up inline size from measurement
       var node = dockEl.querySelector(':scope > .workspace-shell-node');
