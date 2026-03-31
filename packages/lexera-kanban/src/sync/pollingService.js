@@ -142,10 +142,25 @@ var LexeraPollingService = (function () {
     }
 
     try {
-      // Load workspaces
+      // Fetch workspaces, boards, and remote boards in parallel
+      var results = await Promise.all([
+        _deps.LexeraApi.request('/config/workspaces').catch(function (err) {
+          _callDep('logFrontendIssue', 'warn', 'poll.workspaces', 'Failed to load workspaces', err);
+          return null;
+        }),
+        _deps.LexeraApi.getBoards(),
+        _deps.LexeraApi.getRemoteBoards().catch(function (err) {
+          _callDep('logFrontendIssue', 'warn', 'boards.remote', 'Failed to load remote boards', err);
+          return null;
+        })
+      ]);
+      var wsData = results[0];
+      var data = results[1];
+      var rb = results[2];
+
+      // Process workspaces
       var workspacesChanged = false;
-      try {
-        var wsData = await _deps.LexeraApi.request('/config/workspaces');
+      if (wsData) {
         var wsList = Array.isArray(wsData.workspaces) ? wsData.workspaces : [];
         var wsFp = fingerprint(wsList, 'name');
         if (wsFp !== _lastWorkspacesFingerprint) {
@@ -155,11 +170,9 @@ var LexeraPollingService = (function () {
           _callDep('resolveActiveWorkspaceId', wsData.default_workspace || null);
           _callDep('renderWorkspaceSelect');
         }
-      } catch (err) {
-        _callDep('logFrontendIssue', 'warn', 'poll.workspaces', 'Failed to load workspaces', err);
       }
 
-      var data = await _deps.LexeraApi.getBoards();
+      // Process boards
       var boardsList = data.boards || [];
       var boardsFp = fingerprint(boardsList, 'title');
       var boardsChanged = boardsFp !== _lastBoardsFingerprint;
@@ -167,9 +180,10 @@ var LexeraPollingService = (function () {
         _lastBoardsFingerprint = boardsFp;
         _callDep('setBoards', boardsList);
       }
+
+      // Process remote boards
       var remoteBoardsChanged = false;
-      try {
-        var rb = await _deps.LexeraApi.getRemoteBoards();
+      if (rb) {
         var remoteBoardsList = (rb.boards || []).map(function (board) {
           if (board) board.isRemote = true;
           return board;
@@ -180,8 +194,7 @@ var LexeraPollingService = (function () {
           _lastRemoteBoardsFingerprint = remoteFp;
           _callDep('setRemoteBoards', remoteBoardsList);
         }
-      } catch (err) {
-        _callDep('logFrontendIssue', 'warn', 'boards.remote', 'Failed to load remote boards', err);
+      } else {
         _callDep('setRemoteBoards', []);
         _lastRemoteBoardsFingerprint = '';
         remoteBoardsChanged = true;
