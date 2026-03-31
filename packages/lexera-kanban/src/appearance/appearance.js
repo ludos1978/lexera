@@ -285,22 +285,6 @@ var LexeraAppearance = (function () {
     _callDep('renderFrontendSettingsPanel');
   }
 
-  // ─── Marp settings ───────────────────────────────────────────────────
-
-  function isMarpSettingsEnabled() {
-    if (Settings) return Settings.get('marpSettingsEnabled');
-    return localStorage.getItem('lexera-show-marp-settings') !== 'false';
-  }
-
-  function setMarpSettingsEnabled(enabled) {
-    if (Settings) {
-      Settings.set('marpSettingsEnabled', !!enabled);
-    } else {
-      localStorage.setItem('lexera-show-marp-settings', enabled ? 'true' : 'false');
-    }
-    _callDep('renderFrontendSettingsPanel');
-  }
-
   // ─── Menu check states ────────────────────────────────────────────────
 
   /** Sync all View toggle check states to the native OS menu bar. */
@@ -308,7 +292,6 @@ var LexeraAppearance = (function () {
     if (!_dep('hasTauri')) return;
     var states = {
       'view-special-chars': isSpecialCharactersVisible(),
-      'view-marp-settings': isMarpSettingsEnabled(),
       'view-overlay-editor': isOverlayEditorEnabled()
     };
     Object.keys(states).forEach(function (id) {
@@ -367,9 +350,6 @@ var LexeraAppearance = (function () {
     isSpecialCharactersVisible: isSpecialCharactersVisible,
     applySpecialCharactersVisibilitySetting: applySpecialCharactersVisibilitySetting,
     setSpecialCharactersVisible: setSpecialCharactersVisible,
-    // Marp
-    isMarpSettingsEnabled: isMarpSettingsEnabled,
-    setMarpSettingsEnabled: setMarpSettingsEnabled,
     // Menu sync
     syncMenuCheckStates: syncMenuCheckStates,
     // Boot

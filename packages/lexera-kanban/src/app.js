@@ -564,8 +564,6 @@ var LexeraDashboard = (function () {
   function isSpecialCharactersVisible() { return Appearance ? Appearance.isSpecialCharactersVisible() : false; }
   function applySpecialCharactersVisibilitySetting() { if (Appearance) Appearance.applySpecialCharactersVisibilitySetting(); }
   function setSpecialCharactersVisible(v) { if (Appearance) Appearance.setSpecialCharactersVisible(v); renderColumns(); }
-  function isMarpSettingsEnabled() { return Appearance ? Appearance.isMarpSettingsEnabled() : true; }
-  function setMarpSettingsEnabled(v) { if (Appearance) Appearance.setMarpSettingsEnabled(v); }
   function syncMenuCheckStates() { if (Appearance) Appearance.syncMenuCheckStates(); }
 
   // DOM refs — static elements use lazy-init getters (see top of file)
@@ -6604,10 +6602,8 @@ var LexeraDashboard = (function () {
       applySidebarDisplayOptions: applySidebarTreeDisplayOptions,
       // Editor toggles
       isOverlayEditorEnabled: isOverlayEditorEnabled,
-      isMarpSettingsEnabled: isMarpSettingsEnabled,
       isSpecialCharactersVisible: isSpecialCharactersVisible,
       setOverlayEditorEnabled: setOverlayEditorEnabled,
-      setMarpSettingsEnabled: setMarpSettingsEnabled,
       setSpecialCharactersVisible: setSpecialCharactersVisible,
       syncMenuCheckStates: syncMenuCheckStates,
       getContextMenuBuilders: function () { return window.ContextMenuBuilders || null; },
@@ -11579,7 +11575,6 @@ var LexeraDashboard = (function () {
     // pin-headers/unpin-headers actions removed — always sticky at top
     ActionRegistry.register('board', 'toggle-overlay-editor', function () { setOverlayEditorEnabled(!isOverlayEditorEnabled()); syncMenuCheckStates(); });
     ActionRegistry.register('board', 'toggle-special-chars', function () { setSpecialCharactersVisible(!isSpecialCharactersVisible()); syncMenuCheckStates(); });
-    ActionRegistry.register('board', 'toggle-marp-settings', function () { setMarpSettingsEnabled(!isMarpSettingsEnabled()); syncMenuCheckStates(); });
     ActionRegistry.register('board', 'toggle-html-comments', function () {
       var mode = normalizeHtmlCommentRenderMode(getBoardSettingValue('htmlCommentRenderMode', 'hidden'));
       setBoardSettingValue('htmlCommentRenderMode', mode === 'hidden' ? 'text' : 'hidden');
@@ -11604,8 +11599,6 @@ var LexeraDashboard = (function () {
       showNotification('Sidebar drag icons ' + (next.grips ? 'shown' : 'hidden'));
     });
     ActionRegistry.register('board', 'toggle-inspector', function () { toggleInspector(); });
-    ActionRegistry.register('board', 'file-toggle-marp-settings', function () { setMarpSettingsEnabled(!isMarpSettingsEnabled()); syncMenuCheckStates(); });
-
     // Save/export/settings
     ActionRegistry.register('board', 'save-now', function () {
       if (activeBoardId && fullBoardData && isBoardDirty()) {
@@ -11987,7 +11980,6 @@ var LexeraDashboard = (function () {
         stripLayoutTags: function (text) { return stripLayoutTags(text); },
         renderTitleInline: function (title, boardId, opts) { return renderTitleInline(title, boardId, opts); },
         formatMenuToggleLabel: function (enabled, label) { return formatMenuToggleLabel(enabled, label); },
-        isMarpSettingsEnabled: function () { return isMarpSettingsEnabled(); },
         getActiveBoardFilePath: function () { return getActiveBoardFilePath(); },
         getDirNameFromPath: function (p) { return getDirNameFromPath(p); },
         normalizePathForCompare: function (p) { return normalizePathForCompare(p); },
@@ -12014,7 +12006,6 @@ var LexeraDashboard = (function () {
         stripInternalHiddenTags: stripInternalHiddenTags,
         stripHtmlComments: stripHtmlComments,
         formatMenuToggleLabel: formatMenuToggleLabel,
-        isMarpSettingsEnabled: isMarpSettingsEnabled,
         getMarpDirectiveValueFromHeader: getMarpDirectiveValueFromHeader,
         truncateMarpDirectiveValue: truncateMarpDirectiveValue,
         getAvailableMarpClassNames: getAvailableMarpClassNames,

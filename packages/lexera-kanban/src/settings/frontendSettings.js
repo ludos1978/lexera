@@ -150,7 +150,6 @@
       // Toggles
       var toggleMap = [
         ['overlay-editor', opts && opts.isOverlayEditorEnabled],
-        ['marp-settings', opts && opts.isMarpSettingsEnabled],
         ['special-chars', opts && opts.isSpecialCharactersVisible]
       ];
       for (var k = 0; k < toggleMap.length; k++) {
@@ -210,7 +209,6 @@
 
     // Checkbox toggles
     bindToggle('overlay-editor', 'setOverlayEditorEnabled');
-    bindToggle('marp-settings', 'setMarpSettingsEnabled');
     bindToggle('special-chars', 'setSpecialCharactersVisible');
 
     function bindSidebarToggle(cls, key) {

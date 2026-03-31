@@ -30,7 +30,6 @@ var LexeraSettings = (function () {
     uiScale:              { key: 'lexera-ui-scale',               type: 'number',  default: 1 },
     overlayEditorEnabled: { key: 'lexera-overlay-editor-enabled', type: 'boolean', default: true },
     specialCharsVisible:  { key: 'lexera-show-special-characters',type: 'boolean', default: false },
-    marpSettingsEnabled:  { key: 'lexera-show-marp-settings',     type: 'boolean', default: true },
 
     // --- Sidebar ---
     sidebarSplitRatio:    { key: 'lexera-sidebar-split-ratio',    type: 'number',  default: 0.2 },

@@ -114,7 +114,6 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&html_content_sub)
         .separator()
         .item(&CheckMenuItemBuilder::with_id("view-special-chars", "Show Special Characters").build(app)?)
-        .item(&CheckMenuItemBuilder::with_id("view-marp-settings", "Show Marp Settings").build(app)?)
         .item(&CheckMenuItemBuilder::with_id("view-overlay-editor", "Overlay Editor").build(app)?)
         .separator()
         .item(&zoom_sub)
@@ -365,7 +364,6 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("view-html-content-text", "set-html-content:text"),
     // View – toggles
     ("view-special-chars", "toggle-special-chars"),
-    ("view-marp-settings", "toggle-marp-settings"),
     ("view-overlay-editor", "toggle-overlay-editor"),
     // View – zoom
     ("view-zoom-in", "zoom-in"),

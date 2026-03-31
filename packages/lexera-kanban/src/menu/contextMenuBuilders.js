@@ -204,7 +204,6 @@ var ContextMenuBuilders = (function () {
   }
 
   function buildMarpMenuItems(headerText) {
-    if (!deps.isMarpSettingsEnabled()) return [];
     var currentHeader = String(headerText || '');
     return [
       { separator: true },
