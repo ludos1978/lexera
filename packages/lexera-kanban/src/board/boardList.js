@@ -1003,9 +1003,425 @@ var LexeraBoardList = (function () {
     _lastRenderFingerprint = '';
   }
 
+  // ─── DOM node key helpers for incremental reconciliation ─────────
+
+  /** Extract the reconciliation key from a board-list child element. */
+  function _nodeKey(el) {
+    if (!el || !el.getAttribute) return null;
+    if (el.classList.contains('workspace-nav-up')) return '__nav_up__';
+    var wsId = el.getAttribute('data-workspace-id');
+    if (wsId) return 'ws:' + wsId;
+    if (el.classList.contains('sidebar-section-divider')) return '__remote_divider__';
+    var boardId = el.getAttribute('data-board-id');
+    if (boardId && el.classList.contains('remote-board')) return 'remote:' + boardId;
+    if (boardId) return 'board:' + boardId;
+    return null;
+  }
+
+  /** Create a "Go up" nav element for workspace sub-views. */
+  function _createNavUpEl() {
+    var upEl = document.createElement('div');
+    upEl.className = 'board-item-wrapper workspace-nav-up';
+    upEl.innerHTML = '<div class="tree-node workspace-nav-item" data-tree-depth="0"><span class="workspace-nav-icon">\u2190</span> All Workspaces</div>';
+    upEl.addEventListener('dblclick', function () {
+      setActiveWorkspaceId(_dep('ALL_WORKSPACES_ID'));
+      renderWorkspaceSelect();
+      renderBoardList();
+    });
+    return upEl;
+  }
+
+  /** Create a workspace section header element. */
+  function _createWsHeaderEl(wsInfo) {
+    var wsHeader = document.createElement('div');
+    wsHeader.className = 'workspace-section-header' + (wsInfo.expanded ? ' expanded' : '');
+    wsHeader.setAttribute('data-workspace-id', wsInfo.ws.id);
+    _updateWsHeaderContent(wsHeader, wsInfo);
+    if (wsInfo.unassigned) wsHeader.classList.add('workspace-unassigned');
+    (function (wsId) {
+      wsHeader.addEventListener('dblclick', function (e) {
+        e.stopPropagation();
+        setActiveWorkspaceId(wsId);
+        renderWorkspaceSelect();
+        renderBoardList();
+      });
+      wsHeader.addEventListener('click', function (e) {
+        if (e.detail > 1) return;
+        var ids = getSidebarExpandedBoards();
+        var key = 'ws:' + wsId;
+        var idx = ids.indexOf(key);
+        if (idx !== -1) ids.splice(idx, 1); else ids.push(key);
+        saveSidebarExpandedBoards(ids);
+        renderBoardList();
+      });
+    })(wsInfo.ws.id);
+    return wsHeader;
+  }
+
+  /** Update workspace header content in place. */
+  function _updateWsHeaderContent(wsHeader, wsInfo) {
+    var expanded = wsInfo.expanded;
+    if (expanded) { wsHeader.classList.add('expanded'); } else { wsHeader.classList.remove('expanded'); }
+    wsHeader.innerHTML =
+      '<span class="workspace-section-toggle">' + (expanded ? '\u25BC' : '\u25B6') + '</span>' +
+      '<span class="workspace-section-name">' + _callDep('escapeHtml', wsInfo.ws.name || 'Untitled') + '</span>' +
+      (wsInfo.count ? '<span class="workspace-section-count">' + wsInfo.count + '</span>' : '');
+  }
+
+  /** Create a remote board element. */
+  function _createRemoteBoardEl(rb, activeBoardId) {
+    var rbEl = document.createElement('div');
+    rbEl.className = 'board-item tree-node tree-board remote-board' + (rb.id === activeBoardId ? ' active' : '');
+    rbEl.setAttribute('data-board-id', rb.id);
+    rbEl.setAttribute('data-tree-depth', '0');
+    _updateRemoteBoardContent(rbEl, rb, activeBoardId);
+    (function (boardId) {
+      rbEl.addEventListener('click', function () {
+        _callDep('exitSearchMode');
+        _callDep('selectBoard', boardId);
+      });
+    })(rb.id);
+    return rbEl;
+  }
+
+  /** Update a remote board element in place. */
+  function _updateRemoteBoardContent(rbEl, rb, activeBoardId) {
+    if (rb.id === activeBoardId) { rbEl.classList.add('active'); } else { rbEl.classList.remove('active'); }
+    rbEl.innerHTML =
+      '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +
+      '<span class="tree-toggle-spacer board-item-toggle-spacer"></span>' +
+      '<span class="tree-label board-item-title board-item-title-with-icon">' +
+        '<span class="board-item-remote-icon" title="Remote board">&#127760;</span>' +
+        '<span class="board-item-title-text">' + _callDep('escapeHtml', rb.title || rb.id) + '</span>' +
+      '</span>' +
+      '<span class="tree-meta board-item-meta">' +
+        '<span class="tree-meta-presence board-presence-badge hidden" aria-hidden="true"></span>' +
+        '<span class="tree-count board-item-count">' + (rb.card_count || 0) + '</span>' +
+        '<span class="tree-meta-action board-item-remove hidden" aria-hidden="true"></span>' +
+        '<span class="tree-grip tree-grip-spacer" aria-hidden="true"></span>' +
+      '</span>';
+  }
+
+  /** Create a board wrapper element with all sub-elements and event listeners. */
+  function _createBoardWrapperEl(board, boardIndex, isExpanded, isActive, rows, totalCards, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell) {
+    var wrapper = document.createElement('div');
+    wrapper.className = 'board-item-wrapper tree-view-host tree-view-host-compact';
+    wrapper.setAttribute('data-board-id', board.id);
+
+    var el = document.createElement('div');
+    el.className = 'board-item tree-node tree-board' + (isActive ? ' active' : '');
+    el.setAttribute('data-board-index', boardIndex.toString());
+    el.setAttribute('data-board-id', board.id);
+    el.setAttribute('data-tree-depth', '0');
+
+    _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, SidebarSync);
+
+    // Tree sub-list
+    var tree = document.createElement('div');
+    tree.className = 'board-item-tree tree-children' + (isExpanded ? ' expanded' : '');
+    tree.setAttribute('data-tree-depth', '1');
+    tree.setAttribute('role', 'tree');
+
+    var hasContent = rows.length > 0;
+    if (hasContent) {
+      _renderBoardTree(tree, board.id, rows, tv);
+    }
+
+    wrapper.appendChild(el);
+    wrapper.appendChild(tree);
+
+    _bindBoardWrapperEvents(wrapper, board.id, boardIndex, board.filePath, workspaceShellEnabled, WorkspaceShell);
+
+    return wrapper;
+  }
+
+  /** Update the board-item row content (title, count, presence, active, expand state). */
+  function _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, SidebarSync) {
+    var boardName = board.title || _callDep('getDisplayNameFromPath', board.filePath || '') || 'Untitled';
+    var hasContent = rows.length > 0;
+    var displayTitle = _callDep('escapeHtml', boardName);
+    var boardPresenceCache = _dep('boardPresenceCache');
+    var presenceCount = (boardPresenceCache[board.id] || []).length;
+    var presenceBadge = '<span class="tree-meta-presence board-presence-badge' + (presenceCount > 0 ? '' : ' hidden') + '"' +
+      (presenceCount > 0 ? (' title="' + presenceCount + ' user(s) online"') : '') + '>' +
+      (presenceCount > 0 ? presenceCount : '') +
+      '</span>';
+    var removeButton = '<span class="tree-meta-action board-item-remove' + ((SidebarSync && SidebarSync.isHierarchyLocked()) ? ' hidden' : '') + '" title="Remove board">\u00D7</span>';
+    var boardGrip = '<span class="tree-grip entity-drag-icon entity-drag-icon-board" title="Drag to reorder">' +
+      _callDep('getCreationEntityDragIconSvg', 'board') +
+      '</span>';
+
+    if (isActive) { el.classList.add('active'); } else { el.classList.remove('active'); }
+    el.setAttribute('data-board-index', boardIndex.toString());
+
+    if (hasContent) {
+      el.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+    } else {
+      el.removeAttribute('aria-expanded');
+    }
+    el.innerHTML =
+      '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +
+      (hasContent ? '<span class="tree-toggle board-item-toggle' + (isExpanded ? ' expanded' : '') + '"></span>' : '<span class="tree-toggle-spacer board-item-toggle-spacer"></span>') +
+      '<span class="tree-label board-item-title"><span class="board-item-title-text">' + displayTitle + '</span></span>' +
+      '<span class="tree-meta board-item-meta">' +
+        presenceBadge +
+        '<span class="tree-count board-item-count">' + totalCards + '</span>' +
+        removeButton +
+        boardGrip +
+      '</span>';
+  }
+
+  /** Render tree content into a board's tree container. */
+  function _renderBoardTree(treeEl, boardId, rows, tv) {
+    treeEl.innerHTML = '';
+    var treeState = getSidebarTreeState(boardId);
+    var hasTreeState = hasSidebarTreeState(boardId);
+    var treeNodes = buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState);
+    if (tv && typeof tv.render === 'function') {
+      tv.render(treeEl, treeNodes, {
+        escapeHtml: function (s) { return _callDep('escapeHtml', s); },
+        variant: 'compact',
+        onChildrenContainer: function (el, node) {
+          if (node.type === 'stack') {
+            el.classList.add('tree-stack-drop-zone');
+            if (node.attrs) {
+              if (node.attrs['data-board-id']) el.setAttribute('data-board-id', node.attrs['data-board-id']);
+              if (node.attrs['data-row-index']) el.setAttribute('data-row-index', node.attrs['data-row-index']);
+              if (node.attrs['data-stack-index']) el.setAttribute('data-stack-index', node.attrs['data-stack-index']);
+            }
+            if (!node.children || node.children.length === 0) {
+              el.classList.add('tree-stack-drop-zone-empty');
+            }
+          }
+        }
+      });
+    }
+  }
+
+  /** Bind all event listeners on a board wrapper (toggle, tree clicks, board click, context menu). */
+  function _bindBoardWrapperEvents(wrapperEl, boardId, boardIndex, boardFilePath, workspaceShellEnabled, WorkspaceShell) {
+    (function (boardId, boardIndex, wrapperEl, boardFilePath) {
+      // Toggle expand on board arrow click (Alt+click = recursive)
+      // Use delegation on the board-item div so the handler survives innerHTML updates.
+      var boardItemEl = wrapperEl.querySelector('.board-item');
+      if (boardItemEl) {
+        boardItemEl.addEventListener('click', function (e) {
+          var toggle = e.target.closest('.board-item-toggle');
+          if (!toggle) return;
+          e.stopPropagation();
+          var ids = getSidebarExpandedBoards();
+          var idx = ids.indexOf(boardId);
+          var treeContainer = wrapperEl.querySelector('.board-item-tree');
+          if (idx !== -1) {
+            ids.splice(idx, 1);
+            toggle.classList.remove('expanded');
+            treeContainer.classList.remove('expanded');
+            boardRow.setAttribute('aria-expanded', 'false');
+            if (e.altKey) setDescendantTreeState(treeContainer, false, boardId);
+          } else {
+            ids.push(boardId);
+            toggle.classList.add('expanded');
+            treeContainer.classList.add('expanded');
+            boardRow.setAttribute('aria-expanded', 'true');
+            if (e.altKey) setDescendantTreeState(treeContainer, true, boardId);
+          }
+          saveSidebarExpandedBoards(ids);
+          syncMirroredWorkspaceViews();
+        });
+      }
+
+      // Tree node toggle, click, and DnD handlers (event delegation on tree container)
+      var treeEl = wrapperEl.querySelector('.board-item-tree');
+      if (treeEl) {
+        treeEl.addEventListener('click', function (e) {
+          var target = e.target;
+
+          // Grip click — do nothing (grip is for drag only)
+          if (target.classList.contains('tree-grip')) {
+            e.stopPropagation();
+            return;
+          }
+
+          // Toggle arrow click (Alt+click = fold children only, not self)
+          if (target.classList.contains('tree-toggle')) {
+            e.stopPropagation();
+            var node = target.closest('.tree-node');
+            if (!node) return;
+            var children = getSidebarTreeChildrenContainer(node);
+            if (children) {
+              if (e.altKey) {
+                // Alt+click: fold/unfold all descendants, leave self unchanged
+                var childNodes = children.querySelectorAll('.tree-children');
+                var allCollapsed = true;
+                for (var ci = 0; ci < childNodes.length; ci++) {
+                  if (childNodes[ci].classList.contains('expanded')) { allCollapsed = false; break; }
+                }
+                setDescendantTreeState(children, allCollapsed, boardId);
+              } else {
+                var expanding = !children.classList.contains('expanded');
+                children.classList.toggle('expanded');
+                target.classList.toggle('expanded');
+                node.setAttribute('aria-expanded', expanding ? 'true' : 'false');
+                // Persist fold state
+                var treeId = node.getAttribute('data-tree-id');
+                if (treeId) {
+                  if (node.classList.contains('tree-row')) {
+                    toggleSidebarTreeNode(boardId, 'rows', treeId);
+                  } else if (node.classList.contains('tree-stack')) {
+                    toggleSidebarTreeNode(boardId, 'stacks', treeId);
+                  } else if (node.classList.contains('tree-column')) {
+                    toggleSidebarTreeNode(boardId, 'columns', treeId);
+                  }
+                }
+                syncMirroredWorkspaceViews();
+              }
+            }
+            return;
+          }
+          var anyNode = target.closest('.tree-node');
+          if (!anyNode) return;
+          e.stopPropagation();
+          var navTarget = _callDep('buildHierarchyFocusTargetFromTreeNode', anyNode, boardId);
+          if (!navTarget) {
+            if (boardId !== _dep('activeBoardId')) _callDep('selectBoard', boardId);
+            return;
+          }
+          if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
+            WorkspaceShell.focusHierarchyTarget(navTarget, boardId);
+            return;
+          }
+          _callDep('navigateToHierarchyTarget', navTarget).catch(function (err) {
+            logFrontendIssue('warn', 'sidebar.hierarchy-focus', 'Failed to focus hierarchy target', err);
+            _callDep('showNotification', 'Failed to focus hierarchy item');
+          });
+        });
+
+        // Tree DnD is handled by the pointer-based drag system (mousedown on getElBoardList())
+      }
+
+      var boardRow = wrapperEl.querySelector('.board-item');
+      boardRow.addEventListener('click', async function (e) {
+        // Toggle click is handled by the delegation handler above — skip here
+        if (e.target.closest('.board-item-toggle')) return;
+        // Remove button click — handle inline via delegation
+        if (_callDep('targetClosest', e.target, '.board-item-remove')) {
+          e.preventDefault();
+          e.stopPropagation();
+          var boardName = boardRow.querySelector('.board-item-title').textContent;
+          await removeBoardFromSidebar(boardId, boardName);
+          return;
+        }
+        _callDep('exitSearchMode');
+        _callDep('selectBoard', boardId);
+      });
+
+      boardRow.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var items = [
+          { id: 'open-tab', label: 'Open / Focus Tab' },
+          { id: 'detach', label: 'Open in Detached Window' },
+          { separator: true },
+          { id: 'backend-settings', label: 'Backend Settings' },
+          { separator: true },
+          { id: 'reveal', label: 'Reveal in Finder' }
+        ];
+        _callDep('showNativeMenu', items, e.clientX, e.clientY).then(async function (action) {
+          if (action === 'open-tab') {
+            _callDep('selectBoard', boardId);
+          } else if (action === 'detach') {
+            if (_dep('hasTauri')) _callDep('tauriInvoke', 'open_new_window', { boardId: boardId, profile: 'detachedBoard' });
+          } else if (action === 'backend-settings') {
+            _callDep('openConnectionWindow');
+          } else if (action === 'reveal' && boardFilePath) {
+            _callDep('showInFinder', boardFilePath);
+          }
+        });
+      });
+      // Board DnD is handled by the pointer-based drag system (mousedown on getElBoardList())
+    })(boardId, boardIndex, wrapperEl, boardFilePath);
+  }
+
+  /**
+   * Build the flat ordered list of keyed entries that renderBoardList should display.
+   * Each entry has { key, type, ... } plus type-specific data.
+   */
+  function _buildDesiredEntries(boards, remoteBoards, workspaces, activeWorkspaceId, activeBoardId) {
+    var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
+    var isAllView = !activeWorkspaceId || activeWorkspaceId === ALL_WORKSPACES_ID;
+    var filteredBoards = isAllView
+      ? boards
+      : boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(activeWorkspaceId) >= 0; });
+    var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; }) || filteredBoards;
+    var expandedIds = getSidebarExpandedBoards();
+    var entries = [];
+
+    // "Go up" entry when inside a specific workspace
+    if (!isAllView) {
+      entries.push({ key: '__nav_up__', type: 'nav_up' });
+    }
+
+    // In "All Workspaces" view, show workspace section headers
+    if (isAllView && workspaces.length > 0) {
+      var wsBoardMap = {};
+      var assignedBoardIds = {};
+      for (var wi = 0; wi < workspaces.length; wi++) wsBoardMap[workspaces[wi].id] = [];
+      for (var bi = 0; bi < orderedBoards.length; bi++) {
+        var bws = getBoardWorkspaceIds(orderedBoards[bi]);
+        for (var bwi = 0; bwi < bws.length; bwi++) {
+          if (wsBoardMap[bws[bwi]]) { wsBoardMap[bws[bwi]].push(orderedBoards[bi]); assignedBoardIds[orderedBoards[bi].id] = true; }
+        }
+      }
+      for (var wgi = 0; wgi < workspaces.length; wgi++) {
+        var ws = workspaces[wgi];
+        var wsBoards = wsBoardMap[ws.id] || [];
+        if (wsBoards.length === 0) continue;
+        var wsExpanded = expandedIds.indexOf('ws:' + ws.id) !== -1;
+        entries.push({ key: 'ws:' + ws.id, type: 'ws_header', ws: ws, count: wsBoards.length, expanded: wsExpanded, unassigned: false });
+        if (wsExpanded) {
+          for (var wbi = 0; wbi < wsBoards.length; wbi++) {
+            var wb = wsBoards[wbi];
+            entries.push({ key: 'board:' + wb.id, type: 'board', board: wb, index: entries.length });
+          }
+        }
+      }
+      // Unassigned
+      var hasUnassigned = false;
+      for (var ubi = 0; ubi < orderedBoards.length; ubi++) {
+        if (!assignedBoardIds[orderedBoards[ubi].id]) {
+          if (!hasUnassigned) {
+            entries.push({ key: 'ws:__unassigned__', type: 'ws_header', ws: { id: '__unassigned__', name: 'Unassigned' }, count: 0, expanded: true, unassigned: true });
+            hasUnassigned = true;
+          }
+          entries.push({ key: 'board:' + orderedBoards[ubi].id, type: 'board', board: orderedBoards[ubi], index: entries.length });
+        }
+      }
+    } else {
+      // Simple flat list or single-workspace view
+      for (var si = 0; si < orderedBoards.length; si++) {
+        entries.push({ key: 'board:' + orderedBoards[si].id, type: 'board', board: orderedBoards[si], index: entries.length });
+      }
+    }
+
+    // Remote boards
+    if (remoteBoards.length > 0) {
+      entries.push({ key: '__remote_divider__', type: 'remote_divider' });
+      for (var ri = 0; ri < remoteBoards.length; ri++) {
+        entries.push({ key: 'remote:' + remoteBoards[ri].id, type: 'remote_board', rb: remoteBoards[ri] });
+      }
+    }
+
+    // Fix board indices to be sequential among board entries only
+    var boardIdx = 0;
+    for (var fi = 0; fi < entries.length; fi++) {
+      if (entries[fi].type === 'board') { entries[fi].index = boardIdx++; }
+    }
+
+    return entries;
+  }
+
   function renderBoardList() {
     var boardListEl = getElBoardList();
-    // console.log('[ws-debug] renderBoardList: boardListEl=' + (boardListEl ? 'id=' + boardListEl.id + ' connected=' + boardListEl.isConnected + ' parent=' + (boardListEl.parentNode ? boardListEl.parentNode.className.substring(0, 40) : 'null') : 'NULL'));
     var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
     if (rt) rt.setViewLoading(boardListEl, false);
 
@@ -1027,350 +1443,106 @@ var LexeraBoardList = (function () {
     var tv = _dep('TreeView');
     var workspaceShellEnabled = _dep('workspaceShellEnabled');
     var WorkspaceShell = _dep('WorkspaceShell');
-
-    boardListEl.innerHTML = '';
-    var isAllView = !activeWorkspaceId || activeWorkspaceId === ALL_WORKSPACES_ID;
-    var filteredBoards = isAllView
-      ? boards
-      : boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(activeWorkspaceId) >= 0; });
-    var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; }) || filteredBoards;
     var expandedIds = getSidebarExpandedBoards();
 
-    // "Go up" entry when inside a specific workspace
-    if (!isAllView) {
-      var upEl = document.createElement('div');
-      upEl.className = 'board-item-wrapper workspace-nav-up';
-      upEl.innerHTML = '<div class="tree-node workspace-nav-item" data-tree-depth="0"><span class="workspace-nav-icon">\u2190</span> All Workspaces</div>';
-      upEl.addEventListener('dblclick', function () {
-        setActiveWorkspaceId(ALL_WORKSPACES_ID);
-        renderWorkspaceSelect();
-        renderBoardList();
-      });
-      boardListEl.appendChild(upEl);
+    // Build the desired flat list of keyed entries
+    var desired = _buildDesiredEntries(boards, remoteBoards, workspaces, activeWorkspaceId, activeBoardId);
+
+    // Build a map of existing DOM children by key for reuse
+    var existingByKey = {};
+    var children = boardListEl.children;
+    for (var ci = children.length - 1; ci >= 0; ci--) {
+      var k = _nodeKey(children[ci]);
+      if (k) {
+        existingByKey[k] = children[ci];
+      }
     }
 
-    // In "All Workspaces" view, show workspace section headers
-    // Boards inside collapsed workspaces are excluded from orderedBoards
-    if (isAllView && workspaces.length > 0) {
-      var wsBoardMap = {};
-      var assignedBoardIds = {};
-      for (var wi = 0; wi < workspaces.length; wi++) wsBoardMap[workspaces[wi].id] = [];
-      for (var bi = 0; bi < orderedBoards.length; bi++) {
-        var bws = getBoardWorkspaceIds(orderedBoards[bi]);
-        for (var bwi = 0; bwi < bws.length; bwi++) {
-          if (wsBoardMap[bws[bwi]]) { wsBoardMap[bws[bwi]].push(orderedBoards[bi]); assignedBoardIds[orderedBoards[bi].id] = true; }
-        }
+    // Track which keys are in the desired list
+    var desiredKeys = {};
+    for (var di = 0; di < desired.length; di++) {
+      desiredKeys[desired[di].key] = true;
+    }
+
+    // Remove DOM children that are no longer in the desired list
+    for (var ri = children.length - 1; ri >= 0; ri--) {
+      var rk = _nodeKey(children[ri]);
+      if (!rk || !desiredKeys[rk]) {
+        boardListEl.removeChild(children[ri]);
       }
-      // Build a flat list with workspace headers inserted
-      var groupedList = [];
-      for (var wgi = 0; wgi < workspaces.length; wgi++) {
-        var ws = workspaces[wgi];
-        var wsBoards = wsBoardMap[ws.id] || [];
-        if (wsBoards.length === 0) continue;
-        groupedList.push({ _wsHeader: true, ws: ws, count: wsBoards.length, expanded: expandedIds.indexOf('ws:' + ws.id) !== -1 });
-        if (expandedIds.indexOf('ws:' + ws.id) !== -1) {
-          for (var wbi = 0; wbi < wsBoards.length; wbi++) groupedList.push(wsBoards[wbi]);
+    }
+
+    // Reconcile: walk the desired list and ensure each entry is at the right position
+    // with correct content. Reuse existing nodes where possible.
+    for (var i = 0; i < desired.length; i++) {
+      var entry = desired[i];
+      var existing = existingByKey[entry.key];
+      var node;
+
+      if (entry.type === 'nav_up') {
+        // Nav-up is static, reuse if exists
+        node = existing || _createNavUpEl();
+      } else if (entry.type === 'ws_header') {
+        if (existing) {
+          _updateWsHeaderContent(existing, entry);
+          node = existing;
+        } else {
+          node = _createWsHeaderEl(entry);
         }
-      }
-      // Unassigned
-      var hasUnassigned = false;
-      for (var ubi = 0; ubi < orderedBoards.length; ubi++) {
-        if (!assignedBoardIds[orderedBoards[ubi].id]) {
-          if (!hasUnassigned) {
-            groupedList.push({ _wsHeader: true, ws: { id: '__unassigned__', name: 'Unassigned' }, count: 0, expanded: true, unassigned: true });
-            hasUnassigned = true;
+      } else if (entry.type === 'board') {
+        var board = entry.board;
+        var isExpanded = expandedIds.indexOf(board.id) !== -1;
+        var isActive = board.id === activeBoardId;
+        var rows = getBoardHierarchyRows(board.id) || [];
+        var totalCards = rows.length > 0
+          ? countCardsInRows(rows)
+          : board.columns.reduce(function (sum, c) { return sum + c.cardCount; }, 0);
+
+        if (existing) {
+          // Update existing board wrapper in place
+          var boardItem = existing.querySelector('.board-item');
+          if (boardItem) {
+            _updateBoardItemContent(boardItem, board, entry.index, isExpanded, isActive, rows, totalCards, SidebarSync);
           }
-          groupedList.push(orderedBoards[ubi]);
-        }
-      }
-      // Replace orderedBoards with the grouped list (headers will be handled in the loop)
-      orderedBoards = groupedList;
-    }
-
-    for (var i = 0; i < orderedBoards.length; i++) {
-      // Workspace section headers (inserted by "All" view grouping)
-      if (orderedBoards[i] && orderedBoards[i]._wsHeader) {
-        var wsInfo = orderedBoards[i];
-        var wsHeader = document.createElement('div');
-        wsHeader.className = 'workspace-section-header' + (wsInfo.expanded ? ' expanded' : '');
-        wsHeader.setAttribute('data-workspace-id', wsInfo.ws.id);
-        wsHeader.innerHTML =
-          '<span class="workspace-section-toggle">' + (wsInfo.expanded ? '\u25BC' : '\u25B6') + '</span>' +
-          '<span class="workspace-section-name">' + _callDep('escapeHtml', wsInfo.ws.name || 'Untitled') + '</span>' +
-          (wsInfo.count ? '<span class="workspace-section-count">' + wsInfo.count + '</span>' : '');
-        if (wsInfo.unassigned) wsHeader.classList.add('workspace-unassigned');
-        (function (wsId) {
-          wsHeader.addEventListener('dblclick', function (e) {
-            e.stopPropagation();
-            setActiveWorkspaceId(wsId);
-            renderWorkspaceSelect();
-            renderBoardList();
-          });
-          wsHeader.addEventListener('click', function (e) {
-            if (e.detail > 1) return;
-            var ids = getSidebarExpandedBoards();
-            var key = 'ws:' + wsId;
-            var idx = ids.indexOf(key);
-            if (idx !== -1) ids.splice(idx, 1); else ids.push(key);
-            saveSidebarExpandedBoards(ids);
-            renderBoardList();
-          });
-        })(wsInfo.ws.id);
-        boardListEl.appendChild(wsHeader);
-        continue;
-      }
-      var board = orderedBoards[i];
-      var isExpanded = expandedIds.indexOf(board.id) !== -1;
-      var isActive = board.id === activeBoardId;
-      var rows = getBoardHierarchyRows(board.id) || [];
-      var totalCards = rows.length > 0
-        ? countCardsInRows(rows)
-        : board.columns.reduce(function (sum, c) { return sum + c.cardCount; }, 0);
-
-      var wrapper = document.createElement('div');
-      wrapper.className = 'board-item-wrapper tree-view-host tree-view-host-compact';
-      wrapper.setAttribute('data-board-id', board.id);
-
-      var el = document.createElement('div');
-      el.className = 'board-item tree-node tree-board' + (isActive ? ' active' : '');
-      el.setAttribute('data-board-index', i.toString());
-      el.setAttribute('data-board-id', board.id);
-      el.setAttribute('data-tree-depth', '0');
-      var boardName = board.title || _callDep('getDisplayNameFromPath', board.filePath || '') || 'Untitled';
-
-      var hasContent = rows.length > 0;
-      var displayTitle = _callDep('escapeHtml', boardName);
-      var boardPresenceCache = _dep('boardPresenceCache');
-      var presenceCount = (boardPresenceCache[board.id] || []).length;
-      var presenceBadge = '<span class="tree-meta-presence board-presence-badge' + (presenceCount > 0 ? '' : ' hidden') + '"' +
-        (presenceCount > 0 ? (' title="' + presenceCount + ' user(s) online"') : '') + '>' +
-        (presenceCount > 0 ? presenceCount : '') +
-        '</span>';
-      var removeButton = '<span class="tree-meta-action board-item-remove' + ((SidebarSync && SidebarSync.isHierarchyLocked()) ? ' hidden' : '') + '" title="Remove board">\u00D7</span>';
-      var boardGrip = '<span class="tree-grip entity-drag-icon entity-drag-icon-board" title="Drag to reorder">' +
-        _callDep('getCreationEntityDragIconSvg', 'board') +
-        '</span>';
-      if (hasContent) {
-        el.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-      }
-      el.innerHTML =
-        '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +
-        (hasContent ? '<span class="tree-toggle board-item-toggle' + (isExpanded ? ' expanded' : '') + '"></span>' : '<span class="tree-toggle-spacer board-item-toggle-spacer"></span>') +
-        '<span class="tree-label board-item-title"><span class="board-item-title-text">' + displayTitle + '</span></span>' +
-        '<span class="tree-meta board-item-meta">' +
-          presenceBadge +
-          '<span class="tree-count board-item-count">' + totalCards + '</span>' +
-          removeButton +
-          boardGrip +
-        '</span>';
-
-      // Tree sub-list
-      var tree = document.createElement('div');
-      tree.className = 'board-item-tree tree-children' + (isExpanded ? ' expanded' : '');
-      tree.setAttribute('data-tree-depth', '1');
-      tree.setAttribute('role', 'tree');
-
-      if (hasContent) {
-        var treeState = getSidebarTreeState(board.id);
-        var hasTreeState = hasSidebarTreeState(board.id);
-        var treeNodes = buildSidebarTreeNodes(rows, board.id, treeState, hasTreeState);
-        if (tv && typeof tv.render === 'function') {
-          tv.render(tree, treeNodes, {
-            escapeHtml: function (s) { return _callDep('escapeHtml', s); },
-            variant: 'compact',
-            onChildrenContainer: function (el, node) {
-              if (node.type === 'stack') {
-                el.classList.add('tree-stack-drop-zone');
-                if (node.attrs) {
-                  if (node.attrs['data-board-id']) el.setAttribute('data-board-id', node.attrs['data-board-id']);
-                  if (node.attrs['data-row-index']) el.setAttribute('data-row-index', node.attrs['data-row-index']);
-                  if (node.attrs['data-stack-index']) el.setAttribute('data-stack-index', node.attrs['data-stack-index']);
-                }
-                if (!node.children || node.children.length === 0) {
-                  el.classList.add('tree-stack-drop-zone-empty');
-                }
-              }
-            }
-          });
-        }
-      }
-
-      wrapper.appendChild(el);
-      wrapper.appendChild(tree);
-
-      (function (boardId, boardIndex, wrapperEl, boardFilePath) {
-        // Toggle expand on board arrow click (Alt+click = recursive)
-        var toggle = wrapperEl.querySelector('.board-item-toggle');
-        if (toggle) {
-          toggle.addEventListener('click', function (e) {
-            e.stopPropagation();
-            var ids = getSidebarExpandedBoards();
-            var idx = ids.indexOf(boardId);
-            var treeContainer = wrapperEl.querySelector('.board-item-tree');
-            if (idx !== -1) {
-              ids.splice(idx, 1);
-              toggle.classList.remove('expanded');
-              treeContainer.classList.remove('expanded');
-              boardRow.setAttribute('aria-expanded', 'false');
-              if (e.altKey) setDescendantTreeState(treeContainer, false, boardId);
+          // Update tree content
+          var treeEl = existing.querySelector('.board-item-tree');
+          if (treeEl) {
+            if (isExpanded) { treeEl.classList.add('expanded'); } else { treeEl.classList.remove('expanded'); }
+            var hasContent = rows.length > 0;
+            if (hasContent) {
+              _renderBoardTree(treeEl, board.id, rows, tv);
             } else {
-              ids.push(boardId);
-              toggle.classList.add('expanded');
-              treeContainer.classList.add('expanded');
-              boardRow.setAttribute('aria-expanded', 'true');
-              if (e.altKey) setDescendantTreeState(treeContainer, true, boardId);
+              treeEl.innerHTML = '';
             }
-            saveSidebarExpandedBoards(ids);
-            syncMirroredWorkspaceViews();
-          });
-        }
-
-        // Tree node toggle, click, and DnD handlers (event delegation on tree container)
-        var treeEl = wrapperEl.querySelector('.board-item-tree');
-        if (treeEl) {
-          treeEl.addEventListener('click', function (e) {
-            var target = e.target;
-
-            // Grip click — do nothing (grip is for drag only)
-            if (target.classList.contains('tree-grip')) {
-              e.stopPropagation();
-              return;
-            }
-
-            // Toggle arrow click (Alt+click = fold children only, not self)
-            if (target.classList.contains('tree-toggle')) {
-              e.stopPropagation();
-              var node = target.closest('.tree-node');
-              if (!node) return;
-              var children = getSidebarTreeChildrenContainer(node);
-              if (children) {
-                if (e.altKey) {
-                  // Alt+click: fold/unfold all descendants, leave self unchanged
-                  var childNodes = children.querySelectorAll('.tree-children');
-                  var allCollapsed = true;
-                  for (var ci = 0; ci < childNodes.length; ci++) {
-                    if (childNodes[ci].classList.contains('expanded')) { allCollapsed = false; break; }
-                  }
-                  setDescendantTreeState(children, allCollapsed, boardId);
-                } else {
-                  var expanding = !children.classList.contains('expanded');
-                  children.classList.toggle('expanded');
-                  target.classList.toggle('expanded');
-                  node.setAttribute('aria-expanded', expanding ? 'true' : 'false');
-                  // Persist fold state
-                  var treeId = node.getAttribute('data-tree-id');
-                  if (treeId) {
-                    if (node.classList.contains('tree-row')) {
-                      toggleSidebarTreeNode(boardId, 'rows', treeId);
-                    } else if (node.classList.contains('tree-stack')) {
-                      toggleSidebarTreeNode(boardId, 'stacks', treeId);
-                    } else if (node.classList.contains('tree-column')) {
-                      toggleSidebarTreeNode(boardId, 'columns', treeId);
-                    }
-                  }
-                  syncMirroredWorkspaceViews();
-                }
-              }
-              return;
-            }
-            var anyNode = target.closest('.tree-node');
-            if (!anyNode) return;
-            e.stopPropagation();
-            var navTarget = _callDep('buildHierarchyFocusTargetFromTreeNode', anyNode, boardId);
-            if (!navTarget) {
-              if (boardId !== _dep('activeBoardId')) _callDep('selectBoard', boardId);
-              return;
-            }
-            if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
-              WorkspaceShell.focusHierarchyTarget(navTarget, boardId);
-              return;
-            }
-            _callDep('navigateToHierarchyTarget', navTarget).catch(function (err) {
-              logFrontendIssue('warn', 'sidebar.hierarchy-focus', 'Failed to focus hierarchy target', err);
-              _callDep('showNotification', 'Failed to focus hierarchy item');
-            });
-          });
-
-          // Tree DnD is handled by the pointer-based drag system (mousedown on getElBoardList())
-        }
-
-        var boardRow = wrapperEl.querySelector('.board-item');
-        boardRow.addEventListener('click', async function (e) {
-          // Remove button click — handle inline via delegation
-          if (_callDep('targetClosest', e.target, '.board-item-remove')) {
-            e.preventDefault();
-            e.stopPropagation();
-            var boardName = boardRow.querySelector('.board-item-title').textContent;
-            await removeBoardFromSidebar(boardId, boardName);
-            return;
           }
-          _callDep('exitSearchMode');
-          _callDep('selectBoard', boardId);
-        });
+          node = existing;
+        } else {
+          node = _createBoardWrapperEl(board, entry.index, isExpanded, isActive, rows, totalCards, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell);
+        }
+      } else if (entry.type === 'remote_divider') {
+        if (existing) {
+          node = existing;
+        } else {
+          var remoteDivider = document.createElement('div');
+          remoteDivider.className = 'sidebar-section-divider';
+          remoteDivider.innerHTML = '<span class="sidebar-section-label">Remote</span>';
+          node = remoteDivider;
+        }
+      } else if (entry.type === 'remote_board') {
+        if (existing) {
+          _updateRemoteBoardContent(existing, entry.rb, activeBoardId);
+          node = existing;
+        } else {
+          node = _createRemoteBoardEl(entry.rb, activeBoardId);
+        }
+      }
 
-        boardRow.addEventListener('contextmenu', function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          var items = [
-            { id: 'open-tab', label: 'Open / Focus Tab' },
-            { id: 'detach', label: 'Open in Detached Window' },
-            { separator: true },
-            { id: 'backend-settings', label: 'Backend Settings' },
-            { separator: true },
-            { id: 'reveal', label: 'Reveal in Finder' }
-          ];
-          _callDep('showNativeMenu', items, e.clientX, e.clientY).then(async function (action) {
-            if (action === 'open-tab') {
-              _callDep('selectBoard', boardId);
-            } else if (action === 'detach') {
-              if (_dep('hasTauri')) _callDep('tauriInvoke', 'open_new_window', { boardId: boardId, profile: 'detachedBoard' });
-            } else if (action === 'backend-settings') {
-              _callDep('openConnectionWindow');
-            } else if (action === 'reveal' && boardFilePath) {
-              _callDep('showInFinder', boardFilePath);
-            }
-          });
-        });
-        // Board DnD is handled by the pointer-based drag system (mousedown on getElBoardList())
-      })(board.id, i, wrapper, board.filePath);
-
-      boardListEl.appendChild(wrapper);
-    }
-    // console.log('[ws-debug] renderBoardList: appended ' + orderedBoards.length + ' boards, boardListEl.children=' + boardListEl.children.length + ', connected=' + boardListEl.isConnected);
-
-    // Remote boards section
-    if (remoteBoards.length > 0) {
-      var remoteDivider = document.createElement('div');
-      remoteDivider.className = 'sidebar-section-divider';
-      remoteDivider.innerHTML = '<span class="sidebar-section-label">Remote</span>';
-      boardListEl.appendChild(remoteDivider);
-
-      for (var ri = 0; ri < remoteBoards.length; ri++) {
-        var rb = remoteBoards[ri];
-        var rbEl = document.createElement('div');
-        rbEl.className = 'board-item tree-node tree-board remote-board' + (rb.id === activeBoardId ? ' active' : '');
-        rbEl.setAttribute('data-board-id', rb.id);
-        rbEl.setAttribute('data-tree-depth', '0');
-        rbEl.innerHTML =
-          '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +
-          '<span class="tree-toggle-spacer board-item-toggle-spacer"></span>' +
-          '<span class="tree-label board-item-title board-item-title-with-icon">' +
-            '<span class="board-item-remote-icon" title="Remote board">&#127760;</span>' +
-            '<span class="board-item-title-text">' + _callDep('escapeHtml', rb.title || rb.id) + '</span>' +
-          '</span>' +
-          '<span class="tree-meta board-item-meta">' +
-            '<span class="tree-meta-presence board-presence-badge hidden" aria-hidden="true"></span>' +
-            '<span class="tree-count board-item-count">' + (rb.card_count || 0) + '</span>' +
-            '<span class="tree-meta-action board-item-remove hidden" aria-hidden="true"></span>' +
-            '<span class="tree-grip tree-grip-spacer" aria-hidden="true"></span>' +
-          '</span>';
-        (function (boardId) {
-          rbEl.addEventListener('click', function () {
-            _callDep('exitSearchMode');
-            _callDep('selectBoard', boardId);
-          });
-        })(rb.id);
-        boardListEl.appendChild(rbEl);
+      // Ensure node is at position i
+      if (node) {
+        var currentAtPos = boardListEl.children[i];
+        if (currentAtPos !== node) {
+          boardListEl.insertBefore(node, currentAtPos || null);
+        }
       }
     }
 
