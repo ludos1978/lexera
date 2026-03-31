@@ -54,10 +54,8 @@ fn valid_theme_ids() -> &'static [&'static str] {
 /// GET /config/theme — returns the current theme ID.
 pub async fn get_theme(State(state): State<AppState>) -> Json<serde_json::Value> {
     let theme = state
-        .config
-        .lock()
-        .ok()
-        .and_then(|cfg| cfg.theme.clone())
+        .config_service
+        .read(|cfg| cfg.theme.clone())
         .unwrap_or_else(|| "lexera".to_string());
 
     Json(serde_json::json!({ "theme": theme }))
@@ -78,10 +76,13 @@ pub async fn set_theme(
     }
 
     let theme = body.theme.clone();
-    mutate_config(&state, |cfg| {
-        cfg.theme = Some(theme.clone());
-        Ok(())
-    })?;
+    state
+        .config_service
+        .mutate_and_save(|cfg| {
+            cfg.theme = Some(theme.clone());
+        })
+        .map_err(|e| err_internal(e.to_string()))?;
+    notify_config_changed(&state);
     log::info!("[config] Theme changed to '{}'", body.theme);
     Ok(Json(serde_json::json!({ "theme": body.theme })))
 }
@@ -552,10 +553,8 @@ pub struct UpdateRenderAppsRequest {
 /// GET /config/render-apps — returns configured render application paths.
 pub async fn get_render_apps(State(state): State<AppState>) -> Json<serde_json::Value> {
     let ra = state
-        .config
-        .lock()
-        .ok()
-        .and_then(|cfg| cfg.render_apps.clone())
+        .config_service
+        .read(|cfg| cfg.render_apps.clone())
         .unwrap_or_default();
 
     Json(serde_json::json!({
@@ -589,10 +588,13 @@ pub async fn set_render_apps(
         || ra.pdftoppm.is_some()
         || ra.mutool.is_some();
     let ra_val = if has_any { Some(ra.clone()) } else { None };
-    mutate_config(&state, |cfg| {
-        cfg.render_apps = ra_val;
-        Ok(())
-    })?;
+    state
+        .config_service
+        .mutate_and_save(|cfg| {
+            cfg.render_apps = ra_val;
+        })
+        .map_err(|e| err_internal(e.to_string()))?;
+    notify_config_changed(&state);
     log::info!("[config] Render application paths updated");
     Ok(Json(serde_json::json!({
         "drawio": ra.drawio,
@@ -660,10 +662,9 @@ pub async fn get_dashboard_tags(
     axum::extract::Query(query): axum::extract::Query<DashboardTagsQuery>,
 ) -> Json<serde_json::Value> {
     let default_tags: Vec<String> = vec!["#important".into(), "#blocked".into(), "#review".into()];
-    let cfg = state.config.lock().ok();
-    let tags = cfg
-        .as_ref()
-        .and_then(|cfg| {
+    let tags = state
+        .config_service
+        .read(|cfg| {
             // Try workspace-level override first
             if let Some(ref ws_id) = query.workspace {
                 if let Some(ws) = cfg.workspaces.iter().find(|w| &w.id == ws_id) {

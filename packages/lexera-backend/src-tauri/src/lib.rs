@@ -3,6 +3,7 @@ mod capture;
 mod clipboard_watcher;
 /// Lexera Backend: Tauri setup, config loading, storage init, tray, HTTP server.
 mod config;
+mod config_service;
 pub mod connection_window;
 pub mod discovery;
 pub mod export_api;
@@ -926,6 +927,7 @@ pub fn run() {
             let server_shutdown: Arc<std::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>>> =
                 Arc::new(std::sync::Mutex::new(None));
 
+            let config_svc = config_service::ConfigService::new(config.clone(), config_path.clone());
             let app_state = AppState {
                 storage: storage.clone(),
                 event_tx: event_tx.clone(),
@@ -938,6 +940,7 @@ pub fn run() {
                 config_path: config_path.clone(),
                 identity_path,
                 config: config.clone(),
+                config_service: config_svc,
                 watcher: watcher_arc,
                 invite_service: collab.invite_service,
                 public_service: collab.public_service,

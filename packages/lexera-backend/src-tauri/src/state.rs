@@ -1,5 +1,6 @@
 use crate::auth::AuthService;
 use crate::config::SyncConfig;
+use crate::config_service::ConfigService;
 use crate::discovery::DiscoveryService;
 use crate::invite::InviteService;
 use crate::public::PublicRoomService;
@@ -91,6 +92,7 @@ pub struct AppState {
     pub config_path: PathBuf,
     pub identity_path: PathBuf,
     pub config: Arc<std::sync::Mutex<SyncConfig>>,
+    pub config_service: ConfigService,
     pub watcher: Arc<std::sync::Mutex<Option<FileWatcher>>>,
     // Collaboration services wrapped in Arc<Mutex<...>> for thread safety and concurrent access
     pub invite_service: Arc<std::sync::Mutex<InviteService>>,

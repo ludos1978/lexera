@@ -9,6 +9,9 @@ pub fn test_state(tmp: &std::path::Path) -> AppState {
     let storage = Arc::new(LocalStorage::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(16);
     let (shutdown_tx, _) = tokio::sync::watch::channel(false);
+    let config = Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default()));
+    let config_path = tmp.join("config.json");
+    let config_service = crate::config_service::ConfigService::new(config.clone(), config_path.clone());
     AppState {
         storage,
         event_tx,
@@ -18,9 +21,10 @@ pub fn test_state(tmp: &std::path::Path) -> AppState {
         server_shutdown: Arc::new(std::sync::Mutex::new(None)),
         incoming: None,
         local_user_id: "test-user".into(),
-        config_path: tmp.join("config.json"),
+        config_path,
         identity_path: tmp.join("identity.json"),
-        config: Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default())),
+        config,
+        config_service,
         watcher: Arc::new(std::sync::Mutex::new(None)),
         invite_service: Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new())),
         public_service: Arc::new(std::sync::Mutex::new(
