@@ -160,6 +160,26 @@ struct CompiledBatchSearch {
 }
 
 /// Local filesystem board storage.
+/// Write-loop diagnostics counters (atomic, lock-free).
+pub struct WriteCounters {
+    /// Total calls to write_board_internal since startup.
+    pub write_count: std::sync::atomic::AtomicU64,
+    /// Epoch-millis timestamp of the last write_board_internal call.
+    pub last_write_time: std::sync::atomic::AtomicU64,
+    /// Number of writes where persist_board_files skipped due to identical content.
+    pub skipped_write_count: std::sync::atomic::AtomicU64,
+}
+
+impl WriteCounters {
+    fn new() -> Self {
+        Self {
+            write_count: std::sync::atomic::AtomicU64::new(0),
+            last_write_time: std::sync::atomic::AtomicU64::new(0),
+            skipped_write_count: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+}
+
 pub struct LocalStorage {
     /// board_id -> BoardState
     boards: RwLock<HashMap<String, BoardState>>,
@@ -175,6 +195,8 @@ pub struct LocalStorage {
     remote_boards: RwLock<HashSet<String>>,
     /// Per-process unique writer identifier for generation metadata
     writer_id: String,
+    /// Write-loop detection counters
+    pub write_counters: WriteCounters,
 }
 
 /// Check if two boards have different row/stack/column structure (count or IDs).
@@ -1906,6 +1928,16 @@ impl LocalStorage {
         board: &KanbanBoard,
         base_board: Option<&KanbanBoard>,
     ) -> Result<super::WriteResult, StorageError> {
+        self.write_counters
+            .write_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let now_ms = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        self.write_counters
+            .last_write_time
+            .store(now_ms, std::sync::atomic::Ordering::Relaxed);
         if self.is_remote_board(board_id) {
             let merge_result = self.write_remote_board_internal(board_id, board)?;
             return Ok(super::WriteResult {
@@ -2296,6 +2328,7 @@ impl LocalStorage {
             next_version: std::sync::atomic::AtomicU64::new(1),
             remote_boards: RwLock::new(HashSet::new()),
             writer_id: uuid::Uuid::new_v4().to_string(),
+            write_counters: WriteCounters::new(),
         }
     }
 
@@ -3005,6 +3038,23 @@ impl LocalStorage {
         }
     }
 
+    /// Get all local board IDs and their file paths (excludes remote boards).
+    pub fn all_board_paths(&self) -> Vec<(String, PathBuf)> {
+        let boards = match self.boards.read() {
+            Ok(b) => b,
+            Err(_) => return Vec::new(),
+        };
+        let remote = match self.remote_boards.read() {
+            Ok(r) => r,
+            Err(_) => return Vec::new(),
+        };
+        boards
+            .iter()
+            .filter(|(id, _)| !remote.contains(*id))
+            .map(|(id, state)| (id.clone(), state.file_path.clone()))
+            .collect()
+    }
+
     /// Get the file path for a board ID.
     pub fn get_board_path(&self, board_id: &str) -> Option<PathBuf> {
         self.boards
@@ -3273,6 +3323,12 @@ impl LocalStorage {
             && fs::read_to_string(file_path)
                 .map(|existing| existing == markdown)
                 .unwrap_or(false);
+
+        if disk_unchanged {
+            self.write_counters
+                .skipped_write_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
 
         if !disk_unchanged {
             // Write main board file last — only after all includes succeeded.

@@ -12,6 +12,7 @@ mod calendar;
 mod capture_api;
 mod config_api;
 mod dashboard;
+mod diagnostics;
 mod events;
 mod external_embed;
 mod file_ops;
@@ -62,6 +63,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   PUT  /config/render-apps                  -> update render application paths
 ///   GET  /events                              -> SSE stream of board changes
 ///   GET  /status                              -> health check (+ incoming config)
+///   GET  /diagnostics/disk                    -> disk usage and write-loop diagnostics
 ///   GET  /templates                           -> list available templates
 ///   GET  /templates/:id                       -> full template content + extra files
 ///   POST /templates/:id/copy                  -> copy template files with variable substitution
@@ -235,9 +237,13 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             require_auth_middleware,
         ));
 
-    // Unauthenticated routes — health check, templates, logs, external embeds
+    // Unauthenticated routes — health check, templates, logs, diagnostics, external embeds
     Router::new()
         .route("/status", get(events::status))
+        .route(
+            "/diagnostics/disk",
+            get(diagnostics::disk_diagnostics),
+        )
         .route(
             "/open-connection-window",
             axum::routing::post(events::open_connection_window),
