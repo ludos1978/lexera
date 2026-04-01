@@ -27,13 +27,16 @@ describe('tag style rendering parity', () => {
 
   it('allows surface-style tags on all styled entities and the board header', () => {
     const appSource = readSource('app.js');
+    const boardHeaderSource = readSource('board/boardHeader.js');
     const moduleSource = readSource('tagcolors/tagColors.js');
     const cssSource = readSource('app.css');
+    const combinedAppSource = appSource + boardHeaderSource;
 
-    expect(appSource.includes("descriptor.normalizedTag === 'surface' && entityType !== 'card'")).toBe(false);
-    expect(appSource.includes("applyTagStyleToEntity(getElBoardHeader(), activeBoardData && activeBoardData.title ? activeBoardData.title : '')")).toBe(true);
-    expect(appSource.includes("applyTagStyleToEntity(cardEl, getCardContainerStyleSource(card.content || ''))")).toBe(true);
-    expect(appSource.includes('skipFirstLineTagStyle: true')).toBe(true);
+    expect(combinedAppSource.includes("descriptor.normalizedTag === 'surface' && entityType !== 'card'")).toBe(false);
+    // Board header tag styling is applied via _callDep in boardHeader.js module
+    expect(boardHeaderSource.includes("_callDep('applyTagStyleToEntity', boardHeaderEl")).toBe(true);
+    expect(combinedAppSource.includes("applyTagStyleToEntity(cardEl, getCardContainerStyleSource(card.content || ''))")).toBe(true);
+    expect(combinedAppSource.includes('skipFirstLineTagStyle: true')).toBe(true);
     expect(moduleSource.includes('buildCombinedTagStyleDescriptor(styleTags)')).toBe(true);
     expect(cssSource.includes('.board-header.tag-styled')).toBe(true);
     expect(cssSource.includes('.tag-line-styled')).toBe(true);

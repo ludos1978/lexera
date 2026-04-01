@@ -38,6 +38,10 @@ function loadAppUtils() {
   const appUtilsModSource = readFileSync(resolve(srcDir, 'utils', 'appUtils.js'), 'utf-8');
   new Function(appUtilsModSource)();
 
+  // Load BoardHeader so delegation stubs in app.js can reference it
+  const boardHeaderSource = readFileSync(resolve(srcDir, 'board', 'boardHeader.js'), 'utf-8');
+  new Function(boardHeaderSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
@@ -149,6 +153,7 @@ function loadAppUtils() {
     var OrderHelpers = (typeof globalThis !== 'undefined' && globalThis.LexeraOrderHelpers) || null;
     var _MediaCategory = (typeof globalThis !== 'undefined' && globalThis.LexeraMediaCategory) || null;
     var _AppUtils = (typeof globalThis !== 'undefined' && globalThis.LexeraAppUtils) || null;
+    var BoardHeader = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardHeader) || null;
     var LexeraTagSystem = globalThis.LexeraTagSystem || null;
     var PathUtils = globalThis.LexeraPathUtils;
     var window = globalThis.window || {};
