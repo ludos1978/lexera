@@ -1462,6 +1462,39 @@ var LexeraBoardList = (function () {
           });
         });
 
+        // Tree node right-click context menu (same menus as board view)
+        treeEl.addEventListener('contextmenu', function (e) {
+          var node = e.target.closest('.tree-node');
+          if (!node) return;
+          e.preventDefault();
+          e.stopPropagation();
+          var scope = null;
+          var ctx = {};
+          if (node.classList.contains('tree-card')) {
+            scope = 'card';
+            var colIdx = node.getAttribute('data-col-index');
+            ctx.colIndex = colIdx != null ? parseInt(colIdx, 10) : -1;
+            ctx.cardIndex = parseInt(node.getAttribute('data-card-index') || '0', 10);
+          } else if (node.classList.contains('tree-column')) {
+            scope = 'column';
+            var colIdx2 = node.getAttribute('data-col-index');
+            ctx.colIndex = colIdx2 != null ? parseInt(colIdx2, 10) : -1;
+            ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
+            ctx.stackIdx = parseInt(node.getAttribute('data-stack-index') || '0', 10);
+            ctx.colLocalIdx = parseInt(node.getAttribute('data-col-local-index') || '0', 10);
+          } else if (node.classList.contains('tree-stack')) {
+            scope = 'stack';
+            ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
+            ctx.stackIdx = parseInt(node.getAttribute('data-stack-index') || '0', 10);
+          } else if (node.classList.contains('tree-row')) {
+            scope = 'row';
+            ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
+          }
+          if (scope) {
+            _callDep('showElementContextMenu', scope, e.clientX, e.clientY, ctx);
+          }
+        });
+
         // Tree DnD is handled by the pointer-based drag system (mousedown on getElBoardList())
       }
 

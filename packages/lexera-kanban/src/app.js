@@ -2196,6 +2196,7 @@ var LexeraDashboard = (function () {
     escapeHtml: function(text) { return escapeHtml(text); },
     exitSearchMode: function() { exitSearchMode(); },
     showNativeMenu: function(items, x, y) { return showNativeMenu(items, x, y); },
+    showElementContextMenu: function(scope, x, y, ctx) { showElementContextMenu(scope, x, y, ctx); },
     openConnectionWindow: function() { openConnectionWindow(); },
     showInFinder: function(filePath) { showInFinder(filePath); },
     poll: function() { poll(); },

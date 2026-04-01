@@ -98,6 +98,29 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 
 ---
 
+## Module: board/boardSettings.js (LexeraBoardSettings)
+**Path:** `packages/lexera-kanban/src/board/boardSettings.js`
+**Type:** Board setting normalizers and tiered value lookup (~230 lines)
+**Public API:** 13 exported functions
+
+| Function | Description | Callers |
+|----------|-------------|---------|
+| `init(deps)` | Initialize module with dependencies (fullBoardData, workspaceSettings, localStorage) | app.js (startup) |
+| `normalizeBoardFontSizeValue(rawValue)` | Normalize font size to px value (e.g. 'small' -> '9.75px') | app.js (settings dialog) |
+| `normalizeBoardFontFamilyToken(rawValue)` | Normalize font family name to token (e.g. 'Open Sans' -> 'opensans') | app.js (settings dialog) |
+| `resolveBoardFontFamilyValue(token)` | Resolve font token to CSS font-family string | app.js (settings dialog) |
+| `normalizeWhitespaceValue(rawValue)` | Normalize whitespace setting to px value | app.js (applyBoardSettings) |
+| `normalizeColumnWidth(rawValue)` | Normalize column width to valid CSS value (120-1200px range) | app.js (applyBoardSettings) |
+| `normalizeTagVisibilityMode(rawMode)` | Normalize tag visibility mode string | app.js (applyBoardSettings, settings dialog) |
+| `normalizeHtmlCommentRenderMode(rawMode)` | Normalize HTML comment render mode | app.js (applyBoardSettings, settings dialog) |
+| `normalizeArrowKeyFocusScrollMode(rawMode)` | Normalize arrow key scroll mode | app.js (applyBoardSettings, settings dialog) |
+| `normalizeYamlFrontmatterScalar(value)` | Normalize YAML frontmatter value (trim, normalize newlines) | app.js, cardContextMenu |
+| `getBoardSettingValue(key, fallback)` | Tiered setting lookup: board -> workspace -> localStorage -> fallback | app.js (many places) |
+| `getHtmlContentRenderMode()` | Get current HTML content render mode ('html' or 'text') | app.js (rendering) |
+| `resolveActiveBoardColor(settings)` | Resolve board color based on dark/light mode preference | app.js (applyBoardSettings) |
+
+---
+
 ## Module: board/boardList.js (LexeraBoardList)
 **Path:** `packages/lexera-kanban/src/board/boardList.js`
 **Type:** Board/workspace state and sidebar management (1,832 lines)
