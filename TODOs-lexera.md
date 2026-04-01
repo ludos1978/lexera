@@ -488,9 +488,7 @@ Source: GLM5 analysis comparing V1 (VS Code extension, `src/`) with V2 (standalo
    - Recurring task classification (overdue, outdated, resetToRepeat, future)
    - Undated task collection, calendar event detection
 
-2. **Gather Query Engine** — Port `src/board/GatherQueryEngine.ts` (~400 LOC) to `lexera-core/src/gather.rs`
-   - Query syntax in column titles: `?#tag`, `?@temporal`, `?.today`
-   - Automatic task sorting, `#ungathered` collection, sticky tasks
+2. ~~**Gather Query Engine**~~ (dffc9333) — `lexera-core/src/gather/mod.rs` + `POST /boards/{id}/gather`; `?#tag`, `?@temporal`, `?.today`, `?@KW10`, weekday, `#ungathered`, `#sticky`, `#sort-bydate/byname`; 8 unit tests
 
 3. **Marp Engine Full Plugin Set** — Port `packages/marp-engine/engine/engine.js` plugins
    - Missing markdown extensions: underline, sub/sup, mark, insert, multicolumn, containers
