@@ -1,9 +1,9 @@
 # Lexera Kanban Todo
 
-- [ ] dont use any icons in the files configuration > workspaces. it's not a folder and its not a file icon we use. it should use the same hierarchy structure we use everywhere!
-- [ ] improve the hierarchy structure we re-use in several places. the lines and etc are not consistant and dont look good yet.
-- [ ] the items in broken elements in the dashboard are not focussing on the correct place in the board when clicking them!
-- [ ] when right clicking elements in the hierarchy that are embeds or includes, show the same options as in the burger menu on the item in the board.
+- [x] ~~workspace config icons removed~~ (59ae86bf) — plain hierarchy, no folder/file icons
+- [x] ~~hierarchy tree lines improved~~ (b75a9edc) — consistent connectors and indentation
+- [x] ~~broken elements focus fixed~~ (342df375) — KID-based lookup instead of positional DOM queries
+- [x] ~~hierarchy embed/include context menu~~ (cab7dfe4) — right-click shows same options as board burger menu
 
 ## Active Features
 - [ ] Add pptx rendering (needs esbuild bundle of @jvmr/pptx-to-html)
