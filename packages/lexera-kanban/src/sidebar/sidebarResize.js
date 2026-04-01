@@ -109,11 +109,100 @@ var LexeraSidebarResize = (function () {
     }
   }
 
+  function requestUiFrame(callback) {
+    if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(callback);
+    return setTimeout(callback, 16);
+  }
+
+  function cancelUiFrame(handle) {
+    if (!handle) return;
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(handle);
+      return;
+    }
+    clearTimeout(handle);
+  }
+
+  function measureSidebarSectionLayoutMetrics() {
+    var sidebarEl = getElSidebar();
+    var boardListEl = getElBoardList();
+    var dashboardEl = getElDashboardRoot();
+    var dividerEl = getElSidebarDashboardDivider();
+    if (!sidebarEl || !boardListEl || !dashboardEl || dashboardEl.classList.contains('hidden')) return null;
+
+    var sidebarHeight = sidebarEl.clientHeight || 0;
+    var headerHeight = getElSidebarHeader() ? getElSidebarHeader().offsetHeight : 0;
+    var dividerHeight = dividerEl ? (dividerEl.offsetHeight || 8) : 0;
+    var available = sidebarHeight - headerHeight - dividerHeight;
+    if (available <= 0) return null;
+
+    var styles = window.getComputedStyle(sidebarEl);
+    var hierarchyMin = parseFloat(styles.getPropertyValue('--sidebar-hierarchy-min')) || 140;
+    var dashboardMin = parseFloat(styles.getPropertyValue('--sidebar-dashboard-min')) || 180;
+    var minSum = hierarchyMin + dashboardMin;
+    if (available < minSum) {
+      var scaledHierarchyMin = Math.max(80, Math.floor((hierarchyMin / minSum) * available));
+      hierarchyMin = scaledHierarchyMin;
+      dashboardMin = Math.max(100, available - scaledHierarchyMin);
+    }
+
+    return {
+      boardListEl: boardListEl,
+      dashboardEl: dashboardEl,
+      available: available,
+      hierarchyMin: hierarchyMin,
+      dashboardMin: dashboardMin
+    };
+  }
+
+  function writeSidebarSectionLayout(metrics, rawRatio) {
+    if (!metrics || !metrics.boardListEl) return;
+    var ratio = normalizeSidebarSplitRatio(rawRatio);
+    var boardHeight = Math.round(metrics.available * ratio);
+    var minBoard = Math.min(metrics.hierarchyMin, Math.max(0, metrics.available - metrics.dashboardMin));
+    var maxBoard = Math.max(minBoard, metrics.available - metrics.dashboardMin);
+    boardHeight = Math.max(minBoard, Math.min(maxBoard, boardHeight));
+    var dashboardHeight = Math.max(metrics.dashboardMin, metrics.available - boardHeight);
+    // Re-clamp board height if dashboard minimum pushed it down
+    boardHeight = Math.max(0, metrics.available - dashboardHeight);
+
+    metrics.boardListEl.style.flex = '0 0 ' + boardHeight + 'px';
+    metrics.boardListEl.style.height = boardHeight + 'px';
+    if (metrics.dashboardEl) {
+      metrics.dashboardEl.style.flex = '0 0 ' + dashboardHeight + 'px';
+      metrics.dashboardEl.style.height = dashboardHeight + 'px';
+    }
+  }
+
+  function scheduleSidebarDragLayout(ctx, writer) {
+    if (!ctx) return;
+    ctx.pendingLayoutWriter = writer;
+    if (ctx.layoutFrameId) return;
+    ctx.layoutFrameId = requestUiFrame(function () {
+      ctx.layoutFrameId = 0;
+      var pendingWriter = ctx.pendingLayoutWriter;
+      ctx.pendingLayoutWriter = null;
+      if (pendingWriter) pendingWriter();
+    });
+  }
+
+  function flushSidebarDragLayout(ctx) {
+    if (!ctx) return;
+    if (ctx.layoutFrameId) {
+      cancelUiFrame(ctx.layoutFrameId);
+      ctx.layoutFrameId = 0;
+    }
+    var pendingWriter = ctx.pendingLayoutWriter;
+    ctx.pendingLayoutWriter = null;
+    if (pendingWriter) pendingWriter();
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // Section layout (hierarchy / dashboard split)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  function applySidebarSectionLayout() {
+  function applySidebarSectionLayout(options) {
+    options = options || {};
     if (!getElSidebar() || !getElBoardList()) return;
     if (_isWorkspaceShellEnabled()) {
       if (getElSidebarDashboardDivider()) getElSidebarDashboardDivider().classList.add('hidden');
@@ -140,35 +229,9 @@ var LexeraSidebarResize = (function () {
 
     if (getElSidebarDashboardDivider()) getElSidebarDashboardDivider().classList.remove('hidden');
     sidebarSplitRatio = normalizeSidebarSplitRatio(sidebarSplitRatio);
-
-    var sidebarHeight = getElSidebar().clientHeight || 0;
-    var headerHeight = getElSidebarHeader() ? getElSidebarHeader().offsetHeight : 0;
-    var dividerHeight = getElSidebarDashboardDivider() ? (getElSidebarDashboardDivider().offsetHeight || 8) : 0;
-    var available = sidebarHeight - headerHeight - dividerHeight;
-    if (available <= 0) return;
-
-    var styles = window.getComputedStyle(getElSidebar());
-    var hierarchyMin = parseFloat(styles.getPropertyValue('--sidebar-hierarchy-min')) || 140;
-    var dashboardMin = parseFloat(styles.getPropertyValue('--sidebar-dashboard-min')) || 180;
-    var minSum = hierarchyMin + dashboardMin;
-    if (available < minSum) {
-      var scaledHierarchyMin = Math.max(80, Math.floor((hierarchyMin / minSum) * available));
-      hierarchyMin = scaledHierarchyMin;
-      dashboardMin = Math.max(100, available - scaledHierarchyMin);
-    }
-
-    var boardHeight = Math.round(available * sidebarSplitRatio);
-    var minBoard = Math.min(hierarchyMin, Math.max(0, available - dashboardMin));
-    var maxBoard = Math.max(minBoard, available - dashboardMin);
-    boardHeight = Math.max(minBoard, Math.min(maxBoard, boardHeight));
-    var dashboardHeight = Math.max(0, available - boardHeight);
-
-    getElBoardList().style.flex = '0 0 ' + boardHeight + 'px';
-    getElBoardList().style.height = boardHeight + 'px';
-    if (getElDashboardRoot()) {
-      getElDashboardRoot().style.flex = '0 0 ' + dashboardHeight + 'px';
-      getElDashboardRoot().style.height = dashboardHeight + 'px';
-    }
+    var metrics = options.metrics || measureSidebarSectionLayoutMetrics();
+    if (!metrics) return;
+    writeSidebarSectionLayout(metrics, options.ratio != null ? options.ratio : sidebarSplitRatio);
   }
 
   function setupSidebarSectionResize() {
@@ -194,15 +257,23 @@ var LexeraSidebarResize = (function () {
         getElSidebar().classList.add('resizing-sections');
         return {
           trackStart: trackStart,
-          trackSize: Math.max(1, trackSize)
+          trackSize: Math.max(1, trackSize),
+          layoutMetrics: measureSidebarSectionLayoutMetrics(),
+          pendingRatio: normalizeSidebarSplitRatio(sidebarSplitRatio),
+          layoutFrameId: 0,
+          pendingLayoutWriter: null
         };
       },
       onMove: function (ev, ctx) {
-        var next = (ev.clientY - ctx.trackStart) / ctx.trackSize;
-        sidebarSplitRatio = normalizeSidebarSplitRatio(next);
-        applySidebarSectionLayout();
+        ctx.pendingRatio = normalizeSidebarSplitRatio((ev.clientY - ctx.trackStart) / ctx.trackSize);
+        sidebarSplitRatio = ctx.pendingRatio;
+        scheduleSidebarDragLayout(ctx, function () {
+          if (ctx.layoutMetrics) writeSidebarSectionLayout(ctx.layoutMetrics, ctx.pendingRatio);
+          else applySidebarSectionLayout({ ratio: ctx.pendingRatio });
+        });
       },
-      onEnd: function () {
+      onEnd: function (ev, ctx) {
+        flushSidebarDragLayout(ctx);
         getElSidebar().classList.remove('resizing-sections');
         if (Settings) Settings.set('sidebarSplitRatio', normalizeSidebarSplitRatio(sidebarSplitRatio));
         else localStorage.setItem('lexera-sidebar-split-ratio', String(normalizeSidebarSplitRatio(sidebarSplitRatio)));
@@ -243,17 +314,27 @@ var LexeraSidebarResize = (function () {
       onStart: function () {
         var sidebarRect = getElSidebar().getBoundingClientRect();
         getElLayout().classList.add('resizing-sidebar-width');
-        return { left: sidebarRect.left };
+        return {
+          left: sidebarRect.left,
+          layoutMetrics: measureSidebarSectionLayoutMetrics(),
+          pendingWidth: sidebarWidth,
+          layoutFrameId: 0,
+          pendingLayoutWriter: null
+        };
       },
       onMove: function (ev, ctx) {
         var newWidth = ev.clientX - ctx.left;
         if (Math.abs(newWidth - SIDEBAR_DEFAULT) < SNAP_THRESHOLD) newWidth = SIDEBAR_DEFAULT;
         newWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, newWidth));
+        ctx.pendingWidth = newWidth;
         sidebarWidth = newWidth;
-        document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px');
-        applySidebarSectionLayout();
+        scheduleSidebarDragLayout(ctx, function () {
+          document.documentElement.style.setProperty('--sidebar-width', ctx.pendingWidth + 'px');
+          if (ctx.layoutMetrics) writeSidebarSectionLayout(ctx.layoutMetrics, sidebarSplitRatio);
+        });
       },
-      onEnd: function () {
+      onEnd: function (ev, ctx) {
+        flushSidebarDragLayout(ctx);
         getElLayout().classList.remove('resizing-sidebar-width');
         if (Settings) Settings.set('sidebarWidth', sidebarWidth);
         else localStorage.setItem('lexera-sidebar-width', String(sidebarWidth));
