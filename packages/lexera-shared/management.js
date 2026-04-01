@@ -2068,7 +2068,7 @@ var ManagementUI = (function () {
 
       html += '<div class="mgmt-config-tree-node' + (isSelected ? ' selected' : '') + '"'
         + ' data-mgmt-action="config-select" data-mgmt-config-type="workspace" data-mgmt-config-id="' + esc(ws.id) + '">';
-      html += '<span class="mgmt-config-tree-icon">&#128193;</span>';
+      html += '<span class="mgmt-config-tree-toggle">\u25BC</span>';
       html += '<span class="mgmt-config-tree-label">' + esc(ws.name) + '</span>';
       html += '<span class="mgmt-config-tree-badge">' + wsBoards.length + '</span>';
       if (isDefault) html += '<span class="mgmt-config-tree-default" title="Default workspace">&#9733;</span>';
@@ -2080,7 +2080,6 @@ var ManagementUI = (function () {
         var isBoardSelected = configSelectedItem && configSelectedItem.type === 'board' && configSelectedItem.id === b.id;
         html += '<div class="mgmt-config-tree-node mgmt-config-tree-child' + (isBoardSelected ? ' selected' : '') + '"'
           + ' data-mgmt-action="config-select" data-mgmt-config-type="board" data-mgmt-config-id="' + esc(b.id) + '">';
-        html += '<span class="mgmt-config-tree-icon">&#128196;</span>';
         html += '<span class="mgmt-config-tree-label">' + esc(boardName) + '</span>';
         html += '</div>';
       }
@@ -2114,9 +2113,8 @@ var ManagementUI = (function () {
         var ub = unassigned[u];
         var ubName = ub.title || (ub.filePath || ub.file_path || ub.id || '').split('/').pop().replace('.md', '') || 'Untitled';
         var isUbSelected = configSelectedItem && configSelectedItem.type === 'board' && configSelectedItem.id === ub.id;
-        html += '<div class="mgmt-config-tree-node' + (isUbSelected ? ' selected' : '') + '"'
+        html += '<div class="mgmt-config-tree-node mgmt-config-tree-child' + (isUbSelected ? ' selected' : '') + '"'
           + ' data-mgmt-action="config-select" data-mgmt-config-type="board" data-mgmt-config-id="' + esc(ub.id) + '">';
-        html += '<span class="mgmt-config-tree-icon">&#128196;</span>';
         html += '<span class="mgmt-config-tree-label">' + esc(ubName) + '</span>';
         html += '</div>';
       }
