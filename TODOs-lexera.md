@@ -498,8 +498,8 @@ Source: GLM5 analysis comparing V1 (VS Code extension, `src/`) with V2 (standalo
    - Unified entry point for file changes with states: IDLE → READING → PROCESSING → WRITING
    - Event queue, debouncing, coalescing, conflict detection
 
-5. **Board Registry Service** — Extend `LocalStorage` with `src/services/BoardRegistryService.ts` features
-   - Custom board ordering, search history (recent + pinned), per-board file watchers
+5. ~~**Board Registry Service** — Extend `LocalStorage` with `src/services/BoardRegistryService.ts` features~~ DONE: SearchEntry+search_history in BoardRegistry, registry field in LocalStorage, REST API GET/PUT/DELETE /registry/* (commit a82a90bc)
+   - ~~Custom board ordering, search history (recent + pinned), per-board file watchers~~
 
 6. ~~**Link Handling** — Port `src/services/LinkHandler.ts` (~800 LOC) to `lexera-core/src/links.rs`~~ DONE: wiki link parsing, resolution, replacement, validation (commit 1bf74bfc)
    - ~~Wiki link resolution `[[filename]]`, relative paths, link validation, link replacement on rename~~
