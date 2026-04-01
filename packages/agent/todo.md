@@ -22,22 +22,31 @@
 ## Code Quality
 - [ ] **App.js modularization** — **10,832 lines** (down from 25K+). All major sections extracted. Remaining is core board rendering + event wiring.
 
+- [ ] the text size isnt unified over all the styles and all the fonts in and outside the kanvan. for our default style all fonts have the same size in the kanban mode. in canvas mode the board view might zoom smaller or bigger then the rest of the application. but in kanban mode all fonts have exactly the same size.. ALL FONTS!
 
-
-## Architecture
-- [ ] **Remove iframe view composition** — replace iframes + postMessage with in-process views
+- [ ] i still often get "Save failed. Recovery copy written: World_n_Level_Design-Topics_Kanban-crashsave-20260402-004918.md"
 
 - [ ] the menu for embeds and includes should be as this:
   - Open in System App
   - Show in Finder
   - Copy Path
   - separator
-  - Replace document (displays an overlay to fix embed/include files, it searches for files with the same filename with it previews of the currently selected file, it also allows browsing for an alternative document using a file browser, lastly it allows pasting or dropping alternative documents into the view to directly replace the document, it can also open a browser that is prefilled with the original filename and or alt text)
-  - separator
-  - Convert to Relative Path
+  - Replace document (displays an overlay to fix embed/include files, it searches for files with the same filename with it previews of the currently selected file, it also allows browsing for an alternative document using a file browser, lastly it allows pasting or dropping alternative documents into the view to directly replace the document, it can also open a browser that is prefilled with the original filename and or alt text). the user should have the option to select relative and absolute paths when choosing the new file.
+  - pasting a file should put it into the media folder of the main kanban file or the include file media folder!
   - Force Refresh
+  - Convert to Relative Path
+  - separator
   - Info
   - Delete Embed/Include
+
+  ADD THESE TO THE SPECS!
+
+- [ ] delete row doesnt work or doesnt update the view! check all other delete functions as well!
+
+- [ ] /refactor the board update (re-render) functionality. it must be able to target one or multiple elements such as rows, stacks, columns or cards, or even only images in cards. multiple elements might have the exact same content. so it must be able to pin-point these exactly. it should only modify these and not change other parts. this should be generally be called after changes of most kinds such as text editing, embed or include modifications or drag and drop of items, drag into the board etc...
+
+## Architecture
+- [ ] **Remove iframe view composition** — replace iframes + postMessage with in-process views
 
 ## Active Features
 - [ ] Mobile web clipper — finish lexera-capture-ios

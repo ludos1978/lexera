@@ -93,10 +93,26 @@ pub async fn browse_files(
     title: Option<String>,
     extensions: Option<Vec<String>>,
     multiple: Option<bool>,
+    default_path: Option<String>,
 ) -> Result<Vec<String>, String> {
     let mut builder = rfd::AsyncFileDialog::new();
     if let Some(t) = &title {
         builder = builder.set_title(t);
+    }
+    if let Some(p) = &default_path {
+        let path = std::path::PathBuf::from(p);
+        // Walk up to find the closest existing ancestor directory
+        let dir = if path.is_dir() { path.clone() } else { path.parent().map(|p| p.to_path_buf()).unwrap_or(path.clone()) };
+        let mut candidate = dir.as_path();
+        while !candidate.exists() {
+            match candidate.parent() {
+                Some(parent) => candidate = parent,
+                None => break,
+            }
+        }
+        if candidate.exists() {
+            builder = builder.set_directory(candidate);
+        }
     }
     if let Some(exts) = &extensions {
         let ext_refs: Vec<&str> = exts.iter().map(|s| s.as_str()).collect();

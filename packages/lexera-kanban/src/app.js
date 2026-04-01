@@ -1285,6 +1285,7 @@ var LexeraDashboard = (function () {
     // Clipboard paste for images
     document.addEventListener('paste', function (e) {
       if (!activeBoardId || isEditing) return;
+      if (window.__lexeraReplaceDocDropActive) return;
       if (!e.clipboardData || !e.clipboardData.files || e.clipboardData.files.length === 0) return;
       var hasImage = false;
       for (var i = 0; i < e.clipboardData.files.length; i++) {
@@ -1350,6 +1351,8 @@ var LexeraDashboard = (function () {
         if (getElSidebar()) getElSidebar().classList.remove('drop-zone-active');
         var boardsSection = document.querySelector('[data-mgmt-section="boards"]');
         if (boardsSection) boardsSection.classList.remove('mgmt-drop-active');
+        // Replace-document dialog handles its own drops
+        if (window.__lexeraReplaceDocDropActive) return;
         var paths = event.payload.paths || [];
         var pos = event.payload.position;
         // Check boards section first

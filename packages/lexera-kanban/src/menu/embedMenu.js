@@ -3406,6 +3406,7 @@ var LexeraEmbedMenu = (function () {
 
     var overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
+    overlay.setAttribute('tabindex', '-1');
     var dialog = document.createElement('div');
     dialog.className = 'modal-dialog replace-doc-dialog';
 
@@ -3521,10 +3522,59 @@ var LexeraEmbedMenu = (function () {
       for (var i = 0; i < items.length; i++) {
         if (items[i].kind === 'file') {
           var file = items[i].getAsFile();
-          if (file) { e.preventDefault(); applyUploadedFile(file); return; }
+          if (file) {
+            e.preventDefault();
+            e.stopPropagation();
+            applyUploadedFile(file);
+            return;
+          }
         }
       }
     });
+
+    // Focus overlay so paste events fire in Tauri WKWebView
+    overlay.focus();
+
+    // Tauri external file drop — OS drops bypass web 'drop' events in Tauri
+    // Flag prevents the global app.js drag-drop handler from also processing
+    window.__lexeraReplaceDocDropActive = true;
+    var tauriDragUnlisteners = [];
+    if (hasTauri) {
+      var listenFn = (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen) ||
+        (window.parent && window.parent !== window && window.parent.__TAURI__ && window.parent.__TAURI__.event && window.parent.__TAURI__.event.listen);
+      if (listenFn) {
+        listenFn('tauri://drag-over', function (event) {
+          var pos = event.payload && event.payload.position;
+          if (pos && dropZone) {
+            var inside = false;
+            var rect = dropZone.getBoundingClientRect();
+            if (pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom) inside = true;
+            dropZone.classList.toggle('drag-over', inside);
+          }
+        }).then(function (u) { tauriDragUnlisteners.push(u); });
+        listenFn('tauri://drag-leave', function () {
+          if (dropZone) dropZone.classList.remove('drag-over');
+        }).then(function (u) { tauriDragUnlisteners.push(u); });
+        listenFn('tauri://drag-drop', function (event) {
+          if (dropZone) dropZone.classList.remove('drag-over');
+          var paths = event.payload && event.payload.paths;
+          if (paths && paths.length > 0) {
+            closeAndApply(paths[0]);
+          }
+        }).then(function (u) { tauriDragUnlisteners.push(u); });
+      }
+    }
+
+    // Clean up Tauri listeners when overlay is removed
+    var origRemove = overlay.remove.bind(overlay);
+    overlay.remove = function () {
+      window.__lexeraReplaceDocDropActive = false;
+      for (var i = 0; i < tauriDragUnlisteners.length; i++) {
+        if (typeof tauriDragUnlisteners[i] === 'function') tauriDragUnlisteners[i]();
+      }
+      tauriDragUnlisteners = [];
+      origRemove();
+    };
 
     dialog.addEventListener('click', function (e) {
       var btn = e.target.closest('[data-replace-action]');
@@ -3533,13 +3583,25 @@ var LexeraEmbedMenu = (function () {
       if (action === 'cancel') {
         overlay.remove();
       } else if (action === 'browse') {
-        tauriInvoke('browse_files', { title: 'Replace Document' }).then(function (paths) {
+        // Resolve the embed file path; fall back to the board file's directory
+        resolveAbsoluteBoardFilePath(boardId, filePath).then(function (absPath) {
+          if (absPath && isAbsoluteFilePath(absPath)) return absPath;
+          // Fall back: resolve the board file itself to get its directory
+          var boardPath = getBoardFilePathForId(boardId);
+          if (boardPath && isAbsoluteFilePath(boardPath)) return boardPath;
+          if (boardPath) return resolveBoardPath(boardId, boardPath, 'absolute');
+          return '';
+        }).then(function (startPath) {
+          return tauriInvoke('browse_files', {
+            title: 'Replace Document',
+            defaultPath: startPath || undefined,
+          });
+        }).then(function (paths) {
           if (paths && paths.length > 0) closeAndApply(paths[0]);
         }).catch(function (err) {
           logFrontendIssue('warn', 'replace-doc.browse', 'File browser failed', err);
         });
       } else if (action === 'web-search') {
-        overlay.remove();
         openEmbedWebSearch(container, filePath);
       }
     });
