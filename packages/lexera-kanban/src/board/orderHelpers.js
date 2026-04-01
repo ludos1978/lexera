@@ -2139,20 +2139,6 @@ var LexeraOrderHelpers = (function () {
     return Promise.resolve(null);
   }
 
-  function focusDashboardBrokenTarget(colIndex, cardIndex) {
-    if (colIndex == null || isNaN(colIndex) || colIndex < 0) return;
-    var container = getDashboardBrokenScanContainer();
-    if (!container) return;
-    var cardEl = cardIndex != null && !isNaN(cardIndex) && cardIndex >= 0
-      ? container.querySelector('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]')
-      : container.querySelector('.column[data-col-index="' + colIndex + '"]');
-    if (cardEl) {
-      cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      cardEl.classList.add('highlight-flash');
-      setTimeout(function () { cardEl.classList.remove('highlight-flash'); }, 1500);
-    }
-  }
-
   function bindDashboardTreeInteractions(targetEl) {
     if (!targetEl || targetEl.__dashboardTreeClickBound) return;
     var TreeView = _dep('TreeView');
@@ -2172,10 +2158,16 @@ var LexeraOrderHelpers = (function () {
         return;
       }
       if (target === 'broken') {
-        var colIndex = parseInt(node.getAttribute('data-dashboard-col-index'), 10);
-        var cardIndexRaw = node.getAttribute('data-dashboard-card-index');
-        var cardIndex = cardIndexRaw != null && cardIndexRaw !== '' ? parseInt(cardIndexRaw, 10) : null;
-        if (!isNaN(colIndex)) focusDashboardBrokenTarget(colIndex, cardIndex);
+        var boardId = _dep('activeBoardId') || '';
+        var cardId = String(node.getAttribute('data-dashboard-card-id') || '').trim() || null;
+        var columnIndex = parseInt(node.getAttribute('data-dashboard-col-index'), 10);
+        if (boardId && (cardId || !isNaN(columnIndex))) {
+          _callDep('navigateToSearchResult', {
+            boardId: boardId,
+            cardId: cardId,
+            columnIndex: isNaN(columnIndex) ? null : columnIndex
+          });
+        }
       }
     });
     targetEl.__dashboardTreeClickBound = true;
@@ -2252,6 +2244,7 @@ var LexeraOrderHelpers = (function () {
         };
         if (typeof item.colIndex === 'number') byKey[key].colIndex = item.colIndex;
         if (typeof item.cardIndex === 'number') byKey[key].cardIndex = item.cardIndex;
+        if (item.cardId) byKey[key].cardId = item.cardId;
         if (item.reason) byKey[key].reason = item.reason;
         items.push(byKey[key]);
       }
@@ -2263,6 +2256,7 @@ var LexeraOrderHelpers = (function () {
       if ((byKey[key].cardIndex == null || byKey[key].cardIndex < 0) && typeof item.cardIndex === 'number') {
         byKey[key].cardIndex = item.cardIndex;
       }
+      if (!byKey[key].cardId && item.cardId) byKey[key].cardId = item.cardId;
     }
     var inventories = [].concat(embedItems || [], includeItems || []);
     for (var i = 0; i < inventories.length; i++) {
@@ -2393,6 +2387,7 @@ var LexeraOrderHelpers = (function () {
       var cardEl = typeof el.closest === 'function' ? el.closest('.card') : null;
       var colIndex = cardEl ? parseInt(cardEl.getAttribute('data-col-index'), 10) : -1;
       var cardIndex = cardEl ? parseInt(cardEl.getAttribute('data-card-index'), 10) : -1;
+      var cardId = cardEl ? String(cardEl.getAttribute('data-card-id') || '') : '';
       var src =
         (typeof el.getAttribute === 'function' && (
           el.getAttribute('data-file-path') ||
@@ -2427,7 +2422,8 @@ var LexeraOrderHelpers = (function () {
         type: type,
         src: src,
         colIndex: colIndex,
-        cardIndex: cardIndex
+        cardIndex: cardIndex,
+        cardId: cardId
       };
       if (reason) item.reason = reason;
       broken.push(item);

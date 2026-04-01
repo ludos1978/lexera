@@ -356,13 +356,15 @@ describe('dashboard inventory helpers', () => {
         type: 'image',
         src: 'media/missing.png',
         colIndex: 2,
-        cardIndex: 5
+        cardIndex: 5,
+        cardId: ''
       },
       {
         type: 'include',
         src: 'docs/missing.md',
         colIndex: -1,
-        cardIndex: -1
+        cardIndex: -1,
+        cardId: ''
       }
     ]);
   });
@@ -401,13 +403,15 @@ describe('dashboard inventory helpers', () => {
         src: 'https://example.com/embed',
         colIndex: -1,
         cardIndex: -1,
+        cardId: '',
         reason: 'Blocked by iframe policy'
       },
       {
         type: 'image',
         src: 'media/missing-diagram.png',
         colIndex: 1,
-        cardIndex: 2
+        cardIndex: 2,
+        cardId: ''
       }
     ]);
   });
@@ -446,7 +450,8 @@ describe('dashboard inventory helpers', () => {
         type: 'embed',
         src: 'iframe/missing.png',
         colIndex: 7,
-        cardIndex: 3
+        cardIndex: 3,
+        cardId: ''
       }
     ]);
   });
