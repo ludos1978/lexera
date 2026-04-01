@@ -3,6 +3,7 @@ pub mod capture;
 pub mod config;
 pub mod crdt;
 pub mod export;
+pub mod gather;
 pub mod include;
 pub mod links;
 pub mod media;

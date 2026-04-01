@@ -995,6 +995,45 @@ fn emit_main_file_changed(state: &AppState, board_id: &str) {
     }
 }
 
+/// POST /boards/{board_id}/gather — apply gather rules and return the moves.
+///
+/// Loads the board, runs the gather engine, saves the updated board, and
+/// returns `{ moves: [...], moveCount: N }`.
+pub async fn gather_board(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
+
+    let mut board = state
+        .storage
+        .read_board(&board_id)
+        .ok_or_else(|| err_not_found("Board not found"))?;
+
+    let moves = lexera_core::gather::apply_gather_today(&mut board);
+    let move_count = moves.len();
+
+    if move_count > 0 {
+        state
+            .storage
+            .write_board(&board_id, &board)
+            .map_err(|e| {
+                storage_error_response(
+                    e,
+                    "lexera.api.gather_board",
+                    format!("Failed to save gathered board {}", board_id),
+                )
+            })?;
+        emit_main_file_changed(&state, &board_id);
+        broadcast_crdt_to_sync_hub(&state, &board_id).await;
+    }
+
+    Ok(Json(serde_json::json!({
+        "moves": moves,
+        "moveCount": move_count,
+    })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -145,6 +145,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             axum::routing::post(board::rebase_board_with_base),
         )
         .route(
+            "/boards/{board_id}/gather",
+            axum::routing::post(board::gather_board),
+        )
+        .route(
             "/boards/{board_id}/live-sync/open",
             axum::routing::post(board::open_live_sync_session),
         )
