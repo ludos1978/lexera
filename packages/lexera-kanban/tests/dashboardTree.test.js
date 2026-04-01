@@ -56,6 +56,8 @@ describe('dashboard tree builders', () => {
             grip: false,
             attrs: {
               'data-dashboard-target': 'file',
+              'data-dashboard-card-id': null,
+              'data-dashboard-column-index': null,
               'data-dashboard-status': 'missing',
               title: 'docs/spec.pdf / Attachments / Missing / 2 references'
             }
@@ -70,6 +72,8 @@ describe('dashboard tree builders', () => {
             grip: false,
             attrs: {
               'data-dashboard-target': 'file',
+              'data-dashboard-card-id': null,
+              'data-dashboard-column-index': null,
               'data-dashboard-status': 'exists',
               title: 'docs/notes.md / Attachments / Exists'
             }
@@ -98,6 +102,8 @@ describe('dashboard tree builders', () => {
             grip: false,
             attrs: {
               'data-dashboard-target': 'file',
+              'data-dashboard-card-id': null,
+              'data-dashboard-column-index': null,
               'data-dashboard-status': 'unknown',
               title: 'media/preview.png / Gallery / Unknown'
             }

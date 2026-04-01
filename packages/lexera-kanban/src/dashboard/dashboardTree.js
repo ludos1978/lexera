@@ -189,6 +189,8 @@
         grip: false,
         attrs: {
           'data-dashboard-target': 'file',
+          'data-dashboard-card-id': item.firstCardId || null,
+          'data-dashboard-column-index': item.firstColumnIndex != null ? String(item.firstColumnIndex) : null,
           'data-dashboard-status': String(item.status || 'unknown').trim().toLowerCase() || 'unknown',
           title: dashboardInventoryTooltip(item) || null
         }

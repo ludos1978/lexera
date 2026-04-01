@@ -1761,7 +1761,7 @@ var LexeraOrderHelpers = (function () {
     return normalized;
   }
 
-  function appendDashboardFileGroup(store, kind, rawPath, contextLabel) {
+  function appendDashboardFileGroup(store, kind, rawPath, contextLabel, locationData) {
     var normalizedPath = normalizeDashboardFilePath(rawPath);
     if (!normalizedPath) return;
     var key = kind + '|' + normalizedPath.toLowerCase();
@@ -1773,6 +1773,8 @@ var LexeraOrderHelpers = (function () {
         path: normalizedPath,
         count: 0,
         firstContextLabel: contextLabel || '',
+        firstCardId: (locationData && locationData.cardId) || null,
+        firstColumnIndex: (locationData && locationData.columnIndex != null) ? locationData.columnIndex : null,
         extension: ext,
         mediaCategory: mediaCategory
       };
@@ -1821,27 +1823,29 @@ var LexeraOrderHelpers = (function () {
           if (!col) continue;
           var contextLabel = getDashboardInventoryContextLabel(col, visibleIndex);
           var includePath = getColumnIncludeSourcePath(col);
-          if (includePath) appendDashboardFileGroup(includeStore, 'include', includePath, contextLabel);
+          if (includePath) appendDashboardFileGroup(includeStore, 'include', includePath, contextLabel, { cardId: null, columnIndex: visibleIndex });
 
           var cards = Array.isArray(col.cards) ? col.cards : [];
           for (var cardIdx = 0; cardIdx < cards.length; cardIdx++) {
-            var content = getDashboardResolvedCardContent(col, cards[cardIdx]);
+            var card = cards[cardIdx];
+            var content = getDashboardResolvedCardContent(col, card);
             if (!content) continue;
+            var cardLocation = { cardId: (card && card.id) ? String(card.id) : null, columnIndex: visibleIndex };
 
             String(content).replace(/!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g, function (_match, _alt, rawTarget) {
               var parsed = _callDep('parseMarkdownTarget', rawTarget);
-              appendDashboardFileGroup(embedStore, 'embed', parsed && parsed.path ? parsed.path : rawTarget, contextLabel);
+              appendDashboardFileGroup(embedStore, 'embed', parsed && parsed.path ? parsed.path : rawTarget, contextLabel, cardLocation);
               return _match;
             });
 
             String(content).replace(/(^|[^!])\[([^\]]+)\]\(([^)]+)\)/g, function (_match, _prefix, _label, rawTarget) {
               var parsed = _callDep('parseMarkdownTarget', rawTarget);
-              appendDashboardFileGroup(embedStore, 'embed', parsed && parsed.path ? parsed.path : rawTarget, contextLabel);
+              appendDashboardFileGroup(embedStore, 'embed', parsed && parsed.path ? parsed.path : rawTarget, contextLabel, cardLocation);
               return _match;
             });
 
             String(content).replace(/!!!include\(([^)]+)\)!!!/g, function (_match, rawIncludePath) {
-              appendDashboardFileGroup(includeStore, 'include', rawIncludePath, contextLabel);
+              appendDashboardFileGroup(includeStore, 'include', rawIncludePath, contextLabel, cardLocation);
               return _match;
             });
           }
@@ -1890,11 +1894,18 @@ var LexeraOrderHelpers = (function () {
       '.include-link-container[data-file-path]'
     ].join(', ');
 
+    function domElementLocation(el) {
+      var cardEl = el && typeof el.closest === 'function' ? el.closest('.card') : null;
+      var cardId = cardEl ? (cardEl.getAttribute('data-card-id') || null) : null;
+      var colIdx = cardEl ? parseInt(cardEl.getAttribute('data-col-index'), 10) : NaN;
+      return { cardId: cardId || null, columnIndex: isNaN(colIdx) ? null : colIdx };
+    }
+
     var embedEls = container.querySelectorAll(embedSelector);
     for (var embedIdx = 0; embedIdx < embedEls.length; embedIdx++) {
       var embedEl = embedEls[embedIdx];
       var embedPath = typeof embedEl.getAttribute === 'function' ? embedEl.getAttribute('data-file-path') || '' : '';
-      appendDashboardFileGroup(embedStore, 'embed', embedPath, getDashboardInventoryContextLabelFromElement(embedEl));
+      appendDashboardFileGroup(embedStore, 'embed', embedPath, getDashboardInventoryContextLabelFromElement(embedEl), domElementLocation(embedEl));
     }
 
     var includeEls = container.querySelectorAll(includeSelector);
@@ -1903,7 +1914,7 @@ var LexeraOrderHelpers = (function () {
       var includePath = typeof includeEl.getAttribute === 'function'
         ? (includeEl.getAttribute('data-include-path') || includeEl.getAttribute('data-file-path') || '')
         : '';
-      appendDashboardFileGroup(includeStore, 'include', includePath, getDashboardInventoryContextLabelFromElement(includeEl));
+      appendDashboardFileGroup(includeStore, 'include', includePath, getDashboardInventoryContextLabelFromElement(includeEl), domElementLocation(includeEl));
     }
 
     return {
@@ -1948,6 +1959,19 @@ var LexeraOrderHelpers = (function () {
       if (target === 'result') {
         var navResult = _callDep('getDashboardTreeApi').buildDashboardNavResultFromTreeNode(node);
         if (navResult) _callDep('navigateToSearchResult', navResult);
+        return;
+      }
+      if (target === 'file') {
+        var fileBoardId = _dep('activeBoardId') || '';
+        var fileCardId = String(node.getAttribute('data-dashboard-card-id') || '').trim() || null;
+        var fileColIndex = parseInt(node.getAttribute('data-dashboard-column-index'), 10);
+        if (fileBoardId && (fileCardId || !isNaN(fileColIndex))) {
+          _callDep('navigateToSearchResult', {
+            boardId: fileBoardId,
+            cardId: fileCardId,
+            columnIndex: isNaN(fileColIndex) ? null : fileColIndex
+          });
+        }
         return;
       }
       if (target === 'broken') {

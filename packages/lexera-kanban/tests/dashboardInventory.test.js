@@ -127,6 +127,8 @@ describe('dashboard inventory helpers', () => {
         path: 'slides/intro.md',
         count: 2,
         firstContextLabel: 'Slides',
+        firstCardId: null,
+        firstColumnIndex: 0,
         extension: 'md',
         mediaCategory: ''
       },
@@ -135,6 +137,8 @@ describe('dashboard inventory helpers', () => {
         path: 'notes.md',
         count: 1,
         firstContextLabel: 'Notes',
+        firstCardId: null,
+        firstColumnIndex: 1,
         extension: 'md',
         mediaCategory: ''
       }
@@ -183,6 +187,8 @@ describe('dashboard inventory helpers', () => {
         path: 'docs/assets/pic.png',
         count: 1,
         firstContextLabel: 'Imported Notes',
+        firstCardId: null,
+        firstColumnIndex: 0,
         extension: 'png',
         mediaCategory: 'image'
       }
@@ -194,6 +200,8 @@ describe('dashboard inventory helpers', () => {
         path: 'docs/include.md',
         count: 1,
         firstContextLabel: 'Imported Notes',
+        firstCardId: null,
+        firstColumnIndex: 0,
         extension: 'md',
         mediaCategory: ''
       },
@@ -202,6 +210,8 @@ describe('dashboard inventory helpers', () => {
         path: 'docs/nested.md',
         count: 1,
         firstContextLabel: 'Imported Notes',
+        firstCardId: null,
+        firstColumnIndex: 0,
         extension: 'md',
         mediaCategory: ''
       }
@@ -241,6 +251,8 @@ describe('dashboard inventory helpers', () => {
         path: 'slides/plan.pdf',
         count: 1,
         firstContextLabel: 'Attachments',
+        firstCardId: null,
+        firstColumnIndex: 0,
         extension: 'pdf',
         mediaCategory: ''
       },
@@ -249,6 +261,8 @@ describe('dashboard inventory helpers', () => {
         path: 'docs/reference.md',
         count: 1,
         firstContextLabel: 'Attachments',
+        firstCardId: null,
+        firstColumnIndex: 0,
         extension: 'md',
         mediaCategory: ''
       }
@@ -292,6 +306,8 @@ describe('dashboard inventory helpers', () => {
         path: 'docs/spec.pdf',
         count: 1,
         firstContextLabel: 'Attachments',
+        firstCardId: null,
+        firstColumnIndex: 4,
         extension: 'pdf',
         mediaCategory: ''
       },
@@ -300,6 +316,8 @@ describe('dashboard inventory helpers', () => {
         path: 'docs/reference.md',
         count: 1,
         firstContextLabel: 'Attachments',
+        firstCardId: null,
+        firstColumnIndex: 4,
         extension: 'md',
         mediaCategory: ''
       }
@@ -311,6 +329,8 @@ describe('dashboard inventory helpers', () => {
         path: 'notes/include.md',
         count: 1,
         firstContextLabel: 'Attachments',
+        firstCardId: null,
+        firstColumnIndex: null,
         extension: 'md',
         mediaCategory: ''
       },
@@ -319,6 +339,8 @@ describe('dashboard inventory helpers', () => {
         path: 'notes/nested.md',
         count: 1,
         firstContextLabel: 'Attachments',
+        firstCardId: null,
+        firstColumnIndex: null,
         extension: 'md',
         mediaCategory: ''
       }
