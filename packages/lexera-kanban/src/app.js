@@ -293,14 +293,37 @@ var LexeraDashboard = (function () {
     stripLayoutTags: function(title) { return stripLayoutTags(title); },
     getCanvasColumnWidthSpec: function(value) { return getCanvasColumnWidthSpec(value); }
   });
+  var CanvasOps = window.LexeraCanvasOps;
+  if (CanvasOps) CanvasOps.init({
+    getElColumnsContainer: function () { return getElColumnsContainer(); },
+    isCanvasBoardLayout: function () { return isCanvasBoardLayout(); },
+    showNotification: function (msg) { showNotification(msg); },
+    getTagColor: function (tag) { return getTagColor(tag); },
+    getBoardSettingValue: function (k, d) { return getBoardSettingValue(k, d); },
+    normalizeCanvasGridValue: function (value) { return normalizeCanvasGridValue(value); },
+    getCanvasMathApi: function () { return getCanvasMathApi(); },
+    getCanvasViewportApi: function () { return getCanvasViewportApi(); },
+    getCanvasLayoutApi: function () { return getCanvasLayoutApi(); },
+    getScrollBehaviorApi: function () { return getScrollBehaviorApi(); },
+    extractCanvasConnectionSpecs: function (title) { return extractCanvasConnectionSpecs(title); },
+    extractCanvasStackTags: function (title) { return extractCanvasStackTags(title); },
+    getCanvasRenderedStackMetrics: function (stackEl) { return getCanvasRenderedStackMetrics(stackEl); },
+    getCanvasConnectionPath: function (sa, ta) { return getCanvasConnectionPath(sa, ta); },
+    getDefaultCanvasConnectionSide: function (sb, tb, r) { return getDefaultCanvasConnectionSide(sb, tb, r); },
+    resolveCanvasConnectionAnchor: function (b, p, k, f) { return resolveCanvasConnectionAnchor(b, p, k, f); },
+    parseCanvasLayoutNumber: function (v, f) { return parseCanvasLayoutNumber(v, f); },
+    calculateCanvasSurface: function (m, o) { return calculateCanvasSurface(m, o); },
+    resolveCanvasGridStep: function (m, r) { return resolveCanvasGridStep(m, r); },
+    getNextCanvasStackPlacement: function (s) { return getNextCanvasStackPlacement(s); }
+  });
   var CanvasPan = window.LexeraCanvasPan;
   if (CanvasPan) CanvasPan.init({
     getActiveBoardData: function () { return activeBoardData; },
     isCanvasBoardLayout: function () { return isCanvasBoardLayout(); },
     canStartCanvasPointerPan: function (target, button, altKey) { return canStartCanvasPointerPan(target, button, altKey); },
     getElColumnsContainer: function () { return getElColumnsContainer(); },
-    getCanvasPanX: function () { return $canvasPanX; },
-    getCanvasPanY: function () { return $canvasPanY; },
+    getCanvasPanX: function () { return getCanvasOpsApi().getCanvasPanX(); },
+    getCanvasPanY: function () { return getCanvasOpsApi().getCanvasPanY(); },
     applyCanvasPan: function (panX, panY) { applyCanvasPan(panX, panY); }
   });
   if (window.BoardSearchReplace) window.BoardSearchReplace.init({
@@ -2327,7 +2350,7 @@ var LexeraDashboard = (function () {
     // Reset canvas zoom and pan only when switching to a different board.
     // Reloading the same board (e.g. poll, save-then-poll) must preserve viewport.
     if (isBoardSwitch) {
-      if ($canvasZoom !== 1) applyCanvasZoom(1);
+      if (getCanvasOpsApi().getCanvasZoom() !== 1) applyCanvasZoom(1);
       resetCanvasPan();
     }
     var loadStage = 'start';
@@ -6280,19 +6303,7 @@ var LexeraDashboard = (function () {
     }
   });
 
-  var $canvasZoom = 1;
-  var $canvasPanX = 0;
-  var $canvasPanY = 0;
-  var CANVAS_DEFAULT_STACK_X = 24;
-  var CANVAS_DEFAULT_STACK_Y = 24;
-  var CANVAS_DEFAULT_STACK_W = 300;
-  var CANVAS_DEFAULT_STACK_H = 220;
-  var CANVAS_STACK_SPACING = 28;
-  var CANVAS_ROW_PADDING = 40;
-  var CANVAS_MIN_ROW_WIDTH = 960;
-  var CANVAS_MIN_ROW_HEIGHT = 640;
-  var CANVAS_SURFACE_OVERSCAN_X = Math.floor(CANVAS_MIN_ROW_WIDTH / 2);
-  var CANVAS_SURFACE_OVERSCAN_Y = Math.floor(CANVAS_MIN_ROW_HEIGHT / 2);
+  // Canvas state is owned by LexeraCanvasOps
 
   function getCanvasMathApi() {
     if (typeof globalThis !== 'undefined' && globalThis.LexeraCanvasMath) return globalThis.LexeraCanvasMath;
@@ -6392,6 +6403,11 @@ var LexeraDashboard = (function () {
       stripHtmlComments: stripHtmlComments
     });
     return _canvasModeHelpers;
+  }
+
+  function getCanvasOpsApi() {
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraCanvasOps) return globalThis.LexeraCanvasOps;
+    throw new Error('LexeraCanvasOps is unavailable');
   }
 
   function getCanvasViewportApi() {
@@ -6519,55 +6535,22 @@ var LexeraDashboard = (function () {
   }
 
   function getCanvasSceneElement(rowContent, createIfMissing) {
-    if (!rowContent || typeof rowContent.querySelector !== 'function') return null;
-    var scene = rowContent.querySelector(':scope > .canvas-scene');
-    if (!scene && createIfMissing && typeof document !== 'undefined' && document.createElement) {
-      scene = document.createElement('div');
-      scene.className = 'canvas-scene';
-      rowContent.insertBefore(scene, rowContent.firstChild);
-    }
-    return scene;
+    return getCanvasOpsApi().getCanvasSceneElement(rowContent, createIfMissing);
   }
 
   function getCanvasStackElements(rowContent) {
-    if (!rowContent || typeof rowContent.querySelectorAll !== 'function') return [];
-    var scene = getCanvasSceneElement(rowContent, false);
-    if (scene && typeof scene.querySelectorAll === 'function') {
-      return scene.querySelectorAll(':scope > .board-stack');
-    }
-    return rowContent.querySelectorAll(':scope > .board-stack');
+    return getCanvasOpsApi().getCanvasStackElements(rowContent);
   }
 
   function getCanvasConnectionLayerElement(rowContent) {
-    var scene = getCanvasSceneElement(rowContent, false);
-    var root = scene || rowContent;
-    if (!root || typeof root.querySelector !== 'function') return null;
-    return root.querySelector(':scope > .canvas-connection-layer');
+    return getCanvasOpsApi().getCanvasConnectionLayerElement(rowContent);
   }
 
   function getCanvasRenderedStackMetrics(stackEl) {
     return getCanvasMathApi().getCanvasRenderedStackMetrics(stackEl);
   }
 
-  function roundUpCanvasUnit(value, step) {
-    var numericValue = parseCanvasLayoutNumber(value, 0);
-    var numericStep = Math.max(1, parseCanvasLayoutNumber(step, 1));
-    return Math.ceil(numericValue / numericStep) * numericStep;
-  }
-
-  function resolveCanvasLargestElementSize(stackMetrics) {
-    var metrics = Array.isArray(stackMetrics) ? stackMetrics : [];
-    var largest = Math.max(CANVAS_DEFAULT_STACK_W, CANVAS_DEFAULT_STACK_H);
-    for (var i = 0; i < metrics.length; i++) {
-      var metric = metrics[i] || {};
-      largest = Math.max(
-        largest,
-        Math.max(0, parseCanvasLayoutNumber(metric.w, 0)),
-        Math.max(0, parseCanvasLayoutNumber(metric.h, 0))
-      );
-    }
-    return largest;
-  }
+  // roundUpCanvasUnit and resolveCanvasLargestElementSize moved to LexeraCanvasMath
 
   function resolveCanvasGridStep(stackMetrics, rawValue) {
     return getCanvasMathApi().resolveCanvasGridStep(stackMetrics, rawValue);
@@ -6582,253 +6565,49 @@ var LexeraDashboard = (function () {
   }
 
   function applyDefaultCanvasPlacementToStack(row, stack) {
-    if (!isCanvasBoardLayout() || !row || !stack) return stack;
-    if (!stack.params) stack.params = {};
-    if (stack.params.x != null || stack.params.y != null) return stack;
-    var placement = getNextCanvasStackPlacement(row.stacks || []);
-    stack.params.x = String(placement.x);
-    stack.params.y = String(placement.y);
-    return stack;
+    return getCanvasOpsApi().applyDefaultCanvasPlacementToStack(row, stack);
   }
 
   function updateCanvasGridBackground(rowContent, gridStep) {
-    if (!rowContent) return;
-    if (gridStep <= 0) {
-      rowContent.style.backgroundImage = 'none';
-      return;
-    }
-    var cs = getComputedStyle(rowContent);
-    var borderColor = cs.getPropertyValue('--border').trim() || '#888';
-    var size = gridStep;
-    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '">'
-      + '<rect x="0" y="0" width="1" height="' + size + '" fill="' + borderColor + '" opacity="0.34"/>'
-      + '<rect x="0" y="0" width="' + size + '" height="1" fill="' + borderColor + '" opacity="0.34"/>'
-      + '</svg>';
-    rowContent.style.backgroundImage = 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+    getCanvasOpsApi().updateCanvasGridBackground(rowContent, gridStep);
   }
 
   function syncCanvasRowConnections(rowContent) {
-    if (!rowContent || !rowContent.querySelectorAll) return;
-    var existingLayer = getCanvasConnectionLayerElement(rowContent);
-    if (existingLayer) existingLayer.remove();
-
-    var stackEls = getCanvasStackElements(rowContent);
-    if (!stackEls.length) return;
-
-    var scene = getCanvasSceneElement(rowContent, false);
-    var layerRoot = scene || rowContent;
-
-    var stackEntries = [];
-    var tagIndex = {};
-    for (var i = 0; i < stackEls.length; i++) {
-      var stackEl = stackEls[i];
-      var title = stackEl.getAttribute('data-stack-title') || '';
-      var box = getCanvasRenderedStackMetrics(stackEl);
-      var entry = {
-        el: stackEl,
-        title: title,
-        box: box,
-        tags: extractCanvasStackTags(title)
-      };
-      stackEntries.push(entry);
-      for (var t = 0; t < entry.tags.length; t++) {
-        if (!tagIndex[entry.tags[t]]) tagIndex[entry.tags[t]] = entry;
-      }
-    }
-
-    var zoom = $canvasZoom || 1;
-    var width = Math.max(
-      parseCanvasLayoutNumber(scene && scene.style.width, CANVAS_MIN_ROW_WIDTH),
-      layerRoot.scrollWidth || 0,
-      (rowContent.clientWidth || 0) / zoom
-    );
-    var height = Math.max(
-      parseCanvasLayoutNumber(scene && scene.style.height, CANVAS_MIN_ROW_HEIGHT),
-      layerRoot.scrollHeight || 0,
-      (rowContent.clientHeight || 0) / zoom
-    );
-    var svgNs = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(svgNs, 'svg');
-    svg.setAttribute('class', 'canvas-connection-layer');
-    svg.setAttribute('width', String(width));
-    svg.setAttribute('height', String(height));
-    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
-    svg.setAttribute('aria-hidden', 'true');
-
-    var defs = document.createElementNS(svgNs, 'defs');
-    var marker = document.createElementNS(svgNs, 'marker');
-    marker.setAttribute('id', 'canvas-connection-arrow');
-    marker.setAttribute('viewBox', '0 0 10 10');
-    marker.setAttribute('refX', '9');
-    marker.setAttribute('refY', '5');
-    marker.setAttribute('markerWidth', '7');
-    marker.setAttribute('markerHeight', '7');
-    marker.setAttribute('orient', 'auto-start-reverse');
-    var markerPath = document.createElementNS(svgNs, 'path');
-    markerPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
-    markerPath.setAttribute('fill', 'context-stroke');
-    marker.appendChild(markerPath);
-    defs.appendChild(marker);
-    svg.appendChild(defs);
-
-    var hasPaths = false;
-    for (var s = 0; s < stackEntries.length; s++) {
-      var sourceEntry = stackEntries[s];
-      var specs = extractCanvasConnectionSpecs(sourceEntry.title);
-      for (var c = 0; c < specs.length; c++) {
-        var spec = specs[c];
-        var targetEntry = tagIndex[spec.targetTag];
-        if (!targetEntry || targetEntry === sourceEntry) continue;
-        var sourceFallbackSide = getDefaultCanvasConnectionSide(sourceEntry.box, targetEntry.box, 'source');
-        var targetFallbackSide = getDefaultCanvasConnectionSide(sourceEntry.box, targetEntry.box, 'target');
-        var sourceAnchor = resolveCanvasConnectionAnchor(sourceEntry.box, spec.params, {
-          side: 'source',
-          aliasSide: 'from',
-          position: 'sourcePosition',
-          x: spec.params.sourceX != null ? 'sourceX' : 'sx',
-          y: spec.params.sourceY != null ? 'sourceY' : 'sy'
-        }, sourceFallbackSide);
-        var targetAnchor = resolveCanvasConnectionAnchor(targetEntry.box, spec.params, {
-          side: 'target',
-          aliasSide: 'to',
-          position: 'targetPosition',
-          x: spec.params.targetX != null ? 'targetX' : 'tx',
-          y: spec.params.targetY != null ? 'targetY' : 'ty'
-        }, targetFallbackSide);
-        var path = document.createElementNS(svgNs, 'path');
-        path.setAttribute('class', 'canvas-connection-path');
-        path.setAttribute('d', getCanvasConnectionPath(sourceAnchor, targetAnchor));
-        path.setAttribute('marker-end', 'url(#canvas-connection-arrow)');
-        path.setAttribute('stroke', getTagColor(spec.targetTag));
-        svg.appendChild(path);
-        hasPaths = true;
-      }
-    }
-
-    if (!hasPaths) return;
-    layerRoot.insertBefore(svg, layerRoot.firstChild);
+    getCanvasOpsApi().syncCanvasRowConnections(rowContent);
   }
 
   function syncCanvasRowBounds(root) {
-    if (!isCanvasBoardLayout()) return;
-    var container = root && typeof root.querySelectorAll === 'function' ? root : getElColumnsContainer();
-    if (!container || !container.querySelectorAll) return;
-    var rowContents = container.querySelectorAll('.board-row-content');
-    for (var i = 0; i < rowContents.length; i++) {
-      var rowContent = rowContents[i];
-      var scene = getCanvasSceneElement(rowContent, true);
-      var stackEls = getCanvasStackElements(rowContent);
-      var metrics = [];
-      for (var s = 0; s < stackEls.length; s++) {
-        metrics.push(getCanvasRenderedStackMetrics(stackEls[s]));
-      }
-      var gridMode = normalizeCanvasGridValue(getBoardSettingValue('canvasGrid', '32'));
-      var surface = calculateCanvasSurface(metrics);
-      var gridStep = resolveCanvasGridStep(metrics, gridMode);
-      if (scene) {
-        var stableOffsetX = container.__canvasSceneOffsetX != null ? container.__canvasSceneOffsetX : surface.offsetX;
-        var stableOffsetY = container.__canvasSceneOffsetY != null ? container.__canvasSceneOffsetY : surface.offsetY;
-        container.__canvasSceneOffsetX = stableOffsetX;
-        container.__canvasSceneOffsetY = stableOffsetY;
-        scene.style.left = stableOffsetX + 'px';
-        scene.style.top = stableOffsetY + 'px';
-        scene.style.width = surface.width + 'px';
-        scene.style.height = surface.height + 'px';
-      }
-      rowContent.style.setProperty('--canvas-grid-size', Math.max(1, gridStep) + 'px');
-      updateCanvasGridBackground(rowContent, gridStep);
-      rowContent.style.setProperty('--canvas-scene-offset-x', (container.__canvasSceneOffsetX || 0) + 'px');
-      rowContent.style.setProperty('--canvas-scene-offset-y', (container.__canvasSceneOffsetY || 0) + 'px');
-      rowContent.setAttribute('data-canvas-grid', gridMode);
-      rowContent.__canvasSurface = surface;
-      syncCanvasRowConnections(rowContent);
-    }
-    updateCanvasScrollIndicators(container);
-    scheduleCanvasFocusStacksControlSync(container);
+    getCanvasOpsApi().syncCanvasRowBounds(root);
   }
 
   function scheduleCanvasRowBoundsSync(root) {
-    var container = root && typeof root.querySelectorAll === 'function' ? root : getElColumnsContainer();
-    if (!container) return;
-    if (container.__canvasBoundsSyncScheduled) return;
-    container.__canvasBoundsSyncScheduled = true;
-    requestAnimationFrame(function () {
-      container.__canvasBoundsSyncScheduled = false;
-      if (!container.isConnected) return;
-      syncCanvasRowBounds(container);
-    });
+    getCanvasOpsApi().scheduleCanvasRowBoundsSync(root);
   }
 
   function updateCanvasScrollIndicators(container) {
-    if (!container) container = getElColumnsContainer();
-    if (!container) return;
-    var hBar = container.querySelector('.canvas-scroll-indicator-h');
-    var vBar = container.querySelector('.canvas-scroll-indicator-v');
-    if (!hBar || !vBar) return;
-    var rowContent = container.querySelector('.board-row-content');
-    var surface = rowContent && rowContent.__canvasSurface;
-    if (!surface) { hBar.style.opacity = '0'; vBar.style.opacity = '0'; return; }
-    var zoom = $canvasZoom || 1;
-    var viewW = container.clientWidth || 1;
-    var viewH = container.clientHeight || 1;
-    var visW = viewW / zoom;
-    var visH = viewH / zoom;
-    var visLeft = (-surface.offsetX - $canvasPanX) / zoom;
-    var visTop = (-surface.offsetY - $canvasPanY) / zoom;
-    var totalLeft = Math.min(surface.left, visLeft);
-    var totalTop = Math.min(surface.top, visTop);
-    var totalW = (Math.max(surface.left + surface.width, visLeft + visW) - totalLeft) || 1;
-    var totalH = (Math.max(surface.top + surface.height, visTop + visH) - totalTop) || 1;
-    var thumbLeft = (visLeft - totalLeft) / totalW;
-    var thumbWidth = visW / totalW;
-    var thumbTop = (visTop - totalTop) / totalH;
-    var thumbHeight = visH / totalH;
-    if (thumbWidth >= 0.98 && thumbHeight >= 0.98) {
-      hBar.style.opacity = '0';
-      vBar.style.opacity = '0';
-      return;
-    }
-    var barMargin = 8;
-    var trackW = viewW - barMargin * 2;
-    var trackH = viewH - barMargin * 2;
-    hBar.style.left = Math.round(barMargin + thumbLeft * trackW) + 'px';
-    hBar.style.width = Math.max(24, Math.round(thumbWidth * trackW)) + 'px';
-    vBar.style.top = Math.round(barMargin + thumbTop * trackH) + 'px';
-    vBar.style.height = Math.max(24, Math.round(thumbHeight * trackH)) + 'px';
-    hBar.style.removeProperty('opacity');
-    vBar.style.removeProperty('opacity');
+    getCanvasOpsApi().updateCanvasScrollIndicators(container);
   }
 
   function ensureCanvasScrollIndicators(container) {
-    if (!container) return;
-    if (container.querySelector('.canvas-scroll-indicator-h')) return;
-    var hBar = document.createElement('div');
-    hBar.className = 'canvas-scroll-indicator canvas-scroll-indicator-h';
-    var vBar = document.createElement('div');
-    vBar.className = 'canvas-scroll-indicator canvas-scroll-indicator-v';
-    container.appendChild(hBar);
-    container.appendChild(vBar);
+    getCanvasOpsApi().ensureCanvasScrollIndicators(container);
   }
 
   function removeCanvasScrollIndicators() {
-    var container = getElColumnsContainer();
-    if (!container) return;
-    var indicators = container.querySelectorAll('.canvas-scroll-indicator');
-    for (var i = 0; i < indicators.length; i++) {
-      indicators[i].remove();
-    }
+    getCanvasOpsApi().removeCanvasScrollIndicators();
   }
 
   function getCanvasRowContentMetrics(rowContent) {
+    var ops = getCanvasOpsApi();
     return getCanvasMathApi().getCanvasRowContentMetrics(rowContent, {
-      zoom: $canvasZoom || 1,
-      panX: $canvasPanX,
-      panY: $canvasPanY,
+      zoom: ops.getCanvasZoom() || 1,
+      panX: ops.getCanvasPanX(),
+      panY: ops.getCanvasPanY(),
       container: getElColumnsContainer()
     });
   }
 
   function getCanvasPositionFromViewportPoint(rowContent, clientX, clientY, grabOffsetX, grabOffsetY) {
+    var ops = getCanvasOpsApi();
     return getCanvasMathApi().getCanvasPositionFromViewportPoint(
       rowContent,
       clientX,
@@ -6836,194 +6615,64 @@ var LexeraDashboard = (function () {
       grabOffsetX,
       grabOffsetY,
       {
-        zoom: $canvasZoom || 1,
-        panX: $canvasPanX,
-        panY: $canvasPanY,
+        zoom: ops.getCanvasZoom() || 1,
+        panX: ops.getCanvasPanX(),
+        panY: ops.getCanvasPanY(),
         container: getElColumnsContainer()
       }
     );
   }
 
   function getPrimaryCanvasRowContent(container) {
-    if (!container || typeof container.querySelector !== 'function') return null;
-    return container.querySelector('.board-row-content');
+    return getCanvasOpsApi().getPrimaryCanvasRowContent(container);
   }
 
   function collectCanvasStackMetrics(rowContent) {
-    var stackEls = getCanvasStackElements(rowContent);
-    var metrics = [];
-    for (var i = 0; i < stackEls.length; i++) {
-      metrics.push(getCanvasRenderedStackMetrics(stackEls[i]));
-    }
-    return metrics;
+    return getCanvasOpsApi().collectCanvasStackMetrics(rowContent);
   }
 
   function collectRenderedCanvasStackRects(rowContent) {
-    var stackEls = getCanvasStackElements(rowContent);
-    var rects = [];
-    for (var i = 0; i < stackEls.length; i++) {
-      var rect = stackEls[i].getBoundingClientRect();
-      if (!rect || rect.width <= 0 || rect.height <= 0) continue;
-      rects.push({
-        left: rect.left,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom
-      });
-    }
-    return rects;
+    return getCanvasOpsApi().collectRenderedCanvasStackRects(rowContent);
   }
 
   function ensureCanvasFocusStacksControl(container) {
-    if (!container || typeof document === 'undefined' || !document.createElement) return null;
-    var control = container.querySelector('.canvas-focus-stacks-control');
-    if (control) return control;
-    control = document.createElement('div');
-    control.className = 'canvas-focus-stacks-control';
-    control.hidden = true;
-    var button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'board-action-btn canvas-focus-stacks-btn';
-    button.textContent = 'Focus stacks';
-    button.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      focusCanvasStacks();
-    });
-    control.appendChild(button);
-    container.appendChild(control);
-    return control;
+    return getCanvasOpsApi().ensureCanvasFocusStacksControl(container);
   }
 
   function removeCanvasFocusStacksControl() {
-    var container = getElColumnsContainer();
-    if (!container) return;
-    var control = container.querySelector('.canvas-focus-stacks-control');
-    if (control) control.remove();
+    getCanvasOpsApi().removeCanvasFocusStacksControl();
   }
 
   function updateCanvasFocusStacksControl(container) {
-    if (!container) container = getElColumnsContainer();
-    if (!container) return;
-    if (!isCanvasBoardLayout()) {
-      removeCanvasFocusStacksControl();
-      return;
-    }
-    var rowContent = getPrimaryCanvasRowContent(container);
-    if (!rowContent) {
-      removeCanvasFocusStacksControl();
-      return;
-    }
-    var stackRects = collectRenderedCanvasStackRects(rowContent);
-    if (!stackRects.length) {
-      removeCanvasFocusStacksControl();
-      return;
-    }
-    var control = ensureCanvasFocusStacksControl(container);
-    if (!control) return;
-    var viewportRect = container.getBoundingClientRect();
-    var hasVisibleStack = getCanvasViewportApi().hasAnyVisibleCanvasStack(stackRects, viewportRect);
-    control.hidden = hasVisibleStack;
+    getCanvasOpsApi().updateCanvasFocusStacksControl(container);
   }
 
   function scheduleCanvasFocusStacksControlSync(container) {
-    if (!container) container = getElColumnsContainer();
-    if (!container || container.__canvasFocusStacksControlScheduled) return;
-    container.__canvasFocusStacksControlScheduled = true;
-    requestAnimationFrame(function () {
-      container.__canvasFocusStacksControlScheduled = false;
-      if (!container.isConnected) return;
-      updateCanvasFocusStacksControl(container);
-    });
+    getCanvasOpsApi().scheduleCanvasFocusStacksControlSync(container);
   }
 
   function focusCanvasStacks() {
-    var container = getElColumnsContainer();
-    if (!container || !isCanvasBoardLayout()) return;
-    var rowContent = getPrimaryCanvasRowContent(container);
-    if (!rowContent) return;
-    var stackMetrics = collectCanvasStackMetrics(rowContent);
-    if (!stackMetrics.length) return;
-    var surface = rowContent.__canvasSurface || calculateCanvasSurface(stackMetrics);
-    var focusViewport = getCanvasViewportApi().calculateCanvasFocusViewport(
-      stackMetrics,
-      {
-        width: container.clientWidth || 0,
-        height: container.clientHeight || 0
-      },
-      {
-        padding: 36,
-        minZoom: 0.25,
-        maxZoom: 3,
-        surfaceOffsetX: container.__canvasSceneOffsetX != null ? container.__canvasSceneOffsetX : (surface ? surface.offsetX : 0),
-        surfaceOffsetY: container.__canvasSceneOffsetY != null ? container.__canvasSceneOffsetY : (surface ? surface.offsetY : 0)
-      }
-    );
-    if (!focusViewport) return;
-    applyCanvasZoom(focusViewport.zoom);
-    applyCanvasPan(focusViewport.panX, focusViewport.panY);
-    scheduleCanvasFocusStacksControlSync(container);
+    getCanvasOpsApi().focusCanvasStacks();
   }
 
   function applyCanvasPan(panX, panY) {
-    $canvasPanX = panX;
-    $canvasPanY = panY;
-    var container = getElColumnsContainer();
-    if (!container) return;
-    container.style.setProperty('--canvas-pan-x', panX + 'px');
-    container.style.setProperty('--canvas-pan-y', panY + 'px');
-    updateCanvasScrollIndicators(container);
-    scheduleCanvasFocusStacksControlSync(container);
+    getCanvasOpsApi().applyCanvasPan(panX, panY);
   }
 
   function resetCanvasPan() {
-    $canvasPanX = 0;
-    $canvasPanY = 0;
-    var container = getElColumnsContainer();
-    if (container) {
-      container.style.setProperty('--canvas-pan-x', '0px');
-      container.style.setProperty('--canvas-pan-y', '0px');
-      delete container.__canvasSceneOffsetX;
-      delete container.__canvasSceneOffsetY;
-    }
+    getCanvasOpsApi().resetCanvasPan();
   }
 
   function buildCanvasZoomMenuItems() {
-    var levels = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
-    return levels.map(function (z) {
-      return { id: 'set-canvas-zoom:' + z, label: Math.round(z * 100) + '%', checked: Math.abs($canvasZoom - z) < 0.01 };
-    });
+    return getCanvasOpsApi().buildCanvasZoomMenuItems();
   }
 
   function applyCanvasZoom(zoom, localOriginX, localOriginY) {
-    var container = getElColumnsContainer();
-    if (!container) return;
-    var oldZoom = $canvasZoom;
-    $canvasZoom = zoom;
-    container.style.zoom = '';
-    container.style.setProperty('--canvas-zoom', String(zoom));
-    // Adjust pan to keep the point under the cursor stationary
-    // Screen position of canvas point cx: containerLeft + offsetX + panX + cx * zoom
-    // So origin relative to transform base: localOriginX - offsetX
-    if (localOriginX != null && localOriginY != null && oldZoom !== zoom) {
-      var ratio = zoom / oldZoom;
-      var offsetX = container.__canvasSceneOffsetX || 0;
-      var offsetY = container.__canvasSceneOffsetY || 0;
-      var newPanX = $canvasPanX * ratio + (localOriginX - offsetX) * (1 - ratio);
-      var newPanY = $canvasPanY * ratio + (localOriginY - offsetY) * (1 - ratio);
-      applyCanvasPan(newPanX, newPanY);
-    }
-    scheduleCanvasRowBoundsSync(container);
-    scheduleCanvasFocusStacksControlSync(container);
-    showNotification('Canvas Zoom ' + Math.round(zoom * 100) + '%');
+    getCanvasOpsApi().applyCanvasZoom(zoom, localOriginX, localOriginY);
   }
 
   function nudgeCanvasZoom(delta, localOriginX, localOriginY) {
-    var next = Math.round(($canvasZoom + delta) * 10000) / 10000;
-    if (next < 0.25) next = 0.25;
-    if (next > 3) next = 3;
-    if (next === $canvasZoom) return;
-    applyCanvasZoom(next, localOriginX, localOriginY);
+    getCanvasOpsApi().nudgeCanvasZoom(delta, localOriginX, localOriginY);
   }
 
   function canStartCanvasPointerPan(target, button, altKey) {
@@ -7115,7 +6764,7 @@ var LexeraDashboard = (function () {
   }
 
   function getCanvasZoomStep(delta) {
-    return getScrollBehaviorApi().scaleZoomDelta(delta, getBoardSettingValue, { fallback: '1', precision: 4 });
+    return getCanvasOpsApi().getCanvasZoomStep(delta);
   }
 
   function normalizeWheelDeltaToPixels(delta, deltaMode) {
@@ -7528,7 +7177,7 @@ var LexeraDashboard = (function () {
     var willBeCanvas = getCurrentBoardLayout() === 'canvas';
     // Reset canvas zoom and pan only when actually leaving canvas mode
     if (wasCanvas && !willBeCanvas) {
-      if ($canvasZoom !== 1) applyCanvasZoom(1);
+      if (getCanvasOpsApi().getCanvasZoom() !== 1) applyCanvasZoom(1);
       resetCanvasPan();
       removeCanvasScrollIndicators();
       removeCanvasFocusStacksControl();
