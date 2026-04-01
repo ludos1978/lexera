@@ -482,11 +482,7 @@ Source: GLM5 analysis comparing V1 (VS Code extension, `src/`) with V2 (standalo
 
 #### High Impact
 
-1. **Dashboard Scanner** — Port `src/dashboard/DashboardScanner.ts` (~700 LOC) to `lexera-core/src/dashboard/`
-   - Temporal tag extraction and resolution
-   - Upcoming items with timeframe filtering
-   - Recurring task classification (overdue, outdated, resetToRepeat, future)
-   - Undated task collection, calendar event detection
+1. ~~**Dashboard Scanner**~~ (ef08441f) — `lexera-core/src/dashboard.rs` + `GET /boards/{id}/scan`; yearless recurring classification (overdue/outdated/resetToRepeat/future), next-occurrence adjustment, undated sub-task collection, column gating, tag summary; 18 unit tests
 
 2. ~~**Gather Query Engine**~~ (dffc9333) — `lexera-core/src/gather/mod.rs` + `POST /boards/{id}/gather`; `?#tag`, `?@temporal`, `?.today`, `?@KW10`, weekday, `#ungathered`, `#sticky`, `#sort-bydate/byname`; 8 unit tests
 
