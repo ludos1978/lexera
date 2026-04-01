@@ -6,7 +6,8 @@
 - [x] ~~drag/drop column + card fix~~ (07712fc2) — geometry cache after drop zones, hide source card during async move
 - [x] ~~workspace config fixes~~ (75e99ecd) — calendar slug removed, responsive layout, Enter-key save
 
-- [x] ~~dashboard layout collapse fixed~~ (952eff48) — enforce dashboardMin in sidebar resize, prevent flex:0 0 0px
+- [x] ~~dashboard layout collapse fixed~~ (edd8cf2b) — dashboard always flex:1 1 auto, never fixed pixel height
+- [ ] **Audit all views for unnecessary fixed-pixel sizing** — check sidebar, panels, docks, and shell views for inline `flex: 0 0 Npx` or `height: Npx` that override natural flex layout. Remove any that aren't strictly needed for user-initiated resize.
 
 ## Code Quality
 - [ ] **App.js modularization** — **10,832 lines** (down from 25K+). All major sections extracted. Remaining is core board rendering + event wiring.
