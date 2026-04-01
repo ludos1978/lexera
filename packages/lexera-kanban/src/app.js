@@ -7817,6 +7817,9 @@ var LexeraDashboard = (function () {
     } else {
       cardsContainer.insertBefore(movedEl, cards[toVisibleIdx]);
     }
+    // Clear leftover drag styling so the card is visible at its new position
+    movedEl.classList.remove('dragging');
+    movedEl.style.display = '';
     // Re-index all cards in this column
     var allCards = cardsContainer.querySelectorAll('.card');
     for (var k = 0; k < allCards.length; k++) {
@@ -8300,6 +8303,7 @@ var LexeraDashboard = (function () {
             var layoutSyncFrame = 0;
             var lastObservedWidth = null;
             var observer = new ResizeObserver(function (entries) {
+              if (el.classList.contains('resizing')) return;
               var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
               if (ptrDrag) return; // ignore resize during drag
               var entry = entries[0];
@@ -8421,16 +8425,37 @@ var LexeraDashboard = (function () {
               e.stopPropagation();
               var startX = e.clientX;
               var startWidth = Math.round(el.getBoundingClientRect().width);
+              var lastWidth = startWidth;
+              var pendingClientX = startX;
+              var resizeFrame = 0;
               el.classList.add('resizing');
               if (resizeHandle.setPointerCapture) {
                 try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) { /* intentional: pointer may already be released */ }
               }
-              function handleMove(moveEvent) {
-                var nextWidth = Math.max(220, Math.round(startWidth + (moveEvent.clientX - startX)));
+              function applyResizeWidth(clientX) {
+                var nextWidth = Math.max(220, Math.round(startWidth + (clientX - startX)));
+                if (nextWidth === lastWidth) return;
+                lastWidth = nextWidth;
                 el.style.width = nextWidth + 'px';
                 scheduleCanvasRowBoundsSync(getElColumnsContainer());
               }
+              function scheduleResizeWidth(clientX) {
+                pendingClientX = clientX;
+                if (resizeFrame) return;
+                resizeFrame = requestAnimationFrame(function () {
+                  resizeFrame = 0;
+                  applyResizeWidth(pendingClientX);
+                });
+              }
+              function handleMove(moveEvent) {
+                scheduleResizeWidth(moveEvent.clientX);
+              }
               function handleUp(upEvent) {
+                if (resizeFrame) {
+                  cancelAnimationFrame(resizeFrame);
+                  resizeFrame = 0;
+                }
+                applyResizeWidth(pendingClientX);
                 el.classList.remove('resizing');
                 if (resizeHandle.releasePointerCapture) {
                   try { resizeHandle.releasePointerCapture(upEvent.pointerId); } catch (_) { /* intentional: pointer may already be released */ }

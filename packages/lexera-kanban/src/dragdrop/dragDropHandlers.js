@@ -494,10 +494,10 @@ var LexeraDragDropHandlers = (function () {
   function startCardDrag(e) {
     var el = cardDrag.el;
     lockBoardLayoutForDrag();
-    cacheDropTargetGeometry();
     startCrossViewBridge('card');
     el.classList.add('dragging');
     _deps.insertDropZoneIndicators('card');
+    cacheDropTargetGeometry();
 
     var ghost = document.createElement('div');
     ghost.className = 'card-drag-ghost';
@@ -606,6 +606,9 @@ var LexeraDragDropHandlers = (function () {
       source.stackIndex = cardDrag.stackIndex;
       source.colIndex = cardDrag.colIndex;
     }
+    // Hide the source card element immediately so it does not flash at the
+    // old position while the async moveCard rebuilds the DOM.
+    if (cardDrag.el) cardDrag.el.style.display = 'none';
     applyCardDropByPoint(source, mx, my);
     cleanupCardDrag();
   }
