@@ -521,7 +521,7 @@ Source: GLM5 analysis comparing V1 (VS Code extension, `src/`) with V2 (standalo
 11. **Keybinding Service** — Configurable keyboard shortcuts (`KeyboardManager` module)
 12. **Diagram Commands** — Mermaid/PlantUML generation (implement via plugin system)
 13. ~~**Archive Commands** — Archive completed cards, bulk archive, date-based archiving~~ DONE: is_completed, archive_completed_cards, archive_cards_by_date (commit 6af948ec)
-14. ~~**Workspace Media Index** — Scan workspace for media files, track usage, autocomplete~~ DONE: WorkspaceMediaFile/Index types, scan_workspace_media(), GET /media/workspace-index (COMMIT_HASH)
+14. ~~**Workspace Media Index** — Scan workspace for media files, track usage, autocomplete~~ DONE: WorkspaceMediaFile/Index types, scan_workspace_media(), GET /media/workspace-index (commit b10cd366)
 15. ~~**iCal Export** — Temporal tag to VEVENT mapping, calendar subscription (`lexera-core/src/export/ical.rs`)~~ DONE: RFC 5545 VCALENDAR/VEVENT, date ranges, categories, status (commit db06564e)
 16. **Webview Update Service** — Debounced updates, message batching (add if performance issues arise)
 17. **PDF/PPTX Export** — Port Python scripts or implement in Rust
