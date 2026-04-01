@@ -2,7 +2,7 @@
 
 > Completed items moved to [todo-archive.md](todo-archive.md)
 
-- [ ] clicking on items found by the dashboard must focus on them. Even if they are a broken include file, just show where it's included!
+- [x] ~~clicking on items found by the dashboard must focus on them. Even if they are a broken include file, just show where it's included!~~ (d491dd5e) — cardIndex passed through navigation chain; Priority-2 col+card index lookup in focusSearchResultCard
 
 - [x] ~~global sync settings in workspace config~~ (01be1d01) — Global Settings node with (?) tooltips, calendar slug noted as unused
 - [x] ~~drag/drop column + card fix~~ (07712fc2) — geometry cache after drop zones, hide source card during async move
