@@ -53,6 +53,10 @@ function loadMutationFunctions() {
   const cmbSource = readFileSync(resolve(srcDir, 'menu', 'contextMenuBuilders.js'), 'utf-8');
   const cmbLines = cmbSource.split('\n');
 
+  // Also load boardSettings.js for functions extracted from app.js
+  const bsSource = readFileSync(resolve(srcDir, 'board', 'boardSettings.js'), 'utf-8');
+  const bsLines = bsSource.split('\n');
+
   // Also load tagColors.js for extracting constants
   const tcSource = readFileSync(resolve(srcDir, 'tagcolors', 'tagColors.js'), 'utf-8');
   const tcLines = tcSource.split('\n');
@@ -102,7 +106,9 @@ function loadMutationFunctions() {
 
   function extractFunctionAny(pattern) {
     // Prefer extracted modules over app.js (which now has delegation stubs)
-    var idx = findLineIn(cmbLines, pattern);
+    var idx = findLineIn(bsLines, pattern);
+    if (idx > 0) return extractFunctionFrom(bsLines, idx);
+    idx = findLineIn(cmbLines, pattern);
     if (idx > 0) return extractFunctionFrom(cmbLines, idx).replace(/\bdeps\./g, '');
     idx = findLineIn(ccmLines, pattern);
     if (idx > 0) return extractFunctionFrom(ccmLines, idx).replace(/\bdeps\./g, '');
@@ -110,7 +116,7 @@ function loadMutationFunctions() {
     if (idx > 0) return extractFunctionFrom(colCtxLines, idx).replace(/\bdeps\./g, '');
     idx = findLineIn(lines, pattern);
     if (idx > 0) return extractFunctionFrom(lines, idx);
-    throw new Error('Could not find in app.js, cardContextMenu.js, columnContextMenu.js, or contextMenuBuilders.js: ' + pattern);
+    throw new Error('Could not find in app.js, cardContextMenu.js, columnContextMenu.js, boardSettings.js, or contextMenuBuilders.js: ' + pattern);
   }
 
   function findLineInTc(pattern) {
@@ -175,7 +181,7 @@ function loadMutationFunctions() {
     extractFunction(findLine('function stripHtmlComments(')),
     extractFunction(findLine('function stripLayoutTags(')),
     extractFunction(findLine('function rebuildTitleWithPreservedComments(')),
-    extractFunction(findLine('function normalizeYamlFrontmatterScalar(')),
+    extractFunctionAny('function normalizeYamlFrontmatterScalar('),
     extractFunction(findLine('function ensureBoardYamlHeaderLines(')),
     extractFunction(findLine('function getYamlFrontmatterValueMap(')),
     extractFunction(findLine('function updateYamlFrontmatterValue(')),
