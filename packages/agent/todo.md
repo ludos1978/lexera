@@ -9,7 +9,7 @@
 - [x] ~~workspace config fixes~~ (75e99ecd) — calendar slug removed, responsive layout, Enter-key save
 
 - [x] ~~dashboard layout collapse fixed~~ (edd8cf2b) — dashboard always flex:1 1 auto, never fixed pixel height
-- [ ] **Audit all views for unnecessary fixed-pixel sizing** — check sidebar, panels, docks, and shell views for inline `flex: 0 0 Npx` or `height: Npx` that override natural flex layout. Remove any that aren't strictly needed for user-initiated resize.
+- [x] ~~**Audit all views for unnecessary fixed-pixel sizing**~~ — audited sidebar (sidebarResize.js), workspace shell docks, canvas layout, app.css, workspaceShell.css. All inline `flex: 0 0 Npx` instances are user-initiated resize values. No problematic fixed-pixel layout overrides found.
 
 ## Code Quality
 - [ ] **App.js modularization** — **10,832 lines** (down from 25K+). All major sections extracted. Remaining is core board rendering + event wiring.
