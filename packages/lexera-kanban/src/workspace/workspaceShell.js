@@ -4124,6 +4124,120 @@
     return true;
   }
 
+  function findCardPositionInBoardData(boardData, cardId) {
+    if (!boardData || !boardData.rows || !cardId) return null;
+    var rows = boardData.rows;
+    for (var r = 0; r < rows.length; r++) {
+      var stacks = rows[r] && rows[r].stacks ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        var columns = stacks[s] && stacks[s].columns ? stacks[s].columns : [];
+        for (var c = 0; c < columns.length; c++) {
+          var cards = columns[c] && columns[c].cards ? columns[c].cards : [];
+          for (var i = 0; i < cards.length; i++) {
+            if (cards[i] && String(cards[i].id) === cardId) {
+              return { rowIndex: r, stackIndex: s, colLocalIndex: c, cardIndex: i };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function unfoldPathInContainer(container, rowIndex, stackIndex, colLocalIndex) {
+    if (typeof rowIndex === 'number') {
+      var rowEl = container.querySelector('.board-row[data-row-index="' + rowIndex + '"]');
+      if (rowEl && rowEl.classList.contains('folded')) rowEl.classList.remove('folded');
+    }
+    if (typeof rowIndex === 'number' && typeof stackIndex === 'number') {
+      var stackEl = container.querySelector('.board-stack[data-row-index="' + rowIndex + '"][data-stack-index="' + stackIndex + '"]');
+      if (stackEl && stackEl.classList.contains('folded')) stackEl.classList.remove('folded');
+    }
+    if (typeof rowIndex === 'number' && typeof stackIndex === 'number' && typeof colLocalIndex === 'number') {
+      var colEl = container.querySelector('.column[data-row-index="' + rowIndex + '"][data-stack-index="' + stackIndex + '"][data-col-local-index="' + colLocalIndex + '"]');
+      if (colEl && colEl.classList.contains('folded')) colEl.classList.remove('folded');
+    }
+  }
+
+  function findTargetInIframeDOM(doc, target) {
+    var container = doc.getElementById('columns-container');
+    if (!container) return null;
+    var el = null;
+    if (target.cardId) {
+      el = container.querySelector('.card[data-card-id="' + target.cardId + '"]');
+    }
+    if (!el && typeof target.rowIndex === 'number' && typeof target.stackIndex === 'number' &&
+        typeof target.colLocalIndex === 'number' && typeof target.cardIndex === 'number') {
+      el = container.querySelector(
+        '.column[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"][data-col-local-index="' + target.colLocalIndex + '"] ' +
+        '.card[data-card-index="' + target.cardIndex + '"]'
+      );
+    }
+    if (!el && typeof target.rowIndex === 'number' && typeof target.stackIndex === 'number' &&
+        typeof target.colLocalIndex === 'number') {
+      el = container.querySelector(
+        '.column[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"][data-col-local-index="' + target.colLocalIndex + '"]'
+      );
+    }
+    if (!el && target.brokenSrc) {
+      var brokenEl = container.querySelector('[data-file-path="' + CSS.escape(target.brokenSrc) + '"]') ||
+                     container.querySelector('[data-include-path="' + CSS.escape(target.brokenSrc) + '"]');
+      if (brokenEl) el = brokenEl.closest('.card') || brokenEl.closest('.column') || brokenEl;
+    }
+    return el;
+  }
+
+  function deliverFocusTargetToFrame(frame, target) {
+    if (!frame) return;
+    try {
+      var doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+      if (!doc) return;
+      var container = doc.getElementById('columns-container');
+      if (!container) return;
+
+      // If we have a cardId but no position, look it up in the iframe's board data
+      if (target.cardId && target.rowIndex == null) {
+        var iframeRuntime = frame.contentWindow && frame.contentWindow.LexeraRuntime;
+        var boardData = iframeRuntime && typeof iframeRuntime.getState === 'function'
+          ? (iframeRuntime.getState('fullBoardData') || iframeRuntime.getState('activeBoardData'))
+          : null;
+        var pos = findCardPositionInBoardData(boardData, target.cardId);
+        if (pos) {
+          target.rowIndex = pos.rowIndex;
+          target.stackIndex = pos.stackIndex;
+          target.colLocalIndex = pos.colLocalIndex;
+          target.cardIndex = pos.cardIndex;
+        }
+      }
+
+      // Unfold parent row/stack/column so the target becomes visible
+      unfoldPathInContainer(container, target.rowIndex, target.stackIndex, target.colLocalIndex);
+
+      // Focus helper: scroll + highlight via iframe's KeyboardNavigation
+      var iframeKeyNav = frame.contentWindow && frame.contentWindow.LexeraKeyboardNavigation;
+      function focusElement(el) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        if (el.classList.contains('card') && iframeKeyNav && typeof iframeKeyNav.focusCard === 'function') {
+          iframeKeyNav.focusCard(el);
+        } else if (iframeKeyNav && typeof iframeKeyNav.focusBoardEntity === 'function') {
+          iframeKeyNav.focusBoardEntity(el);
+        }
+      }
+
+      // Find and scroll+focus the element
+      var el = findTargetInIframeDOM(doc, target);
+      if (el) {
+        focusElement(el);
+        return;
+      }
+      // Element may need a render tick after unfolding
+      setTimeout(function () {
+        var el2 = findTargetInIframeDOM(doc, target);
+        if (el2) focusElement(el2);
+      }, 60);
+    } catch (e) { /* cross-origin or access error */ }
+  }
+
   function focusHierarchyTarget(target, boardId, options) {
     options = options || {};
     if (isHierarchyLauncherWindow()) {
@@ -4140,18 +4254,18 @@
       preferExisting: true,
       viewKind: options.viewKind
     });
+    console.log('[focusHierarchyTarget] boardId:', boardId, 'tab:', tab && tab.id, 'tab.boardId:', tab && tab.boardId);
     if (!tab) return false;
     var frame = getOrCreateFrame(tab, { shouldLoad: true });
+    console.log('[focusHierarchyTarget] frame:', frame && frame.tagName, 'hasContentWindow:', !!(frame && frame.contentWindow));
     // Store as pending so we can deliver it when the frame signals readiness via
     // lexera-pane-activated (handles the case where the tab is freshly opened and
     // the board frame hasn't initialized yet when the 60ms/220ms timeouts fire).
     state.pendingFocusTargets[tab.id] = target;
     function sendFocus() {
       if (!frame || !frame.contentWindow) return;
-      frame.contentWindow.postMessage({
-        type: 'lexera-focus-hierarchy-target',
-        target: target
-      }, '*');
+      console.log('[focusHierarchyTarget] delivering focus to iframe');
+      deliverFocusTargetToFrame(frame, target);
     }
     setTimeout(sendFocus, 60);
     setTimeout(function () {
@@ -4166,6 +4280,7 @@
   function handleWindowMessage(event) {
     var data = event && event.data;
     if (!data || !data.type) return;
+    if (data.type === 'lexera-debug-log') { console.log('[parent received from iframe]', data.msg); return; }
     if (data.type === 'lexera-pane-activated') {
       var paneFound = findTabInAllTrees(data.pane);
       if (!paneFound) return;
@@ -4178,10 +4293,7 @@
         delete state.pendingFocusTargets[data.pane];
         var pendingFrame = state.frameCache[data.pane];
         if (pendingFrame && pendingFrame.contentWindow) {
-          pendingFrame.contentWindow.postMessage({
-            type: 'lexera-focus-hierarchy-target',
-            target: pendingTarget
-          }, '*');
+          deliverFocusTargetToFrame(pendingFrame, pendingTarget);
         }
       }
       // Only activate if this pane isn't already the active tab in its leaf —

@@ -114,6 +114,25 @@ var LexeraBoardSettings = (function () {
     return '';
   }
 
+  // ── Stack width normalization (kanban mode default) ──────────────────
+  // Min: 200px, Max: 1200px, UI step: 50px. Per-stack #width{N} overrides this.
+
+  function normalizeStackWidth(rawValue) {
+    var value = String(rawValue || '').trim();
+    if (!value) return '';
+    if (/^\d+(\.\d+)?$/.test(value)) value += 'px';
+
+    var pxMatch = value.match(/^(\d+(?:\.\d+)?)px$/i);
+    if (pxMatch) {
+      var px = parseFloat(pxMatch[1]);
+      if (!isFinite(px)) return '';
+      px = Math.max(200, Math.min(1200, px));
+      return px + 'px';
+    }
+
+    return '';
+  }
+
   // ── Tag visibility normalization ─────────────────────────────────────
 
   var TAG_VISIBILITY_MODE_MAP = {
@@ -211,6 +230,7 @@ var LexeraBoardSettings = (function () {
     resolveBoardFontFamilyValue: resolveBoardFontFamilyValue,
     normalizeWhitespaceValue: normalizeWhitespaceValue,
     normalizeColumnWidth: normalizeColumnWidth,
+    normalizeStackWidth: normalizeStackWidth,
     normalizeTagVisibilityMode: normalizeTagVisibilityMode,
     normalizeHtmlCommentRenderMode: normalizeHtmlCommentRenderMode,
     normalizeArrowKeyFocusScrollMode: normalizeArrowKeyFocusScrollMode,

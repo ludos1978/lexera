@@ -104,6 +104,9 @@ pub struct KanbanRow {
 pub struct BoardSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub column_width: Option<String>,
+    /// Default stack width in kanban mode (px). Per-stack #width{N} overrides this.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stack_width: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout_rows: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -450,6 +453,7 @@ impl GroupedCalendarTasks {
 /// Order matters — this determines output order in generated YAML.
 pub const BOARD_SETTING_KEYS: &[&str] = &[
     "columnWidth",
+    "stackWidth",
     "layoutRows",
     "maxRowHeight",
     "rowHeight",
@@ -477,6 +481,7 @@ impl BoardSettings {
     pub fn get_by_key(&self, key: &str) -> Option<String> {
         match key {
             "columnWidth" => self.column_width.clone(),
+            "stackWidth" => self.stack_width.clone(),
             "layoutRows" => self.layout_rows.map(|v| v.to_string()),
             "maxRowHeight" => self.max_row_height.map(|v| v.to_string()),
             "rowHeight" => self.row_height.clone(),
@@ -505,6 +510,7 @@ impl BoardSettings {
     pub fn set_by_key(&mut self, key: &str, value: &str) {
         match key {
             "columnWidth" => self.column_width = Some(value.to_string()),
+            "stackWidth" => self.stack_width = Some(value.to_string()),
             "layoutRows" => {
                 if let Ok(n) = value.parse::<f64>() {
                     if n.is_finite() && n >= 1.0 {
@@ -550,6 +556,7 @@ impl BoardSettings {
         }
         merge_option!(
             column_width,
+            stack_width,
             layout_rows,
             max_row_height,
             row_height,

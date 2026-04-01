@@ -191,6 +191,9 @@
           'data-dashboard-target': 'file',
           'data-dashboard-card-id': item.firstCardId || null,
           'data-dashboard-column-index': item.firstColumnIndex != null ? String(item.firstColumnIndex) : null,
+          'data-dashboard-row-index': item.firstRowIndex != null ? String(item.firstRowIndex) : null,
+          'data-dashboard-stack-index': item.firstStackIndex != null ? String(item.firstStackIndex) : null,
+          'data-dashboard-col-local-index': item.firstColLocalIndex != null ? String(item.firstColLocalIndex) : null,
           'data-dashboard-status': String(item.status || 'unknown').trim().toLowerCase() || 'unknown',
           title: dashboardInventoryTooltip(item) || null
         }
@@ -246,6 +249,10 @@
           'data-dashboard-col-index': item.colIndex != null ? String(item.colIndex) : null,
           'data-dashboard-card-index': item.cardIndex != null ? String(item.cardIndex) : null,
           'data-dashboard-card-id': item.cardId || null,
+          'data-dashboard-row-index': item.rowIndex != null ? String(item.rowIndex) : null,
+          'data-dashboard-stack-index': item.stackIndex != null ? String(item.stackIndex) : null,
+          'data-dashboard-col-local-index': item.colLocalIndex != null ? String(item.colLocalIndex) : null,
+          'data-dashboard-broken-src': String(item.src || '') || null,
           'data-dashboard-broken-type': type,
           title: dashboardBrokenTooltip(item) || null
         }

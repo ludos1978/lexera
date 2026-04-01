@@ -1154,6 +1154,15 @@ var LexeraDashboard = (function () {
       buildStamp: FRONTEND_BUILD_STAMP
     });
     if (embeddedMode) document.body.classList.add('embedded-mode');
+    // DEBUG: catch any lexera postMessage at raw app.js level in iframe
+    if (embeddedMode) {
+      window.addEventListener('message', function (e) {
+        if (e.data && typeof e.data.type === 'string' && e.data.type.startsWith('lexera')) {
+          console.log('[iframe app.js raw msg]', e.data.type, JSON.stringify(e.data));
+        }
+      });
+      console.log('[iframe app.js] embeddedMode=true, raw message listener registered');
+    }
     if (typeof window.updateAppBottomInset === 'function') window.updateAppBottomInset();
 
     // Load user keybindings from ~/.config/lexera/keybindings.json
@@ -7081,6 +7090,7 @@ var LexeraDashboard = (function () {
   }
 
   function normalizeColumnWidth(rawValue) { return BoardSettingsModule.normalizeColumnWidth(rawValue); }
+  function normalizeStackWidth(rawValue) { return BoardSettingsModule.normalizeStackWidth(rawValue); }
 
   function clearLayoutLockStyles() {
     var nodes = getElColumnsContainer().querySelectorAll('.board-row, .board-stack, .column');
@@ -7194,6 +7204,8 @@ var LexeraDashboard = (function () {
     var s = fullBoardData.boardSettings;
     var normalizedColWidth = normalizeColumnWidth(s.columnWidth);
     if (normalizedColWidth) container.style.setProperty('--board-column-width', normalizedColWidth);
+    var normalizedStackWidth = normalizeStackWidth(s.stackWidth);
+    if (normalizedStackWidth) container.style.setProperty('--board-stack-width', normalizedStackWidth);
     if (s.fontSize) container.style.setProperty('--board-font-size', s.fontSize);
     if (s.fontFamily) container.style.setProperty('--board-font-family', s.fontFamily);
     if (s.rowHeight) container.style.setProperty('--board-row-height', s.rowHeight);
@@ -7929,7 +7941,7 @@ var LexeraDashboard = (function () {
           stackEl.classList.add('folded');
         }
         var stackWidthTag = getElementSizeTag(stack.title, 'width');
-        if (!isCanvasLayout && stackWidthTag > 0) stackEl.style.setProperty('--board-column-width', stackWidthTag + 'px');
+        if (!isCanvasLayout && stackWidthTag > 0) stackEl.style.setProperty('--stack-width-override', stackWidthTag + 'px');
 
         // Canvas layout: apply position/size params (canvas-only)
         var stackParams = stack.params || {};
@@ -10053,6 +10065,18 @@ var LexeraDashboard = (function () {
       ]
     });
     BoardSettingRegistry.register({
+      id: 'stackWidth', label: 'Stack Width', category: 'format',
+      settingsKey: 'stackWidth', actionPrefix: 'set-stack-width-default', defaultValue: '350px',
+      normalize: normalizeStackWidth,
+      options: [
+        { value: '200px', label: '200px' }, { value: '250px', label: '250px' },
+        { value: '300px', label: '300px' }, { value: '350px', label: '350px (default)' },
+        { value: '400px', label: '400px' }, { value: '500px', label: '500px' },
+        { value: '600px', label: '600px' }, { value: '800px', label: '800px' },
+        { value: '1000px', label: '1000px' }, { value: '1200px', label: '1200px' }
+      ]
+    });
+    BoardSettingRegistry.register({
       id: 'cardHeight', label: 'Card Height', category: 'format',
       settingsKey: 'cardMinHeight', actionPrefix: 'set-card-height', defaultValue: 'auto',
       normalize: function (v) { return String(v || 'auto').trim().toLowerCase(); },
@@ -10129,7 +10153,7 @@ var LexeraDashboard = (function () {
     });
     // --- Named Layout Presets (save/load/delete) ---
     var LAYOUT_PRESET_SETTINGS_KEYS = [
-      'columnWidth', 'whitespace', 'fontSize', 'fontFamily',
+      'columnWidth', 'stackWidth', 'whitespace', 'fontSize', 'fontFamily',
       'layoutRows', 'rowHeight', 'cardMinHeight', 'layoutSpacing'
     ];
     var LAYOUT_PRESETS_STORAGE_KEY = 'lexera-layout-presets';
@@ -10677,6 +10701,24 @@ var LexeraDashboard = (function () {
     });
     ActionRegistry.register('stack', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
     ActionRegistry.register('stack', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
+    ActionRegistry.register('stack', 'set-stack-width:*', function (action, ctx) {
+      var op = action.substring('set-stack-width:'.length);
+      var stack = findFullDataStack(ctx.rowIdx, ctx.stackIdx);
+      if (!stack) return;
+      var currentTag = getElementSizeTag(stack.title, 'width');
+      var current = currentTag > 0 ? currentTag : (parseInt(normalizeStackWidth(getBoardSettingValue('stackWidth', '350px'))) || 350);
+      var next;
+      if (op === 'increase') next = Math.min(1200, current + 50);
+      else if (op === 'decrease') next = Math.max(200, current - 50);
+      else if (op === 'reset') next = 0;
+      else return;
+      var newTitle = String(stack.title || '').replace(/#width\{\d+\}/gi, '').replace(/\s+/g, ' ').trim();
+      if (next > 0) newTitle = newTitle ? (newTitle + ' #width{' + next + '}') : ('#width{' + next + '}');
+      if (newTitle === stack.title) return;
+      pushUndo();
+      stack.title = newTitle;
+      persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    });
 
     // ── LexeraRowStackMenu init ──
     if (_RSM) {
@@ -10814,7 +10856,9 @@ var LexeraDashboard = (function () {
         getMarpClassListFromHeader: getMarpClassListFromHeader,
         hasMarpDirectiveValue: hasMarpDirectiveValue,
         MARP_COLOR_DIRECTIVES: MARP_COLOR_DIRECTIVES,
-        MARP_TEXT_DIRECTIVES: MARP_TEXT_DIRECTIVES
+        MARP_TEXT_DIRECTIVES: MARP_TEXT_DIRECTIVES,
+        getBoardSettingValue: getBoardSettingValue,
+        normalizeStackWidth: normalizeStackWidth
       });
     }
   }

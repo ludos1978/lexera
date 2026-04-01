@@ -958,6 +958,13 @@ var CardEditor = (function () {
     });
     textarea.addEventListener('keydown', function (e) {
       try {
+      if (e.altKey && e.key === 'Tab') {
+        e.preventDefault();
+        if (window.EditorAutocomplete) {
+          window.EditorAutocomplete.handleAltTab(e, textarea, _deps.getFullBoardData());
+        }
+        return;
+      }
       if (_deps.handleTextareaTabIndent(e, textarea)) return;
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
@@ -1062,6 +1069,7 @@ var CardEditor = (function () {
   async function closeCardEditorOverlay(options) {
     options = options || {};
     if (!currentCardEditor) return;
+    if (window.EditorAutocomplete) window.EditorAutocomplete.hideDropdown();
     var editor = currentCardEditor;
     currentCardEditor = null;
     _deps.setIsEditing(false);

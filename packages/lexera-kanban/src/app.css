@@ -2819,7 +2819,7 @@ li.tag-line-styled {
   flex-direction: column;
   gap: 0;
   min-width: var(--layout-stack-min-width);
-  flex: 0 0 var(--board-column-width, 280px);
+  flex: 0 0 var(--stack-width-override, var(--board-stack-width, var(--board-column-width, 350px)));
   transition: min-width 0.15s, width 0.15s, flex 0.15s;
   border: 1px solid var(--surface-stack-border);
   border-radius: var(--surface-stack-radius);
@@ -9552,6 +9552,132 @@ select.export-input {
 
 .view-disconnected > * {
   opacity: 0.7;
+}
+
+/* ── Replace Document overlay ────────────────────────────────────── */
+.replace-doc-dialog {
+  min-width: 420px;
+  max-width: min(600px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.replace-doc-subtitle {
+  font-size: var(--font-size-sm, 12px);
+  color: var(--text-secondary);
+  padding: 0 4px 10px;
+  word-break: break-all;
+}
+
+.replace-doc-current-preview {
+  text-align: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.replace-doc-current-preview img {
+  max-height: 140px;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-sm, 3px);
+}
+
+.replace-doc-section-title {
+  font-size: var(--font-size-sm, 12px);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 4px 4px 6px;
+}
+
+.replace-doc-matches {
+  max-height: 140px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 3px);
+  margin-bottom: 10px;
+}
+
+.replace-doc-match-item {
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.replace-doc-match-item:last-child {
+  border-bottom: none;
+}
+
+.replace-doc-match-item:hover {
+  background: var(--bg-hover);
+}
+
+.replace-doc-hint {
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.replace-doc-drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-md, 4px);
+  padding: 18px 12px;
+  text-align: center;
+  cursor: default;
+  margin-bottom: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.replace-doc-drop-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--bg-active);
+}
+
+.replace-doc-drop-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* ── Editor autocomplete dropdown ────────────────────────────────── */
+.editor-autocomplete-dropdown {
+  position: fixed;
+  z-index: 10100;
+  min-width: 180px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--menu-bg, var(--bg-secondary));
+  border: 1px solid var(--menu-border, var(--border));
+  border-radius: var(--radius-md, 4px);
+  box-shadow: var(--menu-shadow, 0 4px 16px rgba(0,0,0,0.18));
+  font-size: 13px;
+}
+
+.editor-autocomplete-item {
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.editor-autocomplete-item:hover,
+.editor-autocomplete-item.active {
+  background: var(--bg-active, rgba(0, 122, 204, 0.18));
+  color: var(--text-bright, var(--text-primary));
 }
 
 /* ── Utility: must be last to win by source order at (0,1,0) ─────── */

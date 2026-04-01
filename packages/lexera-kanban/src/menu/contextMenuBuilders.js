@@ -350,13 +350,34 @@ var ContextMenuBuilders = (function () {
     // ── STACK ────────────────────────────────────────────────────────
     MCR.register({
       id: 'stack-actions', scopes: ['stack'], priority: 5, section: 'actions',
-      build: function () {
+      build: function (scope, ctx) {
+        var title = ctx ? (ctx.elementText || '') : '';
+        var widthMatch = title.match(/#width\{(\d+)\}/i);
+        var currentPx = widthMatch ? parseInt(widthMatch[1], 10) : 0;
+        var effectivePx = currentPx > 0 ? currentPx : (function () {
+          var bsv = typeof deps.getBoardSettingValue === 'function' ? deps.getBoardSettingValue('stackWidth', '350px') : '350px';
+          var norm = typeof deps.normalizeStackWidth === 'function' ? deps.normalizeStackWidth(bsv) : bsv;
+          return parseInt(norm) || 350;
+        })();
+        var canDecrease = effectivePx > 200;
+        var canIncrease = effectivePx < 1200;
+        var widthItems = [
+          { id: 'set-stack-width:info', label: 'Width: ' + effectivePx + 'px' + (currentPx > 0 ? '' : ' (default)'), disabled: true },
+          { id: 'set-stack-width:decrease', label: 'Decrease (' + Math.max(200, effectivePx - 50) + 'px)', disabled: !canDecrease },
+          { id: 'set-stack-width:increase', label: 'Increase (' + Math.min(1200, effectivePx + 50) + 'px)', disabled: !canIncrease }
+        ];
+        if (currentPx > 0) {
+          widthItems.push({ separator: true });
+          widthItems.push({ id: 'set-stack-width:reset', label: 'Reset to default' });
+        }
         return [
           { id: 'rename', label: 'Rename stack' },
           { id: 'add-column', label: 'Add column' },
           { id: 'add-stack-before', label: 'Add stack before' },
           { id: 'add-stack-after', label: 'Add stack after' },
           { id: 'duplicate', label: 'Duplicate stack' },
+          { separator: true },
+          { id: 'stack-width', label: 'Stack Width', items: widthItems },
           { separator: true },
           { id: 'copy-markdown', label: 'Copy as markdown' },
           { id: 'export-stack', label: 'Export stack' },

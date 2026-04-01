@@ -3394,23 +3394,172 @@ var LexeraEmbedMenu = (function () {
     }
   }
 
+  function showReplaceDocumentOverlay(container) {
+    var filePath = container.getAttribute('data-file-path') || '';
+    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
+    var isInclude = isIncludeDirectiveContainer(container);
+    if (!filePath || !boardId) return;
+
+    var fileRef = parseLocalFileReference(filePath);
+    var filename = getDisplayFileNameFromPath(fileRef.path) || filePath;
+    var mediaCategory = getMediaCategory(getFileExtension(fileRef.path));
+
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'modal-dialog replace-doc-dialog';
+
+    var currentPreviewHtml = '';
+    if (mediaCategory === 'image') {
+      currentPreviewHtml =
+        '<div class="replace-doc-current-preview">' +
+          '<img src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '" alt="' + escapeAttr(filename) + '" />' +
+        '</div>';
+    }
+
+    dialog.innerHTML =
+      '<div class="modal-title">Replace Document</div>' +
+      '<div class="replace-doc-subtitle">' + escapeHtml(filename) + '</div>' +
+      currentPreviewHtml +
+      '<div class="replace-doc-matches-section">' +
+        '<div class="replace-doc-section-title">Files with same name</div>' +
+        '<div class="replace-doc-matches"><div class="embed-preview-loading">Searching...</div></div>' +
+      '</div>' +
+      '<div class="replace-doc-drop-zone">' +
+        '<div class="replace-doc-drop-label">Drop replacement file here, or paste from clipboard</div>' +
+      '</div>' +
+      '<div class="hidden-items-footer">' +
+        (hasTauri ? '<button class="board-action-btn" data-replace-action="browse">Browse\u2026</button>' : '') +
+        '<button class="board-action-btn" data-replace-action="web-search">Web Search</button>' +
+        '<button class="board-action-btn" data-replace-action="cancel">Cancel</button>' +
+      '</div>';
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    var matchesEl = dialog.querySelector('.replace-doc-matches');
+    var dropZone = dialog.querySelector('.replace-doc-drop-zone');
+
+    // Search for files with the same filename
+    LexeraApi.request('/boards/' + boardId + '/find-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: filename }),
+    }).then(function (res) {
+      var matches = res && res.matches ? res.matches : [];
+      if (matches.length === 0) {
+        matchesEl.innerHTML = '<div class="replace-doc-hint">No matching files found</div>';
+      } else {
+        var html = '';
+        for (var i = 0; i < matches.length; i++) {
+          var short = matches[i].split('/').slice(-3).join('/');
+          html += '<div class="replace-doc-match-item" data-path="' + escapeAttr(matches[i]) + '" title="' + escapeAttr(matches[i]) + '">' + escapeHtml(short) + '</div>';
+        }
+        matchesEl.innerHTML = html;
+      }
+    }).catch(function () {
+      matchesEl.innerHTML = '<div class="replace-doc-hint">Search failed</div>';
+    });
+
+    function closeAndApply(newPath) {
+      overlay.remove();
+      var adjusted = adjustPathForIncludeContext(container, newPath);
+      if (isInclude) {
+        updateIncludeTarget(container, adjusted + (fileRef.suffix || ''));
+      } else {
+        updateEmbedTarget(container, adjusted + (fileRef.suffix || ''));
+      }
+    }
+
+    function applyUploadedFile(file) {
+      if (!file) return;
+      LexeraApi.uploadMedia(boardId, file).then(function (result) {
+        var target = getUploadedMediaEmbedTarget(result);
+        if (!target) { showNotification('Upload failed'); return; }
+        overlay.remove();
+        if (isInclude) {
+          updateIncludeTarget(container, target);
+        } else {
+          updateEmbedTarget(container, target);
+        }
+      }).catch(function (err) {
+        logFrontendIssue('error', 'replace-doc', 'Failed to upload replacement file', err);
+        showNotification('Failed to upload replacement file');
+      });
+    }
+
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.remove();
+    });
+    dialog.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.stopPropagation(); overlay.remove(); }
+    });
+
+    matchesEl.addEventListener('click', function (e) {
+      var item = e.target.closest('.replace-doc-match-item');
+      if (!item) return;
+      closeAndApply(item.getAttribute('data-path'));
+    });
+
+    dropZone.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', function () {
+      dropZone.classList.remove('drag-over');
+    });
+    dropZone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length > 0) applyUploadedFile(files[0]);
+    });
+
+    overlay.addEventListener('paste', function (e) {
+      var items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file') {
+          var file = items[i].getAsFile();
+          if (file) { e.preventDefault(); applyUploadedFile(file); return; }
+        }
+      }
+    });
+
+    dialog.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-replace-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-replace-action');
+      if (action === 'cancel') {
+        overlay.remove();
+      } else if (action === 'browse') {
+        tauriInvoke('browse_files', { title: 'Replace Document' }).then(function (paths) {
+          if (paths && paths.length > 0) closeAndApply(paths[0]);
+        }).catch(function (err) {
+          logFrontendIssue('warn', 'replace-doc.browse', 'File browser failed', err);
+        });
+      } else if (action === 'web-search') {
+        overlay.remove();
+        openEmbedWebSearch(container, filePath);
+      }
+    });
+  }
+
   function showIncludeMenu(container, btn) {
     var filePath = container.getAttribute('data-file-path') || '';
     var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
     if (!filePath || !boardId) return;
-    var isAbsolute = isAbsoluteFilePath(parseLocalFileReference(filePath).path);
     var btnRect = btn.getBoundingClientRect();
     showNativeMenu([
-      { id: 'preview', label: 'Preview Include File' },
-      { separator: true },
       { id: 'open-system', label: 'Open in System App' },
       { id: 'show-finder', label: 'Show in Finder' },
       { id: 'copy-path', label: 'Copy Path' },
-      { id: 'path-fix', label: 'Automatic Path Fix' },
-      { id: 'path-manual', label: 'Manual Path Fix' },
-      { id: 'path-web-search', label: 'Web-Search File' },
-      { id: 'convert-path', label: isAbsolute ? 'Convert to Relative' : 'Convert to Absolute' },
       { separator: true },
+      { id: 'replace-document', label: 'Replace Document' },
+      { separator: true },
+      { id: 'convert-path', label: 'Convert to Relative Path' },
+      { id: 'refresh', label: 'Force Refresh' },
+      { id: 'info', label: 'Info' },
       { id: 'delete', label: 'Delete Include' },
     ], btnRect.right, btnRect.bottom).then(function (action) {
       if (action) handleIncludeAction(action, container);
@@ -3423,7 +3572,52 @@ var LexeraEmbedMenu = (function () {
     var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
     var fileRef = parseLocalFileReference(filePath);
 
-    if (action === 'preview') {
+    if (action === 'replace-document') {
+      closeEmbedMenu();
+      showReplaceDocumentOverlay(container);
+
+    } else if (action === 'refresh') {
+      closeEmbedMenu();
+      container.removeAttribute('data-include-enhanced');
+      var includeBody = container.querySelector('.include-inline-body');
+      if (includeBody) includeBody.innerHTML = '<div class="embed-preview-loading">Loading include...</div>';
+      enhanceSingleIncludeDirective(container);
+
+    } else if (action === 'info') {
+      closeEmbedMenu();
+      if (!boardId || !filePath) return;
+      LexeraApi.fileInfo(boardId, fileRef.path).then(function (info) {
+        var infoMenu = document.createElement('div');
+        infoMenu.className = 'embed-menu embed-info-panel';
+        var sizeStr = info.size ? formatFileSize(info.size) : 'unknown';
+        var dateStr = info.lastModified ? new Date(info.lastModified * 1000).toLocaleString() : 'unknown';
+        infoMenu.innerHTML =
+          '<div class="embed-info-title">File Info</div>' +
+          '<div class="embed-info-row"><span>Name:</span> ' + escapeHtml(info.filename || '') + '</div>' +
+          '<div class="embed-info-row"><span>Path:</span> ' + escapeHtml(info.path || '') + '</div>' +
+          '<div class="embed-info-row"><span>Exists:</span> ' + (info.exists ? 'Yes' : 'No') + '</div>' +
+          (info.exists ? (
+            '<div class="embed-info-row"><span>Size:</span> ' + sizeStr + '</div>' +
+            '<div class="embed-info-row"><span>Type:</span> ' + escapeHtml(info.mediaCategory || '') + '</div>' +
+            '<div class="embed-info-row"><span>Modified:</span> ' + dateStr + '</div>'
+          ) : '') +
+          '<div class="embed-menu-item" data-action="close-info" style="margin-top:6px;text-align:center">Close</div>';
+        infoMenu._embedContainer = container;
+        document.body.appendChild(infoMenu);
+        var cr = container.getBoundingClientRect();
+        var ir = infoMenu.getBoundingClientRect();
+        var ix = cr.right, iy = cr.top;
+        if (ix + ir.width > window.innerWidth) ix = window.innerWidth - ir.width - 4;
+        if (iy + ir.height > window.innerHeight) iy = window.innerHeight - ir.height - 4;
+        if (ix < 0) ix = 4; if (iy < 0) iy = 4;
+        infoMenu.style.left = ix + 'px';
+        infoMenu.style.top = iy + 'px';
+        activeEmbedMenu = infoMenu;
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'embed.info', 'Failed to load include file info for ' + filePath, err);
+      });
+
+    } else if (action === 'preview') {
       closeEmbedMenu();
       showBoardFilePreview(boardId, filePath);
 
@@ -3470,8 +3664,11 @@ var LexeraEmbedMenu = (function () {
 
     } else if (action === 'convert-path') {
       closeEmbedMenu();
-      var isAbsolute = isAbsoluteFilePath(fileRef.path);
-      resolveBoardPath(boardId, fileRef.path, isAbsolute ? 'relative' : 'absolute').then(function (nextPath) {
+      if (!isAbsoluteFilePath(fileRef.path)) {
+        showNotification('Path is already relative');
+        return;
+      }
+      resolveBoardPath(boardId, fileRef.path, 'relative').then(function (nextPath) {
         var nextTarget = nextPath ? nextPath + (fileRef.suffix || '') : '';
         if (!nextTarget || nextTarget === filePath) return;
         updateIncludeTarget(container, nextTarget);
@@ -3498,7 +3695,6 @@ var LexeraEmbedMenu = (function () {
     var embedUrl = container.getAttribute('data-embed-url') || '';
     var isExternal = isExternalEmbedContainer(container);
     var externalPolicyAction = container.getAttribute('data-external-policy-action') || '';
-    var isAbsolute = filePath && isAbsoluteFilePath(parseLocalFileReference(filePath).path);
     var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
     var previewKind = getEmbedPreviewKind(filePath);
     var supportsRenderRetry = !isExternal && !!filePath && isRenderedSpecialPreviewKind(previewKind);
@@ -3518,20 +3714,15 @@ var LexeraEmbedMenu = (function () {
           { id: 'delete', label: 'Delete Embed' },
         ]
       : [
-          specialEditorKind ? { id: 'edit-overlay', label: 'Edit Overlay' } : null,
-          { id: 'refresh', label: supportsRenderRetry ? 'Retry Render' : 'Force Refresh' },
-          supportsRenderRetry ? { id: 'render-status', label: 'Renderer Status' } : null,
-          { id: 'info', label: 'Info' },
-          { separator: true },
           { id: 'open-system', label: 'Open in System App' },
           { id: 'show-finder', label: 'Show in Finder' },
           { id: 'copy-path', label: 'Copy Path' },
-          { id: 'path-fix', label: 'Automatic Path Fix' },
-          { id: 'path-manual', label: 'Manual Path Fix' },
-          hasTauri && boardId ? { id: 'paste-image', label: 'Paste Image' } : null,
-          { id: 'path-web-search', label: 'Web-Search File' },
-          { id: 'convert-path', label: isAbsolute ? 'Convert to Relative' : 'Convert to Absolute' },
           { separator: true },
+          { id: 'replace-document', label: 'Replace Document' },
+          { separator: true },
+          { id: 'convert-path', label: 'Convert to Relative Path' },
+          { id: 'refresh', label: 'Force Refresh' },
+          { id: 'info', label: 'Info' },
           { id: 'delete', label: 'Delete Embed' },
         ];
     if (!isExternal) {
@@ -3557,7 +3748,11 @@ var LexeraEmbedMenu = (function () {
     var isExternal = isExternalEmbedContainer(container);
     var fileRef = parseLocalFileReference(filePath);
 
-    if (action === 'open-page') {
+    if (action === 'replace-document') {
+      closeEmbedMenu();
+      showReplaceDocumentOverlay(container);
+
+    } else if (action === 'open-page') {
       closeEmbedMenu();
       if (!isExternal || !embedUrl) return;
       openExternalEmbedInPlace(container);
@@ -3709,8 +3904,11 @@ var LexeraEmbedMenu = (function () {
     } else if (action === 'convert-path') {
       closeEmbedMenu();
       if (!boardId || !filePath) return;
-      var isAbsolute = isAbsoluteFilePath(fileRef.path);
-      resolveBoardPath(boardId, fileRef.path, isAbsolute ? 'relative' : 'absolute').then(function (nextPath) {
+      if (!isAbsoluteFilePath(fileRef.path)) {
+        showNotification('Path is already relative');
+        return;
+      }
+      resolveBoardPath(boardId, fileRef.path, 'relative').then(function (nextPath) {
         var nextTarget = nextPath ? nextPath + (fileRef.suffix || '') : '';
         if (!nextTarget || nextTarget === filePath) return;
         updateEmbedTarget(container, nextTarget);

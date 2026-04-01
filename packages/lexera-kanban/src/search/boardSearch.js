@@ -304,14 +304,17 @@ var LexeraBoardSearch = (function () {
   async function navigateToSearchResult(result) {
     var ws = getWorkspaceShell();
     if (isWorkspaceShellEnabled() && ws && result && result.boardId) {
-      ws.focusHierarchyTarget({
+      var focusTarget = {
         boardId: result.boardId,
         cardId: result.cardId,
         rowIndex: parseOptionalSearchIndex(result.rowIndex),
         stackIndex: parseOptionalSearchIndex(result.stackIndex),
         colLocalIndex: parseOptionalSearchIndex(result.colLocalIndex),
-        cardIndex: parseOptionalSearchIndex(result.cardIndex)
-      }, result.boardId, {});
+        cardIndex: parseOptionalSearchIndex(result.cardIndex),
+        brokenSrc: result.brokenSrc || null
+      };
+      console.log('[navigateToSearchResult WS]', focusTarget);
+      ws.focusHierarchyTarget(focusTarget, result.boardId, {});
       return true;
     }
     var input = getSearchInput();
