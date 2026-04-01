@@ -143,7 +143,7 @@ var LexeraSidebarResize = (function () {
     if (available < minSum) {
       var scaledHierarchyMin = Math.max(80, Math.floor((hierarchyMin / minSum) * available));
       hierarchyMin = scaledHierarchyMin;
-      dashboardMin = Math.max(100, available - scaledHierarchyMin);
+      dashboardMin = Math.max(140, available - scaledHierarchyMin);
     }
 
     return {
@@ -162,15 +162,12 @@ var LexeraSidebarResize = (function () {
     var minBoard = Math.min(metrics.hierarchyMin, Math.max(0, metrics.available - metrics.dashboardMin));
     var maxBoard = Math.max(minBoard, metrics.available - metrics.dashboardMin);
     boardHeight = Math.max(minBoard, Math.min(maxBoard, boardHeight));
-    var dashboardHeight = Math.max(metrics.dashboardMin, metrics.available - boardHeight);
-    // Re-clamp board height if dashboard minimum pushed it down
-    boardHeight = Math.max(0, metrics.available - dashboardHeight);
-
     metrics.boardListEl.style.flex = '0 0 ' + boardHeight + 'px';
     metrics.boardListEl.style.height = boardHeight + 'px';
     if (metrics.dashboardEl) {
-      metrics.dashboardEl.style.flex = '0 0 ' + dashboardHeight + 'px';
-      metrics.dashboardEl.style.height = dashboardHeight + 'px';
+      // Dashboard takes remaining space — never set fixed pixel size
+      metrics.dashboardEl.style.flex = '1 1 auto';
+      metrics.dashboardEl.style.height = '';
     }
   }
 
