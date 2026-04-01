@@ -113,6 +113,19 @@ pub struct UpdateWorkspaceSyncRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateGlobalSyncRequest {
+    #[serde(default)]
+    pub bookmark_sync: Option<bool>,
+    #[serde(default)]
+    pub calendar_sync: Option<bool>,
+    #[serde(default)]
+    pub calendar_slug: Option<String>,
+    #[serde(default)]
+    pub calendar_name: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct SetDefaultWorkspaceRequest {
     pub workspace_id: Option<String>,
 }
@@ -135,6 +148,58 @@ pub struct UpdateBoardSyncRequest {
     pub calendar_slug: Option<String>,
     #[serde(default)]
     pub calendar_name: Option<String>,
+}
+
+/// GET /config/global-sync — return global-level sync defaults.
+pub async fn get_global_sync(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let cfg = state.config.lock().ok();
+    let (bm, cal, slug, name) = cfg
+        .as_ref()
+        .map(|c| {
+            (
+                c.bookmark_sync,
+                c.calendar_sync,
+                c.calendar_slug.clone(),
+                c.calendar_name.clone(),
+            )
+        })
+        .unwrap_or((None, None, None, None));
+    Json(serde_json::json!({
+        "bookmarkSync": bm,
+        "calendarSync": cal,
+        "calendarSlug": slug,
+        "calendarName": name,
+    }))
+}
+
+/// PUT /config/global-sync — update global-level sync defaults.
+pub async fn update_global_sync(
+    State(state): State<AppState>,
+    Json(body): Json<UpdateGlobalSyncRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let config_path = state.config_path.clone();
+    let calendar_slug = normalize_optional_text(body.calendar_slug);
+    let calendar_name = normalize_optional_text(body.calendar_name);
+
+    {
+        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        cfg.bookmark_sync = body.bookmark_sync;
+        cfg.calendar_sync = body.calendar_sync;
+        cfg.calendar_slug = calendar_slug.clone();
+        cfg.calendar_name = calendar_name.clone();
+        if let Err(e) = save_config(&config_path, &cfg) {
+            log::error!("Failed to save config after global sync update: {}", e);
+        }
+    }
+
+    log::info!("[config] Updated global sync defaults");
+    notify_config_changed(&state);
+    Ok(Json(serde_json::json!({
+        "bookmarkSync": body.bookmark_sync,
+        "calendarSync": body.calendar_sync,
+        "calendarSlug": calendar_slug,
+        "calendarName": calendar_name,
+    })))
 }
 
 /// GET /config/workspaces — list all workspaces and the default workspace ID.

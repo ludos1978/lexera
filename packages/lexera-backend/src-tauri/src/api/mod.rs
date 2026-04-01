@@ -189,6 +189,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             get(config_api::get_theme).put(config_api::set_theme),
         )
         .route(
+            "/config/global-sync",
+            get(config_api::get_global_sync).put(config_api::update_global_sync),
+        )
+        .route(
             "/config/workspaces",
             get(config_api::list_workspaces).post(config_api::create_workspace),
         )

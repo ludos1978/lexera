@@ -477,6 +477,29 @@
   font-weight: 600;
 }
 
+/* Help icon */
+.mgmt-help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--text-secondary);
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  cursor: help;
+  flex-shrink: 0;
+  margin-left: 2px;
+  line-height: 1;
+  vertical-align: middle;
+}
+.mgmt-help-icon:hover {
+  color: var(--text-primary);
+  border-color: var(--text-primary);
+}
+
 /* Config panel (two-panel layout) */
 .mgmt-config-layout {
   display: flex;

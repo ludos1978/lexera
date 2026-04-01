@@ -70,6 +70,34 @@ pub struct SyncConfig {
     pub remote_connections: Vec<RemoteConnectionEntry>,
     #[serde(default, alias = "renderApps")]
     pub render_apps: Option<RenderAppsConfig>,
+    /// Global default for bookmark sync (overridden per-workspace or per-board).
+    #[serde(
+        default,
+        alias = "bookmarkSync",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bookmark_sync: Option<bool>,
+    /// Global default for calendar sync (overridden per-workspace or per-board).
+    #[serde(
+        default,
+        alias = "calendarSync",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub calendar_sync: Option<bool>,
+    /// Global default calendar slug (overridden per-workspace or per-board).
+    #[serde(
+        default,
+        alias = "calendarSlug",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub calendar_slug: Option<String>,
+    /// Global default calendar display name (overridden per-workspace or per-board).
+    #[serde(
+        default,
+        alias = "calendarName",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub calendar_name: Option<String>,
     /// Global default dashboard tag list (overridden per-workspace or per-board).
     #[serde(
         default,
@@ -133,6 +161,10 @@ impl Default for SyncConfig {
             default_workspace: None,
             remote_connections: Vec::new(),
             render_apps: None,
+            bookmark_sync: None,
+            calendar_sync: None,
+            calendar_slug: None,
+            calendar_name: None,
             dashboard_tags: None,
             default_settings: None,
         }
@@ -704,6 +736,10 @@ mod tests {
             default_workspace: None,
             remote_connections: Vec::new(),
             render_apps: None,
+            bookmark_sync: None,
+            calendar_sync: None,
+            calendar_slug: None,
+            calendar_name: None,
             dashboard_tags: None,
             default_settings: None,
         };
@@ -778,6 +814,10 @@ mod tests {
                 pdftoppm: None,
                 mutool: None,
             }),
+            bookmark_sync: None,
+            calendar_sync: None,
+            calendar_slug: None,
+            calendar_name: None,
             dashboard_tags: None,
             default_settings: None,
         };

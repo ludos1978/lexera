@@ -68,8 +68,9 @@ var ManagementUI = (function () {
   var MAX_RENDERED_LOG_ENTRIES = 500;
   var workspaceSectionExpanded = {};
   var workspaceInviteAccess = {};
-  // Config panel state: { type: 'workspace'|'board', id: string } or null
+  // Config panel state: { type: 'global'|'workspace'|'board', id: string } or null
   var configSelectedItem = null;
+  var cachedGlobalSync = { bookmarkSync: null, calendarSync: null, calendarSlug: null, calendarName: null };
 
   function queryFirst(selector) {
     var ids = Object.keys(mounts);
@@ -481,7 +482,7 @@ var ManagementUI = (function () {
     await Promise.all(initialLoads);
     if (needsBoards || needsWsConfig) await loadMyBoards();
     if (needsNetwork) { await loadConnections(); await loadDiscoveredPeers(); }
-    if (needsWsConfig) renderConfigPanel();
+    if (needsWsConfig) { await loadGlobalSync(); renderConfigPanel(); }
   }
 
   // ── Shell HTML ──
@@ -2047,6 +2048,20 @@ var ManagementUI = (function () {
 
   // ── Config Panel (two-panel workspace/board view) ──
 
+  async function loadGlobalSync() {
+    try {
+      var data = await api.get('/config/global-sync');
+      cachedGlobalSync = {
+        bookmarkSync: data.bookmarkSync != null ? data.bookmarkSync : null,
+        calendarSync: data.calendarSync != null ? data.calendarSync : null,
+        calendarSlug: data.calendarSlug || null,
+        calendarName: data.calendarName || null,
+      };
+    } catch (e) {
+      cachedGlobalSync = { bookmarkSync: null, calendarSync: null, calendarSlug: null, calendarName: null };
+    }
+  }
+
   function renderConfigPanel() {
     renderConfigTree();
     renderConfigInspector();
@@ -2057,6 +2072,16 @@ var ManagementUI = (function () {
     if (!el) return;
 
     var html = '';
+
+    // Global Settings node
+    var isGlobalSelected = configSelectedItem && configSelectedItem.type === 'global';
+    html += '<div class="mgmt-config-tree-node' + (isGlobalSelected ? ' selected' : '') + '"'
+      + ' data-mgmt-action="config-select" data-mgmt-config-type="global" data-mgmt-config-id="global">';
+    html += '<span class="mgmt-config-tree-toggle">\u2699</span>';
+    html += '<span class="mgmt-config-tree-label">Global Settings</span>';
+    html += '</div>';
+    html += '<div class="mgmt-config-tree-divider"></div>';
+
     for (var i = 0; i < cachedWorkspaces.length; i++) {
       var ws = cachedWorkspaces[i];
       var isDefault = ws.id === cachedDefaultWorkspaceId;
@@ -2136,11 +2161,41 @@ var ManagementUI = (function () {
       return;
     }
 
-    if (configSelectedItem.type === 'workspace') {
+    if (configSelectedItem.type === 'global') {
+      renderConfigGlobalInspector(el);
+    } else if (configSelectedItem.type === 'workspace') {
       renderConfigWorkspaceInspector(el, configSelectedItem.id);
     } else if (configSelectedItem.type === 'board') {
       renderConfigBoardInspector(el, configSelectedItem.id);
     }
+  }
+
+  function helpIcon(text) {
+    return ' <span class="mgmt-help-icon" title="' + esc(text) + '">?</span>';
+  }
+
+  function renderConfigGlobalInspector(el) {
+    var g = cachedGlobalSync;
+    var html = '';
+    html += '<div class="mgmt-section">';
+    html += '<div class="mgmt-section-title">Global Sync Defaults</div>';
+    html += '<p style="font-size:11px;color:var(--text-secondary);margin:0 0 8px">These defaults apply to all workspaces and boards unless overridden.</p>';
+    html += '<div class="mgmt-sync-grid">';
+    html += '<label>Bookmark Sync' + helpIcon('Enable WebDAV bookmark synchronization for all workspaces by default') + '</label>';
+    html += renderTriStateSelectHtml('id="mgmt-cfg-global-bookmark-sync"', g.bookmarkSync);
+    html += '<label>Calendar Sync' + helpIcon('Enable CalDAV calendar synchronization for all workspaces by default') + '</label>';
+    html += renderTriStateSelectHtml('id="mgmt-cfg-global-calendar-sync"', g.calendarSync);
+    html += '<label>Calendar Slug' + helpIcon("URL path component for the calendar endpoint (e.g. 'my-calendar'). Leave empty for auto-generated. (currently stored but not yet used for CalDAV sync)") + '</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-global-calendar-slug" value="' + esc(g.calendarSlug || '') + '" placeholder="Optional">';
+    html += '<label>Calendar Name' + helpIcon('Display name for the calendar. Leave empty for workspace name.') + '</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-global-calendar-name" value="' + esc(g.calendarName || '') + '" placeholder="Optional">';
+    html += '</div>';
+    html += '<div class="mgmt-settings-actions">';
+    html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="config-save-global-sync">Save</button>';
+    html += '</div>';
+    html += '</div>';
+
+    el.innerHTML = html;
   }
 
   function renderConfigWorkspaceInspector(el, wsId) {
@@ -2342,10 +2397,30 @@ var ManagementUI = (function () {
       case 'config-save-board-sync':
         configSaveBoardSync(boardId);
         break;
+      case 'config-save-global-sync':
+        configSaveGlobalSync();
+        break;
       default:
         return false;
     }
     return true;
+  }
+
+  async function configSaveGlobalSync() {
+    var payload = {
+      bookmarkSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-global-bookmark-sync')),
+      calendarSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-global-calendar-sync')),
+      calendarSlug: normalizeOptionalText((queryFirst('#mgmt-cfg-global-calendar-slug') || {}).value),
+      calendarName: normalizeOptionalText((queryFirst('#mgmt-cfg-global-calendar-name') || {}).value),
+    };
+    try {
+      await api.put('/config/global-sync', payload);
+      await loadGlobalSync();
+      renderConfigPanel();
+      notify('Global sync defaults saved');
+    } catch (e) {
+      notify('Failed to save global sync defaults: ' + (e.message || e));
+    }
   }
 
   async function configAddWorkspace() {
