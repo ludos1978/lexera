@@ -1005,13 +1005,11 @@ var LexeraDashboard = (function () {
   function parseDroppedUriList(text) { return OrderHelpers.parseDroppedUriList(text); }
   function collectDroppedPathsFromDataTransfer(dt) { return OrderHelpers.collectDroppedPathsFromDataTransfer(dt); }
   function addBoardsByPath(paths) { return OrderHelpers.addBoardsByPath(paths); }
-  function normalizeRatio(rawRatio, options) { return OrderHelpers.normalizeRatio(rawRatio, options); }
-  function normalizeSidebarSplitRatio(rawRatio) { return OrderHelpers.normalizeSidebarSplitRatio(rawRatio); }
-  function bindPointerDividerDrag(divider, handlers) { return OrderHelpers.bindPointerDividerDrag(divider, handlers); }
-  function applySidebarSectionLayout() { return OrderHelpers.applySidebarSectionLayout(); }
-  function setupSidebarSectionResize() { return OrderHelpers.setupSidebarSectionResize(); }
-  function applySidebarWidth() { return OrderHelpers.applySidebarWidth(); }
-  function setupSidebarWidthResize() { return OrderHelpers.setupSidebarWidthResize(); }
+  function normalizeRatio(rawRatio, options) { return SidebarResize ? SidebarResize.normalizeRatio(rawRatio, options) : rawRatio; }
+  function applySidebarSectionLayout() { if (SidebarResize) SidebarResize.applySidebarSectionLayout(); }
+  function setupSidebarSectionResize() { if (SidebarResize) SidebarResize.setupSidebarSectionResize(); }
+  function applySidebarWidth() { if (SidebarResize) SidebarResize.applySidebarWidth(); }
+  function setupSidebarWidthResize() { if (SidebarResize) SidebarResize.setupSidebarWidthResize(); }
   function handleTextareaTabIndent(e, textarea) { return OrderHelpers.handleTextareaTabIndent(e, textarea); }
   function closeTransientUiViaHotkey() { return OrderHelpers.closeTransientUiViaHotkey(); }
   function setHeaderSearchExpanded(expanded, options) { return OrderHelpers.setHeaderSearchExpanded(expanded, options); }
@@ -8437,7 +8435,6 @@ var LexeraDashboard = (function () {
                 if (nextWidth === lastWidth) return;
                 lastWidth = nextWidth;
                 el.style.width = nextWidth + 'px';
-                scheduleCanvasRowBoundsSync(getElColumnsContainer());
               }
               function scheduleResizeWidth(clientX) {
                 pendingClientX = clientX;
@@ -8457,6 +8454,7 @@ var LexeraDashboard = (function () {
                 }
                 applyResizeWidth(pendingClientX);
                 el.classList.remove('resizing');
+                scheduleCanvasRowBoundsSync(getElColumnsContainer());
                 if (resizeHandle.releasePointerCapture) {
                   try { resizeHandle.releasePointerCapture(upEvent.pointerId); } catch (_) { /* intentional: pointer may already be released */ }
                 }

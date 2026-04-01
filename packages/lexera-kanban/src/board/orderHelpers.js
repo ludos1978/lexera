@@ -604,235 +604,28 @@ var LexeraOrderHelpers = (function () {
     });
   }
 
-  // ─── Ratio / sidebar helpers ──────────────────────────────────────────
+  // ─── Ratio / sidebar helpers (delegated to LexeraSidebarResize) ─────
+
+  var _SidebarResize = typeof LexeraSidebarResize !== 'undefined' ? LexeraSidebarResize : null;
 
   function normalizeRatio(rawRatio, options) {
-    options = options || {};
-    var ratio = Number(rawRatio);
-    var fallback = isFinite(options.fallback) ? options.fallback : 0.5;
-    var min = isFinite(options.min) ? options.min : 0.2;
-    var max = isFinite(options.max) ? options.max : 0.8;
-    var snap = isFinite(options.snap) ? options.snap : 0.5;
-    var snapThreshold = isFinite(options.snapThreshold) ? options.snapThreshold : 0.04;
-
-    if (!isFinite(ratio)) ratio = fallback;
-    if (ratio < min) ratio = min;
-    if (ratio > max) ratio = max;
-    if (Math.abs(ratio - snap) <= snapThreshold) ratio = snap;
-    return ratio;
-  }
-
-  function normalizeSidebarSplitRatio(rawRatio) {
-    return normalizeRatio(rawRatio, {
-      fallback: 0.58,
-      min: 0.2,
-      max: 0.8,
-      snap: 0.5,
-      snapThreshold: 0.03
-    });
-  }
-
-  function bindPointerDividerDrag(divider, handlers) {
-    if (!divider || !handlers) return;
-    divider.addEventListener('pointerdown', function (e) {
-      if (e.button !== 0) return;
-      if (handlers.canStart && !handlers.canStart(e)) return;
-      e.preventDefault();
-
-      var pointerId = e.pointerId;
-      var finished = false;
-      var ctx = {};
-      if (handlers.onStart) {
-        var startCtx = handlers.onStart(e);
-        if (startCtx && typeof startCtx === 'object') ctx = startCtx;
-      }
-
-      function onMove(ev) {
-        if (ev.pointerId !== pointerId) return;
-        if (handlers.onMove) handlers.onMove(ev, ctx);
-      }
-
-      function finish(ev) {
-        if (finished) return;
-        if (ev && ev.pointerId != null && ev.pointerId !== pointerId) return;
-        finished = true;
-        divider.removeEventListener('pointermove', onMove, true);
-        divider.removeEventListener('pointerup', finish, true);
-        divider.removeEventListener('pointercancel', finish, true);
-        divider.removeEventListener('lostpointercapture', finish, true);
-        try {
-          if (divider.hasPointerCapture && divider.hasPointerCapture(pointerId)) {
-            divider.releasePointerCapture(pointerId);
-          }
-        } catch (err) {
-          // no-op
-        }
-        if (handlers.onEnd) handlers.onEnd(ev, ctx);
-      }
-
-      try {
-        divider.setPointerCapture(pointerId);
-      } catch (err) {
-        // no-op
-      }
-
-      onMove(e);
-      divider.addEventListener('pointermove', onMove, true);
-      divider.addEventListener('pointerup', finish, true);
-      divider.addEventListener('pointercancel', finish, true);
-      divider.addEventListener('lostpointercapture', finish, true);
-    });
-
-    if (handlers.onDoubleClick) {
-      divider.addEventListener('dblclick', handlers.onDoubleClick);
-    }
+    return _SidebarResize ? _SidebarResize.normalizeRatio(rawRatio, options) : rawRatio;
   }
 
   function applySidebarSectionLayout() {
-    if (!_callDep('getElSidebar') || !_callDep('getElBoardList')) return;
-    if (_dep('workspaceShellEnabled')) {
-      if (_callDep('getElSidebarDashboardDivider')) _callDep('getElSidebarDashboardDivider').classList.add('hidden');
-      _callDep('getElBoardList').style.flex = '1 1 auto';
-      _callDep('getElBoardList').style.height = '';
-      if (_callDep('getElDashboardRoot')) {
-        _callDep('getElDashboardRoot').style.flex = '1 1 auto';
-        _callDep('getElDashboardRoot').style.height = '';
-      }
-      return;
-    }
-    var dashboardHidden = !_callDep('getElDashboardRoot') || _callDep('getElDashboardRoot').classList.contains('hidden');
-
-    if (dashboardHidden) {
-      if (_callDep('getElSidebarDashboardDivider')) _callDep('getElSidebarDashboardDivider').classList.add('hidden');
-      _callDep('getElBoardList').style.flex = '1 1 auto';
-      _callDep('getElBoardList').style.height = '';
-      if (_callDep('getElDashboardRoot')) {
-        _callDep('getElDashboardRoot').style.flex = '';
-        _callDep('getElDashboardRoot').style.height = '';
-      }
-      return;
-    }
-
-    if (_callDep('getElSidebarDashboardDivider')) _callDep('getElSidebarDashboardDivider').classList.remove('hidden');
-    var sidebarSplitRatio = normalizeSidebarSplitRatio(_dep('sidebarSplitRatio'));
-
-    var sidebarHeight = _callDep('getElSidebar').clientHeight || 0;
-    var headerHeight = _callDep('getElSidebarHeader') ? _callDep('getElSidebarHeader').offsetHeight : 0;
-    var dividerHeight = _callDep('getElSidebarDashboardDivider') ? (_callDep('getElSidebarDashboardDivider').offsetHeight || 8) : 0;
-    var available = sidebarHeight - headerHeight - dividerHeight;
-    if (available <= 0) return;
-
-    var styles = window.getComputedStyle(_callDep('getElSidebar'));
-    var hierarchyMin = parseFloat(styles.getPropertyValue('--sidebar-hierarchy-min')) || 140;
-    var dashboardMin = parseFloat(styles.getPropertyValue('--sidebar-dashboard-min')) || 180;
-    var minSum = hierarchyMin + dashboardMin;
-    if (available < minSum) {
-      var scaledHierarchyMin = Math.max(80, Math.floor((hierarchyMin / minSum) * available));
-      hierarchyMin = scaledHierarchyMin;
-      dashboardMin = Math.max(100, available - scaledHierarchyMin);
-    }
-
-    var boardHeight = Math.round(available * sidebarSplitRatio);
-    var minBoard = Math.min(hierarchyMin, Math.max(0, available - dashboardMin));
-    var maxBoard = Math.max(minBoard, available - dashboardMin);
-    boardHeight = Math.max(minBoard, Math.min(maxBoard, boardHeight));
-    var dashboardHeight = Math.max(0, available - boardHeight);
-
-    _callDep('getElBoardList').style.flex = '0 0 ' + boardHeight + 'px';
-    _callDep('getElBoardList').style.height = boardHeight + 'px';
-    if (_callDep('getElDashboardRoot')) {
-      _callDep('getElDashboardRoot').style.flex = '0 0 ' + dashboardHeight + 'px';
-      _callDep('getElDashboardRoot').style.height = dashboardHeight + 'px';
-    }
+    if (_SidebarResize) _SidebarResize.applySidebarSectionLayout();
   }
 
   function setupSidebarSectionResize() {
-    if (_dep('workspaceShellEnabled')) {
-      applySidebarSectionLayout();
-      return;
-    }
-    if (!_callDep('getElSidebar') || !_callDep('getElSidebarDashboardDivider')) return;
-    applySidebarSectionLayout();
-    window.addEventListener('resize', applySidebarSectionLayout);
-
-    bindPointerDividerDrag(_callDep('getElSidebarDashboardDivider'), {
-      canStart: function () {
-        return !!_callDep('getElDashboardRoot') && !_callDep('getElDashboardRoot').classList.contains('hidden');
-      },
-      onStart: function () {
-        var sidebarRect = _callDep('getElSidebar').getBoundingClientRect();
-        var headerBottom = _callDep('getElSidebarHeader') ? _callDep('getElSidebarHeader').getBoundingClientRect().bottom : sidebarRect.top;
-        var dividerHeight = _callDep('getElSidebarDashboardDivider').offsetHeight || 8;
-        var trackStart = headerBottom;
-        var trackSize = sidebarRect.height - (headerBottom - sidebarRect.top) - dividerHeight;
-        _callDep('getElSidebar').classList.add('resizing-sections');
-        return {
-          trackStart: trackStart,
-          trackSize: Math.max(1, trackSize)
-        };
-      },
-      onMove: function (ev, ctx) {
-        var next = (ev.clientY - ctx.trackStart) / ctx.trackSize;
-        _callDep('setSidebarSplitRatio', normalizeSidebarSplitRatio(next));
-        applySidebarSectionLayout();
-      },
-      onEnd: function () {
-        _callDep('getElSidebar').classList.remove('resizing-sections');
-        if (_Settings) { _Settings.set('sidebarSplitRatio', normalizeSidebarSplitRatio(_dep('sidebarSplitRatio'))); } else { localStorage.setItem('lexera-sidebar-split-ratio', String(normalizeSidebarSplitRatio(_dep('sidebarSplitRatio')))); }
-        applySidebarSectionLayout();
-      },
-      onDoubleClick: function () {
-        _callDep('setSidebarSplitRatio', 0.5);
-        if (_Settings) { _Settings.set('sidebarSplitRatio', 0.5); } else { localStorage.setItem('lexera-sidebar-split-ratio', '0.5'); }
-        applySidebarSectionLayout();
-      }
-    });
+    if (_SidebarResize) _SidebarResize.setupSidebarSectionResize();
   }
 
   function applySidebarWidth() {
-    if (!_callDep('getElSidebar')) return;
-    if (_dep('workspaceShellEnabled')) return;
-    if (_dep('sidebarWidth') > 0) {
-      document.documentElement.style.setProperty('--sidebar-width', _dep('sidebarWidth') + 'px');
-    }
+    if (_SidebarResize) _SidebarResize.applySidebarWidth();
   }
 
   function setupSidebarWidthResize() {
-    if (_dep('workspaceShellEnabled')) return;
-    if (!_callDep('getElSidebar') || !_callDep('getElSidebarWidthDivider') || !_callDep('getElLayout')) return;
-    var SIDEBAR_MIN = 180;
-    var SIDEBAR_MAX = 600;
-    var SIDEBAR_DEFAULT = 300;
-    var SNAP_THRESHOLD = 15;
-
-    applySidebarWidth();
-
-    bindPointerDividerDrag(_callDep('getElSidebarWidthDivider'), {
-      onStart: function () {
-        var sidebarRect = _callDep('getElSidebar').getBoundingClientRect();
-        _callDep('getElLayout').classList.add('resizing-sidebar-width');
-        return { left: sidebarRect.left };
-      },
-      onMove: function (ev, ctx) {
-        var newWidth = ev.clientX - ctx.left;
-        if (Math.abs(newWidth - SIDEBAR_DEFAULT) < SNAP_THRESHOLD) newWidth = SIDEBAR_DEFAULT;
-        newWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, newWidth));
-        _callDep('setSidebarWidth', newWidth);
-        document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px');
-        applySidebarSectionLayout();
-      },
-      onEnd: function () {
-        _callDep('getElLayout').classList.remove('resizing-sidebar-width');
-        if (_Settings) { _Settings.set('sidebarWidth', _dep('sidebarWidth')); } else { localStorage.setItem('lexera-sidebar-width', String(_dep('sidebarWidth'))); }
-        applySidebarSectionLayout();
-      },
-      onDoubleClick: function () {
-        _callDep('setSidebarWidth', SIDEBAR_DEFAULT);
-        document.documentElement.style.setProperty('--sidebar-width', SIDEBAR_DEFAULT + 'px');
-        if (_Settings) { _Settings.set('sidebarWidth', SIDEBAR_DEFAULT); } else { localStorage.setItem('lexera-sidebar-width', String(SIDEBAR_DEFAULT)); }
-        applySidebarSectionLayout();
-      }
-    });
+    if (_SidebarResize) _SidebarResize.setupSidebarWidthResize();
   }
 
   // ─── Tab indent helper ────────────────────────────────────────────────
@@ -3094,8 +2887,6 @@ var LexeraOrderHelpers = (function () {
     collectDroppedPathsFromDataTransfer: collectDroppedPathsFromDataTransfer,
     addBoardsByPath: addBoardsByPath,
     normalizeRatio: normalizeRatio,
-    normalizeSidebarSplitRatio: normalizeSidebarSplitRatio,
-    bindPointerDividerDrag: bindPointerDividerDrag,
     applySidebarSectionLayout: applySidebarSectionLayout,
     setupSidebarSectionResize: setupSidebarSectionResize,
     applySidebarWidth: applySidebarWidth,
