@@ -107,6 +107,86 @@ pub fn media_folder_for_board(board_path: &Path) -> PathBuf {
     dir.join(format!("{}-Media", stem))
 }
 
+// ── Workspace media index ─────────────────────────────────────────────────
+
+/// A single media file entry in the workspace-wide media index.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceMediaFile {
+    pub board_id: String,
+    pub board_title: String,
+    pub name: String,
+    /// Relative path for markdown embedding, e.g. `"BoardName-Media/photo.png"`.
+    pub relative_path: String,
+    /// Category: `"image"`, `"video"`, `"audio"`, `"document"`, or `"unknown"`.
+    pub category: String,
+    pub size: u64,
+    pub sha256: String,
+}
+
+/// Aggregated view of all media files across all boards in a workspace.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceMediaIndex {
+    pub files: Vec<WorkspaceMediaFile>,
+    pub total_files: usize,
+    pub total_size: u64,
+    /// Count of files per category (`"image"`, `"video"`, etc.).
+    pub by_category: std::collections::HashMap<String, usize>,
+    pub board_count: usize,
+}
+
+/// Scan the media folders for every board and return a unified workspace index.
+///
+/// `boards` is a slice of `(board_id, board_title, board_path)` tuples.
+/// Files are sorted by `relative_path` for deterministic output.
+pub fn scan_workspace_media(boards: &[(&str, &str, &std::path::Path)]) -> WorkspaceMediaIndex {
+    let mut files: Vec<WorkspaceMediaFile> = Vec::new();
+    let mut total_size: u64 = 0;
+    let mut by_category: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+    for &(board_id, board_title, board_path) in boards {
+        let stem = board_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("board");
+        let media_folder_name = format!("{}-Media", stem);
+
+        for entry in compute_media_manifest(board_path) {
+            let ext = std::path::Path::new(&entry.name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|s| s.to_lowercase());
+            let category = media_category(ext.as_deref()).to_string();
+            let relative_path = format!("{}/{}", media_folder_name, entry.name);
+
+            total_size += entry.size;
+            *by_category.entry(category.clone()).or_insert(0) += 1;
+
+            files.push(WorkspaceMediaFile {
+                board_id: board_id.to_string(),
+                board_title: board_title.to_string(),
+                name: entry.name,
+                relative_path,
+                category,
+                size: entry.size,
+                sha256: entry.sha256,
+            });
+        }
+    }
+
+    files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    let total_files = files.len();
+
+    WorkspaceMediaIndex {
+        files,
+        total_files,
+        total_size,
+        by_category,
+        board_count: boards.len(),
+    }
+}
+
 // ── Media manifest for sync ────────────────────────────────────────────────
 
 /// A single entry in a board's media manifest.
@@ -331,5 +411,113 @@ mod manifest_tests {
         let remote = vec![entry("photo.jpg", "hash2", 600)];
         let diff = diff_media_manifests(&local, &remote);
         assert_eq!(diff, vec!["photo.jpg"]);
+    }
+}
+
+#[cfg(test)]
+mod workspace_tests {
+    use super::*;
+
+    #[test]
+    fn workspace_scan_empty_when_no_media_folders() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board = tmp.path().join("Board.md");
+        std::fs::write(&board, "# Board").unwrap();
+
+        let boards = vec![("b1", "My Board", board.as_path())];
+        let index = scan_workspace_media(&boards);
+
+        assert_eq!(index.total_files, 0);
+        assert_eq!(index.total_size, 0);
+        assert!(index.files.is_empty());
+        assert_eq!(index.board_count, 1);
+        assert!(index.by_category.is_empty());
+    }
+
+    #[test]
+    fn workspace_scan_aggregates_multiple_boards() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let board1 = tmp.path().join("Board1.md");
+        std::fs::write(&board1, "# Board1").unwrap();
+        let media1 = tmp.path().join("Board1-Media");
+        std::fs::create_dir_all(&media1).unwrap();
+        std::fs::write(media1.join("photo.png"), b"fakepng").unwrap();
+
+        let board2 = tmp.path().join("Board2.md");
+        std::fs::write(&board2, "# Board2").unwrap();
+        let media2 = tmp.path().join("Board2-Media");
+        std::fs::create_dir_all(&media2).unwrap();
+        std::fs::write(media2.join("report.pdf"), b"fakepdf123").unwrap();
+
+        let boards = vec![
+            ("b1", "Board 1", board1.as_path()),
+            ("b2", "Board 2", board2.as_path()),
+        ];
+        let index = scan_workspace_media(&boards);
+
+        assert_eq!(index.total_files, 2);
+        assert_eq!(index.board_count, 2);
+        assert!(index.total_size > 0);
+        assert_eq!(index.by_category.get("image").copied().unwrap_or(0), 1);
+        assert_eq!(index.by_category.get("document").copied().unwrap_or(0), 1);
+    }
+
+    #[test]
+    fn workspace_scan_relative_paths_are_correct() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board = tmp.path().join("MyBoard.md");
+        std::fs::write(&board, "# Board").unwrap();
+        let media_dir = tmp.path().join("MyBoard-Media");
+        std::fs::create_dir_all(&media_dir).unwrap();
+        std::fs::write(media_dir.join("shot.jpg"), b"fakejpg").unwrap();
+
+        let boards = vec![("b1", "My Board", board.as_path())];
+        let index = scan_workspace_media(&boards);
+
+        assert_eq!(index.files.len(), 1);
+        assert_eq!(index.files[0].name, "shot.jpg");
+        assert_eq!(index.files[0].relative_path, "MyBoard-Media/shot.jpg");
+        assert_eq!(index.files[0].category, "image");
+        assert_eq!(index.files[0].board_id, "b1");
+        assert_eq!(index.files[0].board_title, "My Board");
+        assert_eq!(index.files[0].size, 7);
+        assert_eq!(index.files[0].sha256.len(), 64);
+    }
+
+    #[test]
+    fn workspace_scan_files_sorted_by_relative_path() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Board A has "zzz.png", Board B has "aaa.mp3"
+        let board_a = tmp.path().join("A.md");
+        std::fs::write(&board_a, "# A").unwrap();
+        let media_a = tmp.path().join("A-Media");
+        std::fs::create_dir_all(&media_a).unwrap();
+        std::fs::write(media_a.join("zzz.png"), b"z").unwrap();
+
+        let board_b = tmp.path().join("B.md");
+        std::fs::write(&board_b, "# B").unwrap();
+        let media_b = tmp.path().join("B-Media");
+        std::fs::create_dir_all(&media_b).unwrap();
+        std::fs::write(media_b.join("aaa.mp3"), b"a").unwrap();
+
+        let boards = vec![
+            ("a", "A", board_a.as_path()),
+            ("b", "B", board_b.as_path()),
+        ];
+        let index = scan_workspace_media(&boards);
+
+        assert_eq!(index.files.len(), 2);
+        // "A-Media/zzz.png" < "B-Media/aaa.mp3" alphabetically
+        assert_eq!(index.files[0].relative_path, "A-Media/zzz.png");
+        assert_eq!(index.files[1].relative_path, "B-Media/aaa.mp3");
+    }
+
+    #[test]
+    fn workspace_scan_zero_boards() {
+        let index = scan_workspace_media(&[]);
+        assert_eq!(index.total_files, 0);
+        assert_eq!(index.board_count, 0);
     }
 }

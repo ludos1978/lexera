@@ -49,6 +49,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   POST /boards/:boardId/media               -> upload media file
 ///   GET  /boards/:boardId/media-manifest      -> list media files with SHA-256 hashes
 ///   GET  /boards/:boardId/media/:filename     -> serve media file
+///   GET  /media/workspace-index               -> all media files across all boards
 ///   GET  /boards/:boardId/file?path=...       -> serve any file relative to board dir
 ///   GET  /boards/:boardId/file-info?path=...  -> file metadata (size, type, etc.)
 ///   POST /boards/:boardId/find-file            -> search for files by name in board dir
@@ -179,6 +180,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
         .route(
             "/boards/{board_id}/media/{filename}",
             get(media::serve_media),
+        )
+        .route(
+            "/media/workspace-index",
+            get(media::workspace_media_index),
         )
         .route("/boards/{board_id}/file", get(file_ops::serve_file))
         .route("/boards/{board_id}/file-info", get(file_ops::file_info))

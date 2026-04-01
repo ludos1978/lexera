@@ -118,6 +118,35 @@ pub async fn media_manifest(
     Ok(Json(manifest))
 }
 
+/// GET /media/workspace-index -- list all media files across every registered board.
+/// Returns a unified index with per-file metadata and category counts.
+pub async fn workspace_media_index(
+    State(state): State<AppState>,
+) -> Result<Json<lexera_core::media::WorkspaceMediaIndex>, (StatusCode, Json<ErrorResponse>)> {
+    use lexera_core::storage::BoardStorage as _;
+
+    let boards_info = state.storage.list_boards();
+    let boards: Vec<(String, String, std::path::PathBuf)> = boards_info
+        .into_iter()
+        .filter_map(|info| {
+            let path = state.storage.get_board_path(&info.id)?;
+            Some((info.id, info.title, path))
+        })
+        .collect();
+
+    let index = tokio::task::spawn_blocking(move || {
+        let board_refs: Vec<(&str, &str, &std::path::Path)> = boards
+            .iter()
+            .map(|(id, title, path)| (id.as_str(), title.as_str(), path.as_path()))
+            .collect();
+        lexera_core::media::scan_workspace_media(&board_refs)
+    })
+    .await
+    .map_err(|e| err_internal(format!("Workspace media scan failed: {}", e)))?;
+
+    Ok(Json(index))
+}
+
 /// GET /boards/{board_id}/media/{filename} -- serve a media file from the board's media folder.
 pub async fn serve_media(
     State(state): State<AppState>,
@@ -297,5 +326,69 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn workspace_media_index_empty_when_no_media() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, _board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(authed_get("/media/workspace-index", &token))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["totalFiles"], 0);
+        assert_eq!(json["totalSize"], 0);
+        assert_eq!(json["boardCount"], 1);
+        assert!(json["files"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn workspace_media_index_lists_files_with_metadata() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, _board_id) = setup_board(tmp.path());
+        let token = register_test_user(&state);
+
+        // Create media files in the board's media folder
+        let media_dir = tmp.path().join("board-Media");
+        std::fs::create_dir_all(&media_dir).unwrap();
+        std::fs::write(media_dir.join("photo.png"), b"fakepng").unwrap();
+        std::fs::write(media_dir.join("clip.mp4"), b"fakevideo1234").unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(authed_get("/media/workspace-index", &token))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert_eq!(json["totalFiles"], 2);
+        assert!(json["totalSize"].as_u64().unwrap() > 0);
+        assert_eq!(json["boardCount"], 1);
+
+        let files = json["files"].as_array().unwrap();
+        assert_eq!(files.len(), 2);
+
+        // Files are sorted by relative_path: "board-Media/clip.mp4" < "board-Media/photo.png"
+        assert_eq!(files[0]["name"], "clip.mp4");
+        assert_eq!(files[0]["category"], "video");
+        assert_eq!(files[0]["relativePath"], "board-Media/clip.mp4");
+        assert_eq!(files[0]["sha256"].as_str().unwrap().len(), 64);
+
+        assert_eq!(files[1]["name"], "photo.png");
+        assert_eq!(files[1]["category"], "image");
+
+        let by_cat = &json["byCategory"];
+        assert_eq!(by_cat["image"], 1);
+        assert_eq!(by_cat["video"], 1);
     }
 }
