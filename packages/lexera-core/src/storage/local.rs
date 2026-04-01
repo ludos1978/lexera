@@ -28,6 +28,7 @@ use crate::parser;
 use crate::search::{
     DueFilter, SearchCardMeta, SearchDocument, SearchEngine, SearchOptions, SearchPrefilter,
 };
+use crate::storage::registry::{BoardRegistry, BoardRegistryEntry, SearchEntry};
 use crate::types::*;
 use crate::watcher::self_write::SelfWriteTracker;
 
@@ -197,6 +198,10 @@ pub struct LocalStorage {
     writer_id: String,
     /// Write-loop detection counters
     pub write_counters: WriteCounters,
+    /// Board registry (ordering, pinning, access history, search history).
+    registry: RwLock<BoardRegistry>,
+    /// Path where the registry is persisted. `None` until `init_registry` is called.
+    registry_path: Mutex<Option<PathBuf>>,
 }
 
 /// Check if two boards have different row/stack/column structure (count or IDs).
@@ -2329,6 +2334,8 @@ impl LocalStorage {
             remote_boards: RwLock::new(HashSet::new()),
             writer_id: uuid::Uuid::new_v4().to_string(),
             write_counters: WriteCounters::new(),
+            registry: RwLock::new(BoardRegistry::new()),
+            registry_path: Mutex::new(None),
         }
     }
 
@@ -2494,6 +2501,14 @@ impl LocalStorage {
             .write()
             .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?
             .insert(board_id.clone(), state);
+
+        // Keep registry in sync with boards
+        {
+            let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
+            reg.register_board(&board_id);
+            self.save_registry(&reg);
+        }
+
         Ok(board_id)
     }
 
@@ -2926,6 +2941,14 @@ impl LocalStorage {
             imap.remove_board(board_id);
         }
 
+        // Unregister from registry (no save — boards on external drives should
+        // not be purged from the registry when temporarily unavailable)
+        {
+            let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
+            reg.unregister_board(board_id);
+            self.save_registry(&reg);
+        }
+
         Ok(())
     }
 
@@ -3080,6 +3103,127 @@ impl LocalStorage {
             .ok()?
             .get(board_id)
             .map(|state| format!("r-{}", Self::resolved_hash(&state.board)))
+    }
+
+    // ── Registry ──────────────────────────────────────────────────────────
+
+    /// Load (or create) the board registry from `path` and sync it with the
+    /// boards currently in storage. Call this once after boards are loaded.
+    pub fn init_registry(&self, path: PathBuf) {
+        let mut reg = match BoardRegistry::load(&path) {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("[lexera.registry] Failed to load registry from {}: {}", path.display(), e);
+                BoardRegistry::new()
+            }
+        };
+        let known_ids: Vec<String> = self
+            .boards
+            .read()
+            .map(|b| b.keys().cloned().collect())
+            .unwrap_or_default();
+        reg.sync_with_storage(&known_ids);
+        if let Err(e) = reg.save(&path) {
+            log::warn!("[lexera.registry] Failed to save registry after sync: {}", e);
+        }
+        *self.registry_path.lock().unwrap_or_else(|e| e.into_inner()) = Some(path);
+        *self.registry.write().unwrap_or_else(|e| e.into_inner()) = reg;
+    }
+
+    /// Persist the current registry to disk (no-op if no path has been set).
+    fn save_registry(&self, reg: &BoardRegistry) {
+        let guard = self.registry_path.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(path) = guard.as_ref() {
+            if let Err(e) = reg.save(path) {
+                log::warn!("[lexera.registry] Failed to save: {}", e);
+            }
+        }
+    }
+
+    /// Return all board entries sorted by the registry ordering (pinned first,
+    /// then display_order, then last_accessed).
+    pub fn registry_sorted_boards(&self) -> Vec<BoardRegistryEntry> {
+        self.registry
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .sorted_boards()
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Record that a board was opened by the user.
+    pub fn registry_record_access(&self, board_id: &str) {
+        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
+        reg.record_access(board_id);
+        self.save_registry(&reg);
+    }
+
+    /// Reorder boards by setting `display_order` from the position in `board_ids`.
+    pub fn registry_reorder(&self, board_ids: &[String]) {
+        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
+        reg.reorder(board_ids);
+        self.save_registry(&reg);
+    }
+
+    /// Toggle the pinned state for a board.
+    /// Returns `true` if the board was found in the registry.
+    pub fn registry_set_pinned(&self, board_id: &str, pinned: bool) -> bool {
+        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
+        if reg.entries.iter().any(|e| e.board_id == board_id) {
+            reg.set_pinned(board_id, pinned);
+            self.save_registry(&reg);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Set or clear the custom display label for a board.
+    /// Returns `true` if the board was found.
+    pub fn registry_set_label(&self, board_id: &str, label: Option<String>) -> bool {
+        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
+        if reg.entries.iter().any(|e| e.board_id == board_id) {
+            reg.set_label(board_id, label);
+            self.save_registry(&reg);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Return all search history entries (pinned + recent).
+    pub fn registry_searches(&self) -> Vec<SearchEntry> {
+        self.registry
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .search_history
+            .clone()
+    }
+
+    /// Add or promote a search entry. Trims unpinned entries to the configured max.
+    pub fn registry_add_search(&self, query: &str, use_regex: Option<bool>) {
+        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
+        reg.add_search(query, use_regex);
+        self.save_registry(&reg);
+    }
+
+    /// Toggle the pinned state of a search entry.
+    /// Returns `true` if the entry was found.
+    pub fn registry_toggle_pin_search(&self, query: &str) -> bool {
+        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
+        let toggled = reg.toggle_pin_search(query);
+        if toggled {
+            self.save_registry(&reg);
+        }
+        toggled
+    }
+
+    /// Remove a search entry by query string.
+    pub fn registry_remove_search(&self, query: &str) {
+        let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
+        reg.remove_search(query);
+        self.save_registry(&reg);
     }
 
     /// Get the persisted generation counter for a board (for staleness detection).

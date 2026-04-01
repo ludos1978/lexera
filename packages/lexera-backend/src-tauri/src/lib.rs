@@ -883,6 +883,12 @@ pub fn run() {
             // ── Storage & boards ───────────────────────────────────────────
             let storage = Arc::new(LocalStorage::new());
             let board_paths = init_storage_and_boards(&storage, &config);
+            // Init persistent board registry (ordering, pin, access, search history)
+            let registry_path = dirs::config_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(config::CONFIG_DIR_NAME)
+                .join(".lexera-registry.json");
+            storage.init_registry(registry_path);
             let incoming = resolve_incoming(&config, &board_paths);
 
             // ── Global shortcuts ───────────────────────────────────────────

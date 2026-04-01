@@ -19,6 +19,7 @@ mod file_ops;
 mod live_sync;
 mod media;
 pub(crate) mod rate_limit;
+mod registry;
 mod search;
 mod template;
 
@@ -50,6 +51,15 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   GET  /boards/:boardId/media-manifest      -> list media files with SHA-256 hashes
 ///   GET  /boards/:boardId/media/:filename     -> serve media file
 ///   GET  /media/workspace-index               -> all media files across all boards
+///   GET  /registry                            -> board registry (sorted entries)
+///   POST /registry/boards/:boardId/access     -> record board access
+///   PUT  /registry/boards/order               -> reorder boards
+///   PUT  /registry/boards/:boardId/pin        -> set pinned state
+///   PUT  /registry/boards/:boardId/label      -> set custom label
+///   GET  /registry/searches                   -> search history
+///   POST /registry/searches                   -> add search entry
+///   DELETE /registry/searches/:query          -> remove search entry
+///   PUT  /registry/searches/:query/pin        -> toggle pin state
 ///   GET  /boards/:boardId/file?path=...       -> serve any file relative to board dir
 ///   GET  /boards/:boardId/file-info?path=...  -> file metadata (size, type, etc.)
 ///   POST /boards/:boardId/find-file            -> search for files by name in board dir
@@ -184,6 +194,36 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
         .route(
             "/media/workspace-index",
             get(media::workspace_media_index),
+        )
+        // ── Registry ────────────────────────────────────────────────────────
+        .route("/registry", get(registry::get_registry))
+        .route(
+            "/registry/boards/{board_id}/access",
+            axum::routing::post(registry::record_board_access),
+        )
+        .route(
+            "/registry/boards/order",
+            axum::routing::put(registry::reorder_boards),
+        )
+        .route(
+            "/registry/boards/{board_id}/pin",
+            axum::routing::put(registry::set_board_pinned),
+        )
+        .route(
+            "/registry/boards/{board_id}/label",
+            axum::routing::put(registry::set_board_label),
+        )
+        .route(
+            "/registry/searches",
+            get(registry::get_searches).post(registry::add_search),
+        )
+        .route(
+            "/registry/searches/{query}",
+            axum::routing::delete(registry::remove_search),
+        )
+        .route(
+            "/registry/searches/{query}/pin",
+            axum::routing::put(registry::toggle_search_pin),
         )
         .route("/boards/{board_id}/file", get(file_ops::serve_file))
         .route("/boards/{board_id}/file-info", get(file_ops::file_info))

@@ -1,4 +1,4 @@
-/// Board registry for custom ordering, access tracking, and pinning.
+/// Board registry for custom ordering, access tracking, pinning, and search history.
 ///
 /// Stored as a JSON file alongside boards. Provides:
 /// - Custom display ordering
@@ -6,12 +6,25 @@
 /// - Access history (last accessed, access count)
 /// - Custom labels for user-friendly board names
 /// - Sync with storage to discover new boards
+/// - Recent/pinned search history
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 
 use chrono::Local;
 use serde::{Deserialize, Serialize};
+
+/// Maximum number of unpinned searches to retain.
+const MAX_UNPINNED_SEARCHES: usize = 3;
+
+/// A persisted search entry (recent or pinned).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SearchEntry {
+    pub query: String,
+    pub pinned: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_regex: Option<bool>,
+}
 
 /// A single board entry in the registry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +41,10 @@ pub struct BoardRegistryEntry {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct BoardRegistry {
     pub entries: Vec<BoardRegistryEntry>,
+    /// Recent and pinned search history. Pinned entries are never trimmed;
+    /// unpinned entries are capped at `MAX_UNPINNED_SEARCHES`.
+    #[serde(default)]
+    pub search_history: Vec<SearchEntry>,
 }
 
 impl BoardRegistry {
@@ -35,6 +52,7 @@ impl BoardRegistry {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
+            search_history: Vec::new(),
         }
     }
 
@@ -199,6 +217,84 @@ impl BoardRegistry {
                 self.register_board(id);
             }
         }
+    }
+
+    // ── Search history ────────────────────────────────────────────────────
+
+    /// Add or promote a search entry.
+    ///
+    /// Behaviour:
+    /// - If the same query already exists and is pinned, it stays pinned and
+    ///   is moved to the front of the pinned block.
+    /// - If the same query already exists and is unpinned, it is moved to the
+    ///   front of the unpinned block.
+    /// - New queries are inserted unpinned at the front of the unpinned block.
+    /// - Excess unpinned entries beyond `MAX_UNPINNED_SEARCHES` are removed
+    ///   (oldest first, from the tail).
+    pub fn add_search(&mut self, query: &str, use_regex: Option<bool>) {
+        // Capture pin state of any existing entry then remove it
+        let was_pinned = self
+            .search_history
+            .iter()
+            .position(|s| s.query == query)
+            .map(|i| {
+                let pinned = self.search_history[i].pinned;
+                self.search_history.remove(i);
+                pinned
+            })
+            .unwrap_or(false);
+
+        // Insert at the front of pinned or unpinned block
+        let insert_pos = if was_pinned {
+            0
+        } else {
+            // After the last pinned entry
+            self.search_history
+                .iter()
+                .position(|s| !s.pinned)
+                .unwrap_or(self.search_history.len())
+        };
+
+        self.search_history.insert(
+            insert_pos,
+            SearchEntry {
+                query: query.to_string(),
+                pinned: was_pinned,
+                use_regex,
+            },
+        );
+
+        // Trim unpinned to MAX_UNPINNED_SEARCHES: iterate from tail (oldest) and
+        // remove entries until the unpinned count is within the limit.
+        let mut unpinned_count = self.search_history.iter().filter(|s| !s.pinned).count();
+        let mut i = self.search_history.len();
+        while i > 0 && unpinned_count > MAX_UNPINNED_SEARCHES {
+            i -= 1;
+            if !self.search_history[i].pinned {
+                self.search_history.remove(i);
+                unpinned_count -= 1;
+            }
+        }
+    }
+
+    /// Toggle the pinned state of a search entry.
+    /// Returns `true` if the entry was found and toggled.
+    pub fn toggle_pin_search(&mut self, query: &str) -> bool {
+        if let Some(entry) = self.search_history.iter_mut().find(|s| s.query == query) {
+            entry.pinned = !entry.pinned;
+            return true;
+        }
+        false
+    }
+
+    /// Remove a search entry by query string.
+    pub fn remove_search(&mut self, query: &str) {
+        self.search_history.retain(|s| s.query != query);
+    }
+
+    /// Return only the pinned search entries.
+    pub fn pinned_searches(&self) -> Vec<&SearchEntry> {
+        self.search_history.iter().filter(|s| s.pinned).collect()
     }
 }
 
@@ -509,5 +605,109 @@ mod tests {
                 .display_order,
             11
         );
+    }
+
+    // ── Search history tests ──────────────────────────────────────────────
+
+    #[test]
+    fn add_search_inserts_new_entry() {
+        let mut reg = BoardRegistry::new();
+        reg.add_search("kanban", None);
+        assert_eq!(reg.search_history.len(), 1);
+        assert_eq!(reg.search_history[0].query, "kanban");
+        assert!(!reg.search_history[0].pinned);
+    }
+
+    #[test]
+    fn add_search_deduplicates_and_moves_to_front() {
+        let mut reg = BoardRegistry::new();
+        reg.add_search("a", None);
+        reg.add_search("b", None);
+        reg.add_search("a", None); // re-add "a"
+        assert_eq!(reg.search_history.len(), 2);
+        // "a" should now be at the front of unpinned block
+        let unpinned: Vec<_> = reg.search_history.iter().filter(|s| !s.pinned).collect();
+        assert_eq!(unpinned[0].query, "a");
+    }
+
+    #[test]
+    fn add_search_trims_unpinned_to_max() {
+        let mut reg = BoardRegistry::new();
+        reg.add_search("a", None);
+        reg.add_search("b", None);
+        reg.add_search("c", None);
+        reg.add_search("d", None); // 4th unpinned → "a" should be removed
+        assert_eq!(reg.search_history.iter().filter(|s| !s.pinned).count(), 3);
+        assert!(!reg.search_history.iter().any(|s| s.query == "a"));
+    }
+
+    #[test]
+    fn pinned_searches_not_trimmed() {
+        let mut reg = BoardRegistry::new();
+        reg.add_search("pinned-one", None);
+        reg.toggle_pin_search("pinned-one");
+        reg.add_search("a", None);
+        reg.add_search("b", None);
+        reg.add_search("c", None);
+        reg.add_search("d", None); // triggers trim of unpinned
+        // "pinned-one" must still be present
+        assert!(reg.search_history.iter().any(|s| s.query == "pinned-one" && s.pinned));
+    }
+
+    #[test]
+    fn toggle_pin_search() {
+        let mut reg = BoardRegistry::new();
+        reg.add_search("q", None);
+        assert!(!reg.search_history[0].pinned);
+        let toggled = reg.toggle_pin_search("q");
+        assert!(toggled);
+        assert!(reg.search_history[0].pinned);
+        reg.toggle_pin_search("q");
+        assert!(!reg.search_history[0].pinned);
+    }
+
+    #[test]
+    fn toggle_pin_nonexistent_returns_false() {
+        let mut reg = BoardRegistry::new();
+        assert!(!reg.toggle_pin_search("does-not-exist"));
+    }
+
+    #[test]
+    fn remove_search() {
+        let mut reg = BoardRegistry::new();
+        reg.add_search("a", None);
+        reg.add_search("b", None);
+        reg.remove_search("a");
+        assert_eq!(reg.search_history.len(), 1);
+        assert_eq!(reg.search_history[0].query, "b");
+    }
+
+    #[test]
+    fn pinned_searches_returns_only_pinned() {
+        let mut reg = BoardRegistry::new();
+        reg.add_search("pinned", None);
+        reg.toggle_pin_search("pinned");
+        reg.add_search("unpinned", None);
+        let pinned = reg.pinned_searches();
+        assert_eq!(pinned.len(), 1);
+        assert_eq!(pinned[0].query, "pinned");
+    }
+
+    #[test]
+    fn search_history_survives_roundtrip() {
+        let dir = TempDir::new().expect("create temp dir");
+        let path = dir.path().join(".lexera-registry.json");
+
+        let mut reg = BoardRegistry::new();
+        reg.add_search("foo", Some(true));
+        reg.add_search("bar", None);
+        reg.toggle_pin_search("foo");
+        reg.save(&path).expect("save");
+
+        let loaded = BoardRegistry::load(&path).expect("load");
+        assert_eq!(loaded.search_history.len(), 2);
+        let foo = loaded.search_history.iter().find(|s| s.query == "foo").unwrap();
+        assert!(foo.pinned);
+        assert_eq!(foo.use_regex, Some(true));
     }
 }
