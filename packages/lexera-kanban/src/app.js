@@ -401,7 +401,7 @@ var LexeraDashboard = (function () {
     getActiveBoardColumns: function() { return activeBoardData ? activeBoardData.columns : []; },
     getIsEditing: function() { return isEditing; },
     getSearchMode: function() { return searchMode; },
-    getMgmtPanelOpen: function() { return mgmtPanelOpen; },
+    getMgmtPanelOpen: function() { return ManagementWiring ? ManagementWiring.getMgmtPanelOpen() : false; },
     getCurrentArrowKeyFocusScrollMode: function() { return currentArrowKeyFocusScrollMode; },
     moveCard: function(sci, scj, tci, tcj) { return moveCard(sci, scj, tci, tcj); },
     openCardEditor: function(el, ci, cj, mode) { openCardEditor(el, ci, cj, mode); },
@@ -1157,13 +1157,7 @@ var LexeraDashboard = (function () {
     // Init panels that may already exist after workspace shell restore.
     // Delay to let the first poll establish the backend connection.
     setTimeout(function () {
-      var existingFilesContainer = document.querySelector('.lexera-shared-files-container');
-      if (existingFilesContainer && !filesMountInitialized) initFilesPanelMount(existingFilesContainer);
-      var existingBackendContainer = document.querySelector('.lexera-shared-backend-settings-container');
-      if (existingBackendContainer && !mgmtInitialized) {
-        elLogSettingsContainer = existingBackendContainer;
-        initManagementUI();
-      }
+      if (ManagementWiring) ManagementWiring.initDelayedPanels();
     }, 3000);
 
     // Initialize HiddenItemsDropdown module
@@ -1945,11 +1939,7 @@ var LexeraDashboard = (function () {
     try {
     var kind = event.kind || event.type || '';
     // Forward collab/peer/config events to the shared management UI
-    if (typeof ManagementUI !== 'undefined' && mgmtInitialized) {
-      if (kind === 'CollabConnectionChanged') { ManagementUI.refresh('connections'); return; }
-      if (kind === 'PeerDiscoveryChanged') { ManagementUI.refresh('peers'); return; }
-      if (kind === 'ConfigChanged') { ManagementUI.refresh(); return; }
-    }
+    if (ManagementWiring && ManagementWiring.handleSSEManagementEvent(kind)) return;
     if (!activeBoardId || searchMode) return;
     var boardId = event.board_id || event.boardId || '';
     var includeBoardIds = event.board_ids || event.boardIds || [];
@@ -3699,10 +3689,7 @@ var LexeraDashboard = (function () {
   }
 
   function openRunningProcessesPanel() {
-    setActiveLogSource('backend');
-    var panel = getElLogPanel();
-    if (panel) panel.classList.remove('hidden');
-    updateAppBottomInset();
+    if (ManagementWiring) return ManagementWiring.openRunningProcessesPanel();
   }
 
   function formatSaveTrackingTimestamp(ts) {
@@ -5755,15 +5742,64 @@ var LexeraDashboard = (function () {
     }
   }
 
-  // ── Management Panel (shared module) ─────────────────────────
+  // ── Management Panel (shared module) — delegated to LexeraManagementWiring ──
 
-  var mgmtPanelOpen = false;
-  var mgmtInitialized = false;
+  var ManagementWiring = window.LexeraManagementWiring || null;
+  if (ManagementWiring) {
+    ManagementWiring.init({
+      workspaceShellEnabled: workspaceShellEnabled,
+      WorkspaceShell: WorkspaceShell,
+      apiRequest: function (path, options) { return LexeraApi.request(path, options); },
+      showNotification: function (msg) { showNotification(msg); },
+      showConfirmDialog: function (msg) { return showConfirmDialog(msg); },
+      poll: function () { poll(); },
+      onWorkspacesLoaded: function (workspaceList, defaultWorkspaceId) {
+        var nextWorkspaces = Array.isArray(workspaceList) ? workspaceList : [];
+        workspaces = nextWorkspaces;
+        if (_rt) _rt.setState('workspaces', nextWorkspaces);
+        resolveActiveWorkspaceId(defaultWorkspaceId || null);
+        renderWorkspaceSelect();
+        renderBoardList();
+      },
+      onBoardRemoved: function (boardId) {
+        boards = boards.filter(function (b) { return b.id !== boardId; });
+        BoardList.deleteBoardHierarchyCacheEntry(boardId);
+        if (activeBoardId === boardId) {
+          setActiveBoardIdState(null);
+          activeBoardData = null;
+          fullBoardData = null;
+          if (Settings) Settings.set('lastBoard', null); else localStorage.removeItem('lexera-last-board');
+        }
+        renderBoardList();
+        renderMainView();
+        scheduleDashboardRefresh(60);
+      },
+      onBoardSettingsSaved: function (boardId, settings) {
+        if (boardId === activeBoardId && fullBoardData) {
+          if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
+          for (var s in settings) {
+            if (settings[s] == null) {
+              delete fullBoardData.boardSettings[s];
+            } else {
+              fullBoardData.boardSettings[s] = settings[s];
+            }
+          }
+          applyBoardSettings();
+        }
+      },
+      getElLogSettingsContainer: function () { return getElLogSettingsContainer(); },
+      getElMgmtPanelBody: function () { return getElMgmtPanelBody(); },
+      getElMgmtPanel: function () { return getElMgmtPanel(); },
+      getElLogPanel: function () { return getElLogPanel(); },
+      setElLogSettingsContainer: function (v) { elLogSettingsContainer = v; },
+      setElLogSettingsPane: function (v) { elLogSettingsPane = v; },
+      initFrontendSettingsPanel: function (el) { initFrontendSettingsPanel(el); },
+      initRenderAppsPanel: function (el) { initRenderAppsPanel(el); },
+    });
+  }
+
   function getManagementUiContainer() {
-    if (workspaceShellEnabled) {
-      return getElLogSettingsContainer();
-    }
-    return getElMgmtPanelBody();
+    return ManagementWiring ? ManagementWiring.getManagementUiContainer() : getElMgmtPanelBody();
   }
 
   var FrontendSettings = window.LexeraFrontendSettings || null;
@@ -5856,257 +5892,27 @@ var LexeraDashboard = (function () {
     if (btn) showThemeZoomMenu(btn);
   }
 
-  var mgmtApiAdapter = {
-    get: function (path, options) { return LexeraApi.request(path, options); },
-    post: function (path, body) {
-      return LexeraApi.request(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-    },
-    put: function (path, body) {
-      return LexeraApi.request(path, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-    },
-    delete: function (path) {
-      return LexeraApi.request(path, { method: 'DELETE' });
-    },
-  };
+  var mgmtApiAdapter = ManagementWiring ? ManagementWiring.getMgmtApiAdapter() : null;
 
-  var mgmtCallbacks = {
-    openLogStream: function () {
-      // In the kanban app, backend logs are handled by loggingSystem.js
-      // which manages its own SSE connection lazily. Returning null tells
-      // management.js to skip opening a duplicate stream — saves a
-      // precious browser connection slot (6 max per origin).
-      return null;
-    },
-    onNotify: function (msg) { showNotification(msg); },
-    onWorkspacesLoaded: function (workspaceList, defaultWorkspaceId) {
-      var nextWorkspaces = Array.isArray(workspaceList) ? workspaceList : [];
-      workspaces = nextWorkspaces;
-      if (_rt) _rt.setState('workspaces', nextWorkspaces);
-      resolveActiveWorkspaceId(defaultWorkspaceId || null);
-      renderWorkspaceSelect();
-      renderBoardList();
-    },
-    onConfirm: function (msg) { return showConfirmDialog(msg); },
-    onBoardAdded: function () { poll(); },
-    onBoardRemoved: function (boardId) {
-      boards = boards.filter(function (b) { return b.id !== boardId; });
-      BoardList.deleteBoardHierarchyCacheEntry(boardId);
-      if (activeBoardId === boardId) {
-        setActiveBoardIdState(null);
-        activeBoardData = null;
-        fullBoardData = null;
-        if (Settings) Settings.set('lastBoard', null); else localStorage.removeItem('lexera-last-board');
-      }
-      renderBoardList();
-      renderMainView();
-      scheduleDashboardRefresh(60);
-    },
-    onBoardSettingsSaved: function (boardId, settings) {
-      if (boardId === activeBoardId && fullBoardData) {
-        if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
-        for (var s in settings) {
-          if (settings[s] == null) {
-            delete fullBoardData.boardSettings[s];
-          } else {
-            fullBoardData.boardSettings[s] = settings[s];
-          }
-        }
-        applyBoardSettings();
-      }
-    },
-    onServerRestarted: function () {},
-  };
-
-  var pendingManagementTabByContext = {
-    combinedManagement: 'network',
-    backendSettings: 'network',
-    files: 'workspaces'
-  };
-
-  function requireManagementUiMethod(name) {
-    if (!ManagementUI || typeof ManagementUI[name] !== 'function') {
-      throw new Error('ManagementUI.' + name + ' is required. Sync runtime assets from lexera-shared.');
-    }
-    return ManagementUI[name];
-  }
-
-  function getManagementUiPreset(name) {
-    return requireManagementUiMethod('getUiPreset')(name);
-  }
-
-  function getManagementSurfaceId(sectionName) {
-    return requireManagementUiMethod('getSurfaceIdForSection')(sectionName);
-  }
-
-  function getManagementTopTab(sectionName, contextName) {
-    return requireManagementUiMethod('getTopTabForContext')(sectionName, contextName);
-  }
-
-  function activateManagementTabInContainer(container, tabName) {
-    if (!container || !tabName) return;
-    var topTab = container.querySelector('.mgmt-top-tab[data-mgmt-top-tab="' + tabName + '"]');
-    var panel = container.querySelector('.mgmt-top-tab-content[data-mgmt-top-panel="' + tabName + '"]');
-    if (!topTab || !panel) return;
-    var tabs = container.querySelectorAll('.mgmt-top-tab');
-    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
-    var panels = container.querySelectorAll('.mgmt-top-tab-content');
-    for (var p = 0; p < panels.length; p++) panels[p].classList.remove('active');
-    topTab.classList.add('active');
-    panel.classList.add('active');
-  }
-
-  function getBackendSettingsManagementContainer() {
-    if (workspaceShellEnabled) return getElLogSettingsContainer();
-    return getElMgmtPanelBody();
-  }
-
-  function getFilesManagementContainer() {
-    if (!workspaceShellEnabled) return getElMgmtPanelBody();
-    return document.querySelector('[data-shell-panel="files"] .lexera-shared-files-container') ||
-      document.querySelector('.lexera-shared-files-container');
-  }
-
-  function getManagementContainerForContext(contextName) {
-    if (contextName === 'files') return getFilesManagementContainer();
-    if (contextName === 'backendSettings') return getBackendSettingsManagementContainer();
-    return getElMgmtPanelBody();
-  }
-
-  function rememberManagementTab(contextName, tabName) {
-    if (!contextName || !tabName) return;
-    pendingManagementTabByContext[contextName] = tabName;
-  }
-
-  function applyPendingManagementTab(contextName, container) {
-    var tabName = pendingManagementTabByContext[contextName];
-    if (!tabName) return;
-    activateManagementTabInContainer(container || getManagementContainerForContext(contextName), tabName);
-  }
-
-  function getEmbeddedManagementUiOptions() {
-    if (workspaceShellEnabled) return getManagementUiPreset('backendConfig');
-    return getManagementUiPreset('combinedManagement');
-  }
-
-  function initManagementUI() {
-    var managementContainer = getManagementUiContainer();
-    if (mgmtInitialized || !managementContainer) {
-      traceFrontendAction('debug', 'mgmt.init', 'initManagementUI skipped', {
-        initialized: mgmtInitialized,
-        hasContainer: !!managementContainer
-      });
-      return;
-    }
-    if (typeof ManagementUI === 'undefined' || !ManagementUI) {
-      traceFrontendAction('warn', 'mgmt.init', 'ManagementUI not loaded yet — deferring init');
-      setTimeout(initManagementUI, 500);
-      return;
-    }
-    mgmtInitialized = true;
-    try {
-      ManagementUI.init({
-        container: managementContainer,
-        ui: getEmbeddedManagementUiOptions(),
-        api: mgmtApiAdapter,
-        callbacks: mgmtCallbacks,
-      });
-    } catch (err) {
-      logFrontendIssue('error', 'mgmt.init', 'ManagementUI.init failed', err);
-      mgmtInitialized = false;
-      return;
-    }
-    if (_rt) _rt.setViewLoading(managementContainer, false);
-    applyPendingManagementTab(workspaceShellEnabled ? 'backendSettings' : 'combinedManagement', managementContainer);
-  }
-
-  var filesMountInitialized = false;
-
-  function initFilesPanelMount(container) {
-    if (!container) return;
-    ManagementUI.mount('files', {
-      container: container,
-      ui: getManagementUiPreset('files'),
-      api: mgmtApiAdapter,
-      callbacks: mgmtCallbacks,
-    });
-    if (_rt) _rt.setViewLoading(container, false);
-    filesMountInitialized = true;
-    applyPendingManagementTab('files', container);
-  }
-
-  if (typeof window !== 'undefined') {
-    window.initManagementUI = initManagementUI;
-    if (isLogPanelVisible()) initManagementUI();
-    window.addEventListener('lexera-shared-panel-created', function (event) {
-      if (!event.detail) return;
-      var el = event.detail.element;
-      if (event.detail.kind === 'backendSettings' && el) {
-        var container = el.querySelector('.lexera-shared-backend-settings-container');
-        if (container) {
-          elLogSettingsContainer = container;
-          elLogSettingsPane = el;
-          mgmtInitialized = false;
-          initManagementUI();
-        }
-      }
-      if (event.detail.kind === 'files' && el) {
-        var container = el.querySelector('.lexera-shared-files-container');
-        if (container) {
-          initFilesPanelMount(container);
-        }
-      }
-      if (event.detail.kind === 'frontendSettings') {
-        initFrontendSettingsPanel(event.detail.element);
-      }
-      if (event.detail.kind === 'renderApps') {
-        initRenderAppsPanel(event.detail.element);
-      }
-    });
-  }
-
-  function openManagementPanel(options) {
-    options = options || {};
-    mgmtPanelOpen = true;
-    var targetContext = workspaceShellEnabled
-      ? getManagementSurfaceId(options.section)
-      : 'combinedManagement';
-    var preferredTab = getManagementTopTab(options.section, targetContext);
-    rememberManagementTab(targetContext, preferredTab);
-    if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.revealPanel === 'function') {
-      runInitManagementUI();
-      WorkspaceShell.revealPanel(targetContext);
-      applyPendingManagementTab(targetContext);
-      return;
-    }
-    runInitManagementUI();
-    applyPendingManagementTab('combinedManagement');
-    if (getElMgmtPanel()) getElMgmtPanel().classList.add('open');
-  }
-
-  function runInitManagementUI() {
-    if (mgmtInitialized) return;
-    initManagementUI();
-  }
-
-  function closeManagementPanel() {
-    mgmtPanelOpen = false;
-    if (getElMgmtPanel()) getElMgmtPanel().classList.remove('open');
-  }
+  function requireManagementUiMethod(name) { return ManagementWiring.requireManagementUiMethod(name); }
+  function getManagementUiPreset(name) { return ManagementWiring.getManagementUiPreset(name); }
+  function getManagementSurfaceId(sectionName) { return ManagementWiring.getManagementSurfaceId(sectionName); }
+  function getManagementTopTab(sectionName, contextName) { return ManagementWiring.getManagementTopTab(sectionName, contextName); }
+  function activateManagementTabInContainer(container, tabName) { ManagementWiring.activateManagementTabInContainer(container, tabName); }
+  function getBackendSettingsManagementContainer() { return ManagementWiring.getBackendSettingsManagementContainer(); }
+  function getFilesManagementContainer() { return ManagementWiring.getFilesManagementContainer(); }
+  function getManagementContainerForContext(contextName) { return ManagementWiring.getManagementContainerForContext(contextName); }
+  function rememberManagementTab(contextName, tabName) { ManagementWiring.rememberManagementTab(contextName, tabName); }
+  function applyPendingManagementTab(contextName, container) { ManagementWiring.applyPendingManagementTab(contextName, container); }
+  function initManagementUI() { ManagementWiring.initManagementUI(); }
+  function initFilesPanelMount(container) { ManagementWiring.initFilesPanelMount(container); }
+  function openManagementPanel(options) { ManagementWiring.openManagementPanel(options); }
+  function runInitManagementUI() { ManagementWiring.runInitManagementUI(); }
+  function closeManagementPanel() { ManagementWiring.closeManagementPanel(); }
 
   // ── Collaboration ────────────────────────────────────────────────
 
-  function openConnectionWindow() {
-    openManagementPanel({ section: 'config' });
-  }
-  window.openConnectionWindow = openConnectionWindow;
+  function openConnectionWindow() { ManagementWiring.openConnectionWindow(); }
 
   var _notificationQueue = [];
   var _notificationActive = null;
