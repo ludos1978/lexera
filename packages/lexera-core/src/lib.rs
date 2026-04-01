@@ -2,6 +2,7 @@ pub mod archive;
 pub mod capture;
 pub mod config;
 pub mod crdt;
+pub mod dashboard;
 pub mod export;
 pub mod gather;
 pub mod include;

@@ -149,6 +149,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             axum::routing::post(board::gather_board),
         )
         .route(
+            "/boards/{board_id}/scan",
+            get(board::scan_board),
+        )
+        .route(
             "/boards/{board_id}/live-sync/open",
             axum::routing::post(board::open_live_sync_session),
         )

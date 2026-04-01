@@ -995,6 +995,31 @@ fn emit_main_file_changed(state: &AppState, board_id: &str) {
     }
 }
 
+/// GET /boards/{board_id}/scan?timeframe_days=30 — scan board for upcoming items, calendar events,
+/// undated sub-tasks, and tag summary.
+pub async fn scan_board(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Query(params): Query<ScanBoardParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
+
+    let board = state
+        .storage
+        .read_board(&board_id)
+        .ok_or_else(|| err_not_found("Board not found"))?;
+
+    let timeframe_days = params.timeframe_days.unwrap_or(30).min(365) as i64;
+    let result = lexera_core::dashboard::scan_board_today(&board, timeframe_days);
+
+    Ok(Json(serde_json::to_value(result).unwrap_or_default()))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ScanBoardParams {
+    timeframe_days: Option<u32>,
+}
+
 /// POST /boards/{board_id}/gather — apply gather rules and return the moves.
 ///
 /// Loads the board, runs the gather engine, saves the updated board, and
