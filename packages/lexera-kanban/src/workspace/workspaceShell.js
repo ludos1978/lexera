@@ -704,7 +704,8 @@
     dragPanelId: '',
     pointerDrag: null,
     dragLastX: 0,
-    dragLastY: 0
+    dragLastY: 0,
+    pendingFocusTargets: {}
   };
 
   function getSharedPanelsApi() {
@@ -4141,6 +4142,10 @@
     });
     if (!tab) return false;
     var frame = getOrCreateFrame(tab, { shouldLoad: true });
+    // Store as pending so we can deliver it when the frame signals readiness via
+    // lexera-pane-activated (handles the case where the tab is freshly opened and
+    // the board frame hasn't initialized yet when the 60ms/220ms timeouts fire).
+    state.pendingFocusTargets[tab.id] = target;
     function sendFocus() {
       if (!frame || !frame.contentWindow) return;
       frame.contentWindow.postMessage({
@@ -4149,7 +4154,12 @@
       }, '*');
     }
     setTimeout(sendFocus, 60);
-    setTimeout(sendFocus, 220);
+    setTimeout(function () {
+      sendFocus();
+      // Clear pending after the last heuristic attempt — if not delivered via
+      // pane-activated by now, we've done our best.
+      delete state.pendingFocusTargets[tab.id];
+    }, 220);
     return true;
   }
 
@@ -4159,6 +4169,21 @@
     if (data.type === 'lexera-pane-activated') {
       var paneFound = findTabInAllTrees(data.pane);
       if (!paneFound) return;
+      // Deliver any pending focus target for this pane. The board frame sends
+      // lexera-pane-activated right after its JS initializes (before board data
+      // loads), so the frame's message handler is already registered. The frame
+      // handles the case where the board isn't loaded yet by calling selectBoard.
+      var pendingTarget = state.pendingFocusTargets[data.pane];
+      if (pendingTarget) {
+        delete state.pendingFocusTargets[data.pane];
+        var pendingFrame = state.frameCache[data.pane];
+        if (pendingFrame && pendingFrame.contentWindow) {
+          pendingFrame.contentWindow.postMessage({
+            type: 'lexera-focus-hierarchy-target',
+            target: pendingTarget
+          }, '*');
+        }
+      }
       // Only activate if this pane isn't already the active tab in its leaf —
       // prevents cascade where loading an iframe triggers tab activation which
       // triggers board change notification which loads another board.
