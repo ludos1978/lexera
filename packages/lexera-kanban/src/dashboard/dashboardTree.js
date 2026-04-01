@@ -243,6 +243,7 @@
           'data-dashboard-target': 'broken',
           'data-dashboard-col-index': item.colIndex != null ? String(item.colIndex) : null,
           'data-dashboard-card-index': item.cardIndex != null ? String(item.cardIndex) : null,
+          'data-dashboard-card-id': item.cardId || null,
           'data-dashboard-broken-type': type,
           title: dashboardBrokenTooltip(item) || null
         }

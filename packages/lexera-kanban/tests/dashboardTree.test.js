@@ -149,6 +149,7 @@ describe('dashboard tree builders', () => {
               'data-dashboard-target': 'broken',
               'data-dashboard-col-index': '2',
               'data-dashboard-card-index': '5',
+              'data-dashboard-card-id': null,
               'data-dashboard-broken-type': 'image',
               title: 'media/missing.png / Image / 3 occurrences'
             }
@@ -180,6 +181,7 @@ describe('dashboard tree builders', () => {
               'data-dashboard-target': 'broken',
               'data-dashboard-col-index': null,
               'data-dashboard-card-index': null,
+              'data-dashboard-card-id': null,
               'data-dashboard-broken-type': 'include',
               title: 'docs/missing.md / Include / File not found'
             }

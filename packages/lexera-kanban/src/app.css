@@ -157,11 +157,14 @@
   --menu-item-fg: var(--text-primary);
   --menu-item-fg-hover: var(--text-bright);
   --menu-item-bg-hover: var(--bg-hover);
-  /* Sidebar tree */
+  /* Sidebar tree — shared line variables used by all tree views */
+  --tree-line-color: var(--border);
+  --tree-line-width: 1px;
+  --tree-indent-size: 12px;
   --tree-fg: var(--text-secondary);
   --tree-fg-hover: var(--text-primary);
-  --tree-guide: var(--border);
-  --tree-indent-step: 12px;
+  --tree-guide: var(--tree-line-color);
+  --tree-indent-step: var(--tree-indent-size);
   --tree-indent-guide-center: 5px;
   --tree-toggle-col: var(--tree-indent-step);
   --tree-toggle-fg: var(--text-primary);
@@ -1434,7 +1437,7 @@ textarea {
 }
 
 .dashboard-list.tree-view .tree-children {
-  margin-top: 1px;
+  margin-top: 0;
 }
 
 .dashboard-item {
@@ -1703,7 +1706,7 @@ textarea {
   left: var(--tree-indent-guide-center);
   top: 0;
   bottom: 0;
-  border-left: 1px solid var(--tree-guide);
+  border-left: var(--tree-line-width) solid var(--tree-guide);
 }
 /* (blank) Ancestor was last child: no continuing line */
 .indent-guide.last::before { display: none; }
@@ -1714,7 +1717,7 @@ textarea {
   left: var(--tree-indent-guide-center);
   top: 50%;
   right: calc(-1 * var(--space-1) - var(--tree-toggle-col));
-  border-top: 1px solid var(--tree-guide);
+  border-top: var(--tree-line-width) solid var(--tree-guide);
 }
 /* └─ Corner: vertical from top to center + horizontal extending through gap + toggle/spacer */
 .indent-guide.corner::before { bottom: 50%; }
@@ -1724,7 +1727,7 @@ textarea {
   left: var(--tree-indent-guide-center);
   top: 50%;
   right: calc(-1 * var(--space-1) - var(--tree-toggle-col));
-  border-top: 1px solid var(--tree-guide);
+  border-top: var(--tree-line-width) solid var(--tree-guide);
 }
 
 /* Indentation via nested .tree-children */
@@ -1736,7 +1739,7 @@ textarea {
   top: 0;
   bottom: 0;
   width: 0;
-  border-left: 1px solid var(--tree-guide);
+  border-left: var(--tree-line-width) solid var(--tree-guide);
   pointer-events: none;
 }
 
@@ -1746,7 +1749,7 @@ textarea {
 .tree-children.tree-stack-drop-zone-empty {
   min-height: 14px;
   margin: 2px 0 4px;
-  border: 1px dashed var(--tree-guide);
+  border: var(--tree-line-width) dashed var(--tree-guide);
   border-radius: 3px;
 }
 .tree-children.tree-stack-drop-zone.tree-drop-stack-target {
@@ -1781,7 +1784,7 @@ textarea {
   left: calc(3px + var(--space-1));
   top: calc(50% - 4px);
   height: 9px;
-  border-left: 1px solid currentColor;
+  border-left: var(--tree-line-width) solid currentColor;
 }
 .tree-toggle.expanded::before {
   left: calc(3px + var(--space-1));
@@ -1798,7 +1801,7 @@ textarea {
   top: 50%;
   left: calc(-1px + var(--space-1));
   width: 9px;
-  border-top: 1px solid currentColor;
+  border-top: var(--tree-line-width) solid currentColor;
 }
 
 /* Board-level toggle: freestanding +/− (no tree connector lines) */
@@ -1824,7 +1827,7 @@ textarea {
   left: 5px;
   top: calc(50% - 4px);
   height: 9px;
-  border-left: 1px solid currentColor;
+  border-left: var(--tree-line-width) solid currentColor;
 }
 .board-item-toggle.expanded::before { display: none; }
 .board-item-toggle::after {
@@ -1833,7 +1836,7 @@ textarea {
   top: 50%;
   left: 1px;
   width: 9px;
-  border-top: 1px solid currentColor;
+  border-top: var(--tree-line-width) solid currentColor;
 }
 
 /* Leaf node spacer: continues horizontal branch line all the way through */
@@ -1853,7 +1856,7 @@ textarea {
   left: 0;
   top: 50%;
   right: 0;
-  border-top: 1px solid var(--tree-guide);
+  border-top: var(--tree-line-width) solid var(--tree-guide);
 }
 
 /* Tree label + count */
@@ -8623,7 +8626,7 @@ select.export-input {
 
 :root[data-visual-theme="sleek"] .tree-toggle::before,
 :root[data-visual-theme="sleek"] .board-item-toggle::before {
-  border-left-width: 1px;
+  border-left-width: var(--tree-line-width);
 }
 
 :root[data-visual-theme="sleek"] .tree-toggle::before {
@@ -8642,7 +8645,7 @@ select.export-input {
 
 :root[data-visual-theme="sleek"] .board-item-toggle::after {
   display: block;
-  border-top-width: 1px;
+  border-top-width: var(--tree-line-width);
   left: 0;
   width: 8px;
 }
@@ -8661,7 +8664,7 @@ select.export-input {
   width: calc(var(--sidebar-tree-toggle-col) - var(--sidebar-tree-toggle-gap));
   height: 0;
   border-left: none;
-  border-top: 1px solid color-mix(in srgb, var(--text-muted) 24%, transparent);
+  border-top: var(--tree-line-width) solid color-mix(in srgb, var(--text-muted) 24%, transparent);
   transform: translateY(-50%);
 }
 
@@ -8671,7 +8674,7 @@ select.export-input {
   bottom: auto;
   height: 0;
   border-left: none;
-  border-top: 1px solid color-mix(in srgb, var(--text-muted) 24%, transparent);
+  border-top: var(--tree-line-width) solid color-mix(in srgb, var(--text-muted) 24%, transparent);
 }
 
 :root[data-visual-theme="sleek"] .tree-view-compact .tree-toggle,
