@@ -173,7 +173,8 @@ var LexeraEmbedMenu = (function () {
     if (/\.(xlsx|xls|ods)$/.test(normalized)) return 'xlsx';
     if (normalized.endsWith('.csv')) return 'csv';
     if (normalized.slice(-5) === '.epub') return 'epub';
-    if (/\.(doc|docx|odt|ppt|pptx|odp)$/.test(normalized)) return 'document';
+    if (/\.(ppt|pptx|odp)$/.test(normalized)) return 'pptx';
+    if (/\.(doc|docx|odt|rtf)$/.test(normalized)) return 'document';
     if (normalized.slice(-4) === '.pdf') return 'pdf';
     return '';
   }
@@ -249,6 +250,7 @@ var LexeraEmbedMenu = (function () {
     if (special === 'xlsx') return 'spreadsheet';
     if (special === 'csv') return 'table';
     if (special === 'epub') return 'epub';
+    if (special === 'pptx') return 'document';
     if (special === 'document') return 'document';
     return '';
   }
@@ -2013,7 +2015,58 @@ var LexeraEmbedMenu = (function () {
       }
     }
 
-    // pptx — no browser library vendored yet, fall through to placeholder
+    // pptx rendering via @jvmr/pptx-to-html
+    if ((ext === 'pptx' || ext === 'ppt') && typeof window.pptxToHtml === 'function') {
+      previewEl.innerHTML = '<div class="embed-preview-loading">Loading presentation...</div>';
+      try {
+        var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
+        if (!response.ok) throw new Error('Failed to fetch pptx');
+        var buf = await response.arrayBuffer();
+        var slides = await window.pptxToHtml(buf, {
+          width: 960,
+          height: 540,
+          scaleToFit: true,
+          letterbox: true
+        });
+        if (!slides || slides.length === 0) {
+          previewEl.innerHTML = '<div class="embed-preview-error">No slides found</div>';
+          return true;
+        }
+        var currentSlide = 0;
+        var bodyHtml = '<div class="office-pptx-body">';
+        for (var si = 0; si < slides.length; si++) {
+          bodyHtml += '<div class="office-pptx-slide' + (si === 0 ? '' : ' office-pptx-slide-hidden') + '" data-slide-index="' + si + '">' + slides[si] + '</div>';
+        }
+        bodyHtml += '</div>';
+        previewEl.innerHTML = bodyHtml;
+        if (slides.length > 1) {
+          var nav = '<div class="office-pptx-nav">' +
+            '<button class="office-pptx-nav-btn office-pptx-prev" title="Previous slide">&#9664;</button>' +
+            '<span class="office-pptx-counter">1 / ' + slides.length + '</span>' +
+            '<button class="office-pptx-nav-btn office-pptx-next" title="Next slide">&#9654;</button>' +
+            '</div>';
+          previewEl.insertAdjacentHTML('afterbegin', nav);
+          previewEl.addEventListener('click', function (e) {
+            var btn = e.target.closest('.office-pptx-nav-btn');
+            if (!btn) return;
+            var allSlides = previewEl.querySelectorAll('.office-pptx-slide');
+            var isPrev = btn.classList.contains('office-pptx-prev');
+            var next = isPrev ? currentSlide - 1 : currentSlide + 1;
+            if (next < 0 || next >= allSlides.length) return;
+            allSlides[currentSlide].classList.add('office-pptx-slide-hidden');
+            allSlides[next].classList.remove('office-pptx-slide-hidden');
+            currentSlide = next;
+            var counter = previewEl.querySelector('.office-pptx-counter');
+            if (counter) counter.textContent = (currentSlide + 1) + ' / ' + allSlides.length;
+          });
+        }
+        return true;
+      } catch (err) {
+        logFrontendIssue('warn', 'office.pptx', 'Failed to render pptx: ' + filePath, err);
+        return false;
+      }
+    }
+
     return false;
   }
 

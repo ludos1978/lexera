@@ -140,6 +140,17 @@ describe('LexeraFileFormatRegistry', () => {
     });
   });
 
+  it('routes pptx files through the pptx plugin for presentation rendering', () => {
+    expect(Registry.findByFilePath('slides/deck.pptx').id).toBe('pptx');
+    expect(Registry.findByFilePath('slides/legacy.ppt').id).toBe('pptx');
+    expect(Registry.findByFilePath('slides/open.odp').id).toBe('pptx');
+    expect(Registry.getPreviewKind('slides/deck.pptx')).toBe('document');
+    expect(Registry.getPreviewMeta('document', 'slides/deck.pptx')).toMatchObject({
+      label: 'Presentation file',
+      emoji: '&#128202;',
+    });
+  });
+
   it('routes rtf files through the document plugin for LibreOffice rendering', () => {
     expect(Registry.findByFilePath('docs/report.rtf').id).toBe('document');
     expect(Registry.getPreviewKind('docs/report.rtf')).toBe('document');

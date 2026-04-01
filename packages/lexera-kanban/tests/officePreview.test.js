@@ -119,8 +119,8 @@ describe('Office Document Preview', function () {
     it('identifies .doc as document', function () {
       expect(fns.getSpecialPreviewType('old-file.doc')).toBe('document');
     });
-    it('identifies .pptx as document', function () {
-      expect(fns.getSpecialPreviewType('slides.pptx')).toBe('document');
+    it('identifies .pptx as pptx', function () {
+      expect(fns.getSpecialPreviewType('slides.pptx')).toBe('pptx');
     });
     it('identifies .odt as document', function () {
       expect(fns.getSpecialPreviewType('letter.odt')).toBe('document');
@@ -155,6 +155,9 @@ describe('Office Document Preview', function () {
     it('maps .csv to table', function () {
       expect(fns.getEmbedPreviewKind('data.csv')).toBe('table');
     });
+    it('maps .pptx to document', function () {
+      expect(fns.getEmbedPreviewKind('slides.pptx')).toBe('document');
+    });
     it('maps .pdf to pdf', function () {
       expect(fns.getEmbedPreviewKind('manual.pdf')).toBe('pdf');
     });
@@ -188,6 +191,9 @@ describe('Office Document Preview', function () {
     });
     it('SheetJS global should not exist in test env', function () {
       expect(globalThis.XLSX).toBeUndefined();
+    });
+    it('pptxToHtml global should not exist in test env', function () {
+      expect(globalThis.pptxToHtml).toBeUndefined();
     });
     it('renderOfficeBrowserPreview returns false when globals missing', function () {
       // The function gracefully returns false when vendor libs aren't loaded

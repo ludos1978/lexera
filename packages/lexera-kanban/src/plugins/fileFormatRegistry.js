@@ -293,6 +293,20 @@ var LexeraFileFormatRegistry = (function () {
   });
 
   register({
+    id: 'pptx',
+    label: 'Presentation file',
+    emoji: '&#128202;',
+    assetType: 'document',
+    rendererRequirements: [{ id: 'soffice' }, { id: 'pdftoppm' }],
+    previewPlaceholder: 'Presentation preview is rendered in the browser or through LibreOffice into page images.',
+    preview: buildPreviewConfig('document', 'document-cache', 'png', 'png', pageSuffix('-p')),
+    export: buildExportConfig('png', 'png', pageSuffix('-p')),
+    matches: function (normalized) {
+      return /\.(ppt|pptx|odp)$/.test(normalized);
+    },
+  });
+
+  register({
     id: 'document',
     label: 'Document file',
     emoji: '&#128196;',
@@ -302,7 +316,7 @@ var LexeraFileFormatRegistry = (function () {
     preview: buildPreviewConfig('document', 'document-cache', 'png', 'png', pageSuffix('-p')),
     export: buildExportConfig('png', 'png', pageSuffix('-p')),
     matches: function (normalized) {
-      return /\.(doc|docx|odt|rtf|ppt|pptx|odp)$/.test(normalized);
+      return /\.(doc|docx|odt|rtf)$/.test(normalized);
     },
   });
 

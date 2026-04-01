@@ -4263,95 +4263,7 @@ var LexeraDashboard = (function () {
     return true;
   }
 
-  function attachHeaderCreationDragSource(btn, mode) {
-    if (!btn) return;
-    btn.addEventListener('pointerdown', function (e) {
-      if (e.button !== 0) return;
-      if (!activeBoardId || !fullBoardData) return;
-      if (ptrDrag || cardDrag) return;
-
-      var startX = e.clientX;
-      var startY = e.clientY;
-      var started = false;
-      var ghost = null;
-      var currentTarget = null;
-      var currentIndicatorType = null;
-
-      function setIndicatorForEntity(entityType) {
-        var nextIndicatorType = getHeaderCreationDragIndicatorType(entityType);
-        if (nextIndicatorType === currentIndicatorType) return;
-        removeStackDropZones();
-        removeDropZoneIndicators();
-        currentIndicatorType = nextIndicatorType;
-        if (!nextIndicatorType) return;
-        if (nextIndicatorType === 'column') insertStackDropZones();
-        insertDropZoneIndicators(nextIndicatorType);
-      }
-
-      function onMove(ev) {
-        var dx = ev.clientX - startX;
-        var dy = ev.clientY - startY;
-        if (!started) {
-          if ((dx * dx + dy * dy) < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
-          started = true;
-          btn.classList.add('dragging');
-          ghost = document.createElement('div');
-          ghost.className = 'card-drag-ghost';
-          ghost.textContent = getHeaderCreationDragLabel(mode, null);
-          ghost.style.left = (ev.clientX + 8) + 'px';
-          ghost.style.top = (ev.clientY - 12) + 'px';
-          document.body.appendChild(ghost);
-          var sel = window.getSelection();
-          if (sel) sel.removeAllRanges();
-        }
-
-        if (ghost) {
-          ghost.style.left = (ev.clientX + 8) + 'px';
-          ghost.style.top = (ev.clientY - 12) + 'px';
-        }
-
-        currentTarget = resolveHeaderCreationDropTarget(ev.clientX, ev.clientY);
-        setIndicatorForEntity(currentTarget ? currentTarget.entityType : null);
-        updateHeaderCreationDragVisualsForTarget(currentTarget, ev.clientX, ev.clientY);
-        if (ghost) ghost.textContent = getHeaderCreationDragLabel(mode, currentTarget);
-      }
-
-      function cleanup() {
-        btn.classList.remove('dragging');
-        if (ghost) ghost.remove();
-        ghost = null;
-        clearHeaderCreationDragVisuals();
-      }
-
-      function onUp(ev) {
-        document.removeEventListener('pointermove', onMove);
-        document.removeEventListener('pointerup', onUp);
-        document.removeEventListener('pointercancel', onCancel);
-        if (!started) return;
-        suppressHeaderCreationClickUntil = Date.now() + 500;
-        ev.preventDefault();
-        ev.stopPropagation();
-        var dropTarget = resolveHeaderCreationDropTarget(ev.clientX, ev.clientY) || currentTarget;
-        cleanup();
-        applyHeaderCreationDragDrop(mode, dropTarget, ev.clientX, ev.clientY).catch(function (err) {
-          logFrontendIssue('error', 'header.creation.drag', 'Drop apply failed', err);
-          showNotification('Creation drop failed');
-        });
-      }
-
-      function onCancel() {
-        document.removeEventListener('pointermove', onMove);
-        document.removeEventListener('pointerup', onUp);
-        document.removeEventListener('pointercancel', onCancel);
-        if (!started) return;
-        cleanup();
-      }
-
-      document.addEventListener('pointermove', onMove);
-      document.addEventListener('pointerup', onUp);
-      document.addEventListener('pointercancel', onCancel);
-    });
-  }
+  function attachHeaderCreationDragSource(btn, mode) { if (BoardHeader) BoardHeader.attachHeaderCreationDragSource(btn, mode); }
 
   function areAllCardsCollapsed() {
     if (isCanvasBoardLayout()) return false;
@@ -4385,127 +4297,7 @@ var LexeraDashboard = (function () {
     return true;
   }
 
-  function refreshBoardHeaderActionStates() {
-    var boardHeaderEl = getElBoardHeader();
-    var headerWidth = 0;
-    if (boardHeaderEl) {
-      var headerRect = boardHeaderEl.getBoundingClientRect();
-      headerWidth = isFinite(headerRect.width) ? Math.round(headerRect.width) : 0;
-    }
-    var compactMode = !!(
-      typeof window !== 'undefined' &&
-      (window.innerWidth <= BOARD_HEADER_COMPACT_WIDTH ||
-        (headerWidth > 0 && headerWidth <= BOARD_HEADER_COMPACT_HEADER_WIDTH))
-    );
-
-    var createNewBtn = document.getElementById('btn-create-new');
-    var incomingBtn = document.getElementById('btn-incoming');
-    var parkedBtn = document.getElementById('btn-parked');
-    var archivedBtn = document.getElementById('btn-archived');
-    var trashBtn = document.getElementById('btn-trash');
-    var runningProcessesBtn = document.getElementById('btn-running-processes');
-    var themeZoomBtn = document.getElementById('btn-theme-zoom');
-    var exportBtn = document.getElementById('btn-export');
-
-    var parkedCount = getParkedCount();
-    var archivedCount = getArchivedCount();
-    var deletedCount = getDeletedCount();
-    var incomingCount = getIncomingCount();
-
-    function setHeaderActionLabel(btn, fullLabel, compactLabel, title) {
-      if (!btn) return;
-      btn.textContent = compactMode ? compactLabel : fullLabel;
-      btn.classList.toggle('icon-only', compactMode);
-      btn.setAttribute('aria-label', fullLabel);
-      if (title) btn.title = title;
-    }
-
-    function applyHeaderLabelsForMode() {
-      if (boardHeaderEl) boardHeaderEl.classList.toggle('board-header-compact', compactMode);
-
-      setHeaderActionLabel(createNewBtn, 'New', BOARD_HEADER_V1_COMPACT_ICONS.createEmpty, 'Create new row, stack, column or card');
-
-      setHeaderActionLabel(
-        incomingBtn,
-        'Incoming' + (incomingCount > 0 ? ' (' + incomingCount + ')' : ''),
-        BOARD_HEADER_V1_COMPACT_ICONS.incoming,
-        'Incoming (clipboard-fed)'
-      );
-      setHeaderActionLabel(
-        parkedBtn,
-        'Park' + (parkedCount > 0 ? ' (' + parkedCount + ')' : ''),
-        BOARD_HEADER_V1_COMPACT_ICONS.parked,
-        'Show parked items — drop cards here to park'
-      );
-      setHeaderActionLabel(
-        archivedBtn,
-        'Archive' + (archivedCount > 0 ? ' (' + archivedCount + ')' : ''),
-        BOARD_HEADER_V1_COMPACT_ICONS.archived,
-        'Show archived items — drop cards here to archive'
-      );
-      setHeaderActionLabel(
-        trashBtn,
-        'Trash' + (deletedCount > 0 ? ' (' + deletedCount + ')' : ''),
-        BOARD_HEADER_V1_COMPACT_ICONS.trash,
-        'Show deleted items — drop cards here to delete'
-      );
-      if (incomingBtn) incomingBtn.classList.toggle('has-items', incomingCount > 0);
-      if (parkedBtn) parkedBtn.classList.toggle('has-items', parkedCount > 0);
-      if (archivedBtn) archivedBtn.classList.toggle('has-items', archivedCount > 0);
-      if (trashBtn) trashBtn.classList.toggle('has-items', deletedCount > 0);
-
-      var allColumnsFolded = areAllColumnsFolded();
-      var allCardsCollapsed = areAllCardsCollapsed();
-      var isCanvasLayout = isCanvasBoardLayout();
-      if ($foldAllBtn) $foldAllBtn.style.display = isCanvasLayout ? 'none' : '';
-      if ($foldAllCardsBtn) $foldAllCardsBtn.style.display = isCanvasLayout ? 'none' : '';
-      if (!isCanvasLayout) {
-        setHeaderActionLabel(
-          $foldAllBtn,
-          allColumnsFolded ? 'Unfold Columns' : 'Fold Columns',
-          allColumnsFolded ? BOARD_HEADER_V1_COMPACT_ICONS.foldColumnsCollapsed : BOARD_HEADER_V1_COMPACT_ICONS.foldColumnsExpanded,
-          'Fold/unfold all columns'
-        );
-        setHeaderActionLabel(
-          $foldAllCardsBtn,
-          allCardsCollapsed ? 'Unfold Cards' : 'Fold Cards',
-          allCardsCollapsed ? BOARD_HEADER_V1_COMPACT_ICONS.foldCardsCollapsed : BOARD_HEADER_V1_COMPACT_ICONS.foldCardsExpanded,
-          'Collapse or expand all cards'
-        );
-      }
-
-      setHeaderActionLabel(runningProcessesBtn, 'Processes', BOARD_HEADER_V1_COMPACT_ICONS.processes, 'Open running processes and logs');
-      setHeaderActionLabel(themeZoomBtn, 'Themes / Zoom', BOARD_HEADER_V1_COMPACT_ICONS.themeZoom, 'Visual style and zoom controls');
-      setHeaderActionLabel(exportBtn, 'Export / Pack', BOARD_HEADER_V1_COMPACT_ICONS.exportPack, 'Export or pack board');
-
-      if ($saveTrackingBtn) {
-        var dirty = isBoardDirty();
-        var saveLabel = _headerSavingInProgress ? 'Saving...' : (dirty ? 'Save*' : 'Saved');
-        var saveIcon = _headerSavingInProgress ? '\u2026' : (dirty ? '\u25CF' : '\u2713');
-        setHeaderActionLabel($saveTrackingBtn, saveLabel, saveIcon, 'Save now and inspect change tracking');
-        $saveTrackingBtn.classList.toggle('has-items', dirty || _headerSavingInProgress);
-        $saveTrackingBtn.disabled = _headerSavingInProgress;
-      }
-    }
-
-    function headerActionsOverflowing() {
-      if (!boardHeaderEl) return false;
-      var tolerance = 4;
-      var actionGroups = boardHeaderEl.querySelectorAll('.board-header-actions-middle, .board-header-actions-right');
-      for (var i = 0; i < actionGroups.length; i++) {
-        if (!actionGroups[i]) continue;
-        if ((actionGroups[i].scrollWidth - actionGroups[i].clientWidth) > tolerance) return true;
-      }
-      return false;
-    }
-
-    applyHeaderLabelsForMode();
-
-    if (!compactMode && headerActionsOverflowing()) {
-      compactMode = true;
-      applyHeaderLabelsForMode();
-    }
-  }
+  function refreshBoardHeaderActionStates() { if (BoardHeader) BoardHeader.refreshBoardHeaderActionStates(); }
 
   async function setBoardSettingValue(key, value) {
     if (!activeBoardId || !fullBoardData) return false;
@@ -9355,7 +9147,7 @@ var LexeraDashboard = (function () {
   function resolveDropTargetStrict(nodeList, mx, my, vertical) { return DragDropHandlers ? DragDropHandlers.resolveDropTargetStrict(nodeList, mx, my, vertical) : null; }
   function resolveRowBodyDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.resolveRowBodyDropTarget(mx, my) : null; }
   function resolveCanvasRowContentDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.resolveCanvasRowContentDropTarget(mx, my) : null; }
-  function resolveHeaderDropTag(mx, my) { return DragDropHandlers ? DragDropHandlers.resolveHeaderDropTag(mx, my) : null; }
+  function resolveHeaderDropTag(mx, my) { return BoardHeader ? BoardHeader.resolveHeaderDropTag(mx, my) : null; }
   function getPtrDragLabel() { return DragDropHandlers ? DragDropHandlers.getPtrDragLabel() : 'Drag'; }
   function updatePtrDropTarget(mx, my) { return DragDropHandlers ? DragDropHandlers.updatePtrDropTarget(mx, my) : false; }
   function updatePtrDropTargetByType(type, mx, my) { return DragDropHandlers ? DragDropHandlers.updatePtrDropTargetByType(type, mx, my) : false; }
