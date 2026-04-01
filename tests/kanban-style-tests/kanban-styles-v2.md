@@ -2,10 +2,10 @@
 
 kanban-plugin: board
 
-generation: 11
-contentHash: 6024aa2d451d138a4ff212fb16c7f4ff533c43ace3e20251633d5f3bd903c7ca
-resolvedHash: 949f839f2d2bc730abeb24cf6f0b2ad6f3ce6716debad05dde7a7c455fd67fe6
-writerId: 14a137ae-66bd-4843-a94e-5e2ca6c2bf46
+generation: 15
+contentHash: 5503385331130e24aed5cf26180ca3e6150d70b105fc0d09d4f902aead6f26b2
+resolvedHash: 0fb08b3c8223468e81b09da09d755835f0be3a5eb33eef492a1babedab720331
+writerId: 2d12f6e5-41d2-485c-95ec-6ad260b806eb
 ---
 
 # Default
@@ -40,15 +40,17 @@ writerId: 14a137ae-66bd-4843-a94e-5e2ca6c2bf46
 
 ## New Stack
 
-### New Column
+### New Column #hidden-internal-deleted
 
-## Default
+## Default #hidden-internal-deleted
 
 ### New Column #hidden-internal-deleted
 
 ### #accessible-indigo #accessible-teal #accessible-purple #accessible-yellow #accessible-rose #accessible-cyan #accessible-green #accessible-magenta #hidden-internal-deleted
 
-# New Row
+### New Column #hidden-internal-deleted
+
+# New Row #hidden-internal-deleted
 
 ## Default
 

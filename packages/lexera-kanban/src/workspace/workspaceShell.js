@@ -1692,31 +1692,64 @@
     });
   }
 
-  function applyDockLayout() {
-    if (!state.bodyEl || !state.mainRowEl) return;
-    var FOLD_SIZE = 22;
+  function requestUiFrame(callback) {
+    if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(callback);
+    return setTimeout(callback, 16);
+  }
 
+  function cancelUiFrame(handle) {
+    if (!handle) return;
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(handle);
+      return;
+    }
+    clearTimeout(handle);
+  }
+
+  function getDockLayoutState() {
     var dockIds = ['left', 'right', 'bottom'];
-    var dockEls = { left: state.leftDockEl, right: state.rightDockEl, bottom: state.bottomDockEl };
-    var dividerEls = { left: state.leftDividerEl, right: state.rightDividerEl, bottom: state.bottomDividerEl };
     var visible = {};
     var folded = {};
-
     for (var d = 0; d < dockIds.length; d++) {
       var id = dockIds[d];
       var hasPanels = getVisiblePanelIdsForDock(id).length > 0;
-      var isCollapsed = hasPanels && state.dockSizes[id] === 0;
+      var isCollapsed = hasPanels && state.dockSizes[id] <= 0;
       visible[id] = hasPanels && state.dockSizes[id] > 0;
       folded[id] = isCollapsed;
+    }
+    return { visible: visible, folded: folded };
+  }
+
+  function dockLayoutStateChanged(previousLayout, nextLayout) {
+    if (!previousLayout || !nextLayout) return true;
+    var dockIds = ['left', 'right', 'bottom'];
+    for (var i = 0; i < dockIds.length; i++) {
+      var dockId = dockIds[i];
+      if (!!previousLayout.visible[dockId] !== !!nextLayout.visible[dockId]) return true;
+      if (!!previousLayout.folded[dockId] !== !!nextLayout.folded[dockId]) return true;
+    }
+    return false;
+  }
+
+  function syncDockStructure(layoutState) {
+    if (!state.bodyEl || !state.mainRowEl) return;
+    var dockIds = ['left', 'right', 'bottom'];
+    var dockEls = { left: state.leftDockEl, right: state.rightDockEl, bottom: state.bottomDockEl };
+    var dividerEls = { left: state.leftDividerEl, right: state.rightDividerEl, bottom: state.bottomDividerEl };
+
+    for (var d = 0; d < dockIds.length; d++) {
+      var id = dockIds[d];
+      var visible = !!layoutState.visible[id];
+      var folded = !!layoutState.folded[id];
 
       var dockEl = dockEls[id];
       if (dockEl) {
-        var showDock = visible[id] || folded[id];
+        var showDock = visible || folded;
         dockEl.classList.toggle('is-visible', showDock);
-        dockEl.classList.toggle('is-folded', folded[id]);
-        dockEl.classList.toggle('is-compact', visible[id] && state.dockSizes[id] < 200);
-        dockEl.style.overflow = folded[id] ? 'visible' : '';
-        if (folded[id]) {
+        dockEl.classList.toggle('is-folded', folded);
+        dockEl.classList.toggle('is-compact', visible && state.dockSizes[id] < 200);
+        dockEl.style.overflow = folded ? 'visible' : '';
+        if (folded) {
           renderFoldStrip(id, dockEl);
           bindFoldHover(id, dockEl);
         } else {
@@ -1726,64 +1759,111 @@
           dockEl.classList.remove('is-fold-hover');
         }
       }
-      if (dividerEls[id]) dividerEls[id].classList.toggle('is-visible', visible[id]);
+      if (dividerEls[id]) dividerEls[id].classList.toggle('is-visible', visible);
     }
+  }
+
+  function syncDockGridTracks(layoutState) {
+    if (!state.bodyEl || !state.mainRowEl) return;
+    var FOLD_SIZE = 22;
 
     // Grid: folded docks get FOLD_SIZE px, visible docks get their size, hidden get nothing
     var leftCol = '';
-    if (visible.left) leftCol = clampPanelSize('left', state.dockSizes.left) + 'px 5px ';
-    else if (folded.left) leftCol = FOLD_SIZE + 'px ';
+    if (layoutState.visible.left) leftCol = clampPanelSize('left', state.dockSizes.left) + 'px 5px ';
+    else if (layoutState.folded.left) leftCol = FOLD_SIZE + 'px ';
 
     var rightCol = '';
-    if (visible.right) rightCol = ' 5px ' + clampPanelSize('right', state.dockSizes.right) + 'px';
-    else if (folded.right) rightCol = ' ' + FOLD_SIZE + 'px';
+    if (layoutState.visible.right) rightCol = ' 5px ' + clampPanelSize('right', state.dockSizes.right) + 'px';
+    else if (layoutState.folded.right) rightCol = ' ' + FOLD_SIZE + 'px';
 
     state.mainRowEl.style.gridTemplateColumns =
       leftCol + 'minmax(0, 1fr)' + rightCol;
 
     var bottomRow = '';
-    if (visible.bottom) bottomRow = ' 5px ' + clampPanelSize('bottom', state.dockSizes.bottom) + 'px';
-    else if (folded.bottom) bottomRow = ' ' + FOLD_SIZE + 'px';
+    if (layoutState.visible.bottom) bottomRow = ' 5px ' + clampPanelSize('bottom', state.dockSizes.bottom) + 'px';
+    else if (layoutState.folded.bottom) bottomRow = ' ' + FOLD_SIZE + 'px';
 
     state.bodyEl.style.gridTemplateRows =
       'minmax(0, 1fr)' + bottomRow;
+  }
+
+  function applyDockLayout() {
+    var layoutState = getDockLayoutState();
+    syncDockStructure(layoutState);
+    syncDockGridTracks(layoutState);
   }
 
   function bindDockResizeDivider(dividerEl, dockId) {
     if (!dividerEl) return;
     dividerEl.addEventListener('pointerdown', function (event) {
       event.preventDefault();
-      dividerEl.setPointerCapture(event.pointerId);
+      var pointerId = event.pointerId;
+      try { dividerEl.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
       dividerEl.classList.add('is-dragging');
-      function handleMove(moveEvent) {
+      var activeDockEl = dockId === 'left' ? state.leftDockEl : dockId === 'right' ? state.rightDockEl : state.bottomDockEl;
+      var baseRect = dockId === 'bottom'
+        ? (state.bodyEl ? state.bodyEl.getBoundingClientRect() : null)
+        : (state.mainRowEl ? state.mainRowEl.getBoundingClientRect() : null);
+      var pendingMoveEvent = null;
+      var frameId = 0;
+      var lastLayoutState = getDockLayoutState();
+      function applyMove(moveEvent) {
+        if (!baseRect) return;
         var nextSize = 0;
         if (dockId === 'left') {
-          var rectLeft = state.mainRowEl.getBoundingClientRect();
-          nextSize = moveEvent.clientX - rectLeft.left;
+          nextSize = moveEvent.clientX - baseRect.left;
           if (nextSize < 56) nextSize = 0;
           else state.dockRestoreSizes.left = clampPanelSize('left', nextSize);
           state.dockSizes.left = nextSize === 0 ? 0 : clampPanelSize('left', nextSize);
         } else if (dockId === 'right') {
-          var rectRight = state.mainRowEl.getBoundingClientRect();
-          nextSize = rectRight.right - moveEvent.clientX;
+          nextSize = baseRect.right - moveEvent.clientX;
           if (nextSize < 56) nextSize = 0;
           else state.dockRestoreSizes.right = clampPanelSize('right', nextSize);
           state.dockSizes.right = nextSize === 0 ? 0 : clampPanelSize('right', nextSize);
         } else if (dockId === 'bottom') {
-          var rectBottom = state.bodyEl.getBoundingClientRect();
-          nextSize = rectBottom.bottom - moveEvent.clientY;
+          nextSize = baseRect.bottom - moveEvent.clientY;
           if (nextSize < 48) nextSize = 0;
           else state.dockRestoreSizes.bottom = clampPanelSize('bottom', nextSize);
           state.dockSizes.bottom = nextSize === 0 ? 0 : clampPanelSize('bottom', nextSize);
         }
-        applyDockLayout();
+        var nextLayoutState = getDockLayoutState();
+        if (activeDockEl) activeDockEl.classList.toggle('is-compact', nextLayoutState.visible[dockId] && state.dockSizes[dockId] < 200);
+        if (dockLayoutStateChanged(lastLayoutState, nextLayoutState)) {
+          syncDockStructure(nextLayoutState);
+          lastLayoutState = nextLayoutState;
+        }
+        syncDockGridTracks(nextLayoutState);
+      }
+      function scheduleMove(moveEvent) {
+        pendingMoveEvent = moveEvent;
+        if (frameId) return;
+        frameId = requestUiFrame(function () {
+          frameId = 0;
+          var queuedEvent = pendingMoveEvent;
+          pendingMoveEvent = null;
+          if (queuedEvent) applyMove(queuedEvent);
+        });
+      }
+      function handleMove(moveEvent) {
+        if (moveEvent.pointerId !== pointerId) return;
+        scheduleMove(moveEvent);
       }
       function handleUp(upEvent) {
+        if (upEvent.pointerId !== pointerId) return;
+        if (frameId) {
+          cancelUiFrame(frameId);
+          frameId = 0;
+        }
+        if (pendingMoveEvent) {
+          applyMove(pendingMoveEvent);
+          pendingMoveEvent = null;
+        }
         dividerEl.classList.remove('is-dragging');
         dividerEl.removeEventListener('pointermove', handleMove);
         dividerEl.removeEventListener('pointerup', handleUp);
         dividerEl.removeEventListener('pointercancel', handleUp);
-        try { dividerEl.releasePointerCapture(upEvent.pointerId); } catch (_) { /* ignore */ }
+        try { dividerEl.releasePointerCapture(pointerId); } catch (_) { /* ignore */ }
+        applyDockLayout();
         persistState();
       }
       dividerEl.addEventListener('pointermove', handleMove);
@@ -3655,6 +3735,7 @@
   function bindSplitDivider(dividerEl, splitId, axis) {
     dividerEl.addEventListener('pointerdown', function (event) {
       event.preventDefault();
+      var pointerId = event.pointerId;
       var found = null;
       var ids = allTreeIds();
       for (var t = 0; t < ids.length; t++) {
@@ -3681,10 +3762,12 @@
           container.style.gridTemplateColumns = '1fr';
         }
       }
-      dividerEl.setPointerCapture(event.pointerId);
+      var rect = container.getBoundingClientRect();
+      var pendingMoveEvent = null;
+      var frameId = 0;
+      try { dividerEl.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
       dividerEl.classList.add('is-dragging');
-      function handleMove(moveEvent) {
-        var rect = container.getBoundingClientRect();
+      function applyMove(moveEvent) {
         if (axis === 'vertical') {
           splitNode.ratio = Math.max(0.18, Math.min(0.82, (moveEvent.clientX - rect.left) / Math.max(1, rect.width)));
         } else {
@@ -3692,12 +3775,35 @@
         }
         applySplitContainerLayout();
       }
+      function scheduleMove(moveEvent) {
+        pendingMoveEvent = moveEvent;
+        if (frameId) return;
+        frameId = requestUiFrame(function () {
+          frameId = 0;
+          var queuedEvent = pendingMoveEvent;
+          pendingMoveEvent = null;
+          if (queuedEvent) applyMove(queuedEvent);
+        });
+      }
+      function handleMove(moveEvent) {
+        if (moveEvent.pointerId !== pointerId) return;
+        scheduleMove(moveEvent);
+      }
       function handleUp(upEvent) {
+        if (upEvent.pointerId !== pointerId) return;
+        if (frameId) {
+          cancelUiFrame(frameId);
+          frameId = 0;
+        }
+        if (pendingMoveEvent) {
+          applyMove(pendingMoveEvent);
+          pendingMoveEvent = null;
+        }
         dividerEl.classList.remove('is-dragging');
         dividerEl.removeEventListener('pointermove', handleMove);
         dividerEl.removeEventListener('pointerup', handleUp);
         dividerEl.removeEventListener('pointercancel', handleUp);
-        try { dividerEl.releasePointerCapture(upEvent.pointerId); } catch (_) { /* ignore */ }
+        try { dividerEl.releasePointerCapture(pointerId); } catch (_) { /* ignore */ }
         render();
       }
       dividerEl.addEventListener('pointermove', handleMove);
