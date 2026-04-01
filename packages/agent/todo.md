@@ -6,8 +6,10 @@
 - [x] ~~drag/drop column + card fix~~ (07712fc2) — geometry cache after drop zones, hide source card during async move
 - [x] ~~workspace config fixes~~ (75e99ecd) — calendar slug removed, responsive layout, Enter-key save
 
+- [ ] dashboard has a broken visual layout
+
 ## Code Quality
-- [ ] **App.js modularization** — ~11,183 lines. Board header, board settings, management wiring, sidebar resize dedup extracted. Next: canvas ops.
+- [ ] **App.js modularization** — **10,832 lines** (down from 25K+). All major sections extracted. Remaining is core board rendering + event wiring.
 
 ## Architecture
 - [ ] **Remove iframe view composition** — replace iframes + postMessage with in-process views
