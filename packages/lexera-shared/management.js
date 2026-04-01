@@ -70,7 +70,7 @@ var ManagementUI = (function () {
   var workspaceInviteAccess = {};
   // Config panel state: { type: 'global'|'workspace'|'board', id: string } or null
   var configSelectedItem = null;
-  var cachedGlobalSync = { bookmarkSync: null, calendarSync: null, calendarSlug: null, calendarName: null };
+  var cachedGlobalSync = { bookmarkSync: null, calendarSync: null, calendarName: null };
 
   function queryFirst(selector) {
     var ids = Object.keys(mounts);
@@ -811,6 +811,10 @@ var ManagementUI = (function () {
       else if (target.id === 'mgmt-add-board-input') addBoard();
       else if (target.id === 'mgmt-display-name') saveName();
       else if (target.id === 'mgmt-join-token') joinRemote();
+      else if (target.id && target.id.indexOf('mgmt-cfg-ws-name-') === 0) {
+        var wsId = target.id.substring('mgmt-cfg-ws-name-'.length);
+        if (wsId) configRenameWorkspace(wsId);
+      }
     };
     mc.addEventListener('keydown', mountObj.keydownHandler);
 
@@ -1305,8 +1309,6 @@ var ManagementUI = (function () {
       html += renderTriStateSelectHtml('id="mgmt-ws-bookmark-sync-' + esc(ws.id) + '"', ws.bookmarkSync);
       html += '<label>Calendar Sync</label>';
       html += renderTriStateSelectHtml('id="mgmt-ws-calendar-sync-' + esc(ws.id) + '"', ws.calendarSync);
-      html += '<label>Calendar Slug</label>';
-      html += '<input class="mgmt-field-input" type="text" id="mgmt-ws-calendar-slug-' + esc(ws.id) + '" value="' + esc(ws.calendarSlug || '') + '" placeholder="Optional">';
       html += '<label>Calendar Name</label>';
       html += '<input class="mgmt-field-input" type="text" id="mgmt-ws-calendar-name-' + esc(ws.id) + '" value="' + esc(ws.calendarName || '') + '" placeholder="Optional">';
       html += '</div>';
@@ -1433,13 +1435,11 @@ var ManagementUI = (function () {
   async function saveWorkspaceSync(wsId) {
     var bookmarkSelect = queryFirst('#mgmt-ws-bookmark-sync-' + wsId);
     var calendarSelect = queryFirst('#mgmt-ws-calendar-sync-' + wsId);
-    var slugInput = queryFirst('#mgmt-ws-calendar-slug-' + wsId);
     var nameInput = queryFirst('#mgmt-ws-calendar-name-' + wsId);
 
     var payload = {
       bookmarkSync: parseTriStateSelectValue(bookmarkSelect),
       calendarSync: parseTriStateSelectValue(calendarSelect),
-      calendarSlug: normalizeOptionalText(slugInput && slugInput.value),
       calendarName: normalizeOptionalText(nameInput && nameInput.value),
     };
 
@@ -1653,8 +1653,6 @@ var ManagementUI = (function () {
     html += renderTriStateSelectHtml('id="mgmt-board-bookmark-sync-' + esc(boardId) + '"', board.bookmarkSync != null ? board.bookmarkSync : board.bookmark_sync);
     html += '<label>Calendar Sync</label>';
     html += renderTriStateSelectHtml('id="mgmt-board-calendar-sync-' + esc(boardId) + '"', board.calendarSync != null ? board.calendarSync : board.calendar_sync);
-    html += '<label>Calendar Slug</label>';
-    html += '<input class="mgmt-field-input" type="text" id="mgmt-board-calendar-slug-' + esc(boardId) + '" value="' + esc(board.calendarSlug || board.calendar_slug || '') + '" placeholder="Optional">';
     html += '<label>Calendar Name</label>';
     html += '<input class="mgmt-field-input" type="text" id="mgmt-board-calendar-name-' + esc(boardId) + '" value="' + esc(board.calendarName || board.calendar_name || '') + '" placeholder="Optional">';
     html += '</div>';
@@ -1692,7 +1690,6 @@ var ManagementUI = (function () {
       xbelName: normalizeOptionalText((queryFirst('#mgmt-board-xbel-name-' + boardId) || {}).value),
       bookmarkSync: parseTriStateSelectValue(queryFirst('#mgmt-board-bookmark-sync-' + boardId)),
       calendarSync: parseTriStateSelectValue(queryFirst('#mgmt-board-calendar-sync-' + boardId)),
-      calendarSlug: normalizeOptionalText((queryFirst('#mgmt-board-calendar-slug-' + boardId) || {}).value),
       calendarName: normalizeOptionalText((queryFirst('#mgmt-board-calendar-name-' + boardId) || {}).value),
     };
 
@@ -2054,11 +2051,10 @@ var ManagementUI = (function () {
       cachedGlobalSync = {
         bookmarkSync: data.bookmarkSync != null ? data.bookmarkSync : null,
         calendarSync: data.calendarSync != null ? data.calendarSync : null,
-        calendarSlug: data.calendarSlug || null,
         calendarName: data.calendarName || null,
       };
     } catch (e) {
-      cachedGlobalSync = { bookmarkSync: null, calendarSync: null, calendarSlug: null, calendarName: null };
+      cachedGlobalSync = { bookmarkSync: null, calendarSync: null, calendarName: null };
     }
   }
 
@@ -2185,8 +2181,6 @@ var ManagementUI = (function () {
     html += renderTriStateSelectHtml('id="mgmt-cfg-global-bookmark-sync"', g.bookmarkSync);
     html += '<label>Calendar Sync' + helpIcon('Enable CalDAV calendar synchronization for all workspaces by default') + '</label>';
     html += renderTriStateSelectHtml('id="mgmt-cfg-global-calendar-sync"', g.calendarSync);
-    html += '<label>Calendar Slug' + helpIcon("URL path component for the calendar endpoint (e.g. 'my-calendar'). Leave empty for auto-generated. (currently stored but not yet used for CalDAV sync)") + '</label>';
-    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-global-calendar-slug" value="' + esc(g.calendarSlug || '') + '" placeholder="Optional">';
     html += '<label>Calendar Name' + helpIcon('Display name for the calendar. Leave empty for workspace name.') + '</label>';
     html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-global-calendar-name" value="' + esc(g.calendarName || '') + '" placeholder="Optional">';
     html += '</div>';
@@ -2231,8 +2225,6 @@ var ManagementUI = (function () {
     html += renderTriStateSelectHtml('id="mgmt-cfg-ws-bookmark-sync-' + esc(wsId) + '"', ws.bookmarkSync);
     html += '<label>Calendar Sync</label>';
     html += renderTriStateSelectHtml('id="mgmt-cfg-ws-calendar-sync-' + esc(wsId) + '"', ws.calendarSync);
-    html += '<label>Calendar Slug</label>';
-    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-ws-calendar-slug-' + esc(wsId) + '" value="' + esc(ws.calendarSlug || '') + '" placeholder="Optional">';
     html += '<label>Calendar Name</label>';
     html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-ws-calendar-name-' + esc(wsId) + '" value="' + esc(ws.calendarName || '') + '" placeholder="Optional">';
     html += '</div>';
@@ -2323,8 +2315,6 @@ var ManagementUI = (function () {
     html += renderTriStateSelectHtml('id="mgmt-cfg-board-bookmark-sync-' + esc(boardId) + '"', board.bookmarkSync != null ? board.bookmarkSync : board.bookmark_sync);
     html += '<label>Calendar Sync</label>';
     html += renderTriStateSelectHtml('id="mgmt-cfg-board-calendar-sync-' + esc(boardId) + '"', board.calendarSync != null ? board.calendarSync : board.calendar_sync);
-    html += '<label>Calendar Slug</label>';
-    html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-board-calendar-slug-' + esc(boardId) + '" value="' + esc(board.calendarSlug || board.calendar_slug || '') + '" placeholder="Optional">';
     html += '<label>Calendar Name</label>';
     html += '<input class="mgmt-field-input" type="text" id="mgmt-cfg-board-calendar-name-' + esc(boardId) + '" value="' + esc(board.calendarName || board.calendar_name || '') + '" placeholder="Optional">';
     html += '</div>';
@@ -2410,7 +2400,6 @@ var ManagementUI = (function () {
     var payload = {
       bookmarkSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-global-bookmark-sync')),
       calendarSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-global-calendar-sync')),
-      calendarSlug: normalizeOptionalText((queryFirst('#mgmt-cfg-global-calendar-slug') || {}).value),
       calendarName: normalizeOptionalText((queryFirst('#mgmt-cfg-global-calendar-name') || {}).value),
     };
     try {
@@ -2489,7 +2478,6 @@ var ManagementUI = (function () {
     var payload = {
       bookmarkSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-ws-bookmark-sync-' + wsId)),
       calendarSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-ws-calendar-sync-' + wsId)),
-      calendarSlug: normalizeOptionalText((queryFirst('#mgmt-cfg-ws-calendar-slug-' + wsId) || {}).value),
       calendarName: normalizeOptionalText((queryFirst('#mgmt-cfg-ws-calendar-name-' + wsId) || {}).value),
     };
     try {
@@ -2548,7 +2536,6 @@ var ManagementUI = (function () {
       xbelName: normalizeOptionalText((queryFirst('#mgmt-cfg-board-xbel-name-' + boardId) || {}).value),
       bookmarkSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-board-bookmark-sync-' + boardId)),
       calendarSync: parseTriStateSelectValue(queryFirst('#mgmt-cfg-board-calendar-sync-' + boardId)),
-      calendarSlug: normalizeOptionalText((queryFirst('#mgmt-cfg-board-calendar-slug-' + boardId) || {}).value),
       calendarName: normalizeOptionalText((queryFirst('#mgmt-cfg-board-calendar-name-' + boardId) || {}).value),
     };
     try {
