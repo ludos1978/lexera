@@ -1391,11 +1391,13 @@ var LexeraOrderHelpers = (function () {
         return;
       }
 
-      var localTreeNode = e.target.closest('.tree-node[data-dashboard-target="result"]');
+      var localTreeNode = e.target.closest('.tree-node[data-dashboard-target]');
       if (!localTreeNode) return;
       e.preventDefault();
-      var localTreeNodes = Array.prototype.slice.call(containerInfo.local.querySelectorAll('.tree-node[data-dashboard-target="result"]'));
-      var canonicalTreeNodes = Array.prototype.slice.call(containerInfo.canonical.querySelectorAll('.tree-node[data-dashboard-target="result"]'));
+      var targetType = localTreeNode.getAttribute('data-dashboard-target') || '';
+      var targetSelector = targetType ? '.tree-node[data-dashboard-target="' + targetType + '"]' : '.tree-node[data-dashboard-target]';
+      var localTreeNodes = Array.prototype.slice.call(containerInfo.local.querySelectorAll(targetSelector));
+      var canonicalTreeNodes = Array.prototype.slice.call(containerInfo.canonical.querySelectorAll(targetSelector));
       var treeIndex = localTreeNodes.indexOf(localTreeNode);
       if (treeIndex < 0 || !canonicalTreeNodes[treeIndex]) return;
       if (e.target.closest('.tree-toggle')) {
@@ -1962,10 +1964,10 @@ var LexeraOrderHelpers = (function () {
         return;
       }
       if (target === 'file') {
-        var fileBoardId = _dep('activeBoardId') || '';
+        var fileBoardId = _dep('activeBoardId') || _fileInventoryBoardId || '';
         var fileCardId = String(node.getAttribute('data-dashboard-card-id') || '').trim() || null;
         var fileColIndex = parseInt(node.getAttribute('data-dashboard-column-index'), 10);
-        if (fileBoardId && (fileCardId || !isNaN(fileColIndex))) {
+        if (fileBoardId) {
           _callDep('navigateToSearchResult', {
             boardId: fileBoardId,
             cardId: fileCardId,
@@ -1975,11 +1977,11 @@ var LexeraOrderHelpers = (function () {
         return;
       }
       if (target === 'broken') {
-        var boardId = _dep('activeBoardId') || '';
+        var boardId = _dep('activeBoardId') || _brokenScanBoardId || '';
         var cardId = String(node.getAttribute('data-dashboard-card-id') || '').trim() || null;
         var columnIndex = parseInt(node.getAttribute('data-dashboard-col-index'), 10);
         var cardIndex = parseInt(node.getAttribute('data-dashboard-card-index'), 10);
-        if (boardId && (cardId || !isNaN(columnIndex))) {
+        if (boardId) {
           _callDep('navigateToSearchResult', {
             boardId: boardId,
             cardId: cardId,
