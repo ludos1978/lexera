@@ -6,7 +6,7 @@
 - [x] ~~drag/drop column + card fix~~ (07712fc2) — geometry cache after drop zones, hide source card during async move
 - [x] ~~workspace config fixes~~ (75e99ecd) — calendar slug removed, responsive layout, Enter-key save
 
-- [ ] dashboard has a broken visual layout
+- [x] ~~dashboard layout collapse fixed~~ (952eff48) — enforce dashboardMin in sidebar resize, prevent flex:0 0 0px
 
 ## Code Quality
 - [ ] **App.js modularization** — **10,832 lines** (down from 25K+). All major sections extracted. Remaining is core board rendering + event wiring.
