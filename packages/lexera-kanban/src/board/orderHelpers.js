@@ -1954,11 +1954,13 @@ var LexeraOrderHelpers = (function () {
         var boardId = _dep('activeBoardId') || '';
         var cardId = String(node.getAttribute('data-dashboard-card-id') || '').trim() || null;
         var columnIndex = parseInt(node.getAttribute('data-dashboard-col-index'), 10);
+        var cardIndex = parseInt(node.getAttribute('data-dashboard-card-index'), 10);
         if (boardId && (cardId || !isNaN(columnIndex))) {
           _callDep('navigateToSearchResult', {
             boardId: boardId,
             cardId: cardId,
-            columnIndex: isNaN(columnIndex) ? null : columnIndex
+            columnIndex: isNaN(columnIndex) ? null : columnIndex,
+            cardIndex: isNaN(cardIndex) ? null : cardIndex
           });
         }
       }

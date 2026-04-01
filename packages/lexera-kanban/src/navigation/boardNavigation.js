@@ -135,6 +135,8 @@
       ? options.escapeAttr
       : function (value) { return String(value == null ? '' : value); };
     var focusCard = typeof options.focusCard === 'function' ? options.focusCard : null;
+    
+    // Priority 1: Try to find by cardId first
     var cardId = result.cardId ? String(result.cardId) : '';
     if (cardId) {
       var byId = container.querySelector('.card[data-card-id="' + escapeAttr(cardId) + '"]');
@@ -144,6 +146,16 @@
       }
     }
 
+    // Priority 2: Use cardIndex (visible index) if available - most reliable for broken includes
+    if (typeof result.cardIndex === 'number' && typeof result.columnIndex === 'number') {
+      var byIndex = container.querySelector('.card[data-col-index="' + result.columnIndex + '"][data-card-index="' + result.cardIndex + '"]');
+      if (byIndex) {
+        if (focusCard) focusCard(byIndex);
+        return true;
+      }
+    }
+
+    // Priority 3: Fall back to columnIndex + title matching
     if (typeof result.columnIndex === 'number') {
       var candidates = container.querySelectorAll('.card[data-col-index="' + result.columnIndex + '"]');
       if (candidates.length > 0) {
@@ -156,6 +168,12 @@
             return true;
           }
         }
+        // If no title match, use the cardIndex as fallback position
+        if (typeof result.cardIndex === 'number' && result.cardIndex < candidates.length) {
+          if (focusCard) focusCard(candidates[result.cardIndex]);
+          return true;
+        }
+        // Last resort: first card in column
         if (focusCard) focusCard(candidates[0]);
         return true;
       }
