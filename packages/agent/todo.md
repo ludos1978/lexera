@@ -48,21 +48,9 @@
   - `refreshTargetedElements()` = dispatch for card/column/stack/row/board targets
   - `buildStackElement()` and `buildRowElement()` extracted as standalone functions
   - `enhancePreviewElement()` = unified preview enhancement in embedMenu.js
-  - **Remaining migration**: ~30 old-style `persistBoardMutation` calls still use `skipRender`/`refreshMainView`/`refreshSidebar` instead of `targets`. These work via backward compat but should be migrated incrementally:
-    - columnContextMenu.js: 5 calls
-    - cardContextMenu.js: 3 calls
-    - rowStackMenu.js: ~11 calls
-    - dndMutations.js: 2 calls
-    - dragDropHandlers.js: 3 calls
-    - orderHelpers.js: 2 calls
-    - cardEditor.js: 1 call
-    - app.js: ~10 calls
-    - search/boardSearchReplace.js: 2 calls
-  - **Companion work for the targets migration**:
-    - migrate helper APIs that still expose legacy render flags: `commitBoardMutations`, `flushDeferredBoardRefresh`, `applyLiveSyncBoardSnapshot`, `applyRebasedBoardSnapshot`, `persistCleanedBoard`
-    - convert manual DOM fast paths (`updateCardElementInPlace`, `insertCardElementAtPosition`, hidden-tag/header text inline patches) to `targets` updates or explicitly document them as sanctioned exceptions
-    - add coverage for underused target types (`card-insert`, `card-remove`, `card-content`) plus structural row/stack/column refreshes, cross-board DnD, cleanup flows, and live-sync/rebase refresh paths
-    - remove the legacy `skipRender`/`refreshMainView`/`refreshSidebar` branch from `persistBoardMutation()` once callers and tests are migrated
+  - ~~**Migration complete** (60cf793e)~~: all ~60 callers migrated to `targets`, legacy `skipRender`/`refreshMainView`/`refreshSidebar` branch removed from `persistBoardMutation`
+  - **Remaining companion work**:
+    - [ ] migrate helper APIs that still have internal render logic: `commitBoardMutations`, `flushDeferredBoardRefresh`, `applyLiveSyncBoardSnapshot`, `applyRebasedBoardSnapshot`, `persistCleanedBoard`
 
 ## Architecture
 - [ ] **Remove iframe view composition** — replace iframes + postMessage with in-process views

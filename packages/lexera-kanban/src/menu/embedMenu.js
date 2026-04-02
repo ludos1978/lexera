@@ -3617,9 +3617,9 @@ var LexeraEmbedMenu = (function () {
       { id: 'copy-path', label: 'Copy Path' },
       { separator: true },
       { id: 'replace-document', label: 'Replace Document' },
-      { separator: true },
-      { id: 'convert-path', label: 'Convert to Relative Path' },
       { id: 'refresh', label: 'Force Refresh' },
+      { id: 'convert-path', label: 'Convert to Relative Path' },
+      { separator: true },
       { id: 'info', label: 'Info' },
       { id: 'delete', label: 'Delete Include' },
     ], btnRect.right, btnRect.bottom).then(function (action) {
@@ -3780,9 +3780,9 @@ var LexeraEmbedMenu = (function () {
           { id: 'copy-path', label: 'Copy Path' },
           { separator: true },
           { id: 'replace-document', label: 'Replace Document' },
-          { separator: true },
-          { id: 'convert-path', label: 'Convert to Relative Path' },
           { id: 'refresh', label: 'Force Refresh' },
+          { id: 'convert-path', label: 'Convert to Relative Path' },
+          { separator: true },
           { id: 'info', label: 'Info' },
           { id: 'delete', label: 'Delete Embed' },
         ];

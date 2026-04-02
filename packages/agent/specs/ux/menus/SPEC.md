@@ -394,6 +394,69 @@ closeAllMenus()
 
 ---
 
+## Embed / Include Context Menus
+
+### Local File Embed Menu (right-click or gear button on embedded file)
+
+```
+Open in System App
+Show in Finder
+Copy Path
+─────────────────
+Replace Document
+Force Refresh
+Convert to Relative Path
+─────────────────
+Info
+Delete Embed
+```
+
+### Include Directive Menu (right-click or gear button on included file)
+
+Same structure as embed menu, with "Delete Include" instead of "Delete Embed".
+
+### External Embed Menu (embedded URLs)
+
+```
+Open Page Here
+Open URL in Browser
+Copy URL
+Recheck Embed Permission
+─────────────────
+Edit URL
+Delete Embed
+```
+
+### Replace Document Overlay
+
+Displayed when "Replace Document" is selected. Provides multiple ways to
+replace the current embed/include file path:
+
+- **File search**: Searches the board workspace for files with the same name
+- **Drag & drop**: Drop a file from the OS into the drop zone
+- **Paste**: Paste a file from clipboard
+- **Browse**: OS file dialog starting in the embed file's directory (or board directory as fallback)
+- **Web Search**: Opens a web search prefilled with the filename (stays open)
+
+Pasted/dropped files are uploaded to the media folder of the main kanban file
+(or the include file's media folder if the embed is inside an include column).
+
+### Board File Link Menu (clickable file links in card content)
+
+```
+Preview File
+─────────────────
+Open in System App
+Show in Finder
+Copy Path
+Automatic Path Fix
+Manual Path Fix
+Web-Search File
+Convert to Relative/Absolute
+```
+
+---
+
 ## Integration Points
 
 ### Called By

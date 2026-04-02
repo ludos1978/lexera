@@ -5145,13 +5145,15 @@ var LexeraDashboard = (function () {
       if (saveSucceeded) triggerAutoExportAfterBoardSave(activeBoardId);
       return saveSucceeded;
     } catch (err) {
+      var saveErrMsg = err && err.message ? err.message : String(err);
+      logFrontendIssue('error', 'board.save', 'Save failed: ' + saveErrMsg, err);
       var failedSaveCrashsave = await writeBoardCrashsave('save-exception', fullBoardData, {
-        error: err && err.message ? err.message : String(err)
+        error: saveErrMsg
       });
       showNotification(
         failedSaveCrashsave && failedSaveCrashsave.filename
-          ? ('Save failed. Recovery copy written: ' + failedSaveCrashsave.filename)
-          : 'Save failed. The local draft remains open, but crashsave could not be written.'
+          ? ('Save failed (' + saveErrMsg + '). Recovery copy written: ' + failedSaveCrashsave.filename)
+          : ('Save failed (' + saveErrMsg + '). The local draft remains open, but crashsave could not be written.')
       );
       throw err;
     } finally {
