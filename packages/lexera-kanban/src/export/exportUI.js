@@ -323,14 +323,14 @@ class ExportUI {
     show() {
         var modal = document.getElementById('export-modal');
         if (modal) {
-            modal.style.display = 'flex';
+            modal.hidden = false;
         }
     }
 
     hide() {
         var modal = document.getElementById('export-modal');
         if (modal) {
-            modal.style.display = 'none';
+            modal.hidden = true;
         }
     }
 
@@ -481,25 +481,25 @@ class ExportUI {
         // Show/hide Marp section
         var marpSection = document.getElementById('export-marp-section');
         if (marpSection) {
-            marpSection.style.display = (format === 'presentation') ? '' : 'none';
+            marpSection.hidden = format !== 'presentation';
         }
 
         // Show/hide Pandoc section
         var pandocSection = document.getElementById('export-pandoc-section');
         if (pandocSection) {
-            pandocSection.style.display = (format === 'document') ? '' : 'none';
+            pandocSection.hidden = format !== 'document';
         }
 
         // Show/hide transforms section (presentation only)
         var transformSection = document.getElementById('export-transform-section');
         if (transformSection) {
-            transformSection.style.display = (format === 'presentation') ? '' : 'none';
+            transformSection.hidden = format !== 'presentation';
         }
 
         // Update preview button visibility (only for presentation format)
         var previewBtn = document.getElementById('export-btn-preview');
         if (previewBtn) {
-            previewBtn.style.display = (format === 'presentation' && this.marpAvailable) ? '' : 'none';
+            previewBtn.hidden = !(format === 'presentation' && this.marpAvailable);
         }
 
         this.updateExportFolderName();
@@ -511,27 +511,27 @@ class ExportUI {
         // Watch/Preview checkbox: only for html
         var watchEl = document.getElementById('export-marp-watch');
         if (watchEl && watchEl.parentElement) {
-            watchEl.parentElement.style.display = (marpFormat === 'html') ? '' : 'none';
+            watchEl.parentElement.hidden = marpFormat !== 'html';
         }
 
         // PPTX Editable checkbox: only for pptx
         var pptxEl = document.getElementById('export-marp-pptx-editable');
         if (pptxEl && pptxEl.parentElement) {
-            pptxEl.parentElement.style.display = (marpFormat === 'pptx') ? '' : 'none';
+            pptxEl.parentElement.hidden = marpFormat !== 'pptx';
         }
 
         // Handout options: only for pdf
         var handoutEl = document.getElementById('export-marp-handout');
         if (handoutEl && handoutEl.parentElement) {
-            handoutEl.parentElement.style.display = (marpFormat === 'pdf') ? '' : 'none';
+            handoutEl.parentElement.hidden = marpFormat !== 'pdf';
         }
         var handoutPreset = document.getElementById('export-marp-handout-preset');
         if (handoutPreset && handoutPreset.parentElement) {
-            handoutPreset.parentElement.style.display = (marpFormat === 'pdf') ? '' : 'none';
+            handoutPreset.parentElement.hidden = marpFormat !== 'pdf';
         }
         var handoutDir = document.getElementById('export-marp-handout-direction');
         if (handoutDir && handoutDir.parentElement) {
-            handoutDir.parentElement.style.display = (marpFormat === 'pdf') ? '' : 'none';
+            handoutDir.parentElement.hidden = marpFormat !== 'pdf';
         }
     }
 
@@ -541,13 +541,13 @@ class ExportUI {
         var packTypes = document.getElementById('export-link-pack-types');
         var fileSize = document.getElementById('export-link-pack-size');
         if (optionsWrap) {
-            optionsWrap.style.display = (mode === 'pack-linked' || mode === 'pack-all') ? '' : 'none';
+            optionsWrap.hidden = !(mode === 'pack-linked' || mode === 'pack-all');
         }
         if (packTypes) {
-            packTypes.style.display = mode === 'pack-all' ? '' : 'none';
+            packTypes.hidden = mode !== 'pack-all';
         }
         if (fileSize) {
-            fileSize.style.display = (mode === 'pack-linked' || mode === 'pack-all') ? '' : 'none';
+            fileSize.hidden = !(mode === 'pack-linked' || mode === 'pack-all');
         }
     }
 

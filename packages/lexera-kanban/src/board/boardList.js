@@ -841,16 +841,17 @@ var LexeraBoardList = (function () {
         response && response.title ? response.title : (boardMeta.title || 'Board'),
         { revision: response && response.revision ? response.revision : null }
       );
-      // Update just this board's tree in-place instead of full re-render
+      // Update ALL instances of this board's tree in-place
       var boardListEl = getElBoardList();
       if (boardListEl) {
-        var wrapper = boardListEl.querySelector('.board-item-wrapper[data-board-id="' + boardMeta.id + '"]');
-        if (wrapper) {
-          var treeEl = wrapper.querySelector('.board-item-tree');
-          if (treeEl) {
-            var rows = getBoardHierarchyRows(boardMeta.id) || [];
-            if (rows.length > 0) {
-              _renderBoardTree(treeEl, boardMeta.id, rows, _dep('TreeView'));
+        var wrappers = boardListEl.querySelectorAll('.board-item-wrapper[data-board-id="' + boardMeta.id + '"]');
+        var rows = getBoardHierarchyRows(boardMeta.id) || [];
+        for (var wi = 0; wi < wrappers.length; wi++) {
+          var treeEl = wrappers[wi].querySelector('.board-item-tree');
+          if (treeEl && rows.length > 0) {
+            _renderBoardTree(treeEl, boardMeta.id, rows, _dep('TreeView'));
+            if (treeEl.classList.contains('expanded')) {
+              // Already expanded — keep it
             }
           }
         }
@@ -1180,6 +1181,8 @@ var LexeraBoardList = (function () {
   /** Extract the reconciliation key from a board-list child element. */
   function _nodeKey(el) {
     if (!el || !el.getAttribute) return null;
+    var explicitKey = el.getAttribute('data-list-key');
+    if (explicitKey) return explicitKey;
     if (el.classList.contains('workspace-nav-up')) return '__nav_up__';
     var wsId = el.getAttribute('data-workspace-id');
     if (wsId) return 'ws:' + wsId;
@@ -1333,7 +1336,7 @@ var LexeraBoardList = (function () {
     }
     el.innerHTML =
       '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +
-      (hasContent ? '<span class="tree-toggle board-item-toggle' + (isExpanded ? ' expanded' : '') + '"></span>' : '<span class="tree-toggle-spacer board-item-toggle-spacer"></span>') +
+      '<span class="tree-toggle board-item-toggle' + (isExpanded ? ' expanded' : '') + '"></span>' +
       '<span class="tree-label board-item-title"><span class="board-item-title-text">' + displayTitle + '</span></span>' +
       '<span class="tree-meta board-item-meta">' +
         presenceBadge +
@@ -1597,7 +1600,7 @@ var LexeraBoardList = (function () {
         if (wsExpanded) {
           for (var wbi = 0; wbi < wsBoards.length; wbi++) {
             var wb = wsBoards[wbi];
-            entries.push({ key: 'board:' + wb.id, type: 'board', board: wb, index: entries.length });
+            entries.push({ key: 'board:' + ws.id + ':' + wb.id, type: 'board', board: wb, index: entries.length });
           }
         }
       }
@@ -1753,6 +1756,10 @@ var LexeraBoardList = (function () {
         }
       }
 
+      // Stamp the reconciliation key on the node for future lookups
+      if (node && entry.key) {
+        node.setAttribute('data-list-key', entry.key);
+      }
       // Ensure node is at position i
       if (node) {
         var currentAtPos = boardListEl.children[i];

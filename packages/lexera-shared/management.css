@@ -60,6 +60,10 @@
 }
 .mgmt-field-row:last-child { margin-bottom: 0; }
 
+.mgmt-field-row--actions {
+  justify-content: flex-end;
+}
+
 .mgmt-check-label {
   display: inline-flex;
   align-items: center;
@@ -426,6 +430,12 @@
   margin-top: 6px;
 }
 
+.mgmt-copy {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 .mgmt-subsection-title {
   font-size: 11px;
   font-weight: 600;
@@ -713,6 +723,18 @@
   color: var(--text-secondary);
   margin-top: 4px;
   font-family: monospace;
+}
+
+.mgmt-board-title {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.mgmt-board-path {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: monospace;
+  word-break: break-all;
 }
 .mgmt-info-stack {
   display: grid;

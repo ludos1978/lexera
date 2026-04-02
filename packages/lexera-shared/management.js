@@ -83,6 +83,10 @@ var ManagementUI = (function () {
     return null;
   }
 
+  function setElementHidden(el, hidden) {
+    if (el) el.hidden = !!hidden;
+  }
+
   function queryAllElements(selector) {
     var results = [];
     var ids = Object.keys(mounts);
@@ -603,7 +607,7 @@ var ManagementUI = (function () {
     html += '<option value="__custom__">Custom...</option>';
     html += '</select>';
     html += '</div>';
-    html += '<div class="mgmt-field-row" id="mgmt-custom-bind-row" style="display:none">';
+    html += '<div class="mgmt-field-row" id="mgmt-custom-bind-row" hidden>';
     html += '<label class="mgmt-field-label"></label>';
     html += '<input class="mgmt-field-input" type="text" id="mgmt-bind-custom" placeholder="e.g. 192.168.1.100">';
     html += '</div>';
@@ -614,15 +618,15 @@ var ManagementUI = (function () {
     html += '<option value="__custom__">Custom...</option>';
     html += '</select>';
     html += '</div>';
-    html += '<div class="mgmt-field-row" id="mgmt-custom-port-row" style="display:none">';
+    html += '<div class="mgmt-field-row" id="mgmt-custom-port-row" hidden>';
     html += '<label class="mgmt-field-label"></label>';
     html += '<input class="mgmt-field-input" type="number" id="mgmt-port-custom" min="1024" max="65535" placeholder="e.g. 8080">';
     html += '</div>';
-    html += '<div class="mgmt-field-row" style="justify-content:flex-end">';
+    html += '<div class="mgmt-field-row mgmt-field-row--actions">';
     html += '<button class="mgmt-btn mgmt-btn-primary mgmt-btn-small" data-mgmt-action="save-server">Save</button>';
     html += '</div>';
     html += '<div id="mgmt-server-address" class="mgmt-info-text"></div>';
-    html += '<div id="mgmt-server-restart-note" class="mgmt-restart-note" style="display:none"></div>';
+    html += '<div id="mgmt-server-restart-note" class="mgmt-restart-note" hidden></div>';
     html += '</div>';
 
     // Remote Connections
@@ -754,14 +758,14 @@ var ManagementUI = (function () {
       var bindSelect = e.target.closest('#mgmt-bind-select');
       if (bindSelect) {
         var customRow = mc.querySelector('#mgmt-custom-bind-row');
-        if (customRow) customRow.style.display = bindSelect.value === '__custom__' ? '' : 'none';
+        setElementHidden(customRow, bindSelect.value !== '__custom__');
         return;
       }
 
       var portSelect = e.target.closest('#mgmt-port-select');
       if (portSelect) {
         var customRow = mc.querySelector('#mgmt-custom-port-row');
-        if (customRow) customRow.style.display = portSelect.value === '__custom__' ? '' : 'none';
+        setElementHidden(customRow, portSelect.value !== '__custom__');
         return;
       }
 
@@ -1010,12 +1014,12 @@ var ManagementUI = (function () {
     var customRow = queryFirst('#mgmt-custom-bind-row');
     if (currentBind && found) {
       select.value = currentBind;
-      if (customRow) customRow.style.display = 'none';
+      setElementHidden(customRow, true);
     } else if (currentBind && !found) {
       select.value = '__custom__';
       var customInput = queryFirst('#mgmt-bind-custom');
       if (customInput) customInput.value = currentBind;
-      if (customRow) customRow.style.display = '';
+      setElementHidden(customRow, false);
     }
   }
 
@@ -1039,10 +1043,10 @@ var ManagementUI = (function () {
       select.value = '__custom__';
       var customInput = queryFirst('#mgmt-port-custom');
       if (customInput) customInput.value = currentPort;
-      if (customRow) customRow.style.display = '';
+      setElementHidden(customRow, false);
     } else {
       select.value = String(defaultPort);
-      if (customRow) customRow.style.display = 'none';
+      setElementHidden(customRow, true);
     }
   }
 
@@ -1067,7 +1071,10 @@ var ManagementUI = (function () {
     }
 
     var restartNote = queryFirst('#mgmt-server-restart-note');
-    if (restartNote) { restartNote.textContent = 'Applying...'; restartNote.style.display = ''; }
+    if (restartNote) {
+      restartNote.textContent = 'Applying...';
+      setElementHidden(restartNote, false);
+    }
 
     try {
       var result = await api.put('/collab/server-config', { bind_address: bindAddr, port: port });
@@ -1079,13 +1086,13 @@ var ManagementUI = (function () {
       await loadNetworkInterfaces();
       if (restartNote) {
         restartNote.textContent = 'Server restarted on port ' + newPort;
-        setTimeout(function () { if (restartNote) restartNote.style.display = 'none'; }, 5000);
+        setTimeout(function () { setElementHidden(restartNote, true); }, 5000);
       }
       notify('Server config saved');
     } catch (e) {
       if (restartNote) {
         restartNote.textContent = 'Error: ' + (e.message || e);
-        setTimeout(function () { if (restartNote) restartNote.style.display = 'none'; }, 5000);
+        setTimeout(function () { setElementHidden(restartNote, true); }, 5000);
       }
       // Let host app handle reconnection
       if (callbacks && typeof callbacks.onServerRestarted === 'function') {
@@ -2175,7 +2182,7 @@ var ManagementUI = (function () {
     var html = '';
     html += '<div class="mgmt-section">';
     html += '<div class="mgmt-section-title">Global Sync Defaults</div>';
-    html += '<p style="font-size:11px;color:var(--text-secondary);margin:0 0 8px">These defaults apply to all workspaces and boards unless overridden.</p>';
+    html += '<p class="mgmt-copy">These defaults apply to all workspaces and boards unless overridden.</p>';
     html += '<div class="mgmt-sync-grid">';
     html += '<label>Bookmark Sync' + helpIcon('Enable WebDAV bookmark synchronization for all workspaces by default') + '</label>';
     html += renderTriStateSelectHtml('id="mgmt-cfg-global-bookmark-sync"', g.bookmarkSync);
@@ -2280,12 +2287,12 @@ var ManagementUI = (function () {
     html += '<div class="mgmt-section-title">Board</div>';
     html += '<div class="mgmt-field-row">';
     html += '<label class="mgmt-field-label">Title</label>';
-    html += '<span style="font-size:12px;color:var(--text-primary)">' + esc(boardName) + '</span>';
+    html += '<span class="mgmt-board-title">' + esc(boardName) + '</span>';
     html += '</div>';
     if (filePath) {
       html += '<div class="mgmt-field-row">';
       html += '<label class="mgmt-field-label">File</label>';
-      html += '<span style="font-size:11px;color:var(--text-secondary);font-family:monospace;word-break:break-all">' + esc(filePath) + '</span>';
+      html += '<span class="mgmt-board-path">' + esc(filePath) + '</span>';
       html += '</div>';
     }
     html += '</div>';

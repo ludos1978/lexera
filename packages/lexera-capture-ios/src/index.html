@@ -30,6 +30,7 @@
       user-select: none;
       -webkit-tap-highlight-color: transparent;
     }
+    [hidden] { display: none !important; }
 
     /* Tab bar */
     .tab-bar {
@@ -53,6 +54,7 @@
       flex-direction: column;
       align-items: center;
       gap: 2px;
+      position: relative;
     }
     .tab-bar button .tab-icon { font-size: 20px; line-height: 1; }
     .tab-bar button.active { color: var(--accent); }
@@ -85,6 +87,14 @@
       font-weight: 700;
       margin-bottom: 20px;
       padding-top: 8px;
+    }
+    .page-title--compact { margin-bottom: 0; }
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 20px;
     }
 
     /* Shared form elements */
@@ -138,10 +148,16 @@
     .btn:disabled { opacity: 0.4; cursor: default; }
     .btn-primary { background: var(--accent); color: #000; width: 100%; }
     .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-danger { background: var(--danger); color: #fff; }
     .btn-small {
       padding: 6px 14px;
       font-size: 13px;
       border-radius: 6px;
+    }
+    .btn-block {
+      flex: 1;
+      font-size: 16px;
+      padding: 12px 24px;
     }
 
     .toast {
@@ -215,7 +231,6 @@
       font-size: 18px;
       padding: 4px 8px;
       cursor: pointer;
-      display: none;
     }
     .search-result {
       background: var(--bg-card);
@@ -330,6 +345,7 @@
       cursor: pointer;
       padding: 4px;
     }
+    .board-detail-delete { margin-left: auto; }
     .board-detail-title { font-size: 22px; font-weight: 700; }
     .board-column {
       margin-bottom: 20px;
@@ -398,6 +414,12 @@
       margin-top: 16px;
     }
     .dialog-actions .btn { flex: 1; }
+    .dialog-actions--tight { margin-top: 8px; }
+    .dialog-copy {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
 
     /* Settings page */
     .setting-row {
@@ -417,6 +439,11 @@
     .setting-value {
       font-size: 14px;
       color: var(--text);
+    }
+    .setting-inline {
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
     .version-info {
       text-align: center;
@@ -447,7 +474,7 @@
       </div>
     </div>
 
-    <div id="capture-url-fields" style="display:none;">
+    <div id="capture-url-fields" hidden>
       <div class="field-group">
         <label class="field-label" for="capture-url">URL</label>
         <input type="url" id="capture-url" placeholder="https://...">
@@ -479,10 +506,10 @@
     <div class="search-bar">
       <span class="search-icon">&#x1F50D;</span>
       <input type="text" id="search-input" placeholder="Search cards...">
-      <button class="clear-btn" id="search-clear">&times;</button>
+      <button class="clear-btn" id="search-clear" hidden>&times;</button>
     </div>
 
-    <div id="search-count" class="search-count" style="display:none;"></div>
+    <div id="search-count" class="search-count" hidden></div>
     <div id="search-results"></div>
     <div id="search-empty" class="search-empty">
       Type to search across all boards
@@ -491,8 +518,8 @@
 
   <!-- ─── Boards Page ─── -->
   <div id="page-boards" class="page">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
-      <div class="page-title" style="margin-bottom:0;">Boards</div>
+    <div id="boards-header" class="page-header">
+      <div class="page-title page-title--compact">Boards</div>
       <button id="btn-new-board" class="btn btn-secondary btn-small">+ New</button>
     </div>
 
@@ -503,7 +530,7 @@
       <div class="board-detail-header">
         <button class="back-btn" id="board-back">&larr;</button>
         <div class="board-detail-title" id="board-detail-title"></div>
-        <button class="btn btn-small" id="board-delete" style="margin-left:auto; background:var(--danger); color:#fff;">Delete</button>
+        <button class="btn btn-small btn-danger board-detail-delete" id="board-delete">Delete</button>
       </div>
       <div id="board-detail-columns"></div>
     </div>
@@ -515,7 +542,7 @@
 
     <div class="setting-row">
       <label>Pending Shares</label>
-      <div style="display:flex; align-items:center; gap:12px;">
+      <div class="setting-inline">
         <span class="setting-value" id="pending-count">0 items</span>
         <button id="btn-process-pending" class="btn btn-secondary btn-small">Process</button>
       </div>
@@ -548,10 +575,10 @@
   <div id="dialog-delete-board" class="dialog-overlay">
     <div class="dialog">
       <h3>Delete Board</h3>
-      <p style="color:var(--text-dim); font-size:14px; margin-bottom:16px;">Are you sure you want to delete <strong id="delete-board-name"></strong>? This cannot be undone.</p>
+      <p class="dialog-copy">Are you sure you want to delete <strong id="delete-board-name"></strong>? This cannot be undone.</p>
       <div class="dialog-actions">
         <button class="btn btn-secondary" id="dialog-delete-cancel">Cancel</button>
-        <button class="btn btn-small" id="dialog-delete-confirm" style="background:var(--danger); color:#fff; flex:1; font-size:16px; padding:12px 24px;">Delete</button>
+        <button class="btn btn-small btn-danger btn-block" id="dialog-delete-confirm">Delete</button>
       </div>
     </div>
   </div>
@@ -568,8 +595,8 @@
         <button class="btn btn-secondary" id="dialog-edit-cancel">Cancel</button>
         <button class="btn btn-primary" id="dialog-edit-save">Save</button>
       </div>
-      <div class="dialog-actions" style="margin-top:8px;">
-        <button class="btn btn-small" id="dialog-edit-delete" style="background:var(--danger); color:#fff; flex:1; font-size:16px; padding:12px 24px;">Delete Card</button>
+      <div class="dialog-actions dialog-actions--tight">
+        <button class="btn btn-small btn-danger btn-block" id="dialog-edit-delete">Delete Card</button>
       </div>
     </div>
   </div>
@@ -578,10 +605,10 @@
   <div id="dialog-delete-card" class="dialog-overlay">
     <div class="dialog">
       <h3>Delete Card</h3>
-      <p style="color:var(--text-dim); font-size:14px; margin-bottom:16px;">Are you sure you want to delete this card? This cannot be undone.</p>
+      <p class="dialog-copy">Are you sure you want to delete this card? This cannot be undone.</p>
       <div class="dialog-actions">
         <button class="btn btn-secondary" id="dialog-delete-card-cancel">Cancel</button>
-        <button class="btn btn-small" id="dialog-delete-card-confirm" style="background:var(--danger); color:#fff; flex:1; font-size:16px; padding:12px 24px;">Delete</button>
+        <button class="btn btn-small btn-danger btn-block" id="dialog-delete-card-confirm">Delete</button>
       </div>
     </div>
   </div>
@@ -596,11 +623,11 @@
       <span class="tab-icon">&#x1F50D;</span>
       Search
     </button>
-    <button data-page="boards" style="position:relative;">
+    <button data-page="boards">
       <span class="tab-icon">&#x1F4CB;</span>
       Boards
     </button>
-    <button data-page="settings" style="position:relative;">
+    <button data-page="settings">
       <span class="tab-icon">&#x2699;</span>
       Settings
     </button>

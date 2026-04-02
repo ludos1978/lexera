@@ -153,7 +153,7 @@
   <!-- Settings panels are now created by sharedPanels.js factory -->
 
   <!-- Export Modal -->
-  <div id="export-modal" class="dialog-overlay" style="display: none;">
+  <div id="export-modal" class="dialog-overlay" hidden>
     <div class="export-dialog">
       <div class="export-dialog-header">
         <span class="export-dialog-title">Export</span>
@@ -225,7 +225,7 @@
         </div>
 
         <!-- Marp Options -->
-        <div id="export-marp-section" class="export-section" style="display: none;">
+        <div id="export-marp-section" class="export-section" hidden>
           <div class="export-section-title">Marp Options</div>
           <div id="export-marp-status" class="export-tool-status"></div>
           <div class="export-field">
@@ -260,10 +260,10 @@
           </div>
           <div class="export-checkboxes">
             <label class="export-checkbox"><input type="checkbox" id="export-marp-watch"> Watch / Preview</label>
-            <label class="export-checkbox"><input type="checkbox" id="export-marp-pptx-editable" style="display: none;"> PPTX Editable</label>
-            <label class="export-checkbox"><input type="checkbox" id="export-marp-handout" style="display: none;"> Handout</label>
+            <label class="export-checkbox" hidden><input type="checkbox" id="export-marp-pptx-editable"> PPTX Editable</label>
+            <label class="export-checkbox" hidden><input type="checkbox" id="export-marp-handout"> Handout</label>
           </div>
-          <div class="export-field-row" style="display: none;">
+          <div class="export-field-row" hidden>
             <div class="export-field-half">
               <label class="export-label" for="export-marp-handout-preset">Handout layout</label>
               <select id="export-marp-handout-preset" class="export-input">
@@ -284,7 +284,7 @@
         </div>
 
         <!-- Content Transforms (presentation only) -->
-        <div id="export-transform-section" class="export-section" style="display: none;">
+        <div id="export-transform-section" class="export-section" hidden>
           <div class="export-section-title">Content Transforms</div>
           <div class="export-field-row">
             <div class="export-field-third">
@@ -323,7 +323,7 @@
         </div>
 
         <!-- Pandoc Options -->
-        <div id="export-pandoc-section" class="export-section" style="display: none;">
+        <div id="export-pandoc-section" class="export-section" hidden>
           <div class="export-section-title">Pandoc Options</div>
           <div id="export-pandoc-status" class="export-tool-status"></div>
           <div class="export-field">
@@ -372,15 +372,15 @@
               <option value="no-modify">Don't modify links</option>
             </select>
           </div>
-          <div id="export-link-handling-options" class="export-link-handling-options" style="display: none;">
-            <div id="export-link-pack-types" class="export-checkboxes" style="display: none;">
+          <div id="export-link-handling-options" class="export-link-handling-options" hidden>
+            <div id="export-link-pack-types" class="export-checkboxes" hidden>
               <label class="export-checkbox"><input type="checkbox" id="export-pack-files"> Files</label>
               <label class="export-checkbox"><input type="checkbox" id="export-pack-images"> Images</label>
               <label class="export-checkbox"><input type="checkbox" id="export-pack-videos"> Videos</label>
               <label class="export-checkbox"><input type="checkbox" id="export-pack-other-media"> Other media</label>
               <label class="export-checkbox"><input type="checkbox" id="export-pack-documents"> Documents</label>
             </div>
-            <div id="export-link-pack-size" class="export-field export-link-pack-size" style="display: none;">
+            <div id="export-link-pack-size" class="export-field export-link-pack-size" hidden>
               <label class="export-label" for="export-pack-file-size-limit">File size limit (MB)</label>
               <input id="export-pack-file-size-limit" class="export-input" type="number" min="1" max="1000" step="1" value="100">
             </div>
@@ -395,7 +395,7 @@
         <div class="export-dialog-actions">
           <button id="export-btn-copy" class="export-action-btn" type="button">Copy</button>
           <button id="export-btn-save" class="export-action-btn export-action-primary" type="button">Export</button>
-          <button id="export-btn-preview" class="export-action-btn export-action-primary" type="button">Preview</button>
+          <button id="export-btn-preview" class="export-action-btn export-action-primary" type="button" hidden>Preview</button>
         </div>
       </div>
     </div>

@@ -42,8 +42,8 @@
         document.querySelectorAll('.capture-type-toggle button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentCaptureType = btn.dataset.type;
-        document.getElementById('capture-text-fields').style.display = currentCaptureType === 'text' ? 'block' : 'none';
-        document.getElementById('capture-url-fields').style.display = currentCaptureType === 'url' ? 'block' : 'none';
+        document.getElementById('capture-text-fields').hidden = currentCaptureType !== 'text';
+        document.getElementById('capture-url-fields').hidden = currentCaptureType !== 'url';
         updateCaptureButton();
       });
     });
@@ -132,17 +132,17 @@
     const searchClear = document.getElementById('search-clear');
 
     searchInput.addEventListener('input', () => {
-      searchClear.style.display = searchInput.value ? 'block' : 'none';
+      searchClear.hidden = !searchInput.value;
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(doSearch, 300);
     });
 
     searchClear.addEventListener('click', () => {
       searchInput.value = '';
-      searchClear.style.display = 'none';
+      searchClear.hidden = true;
       document.getElementById('search-results').innerHTML = '';
-      document.getElementById('search-count').style.display = 'none';
-      document.getElementById('search-empty').style.display = 'block';
+      document.getElementById('search-count').hidden = true;
+      document.getElementById('search-empty').hidden = false;
     });
 
     async function doSearch() {
@@ -153,17 +153,17 @@
 
       if (!query) {
         resultsEl.innerHTML = '';
-        countEl.style.display = 'none';
-        emptyEl.style.display = 'block';
+        countEl.hidden = true;
+        emptyEl.hidden = false;
         return;
       }
 
       try {
         const results = await invoke('search', { query });
-        emptyEl.style.display = results.length ? 'none' : 'block';
+        emptyEl.hidden = !!results.length;
         emptyEl.textContent = results.length ? '' : 'No results found';
         countEl.textContent = results.length + ' result' + (results.length === 1 ? '' : 's');
-        countEl.style.display = results.length ? 'block' : 'none';
+        countEl.hidden = !results.length;
 
         resultsEl.innerHTML = results.map(r => {
           // Strip kid comments for display
@@ -195,7 +195,7 @@
           el.addEventListener('click', () => navigateToCard(el.dataset.boardId, el.dataset.cardId));
         });
       } catch (e) {
-        emptyEl.style.display = 'block';
+        emptyEl.hidden = false;
         emptyEl.textContent = 'Search error: ' + e;
       }
     }
@@ -235,8 +235,8 @@
 
         currentBoardId = boardId;
         currentBoard = board;
-        document.getElementById('boards-list').style.display = 'none';
-        document.querySelector('#page-boards > div:first-child').style.display = 'none';
+        document.getElementById('boards-list').hidden = true;
+        document.getElementById('boards-header').hidden = true;
         const detail = document.getElementById('board-detail');
         detail.classList.add('active');
 
@@ -244,7 +244,7 @@
 
         const inboxBoard = boards.find(b => b.title === 'Inbox' || b.title === 'inbox');
         const isInbox = inboxBoard && inboxBoard.id === boardId;
-        document.getElementById('board-delete').style.display = isInbox ? 'none' : 'inline-flex';
+        document.getElementById('board-delete').hidden = !!isInbox;
         const colsEl = document.getElementById('board-detail-columns');
 
         // Combine columns from flat and row-based formats
@@ -285,9 +285,9 @@
 
     function closeBoardDetail() {
       document.getElementById('board-detail').classList.remove('active');
-      document.getElementById('boards-list').style.display = 'block';
-      const header = document.querySelector('#page-boards > div:first-child');
-      if (header) header.style.display = 'flex';
+      document.getElementById('boards-list').hidden = false;
+      const header = document.getElementById('boards-header');
+      if (header) header.hidden = false;
     }
 
     document.getElementById('board-back').addEventListener('click', closeBoardDetail);
