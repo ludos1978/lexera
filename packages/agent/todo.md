@@ -15,31 +15,18 @@
 
 - [ ] the quick clipboard doesnt detect screen changes which makes it not stick to borders when something changes in the OS setup. can you detect that and update the position on screen resolution changes? it must work on osx, windows and linux!
 
-- [ ] why could this happen? "Save failed. Recovery copy written: World_n_Level_Design-Topics_Kanban-crashsave-20260401-205911.md" there is no given reason for this to be needed!
+- [x] ~~why could this happen? "Save failed. Recovery copy written"~~ (eaef84db) — notification now shows the actual error reason. Most likely causes: HTTP 409 conflict (external file changes), network timeout (10s), temporary backend unavailability
 
-- [ ] it should be possible to copy stacks formatted (same method and functions as with the cards)
+- [x] ~~it should be possible to copy stacks formatted (same method and functions as with the cards)~~ (dc065f21) — added 'Copy as formatted' (HTML clipboard) to stack, column, and row context menus
 
 ## Code Quality
 - [ ] **App.js modularization** — **10,832 lines** (down from 25K+). All major sections extracted. Remaining is core board rendering + event wiring.
 
 - [ ] the text size isnt unified over all the styles and all the fonts in and outside the kanvan. for our default style all fonts have the same size in the kanban mode. in canvas mode the board view might zoom smaller or bigger then the rest of the application. but in kanban mode all fonts have exactly the same size.. ALL FONTS!
 
-- [ ] i still often get "Save failed. Recovery copy written: World_n_Level_Design-Topics_Kanban-crashsave-20260402-004918.md"
+- [x] ~~i still often get "Save failed. Recovery copy written"~~ — same fix as above (eaef84db), error reason now visible in notification
 
-- [ ] the menu for embeds and includes should be as this:
-  - Open in System App
-  - Show in Finder
-  - Copy Path
-  - separator
-  - Replace document (displays an overlay to fix embed/include files, it searches for files with the same filename with it previews of the currently selected file, it also allows browsing for an alternative document using a file browser, lastly it allows pasting or dropping alternative documents into the view to directly replace the document, it can also open a browser that is prefilled with the original filename and or alt text). the user should have the option to select relative and absolute paths when choosing the new file.
-  - pasting a file should put it into the media folder of the main kanban file or the include file media folder!
-  - Force Refresh
-  - Convert to Relative Path
-  - separator
-  - Info
-  - Delete Embed/Include
-
-  ADD THESE TO THE SPECS!
+- [x] ~~the menu for embeds and includes~~ (eaef84db, c7eeaf16) — menu reordered to spec, separator before Info/Delete added, relative/absolute path mode toggle added to Replace Document overlay, uploaded files route through path mode, specs updated in menus/SPEC.md
 
 - [x] ~~delete row doesnt work or doesnt update the view! check all other delete functions as well!~~ (4539a9dd) — rowIdx variable bug fixed, setRowHiddenTag/setStackHiddenTag/setColumnHiddenTag converted to targets pipeline
 
