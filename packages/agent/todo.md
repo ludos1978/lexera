@@ -49,8 +49,7 @@
   - `buildStackElement()` and `buildRowElement()` extracted as standalone functions
   - `enhancePreviewElement()` = unified preview enhancement in embedMenu.js
   - ~~**Migration complete** (60cf793e)~~: all ~60 callers migrated to `targets`, legacy `skipRender`/`refreshMainView`/`refreshSidebar` branch removed from `persistBoardMutation`
-  - **Remaining companion work**:
-    - [ ] migrate helper APIs that still have internal render logic: `commitBoardMutations`, `flushDeferredBoardRefresh`, `applyLiveSyncBoardSnapshot`, `applyRebasedBoardSnapshot`, `persistCleanedBoard`
+  - ~~**Helper APIs migrated** (eefe496e)~~: `commitBoardMutations`, `applyLiveSyncBoardSnapshot`, `applyRebasedBoardSnapshot`, `persistCleanedBoard` now use `refreshTargetedElements`. `flushDeferredBoardRefresh` delegates to these, so it's covered transitively.
 
 ## Architecture
 - [ ] **Remove iframe view composition** — replace iframes + postMessage with in-process views
