@@ -665,7 +665,7 @@ textarea {
 .sidebar-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(0, 122, 204, 0.14); }
 
 .board-list {
-  flex: 0 0 auto;
+  flex: var(--sidebar-board-ratio, 0.58) 1 0px;
   min-height: var(--sidebar-hierarchy-min);
   overflow-y: auto;
   min-width: 0;
@@ -723,7 +723,7 @@ textarea {
 }
 
 .sidebar-dashboard {
-  flex: 0 0 auto;
+  flex: var(--sidebar-dash-ratio, 0.42) 1 0px;
   min-height: var(--sidebar-dashboard-min);
   max-height: none;
   border-top: none;

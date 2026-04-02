@@ -81,6 +81,24 @@ Scope: the active Lexera code currently lives under `packages/lexera-*`, but the
 - [ ] Introduce shared DOM rendering helpers or view primitives so shared UI modules do not rely on uncontrolled `innerHTML` updates everywhere.
 - [ ] Define which shared UI surfaces may use trusted string HTML rendering and which must move to safer DOM-builder or template primitives.
 
+## Duplicate Logic And Single Sources
+
+- [ ] Make `lexera-backend` config the authoritative home for shared frontend defaults such as scroll speed, zoom speed, tag visibility, and HTML render modes, and remove the current `lexera-default-*` `localStorage` fallback path from the Kanban app.
+- [ ] Restrict browser `localStorage` to explicitly machine-local or ephemeral UI state only, and document which settings are allowed to stay local instead of synced through backend config or board YAML.
+- [ ] Route every remaining local-only frontend preference through one settings service instead of raw `localStorage` calls spread across feature files.
+- [ ] Add a guardrail such as a lint rule, grep-based check, or architecture test that blocks new raw `localStorage` access outside the approved settings layer.
+- [ ] Finish the board-setting descriptor work so one manifest owns menu metadata, action IDs, persistence target, default values, normalization, and CSS application instead of splitting that behavior across Rust and JS files.
+- [ ] Remove duplicated board-setting action wiring between native menu code and frontend registration by generating both from the same descriptor manifest or shared contract.
+- [ ] Define one canonical persisted board schema in `lexera-core` for rows, stacks, columns, cards, board settings, generation metadata, include metadata, and format hints.
+- [ ] Remove the current flat-versus-hierarchical board model drift between `packages/shared` TypeScript types and `lexera-core` Rust types by generating contracts, sharing a schema, or retiring one representation.
+- [ ] Stop maintaining line-by-line parser ports as peer implementations; choose one parser owner and make any secondary runtime a verified consumer with fixtures rather than an independent semantic source.
+- [ ] Add parser parity coverage for any retained non-authoritative runtime so shared fixtures catch drift in rows, stacks, includes, metadata, and round-trip behavior.
+- [ ] Centralize temporal tag parsing and resolution in one semantic owner so search, shared utilities, and Kanban UI do not keep separate feature sets for the same domain concept.
+- [ ] Replace duplicated backend auth, discovery, retry, and JSON request helpers across Kanban, backend webviews, quick capture, and web clipper with one shared client layer per runtime family.
+- [ ] Align the backend API implementation and API spec on one contract, including whether routes stay unversioned or move under `/api/v1`, so frontend clients stop inventing their own ad hoc shapes.
+- [ ] Replace checked-in file-copy workflows for shared frontend JS and CSS assets with real shared modules, imports, or generated build artifacts so there is only one authored source file for each shared asset.
+- [ ] Reduce intentional source duplication such as `themes.js`, `backendDiscovery.js`, management assets, and workspace shell assets to one authored location plus reproducible build outputs.
+
 ## Build And Asset Pipeline
 
 - [ ] Replace script-tag source loading in app frontends with a defined build pipeline and one composition root per app.

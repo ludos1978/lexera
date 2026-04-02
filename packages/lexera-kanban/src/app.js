@@ -1182,6 +1182,9 @@ var LexeraDashboard = (function () {
     ensureSidebarTreeDefaultState();
     setupSearchControls();
     setupDashboardControls();
+    if (SidebarResize) {
+      SidebarResize.init({ isWorkspaceShellEnabled: function () { return workspaceShellEnabled; } });
+    }
     setupSidebarSectionResize();
     setupSidebarWidthResize();
     setupWorkspaceShell();

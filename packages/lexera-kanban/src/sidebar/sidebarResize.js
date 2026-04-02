@@ -158,16 +158,11 @@ var LexeraSidebarResize = (function () {
   function writeSidebarSectionLayout(metrics, rawRatio) {
     if (!metrics || !metrics.boardListEl) return;
     var ratio = normalizeSidebarSplitRatio(rawRatio);
-    var boardHeight = Math.round(metrics.available * ratio);
-    var minBoard = Math.min(metrics.hierarchyMin, Math.max(0, metrics.available - metrics.dashboardMin));
-    var maxBoard = Math.max(minBoard, metrics.available - metrics.dashboardMin);
-    boardHeight = Math.max(minBoard, Math.min(maxBoard, boardHeight));
-    metrics.boardListEl.style.flex = '0 0 ' + boardHeight + 'px';
-    metrics.boardListEl.style.height = boardHeight + 'px';
-    if (metrics.dashboardEl) {
-      // Dashboard takes remaining space — never set fixed pixel size
-      metrics.dashboardEl.style.flex = '1 1 auto';
-      metrics.dashboardEl.style.height = '';
+    var boardRatio = Math.max(0.1, Math.min(0.9, ratio));
+    var sidebar = metrics.boardListEl.closest('.sidebar');
+    if (sidebar) {
+      sidebar.style.setProperty('--sidebar-board-ratio', boardRatio);
+      sidebar.style.setProperty('--sidebar-dash-ratio', 1 - boardRatio);
     }
   }
 
@@ -203,24 +198,12 @@ var LexeraSidebarResize = (function () {
     if (!getElSidebar() || !getElBoardList()) return;
     if (_isWorkspaceShellEnabled()) {
       if (getElSidebarDashboardDivider()) getElSidebarDashboardDivider().classList.add('hidden');
-      getElBoardList().style.flex = '1 1 auto';
-      getElBoardList().style.height = '';
-      if (getElDashboardRoot()) {
-        getElDashboardRoot().style.flex = '1 1 auto';
-        getElDashboardRoot().style.height = '';
-      }
       return;
     }
     var dashboardHidden = !getElDashboardRoot() || getElDashboardRoot().classList.contains('hidden');
 
     if (dashboardHidden) {
       if (getElSidebarDashboardDivider()) getElSidebarDashboardDivider().classList.add('hidden');
-      getElBoardList().style.flex = '1 1 auto';
-      getElBoardList().style.height = '';
-      if (getElDashboardRoot()) {
-        getElDashboardRoot().style.flex = '';
-        getElDashboardRoot().style.height = '';
-      }
       return;
     }
 

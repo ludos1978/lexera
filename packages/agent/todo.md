@@ -11,6 +11,8 @@
 - [x] ~~dashboard layout collapse fixed~~ (edd8cf2b) — dashboard always flex:1 1 auto, never fixed pixel height
 - [x] ~~**Audit all views for unnecessary fixed-pixel sizing**~~ — audited sidebar (sidebarResize.js), workspace shell docks, canvas layout, app.css, workspaceShell.css. All inline `flex: 0 0 Npx` instances are user-initiated resize values. No problematic fixed-pixel layout overrides found.
 
+- [ ] values in the dashboard only display if i focus the dashboard view!
+
 - [ ]  the width of stacks must be configurable for each stack. there should also be a board wide setting that is the default for all stacks. what is the way to define configuration values for stacks?
 
 - [ ] the quick clipboard doesnt detect screen changes which makes it not stick to borders when something changes in the OS setup. can you detect that and update the position on screen resolution changes? it must work on osx, windows and linux!
@@ -40,6 +42,7 @@
 
 ## Architecture
 - [ ] **Remove iframe view composition** — replace iframes + postMessage with in-process views
+- [ ] **Single-source cleanup pass** — execute the duplicate functions, duplicate data structures, duplicate persisted data, and shared asset consolidation backlog in `packages/todo.md` so each data class has one authoritative home.
 
 ## Active Features
 - [ ] Mobile web clipper — finish lexera-capture-ios
