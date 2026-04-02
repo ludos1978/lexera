@@ -600,30 +600,23 @@ var LexeraBoardList = (function () {
     _callDep('updateDisplayFromFullBoard');
     setBoardHierarchyRows(boardId, fullBoardData, fullBoardData ? (fullBoardData.title || '') : '');
     if (options.skipRender) return;
-    if (options.refreshMainView) {
-      _callDep('renderMainView');
-    } else {
-      // Try incremental card update when only card content changed
-      var didIncrementalUpdate = false;
-      if (oldBoardForDelta && fullBoardData) {
-        var BoardDelta = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta) ? globalThis.LexeraBoardDelta : null;
-        if (BoardDelta) {
-          var liveSyncDelta = BoardDelta.computeBoardDelta(oldBoardForDelta, fullBoardData);
-          if (isDeltaCardContentOnly(liveSyncDelta)) {
-            _callDep('applyBoardSettings');
-            didIncrementalUpdate = tryIncrementalCardUpdate(liveSyncDelta, fullBoardData);
-            if (didIncrementalUpdate) {
-              renderBoardList();
-            }
-          }
+    _callDep('applyBoardSettings');
+
+    // Try incremental card update when only card content changed
+    var didIncrementalUpdate = false;
+    if (!options.refreshMainView && oldBoardForDelta && fullBoardData) {
+      var BoardDelta = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta) ? globalThis.LexeraBoardDelta : null;
+      if (BoardDelta) {
+        var liveSyncDelta = BoardDelta.computeBoardDelta(oldBoardForDelta, fullBoardData);
+        if (isDeltaCardContentOnly(liveSyncDelta)) {
+          didIncrementalUpdate = tryIncrementalCardUpdate(liveSyncDelta, fullBoardData);
         }
       }
-      if (!didIncrementalUpdate) {
-        _callDep('applyBoardSettings');
-        _callDep('renderColumns');
-        renderBoardList();
-      }
     }
+    if (!didIncrementalUpdate) {
+      _callDep('refreshTargetedElements', [{ type: 'board' }]);
+    }
+    renderBoardList();
     _callDep('refreshHeaderFileControls');
     _callDep('scheduleDashboardRefresh', 80);
   }
@@ -652,7 +645,7 @@ var LexeraBoardList = (function () {
     _callDep('updateDisplayFromFullBoard');
     setBoardHierarchyRows(boardId, fullBoardData, _callDep('getMutationBoardTitle', boardId, fullBoardData));
     _callDep('applyBoardSettings');
-    _callDep('renderColumns');
+    _callDep('refreshTargetedElements', [{ type: 'board' }]);
     renderBoardList();
     _callDep('refreshHeaderFileControls');
     _callDep('scheduleDashboardRefresh', 80);

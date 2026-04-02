@@ -397,6 +397,7 @@ var LexeraDashboard = (function () {
     renderMainView: function () { renderMainView(); },
     applyBoardSettings: function () { applyBoardSettings(); },
     renderColumns: function () { renderColumns(); },
+    refreshTargetedElements: function (targets) { refreshTargetedElements(targets); },
     refreshHeaderFileControls: function () { refreshHeaderFileControls(); },
     scheduleDashboardRefresh: function (ms) { scheduleDashboardRefresh(ms); },
     showNotification: function (msg) { showNotification(msg); },
@@ -5591,13 +5592,13 @@ var LexeraDashboard = (function () {
         setBoardHierarchyRows(boardId, savedBoardData, getMutationBoardTitle(boardId, savedBoardData));
       }
       if (typeof options.beforeRefresh === 'function') options.beforeRefresh();
-      if (options.refreshMainView) {
-        renderMainView();
-      } else if (!options.skipRender && boardIds.indexOf(activeBoardId) !== -1) {
-        renderColumns();
+      var commitTargets = [];
+      if (boardIds.indexOf(activeBoardId) !== -1) {
+        commitTargets.push({ type: 'board' });
       }
+      if (options.refreshSidebar) commitTargets.push({ type: 'sidebar' });
+      refreshTargetedElements(commitTargets);
       if (boardIds.indexOf(activeBoardId) !== -1) refreshHeaderFileControls();
-      if (options.refreshSidebar) renderBoardList();
       if (typeof options.afterRefresh === 'function') options.afterRefresh();
       scheduleDashboardRefresh(80);
       return true;
@@ -5838,10 +5839,12 @@ var LexeraDashboard = (function () {
     options = options || {};
     if (!boardId) return false;
     if (boardId === activeBoardId) {
+      var cleanTargets = options.renderActiveBoard
+        ? [{ type: 'board' }]
+        : [];
+      if (options.refreshSidebar) cleanTargets.push({ type: 'sidebar' });
       var persisted = persistBoardMutation({
-        refreshMainView: !!options.renderActiveBoard,
-        refreshSidebar: !!options.refreshSidebar,
-        skipRender: !options.renderActiveBoard,
+        targets: cleanTargets,
         skipAutoSave: true,
         autoSaveReason: options.saveReason || 'board-cleanup-explicit-save'
       });
@@ -5854,9 +5857,7 @@ var LexeraDashboard = (function () {
     var changedBoards = {};
     changedBoards[boardId] = options.boardData;
     return commitBoardMutations(changedBoards, {
-      refreshSidebar: !!options.refreshSidebar,
-      refreshMainView: false,
-      skipRender: true
+      refreshSidebar: !!options.refreshSidebar
     });
   }
 
@@ -10505,7 +10506,7 @@ var LexeraDashboard = (function () {
       getCurrentValue: function () { return getActiveTagStylePreset(); },
       handler: function (raw) {
         setActiveTagStylePreset(raw);
-        renderColumns();
+        refreshTargetedElements([{ type: 'board' }]);
         showNotification('Tag style: ' + (TAG_STYLE_PRESETS[raw] ? TAG_STYLE_PRESETS[raw].label : raw));
       },
       options: (function () {
