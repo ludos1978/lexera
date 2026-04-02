@@ -41,9 +41,23 @@
 
   ADD THESE TO THE SPECS!
 
-- [ ] delete row doesnt work or doesnt update the view! check all other delete functions as well!
+- [x] ~~delete row doesnt work or doesnt update the view! check all other delete functions as well!~~ (4539a9dd) — rowIdx variable bug fixed, setRowHiddenTag/setStackHiddenTag/setColumnHiddenTag converted to targets pipeline
 
-- [ ] /refactor the board update (re-render) functionality. it must be able to target one or multiple elements such as rows, stacks, columns or cards, or even only images in cards. multiple elements might have the exact same content. so it must be able to pin-point these exactly. it should only modify these and not change other parts. this should be generally be called after changes of most kinds such as text editing, embed or include modifications or drag and drop of items, drag into the board etc...
+- [x] ~~refactor the board update (re-render) functionality~~ (2d697e50) — unified targeted re-render pipeline via `persistBoardMutation({ targets })`. See `packages/agent/specs/core/board/SPEC.md` for full documentation.
+  - `enhanceRenderedElement()` = single source of truth for post-render hooks
+  - `refreshTargetedElements()` = dispatch for card/column/stack/row/board targets
+  - `buildStackElement()` and `buildRowElement()` extracted as standalone functions
+  - `enhancePreviewElement()` = unified preview enhancement in embedMenu.js
+  - **Remaining migration**: ~30 old-style `persistBoardMutation` calls still use `skipRender`/`refreshMainView`/`refreshSidebar` instead of `targets`. These work via backward compat but should be migrated incrementally:
+    - columnContextMenu.js: 5 calls
+    - cardContextMenu.js: 3 calls
+    - rowStackMenu.js: ~11 calls
+    - dndMutations.js: 2 calls
+    - dragDropHandlers.js: 3 calls
+    - orderHelpers.js: 2 calls
+    - cardEditor.js: 1 call
+    - app.js: ~10 calls
+    - search/boardSearchReplace.js: 2 calls
 
 ## Architecture
 - [ ] **Remove iframe view composition** — replace iframes + postMessage with in-process views

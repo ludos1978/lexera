@@ -41,73 +41,115 @@
 
 ---
 
-## Data Flow
+## Rendering Architecture (v2)
+
+### Single Mutation Entry Point: `persistBoardMutation(options)`
+
+ALL board mutations flow through `persistBoardMutation()` in `app.js`. This is the
+ONLY function that callers should use after modifying board data. It handles:
+
+1. Display state sync (`updateDisplayFromFullBoard`)
+2. Targeted DOM rendering via `refreshTargetedElements(targets)`
+3. Board hierarchy sync (`setBoardHierarchyRows`)
+4. Dashboard refresh scheduling
+5. Local draft persistence
+6. Auto-save scheduling
+7. Live sync coordination
+
+### Target Types
+
+Callers describe WHAT changed via a `targets` array. The system decides HOW to render:
+
+```javascript
+persistBoardMutation({
+  targets: [
+    { type: 'card', colIndex: 3, cardIndex: 5 },       // replace one card
+    { type: 'card-insert', colIndex: 3, cardIndex: 0 }, // insert new card
+    { type: 'card-remove', colIndex: 3, cardIndex: 2 }, // remove card element
+    { type: 'card-content', colIndex: 3, cardIndex: 5 },// re-render card content only
+    { type: 'column', colIndex: 7 },                    // replace one column
+    { type: 'stack', rowIndex: 0, stackIndex: 1 },      // replace one stack
+    { type: 'row', rowIndex: 0 },                       // replace one row
+    { type: 'sidebar' },                                // refresh board list
+    { type: 'board' },                                  // full column re-render
+    { type: 'main-view' },                              // full main view
+  ]
+});
+// Empty targets array = persist only, no DOM changes
+```
+
+Targets coalesce automatically: if both a card and its parent row are listed,
+only the row is rebuilt.
+
+### Build Functions (one per entity)
+
+Each entity type has a standalone build function that creates a complete DOM
+element with all event listeners attached:
+
+| Function | File | Returns |
+|----------|------|---------|
+| `buildCardElement(card, colIndex, visibleCardIndex, collapsedCards)` | app.js | `<div class="card">` |
+| `buildColumnElement(col, foldedCols, collapsedCards, rowIdx, stackIdx, colLocalIdx, colFullIdx)` | app.js | `<div class="column">` |
+| `buildStackElement(stack, rowIdx, stackIdx, foldedCols, foldedStacks, collapsedCards)` | app.js | `<div class="board-stack">` |
+| `buildRowElement(row, rowIdx, foldedCols, foldedRows, foldedStacks, collapsedCards)` | app.js | `<div class="board-row">` |
+
+### Post-Render Enhancement Pipeline
+
+After any DOM is built or replaced, `enhanceRenderedElement(el, opts)` runs the
+complete enhancement sequence. This is the SINGLE SOURCE OF TRUTH:
+
+1. `enhanceEmbeddedContent(el)` -- diagrams, media, content plugins
+2. `applyRenderedHtmlCommentVisibility(el, mode)` -- HTML comment toggle
+3. `applyRenderedTagVisibility(el, mode)` -- tag visibility mode
+4. `attachRenderedTagInteractions(el)` -- tag click handlers
+5. `flushPendingDiagramQueues()` -- pending diagram renders
+6. `LexeraContentEnhancerRegistry.enhance(el)` -- content enhancer plugins
+7. Virtual scroll: `vsActivate()` (structural) or `vsRemeasureColumn(colIndex)` (card-level)
+
+For embed/include previews (not in main board DOM), `enhancePreviewElement(el)`
+in embedMenu.js runs the subset: steps 1-5 above (no virtual scroll or tag
+interactions, since previews are in overlay panels).
+
+### RULES
+
+- **NEVER** duplicate the enhancement sequence. Always call `enhanceRenderedElement`
+  or `enhancePreviewElement`.
+- **NEVER** set `.innerHTML` on board elements then call `persistBoardMutation({ skipRender: true })`.
+  Instead pass the appropriate `targets` array.
+- **NEVER** call `renderColumns()` or `renderMainView()` directly from mutation handlers.
+  Use `persistBoardMutation({ targets: [{ type: 'board' }] })`.
+- Direct `renderColumns()`/`renderMainView()` calls are ONLY for non-mutation entry
+  points: board load, polling delta, search mode exit.
+
+### Legacy Options (deprecated, backward compat only)
+
+The old `skipRender`, `refreshMainView`, `refreshSidebar` options still work but
+should be migrated to `targets`. When `targets` is present, the old options are ignored.
+
+### Data Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    RENDERING FLOW                                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   KanbanBoard                                                    │
-│   (from parser)                                                  │
-│        │                                                         │
-│        ▼                                                         │
-│   ┌──────────────────┐                                          │
-│   │ renderBoard()    │  Main entry point                        │
-│   └──────────────────┘                                          │
-│        │                                                         │
-│        ├─────────────────────────────────────┐                  │
-│        │                                     │                   │
-│        ▼                                     ▼                   │
-│   ┌──────────────────┐              ┌──────────────────┐        │
-│   │ Clear Old Board  │              │ Preserve State   │        │
-│   │ (with blur       │              │ - collapsedCols  │        │
-│   │  protection)     │              │ - collapsedTasks │        │
-│   └──────────────────┘              │ - scrollPos      │        │
-│        │                            └──────────────────┘        │
-│        ▼                                                         │
-│   ┌──────────────────┐                                          │
-│   │ Create Columns   │  For each column:                        │
-│   │                  │  renderColumn(col, index)                │
-│   └──────────────────┘                                          │
-│        │                                                         │
-│        ▼                                                         │
-│   ┌──────────────────┐                                          │
-│   │ renderColumn()   │  For each column:                        │
-│   │                  │                                          │
-│   │  1. Create col   │   - Create column element                │
-│   │     element      │   - Apply settings (width, color)        │
-│   │  2. Render title │   - Render title (with markdown)         │
-│   │  3. Render cards │   - Render cards                         │
-│   │  4. Add handlers │   - Add drag/drop/edit handlers          │
-│   └──────────────────┘                                          │
-│        │                                                         │
-│        ▼                                                         │
-│   ┌──────────────────┐                                          │
-│   │ renderCard()     │  For each card:                          │
-│   │                  │                                          │
-│   │  1. Create card  │   - Create card element                  │
-│   │     element      │   - Apply checked state                  │
-│   │  2. Render       │   - Render content (with markdown)       │
-│   │     content      │   - Handle tags, dates, links            │
-│   │  3. Add handlers │   - Add click/drag/edit handlers         │
-│   └──────────────────┘                                          │
-│        │                                                         │
-│        ▼                                                         │
-│   ┌──────────────────┐                                          │
-│   │ initializeCard   │  Centralized card setup                  │
-│   │ Element()        │                                          │
-│   │                  │  - Add drag handlers                     │
-│   │                  │  - Add click handlers                    │
-│   │                  │  - Add edit handlers                     │
-│   │                  │  - Mark as initialized                   │
-│   └──────────────────┘                                          │
-│        │                                                         │
-│        ▼                                                         │
-│   DOM Ready                                                       │
-│   (board-container populated)                                    │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+Caller modifies fullBoardData
+       |
+       v
+persistBoardMutation({ targets: [...] })
+       |
+       +-- updateDisplayFromFullBoard()
+       +-- setBoardHierarchyRows() (if structural)
+       +-- refreshTargetedElements(targets)
+       |      |
+       |      +-- coalesce targets
+       |      +-- for each target:
+       |      |     build*Element() --> replace in DOM
+       |      |     enhanceRenderedElement(newEl)
+       |      +-- renderBoardList() (if sidebar target)
+       |      +-- syncRenderedRowWidths() (if structural)
+       |
+       +-- scheduleDashboardRefresh()
+       +-- markBoardDirty()
+       +-- saveLocalBoardDraft()
+       +-- scheduleAutoSave()
+       +-- liveSync coordination
 ```
 
 ---

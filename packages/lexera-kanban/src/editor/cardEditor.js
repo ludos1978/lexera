@@ -632,11 +632,8 @@ var CardEditor = (function () {
     var contentEl = cardEl.querySelector('.card-content');
     if (contentEl) {
       contentEl.innerHTML = _deps.renderCardContent(resolved, activeBoardId, null, { skipFirstLineTagStyle: true });
-      _deps.enhanceEmbeddedContent(contentEl);
-      _deps.applyRenderedHtmlCommentVisibility(contentEl, _deps.getCurrentHtmlCommentRenderMode());
-      _deps.applyRenderedTagVisibility(contentEl, _deps.getCurrentTagVisibilityMode());
     }
-    _deps.attachRenderedTagInteractions(cardEl);
+    _deps.enhanceRenderedElement(cardEl, { colIndex: colIndex });
   }
 
   function findVisibleCardElement(colIndex, cardIndex) {
@@ -1059,9 +1056,7 @@ var CardEditor = (function () {
       resolved = _deps.getIncludeResolvedContent(value, currentCardEditor.colIndex);
       var activeBoardId = _deps.getActiveBoardId();
       currentCardEditor.preview.innerHTML = _deps.renderCardContent(resolved, activeBoardId, null, { skipFirstLineTagStyle: true });
-      _deps.enhanceEmbeddedContent(currentCardEditor.preview);
-      _deps.applyRenderedHtmlCommentVisibility(currentCardEditor.preview, _deps.getCurrentHtmlCommentRenderMode());
-      _deps.applyRenderedTagVisibility(currentCardEditor.preview, _deps.getCurrentTagVisibilityMode());
+      _deps.enhanceRenderedElement(currentCardEditor.preview, {});
     }
     updateCardEditorTitle(value, resolved, { preferRaw: !shouldRenderPreview });
   }

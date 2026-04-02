@@ -2090,6 +2090,19 @@ var LexeraEmbedMenu = (function () {
     }
   }
 
+  /**
+   * Run the standard preview enhancement sequence on a preview body element.
+   * This is the single source of truth for embed/include preview enhancement.
+   * Preview contexts don't need virtual scroll or tag interactions — only
+   * content enhancement + visibility modes.
+   */
+  function enhancePreviewElement(el) {
+    applyRenderedHtmlCommentVisibility(el, currentHtmlCommentRenderMode);
+    applyRenderedTagVisibility(el, currentTagVisibilityMode);
+    enhanceEmbeddedContent(el);
+    flushPendingDiagramQueues();
+  }
+
   async function enhanceSingleExternalEmbedContainer(container, options) {
     options = options || {};
     if (!container) return;
@@ -2178,9 +2191,7 @@ var LexeraEmbedMenu = (function () {
       }
       var kind = (ext === 'md' || ext === 'markdown') ? 'markdown' : 'text';
       body.innerHTML = renderEmbedPreviewContent(kind, boardId, previewPath, text);
-      applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
-      applyRenderedTagVisibility(body, currentTagVisibilityMode);
-      enhanceEmbeddedContent(body);
+      enhancePreviewElement(body);
     } catch (err) {
       logFrontendIssue(
         'warn',
@@ -2260,15 +2271,12 @@ var LexeraEmbedMenu = (function () {
           embedCounter: 0
         }, { nested: true }) +
         '</div>';
-      applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
-      applyRenderedTagVisibility(body, currentTagVisibilityMode);
-
       var nested = body.querySelectorAll('.include-inline-container[data-file-path]');
       for (var i = 0; i < nested.length; i++) {
         nested[i].setAttribute('data-include-depth', String(depth + 1));
       }
 
-      enhanceEmbeddedContent(body);
+      enhancePreviewElement(body);
     } catch (err) {
       logFrontendIssue(
         'warn',
@@ -2343,9 +2351,7 @@ var LexeraEmbedMenu = (function () {
         embedPreviewCache[cacheKey] = cached;
       }
       previewEl.innerHTML = cached;
-      applyRenderedHtmlCommentVisibility(previewEl, currentHtmlCommentRenderMode);
-      applyRenderedTagVisibility(previewEl, currentTagVisibilityMode);
-      flushPendingDiagramQueues();
+      enhancePreviewElement(previewEl);
     } catch (err) {
       logFrontendIssue(
         'warn',
@@ -2504,9 +2510,7 @@ var LexeraEmbedMenu = (function () {
               embedCounter: 0
             }, { nested: true }) +
             '</div>';
-          applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
-          applyRenderedTagVisibility(body, currentTagVisibilityMode);
-          enhanceEmbeddedContent(body);
+          enhancePreviewElement(body);
         } else {
           body.innerHTML = '<pre class="file-preview-text">' + escapeHtml(text) + '</pre>';
         }

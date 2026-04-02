@@ -249,6 +249,7 @@ var LexeraDashboard = (function () {
     getIncludeResolvedContent: function(content, colIndex) { return getIncludeResolvedContent(content, colIndex); },
     renderCardContent: function(content, boardId, col, opts) { return renderCardContent(content, boardId, col, opts); },
     renderTitleInline: function(title, boardId) { return renderTitleInline(title, boardId); },
+    enhanceRenderedElement: function(el, opts) { enhanceRenderedElement(el, opts); },
     enhanceEmbeddedContent: function(el) { enhanceEmbeddedContent(el); },
     applyRenderedHtmlCommentVisibility: function(el, mode) { applyRenderedHtmlCommentVisibility(el, mode); },
     applyRenderedTagVisibility: function(el, mode) { applyRenderedTagVisibility(el, mode); },
