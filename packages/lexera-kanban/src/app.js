@@ -1157,15 +1157,6 @@ var LexeraDashboard = (function () {
       buildStamp: FRONTEND_BUILD_STAMP
     });
     if (embeddedMode) document.body.classList.add('embedded-mode');
-    // DEBUG: catch any lexera postMessage at raw app.js level in iframe
-    if (embeddedMode) {
-      window.addEventListener('message', function (e) {
-        if (e.data && typeof e.data.type === 'string' && e.data.type.startsWith('lexera')) {
-          console.log('[iframe app.js raw msg]', e.data.type, JSON.stringify(e.data));
-        }
-      });
-      console.log('[iframe app.js] embeddedMode=true, raw message listener registered');
-    }
     if (typeof window.updateAppBottomInset === 'function') window.updateAppBottomInset();
 
     // Load user keybindings from ~/.config/lexera/keybindings.json

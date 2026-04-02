@@ -278,10 +278,6 @@ var LexeraDndListeners = (function () {
       var ptrDrag = DDH ? DDH.getPtrDrag() : null;
       var cardDrag = DDH ? DDH.getCardDrag() : null;
       if (ptrDrag || cardDrag) return;
-      var _rowH = e.target.closest('.board-row-header');
-      var _stackH = e.target.closest('.board-stack-header');
-      var _colH = e.target.closest('.column-header');
-      if (_rowH || _stackH || _colH) console.log('[dnd mousedown]', _rowH ? 'row' : _stackH ? 'stack' : 'column', 'target:', e.target.className);
       if (e.target.closest('.board-row-title, .board-stack-title, .column-title')) return;
       if (e.target.closest('button, input, textarea, select, a, .column-rename-input, .card-menu-btn, .card-collapse-toggle, .card-checkbox')) {
         return;

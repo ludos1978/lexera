@@ -313,7 +313,6 @@ var LexeraBoardSearch = (function () {
         cardIndex: parseOptionalSearchIndex(result.cardIndex),
         brokenSrc: result.brokenSrc || null
       };
-      console.log('[navigateToSearchResult WS]', focusTarget);
       ws.focusHierarchyTarget(focusTarget, result.boardId, {});
       return true;
     }

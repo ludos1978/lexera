@@ -793,14 +793,6 @@ var LexeraOrderHelpers = (function () {
     setTimeout(sendActivation, 0);
   }
 
-  function _debugToParent(msg) {
-    try {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'lexera-debug-log', msg: msg }, '*');
-      }
-    } catch (e) {}
-  }
-
   // Called directly by the workspace shell (same-origin direct invocation on
   // frame.contentWindow.LexeraOrderHelpers) — no embeddedMode guard needed.
   // Bypasses boardSearch chain (which incorrectly routes through workspace shell
@@ -845,12 +837,6 @@ var LexeraOrderHelpers = (function () {
 
   function handleEmbeddedHierarchyFocusMessage(event) {
     var data = event && event.data;
-    if (data && data.type === 'lexera-focus-hierarchy-target') {
-      console.log('[handleEmbeddedHierarchyFocusMessage] received, embeddedMode:', _dep('embeddedMode'), 'target:', JSON.stringify(data.target));
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'lexera-debug-log', msg: '[iframe] focus msg received, embeddedMode:' + _dep('embeddedMode') }, '*');
-      }
-    }
     if (!_dep('embeddedMode')) return;
     if (!data || !data.type) return;
     if (data.type === 'lexera-board-action' && data.action) {
@@ -2028,7 +2014,6 @@ var LexeraOrderHelpers = (function () {
       var node = e.target.closest('.tree-node[data-dashboard-target]');
       if (!node || !targetEl.contains(node)) return;
       var target = String(node.getAttribute('data-dashboard-target') || '').trim();
-      console.log('[dashboard click]', target, node.getAttribute('data-dashboard-board-id'), node.getAttribute('data-dashboard-card-id'), node.getAttribute('data-dashboard-col-index'));
       if (target === 'result') {
         var navResult = _callDep('getDashboardTreeApi').buildDashboardNavResultFromTreeNode(node);
         if (navResult) _callDep('navigateToSearchResult', navResult);

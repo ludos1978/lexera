@@ -841,7 +841,20 @@ var LexeraBoardList = (function () {
         response && response.title ? response.title : (boardMeta.title || 'Board'),
         { revision: response && response.revision ? response.revision : null }
       );
-      _callDep('renderBoardList');
+      // Update just this board's tree in-place instead of full re-render
+      var boardListEl = getElBoardList();
+      if (boardListEl) {
+        var wrapper = boardListEl.querySelector('.board-item-wrapper[data-board-id="' + boardMeta.id + '"]');
+        if (wrapper) {
+          var treeEl = wrapper.querySelector('.board-item-tree');
+          if (treeEl) {
+            var rows = getBoardHierarchyRows(boardMeta.id) || [];
+            if (rows.length > 0) {
+              _renderBoardTree(treeEl, boardMeta.id, rows, _dep('TreeView'));
+            }
+          }
+        }
+      }
     }).catch(function (err) {
       lexeraLog('warn', '[hierarchy.cache] Failed to load board ' + boardMeta.id + ': ' + err.message);
     }).finally(function () {
@@ -1383,6 +1396,17 @@ var LexeraBoardList = (function () {
             treeContainer.classList.add('expanded');
             boardRow.setAttribute('aria-expanded', 'true');
             if (e.altKey) setDescendantTreeState(treeContainer, true, boardId);
+            // Fetch hierarchy if not cached
+            var cached = boardHierarchyCache[boardId];
+            if (!cached || !cached.rows || cached.rows.length === 0) {
+              var allBoards = (_dep('boards') || []).concat(_dep('remoteBoards') || []);
+              for (var bi = 0; bi < allBoards.length; bi++) {
+                if (allBoards[bi].id === boardId) {
+                  fetchBoardHierarchyEntry(allBoards[bi], _dep('LexeraApi'));
+                  break;
+                }
+              }
+            }
           }
           saveSidebarExpandedBoards(ids);
           syncMirroredWorkspaceViews();

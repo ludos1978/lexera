@@ -4254,17 +4254,14 @@
       preferExisting: true,
       viewKind: options.viewKind
     });
-    console.log('[focusHierarchyTarget] boardId:', boardId, 'tab:', tab && tab.id, 'tab.boardId:', tab && tab.boardId);
     if (!tab) return false;
     var frame = getOrCreateFrame(tab, { shouldLoad: true });
-    console.log('[focusHierarchyTarget] frame:', frame && frame.tagName, 'hasContentWindow:', !!(frame && frame.contentWindow));
     // Store as pending so we can deliver it when the frame signals readiness via
     // lexera-pane-activated (handles the case where the tab is freshly opened and
     // the board frame hasn't initialized yet when the 60ms/220ms timeouts fire).
     state.pendingFocusTargets[tab.id] = target;
     function sendFocus() {
       if (!frame || !frame.contentWindow) return;
-      console.log('[focusHierarchyTarget] delivering focus to iframe');
       deliverFocusTargetToFrame(frame, target);
     }
     setTimeout(sendFocus, 60);
@@ -4280,7 +4277,6 @@
   function handleWindowMessage(event) {
     var data = event && event.data;
     if (!data || !data.type) return;
-    if (data.type === 'lexera-debug-log') { console.log('[parent received from iframe]', data.msg); return; }
     if (data.type === 'lexera-pane-activated') {
       var paneFound = findTabInAllTrees(data.pane);
       if (!paneFound) return;
