@@ -2464,12 +2464,12 @@
       dashboardEl.parentNode.removeChild(dashboardEl);
     }
     if (boardListEl) {
-      boardListEl.style.flex = '1 1 auto';
-      boardListEl.style.height = '';
+      boardListEl.style.removeProperty('flex');
+      boardListEl.style.removeProperty('height');
     }
     if (dashboardEl) {
-      dashboardEl.style.flex = '1 1 auto';
-      dashboardEl.style.height = '';
+      dashboardEl.style.removeProperty('flex');
+      dashboardEl.style.removeProperty('height');
       dashboardEl.classList.remove('hidden');
     }
     if (logPanelEl) {

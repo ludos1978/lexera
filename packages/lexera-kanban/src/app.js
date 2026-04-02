@@ -212,7 +212,8 @@ var LexeraDashboard = (function () {
     createUnnamedStackForMutation: function(c) { return createUnnamedStackForMutation(c); },
     findInsertStackIndexInRow: function(r, ri, i) { return findInsertStackIndexInRow(r, ri, i); },
     findInsertColumnIndexInStack: function(s, c, b) { return findInsertColumnIndexInStack(s, c, b); },
-    getCanvasStackDropApi: function() { return getCanvasStackDropApi(); }
+    getCanvasStackDropApi: function() { return getCanvasStackDropApi(); },
+    cacheDropTargetGeometry: function() { if (DragDropHandlers) DragDropHandlers.cacheDropTargetGeometry(); }
   });
   if (DndListeners) DndListeners.bindAll();
   if (CardEditorModule) CardEditorModule.init({
@@ -2101,7 +2102,7 @@ var LexeraDashboard = (function () {
     get urlParams() { return urlParams; },
     get _lastLoadedRevision() { return _lastLoadedRevision; },
     get _lastLoadedGeneration() { return _lastLoadedGeneration; },
-    setConnectedState: function (v) { connected = v; if (_rt) _rt.setState('connected', v); if (!_headerSavingInProgress) updateSyncStatusIndicator(v ? 'connected' : 'disconnected'); if (v) { refreshWorkspaceSettings(); OrderHelpers.refreshDashboardTagsFromBackend(); } },
+    setConnectedState: function (v) { connected = v; if (_rt) _rt.setState('connected', v); if (!_headerSavingInProgress) updateSyncStatusIndicator(v ? 'connected' : 'disconnected'); if (v) { refreshWorkspaceSettings(); OrderHelpers.refreshDashboardTagsFromBackend(); if (!embeddedMode) scheduleDashboardRefresh(60); } },
     setWorkspaces: function (v) { workspaces = v; if (_rt) _rt.setState('workspaces', v); },
     setBoards: function (v) { boards = v; if (_rt) _rt.setState('boards', v); },
     setRemoteBoards: function (v) { remoteBoards = v; if (_rt) _rt.setState('remoteBoards', v); },
@@ -5618,10 +5619,10 @@ var LexeraDashboard = (function () {
     var overlay = document.createElement('div');
     overlay.className = 'dialog-overlay';
     var dialog = document.createElement('div');
-    dialog.className = 'dialog';
+    dialog.className = 'dialog dialog--wide';
     dialog.innerHTML =
       '<div class="dialog-title">Merge Conflict</div>' +
-      '<div style="margin-bottom:12px;color:var(--text-primary);font-size:13px">' +
+      '<div class="dialog-message">' +
         'The board was modified externally while you were editing.' +
         (autoMerged > 0 ? '<br>' + autoMerged + ' change(s) were merged automatically.' : '') +
         '<br><strong>' + conflictCount + ' conflict(s)</strong> could not be resolved automatically.' +
@@ -5654,10 +5655,10 @@ var LexeraDashboard = (function () {
     var overlay = document.createElement('div');
     overlay.className = 'dialog-overlay';
     var dialog = document.createElement('div');
-    dialog.className = 'dialog';
+    dialog.className = 'dialog dialog--wide';
     dialog.innerHTML =
       '<div class="dialog-title">External Changes Need Resolution</div>' +
-      '<div style="margin-bottom:12px;color:var(--text-primary);font-size:13px;line-height:1.45">' +
+      '<div class="dialog-message">' +
         'The board changed on disk while you had unsaved edits.' +
         '<br>Your local draft was preserved and saving is blocked until you resolve this.' +
         (result.autoMerged > 0 ? '<br>' + result.autoMerged + ' change(s) were merged automatically before conflicts were found.' : '') +
@@ -5699,11 +5700,10 @@ var LexeraDashboard = (function () {
       var overlay = document.createElement('div');
       overlay.className = 'dialog-overlay';
       var dialog = document.createElement('div');
-      dialog.className = 'dialog';
-      dialog.style.maxWidth = '380px';
+      dialog.className = 'dialog dialog--narrow';
       dialog.innerHTML =
         '<div class="dialog-title">Confirm</div>' +
-        '<div class="dialog-note" style="margin-bottom:16px;line-height:1.4;white-space:pre-line">' + escapeHtml(message) + '</div>' +
+        '<div class="dialog-note dialog-note--spacious dialog-note--preline">' + escapeHtml(message) + '</div>' +
         '<div class="dialog-actions">' +
         '<button class="btn-small btn-cancel" data-confirm="cancel">Cancel</button>' +
         '<button class="btn-small btn-primary" data-confirm="ok">OK</button>' +
@@ -5767,8 +5767,7 @@ var LexeraDashboard = (function () {
       overlay.className = 'dialog-overlay';
 
       var dialog = document.createElement('div');
-      dialog.className = 'dialog';
-      dialog.style.maxWidth = '540px';
+      dialog.className = 'dialog dialog--wide';
 
       var summaryLines = [];
       if (cleanupState.deletedCount > 0) {
@@ -5791,7 +5790,7 @@ var LexeraDashboard = (function () {
       }).join('');
 
       var repeatHtml = options.allowRepeat
-        ? '<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary)">' +
+        ? '<label class="dialog-inline-toggle">' +
             '<input type="checkbox" data-cleanup-repeat />' +
             '<span>Repeat this action for all remaining boards</span>' +
           '</label>'
@@ -5799,19 +5798,19 @@ var LexeraDashboard = (function () {
 
       dialog.innerHTML =
         '<div class="dialog-title">' + escapeHtml(options.dialogTitle || 'Clean Up Board') + '</div>' +
-        '<div class="dialog-note" style="margin-bottom:12px;line-height:1.45">' +
+        '<div class="dialog-note dialog-note--dense">' +
           'Board <strong>' + escapeHtml(cleanupState.boardTitle || 'Untitled') + '</strong> still has cleanup items ' +
           escapeHtml(options.intentLabel || 'before continuing') + '.' +
         '</div>' +
-        '<div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--text-primary);margin-bottom:12px">' +
+        '<div class="dialog-summary">' +
           summaryLines.join('') +
         '</div>' +
         (notes.length
-          ? ('<div class="dialog-note" style="line-height:1.45;margin-bottom:12px">' + notes.join('<br>') + '</div>')
+          ? ('<div class="dialog-note dialog-note--dense">' + notes.join('<br>') + '</div>')
           : '') +
-        '<div class="dialog-actions dialog-actions-between" style="margin-top:18px;gap:12px;flex-wrap:wrap">' +
+        '<div class="dialog-actions dialog-actions-between dialog-actions--wrap">' +
           repeatHtml +
-          '<div class="dialog-actions-right" style="flex-wrap:wrap">' + buttonsHtml + '</div>' +
+          '<div class="dialog-actions-right dialog-actions-right--wrap">' + buttonsHtml + '</div>' +
         '</div>';
 
       overlay.appendChild(dialog);

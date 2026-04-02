@@ -3458,7 +3458,12 @@ impl LocalStorage {
         // (write_include_column skips unchanged includes internally.)
         for column in board.all_columns() {
             if column.include_source.is_some() {
-                self.write_include_column(column)?;
+                if let Err(e) = self.write_include_column(column) {
+                    log::warn!(
+                        "[lexera.storage.persist] Failed to write include column for board {}: {} — continuing with main board save",
+                        board_id, e
+                    );
+                }
             }
         }
 

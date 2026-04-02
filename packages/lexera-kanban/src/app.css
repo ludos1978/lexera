@@ -665,7 +665,7 @@ textarea {
 .sidebar-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(0, 122, 204, 0.14); }
 
 .board-list {
-  flex: var(--sidebar-board-ratio, 0.58) 1 0px;
+  flex: 1 1 auto;
   min-height: var(--sidebar-hierarchy-min);
   overflow-y: auto;
   min-width: 0;
@@ -723,7 +723,7 @@ textarea {
 }
 
 .sidebar-dashboard {
-  flex: var(--sidebar-dash-ratio, 0.42) 1 0px;
+  flex: 1 1 auto;
   min-height: var(--sidebar-dashboard-min);
   max-height: none;
   border-top: none;
@@ -4970,6 +4970,14 @@ img[data-lazy-src] {
   max-width: 90vw;
 }
 
+.dialog--narrow {
+  max-width: min(380px, 90vw);
+}
+
+.dialog--wide {
+  max-width: min(540px, 90vw);
+}
+
 .dialog-title {
   font-size: 15px;
   font-weight: 600;
@@ -4996,6 +5004,36 @@ img[data-lazy-src] {
   font-size: 12px;
   color: var(--text-secondary);
   margin: 4px 0 12px;
+}
+
+.dialog-note--dense {
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+
+.dialog-note--spacious {
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.dialog-note--preline {
+  white-space: pre-line;
+}
+
+.dialog-message {
+  margin-bottom: 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.dialog-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+  font-size: 13px;
 }
 
 .dialog-field {
@@ -5088,6 +5126,24 @@ select.dialog-input option,
   display: inline-flex;
   align-items: center;
   gap: var(--btn-gap);
+}
+
+.dialog-actions--wrap {
+  margin-top: 18px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dialog-actions-right--wrap {
+  flex-wrap: wrap;
+}
+
+.dialog-inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 /* Drag-and-drop feedback */
@@ -9704,4 +9760,5 @@ select.export-input {
 }
 
 /* ── Utility: must be last to win by source order at (0,1,0) ─────── */
-.hidden { display: none; }
+.hidden,
+[hidden] { display: none !important; }
