@@ -551,9 +551,11 @@ var LexeraDndListeners = (function () {
         _deps.stopCrossViewBridge();
         return;
       }
-      // If the drop lands on an iframe, let the cross-view bridge handle it
+      // If the drop lands on a different window (iframe or parent),
+      // let the cross-view bridge handle it — just clean up local drag state
       var hitEl = document.elementFromPoint(e.clientX, e.clientY);
       if (hitEl && hitEl.tagName === 'IFRAME') {
+        _deps.cleanupPtrDrag();
         return;
       }
       _deps.executePtrDrop(e.clientX, e.clientY);
@@ -679,6 +681,24 @@ var LexeraDndListeners = (function () {
     return { row: boardData.rows[rowIndex], rowIndex: rowIndex };
   }
 
+  // Tag all content in a row as deleted (row title + all stack/column/card titles/content)
+  function trashRowContent(row) {
+    var tag = '#hidden-internal-deleted';
+    row.title = _deps.applyInternalHiddenTag(row.title || '', tag);
+    var stacks = row.stacks || [];
+    for (var s = 0; s < stacks.length; s++) {
+      stacks[s].title = _deps.applyInternalHiddenTag(stacks[s].title || '', tag);
+      var cols = stacks[s].columns || [];
+      for (var c = 0; c < cols.length; c++) {
+        cols[c].title = _deps.applyInternalHiddenTag(cols[c].title || '', tag);
+        var cards = cols[c].cards || [];
+        for (var k = 0; k < cards.length; k++) {
+          cards[k].content = _deps.applyInternalHiddenTag(cards[k].content || '', tag);
+        }
+      }
+    }
+  }
+
   async function moveRowAcrossBoards(source, target) {
     if (!source || !target || !source.boardId || !target.boardId) return;
 
@@ -709,30 +729,41 @@ var LexeraDndListeners = (function () {
     var activeTouched = sourceBoardId === getActiveBoardId() || targetBoardId === getActiveBoardId();
     if (activeTouched && getFullBoardData()) _deps.pushUndo();
 
-    var movedRow = sourceBoardData.rows.splice(sourceRowInfo.rowIndex, 1)[0];
-    if (!movedRow) return;
+    var isCrossBoard = sourceBoardId !== targetBoardId;
 
-    var insertAt = targetBoardData.rows.length;
-    if (targetRowInfo && targetRowInfo.row) {
-      insertAt = target.before ? targetRowInfo.rowIndex : (targetRowInfo.rowIndex + 1);
-      if (sourceBoardData === targetBoardData && sourceRowInfo.rowIndex < insertAt) insertAt--;
+    if (isCrossBoard) {
+      // Cross-board: clone to target, trash source (never truly remove)
+      var clonedRow = structuredClone(sourceRowInfo.row);
+      var insertAt = targetBoardData.rows.length;
+      if (targetRowInfo && targetRowInfo.row) {
+        insertAt = target.before ? targetRowInfo.rowIndex : (targetRowInfo.rowIndex + 1);
+      }
+      if (insertAt < 0) insertAt = 0;
+      if (insertAt > targetBoardData.rows.length) insertAt = targetBoardData.rows.length;
+      targetBoardData.rows.splice(insertAt, 0, clonedRow);
+      trashRowContent(sourceRowInfo.row);
+    } else {
+      // Same-board: splice-move as before
+      var movedRow = sourceBoardData.rows.splice(sourceRowInfo.rowIndex, 1)[0];
+      if (!movedRow) return;
+      var insertAt = targetBoardData.rows.length;
+      if (targetRowInfo && targetRowInfo.row) {
+        insertAt = target.before ? targetRowInfo.rowIndex : (targetRowInfo.rowIndex + 1);
+        if (sourceRowInfo.rowIndex < insertAt) insertAt--;
+      }
+      if (insertAt < 0) insertAt = 0;
+      if (insertAt > targetBoardData.rows.length) insertAt = targetBoardData.rows.length;
+      if (insertAt === sourceRowInfo.rowIndex) {
+        sourceBoardData.rows.splice(sourceRowInfo.rowIndex, 0, movedRow);
+        return;
+      }
+      targetBoardData.rows.splice(insertAt, 0, movedRow);
+      _deps.removeEmptyStacksAndRowsInBoard(sourceBoardData);
     }
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > targetBoardData.rows.length) insertAt = targetBoardData.rows.length;
-
-    if (sourceBoardData === targetBoardData && insertAt === sourceRowInfo.rowIndex) {
-      sourceBoardData.rows.splice(sourceRowInfo.rowIndex, 0, movedRow);
-      return;
-    }
-
-    targetBoardData.rows.splice(insertAt, 0, movedRow);
-
-    _deps.removeEmptyStacksAndRowsInBoard(sourceBoardData);
-    if (sourceBoardData !== targetBoardData) _deps.removeEmptyStacksAndRowsInBoard(targetBoardData);
 
     var changedRows = {};
     changedRows[sourceBoardId] = sourceBoardData;
-    if (targetBoardId !== sourceBoardId) changedRows[targetBoardId] = targetBoardData;
+    if (isCrossBoard) changedRows[targetBoardId] = targetBoardData;
     await _deps.commitBoardMutations(changedRows, { refreshSidebar: true });
   }
 
@@ -790,39 +821,54 @@ var LexeraDndListeners = (function () {
     }
     if (activeTouched && getFullBoardData()) _deps.pushUndo();
 
-    var movedStack = sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 1)[0];
-    if (!movedStack) return;
+    var isCrossBoard = sourceBoardId !== targetBoardId;
+    var stackToInsert;
+    if (isCrossBoard) {
+      // Cross-board: clone to target, trash source
+      stackToInsert = structuredClone(sourceStackInfo.stack);
+      sourceStackInfo.stack.title = _deps.applyInternalHiddenTag(sourceStackInfo.stack.title || '', '#hidden-internal-deleted');
+      var srcCols = sourceStackInfo.stack.columns || [];
+      for (var sci = 0; sci < srcCols.length; sci++) {
+        srcCols[sci].title = _deps.applyInternalHiddenTag(srcCols[sci].title || '', '#hidden-internal-deleted');
+        var srcCards = srcCols[sci].cards || [];
+        for (var sck = 0; sck < srcCards.length; sck++) {
+          srcCards[sck].content = _deps.applyInternalHiddenTag(srcCards[sck].content || '', '#hidden-internal-deleted');
+        }
+      }
+    } else {
+      stackToInsert = sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 1)[0];
+      if (!stackToInsert) return;
+    }
+
     _deps.getCanvasStackDropApi().applyCanvasDropPositionToStack(
       targetBoardId,
       getActiveBoardId(),
       _deps.isCanvasBoardLayout(),
       target,
-      movedStack
+      stackToInsert
     );
 
     if (target.kind === 'new-row') {
-      _deps.insertUnnamedRowForMutation(targetBoardId, targetBoardData, target, [movedStack]);
-      _deps.removeEmptyStacksAndRowsInBoard(sourceBoardData);
-      if (sourceBoardData !== targetBoardData) _deps.removeEmptyStacksAndRowsInBoard(targetBoardData);
+      _deps.insertUnnamedRowForMutation(targetBoardId, targetBoardData, target, [stackToInsert]);
+      if (!isCrossBoard) _deps.removeEmptyStacksAndRowsInBoard(sourceBoardData);
       var changedNewRows = {};
       changedNewRows[sourceBoardId] = sourceBoardData;
-      if (targetBoardId !== sourceBoardId) changedNewRows[targetBoardId] = targetBoardData;
+      if (isCrossBoard) changedNewRows[targetBoardId] = targetBoardData;
       await _deps.commitBoardMutations(changedNewRows, { refreshSidebar: true });
       return;
     }
 
     if (!targetRowInfo || !targetRowInfo.row || !targetRowInfo.row.stacks) {
-      sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 0, movedStack);
+      if (!isCrossBoard) sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 0, stackToInsert);
       return;
     }
 
     if (target.kind === 'row') {
-      targetRowInfo.row.stacks.push(movedStack);
-      _deps.removeEmptyStacksAndRowsInBoard(sourceBoardData);
-      if (sourceBoardData !== targetBoardData) _deps.removeEmptyStacksAndRowsInBoard(targetBoardData);
+      targetRowInfo.row.stacks.push(stackToInsert);
+      if (!isCrossBoard) _deps.removeEmptyStacksAndRowsInBoard(sourceBoardData);
       var changedRows = {};
       changedRows[sourceBoardId] = sourceBoardData;
-      if (targetBoardId !== sourceBoardId) changedRows[targetBoardId] = targetBoardData;
+      if (isCrossBoard) changedRows[targetBoardId] = targetBoardData;
       await _deps.commitBoardMutations(changedRows, { refreshSidebar: true });
       return;
     }
@@ -838,26 +884,25 @@ var LexeraDndListeners = (function () {
     var insertAt = targetRowInfo.row.stacks.length;
     if (targetStackInfo && targetStackInfo.stack) {
       insertAt = target.before ? targetStackInfo.stackIndex : (targetStackInfo.stackIndex + 1);
-      if (sourceBoardData === targetBoardData && sourceStackInfo.row === targetRowInfo.row && sourceStackInfo.stackIndex < insertAt) {
+      if (!isCrossBoard && sourceStackInfo.row === targetRowInfo.row && sourceStackInfo.stackIndex < insertAt) {
         insertAt--;
       }
     }
     if (insertAt < 0) insertAt = 0;
     if (insertAt > targetRowInfo.row.stacks.length) insertAt = targetRowInfo.row.stacks.length;
 
-    if (sourceBoardData === targetBoardData && sourceStackInfo.row === targetRowInfo.row && insertAt === sourceStackInfo.stackIndex) {
-      sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 0, movedStack);
+    if (!isCrossBoard && sourceStackInfo.row === targetRowInfo.row && insertAt === sourceStackInfo.stackIndex) {
+      sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 0, stackToInsert);
       return;
     }
 
-    targetRowInfo.row.stacks.splice(insertAt, 0, movedStack);
+    targetRowInfo.row.stacks.splice(insertAt, 0, stackToInsert);
 
-    _deps.removeEmptyStacksAndRowsInBoard(sourceBoardData);
-    if (sourceBoardData !== targetBoardData) _deps.removeEmptyStacksAndRowsInBoard(targetBoardData);
+    if (!isCrossBoard) _deps.removeEmptyStacksAndRowsInBoard(sourceBoardData);
 
     var changedStacks = {};
     changedStacks[sourceBoardId] = sourceBoardData;
-    if (targetBoardId !== sourceBoardId) changedStacks[targetBoardId] = targetBoardData;
+    if (isCrossBoard) changedStacks[targetBoardId] = targetBoardData;
     await _deps.commitBoardMutations(changedStacks, { refreshSidebar: true });
   }
 
@@ -886,8 +931,26 @@ var LexeraDndListeners = (function () {
     var activeTouched = sourceBoardId === getActiveBoardId() || targetBoardId === getActiveBoardId();
     if (activeTouched && getFullBoardData()) _deps.pushUndo();
 
-    var movedColumn = sourceLoc.stack.columns.splice(sourceLoc.colIndex, 1)[0];
+    var isCrossBoard = sourceBoardId !== targetBoardId;
+    var movedColumn;
+    if (isCrossBoard) {
+      movedColumn = structuredClone(sourceLoc.stack.columns[sourceLoc.colIndex]);
+      // Trash source column and its cards
+      var srcCol = sourceLoc.stack.columns[sourceLoc.colIndex];
+      srcCol.title = _deps.applyInternalHiddenTag(srcCol.title || '', '#hidden-internal-deleted');
+      var srcCards = srcCol.cards || [];
+      for (var tci = 0; tci < srcCards.length; tci++) {
+        srcCards[tci].content = _deps.applyInternalHiddenTag(srcCards[tci].content || '', '#hidden-internal-deleted');
+      }
+    } else {
+      movedColumn = sourceLoc.stack.columns.splice(sourceLoc.colIndex, 1)[0];
+    }
     if (!movedColumn) return;
+
+    // Helper to undo same-board splice on failure
+    function rollbackSameBoard() {
+      if (!isCrossBoard) sourceLoc.stack.columns.splice(sourceLoc.colIndex, 0, movedColumn);
+    }
 
     var insertStack = null;
     var insertAt = 0;
@@ -900,7 +963,7 @@ var LexeraDndListeners = (function () {
         [_deps.createUnnamedStackForMutation([movedColumn])]
       );
       if (!insertedRow || !insertedRow.row) {
-        sourceLoc.stack.columns.splice(sourceLoc.colIndex, 0, movedColumn);
+        rollbackSameBoard();
         return;
       }
       _deps.removeEmptyStacksAndRowsInBoard(sourceBoardData);
@@ -915,7 +978,7 @@ var LexeraDndListeners = (function () {
     if (target.kind === 'row') {
       var insertedStackInfo = _deps.insertUnnamedStackIntoRowForMutation(targetBoardId, targetBoardData, target);
       if (!insertedStackInfo || !insertedStackInfo.stack) {
-        sourceLoc.stack.columns.splice(sourceLoc.colIndex, 0, movedColumn);
+        rollbackSameBoard();
         return;
       }
       if (!insertedStackInfo.stack.columns) insertedStackInfo.stack.columns = [];
@@ -937,7 +1000,7 @@ var LexeraDndListeners = (function () {
         target.indexMode || 'full'
       );
       if (!targetRowInfo || !targetRowInfo.row || !targetRowInfo.row.stacks) {
-        sourceLoc.stack.columns.splice(sourceLoc.colIndex, 0, movedColumn);
+        rollbackSameBoard();
         return;
       }
       var newStack = {
@@ -974,7 +1037,7 @@ var LexeraDndListeners = (function () {
         target.indexMode || 'full'
       );
       if (!targetStackInfo || !targetStackInfo.stack || !targetStackInfo.stack.columns) {
-        sourceLoc.stack.columns.splice(sourceLoc.colIndex, 0, movedColumn);
+        rollbackSameBoard();
         return;
       }
       insertStack = targetStackInfo.stack;
@@ -988,7 +1051,7 @@ var LexeraDndListeners = (function () {
         target.indexMode || 'full'
       );
       if (!targetStackForCol || !targetStackForCol.stack || !targetStackForCol.stack.columns) {
-        sourceLoc.stack.columns.splice(sourceLoc.colIndex, 0, movedColumn);
+        rollbackSameBoard();
         return;
       }
       insertStack = targetStackForCol.stack;
@@ -1012,7 +1075,7 @@ var LexeraDndListeners = (function () {
     if (sourceBoardData === targetBoardData && sourceLoc.stack === insertStack) {
       if (sourceLoc.colIndex < insertAt) insertAt--;
       if (insertAt === sourceLoc.colIndex) {
-        sourceLoc.stack.columns.splice(sourceLoc.colIndex, 0, movedColumn);
+        rollbackSameBoard();
         return;
       }
     }

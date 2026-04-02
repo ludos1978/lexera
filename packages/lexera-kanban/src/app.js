@@ -213,7 +213,8 @@ var LexeraDashboard = (function () {
     findInsertStackIndexInRow: function(r, ri, i) { return findInsertStackIndexInRow(r, ri, i); },
     findInsertColumnIndexInStack: function(s, c, b) { return findInsertColumnIndexInStack(s, c, b); },
     getCanvasStackDropApi: function() { return getCanvasStackDropApi(); },
-    cacheDropTargetGeometry: function() { if (DragDropHandlers) DragDropHandlers.cacheDropTargetGeometry(); }
+    cacheDropTargetGeometry: function() { if (DragDropHandlers) DragDropHandlers.cacheDropTargetGeometry(); },
+    applyInternalHiddenTag: function(text, tag) { return applyInternalHiddenTag(text, tag); }
   });
   if (DndListeners) DndListeners.bindAll();
   if (CardEditorModule) CardEditorModule.init({
@@ -8999,10 +9000,20 @@ var LexeraDashboard = (function () {
       var activeTouched = source.boardId === activeBoardId || target.boardId === activeBoardId;
       if (activeTouched && fullBoardData) pushUndo();
 
-      var movedCard = sourceRef.column.cards.splice(sourceCardIdx, 1)[0];
+      var isCrossBoard = source.boardId !== target.boardId;
+      var movedCard;
+      if (isCrossBoard) {
+        movedCard = structuredClone(sourceRef.column.cards[sourceCardIdx]);
+        // Trash source card
+        sourceRef.column.cards[sourceCardIdx].content = applyInternalHiddenTag(
+          sourceRef.column.cards[sourceCardIdx].content || '', '#hidden-internal-deleted'
+        );
+      } else {
+        movedCard = sourceRef.column.cards.splice(sourceCardIdx, 1)[0];
+      }
       if (!movedCard) return;
 
-      if (sourceBoardData === targetBoardData && sourceRef.column === targetRef.column) {
+      if (!isCrossBoard && sourceBoardData === targetBoardData && sourceRef.column === targetRef.column) {
         if (sourceCardIdx < targetInsertIdx) targetInsertIdx--;
         if (targetInsertIdx === sourceCardIdx) {
           sourceRef.column.cards.splice(sourceCardIdx, 0, movedCard);

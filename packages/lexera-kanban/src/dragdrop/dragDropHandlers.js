@@ -869,7 +869,8 @@ var LexeraDragDropHandlers = (function () {
       return;
     }
     var targetWin = getFrameWindowAtTopPoint(topX, topY);
-    if (!targetWin || targetWin === window || targetWin === crossViewBridge.topWin) {
+    // Skip if target is the drag source window (can't drop on yourself)
+    if (!targetWin || targetWin === crossViewBridge.sourceWin) {
       clearCrossViewHoverTarget();
       return;
     }
@@ -892,6 +893,7 @@ var LexeraDragDropHandlers = (function () {
     if (crossViewBridge) return;
     var topWin = getTopWindowSafe();
     if (!topWin) return;
+    var sourceWin = window; // the window where the drag originated
 
     var bridgeTargets = [];
     var bridgeWindows = getCrossViewBridgeWindows(topWin);
@@ -906,7 +908,8 @@ var LexeraDragDropHandlers = (function () {
         return;
       }
       var targetWin = getFrameWindowAtTopPoint(topPoint.x, topPoint.y);
-      if (targetWin && targetWin !== window) {
+      // Show ghost when hovering over any window that isn't the drag source
+      if (targetWin && targetWin !== sourceWin) {
         updateCrossViewTopGhost(kind, topPoint.x, topPoint.y);
       } else {
         hideCrossViewTopGhost();
@@ -918,7 +921,8 @@ var LexeraDragDropHandlers = (function () {
       var topPoint = toTopFramePoint(originWin, e.clientX, e.clientY);
       if (!topPoint) return;
       var targetWin = getFrameWindowAtTopPoint(topPoint.x, topPoint.y);
-      if (!targetWin || targetWin === window) return;
+      // Skip if target is the drag source (handled by local mouseup)
+      if (!targetWin || targetWin === sourceWin) return;
       var crossedThreshold = hasCrossViewDragMovedBeyondThreshold(kind, topPoint);
       if (!crossedThreshold) {
         if (kind === 'card' && cardDrag && !cardDrag.started) cancelCardDrag();
@@ -929,7 +933,7 @@ var LexeraDragDropHandlers = (function () {
 
       var payload = getCrossViewDragPayload(kind);
       var dropped =
-        payload && targetWin !== topWin
+        payload && targetWin !== sourceWin
           ? tryExternalFrameDrop(targetWin, payload, topPoint.x, topPoint.y)
           : false;
       if (kind === 'card' && cardDrag) {
@@ -956,7 +960,7 @@ var LexeraDragDropHandlers = (function () {
       })(bridgeWindows[i]);
     }
 
-    crossViewBridge = { topWin: topWin, kind: kind, targets: bridgeTargets, hoverWin: null, topGhost: null };
+    crossViewBridge = { topWin: topWin, sourceWin: sourceWin, kind: kind, targets: bridgeTargets, hoverWin: null, topGhost: null };
   }
 
   function stopCrossViewBridge() {
