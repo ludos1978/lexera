@@ -1925,16 +1925,11 @@ var LexeraEmbedMenu = (function () {
     if (typeof nextValue !== 'string' || nextValue === cardRef.card.content) return false;
     pushUndo();
     cardRef.card.content = normalizeCardContentAfterInlineMutation(nextValue);
-    // Targeted re-render: only update the affected card's content DOM
     var colIndex = parseInt(cardEl.getAttribute('data-col-index'), 10);
-    var contentEl = cardEl.querySelector('.card-content');
-    if (contentEl) {
-      contentEl.innerHTML = renderCardContent(cardRef.card.content, activeBoardId, colIndex, {});
-      flushPendingDiagramQueues();
-      if (window.LexeraContentEnhancerRegistry) window.LexeraContentEnhancerRegistry.enhance(contentEl);
-    }
-    // Persist without full re-render — the card DOM is already updated
-    return persistBoardMutation({ skipRender: true });
+    var cardIndex = parseInt(cardEl.getAttribute('data-card-index'), 10);
+    return persistBoardMutation({
+      targets: [{ type: 'card-content', colIndex: colIndex, cardIndex: cardIndex }]
+    });
   }
 
   // ── Browser-based Office document rendering (docx-preview, SheetJS) ──

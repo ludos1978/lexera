@@ -5232,6 +5232,7 @@ var LexeraDashboard = (function () {
     options = options || {};
     traceFrontendAction('info', 'board.persist', 'Persist board mutation (UI refresh, no immediate save)', {
       boardId: activeBoardId || null,
+      targets: options.targets ? options.targets.map(function (t) { return t.type; }) : null,
       refreshMainView: !!options.refreshMainView,
       refreshSidebar: !!options.refreshSidebar,
       skipRender: !!options.skipRender,
@@ -5242,15 +5243,36 @@ var LexeraDashboard = (function () {
       options.beforeRefresh();
     }
     updateDisplayFromFullBoard();
-    if (activeBoardId && fullBoardData && !options.skipRender) {
-      setBoardHierarchyRows(activeBoardId, fullBoardData, activeBoardData ? activeBoardData.title : '');
+
+    // New targets-based rendering path
+    if (Array.isArray(options.targets)) {
+      // Structural targets need hierarchy sync
+      var hasStructural = false;
+      for (var ti = 0; ti < options.targets.length; ti++) {
+        var tt = options.targets[ti].type;
+        if (tt === 'board' || tt === 'main-view' || tt === 'row' || tt === 'stack' || tt === 'column' || tt === 'sidebar') {
+          hasStructural = true;
+          break;
+        }
+      }
+      if (hasStructural && activeBoardId && fullBoardData) {
+        setBoardHierarchyRows(activeBoardId, fullBoardData, activeBoardData ? activeBoardData.title : '');
+      }
+      refreshTargetedElements(options.targets);
     }
-    if (options.refreshMainView) {
-      renderMainView();
-    } else if (!options.skipRender) {
-      renderColumns();
-      if (options.refreshSidebar) renderBoardList();
+    // Legacy rendering path (backward compat — will be removed once all callers migrated)
+    else {
+      if (activeBoardId && fullBoardData && !options.skipRender) {
+        setBoardHierarchyRows(activeBoardId, fullBoardData, activeBoardData ? activeBoardData.title : '');
+      }
+      if (options.refreshMainView) {
+        renderMainView();
+      } else if (!options.skipRender) {
+        renderColumns();
+        if (options.refreshSidebar) renderBoardList();
+      }
     }
+
     if (typeof options.afterRefresh === 'function') {
       options.afterRefresh();
     }
@@ -5290,6 +5312,241 @@ var LexeraDashboard = (function () {
       }
     }
     return true;
+  }
+
+  /**
+   * Run all post-render enhancement steps on a DOM element.  This is the
+   * single source of truth for what must happen after any piece of board
+   * DOM is built or replaced.  Callers should never duplicate this sequence.
+   *
+   * @param {Element} el  - the root element to enhance (card, column, row, or container)
+   * @param {Object}  [opts]
+   * @param {number}  [opts.colIndex] - if the element is a single card/column, pass its colIndex for virtual-scroll remeasure
+   * @param {boolean} [opts.structural] - true when the board structure changed (rows/stacks/columns added/removed) — triggers full vsTeardown+vsActivate instead of vsRemeasureColumn
+   */
+  function enhanceRenderedElement(el, opts) {
+    if (!el) return;
+    opts = opts || {};
+    enhanceEmbeddedContent(el);
+    applyRenderedHtmlCommentVisibility(el, currentHtmlCommentRenderMode);
+    applyRenderedTagVisibility(el, currentTagVisibilityMode);
+    attachRenderedTagInteractions(el);
+    flushPendingDiagramQueues();
+    if (window.LexeraContentEnhancerRegistry) window.LexeraContentEnhancerRegistry.enhance(el);
+    if (opts.structural) {
+      // full virtual-scroll re-init for structural changes
+      vsActivate();
+    } else if (typeof opts.colIndex === 'number') {
+      vsRemeasureColumn(opts.colIndex);
+    }
+  }
+
+  /**
+   * Resolve the current fold-state arrays needed by the build*Element functions.
+   * Avoids duplicating these lookups across multiple target handlers.
+   */
+  function getFoldState() {
+    var rows = activeBoardData ? activeBoardData.rows : [];
+    return {
+      foldedCols: getFoldedColumns(activeBoardId),
+      foldedRows: getFoldedItems(activeBoardId, 'row'),
+      foldedStacks: getFoldedItems(activeBoardId, 'stack'),
+      collapsedCards: isCanvasBoardLayout() ? [] : getCollapsedCards(activeBoardId, rows)
+    };
+  }
+
+  /**
+   * Apply a list of targeted DOM updates to the board.  Each target describes
+   * what changed; this function builds the correct replacement DOM, swaps it
+   * in, and runs the enhancement pipeline.
+   *
+   * Supported target types:
+   *   { type: 'board' }                                     — full re-render
+   *   { type: 'main-view' }                                 — full main view
+   *   { type: 'card', colIndex, cardIndex }                 — replace one card
+   *   { type: 'card-insert', colIndex, cardIndex }          — insert new card
+   *   { type: 'card-remove', colIndex, cardIndex }          — remove card element
+   *   { type: 'card-content', colIndex, cardIndex }         — re-render card content only
+   *   { type: 'column', colIndex }                          — replace one column
+   *   { type: 'stack', rowIndex, stackIndex }               — replace one stack
+   *   { type: 'row', rowIndex }                             — replace one row
+   *   { type: 'sidebar' }                                   — refresh board list sidebar
+   *
+   * An empty array means persist-only (no DOM changes).
+   *
+   * @param {Array} targets
+   */
+  function refreshTargetedElements(targets) {
+    if (!targets || targets.length === 0) return;
+
+    // Coalesce: if any target is 'board' or 'main-view', skip all others
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].type === 'main-view') {
+        renderMainView();
+        return;
+      }
+      if (targets[i].type === 'board') {
+        renderColumns();
+        return;
+      }
+    }
+
+    var fs = getFoldState();
+    var needsSidebar = false;
+    var needsStructuralVs = false;
+
+    for (var t = 0; t < targets.length; t++) {
+      var target = targets[t];
+      switch (target.type) {
+
+        case 'card': {
+          var col = getFullColumn(target.colIndex);
+          if (!col) break;
+          var fullIdx = getFullCardIndex(col, target.cardIndex);
+          if (fullIdx === -1) break;
+          var card = col.cards[fullIdx];
+          if (!card) break;
+          var oldCardEl = findVisibleCardElement(target.colIndex, target.cardIndex);
+          if (!oldCardEl) break;
+          var newCardEl = buildCardElement(card, target.colIndex, target.cardIndex, fs.collapsedCards);
+          if (oldCardEl.classList.contains('editing')) newCardEl.classList.add('editing');
+          if (oldCardEl.classList.contains('editing-inline')) newCardEl.classList.add('editing-inline');
+          if (oldCardEl.classList.contains('editing-overlay')) newCardEl.classList.add('editing-overlay');
+          oldCardEl.parentNode.replaceChild(newCardEl, oldCardEl);
+          enhanceRenderedElement(newCardEl, { colIndex: target.colIndex });
+          break;
+        }
+
+        case 'card-insert': {
+          var insertCol = getFullColumn(target.colIndex);
+          if (!insertCol) break;
+          var insertFullIdx = getFullCardIndex(insertCol, target.cardIndex);
+          var insertCard = insertCol.cards[insertFullIdx !== -1 ? insertFullIdx : target.cardIndex];
+          if (!insertCard) break;
+          var cardsContainer = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + target.colIndex + '"]');
+          if (!cardsContainer) break;
+          var newInsertEl = buildCardElement(insertCard, target.colIndex, target.cardIndex, fs.collapsedCards);
+          var existingCards = cardsContainer.querySelectorAll('.card');
+          if (target.cardIndex < existingCards.length) {
+            cardsContainer.insertBefore(newInsertEl, existingCards[target.cardIndex]);
+          } else {
+            cardsContainer.appendChild(newInsertEl);
+          }
+          // Re-index subsequent cards
+          var allCards = cardsContainer.querySelectorAll('.card');
+          for (var k = target.cardIndex; k < allCards.length; k++) {
+            allCards[k].setAttribute('data-card-index', k.toString());
+          }
+          enhanceRenderedElement(newInsertEl, { colIndex: target.colIndex });
+          updateColumnCountBadge(target.colIndex);
+          break;
+        }
+
+        case 'card-remove': {
+          var removeEl = findVisibleCardElement(target.colIndex, target.cardIndex);
+          if (removeEl) {
+            var removeContainer = removeEl.parentNode;
+            removeEl.remove();
+            // Re-index remaining cards
+            if (removeContainer) {
+              var remaining = removeContainer.querySelectorAll('.card');
+              for (var m = 0; m < remaining.length; m++) {
+                remaining[m].setAttribute('data-card-index', m.toString());
+              }
+            }
+            updateColumnCountBadge(target.colIndex);
+            vsRemeasureColumn(target.colIndex);
+          }
+          break;
+        }
+
+        case 'card-content': {
+          var ccCol = getFullColumn(target.colIndex);
+          if (!ccCol) break;
+          var ccFullIdx = getFullCardIndex(ccCol, target.cardIndex);
+          if (ccFullIdx === -1) break;
+          var ccCard = ccCol.cards[ccFullIdx];
+          if (!ccCard) break;
+          var ccCardEl = findVisibleCardElement(target.colIndex, target.cardIndex);
+          if (!ccCardEl) break;
+          var contentEl = ccCardEl.querySelector('.card-content');
+          if (contentEl) {
+            contentEl.innerHTML = renderCardContent(ccCard.content, activeBoardId, target.colIndex, {});
+            enhanceRenderedElement(contentEl, { colIndex: target.colIndex });
+          }
+          break;
+        }
+
+        case 'column': {
+          var colData = getFullColumn(target.colIndex);
+          if (!colData) break;
+          var oldColEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + target.colIndex + '"]');
+          var oldColumn = oldColEl ? oldColEl.closest('.column') : null;
+          if (!oldColumn) break;
+          // Determine row/stack context from old element
+          var rIdx = parseInt(oldColumn.getAttribute('data-row-index'), 10);
+          var sIdx = parseInt(oldColumn.getAttribute('data-stack-index'), 10);
+          var cLocalIdx = parseInt(oldColumn.getAttribute('data-col-local-index'), 10);
+          var newColEl = buildColumnElement(colData, fs.foldedCols, fs.collapsedCards,
+            isFinite(rIdx) ? rIdx : undefined, isFinite(sIdx) ? sIdx : undefined,
+            isFinite(cLocalIdx) ? cLocalIdx : undefined, target.colIndex);
+          if (isCanvasBoardLayout()) applyCanvasColumnLayout(newColEl, colData);
+          oldColumn.parentNode.replaceChild(newColEl, oldColumn);
+          enhanceRenderedElement(newColEl, { colIndex: target.colIndex });
+          needsStructuralVs = true;
+          break;
+        }
+
+        case 'stack': {
+          var stackData = findFullDataStack(target.rowIndex, target.stackIndex);
+          if (!stackData) break;
+          var oldStackEl = getElColumnsContainer().querySelector(
+            '.board-stack[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"]'
+          );
+          if (!oldStackEl) break;
+          var newStackEl = buildStackElement(stackData, target.rowIndex, target.stackIndex,
+            fs.foldedCols, fs.foldedStacks, fs.collapsedCards);
+          if (isCanvasBoardLayout()) {
+            // Canvas stacks go inside the scene element
+            oldStackEl.parentNode.replaceChild(newStackEl, oldStackEl);
+          } else {
+            oldStackEl.parentNode.replaceChild(newStackEl, oldStackEl);
+          }
+          enhanceRenderedElement(newStackEl, { structural: true });
+          needsStructuralVs = true;
+          break;
+        }
+
+        case 'row': {
+          var rowData = findFullDataRow(target.rowIndex);
+          if (!rowData) break;
+          var oldRowEl = getElColumnsContainer().querySelector(
+            '.board-row[data-row-index="' + target.rowIndex + '"]'
+          );
+          if (!oldRowEl) break;
+          var newRowEl = buildRowElement(rowData, target.rowIndex,
+            fs.foldedCols, fs.foldedRows, fs.foldedStacks, fs.collapsedCards);
+          oldRowEl.parentNode.replaceChild(newRowEl, oldRowEl);
+          enhanceRenderedElement(newRowEl, { structural: true });
+          needsStructuralVs = true;
+          break;
+        }
+
+        case 'sidebar':
+          needsSidebar = true;
+          break;
+      }
+    }
+
+    if (needsSidebar) renderBoardList();
+    if (needsStructuralVs) {
+      var container = getElColumnsContainer();
+      if (isCanvasBoardLayout()) {
+        syncCanvasRowBounds(container);
+      } else {
+        syncRenderedRowWidths();
+      }
+    }
   }
 
   function ensureBoardRowsForMutation(boardData, fallbackTitle) {
@@ -7385,56 +7642,22 @@ var LexeraDashboard = (function () {
    * Replaces the old card element with a freshly built one to ensure all badges,
    * tags, and event listeners are correct.
    */
+  /**
+   * Replace a card element in-place by rebuilding it from fullBoardData.
+   * Delegates to refreshTargetedElements for the actual work.
+   * Kept as a thin wrapper for existing callers during migration.
+   */
   function updateCardElementInPlace(colIndex, visibleCardIndex) {
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var fullIdx = getFullCardIndex(col, visibleCardIndex);
-    if (fullIdx === -1) return;
-    var card = col.cards[fullIdx];
-    if (!card) return;
-    var oldEl = findVisibleCardElement(colIndex, visibleCardIndex);
-    if (!oldEl) return;
-    var collapsedCards = getCollapsedCards(activeBoardId, activeBoardData ? activeBoardData.rows : []);
-    var newEl = buildCardElement(card, colIndex, visibleCardIndex, collapsedCards);
-    // Preserve editing classes if the card was being edited
-    if (oldEl.classList.contains('editing')) newEl.classList.add('editing');
-    if (oldEl.classList.contains('editing-inline')) newEl.classList.add('editing-inline');
-    if (oldEl.classList.contains('editing-overlay')) newEl.classList.add('editing-overlay');
-    oldEl.parentNode.replaceChild(newEl, oldEl);
-    enhanceEmbeddedContent(newEl);
-    applyRenderedHtmlCommentVisibility(newEl, currentHtmlCommentRenderMode);
-    applyRenderedTagVisibility(newEl, currentTagVisibilityMode);
-    attachRenderedTagInteractions(newEl);
-    vsRemeasureColumn(colIndex);
+    refreshTargetedElements([{ type: 'card', colIndex: colIndex, cardIndex: visibleCardIndex }]);
   }
 
   /**
-   * Insert a new card DOM element at the given visible position in a column,
-   * without re-rendering the full board. Updates card-index attributes on
-   * subsequent sibling cards and the column count badge.
+   * Insert a new card DOM element at the given visible position in a column.
+   * Delegates to refreshTargetedElements for the actual work.
+   * Kept as a thin wrapper for existing callers during migration.
    */
   function insertCardElementAtPosition(colIndex, visibleCardIndex, card) {
-    var cardsContainer = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + colIndex + '"]');
-    if (!cardsContainer) return false;
-    var collapsedCards = getCollapsedCards(activeBoardId, activeBoardData ? activeBoardData.rows : []);
-    var newEl = buildCardElement(card, colIndex, visibleCardIndex, collapsedCards);
-    var existingCards = cardsContainer.querySelectorAll('.card');
-    if (visibleCardIndex < existingCards.length) {
-      cardsContainer.insertBefore(newEl, existingCards[visibleCardIndex]);
-    } else {
-      cardsContainer.appendChild(newEl);
-    }
-    // Re-index subsequent cards
-    var allCards = cardsContainer.querySelectorAll('.card');
-    for (var k = visibleCardIndex; k < allCards.length; k++) {
-      allCards[k].setAttribute('data-card-index', k.toString());
-    }
-    enhanceEmbeddedContent(newEl);
-    applyRenderedHtmlCommentVisibility(newEl, currentHtmlCommentRenderMode);
-    applyRenderedTagVisibility(newEl, currentTagVisibilityMode);
-    attachRenderedTagInteractions(newEl);
-    // Update column card count badge
-    updateColumnCountBadge(colIndex);
+    refreshTargetedElements([{ type: 'card-insert', colIndex: colIndex, cardIndex: visibleCardIndex }]);
     return true;
   }
 
@@ -7792,18 +8015,342 @@ var LexeraDashboard = (function () {
       } else {
         syncRenderedRowWidths();
       }
-      enhanceEmbeddedContent(container);
-      applyRenderedHtmlCommentVisibility(container, currentHtmlCommentRenderMode);
-      applyRenderedTagVisibility(container, currentTagVisibilityMode);
-      attachRenderedTagInteractions(container);
+      enhanceRenderedElement(container, { structural: true });
       syncSidebarToView();
       updateCardEditingIndicators();
       refreshBoardHeaderActionStates();
-      vsActivate();
     });
     } catch (err) {
       logFrontendIssue('error', 'render', 'Failed to render columns', err);
     }
+  }
+
+  /**
+   * Build a single stack DOM element with header, columns, footer and all
+   * event listeners attached.  Extracted from renderNewFormatBoard so it can
+   * be reused by the targeted-refresh pipeline.
+   */
+  function buildStackElement(stack, rowIdx, stackIdx, foldedCols, foldedStacks, collapsedCards) {
+    var isCanvasLayout = isCanvasBoardLayout();
+    var stackFoldKey = getStackFoldKey(stack, rowIdx, stackIdx);
+    var stackEl = document.createElement('div');
+    stackEl.className = 'board-stack';
+    stackEl.setAttribute('data-stack-title', stack.title);
+    stackEl.setAttribute('data-fold-key', stackFoldKey);
+    stackEl.setAttribute('data-row-index', rowIdx.toString());
+    stackEl.setAttribute('data-stack-index', stackIdx.toString());
+    var stackColumnEntries = getDisplayOrderedColumnEntries(stack.columns || []);
+    var isEmptyStack = stackColumnEntries.length === 0;
+    if (!isCanvasLayout && hasSavedFoldMatch(foldedStacks, stackFoldKey, stack.title)) {
+      stackEl.classList.add('folded');
+    }
+    var stackWidthTag = getElementSizeTag(stack.title, 'width');
+    if (!isCanvasLayout && stackWidthTag > 0) stackEl.style.setProperty('--stack-width-override', stackWidthTag + 'px');
+
+    // Canvas layout: apply position/size params
+    var stackParams = stack.params || {};
+    if (isCanvasLayout) {
+      var canvasBox = getCanvasStackLayoutBox(stack, stackIdx);
+      stackEl.style.left = Math.round(canvasBox.x) + 'px';
+      stackEl.style.top = Math.round(canvasBox.y) + 'px';
+      stackEl.style.width = canvasBox.w + 'px';
+      stackEl.style.removeProperty('height');
+      stackEl.style.zIndex = String(10 + stackIdx);
+      stackEl.setAttribute('data-stack-dir', normalizeCanvasStackDirection(stackParams.dir));
+    }
+
+    // Canvas mode: persist resize when user drags the CSS resize handle
+    if (isCanvasLayout) {
+      (function (el, rIdx, sIdx) {
+        var resizeTimer = null;
+        var layoutSyncFrame = 0;
+        var lastObservedWidth = null;
+        var observer = new ResizeObserver(function (entries) {
+          if (el.classList.contains('resizing')) return;
+          var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
+          if (ptrDrag) return;
+          var entry = entries[0];
+          if (!entry) return;
+          var newW = Math.round(entry.contentRect.width);
+          if (newW === lastObservedWidth) return;
+          lastObservedWidth = newW;
+          if (!layoutSyncFrame) {
+            layoutSyncFrame = requestAnimationFrame(function () {
+              layoutSyncFrame = 0;
+              scheduleCanvasRowBoundsSync(getElColumnsContainer());
+            });
+          }
+          clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(function () {
+            var pendingPtrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
+            if (pendingPtrDrag) return;
+            var fullStack = findFullDataStack(rIdx, sIdx);
+            if (!fullStack) return;
+            var curW = fullStack.params && fullStack.params.w ? parseInt(fullStack.params.w, 10) : 0;
+            if (Math.abs(newW - curW) < 5) return;
+            pushUndo();
+            if (!fullStack.params) fullStack.params = {};
+            fullStack.params.w = String(newW);
+            if (Object.prototype.hasOwnProperty.call(fullStack.params, 'h')) delete fullStack.params.h;
+            persistBoardMutation({ skipRender: true });
+          }, 400);
+        });
+        observer.observe(el);
+      })(stackEl, rowIdx, stackIdx);
+    }
+
+    // Stack header
+    var stackHeader = document.createElement('div');
+    stackHeader.className = 'board-stack-header';
+    var stackColCount = stackColumnEntries.length;
+    var stackDisplayTitle = stripLayoutTags(stack.title || '');
+    stackHeader.innerHTML =
+      (isCanvasLayout ? '' : '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>') +
+      buildCreationEntityDragIconHtml('stack', ['title="Drag to move stack"']) +
+      '<span class="board-stack-title" title="' + escapeAttr((stackDisplayTitle || '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + (stackDisplayTitle ? renderTitleInline(stackDisplayTitle, activeBoardId, {}) : '&nbsp;') + '</span>' +
+      '<span class="board-stack-count">' + stackColCount + '</span>' +
+      '<span class="stack-header-actions">' +
+        '<button class="stack-menu-btn burger-menu-btn" title="Stack options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
+        (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '') +
+      '</span>';
+    (function (el, rIdx, sIdx) {
+      var deleteBtn = stackHeader.querySelector('.stack-delete-btn');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          deleteStack(rIdx, sIdx);
+        });
+      }
+      stackHeader.addEventListener('click', function (e) {
+        if (targetClosest(e.target, '.board-stack-title')) return;
+        if (targetClosest(e.target, 'button, .drag-grip, .column-rename-input')) return;
+        if (!e.altKey) return;
+        e.stopPropagation();
+        toggleStackFoldElement(el, true);
+      });
+      var foldBtn = stackHeader.querySelector('.stack-fold-btn');
+      if (foldBtn) {
+        foldBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          toggleStackFoldElement(el, !!e.altKey);
+        });
+      }
+      stackHeader.querySelector('.stack-menu-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        var rect = this.getBoundingClientRect();
+        showStackContextMenu(rect.right, rect.bottom, rIdx, sIdx);
+      });
+      stackHeader.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showStackContextMenu(e.clientX, e.clientY, rIdx, sIdx);
+      });
+    })(stackEl, rowIdx, stackIdx);
+    stackEl.appendChild(stackHeader);
+
+    // Stack content container
+    var stackContent = document.createElement('div');
+    stackContent.className = 'board-stack-content';
+
+    if (stackColumnEntries.length === 0) {
+      var emptyColumns = document.createElement('div');
+      emptyColumns.className = 'board-level-empty board-level-empty-columns';
+      (function (rIdx, sIdx) {
+        emptyColumns.appendChild(renderCreationSource('column', { rowIdx: rIdx, stackIdx: sIdx }, { btnText: '+ Add column' }));
+      })(rowIdx, stackIdx);
+      stackContent.appendChild(emptyColumns);
+    }
+
+    for (var c = 0; c < stackColumnEntries.length; c++) {
+      var col = stackColumnEntries[c].col;
+      var colEl = buildColumnElement(col, foldedCols, collapsedCards, rowIdx, stackIdx, c, stackColumnEntries[c].fullIndex);
+      if (isCanvasLayout) applyCanvasColumnLayout(colEl, col);
+      stackContent.appendChild(colEl);
+    }
+
+    stackEl.appendChild(stackContent);
+    var stackFooter = document.createElement('div');
+    stackFooter.className = 'board-stack-footer';
+    stackEl.appendChild(stackFooter);
+    if (isCanvasLayout) {
+      (function (el) {
+        var resizeHandle = document.createElement('div');
+        resizeHandle.className = 'canvas-stack-resize-handle';
+        resizeHandle.title = 'Resize stack width';
+        resizeHandle.setAttribute('aria-hidden', 'true');
+        resizeHandle.addEventListener('pointerdown', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var startX = e.clientX;
+          var startWidth = Math.round(el.getBoundingClientRect().width);
+          var lastWidth = startWidth;
+          var pendingClientX = startX;
+          var resizeFrame = 0;
+          el.classList.add('resizing');
+          if (resizeHandle.setPointerCapture) {
+            try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) { /* intentional: pointer may already be released */ }
+          }
+          function applyResizeWidth(clientX) {
+            var nextWidth = Math.max(220, Math.round(startWidth + (clientX - startX)));
+            if (nextWidth === lastWidth) return;
+            lastWidth = nextWidth;
+            el.style.width = nextWidth + 'px';
+          }
+          function scheduleResizeWidth(clientX) {
+            pendingClientX = clientX;
+            if (resizeFrame) return;
+            resizeFrame = requestAnimationFrame(function () {
+              resizeFrame = 0;
+              applyResizeWidth(pendingClientX);
+            });
+          }
+          function handleMove(moveEvent) {
+            scheduleResizeWidth(moveEvent.clientX);
+          }
+          function handleUp(upEvent) {
+            if (resizeFrame) {
+              cancelAnimationFrame(resizeFrame);
+              resizeFrame = 0;
+            }
+            applyResizeWidth(pendingClientX);
+            el.classList.remove('resizing');
+            scheduleCanvasRowBoundsSync(getElColumnsContainer());
+            if (resizeHandle.releasePointerCapture) {
+              try { resizeHandle.releasePointerCapture(upEvent.pointerId); } catch (_) { /* intentional: pointer may already be released */ }
+            }
+            window.removeEventListener('pointermove', handleMove, true);
+            window.removeEventListener('pointerup', handleUp, true);
+            window.removeEventListener('pointercancel', handleUp, true);
+          }
+          window.addEventListener('pointermove', handleMove, true);
+          window.addEventListener('pointerup', handleUp, true);
+          window.addEventListener('pointercancel', handleUp, true);
+        });
+        el.appendChild(resizeHandle);
+      })(stackEl);
+    }
+    applyTagStyleToEntity(stackEl, stack.title || '');
+    return stackEl;
+  }
+
+  /**
+   * Build a single row DOM element with header, stacks, footer and all event
+   * listeners attached.  Extracted from renderNewFormatBoard so it can be
+   * reused by the targeted-refresh pipeline.
+   */
+  function buildRowElement(row, rowIdx, foldedCols, foldedRows, foldedStacks, collapsedCards) {
+    var isCanvasLayout = isCanvasBoardLayout();
+    var rowStacks = Array.isArray(row.stacks) ? row.stacks : [];
+    var rowFoldKey = getRowFoldKey(row, rowIdx);
+    var rowEl = document.createElement('div');
+    rowEl.className = 'board-row';
+    rowEl.setAttribute('data-row-title', row.title);
+    rowEl.setAttribute('data-fold-key', rowFoldKey);
+    rowEl.setAttribute('data-row-index', rowIdx.toString());
+    if (hasSavedFoldMatch(foldedRows, rowFoldKey, row.title)) {
+      rowEl.classList.add('folded');
+    }
+    var rowHeightTag = getElementSizeTag(row.title, 'height');
+    if (rowHeightTag > 0) rowEl.style.setProperty('--board-row-height', rowHeightTag + 'px');
+    var rowParams = row.params || {};
+    if (rowParams.h) rowEl.style.setProperty('--board-row-height', rowParams.h + 'px');
+
+    // Row header
+    var rowHeader = document.createElement('div');
+    rowHeader.className = 'board-row-header';
+    var rowTitle = typeof row.title === 'string' ? row.title : '';
+    var rowDisplayTitle = stripLayoutTags(rowTitle);
+    var totalCards = 0;
+    for (var si = 0; si < rowStacks.length; si++) {
+      var cardCols = Array.isArray(rowStacks[si].columns) ? rowStacks[si].columns : [];
+      for (var ci = 0; ci < cardCols.length; ci++) {
+        var cards = Array.isArray(cardCols[ci].cards) ? cardCols[ci].cards : [];
+        totalCards += cards.length;
+      }
+    }
+    rowHeader.innerHTML =
+      '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
+      buildCreationEntityDragIconHtml('row', ['title="Drag to move row"']) +
+      '<span class="board-row-title" title="' + escapeAttr(rowDisplayTitle.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + renderTitleInline(rowDisplayTitle, activeBoardId, {}) + '</span>' +
+      '<span class="board-row-count">' + totalCards + '</span>' +
+      '<span class="row-header-actions">' +
+        '<button class="row-menu-btn burger-menu-btn" title="Row options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
+      '</span>';
+    (function (el, rIdx) {
+      rowHeader.addEventListener('click', function (e) {
+        if (targetClosest(e.target, '.board-row-title')) return;
+        if (targetClosest(e.target, 'button, .drag-grip')) return;
+        if (!e.altKey) return;
+        e.stopPropagation();
+        toggleRowFoldElement(el, true);
+      });
+      rowHeader.querySelector('.row-fold-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        toggleRowFoldElement(el, !!e.altKey);
+      });
+      rowHeader.querySelector('.row-menu-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        var rect = this.getBoundingClientRect();
+        showRowContextMenu(rect.right, rect.bottom, rIdx);
+      });
+      rowHeader.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showRowContextMenu(e.clientX, e.clientY, rIdx);
+      });
+    })(rowEl, rowIdx);
+    rowEl.appendChild(rowHeader);
+
+    // Row content container
+    var rowContent = document.createElement('div');
+    rowContent.className = 'board-row-content';
+
+    if (isCanvasLayout) {
+      (function (rIdx, contentEl) {
+        contentEl.addEventListener('contextmenu', function (e) {
+          if (!isCanvasBoardLayout()) return;
+          if (targetClosest(
+            e.target,
+            '.board-stack, .column, .card, button, input, textarea, select, a, [contenteditable="true"], .cm-editor, .cm-scroller, .monaco-editor, .canvas-focus-stacks-control'
+          )) {
+            return;
+          }
+          var canvasPosition = getCanvasPositionFromViewportPoint(contentEl, e.clientX, e.clientY, 0, 0);
+          if (!canvasPosition || !isFinite(canvasPosition.x) || !isFinite(canvasPosition.y)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          showCanvasBackgroundContextMenu(e.clientX, e.clientY, rIdx, {
+            x: Math.round(canvasPosition.x),
+            y: Math.round(canvasPosition.y)
+          });
+        });
+      })(rowIdx, rowContent);
+    }
+
+    if (rowStacks.length === 0) {
+      var emptyStacks = document.createElement('div');
+      emptyStacks.className = 'board-level-empty board-level-empty-stacks';
+      (function (rIdx) {
+        emptyStacks.appendChild(renderCreationSource('stack', { rowIdx: rIdx }, { btnText: '+ Add stack' }));
+      })(rowIdx);
+      rowContent.appendChild(emptyStacks);
+    }
+
+    for (var s = 0; s < rowStacks.length; s++) {
+      var stackEl = buildStackElement(rowStacks[s], rowIdx, s, foldedCols, foldedStacks, collapsedCards);
+      if (isCanvasLayout) {
+        getCanvasSceneElement(rowContent, true).appendChild(stackEl);
+      } else {
+        rowContent.appendChild(stackEl);
+      }
+    }
+
+    rowEl.appendChild(rowContent);
+    var rowFooter = document.createElement('div');
+    rowFooter.className = 'board-row-footer';
+    rowEl.appendChild(rowFooter);
+    applyTagStyleToEntity(rowEl, row.title || '');
+    return rowEl;
   }
 
   /**
@@ -7826,326 +8373,7 @@ var LexeraDashboard = (function () {
     }
 
     for (var r = 0; r < rows.length; r++) {
-      var row = rows[r];
-      var rowStacks = Array.isArray(row.stacks) ? row.stacks : [];
-      var rowFoldKey = getRowFoldKey(row, r);
-      var rowEl = document.createElement('div');
-      rowEl.className = 'board-row';
-      rowEl.setAttribute('data-row-title', row.title);
-      rowEl.setAttribute('data-fold-key', rowFoldKey);
-      rowEl.setAttribute('data-row-index', r.toString());
-      if (hasSavedFoldMatch(foldedRows, rowFoldKey, row.title)) {
-        rowEl.classList.add('folded');
-      }
-      var rowHeightTag = getElementSizeTag(row.title, 'height');
-      if (rowHeightTag > 0) rowEl.style.setProperty('--board-row-height', rowHeightTag + 'px');
-      // Canvas layout: apply inline params for row height
-      var rowParams = row.params || {};
-      if (rowParams.h) rowEl.style.setProperty('--board-row-height', rowParams.h + 'px');
-
-      // Row header
-      var rowHeader = document.createElement('div');
-      rowHeader.className = 'board-row-header';
-      var rowTitle = typeof row.title === 'string' ? row.title : '';
-      var rowDisplayTitle = stripLayoutTags(rowTitle);
-      var totalCards = 0;
-      for (var si = 0; si < rowStacks.length; si++) {
-        var cardCols = Array.isArray(rowStacks[si].columns) ? rowStacks[si].columns : [];
-        for (var ci = 0; ci < cardCols.length; ci++) {
-          var cards = Array.isArray(cardCols[ci].cards) ? cardCols[ci].cards : [];
-          totalCards += cards.length;
-        }
-      }
-      rowHeader.innerHTML =
-        '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
-        buildCreationEntityDragIconHtml('row', ['title="Drag to move row"']) +
-        '<span class="board-row-title" title="' + escapeAttr(rowDisplayTitle.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + renderTitleInline(rowDisplayTitle, activeBoardId, {}) + '</span>' +
-        '<span class="board-row-count">' + totalCards + '</span>' +
-        '<span class="row-header-actions">' +
-          '<button class="row-menu-btn burger-menu-btn" title="Row options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
-        '</span>';
-      (function (el, rowIdx) {
-        rowHeader.addEventListener('click', function (e) {
-          if (targetClosest(e.target, '.board-row-title')) return;
-          if (targetClosest(e.target, 'button, .drag-grip')) return;
-          if (!e.altKey) return;
-          e.stopPropagation();
-          toggleRowFoldElement(el, true);
-        });
-        rowHeader.querySelector('.row-fold-btn').addEventListener('click', function (e) {
-          e.stopPropagation();
-          toggleRowFoldElement(el, !!e.altKey);
-        });
-        rowHeader.querySelector('.row-menu-btn').addEventListener('click', function (e) {
-          e.stopPropagation();
-          var rect = this.getBoundingClientRect();
-          showRowContextMenu(rect.right, rect.bottom, rowIdx);
-        });
-        rowHeader.addEventListener('contextmenu', function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          showRowContextMenu(e.clientX, e.clientY, rowIdx);
-        });
-        // Row drag is handled by the pointer-based drag system (mousedown on getElColumnsContainer())
-      })(rowEl, r);
-      rowEl.appendChild(rowHeader);
-
-      // Row DnD handled by the pointer-based drag system
-
-      // Row content container
-      var rowContent = document.createElement('div');
-      rowContent.className = 'board-row-content';
-
-      // Column-to-row drop handled by the pointer-based drag system
-
-      if (rowStacks.length === 0) {
-        var emptyStacks = document.createElement('div');
-        emptyStacks.className = 'board-level-empty board-level-empty-stacks';
-        (function (rowIdx) {
-          emptyStacks.appendChild(renderCreationSource('stack', { rowIdx: rowIdx }, { btnText: '+ Add stack' }));
-        })(r);
-        rowContent.appendChild(emptyStacks);
-      }
-
-      if (isCanvasLayout) {
-        (function (rowIdx, contentEl) {
-          contentEl.addEventListener('contextmenu', function (e) {
-            if (!isCanvasBoardLayout()) return;
-            if (targetClosest(
-              e.target,
-              '.board-stack, .column, .card, button, input, textarea, select, a, [contenteditable="true"], .cm-editor, .cm-scroller, .monaco-editor, .canvas-focus-stacks-control'
-            )) {
-              return;
-            }
-            var canvasPosition = getCanvasPositionFromViewportPoint(contentEl, e.clientX, e.clientY, 0, 0);
-            if (!canvasPosition || !isFinite(canvasPosition.x) || !isFinite(canvasPosition.y)) return;
-            e.preventDefault();
-            e.stopPropagation();
-            showCanvasBackgroundContextMenu(e.clientX, e.clientY, rowIdx, {
-              x: Math.round(canvasPosition.x),
-              y: Math.round(canvasPosition.y)
-            });
-          });
-        })(r, rowContent);
-      }
-
-      for (var s = 0; s < rowStacks.length; s++) {
-        var stack = rowStacks[s];
-        var stackFoldKey = getStackFoldKey(stack, r, s);
-        var stackEl = document.createElement('div');
-        stackEl.className = 'board-stack';
-        stackEl.setAttribute('data-stack-title', stack.title);
-        stackEl.setAttribute('data-fold-key', stackFoldKey);
-        stackEl.setAttribute('data-row-index', r.toString());
-        stackEl.setAttribute('data-stack-index', s.toString());
-        var stackColumnEntries = getDisplayOrderedColumnEntries(stack.columns || []);
-        var isEmptyStack = stackColumnEntries.length === 0;
-        if (!isCanvasLayout && hasSavedFoldMatch(foldedStacks, stackFoldKey, stack.title)) {
-          stackEl.classList.add('folded');
-        }
-        var stackWidthTag = getElementSizeTag(stack.title, 'width');
-        if (!isCanvasLayout && stackWidthTag > 0) stackEl.style.setProperty('--stack-width-override', stackWidthTag + 'px');
-
-        // Canvas layout: apply position/size params (canvas-only)
-        var stackParams = stack.params || {};
-        if (isCanvasLayout) {
-        var canvasBox = getCanvasStackLayoutBox(stack, s);
-          stackEl.style.left = Math.round(canvasBox.x) + 'px';
-          stackEl.style.top = Math.round(canvasBox.y) + 'px';
-          stackEl.style.width = canvasBox.w + 'px';
-          stackEl.style.removeProperty('height');
-          stackEl.style.zIndex = String(10 + s);
-          stackEl.setAttribute('data-stack-dir', normalizeCanvasStackDirection(stackParams.dir));
-        }
-
-        // Canvas mode: persist resize when user drags the CSS resize handle
-        if (isCanvasLayout) {
-          (function (el, rIdx, sIdx) {
-            var resizeTimer = null;
-            var layoutSyncFrame = 0;
-            var lastObservedWidth = null;
-            var observer = new ResizeObserver(function (entries) {
-              if (el.classList.contains('resizing')) return;
-              var ptrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
-              if (ptrDrag) return; // ignore resize during drag
-              var entry = entries[0];
-              if (!entry) return;
-              var newW = Math.round(entry.contentRect.width);
-              if (newW === lastObservedWidth) return;
-              lastObservedWidth = newW;
-              if (!layoutSyncFrame) {
-                layoutSyncFrame = requestAnimationFrame(function () {
-                  layoutSyncFrame = 0;
-                  scheduleCanvasRowBoundsSync(getElColumnsContainer());
-                });
-              }
-              clearTimeout(resizeTimer);
-              resizeTimer = setTimeout(function () {
-                var pendingPtrDrag = DragDropHandlers ? DragDropHandlers.getPtrDrag() : null;
-                if (pendingPtrDrag) return; // timer from pre-drag resize; skip during drag
-                var fullStack = findFullDataStack(rIdx, sIdx);
-                if (!fullStack) return;
-                var curW = fullStack.params && fullStack.params.w ? parseInt(fullStack.params.w, 10) : 0;
-                if (Math.abs(newW - curW) < 5) return;
-                pushUndo();
-                if (!fullStack.params) fullStack.params = {};
-                fullStack.params.w = String(newW);
-                if (Object.prototype.hasOwnProperty.call(fullStack.params, 'h')) delete fullStack.params.h;
-                persistBoardMutation({ skipRender: true });
-              }, 400);
-            });
-            observer.observe(el);
-          })(stackEl, r, s);
-        }
-
-        // Stack header
-        var stackHeader = document.createElement('div');
-        stackHeader.className = 'board-stack-header';
-        var stackColCount = stackColumnEntries.length;
-        var stackDisplayTitle = stripLayoutTags(stack.title || '');
-        stackHeader.innerHTML =
-          (isCanvasLayout ? '' : '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>') +
-          buildCreationEntityDragIconHtml('stack', ['title="Drag to move stack"']) +
-          '<span class="board-stack-title" title="' + escapeAttr((stackDisplayTitle || '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + (stackDisplayTitle ? renderTitleInline(stackDisplayTitle, activeBoardId, {}) : '&nbsp;') + '</span>' +
-          '<span class="board-stack-count">' + stackColCount + '</span>' +
-          '<span class="stack-header-actions">' +
-            '<button class="stack-menu-btn burger-menu-btn" title="Stack options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
-            (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '') +
-          '</span>';
-        (function (el, rIdx, sIdx) {
-          var deleteBtn = stackHeader.querySelector('.stack-delete-btn');
-          if (deleteBtn) {
-            deleteBtn.addEventListener('click', function (e) {
-              e.stopPropagation();
-              deleteStack(rIdx, sIdx);
-            });
-          }
-          stackHeader.addEventListener('click', function (e) {
-            if (targetClosest(e.target, '.board-stack-title')) return;
-            if (targetClosest(e.target, 'button, .drag-grip, .column-rename-input')) return;
-            if (!e.altKey) return;
-            e.stopPropagation();
-            toggleStackFoldElement(el, true);
-          });
-          var foldBtn = stackHeader.querySelector('.stack-fold-btn');
-          if (foldBtn) {
-            foldBtn.addEventListener('click', function (e) {
-              e.stopPropagation();
-              toggleStackFoldElement(el, !!e.altKey);
-            });
-          }
-          stackHeader.querySelector('.stack-menu-btn').addEventListener('click', function (e) {
-            e.stopPropagation();
-            var rect = this.getBoundingClientRect();
-            showStackContextMenu(rect.right, rect.bottom, rIdx, sIdx);
-          });
-          stackHeader.addEventListener('contextmenu', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            showStackContextMenu(e.clientX, e.clientY, rIdx, sIdx);
-          });
-          // Stack drag is handled by the pointer-based drag system
-        })(stackEl, r, s);
-        stackEl.appendChild(stackHeader);
-
-        // Stack DnD handled by the pointer-based drag system
-
-        // Stack content container
-        var stackContent = document.createElement('div');
-        stackContent.className = 'board-stack-content';
-
-        if (stackColumnEntries.length === 0) {
-          var emptyColumns = document.createElement('div');
-          emptyColumns.className = 'board-level-empty board-level-empty-columns';
-          (function (rowIdx, stackIdx) {
-            emptyColumns.appendChild(renderCreationSource('column', { rowIdx: rowIdx, stackIdx: stackIdx }, { btnText: '+ Add column' }));
-          })(r, s);
-          stackContent.appendChild(emptyColumns);
-        }
-
-        for (var c = 0; c < stackColumnEntries.length; c++) {
-          var col = stackColumnEntries[c].col;
-          var colEl = buildColumnElement(col, foldedCols, collapsedCards, r, s, c, stackColumnEntries[c].fullIndex);
-          if (isCanvasLayout) applyCanvasColumnLayout(colEl, col);
-          // Column drag via grip is handled by the pointer-based drag system
-          // Column DnD handled by the pointer-based drag system
-          stackContent.appendChild(colEl);
-        }
-
-        stackEl.appendChild(stackContent);
-        var stackFooter = document.createElement('div');
-        stackFooter.className = 'board-stack-footer';
-        stackEl.appendChild(stackFooter);
-        if (isCanvasLayout) {
-          (function (el) {
-            var resizeHandle = document.createElement('div');
-            resizeHandle.className = 'canvas-stack-resize-handle';
-            resizeHandle.title = 'Resize stack width';
-            resizeHandle.setAttribute('aria-hidden', 'true');
-            resizeHandle.addEventListener('pointerdown', function (e) {
-              e.preventDefault();
-              e.stopPropagation();
-              var startX = e.clientX;
-              var startWidth = Math.round(el.getBoundingClientRect().width);
-              var lastWidth = startWidth;
-              var pendingClientX = startX;
-              var resizeFrame = 0;
-              el.classList.add('resizing');
-              if (resizeHandle.setPointerCapture) {
-                try { resizeHandle.setPointerCapture(e.pointerId); } catch (_) { /* intentional: pointer may already be released */ }
-              }
-              function applyResizeWidth(clientX) {
-                var nextWidth = Math.max(220, Math.round(startWidth + (clientX - startX)));
-                if (nextWidth === lastWidth) return;
-                lastWidth = nextWidth;
-                el.style.width = nextWidth + 'px';
-              }
-              function scheduleResizeWidth(clientX) {
-                pendingClientX = clientX;
-                if (resizeFrame) return;
-                resizeFrame = requestAnimationFrame(function () {
-                  resizeFrame = 0;
-                  applyResizeWidth(pendingClientX);
-                });
-              }
-              function handleMove(moveEvent) {
-                scheduleResizeWidth(moveEvent.clientX);
-              }
-              function handleUp(upEvent) {
-                if (resizeFrame) {
-                  cancelAnimationFrame(resizeFrame);
-                  resizeFrame = 0;
-                }
-                applyResizeWidth(pendingClientX);
-                el.classList.remove('resizing');
-                scheduleCanvasRowBoundsSync(getElColumnsContainer());
-                if (resizeHandle.releasePointerCapture) {
-                  try { resizeHandle.releasePointerCapture(upEvent.pointerId); } catch (_) { /* intentional: pointer may already be released */ }
-                }
-                window.removeEventListener('pointermove', handleMove, true);
-                window.removeEventListener('pointerup', handleUp, true);
-                window.removeEventListener('pointercancel', handleUp, true);
-              }
-              window.addEventListener('pointermove', handleMove, true);
-              window.addEventListener('pointerup', handleUp, true);
-              window.addEventListener('pointercancel', handleUp, true);
-            });
-            el.appendChild(resizeHandle);
-          })(stackEl);
-        }
-        applyTagStyleToEntity(stackEl, stack.title || '');
-        if (isCanvasLayout) {
-          getCanvasSceneElement(rowContent, true).appendChild(stackEl);
-        } else {
-          rowContent.appendChild(stackEl);
-        }
-      }
-
-      rowEl.appendChild(rowContent);
-      var rowFooter = document.createElement('div');
-      rowFooter.className = 'board-row-footer';
-      rowEl.appendChild(rowFooter);
-      applyTagStyleToEntity(rowEl, row.title || '');
+      var rowEl = buildRowElement(rows[r], r, foldedCols, foldedRows, foldedStacks, collapsedCards);
       getElColumnsContainer().appendChild(rowEl);
     }
   }
