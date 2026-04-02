@@ -652,10 +652,7 @@ var LexeraRowStackMenu = (function () {
     if (nextTitle === row.title) return;
     deps.pushUndo();
     row.title = nextTitle;
-    var container = (typeof deps !== 'undefined' && deps && typeof deps.getElColumnsContainer === 'function') ? deps.getElColumnsContainer() : null;
-    var rowEl = container ? container.querySelector('.board-row[data-row-index="' + rowIdx + '"]') : null;
-    if (rowEl) rowEl.style.display = 'none';
-    await deps.persistBoardMutation({ skipRender: !!rowEl });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function deleteRow(rowIdx) {
@@ -778,10 +775,7 @@ var LexeraRowStackMenu = (function () {
     if (nextTitle === stack.title) return;
     deps.pushUndo();
     stack.title = nextTitle;
-    var container = (typeof deps !== 'undefined' && deps && typeof deps.getElColumnsContainer === 'function') ? deps.getElColumnsContainer() : null;
-    var stackEl = container ? container.querySelector('.board-stack[data-row-index="' + displayRowIdx + '"][data-stack-index="' + displayStackIdx + '"]') : null;
-    if (stackEl) stackEl.style.display = 'none';
-    await deps.persistBoardMutation({ skipRender: !!stackEl });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function deleteStack(rowIdx, stackIdx) {

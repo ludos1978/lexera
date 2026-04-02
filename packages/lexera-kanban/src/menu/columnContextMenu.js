@@ -177,12 +177,7 @@ var LexeraColumnContextMenu = (function () {
     if (nextTitle === col.title) return;
     deps.pushUndo();
     col.title = nextTitle;
-    // Hide the column element directly instead of full re-render
-    var container = (typeof deps !== 'undefined' && deps && typeof deps.getElColumnsContainer === 'function') ? deps.getElColumnsContainer() : null;
-    var cardsEl = container ? container.querySelector('.column-cards[data-col-index="' + colIndex + '"]') : null;
-    var colEl = cardsEl ? cardsEl.closest('.column') : null;
-    if (colEl) colEl.style.display = 'none';
-    await deps.persistBoardMutation({ skipRender: !!colEl });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
     var postSaveCol = deps.getFullColumn(colIndex);
     var postTitle = postSaveCol ? postSaveCol.title : '(col gone)';
     var tagSurvived = postTitle.indexOf(tag) !== -1;
