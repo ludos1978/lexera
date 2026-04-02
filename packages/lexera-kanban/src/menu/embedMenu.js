@@ -3428,6 +3428,11 @@ var LexeraEmbedMenu = (function () {
       '<div class="replace-doc-drop-zone">' +
         '<div class="replace-doc-drop-label">Drop replacement file here, or paste from clipboard</div>' +
       '</div>' +
+      '<div class="replace-doc-path-mode">' +
+        '<label class="replace-doc-path-mode-label">Path mode:</label>' +
+        '<button class="board-action-btn replace-doc-path-mode-btn' + (isAbsoluteFilePath(fileRef.path) ? '' : ' active') + '" data-path-mode="relative">Relative</button>' +
+        '<button class="board-action-btn replace-doc-path-mode-btn' + (isAbsoluteFilePath(fileRef.path) ? ' active' : '') + '" data-path-mode="absolute">Absolute</button>' +
+      '</div>' +
       '<div class="hidden-items-footer">' +
         (hasTauri ? '<button class="board-action-btn" data-replace-action="browse">Browse\u2026</button>' : '') +
         '<button class="board-action-btn" data-replace-action="web-search">Web Search</button>' +
@@ -3439,6 +3444,18 @@ var LexeraEmbedMenu = (function () {
 
     var matchesEl = dialog.querySelector('.replace-doc-matches');
     var dropZone = dialog.querySelector('.replace-doc-drop-zone');
+
+    // Path mode toggle (relative vs absolute)
+    var pathMode = isAbsoluteFilePath(fileRef.path) ? 'absolute' : 'relative';
+    dialog.addEventListener('click', function (e) {
+      var modeBtn = e.target.closest('[data-path-mode]');
+      if (!modeBtn) return;
+      pathMode = modeBtn.getAttribute('data-path-mode');
+      var allBtns = dialog.querySelectorAll('[data-path-mode]');
+      for (var b = 0; b < allBtns.length; b++) {
+        allBtns[b].classList.toggle('active', allBtns[b].getAttribute('data-path-mode') === pathMode);
+      }
+    });
 
     // Search for files with the same filename
     LexeraApi.request('/boards/' + boardId + '/find-file', {
@@ -3463,11 +3480,27 @@ var LexeraEmbedMenu = (function () {
 
     function closeAndApply(newPath) {
       overlay.remove();
-      var adjusted = adjustPathForIncludeContext(container, newPath);
-      if (isInclude) {
-        updateIncludeTarget(container, adjusted + (fileRef.suffix || ''));
+      // Convert path to the user's chosen mode (relative or absolute)
+      var convertedPath = newPath;
+      if (pathMode === 'relative' && isAbsoluteFilePath(newPath)) {
+        // Absolute → relative: use adjustPathForIncludeContext (handles include-relative paths)
+        convertedPath = adjustPathForIncludeContext(container, newPath);
+      }
+      // If pathMode is 'absolute' and path is already absolute, keep as-is.
+      // If pathMode is 'absolute' and path is relative, resolve to absolute via API.
+      var applyTarget = function (finalPath) {
+        if (isInclude) {
+          updateIncludeTarget(container, finalPath + (fileRef.suffix || ''));
+        } else {
+          updateEmbedTarget(container, finalPath + (fileRef.suffix || ''));
+        }
+      };
+      if (pathMode === 'absolute' && !isAbsoluteFilePath(convertedPath)) {
+        resolveBoardPath(boardId, convertedPath, 'absolute').then(function (absPath) {
+          applyTarget(absPath);
+        });
       } else {
-        updateEmbedTarget(container, adjusted + (fileRef.suffix || ''));
+        applyTarget(convertedPath);
       }
     }
 
@@ -3476,12 +3509,7 @@ var LexeraEmbedMenu = (function () {
       LexeraApi.uploadMedia(boardId, file).then(function (result) {
         var target = getUploadedMediaEmbedTarget(result);
         if (!target) { showNotification('Upload failed'); return; }
-        overlay.remove();
-        if (isInclude) {
-          updateIncludeTarget(container, target);
-        } else {
-          updateEmbedTarget(container, target);
-        }
+        closeAndApply(target);
       }).catch(function (err) {
         logFrontendIssue('error', 'replace-doc', 'Failed to upload replacement file', err);
         showNotification('Failed to upload replacement file');

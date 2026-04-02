@@ -9646,6 +9646,29 @@ select.export-input {
   pointer-events: none;
 }
 
+.replace-doc-path-mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+}
+.replace-doc-path-mode-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-right: 2px;
+}
+.replace-doc-path-mode-btn {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: var(--radius-sm, 3px);
+  opacity: 0.6;
+}
+.replace-doc-path-mode-btn.active {
+  opacity: 1;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+}
+
 /* ── Editor autocomplete dropdown ────────────────────────────────── */
 .editor-autocomplete-dropdown {
   position: fixed;
