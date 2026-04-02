@@ -58,6 +58,11 @@
     - cardEditor.js: 1 call
     - app.js: ~10 calls
     - search/boardSearchReplace.js: 2 calls
+  - **Companion work for the targets migration**:
+    - migrate helper APIs that still expose legacy render flags: `commitBoardMutations`, `flushDeferredBoardRefresh`, `applyLiveSyncBoardSnapshot`, `applyRebasedBoardSnapshot`, `persistCleanedBoard`
+    - convert manual DOM fast paths (`updateCardElementInPlace`, `insertCardElementAtPosition`, hidden-tag/header text inline patches) to `targets` updates or explicitly document them as sanctioned exceptions
+    - add coverage for underused target types (`card-insert`, `card-remove`, `card-content`) plus structural row/stack/column refreshes, cross-board DnD, cleanup flows, and live-sync/rebase refresh paths
+    - remove the legacy `skipRender`/`refreshMainView`/`refreshSidebar` branch from `persistBoardMutation()` once callers and tests are migrated
 
 ## Architecture
 - [ ] **Remove iframe view composition** — replace iframes + postMessage with in-process views

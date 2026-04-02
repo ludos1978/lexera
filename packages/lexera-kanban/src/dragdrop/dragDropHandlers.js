@@ -1230,7 +1230,7 @@ var LexeraDragDropHandlers = (function () {
         if (fullColIdx >= 0 && stack.columns[fullColIdx]) {
           _deps.pushUndo();
           stack.columns[fullColIdx].title = _deps.applyInternalHiddenTag(stack.columns[fullColIdx].title || '', tag);
-          await _deps.persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+          await _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
         }
       }
     } else if (type === 'tree-card') {
@@ -1577,14 +1577,14 @@ var LexeraDragDropHandlers = (function () {
       targetRow.stacks.push(movedStack);
       _deps.removeEmptyStacksAndRows();
       clearCanvasDragStyles(stackEl);
-      _deps.persistBoardMutation({ refreshSidebar: true });
+      _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
       return true;
     }
     if (!sourceStack.params) sourceStack.params = {};
     sourceStack.params.x = String(newX);
     sourceStack.params.y = String(newY);
     clearCanvasDragStyles(stackEl);
-    _deps.persistBoardMutation({ refreshSidebar: true });
+    _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
     return true;
   }
 

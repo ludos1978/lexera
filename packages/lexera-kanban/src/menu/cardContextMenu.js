@@ -829,7 +829,7 @@ var CardContextMenu = (function () {
     clone.id = 'dup-' + Date.now();
     clone.kid = null;
     col.cards.splice(fullIdx + 1, 0, clone);
-    return deps.persistBoardMutation();
+    return deps.persistBoardMutation({ targets: [{ type: 'card-insert', colIndex: colIndex, cardIndex: cardIndex + 1 }] });
   }
 
   function duplicateCardToColumn(colIndex, cardIndex, targetColIndex) {
@@ -845,7 +845,7 @@ var CardContextMenu = (function () {
     clone.id = 'dup-' + Date.now();
     clone.kid = null;
     dstCol.cards.push(clone);
-    return deps.persistBoardMutation();
+    return deps.persistBoardMutation({ targets: [{ type: 'column', colIndex: targetColIndex }] });
   }
 
   function parkCopyCard(colIndex, cardIndex) {
@@ -861,8 +861,8 @@ var CardContextMenu = (function () {
     clone.kid = null;
     clone.content = deps.applyInternalHiddenTag(clone.content || '', '#hidden-internal-parked');
     col.cards.splice(fullIdx + 1, 0, clone);
-    // Clone is hidden — no visible change, skip re-render
-    return deps.persistBoardMutation({ skipRender: true });
+    // Clone is hidden — no visible change, persist only
+    return deps.persistBoardMutation({ targets: [] });
   }
 
   function tagCard(colIndex, cardIndex, tag) {
@@ -877,13 +877,7 @@ var CardContextMenu = (function () {
     if (nextContent === card.content) return Promise.resolve();
     deps.pushUndo();
     card.content = nextContent;
-    // Fast path: hide the card element directly instead of re-rendering all columns
-    var cardEl = typeof deps.findVisibleCardElement === 'function' ? deps.findVisibleCardElement(colIndex, cardIndex) : null;
-    if (cardEl) {
-      cardEl.style.display = 'none';
-      return deps.persistBoardMutation({ skipRender: true });
-    }
-    return deps.persistBoardMutation();
+    return deps.persistBoardMutation({ targets: [{ type: 'card-remove', colIndex: colIndex, cardIndex: cardIndex }] });
   }
 
   function deleteCard(colIndex, cardIndex) {
@@ -965,48 +959,19 @@ var CardContextMenu = (function () {
     deps.pushUndo();
     target.setText(nextText);
 
-    // Fast path: update only the affected element instead of re-rendering all columns
-    var updated = false;
+    var mutTarget;
     if (elementType === 'card') {
-      var cardEl = typeof deps.findVisibleCardElement === 'function' ? deps.findVisibleCardElement(indices.colIndex, indices.cardIndex) : null;
-      if (cardEl && typeof deps.renderCardDisplayState === 'function') {
-        deps.renderCardDisplayState(cardEl, nextText);
-        if (typeof deps.applyTagStyleToEntity === 'function') deps.applyTagStyleToEntity(cardEl, nextText);
-        updated = true;
-      }
+      mutTarget = { type: 'card', colIndex: indices.colIndex, cardIndex: indices.cardIndex };
+    } else if (elementType === 'column') {
+      mutTarget = { type: 'column', colIndex: indices.colIndex };
+    } else if (elementType === 'row') {
+      mutTarget = { type: 'row', rowIndex: indices.rowIdx };
+    } else if (elementType === 'stack') {
+      mutTarget = { type: 'stack', rowIndex: indices.rowIdx, stackIndex: indices.stackIdx };
     } else {
-      var container = deps.getElColumnsContainer ? deps.getElColumnsContainer() : null;
-      if (container) {
-        var el = null;
-        var titleSelector = null;
-        if (elementType === 'column') {
-          var cardsEl = container.querySelector('.column-cards[data-col-index="' + indices.colIndex + '"]');
-          el = cardsEl ? cardsEl.closest('.column') : null;
-          titleSelector = '.column-title';
-        } else if (elementType === 'row') {
-          el = container.querySelector('.board-row[data-row-index="' + indices.rowIdx + '"]');
-          titleSelector = '.board-row-title';
-        } else if (elementType === 'stack') {
-          el = container.querySelector('.board-stack[data-row-index="' + indices.rowIdx + '"][data-stack-index="' + indices.stackIdx + '"]');
-          titleSelector = '.board-stack-title';
-        }
-        if (el && titleSelector) {
-          var titleEl = el.querySelector(titleSelector);
-          if (titleEl) {
-            var displayTitle = typeof deps.stripLayoutTags === 'function' ? deps.stripLayoutTags(nextText) : nextText;
-            if (typeof deps.renderTitleInline === 'function') {
-              var opts = elementType === 'column' ? { allowIncludeDirectives: true } : {};
-              titleEl.innerHTML = deps.renderTitleInline(displayTitle, deps.getActiveBoardId(), opts);
-            } else {
-              titleEl.textContent = displayTitle;
-            }
-          }
-          if (typeof deps.applyTagStyleToEntity === 'function') deps.applyTagStyleToEntity(el, nextText);
-          updated = true;
-        }
-      }
+      mutTarget = { type: 'board' };
     }
-    return deps.persistBoardMutation({ skipRender: updated }).then(function () { return true; });
+    return deps.persistBoardMutation({ targets: [mutTarget] }).then(function () { return true; });
   }
 
   // ── Tag helpers (delegating to LexeraTagSystem) ─────────────────────

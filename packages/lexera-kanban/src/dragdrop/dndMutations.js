@@ -243,7 +243,7 @@ var LexeraDndMutations = (function () {
     _deps.pushUndo();
     var moved = fbd.rows.splice(sourceFullIdx, 1)[0];
     fbd.rows.splice(insertAt, 0, moved);
-    return _deps.persistBoardMutation({ refreshSidebar: true });
+    return _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   function moveStack(fromRowIdx, fromStackIdx, toRowIdx, toStackIdx, insertBefore) {
@@ -268,7 +268,7 @@ var LexeraDndMutations = (function () {
     toRow.stacks.splice(insertAt, 0, moved);
     removeEmptyStacksAndRows();
 
-    return _deps.persistBoardMutation({ refreshSidebar: true });
+    return _deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   // ── Mutation entity ID generation ─────────────────────────────────

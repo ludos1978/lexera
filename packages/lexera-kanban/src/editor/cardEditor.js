@@ -1151,10 +1151,10 @@ var CardEditor = (function () {
     _deps.pushUndo();
     col.cards[fullCardIdx].content = newContent;
     var visibleIdx = cardEl ? parseInt(cardEl.getAttribute('data-card-index') || '-1', 10) : -1;
-    await _deps.persistBoardMutation({ skipRender: true });
-    if (visibleIdx >= 0) {
-      _deps.updateCardElementInPlace(colIndex, visibleIdx);
-    }
+    var cardTargets = visibleIdx >= 0
+      ? [{ type: 'card', colIndex: colIndex, cardIndex: visibleIdx }]
+      : [{ type: 'board' }];
+    await _deps.persistBoardMutation({ targets: cardTargets });
     await _deps.flushDeferredBoardRefresh({ refreshSidebar: true });
   }
 

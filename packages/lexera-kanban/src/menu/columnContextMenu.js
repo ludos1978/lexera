@@ -46,7 +46,7 @@ var LexeraColumnContextMenu = (function () {
     deps.pushUndo();
     col.title = nextTitle;
     col.includeSource = { rawPath: cleanPath };
-    return deps.persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    return deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function enableColumnIncludeMode(colIndex) {
@@ -89,7 +89,7 @@ var LexeraColumnContextMenu = (function () {
     deps.pushUndo();
     col.title = deps.reconstructColumnTitle(cleanTitle, col.title || '');
     col.includeSource = null;
-    await deps.persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   // ── Move column to stack ───────────────────────────────────────────
@@ -159,7 +159,7 @@ var LexeraColumnContextMenu = (function () {
     var removed = container.arr.splice(container.localIdx, 1)[0];
     targetStack.columns.push(removed);
     deps.removeEmptyStacksAndRows();
-    await deps.persistBoardMutation({ refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   // ── Hidden tag ─────────────────────────────────────────────────────
@@ -260,7 +260,7 @@ var LexeraColumnContextMenu = (function () {
       var cmp = compareCardsForSort(a, b, mode);
       return dir === 'desc' ? -cmp : cmp;
     });
-    await deps.persistBoardMutation();
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }] });
   }
 
   function sortColumnsCards(columns, mode) {
@@ -285,7 +285,7 @@ var LexeraColumnContextMenu = (function () {
     if (cols.length === 0) return;
     deps.pushUndo();
     sortColumnsCards(cols, mode);
-    await deps.persistBoardMutation();
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }] });
   }
 
   async function sortStackCards(rowIdx, stackIdx, mode) {
@@ -293,7 +293,7 @@ var LexeraColumnContextMenu = (function () {
     if (!stack || !stack.columns) return;
     deps.pushUndo();
     sortColumnsCards(stack.columns, mode);
-    await deps.persistBoardMutation();
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }] });
   }
 
   async function sortAllCardsAcrossBoard(mode) {
@@ -321,7 +321,7 @@ var LexeraColumnContextMenu = (function () {
     for (var p = 0; p < plans.length; p++) {
       plans[p].column.cards = plans[p].cards;
     }
-    await deps.persistBoardMutation();
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }] });
   }
 
   // ── Numeric tag extraction ─────────────────────────────────────────
@@ -405,7 +405,7 @@ var LexeraColumnContextMenu = (function () {
         // Update title in place — no full re-render needed
         var displayNew = includePath ? deps.addIncludeSyntaxToTitle(newTitle, includePath) : newTitle;
         titleEl.innerHTML = deps.renderTitleInline(displayNew, deps.getActiveBoardId(), { allowIncludeDirectives: true });
-        deps.persistBoardMutation({ skipRender: true });
+        deps.persistBoardMutation({ targets: [{ type: 'column', colIndex: colIndex }] });
       } else {
         var displayTitle = includePath ? deps.addIncludeSyntaxToTitle(currentTitle, includePath) : currentTitle;
         titleEl.innerHTML = deps.renderTitleInline(displayTitle, deps.getActiveBoardId(), { allowIncludeDirectives: true });
@@ -508,7 +508,7 @@ var LexeraColumnContextMenu = (function () {
       }
       lastRow.stacks[lastRow.stacks.length - 1].columns.push(newCol);
     }
-    var saved = await deps.persistBoardMutation();
+    var saved = await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
     deps.traceFrontendAction(saved ? 'info' : 'warn', 'column.create.flat', saved ? 'Persisted flat column insertion' : 'Flat column insertion persist reported failure', {
       boardId: deps.getActiveBoardId() || null,
       atIndex: atIndex,
@@ -554,7 +554,7 @@ var LexeraColumnContextMenu = (function () {
       clone.cards[k].kid = null;
     }
     container.arr.splice(container.localIdx + 1, 0, clone);
-    await deps.persistBoardMutation({ refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   // ── Collapse / reveal ──────────────────────────────────────────────

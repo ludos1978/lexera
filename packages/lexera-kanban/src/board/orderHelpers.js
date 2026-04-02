@@ -252,7 +252,7 @@ var LexeraOrderHelpers = (function () {
     if (newTitle === title) return;
     _callDep('pushUndo');
     col.title = newTitle;
-    return _callDep('persistBoardMutation', { refreshMainView: true, refreshSidebar: true });
+    return _callDep('persistBoardMutation', { targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   function setColumnSpan(colIndex, span) {
@@ -267,7 +267,7 @@ var LexeraOrderHelpers = (function () {
     if (span > 1) newTitle = newTitle + ' #span' + span;
     _callDep('pushUndo');
     col.title = newTitle;
-    return _callDep('persistBoardMutation', { refreshMainView: true, refreshSidebar: true });
+    return _callDep('persistBoardMutation', { targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   // ─── Ordering / sorting helpers ───────────────────────────────────────

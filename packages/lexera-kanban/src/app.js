@@ -2959,10 +2959,7 @@ var LexeraDashboard = (function () {
       pushUndo();
       card.content = nextContent;
     }
-    return persistBoardMutation({
-      refreshMainView: true,
-      refreshSidebar: true
-    });
+    return persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   function buildHiddenItemRestoreSource(item) {
@@ -3387,10 +3384,7 @@ var LexeraDashboard = (function () {
     });
     pushUndo();
     if (!removeHiddenItemFromBoard(item)) return false;
-    return persistBoardMutation({
-      refreshMainView: true,
-      refreshSidebar: true
-    });
+    return persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function permanentlyDeleteHiddenItems(items) {
@@ -3401,10 +3395,7 @@ var LexeraDashboard = (function () {
     });
     pushUndo();
     if (!removeHiddenItemsFromBoard(items)) return false;
-    return persistBoardMutation({
-      refreshMainView: true,
-      refreshSidebar: true
-    });
+    return persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function removeArchivedHiddenItemsAfterExport(items) {
@@ -3414,10 +3405,7 @@ var LexeraDashboard = (function () {
     if (!removeHiddenItemsFromBoard(list)) {
       return false;
     }
-    return persistBoardMutation({
-      refreshMainView: true,
-      refreshSidebar: true
-    });
+    return persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function writeArchivedHiddenItemsToArchiveFileForBoard(boardId, boardData, items, options) {
@@ -4340,7 +4328,7 @@ var LexeraDashboard = (function () {
     }
     if (!changed) return false;
     applyBoardSettings();
-    await persistBoardMutation();
+    await persistBoardMutation({ targets: [{ type: 'board' }] });
     refreshBoardHeaderActionStates();
     renderFrontendSettingsPanel();
     if (_rt) _rt.emit('setting:changed', { key: key, value: value, source: 'board' });
@@ -4466,7 +4454,7 @@ var LexeraDashboard = (function () {
     fullBoardData.yamlHeader = nextYaml || null;
     fullBoardData.valid = !!((fullBoardData.yamlHeader || '').indexOf('kanban-plugin: board') !== -1);
     syncBoardFrontmatterCache();
-    await persistBoardMutation();
+    await persistBoardMutation({ targets: [{ type: 'board' }] });
     refreshBoardHeaderActionStates();
     return true;
   }
@@ -4668,7 +4656,7 @@ var LexeraDashboard = (function () {
     if (!card) return;
     pushUndo();
     card.content = card.content.replace(/\s*#hidden-internal-parked/g, '');
-    await persistBoardMutation({ refreshMainView: true });
+    await persistBoardMutation({ targets: [{ type: 'board' }] });
   }
 
   function showArchivedItems(btnElement) {
@@ -5231,12 +5219,10 @@ var LexeraDashboard = (function () {
 
   function persistBoardMutation(options) {
     options = options || {};
+    var targets = Array.isArray(options.targets) ? options.targets : [{ type: 'board' }];
     traceFrontendAction('info', 'board.persist', 'Persist board mutation (UI refresh, no immediate save)', {
       boardId: activeBoardId || null,
-      targets: options.targets ? options.targets.map(function (t) { return t.type; }) : null,
-      refreshMainView: !!options.refreshMainView,
-      refreshSidebar: !!options.refreshSidebar,
-      skipRender: !!options.skipRender,
+      targets: targets.map(function (t) { return t.type; }),
       skipAutoSave: !!options.skipAutoSave,
       summaryBefore: summarizeBoardHierarchy(fullBoardData)
     });
@@ -5245,34 +5231,19 @@ var LexeraDashboard = (function () {
     }
     updateDisplayFromFullBoard();
 
-    // New targets-based rendering path
-    if (Array.isArray(options.targets)) {
-      // Structural targets need hierarchy sync
-      var hasStructural = false;
-      for (var ti = 0; ti < options.targets.length; ti++) {
-        var tt = options.targets[ti].type;
-        if (tt === 'board' || tt === 'main-view' || tt === 'row' || tt === 'stack' || tt === 'column' || tt === 'sidebar') {
-          hasStructural = true;
-          break;
-        }
-      }
-      if (hasStructural && activeBoardId && fullBoardData) {
-        setBoardHierarchyRows(activeBoardId, fullBoardData, activeBoardData ? activeBoardData.title : '');
-      }
-      refreshTargetedElements(options.targets);
-    }
-    // Legacy rendering path (backward compat — will be removed once all callers migrated)
-    else {
-      if (activeBoardId && fullBoardData && !options.skipRender) {
-        setBoardHierarchyRows(activeBoardId, fullBoardData, activeBoardData ? activeBoardData.title : '');
-      }
-      if (options.refreshMainView) {
-        renderMainView();
-      } else if (!options.skipRender) {
-        renderColumns();
-        if (options.refreshSidebar) renderBoardList();
+    // Structural targets need hierarchy sync
+    var hasStructural = false;
+    for (var ti = 0; ti < targets.length; ti++) {
+      var tt = targets[ti].type;
+      if (tt === 'board' || tt === 'main-view' || tt === 'row' || tt === 'stack' || tt === 'column' || tt === 'sidebar') {
+        hasStructural = true;
+        break;
       }
     }
+    if (hasStructural && activeBoardId && fullBoardData) {
+      setBoardHierarchyRows(activeBoardId, fullBoardData, activeBoardData ? activeBoardData.title : '');
+    }
+    refreshTargetedElements(targets);
 
     if (typeof options.afterRefresh === 'function') {
       options.afterRefresh();
@@ -5297,9 +5268,7 @@ var LexeraDashboard = (function () {
     }
     traceFrontendAction('info', 'board.persist', 'Persist board mutation success', {
       boardId: activeBoardId || null,
-      refreshMainView: !!options.refreshMainView,
-      refreshSidebar: !!options.refreshSidebar,
-      skipRender: !!options.skipRender,
+      targets: targets.map(function (t) { return t.type; }),
       summaryAfter: summarizeBoardHierarchy(fullBoardData)
     });
     if (activeBoardId && fullBoardData) {
@@ -6365,7 +6334,7 @@ var LexeraDashboard = (function () {
     redoStack.push(entry);
     applyBoardDelta(fullBoardData, entry.delta, true);
     setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
-    await persistBoardMutation();
+    await persistBoardMutation({ targets: [{ type: 'board' }] });
   }
 
   async function redo() {
@@ -6376,7 +6345,7 @@ var LexeraDashboard = (function () {
     undoTotalBytes += entry.size;
     applyBoardDelta(fullBoardData, entry.delta, false);
     setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
-    await persistBoardMutation();
+    await persistBoardMutation({ targets: [{ type: 'board' }] });
   }
 
   function showKeyboardShortcutsHelp() {
@@ -7242,7 +7211,7 @@ var LexeraDashboard = (function () {
       undoStack.pop();
       return false;
     }
-    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
     return true;
   }
 
@@ -8093,7 +8062,7 @@ var LexeraDashboard = (function () {
             if (!fullStack.params) fullStack.params = {};
             fullStack.params.w = String(newW);
             if (Object.prototype.hasOwnProperty.call(fullStack.params, 'h')) delete fullStack.params.h;
-            persistBoardMutation({ skipRender: true });
+            persistBoardMutation({ targets: [] });
           }, 400);
         });
         observer.observe(el);
@@ -8404,7 +8373,7 @@ var LexeraDashboard = (function () {
 
     removeEmptyStacksAndRows();
 
-    await persistBoardMutation({ refreshSidebar: true });
+    await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function moveColumnToExistingStack(fromRowIdx, fromStackIdx, fromColIdx, toRowIdx, toStackIdx) {
@@ -8426,7 +8395,7 @@ var LexeraDashboard = (function () {
 
     removeEmptyStacksAndRows();
 
-    await persistBoardMutation({ refreshSidebar: true });
+    await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function moveColumnToNewStack(fromRowIdx, fromStackIdx, fromColIdx, toRowIdx, insertAtStackIdx) {
@@ -8460,7 +8429,7 @@ var LexeraDashboard = (function () {
 
     removeEmptyStacksAndRows();
 
-    await persistBoardMutation({ refreshSidebar: true });
+    await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   // --- New-format DnD mutations (delegated to LexeraDndMutations module) ---
@@ -8601,14 +8570,12 @@ var LexeraDashboard = (function () {
     };
     column.cards.splice(insertAt, 0, newCard);
     addCardColumn = null;
-    await persistBoardMutation({ skipRender: true });
-    // Find the visible index of the newly added card
     var visibleIdx = findVisibleCardIndexById(targetColIndex, newCard.id);
     if (visibleIdx >= 0) {
-      insertCardElementAtPosition(targetColIndex, visibleIdx, newCard);
+      await persistBoardMutation({ targets: [{ type: 'card-insert', colIndex: targetColIndex, cardIndex: visibleIdx }] });
       removeAddCardComposer(targetColIndex);
     } else {
-      renderColumns();
+      await persistBoardMutation({ targets: [{ type: 'board' }] });
     }
     return true;
   }
@@ -8691,13 +8658,10 @@ var LexeraDashboard = (function () {
       if (resolvedInsert >= 0) insertAt = resolvedInsert;
     }
     column.cards.splice(insertAt, 0, card);
-    var saved = await persistBoardMutation({ skipRender: true });
     var visibleIdx = findVisibleCardIndexById(targetColIndex, card.id);
-    if (visibleIdx >= 0) {
-      insertCardElementAtPosition(targetColIndex, visibleIdx, card);
-    } else {
-      renderColumns();
-    }
+    var saved = visibleIdx >= 0
+      ? await persistBoardMutation({ targets: [{ type: 'card-insert', colIndex: targetColIndex, cardIndex: visibleIdx }] })
+      : await persistBoardMutation({ targets: [{ type: 'board' }] });
     traceFrontendAction(saved ? 'info' : 'warn', 'card.create', saved ? 'Persisted blank card' : 'Blank card persist reported failure', {
       boardId: activeBoardId || null,
       colIndex: targetColIndex,
@@ -8722,12 +8686,11 @@ var LexeraDashboard = (function () {
       insertAt = column.cards.length;
     }
     column.cards.splice(insertAt, 0, card);
-    await persistBoardMutation({ skipRender: true });
     var visibleIdx = findVisibleCardIndexById(colIndex, card.id);
     if (visibleIdx >= 0) {
-      insertCardElementAtPosition(colIndex, visibleIdx, card);
+      await persistBoardMutation({ targets: [{ type: 'card-insert', colIndex: colIndex, cardIndex: visibleIdx }] });
     } else {
-      renderColumns();
+      await persistBoardMutation({ targets: [{ type: 'board' }] });
     }
     return true;
   }
@@ -8755,12 +8718,11 @@ var LexeraDashboard = (function () {
       pushUndo();
       var card = { id: 'card-' + Date.now(), content: text.trim(), checked: false };
       column.cards.push(card);
-      await persistBoardMutation({ skipRender: true });
       var visibleIdx = findVisibleCardIndexById(colIndex, card.id);
       if (visibleIdx >= 0) {
-        insertCardElementAtPosition(colIndex, visibleIdx, card);
+        await persistBoardMutation({ targets: [{ type: 'card-insert', colIndex: colIndex, cardIndex: visibleIdx }] });
       } else {
-        renderColumns();
+        await persistBoardMutation({ targets: [{ type: 'board' }] });
       }
       showNotification('Pasted as new card');
     } catch (err) {
@@ -8786,12 +8748,11 @@ var LexeraDashboard = (function () {
       pushUndo();
       var card = { id: 'card-' + Date.now(), content: content, checked: false };
       column.cards.push(card);
-      await persistBoardMutation({ skipRender: true });
       var visibleIdx = findVisibleCardIndexById(targetCol, card.id);
       if (visibleIdx >= 0) {
-        insertCardElementAtPosition(targetCol, visibleIdx, card);
+        await persistBoardMutation({ targets: [{ type: 'card-insert', colIndex: targetCol, cardIndex: visibleIdx }] });
       } else {
-        renderColumns();
+        await persistBoardMutation({ targets: [{ type: 'board' }] });
       }
       showNotification('Smart pasted as new card');
     } catch (err) {
@@ -9061,13 +9022,12 @@ var LexeraDashboard = (function () {
         sourceBoardData === targetBoardData &&
         sourceRef.column === targetRef.column;
       if (isSameColumnOnActiveBoard) {
-        await persistBoardMutation({ skipRender: true });
         var srcVisible = typeof source.cardIndex === 'number' ? source.cardIndex : -1;
         var dstVisible = findVisibleCardIndexById(source.flatColIndex, movedCard.id);
         if (srcVisible >= 0 && dstVisible >= 0) {
-          reorderCardElements(source.flatColIndex, srcVisible, dstVisible);
+          await persistBoardMutation({ targets: [{ type: 'column', colIndex: source.flatColIndex }] });
         } else {
-          renderColumns();
+          await persistBoardMutation({ targets: [{ type: 'board' }] });
         }
         return;
       }
@@ -9195,8 +9155,7 @@ var LexeraDashboard = (function () {
       lines[lineIndex] = lines[lineIndex].replace(/\[([xX])\]/, '[ ]');
     }
     card.content = lines.join('\n');
-    await persistBoardMutation({ skipRender: true });
-    updateCardElementInPlace(colIndex, cardIndex);
+    await persistBoardMutation({ targets: [{ type: 'card', colIndex: colIndex, cardIndex: cardIndex }] });
   }
 
   // --- Card Context Menu (delegated to CardContextMenu module) ---
@@ -10949,7 +10908,7 @@ var LexeraDashboard = (function () {
       if (newTitle === stack.title) return;
       pushUndo();
       stack.title = newTitle;
-      persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+      persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
     });
 
     // ── LexeraRowStackMenu init ──

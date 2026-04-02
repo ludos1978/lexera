@@ -146,7 +146,7 @@ var LexeraRowStackMenu = (function () {
         titleEl.textContent = getDisplayTitle(newTitle);
         deps.pushUndo();
         target.title = deps.rebuildTitleWithPreservedComments(newTitle, currentTitle);
-        deps.persistBoardMutation();
+        deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
       } else {
         titleEl.textContent = getDisplayTitle(currentDisplayTitle);
       }
@@ -512,7 +512,7 @@ var LexeraRowStackMenu = (function () {
     if (insertAt < 0) insertAt = 0;
     if (insertAt > fullBoardData.rows.length) insertAt = fullBoardData.rows.length;
     fullBoardData.rows.splice(insertAt, 0, newRow);
-    await deps.persistBoardMutation({ refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function addStackFromContent(rowIdx, text, atStackIdx) {
@@ -536,7 +536,7 @@ var LexeraRowStackMenu = (function () {
     };
     deps.applyDefaultCanvasPlacementToStack(row, newStack);
     row.stacks.splice(insertAt, 0, newStack);
-    await deps.persistBoardMutation({ refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function addColumnFromContent(rowIdx, stackIdx, text, atColIdx) {
@@ -551,7 +551,7 @@ var LexeraRowStackMenu = (function () {
     if (insertAt < 0) insertAt = 0;
     if (insertAt > stack.columns.length) insertAt = stack.columns.length;
     stack.columns.splice(insertAt, 0, { id: 'col-' + ts, title: 'New Column', cards: [card] });
-    await deps.persistBoardMutation({ refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function insertTemplateColumns(rowIdx, stackIdx, cols, atColIdx) {
@@ -566,7 +566,7 @@ var LexeraRowStackMenu = (function () {
     for (var i = 0; i < cols.length; i++) {
       stack.columns.splice(insertAt + i, 0, cols[i]);
     }
-    await deps.persistBoardMutation({ refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function insertTemplateStack(rowIdx, stack, atStackIdx) {
@@ -583,7 +583,7 @@ var LexeraRowStackMenu = (function () {
     if (insertAt > row.stacks.length) insertAt = row.stacks.length;
     deps.applyDefaultCanvasPlacementToStack(row, stack);
     row.stacks.splice(insertAt, 0, stack);
-    await deps.persistBoardMutation({ refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function insertTemplateRow(atIndex, row) {
@@ -595,7 +595,7 @@ var LexeraRowStackMenu = (function () {
     if (atIndex < 0) atIndex = 0;
     if (atIndex > fullBoardData.rows.length) atIndex = fullBoardData.rows.length;
     fullBoardData.rows.splice(atIndex, 0, row);
-    await deps.persistBoardMutation({ refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function addRow(atIndex) {
@@ -633,7 +633,7 @@ var LexeraRowStackMenu = (function () {
       summaryBefore: deps.summarizeBoardHierarchy(fullBoardData)
     });
     fullBoardData.rows.splice(insertAt, 0, newRow);
-    var saved = await deps.persistBoardMutation({ refreshSidebar: true });
+    var saved = await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
     deps.traceFrontendAction(saved ? 'info' : 'warn', 'row.create', saved ? 'Persisted new row' : 'Row persist reported failure', {
       boardId: deps.getActiveBoardId() || null,
       atIndex: atIndex,
@@ -700,7 +700,7 @@ var LexeraRowStackMenu = (function () {
     var fullRowIdx = fullBoardData.rows.indexOf(row);
     if (fullRowIdx === -1) fullRowIdx = fullBoardData.rows.length - 1;
     fullBoardData.rows.splice(fullRowIdx + 1, 0, clone);
-    await deps.persistBoardMutation({ refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function addStackToRow(rowIdx, atStackIdx, options) {
@@ -755,7 +755,7 @@ var LexeraRowStackMenu = (function () {
       canvasPosition: deps.isCanvasBoardLayout() ? { x: newStack.params && newStack.params.x, y: newStack.params && newStack.params.y } : null
     });
     row.stacks.splice(insertAt, 0, newStack);
-    var saved = await deps.persistBoardMutation({ refreshSidebar: true });
+    var saved = await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
     deps.traceFrontendAction(saved ? 'info' : 'warn', 'stack.create', saved ? 'Persisted new stack' : 'Stack persist reported failure', {
       boardId: deps.getActiveBoardId() || null,
       rowIdx: rowIdx,
@@ -822,7 +822,7 @@ var LexeraRowStackMenu = (function () {
     var fullStackIdx = deps.findFullDataStackIndex(row, rowIdx, stackIdx);
     if (fullStackIdx === -1) fullStackIdx = row.stacks.length - 1;
     row.stacks.splice(fullStackIdx + 1, 0, clone);
-    await deps.persistBoardMutation({ refreshSidebar: true });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   async function addColumnToStack(rowIdx, stackIdx, atColIdx) {
@@ -855,7 +855,7 @@ var LexeraRowStackMenu = (function () {
       stackColumnCountBefore: stack.columns.length
     });
     stack.columns.splice(insertAt, 0, newColumn);
-    var saved = await deps.persistBoardMutation({ refreshSidebar: true });
+    var saved = await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
     deps.traceFrontendAction(saved ? 'info' : 'warn', 'column.create', saved ? 'Persisted new column in stack' : 'Column persist reported failure', {
       boardId: deps.getActiveBoardId() || null,
       rowIdx: rowIdx,

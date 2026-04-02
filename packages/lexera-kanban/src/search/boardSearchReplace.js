@@ -28,8 +28,8 @@ var BoardSearchReplace = (function () {
     if (typeof _deps.pushUndo === 'function') _deps.pushUndo();
   }
 
-  function persistBoardMutation() {
-    if (typeof _deps.persistBoardMutation === 'function') return _deps.persistBoardMutation();
+  function persistBoardMutation(opts) {
+    if (typeof _deps.persistBoardMutation === 'function') return _deps.persistBoardMutation(opts);
     return Promise.resolve();
   }
 
@@ -154,7 +154,7 @@ var BoardSearchReplace = (function () {
       pushUndo();
       var content = m.card.content || '';
       m.card.content = content.substring(0, m.offset) + replacement + content.substring(m.offset + query.length);
-      await persistBoardMutation();
+      await persistBoardMutation({ targets: [{ type: 'board' }] });
       onSearchChange();
     });
 
@@ -176,7 +176,7 @@ var BoardSearchReplace = (function () {
           card.content = card.content.replace(new RegExp(escaped, 'gi'), replacement);
         }
       }
-      await persistBoardMutation();
+      await persistBoardMutation({ targets: [{ type: 'board' }] });
       onSearchChange();
       showNotification('Replaced all matches');
     });

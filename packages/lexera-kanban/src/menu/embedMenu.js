@@ -4204,7 +4204,7 @@ var LexeraEmbedMenu = (function () {
       }
     }
     if (hasNewCards) {
-      await persistBoardMutation();
+      await persistBoardMutation({ targets: [{ type: 'board' }] });
     }
   }
 
@@ -4386,7 +4386,7 @@ var LexeraEmbedMenu = (function () {
     if (typeof nextTitle !== 'string' || nextTitle === column.title) return Promise.resolve(false);
     pushUndo();
     column.title = normalizeCardContentAfterInlineMutation(nextTitle);
-    return persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    return persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
   function updateBoardFileLinkTarget(container, nextTarget) {
