@@ -5565,11 +5565,16 @@ var LexeraDashboard = (function () {
         if (!boardData) continue;
 
         if (boardId === activeBoardId) {
-          // Active board: don't save — user saves explicitly with Cmd+S.
-          // Just refresh the UI and mark dirty.
+          // Active board: refresh UI and save immediately so cross-board
+          // moves are persisted before the next poll can overwrite them.
           updateDisplayFromFullBoard();
-          markBoardDirty();
           setBoardHierarchyRows(boardId, fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+          markBoardDirty();
+          try {
+            await saveFullBoard();
+          } catch (saveErr) {
+            logFrontendIssue('warn', 'commitBoardMutations', 'Failed to save active board during cross-board mutation', saveErr);
+          }
           continue;
         }
 

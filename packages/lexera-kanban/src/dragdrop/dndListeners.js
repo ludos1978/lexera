@@ -551,6 +551,11 @@ var LexeraDndListeners = (function () {
         _deps.stopCrossViewBridge();
         return;
       }
+      // If the drop lands on an iframe, let the cross-view bridge handle it
+      var hitEl = document.elementFromPoint(e.clientX, e.clientY);
+      if (hitEl && hitEl.tagName === 'IFRAME') {
+        return;
+      }
       _deps.executePtrDrop(e.clientX, e.clientY);
       _deps.cleanupPtrDrag();
       } catch (err) {

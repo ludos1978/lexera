@@ -48,6 +48,15 @@
     return n;
   }
 
+  var HIDDEN_RE = /#hidden-internal-(?:deleted|archived|parked|incoming)\b|(^|\s)#hidden(\s|$)/;
+  function isHiddenTitle(title) {
+    return HIDDEN_RE.test(title || '');
+  }
+
+  function isHiddenCard(content) {
+    return HIDDEN_RE.test(content || '');
+  }
+
   function cardPreviewText(content) {
     if (!content) return '';
     var text = content.replace(/^#+\s*/gm, '').replace(/\*\*|__|\*|_|~~|`/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
@@ -84,6 +93,7 @@
     var nodes = [];
     for (var ri = 0; ri < rows.length; ri++) {
       var row = rows[ri] || {};
+      if (isHiddenTitle(row.title)) continue;
       var rowStacks = Array.isArray(row.stacks) ? row.stacks : [];
       var rowId = row.id || ('row-' + ri);
       var rowExpanded = resolveExpanded('rows', rowId, singleRow);
@@ -93,6 +103,7 @@
       var stackNodes = [];
       for (var si = 0; si < rowStacks.length; si++) {
         var stack = rowStacks[si] || {};
+        if (isHiddenTitle(stack.title)) continue;
         var stackId = stack.id || ('stack-' + ri + '-' + si);
         var stackExpanded = resolveExpanded('stacks', stackId, singleRow && singleStack);
         var stackCardCount = countCardsInStack(stack);
@@ -101,6 +112,7 @@
         var stackColumnEntries = getDisplayOrderedColumnEntries(stack.columns || []);
         for (var ci = 0; ci < stackColumnEntries.length; ci++) {
           var col = stackColumnEntries[ci].col || {};
+          if (isHiddenTitle(col.title)) continue;
           var colIdx = col.index != null ? col.index : -1;
           var colId = 'col-' + colIdx;
           var colExpanded = resolveExpanded('columns', colId, false);
@@ -111,6 +123,7 @@
           if (cardCount > 0) {
             for (var cdi = 0; cdi < cards.length; cdi++) {
               var card = cards[cdi] || {};
+              if (isHiddenCard(card.content)) continue;
               cardNodes.push({
                 id: null,
                 label: cardPreviewText(card.content),

@@ -891,7 +891,7 @@ var LexeraDragDropHandlers = (function () {
   function startCrossViewBridge(kind) {
     if (crossViewBridge) return;
     var topWin = getTopWindowSafe();
-    if (!topWin || topWin === window) return;
+    if (!topWin) return;
 
     var bridgeTargets = [];
     var bridgeWindows = getCrossViewBridgeWindows(topWin);
@@ -1888,9 +1888,19 @@ var LexeraDragDropHandlers = (function () {
   // --- External DnD Bridge Registration ---
 
   function registerExternalDndBridge() {
+    var _externalDragType = null;
     window.__lexeraExternalDnd = {
       hover: function (payload, x, y) {
         if (!payload || !payload.source) return false;
+        // Insert drop zones on first hover for a new drag type
+        if (payload.type !== _externalDragType) {
+          _externalDragType = payload.type;
+          if (payload.type === 'column' || payload.type === 'tree-column') {
+            _deps.insertStackDropZones();
+          }
+          _deps.insertDropZoneIndicators(payload.type);
+          cacheDropTargetGeometry();
+        }
         if (payload.type === 'tree-card') {
           return updateCardDropTarget(x, y);
         }
@@ -1924,6 +1934,7 @@ var LexeraDragDropHandlers = (function () {
         return false;
       },
       clear: function () {
+        _externalDragType = null;
         clearPtrDropIndicators();
       }
     };
