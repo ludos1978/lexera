@@ -301,6 +301,7 @@ var ContextMenuBuilders = (function () {
           { id: 'duplicate', label: 'Duplicate column' },
           { separator: true },
           { id: 'copy-markdown', label: 'Copy as markdown' },
+          { id: 'copy-html', label: 'Copy as formatted' },
           { id: 'export-column', label: 'Export column' },
           { separator: true },
           { id: 'sort-sub', label: 'Sort by', items: (function () {
@@ -380,6 +381,7 @@ var ContextMenuBuilders = (function () {
           { id: 'stack-width', label: 'Stack Width', items: widthItems },
           { separator: true },
           { id: 'copy-markdown', label: 'Copy as markdown' },
+          { id: 'copy-html', label: 'Copy as formatted' },
           { id: 'export-stack', label: 'Export stack' },
           { separator: true },
           { id: 'park', label: 'Park stack' },
@@ -413,6 +415,7 @@ var ContextMenuBuilders = (function () {
           { id: 'duplicate', label: 'Duplicate row' },
           { separator: true },
           { id: 'copy-markdown', label: 'Copy as markdown' },
+          { id: 'copy-html', label: 'Copy as formatted' },
           { id: 'export-row', label: 'Export row' },
           { separator: true },
           { id: 'park', label: 'Park row' },

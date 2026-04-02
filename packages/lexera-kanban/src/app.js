@@ -10830,6 +10830,21 @@ var LexeraDashboard = (function () {
     ActionRegistry.register('column', 'sort-tag', function (action, ctx) { sortColumnCards(ctx.colIndex, 'tag'); });
     ActionRegistry.register('column', 'sort-duedate', function (action, ctx) { sortColumnCards(ctx.colIndex, 'duedate'); });
     ActionRegistry.register('column', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('column', { colIndex: ctx.colIndex }); });
+    ActionRegistry.register('column', 'copy-html', function (action, ctx) {
+      var cardsEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + ctx.colIndex + '"]');
+      if (!cardsEl) return;
+      var html = cardsEl.innerHTML;
+      if (navigator.clipboard && navigator.clipboard.write) {
+        navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([cardsEl.textContent || ''], { type: 'text/plain' })
+        })]).catch(function () {
+          if (navigator.clipboard.writeText) navigator.clipboard.writeText(cardsEl.textContent || '');
+        });
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cardsEl.textContent || '');
+      }
+    });
     ActionRegistry.register('column', 'export-column', function (action, ctx) { exportColumn(ctx.colIndex); });
     ActionRegistry.register('column', 'preview-include', function (action, ctx) {
       var col = getFullColumn(ctx.colIndex);
@@ -10863,6 +10878,23 @@ var LexeraDashboard = (function () {
     ActionRegistry.register('row', 'sort-tag', function (action, ctx) { sortRowCards(ctx.rowIdx, 'tag'); });
     ActionRegistry.register('row', 'sort-duedate', function (action, ctx) { sortRowCards(ctx.rowIdx, 'duedate'); });
     ActionRegistry.register('row', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('row', { rowIdx: ctx.rowIdx }); });
+    ActionRegistry.register('row', 'copy-html', function (action, ctx) {
+      var rowEl = getElColumnsContainer().querySelector('.board-row[data-row-index="' + ctx.rowIdx + '"]');
+      if (!rowEl) return;
+      var contentEl = rowEl.querySelector('.board-row-content');
+      if (!contentEl) return;
+      var html = contentEl.innerHTML;
+      if (navigator.clipboard && navigator.clipboard.write) {
+        navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([contentEl.textContent || ''], { type: 'text/plain' })
+        })]).catch(function () {
+          if (navigator.clipboard.writeText) navigator.clipboard.writeText(contentEl.textContent || '');
+        });
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(contentEl.textContent || '');
+      }
+    });
     ActionRegistry.register('row', 'export-row', function (action, ctx) {
       triggerBoardExport({ selection: { scope: 'row', rowIndex: ctx.rowIdx } });
     });
@@ -10890,6 +10922,23 @@ var LexeraDashboard = (function () {
     ActionRegistry.register('stack', 'sort-tag', function (action, ctx) { sortStackCards(ctx.rowIdx, ctx.stackIdx, 'tag'); });
     ActionRegistry.register('stack', 'sort-duedate', function (action, ctx) { sortStackCards(ctx.rowIdx, ctx.stackIdx, 'duedate'); });
     ActionRegistry.register('stack', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
+    ActionRegistry.register('stack', 'copy-html', function (action, ctx) {
+      var stackEl = getElColumnsContainer().querySelector('.board-stack[data-row-index="' + ctx.rowIdx + '"][data-stack-index="' + ctx.stackIdx + '"]');
+      if (!stackEl) return;
+      var contentEl = stackEl.querySelector('.board-stack-content');
+      if (!contentEl) return;
+      var html = contentEl.innerHTML;
+      if (navigator.clipboard && navigator.clipboard.write) {
+        navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([contentEl.textContent || ''], { type: 'text/plain' })
+        })]).catch(function () {
+          if (navigator.clipboard.writeText) navigator.clipboard.writeText(contentEl.textContent || '');
+        });
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(contentEl.textContent || '');
+      }
+    });
     ActionRegistry.register('stack', 'export-stack', function (action, ctx) {
       triggerBoardExport({ selection: { scope: 'stack', rowIndex: ctx.rowIdx, stackIndex: ctx.stackIdx } });
     });
