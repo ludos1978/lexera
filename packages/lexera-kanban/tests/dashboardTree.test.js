@@ -58,6 +58,9 @@ describe('dashboard tree builders', () => {
               'data-dashboard-target': 'file',
               'data-dashboard-card-id': null,
               'data-dashboard-column-index': null,
+              'data-dashboard-row-index': null,
+              'data-dashboard-stack-index': null,
+              'data-dashboard-col-local-index': null,
               'data-dashboard-status': 'missing',
               title: 'docs/spec.pdf / Attachments / Missing / 2 references'
             }
@@ -74,6 +77,9 @@ describe('dashboard tree builders', () => {
               'data-dashboard-target': 'file',
               'data-dashboard-card-id': null,
               'data-dashboard-column-index': null,
+              'data-dashboard-row-index': null,
+              'data-dashboard-stack-index': null,
+              'data-dashboard-col-local-index': null,
               'data-dashboard-status': 'exists',
               title: 'docs/notes.md / Attachments / Exists'
             }
@@ -104,6 +110,9 @@ describe('dashboard tree builders', () => {
               'data-dashboard-target': 'file',
               'data-dashboard-card-id': null,
               'data-dashboard-column-index': null,
+              'data-dashboard-row-index': null,
+              'data-dashboard-stack-index': null,
+              'data-dashboard-col-local-index': null,
               'data-dashboard-status': 'unknown',
               title: 'media/preview.png / Gallery / Unknown'
             }
@@ -156,6 +165,10 @@ describe('dashboard tree builders', () => {
               'data-dashboard-col-index': '2',
               'data-dashboard-card-index': '5',
               'data-dashboard-card-id': null,
+              'data-dashboard-row-index': null,
+              'data-dashboard-stack-index': null,
+              'data-dashboard-col-local-index': null,
+              'data-dashboard-broken-src': 'media/missing.png',
               'data-dashboard-broken-type': 'image',
               title: 'media/missing.png / Image / 3 occurrences'
             }
@@ -188,6 +201,10 @@ describe('dashboard tree builders', () => {
               'data-dashboard-col-index': null,
               'data-dashboard-card-index': null,
               'data-dashboard-card-id': null,
+              'data-dashboard-row-index': null,
+              'data-dashboard-stack-index': null,
+              'data-dashboard-col-local-index': null,
+              'data-dashboard-broken-src': 'docs/missing.md',
               'data-dashboard-broken-type': 'include',
               title: 'docs/missing.md / Include / File not found'
             }

@@ -129,6 +129,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Slides',
         firstCardId: null,
         firstColumnIndex: 0,
+        firstRowIndex: 0,
+        firstStackIndex: 0,
+        firstColLocalIndex: 0,
         extension: 'md',
         mediaCategory: ''
       },
@@ -139,6 +142,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Notes',
         firstCardId: null,
         firstColumnIndex: 1,
+        firstRowIndex: 0,
+        firstStackIndex: 0,
+        firstColLocalIndex: 1,
         extension: 'md',
         mediaCategory: ''
       }
@@ -189,6 +195,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Imported Notes',
         firstCardId: null,
         firstColumnIndex: 0,
+        firstRowIndex: 0,
+        firstStackIndex: 0,
+        firstColLocalIndex: 0,
         extension: 'png',
         mediaCategory: 'image'
       }
@@ -202,6 +211,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Imported Notes',
         firstCardId: null,
         firstColumnIndex: 0,
+        firstRowIndex: 0,
+        firstStackIndex: 0,
+        firstColLocalIndex: 0,
         extension: 'md',
         mediaCategory: ''
       },
@@ -212,6 +224,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Imported Notes',
         firstCardId: null,
         firstColumnIndex: 0,
+        firstRowIndex: 0,
+        firstStackIndex: 0,
+        firstColLocalIndex: 0,
         extension: 'md',
         mediaCategory: ''
       }
@@ -253,6 +268,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Attachments',
         firstCardId: null,
         firstColumnIndex: 0,
+        firstRowIndex: 0,
+        firstStackIndex: 0,
+        firstColLocalIndex: 0,
         extension: 'pdf',
         mediaCategory: ''
       },
@@ -263,6 +281,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Attachments',
         firstCardId: null,
         firstColumnIndex: 0,
+        firstRowIndex: 0,
+        firstStackIndex: 0,
+        firstColLocalIndex: 0,
         extension: 'md',
         mediaCategory: ''
       }
@@ -308,6 +329,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Attachments',
         firstCardId: null,
         firstColumnIndex: 4,
+        firstRowIndex: null,
+        firstStackIndex: null,
+        firstColLocalIndex: null,
         extension: 'pdf',
         mediaCategory: ''
       },
@@ -318,6 +342,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Attachments',
         firstCardId: null,
         firstColumnIndex: 4,
+        firstRowIndex: null,
+        firstStackIndex: null,
+        firstColLocalIndex: null,
         extension: 'md',
         mediaCategory: ''
       }
@@ -331,6 +358,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Attachments',
         firstCardId: null,
         firstColumnIndex: null,
+        firstRowIndex: null,
+        firstStackIndex: null,
+        firstColLocalIndex: null,
         extension: 'md',
         mediaCategory: ''
       },
@@ -341,6 +371,9 @@ describe('dashboard inventory helpers', () => {
         firstContextLabel: 'Attachments',
         firstCardId: null,
         firstColumnIndex: null,
+        firstRowIndex: null,
+        firstStackIndex: null,
+        firstColLocalIndex: null,
         extension: 'md',
         mediaCategory: ''
       }
@@ -379,14 +412,20 @@ describe('dashboard inventory helpers', () => {
         src: 'media/missing.png',
         colIndex: 2,
         cardIndex: 5,
-        cardId: ''
+        cardId: '',
+        rowIndex: null,
+        stackIndex: null,
+        colLocalIndex: null
       },
       {
         type: 'include',
         src: 'docs/missing.md',
         colIndex: -1,
         cardIndex: -1,
-        cardId: ''
+        cardId: '',
+        rowIndex: null,
+        stackIndex: null,
+        colLocalIndex: null
       }
     ]);
   });
@@ -426,6 +465,9 @@ describe('dashboard inventory helpers', () => {
         colIndex: -1,
         cardIndex: -1,
         cardId: '',
+        rowIndex: null,
+        stackIndex: null,
+        colLocalIndex: null,
         reason: 'Blocked by iframe policy'
       },
       {
@@ -433,7 +475,10 @@ describe('dashboard inventory helpers', () => {
         src: 'media/missing-diagram.png',
         colIndex: 1,
         cardIndex: 2,
-        cardId: ''
+        cardId: '',
+        rowIndex: null,
+        stackIndex: null,
+        colLocalIndex: null
       }
     ]);
   });
@@ -473,7 +518,10 @@ describe('dashboard inventory helpers', () => {
         src: 'iframe/missing.png',
         colIndex: 7,
         cardIndex: 3,
-        cardId: ''
+        cardId: '',
+        rowIndex: null,
+        stackIndex: null,
+        colLocalIndex: null
       }
     ]);
   });
