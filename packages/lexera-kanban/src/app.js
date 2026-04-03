@@ -7822,56 +7822,15 @@ var LexeraDashboard = (function () {
     }
     colEl.appendChild(cardsEl);
 
-    var showInlineAddComposer = addCardColumn === col.index;
-    var showEmptyColumnAddButton = col.cards.length === 0;
-    var footer = null;
-    if (showInlineAddComposer || showEmptyColumnAddButton) {
-      footer = document.createElement('div');
+    if (col.cards.length === 0) {
+      var footer = document.createElement('div');
       footer.className = 'column-footer';
-
-      if (showInlineAddComposer) {
-        footer.innerHTML =
-          '<textarea class="add-card-input" placeholder="Card content..." autofocus></textarea>' +
-          '<div class="add-card-actions">' +
-          '<button class="btn-small btn-primary add-card-submit">Add</button>' +
-          '<button class="btn-small btn-cancel add-card-cancel">Cancel</button>' +
-          '</div>';
-
-        (function (colIndex) {
-          var textarea = footer.querySelector('.add-card-input');
-          footer.querySelector('.add-card-submit').addEventListener('click', function () {
-            submitCard(colIndex, textarea.value);
-          });
-          footer.querySelector('.add-card-cancel').addEventListener('click', function () {
-            hideInlineAddComposer(colIndex);
-          });
-          textarea.addEventListener('keydown', function (e) {
-            if (handleTextareaTabIndent(e, textarea)) return;
-            if (e.key === 'Enter' && e.altKey) {
-              e.preventDefault();
-              e.stopPropagation();
-              hideInlineAddComposer(colIndex);
-              return;
-            }
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              submitCard(colIndex, textarea.value);
-            }
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              hideInlineAddComposer(colIndex);
-            }
-          });
-          requestAnimationFrame(function () { textarea.focus(); });
-        })(col.index);
-      } else {
-        var cardSource = renderCreationSource('card', { colIndex: col.index }, {
-          btnClass: 'add-card-btn',
-          btnText: '+ Add card',
-          wrapperClass: 'creation-source-card'
-        });
-        footer.appendChild(cardSource);
-      }
-
+      var cardSource = renderCreationSource('card', { colIndex: col.index }, {
+        btnClass: 'add-card-btn',
+        btnText: '+ Add card',
+        wrapperClass: 'creation-source-card'
+      });
+      footer.appendChild(cardSource);
       colEl.appendChild(footer);
     }
     applyTagStyleToEntity(colEl, col.title || '');
@@ -10250,7 +10209,14 @@ var LexeraDashboard = (function () {
     });
     ActionRegistry.register('board', 'add-card', function () {
       var columns = activeBoardData ? activeBoardData.columns : [];
-      if (columns.length > 0) { showInlineAddComposer(columns[0].index); }
+      if (columns.length > 0) {
+        insertCardAtIndex(columns[0].index).then(function (ok) {
+          if (!ok) return;
+          var allCards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + columns[0].index + '"]');
+          var cardEl = allCards.length > 0 ? allCards[allCards.length - 1] : null;
+          if (cardEl) openCardEditor(cardEl, columns[0].index, parseInt(cardEl.getAttribute('data-card-index'), 10), 'inline');
+        });
+      }
     });
 
     // Fold
@@ -10762,7 +10728,20 @@ var LexeraDashboard = (function () {
     ActionRegistry.register('board', 'show-keyboard-shortcuts', function () { showKeyboardShortcutsHelp(); });
 
     // ----- Card scope -----
-    ActionRegistry.register('card', 'add-card', function (action, ctx) { showInlineAddComposer(ctx.colIndex); });
+    ActionRegistry.register('card', 'add-card', function (action, ctx) {
+      insertCardAtIndex(ctx.colIndex, typeof ctx.cardIndex === 'number' ? ctx.cardIndex + 1 : undefined).then(function (ok) {
+        if (!ok) return;
+        var insertIdx = typeof ctx.cardIndex === 'number' ? ctx.cardIndex + 1 : undefined;
+        var cardEl = insertIdx != null
+          ? getElColumnsContainer().querySelector('.card[data-col-index="' + ctx.colIndex + '"][data-card-index="' + insertIdx + '"]')
+          : null;
+        if (!cardEl) {
+          var allCards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"]');
+          cardEl = allCards.length > 0 ? allCards[allCards.length - 1] : null;
+        }
+        if (cardEl) openCardEditor(cardEl, ctx.colIndex, parseInt(cardEl.getAttribute('data-card-index'), 10), 'inline');
+      });
+    });
     ActionRegistry.register('card', 'edit', function (action, ctx) {
       var els = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"][data-card-index="' + ctx.cardIndex + '"]');
       if (els.length > 0) openCardEditor(els[0], ctx.colIndex, ctx.cardIndex, 'inline');
@@ -10831,7 +10810,14 @@ var LexeraDashboard = (function () {
       var colRootEl = colCardsEl ? colCardsEl.closest('.column') : null;
       if (colRootEl) enterColumnRename(colRootEl, ctx.colIndex);
     });
-    ActionRegistry.register('column', 'add-card', function (action, ctx) { showInlineAddComposer(ctx.colIndex); });
+    ActionRegistry.register('column', 'add-card', function (action, ctx) {
+      insertCardAtIndex(ctx.colIndex).then(function (ok) {
+        if (!ok) return;
+        var allCards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"]');
+        var cardEl = allCards.length > 0 ? allCards[allCards.length - 1] : null;
+        if (cardEl) openCardEditor(cardEl, ctx.colIndex, parseInt(cardEl.getAttribute('data-card-index'), 10), 'inline');
+      });
+    });
     ActionRegistry.register('column', 'add-card-top', function (action, ctx) { insertCardAtIndex(ctx.colIndex, 0); });
     ActionRegistry.register('column', 'paste-as-card', function (action, ctx) { pasteClipboardAsCard(ctx.colIndex); });
     ActionRegistry.register('column', 'smart-paste', function (action, ctx) { smartPasteAsCard(ctx.colIndex); });
