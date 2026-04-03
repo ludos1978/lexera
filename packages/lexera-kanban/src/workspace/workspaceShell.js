@@ -4303,7 +4303,6 @@
       return;
     }
     if (data.type === 'lexera-board-mutated') {
-      // Board data changed in an iframe — refresh the sidebar hierarchy
       var mutatedBoardId = data.boardId;
       if (mutatedBoardId) {
         var mutatedFrame = data.pane ? state.frameCache[data.pane] : null;

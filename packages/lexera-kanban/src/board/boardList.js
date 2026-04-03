@@ -788,13 +788,18 @@ var LexeraBoardList = (function () {
   }
 
   function getBoardHierarchyRows(boardId) {
+    // Always prefer the cache — it's updated from the iframe's fullBoardData
+    // via refreshBoardHierarchy. The activeBoardData in the parent window is
+    // stale in workspace shell mode (boards load in iframes, not the parent).
+    var cached = boardHierarchyCache[boardId];
+    if (cached && cached.rows) return cached.rows;
+    // Fallback: use activeBoardData only if no cache exists (non-workspace mode)
     var activeBoardId = _dep('activeBoardId');
     var activeBoardData = _dep('activeBoardData');
     if (boardId && boardId === activeBoardId && activeBoardData && activeBoardData.rows) {
       return activeBoardData.rows;
     }
-    var cached = boardHierarchyCache[boardId];
-    return cached && cached.rows ? cached.rows : null;
+    return null;
   }
 
   function deleteBoardHierarchyCacheEntry(boardId) {
