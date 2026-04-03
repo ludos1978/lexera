@@ -4197,9 +4197,9 @@
 
       // If we have a cardId but no position, look it up in the iframe's board data
       if (target.cardId && target.rowIndex == null) {
-        var iframeRuntime = frame.contentWindow && frame.contentWindow.LexeraRuntime;
-        var boardData = iframeRuntime && typeof iframeRuntime.getState === 'function'
-          ? (iframeRuntime.getState('fullBoardData') || iframeRuntime.getState('activeBoardData'))
+        var iframeDash = frame.contentWindow && frame.contentWindow.LexeraDashboard;
+        var boardData = iframeDash && typeof iframeDash.getFullBoardData === 'function'
+          ? iframeDash.getFullBoardData()
           : null;
         var pos = findCardPositionInBoardData(boardData, target.cardId);
         if (pos) {
@@ -4302,6 +4302,25 @@
       activateTab(data.pane);
       return;
     }
+    if (data.type === 'lexera-board-mutated') {
+      // Board data changed in an iframe — refresh the sidebar hierarchy
+      var mutatedBoardId = data.boardId;
+      if (mutatedBoardId) {
+        var mutatedFrame = data.pane ? state.frameCache[data.pane] : null;
+        if (mutatedFrame && mutatedFrame.contentWindow) {
+          try {
+            var iframeApp = mutatedFrame.contentWindow.LexeraDashboard;
+            var fullBoard = iframeApp && typeof iframeApp.getFullBoardData === 'function'
+              ? iframeApp.getFullBoardData()
+              : null;
+            if (fullBoard && state.hooks && typeof state.hooks.refreshBoardHierarchy === 'function') {
+              state.hooks.refreshBoardHierarchy(mutatedBoardId, fullBoard);
+            }
+          } catch (e) { /* ignore */ }
+        }
+      }
+      return;
+    }
     if (data.type === 'lexera-pane-board-change') {
       var found = findTab(state.dockTree, data.pane);
       if (!found) return;
@@ -4344,12 +4363,29 @@
     var frame = state.frameCache[found.tab.id];
     if (!frame || !frame.contentWindow) return false;
     try {
-      var iframeApp = frame.contentWindow.LexeraDashboard || frame.contentWindow;
-      if (iframeApp && typeof iframeApp.showElementContextMenu === 'function') {
-        iframeApp.showElementContextMenu(scope, x, y, ctx);
+      var iframeApp = frame.contentWindow.LexeraDashboard;
+      if (!iframeApp || typeof iframeApp.showElementContextMenu !== 'function') return false;
+      // Use parent's Tauri IPC to show native menu, then dispatch in iframe
+      var iframeRSM = frame.contentWindow.LexeraRowStackMenu;
+      if (!iframeRSM || typeof iframeRSM.buildContextMenuItemsAndContext !== 'function') return false;
+      var built = iframeRSM.buildContextMenuItemsAndContext(scope, ctx);
+      // buildContextMenuItemsAndContext resolves colIndex from the iframe's
+      // board data. Update ctx from the enriched context.
+      if (built.context && built.context.colIndex != null) {
+        ctx.colIndex = built.context.colIndex;
+      }
+      if (!built || !built.items || built.items.length === 0) return false;
+      if (state.hooks && typeof state.hooks.showNativeMenu === 'function') {
+        state.hooks.showNativeMenu(built.items, x, y).then(function (action) {
+          if (!action) return;
+          var iframeActionRegistry = frame.contentWindow.LexeraActionRegistry;
+          if (iframeActionRegistry && typeof iframeActionRegistry.dispatch === 'function') {
+            iframeActionRegistry.dispatch(scope, action, built.context);
+          }
+        });
         return true;
       }
-    } catch (e) { /* cross-origin */ }
+    } catch (e) { /* cross-origin or access error */ }
     return false;
   }
 

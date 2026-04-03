@@ -40,17 +40,32 @@ var LexeraRowStackMenu = (function () {
     });
   }
 
-  function showElementContextMenu(scope, x, y, rawContext) {
-    closeRowStackMenu();
-    deps.closeColumnContextMenu();
-    deps.closeCardContextMenu();
-
+  function buildEnrichedContext(scope, rawContext) {
     var context = {};
     var keys = Object.keys(rawContext || {});
     for (var ck = 0; ck < keys.length; ck++) context[keys[ck]] = rawContext[keys[ck]];
     context.scope = scope;
 
-    // Prepare scope-specific context fields
+    // Resolve colIndex from row/stack/colLocal if missing
+    if ((scope === 'card' || scope === 'column') && (context.colIndex == null || context.colIndex < 0) &&
+        typeof context.rowIdx === 'number' && typeof context.stackIdx === 'number' && typeof context.colLocalIdx === 'number') {
+      var activeBoardData = deps.getActiveBoardData();
+      if (activeBoardData && activeBoardData.rows) {
+        var resolveRows = activeBoardData.rows;
+        for (var rri = 0; rri < resolveRows.length; rri++) {
+          var resolveStacks = resolveRows[rri].stacks || [];
+          for (var rsi = 0; rsi < resolveStacks.length; rsi++) {
+            var resolveCols = resolveStacks[rsi].columns || [];
+            for (var rci = 0; rci < resolveCols.length; rci++) {
+              if (rri === context.rowIdx && rsi === context.stackIdx && rci === context.colLocalIdx) {
+                context.colIndex = resolveCols[rci].index;
+              }
+            }
+          }
+        }
+      }
+    }
+
     if (scope === 'card') {
       var col = deps.getFullColumn(context.colIndex);
       var cardText = '';
@@ -90,13 +105,26 @@ var LexeraRowStackMenu = (function () {
       var stack = deps.findFullDataStack(context.rowIdx, context.stackIdx);
       context.elementText = stack ? (stack.title || '') : '';
     }
+    return context;
+  }
 
+  function buildContextMenuItemsAndContext(scope, rawContext) {
+    var context = buildEnrichedContext(scope, rawContext);
     var items = MenuContributorRegistry.buildMenu(scope, context);
+    return { items: items, context: context };
+  }
+
+  function showElementContextMenu(scope, x, y, rawContext) {
+    closeRowStackMenu();
+    deps.closeColumnContextMenu();
+    deps.closeCardContextMenu();
+
+    var built = buildContextMenuItemsAndContext(scope, rawContext);
     var traceTarget = scope + '.menu';
 
-    deps.showNativeMenu(items, x, y, traceTarget).then(function (action) {
+    deps.showNativeMenu(built.items, x, y, traceTarget).then(function (action) {
       if (!action) return;
-      ActionRegistry.dispatch(scope, action, context);
+      ActionRegistry.dispatch(scope, action, built.context);
     }).catch(function (err) {
       deps.logFrontendIssue('error', traceTarget, scope + ' menu action failed', err);
     });
@@ -881,6 +909,7 @@ var LexeraRowStackMenu = (function () {
     showStackContextMenu: showStackContextMenu,
     showCanvasBackgroundContextMenu: showCanvasBackgroundContextMenu,
     showElementContextMenu: showElementContextMenu,
+    buildContextMenuItemsAndContext: buildContextMenuItemsAndContext,
     renameRowOrStack: renameRowOrStack,
     loadTemplatesOnce: loadTemplatesOnce,
     renderCreationSource: renderCreationSource,

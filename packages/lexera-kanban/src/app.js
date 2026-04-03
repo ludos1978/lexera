@@ -885,7 +885,8 @@ var LexeraDashboard = (function () {
     parseLocalFileReference: function (p) { return parseLocalFileReference(p); },
     isExternalHttpUrl: function (value) { return isExternalHttpUrl(value); },
     getFileExtension: function (path) { return getFileExtension(path); },
-    getMediaCategory: function (ext) { return getMediaCategory(ext); }
+    getMediaCategory: function (ext) { return getMediaCategory(ext); },
+    showNativeMenu: function (items, x, y) { return showNativeMenu(items, x, y); }
   };
 
   var _resolvedOrderHelpers = null;
@@ -5279,6 +5280,16 @@ var LexeraDashboard = (function () {
       if (saveBase) {
         traceBoardIdentityPair('info', 'board.persist.identity', 'Identity comparison after board mutation against save base', activeBoardId, 'local', fullBoardData, 'saveBase', saveBase);
       }
+    }
+    // Notify parent window (workspace shell) that board data changed
+    if (embeddedMode && window.parent && window.parent !== window) {
+      try {
+        window.parent.postMessage({
+          type: 'lexera-board-mutated',
+          boardId: activeBoardId,
+          pane: embeddedPaneId
+        }, '*');
+      } catch (e) { /* ignore */ }
     }
     return true;
   }
@@ -11127,6 +11138,10 @@ var LexeraDashboard = (function () {
     init();
   }
 
-  return { poll: poll, showElementContextMenu: showElementContextMenu };
+  return {
+    poll: poll,
+    showElementContextMenu: showElementContextMenu,
+    getFullBoardData: function () { return fullBoardData; }
+  };
 })();
 if (typeof window !== 'undefined') window.LexeraDashboard = LexeraDashboard;

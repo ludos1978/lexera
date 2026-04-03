@@ -923,6 +923,14 @@ var LexeraOrderHelpers = (function () {
       openWindow: function (payload) {
         if (!_dep('hasTauri')) return Promise.reject(new Error('Tauri unavailable'));
         return _callDep('tauriInvoke', 'open_new_window', payload || {});
+      },
+      showNativeMenu: function (items, x, y) {
+        return _callDep('showNativeMenu', items, x, y);
+      },
+      refreshBoardHierarchy: function (boardId, fullBoard) {
+        _callDep('setBoardHierarchyRows', boardId, fullBoard, '');
+        _callDep('invalidateBoardListFingerprint');
+        _callDep('renderBoardList');
       }
     });
     // Ensure hierarchy panel is visible after mount — guards against corrupted persisted state

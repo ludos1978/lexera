@@ -1376,25 +1376,31 @@ var LexeraBoardList = (function () {
   function _extractTreeNodeScopeCtx(node) {
     var scope = null;
     var ctx = {};
+    var rowIdx = parseInt(node.getAttribute('data-row-index') || '', 10);
+    var stackIdx = parseInt(node.getAttribute('data-stack-index') || '', 10);
+    var colLocalIdx = parseInt(node.getAttribute('data-col-local-index') || '', 10);
+    var colIdx = parseInt(node.getAttribute('data-col-index') || '', 10);
+    var cardIdx = parseInt(node.getAttribute('data-card-index') || '', 10);
     if (node.classList.contains('tree-card')) {
       scope = 'card';
-      var colIdx = node.getAttribute('data-col-index');
-      ctx.colIndex = colIdx != null ? parseInt(colIdx, 10) : -1;
-      ctx.cardIndex = parseInt(node.getAttribute('data-card-index') || '0', 10);
+      ctx.colIndex = isNaN(colIdx) ? -1 : colIdx;
+      ctx.cardIndex = isNaN(cardIdx) ? 0 : cardIdx;
+      ctx.rowIdx = isNaN(rowIdx) ? 0 : rowIdx;
+      ctx.stackIdx = isNaN(stackIdx) ? 0 : stackIdx;
+      ctx.colLocalIdx = isNaN(colLocalIdx) ? 0 : colLocalIdx;
     } else if (node.classList.contains('tree-column')) {
       scope = 'column';
-      var colIdx2 = node.getAttribute('data-col-index');
-      ctx.colIndex = colIdx2 != null ? parseInt(colIdx2, 10) : -1;
-      ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
-      ctx.stackIdx = parseInt(node.getAttribute('data-stack-index') || '0', 10);
-      ctx.colLocalIdx = parseInt(node.getAttribute('data-col-local-index') || '0', 10);
+      ctx.colIndex = isNaN(colIdx) ? -1 : colIdx;
+      ctx.rowIdx = isNaN(rowIdx) ? 0 : rowIdx;
+      ctx.stackIdx = isNaN(stackIdx) ? 0 : stackIdx;
+      ctx.colLocalIdx = isNaN(colLocalIdx) ? 0 : colLocalIdx;
     } else if (node.classList.contains('tree-stack')) {
       scope = 'stack';
-      ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
-      ctx.stackIdx = parseInt(node.getAttribute('data-stack-index') || '0', 10);
+      ctx.rowIdx = isNaN(rowIdx) ? 0 : rowIdx;
+      ctx.stackIdx = isNaN(stackIdx) ? 0 : stackIdx;
     } else if (node.classList.contains('tree-row')) {
       scope = 'row';
-      ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
+      ctx.rowIdx = isNaN(rowIdx) ? 0 : rowIdx;
     }
     return scope ? { scope: scope, ctx: ctx } : null;
   }

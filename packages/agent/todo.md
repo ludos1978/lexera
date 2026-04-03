@@ -2,8 +2,12 @@
 
 > Completed items moved to [todo-archive.md](todo-archive.md)
 
+- [ ] we need to finish fixhing the errors where changes in the worksapce (using the burger menu) is not applied to the view and vice -versa.
+
 - [ ] remove the "layout rows" in the dropdown menu > format
   - also add a separator betwen board layout (kanban / canvas)
+
+- [ ] adding a card from the column menu is allways adding a card, there is no option to cancel it! this might be a reason is doesnt work! remove the add and cancel buttons below!
 
 - [ ] add common shortcuts such as meta+w (close tab) etc.
 
