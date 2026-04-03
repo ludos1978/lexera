@@ -5281,15 +5281,20 @@ var LexeraDashboard = (function () {
         traceBoardIdentityPair('info', 'board.persist.identity', 'Identity comparison after board mutation against save base', activeBoardId, 'local', fullBoardData, 'saveBase', saveBase);
       }
     }
-    // Notify parent window (workspace shell) that board data changed
+    // Notify parent window (workspace shell) that board data changed.
+    // Deferred to next frame so the iframe's own render cycle completes first.
     if (embeddedMode && window.parent && window.parent !== window) {
-      try {
-        window.parent.postMessage({
-          type: 'lexera-board-mutated',
-          boardId: activeBoardId,
-          pane: embeddedPaneId
-        }, '*');
-      } catch (e) { /* ignore */ }
+      var mutatedBoardId = activeBoardId;
+      var mutatedPaneId = embeddedPaneId;
+      requestAnimationFrame(function () {
+        try {
+          window.parent.postMessage({
+            type: 'lexera-board-mutated',
+            boardId: mutatedBoardId,
+            pane: mutatedPaneId
+          }, '*');
+        } catch (e) { /* ignore */ }
+      });
     }
     return true;
   }
