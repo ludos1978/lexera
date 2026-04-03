@@ -1954,6 +1954,39 @@ textarea {
   --sidebar-tree-grip-col: 0px;
 }
 
+/* Burger menus in hierarchy tree — hidden by default, shown via setting */
+:root:not([data-sidebar-tree-menus="on"]) .board-list .tree-menu-btn {
+  display: none !important;
+}
+:root:not([data-sidebar-tree-menus="on"]) {
+  --sidebar-tree-action-col: 0px;
+}
+.board-list .tree-menu-btn {
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  width: var(--icon-button-size, 20px);
+  height: var(--icon-button-size, 20px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm, 3px);
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.board-list .tree-node:hover .tree-menu-btn {
+  opacity: 1;
+}
+.board-list .tree-menu-btn:hover {
+  opacity: 1;
+  color: var(--text-bright);
+  background: var(--bg-hover);
+}
+
 @container sidebar-tree (max-width: 270px) {
   .board-item-meta,
   .tree-meta {

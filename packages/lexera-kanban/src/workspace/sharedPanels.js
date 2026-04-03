@@ -271,6 +271,10 @@
             '<input class="lexera-shared-frontend-settings-sidebar-grips" type="checkbox">' +
             '<span>Drag icons</span>' +
           '</label>' +
+          '<label class="frontend-settings-toggle">' +
+            '<input class="lexera-shared-frontend-settings-sidebar-menus" type="checkbox">' +
+            '<span>Burger menus</span>' +
+          '</label>' +
         '</div>' +
       '</div>';
     return root;

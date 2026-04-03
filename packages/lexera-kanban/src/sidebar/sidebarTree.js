@@ -129,6 +129,7 @@
                 label: cardPreviewText(card.content),
                 type: 'card',
                 grip: true,
+                menu: true,
                 gripTitle: 'Drag to move',
                 hasToggle: false,
                 children: null,
@@ -155,6 +156,7 @@
             expanded: colExpanded,
             hasToggle: cardCount > 0,
             grip: true,
+            menu: true,
             children: cardNodes.length > 0 ? cardNodes : null,
             attrs: {
               'data-board-id': boardId,
@@ -174,6 +176,7 @@
           type: 'stack',
           expanded: stackExpanded,
           grip: true,
+          menu: true,
           children: colNodes,
           attrs: {
             'data-board-id': boardId,
@@ -191,6 +194,7 @@
         type: 'row',
         expanded: rowExpanded,
         grip: true,
+        menu: true,
         children: stackNodes,
         attrs: {
           'data-board-id': boardId,

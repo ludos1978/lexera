@@ -70,7 +70,8 @@ var LexeraAppearance = (function () {
     return {
       counts: source.counts !== false,
       presence: source.presence !== false,
-      grips: source.grips !== false
+      grips: source.grips !== false,
+      menus: !!source.menus
     };
   }
 
@@ -96,6 +97,7 @@ var LexeraAppearance = (function () {
       root.setAttribute('data-sidebar-tree-counts', sidebarTreeDisplayOptions.counts ? 'on' : 'off');
       root.setAttribute('data-sidebar-tree-presence', sidebarTreeDisplayOptions.presence ? 'on' : 'off');
       root.setAttribute('data-sidebar-tree-grips', sidebarTreeDisplayOptions.grips ? 'on' : 'off');
+      root.setAttribute('data-sidebar-tree-menus', sidebarTreeDisplayOptions.menus ? 'on' : 'off');
     }
     if (Settings) {
       Settings.set('sidebarTreeDisplay', sidebarTreeDisplayOptions);
@@ -114,7 +116,8 @@ var LexeraAppearance = (function () {
     return {
       counts: !!sidebarTreeDisplayOptions.counts,
       presence: !!sidebarTreeDisplayOptions.presence,
-      grips: !!sidebarTreeDisplayOptions.grips
+      grips: !!sidebarTreeDisplayOptions.grips,
+      menus: !!sidebarTreeDisplayOptions.menus
     };
   }
 
@@ -130,7 +133,8 @@ var LexeraAppearance = (function () {
     return [
       { id: 'toggle-sidebar-counts', label: _callDep('formatMenuToggleLabel', options.counts, 'Counts') },
       { id: 'toggle-sidebar-presence', label: _callDep('formatMenuToggleLabel', options.presence, 'Presence Badges') },
-      { id: 'toggle-sidebar-grips', label: _callDep('formatMenuToggleLabel', options.grips, 'Drag Icons') }
+      { id: 'toggle-sidebar-grips', label: _callDep('formatMenuToggleLabel', options.grips, 'Drag Icons') },
+      { id: 'toggle-sidebar-menus', label: _callDep('formatMenuToggleLabel', options.menus, 'Burger Menus') }
     ];
   }
 

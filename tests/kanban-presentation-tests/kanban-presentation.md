@@ -8,10 +8,10 @@ fontFamily: Poppins
 boardColor: #ffadad
 boardColorDark: #000033
 boardColorLight: #f5f5ff
-generation: 164
-contentHash: e1cc5ec5f2cf97a20973d36c6354f0400370487836b370558df9f4659d4affc1
-resolvedHash: 20d33596ea521204d945fe55c268b13a8f079b015774e08e054a5149c35be820
-writerId: dc2549c8-1825-42ec-b55a-f85ace50a9c1
+generation: 165
+contentHash: 48790914a14e892c307661709035a3094dab4de8c4e1a964b8a3ae25bed1d2cd
+resolvedHash: 1a819622fc35d1c3e65f96bd17f7c252231573ae51b91d639e5e1d0effe11009
+writerId: fd2566bb-5de3-49ef-8119-a29b6018f3b9
 stickyStackMode: top
 marp: true
 columnWidth: 350px
@@ -25,9 +25,9 @@ cardMinHeight: auto
 ### New Column A Lorem Ipsum Dolor Lorem Ipsum Dolor Lorem Ipsum Dolor
 - [ ] asdf
 
-## New Stack
+## New Stack #hidden-internal-deleted
 
-### New Column
+### New Column #hidden-internal-deleted
 
 ## New Stack
 

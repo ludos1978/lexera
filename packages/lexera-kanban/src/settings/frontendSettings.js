@@ -164,7 +164,8 @@
       var sidebarToggles = [
         ['sidebar-counts', 'counts'],
         ['sidebar-presence', 'presence'],
-        ['sidebar-grips', 'grips']
+        ['sidebar-grips', 'grips'],
+        ['sidebar-menus', 'menus']
       ];
       for (var s = 0; s < sidebarToggles.length; s++) {
         var sEl = q(root, sidebarToggles[s][0]);
@@ -228,6 +229,7 @@
     bindSidebarToggle('sidebar-counts', 'counts');
     bindSidebarToggle('sidebar-presence', 'presence');
     bindSidebarToggle('sidebar-grips', 'grips');
+    bindSidebarToggle('sidebar-menus', 'menus');
 
     // Tag group chips — remove chip on x click, add on input
     var tagScopes = ['card', 'column', 'stack', 'row'];

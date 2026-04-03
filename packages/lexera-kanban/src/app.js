@@ -10627,6 +10627,10 @@ var LexeraDashboard = (function () {
       var next = toggleSidebarTreeDisplayOption('grips');
       showNotification('Sidebar drag icons ' + (next.grips ? 'shown' : 'hidden'));
     });
+    ActionRegistry.register('board', 'toggle-sidebar-menus', function () {
+      var next = toggleSidebarTreeDisplayOption('menus');
+      showNotification('Sidebar burger menus ' + (next.menus ? 'shown' : 'hidden'));
+    });
     ActionRegistry.register('board', 'toggle-inspector', function () { toggleInspector(); });
     // Save/export/settings
     ActionRegistry.register('board', 'save-now', function () {
@@ -11123,6 +11127,6 @@ var LexeraDashboard = (function () {
     init();
   }
 
-  return { poll: poll };
+  return { poll: poll, showElementContextMenu: showElementContextMenu };
 })();
 if (typeof window !== 'undefined') window.LexeraDashboard = LexeraDashboard;

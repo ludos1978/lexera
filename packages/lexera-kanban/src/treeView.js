@@ -161,7 +161,9 @@ var TreeView = (function () {
     var countHtml = '<span class="tree-count' + (node.count != null ? '' : ' hidden') + '">' +
       (node.count != null ? esc(String(node.count)) : '') +
       '</span>';
-    var actionHtml = '<span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span>';
+    var actionHtml = node.menu
+      ? '<button class="tree-meta-action tree-menu-btn burger-menu-btn" title="Options" aria-haspopup="menu">\u2261</button>'
+      : '<span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span>';
     var gripHtml = showGrip
       ? '<span class="tree-grip entity-drag-icon entity-drag-icon-' + escAttr(node.type || 'card') + '" title="' + escAttr(node.gripTitle || 'Drag to reorder') + '">' + getNodeDragIconSvg(node.type) + '</span>'
       : '<span class="tree-grip tree-grip-spacer" aria-hidden="true"></span>';

@@ -4337,6 +4337,22 @@
     return true;
   }
 
+  function showContextMenuInBoardFrame(boardId, scope, x, y, ctx) {
+    if (!boardId) return false;
+    var found = findLeafContainingBoard(state.dockTree, boardId);
+    if (!found) return false;
+    var frame = state.frameCache[found.tab.id];
+    if (!frame || !frame.contentWindow) return false;
+    try {
+      var iframeApp = frame.contentWindow.LexeraDashboard || frame.contentWindow;
+      if (iframeApp && typeof iframeApp.showElementContextMenu === 'function') {
+        iframeApp.showElementContextMenu(scope, x, y, ctx);
+        return true;
+      }
+    } catch (e) { /* cross-origin */ }
+    return false;
+  }
+
   function getActiveBoardColumnsContainer() {
     var activeTab = getActiveTab();
     if (!activeTab || isPanelTab(activeTab)) return null;
@@ -4671,6 +4687,7 @@
     openBoard: openBoard,
     ensureInitialTab: ensureInitialTab,
     focusHierarchyTarget: focusHierarchyTarget,
+    showContextMenuInBoardFrame: showContextMenuInBoardFrame,
     handleBoardAction: handleBoardAction,
     revealPanel: function (panelId) {
       return setPanelVisibility(panelId, true, { activate: true });

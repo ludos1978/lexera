@@ -1373,6 +1373,42 @@ var LexeraBoardList = (function () {
     }
   }
 
+  function _extractTreeNodeScopeCtx(node) {
+    var scope = null;
+    var ctx = {};
+    if (node.classList.contains('tree-card')) {
+      scope = 'card';
+      var colIdx = node.getAttribute('data-col-index');
+      ctx.colIndex = colIdx != null ? parseInt(colIdx, 10) : -1;
+      ctx.cardIndex = parseInt(node.getAttribute('data-card-index') || '0', 10);
+    } else if (node.classList.contains('tree-column')) {
+      scope = 'column';
+      var colIdx2 = node.getAttribute('data-col-index');
+      ctx.colIndex = colIdx2 != null ? parseInt(colIdx2, 10) : -1;
+      ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
+      ctx.stackIdx = parseInt(node.getAttribute('data-stack-index') || '0', 10);
+      ctx.colLocalIdx = parseInt(node.getAttribute('data-col-local-index') || '0', 10);
+    } else if (node.classList.contains('tree-stack')) {
+      scope = 'stack';
+      ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
+      ctx.stackIdx = parseInt(node.getAttribute('data-stack-index') || '0', 10);
+    } else if (node.classList.contains('tree-row')) {
+      scope = 'row';
+      ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
+    }
+    return scope ? { scope: scope, ctx: ctx } : null;
+  }
+
+  function _showTreeNodeContextMenu(boardId, node, x, y, workspaceShellEnabled, WorkspaceShell) {
+    var result = _extractTreeNodeScopeCtx(node);
+    if (!result) return;
+    if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.showContextMenuInBoardFrame === 'function') {
+      WorkspaceShell.showContextMenuInBoardFrame(boardId, result.scope, x, y, result.ctx);
+    } else {
+      _callDep('showElementContextMenu', result.scope, x, y, result.ctx);
+    }
+  }
+
   /** Bind all event listeners on a board wrapper (toggle, tree clicks, board click, context menu). */
   function _bindBoardWrapperEvents(wrapperEl, boardId, boardIndex, boardFilePath, workspaceShellEnabled, WorkspaceShell) {
     (function (boardId, boardIndex, wrapperEl, boardFilePath) {
@@ -1425,6 +1461,17 @@ var LexeraBoardList = (function () {
           // Grip click — do nothing (grip is for drag only)
           if (target.classList.contains('tree-grip')) {
             e.stopPropagation();
+            return;
+          }
+
+          // Menu button click — open context menu for this node
+          if (target.classList.contains('tree-menu-btn')) {
+            e.stopPropagation();
+            var menuNode = target.closest('.tree-node');
+            if (menuNode) {
+              var btnRect = target.getBoundingClientRect();
+              _showTreeNodeContextMenu(boardId, menuNode, btnRect.right, btnRect.bottom, workspaceShellEnabled, WorkspaceShell);
+            }
             return;
           }
 
@@ -1488,31 +1535,7 @@ var LexeraBoardList = (function () {
           if (!node) return;
           e.preventDefault();
           e.stopPropagation();
-          var scope = null;
-          var ctx = {};
-          if (node.classList.contains('tree-card')) {
-            scope = 'card';
-            var colIdx = node.getAttribute('data-col-index');
-            ctx.colIndex = colIdx != null ? parseInt(colIdx, 10) : -1;
-            ctx.cardIndex = parseInt(node.getAttribute('data-card-index') || '0', 10);
-          } else if (node.classList.contains('tree-column')) {
-            scope = 'column';
-            var colIdx2 = node.getAttribute('data-col-index');
-            ctx.colIndex = colIdx2 != null ? parseInt(colIdx2, 10) : -1;
-            ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
-            ctx.stackIdx = parseInt(node.getAttribute('data-stack-index') || '0', 10);
-            ctx.colLocalIdx = parseInt(node.getAttribute('data-col-local-index') || '0', 10);
-          } else if (node.classList.contains('tree-stack')) {
-            scope = 'stack';
-            ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
-            ctx.stackIdx = parseInt(node.getAttribute('data-stack-index') || '0', 10);
-          } else if (node.classList.contains('tree-row')) {
-            scope = 'row';
-            ctx.rowIdx = parseInt(node.getAttribute('data-row-index') || '0', 10);
-          }
-          if (scope) {
-            _callDep('showElementContextMenu', scope, e.clientX, e.clientY, ctx);
-          }
+          _showTreeNodeContextMenu(boardId, node, e.clientX, e.clientY, workspaceShellEnabled, WorkspaceShell);
         });
 
         // Tree DnD is handled by the pointer-based drag system (mousedown on getElBoardList())

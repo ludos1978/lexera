@@ -3,11 +3,12 @@
 kanban-plugin: board
 
 fontSize: 1_0x
-generation: 971
-contentHash: cc0f10d38e2212a16530fa33e241b8cc92c1526ff7588542439ba183fe061739
-resolvedHash: f4ea696da521206debe7a106b992547237176dd3690b9678c25d184741555d87
-writerId: 63d2b5e3-b89d-45bf-9324-5b743fd96ac0
+generation: 975
+contentHash: 2750b8a27403e78736b92caeb60d9012dbe2d8ae83e3bb9a8a572757961a9b0e
+resolvedHash: b287ad8cd3cf4b454116ae80ac27db820ea64aa6695e4815c3e8233479a8e8ab
+writerId: fd2566bb-5de3-49ef-8119-a29b6018f3b9
 stickyStackMode: top
+columnWidth: 450px
 ---
 
 # ROW
@@ -19,17 +20,8 @@ stickyStackMode: top
   ![draw.drawio](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/draw.drawio)
 - [ ] excali
   ![excali.excalidraw](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/excali.excalidraw)
-- [ ] ## graph styles
+- [ ] ## graph styles #hidden-internal-deleted
   This file tests various Mermaid diagram types for the Markdown Kanban extension. 
-- [ ] Test 1: Simple Flowchart
-  ```mermaid
-  graph TD
-    A[Start] --> B{Is it working?}
-    B -->|Yes| C[Great!]
-    B -->|No| D[Debug]
-    D --> B
-    C --> E[End]
-  ```
 - [ ] Test 2: Sequence Diagram
   ```mermaid
   sequenceDiagram
@@ -128,8 +120,86 @@ stickyStackMode: top
   
   
 - [ ] the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
+- [ ] Test 1: Simple Flowchart
+  ```mermaid
+  graph TD
+    A[Start] --> B{Is it working?}
+    B -->|Yes| C[Great!]
+    B -->|No| D[Debug]
+    D --> B
+    C --> E[End]
+  ```
+
+## New Stack
+
+### New Column
 
 ## Mermaid Diagram Tests 13 {w:217, x:74, y:-401}
+
+### Mermaid Diagram Tests 13
+- [ ] Test 1: Simple Sequence Diagram
+  ```plantuml
+  Alice -> Bob: Authentication Request
+  Bob -> Alice: Authentication Response
+  ```
+- [ ] Test 2: Class Diagram
+  ```plantuml
+  class User {
+    +name: string
+    +email: string
+    +login()
+    +logout()
+  }
+  
+  class Admin {
+    +permissions: string[]
+    +grantAccess()
+  }
+  
+  User <|-- Admin
+  ```
+- [ ] Test 3: Activity Diagram
+  ```plantuml
+  start
+  :Read markdown file;
+  if (Contains PlantUML?) then (yes)
+    :Render PlantUML diagrams;
+    :Show Convert button;
+  else (no)
+    :Skip PlantUML processing;
+  endif
+  :Display markdown;
+  stop
+  ```
+- [ ] Test 4: Component Diagram
+  ```plantuml
+  [Frontend] --> [Markdown Renderer]
+  [Markdown Renderer] --> [PlantUML.js]
+  [PlantUML.js] --> [WASM Engine]
+  [Frontend] --> [Backend]
+  [Backend] --> [File System]
+  ```
+- [ ] Test 5: State Diagram
+  ```plantuml
+  [*] --> Placeholder
+  Placeholder --> Rendering: Queue Processing
+  Rendering --> Rendered: SVG Ready
+  Rendering --> Error: Render Failed
+  Rendered --> [*]
+  Error --> [*]
+  ```
+- [ ] Expected Behavior
+  1. All diagrams should render with a brief placeholder flash
+  2. Each diagram should have a "💾 Convert to SVG" button
+  3. Clicking the button should:
+    - Create `Media-test-plantuml/` folder
+    - Save SVG file as `plantuml-{timestamp}.svg`
+    - Comment out PlantUML code
+    - Replace with `![PlantUML Diagram](Media-test-plantuml/plantuml-{timestamp}.svg)`
+    - Reload the file
+  4. Second render should be instant (cache hit)
+  
+  
 
 ### Mermaid Diagram Tests 13
 - [ ] Test 1: Simple Sequence Diagram
