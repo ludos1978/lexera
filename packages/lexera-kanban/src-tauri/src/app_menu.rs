@@ -194,15 +194,6 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&MenuItemBuilder::with_id("fmt-font-consolas", "Consolas").build(app)?)
         .build()?;
 
-    let layout_rows_sub = SubmenuBuilder::new(app, "Layout Rows")
-        .item(&MenuItemBuilder::with_id("fmt-rows-1", "1 Row").build(app)?)
-        .item(&MenuItemBuilder::with_id("fmt-rows-2", "2 Rows").build(app)?)
-        .item(&MenuItemBuilder::with_id("fmt-rows-3", "3 Rows").build(app)?)
-        .item(&MenuItemBuilder::with_id("fmt-rows-4", "4 Rows").build(app)?)
-        .item(&MenuItemBuilder::with_id("fmt-rows-5", "5 Rows").build(app)?)
-        .item(&MenuItemBuilder::with_id("fmt-rows-6", "6 Rows").build(app)?)
-        .build()?;
-
     let row_height_sub = SubmenuBuilder::new(app, "Row Height")
         .item(&MenuItemBuilder::with_id("fmt-row-height-auto", "Auto").build(app)?)
         .separator()
@@ -237,10 +228,10 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&font_size_sub)
         .item(&font_family_sub)
         .separator()
-        .item(&layout_rows_sub)
+        .item(&board_layout_sub)
+        .separator()
         .item(&row_height_sub)
         .item(&layout_preset_sub)
-        .item(&board_layout_sub)
         .build()?;
 
     // ── Go menu ──
@@ -425,12 +416,6 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("fmt-font-sourcecodepro", "set-font-family:sourcecodepro"),
     ("fmt-font-consolas", "set-font-family:consolas"),
     // Format – layout rows
-    ("fmt-rows-1", "set-layout-rows:1"),
-    ("fmt-rows-2", "set-layout-rows:2"),
-    ("fmt-rows-3", "set-layout-rows:3"),
-    ("fmt-rows-4", "set-layout-rows:4"),
-    ("fmt-rows-5", "set-layout-rows:5"),
-    ("fmt-rows-6", "set-layout-rows:6"),
     // Format – row height
     ("fmt-row-height-auto", "set-row-height:auto"),
     ("fmt-row-height-300", "set-row-height:300px"),

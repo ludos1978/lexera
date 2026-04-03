@@ -10311,20 +10311,6 @@ var LexeraDashboard = (function () {
       ]
     });
     BoardSettingRegistry.register({
-      id: 'layoutRows', label: 'Layout Rows', category: 'format',
-      settingsKey: 'layoutRows', actionPrefix: 'set-layout-rows', defaultValue: '1',
-      normalize: function (v) {
-        var n = parseInt(v, 10);
-        if (!isFinite(n) || n < 1) n = 1; if (n > 6) n = 6;
-        return String(n);
-      },
-      options: [
-        { value: '1', label: '1 Row' }, { value: '2', label: '2 Rows' },
-        { value: '3', label: '3 Rows' }, { value: '4', label: '4 Rows' },
-        { value: '5', label: '5 Rows' }, { value: '6', label: '6 Rows' }
-      ]
-    });
-    BoardSettingRegistry.register({
       id: 'rowHeight', label: 'Row Height', category: 'format',
       settingsKey: 'rowHeight', actionPrefix: 'set-row-height', defaultValue: 'auto',
       normalize: function (v) { return String(v || 'auto').trim().toLowerCase(); },
