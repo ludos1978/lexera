@@ -466,6 +466,7 @@ var LexeraDashboard = (function () {
     setLastLoadedRevision: function (v) { _lastLoadedRevision = v; },
     setPendingExternalRebaseConflict: function (v) { pendingExternalRebaseConflict = v; },
     getSidebarTreeApi: function () { return getSidebarTreeApi(); },
+    getHierarchyControllerApi: function () { return getHierarchyControllerApi(); },
     stripLayoutTags: function (t) { return stripLayoutTags(t); },
     getDisplayOrderedColumnEntries: function (cols, opts) { return getDisplayOrderedColumnEntries(cols, opts); },
     getOrderedItems: function (items, key, fn) { return getOrderedItems(items, key, fn); },
@@ -968,6 +969,7 @@ var LexeraDashboard = (function () {
     getSharedPanelRoots: function (kind) { return getSharedPanelRoots(kind); },
     syncMirroredWorkspaceViews: function () { return syncMirroredWorkspaceViews(); },
     getDashboardTreeApi: function () { return getDashboardTreeApi(); },
+    getHierarchyControllerApi: function () { return getHierarchyControllerApi(); },
     TreeView: TreeView,
     navigateToSearchResult: function (r) { return navigateToSearchResult(r); },
     requestFileInfo: function (b, f) { return requestFileInfo(b, f); },
@@ -2270,6 +2272,7 @@ var LexeraDashboard = (function () {
     setPendingExternalRebaseConflict: function(conflict) { pendingExternalRebaseConflict = conflict; },
     tauriInvoke: function(cmd, args) { return window.__TAURI__ && window.__TAURI__.core.invoke(cmd, args); },
     getSidebarTreeApi: function() { return getSidebarTreeApi(); },
+    getHierarchyControllerApi: function () { return getHierarchyControllerApi(); },
     stripLayoutTags: function(text) { return stripLayoutTags(text); },
     getDisplayOrderedColumnEntries: function(cols, opts) { return getDisplayOrderedColumnEntries(cols, opts); },
     getOrderedItems: function(items, key, fn) { return getOrderedItems(items, key, fn); },
@@ -6896,6 +6899,11 @@ var LexeraDashboard = (function () {
   function getDashboardTreeApi() {
     if (typeof globalThis !== 'undefined' && globalThis.LexeraDashboardTree) return globalThis.LexeraDashboardTree;
     throw new Error('LexeraDashboardTree is unavailable');
+  }
+
+  function getHierarchyControllerApi() {
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraHierarchyController) return globalThis.LexeraHierarchyController;
+    throw new Error('LexeraHierarchyController is unavailable');
   }
 
   function getFoldStateApi() {

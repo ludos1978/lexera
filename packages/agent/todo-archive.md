@@ -1,5 +1,57 @@
 # Lexera Kanban — Completed Items Archive
 
+## Archived During Backlog Cleanup — 2026-04-05
+
+### Completed items moved out of the active backlog
+- [x] CSS-only add-affordance visibility for empty row/stack/column children.
+- [x] Empty Excalidraw / Draw.io creation through the generic entity insertion path.
+- [x] Workspace overflow/burger menu contrast fix.
+- [x] Backend Settings configuration-tab removal while preserving functionality.
+- [x] Workspace burger/context menu dispatch via iframe and live hierarchy sync.
+- [x] Cross-board drag bridge symmetry and copy/trash source handling.
+- [x] Direct add-card insertion without the old Add/Cancel composer.
+- [x] Format menu cleanup for `Layout Rows` / `Board Layout`.
+- [x] Keyboard shortcut audit plus the first workspace-shell shortcut wave.
+- [x] Dashboard search-result focus navigation.
+- [x] Workspace config global-sync settings and follow-up fixes.
+- [x] Column/card drag-drop geometry fix.
+- [x] Dashboard layout collapse and no-focus refresh behavior.
+- [x] Per-stack and board-default stack width settings.
+- [x] Recovery-copy error explanation surfaced to the user.
+- [x] Copy row/stack/column as formatted HTML.
+- [x] Kanban font-size unification.
+- [x] Embed/include menu restructuring.
+- [x] Delete-row and related delete refresh fixes.
+- [x] Targeted board re-render pipeline refactor.
+- [x] Quick-capture monitor-change detection implemented in the backend. Remaining work is manual cross-platform verification and stays in `todo.md`.
+
+### Architecture milestones moved out of the active backlog
+- [x] Hierarchy sync enforcement rollout completed.
+  - Enumerate `fullBoardData` writers.
+  - Introduce `commitLocalBoardChange(...)`.
+  - Migrate polling/live-sync/rebase/cross-board writers.
+  - Seal hierarchy-cache writes.
+  - Collapse hierarchy refresh APIs.
+  - Disable the hierarchy pipeline inside embedded iframes.
+  - Keep `boards[] / remoteBoards[] / workspaces[]` polling in the parent realm.
+  - Add regression tests and SPEC contract docs.
+- [x] Hierarchy sync follow-up fixes completed.
+  - Load-path sync leak fixed.
+  - Raw `activeBoardData = ...` writes removed.
+  - In-place `activeBoardData` mutations routed through the runtime bridge.
+  - Stable row/stack/column/card ids adopted for hierarchy focus and most move paths.
+- [x] Shared hierarchy interaction controller introduced for Workspace and Dashboard.
+- [x] Legacy-converter call-site parity / invariant baseline added.
+- [x] Divider-resize, dashboard pending-flag, workspace-shell testability, and capture watcher tests moved out of the active backlog.
+
+### Superseded or decomposed during cleanup
+- [x] ~~make another attempt at unifying the hierarchies we have~~ — planning phase completed; remaining implementation now lives under the structured hierarchy-unification track in `todo.md`.
+- [x] ~~there must be one update path if elements are changed in the structure of the kanban/canvas, and another one if content is changed within the boards~~ — decomposed into the active board/session pipeline and hierarchy-unification tracks in `todo.md`.
+- [x] ~~Single-source cleanup pass~~ — replaced with concrete architecture and legacy-retirement items in `todo.md`.
+- [x] ~~Email/filesystem sources, office editor, build pipeline, typed API~~ — removed from the active backlog until a concrete product spec exists.
+- [x] ~~Panel anatomy, tag styling, style regression, hit areas, plugins~~ — removed from the active backlog until a concrete product spec exists.
+- [x] ~~Per-user isolation, universal view contract, legacy path retirement~~ — legacy-path work is now tracked concretely in `todo.md`; the remaining broad items are parked until they have an explicit product requirement.
+
 - [x] ~~missing include file logged as ERROR~~ (7d0f9a68, 19cacdb3) — downgraded to warn, shown in dashboard broken elements
 - [x] ~~add status informations to all views~~ (a310c52c) — generic .view-loading/.view-empty CSS system + LexeraRuntime helpers
 - [x] ~~when closing a view the board re-renders~~ — investigated: no JS renderColumns() is called; the visual change is browser CSS reflow from the pane resizing, which is expected

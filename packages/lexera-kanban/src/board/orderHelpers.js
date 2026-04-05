@@ -2042,8 +2042,74 @@ var LexeraOrderHelpers = (function () {
     return Promise.resolve(null);
   }
 
+  function getHierarchyControllerApi() {
+    var api = _callDep('getHierarchyControllerApi');
+    if (api) return api;
+    return _global && _global.LexeraHierarchyController ? _global.LexeraHierarchyController : null;
+  }
+
+  function activateDashboardTreeNode(node) {
+    if (!node) return;
+    var target = String(node.getAttribute('data-dashboard-target') || '').trim();
+    if (target === 'result') {
+      var navResult = _callDep('getDashboardTreeApi').buildDashboardNavResultFromTreeNode(node);
+      if (navResult) _callDep('navigateToSearchResult', navResult);
+      return;
+    }
+    if (target === 'file') {
+      var fileBoardId = _dep('activeBoardId') || _fileInventoryBoardId || '';
+      var fileCardId = String(node.getAttribute('data-dashboard-card-id') || '').trim() || null;
+      var fileRowIndex = parseInt(node.getAttribute('data-dashboard-row-index'), 10);
+      var fileStackIndex = parseInt(node.getAttribute('data-dashboard-stack-index'), 10);
+      var fileColLocalIndex = parseInt(node.getAttribute('data-dashboard-col-local-index'), 10);
+      var fileCardIndex = parseInt(node.getAttribute('data-dashboard-card-index'), 10);
+      if (fileBoardId) {
+        _callDep('navigateToSearchResult', {
+          boardId: fileBoardId,
+          cardId: fileCardId,
+          rowIndex: isNaN(fileRowIndex) ? null : fileRowIndex,
+          stackIndex: isNaN(fileStackIndex) ? null : fileStackIndex,
+          colLocalIndex: isNaN(fileColLocalIndex) ? null : fileColLocalIndex,
+          cardIndex: isNaN(fileCardIndex) ? null : fileCardIndex
+        });
+      }
+      return;
+    }
+    if (target === 'broken') {
+      var boardId = _dep('activeBoardId') || _brokenScanBoardId || '';
+      var cardId = String(node.getAttribute('data-dashboard-card-id') || '').trim() || null;
+      var cardIndex = parseInt(node.getAttribute('data-dashboard-card-index'), 10);
+      var rowIndex = parseInt(node.getAttribute('data-dashboard-row-index'), 10);
+      var stackIndex = parseInt(node.getAttribute('data-dashboard-stack-index'), 10);
+      var colLocalIndex = parseInt(node.getAttribute('data-dashboard-col-local-index'), 10);
+      var brokenSrc = String(node.getAttribute('data-dashboard-broken-src') || '').trim() || null;
+      if (boardId) {
+        _callDep('navigateToSearchResult', {
+          boardId: boardId,
+          cardId: cardId,
+          rowIndex: isNaN(rowIndex) ? null : rowIndex,
+          stackIndex: isNaN(stackIndex) ? null : stackIndex,
+          colLocalIndex: isNaN(colLocalIndex) ? null : colLocalIndex,
+          cardIndex: isNaN(cardIndex) ? null : cardIndex,
+          brokenSrc: brokenSrc
+        });
+      }
+    }
+  }
+
   function bindDashboardTreeInteractions(targetEl) {
     if (!targetEl || targetEl.__dashboardTreeClickBound) return;
+    var hierarchyController = getHierarchyControllerApi();
+    if (hierarchyController && typeof hierarchyController.bindTreeInteractions === 'function') {
+      hierarchyController.bindTreeInteractions(targetEl, {
+        TreeView: _dep('TreeView'),
+        onNodeActivate: function (node) {
+          activateDashboardTreeNode(node);
+        }
+      });
+      targetEl.__dashboardTreeClickBound = true;
+      return;
+    }
     var TreeView = _dep('TreeView');
     targetEl.addEventListener('click', function (e) {
       var toggle = e.target.closest('.tree-toggle');
@@ -2054,51 +2120,7 @@ var LexeraOrderHelpers = (function () {
       }
       var node = e.target.closest('.tree-node[data-dashboard-target]');
       if (!node || !targetEl.contains(node)) return;
-      var target = String(node.getAttribute('data-dashboard-target') || '').trim();
-      if (target === 'result') {
-        var navResult = _callDep('getDashboardTreeApi').buildDashboardNavResultFromTreeNode(node);
-        if (navResult) _callDep('navigateToSearchResult', navResult);
-        return;
-      }
-      if (target === 'file') {
-        var fileBoardId = _dep('activeBoardId') || _fileInventoryBoardId || '';
-        var fileCardId = String(node.getAttribute('data-dashboard-card-id') || '').trim() || null;
-        var fileRowIndex = parseInt(node.getAttribute('data-dashboard-row-index'), 10);
-        var fileStackIndex = parseInt(node.getAttribute('data-dashboard-stack-index'), 10);
-        var fileColLocalIndex = parseInt(node.getAttribute('data-dashboard-col-local-index'), 10);
-        var fileCardIndex = parseInt(node.getAttribute('data-dashboard-card-index'), 10);
-        if (fileBoardId) {
-          _callDep('navigateToSearchResult', {
-            boardId: fileBoardId,
-            cardId: fileCardId,
-            rowIndex: isNaN(fileRowIndex) ? null : fileRowIndex,
-            stackIndex: isNaN(fileStackIndex) ? null : fileStackIndex,
-            colLocalIndex: isNaN(fileColLocalIndex) ? null : fileColLocalIndex,
-            cardIndex: isNaN(fileCardIndex) ? null : fileCardIndex
-          });
-        }
-        return;
-      }
-      if (target === 'broken') {
-        var boardId = _dep('activeBoardId') || _brokenScanBoardId || '';
-        var cardId = String(node.getAttribute('data-dashboard-card-id') || '').trim() || null;
-        var cardIndex = parseInt(node.getAttribute('data-dashboard-card-index'), 10);
-        var rowIndex = parseInt(node.getAttribute('data-dashboard-row-index'), 10);
-        var stackIndex = parseInt(node.getAttribute('data-dashboard-stack-index'), 10);
-        var colLocalIndex = parseInt(node.getAttribute('data-dashboard-col-local-index'), 10);
-        var brokenSrc = String(node.getAttribute('data-dashboard-broken-src') || '').trim() || null;
-        if (boardId) {
-          _callDep('navigateToSearchResult', {
-            boardId: boardId,
-            cardId: cardId,
-            rowIndex: isNaN(rowIndex) ? null : rowIndex,
-            stackIndex: isNaN(stackIndex) ? null : stackIndex,
-            colLocalIndex: isNaN(colLocalIndex) ? null : colLocalIndex,
-            cardIndex: isNaN(cardIndex) ? null : cardIndex,
-            brokenSrc: brokenSrc
-          });
-        }
-      }
+      activateDashboardTreeNode(node);
     });
     targetEl.__dashboardTreeClickBound = true;
   }

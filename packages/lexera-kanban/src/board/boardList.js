@@ -1676,6 +1676,110 @@ var LexeraBoardList = (function () {
     }
   }
 
+  function _getHierarchyControllerApi() {
+    var api = _callDep('getHierarchyControllerApi');
+    if (api) return api;
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraHierarchyController) {
+      return globalThis.LexeraHierarchyController;
+    }
+    return null;
+  }
+
+  function _bindBoardTreeInteractions(treeEl, boardId, workspaceShellEnabled, WorkspaceShell) {
+    var controller = _getHierarchyControllerApi();
+    if (!controller || typeof controller.bindTreeInteractions !== 'function') return false;
+
+    controller.bindTreeInteractions(treeEl, {
+      TreeView: _dep('TreeView'),
+      getNodeChildrenContainer: function (node) {
+        return getSidebarTreeChildrenContainer(node);
+      },
+      onNodeMenu: function (node, event) {
+        if (!node) return;
+        var target = event && event.target && typeof event.target.closest === 'function'
+          ? event.target.closest('.tree-menu-btn')
+          : null;
+        var anchorRect = target && typeof target.getBoundingClientRect === 'function'
+          ? target.getBoundingClientRect()
+          : { right: event.clientX, bottom: event.clientY };
+        _showTreeNodeContextMenu(boardId, node, anchorRect.right, anchorRect.bottom, workspaceShellEnabled, WorkspaceShell);
+      },
+      onNodeToggle: function (node, event, helpers) {
+        if (!node) return null;
+        var children = helpers && typeof helpers.getNodeChildrenContainer === 'function'
+          ? helpers.getNodeChildrenContainer(node)
+          : null;
+        if (!children) return null;
+        if (event.altKey) {
+          var childNodes = children.querySelectorAll('.tree-children');
+          var allCollapsed = true;
+          for (var ci = 0; ci < childNodes.length; ci++) {
+            if (childNodes[ci].classList.contains('expanded')) { allCollapsed = false; break; }
+          }
+          setDescendantTreeState(children, allCollapsed, boardId);
+          return allCollapsed;
+        }
+        var toggle = event && event.target && typeof event.target.closest === 'function'
+          ? event.target.closest('.tree-toggle')
+          : null;
+        var expanding = !children.classList.contains('expanded');
+        children.classList.toggle('expanded');
+        if (toggle) toggle.classList.toggle('expanded');
+        node.setAttribute('aria-expanded', expanding ? 'true' : 'false');
+        var treeId = node.getAttribute('data-tree-id');
+        if (treeId) {
+          if (node.classList.contains('tree-row')) {
+            toggleSidebarTreeNode(boardId, 'rows', treeId);
+          } else if (node.classList.contains('tree-stack')) {
+            toggleSidebarTreeNode(boardId, 'stacks', treeId);
+          } else if (node.classList.contains('tree-column')) {
+            toggleSidebarTreeNode(boardId, 'columns', treeId);
+          }
+        }
+        syncMirroredWorkspaceViews();
+        return expanding;
+      },
+      onNodeActivate: function (node) {
+        if (!node) return;
+        var navTarget = _callDep('buildHierarchyFocusTargetFromTreeNode', node, boardId);
+        if (!navTarget) {
+          if (boardId !== _dep('activeBoardId')) _callDep('selectBoard', boardId);
+          return;
+        }
+        if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
+          WorkspaceShell.focusHierarchyTarget(navTarget, boardId);
+          return;
+        }
+        _callDep('navigateToHierarchyTarget', navTarget).catch(function (err) {
+          logFrontendIssue('warn', 'sidebar.hierarchy-focus', 'Failed to focus hierarchy target', err);
+          _callDep('showNotification', 'Failed to focus hierarchy item');
+        });
+      },
+      onNodeContextMenu: function (node, event) {
+        if (!node) return;
+        _showTreeNodeContextMenu(boardId, node, event.clientX, event.clientY, workspaceShellEnabled, WorkspaceShell);
+      },
+      onNodeEdit: function (node) {
+        if (!node) return;
+        var editTarget = _callDep('buildHierarchyFocusTargetFromTreeNode', node, boardId);
+        if (!editTarget) return;
+        if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
+          WorkspaceShell.focusHierarchyTarget(editTarget, boardId, { edit: true });
+          return;
+        }
+        _callDep('navigateToHierarchyTarget', editTarget).then(function () {
+          var dash = typeof window !== 'undefined' ? window.LexeraDashboard : null;
+          if (dash && typeof dash.openEditForHierarchyTarget === 'function') {
+            dash.openEditForHierarchyTarget(editTarget);
+          }
+        }).catch(function (err) {
+          logFrontendIssue('warn', 'sidebar.hierarchy-dblclick-edit', 'Failed to focus hierarchy target for edit', err);
+        });
+      }
+    });
+    return true;
+  }
+
   /** Bind all event listeners on a board wrapper (toggle, tree clicks, board click, context menu). */
   function _bindBoardWrapperEvents(wrapperEl, boardId, boardIndex, boardFilePath, workspaceShellEnabled, WorkspaceShell) {
     (function (boardId, boardIndex, wrapperEl, boardFilePath) {
@@ -1721,7 +1825,7 @@ var LexeraBoardList = (function () {
 
       // Tree node toggle, click, and DnD handlers (event delegation on tree container)
       var treeEl = wrapperEl.querySelector('.board-item-tree');
-      if (treeEl) {
+      if (treeEl && !_bindBoardTreeInteractions(treeEl, boardId, workspaceShellEnabled, WorkspaceShell)) {
         treeEl.addEventListener('click', function (e) {
           var target = e.target;
 

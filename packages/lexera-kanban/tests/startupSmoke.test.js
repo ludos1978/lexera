@@ -144,6 +144,7 @@ describe('Frontend Startup Smoke Tests', () => {
     'LexeraCanvasLayout',
     'LexeraSidebarSync',
     'LexeraSidebarTree',
+    'LexeraHierarchyController',
     'LexeraSharedPanels',
     'LexeraEmbedMenu',
     'LexeraActionRegistry',
