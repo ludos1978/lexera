@@ -6,21 +6,25 @@
 ///   POST /boards/{board_id}/export/document      -> generate document markdown
 ///   POST /boards/{board_id}/export/filter        -> filter board markdown by tags
 ///   POST /export/transform                       -> apply content transforms
+///   GET  /boards/{board_id}/export/ical          -> text/calendar feed (RFC 5545)
+///   GET  /boards/{board_id}/export/xbel          -> application/xbel+xml feed
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
-    response::Json,
-    routing::post,
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Json, Response},
+    routing::{get, post},
     Router,
 };
 use lexera_core::export::content_transform::{
     apply_transforms, ExportFormat, HtmlCommentMode, HtmlContentMode, SpeakerNoteMode,
     TransformOptions,
 };
+use lexera_core::export::ical::export_board_to_ical;
 use lexera_core::export::presentation::{self, PageBreaks, PresentationOptions};
 use lexera_core::export::tag_filter::{
     self, filter_excluded_from_board, filter_excluded_from_markdown, TagVisibility,
 };
+use lexera_core::export::xbel::{columns_to_xbel, generate_xbel};
 use lexera_core::parser::generate_markdown;
 use lexera_core::storage::BoardStorage;
 use lexera_core::types::KanbanBoard;
@@ -166,6 +170,10 @@ pub fn export_router() -> Router<AppState> {
         .route("/boards/{board_id}/export/document", post(export_document))
         .route("/boards/{board_id}/export/filter", post(export_filter))
         .route("/export/transform", post(export_transform))
+        // GET endpoints: stateless read-only feeds suitable for calendar /
+        // bookmark client subscription by URL.
+        .route("/boards/{board_id}/export/ical", get(export_ical))
+        .route("/boards/{board_id}/export/xbel", get(export_xbel))
 }
 
 // ---------------------------------------------------------------------------
@@ -330,13 +338,178 @@ async fn export_transform(Json(body): Json<TransformBody>) -> Json<serde_json::V
     Json(serde_json::json!({ "content": result }))
 }
 
+// ---------------------------------------------------------------------------
+// Calendar and bookmark feed endpoints
+// ---------------------------------------------------------------------------
+
+/// Default exclude-tag set for the subscribable feed endpoints.
+///
+/// These tags cover user-marked hidden content (`#hidden`) and the internal
+/// markers the kanban applies to deleted / archived / parked / incoming cards.
+/// Any card or column carrying one of these must never reach a subscription
+/// client, because the client has no way to hide it again on its side.
+fn feed_default_exclude_tags() -> Vec<String> {
+    vec![
+        "#hidden".to_string(),
+        lexera_core::types::HIDDEN_TAG_DELETED.to_string(),
+        lexera_core::types::HIDDEN_TAG_ARCHIVED.to_string(),
+        lexera_core::types::HIDDEN_TAG_PARKED.to_string(),
+        lexera_core::types::HIDDEN_TAG_INCOMING.to_string(),
+    ]
+}
+
+/// Build a standard "this file is a streaming feed" header set so subscription
+/// clients (calendar apps, bookmark managers) pick up updates on each poll.
+fn feed_headers(content_type: &'static str, filename: &str) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(content_type),
+    );
+    // `Cache-Control: no-store` avoids clients silently pinning a stale body.
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store, must-revalidate"),
+    );
+    // `Content-Disposition: inline` with a filename hint — helps browsers and
+    // calendar clients pick a sensible display name when the feed is saved.
+    if let Ok(disposition) =
+        HeaderValue::from_str(&format!("inline; filename=\"{}\"", filename))
+    {
+        headers.insert(header::CONTENT_DISPOSITION, disposition);
+    }
+    headers
+}
+
+/// GET /boards/{board_id}/export/ical
+///
+/// Returns a `text/calendar` feed (RFC 5545) containing every non-hidden card
+/// in the board that carries a resolvable temporal tag. Cards and columns
+/// tagged with `#hidden` or any of the internal hidden markers
+/// (`#hidden-internal-deleted` / `-archived` / `-parked` / `-incoming`) are
+/// filtered out before export so subscription clients only see published
+/// content.
+///
+/// Suitable for subscription from calendar clients: point Apple Calendar /
+/// Google Calendar / Thunderbird at this URL and it will poll and refresh on
+/// its normal interval.
+async fn export_ical(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let board = state.storage.read_board(&board_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Board not found".to_string(),
+            }),
+        )
+    })?;
+
+    // Strip hidden/archived/deleted cards and columns before export so they
+    // never reach a subscription client.
+    let filtered = filter_excluded_from_board(&board, &feed_default_exclude_tags());
+
+    let ical = export_board_to_ical(&filtered, &board_id);
+    let filename = format!("{}.ics", sanitize_filename(&board.title, &board_id));
+    let headers = feed_headers("text/calendar; charset=utf-8", &filename);
+
+    Ok((headers, ical).into_response())
+}
+
+/// GET /boards/{board_id}/export/xbel
+///
+/// Returns an `application/xbel+xml` document built from the board's columns
+/// and cards. Cards and columns tagged with `#hidden` or any of the internal
+/// hidden markers are filtered out before export, so the feed only ever
+/// publishes content the user wants shared.
+///
+/// Suitable for Floccus-style bookmark sync over WebDAV. Cards that do not
+/// contain a markdown link are silently skipped (documented in `XbelMapper`).
+async fn export_xbel(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    let board = state.storage.read_board(&board_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Board not found".to_string(),
+            }),
+        )
+    })?;
+
+    // Strip hidden/archived/deleted cards and columns before export.
+    let filtered = filter_excluded_from_board(&board, &feed_default_exclude_tags());
+
+    // Collect columns from either legacy or new-format boards.
+    let columns: Vec<_> = filtered.all_columns().into_iter().cloned().collect();
+    let xbel_root = columns_to_xbel(&columns);
+    let xml = generate_xbel(&xbel_root).map_err(|e| {
+        log::warn!(target: "lexera.api.export.xbel", "xbel generation failed: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("XBEL generation failed: {}", e),
+            }),
+        )
+    })?;
+
+    let filename = format!("{}.xbel", sanitize_filename(&board.title, &board_id));
+    let headers = feed_headers("application/xbel+xml; charset=utf-8", &filename);
+
+    Ok((headers, xml).into_response())
+}
+
+/// Produce a filesystem-safe filename from the board title, falling back to
+/// the board id when the title is empty or contains only unsafe characters.
+/// We allow ASCII alphanumerics, dashes, underscores, and dots — everything
+/// else collapses to `_`.
+fn sanitize_filename(title: &str, board_id: &str) -> String {
+    let candidate: String = title
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let trimmed = candidate.trim_matches('_');
+    if trimmed.is_empty() {
+        board_id.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::selected_board_for_export;
+    use super::{feed_default_exclude_tags, sanitize_filename, selected_board_for_export};
+    use crate::test_helpers::{setup_board, test_router};
+    use axum::body::Body;
+    use axum::http::{header, HeaderMap, Request, Response, StatusCode};
+    use http_body_util::BodyExt;
     use lexera_core::types::{
         BoardFormat, KanbanBoard, KanbanCard, KanbanColumn, KanbanRow, KanbanStack,
     };
     use std::collections::HashMap;
+    use tower::ServiceExt;
+
+    fn post_json_request(uri: &str, body: serde_json::Value) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    }
+
+    async fn response_json(resp: Response<Body>) -> serde_json::Value {
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        serde_json::from_slice(&bytes).unwrap()
+    }
 
     fn sample_card(id: &str) -> KanbanCard {
         KanbanCard {
@@ -434,5 +607,449 @@ mod tests {
         assert_eq!(selected.rows[0].stacks[0].columns[0].id, "col-2");
         assert_eq!(selected.rows[0].stacks[1].columns.len(), 1);
         assert_eq!(selected.rows[0].stacks[1].columns[0].id, "col-3");
+    }
+
+    // -------------------------------------------------------------------
+    // Integration tests — the export routes must actually be mounted by
+    // api_router(). Before the orphan-router fix these all returned 404.
+    // -------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn export_presentation_route_returns_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(post_json_request(
+                &format!("/boards/{}/export/presentation", board_id),
+                serde_json::json!({}),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "POST /boards/{{id}}/export/presentation must be mounted (was orphaned)"
+        );
+        let body = response_json(resp).await;
+        assert!(body.get("markdown").is_some(), "response must contain a markdown field");
+        let md = body["markdown"].as_str().unwrap();
+        // MINIMAL_BOARD from test_helpers contains "Col" / "card".
+        assert!(md.contains("Col") || md.contains("card"), "markdown: {}", md);
+    }
+
+    #[tokio::test]
+    async fn export_document_route_returns_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(post_json_request(
+                &format!("/boards/{}/export/document", board_id),
+                serde_json::json!({}),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = response_json(resp).await;
+        assert!(body.get("markdown").is_some());
+    }
+
+    #[tokio::test]
+    async fn export_filter_route_returns_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(post_json_request(
+                &format!("/boards/{}/export/filter", board_id),
+                serde_json::json!({}),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = response_json(resp).await;
+        assert!(body.get("markdown").is_some());
+    }
+
+    #[tokio::test]
+    async fn export_transform_route_applies_transforms() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, _) = setup_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(post_json_request(
+                "/export/transform",
+                serde_json::json!({
+                    "content": "# Heading\n\nParagraph",
+                    "format": "presentation",
+                }),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = response_json(resp).await;
+        assert!(body.get("content").is_some(), "response must contain a content field");
+    }
+
+    #[tokio::test]
+    async fn export_presentation_unknown_board_returns_404() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, _) = setup_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(post_json_request(
+                "/boards/nonexistent-board-id/export/presentation",
+                serde_json::json!({}),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // -------------------------------------------------------------------
+    // iCal + XBEL feed endpoints
+    // -------------------------------------------------------------------
+
+    /// Write a board that carries both a dated card and a bookmark-style
+    /// card so the iCal and XBEL feeds have real content to emit.
+    fn setup_feed_board(tmp: &std::path::Path) -> (crate::state::AppState, String) {
+        const BOARD: &str = "\
+---
+kanban-plugin: board
+---
+
+## Links
+- [ ] [GitHub](https://github.com \"bm-1\")
+- [ ] [Rust](https://rust-lang.org \"bm-2\")
+
+## Schedule
+- [ ] Meeting @2026-04-15 #work
+- [ ] Deadline @2026-05-01 #urgent
+";
+        let board_path = tmp.join("feed-board.md");
+        std::fs::write(&board_path, BOARD).unwrap();
+        let state = crate::test_helpers::test_state(tmp);
+        let board_id = state.storage.add_board(&board_path).unwrap();
+        (state, board_id)
+    }
+
+    fn get_request(uri: &str) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    async fn response_text(resp: Response<Body>) -> (HeaderMap, String) {
+        let headers = resp.headers().clone();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        (headers, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    #[tokio::test]
+    async fn export_ical_route_returns_vcalendar_feed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_feed_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(get_request(&format!(
+                "/boards/{}/export/ical",
+                board_id
+            )))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let (headers, body) = response_text(resp).await;
+
+        // Correct content type for calendar subscription clients.
+        let ct = headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            ct.starts_with("text/calendar"),
+            "unexpected content-type: {}",
+            ct
+        );
+        // RFC 5545 structural landmarks.
+        assert!(body.contains("BEGIN:VCALENDAR"));
+        assert!(body.contains("END:VCALENDAR"));
+        assert!(body.contains("VERSION:2.0"));
+        assert!(body.contains("PRODID:-//Lexera//Kanban//EN"));
+        // Both dated cards should produce VEVENTs.
+        assert_eq!(body.matches("BEGIN:VEVENT").count(), 2);
+        assert!(body.contains("DTSTART;VALUE=DATE:20260415"));
+        assert!(body.contains("DTSTART;VALUE=DATE:20260501"));
+        // DTSTAMP (required) and CALSCALE / METHOD (feed compatibility)
+        // were added earlier this session — assert they flow through here.
+        assert!(body.contains("DTSTAMP:"));
+        assert!(body.contains("CALSCALE:GREGORIAN"));
+        assert!(body.contains("METHOD:PUBLISH"));
+    }
+
+    #[tokio::test]
+    async fn export_ical_unknown_board_returns_404() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, _) = setup_feed_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(get_request("/boards/nonexistent/export/ical"))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn export_xbel_route_returns_xbel_feed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_feed_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(get_request(&format!(
+                "/boards/{}/export/xbel",
+                board_id
+            )))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let (headers, body) = response_text(resp).await;
+
+        let ct = headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            ct.starts_with("application/xbel+xml"),
+            "unexpected content-type: {}",
+            ct
+        );
+        // XBEL structural landmarks.
+        assert!(body.contains("<?xml"));
+        assert!(body.contains("<xbel"));
+        assert!(body.contains("</xbel>"));
+        // The Links column should have produced a <folder>, and the two
+        // bookmark cards should appear as <bookmark> entries.
+        assert!(body.contains("<title>Links</title>"));
+        assert!(body.contains("https://github.com"));
+        assert!(body.contains("https://rust-lang.org"));
+        assert!(body.contains("bm-1"));
+        assert!(body.contains("bm-2"));
+    }
+
+    #[tokio::test]
+    async fn export_xbel_unknown_board_returns_404() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, _) = setup_feed_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(get_request("/boards/nonexistent/export/xbel"))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn export_ical_feed_sets_content_disposition_filename() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_feed_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(get_request(&format!(
+                "/boards/{}/export/ical",
+                board_id
+            )))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let disposition = resp
+            .headers()
+            .get(header::CONTENT_DISPOSITION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            disposition.starts_with("inline;") && disposition.contains(".ics"),
+            "unexpected disposition: {}",
+            disposition
+        );
+    }
+
+    // -------------------------------------------------------------------
+    // Exclude-tag filtering on the subscribable feeds. Hidden/archived/
+    // deleted/parked/incoming cards must never leak into a feed body.
+    // -------------------------------------------------------------------
+
+    /// Board whose columns and cards carry every flavour of hidden tag so the
+    /// tests can assert each one is filtered out.
+    fn setup_hidden_feed_board(tmp: &std::path::Path) -> (crate::state::AppState, String) {
+        const BOARD: &str = "\
+---
+kanban-plugin: board
+---
+
+## Public
+- [ ] [Public Link](https://public.example.com \"bm-public\")
+- [ ] Public meeting @2026-04-15
+
+## Hidden Column #hidden
+- [ ] [Secret Link](https://secret.example.com \"bm-secret\")
+- [ ] Secret event @2026-04-20
+
+## Mixed
+- [ ] Regular card @2026-05-01
+- [ ] Parked item #hidden-internal-parked @2026-05-02
+- [ ] Archived item #hidden-internal-archived @2026-05-03
+- [ ] Deleted item #hidden-internal-deleted @2026-05-04
+- [ ] User-hidden #hidden @2026-05-05
+- [ ] [Real link](https://real.example.com \"bm-real\")
+- [ ] [Hidden link](https://hidden.example.com \"bm-hidden-link\") #hidden
+";
+        let board_path = tmp.join("hidden-board.md");
+        std::fs::write(&board_path, BOARD).unwrap();
+        let state = crate::test_helpers::test_state(tmp);
+        let board_id = state.storage.add_board(&board_path).unwrap();
+        (state, board_id)
+    }
+
+    #[tokio::test]
+    async fn export_ical_feed_excludes_hidden_column_and_cards() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_hidden_feed_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(get_request(&format!(
+                "/boards/{}/export/ical",
+                board_id
+            )))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let (_, body) = response_text(resp).await;
+
+        // Kept: public + regular cards that have dates
+        assert!(body.contains("Public meeting"), "expected 'Public meeting' in:\n{}", body);
+        assert!(body.contains("Regular card"), "expected 'Regular card' in:\n{}", body);
+
+        // Dropped: entire hidden column's cards
+        assert!(
+            !body.contains("Secret event"),
+            "hidden-column card leaked into iCal:\n{}",
+            body
+        );
+
+        // Dropped: individually tagged cards
+        assert!(!body.contains("Parked item"), "parked card leaked");
+        assert!(!body.contains("Archived item"), "archived card leaked");
+        assert!(!body.contains("Deleted item"), "deleted card leaked");
+        assert!(!body.contains("User-hidden"), "#hidden card leaked");
+
+        // Post-filter VEVENT count: 2 (Public meeting + Regular card)
+        assert_eq!(
+            body.matches("BEGIN:VEVENT").count(),
+            2,
+            "expected exactly 2 VEVENTs after filtering, body:\n{}",
+            body
+        );
+    }
+
+    #[tokio::test]
+    async fn export_xbel_feed_excludes_hidden_column_and_cards() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = setup_hidden_feed_board(tmp.path());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(get_request(&format!(
+                "/boards/{}/export/xbel",
+                board_id
+            )))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let (_, body) = response_text(resp).await;
+
+        // Kept: bookmarks in public columns and the real link in Mixed
+        assert!(body.contains("https://public.example.com"), "public link missing:\n{}", body);
+        assert!(body.contains("https://real.example.com"), "real link missing:\n{}", body);
+        assert!(body.contains("bm-public"));
+        assert!(body.contains("bm-real"));
+
+        // Dropped: everything behind a hidden column or tag
+        assert!(
+            !body.contains("https://secret.example.com"),
+            "hidden-column bookmark leaked into XBEL:\n{}",
+            body
+        );
+        assert!(
+            !body.contains("https://hidden.example.com"),
+            "#hidden-tagged bookmark leaked into XBEL:\n{}",
+            body
+        );
+        assert!(!body.contains("bm-secret"));
+        assert!(!body.contains("bm-hidden-link"));
+
+        // The entire "Hidden Column" folder should not appear.
+        assert!(
+            !body.contains("Hidden Column"),
+            "hidden column title leaked into XBEL:\n{}",
+            body
+        );
+    }
+
+    #[tokio::test]
+    async fn feed_default_exclude_tags_covers_all_hidden_markers() {
+        let tags = feed_default_exclude_tags();
+        assert!(tags.iter().any(|t| t == "#hidden"));
+        assert!(tags.iter().any(|t| t == lexera_core::types::HIDDEN_TAG_DELETED));
+        assert!(tags.iter().any(|t| t == lexera_core::types::HIDDEN_TAG_ARCHIVED));
+        assert!(tags.iter().any(|t| t == lexera_core::types::HIDDEN_TAG_PARKED));
+        assert!(tags.iter().any(|t| t == lexera_core::types::HIDDEN_TAG_INCOMING));
+    }
+
+    // -------------------------------------------------------------------
+    // Filename sanitation (unit)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn sanitize_filename_keeps_safe_chars() {
+        assert_eq!(sanitize_filename("my-board_1.2", "fallback"), "my-board_1.2");
+    }
+
+    #[test]
+    fn sanitize_filename_collapses_unsafe_chars() {
+        assert_eq!(
+            sanitize_filename("Project / 2026 ☆", "fallback"),
+            "Project___2026"
+        );
+    }
+
+    #[test]
+    fn sanitize_filename_falls_back_when_empty() {
+        assert_eq!(sanitize_filename("", "board-123"), "board-123");
+        assert_eq!(sanitize_filename("☆☆☆", "board-456"), "board-456");
     }
 }

@@ -107,6 +107,7 @@ var BoardSettingRegistry = {
 | ID | Label | Type | Options (abbreviated) |
 |----|-------|------|-----------------------|
 | `columnWidth` | Column Width | enum | 250px, 300px, 350px, 400px, 450px, 500px, 550px, 600px, 650px |
+| `stackWidth` | Stack Width | range | 200px to 1200px, step 50px |
 | `cardHeight` | Card Height | enum | auto, 80px, 120px, 160px, 200px, 250px, 300px, 400px |
 | `whitespace` | Whitespace | enum | normal, spacious, compact |
 | `fontSizeScale` | Font Size | enum | 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x |
@@ -138,6 +139,12 @@ var BoardSettingRegistry = {
 ### Burger Menu
 - Burger menu display settings also read from the registry
 - Rendered as radio groups or toggles matching the setting type
+
+### Stack Width Override
+- `stackWidth` is the board-wide default width for kanban stacks.
+- Individual stacks may override the default with a `#width{N}` tag in the stack title.
+- The stack context menu exposes `Increase`, `Decrease`, and `Reset to default` actions.
+- Reset removes the per-stack `#width{N}` tag and falls back to the board-wide `stackWidth` value.
 
 ---
 

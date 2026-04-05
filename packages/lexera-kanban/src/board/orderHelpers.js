@@ -839,6 +839,18 @@ var LexeraOrderHelpers = (function () {
     var data = event && event.data;
     if (!_dep('embeddedMode')) return;
     if (!data || !data.type) return;
+    if (data.type === 'lexera-workspace-catalog') {
+      if (typeof _deps.setBoards === 'function') {
+        _callDep('setBoards', Array.isArray(data.boards) ? data.boards : []);
+      }
+      if (typeof _deps.setRemoteBoards === 'function') {
+        _callDep('setRemoteBoards', Array.isArray(data.remoteBoards) ? data.remoteBoards : []);
+      }
+      if (typeof _deps.setWorkspaces === 'function') {
+        _callDep('setWorkspaces', Array.isArray(data.workspaces) ? data.workspaces : []);
+      }
+      return;
+    }
     if (data.type === 'lexera-board-action' && data.action) {
       _callDep('handleBoardAction', data.action);
       return;
@@ -869,17 +881,16 @@ var LexeraOrderHelpers = (function () {
 
   function setShellActiveBoard(boardId) {
     // The workspace shell notifies us that a different board tab is now active.
-    // Boards are loaded inside iframes — we do NOT load board data in the
-    // parent window. We only update the sidebar to highlight the active board
-    // and refresh the dashboard scope.
+    // Boards are loaded inside iframes — the parent window only owns shared
+    // workspace context and hierarchy projection state.
     _callDep('setActiveBoardId', boardId || null);
+    _callDep('syncWorkspaceContextForBoard', boardId || null);
     if (!_dep('embeddedMode')) {
       if (boardId) {
         if (_Settings) { _Settings.set('lastBoard', boardId); } else { localStorage.setItem('lexera-last-board', boardId); }
         _callDep('trackRecentBoard', boardId);
       }
     }
-    _callDep('renderBoardList');
     refreshHeaderFileControls();
     scheduleDashboardRefresh(120);
   }
@@ -919,6 +930,7 @@ var LexeraOrderHelpers = (function () {
       },
       onAfterRender: function () {
         flushStaleMirrors();
+        flushPendingDashboardRefresh();
       },
       openWindow: function (payload) {
         if (!_dep('hasTauri')) return Promise.reject(new Error('Tauri unavailable'));
@@ -928,9 +940,7 @@ var LexeraOrderHelpers = (function () {
         return _callDep('showNativeMenu', items, x, y);
       },
       refreshBoardHierarchy: function (boardId, fullBoard) {
-        _callDep('setBoardHierarchyRows', boardId, fullBoard, '');
-        _callDep('invalidateBoardListFingerprint');
-        _callDep('renderBoardList');
+        _callDep('refreshBoardHierarchyProjection', boardId, fullBoard, '');
       }
     });
     // Ensure hierarchy panel is visible after mount — guards against corrupted persisted state
@@ -1073,6 +1083,13 @@ var LexeraOrderHelpers = (function () {
   var dashboardRefreshTimer = null;
   var dashboardBrokenRefreshTimer = null;
   var dashboardRefreshSeq = 0;
+  // Two-flag pending system:
+  //   dashboardRefreshPending = needs backend data fetch (schedule was dropped)
+  //   dashboardRenderPending  = has data, but DOM was unavailable to render
+  // The render flag avoids redundant API calls in the calendar-only scenario
+  // where renderDashboard is called but only the dashboard DOM is missing.
+  var dashboardRefreshPending = false;
+  var dashboardRenderPending = false;
   var dashboardFileInventorySeq = 0;
   var dashboardMirrorSyncQueued = false;
   var _fileInventoryBoardId = null;       // board ID of last successful file inventory
@@ -2514,7 +2531,15 @@ var LexeraOrderHelpers = (function () {
     var allCalendar = getCalendarTasks();
     renderStandaloneCalendarPanels(allCalendar);
 
-    if (!_callDep('getElDashboardRoot')) return;
+    if (!_callDep('getElDashboardRoot')) {
+      // DOM not available — defer re-render until it reconnects.
+      // Use render-pending (not refresh-pending) to avoid triggering a
+      // needless backend fetch when data is already in hand.
+      dashboardRenderPending = true;
+      return;
+    }
+    // Successful render — clear render-pending flag.
+    dashboardRenderPending = false;
 
     // Clear loading / connection state on the dashboard body
     var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
@@ -2614,7 +2639,10 @@ var LexeraOrderHelpers = (function () {
     if (_dep('embeddedMode')) return Promise.resolve();
     var hasDashboard = !!_callDep('getElDashboardRoot');
     var hasCalendars = hasAnyCalendarPanel();
-    if (!hasDashboard && !hasCalendars) return Promise.resolve();
+    if (!hasDashboard && !hasCalendars) {
+      dashboardRefreshPending = true;
+      return Promise.resolve();
+    }
     ensureDashboardState();
     if (!_dep('connected')) {
       dashboardState.loading = false;
@@ -2780,11 +2808,31 @@ var LexeraOrderHelpers = (function () {
 
   function scheduleDashboardRefresh(delayMs) {
     if (_dep('embeddedMode')) return;
-    if (!_callDep('getElDashboardRoot') && !hasAnyCalendarPanel()) return;
+    if (!_callDep('getElDashboardRoot') && !hasAnyCalendarPanel()) {
+      dashboardRefreshPending = true;
+      return;
+    }
+    dashboardRefreshPending = false;
     clearTimeout(dashboardRefreshTimer);
     dashboardRefreshTimer = setTimeout(function () {
       refreshDashboardData();
     }, typeof delayMs === 'number' ? delayMs : 120);
+  }
+
+  function flushPendingDashboardRefresh() {
+    // Render-only pending: data is fresh, just re-render when DOM is back.
+    // Check this first so we don't waste a backend round-trip.
+    if (dashboardRenderPending && _callDep('getElDashboardRoot')) {
+      dashboardRenderPending = false;
+      renderDashboard();
+      // Fall through in case refresh is also pending.
+    }
+    // Refresh pending: a scheduled fetch was dropped, do it now.
+    if (dashboardRefreshPending) {
+      if (!_callDep('getElDashboardRoot') && !hasAnyCalendarPanel()) return;
+      dashboardRefreshPending = false;
+      scheduleDashboardRefresh(0);
+    }
   }
 
   function setupDashboardControls() {
@@ -3052,6 +3100,15 @@ var LexeraOrderHelpers = (function () {
     renderDashboard: renderDashboard,
     refreshDashboardData: refreshDashboardData,
     scheduleDashboardRefresh: scheduleDashboardRefresh,
+    flushPendingDashboardRefresh: flushPendingDashboardRefresh,
+    // Test helpers: inspect/reset pending flags
+    _getDashboardPendingFlags: function () {
+      return { refresh: dashboardRefreshPending, render: dashboardRenderPending };
+    },
+    _resetDashboardPendingFlags: function () {
+      dashboardRefreshPending = false;
+      dashboardRenderPending = false;
+    },
     setupDashboardControls: setupDashboardControls,
     getCalendarTasks: getCalendarTasks,
     renderStandaloneCalendarPanels: renderStandaloneCalendarPanels,

@@ -310,6 +310,15 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             "/external-embeds/probe",
             get(external_embed::probe_external_embed),
         )
+        // Export routes (presentation / document / filter / transform).
+        //
+        // These are currently unauthenticated to match the kanban frontend's
+        // `exportService.js`, which issues raw `fetch` without a Bearer token.
+        // Threat surface is limited because the backend binds to localhost
+        // only and CORS is restricted to localhost origins. Move these into
+        // the authed group once `exportService.js` routes through the
+        // `LexeraApi` wrapper (which attaches the Bearer token automatically).
+        .merge(crate::export_api::export_router())
         .merge(authed_routes)
 }
 

@@ -73,4 +73,84 @@ describe('buildSidebarTreeNodes', () => {
     expect(nodes[0].children[0].type).toBe('stack');
     expect(nodes[1].children[0].type).toBe('stack');
   });
+
+  it('assigns visible card indexes to tree card nodes, skipping hidden cards', () => {
+    // Regression for "add card after" inserting two after the selected card.
+    // The sidebar tree receives rows cloned from fullBoardData, which contains
+    // hidden cards alongside visible ones. `data-card-index` on each tree-card
+    // node MUST be the VISIBLE index, because downstream actions (insert-after,
+    // duplicate, edit, delete…) all treat ctx.cardIndex as a visible index and
+    // run it through getFullCardIndex to re-map. Using the full-array index
+    // here caused off-by-one insertions whenever a hidden card preceded the
+    // selection.
+    const rows = [{
+      id: 'row-1',
+      title: 'Row',
+      stacks: [{
+        id: 'stack-1',
+        title: 'Stack',
+        columns: [{
+          id: 'col-1',
+          index: 0,
+          title: 'Column',
+          cards: [
+            { id: 'card-a', content: 'Visible A' },
+            { id: 'card-h1', content: 'Hidden 1 #hidden-internal-archived' },
+            { id: 'card-b', content: 'Visible B' },
+            { id: 'card-h2', content: 'Hidden 2 #hidden-internal-deleted' },
+            { id: 'card-c', content: 'Visible C' },
+          ],
+        }],
+      }],
+    }];
+
+    const nodes = SidebarTree.buildSidebarTreeNodes(rows, 'board-1', { rows: [], stacks: [], columns: [] }, false);
+    const columnNode = nodes[0].children[0].children[0];
+    expect(columnNode.type).toBe('column');
+
+    // Exactly 3 visible cards should make it into the tree (the 2 hidden ones
+    // are skipped entirely).
+    expect(columnNode.children).toHaveLength(3);
+
+    // Each visible card node must carry its VISIBLE index as data-card-index,
+    // not its position in the full `cards` array. Expect 0, 1, 2 — NOT 0, 2, 4.
+    expect(columnNode.children[0].attrs['data-card-id']).toBe('card-a');
+    expect(columnNode.children[0].attrs['data-card-index']).toBe('0');
+
+    expect(columnNode.children[1].attrs['data-card-id']).toBe('card-b');
+    expect(columnNode.children[1].attrs['data-card-index']).toBe('1');
+
+    expect(columnNode.children[2].attrs['data-card-id']).toBe('card-c');
+    expect(columnNode.children[2].attrs['data-card-index']).toBe('2');
+  });
+
+  it('assigns sequential visible card indexes when there are no hidden cards', () => {
+    // Baseline: without any hidden cards the visible index equals the array
+    // index, so the off-by-one fix must still produce the correct sequence.
+    const rows = [{
+      id: 'row-1',
+      title: 'Row',
+      stacks: [{
+        id: 'stack-1',
+        title: 'Stack',
+        columns: [{
+          id: 'col-1',
+          index: 0,
+          title: 'Column',
+          cards: [
+            { id: 'card-a', content: 'A' },
+            { id: 'card-b', content: 'B' },
+            { id: 'card-c', content: 'C' },
+          ],
+        }],
+      }],
+    }];
+
+    const nodes = SidebarTree.buildSidebarTreeNodes(rows, 'board-1', { rows: [], stacks: [], columns: [] }, false);
+    const columnNode = nodes[0].children[0].children[0];
+    expect(columnNode.children).toHaveLength(3);
+    expect(columnNode.children[0].attrs['data-card-index']).toBe('0');
+    expect(columnNode.children[1].attrs['data-card-index']).toBe('1');
+    expect(columnNode.children[2].attrs['data-card-index']).toBe('2');
+  });
 });

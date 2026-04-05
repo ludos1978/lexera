@@ -102,6 +102,17 @@ function createElement(tagName = 'div') {
   return element;
 }
 
+function findFirstElementByTag(root, tagName) {
+  if (!root) return null;
+  if (root.tagName === String(tagName || '').toUpperCase()) return root;
+  const children = Array.isArray(root.childNodes) ? root.childNodes : [];
+  for (let i = 0; i < children.length; i += 1) {
+    const found = findFirstElementByTag(children[i], tagName);
+    if (found) return found;
+  }
+  return null;
+}
+
 function createStorage() {
   const store = {};
   return {
@@ -249,5 +260,201 @@ describe('workspace shell active-board notifications', () => {
     vi.advanceTimersByTime(150);
 
     expect(onActiveBoardChanged).toHaveBeenLastCalledWith('beta');
+  });
+});
+
+describe('workspace shell hierarchy mutation bridge', () => {
+  it('refreshes hierarchy from the embedded mutation payload without re-reading the iframe', () => {
+    const { shell, window, mainContent } = createShellHarness();
+    const refreshBoardHierarchy = vi.fn();
+    const fullBoard = {
+      title: 'Alpha',
+      rows: [{ id: 'row-1', title: 'Row', stacks: [] }],
+    };
+
+    shell.mount({
+      getMainContent: () => mainContent,
+      refreshBoardHierarchy,
+    });
+
+    window.emit('message', {
+      data: {
+        type: 'lexera-board-mutated',
+        boardId: 'alpha',
+        pane: 'pane-1',
+        fullBoard,
+      }
+    });
+
+    expect(refreshBoardHierarchy).toHaveBeenCalledWith('alpha', fullBoard);
+  });
+});
+
+describe('workspace shell catalog sync', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('broadcasts the latest workspace catalog to loaded board frames', () => {
+    vi.useFakeTimers();
+    const { shell, mainContent } = createShellHarness();
+
+    shell.mount({
+      getMainContent: () => mainContent
+    });
+    shell.onBoardsUpdated([{ id: 'alpha', title: 'Alpha' }]);
+    shell.openBoard('alpha');
+    vi.advanceTimersByTime(150);
+
+    const frame = findFirstElementByTag(mainContent, 'iframe');
+    expect(frame).toBeTruthy();
+    frame.contentWindow = { postMessage: vi.fn() };
+
+    shell.onCatalogUpdated({
+      boards: [{ id: 'alpha', title: 'Alpha' }],
+      remoteBoards: [{ id: 'remote-a', title: 'Remote A' }],
+      workspaces: [{ id: 'ws-1', name: 'Workspace 1' }]
+    });
+
+    expect(frame.contentWindow.postMessage).toHaveBeenCalledWith({
+      type: 'lexera-workspace-catalog',
+      boards: [{ id: 'alpha', title: 'Alpha' }],
+      remoteBoards: [{ id: 'remote-a', title: 'Remote A' }],
+      workspaces: [{ id: 'ws-1', name: 'Workspace 1' }]
+    }, '*');
+  });
+});
+
+describe('workspace shell tab actions (Phase 1 keyboard shortcuts)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('close-active-tab removes the currently active tab', () => {
+    vi.useFakeTimers();
+    const { shell, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+    shell.onBoardsUpdated([
+      { id: 'alpha', title: 'Alpha' },
+      { id: 'beta', title: 'Beta' }
+    ]);
+    shell.openBoard('alpha');
+    shell.openBoard('beta');
+    vi.advanceTimersByTime(150);
+
+    const closed = shell.handleBoardAction('close-active-tab');
+    expect(closed).toBe(true);
+  });
+
+  it('close-active-tab returns true even when there is no active tab', () => {
+    // The handler always consumes the keypress to prevent it bubbling elsewhere
+    const { shell, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+    const result = shell.handleBoardAction('close-active-tab');
+    expect(result).toBe(true);
+  });
+
+  it('next-tab cycles forward and wraps around to the first tab', () => {
+    vi.useFakeTimers();
+    const { shell, mainContent } = createShellHarness();
+    const onActiveBoardChanged = vi.fn();
+    shell.mount({ getMainContent: () => mainContent, onActiveBoardChanged });
+    shell.onBoardsUpdated([
+      { id: 'alpha', title: 'Alpha' },
+      { id: 'beta', title: 'Beta' },
+      { id: 'gamma', title: 'Gamma' }
+    ]);
+    shell.openBoard('alpha');
+    shell.openBoard('beta');
+    shell.openBoard('gamma');
+    vi.advanceTimersByTime(150);
+
+    // Currently on gamma (last opened). Next should wrap to alpha.
+    shell.handleBoardAction('next-tab');
+    vi.advanceTimersByTime(150);
+    expect(onActiveBoardChanged).toHaveBeenLastCalledWith('alpha');
+
+    // Next from alpha should go to beta.
+    shell.handleBoardAction('next-tab');
+    vi.advanceTimersByTime(150);
+    expect(onActiveBoardChanged).toHaveBeenLastCalledWith('beta');
+  });
+
+  it('prev-tab cycles backward and wraps around to the last tab', () => {
+    vi.useFakeTimers();
+    const { shell, mainContent } = createShellHarness();
+    const onActiveBoardChanged = vi.fn();
+    shell.mount({ getMainContent: () => mainContent, onActiveBoardChanged });
+    shell.onBoardsUpdated([
+      { id: 'alpha', title: 'Alpha' },
+      { id: 'beta', title: 'Beta' },
+      { id: 'gamma', title: 'Gamma' }
+    ]);
+    shell.openBoard('alpha');
+    shell.openBoard('beta');
+    shell.openBoard('gamma');
+    vi.advanceTimersByTime(150);
+
+    // Currently on gamma. Prev should go to beta.
+    shell.handleBoardAction('prev-tab');
+    vi.advanceTimersByTime(150);
+    expect(onActiveBoardChanged).toHaveBeenLastCalledWith('beta');
+
+    // Prev twice more wraps: alpha -> gamma.
+    shell.handleBoardAction('prev-tab');
+    vi.advanceTimersByTime(150);
+    shell.handleBoardAction('prev-tab');
+    vi.advanceTimersByTime(150);
+    expect(onActiveBoardChanged).toHaveBeenLastCalledWith('gamma');
+  });
+
+  it('next-tab and prev-tab return false when there is only one tab', () => {
+    vi.useFakeTimers();
+    const { shell, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+    shell.onBoardsUpdated([{ id: 'alpha', title: 'Alpha' }]);
+    shell.openBoard('alpha');
+    vi.advanceTimersByTime(150);
+
+    expect(shell.handleBoardAction('next-tab')).toBe(false);
+    expect(shell.handleBoardAction('prev-tab')).toBe(false);
+  });
+
+  it('cycle-tab target resolution returns empty when the active tab id is stale', () => {
+    const { shell } = createShellHarness();
+    const staleLeaf = {
+      tabs: [{ id: 'tab-alpha' }, { id: 'tab-beta' }],
+      activeTabId: 'tab-missing'
+    };
+
+    expect(shell._test_resolveCycleTabTarget(staleLeaf, 1)).toBe('');
+    expect(shell._test_resolveCycleTabTarget(staleLeaf, -1)).toBe('');
+  });
+
+  it('toggle-panel:hierarchy rejects unknown panel IDs', () => {
+    const { shell, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+    // Unknown panel should return false, not silently consume the event
+    expect(shell.handleBoardAction('toggle-panel:nonexistent')).toBe(false);
+  });
+
+  it('toggle-panel:hierarchy cycles visible to hidden and back to visible', () => {
+    const { shell, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+
+    expect(shell.isPanelVisible('hierarchy')).toBe(true);
+    expect(shell.handleBoardAction('toggle-panel:hierarchy')).toBe(true);
+    expect(shell.isPanelVisible('hierarchy')).toBe(false);
+    expect(shell.handleBoardAction('toggle-panel:hierarchy')).toBe(true);
+    expect(shell.isPanelVisible('hierarchy')).toBe(true);
+  });
+
+  it('toggle-panel:hierarchy accepts valid panel IDs', () => {
+    const { shell, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+    // Valid panel kinds should return true
+    expect(shell.handleBoardAction('toggle-panel:hierarchy')).toBe(true);
+    expect(shell.handleBoardAction('toggle-panel:dashboard')).toBe(true);
+    expect(shell.handleBoardAction('toggle-panel:files')).toBe(true);
   });
 });

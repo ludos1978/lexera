@@ -43,18 +43,49 @@
 
 ## Rendering Architecture (v2)
 
-### Single Mutation Entry Point: `persistBoardMutation(options)`
+### UI Mutation Entry Point: `persistBoardMutation(options)`
 
-ALL board mutations flow through `persistBoardMutation()` in `app.js`. This is the
-ONLY function that callers should use after modifying board data. It handles:
+User-driven board edits still enter through `persistBoardMutation()` in `app.js`.
+It handles:
 
 1. Display state sync (`updateDisplayFromFullBoard`)
 2. Targeted DOM rendering via `refreshTargetedElements(targets)`
-3. Board hierarchy sync (`setBoardHierarchyRows`)
+3. Board hierarchy sync via `commitLocalBoardChange()` / `refreshBoardHierarchyProjection()`
 4. Dashboard refresh scheduling
 5. Local draft persistence
 6. Auto-save scheduling
 7. Live sync coordination
+
+### Embedded Hierarchy Contract: `commitLocalBoardChange(boardId, fullBoard, options)`
+
+Inside an embedded board iframe, any change to `fullBoardData` MUST flow through
+`commitLocalBoardChange()`. There is no other supported mutation-to-hierarchy path.
+
+`commitLocalBoardChange()` is responsible for:
+
+1. Updating local `fullBoardData` / `activeBoardData` state when needed
+2. Refreshing the board hierarchy projection in non-embedded mode via `refreshBoardHierarchyProjection()`
+3. Posting `lexera-board-mutated` with the current `fullBoard` payload to the parent shell in embedded mode
+
+This contract is enforced in these places:
+
+- Writer functions in `app.js`: `persistBoardMutation()`, `applyPollingBoardDelta()`, `commitBoardMutations()`
+- Writer functions in `boardList.js`: `applyLiveSyncBoardSnapshot()`, `applyRebasedBoardSnapshot()`
+- Parent message bridge in `workspaceShell.js`: `lexera-board-mutated` consumes `data.fullBoard` and forwards it to `refreshBoardHierarchy(...)`
+- Hierarchy cache setter in `boardList.js`: `refreshBoardHierarchyProjection()` is the only public projection API; embedded mode skips cache writes/rendering and relies on the parent bridge instead
+
+### Parent-Owned Workspace Catalog
+
+In workspace-shell mode, embedded board iframes do not own `boards[]` or
+`workspaces[]`. The parent window is the source of truth and pushes
+`lexera-workspace-catalog` snapshots into frames.
+
+This contract is enforced in these places:
+
+- Parent state fan-out in `app.js`: `setBoardsState()`, `setRemoteBoardsState()`, `setWorkspacesState()` call `WorkspaceShell.onCatalogUpdated(...)`
+- Parent frame bridge in `workspaceShell.js`: stores the latest catalog snapshot, broadcasts it to loaded frames, and re-sends it when a pane emits `lexera-pane-activated`
+- Embedded frame consumer in `orderHelpers.js`: `handleEmbeddedHierarchyFocusMessage()` applies `boards`, `remoteBoards`, and `workspaces` from `lexera-workspace-catalog`
+- Embedded polling in `pollingService.js`: `embeddedMode` skips `/config/workspaces`, `/boards`, and `/remoteBoards`
 
 ### Target Types
 
@@ -129,13 +160,13 @@ should be migrated to `targets`. When `targets` is present, the old options are 
 ### Data Flow
 
 ```
-Caller modifies fullBoardData
+Caller mutates board data
        |
        v
 persistBoardMutation({ targets: [...] })
        |
        +-- updateDisplayFromFullBoard()
-       +-- setBoardHierarchyRows() (if structural)
+       +-- commitLocalBoardChange(boardId, fullBoardData, ...)
        +-- refreshTargetedElements(targets)
        |      |
        |      +-- coalesce targets
@@ -144,6 +175,10 @@ persistBoardMutation({ targets: [...] })
        |      |     enhanceRenderedElement(newEl)
        |      +-- renderBoardList() (if sidebar target)
        |      +-- syncRenderedRowWidths() (if structural)
+       |
+       +-- refreshBoardHierarchyProjection() (non-embedded)
+       |      or
+       +-- postMessage('lexera-board-mutated', { fullBoard }) (embedded)
        |
        +-- scheduleDashboardRefresh()
        +-- markBoardDirty()

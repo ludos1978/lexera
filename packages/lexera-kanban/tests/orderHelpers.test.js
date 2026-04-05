@@ -56,3 +56,60 @@ describe('orderHelpers.reorderBoards', () => {
     expect(renderBoardList).not.toHaveBeenCalled();
   });
 });
+
+describe('orderHelpers.setShellActiveBoard', () => {
+  it('routes shell board activation through workspace context sync', () => {
+    vi.useFakeTimers();
+    try {
+      const setActiveBoardId = vi.fn();
+      const syncWorkspaceContextForBoard = vi.fn();
+      const trackRecentBoard = vi.fn();
+
+      OrderHelpers.init({
+        setActiveBoardId,
+        syncWorkspaceContextForBoard,
+        trackRecentBoard,
+        embeddedMode: false,
+        getElDashboardRoot: () => null
+      });
+
+      OrderHelpers.setShellActiveBoard('board-b');
+
+      expect(setActiveBoardId).toHaveBeenCalledWith('board-b');
+      expect(syncWorkspaceContextForBoard).toHaveBeenCalledWith('board-b');
+      expect(trackRecentBoard).toHaveBeenCalledWith('board-b');
+      expect(localStorageMock.getItem('lexera-last-board')).toBe('board-b');
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('orderHelpers.handleEmbeddedHierarchyFocusMessage', () => {
+  it('hydrates embedded board metadata from the parent workspace catalog', () => {
+    const setBoards = vi.fn();
+    const setRemoteBoards = vi.fn();
+    const setWorkspaces = vi.fn();
+
+    OrderHelpers.init({
+      embeddedMode: true,
+      setBoards,
+      setRemoteBoards,
+      setWorkspaces
+    });
+
+    OrderHelpers.handleEmbeddedHierarchyFocusMessage({
+      data: {
+        type: 'lexera-workspace-catalog',
+        boards: [{ id: 'board-a', title: 'Board A' }],
+        remoteBoards: [{ id: 'remote-a', title: 'Remote A' }],
+        workspaces: [{ id: 'ws-1', name: 'Workspace 1' }]
+      }
+    });
+
+    expect(setBoards).toHaveBeenCalledWith([{ id: 'board-a', title: 'Board A' }]);
+    expect(setRemoteBoards).toHaveBeenCalledWith([{ id: 'remote-a', title: 'Remote A' }]);
+    expect(setWorkspaces).toHaveBeenCalledWith([{ id: 'ws-1', name: 'Workspace 1' }]);
+  });
+});

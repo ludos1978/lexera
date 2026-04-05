@@ -27,7 +27,18 @@ const COPY_SIMULATION_DELAY_MS: u64 = 150;
 /// Prevents large clipboard images from causing UI stalls or crashes.
 const MAX_CLIPBOARD_IMAGE_BYTES: usize = 20 * 1024 * 1024;
 
+/// Interval for checking monitor configuration changes (seconds).
+const MONITOR_CHECK_INTERVAL_SECS: u64 = 3;
+
 static NEXT_ENTRY_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+/// Track last known monitor rect so we can detect config changes.
+static LAST_MONITOR_WIDTH: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static LAST_MONITOR_HEIGHT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static LAST_MONITOR_X: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static LAST_MONITOR_Y: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+/// Guard against spawning multiple monitor watcher threads on close/reopen cycles.
+static MONITOR_WATCHER_RUNNING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Read current clipboard content and add as a new entry to the history.
 /// Called by the clipboard watcher on each change.
@@ -237,6 +248,8 @@ pub fn open_capture_popup(app: &AppHandle) {
             // Snap to saved side (default right)
             let side = "right".to_string();
             let _ = snap_capture_strip(app, &side);
+            // Start periodic monitor watcher for screen changes
+            start_monitor_watcher(app.clone());
         }
         Err(e) => log::error!("[lexera.capture] Failed to open capture window: {}", e),
     }
@@ -260,6 +273,93 @@ fn monitor_rect(
         .map_err(|e| e.to_string())?
         .ok_or("No monitor")?;
     Ok((*monitor.position(), *monitor.size()))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct MonitorRect {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+impl MonitorRect {
+    fn from_parts(
+        position: tauri::PhysicalPosition<i32>,
+        size: tauri::PhysicalSize<u32>,
+    ) -> Self {
+        Self {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CaptureResnapMode {
+    Strip,
+    Expanded,
+}
+
+fn did_monitor_rect_change(current: MonitorRect) -> bool {
+    let prev_w = LAST_MONITOR_WIDTH.swap(current.width, std::sync::atomic::Ordering::Relaxed);
+    let prev_h = LAST_MONITOR_HEIGHT.swap(current.height, std::sync::atomic::Ordering::Relaxed);
+    let prev_x = LAST_MONITOR_X.swap(current.x, std::sync::atomic::Ordering::Relaxed);
+    let prev_y = LAST_MONITOR_Y.swap(current.y, std::sync::atomic::Ordering::Relaxed);
+    prev_w != 0
+        && (prev_w != current.width
+            || prev_h != current.height
+            || prev_x != current.x
+            || prev_y != current.y)
+}
+
+fn is_capture_window_in_bounds(pos: tauri::PhysicalPosition<i32>, monitor: MonitorRect) -> bool {
+    pos.x >= monitor.x
+        && pos.y >= monitor.y
+        && pos.x < monitor.x + monitor.width as i32
+        && pos.y < monitor.y + monitor.height as i32
+}
+
+fn plan_capture_resnap(
+    pos: tauri::PhysicalPosition<i32>,
+    monitor: MonitorRect,
+    monitor_changed: bool,
+    is_expanded: bool,
+) -> Option<CaptureResnapMode> {
+    if is_capture_window_in_bounds(pos, monitor) && !monitor_changed {
+        return None;
+    }
+    Some(if is_expanded {
+        CaptureResnapMode::Expanded
+    } else {
+        CaptureResnapMode::Strip
+    })
+}
+
+fn try_acquire_monitor_watcher_guard() -> bool {
+    MONITOR_WATCHER_RUNNING
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::Acquire,
+            std::sync::atomic::Ordering::Relaxed,
+        )
+        .is_ok()
+}
+
+fn release_monitor_watcher_guard() {
+    MONITOR_WATCHER_RUNNING.store(false, std::sync::atomic::Ordering::Release);
+}
+
+#[cfg(test)]
+fn reset_capture_monitor_state_for_tests() {
+    LAST_MONITOR_WIDTH.store(0, std::sync::atomic::Ordering::Relaxed);
+    LAST_MONITOR_HEIGHT.store(0, std::sync::atomic::Ordering::Relaxed);
+    LAST_MONITOR_X.store(0, std::sync::atomic::Ordering::Relaxed);
+    LAST_MONITOR_Y.store(0, std::sync::atomic::Ordering::Relaxed);
+    release_monitor_watcher_guard();
 }
 
 /// Calculate X coordinate for snapping to a screen edge.
@@ -288,7 +388,8 @@ fn snap_capture_strip(app: &AppHandle, side: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Re-snap the quick-capture window if it's outside the current monitor bounds.
+/// Re-snap the quick-capture window if the monitor configuration changed
+/// or if the window is outside the current monitor bounds.
 /// Call this periodically or after display configuration changes.
 pub fn validate_capture_position(app: &AppHandle) {
     let window = match app.get_webview_window("quick-capture") {
@@ -303,19 +404,58 @@ pub fn validate_capture_position(app: &AppHandle) {
         Ok(r) => r,
         Err(_) => return,
     };
-    // Check if window is outside the monitor bounds
-    let in_bounds = pos.x >= monitor_pos.x
-        && pos.y >= monitor_pos.y
-        && pos.x < monitor_pos.x + monitor_size.width as i32
-        && pos.y < monitor_pos.y + monitor_size.height as i32;
-    if !in_bounds {
-        let side = detect_side(&window).unwrap_or_else(|_| "right".to_string());
+    let monitor = MonitorRect::from_parts(monitor_pos, monitor_size);
+
+    // Detect monitor configuration change (resolution, position, or monitor swap)
+    let monitor_changed = did_monitor_rect_change(monitor);
+    let in_bounds = is_capture_window_in_bounds(pos, monitor);
+    let side = detect_side(&window).unwrap_or_else(|_| "right".to_string());
+    let is_expanded = window
+        .outer_size()
+        .ok()
+        .map(|s| {
+            let scale = window.scale_factor().unwrap_or(1.0);
+            s.width as f64 / scale > CAPTURE_STRIP_WIDTH * 1.5
+        })
+        .unwrap_or(false);
+
+    if let Some(mode) = plan_capture_resnap(pos, monitor, monitor_changed, is_expanded) {
         log::info!(
-            "[lexera.capture] Window out of monitor bounds, re-snapping to {}",
-            side
+            "[lexera.capture] Re-snapping to {} (out_of_bounds={}, monitor_changed={}, expanded={})",
+            side,
+            !in_bounds,
+            monitor_changed,
+            mode == CaptureResnapMode::Expanded
         );
-        let _ = snap_capture_strip(app, &side);
+        if mode == CaptureResnapMode::Expanded {
+            // Re-invoke expand_capture to re-snap at expanded dimensions on the new monitor.
+            let _ = expand_capture(app.clone());
+        } else {
+            let _ = snap_capture_strip(app, &side);
+        }
     }
+}
+
+/// Start a background thread that periodically checks for monitor
+/// configuration changes (resolution, connected/disconnected displays).
+/// Runs every MONITOR_CHECK_INTERVAL_SECS while the quick-capture window exists.
+/// Guarded against multiple concurrent spawns via MONITOR_WATCHER_RUNNING.
+pub fn start_monitor_watcher(app: AppHandle) {
+    if !try_acquire_monitor_watcher_guard() {
+        // Another watcher is already running.
+        return;
+    }
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(MONITOR_CHECK_INTERVAL_SECS));
+            if app.get_webview_window("quick-capture").is_none() {
+                log::info!("[lexera.capture] Monitor watcher stopping (window closed)");
+                break;
+            }
+            validate_capture_position(&app);
+        }
+        release_monitor_watcher_guard();
+    });
 }
 
 /// Determine which screen edge the window is closest to ("left" or "right").
@@ -578,5 +718,76 @@ pub fn snap_capture_window(app: AppHandle, side: String) -> Result<(), String> {
 pub fn close_capture(app: AppHandle) {
     if let Some(window) = app.get_webview_window("quick-capture") {
         let _ = window.destroy();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn monitor(x: i32, y: i32, width: u32, height: u32) -> MonitorRect {
+        MonitorRect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    fn pos(x: i32, y: i32) -> tauri::PhysicalPosition<i32> {
+        tauri::PhysicalPosition { x, y }
+    }
+
+    #[test]
+    fn validate_capture_position_detects_monitor_changes_after_first_sample() {
+        reset_capture_monitor_state_for_tests();
+
+        let initial = monitor(0, 0, 1920, 1080);
+        let moved = monitor(1920, 0, 2560, 1440);
+
+        assert_eq!(did_monitor_rect_change(initial), false);
+        assert_eq!(did_monitor_rect_change(initial), false);
+        assert_eq!(did_monitor_rect_change(moved), true);
+    }
+
+    #[test]
+    fn validate_capture_position_resnap_plan_distinguishes_strip_and_expanded_modes() {
+        reset_capture_monitor_state_for_tests();
+
+        let current = monitor(0, 0, 1920, 1080);
+
+        assert_eq!(plan_capture_resnap(pos(100, 100), current, false, false), None);
+        assert_eq!(
+            plan_capture_resnap(pos(-5, 100), current, false, false),
+            Some(CaptureResnapMode::Strip)
+        );
+        assert_eq!(
+            plan_capture_resnap(pos(100, 100), current, true, true),
+            Some(CaptureResnapMode::Expanded)
+        );
+    }
+
+    #[test]
+    fn validate_capture_position_bounds_check_tracks_monitor_edges() {
+        let current = monitor(10, 20, 500, 400);
+
+        assert!(is_capture_window_in_bounds(pos(10, 20), current));
+        assert!(is_capture_window_in_bounds(pos(509, 419), current));
+        assert!(!is_capture_window_in_bounds(pos(510, 419), current));
+        assert!(!is_capture_window_in_bounds(pos(509, 420), current));
+        assert!(!is_capture_window_in_bounds(pos(9, 20), current));
+    }
+
+    #[test]
+    fn monitor_watcher_guard_prevents_duplicate_spawns_until_released() {
+        reset_capture_monitor_state_for_tests();
+
+        assert!(try_acquire_monitor_watcher_guard());
+        assert!(!try_acquire_monitor_watcher_guard());
+
+        release_monitor_watcher_guard();
+
+        assert!(try_acquire_monitor_watcher_guard());
+        release_monitor_watcher_guard();
     }
 }

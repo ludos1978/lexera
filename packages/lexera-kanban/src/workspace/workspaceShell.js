@@ -694,6 +694,11 @@
     lastSideDockSignatures: { left: '', right: '', bottom: '' },
     foldedPanes: {},
     backendConnected: false,
+    catalogSnapshot: {
+      boards: [],
+      remoteBoards: [],
+      workspaces: []
+    },
     panelElements: null,
     dragTabId: '',
     dragDroppedInternally: false,
@@ -4187,8 +4192,9 @@
     return el;
   }
 
-  function deliverFocusTargetToFrame(frame, target) {
+  function deliverFocusTargetToFrame(frame, target, options) {
     if (!frame) return;
+    options = options || {};
     try {
       var doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
       if (!doc) return;
@@ -4224,16 +4230,29 @@
         }
       }
 
+      // After focusing, optionally enter edit mode for the target entity.
+      // Delegated to the iframe's own ActionRegistry so every editor hook and
+      // save pipeline stays identical to an in-board interaction.
+      function maybeEnterEditMode() {
+        if (!options.edit) return;
+        var iframeDash2 = frame.contentWindow && frame.contentWindow.LexeraDashboard;
+        if (iframeDash2 && typeof iframeDash2.openEditForHierarchyTarget === 'function') {
+          try { iframeDash2.openEditForHierarchyTarget(target); } catch (e) { /* ignore */ }
+        }
+      }
+
       // Find and scroll+focus the element
       var el = findTargetInIframeDOM(doc, target);
       if (el) {
         focusElement(el);
+        maybeEnterEditMode();
         return;
       }
       // Element may need a render tick after unfolding
       setTimeout(function () {
         var el2 = findTargetInIframeDOM(doc, target);
         if (el2) focusElement(el2);
+        maybeEnterEditMode();
       }, 60);
     } catch (e) { /* cross-origin or access error */ }
   }
@@ -4256,13 +4275,16 @@
     });
     if (!tab) return false;
     var frame = getOrCreateFrame(tab, { shouldLoad: true });
+    // Forward only the options keys that deliverFocusTargetToFrame needs so
+    // unrelated focusHierarchyTarget options don't leak into the frame.
+    var deliveryOptions = { edit: !!options.edit };
     // Store as pending so we can deliver it when the frame signals readiness via
     // lexera-pane-activated (handles the case where the tab is freshly opened and
     // the board frame hasn't initialized yet when the 60ms/220ms timeouts fire).
-    state.pendingFocusTargets[tab.id] = target;
+    state.pendingFocusTargets[tab.id] = { target: target, options: deliveryOptions };
     function sendFocus() {
       if (!frame || !frame.contentWindow) return;
-      deliverFocusTargetToFrame(frame, target);
+      deliverFocusTargetToFrame(frame, target, deliveryOptions);
     }
     setTimeout(sendFocus, 60);
     setTimeout(function () {
@@ -4284,13 +4306,23 @@
       // lexera-pane-activated right after its JS initializes (before board data
       // loads), so the frame's message handler is already registered. The frame
       // handles the case where the board isn't loaded yet by calling selectBoard.
-      var pendingTarget = state.pendingFocusTargets[data.pane];
-      if (pendingTarget) {
+      var pendingEntry = state.pendingFocusTargets[data.pane];
+      if (pendingEntry) {
         delete state.pendingFocusTargets[data.pane];
         var pendingFrame = state.frameCache[data.pane];
         if (pendingFrame && pendingFrame.contentWindow) {
-          deliverFocusTargetToFrame(pendingFrame, pendingTarget);
+          // Back-compat: accept both the old bare-target shape and the new
+          // { target, options } shape in case anything else still sets a
+          // pending focus directly.
+          if (pendingEntry.target) {
+            deliverFocusTargetToFrame(pendingFrame, pendingEntry.target, pendingEntry.options || {});
+          } else {
+            deliverFocusTargetToFrame(pendingFrame, pendingEntry, {});
+          }
         }
+      }
+      if (data.pane) {
+        postCatalogSnapshotToFrame(state.frameCache[data.pane]);
       }
       // Only activate if this pane isn't already the active tab in its leaf —
       // prevents cascade where loading an iframe triggers tab activation which
@@ -4305,17 +4337,20 @@
     if (data.type === 'lexera-board-mutated') {
       var mutatedBoardId = data.boardId;
       if (mutatedBoardId) {
-        var mutatedFrame = data.pane ? state.frameCache[data.pane] : null;
-        if (mutatedFrame && mutatedFrame.contentWindow) {
-          try {
-            var iframeApp = mutatedFrame.contentWindow.LexeraDashboard;
-            var fullBoard = iframeApp && typeof iframeApp.getFullBoardData === 'function'
-              ? iframeApp.getFullBoardData()
-              : null;
-            if (fullBoard && state.hooks && typeof state.hooks.refreshBoardHierarchy === 'function') {
-              state.hooks.refreshBoardHierarchy(mutatedBoardId, fullBoard);
-            }
-          } catch (e) { /* ignore */ }
+        var fullBoard = Object.prototype.hasOwnProperty.call(data, 'fullBoard') ? (data.fullBoard || null) : null;
+        if (!fullBoard) {
+          var mutatedFrame = data.pane ? state.frameCache[data.pane] : null;
+          if (mutatedFrame && mutatedFrame.contentWindow) {
+            try {
+              var iframeApp = mutatedFrame.contentWindow.LexeraDashboard;
+              fullBoard = iframeApp && typeof iframeApp.getFullBoardData === 'function'
+                ? iframeApp.getFullBoardData()
+                : null;
+            } catch (e) { /* ignore */ }
+          }
+        }
+        if (fullBoard && state.hooks && typeof state.hooks.refreshBoardHierarchy === 'function') {
+          state.hooks.refreshBoardHierarchy(mutatedBoardId, fullBoard);
         }
       }
       return;
@@ -4353,6 +4388,40 @@
       action: action
     }, '*');
     return true;
+  }
+
+  function normalizeCatalogSnapshot(snapshot) {
+    snapshot = snapshot || {};
+    return {
+      boards: Array.isArray(snapshot.boards) ? snapshot.boards.slice() : [],
+      remoteBoards: Array.isArray(snapshot.remoteBoards) ? snapshot.remoteBoards.slice() : [],
+      workspaces: Array.isArray(snapshot.workspaces) ? snapshot.workspaces.slice() : []
+    };
+  }
+
+  function postCatalogSnapshotToFrame(frame) {
+    if (!frame || !frame.contentWindow) return false;
+    var snapshot = normalizeCatalogSnapshot(state.catalogSnapshot);
+    try {
+      frame.contentWindow.postMessage({
+        type: 'lexera-workspace-catalog',
+        boards: snapshot.boards,
+        remoteBoards: snapshot.remoteBoards,
+        workspaces: snapshot.workspaces
+      }, '*');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function broadcastCatalogSnapshot() {
+    var frameIds = Object.keys(state.frameCache);
+    for (var i = 0; i < frameIds.length; i++) {
+      var frame = state.frameCache[frameIds[i]];
+      if (!frame || frame.tagName !== 'IFRAME') continue;
+      postCatalogSnapshotToFrame(frame);
+    }
   }
 
   function showContextMenuInBoardFrame(boardId, scope, x, y, ctx) {
@@ -4431,8 +4500,8 @@
       return true;
     }
     if (action === 'toggle-panel') {
-      var nextVisible = !state.panelVisibility[value];
-      setPanelVisibility(value, nextVisible, { activate: true });
+      var nextVisible = !isPanelShown(value);
+      setPanelVisibility(value, nextVisible, { activate: true, restoreDock: nextVisible });
       if (nextVisible) activatePanel(value);
       return true;
     }
@@ -4671,6 +4740,12 @@
     render();
   }
 
+  function onCatalogUpdated(snapshot) {
+    state.catalogSnapshot = normalizeCatalogSnapshot(snapshot);
+    onBoardsUpdated(state.catalogSnapshot.boards.concat(state.catalogSnapshot.remoteBoards));
+    broadcastCatalogSnapshot();
+  }
+
   var ACTION_PANEL_ALIASES = {
     'open-management': 'backendSettings',
     'backend-settings': 'backendSettings',
@@ -4682,11 +4757,43 @@
     'render-apps': 'renderApps'
   };
 
+  function resolveCycleTabTarget(leaf, direction) {
+    if (!leaf || !Array.isArray(leaf.tabs) || leaf.tabs.length < 2) return '';
+    var idx = -1;
+    for (var i = 0; i < leaf.tabs.length; i++) {
+      if (leaf.tabs[i].id === leaf.activeTabId) { idx = i; break; }
+    }
+    if (idx < 0) return '';
+    return leaf.tabs[(idx + direction + leaf.tabs.length) % leaf.tabs.length].id;
+  }
+
+  function cycleTab(direction) {
+    var leaf = getActiveLeaf();
+    var nextTabId = resolveCycleTabTarget(leaf, direction);
+    if (!nextTabId) return false;
+    activateTab(nextTabId);
+    return true;
+  }
+
   function handleBoardAction(action) {
     if (!state.enabled || !state.mounted) return false;
     if (!action) return false;
+    if (action === 'close-active-tab') {
+      var active = getActiveTab();
+      if (active) closeTab(active.id);
+      return true;
+    }
+    if (action === 'next-tab') { return cycleTab(1); }
+    if (action === 'prev-tab') { return cycleTab(-1); }
     if (action === 'new-window') {
       openWorkspaceWindow();
+      return true;
+    }
+    if (action.indexOf('toggle-panel:') === 0) {
+      var toggleTarget = action.substring('toggle-panel:'.length);
+      if (!PANEL_DEFINITIONS[getPanelKind(toggleTarget)]) return false;
+      var nextVisible = !isPanelShown(toggleTarget);
+      setPanelVisibility(toggleTarget, nextVisible, { activate: true, restoreDock: nextVisible });
       return true;
     }
     if (action.indexOf('reveal-panel:') === 0) {
@@ -4719,6 +4826,7 @@
     mount: mount,
     render: render,
     onBoardsUpdated: onBoardsUpdated,
+    onCatalogUpdated: onCatalogUpdated,
     openBoard: openBoard,
     ensureInitialTab: ensureInitialTab,
     focusHierarchyTarget: focusHierarchyTarget,
@@ -4739,6 +4847,7 @@
     collapsePanel: collapsePanel,
     restoreDock: restoreDock,
     collapseDock: collapseDock,
-    getActiveBoardColumnsContainer: getActiveBoardColumnsContainer
+    getActiveBoardColumnsContainer: getActiveBoardColumnsContainer,
+    _test_resolveCycleTabTarget: resolveCycleTabTarget
   };
 })();

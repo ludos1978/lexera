@@ -1,4 +1,4 @@
-use chrono::{Duration, Local, NaiveDate};
+use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
 use log::warn;
 use sha2::{Digest, Sha256};
 
@@ -53,6 +53,82 @@ fn parse_date_info(tag: &str, today: NaiveDate) -> Option<DateInfo> {
 
     // Single date.
     parse_temporal_to_date(tag, today).map(DateInfo::Single)
+}
+
+// ---------------------------------------------------------------------------
+// iCal line folding (RFC 5545 Section 3.1)
+// ---------------------------------------------------------------------------
+
+/// Maximum octets per content line per RFC 5545 §3.1.
+///
+/// Quote: "Lines of text SHOULD NOT be longer than 75 octets, excluding the
+/// line break. Long content lines SHOULD be split into a multiple line
+/// representations using a line 'folding' technique."
+const ICAL_LINE_OCTET_LIMIT: usize = 75;
+
+/// Fold a single content line at 75-octet boundaries per RFC 5545 §3.1.
+///
+/// Folded lines are joined with `CRLF + SPACE`. The octet budget applies to
+/// the UTF-8 byte length, not the character count, and a fold must never land
+/// inside a multi-byte codepoint (RFC 5545 §3.1 clarifies this for UTF-8).
+///
+/// Returns the line unchanged when it already fits in the limit.
+fn fold_ical_line(line: &str) -> String {
+    let bytes = line.as_bytes();
+    if bytes.len() <= ICAL_LINE_OCTET_LIMIT {
+        return line.to_string();
+    }
+
+    // Pre-allocate: original length plus CRLF+SPACE (3 bytes) per fold.
+    let fold_count = bytes.len() / ICAL_LINE_OCTET_LIMIT;
+    let mut out = String::with_capacity(bytes.len() + fold_count * 3);
+
+    // First chunk has the full 75-octet budget; each continuation chunk
+    // starts with a leading SPACE so the continuation itself has 74 octets
+    // of payload (75 total with the SPACE prefix). Readers strip the
+    // `CRLF + single-whitespace` sequence to "unfold" on receive.
+    let mut start = 0usize;
+    let total = bytes.len();
+    let mut first = true;
+
+    while start < total {
+        let budget = if first {
+            ICAL_LINE_OCTET_LIMIT
+        } else {
+            ICAL_LINE_OCTET_LIMIT - 1 // account for the SPACE continuation prefix
+        };
+        let remaining = total - start;
+        let take = remaining.min(budget);
+        let mut end = start + take;
+
+        // Never split mid-codepoint: walk back to a valid UTF-8 boundary.
+        while end < total && !is_char_boundary(bytes, end) {
+            end -= 1;
+        }
+
+        if !first {
+            out.push_str("\r\n ");
+        }
+        // SAFETY: `end` is always on a UTF-8 codepoint boundary by the
+        // walk-back above.
+        out.push_str(&line[start..end]);
+
+        start = end;
+        first = false;
+    }
+
+    out
+}
+
+/// Check if `idx` is a valid UTF-8 codepoint boundary within `bytes`.
+/// Mirrors `str::is_char_boundary` without requiring a `&str`.
+fn is_char_boundary(bytes: &[u8], idx: usize) -> bool {
+    if idx == 0 || idx == bytes.len() {
+        return true;
+    }
+    // Continuation bytes have the top two bits set to `10xxxxxx`.
+    // A boundary is any byte that is NOT a continuation byte.
+    (bytes[idx] & 0b1100_0000) != 0b1000_0000
 }
 
 // ---------------------------------------------------------------------------
@@ -239,9 +315,18 @@ fn format_ical_date(date: NaiveDate) -> String {
     format!("{}", date.format("%Y%m%d"))
 }
 
+/// Format a UTC instant as an iCal DATE-TIME UTC value: YYYYMMDDTHHMMSSZ
+/// (RFC 5545 §3.3.5 "Form #2: Date with UTC Time").
+fn format_ical_utc(ts: DateTime<Utc>) -> String {
+    ts.format("%Y%m%dT%H%M%SZ").to_string()
+}
+
 /// Information about a single VEVENT to be generated.
 struct VEventInfo {
     uid: String,
+    /// Creation/build timestamp of this VEVENT as a UTC instant. Required by
+    /// RFC 5545 §3.8.7.2 — `DTSTAMP` is a mandatory property on every VEVENT.
+    dtstamp: DateTime<Utc>,
     dtstart: NaiveDate,
     dtend: NaiveDate,
     summary: String,
@@ -252,7 +337,16 @@ struct VEventInfo {
 
 /// Try to build VEVENT info from a card. Returns None if the card has no
 /// temporal tags that resolve to dates.
-fn build_vevent_info(card: &KanbanCard, board_id: &str, today: NaiveDate) -> Option<VEventInfo> {
+///
+/// `now` is used as the `DTSTAMP` value for the resulting VEVENT. Callers in
+/// production pass `Utc::now()`; tests pass a fixed instant so assertions are
+/// deterministic.
+fn build_vevent_info(
+    card: &KanbanCard,
+    board_id: &str,
+    today: NaiveDate,
+    now: DateTime<Utc>,
+) -> Option<VEventInfo> {
     let temporal_tags = extract_temporal_tags(&card.content);
 
     if temporal_tags.is_empty() {
@@ -309,6 +403,7 @@ fn build_vevent_info(card: &KanbanCard, board_id: &str, today: NaiveDate) -> Opt
 
     Some(VEventInfo {
         uid,
+        dtstamp: now,
         dtstart,
         dtend,
         summary,
@@ -320,9 +415,11 @@ fn build_vevent_info(card: &KanbanCard, board_id: &str, today: NaiveDate) -> Opt
 
 /// Render a single VEVENT block as a string.
 fn render_vevent(info: &VEventInfo) -> String {
-    let mut lines = Vec::with_capacity(10);
+    let mut lines = Vec::with_capacity(11);
     lines.push("BEGIN:VEVENT".to_string());
     lines.push(format!("UID:{}", info.uid));
+    // DTSTAMP is REQUIRED by RFC 5545 §3.8.7.2 and must be a UTC date-time.
+    lines.push(format!("DTSTAMP:{}", format_ical_utc(info.dtstamp)));
     lines.push(format!(
         "DTSTART;VALUE=DATE:{}",
         format_ical_date(info.dtstart)
@@ -366,27 +463,54 @@ pub fn export_board_to_ical(board: &KanbanBoard, board_id: &str) -> String {
 /// Only cards that contain temporal tags resolvable to dates are included.
 /// Cards without temporal tags or with unparseable dates are silently skipped.
 pub fn export_cards_to_ical(cards: &[&KanbanCard], board_id: &str) -> String {
+    export_cards_to_ical_with_now(cards, board_id, Utc::now())
+}
+
+/// Internal helper used by the public export functions and by tests. Accepts
+/// an explicit `now` instant that is used as `DTSTAMP` on every VEVENT so
+/// callers can produce deterministic output in tests.
+fn export_cards_to_ical_with_now(
+    cards: &[&KanbanCard],
+    board_id: &str,
+    now: DateTime<Utc>,
+) -> String {
     let today = Local::now().date_naive();
 
     let mut vevents = Vec::new();
     for card in cards {
-        if let Some(info) = build_vevent_info(card, board_id, today) {
+        if let Some(info) = build_vevent_info(card, board_id, today, now) {
             vevents.push(render_vevent(&info));
         }
     }
 
-    let mut output = Vec::with_capacity(4 + vevents.len());
-    output.push("BEGIN:VCALENDAR".to_string());
-    output.push("VERSION:2.0".to_string());
-    output.push("PRODID:-//Lexera//Kanban//EN".to_string());
+    // Assemble all content lines. Each VEVENT block is already a multi-line
+    // string joined by CRLF, so we split it back into individual logical
+    // lines here and rejoin everything through the folding pipeline below.
+    let mut lines: Vec<String> = Vec::with_capacity(6 + vevents.len() * 10);
+    lines.push("BEGIN:VCALENDAR".to_string());
+    lines.push("VERSION:2.0".to_string());
+    lines.push("PRODID:-//Lexera//Kanban//EN".to_string());
+    // CALSCALE:GREGORIAN — RFC 5545 §3.7.1. Optional but commonly required by
+    // strict CalDAV clients that refuse calendars without an explicit scale.
+    lines.push("CALSCALE:GREGORIAN".to_string());
+    // METHOD:PUBLISH — RFC 5545 §3.7.2. Marks this as a published feed
+    // (vs. an iTIP request/reply); needed for subscription-based clients.
+    lines.push("METHOD:PUBLISH".to_string());
 
-    for vevent in &vevents {
-        output.push(vevent.clone());
+    for vevent in vevents {
+        for line in vevent.split("\r\n") {
+            lines.push(line.to_string());
+        }
     }
 
-    output.push("END:VCALENDAR".to_string());
+    lines.push("END:VCALENDAR".to_string());
 
-    output.join("\r\n")
+    // Apply RFC 5545 §3.1 line folding to every content line.
+    lines
+        .iter()
+        .map(|l| fold_ical_line(l))
+        .collect::<Vec<_>>()
+        .join("\r\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -397,6 +521,7 @@ pub fn export_cards_to_ical(cards: &[&KanbanCard], board_id: &str) -> String {
 mod tests {
     use super::*;
     use crate::types::{BoardFormat, KanbanCard};
+    use chrono::TimeZone;
     use std::collections::HashMap;
 
     /// Helper: build a simple card.
@@ -408,6 +533,13 @@ mod tests {
             kid: kid.map(|s| s.to_string()),
             params: HashMap::new(),
         }
+    }
+
+    /// Fixed DTSTAMP value so test assertions on the rendered output are
+    /// deterministic. 2026-03-01T10:30:00Z matches the `today` used elsewhere
+    /// in these tests.
+    fn fixed_now() -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 3, 1, 10, 30, 0).unwrap()
     }
 
     // -------------------------------------------------------------------
@@ -468,7 +600,7 @@ mod tests {
     fn card_with_date_generates_vevent() {
         let card = make_card("Meeting with team @2026-03-15 #work", false, Some("abc123"));
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today);
+        let info = build_vevent_info(&card, "board-1", today, fixed_now());
         assert!(info.is_some());
         let info = info.unwrap();
         assert_eq!(info.dtstart, NaiveDate::from_ymd_opt(2026, 3, 15).unwrap());
@@ -485,7 +617,7 @@ mod tests {
             Some("def456"),
         );
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today).unwrap();
+        let info = build_vevent_info(&card, "board-1", today, fixed_now()).unwrap();
         assert_eq!(info.dtstart, NaiveDate::from_ymd_opt(2026, 3, 15).unwrap());
         // DTEND for all-day events is exclusive: end date + 1
         assert_eq!(info.dtend, NaiveDate::from_ymd_opt(2026, 3, 21).unwrap());
@@ -495,7 +627,7 @@ mod tests {
     fn card_with_checkbox_completed_has_status_completed() {
         let card = make_card("- [x] Done task @2026-04-01", true, Some("done1"));
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today).unwrap();
+        let info = build_vevent_info(&card, "board-1", today, fixed_now()).unwrap();
         assert_eq!(info.status, "COMPLETED");
     }
 
@@ -503,7 +635,7 @@ mod tests {
     fn card_with_unchecked_checkbox_has_needs_action() {
         let card = make_card("- [ ] Pending task @2026-04-01", false, Some("pend1"));
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today).unwrap();
+        let info = build_vevent_info(&card, "board-1", today, fixed_now()).unwrap();
         assert_eq!(info.status, "NEEDS-ACTION");
     }
 
@@ -512,7 +644,7 @@ mod tests {
         // Card.checked is false, but content has [x] — should still be COMPLETED.
         let card = make_card("[x] Finished @2026-04-01", false, Some("chk1"));
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today).unwrap();
+        let info = build_vevent_info(&card, "board-1", today, fixed_now()).unwrap();
         assert_eq!(info.status, "COMPLETED");
     }
 
@@ -524,7 +656,7 @@ mod tests {
     fn card_without_temporal_tag_is_skipped() {
         let card = make_card("Just a regular card #todo", false, Some("no-date"));
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today);
+        let info = build_vevent_info(&card, "board-1", today, fixed_now());
         assert!(info.is_none());
     }
 
@@ -540,7 +672,7 @@ mod tests {
             Some("tags1"),
         );
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today).unwrap();
+        let info = build_vevent_info(&card, "board-1", today, fixed_now()).unwrap();
         assert!(info.categories.contains(&"review".to_string()));
         assert!(info.categories.contains(&"urgent".to_string()));
     }
@@ -549,7 +681,7 @@ mod tests {
     fn no_hash_tags_means_no_categories_line() {
         let card = make_card("Simple task @2026-05-01", false, Some("notags"));
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today).unwrap();
+        let info = build_vevent_info(&card, "board-1", today, fixed_now()).unwrap();
         assert!(info.categories.is_empty());
 
         let vevent = render_vevent(&info);
@@ -603,7 +735,7 @@ mod tests {
     fn newlines_in_card_content_escaped_in_vevent() {
         let card = make_card("Line1\nLine2\nLine3 @2026-06-01", false, Some("nl1"));
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today).unwrap();
+        let info = build_vevent_info(&card, "board-1", today, fixed_now()).unwrap();
         let vevent = render_vevent(&info);
         // The DESCRIPTION should have escaped newlines.
         assert!(vevent.contains("\\n"));
@@ -770,6 +902,275 @@ mod tests {
         assert_eq!(format_ical_date(date), "20260105");
     }
 
+    #[test]
+    fn ical_utc_format_matches_rfc5545_form2() {
+        let ts = Utc.with_ymd_and_hms(2026, 3, 1, 10, 30, 0).unwrap();
+        assert_eq!(format_ical_utc(ts), "20260301T103000Z");
+    }
+
+    #[test]
+    fn ical_utc_format_pads_single_digits() {
+        let ts = Utc.with_ymd_and_hms(2026, 1, 5, 9, 7, 3).unwrap();
+        assert_eq!(format_ical_utc(ts), "20260105T090703Z");
+    }
+
+    // -------------------------------------------------------------------
+    // DTSTAMP is required by RFC 5545 §3.8.7.2 on every VEVENT
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn vevent_emits_dtstamp_property() {
+        let card = make_card("Meeting @2026-04-15", false, Some("stamp1"));
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        let info = build_vevent_info(&card, "board-1", today, fixed_now()).unwrap();
+        let vevent = render_vevent(&info);
+        assert!(
+            vevent.contains("DTSTAMP:20260301T103000Z"),
+            "VEVENT must contain a DTSTAMP UTC property (RFC 5545 §3.8.7.2), got:\n{}",
+            vevent
+        );
+    }
+
+    #[test]
+    fn export_cards_to_ical_stamps_every_vevent() {
+        let card_a = make_card("Task A @2026-05-01", false, Some("a"));
+        let card_b = make_card("Task B @2026-06-01", false, Some("b"));
+        let cards: Vec<&KanbanCard> = vec![&card_a, &card_b];
+
+        let ical = export_cards_to_ical_with_now(&cards, "board-x", fixed_now());
+
+        // Each VEVENT block must carry the same fixed DTSTAMP.
+        let dtstamp_count = ical.matches("DTSTAMP:20260301T103000Z").count();
+        assert_eq!(
+            dtstamp_count, 2,
+            "expected DTSTAMP on each of the 2 VEVENTs, got {} matches in:\n{}",
+            dtstamp_count, ical
+        );
+    }
+
+    #[test]
+    fn export_cards_to_ical_dtstamp_is_utc_form() {
+        // The public wrapper uses `Utc::now()`, so we only assert format.
+        let card = make_card("Any task @2026-07-15", false, Some("fmt"));
+        let cards: Vec<&KanbanCard> = vec![&card];
+        let ical = export_cards_to_ical(&cards, "board-fmt");
+
+        // Extract the DTSTAMP value and verify it matches YYYYMMDDTHHMMSSZ.
+        let line = ical
+            .lines()
+            .find(|l| l.starts_with("DTSTAMP:"))
+            .expect("DTSTAMP line must be present");
+        let value = line.strip_prefix("DTSTAMP:").unwrap();
+        assert_eq!(value.len(), 16, "DTSTAMP value should be 16 chars: {}", value);
+        assert!(
+            value.ends_with('Z'),
+            "DTSTAMP value should end with Z (UTC marker): {}",
+            value
+        );
+        // First 8 chars = date, 9th = 'T', next 6 digits, then 'Z'.
+        assert!(value[..8].chars().all(|c| c.is_ascii_digit()));
+        assert_eq!(&value[8..9], "T");
+        assert!(value[9..15].chars().all(|c| c.is_ascii_digit()));
+    }
+
+    // -------------------------------------------------------------------
+    // RFC 5545 §3.1 line folding (75-octet limit)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn fold_leaves_short_lines_unchanged() {
+        let line = "SUMMARY:Short summary";
+        assert_eq!(fold_ical_line(line), line);
+    }
+
+    #[test]
+    fn fold_keeps_exactly_75_octet_lines_unchanged() {
+        // 75 'a' characters prefixed by "X:" is 77 octets; back off to 73.
+        let line: String = "X:".to_string() + &"a".repeat(73);
+        assert_eq!(line.len(), 75);
+        assert_eq!(fold_ical_line(&line), line);
+    }
+
+    #[test]
+    fn fold_splits_line_longer_than_75_octets() {
+        // 200-char SUMMARY triggers folding. Each continuation starts with
+        // "\r\n " (CRLF + single SPACE) per RFC 5545 §3.1.
+        let long = "a".repeat(200);
+        let line = format!("SUMMARY:{}", long); // 208 octets total
+        let folded = fold_ical_line(&line);
+
+        // Every "physical" line must be ≤ 75 octets (excluding the CRLF).
+        for physical in folded.split("\r\n") {
+            assert!(
+                physical.len() <= ICAL_LINE_OCTET_LIMIT,
+                "physical line exceeds {} octets: {:?} ({} bytes)",
+                ICAL_LINE_OCTET_LIMIT,
+                physical,
+                physical.len()
+            );
+        }
+
+        // Continuation lines must begin with a SPACE so a reader knows to
+        // fold-join them with the prior line.
+        let pieces: Vec<&str> = folded.split("\r\n").collect();
+        assert!(pieces.len() >= 2, "expected multiple folded pieces");
+        for piece in &pieces[1..] {
+            assert!(
+                piece.starts_with(' '),
+                "continuation line must start with SPACE: {:?}",
+                piece
+            );
+        }
+
+        // Unfolding (strip CRLF + leading SPACE on continuations) must
+        // reproduce the original line exactly.
+        let mut unfolded = String::new();
+        for (i, piece) in pieces.iter().enumerate() {
+            if i == 0 {
+                unfolded.push_str(piece);
+            } else {
+                // Strip exactly one leading whitespace character per RFC 5545.
+                unfolded.push_str(&piece[1..]);
+            }
+        }
+        assert_eq!(unfolded, line);
+    }
+
+    #[test]
+    fn fold_does_not_split_utf8_codepoint() {
+        // Build a line whose 75th byte lands in the middle of a multi-byte
+        // codepoint. "é" is 2 bytes in UTF-8, so 37 × "aé" = 111 bytes and
+        // places an "é" starting at byte 74–75.
+        let mut payload = String::new();
+        for _ in 0..37 {
+            payload.push('a');
+            payload.push('é');
+        }
+        let line = format!("X:{}", payload); // 2 + 111 = 113 octets
+        let folded = fold_ical_line(&line);
+
+        // Every physical line must be valid UTF-8 (guaranteed by `String`)
+        // AND must not exceed the octet limit.
+        for physical in folded.split("\r\n") {
+            assert!(
+                physical.len() <= ICAL_LINE_OCTET_LIMIT,
+                "physical line exceeds limit: {} octets",
+                physical.len()
+            );
+        }
+
+        // Round-trip unfolding must recover the original string.
+        let pieces: Vec<&str> = folded.split("\r\n").collect();
+        let mut unfolded = String::new();
+        for (i, piece) in pieces.iter().enumerate() {
+            if i == 0 {
+                unfolded.push_str(piece);
+            } else {
+                unfolded.push_str(&piece[1..]);
+            }
+        }
+        assert_eq!(unfolded, line);
+    }
+
+    #[test]
+    fn fold_handles_many_fold_boundaries() {
+        // A 1000-byte line must fold into roughly 1000/74 ≈ 14 pieces.
+        let line = format!("LONG:{}", "x".repeat(1000));
+        let folded = fold_ical_line(&line);
+        let pieces: Vec<&str> = folded.split("\r\n").collect();
+        assert!(
+            pieces.len() >= 13,
+            "expected many fold boundaries, got {}",
+            pieces.len()
+        );
+        for physical in &pieces {
+            assert!(physical.len() <= ICAL_LINE_OCTET_LIMIT);
+        }
+    }
+
+    #[test]
+    fn is_char_boundary_matches_std_str() {
+        // Cross-check our byte-level helper against `str::is_char_boundary`
+        // for a string with ASCII and multi-byte sequences.
+        let s = "aé🌍bc";
+        let bytes = s.as_bytes();
+        for idx in 0..=bytes.len() {
+            assert_eq!(
+                is_char_boundary(bytes, idx),
+                s.is_char_boundary(idx),
+                "mismatch at byte {}",
+                idx
+            );
+        }
+    }
+
+    #[test]
+    fn export_output_folds_long_summary() {
+        // A card whose summary pushes the SUMMARY line well past 75 octets
+        // must still produce an output where every physical line fits.
+        let long_title = "x".repeat(200);
+        let content = format!("{} @2026-05-01", long_title);
+        let card = make_card(&content, false, Some("longsum"));
+        let cards: Vec<&KanbanCard> = vec![&card];
+
+        let ical = export_cards_to_ical_with_now(&cards, "board-fold", fixed_now());
+
+        for physical in ical.split("\r\n") {
+            assert!(
+                physical.len() <= ICAL_LINE_OCTET_LIMIT,
+                "output contains physical line > 75 octets: {:?}",
+                physical
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // VCALENDAR header completeness (CALSCALE, METHOD)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn output_contains_calscale_gregorian() {
+        let card = make_card("Task @2026-05-01", false, Some("cs"));
+        let cards: Vec<&KanbanCard> = vec![&card];
+        let ical = export_cards_to_ical_with_now(&cards, "board-cs", fixed_now());
+        assert!(
+            ical.contains("CALSCALE:GREGORIAN"),
+            "output must declare CALSCALE:GREGORIAN (RFC 5545 §3.7.1)"
+        );
+    }
+
+    #[test]
+    fn output_contains_method_publish() {
+        let card = make_card("Task @2026-05-01", false, Some("mp"));
+        let cards: Vec<&KanbanCard> = vec![&card];
+        let ical = export_cards_to_ical_with_now(&cards, "board-mp", fixed_now());
+        assert!(
+            ical.contains("METHOD:PUBLISH"),
+            "output must declare METHOD:PUBLISH (RFC 5545 §3.7.2) for subscription feeds"
+        );
+    }
+
+    #[test]
+    fn vcalendar_header_order_is_stable() {
+        // BEGIN:VCALENDAR → VERSION → PRODID → CALSCALE → METHOD → …
+        // Some strict clients refuse calendars where VERSION is not the
+        // first property after BEGIN:VCALENDAR, so lock the order in.
+        let card = make_card("Task @2026-05-01", false, Some("order"));
+        let cards: Vec<&KanbanCard> = vec![&card];
+        let ical = export_cards_to_ical_with_now(&cards, "board-order", fixed_now());
+
+        let version_idx = ical.find("VERSION:2.0").unwrap();
+        let prodid_idx = ical.find("PRODID:").unwrap();
+        let calscale_idx = ical.find("CALSCALE:").unwrap();
+        let method_idx = ical.find("METHOD:").unwrap();
+        let begin_idx = ical.find("BEGIN:VCALENDAR").unwrap();
+
+        assert!(begin_idx < version_idx);
+        assert!(version_idx < prodid_idx);
+        assert!(prodid_idx < calscale_idx);
+        assert!(calscale_idx < method_idx);
+    }
+
     // -------------------------------------------------------------------
     // VEVENT rendering details
     // -------------------------------------------------------------------
@@ -778,6 +1179,7 @@ mod tests {
     fn vevent_contains_all_required_fields() {
         let info = VEventInfo {
             uid: "test-uid@lexera".to_string(),
+            dtstamp: fixed_now(),
             dtstart: NaiveDate::from_ymd_opt(2026, 3, 15).unwrap(),
             dtend: NaiveDate::from_ymd_opt(2026, 3, 16).unwrap(),
             summary: "Test Event".to_string(),
@@ -790,6 +1192,7 @@ mod tests {
         assert!(vevent.contains("BEGIN:VEVENT"));
         assert!(vevent.contains("END:VEVENT"));
         assert!(vevent.contains("UID:test-uid@lexera"));
+        assert!(vevent.contains("DTSTAMP:20260301T103000Z"));
         assert!(vevent.contains("DTSTART;VALUE=DATE:20260315"));
         assert!(vevent.contains("DTEND;VALUE=DATE:20260316"));
         assert!(vevent.contains("SUMMARY:Test Event"));
@@ -806,7 +1209,7 @@ mod tests {
     fn card_without_kid_uses_id_for_uid() {
         let card = make_card("Task @2026-07-01", false, None);
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today).unwrap();
+        let info = build_vevent_info(&card, "board-1", today, fixed_now()).unwrap();
         // UID should be based on card.id ("card-1") since kid is None.
         let expected_uid = generate_uid("board-1", "card-1");
         assert_eq!(info.uid, expected_uid);
@@ -821,7 +1224,7 @@ mod tests {
         // @next-week is not a recognized temporal pattern in parse_temporal_to_date
         let card = make_card("Task @notadate", false, Some("bad1"));
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
-        let info = build_vevent_info(&card, "board-1", today);
+        let info = build_vevent_info(&card, "board-1", today, fixed_now());
         assert!(info.is_none());
     }
 

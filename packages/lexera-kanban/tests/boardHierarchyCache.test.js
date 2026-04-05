@@ -21,6 +21,7 @@ function createLocalStorage() {
 function createBoardData(title) {
   return {
     title,
+    columns: [],
     rows: [{
       id: 'row-1',
       title: 'Row',
@@ -62,6 +63,96 @@ function loadBoardList(options = {}) {
 }
 
 describe('board hierarchy cache refresh', () => {
+  it('syncs workspace context to the active board workspace', () => {
+    const localStorage = createLocalStorage();
+    const BoardList = loadBoardList({ localStorage });
+    const state = {
+      boards: [{ id: 'board-a', title: 'Board A', workspace_ids: ['ws-2'] }],
+      remoteBoards: [],
+      activeWorkspaceId: 'ws-1',
+      viewWorkspaceId: 'ws-1',
+    };
+
+    BoardList.init({
+      get boards() { return state.boards; },
+      get remoteBoards() { return state.remoteBoards; },
+      get activeWorkspaceId() { return state.activeWorkspaceId; },
+      get viewWorkspaceId() { return state.viewWorkspaceId; },
+      get ALL_WORKSPACES_ID() { return '__all__'; },
+      setActiveWorkspaceIdState(nextWorkspaceId) { state.activeWorkspaceId = nextWorkspaceId; },
+      setViewWorkspaceIdState(nextWorkspaceId) { state.viewWorkspaceId = nextWorkspaceId; },
+    });
+
+    const context = BoardList.syncWorkspaceContextForBoard('board-a', { render: false });
+
+    expect(context.workspaceId).toBe('ws-2');
+    expect(state.activeWorkspaceId).toBe('ws-2');
+    expect(state.viewWorkspaceId).toBe('ws-2');
+    expect(localStorage.getItem('lexera-active-workspace')).toBe('ws-2');
+  });
+
+  it('keeps the current view workspace when the active board belongs to multiple workspaces', () => {
+    const localStorage = createLocalStorage();
+    const BoardList = loadBoardList({ localStorage });
+    const state = {
+      boards: [{ id: 'board-a', title: 'Board A', workspace_ids: ['ws-1', 'ws-2'] }],
+      remoteBoards: [],
+      activeWorkspaceId: 'ws-2',
+      viewWorkspaceId: 'ws-1',
+    };
+
+    BoardList.init({
+      get boards() { return state.boards; },
+      get remoteBoards() { return state.remoteBoards; },
+      get activeWorkspaceId() { return state.activeWorkspaceId; },
+      get viewWorkspaceId() { return state.viewWorkspaceId; },
+      get ALL_WORKSPACES_ID() { return '__all__'; },
+      setActiveWorkspaceIdState(nextWorkspaceId) { state.activeWorkspaceId = nextWorkspaceId; },
+      setViewWorkspaceIdState(nextWorkspaceId) { state.viewWorkspaceId = nextWorkspaceId; },
+    });
+
+    const context = BoardList.syncWorkspaceContextForBoard('board-a', { render: false });
+
+    expect(context.workspaceId).toBe('ws-1');
+    expect(state.activeWorkspaceId).toBe('ws-1');
+    expect(state.viewWorkspaceId).toBe('ws-1');
+  });
+
+  it('reconciles the active board workspace when board metadata arrives later', () => {
+    const localStorage = createLocalStorage();
+    const BoardList = loadBoardList({ localStorage });
+    const state = {
+      activeBoardId: 'board-a',
+      boards: [],
+      remoteBoards: [],
+      activeWorkspaceId: 'ws-1',
+      viewWorkspaceId: 'ws-1',
+    };
+
+    BoardList.init({
+      get activeBoardId() { return state.activeBoardId; },
+      get boards() { return state.boards; },
+      get remoteBoards() { return state.remoteBoards; },
+      get activeWorkspaceId() { return state.activeWorkspaceId; },
+      get viewWorkspaceId() { return state.viewWorkspaceId; },
+      get ALL_WORKSPACES_ID() { return '__all__'; },
+      setActiveWorkspaceIdState(nextWorkspaceId) { state.activeWorkspaceId = nextWorkspaceId; },
+      setViewWorkspaceIdState(nextWorkspaceId) { state.viewWorkspaceId = nextWorkspaceId; },
+    });
+
+    BoardList.reconcileActiveWorkspaceContext({ render: false });
+    expect(state.activeWorkspaceId).toBe('ws-1');
+    expect(state.viewWorkspaceId).toBe('ws-1');
+
+    state.boards = [{ id: 'board-a', title: 'Board A', workspace_ids: ['ws-2'] }];
+
+    const context = BoardList.reconcileActiveWorkspaceContext({ render: false });
+
+    expect(context.workspaceId).toBe('ws-2');
+    expect(state.activeWorkspaceId).toBe('ws-2');
+    expect(state.viewWorkspaceId).toBe('ws-2');
+  });
+
   it('reuses cached hierarchy rows instead of reloading every board on each pass', async () => {
     const localStorage = createLocalStorage();
     localStorage.setItem('lexera-sidebar-expanded', JSON.stringify(['board-b', 'board-c']));
@@ -196,5 +287,148 @@ describe('board hierarchy cache refresh', () => {
 
     expect(api.getBoardHierarchy).toHaveBeenCalledTimes(3);
     expect(maxConcurrent).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('board hierarchy single-source contract', () => {
+  it('skips hierarchy cache writes and rerenders in embedded mode', () => {
+    const BoardList = loadBoardList();
+    const renderBoardList = vi.fn();
+    const api = {
+      getBoardHierarchy: vi.fn(),
+      getBoardHierarchyCached: vi.fn(),
+    };
+
+    BoardList.init({
+      get embeddedMode() { return true; },
+      renderBoardList,
+      get LexeraApi() { return api; },
+      get activeBoardId() { return null; },
+      get fullBoardData() { return null; },
+      get activeBoardData() { return null; },
+    });
+
+    BoardList.refreshBoardHierarchyProjection('board-a', createBoardData('Board A'), 'Board A');
+
+    expect(BoardList.getBoardHierarchyRows('board-a')).toBe(null);
+    expect(renderBoardList).not.toHaveBeenCalled();
+    expect(api.getBoardHierarchy).not.toHaveBeenCalled();
+  });
+
+  it('routes live-sync snapshots through commitLocalBoardChange when skipping render', () => {
+    const BoardList = loadBoardList();
+    const state = {
+      activeBoardId: 'board-a',
+      fullBoardData: createBoardData('Local Board'),
+      activeBoardData: null,
+      liveSyncState: { boardId: 'board-a', board: null },
+      _saveInFlight: false,
+    };
+    const commitLocalBoardChange = vi.fn();
+    const setFullBoardData = vi.fn((nextBoard) => {
+      state.fullBoardData = nextBoard;
+    });
+
+    BoardList.init({
+      get activeBoardId() { return state.activeBoardId; },
+      get fullBoardData() { return state.fullBoardData; },
+      get activeBoardData() { return state.activeBoardData; },
+      get liveSyncState() { return state.liveSyncState; },
+      get _saveInFlight() { return state._saveInFlight; },
+      getAllColumnsFromBoardData(boardData) {
+        const rows = Array.isArray(boardData && boardData.rows) ? boardData.rows : [];
+        const columns = [];
+        rows.forEach((row) => {
+          const stacks = Array.isArray(row && row.stacks) ? row.stacks : [];
+          stacks.forEach((stack) => {
+            const stackColumns = Array.isArray(stack && stack.columns) ? stack.columns : [];
+            stackColumns.forEach((column) => columns.push(column));
+          });
+        });
+        return columns;
+      },
+      isBoardDirty() { return false; },
+      ensureBoardRowsForMutation() {},
+      getMutationBoardTitle(boardId, boardData) {
+        return (boardData && boardData.title) || boardId || '';
+      },
+      setFullBoardData,
+      clearBoardDirty() {},
+      updateDisplayFromFullBoard() {},
+      commitLocalBoardChange,
+    });
+
+    const incomingBoard = createBoardData('Incoming Board');
+    BoardList.applyLiveSyncBoardSnapshot('board-a', incomingBoard, { skipRender: true });
+
+    expect(setFullBoardData).toHaveBeenCalled();
+    expect(commitLocalBoardChange).toHaveBeenCalledWith(
+      'board-a',
+      state.fullBoardData,
+      expect.objectContaining({
+        setLocalState: false,
+        refreshHierarchy: true,
+      })
+    );
+  });
+
+  it('routes rebased snapshots through commitLocalBoardChange with revision metadata', () => {
+    const BoardList = loadBoardList();
+    const state = {
+      activeBoardId: 'board-a',
+      fullBoardData: null,
+      activeBoardData: {},
+      _lastLoadedRevision: null,
+    };
+    const commitLocalBoardChange = vi.fn();
+    const setFullBoardData = vi.fn((nextBoard) => {
+      state.fullBoardData = nextBoard;
+    });
+
+    BoardList.init({
+      get activeBoardId() { return state.activeBoardId; },
+      get fullBoardData() { return state.fullBoardData; },
+      get activeBoardData() { return state.activeBoardData; },
+      get _lastLoadedRevision() { return state._lastLoadedRevision; },
+      setFullBoardData,
+      ensureBoardRowsForMutation() {},
+      getMutationBoardTitle(boardId, boardData) {
+        return (boardData && boardData.title) || boardId || '';
+      },
+      setPendingExternalRebaseConflict() {},
+      setLastLoadedGeneration() {},
+      setLastLoadedRevision(nextRevision) {
+        state._lastLoadedRevision = nextRevision;
+      },
+      updateDisplayFromFullBoard() {},
+      commitLocalBoardChange,
+      applyBoardSettings() {},
+      refreshTargetedElements() {},
+      refreshHeaderFileControls() {},
+      scheduleDashboardRefresh() {},
+      markBoardDirty() {},
+      saveLocalBoardDraft() {},
+      showNotification() {},
+    });
+
+    const workingBoard = createBoardData('Working Board');
+    BoardList.applyRebasedBoardSnapshot(
+      'board-a',
+      workingBoard,
+      createBoardData('Current Board'),
+      { revision: 'rev-7' },
+      { silent: true }
+    );
+
+    expect(setFullBoardData).toHaveBeenCalledWith(workingBoard);
+    expect(commitLocalBoardChange).toHaveBeenCalledWith(
+      'board-a',
+      state.fullBoardData,
+      expect.objectContaining({
+        setLocalState: false,
+        refreshHierarchy: true,
+        revision: 'rev-7',
+      })
+    );
   });
 });

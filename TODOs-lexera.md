@@ -534,7 +534,7 @@ Why: `packages/ludos-sync` (~3,500 LOC TypeScript) provides WebDAV/CalDAV sync. 
 
 Tasks:
 1. **iCal Mapper** → `lexera-core/src/export/ical.rs` — Temporal tags → VEVENT, time range parsing, checkbox → STATUS, #tags → CATEGORIES, SHA-256 stable UIDs
-2. **XBEL Mapper** → `lexera-core/src/export/xbel.rs` — Folders → Columns, Bookmarks → Cards with `[Title](url "xbel-id")`, #stack tag grouping
+2. ~~**XBEL Mapper** → `lexera-core/src/export/xbel.rs` — Folders → Columns, Bookmarks → Cards with `[Title](url "xbel-id")`, #stack tag grouping~~ DONE: parse/generate XBEL via quick-xml, flat + nested folder trees, `#stack` grouping for consecutive same-top-level columns, merge by xbel-id with preserved card ids, 34 unit tests (ported from XbelMapper.test.ts)
 3. **CalDAV Middleware** → `lexera-backend/src/caldav/` — PROPFIND, REPORT, calendar-multiget, calendar-query, time-range filtering, `.well-known/caldav` discovery
 4. **WebDAV Bookmark Adapter** → `lexera-backend/src/webdav/` — Nephele-like adapter for Floccus sync, ETag change detection, mutex-protected read-modify-write
 5. **Localhost Auth** → Extend existing `lexera-backend/src/auth/` — IP-based localhost verification, optional Basic Auth

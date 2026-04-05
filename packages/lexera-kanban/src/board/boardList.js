@@ -27,6 +27,101 @@ var LexeraBoardList = (function () {
     return undefined;
   }
 
+  function normalizeWorkspaceId(workspaceId) {
+    return workspaceId || _dep('ALL_WORKSPACES_ID');
+  }
+
+  function getWorkspaceViewId() {
+    var viewWorkspaceId = _dep('viewWorkspaceId');
+    if (viewWorkspaceId != null && viewWorkspaceId !== '') {
+      return normalizeWorkspaceId(viewWorkspaceId);
+    }
+    return normalizeWorkspaceId(_dep('activeWorkspaceId'));
+  }
+
+  var _runtimeSubscriptionsBound = false;
+  var _runtimeSubscriptions = [];
+  var _scheduledRefresh = {
+    workspace: false,
+    list: false,
+    mirrors: false,
+    invalidate: false
+  };
+  var _scheduledRefreshToken = 0;
+
+  function resetScheduledRefreshFlags() {
+    _scheduledRefresh.workspace = false;
+    _scheduledRefresh.list = false;
+    _scheduledRefresh.mirrors = false;
+    _scheduledRefresh.invalidate = false;
+  }
+
+  function flushScheduledRefresh() {
+    _scheduledRefreshToken = 0;
+    var shouldRefreshWorkspace = _scheduledRefresh.workspace;
+    var shouldRefreshList = _scheduledRefresh.list;
+    var shouldRefreshMirrors = _scheduledRefresh.mirrors;
+    var shouldInvalidate = _scheduledRefresh.invalidate;
+    resetScheduledRefreshFlags();
+    if (shouldInvalidate) invalidateBoardListFingerprint();
+    if (shouldRefreshWorkspace) renderWorkspaceSelect();
+    if (shouldRefreshList) renderBoardList();
+    else if (!shouldRefreshWorkspace && shouldRefreshMirrors) syncMirroredWorkspaceViews();
+  }
+
+  function scheduleDistributedRefresh(options) {
+    options = options || {};
+    if (options.workspace) _scheduledRefresh.workspace = true;
+    if (options.list) _scheduledRefresh.list = true;
+    if (options.mirrors) _scheduledRefresh.mirrors = true;
+    if (options.invalidate) _scheduledRefresh.invalidate = true;
+    if (_scheduledRefreshToken) return;
+    var flush = function () { flushScheduledRefresh(); };
+    if (typeof requestAnimationFrame === 'function') {
+      _scheduledRefreshToken = requestAnimationFrame(flush);
+      return;
+    }
+    _scheduledRefreshToken = setTimeout(flush, 0);
+  }
+
+  function bindRuntimeSubscriptions() {
+    if (_runtimeSubscriptionsBound || !_rt) return;
+    _runtimeSubscriptionsBound = true;
+    _runtimeSubscriptions.push(_rt.onStateChange('boards', function () {
+      reconcileActiveWorkspaceContext({ render: false });
+      scheduleDistributedRefresh({ list: true });
+    }));
+    _runtimeSubscriptions.push(_rt.onStateChange('remoteBoards', function () {
+      reconcileActiveWorkspaceContext({ render: false });
+      scheduleDistributedRefresh({ list: true });
+    }));
+    _runtimeSubscriptions.push(_rt.onStateChange('workspaces', function () {
+      reconcileActiveWorkspaceContext({ render: false });
+      scheduleDistributedRefresh({ workspace: true, list: true });
+    }));
+    _runtimeSubscriptions.push(_rt.onStateChange('activeWorkspaceId', function () {
+      scheduleDistributedRefresh({ workspace: true, list: true });
+    }));
+    _runtimeSubscriptions.push(_rt.onStateChange('viewWorkspaceId', function () {
+      scheduleDistributedRefresh({ workspace: true, list: true });
+    }));
+    _runtimeSubscriptions.push(_rt.onStateChange('activeBoardId', function () {
+      reconcileActiveWorkspaceContext({ render: false });
+      scheduleDistributedRefresh({ list: true });
+    }));
+    _runtimeSubscriptions.push(_rt.on('boardHierarchyProjection:changed', function (detail) {
+      if (detail && detail.mirrorsOnly) {
+        scheduleDistributedRefresh({ mirrors: true });
+        return;
+      }
+      scheduleDistributedRefresh({ list: true, invalidate: true });
+    }));
+  }
+
+  function emitHierarchyProjectionChanged(detail) {
+    if (_rt) _rt.emit('boardHierarchyProjection:changed', detail || {});
+  }
+
   // ─── Sidebar expanded boards ──────────────────────────────────────
 
   function getSidebarExpandedBoards() {
@@ -598,8 +693,13 @@ var LexeraBoardList = (function () {
       delete activeBoardDataRef.revision;
     }
     _callDep('updateDisplayFromFullBoard');
-    setBoardHierarchyRows(boardId, fullBoardData, fullBoardData ? (fullBoardData.title || '') : '');
-    if (options.skipRender) return;
+    if (options.skipRender) {
+      _deps.commitLocalBoardChange(boardId, fullBoardData, {
+        setLocalState: false,
+        refreshHierarchy: true
+      });
+      return;
+    }
     _callDep('applyBoardSettings');
 
     // Try incremental card update when only card content changed
@@ -616,7 +716,10 @@ var LexeraBoardList = (function () {
     if (!didIncrementalUpdate) {
       _callDep('refreshTargetedElements', [{ type: 'board' }]);
     }
-    renderBoardList();
+    _deps.commitLocalBoardChange(boardId, fullBoardData, {
+      setLocalState: false,
+      refreshHierarchy: true
+    });
     _callDep('refreshHeaderFileControls');
     _callDep('scheduleDashboardRefresh', 80);
   }
@@ -643,10 +746,13 @@ var LexeraBoardList = (function () {
     }
     _callDep('setLastLoadedRevision', result && result.revision ? result.revision : _dep('_lastLoadedRevision'));
     _callDep('updateDisplayFromFullBoard');
-    setBoardHierarchyRows(boardId, fullBoardData, _callDep('getMutationBoardTitle', boardId, fullBoardData));
+    _deps.commitLocalBoardChange(boardId, fullBoardData, {
+      setLocalState: false,
+      refreshHierarchy: true,
+      revision: result && result.revision ? result.revision : null
+    });
     _callDep('applyBoardSettings');
     _callDep('refreshTargetedElements', [{ type: 'board' }]);
-    renderBoardList();
     _callDep('refreshHeaderFileControls');
     _callDep('scheduleDashboardRefresh', 80);
     _callDep('markBoardDirty');
@@ -774,17 +880,58 @@ var LexeraBoardList = (function () {
 
   var boardHierarchyCache = {};
   var boardHierarchyInflight = {};
+  var boardHierarchyProjectionVersion = 0;
   var BOARD_HIERARCHY_CACHE_STALE_MS = 60000;
   var BOARD_HIERARCHY_REFRESH_CONCURRENCY = 2;
 
-  function setBoardHierarchyRows(boardId, fullBoard, fallbackTitle, options) {
-    if (!boardId) return;
+  function bumpBoardHierarchyProjectionVersion() {
+    boardHierarchyProjectionVersion += 1;
+  }
+
+  function setBoardHierarchyProjection(boardId, rows, options) {
+    if (!boardId || _dep('embeddedMode')) return;
     options = options || {};
     boardHierarchyCache[boardId] = {
-      rows: rowsForBoardData(fullBoard, fallbackTitle),
+      rows: cloneRows(rows),
       updatedAt: Date.now(),
       revision: options.revision || null,
     };
+    invalidateBoardListFingerprint();
+    bumpBoardHierarchyProjectionVersion();
+    if (options.emit !== false) {
+      emitHierarchyProjectionChanged({
+        boardId: boardId || null,
+        mirrorsOnly: !!options.mirrorsOnly
+      });
+    }
+  }
+
+  function setBoardHierarchyRows(boardId, fullBoard, fallbackTitle, options) {
+    return setBoardHierarchyProjection(boardId, rowsForBoardData(fullBoard, fallbackTitle), options);
+  }
+
+  function clearBoardHierarchyProjection(boardId, options) {
+    if (!boardId) return;
+    options = options || {};
+    if (!boardHierarchyCache[boardId] && !boardHierarchyInflight[boardId]) return;
+    delete boardHierarchyCache[boardId];
+    delete boardHierarchyInflight[boardId];
+    invalidateBoardListFingerprint();
+    bumpBoardHierarchyProjectionVersion();
+    if (options.emit !== false) {
+      emitHierarchyProjectionChanged({ boardId: boardId || null, removed: true });
+    }
+  }
+
+  function pruneBoardHierarchyCacheEntries(keep) {
+    var cachedIds = Object.keys(boardHierarchyCache);
+    var removed = false;
+    for (var i = 0; i < cachedIds.length; i++) {
+      if (keep[cachedIds[i]]) continue;
+      clearBoardHierarchyProjection(cachedIds[i], { emit: false });
+      removed = true;
+    }
+    return removed;
   }
 
   function getBoardHierarchyRows(boardId) {
@@ -803,8 +950,7 @@ var LexeraBoardList = (function () {
   }
 
   function deleteBoardHierarchyCacheEntry(boardId) {
-    delete boardHierarchyCache[boardId];
-    delete boardHierarchyInflight[boardId];
+    clearBoardHierarchyProjection(boardId);
   }
 
   function touchBoardHierarchyCacheEntry(boardId) {
@@ -840,11 +986,13 @@ var LexeraBoardList = (function () {
         touchBoardHierarchyCacheEntry(boardMeta.id);
         return;
       }
-      setBoardHierarchyRows(
+      setBoardHierarchyProjection(
         boardMeta.id,
-        response || null,
-        response && response.title ? response.title : (boardMeta.title || 'Board'),
-        { revision: response && response.revision ? response.revision : null }
+        rowsForBoardData(response || null, response && response.title ? response.title : (boardMeta.title || 'Board')),
+        {
+          revision: response && response.revision ? response.revision : null,
+          emit: false
+        }
       );
       // Update ALL instances of this board's tree in-place
       var boardListEl = getElBoardList();
@@ -861,6 +1009,7 @@ var LexeraBoardList = (function () {
           }
         }
       }
+      emitHierarchyProjectionChanged({ boardId: boardMeta.id, mirrorsOnly: true });
     }).catch(function (err) {
       lexeraLog('warn', '[hierarchy.cache] Failed to load board ' + boardMeta.id + ': ' + err.message);
     }).finally(function () {
@@ -872,17 +1021,16 @@ var LexeraBoardList = (function () {
   }
 
   async function refreshBoardHierarchyCache(boardList) {
+    if (_dep('embeddedMode')) return;
     var activeBoardId = _dep('activeBoardId');
     var fullBoardData = _dep('fullBoardData');
     var activeBoardData = _dep('activeBoardData');
     var LexeraApi = _dep('LexeraApi');
     var expandedIds = getSidebarExpandedBoards();
+    var projectionChanged = false;
     var keep = {};
     for (var i = 0; i < boardList.length; i++) keep[boardList[i].id] = true;
-    var cachedIds = Object.keys(boardHierarchyCache);
-    for (var j = 0; j < cachedIds.length; j++) {
-      if (!keep[cachedIds[j]]) delete boardHierarchyCache[cachedIds[j]];
-    }
+    projectionChanged = pruneBoardHierarchyCacheEntries(keep) || projectionChanged;
 
     var tasks = [];
     for (var k = 0; k < boardList.length; k++) {
@@ -893,9 +1041,11 @@ var LexeraBoardList = (function () {
           activeBoardData &&
           activeBoardData.rows
         ) {
-          setBoardHierarchyRows(boardMeta.id, fullBoardData, boardMeta.title || 'Board', {
-            revision: activeBoardData.revision || null
+          setBoardHierarchyProjection(boardMeta.id, fullBoardData.rows, {
+            revision: activeBoardData.revision || null,
+            emit: false
           });
+          projectionChanged = true;
           return;
         }
         if (!shouldHydrateBoardHierarchy(boardMeta, expandedIds, activeBoardId)) return;
@@ -904,7 +1054,10 @@ var LexeraBoardList = (function () {
         tasks.push(boardMeta);
       })(boardList[k]);
     }
-    if (tasks.length === 0) return;
+    if (tasks.length === 0) {
+      if (projectionChanged) emitHierarchyProjectionChanged({ boardId: activeBoardId || null });
+      return;
+    }
 
     var queueIndex = 0;
     var workerCount = Math.min(BOARD_HIERARCHY_REFRESH_CONCURRENCY, tasks.length);
@@ -918,6 +1071,20 @@ var LexeraBoardList = (function () {
       })());
     }
     await Promise.all(workers);
+    if (projectionChanged) emitHierarchyProjectionChanged({ boardId: activeBoardId || null });
+  }
+
+  function refreshBoardHierarchyProjection(boardId, fullBoard, fallbackTitle, options) {
+    if (_dep('embeddedMode')) return fullBoard || null;
+    options = options || {};
+    setBoardHierarchyProjection(boardId, rowsForBoardData(fullBoard, fallbackTitle), {
+      revision: options.revision || null,
+      emit: options.render !== false && options.emit !== false,
+      mirrorsOnly: !!options.mirrorsOnly
+    });
+    if (options.render === false) return;
+    if (_rt) return;
+    renderBoardList();
   }
 
   function cardPreviewText(content) {
@@ -926,10 +1093,104 @@ var LexeraBoardList = (function () {
 
   // ─── Workspace helpers ────────────────────────────────────────────
 
+  function findBoardMetaById(boardId) {
+    if (!boardId) return null;
+    var groups = [_dep('boards') || [], _dep('remoteBoards') || []];
+    for (var g = 0; g < groups.length; g++) {
+      var list = groups[g];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i] && list[i].id === boardId) return list[i];
+      }
+    }
+    return null;
+  }
+
+  function resolveWorkspaceContextForBoard(boardId, options) {
+    options = options || {};
+    var viewWorkspaceId = getWorkspaceViewId();
+    var activeWorkspaceId = normalizeWorkspaceId(_dep('activeWorkspaceId'));
+    var boardMeta = findBoardMetaById(boardId);
+    var workspaceIds = boardMeta ? getBoardWorkspaceIds(boardMeta) : [];
+    var nextWorkspaceId = viewWorkspaceId;
+    var preferredWorkspaceId = normalizeWorkspaceId(options.preferredWorkspaceId);
+
+    if (workspaceIds.length > 0) {
+      if (
+        preferredWorkspaceId !== _dep('ALL_WORKSPACES_ID') &&
+        workspaceIds.indexOf(preferredWorkspaceId) >= 0
+      ) {
+        nextWorkspaceId = preferredWorkspaceId;
+      } else if (
+        viewWorkspaceId !== _dep('ALL_WORKSPACES_ID') &&
+        workspaceIds.indexOf(viewWorkspaceId) >= 0
+      ) {
+        nextWorkspaceId = viewWorkspaceId;
+      } else if (
+        activeWorkspaceId !== _dep('ALL_WORKSPACES_ID') &&
+        workspaceIds.indexOf(activeWorkspaceId) >= 0
+      ) {
+        nextWorkspaceId = activeWorkspaceId;
+      } else {
+        nextWorkspaceId = workspaceIds[0];
+      }
+    } else if (boardMeta) {
+      nextWorkspaceId = _dep('ALL_WORKSPACES_ID');
+    }
+
+    return {
+      boardId: boardId || null,
+      board: boardMeta,
+      workspaceIds: workspaceIds,
+      workspaceId: nextWorkspaceId
+    };
+  }
+
   function setActiveWorkspaceId(workspaceId) {
-    _callDep('setActiveWorkspaceIdState', workspaceId || _dep('ALL_WORKSPACES_ID'));
-    if (_Settings) { _Settings.set('activeWorkspace', _dep('activeWorkspaceId')); }
-    else { localStorage.setItem('lexera-active-workspace', _dep('activeWorkspaceId')); }
+    var normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    if (typeof _deps.setViewWorkspaceIdState === 'function') {
+      _deps.setViewWorkspaceIdState(normalizedWorkspaceId);
+    }
+    _callDep('setActiveWorkspaceIdState', normalizedWorkspaceId);
+    if (_Settings) { _Settings.set('activeWorkspace', normalizedWorkspaceId); }
+    else { localStorage.setItem('lexera-active-workspace', normalizedWorkspaceId); }
+  }
+
+  function syncWorkspaceContextForBoard(boardId, options) {
+    options = options || {};
+    var context = resolveWorkspaceContextForBoard(boardId, options);
+    if (typeof _deps.setViewWorkspaceIdState === 'function') {
+      _deps.setViewWorkspaceIdState(context.workspaceId);
+    }
+    if (
+      options.syncSelection !== false &&
+      normalizeWorkspaceId(_dep('activeWorkspaceId')) !== context.workspaceId
+    ) {
+      setActiveWorkspaceId(context.workspaceId);
+    }
+    if (options.render === false) return context;
+    if (!_rt) {
+      renderWorkspaceSelect();
+      renderBoardList();
+    }
+    return context;
+  }
+
+  function reconcileActiveWorkspaceContext(options) {
+    options = options || {};
+    var activeBoardId = _dep('activeBoardId');
+    if (!activeBoardId) {
+      var workspaceId = getWorkspaceViewId();
+      if (typeof _deps.setViewWorkspaceIdState === 'function') {
+        _deps.setViewWorkspaceIdState(workspaceId);
+      }
+      return {
+        boardId: null,
+        board: null,
+        workspaceIds: [],
+        workspaceId: workspaceId
+      };
+    }
+    return syncWorkspaceContextForBoard(activeBoardId, options);
   }
 
   function resolveActiveWorkspaceId(defaultWorkspaceId) {
@@ -1039,7 +1300,7 @@ var LexeraBoardList = (function () {
     var normalizedWorkspaceRoots = Array.isArray(workspaceRoots) ? workspaceRoots : [];
     var workspaceRootCount = normalizedWorkspaceRoots.length;
     if (!workspaceRootCount) return;
-    var activeWorkspaceId = _dep('activeWorkspaceId');
+    var viewWorkspaceId = getWorkspaceViewId();
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var canonicalSelect = document.getElementById('workspace-select');
     var canonicalBoardList = getElBoardList();
@@ -1056,7 +1317,7 @@ var LexeraBoardList = (function () {
       var boardListEl = rootEl.querySelector('.lexera-shared-board-list');
       if (selectEl && canonicalSelect) {
         selectEl.innerHTML = canonicalSelect.innerHTML;
-        selectEl.value = activeWorkspaceId || canonicalSelect.value || ALL_WORKSPACES_ID;
+        selectEl.value = viewWorkspaceId || canonicalSelect.value || ALL_WORKSPACES_ID;
       }
       if (boardListEl && canonicalBoardList) {
         boardListEl.innerHTML = canonicalBoardList.innerHTML;
@@ -1073,7 +1334,7 @@ var LexeraBoardList = (function () {
 
     resolveActiveWorkspaceId(null);
 
-    var activeWorkspaceId = _dep('activeWorkspaceId');
+    var viewWorkspaceId = getWorkspaceViewId();
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var workspaces = _dep('workspaces');
     // console.log('[ws-debug] renderWorkspaceSelect: workspaces=' + (workspaces ? workspaces.length : 'null') + ', activeWs=' + activeWorkspaceId + ', ALL=' + ALL_WORKSPACES_ID);
@@ -1083,7 +1344,7 @@ var LexeraBoardList = (function () {
     var allOpt = document.createElement('option');
     allOpt.value = ALL_WORKSPACES_ID;
     allOpt.textContent = 'All Workspaces';
-    if (activeWorkspaceId === ALL_WORKSPACES_ID) allOpt.selected = true;
+    if (viewWorkspaceId === ALL_WORKSPACES_ID) allOpt.selected = true;
     sel.appendChild(allOpt);
 
     for (var i = 0; i < workspaces.length; i++) {
@@ -1092,7 +1353,7 @@ var LexeraBoardList = (function () {
       opt.value = ws.id;
       var boardCount = typeof ws.board_count === 'number' ? ws.board_count : null;
       opt.textContent = boardCount != null ? (ws.name + ' (' + boardCount + ')') : ws.name;
-      if (ws.id === activeWorkspaceId) opt.selected = true;
+      if (ws.id === viewWorkspaceId) opt.selected = true;
       sel.appendChild(opt);
       // console.log('[ws-debug] renderWorkspaceSelect: added option "' + opt.textContent + '" value=' + opt.value);
     }
@@ -1108,8 +1369,8 @@ var LexeraBoardList = (function () {
     if (!sel.value) {
       setActiveWorkspaceId(ALL_WORKSPACES_ID);
       sel.value = ALL_WORKSPACES_ID;
-    } else if (sel.value !== activeWorkspaceId) {
-      setActiveWorkspaceId(sel.value);
+    } else if (sel.value !== viewWorkspaceId) {
+      sel.value = viewWorkspaceId;
     }
 
     sel.onchange = function () {
@@ -1133,7 +1394,7 @@ var LexeraBoardList = (function () {
 
     var boards = _dep('boards');
     _callDep('setBoards', boards.filter(function (b) { return b.id !== boardId; }));
-    delete boardHierarchyCache[boardId];
+    clearBoardHierarchyProjection(boardId, { emit: false });
     var activeBoardId = _dep('activeBoardId');
     if (activeBoardId === boardId) {
       _callDep('setActiveBoardId', null);
@@ -1161,8 +1422,8 @@ var LexeraBoardList = (function () {
   // If the inputs haven't changed we skip the expensive DOM rebuild.
   var _lastRenderFingerprint = '';
 
-  function _buildRenderFingerprint(boards, remoteBoards, workspaces, activeWorkspaceId, activeBoardId) {
-    var parts = [activeWorkspaceId || '', activeBoardId || ''];
+  function _buildRenderFingerprint(boards, remoteBoards, workspaces, workspaceViewId, activeBoardId) {
+    var parts = [workspaceViewId || '', activeBoardId || ''];
     var i;
     if (boards) for (i = 0; i < boards.length; i++) parts.push(boards[i].id + ':' + (boards[i].title || '') + ':' + (boards[i].generation !== undefined ? boards[i].generation : ''));
     parts.push('|R|');
@@ -1173,6 +1434,8 @@ var LexeraBoardList = (function () {
     parts.push('|E|');
     var expanded = getSidebarExpandedBoards();
     if (expanded.length > 0) parts.push(expanded.join(';'));
+    parts.push('|H|');
+    parts.push(String(boardHierarchyProjectionVersion));
     return parts.join(',');
   }
 
@@ -1549,6 +1812,43 @@ var LexeraBoardList = (function () {
           _showTreeNodeContextMenu(boardId, node, e.clientX, e.clientY, workspaceShellEnabled, WorkspaceShell);
         });
 
+        // Tree node double-click: focus + enter edit mode for the target entity
+        // (card edit, row/stack/column rename). Mirrors the single-click focus
+        // path but forwards `edit: true` through the workspace-shell bridge so
+        // the iframe's own ActionRegistry performs the edit. Non-shell mode
+        // falls back to the local focus pipeline and dispatches the action
+        // directly against the board in the current window.
+        treeEl.addEventListener('dblclick', function (e) {
+          // Ignore double-clicks on controls that already have their own handler
+          // (toggle arrow, grip, burger menu button).
+          if (e.target.classList.contains('tree-toggle') ||
+              e.target.classList.contains('tree-grip') ||
+              e.target.classList.contains('tree-menu-btn')) {
+            return;
+          }
+          var node = e.target.closest('.tree-node');
+          if (!node) return;
+          e.preventDefault();
+          e.stopPropagation();
+          var editTarget = _callDep('buildHierarchyFocusTargetFromTreeNode', node, boardId);
+          if (!editTarget) return;
+          if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
+            WorkspaceShell.focusHierarchyTarget(editTarget, boardId, { edit: true });
+            return;
+          }
+          // Non-shell fallback: navigate locally then dispatch the edit action
+          // via the same mapping the iframe uses. Requires LexeraDashboard to
+          // have loaded in this window (it has — this file is loaded by it).
+          _callDep('navigateToHierarchyTarget', editTarget).then(function () {
+            var dash = typeof window !== 'undefined' ? window.LexeraDashboard : null;
+            if (dash && typeof dash.openEditForHierarchyTarget === 'function') {
+              dash.openEditForHierarchyTarget(editTarget);
+            }
+          }).catch(function (err) {
+            logFrontendIssue('warn', 'sidebar.hierarchy-dblclick-edit', 'Failed to focus hierarchy target for edit', err);
+          });
+        });
+
         // Tree DnD is handled by the pointer-based drag system (mousedown on getElBoardList())
       }
 
@@ -1599,12 +1899,12 @@ var LexeraBoardList = (function () {
    * Build the flat ordered list of keyed entries that renderBoardList should display.
    * Each entry has { key, type, ... } plus type-specific data.
    */
-  function _buildDesiredEntries(boards, remoteBoards, workspaces, activeWorkspaceId, activeBoardId) {
+  function _buildDesiredEntries(boards, remoteBoards, workspaces, workspaceViewId, activeBoardId) {
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
-    var isAllView = !activeWorkspaceId || activeWorkspaceId === ALL_WORKSPACES_ID;
+    var isAllView = !workspaceViewId || workspaceViewId === ALL_WORKSPACES_ID;
     var filteredBoards = isAllView
       ? boards
-      : boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(activeWorkspaceId) >= 0; });
+      : boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(workspaceViewId) >= 0; });
     var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; }) || filteredBoards;
     var expandedIds = getSidebarExpandedBoards();
     var entries = [];
@@ -1675,10 +1975,11 @@ var LexeraBoardList = (function () {
 
   function renderBoardList() {
     var boardListEl = getElBoardList();
+    if (!boardListEl) return;
     var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
     if (rt) rt.setViewLoading(boardListEl, false);
 
-    var activeWorkspaceId = _dep('activeWorkspaceId');
+    var workspaceViewId = getWorkspaceViewId();
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var boards = _dep('boards');
     var remoteBoards = _dep('remoteBoards');
@@ -1686,7 +1987,7 @@ var LexeraBoardList = (function () {
 
     // Skip expensive DOM rebuild if nothing changed since last render
     var workspaces = _dep('workspaces') || [];
-    var renderFp = _buildRenderFingerprint(boards, remoteBoards, workspaces, activeWorkspaceId, activeBoardId);
+    var renderFp = _buildRenderFingerprint(boards, remoteBoards, workspaces, workspaceViewId, activeBoardId);
     if (renderFp === _lastRenderFingerprint && boardListEl.childNodes.length > 0) {
       return;
     }
@@ -1699,7 +2000,7 @@ var LexeraBoardList = (function () {
     var expandedIds = getSidebarExpandedBoards();
 
     // Build the desired flat list of keyed entries
-    var desired = _buildDesiredEntries(boards, remoteBoards, workspaces, activeWorkspaceId, activeBoardId);
+    var desired = _buildDesiredEntries(boards, remoteBoards, workspaces, workspaceViewId, activeBoardId);
 
     // Build a map of existing DOM children by key for reuse
     var existingByKey = {};
@@ -1861,6 +2162,7 @@ var LexeraBoardList = (function () {
         }
       }
     }
+    bindRuntimeSubscriptions();
   }
 
   // ─── Public API ───────────────────────────────────────────────────
@@ -1902,13 +2204,16 @@ var LexeraBoardList = (function () {
     rebaseDirtyBoardFromServer: rebaseDirtyBoardFromServer,
     rowsFromLegacyColumns: rowsFromLegacyColumns,
     rowsForBoardData: rowsForBoardData,
-    setBoardHierarchyRows: setBoardHierarchyRows,
     getBoardHierarchyRows: getBoardHierarchyRows,
     deleteBoardHierarchyCacheEntry: deleteBoardHierarchyCacheEntry,
     refreshBoardHierarchyCache: refreshBoardHierarchyCache,
+    refreshBoardHierarchyProjection: refreshBoardHierarchyProjection,
     cardPreviewText: cardPreviewText,
     setActiveWorkspaceId: setActiveWorkspaceId,
     resolveActiveWorkspaceId: resolveActiveWorkspaceId,
+    resolveWorkspaceContextForBoard: resolveWorkspaceContextForBoard,
+    syncWorkspaceContextForBoard: syncWorkspaceContextForBoard,
+    reconcileActiveWorkspaceContext: reconcileActiveWorkspaceContext,
     dispatchMirrorMouseEvent: dispatchMirrorMouseEvent,
     findCanonicalHierarchyTarget: findCanonicalHierarchyTarget,
     bindMirroredWorkspaceView: bindMirroredWorkspaceView,

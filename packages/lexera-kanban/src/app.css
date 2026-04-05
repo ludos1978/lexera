@@ -3141,6 +3141,50 @@ li.tag-line-styled {
   --board-inner-padding: calc(14px * var(--ui-scale));
 }
 
+/* Kanban mode: unified font size — all board text uses the base font size.
+ * Canvas mode is excluded (it has its own zoom-based sizing).
+ * This block overrides every element that sets a different font-size
+ * inside the board content area so kanban text is uniform. */
+.columns-container:not(.layout-canvas) .board-row-title,
+.columns-container:not(.layout-canvas) .board-row-count,
+.columns-container:not(.layout-canvas) .board-row-footer-summary,
+.columns-container:not(.layout-canvas) .board-stack-title,
+.columns-container:not(.layout-canvas) .board-stack-count,
+.columns-container:not(.layout-canvas) .board-stack-footer-summary,
+.columns-container:not(.layout-canvas) .column-header,
+.columns-container:not(.layout-canvas) .column-count,
+.columns-container:not(.layout-canvas) .column-include-badge,
+.columns-container:not(.layout-canvas) .column-rename-input,
+.columns-container:not(.layout-canvas) .card,
+.columns-container:not(.layout-canvas) .card-title-display,
+.columns-container:not(.layout-canvas) .card h1,
+.columns-container:not(.layout-canvas) .card h2,
+.columns-container:not(.layout-canvas) .card h3,
+.columns-container:not(.layout-canvas) .card code,
+.columns-container:not(.layout-canvas) .card .code-block,
+.columns-container:not(.layout-canvas) .card .md-table,
+.columns-container:not(.layout-canvas) .card .media-caption,
+.columns-container:not(.layout-canvas) .card .tag,
+.columns-container:not(.layout-canvas) .card .temporal-tag,
+.columns-container:not(.layout-canvas) .card .kanban-temporal-tag,
+.columns-container:not(.layout-canvas) .card-title-display .temporal-tag,
+.columns-container:not(.layout-canvas) .card-title-display .kanban-temporal-tag,
+.columns-container:not(.layout-canvas) .column-title .temporal-tag,
+.columns-container:not(.layout-canvas) .column-title .kanban-temporal-tag,
+.columns-container:not(.layout-canvas) .card-due-badge,
+.columns-container:not(.layout-canvas) .card-progress-badge,
+.columns-container:not(.layout-canvas) .card-menu-label,
+.columns-container:not(.layout-canvas) .card-drag-ghost,
+.columns-container:not(.layout-canvas) .speaker-note,
+.columns-container:not(.layout-canvas) .footnotes,
+.columns-container:not(.layout-canvas) .plantuml-title,
+.columns-container:not(.layout-canvas) .footnote-ref a,
+.columns-container:not(.layout-canvas) .column-empty-placeholder,
+.columns-container:not(.layout-canvas) .add-card-btn,
+.columns-container:not(.layout-canvas) .add-entity-btn {
+  font-size: var(--board-font-size, var(--font-size-base));
+}
+
 /* Board setting: canvas layout — stacks are freely positioned within rows */
 .columns-container.layout-canvas {
   --canvas-zoom: 1;

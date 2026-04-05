@@ -69,24 +69,78 @@ From `packages/lexera-kanban/src/app.js`:
 
 - `CmdOrCtrl+Shift+L`: toggle log panel
 - `CmdOrCtrl+F`: expand/focus board search
+- `CmdOrCtrl+Shift+H`: search and replace
 - `CmdOrCtrl+Z`: undo
 - `CmdOrCtrl+Y`
 - `CmdOrCtrl+Shift+Z`: redo
 - `CmdOrCtrl+S`: save board
+- `CmdOrCtrl+=`, `CmdOrCtrl+-`, `CmdOrCtrl+0`: UI zoom in/out/reset
+- `?`: shortcut help overlay
 - `F12`, `CmdOrCtrl+Shift+I`, `Alt+I`: inspector toggle variants
 - `Alt+Enter`: close transient UI helper path
+- `CmdOrCtrl+W`: close active workspace tab
+- `CmdOrCtrl+Shift+]`, `CmdOrCtrl+PageDown`: next workspace tab
+- `CmdOrCtrl+Shift+[`, `CmdOrCtrl+PageUp`: previous workspace tab
+- `CmdOrCtrl+B`: toggle hierarchy/sidebar panel
+- `CmdOrCtrl+Shift+D`: toggle dashboard panel
+- `CmdOrCtrl+Shift+E`: toggle files panel
 - Overlay editor:
   - `CmdOrCtrl+Enter`: save
   - `CmdOrCtrl+S`: save
   - `Escape`: cancel
   - `CmdOrCtrl+1/2/3/4`: switch editor mode
 
+### Audited board-navigation shortcuts already present
+
+Also from `packages/lexera-kanban/src/app.js`, `keyboard/keyboardNavigation.js`, and the shortcut help overlay:
+
+- Card focus navigation:
+  - `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`
+  - `Home`, `End`
+  - `1-9`: jump to column by position
+- Focused-card actions:
+  - `Enter`: edit focused card
+  - `Escape`: unfocus card / close local interaction
+  - `Alt+ArrowUp`, `Alt+ArrowDown`: move card within column
+  - `Alt+ArrowLeft`, `Alt+ArrowRight`: move card across adjacent columns
+  - `CmdOrCtrl+D`: duplicate focused card
+  - `R`: reveal/collapse card content
+  - `I`: insert card after focused card
+  - `C`: copy card as markdown
+  - `E`: edit card
+  - `P`: park focused card
+  - `Space`: open card context menu
+  - `Delete`: delete focused card
+  - `N`: create card when no card is focused
+- Editor formatting:
+  - `CmdOrCtrl+B`, `CmdOrCtrl+I`, `CmdOrCtrl+U`
+  - `CmdOrCtrl+K`, `CmdOrCtrl+H`, `CmdOrCtrl+\``
+
+### Suggested keyboard-first coverage
+
+This is the current recommended gap list after the 2026-04-05 audit. These are not all implemented yet.
+
+- Entity-level operations outside cards:
+  - open row/stack/column context menu from keyboard
+  - rename focused row/stack/column
+  - create row/stack/column without mouse
+- Structural navigation:
+  - focus columns directly, not only cards
+  - board back/forward history
+  - command palette for action discovery
+- Search and selection:
+  - simple board text search separate from search/replace
+  - multi-select and batch operations
+- Discoverability:
+  - derive the help overlay from a single shortcut registry instead of a hand-maintained list
+  - keep shell, board, editor, and modal scopes explicit in one source of truth
+
 ### Gaps in the current baseline
 
 - No centralized declarative registry for client shortcuts
 - No unified conflict-resolution policy when multiple UI layers are active
 - No documented scope model for global vs board vs editor shortcuts
-- No explicit shortcut help surface yet
+- Shortcut help overlay exists, but it is not generated from an authoritative registry
 
 ---
 

@@ -858,6 +858,14 @@ pub fn run() {
                     let _ = capture::collapse_capture(app);
                 }
             }
+            // Re-snap quick-capture when display scale changes (monitor switch,
+            // resolution change, or DPI change on any OS).
+            if let tauri::WindowEvent::ScaleFactorChanged { .. } = event {
+                if _window.label() == "quick-capture" {
+                    let app = _window.app_handle().clone();
+                    capture::validate_capture_position(&app);
+                }
+            }
         })
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -994,13 +1002,8 @@ pub fn run() {
             app.manage(std::sync::Mutex::new(watcher_shutdown));
 
             capture::open_capture_popup(app.handle());
-
-            // Periodically validate quick-capture position (catches display changes)
-            let app_handle_for_capture = app.handle().clone();
-            std::thread::spawn(move || loop {
-                std::thread::sleep(std::time::Duration::from_secs(10));
-                capture::validate_capture_position(&app_handle_for_capture);
-            });
+            // Note: open_capture_popup spawns its own monitor watcher via
+            // start_monitor_watcher(), so no additional polling thread is needed here.
 
             Ok(())
         })

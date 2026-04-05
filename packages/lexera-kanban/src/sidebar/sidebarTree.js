@@ -121,6 +121,15 @@
 
           var cardNodes = [];
           if (cardCount > 0) {
+            // `cards` comes from fullBoardData and includes hidden cards.
+            // The sidebar skips hidden ones but `data-card-index` must be the
+            // VISIBLE index (matching main-view conventions), because every
+            // downstream action (`insert-before`, `insert-after`, `duplicate`,
+            // `edit`, `delete`…) treats `ctx.cardIndex` as a visible index and
+            // runs it through `getFullCardIndex` to re-map. Using the full
+            // array index here caused off-by-one insertions whenever a hidden
+            // card was present before the selection.
+            var visibleCardIdx = 0;
             for (var cdi = 0; cdi < cards.length; cdi++) {
               var card = cards[cdi] || {};
               if (isHiddenCard(card.content)) continue;
@@ -141,10 +150,11 @@
                   'data-col-local-index': ci.toString(),
                   'data-col-index': colIdx >= 0 ? colIdx.toString() : null,
                   'data-card-id': card && card.id != null ? String(card.id) : null,
-                  'data-card-index': cdi.toString(),
+                  'data-card-index': visibleCardIdx.toString(),
                   'data-tree-drag': 'tree-card'
                 }
               });
+              visibleCardIdx++;
             }
           }
 
