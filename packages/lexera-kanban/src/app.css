@@ -2732,6 +2732,32 @@ body.show-special-characters .card-content .ws-nl {
   color: var(--tag-accent, inherit);
 }
 
+/* ── Contrast-aware text on tag-background surfaces (v1 formulae) ────────
+ *
+ * When a tag paints the entity surface (e.g. `#red` on a card), the text
+ * that sits on top needs a color chosen against that background's WCAG
+ * luminance plus a soft bloom shadow when the contrast ratio drops below
+ * 4.5. Both values are computed in `tagColors.js::getTextColorsForBackground`
+ * and exposed as CSS custom properties here:
+ *
+ *   --tag-surface-fg           : '#000000' or '#ffffff'
+ *   --tag-surface-text-shadow  : '0 0 4px #888' when contrast poor, else 'none'
+ *
+ * The shadow is applied only for content lines that are actually painted
+ * with a tag background — header labels and title rows still inherit from
+ * the accent color because they sit on a tinted but not filled surface.
+ *
+ * Requirement source: todo.md item "redo an iteration of font size and
+ * style unification — text with background color where the text must be in
+ * good contrast to the chosen background. take the values formulae from v1,
+ * also add contrast enhancing bloom around its background exactly as in v1".
+ */
+.card.tag-styled .card-content,
+.tag-line-styled {
+  color: var(--tag-surface-fg, inherit);
+  text-shadow: var(--tag-surface-text-shadow, none);
+}
+
 /* Burger menu buttons keep standard colors even on tag-styled entities */
 .board-row.tag-styled > .board-row-header .row-header-actions > button,
 .board-stack.tag-styled > .board-stack-header .stack-header-actions > button,

@@ -3,6 +3,97 @@
 
 > Completed items moved to [todo-archive.md](todo-archive.md)
 
+- [ ] make another attempt at unifying the hierarchies we have. we have the one in workspace, the one in the files > workspaces, in the dashboard. make a moscow plan (must, should, could, wont haves) which features are needed in each of the implementations. then make a plan to combine them.
+  - **audit 2026-04-05**
+  - Current reality:
+    - `packages/lexera-kanban/src/board/boardList.js` is the only full structural hierarchy. It owns workspace/board tree rendering, board-internal rows/stacks/columns/cards, mirror sync, tree interaction, and several navigation/edit hooks.
+    - `packages/lexera-kanban/src/dashboard/dashboardTree.js` + `packages/lexera-kanban/src/board/orderHelpers.js` already use the shared `TreeView`, but they build a different node model and own a separate read-only click/navigation path for search, inventory, and broken-link results.
+    - `packages/lexera-shared/management.js` in the Files panel is not a board-structure hierarchy. It is a workspace/board catalog + CRUD/assignment/config inspector surface. It should share catalog/tree primitives, not inherit row/stack/column/card editing behavior.
+    - `packages/lexera-kanban/src/treeView.js` is already the shared renderer seam. The real duplication is above it: view-model building, node contracts, expand-state ownership, and event dispatch.
+  - Decision:
+    - Do **not** force all three surfaces into one identical tree.
+    - Do create **one hierarchy system** with shared node contracts, shared controller/event handling, and surface-specific adapters.
+  - **MoSCoW: Workspace hierarchy**
+  - Must have:
+    - Workspace -> board -> row -> stack -> column -> card structure
+    - Stable-id targeting and active highlight/focus sync with the open board/view
+    - Context menu, double-click rename/edit, and entity creation entry points
+    - Drag/drop reorder and cross-view move handling
+    - Mirrored panel support with one source of truth for expansion/selection state
+  - Should have:
+    - Counts, presence/local-remote badges, unassigned grouping
+    - Expand/collapse persistence and recursive fold/unfold behavior
+    - Reveal/open-board actions from external surfaces
+  - Could have:
+    - Saved filters, alternative grouping, bulk actions
+  - Won't have:
+    - Workspace sync forms, invite CRUD, board settings inspectors
+  - **MoSCoW: Files > Workspaces**
+  - Must have:
+    - Workspace -> board catalog tree for CRUD/assignment/inspection
+    - Default-workspace, unassigned, local/remote, and board-count indicators
+    - Selection routing into the inspector/config forms
+    - Open/reveal board and workspace actions
+  - Should have:
+    - The same shared tree renderer/controller and stable node ids as the workspace hierarchy
+    - Consistent expand/collapse behavior and count/badge rendering
+  - Could have:
+    - Dragging boards between workspaces
+    - Inline quick actions on tree rows
+  - Won't have:
+    - Row/stack/column/card subtrees
+    - In-tree structural editing of board internals
+    - Dashboard-style result grouping
+  - **MoSCoW: Dashboard**
+  - Must have:
+    - Grouped result trees for search, deadlines, tags, inventory, and broken references
+    - Stable navigation/focus into the target board entity
+    - Empty/loading states and mirror-safe rendering
+  - Should have:
+    - The same shared tree renderer/controller and node capability model
+    - Persistent expand/collapse state per dashboard section
+    - Reveal/open-containing-board actions
+  - Could have:
+    - Contextual quick actions such as pin, copy link, or open in new pane
+  - Won't have:
+    - Drag/drop reorder
+    - Inline rename/edit of board entities
+    - Workspace or board CRUD/settings
+  - **Combination plan**
+  - Phase 1: define the shared hierarchy core
+    - Introduce one node contract above `TreeView`: `HierarchyNode` + `HierarchyCapability` + `HierarchyIntent`
+    - Move common expand-state persistence, selection/highlight handling, and event delegation into a shared hierarchy controller
+    - Stop encoding behavior in ad hoc DOM attributes alone; adapters should emit semantic intents, then the controller dispatches them
+  - Phase 2: split the view-models cleanly
+    - `WorkspaceCatalogViewModel`: workspaces + boards only
+    - `BoardStructureViewModel`: rows/stacks/columns/cards, derived from the same board-session/view-model contract as main rendering
+    - `DashboardResultViewModel`: result/inventory/broken/tag groups, read-only
+    - Files and Workspace share the catalog model; Workspace alone composes in the structural model; Dashboard uses the result model
+  - Phase 3: migrate Workspace first
+    - Rebuild the workspace tree on the shared controller using the catalog + board-structure adapters
+    - Keep feature parity first, then delete the current `boardList.js`-specific tree interaction glue
+    - Remove the old workspace selector/dropdown only after the catalog tree can express the same filtering/navigation directly
+  - Phase 4: migrate Dashboard second
+    - Swap dashboard tree rendering over to the shared node contract/controller while keeping it read-only
+    - Delete dashboard-specific tree click/toggle plumbing from `orderHelpers.js`
+  - Phase 5: migrate Files third
+    - Replace the separate config-tree/list implementations in `management.js` with the shared catalog-tree adapter
+    - Keep CRUD/settings inspectors separate; only the left-side tree/list becomes shared
+  - Phase 6: remove duplicated logic
+    - One badge/count/label/visibility policy per hierarchy kind
+    - One expand-state persistence mechanism
+    - One selection/highlight contract
+    - One navigation intent path
+  - Success criteria:
+    - `TreeView` remains dumb
+    - every hierarchy surface builds the same node/capability contract
+    - only adapters differ by domain
+    - Files never grows structural-board editing
+    - Dashboard never grows structural mutation
+    - Workspace stops owning one-off tree behavior that other surfaces cannot reuse
+
+- [ ] when i doubleclick on a element in the workspace then it starts editing in the view, not the workspace. the editing must take place in the workspace, when it's double clicked there!
+
 - [ ] redo an interation of font size and style unification. there must only be these styles:
   - light, normal and bold text (there is no size change for heading 1, etc.)
   - italic and underscored text
@@ -154,11 +245,11 @@
 - [x] **Load-path sync leak is fixed** — `loadBoard(...)` now routes successful loads through `commitLocalBoardChange(...)`, and `fullBoardData` load/draft/error writes now go through `setFullBoardDataState(...)`. The earlier "hierarchy only updates after the next poll or a later mutation" path is no longer the live issue.
 - [x] **Eliminate raw `activeBoardData = ...` writes on load/switch/error paths** — the three remaining raw assignments (`selectBoard` clear, `loadBoard` success, `loadBoard` error cleanup) in `packages/lexera-kanban/src/app.js` now route through `setActiveBoardDataState(...)` so `LexeraRuntime.getState('activeBoardData')` stays in sync with every transition. Source-level invariant tests in `tests/boardSessionStateInvariants.test.js` enforce that the ONLY raw assignments of `activeBoardData` and `fullBoardData` live inside their respective setter bodies, so future refactors fail fast with precise line numbers if someone reintroduces a bypass. In-place field mutations (`activeBoardData.version = ...` etc.) remain a separate concern — see the next task.
 - [x] **In-place field mutations on `activeBoardData` no longer bypass the runtime bridge** — `packages/lexera-kanban/src/app.js` now funnels metadata patches through `updateActiveBoardDataState(...)`, and `packages/lexera-kanban/src/board/boardList.js` live-sync/rebase paths now use the same patch semantics instead of mutating `activeBoardDataRef` in place. Source-level invariants in `tests/boardSessionStateInvariants.test.js` fail if direct `activeBoardData.* = ...` writes return, and runtime regression coverage in `tests/boardHierarchyCache.test.js` + `tests/embeddedHierarchyMutationPaths.test.js` exercises the live-sync, rebase, polling-delta, and cross-board commit paths.
-- [ ] **Replace index-addressed hierarchy identity with stable entity ids** — the focus/highlight path now prefers stable row/stack/column/card ids (`sidebarTree.js`, `sidebarSync.js`, `boardNavigation.js`, `workspaceShell.js`, `orderHelpers.js`), and cross-board row/stack/column drag payloads now carry `rowId` / `stackId` / `columnId` end-to-end while `moveRowAcrossBoards` / `moveStackAcrossBoards` / `moveColumnAcrossBoards` resolve by stable ids before index fallback. `moveCard(...)` now prefers stable `columnId` / `cardId` for both source resolution and tree-card insertion targets. The remaining gap is same-board action/DnD contexts and any other command paths that still derive behavior from `data-col-index` / `data-card-index` plus row/stack display indices.
+- [x] **Replace index-addressed hierarchy identity with stable entity ids** — the focus/highlight path now prefers stable row/stack/column/card ids (`sidebarTree.js`, `sidebarSync.js`, `boardNavigation.js`, `workspaceShell.js`, `orderHelpers.js`), cross-board row/stack/column drag payloads now carry `rowId` / `stackId` / `columnId` end-to-end while `moveRowAcrossBoards` / `moveStackAcrossBoards` / `moveColumnAcrossBoards` resolve by stable ids before index fallback, and the same-board tree action path now forwards stable ids from `boardList.js` into `rowStackMenu.buildEnrichedContext(...)` / `openEditForHierarchyTarget(...)` so sidebar context menus and double-click rename/edit stop depending on stale display indices. `app.js` now forwards the `stableTarget` descriptor into the DnD resolver wrappers instead of truncating it before `dndListeners`, `boardHeader.js` creation/insert helpers preserve stable ids into the shared creation seam, and `keyboardNavigation.js` now keeps a persistent stable board-entity target that resolves against current board state before row/stack/column reorder actions fire.
 - [ ] **Unify legacy-column normalization behind one shared converter** — frontend sidebar fallback now delegates through the same converter as the main board path (`boardList.js -> orderHelpers.js`), but the repo still has independent legacy normalization in `packages/lexera-kanban/src/export/exportTreeBuilder.js`, `packages/shared/src/markdownParser.ts`, and `packages/lexera-core/src/parser.rs`. The remaining work is to isolate legacy import to one boundary and delete the extra converters.
 - [ ] **Collapse hierarchy projection onto the same board-session/view-model contract as main rendering** — `packages/lexera-kanban/src/board/boardList.js` still maintains a separate projection/cache layer for sidebar consumption instead of reusing the same row/stack/column/card view model as the main board render path. Count, label, and visibility rules therefore remain duplicated.
 - [ ] **Retire iframe bridge ownership from workspace shell** — `packages/lexera-kanban/src/workspace/workspaceShell.js` still coordinates board panes through `iframe`, `contentWindow`, and `postMessage` for focus, context menus, catalog fan-out, and mutation propagation. This is still the root blocker for a single in-process update path.
-- [ ] **Update regression coverage to match the remaining gaps** — `tests/mutations.test.js` now covers stale-index-but-stable-id row/stack/column/card moves, and `tests/sidebarSync.test.js` pins the sidebar’s id-first highlight behavior for focused cards and visible columns. The remaining coverage gap is the harder end-to-end reorder/hidden-card focus path plus parity between the remaining legacy import paths in export/shared/backend.
+- [ ] **Update regression coverage to match the remaining gaps** — `tests/mutations.test.js` now covers stale-index-but-stable-id row/stack/column/card moves, `tests/sidebarSync.test.js` pins the sidebar’s id-first highlight behavior for focused cards and visible columns, `tests/hierarchyNavigation.test.js` + `tests/rowStackMenuContext.test.js` pin the sidebar tree’s stable-id edit/context normalization path, `tests/headerCreationTargeting.test.js` + `tests/headerCreationActions.test.js` pin the board-header creation-target seam, `tests/keyboardNavigation.test.js` pins the persistent stable keyboard entity-target path for row/stack/column reorders, `tests/boardSearchFocus.test.js` pins the local focus path when a target card is hidden and only its owning column remains renderable, and `tests/orderHelpers.test.js` pins the same hidden-card fallback inside embedded panes. The remaining coverage gap is the harder end-to-end reorder/focus path plus parity between the remaining legacy import paths in export/shared/backend.
 
 ## Active Features
 - [ ] Mobile web clipper — finish lexera-capture-ios

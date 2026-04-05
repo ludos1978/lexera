@@ -365,9 +365,22 @@ var LexeraBoardHeader = (function () {
     ) {
       return null;
     }
+    var rowId = target.rowId || null;
+    var stackId = target.stackId || null;
+    var columnId = target.columnId || null;
+    var cardId = target.cardId || null;
+    var insertBefore = typeof target.before === 'boolean' ? target.before : null;
     if (typeof target.flatColIndex === 'number') {
       return {
-        colIndex: target.flatColIndex,
+        flatColIndex: target.flatColIndex,
+        rowIndex: typeof target.rowIndex === 'number' ? target.rowIndex : undefined,
+        stackIndex: typeof target.stackIndex === 'number' ? target.stackIndex : undefined,
+        colIndex: typeof target.colIndex === 'number' ? target.colIndex : undefined,
+        rowId: rowId,
+        stackId: stackId,
+        columnId: columnId,
+        cardId: cardId,
+        before: insertBefore,
         atCardIndex: typeof target.insertIdx === 'number' ? target.insertIdx : undefined,
         insertMode: target.insertMode === 'full' ? 'full' : 'visible'
       };
@@ -385,7 +398,15 @@ var LexeraBoardHeader = (function () {
       });
       if (flatColIdx >= 0) {
         return {
-          colIndex: flatColIdx,
+          flatColIndex: flatColIdx,
+          rowIndex: target.rowIndex,
+          stackIndex: target.stackIndex,
+          colIndex: target.colIndex,
+          rowId: rowId,
+          stackId: stackId,
+          columnId: columnId,
+          cardId: cardId,
+          before: insertBefore,
           atCardIndex: typeof target.insertIdx === 'number' ? target.insertIdx : undefined,
           insertMode: target.insertMode === 'full' ? 'full' : 'visible'
         };
@@ -395,6 +416,11 @@ var LexeraBoardHeader = (function () {
       return {
         rowIndex: target.rowIndex,
         stackIndex: target.stackIndex,
+        rowId: rowId,
+        stackId: stackId,
+        columnId: columnId,
+        cardId: cardId,
+        before: insertBefore,
         insertIdx: typeof target.insertIdx === 'number' ? target.insertIdx : undefined,
         insertMode: target.insertMode === 'full' ? 'full' : 'visible',
         indexMode: target.indexMode || 'display'
@@ -403,6 +429,8 @@ var LexeraBoardHeader = (function () {
     if (typeof target.rowIndex === 'number') {
       return {
         rowIndex: target.rowIndex,
+        rowId: rowId,
+        before: insertBefore,
         insertIdx: typeof target.insertIdx === 'number' ? target.insertIdx : undefined,
         insertMode: target.insertMode === 'full' ? 'full' : 'visible',
         indexMode: target.indexMode || 'display'
@@ -428,7 +456,15 @@ var LexeraBoardHeader = (function () {
         if (stack) {
           var atColIdx = _callDep('findInsertColumnIndexInStack', stack, displayColIdx, insertBefore);
           if (atColIdx >= 0) {
-            return { rowIdx: rowIdx, stackIdx: stackIdx, atColIdx: atColIdx };
+            return {
+              rowIdx: rowIdx,
+              stackIdx: stackIdx,
+              rowId: String(columnEl.getAttribute('data-row-id') || '').trim() || null,
+              stackId: String(columnEl.getAttribute('data-stack-id') || '').trim() || null,
+              columnId: String(columnEl.getAttribute('data-column-id') || '').trim() || null,
+              before: insertBefore,
+              atColIdx: atColIdx
+            };
           }
         }
       }
@@ -439,7 +475,12 @@ var LexeraBoardHeader = (function () {
       var stackRowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
       var stackIdx2 = parseInt(stackEl.getAttribute('data-stack-index'), 10);
       if (!isNaN(stackRowIdx) && !isNaN(stackIdx2)) {
-        return { rowIdx: stackRowIdx, stackIdx: stackIdx2 };
+        return {
+          rowIdx: stackRowIdx,
+          stackIdx: stackIdx2,
+          rowId: String(stackEl.getAttribute('data-row-id') || '').trim() || null,
+          stackId: String(stackEl.getAttribute('data-stack-id') || '').trim() || null
+        };
       }
     }
 
@@ -448,30 +489,59 @@ var LexeraBoardHeader = (function () {
     if (treeColTarget && treeColTarget.boardId === activeBoardId) {
       if (treeColTarget.indexMode === 'full') {
         var fullInsert = treeColTarget.before ? treeColTarget.colIndex : (treeColTarget.colIndex + 1);
-        return { rowIdx: treeColTarget.rowIndex, stackIdx: treeColTarget.stackIndex, atColIdx: fullInsert };
+        return {
+          rowIdx: treeColTarget.rowIndex,
+          stackIdx: treeColTarget.stackIndex,
+          rowId: treeColTarget.rowId || null,
+          stackId: treeColTarget.stackId || null,
+          columnId: treeColTarget.columnId || null,
+          before: treeColTarget.before,
+          atColIdx: fullInsert
+        };
       }
       var targetStack = _callDep('findFullDataStack', treeColTarget.rowIndex, treeColTarget.stackIndex);
       if (targetStack) {
         var treeInsert = _callDep('findInsertColumnIndexInStack', targetStack, treeColTarget.colIndex, treeColTarget.before);
         if (treeInsert >= 0) {
-          return { rowIdx: treeColTarget.rowIndex, stackIdx: treeColTarget.stackIndex, atColIdx: treeInsert };
+          return {
+            rowIdx: treeColTarget.rowIndex,
+            stackIdx: treeColTarget.stackIndex,
+            rowId: treeColTarget.rowId || null,
+            stackId: treeColTarget.stackId || null,
+            columnId: treeColTarget.columnId || null,
+            before: treeColTarget.before,
+            atColIdx: treeInsert
+          };
         }
       }
     }
 
     var treeStackTarget = _callDep('getTreeStackDropTarget', mx, my);
     if (treeStackTarget && treeStackTarget.boardId === activeBoardId) {
-      return { rowIdx: treeStackTarget.rowIndex, stackIdx: treeStackTarget.stackIndex };
+      return {
+        rowIdx: treeStackTarget.rowIndex,
+        stackIdx: treeStackTarget.stackIndex,
+        rowId: treeStackTarget.rowId || null,
+        stackId: treeStackTarget.stackId || null
+      };
     }
 
     var rowBodyTarget = _callDep('resolveRowBodyDropTarget', mx, my);
     if (rowBodyTarget && rowBodyTarget.boardId === activeBoardId) {
-      return { rowIdx: rowBodyTarget.rowIndex, indexMode: rowBodyTarget.indexMode || 'display' };
+      return {
+        rowIdx: rowBodyTarget.rowIndex,
+        rowId: rowBodyTarget.rowId || null,
+        indexMode: rowBodyTarget.indexMode || 'display'
+      };
     }
 
     var rowTarget = _callDep('getRowDropTarget', mx, my);
     if (rowTarget && rowTarget.boardId === activeBoardId) {
-      return { atIndex: rowTarget.before ? rowTarget.rowIndex : (rowTarget.rowIndex + 1) };
+      return {
+        atIndex: rowTarget.before ? rowTarget.rowIndex : (rowTarget.rowIndex + 1),
+        rowId: rowTarget.rowId || null,
+        before: rowTarget.before
+      };
     }
 
     var boardRect = _callDep('getElColumnsContainer').getBoundingClientRect();
@@ -493,13 +563,24 @@ var LexeraBoardHeader = (function () {
     var stackTarget = _callDep('getStackDropTarget', mx, my);
     if (stackTarget && stackTarget.boardId === activeBoardId) {
       var atStackIdx = stackTarget.before ? stackTarget.stackIndex : (stackTarget.stackIndex + 1);
-      return { rowIdx: stackTarget.rowIndex, atStackIdx: atStackIdx };
+      return {
+        rowIdx: stackTarget.rowIndex,
+        rowId: stackTarget.rowId || null,
+        stackId: stackTarget.stackId || null,
+        before: stackTarget.before,
+        atStackIdx: atStackIdx
+      };
     }
 
     var rowEl = _callDep('findNodeAtPoint', _callDep('getElColumnsContainer').querySelectorAll('.board-row'), mx, my);
     if (rowEl) {
       var rowIdx = parseInt(rowEl.getAttribute('data-row-index'), 10);
-      if (!isNaN(rowIdx)) return { rowIdx: rowIdx };
+      if (!isNaN(rowIdx)) {
+        return {
+          rowIdx: rowIdx,
+          rowId: String(rowEl.getAttribute('data-row-id') || '').trim() || null
+        };
+      }
     }
 
     var treeRow = _callDep('findNodeAtPoint', _callDep('getElBoardList').querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my);
@@ -507,7 +588,10 @@ var LexeraBoardHeader = (function () {
       var rowBoardId = treeRow.getAttribute('data-board-id') || activeBoardId;
       var treeRowIdx = parseInt(treeRow.getAttribute('data-row-index'), 10);
       if (rowBoardId === activeBoardId && !isNaN(treeRowIdx)) {
-        return { rowIdx: treeRowIdx };
+        return {
+          rowIdx: treeRowIdx,
+          rowId: String(treeRow.getAttribute('data-row-id') || '').trim() || null
+        };
       }
     }
 
@@ -522,7 +606,11 @@ var LexeraBoardHeader = (function () {
     var rowTarget = _callDep('getRowDropTarget', mx, my);
     if (rowTarget && rowTarget.boardId === activeBoardId) {
       var atIndex = rowTarget.before ? rowTarget.rowIndex : (rowTarget.rowIndex + 1);
-      return { atIndex: atIndex };
+      return {
+        atIndex: atIndex,
+        rowId: rowTarget.rowId || null,
+        before: rowTarget.before
+      };
     }
 
     var boardRect = _callDep('getElColumnsContainer').getBoundingClientRect();

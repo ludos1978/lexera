@@ -40,11 +40,296 @@ var LexeraRowStackMenu = (function () {
     });
   }
 
-  function buildEnrichedContext(scope, rawContext) {
+  function cloneContext(rawContext) {
     var context = {};
     var keys = Object.keys(rawContext || {});
-    for (var ck = 0; ck < keys.length; ck++) context[keys[ck]] = rawContext[keys[ck]];
+    for (var i = 0; i < keys.length; i++) context[keys[i]] = rawContext[keys[i]];
+    return context;
+  }
+
+  function normalizeStableContextId(value) {
+    if (value == null) return '';
+    var normalized = String(value).trim();
+    return normalized ? normalized : '';
+  }
+
+  function getContextActiveRows() {
+    var activeBoardData = deps.getActiveBoardData ? deps.getActiveBoardData() : null;
+    return activeBoardData && Array.isArray(activeBoardData.rows) ? activeBoardData.rows : [];
+  }
+
+  function getContextFullRows() {
+    var fullBoardData = deps.getFullBoardData ? deps.getFullBoardData() : null;
+    return fullBoardData && Array.isArray(fullBoardData.rows) ? fullBoardData.rows : [];
+  }
+
+  function findActiveRowEntryById(rowId) {
+    rowId = normalizeStableContextId(rowId);
+    if (!rowId) return null;
+    var rows = getContextActiveRows();
+    for (var r = 0; r < rows.length; r++) {
+      if (normalizeStableContextId(rows[r] && rows[r].id) === rowId) {
+        return { row: rows[r], rowIdx: r };
+      }
+    }
+    return null;
+  }
+
+  function findActiveStackEntryById(rowId, stackId) {
+    stackId = normalizeStableContextId(stackId);
+    if (!stackId) return null;
+    var rows = getContextActiveRows();
+    var normalizedRowId = normalizeStableContextId(rowId);
+    for (var r = 0; r < rows.length; r++) {
+      if (normalizedRowId && normalizeStableContextId(rows[r] && rows[r].id) !== normalizedRowId) continue;
+      var stacks = rows[r] && Array.isArray(rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (normalizeStableContextId(stacks[s] && stacks[s].id) === stackId) {
+          return { row: rows[r], rowIdx: r, stack: stacks[s], stackIdx: s };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findActiveColumnEntryById(rowId, stackId, columnId) {
+    columnId = normalizeStableContextId(columnId);
+    if (!columnId) return null;
+    var rows = getContextActiveRows();
+    var normalizedRowId = normalizeStableContextId(rowId);
+    var normalizedStackId = normalizeStableContextId(stackId);
+    for (var r = 0; r < rows.length; r++) {
+      if (normalizedRowId && normalizeStableContextId(rows[r] && rows[r].id) !== normalizedRowId) continue;
+      var stacks = rows[r] && Array.isArray(rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (normalizedStackId && normalizeStableContextId(stacks[s] && stacks[s].id) !== normalizedStackId) continue;
+        var columns = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < columns.length; c++) {
+          if (normalizeStableContextId(columns[c] && columns[c].id) === columnId) {
+            return {
+              row: rows[r],
+              rowIdx: r,
+              stack: stacks[s],
+              stackIdx: s,
+              column: columns[c],
+              colLocalIdx: c,
+              colIndex: typeof columns[c].index === 'number' ? columns[c].index : -1
+            };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function findActiveCardEntryById(rowId, stackId, columnId, cardId) {
+    cardId = normalizeStableContextId(cardId);
+    if (!cardId) return null;
+    var rows = getContextActiveRows();
+    var normalizedRowId = normalizeStableContextId(rowId);
+    var normalizedStackId = normalizeStableContextId(stackId);
+    var normalizedColumnId = normalizeStableContextId(columnId);
+    for (var r = 0; r < rows.length; r++) {
+      if (normalizedRowId && normalizeStableContextId(rows[r] && rows[r].id) !== normalizedRowId) continue;
+      var stacks = rows[r] && Array.isArray(rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (normalizedStackId && normalizeStableContextId(stacks[s] && stacks[s].id) !== normalizedStackId) continue;
+        var columns = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < columns.length; c++) {
+          if (normalizedColumnId && normalizeStableContextId(columns[c] && columns[c].id) !== normalizedColumnId) continue;
+          var cards = columns[c] && Array.isArray(columns[c].cards) ? columns[c].cards : [];
+          for (var k = 0; k < cards.length; k++) {
+            if (normalizeStableContextId(cards[k] && cards[k].id) === cardId) {
+              return {
+                row: rows[r],
+                rowIdx: r,
+                stack: stacks[s],
+                stackIdx: s,
+                column: columns[c],
+                colLocalIdx: c,
+                colIndex: typeof columns[c].index === 'number' ? columns[c].index : -1,
+                card: cards[k],
+                cardIndex: k
+              };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function findFullColumnEntryById(rowId, stackId, columnId) {
+    columnId = normalizeStableContextId(columnId);
+    if (!columnId) return null;
+    var rows = getContextFullRows();
+    var normalizedRowId = normalizeStableContextId(rowId);
+    var normalizedStackId = normalizeStableContextId(stackId);
+    for (var r = 0; r < rows.length; r++) {
+      if (normalizedRowId && normalizeStableContextId(rows[r] && rows[r].id) !== normalizedRowId) continue;
+      var stacks = rows[r] && Array.isArray(rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (normalizedStackId && normalizeStableContextId(stacks[s] && stacks[s].id) !== normalizedStackId) continue;
+        var columns = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < columns.length; c++) {
+          if (normalizeStableContextId(columns[c] && columns[c].id) === columnId) {
+            return {
+              row: rows[r],
+              rowFullIdx: r,
+              stack: stacks[s],
+              stackFullIdx: s,
+              column: columns[c],
+              colFullIdx: c
+            };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function setCreationRowPath(context, rowIdx) {
+    if (typeof rowIdx === 'number' && !isNaN(rowIdx)) {
+      context.rowIdx = rowIdx;
+      context.rowIndex = rowIdx;
+    }
+  }
+
+  function setCreationStackPath(context, rowIdx, stackIdx) {
+    setCreationRowPath(context, rowIdx);
+    if (typeof stackIdx === 'number' && !isNaN(stackIdx)) {
+      context.stackIdx = stackIdx;
+      context.stackIndex = stackIdx;
+    }
+  }
+
+  function setCreationColumnPath(context, rowIdx, stackIdx, colLocalIdx, flatColIdx) {
+    setCreationStackPath(context, rowIdx, stackIdx);
+    if (typeof colLocalIdx === 'number' && !isNaN(colLocalIdx)) {
+      context.colLocalIdx = colLocalIdx;
+      context.colIndex = colLocalIdx;
+    }
+    if (typeof flatColIdx === 'number' && !isNaN(flatColIdx)) {
+      context.flatColIndex = flatColIdx;
+    }
+  }
+
+  function resolveContextIndicesByStableIds(scope, context) {
+    if (!context || !scope) return;
+    var rowId = normalizeStableContextId(context.rowId);
+    var stackId = normalizeStableContextId(context.stackId);
+    var columnId = normalizeStableContextId(context.columnId);
+    var cardId = normalizeStableContextId(context.cardId);
+    var cardEntry = null;
+    var columnEntry = null;
+    var stackEntry = null;
+    var rowEntry = null;
+
+    if (scope === 'card' && cardId) {
+      cardEntry = findActiveCardEntryById(rowId, stackId, columnId, cardId);
+      if (cardEntry) {
+        context.rowIdx = cardEntry.rowIdx;
+        context.stackIdx = cardEntry.stackIdx;
+        context.colLocalIdx = cardEntry.colLocalIdx;
+        if (cardEntry.colIndex >= 0) context.colIndex = cardEntry.colIndex;
+        context.cardIndex = cardEntry.cardIndex;
+      }
+    }
+
+    if (!cardEntry && (scope === 'card' || scope === 'column') && columnId) {
+      columnEntry = findActiveColumnEntryById(rowId, stackId, columnId);
+      if (columnEntry) {
+        context.rowIdx = columnEntry.rowIdx;
+        context.stackIdx = columnEntry.stackIdx;
+        context.colLocalIdx = columnEntry.colLocalIdx;
+        if (columnEntry.colIndex >= 0) context.colIndex = columnEntry.colIndex;
+      }
+    }
+
+    if (!cardEntry && !columnEntry && (scope === 'card' || scope === 'column' || scope === 'stack') && stackId) {
+      stackEntry = findActiveStackEntryById(rowId, stackId);
+      if (stackEntry) {
+        context.rowIdx = stackEntry.rowIdx;
+        context.stackIdx = stackEntry.stackIdx;
+      }
+    }
+
+    if (!cardEntry && !columnEntry && !stackEntry && (scope === 'card' || scope === 'column' || scope === 'stack' || scope === 'row') && rowId) {
+      rowEntry = findActiveRowEntryById(rowId);
+      if (rowEntry) context.rowIdx = rowEntry.rowIdx;
+    }
+  }
+
+  function normalizeCreationContextForEntity(entityType, rawContext) {
+    if (!rawContext) return rawContext || null;
+    var context = cloneContext(rawContext);
+    var rowId = normalizeStableContextId(context.rowId);
+    var stackId = normalizeStableContextId(context.stackId);
+    var columnId = normalizeStableContextId(context.columnId);
+    var cardId = normalizeStableContextId(context.cardId);
+    var activeRowEntry = rowId ? findActiveRowEntryById(rowId) : null;
+    var activeStackEntry = stackId ? findActiveStackEntryById(rowId, stackId) : null;
+    var activeColumnEntry = columnId ? findActiveColumnEntryById(rowId, stackId, columnId) : null;
+    var activeCardEntry = cardId ? findActiveCardEntryById(rowId, stackId, columnId, cardId) : null;
+
+    if (activeCardEntry) {
+      setCreationColumnPath(context, activeCardEntry.rowIdx, activeCardEntry.stackIdx, activeCardEntry.colLocalIdx, activeCardEntry.colIndex);
+      context.cardIndex = activeCardEntry.cardIndex;
+    } else if (activeColumnEntry) {
+      setCreationColumnPath(context, activeColumnEntry.rowIdx, activeColumnEntry.stackIdx, activeColumnEntry.colLocalIdx, activeColumnEntry.colIndex);
+    } else if (activeStackEntry) {
+      setCreationStackPath(context, activeStackEntry.rowIdx, activeStackEntry.stackIdx);
+    } else if (activeRowEntry) {
+      setCreationRowPath(context, activeRowEntry.rowIdx);
+    }
+
+    if (entityType === 'card') {
+      if (typeof context.insertIdx !== 'number' && typeof context.atCardIndex === 'number') context.insertIdx = context.atCardIndex;
+      if (typeof context.atCardIndex !== 'number' && typeof context.insertIdx === 'number') context.atCardIndex = context.insertIdx;
+      if (activeCardEntry && typeof context.before === 'boolean') {
+        var stableInsertIdx = context.before ? activeCardEntry.cardIndex : (activeCardEntry.cardIndex + 1);
+        context.insertIdx = stableInsertIdx;
+        context.atCardIndex = stableInsertIdx;
+        context.insertMode = 'visible';
+      }
+      return context;
+    }
+
+    if (entityType === 'row') {
+      if (activeRowEntry && typeof context.before === 'boolean') {
+        context.atIndex = context.before ? activeRowEntry.rowIdx : (activeRowEntry.rowIdx + 1);
+      }
+      return context;
+    }
+
+    if (entityType === 'stack') {
+      if (activeStackEntry && typeof context.before === 'boolean') {
+        context.atStackIdx = context.before ? activeStackEntry.stackIdx : (activeStackEntry.stackIdx + 1);
+      }
+      return context;
+    }
+
+    if (entityType === 'column') {
+      if (!stackId && !activeStackEntry && activeRowEntry && typeof context.before === 'boolean') {
+        context.atIndex = context.before ? activeRowEntry.rowIdx : (activeRowEntry.rowIdx + 1);
+      }
+      if (columnId && typeof context.before === 'boolean') {
+        var fullColumnEntry = findFullColumnEntryById(rowId, stackId, columnId);
+        if (fullColumnEntry) {
+          context.atColIdx = context.before ? fullColumnEntry.colFullIdx : (fullColumnEntry.colFullIdx + 1);
+        }
+      }
+      return context;
+    }
+
+    return context;
+  }
+
+  function buildEnrichedContext(scope, rawContext) {
+    var context = cloneContext(rawContext);
     context.scope = scope;
+
+    resolveContextIndicesByStableIds(scope, context);
 
     // Resolve colIndex from row/stack/colLocal if missing
     if ((scope === 'card' || scope === 'column') && (context.colIndex == null || context.colIndex < 0) &&
@@ -286,6 +571,7 @@ var LexeraRowStackMenu = (function () {
    * Dispatch creation action for a given entity type.
    */
   async function handleCreationAction(entityType, action, context) {
+    context = normalizeCreationContextForEntity(entityType, context);
     deps.traceFrontendAction('info', 'creation.action', 'Dispatching creation action', {
       boardId: deps.getActiveBoardId() || null,
       entityType: entityType,
@@ -411,6 +697,7 @@ var LexeraRowStackMenu = (function () {
   }
 
   async function insertTextContentForEntity(entityType, text, context) {
+    context = normalizeCreationContextForEntity(entityType, context);
     var normalized = String(text || '').trim();
     if (!normalized) {
       deps.showNotification('No content available');
@@ -923,6 +1210,8 @@ var LexeraRowStackMenu = (function () {
     showStackContextMenu: showStackContextMenu,
     showCanvasBackgroundContextMenu: showCanvasBackgroundContextMenu,
     showElementContextMenu: showElementContextMenu,
+    buildEnrichedContext: buildEnrichedContext,
+    normalizeCreationContextForEntity: normalizeCreationContextForEntity,
     buildContextMenuItemsAndContext: buildContextMenuItemsAndContext,
     renameRowOrStack: renameRowOrStack,
     loadTemplatesOnce: loadTemplatesOnce,

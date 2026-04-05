@@ -216,6 +216,21 @@ var LexeraBoardSearch = (function () {
       if (byCardId) return byCardId;
     }
 
+    if (target.columnId) {
+      var byColumnId = getElColumnsContainer().querySelector('.column[data-column-id="' + escapeAttr(String(target.columnId)) + '"]');
+      if (byColumnId) return byColumnId;
+    }
+
+    if (target.stackId) {
+      var byStackId = getElColumnsContainer().querySelector('.board-stack[data-stack-id="' + escapeAttr(String(target.stackId)) + '"]');
+      if (byStackId) return byStackId;
+    }
+
+    if (target.rowId) {
+      var byRowId = getElColumnsContainer().querySelector('.board-row[data-row-id="' + escapeAttr(String(target.rowId)) + '"]');
+      if (byRowId) return byRowId;
+    }
+
     if (
       typeof target.rowIndex === 'number' &&
       typeof target.stackIndex === 'number' &&

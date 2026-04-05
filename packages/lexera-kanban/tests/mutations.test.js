@@ -645,6 +645,23 @@ describe('Card mutations', () => {
     expect(col.cards[2].content).toBe('');
   });
 
+  it('addEmptyCardToActiveBoard resolves a stale object target by stable ids', async () => {
+    await M.addEmptyCardToActiveBoard({
+      rowIndex: 99,
+      stackIndex: 98,
+      colIndex: 97,
+      rowId: 'row-secondary',
+      stackId: 'stack-other',
+      columnId: 'col-backlog',
+      insertIdx: 0,
+      insertMode: 'visible'
+    });
+    var col = M.getState().fullBoardData.rows[2].stacks[0].columns[0];
+    expect(col.cards.length).toBe(3);
+    expect(col.cards[0].content).toBe('');
+    expect(col.cards[1].id).toBe('card-f');
+  });
+
   it('insertCardAtIndex with hidden cards maps visible index correctly', async () => {
     // col-todo has [card-a, card-b(DELETED), card-c]
     // visible: [card-a, card-c] — visible idx 1 = card-c

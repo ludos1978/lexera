@@ -2,6 +2,7 @@ var LexeraKeyboardNavigation = (function () {
   'use strict';
   var focusedCardEl = null;
   var focusedBoardEntityEl = null;
+  var focusedBoardEntityTarget = null;
   var focusedBoardEntityTimer = null;
   var selectedCardEls = [];
 
@@ -17,6 +18,196 @@ var LexeraKeyboardNavigation = (function () {
 
   function hasDep(name) {
     return !!(_deps && typeof _deps[name] === 'function');
+  }
+
+  function parseOptionalIndex(value) {
+    if (value == null || value === '') return null;
+    var parsed = parseInt(value, 10);
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  function normalizeEntityId(value) {
+    if (value == null) return '';
+    var normalized = String(value).trim();
+    return normalized ? normalized : '';
+  }
+
+  function cloneTarget(rawTarget) {
+    if (!rawTarget) return null;
+    var clone = {};
+    var keys = Object.keys(rawTarget);
+    for (var i = 0; i < keys.length; i++) clone[keys[i]] = rawTarget[keys[i]];
+    return clone;
+  }
+
+  function getActiveBoardData() {
+    return hasDep('getActiveBoardData') ? _deps.getActiveBoardData() : null;
+  }
+
+  function buildBoardEntityFocusTarget(el) {
+    if (!el || typeof el.closest !== 'function') return null;
+
+    var rowEl = el.closest('.board-row');
+    var stackEl = el.closest('.board-stack');
+    var columnEl = el.closest('.column');
+    var cardEl = el.closest('.card');
+    var target = {};
+
+    if (cardEl) target.scope = 'card';
+    else if (columnEl) target.scope = 'column';
+    else if (stackEl) target.scope = 'stack';
+    else if (rowEl) target.scope = 'row';
+    else return null;
+
+    var rowId = normalizeEntityId((rowEl && rowEl.getAttribute && rowEl.getAttribute('data-row-id')) || (el.getAttribute && el.getAttribute('data-row-id')));
+    var stackId = normalizeEntityId((stackEl && stackEl.getAttribute && stackEl.getAttribute('data-stack-id')) || (el.getAttribute && el.getAttribute('data-stack-id')));
+    var columnId = normalizeEntityId((columnEl && columnEl.getAttribute && columnEl.getAttribute('data-column-id')) || (el.getAttribute && el.getAttribute('data-column-id')));
+    var cardId = normalizeEntityId((cardEl && cardEl.getAttribute && cardEl.getAttribute('data-card-id')) || (el.getAttribute && el.getAttribute('data-card-id')));
+
+    if (rowId) target.rowId = rowId;
+    if (stackId) target.stackId = stackId;
+    if (columnId) target.columnId = columnId;
+    if (cardId) target.cardId = cardId;
+
+    target.rowIndex = parseOptionalIndex((rowEl && rowEl.getAttribute && rowEl.getAttribute('data-row-index')) || (el.getAttribute && el.getAttribute('data-row-index')));
+    target.stackIndex = parseOptionalIndex((stackEl && stackEl.getAttribute && stackEl.getAttribute('data-stack-index')) || (el.getAttribute && el.getAttribute('data-stack-index')));
+    target.colLocalIndex = parseOptionalIndex((columnEl && columnEl.getAttribute && columnEl.getAttribute('data-col-local-index')) || (el.getAttribute && el.getAttribute('data-col-local-index')));
+    target.columnIndex = parseOptionalIndex((columnEl && columnEl.getAttribute && columnEl.getAttribute('data-col-index')) || (el.getAttribute && el.getAttribute('data-col-index')));
+    target.cardIndex = parseOptionalIndex((cardEl && cardEl.getAttribute && cardEl.getAttribute('data-card-index')) || (el.getAttribute && el.getAttribute('data-card-index')));
+
+    return target;
+  }
+
+  function findRowContextById(rows, rowId) {
+    rowId = normalizeEntityId(rowId);
+    if (!rowId) return null;
+    for (var r = 0; r < rows.length; r++) {
+      if (normalizeEntityId(rows[r] && rows[r].id) === rowId) {
+        return { row: rows[r], rowIndex: r };
+      }
+    }
+    return null;
+  }
+
+  function findStackContextById(rows, rowId, stackId) {
+    stackId = normalizeEntityId(stackId);
+    if (!stackId) return null;
+    var normalizedRowId = normalizeEntityId(rowId);
+    for (var r = 0; r < rows.length; r++) {
+      if (normalizedRowId && normalizeEntityId(rows[r] && rows[r].id) !== normalizedRowId) continue;
+      var stacks = rows[r] && Array.isArray(rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (normalizeEntityId(stacks[s] && stacks[s].id) === stackId) {
+          return { row: rows[r], rowIndex: r, stack: stacks[s], stackIndex: s };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findColumnContextById(rows, rowId, stackId, columnId) {
+    columnId = normalizeEntityId(columnId);
+    if (!columnId) return null;
+    var normalizedRowId = normalizeEntityId(rowId);
+    var normalizedStackId = normalizeEntityId(stackId);
+    for (var r = 0; r < rows.length; r++) {
+      if (normalizedRowId && normalizeEntityId(rows[r] && rows[r].id) !== normalizedRowId) continue;
+      var stacks = rows[r] && Array.isArray(rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (normalizedStackId && normalizeEntityId(stacks[s] && stacks[s].id) !== normalizedStackId) continue;
+        var columns = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < columns.length; c++) {
+          if (normalizeEntityId(columns[c] && columns[c].id) === columnId) {
+            return {
+              row: rows[r],
+              rowIndex: r,
+              stack: stacks[s],
+              stackIndex: s,
+              column: columns[c],
+              colLocalIndex: c
+            };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function findCardContextById(rows, rowId, stackId, columnId, cardId) {
+    cardId = normalizeEntityId(cardId);
+    if (!cardId) return null;
+    var normalizedRowId = normalizeEntityId(rowId);
+    var normalizedStackId = normalizeEntityId(stackId);
+    var normalizedColumnId = normalizeEntityId(columnId);
+    for (var r = 0; r < rows.length; r++) {
+      if (normalizedRowId && normalizeEntityId(rows[r] && rows[r].id) !== normalizedRowId) continue;
+      var stacks = rows[r] && Array.isArray(rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (normalizedStackId && normalizeEntityId(stacks[s] && stacks[s].id) !== normalizedStackId) continue;
+        var columns = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < columns.length; c++) {
+          if (normalizedColumnId && normalizeEntityId(columns[c] && columns[c].id) !== normalizedColumnId) continue;
+          var cards = columns[c] && Array.isArray(columns[c].cards) ? columns[c].cards : [];
+          for (var k = 0; k < cards.length; k++) {
+            if (normalizeEntityId(cards[k] && cards[k].id) === cardId) {
+              return {
+                row: rows[r],
+                rowIndex: r,
+                stack: stacks[s],
+                stackIndex: s,
+                column: columns[c],
+                colLocalIndex: c,
+                card: cards[k],
+                cardIndex: k
+              };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function resolveFocusedBoardEntityContext(rawTarget) {
+    var target = cloneTarget(rawTarget || focusedBoardEntityTarget);
+    if (!target) return null;
+
+    var activeBoardData = getActiveBoardData();
+    var rows = activeBoardData && Array.isArray(activeBoardData.rows) ? activeBoardData.rows : [];
+    if (!rows.length) return target;
+
+    var cardContext = target.cardId ? findCardContextById(rows, target.rowId, target.stackId, target.columnId, target.cardId) : null;
+    if (cardContext) {
+      target.rowIndex = cardContext.rowIndex;
+      target.stackIndex = cardContext.stackIndex;
+      target.colLocalIndex = cardContext.colLocalIndex;
+      target.columnIndex = typeof cardContext.column.index === 'number' ? cardContext.column.index : target.columnIndex;
+      target.cardIndex = cardContext.cardIndex;
+      return target;
+    }
+
+    var columnContext = target.columnId ? findColumnContextById(rows, target.rowId, target.stackId, target.columnId) : null;
+    if (columnContext) {
+      target.rowIndex = columnContext.rowIndex;
+      target.stackIndex = columnContext.stackIndex;
+      target.colLocalIndex = columnContext.colLocalIndex;
+      target.columnIndex = typeof columnContext.column.index === 'number' ? columnContext.column.index : target.columnIndex;
+      return target;
+    }
+
+    var stackContext = target.stackId ? findStackContextById(rows, target.rowId, target.stackId) : null;
+    if (stackContext) {
+      target.rowIndex = stackContext.rowIndex;
+      target.stackIndex = stackContext.stackIndex;
+      return target;
+    }
+
+    var rowContext = target.rowId ? findRowContextById(rows, target.rowId) : null;
+    if (rowContext) {
+      target.rowIndex = rowContext.rowIndex;
+    }
+
+    return target;
   }
 
   function handleKeyNavigation(e) {
@@ -59,7 +250,7 @@ var LexeraKeyboardNavigation = (function () {
           if (moved) focusCard(moved);
         });
       }
-    } else if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight') {
+    } else if ((key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight') && !(e.ctrlKey && e.altKey)) {
       e.preventDefault();
       navigateCards(key);
     } else if (key === 'Enter' && focusedCardEl) {
@@ -148,58 +339,67 @@ var LexeraKeyboardNavigation = (function () {
       }
     } else if ((key === 'ArrowUp' || key === 'ArrowDown') && e.ctrlKey && e.altKey && !focusedCardEl) {
       // Ctrl+Alt+Up/Down: reorder rows
-      if (!_deps.getFullBoardData || !_deps.reorderRows) return;
-      var fbd = _deps.getFullBoardData();
-      if (!fbd || !fbd.rows || fbd.rows.length < 2) return;
+      if (!_deps.reorderRows) return;
+      var activeBoardData = getActiveBoardData();
+      if (!activeBoardData || !activeBoardData.rows || activeBoardData.rows.length < 2) return;
       e.preventDefault();
-      var rowEls = columnsContainer ? columnsContainer.querySelectorAll('.board-row') : [];
-      if (rowEls.length < 2) return;
-      var focusedRowIdx = 0;
-      if (focusedBoardEntityEl) {
-        var rowEl = focusedBoardEntityEl.closest('.board-row');
-        if (rowEl) {
-          for (var ri = 0; ri < rowEls.length; ri++) {
-            if (rowEls[ri] === rowEl) { focusedRowIdx = ri; break; }
-          }
-        }
-      }
+      var focusedRowContext = resolveFocusedBoardEntityContext();
+      var focusedRowIdx = focusedRowContext && typeof focusedRowContext.rowIndex === 'number'
+        ? focusedRowContext.rowIndex
+        : 0;
       var targetIdx = key === 'ArrowUp' ? focusedRowIdx - 1 : focusedRowIdx + 1;
-      if (targetIdx >= 0 && targetIdx < rowEls.length) {
+      if (targetIdx >= 0 && targetIdx < activeBoardData.rows.length) {
         _deps.reorderRows(focusedRowIdx, targetIdx, key === 'ArrowUp');
       }
     } else if ((key === 'ArrowLeft' || key === 'ArrowRight') && e.ctrlKey && e.altKey && !focusedCardEl) {
       // Ctrl+Alt+Left/Right: reorder stacks within a row, or columns within a stack
-      if (!columnsContainer) return;
+      var activeBoardData = getActiveBoardData();
+      if (!activeBoardData || !activeBoardData.rows) return;
       e.preventDefault();
       var direction = key === 'ArrowLeft' ? -1 : 1;
-      // Try to find a focused column or stack from focusedBoardEntityEl
-      var focusedCol = focusedBoardEntityEl ? focusedBoardEntityEl.closest('.column') : null;
-      var focusedStack = focusedBoardEntityEl ? focusedBoardEntityEl.closest('.board-stack') : null;
-      if (!focusedCol && !focusedStack && focusedCardEl) {
-        focusedCol = focusedCardEl.closest('.column');
-        focusedStack = focusedCardEl.closest('.board-stack');
-      }
-      if (focusedCol && focusedStack && _deps.moveColumnWithinBoard) {
-        // Reorder column within its stack
-        var stackContent = focusedStack.querySelector('.board-stack-content');
-        var cols = stackContent ? stackContent.querySelectorAll(':scope > .column') : [];
-        if (cols.length < 2) return;
-        var colIdx = Array.prototype.indexOf.call(cols, focusedCol);
-        var targetColIdx = colIdx + direction;
-        if (targetColIdx < 0 || targetColIdx >= cols.length) return;
-        var rowIdx = parseInt(focusedStack.getAttribute('data-row-index'), 10);
-        var stackIdx = parseInt(focusedStack.getAttribute('data-stack-index'), 10);
-        _deps.moveColumnWithinBoard(rowIdx, stackIdx, colIdx, rowIdx, stackIdx, targetColIdx, direction < 0);
-      } else if (focusedStack && _deps.moveStack) {
-        // Reorder stack within its row
-        var rowContent = focusedStack.closest('.board-row-content');
-        var stacks = rowContent ? rowContent.querySelectorAll(':scope > .board-stack') : [];
+      var focusedEntityContext = resolveFocusedBoardEntityContext();
+      if (!focusedEntityContext) return;
+      if (
+        focusedEntityContext.scope === 'column' &&
+        typeof focusedEntityContext.rowIndex === 'number' &&
+        typeof focusedEntityContext.stackIndex === 'number' &&
+        typeof focusedEntityContext.colLocalIndex === 'number' &&
+        _deps.moveColumnWithinBoard
+      ) {
+        var rowForColumn = activeBoardData.rows[focusedEntityContext.rowIndex];
+        var stackForColumn = rowForColumn && Array.isArray(rowForColumn.stacks)
+          ? rowForColumn.stacks[focusedEntityContext.stackIndex]
+          : null;
+        var columns = stackForColumn && Array.isArray(stackForColumn.columns) ? stackForColumn.columns : [];
+        if (columns.length < 2) return;
+        var targetColIdx = focusedEntityContext.colLocalIndex + direction;
+        if (targetColIdx < 0 || targetColIdx >= columns.length) return;
+        _deps.moveColumnWithinBoard(
+          focusedEntityContext.rowIndex,
+          focusedEntityContext.stackIndex,
+          focusedEntityContext.colLocalIndex,
+          focusedEntityContext.rowIndex,
+          focusedEntityContext.stackIndex,
+          targetColIdx,
+          direction < 0
+        );
+      } else if (
+        typeof focusedEntityContext.rowIndex === 'number' &&
+        typeof focusedEntityContext.stackIndex === 'number' &&
+        _deps.moveStack
+      ) {
+        var rowForStack = activeBoardData.rows[focusedEntityContext.rowIndex];
+        var stacks = rowForStack && Array.isArray(rowForStack.stacks) ? rowForStack.stacks : [];
         if (stacks.length < 2) return;
-        var stackIdx = Array.prototype.indexOf.call(stacks, focusedStack);
-        var targetStackIdx = stackIdx + direction;
+        var targetStackIdx = focusedEntityContext.stackIndex + direction;
         if (targetStackIdx < 0 || targetStackIdx >= stacks.length) return;
-        var rowIdx = parseInt(focusedStack.getAttribute('data-row-index'), 10);
-        _deps.moveStack(rowIdx, stackIdx, rowIdx, targetStackIdx, direction < 0);
+        _deps.moveStack(
+          focusedEntityContext.rowIndex,
+          focusedEntityContext.stackIndex,
+          focusedEntityContext.rowIndex,
+          targetStackIdx,
+          direction < 0
+        );
       }
     } else if (key === 'Escape' && _deps.getMgmtPanelOpen()) {
       e.preventDefault();
@@ -339,6 +539,7 @@ var LexeraKeyboardNavigation = (function () {
 
   function focusBoardEntity(el) {
     if (!el) return false;
+    focusedBoardEntityTarget = buildBoardEntityFocusTarget(el);
     if (focusedBoardEntityTimer) {
       clearTimeout(focusedBoardEntityTimer);
       focusedBoardEntityTimer = null;
@@ -371,8 +572,11 @@ var LexeraKeyboardNavigation = (function () {
     selectCardRange: selectCardRange,
     clearSelection: clearSelection,
     getSelectedCardEls: getSelectedCardEls,
+    buildBoardEntityFocusTarget: buildBoardEntityFocusTarget,
     focusBoardEntity: focusBoardEntity,
-    getFocusedCardEl: getFocusedCardEl
+    getFocusedCardEl: getFocusedCardEl,
+    getFocusedBoardEntityTarget: function () { return cloneTarget(focusedBoardEntityTarget); },
+    resolveFocusedBoardEntityContext: resolveFocusedBoardEntityContext
   };
 })();
 window.LexeraKeyboardNavigation = LexeraKeyboardNavigation;

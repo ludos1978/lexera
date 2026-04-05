@@ -1628,6 +1628,10 @@ var LexeraBoardList = (function () {
     var colLocalIdx = parseInt(node.getAttribute('data-col-local-index') || '', 10);
     var colIdx = parseInt(node.getAttribute('data-col-index') || '', 10);
     var cardIdx = parseInt(node.getAttribute('data-card-index') || '', 10);
+    var rowId = String(node.getAttribute('data-row-id') || '').trim();
+    var stackId = String(node.getAttribute('data-stack-id') || '').trim();
+    var columnId = String(node.getAttribute('data-column-id') || '').trim();
+    var cardId = String(node.getAttribute('data-card-id') || '').trim();
     if (node.classList.contains('tree-card')) {
       scope = 'card';
       ctx.colIndex = isNaN(colIdx) ? -1 : colIdx;
@@ -1635,19 +1639,29 @@ var LexeraBoardList = (function () {
       ctx.rowIdx = isNaN(rowIdx) ? 0 : rowIdx;
       ctx.stackIdx = isNaN(stackIdx) ? 0 : stackIdx;
       ctx.colLocalIdx = isNaN(colLocalIdx) ? 0 : colLocalIdx;
+      if (rowId) ctx.rowId = rowId;
+      if (stackId) ctx.stackId = stackId;
+      if (columnId) ctx.columnId = columnId;
+      if (cardId) ctx.cardId = cardId;
     } else if (node.classList.contains('tree-column')) {
       scope = 'column';
       ctx.colIndex = isNaN(colIdx) ? -1 : colIdx;
       ctx.rowIdx = isNaN(rowIdx) ? 0 : rowIdx;
       ctx.stackIdx = isNaN(stackIdx) ? 0 : stackIdx;
       ctx.colLocalIdx = isNaN(colLocalIdx) ? 0 : colLocalIdx;
+      if (rowId) ctx.rowId = rowId;
+      if (stackId) ctx.stackId = stackId;
+      if (columnId) ctx.columnId = columnId;
     } else if (node.classList.contains('tree-stack')) {
       scope = 'stack';
       ctx.rowIdx = isNaN(rowIdx) ? 0 : rowIdx;
       ctx.stackIdx = isNaN(stackIdx) ? 0 : stackIdx;
+      if (rowId) ctx.rowId = rowId;
+      if (stackId) ctx.stackId = stackId;
     } else if (node.classList.contains('tree-row')) {
       scope = 'row';
       ctx.rowIdx = isNaN(rowIdx) ? 0 : rowIdx;
+      if (rowId) ctx.rowId = rowId;
     }
     return scope ? { scope: scope, ctx: ctx } : null;
   }

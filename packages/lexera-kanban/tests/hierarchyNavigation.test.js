@@ -47,9 +47,9 @@ function loadOpenEditForHierarchyTarget() {
     ${fnSrc}
     return openEditForHierarchyTarget;
   `;
-  return function create(mockRegistry) {
-    const factory = new Function('ActionRegistry', wrappedSrc);
-    return factory(mockRegistry);
+  return function create(mockRegistry, windowMock) {
+    const factory = new Function('ActionRegistry', 'window', wrappedSrc);
+    return factory(mockRegistry, windowMock);
   };
 }
 
@@ -279,10 +279,17 @@ describe('openEditForHierarchyTarget', () => {
     });
     expect(result).toBe(true);
     expect(registry.calls).toHaveLength(1);
-    expect(registry.calls[0]).toEqual({
+    expect(registry.calls[0]).toMatchObject({
       scope: 'card',
       action: 'edit',
-      ctx: { colIndex: 9, cardIndex: 4 }
+      ctx: {
+        colIndex: 9,
+        cardIndex: 4,
+        rowIdx: 1,
+        stackIdx: 2,
+        colLocalIdx: 3,
+        cardId: 'card-abc'
+      }
     });
   });
 
@@ -305,16 +312,17 @@ describe('openEditForHierarchyTarget', () => {
     });
   });
 
-  it('falls back to colIndex=-1 when columnIndex is missing on a column target', () => {
+  it('returns false when a column target cannot resolve a stable column identity', () => {
     const registry = createMockRegistry();
     const openEdit = openEditFactory(registry);
-    openEdit({
+    const result = openEdit({
       boardId: 'board-1',
       rowIndex: 0,
       stackIndex: 0,
       colLocalIndex: 0
     });
-    expect(registry.calls[0].ctx.colIndex).toBe(-1);
+    expect(result).toBe(false);
+    expect(registry.calls).toHaveLength(0);
   });
 
   it('dispatches stack.rename for a stack target', () => {
@@ -347,6 +355,60 @@ describe('openEditForHierarchyTarget', () => {
       scope: 'row',
       action: 'rename',
       ctx: { rowIdx: 3 }
+    });
+  });
+
+  it('reuses rowStackMenu context normalization when only stable ids are available', () => {
+    const registry = createMockRegistry();
+    const openEdit = openEditFactory(registry, {
+      LexeraRowStackMenu: {
+        buildEnrichedContext(scope, ctx) {
+          expect(scope).toBe('card');
+          expect(ctx).toMatchObject({
+            rowId: 'row-7',
+            stackId: 'stack-8',
+            columnId: 'col-9',
+            cardId: 'card-10'
+          });
+          return {
+            rowIdx: 4,
+            stackIdx: 2,
+            colLocalIdx: 1,
+            colIndex: 11,
+            cardIndex: 3,
+            rowId: 'row-7',
+            stackId: 'stack-8',
+            columnId: 'col-9',
+            cardId: 'card-10'
+          };
+        }
+      }
+    });
+
+    const result = openEdit({
+      boardId: 'board-1',
+      rowId: 'row-7',
+      stackId: 'stack-8',
+      columnId: 'col-9',
+      cardId: 'card-10'
+    });
+
+    expect(result).toBe(true);
+    expect(registry.calls).toHaveLength(1);
+    expect(registry.calls[0]).toEqual({
+      scope: 'card',
+      action: 'edit',
+      ctx: {
+        rowIdx: 4,
+        stackIdx: 2,
+        colLocalIdx: 1,
+        colIndex: 11,
+        cardIndex: 3,
+        rowId: 'row-7',
+        stackId: 'stack-8',
+        columnId: 'col-9',
+        cardId: 'card-10'
+      }
     });
   });
 

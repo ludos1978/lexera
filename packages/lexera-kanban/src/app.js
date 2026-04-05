@@ -509,6 +509,7 @@ var LexeraDashboard = (function () {
   });
   if (KeyboardNav) KeyboardNav.init({
     getElColumnsContainer: function() { return getElColumnsContainer(); },
+    getActiveBoardData: function() { return activeBoardData; },
     getActiveBoardColumns: function() { return activeBoardData ? activeBoardData.columns : []; },
     getIsEditing: function() { return isEditing; },
     getSearchMode: function() { return searchMode; },
@@ -8700,10 +8701,15 @@ var LexeraDashboard = (function () {
       ) {
         normalizedTarget.colIndex = colIndex.colIndex;
       }
+      if (colIndex.rowId) normalizedTarget.rowId = String(colIndex.rowId);
+      if (colIndex.stackId) normalizedTarget.stackId = String(colIndex.stackId);
+      if (colIndex.columnId) normalizedTarget.columnId = String(colIndex.columnId);
+      if (colIndex.cardId) normalizedTarget.cardId = String(colIndex.cardId);
+      if (typeof colIndex.before === 'boolean') normalizedTarget.before = colIndex.before;
       pushUndo();
       var ensuredTarget = ensureCardTargetColumnForMutation(activeBoardId, fullBoardData, normalizedTarget);
       if (!ensuredTarget || !ensuredTarget.column) return false;
-      targetColIndex = getAllFullColumns().indexOf(ensuredTarget.column);
+      targetColIndex = getAllColumnsFromBoardData(fullBoardData).indexOf(ensuredTarget.column);
       if (targetColIndex < 0) return false;
     }
     var column = getFullColumn(targetColIndex);
@@ -8770,6 +8776,11 @@ var LexeraDashboard = (function () {
       ) {
         normalizedTarget.colIndex = colIndex.colIndex;
       }
+      if (colIndex.rowId) normalizedTarget.rowId = String(colIndex.rowId);
+      if (colIndex.stackId) normalizedTarget.stackId = String(colIndex.stackId);
+      if (colIndex.columnId) normalizedTarget.columnId = String(colIndex.columnId);
+      if (colIndex.cardId) normalizedTarget.cardId = String(colIndex.cardId);
+      if (typeof colIndex.before === 'boolean') normalizedTarget.before = colIndex.before;
       pushUndo();
       var ensuredTarget = ensureCardTargetColumnForMutation(activeBoardId, fullBoardData, normalizedTarget);
       if (!ensuredTarget || !ensuredTarget.column) {
@@ -8779,7 +8790,7 @@ var LexeraDashboard = (function () {
         });
         return false;
       }
-      targetColIndex = getAllFullColumns().indexOf(ensuredTarget.column);
+      targetColIndex = getAllColumnsFromBoardData(fullBoardData).indexOf(ensuredTarget.column);
       if (targetColIndex < 0) return false;
     }
     var column = getFullColumn(targetColIndex);
@@ -9021,9 +9032,9 @@ var LexeraDashboard = (function () {
 
 
   // --- Pointer-based DnD event listeners (delegated to LexeraDndListeners module) ---
-  function resolveColumnLocationForMutation(boardId, boardData, rowIndex, stackIndex, colIndex, indexMode) { return DndListeners ? DndListeners.resolveColumnLocationForMutation(boardId, boardData, rowIndex, stackIndex, colIndex, indexMode) : null; }
-  function resolveStackForMutation(boardId, boardData, rowIndex, stackIndex, indexMode) { return DndListeners ? DndListeners.resolveStackForMutation(boardId, boardData, rowIndex, stackIndex, indexMode) : null; }
-  function resolveRowForMutation(boardId, boardData, rowIndex, indexMode) { return DndListeners ? DndListeners.resolveRowForMutation(boardId, boardData, rowIndex, indexMode) : null; }
+  function resolveColumnLocationForMutation(boardId, boardData, rowIndex, stackIndex, colIndex, indexMode, stableTarget) { return DndListeners ? DndListeners.resolveColumnLocationForMutation(boardId, boardData, rowIndex, stackIndex, colIndex, indexMode, stableTarget) : null; }
+  function resolveStackForMutation(boardId, boardData, rowIndex, stackIndex, indexMode, stableTarget) { return DndListeners ? DndListeners.resolveStackForMutation(boardId, boardData, rowIndex, stackIndex, indexMode, stableTarget) : null; }
+  function resolveRowForMutation(boardId, boardData, rowIndex, indexMode, stableTarget) { return DndListeners ? DndListeners.resolveRowForMutation(boardId, boardData, rowIndex, indexMode, stableTarget) : null; }
   function moveRowAcrossBoards(source, target) { return DndListeners ? DndListeners.moveRowAcrossBoards(source, target) : undefined; }
   function moveStackAcrossBoards(source, target) { return DndListeners ? DndListeners.moveStackAcrossBoards(source, target) : undefined; }
   function moveColumnAcrossBoards(source, target) { return DndListeners ? DndListeners.moveColumnAcrossBoards(source, target) : undefined; }
@@ -11370,43 +11381,96 @@ var LexeraDashboard = (function () {
    * from focus to edit without re-implementing per-entity logic.
    *
    * Target shape comes from `buildHierarchyFocusTargetFromTreeNode`:
-   *   { boardId, rowIndex, stackIndex, colLocalIndex, columnIndex, cardIndex, cardId }
+   *   { boardId, rowId, stackId, columnId, cardId, rowIndex, stackIndex, colLocalIndex, columnIndex, cardIndex }
    *
-   * Dispatches through the local `ActionRegistry` so every editor shortcut,
-   * undo hook, and save pipeline stays identical to an in-board interaction.
+   * Normalizes through the same row/stack menu context seam used by the
+   * context menus so tree-driven edit actions stay stable when visible indices
+   * drift after filtering or reordering.
    */
   function openEditForHierarchyTarget(target) {
     if (!target || !ActionRegistry) return false;
-    // Card — has cardIndex (visible index) and columnIndex.
-    if (typeof target.cardIndex === 'number' && typeof target.columnIndex === 'number') {
-      return !!ActionRegistry.dispatch('card', 'edit', {
-        colIndex: target.columnIndex,
-        cardIndex: target.cardIndex
-      });
+
+    function buildDispatchContext(scope, rawContext) {
+      var rowStackMenuApi = (typeof _RSM !== 'undefined' && _RSM)
+        ? _RSM
+        : ((typeof window !== 'undefined' && window && window.LexeraRowStackMenu) ? window.LexeraRowStackMenu : null);
+      var normalized = rawContext || {};
+      if (rowStackMenuApi && typeof rowStackMenuApi.buildEnrichedContext === 'function') {
+        normalized = rowStackMenuApi.buildEnrichedContext(scope, normalized) || normalized;
+      }
+      var ctx = {};
+      if (typeof normalized.rowIdx === 'number') ctx.rowIdx = normalized.rowIdx;
+      if (typeof normalized.stackIdx === 'number') ctx.stackIdx = normalized.stackIdx;
+      if (typeof normalized.colLocalIdx === 'number') ctx.colLocalIdx = normalized.colLocalIdx;
+      if (typeof normalized.colIndex === 'number') ctx.colIndex = normalized.colIndex;
+      if (typeof normalized.cardIndex === 'number') ctx.cardIndex = normalized.cardIndex;
+      if (normalized.rowId) ctx.rowId = normalized.rowId;
+      if (normalized.stackId) ctx.stackId = normalized.stackId;
+      if (normalized.columnId) ctx.columnId = normalized.columnId;
+      if (normalized.cardId) ctx.cardId = normalized.cardId;
+      return ctx;
     }
-    // Column — has colLocalIndex, rowIndex, stackIndex (and usually columnIndex).
-    if (typeof target.colLocalIndex === 'number' &&
-        typeof target.rowIndex === 'number' &&
-        typeof target.stackIndex === 'number') {
-      return !!ActionRegistry.dispatch('column', 'rename', {
+
+    // Card — prefers stable ids but still accepts direct visible coordinates.
+    if (target.cardId || typeof target.cardIndex === 'number') {
+      var cardContext = buildDispatchContext('card', {
         colIndex: typeof target.columnIndex === 'number' ? target.columnIndex : -1,
-        rowIdx: target.rowIndex,
-        stackIdx: target.stackIndex,
-        colLocalIdx: target.colLocalIndex
+        cardIndex: typeof target.cardIndex === 'number' ? target.cardIndex : -1,
+        rowIdx: typeof target.rowIndex === 'number' ? target.rowIndex : undefined,
+        stackIdx: typeof target.stackIndex === 'number' ? target.stackIndex : undefined,
+        colLocalIdx: typeof target.colLocalIndex === 'number' ? target.colLocalIndex : undefined,
+        rowId: target.rowId || null,
+        stackId: target.stackId || null,
+        columnId: target.columnId || null,
+        cardId: target.cardId || null
       });
+      if (typeof cardContext.colIndex === 'number' && cardContext.colIndex >= 0 &&
+          typeof cardContext.cardIndex === 'number' && cardContext.cardIndex >= 0) {
+        return !!ActionRegistry.dispatch('card', 'edit', cardContext);
+      }
+      return false;
     }
-    // Stack — has rowIndex and stackIndex.
-    if (typeof target.rowIndex === 'number' && typeof target.stackIndex === 'number') {
-      return !!ActionRegistry.dispatch('stack', 'rename', {
-        rowIdx: target.rowIndex,
-        stackIdx: target.stackIndex
+
+    // Column — prefers stable ids but still accepts direct visible coordinates.
+    if (target.columnId || typeof target.colLocalIndex === 'number') {
+      var columnContext = buildDispatchContext('column', {
+        colIndex: typeof target.columnIndex === 'number' ? target.columnIndex : -1,
+        rowIdx: typeof target.rowIndex === 'number' ? target.rowIndex : undefined,
+        stackIdx: typeof target.stackIndex === 'number' ? target.stackIndex : undefined,
+        colLocalIdx: typeof target.colLocalIndex === 'number' ? target.colLocalIndex : undefined,
+        rowId: target.rowId || null,
+        stackId: target.stackId || null,
+        columnId: target.columnId || null
       });
+      if (typeof columnContext.colIndex === 'number' && columnContext.colIndex >= 0) {
+        return !!ActionRegistry.dispatch('column', 'rename', columnContext);
+      }
+      return false;
     }
-    // Row — has rowIndex only.
-    if (typeof target.rowIndex === 'number') {
-      return !!ActionRegistry.dispatch('row', 'rename', {
-        rowIdx: target.rowIndex
+
+    // Stack — prefers stable ids but still accepts direct visible coordinates.
+    if (target.stackId || (typeof target.rowIndex === 'number' && typeof target.stackIndex === 'number')) {
+      var stackContext = buildDispatchContext('stack', {
+        rowIdx: typeof target.rowIndex === 'number' ? target.rowIndex : undefined,
+        stackIdx: typeof target.stackIndex === 'number' ? target.stackIndex : undefined,
+        rowId: target.rowId || null,
+        stackId: target.stackId || null
       });
+      if (typeof stackContext.rowIdx === 'number' && typeof stackContext.stackIdx === 'number') {
+        return !!ActionRegistry.dispatch('stack', 'rename', stackContext);
+      }
+      return false;
+    }
+
+    // Row — prefers stable ids but still accepts direct visible coordinates.
+    if (target.rowId || typeof target.rowIndex === 'number') {
+      var rowContext = buildDispatchContext('row', {
+        rowIdx: typeof target.rowIndex === 'number' ? target.rowIndex : undefined,
+        rowId: target.rowId || null
+      });
+      if (typeof rowContext.rowIdx === 'number') {
+        return !!ActionRegistry.dispatch('row', 'rename', rowContext);
+      }
     }
     return false;
   }

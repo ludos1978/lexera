@@ -59,7 +59,17 @@ describe('header creation actions', () => {
     await RowStackMenu.handleCreationAction('card', 'clipboard', target);
 
     expect(deps.addCardToActiveBoard).toHaveBeenCalledTimes(1);
-    expect(deps.addCardToActiveBoard).toHaveBeenCalledWith(target, 'clipboard body');
+    expect(deps.addCardToActiveBoard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rowIndex: 2,
+        stackIndex: 1,
+        insertIdx: 0,
+        atCardIndex: 0,
+        insertMode: 'full',
+        indexMode: 'display'
+      }),
+      'clipboard body'
+    );
   });
 
   it('keeps broad card targets for template card creation', async () => {
@@ -84,7 +94,16 @@ describe('header creation actions', () => {
 
     expect(templates.getFullTemplate).toHaveBeenCalledWith('card-template');
     expect(deps.addCardToActiveBoard).toHaveBeenCalledTimes(1);
-    expect(deps.addCardToActiveBoard).toHaveBeenCalledWith(target, 'templated card');
+    expect(deps.addCardToActiveBoard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rowIndex: 4,
+        insertIdx: 0,
+        atCardIndex: 0,
+        insertMode: 'full',
+        indexMode: 'display'
+      }),
+      'templated card'
+    );
   });
 
   it('creates a stack when column clipboard content is dropped on a row target', async () => {
@@ -150,7 +169,14 @@ describe('header creation actions', () => {
     expect(fullBoardData.rows[0].stacks[0].columns).toHaveLength(2);
     expect(fullBoardData.rows[0].stacks[0].columns[1].cards[0].content).toBe(embed);
     expect(deps.addCardToActiveBoard).toHaveBeenCalledWith(
-      { rowIndex: 0, stackIndex: 0, insertIdx: 0, insertMode: 'full', indexMode: 'display' },
+      expect.objectContaining({
+        rowIndex: 0,
+        stackIndex: 0,
+        insertIdx: 0,
+        atCardIndex: 0,
+        insertMode: 'full',
+        indexMode: 'display'
+      }),
       embed
     );
     expect(deps.showNotification).not.toHaveBeenCalledWith('Built-in diagram templates are card-only');

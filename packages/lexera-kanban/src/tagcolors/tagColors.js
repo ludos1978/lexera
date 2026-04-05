@@ -399,11 +399,102 @@
     return null;
   }
 
-  function getContrastingTextColor(color) {
+  // ── Contrast & bloom (ported from v1 _ARCHIVE/src/html/utils/colorUtils.js) ─
+  //
+  // v1 used the proper WCAG 2.0 relative-luminance formula with gamma
+  // correction and a context-aware threshold (0.179 / 0.35). v2 previously
+  // used a rougher perceptual-brightness approximation that disagreed with
+  // v1 on mid-luminance backgrounds (mustard, dark-orange, brown family) and
+  // picked white-on-yellow / dark-on-black text choices. The ports below
+  // restore v1's math. See todo.md "font size and style unification — take
+  // the values formulae from version 1" for the requirement.
+
+  /**
+   * WCAG relative luminance of a color with gamma correction.
+   * Returns 0..1 or 0.5 if the color can't be parsed.
+   */
+  function getLuminance(color) {
+    var channels = parseColorChannels(color);
+    if (!channels) return 0.5;
+    function toLinear(v) {
+      var n = v / 255;
+      return n <= 0.03928 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+    }
+    var r = toLinear(channels.r);
+    var g = toLinear(channels.g);
+    var b = toLinear(channels.b);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  /**
+   * Contrast ratio between two colors (1..21), WCAG 2.0 definition.
+   */
+  function getContrastRatio(color1, color2) {
+    var lum1 = getLuminance(color1);
+    var lum2 = getLuminance(color2);
+    var lighter = Math.max(lum1, lum2);
+    var darker = Math.min(lum1, lum2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  /**
+   * Detect whether the active theme is in dark mode. Mirrors v1's body-class
+   * probe but also accepts Lexera's theme token if it's available.
+   */
+  function _isDarkTheme() {
+    if (typeof document !== 'undefined' && document.body && document.body.classList) {
+      if (document.body.classList.contains('theme-dark') ||
+          document.body.classList.contains('vscode-dark') ||
+          document.body.classList.contains('vscode-high-contrast')) {
+        return true;
+      }
+    }
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      try {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+      } catch (mediaErr) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Pick #000000 or #ffffff to contrast against the given background using
+   * v1's WCAG luminance thresholds (0.179 in light mode, 0.35 in dark mode).
+   * Falls back to `#ffffff` on unparseable colors so labels are never
+   * invisible on a tinted surface.
+   */
+  function getContrastingTextColor(color, isDarkMode) {
     var channels = parseColorChannels(color);
     if (!channels) return '#ffffff';
-    var luminance = ((0.299 * channels.r) + (0.587 * channels.g) + (0.114 * channels.b)) / 255;
-    return luminance > 0.6 ? '#111111' : '#ffffff';
+    var luminance = getLuminance(color);
+    var darkMode = typeof isDarkMode === 'boolean' ? isDarkMode : _isDarkTheme();
+    var threshold = darkMode ? 0.35 : 0.179;
+    return luminance > threshold ? '#000000' : '#ffffff';
+  }
+
+  /**
+   * "Bloom" text shadow for poor-contrast foreground/background pairs.
+   * When the contrast ratio drops below WCAG AA (4.5:1), return a soft
+   * halo (`0 0 4px #888`) that lifts the text off the background without
+   * introducing a hard outline — exactly as v1 does.
+   * Returns '' (no shadow) when contrast is already acceptable.
+   */
+  function getContrastShadow(textColor, backgroundColor) {
+    var ratio = getContrastRatio(textColor, backgroundColor);
+    if (ratio >= 4.5) return '';
+    return '0 0 4px #888';
+  }
+
+  /**
+   * One-shot helper: given a background color, return the ideal text color
+   * and the contrast bloom shadow (empty when no bloom is needed).
+   */
+  function getTextColorsForBackground(backgroundColor) {
+    var textColor = getContrastingTextColor(backgroundColor);
+    var textShadow = getContrastShadow(textColor, backgroundColor);
+    return { textColor: textColor, textShadow: textShadow };
   }
 
   function buildTagStyleDescriptor(tagName) {
@@ -468,25 +559,34 @@
       }
       if (tagOverride.headerBar) {
         var hLabel = tagOverride.headerBar.label || formatTagDisplayLabel(fullTag).toUpperCase();
+        var hBg = tagOverride.headerBar.color || color;
+        var hColors = getTextColorsForBackground(hBg);
         descriptor.headerBar = {
           label: hLabel,
-          color: tagOverride.headerBar.color || color,
-          labelColor: getContrastingTextColor(tagOverride.headerBar.color || color)
+          color: hBg,
+          labelColor: hColors.textColor,
+          labelShadow: hColors.textShadow
         };
       }
       if (tagOverride.footerBar) {
         var fLabel = tagOverride.footerBar.label || formatTagDisplayLabel(fullTag).toUpperCase();
+        var fBg = tagOverride.footerBar.color || color;
+        var fColors = getTextColorsForBackground(fBg);
         descriptor.footerBar = {
           label: fLabel,
-          color: tagOverride.footerBar.color || color,
-          labelColor: getContrastingTextColor(tagOverride.footerBar.color || color)
+          color: fBg,
+          labelColor: fColors.textColor,
+          labelShadow: fColors.textShadow
         };
       }
       if (tagOverride.badge) {
+        var bBg = tagOverride.badge.color || color;
+        var bColors = getTextColorsForBackground(bBg);
         descriptor.badge = {
           label: tagOverride.badge.label || formatTagDisplayLabel(fullTag),
-          color: tagOverride.badge.color || color,
-          labelColor: getContrastingTextColor(tagOverride.badge.color || color)
+          color: bBg,
+          labelColor: bColors.textColor,
+          labelShadow: bColors.textShadow
         };
       }
       if (tagOverride.background) {
@@ -517,22 +617,28 @@
       };
       descriptor.border.position = 'full';
     } else if (styleRole === 'header') {
+      var headerColors = getTextColorsForBackground(color);
       descriptor.headerBar = {
         label: label,
         color: color,
-        labelColor: getContrastingTextColor(color)
+        labelColor: headerColors.textColor,
+        labelShadow: headerColors.textShadow
       };
     } else if (styleRole === 'footer') {
+      var footerColors = getTextColorsForBackground(color);
       descriptor.footerBar = {
         label: label,
         color: color,
-        labelColor: getContrastingTextColor(color)
+        labelColor: footerColors.textColor,
+        labelShadow: footerColors.textShadow
       };
     } else if (styleRole === 'badge') {
+      var badgeColors = getTextColorsForBackground(color);
       descriptor.badge = {
         label: /^(?:\+\+|\+|\u00f8|-|--)$/.test(normalized) ? normalized : formatTagDisplayLabel(fullTag),
         color: color,
-        labelColor: getContrastingTextColor(color)
+        labelColor: badgeColors.textColor,
+        labelShadow: badgeColors.textShadow
       };
     } else if (styleRole === 'border-only') {
       // Only border, no bar/badge/background
@@ -547,16 +653,20 @@
         descriptor.opacity = '0.82';
         descriptor.pattern = 'stripes-h';
       } else if (normalized === 'header') {
+        var effectHeaderColors = getTextColorsForBackground(color);
         descriptor.headerBar = {
           label: 'HEADER',
           color: color,
-          labelColor: getContrastingTextColor(color)
+          labelColor: effectHeaderColors.textColor,
+          labelShadow: effectHeaderColors.textShadow
         };
       } else if (normalized === 'footer') {
+        var effectFooterColors = getTextColorsForBackground(color);
         descriptor.footerBar = {
           label: 'FOOTER',
           color: color,
-          labelColor: getContrastingTextColor(color)
+          labelColor: effectFooterColors.textColor,
+          labelShadow: effectFooterColors.textShadow
         };
       }
     }
@@ -708,6 +818,36 @@
       declarations.push('--tag-surface-header-bg:' + resolveTagSurfaceColor(surfaces.header.color, surfaces.header.alpha));
       declarations.push('--tag-surface-footer-bg:' + resolveTagSurfaceColor(surfaces.footer.color, surfaces.footer.alpha));
       declarations.push('--tag-surface-content-bg:' + resolveTagSurfaceColor(surfaces.content.color, surfaces.content.alpha));
+      // When a tag paints the entire entity surface, the content text sits on
+      // the tinted background and needs the same contrast-aware color + bloom
+      // as header/footer labels. Compute once for the base color and expose
+      // as CSS variables that styled entities can pick up (`color`,
+      // `text-shadow`). v1 did this inline; v2 now routes it through CSS
+      // variables so theme/preset switches can override it cleanly.
+      var surfaceColors = getTextColorsForBackground(color);
+      declarations.push('--tag-surface-fg:' + surfaceColors.textColor);
+      declarations.push('--tag-surface-text-shadow:' + (surfaceColors.textShadow || 'none'));
+    }
+    if (descriptor.headerBar) {
+      declarations.push('--tag-header-bg:' + (descriptor.headerBar.color || color));
+      if (descriptor.headerBar.labelColor) {
+        declarations.push('--tag-header-fg:' + descriptor.headerBar.labelColor);
+      }
+      declarations.push('--tag-header-text-shadow:' + (descriptor.headerBar.labelShadow || 'none'));
+    }
+    if (descriptor.footerBar) {
+      declarations.push('--tag-footer-bg:' + (descriptor.footerBar.color || color));
+      if (descriptor.footerBar.labelColor) {
+        declarations.push('--tag-footer-fg:' + descriptor.footerBar.labelColor);
+      }
+      declarations.push('--tag-footer-text-shadow:' + (descriptor.footerBar.labelShadow || 'none'));
+    }
+    if (descriptor.badge) {
+      declarations.push('--tag-badge-bg:' + (descriptor.badge.color || color));
+      if (descriptor.badge.labelColor) {
+        declarations.push('--tag-badge-fg:' + descriptor.badge.labelColor);
+      }
+      declarations.push('--tag-badge-text-shadow:' + (descriptor.badge.labelShadow || 'none'));
     }
     if (descriptor.opacity) declarations.push('--tag-effect-opacity:' + descriptor.opacity);
     if (descriptor.filter) declarations.push('--tag-effect-filter:' + descriptor.filter);
@@ -766,7 +906,11 @@
     TAG_STYLE_PRESETS: TAG_STYLE_PRESETS,
     getTagColor: getTagColor,
     parseColorChannels: parseColorChannels,
+    getLuminance: getLuminance,
+    getContrastRatio: getContrastRatio,
     getContrastingTextColor: getContrastingTextColor,
+    getContrastShadow: getContrastShadow,
+    getTextColorsForBackground: getTextColorsForBackground,
     formatTagDisplayLabel: formatTagDisplayLabel,
     normalizeTagCategoryName: normalizeTagCategoryName,
     getTagCategoryKey: getTagCategoryKey,
