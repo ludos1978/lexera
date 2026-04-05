@@ -315,18 +315,68 @@ describe('board hierarchy single-source contract', () => {
     expect(api.getBoardHierarchy).not.toHaveBeenCalled();
   });
 
+  it('uses the injected shared legacy converter for columns-only hierarchy data', () => {
+    const BoardList = loadBoardList();
+    const convertedRows = [{
+      id: 'row-legacy',
+      title: 'Row 2',
+      stacks: [{
+        id: 'stack-legacy',
+        title: 'Backlog',
+        columns: [{
+          id: 'col-legacy',
+          index: 0,
+          title: 'Backlog',
+          cards: [],
+        }],
+      }],
+    }];
+    const normalizeLegacyColumnsToRows = vi.fn(() => convertedRows);
+
+    BoardList.init({
+      normalizeLegacyColumnsToRows,
+      renderBoardList() {},
+    });
+
+    BoardList.refreshBoardHierarchyProjection('board-legacy', {
+      title: 'Legacy Board',
+      rows: [],
+      columns: [{
+        id: 'col-legacy',
+        index: 0,
+        title: 'Backlog #row2',
+        cards: [],
+      }],
+    }, 'Legacy Board', { render: false });
+
+    expect(normalizeLegacyColumnsToRows).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Backlog #row2' })
+      ]),
+      'Legacy Board'
+    );
+    expect(BoardList.getBoardHierarchyRows('board-legacy')).toEqual(convertedRows);
+  });
+
   it('routes live-sync snapshots through commitLocalBoardChange when skipping render', () => {
     const BoardList = loadBoardList();
     const state = {
       activeBoardId: 'board-a',
       fullBoardData: createBoardData('Local Board'),
-      activeBoardData: null,
+      activeBoardData: { id: 'board-a', version: 3, revision: 'rev-old' },
       liveSyncState: { boardId: 'board-a', board: null },
       _saveInFlight: false,
     };
     const commitLocalBoardChange = vi.fn();
     const setFullBoardData = vi.fn((nextBoard) => {
       state.fullBoardData = nextBoard;
+    });
+    const updateActiveBoardData = vi.fn((updater) => {
+      const previous = state.activeBoardData;
+      const draft = { ...previous };
+      const next = updater(draft, previous);
+      state.activeBoardData = typeof next === 'undefined' ? draft : next;
+      return state.activeBoardData;
     });
 
     BoardList.init({
@@ -353,15 +403,21 @@ describe('board hierarchy single-source contract', () => {
         return (boardData && boardData.title) || boardId || '';
       },
       setFullBoardData,
+      updateActiveBoardData,
       clearBoardDirty() {},
       updateDisplayFromFullBoard() {},
       commitLocalBoardChange,
     });
 
     const incomingBoard = createBoardData('Incoming Board');
+    const previousActiveBoardData = state.activeBoardData;
     BoardList.applyLiveSyncBoardSnapshot('board-a', incomingBoard, { skipRender: true });
 
     expect(setFullBoardData).toHaveBeenCalled();
+    expect(updateActiveBoardData).toHaveBeenCalled();
+    expect(state.activeBoardData).not.toBe(previousActiveBoardData);
+    expect(state.activeBoardData.version).toBeUndefined();
+    expect(state.activeBoardData.revision).toBeUndefined();
     expect(commitLocalBoardChange).toHaveBeenCalledWith(
       'board-a',
       state.fullBoardData,
@@ -377,12 +433,19 @@ describe('board hierarchy single-source contract', () => {
     const state = {
       activeBoardId: 'board-a',
       fullBoardData: null,
-      activeBoardData: {},
+      activeBoardData: { id: 'board-a' },
       _lastLoadedRevision: null,
     };
     const commitLocalBoardChange = vi.fn();
     const setFullBoardData = vi.fn((nextBoard) => {
       state.fullBoardData = nextBoard;
+    });
+    const updateActiveBoardData = vi.fn((updater) => {
+      const previous = state.activeBoardData;
+      const draft = { ...previous };
+      const next = updater(draft, previous);
+      state.activeBoardData = typeof next === 'undefined' ? draft : next;
+      return state.activeBoardData;
     });
 
     BoardList.init({
@@ -391,6 +454,7 @@ describe('board hierarchy single-source contract', () => {
       get activeBoardData() { return state.activeBoardData; },
       get _lastLoadedRevision() { return state._lastLoadedRevision; },
       setFullBoardData,
+      updateActiveBoardData,
       ensureBoardRowsForMutation() {},
       getMutationBoardTitle(boardId, boardData) {
         return (boardData && boardData.title) || boardId || '';
@@ -416,11 +480,14 @@ describe('board hierarchy single-source contract', () => {
       'board-a',
       workingBoard,
       createBoardData('Current Board'),
-      { revision: 'rev-7' },
+      { revision: 'rev-7', version: 11 },
       { silent: true }
     );
 
     expect(setFullBoardData).toHaveBeenCalledWith(workingBoard);
+    expect(updateActiveBoardData).toHaveBeenCalled();
+    expect(state.activeBoardData.version).toBe(11);
+    expect(state.activeBoardData.revision).toBe('rev-7');
     expect(commitLocalBoardChange).toHaveBeenCalledWith(
       'board-a',
       state.fullBoardData,

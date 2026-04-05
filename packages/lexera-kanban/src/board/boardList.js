@@ -27,6 +27,21 @@ var LexeraBoardList = (function () {
     return undefined;
   }
 
+  function patchActiveBoardData(updater) {
+    if (typeof updater !== 'function') return _dep('activeBoardData');
+    if (typeof _deps.updateActiveBoardData === 'function') {
+      return _callDep('updateActiveBoardData', updater);
+    }
+    var currentBoardData = _dep('activeBoardData');
+    if (!currentBoardData) return currentBoardData;
+    var draftBoardData = Object.assign({}, currentBoardData);
+    var nextBoardData = updater(draftBoardData, currentBoardData);
+    if (typeof nextBoardData === 'undefined') nextBoardData = draftBoardData;
+    if (nextBoardData === currentBoardData) nextBoardData = Object.assign({}, currentBoardData);
+    if (typeof _deps.setActiveBoardData === 'function') _callDep('setActiveBoardData', nextBoardData);
+    return nextBoardData;
+  }
+
   function normalizeWorkspaceId(workspaceId) {
     return workspaceId || _dep('ALL_WORKSPACES_ID');
   }
@@ -687,11 +702,10 @@ var LexeraBoardList = (function () {
         traceBoardIdentityPair('info', 'liveSync.snapshot', 'Identity comparison after syncing live sync snapshot into session', boardId, 'local', fullBoardData, 'session', liveSyncState.board);
       }
     }
-    var activeBoardDataRef = _dep('activeBoardData');
-    if (activeBoardDataRef) {
-      delete activeBoardDataRef.version;
-      delete activeBoardDataRef.revision;
-    }
+    patchActiveBoardData(function (nextBoardData) {
+      delete nextBoardData.version;
+      delete nextBoardData.revision;
+    });
     _callDep('updateDisplayFromFullBoard');
     if (options.skipRender) {
       _deps.commitLocalBoardChange(boardId, fullBoardData, {
@@ -736,10 +750,11 @@ var LexeraBoardList = (function () {
     if (!fullBoardData.columns) fullBoardData.columns = [];
     setBoardSaveBase(fullBoardData, currentBoard || workingBoard);
     _callDep('setPendingExternalRebaseConflict', null);
-    var activeBoardDataRef = _dep('activeBoardData');
-    if (activeBoardDataRef) {
-      if (result && typeof result.version === 'number') activeBoardDataRef.version = result.version;
-      if (result && result.revision) activeBoardDataRef.revision = result.revision;
+    if (result) {
+      patchActiveBoardData(function (nextBoardData) {
+        if (typeof result.version === 'number') nextBoardData.version = result.version;
+        if (result.revision) nextBoardData.revision = result.revision;
+      });
     }
     if (result && typeof result.generation === 'number') {
       _callDep('setLastLoadedGeneration', result.generation);
@@ -824,46 +839,10 @@ var LexeraBoardList = (function () {
   // ─── Row helpers ──────────────────────────────────────────────────
 
   function rowsFromLegacyColumns(columns, boardTitle) {
-    var cols = (columns || []).map(function (col) {
-      return {
-        index: col.index,
-        title: col.title,
-        cards: (col.cards || []).map(function (card) {
-          return {
-            id: card.id,
-            content: card.content,
-            checked: !!card.checked,
-            kid: card.kid || null,
-          };
-        }),
-      };
-    });
-    if (cols.length === 0) return [];
-
-    var groups = [];
-    for (var i = 0; i < cols.length; i++) {
-      var hasStackTag = _callDep('hasTag', cols[i].title, '#stack');
-      if (hasStackTag && groups.length > 0) groups[groups.length - 1].push(cols[i]);
-      else groups.push([cols[i]]);
-    }
-
-    var stacks = [];
-    for (var g = 0; g < groups.length; g++) {
-      for (var c = 0; c < groups[g].length; c++) {
-        groups[g][c].title = _callDep('stripStackTag', groups[g][c].title);
-      }
-      stacks.push({
-        id: 'stack-' + (g + 1),
-        title: 'Stack ' + (g + 1),
-        columns: groups[g],
-      });
-    }
-
-    return [{
-      id: 'row-1',
-      title: boardTitle || 'Board',
-      stacks: stacks,
-    }];
+    var rows = _callDep('normalizeLegacyColumnsToRows', columns, boardTitle || 'Board');
+    if (Array.isArray(rows)) return cloneRows(rows);
+    logFrontendIssue('error', 'board.rows.legacy', 'Missing normalizeLegacyColumnsToRows dependency for legacy board normalization');
+    return [];
   }
 
   function rowsForBoardData(fullBoard, fallbackTitle) {

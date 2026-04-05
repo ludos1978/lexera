@@ -176,6 +176,7 @@ function loadEmbeddedMutationHarness(onParentMessage) {
   }
 
   const notifyEmbeddedBoardMutationSource = extractFunction(findLine('function notifyEmbeddedBoardMutation(boardId, boardData) {'));
+  const updateActiveBoardDataStateSource = extractFunction(findLine('function updateActiveBoardDataState(updater) {'));
   const commitLocalBoardChangeSource = extractFunction(findLine('function commitLocalBoardChange(boardId, nextBoardData, options) {'));
   const commitBoardMutationsSource = extractFunction(findLine('async function commitBoardMutations(changedBoards, options) {'));
   const applyPollingBoardDeltaSource = extractFunction(findLine('function applyPollingBoardDelta(boardId, payload) {'));
@@ -197,6 +198,7 @@ function loadEmbeddedMutationHarness(onParentMessage) {
       }
     };
     function requestAnimationFrame(fn) { fn(); }
+    function setActiveBoardDataState(nextBoardData) { activeBoardData = nextBoardData; }
     function setFullBoardDataState(nextBoardData) { fullBoardData = nextBoardData; }
     function ensureBoardRowsForMutation(boardData, fallbackTitle) {
       if (!boardData) return;
@@ -256,6 +258,7 @@ function loadEmbeddedMutationHarness(onParentMessage) {
     }
 
     ${notifyEmbeddedBoardMutationSource}
+    ${updateActiveBoardDataStateSource}
     ${commitLocalBoardChangeSource}
     ${commitBoardMutationsSource}
     ${applyPollingBoardDeltaSource}

@@ -652,6 +652,9 @@ var HiddenItemsDropdown = (function () {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async function insertHeaderSourceText(entityType, text, context) {
+    if (_deps.insertTextContentForEntity) {
+      return _deps.insertTextContentForEntity(entityType, text, context);
+    }
     var normalized = String(text || '').trim();
     if (!normalized) {
       _deps.showNotification('No content available');

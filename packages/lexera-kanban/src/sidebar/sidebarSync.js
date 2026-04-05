@@ -79,6 +79,11 @@
     // Priority 1: focused card
     var focused = getFocusedCardEl();
     if (focused && focused.isConnected) {
+      var cardId = focused.getAttribute('data-card-id');
+      if (cardId) {
+        highlightSidebarNode('.tree-card[data-card-id="' + cardId + '"]');
+        return;
+      }
       var colIdx = focused.getAttribute('data-col-index');
       var cardIdx = focused.getAttribute('data-card-index');
       highlightSidebarNode('.tree-card[data-col-index="' + colIdx + '"][data-card-index="' + cardIdx + '"]');
@@ -95,6 +100,11 @@
       if (rect.left >= containerRect.left && rect.right > containerRect.left) {
         var colCards = columns[i].querySelector('.column-cards');
         if (colCards) {
+          var columnId = colCards.getAttribute('data-column-id') || columns[i].getAttribute('data-column-id');
+          if (columnId) {
+            highlightSidebarNode('.tree-column[data-column-id="' + columnId + '"]');
+            return;
+          }
           var ci = colCards.getAttribute('data-col-index');
           if (ci != null) {
             highlightSidebarNode('.tree-column[data-col-index="' + ci + '"]');

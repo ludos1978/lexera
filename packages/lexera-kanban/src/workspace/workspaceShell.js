@@ -4149,19 +4149,34 @@
     return null;
   }
 
-  function unfoldPathInContainer(container, rowIndex, stackIndex, colLocalIndex) {
-    if (typeof rowIndex === 'number') {
-      var rowEl = container.querySelector('.board-row[data-row-index="' + rowIndex + '"]');
-      if (rowEl && rowEl.classList.contains('folded')) rowEl.classList.remove('folded');
+  function unfoldPathInContainer(container, rowIndex, stackIndex, colLocalIndex, target) {
+    target = target || {};
+    var rowEl = null;
+    if (target.rowId) {
+      rowEl = container.querySelector('.board-row[data-row-id="' + target.rowId + '"]');
     }
-    if (typeof rowIndex === 'number' && typeof stackIndex === 'number') {
-      var stackEl = container.querySelector('.board-stack[data-row-index="' + rowIndex + '"][data-stack-index="' + stackIndex + '"]');
-      if (stackEl && stackEl.classList.contains('folded')) stackEl.classList.remove('folded');
+    if (!rowEl && typeof rowIndex === 'number') {
+      rowEl = container.querySelector('.board-row[data-row-index="' + rowIndex + '"]');
     }
-    if (typeof rowIndex === 'number' && typeof stackIndex === 'number' && typeof colLocalIndex === 'number') {
-      var colEl = container.querySelector('.column[data-row-index="' + rowIndex + '"][data-stack-index="' + stackIndex + '"][data-col-local-index="' + colLocalIndex + '"]');
-      if (colEl && colEl.classList.contains('folded')) colEl.classList.remove('folded');
+    if (rowEl && rowEl.classList.contains('folded')) rowEl.classList.remove('folded');
+
+    var stackEl = null;
+    if (target.stackId) {
+      stackEl = container.querySelector('.board-stack[data-stack-id="' + target.stackId + '"]');
     }
+    if (!stackEl && typeof rowIndex === 'number' && typeof stackIndex === 'number') {
+      stackEl = container.querySelector('.board-stack[data-row-index="' + rowIndex + '"][data-stack-index="' + stackIndex + '"]');
+    }
+    if (stackEl && stackEl.classList.contains('folded')) stackEl.classList.remove('folded');
+
+    var colEl = null;
+    if (target.columnId) {
+      colEl = container.querySelector('.column[data-column-id="' + target.columnId + '"]');
+    }
+    if (!colEl && typeof rowIndex === 'number' && typeof stackIndex === 'number' && typeof colLocalIndex === 'number') {
+      colEl = container.querySelector('.column[data-row-index="' + rowIndex + '"][data-stack-index="' + stackIndex + '"][data-col-local-index="' + colLocalIndex + '"]');
+    }
+    if (colEl && colEl.classList.contains('folded')) colEl.classList.remove('folded');
   }
 
   function findTargetInIframeDOM(doc, target) {
@@ -4170,6 +4185,15 @@
     var el = null;
     if (target.cardId) {
       el = container.querySelector('.card[data-card-id="' + target.cardId + '"]');
+    }
+    if (!el && target.columnId) {
+      el = container.querySelector('.column[data-column-id="' + target.columnId + '"]');
+    }
+    if (!el && target.stackId) {
+      el = container.querySelector('.board-stack[data-stack-id="' + target.stackId + '"]');
+    }
+    if (!el && target.rowId) {
+      el = container.querySelector('.board-row[data-row-id="' + target.rowId + '"]');
     }
     if (!el && typeof target.rowIndex === 'number' && typeof target.stackIndex === 'number' &&
         typeof target.colLocalIndex === 'number' && typeof target.cardIndex === 'number') {
@@ -4217,7 +4241,7 @@
       }
 
       // Unfold parent row/stack/column so the target becomes visible
-      unfoldPathInContainer(container, target.rowIndex, target.stackIndex, target.colLocalIndex);
+      unfoldPathInContainer(container, target.rowIndex, target.stackIndex, target.colLocalIndex, target);
 
       // Focus helper: scroll + highlight via iframe's KeyboardNavigation
       var iframeKeyNav = frame.contentWindow && frame.contentWindow.LexeraKeyboardNavigation;

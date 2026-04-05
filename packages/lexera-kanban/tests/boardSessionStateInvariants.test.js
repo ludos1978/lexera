@@ -34,8 +34,13 @@ const appSource = fs.readFileSync(
   path.resolve('src/app.js'),
   'utf8'
 );
+const boardListSource = fs.readFileSync(
+  path.resolve('src/board/boardList.js'),
+  'utf8'
+);
 
 const lines = appSource.split('\n');
+const boardListLines = boardListSource.split('\n');
 
 function findRawAssignments(symbol) {
   // Match anywhere on a line (not just at line-start):
@@ -97,6 +102,23 @@ function isLineInsideRange(lineNumber, range) {
   return lineNumber >= range.startLine && lineNumber <= range.endLine;
 }
 
+function findPropertyMutations(sourceLines, baseIdentifiers) {
+  const names = Array.isArray(baseIdentifiers) ? baseIdentifiers : [baseIdentifiers];
+  const namePattern = '(?:' + names.join('|') + ')';
+  const assignPattern = new RegExp('\\b' + namePattern + '\\.[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*');
+  const deletePattern = new RegExp('\\bdelete\\s+' + namePattern + '\\.[A-Za-z_][A-Za-z0-9_]*');
+  const hits = [];
+  for (let i = 0; i < sourceLines.length; i += 1) {
+    const line = sourceLines[i];
+    const trimmed = line.trim();
+    if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) continue;
+    if (assignPattern.test(line) || deletePattern.test(line)) {
+      hits.push({ lineNumber: i + 1, text: line });
+    }
+  }
+  return hits;
+}
+
 describe('board-session reactive-state invariants (app.js)', () => {
   it('fullBoardData has exactly one raw assignment, inside setFullBoardDataState', () => {
     const hits = findRawAssignments('fullBoardData');
@@ -138,6 +160,12 @@ describe('board-session reactive-state invariants (app.js)', () => {
     expect(body).toMatch(/syncRuntimeState\s*\(\s*['"]activeBoardData['"]\s*,/);
   });
 
+  it('updateActiveBoardDataState delegates through setActiveBoardDataState', () => {
+    const { startLine, endLine } = findSetterBodyRange('updateActiveBoardDataState');
+    const body = lines.slice(startLine - 1, endLine).join('\n');
+    expect(body).toMatch(/setActiveBoardDataState\s*\(\s*nextBoardData\s*\)/);
+  });
+
   it('every dep bag that exposes setActiveBoardData routes through setActiveBoardDataState', () => {
     // The four dep bags that used to have a bypassing stub `activeBoardData = v;`
     // must all delegate to the reactive setter. Any future dep bag added to
@@ -171,5 +199,31 @@ describe('board-session reactive-state invariants (app.js)', () => {
         'dep bag at line ' + exposure.lineNumber + ' must call setFullBoardDataState'
       ).toContain('setFullBoardDataState');
     });
+  });
+
+  it('every dep bag that exposes updateActiveBoardData routes through updateActiveBoardDataState', () => {
+    const exposures = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      if (/updateActiveBoardData\s*:\s*function/.test(lines[i])) {
+        exposures.push({ lineNumber: i + 1, text: lines[i] });
+      }
+    }
+    expect(exposures.length).toBeGreaterThan(0);
+    exposures.forEach((exposure) => {
+      expect(
+        exposure.text,
+        'dep bag at line ' + exposure.lineNumber + ' must call updateActiveBoardDataState'
+      ).toContain('updateActiveBoardDataState');
+    });
+  });
+
+  it('app.js does not directly mutate activeBoardData fields', () => {
+    const hits = findPropertyMutations(lines, 'activeBoardData');
+    expect(hits).toEqual([]);
+  });
+
+  it('boardList.js does not directly mutate activeBoardData fields', () => {
+    const hits = findPropertyMutations(boardListLines, ['activeBoardData', 'activeBoardDataRef']);
+    expect(hits).toEqual([]);
   });
 });

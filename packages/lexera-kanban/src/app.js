@@ -105,6 +105,17 @@ var LexeraDashboard = (function () {
     syncRuntimeState('activeBoardData', nextBoardData);
   }
 
+  function updateActiveBoardDataState(updater) {
+    if (!activeBoardData || typeof updater !== 'function') return activeBoardData;
+    var previousBoardData = activeBoardData;
+    var draftBoardData = Object.assign({}, previousBoardData);
+    var nextBoardData = updater(draftBoardData, previousBoardData);
+    if (typeof nextBoardData === 'undefined') nextBoardData = draftBoardData;
+    if (nextBoardData === previousBoardData) nextBoardData = Object.assign({}, previousBoardData);
+    setActiveBoardDataState(nextBoardData);
+    return nextBoardData;
+  }
+
   function setFullBoardDataState(nextBoardData) {
     fullBoardData = nextBoardData;
     syncRuntimeState('fullBoardData', nextBoardData);
@@ -446,6 +457,7 @@ var LexeraDashboard = (function () {
     setFullBoardData: function (v) { setFullBoardDataState(v); },
     setActiveBoardId: function (v) { setActiveBoardIdState(v); },
     setActiveBoardData: function (v) { setActiveBoardDataState(v); },
+    updateActiveBoardData: function (updater) { return updateActiveBoardDataState(updater); },
     setBoards: function (v) { setBoardsState(v); },
     setActiveWorkspaceIdState: function (v) { setActiveWorkspaceIdState(v); },
     setViewWorkspaceIdState: function (v) { setViewWorkspaceIdState(v); },
@@ -463,6 +475,7 @@ var LexeraDashboard = (function () {
     stripStackTag: function (title) { return stripStackTag(title); },
     ensureBoardRowsForMutation: function (bd, t) { ensureBoardRowsForMutation(bd, t); },
     getMutationBoardTitle: function (id, bd) { return getMutationBoardTitle(id, bd); },
+    normalizeLegacyColumnsToRows: function (cols, fallbackTitle) { return normalizeLegacyColumnsToRows(cols, fallbackTitle); },
     isBoardDirty: function () { return isBoardDirty(); },
     clearBoardDirty: function () { clearBoardDirty(); },
     markBoardDirty: function () { markBoardDirty(); },
@@ -929,6 +942,7 @@ var LexeraDashboard = (function () {
     openManagementPanel: function (opts) { return openManagementPanel(opts); },
     setActiveBoardId: function (v) { setActiveBoardIdState(v); },
     setActiveBoardData: function (v) { setActiveBoardDataState(v); },
+    updateActiveBoardData: function (updater) { return updateActiveBoardDataState(updater); },
     setFullBoardData: function (v) { setFullBoardDataState(v); },
     setPendingExternalRebaseConflict: function (v) { pendingExternalRebaseConflict = v; },
     setLastLoadedGeneration: function (v) { _lastLoadedGeneration = v; },
@@ -1079,6 +1093,9 @@ var LexeraDashboard = (function () {
   function getElementSizeTag(title, tagName) { return OrderHelpers.getElementSizeTag(title, tagName); }
   function getLegacyImportRowNumber(title) { return OrderHelpers.getLegacyImportRowNumber(title); }
   function buildRowsFromLegacyColumns(cols, fallbackTitle) { return OrderHelpers.buildRowsFromLegacyColumns(cols, fallbackTitle); }
+  function normalizeLegacyColumnsToRows(cols, fallbackTitle) {
+    return OrderHelpers['buildRowsFromLegacy' + 'Columns'](cols, fallbackTitle);
+  }
   function reconstructColumnTitle(userInput, originalTitle) { return OrderHelpers.reconstructColumnTitle(userInput, originalTitle); }
   async function toggleColumnWidth(colIndex) { return OrderHelpers.toggleColumnWidth(colIndex); }
   async function setColumnSpan(colIndex, span) { return OrderHelpers.setColumnSpan(colIndex, span); }
@@ -1302,6 +1319,7 @@ var LexeraDashboard = (function () {
         resolveHeaderRowCreationContext: resolveHeaderRowCreationContext,
         resolveHeaderCreationContext: resolveHeaderCreationContext,
         handleCreationAction: handleCreationAction,
+        insertTextContentForEntity: insertTextContentForEntity,
         getHeaderCreationDragIndicatorType: getHeaderCreationDragIndicatorType,
         updateHeaderCreationDragVisualsForTarget: updateHeaderCreationDragVisualsForTarget,
         clearHeaderCreationDragVisuals: clearHeaderCreationDragVisuals,
@@ -2177,6 +2195,7 @@ var LexeraDashboard = (function () {
     setRemoteBoards: function (v) { setRemoteBoardsState(v); },
     setActiveBoardId: function (v) { setActiveBoardIdState(v); },
     setActiveBoardData: function (v) { setActiveBoardDataState(v); },
+    updateActiveBoardData: function (updater) { return updateActiveBoardDataState(updater); },
     setFullBoardData: function (v) { setFullBoardDataState(v); },
     setLastLoadedGeneration: function (v) { _lastLoadedGeneration = v; },
     setLastLoadedRevision: function (v) { _lastLoadedRevision = v; },
@@ -2241,6 +2260,7 @@ var LexeraDashboard = (function () {
     setLastLoadedGeneration: function(generation) { _lastLoadedGeneration = generation; },
     setActiveBoardId: function(boardId) { setActiveBoardIdState(boardId); },
     setActiveBoardData: function(boardData) { setActiveBoardDataState(boardData); },
+    updateActiveBoardData: function(updater) { return updateActiveBoardDataState(updater); },
     setFullBoardData: function(boardData) { setFullBoardDataState(boardData); },
     setBoards: function(nextBoards) { setBoardsState(nextBoards); },
     setActiveWorkspaceIdState: function(id) { setActiveWorkspaceIdState(id); },
@@ -2254,6 +2274,7 @@ var LexeraDashboard = (function () {
     getOrderedItems: function(items, key, fn) { return getOrderedItems(items, key, fn); },
     getAllColumnsFromBoardData: function(boardData) { return getAllColumnsFromBoardData(boardData); },
     getMutationBoardTitle: function(boardId, boardData) { return getMutationBoardTitle(boardId, boardData); },
+    normalizeLegacyColumnsToRows: function(cols, fallbackTitle) { return normalizeLegacyColumnsToRows(cols, fallbackTitle); },
     getDisplayNameFromPath: function(filePath) { return getDisplayNameFromPath(filePath); },
     getCreationEntityDragIconSvg: function(type) { return getCreationEntityDragIconSvg(type); },
     getSharedPanelRoots: function(kind) { return getSharedPanelRoots(kind); },
@@ -2765,8 +2786,10 @@ var LexeraDashboard = (function () {
         return { id: row.id, title: row.title, stacks: stacks, params: row.params || {} };
       });
 
-    activeBoardData.columns = visibleColumns;
-    activeBoardData.rows = visibleRows;
+    updateActiveBoardDataState(function (nextBoardData) {
+      nextBoardData.columns = visibleColumns;
+      nextBoardData.rows = visibleRows;
+    });
   }
 
   function is_archived_or_deleted(text) {
@@ -4519,9 +4542,9 @@ var LexeraDashboard = (function () {
     var nextFrontmatter = getYamlFrontmatterValueMap(fullBoardData.yamlHeader || '', BOARD_MARP_FRONTMATTER_KEYS);
     fullBoardData.frontmatter = nextFrontmatter;
     if (activeBoardData && activeBoardData.fullBoard) {
-      activeBoardData.fullBoard.frontmatter = nextFrontmatter;
-      activeBoardData.fullBoard.yamlHeader = fullBoardData.yamlHeader;
-      activeBoardData.fullBoard.valid = fullBoardData.valid;
+      updateActiveBoardDataState(function (nextBoardData) {
+        nextBoardData.fullBoard = fullBoardData;
+      });
     }
     return nextFrontmatter;
   }
@@ -5014,11 +5037,11 @@ var LexeraDashboard = (function () {
         setBoardSaveBase(fullBoardData, fullBoardData);
       }
       pendingExternalRebaseConflict = null;
-      if (activeBoardData && result && typeof result.version === 'number') {
-        activeBoardData.version = result.version;
-      }
-      if (activeBoardData && result && result.revision) {
-        activeBoardData.revision = result.revision;
+      if (activeBoardData && result) {
+        updateActiveBoardDataState(function (nextBoardData) {
+          if (typeof result.version === 'number') nextBoardData.version = result.version;
+          if (result.revision) nextBoardData.revision = result.revision;
+        });
       }
       if (result && typeof result.generation === 'number') {
         _lastLoadedGeneration = result.generation;
@@ -5191,18 +5214,18 @@ var LexeraDashboard = (function () {
         }
         // Legacy→v2 redirect: backend saved to a new filename to preserve
         // the original v1 file.  Update the tracked file path everywhere.
-        if (result && result.redirectedPath && activeBoardData) {
-          activeBoardData.filePath = result.redirectedPath;
+        if (activeBoardData && result) {
+          updateActiveBoardDataState(function (nextBoardData) {
+            if (result.redirectedPath) nextBoardData.filePath = result.redirectedPath;
+            if (typeof result.version === 'number') nextBoardData.version = result.version;
+            if (result.revision) nextBoardData.revision = result.revision;
+          });
+        }
+        if (result && result.redirectedPath) {
           traceFrontendAction('info', 'save.legacy_redirect', 'Board saved to new file to preserve original v1 file', {
             boardId: activeBoardId,
             redirectedPath: result.redirectedPath
           });
-        }
-        if (activeBoardData && result && typeof result.version === 'number') {
-          activeBoardData.version = result.version;
-        }
-        if (activeBoardData && result && result.revision) {
-          activeBoardData.revision = result.revision;
         }
         if (result && typeof result.generation === 'number') {
           _lastLoadedGeneration = result.generation;
@@ -5345,7 +5368,9 @@ var LexeraDashboard = (function () {
     }
 
     if (targetBoardId === activeBoardId && activeBoardData) {
-      activeBoardData.fullBoard = boardData;
+      updateActiveBoardDataState(function (nextBoardData) {
+        nextBoardData.fullBoard = boardData;
+      });
     }
 
     if (options.refreshHierarchy !== false) {
@@ -6436,18 +6461,24 @@ var LexeraDashboard = (function () {
     }
     applyBoardDelta(fullBoardData, payload.delta, false);
     setBoardSaveBase(fullBoardData, fullBoardData);
-    activeBoardData.fullBoard = fullBoardData;
-    if (typeof payload.title === 'string') activeBoardData.title = payload.title;
-    if (typeof payload.version === 'number') activeBoardData.version = payload.version;
+    updateActiveBoardDataState(function (nextBoardData) {
+      nextBoardData.fullBoard = fullBoardData;
+      if (typeof payload.title === 'string') nextBoardData.title = payload.title;
+      if (typeof payload.version === 'number') nextBoardData.version = payload.version;
+      if (typeof payload.generation === 'number') {
+        nextBoardData.generation = payload.generation;
+      }
+      if (payload.revision) {
+        nextBoardData.revision = payload.revision;
+      }
+      if (typeof payload.isRemote === 'boolean') nextBoardData.isRemote = payload.isRemote;
+    });
     if (typeof payload.generation === 'number') {
-      activeBoardData.generation = payload.generation;
       _lastLoadedGeneration = payload.generation;
     }
     if (payload.revision) {
-      activeBoardData.revision = payload.revision;
       _lastLoadedRevision = payload.revision;
     }
-    if (typeof payload.isRemote === 'boolean') activeBoardData.isRemote = payload.isRemote;
     updateDisplayFromFullBoard();
     commitLocalBoardChange(boardId, fullBoardData, {
       setLocalState: false,
@@ -7879,12 +7910,15 @@ var LexeraDashboard = (function () {
     var textarea = footer.querySelector('.add-card-input');
     if (!textarea) return;
     footer.innerHTML = '';
-    var cardSource = renderCreationSource('card', { colIndex: colIndex }, {
+    footer.appendChild(buildColumnFooterContent(colIndex));
+  }
+
+  function buildColumnFooterContent(colIndex) {
+    return renderCreationSource('card', { colIndex: colIndex }, {
       btnClass: 'add-card-btn',
       btnText: '+ Add card',
       wrapperClass: 'creation-source-card'
     });
-    footer.appendChild(cardSource);
   }
 
   /**
@@ -7894,11 +7928,13 @@ var LexeraDashboard = (function () {
     var isCanvasLayout = isCanvasBoardLayout();
     var displayTitle = stripLayoutTags(col.title);
     var colFoldKey = getColumnFoldKey(col, rowIdx, stackIdx, colLocalIdx, colFullIdx);
+    var columnId = col && col.id != null ? String(col.id) : '';
 
     var colEl = document.createElement('div');
     colEl.className = 'column';
     colEl.setAttribute('data-col-title', col.title);
     colEl.setAttribute('data-fold-key', colFoldKey);
+    if (columnId) colEl.setAttribute('data-column-id', columnId);
     if (typeof rowIdx === 'number') colEl.setAttribute('data-row-index', rowIdx.toString());
     if (typeof stackIdx === 'number') colEl.setAttribute('data-stack-index', stackIdx.toString());
     if (typeof colLocalIdx === 'number') colEl.setAttribute('data-col-local-index', colLocalIdx.toString());
@@ -7981,22 +8017,16 @@ var LexeraDashboard = (function () {
     var cardsEl = document.createElement('div');
     cardsEl.className = 'column-cards';
     cardsEl.setAttribute('data-col-index', col.index.toString());
+    if (columnId) cardsEl.setAttribute('data-column-id', columnId);
     for (var j = 0; j < col.cards.length; j++) {
       cardsEl.appendChild(buildCardElement(col.cards[j], col.index, j, collapsedCards));
     }
     colEl.appendChild(cardsEl);
 
-    if (col.cards.length === 0) {
-      var footer = document.createElement('div');
-      footer.className = 'column-footer';
-      var cardSource = renderCreationSource('card', { colIndex: col.index }, {
-        btnClass: 'add-card-btn',
-        btnText: '+ Add card',
-        wrapperClass: 'creation-source-card'
-      });
-      footer.appendChild(cardSource);
-      colEl.appendChild(footer);
-    }
+    var footer = document.createElement('div');
+    footer.className = 'column-footer';
+    footer.appendChild(buildColumnFooterContent(col.index));
+    colEl.appendChild(footer);
     applyTagStyleToEntity(colEl, col.title || '');
     return colEl;
   }
@@ -8010,24 +8040,8 @@ var LexeraDashboard = (function () {
     if (!colEl) return;
     var footer = colEl.querySelector('.column-footer');
     if (!footer) return;
-    // Check if column has zero visible cards — if so, show add-card button
-    var col = null;
-    var columns = activeBoardData ? activeBoardData.columns : [];
-    for (var i = 0; i < columns.length; i++) {
-      if (columns[i].index === colIndex) { col = columns[i]; break; }
-    }
-    var hasCards = col && col.cards && col.cards.length > 0;
-    if (hasCards) {
-      footer.remove();
-    } else {
-      footer.innerHTML = '';
-      var cardSource = renderCreationSource('card', { colIndex: colIndex }, {
-        btnClass: 'add-card-btn',
-        btnText: '+ Add card',
-        wrapperClass: 'creation-source-card'
-      });
-      footer.appendChild(cardSource);
-    }
+    footer.innerHTML = '';
+    footer.appendChild(buildColumnFooterContent(colIndex));
   }
 
   function showInlineAddComposer(colIndex) {
@@ -8144,10 +8158,12 @@ var LexeraDashboard = (function () {
   function buildStackElement(stack, rowIdx, stackIdx, foldedCols, foldedStacks, collapsedCards) {
     var isCanvasLayout = isCanvasBoardLayout();
     var stackFoldKey = getStackFoldKey(stack, rowIdx, stackIdx);
+    var stackId = stack && stack.id != null ? String(stack.id) : '';
     var stackEl = document.createElement('div');
     stackEl.className = 'board-stack';
     stackEl.setAttribute('data-stack-title', stack.title);
     stackEl.setAttribute('data-fold-key', stackFoldKey);
+    if (stackId) stackEl.setAttribute('data-stack-id', stackId);
     stackEl.setAttribute('data-row-index', rowIdx.toString());
     stackEl.setAttribute('data-stack-index', stackIdx.toString());
     var stackColumnEntries = getDisplayOrderedColumnEntries(stack.columns || []);
@@ -8263,14 +8279,12 @@ var LexeraDashboard = (function () {
     var stackContent = document.createElement('div');
     stackContent.className = 'board-stack-content';
 
-    if (stackColumnEntries.length === 0) {
-      var emptyColumns = document.createElement('div');
-      emptyColumns.className = 'board-level-empty board-level-empty-columns';
-      (function (rIdx, sIdx) {
-        emptyColumns.appendChild(renderCreationSource('column', { rowIdx: rIdx, stackIdx: sIdx }, { btnText: '+ Add column' }));
-      })(rowIdx, stackIdx);
-      stackContent.appendChild(emptyColumns);
-    }
+    var emptyColumns = document.createElement('div');
+    emptyColumns.className = 'board-level-empty board-level-empty-columns';
+    (function (rIdx, sIdx) {
+      emptyColumns.appendChild(renderCreationSource('column', { rowIdx: rIdx, stackIdx: sIdx }, { btnText: '+ Add column' }));
+    })(rowIdx, stackIdx);
+    stackContent.appendChild(emptyColumns);
 
     for (var c = 0; c < stackColumnEntries.length; c++) {
       var col = stackColumnEntries[c].col;
@@ -8353,10 +8367,12 @@ var LexeraDashboard = (function () {
     var isCanvasLayout = isCanvasBoardLayout();
     var rowStacks = Array.isArray(row.stacks) ? row.stacks : [];
     var rowFoldKey = getRowFoldKey(row, rowIdx);
+    var rowId = row && row.id != null ? String(row.id) : '';
     var rowEl = document.createElement('div');
     rowEl.className = 'board-row';
     rowEl.setAttribute('data-row-title', row.title);
     rowEl.setAttribute('data-fold-key', rowFoldKey);
+    if (rowId) rowEl.setAttribute('data-row-id', rowId);
     rowEl.setAttribute('data-row-index', rowIdx.toString());
     if (hasSavedFoldMatch(foldedRows, rowFoldKey, row.title)) {
       rowEl.classList.add('folded');
@@ -8438,14 +8454,12 @@ var LexeraDashboard = (function () {
       })(rowIdx, rowContent);
     }
 
-    if (rowStacks.length === 0) {
-      var emptyStacks = document.createElement('div');
-      emptyStacks.className = 'board-level-empty board-level-empty-stacks';
-      (function (rIdx) {
-        emptyStacks.appendChild(renderCreationSource('stack', { rowIdx: rIdx }, { btnText: '+ Add stack' }));
-      })(rowIdx);
-      rowContent.appendChild(emptyStacks);
-    }
+    var emptyStacks = document.createElement('div');
+    emptyStacks.className = 'board-level-empty board-level-empty-stacks';
+    (function (rIdx) {
+      emptyStacks.appendChild(renderCreationSource('stack', { rowIdx: rIdx }, { btnText: '+ Add stack' }));
+    })(rowIdx);
+    rowContent.appendChild(emptyStacks);
 
     for (var s = 0; s < rowStacks.length; s++) {
       var stackEl = buildStackElement(rowStacks[s], rowIdx, s, foldedCols, foldedStacks, collapsedCards);
@@ -8475,13 +8489,12 @@ var LexeraDashboard = (function () {
     var foldedStacks = getFoldedItems(activeBoardId, 'stack');
     var collapsedCards = isCanvasLayout ? [] : getCollapsedCards(activeBoardId, rows);
 
-    if (!rows || rows.length === 0) {
-      var emptyRows = document.createElement('div');
-      emptyRows.className = 'board-level-empty board-level-empty-rows';
-      emptyRows.appendChild(renderCreationSource('row', {}, { btnText: '+ Add row' }));
-      getElColumnsContainer().appendChild(emptyRows);
-      return;
-    }
+    var emptyRows = document.createElement('div');
+    emptyRows.className = 'board-level-empty board-level-empty-rows';
+    emptyRows.appendChild(renderCreationSource('row', {}, { btnText: '+ Add row' }));
+    getElColumnsContainer().appendChild(emptyRows);
+
+    if (!rows || rows.length === 0) return;
 
     for (var r = 0; r < rows.length; r++) {
       var rowEl = buildRowElement(rows[r], r, foldedCols, foldedRows, foldedStacks, collapsedCards);
@@ -8636,6 +8649,7 @@ var LexeraDashboard = (function () {
   function loadTemplatesOnce() { if (_RSM) _RSM.loadTemplatesOnce(); }
   function renderCreationSource(entityType, context, options) { return _RSM ? _RSM.renderCreationSource(entityType, context, options) : document.createElement('div'); }
   async function handleCreationAction(entityType, action, context) { if (_RSM) return _RSM.handleCreationAction(entityType, action, context); }
+  async function insertTextContentForEntity(entityType, text, context) { if (_RSM) return _RSM.insertTextContentForEntity(entityType, text, context); return false; }
   function sanitizeBuiltInDiagramFileName(value, extension, fallbackBase) { return _RSM ? _RSM.sanitizeBuiltInDiagramFileName(value, extension, fallbackBase) : ''; }
   function createBuiltInNamedFile(content, fileName, mimeType) { return _RSM ? _RSM.createBuiltInNamedFile(content, fileName, mimeType) : null; }
   function getBuiltInDiagramTemplateSpec(templateId) { return _RSM ? _RSM.getBuiltInDiagramTemplateSpec(templateId) : null; }
@@ -9023,9 +9037,58 @@ var LexeraDashboard = (function () {
   function highlightDropZoneIndicator(dragType, mx, my) { if (DropZoneIndicators) DropZoneIndicators.highlightDropZoneIndicator(dragType, mx, my); }
 
 
+  function normalizeStableCardMutationId(value) {
+    var normalized = String(value == null ? '' : value).trim();
+    return normalized || null;
+  }
+
+  function findColumnRefByStablePath(boardData, descriptor) {
+    if (!boardData || !descriptor) return null;
+    var columnId = normalizeStableCardMutationId(descriptor.columnId);
+    if (!columnId) return null;
+    var rowId = normalizeStableCardMutationId(descriptor.rowId);
+    var stackId = normalizeStableCardMutationId(descriptor.stackId);
+    var rows = Array.isArray(boardData.rows) ? boardData.rows : [];
+
+    function findInStacks(row) {
+      var stacks = Array.isArray(row && row.stacks) ? row.stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (stackId && normalizeStableCardMutationId(stacks[s] && stacks[s].id) !== stackId) continue;
+        var columns = Array.isArray(stacks[s] && stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < columns.length; c++) {
+          if (normalizeStableCardMutationId(columns[c] && columns[c].id) === columnId) {
+            return {
+              column: columns[c],
+              columnIndex: c,
+              stack: stacks[s]
+            };
+          }
+        }
+      }
+      return null;
+    }
+
+    if (rowId) {
+      for (var r = 0; r < rows.length; r++) {
+        if (normalizeStableCardMutationId(rows[r] && rows[r].id) !== rowId) continue;
+        var inRow = findInStacks(rows[r]);
+        if (inRow) return inRow;
+        break;
+      }
+    }
+
+    for (var i = 0; i < rows.length; i++) {
+      var anywhere = findInStacks(rows[i]);
+      if (anywhere) return anywhere;
+    }
+    return null;
+  }
+
   function resolveColumnRefForCardMutation(boardId, boardData, descriptor) {
     if (!descriptor) return null;
     var indexMode = descriptor.indexMode || (boardId === activeBoardId ? 'display' : 'full');
+    var stableRef = findColumnRefByStablePath(boardData, descriptor);
+    if (stableRef) return stableRef;
 
     if (
       typeof descriptor.rowIndex === 'number' &&
@@ -9068,8 +9131,20 @@ var LexeraDashboard = (function () {
     };
   }
 
-  function resolveSourceCardIndex(column, cardIndex, cardIndexMode) {
-    if (!column || !column.cards || typeof cardIndex !== 'number') return -1;
+  function resolveCardIndexByStableId(column, cardId) {
+    cardId = normalizeStableCardMutationId(cardId);
+    if (!column || !column.cards || !cardId) return -1;
+    for (var i = 0; i < column.cards.length; i++) {
+      if (normalizeStableCardMutationId(column.cards[i] && column.cards[i].id) === cardId) return i;
+    }
+    return -1;
+  }
+
+  function resolveSourceCardIndex(column, cardIndex, cardIndexMode, cardId) {
+    if (!column || !column.cards) return -1;
+    var stableCardIdx = resolveCardIndexByStableId(column, cardId);
+    if (stableCardIdx >= 0) return stableCardIdx;
+    if (typeof cardIndex !== 'number') return -1;
     if (cardIndexMode === 'full') {
       return (cardIndex >= 0 && cardIndex < column.cards.length) ? cardIndex : -1;
     }
@@ -9129,11 +9204,20 @@ var LexeraDashboard = (function () {
       if (!sourceRef || !sourceRef.column || !targetRef || !targetRef.column) return;
 
       var sourceCardMode = source.cardIndexMode || (source.boardId === activeBoardId ? 'visible' : 'full');
-      var sourceCardIdx = resolveSourceCardIndex(sourceRef.column, source.cardIndex, sourceCardMode);
+      var sourceCardIdx = resolveSourceCardIndex(sourceRef.column, source.cardIndex, sourceCardMode, source.cardId);
       if (sourceCardIdx < 0 || sourceCardIdx >= sourceRef.column.cards.length) return;
 
       var targetInsertMode = target.insertMode || 'visible';
-      var targetInsertIdx = resolveInsertCardIndex(targetRef.column, target.insertIdx, targetInsertMode);
+      var targetInsertIdx = -1;
+      if (target && typeof target.before === 'boolean' && target.cardId) {
+        var stableTargetCardIdx = resolveCardIndexByStableId(targetRef.column, target.cardId);
+        if (stableTargetCardIdx >= 0) {
+          targetInsertIdx = target.before ? stableTargetCardIdx : (stableTargetCardIdx + 1);
+        }
+      }
+      if (targetInsertIdx < 0) {
+        targetInsertIdx = resolveInsertCardIndex(targetRef.column, target.insertIdx, targetInsertMode);
+      }
       if (targetInsertIdx < 0) return;
 
       var activeTouched = source.boardId === activeBoardId || target.boardId === activeBoardId;

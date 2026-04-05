@@ -110,6 +110,20 @@ function makeTreeNode(classes, attrs) {
   };
 }
 
+function makeFoldable() {
+  const classes = new Set(['folded']);
+  return {
+    classList: {
+      contains(name) {
+        return classes.has(name);
+      },
+      remove(name) {
+        classes.delete(name);
+      }
+    }
+  };
+}
+
 beforeEach(() => {
   resetState();
 });
@@ -130,6 +144,9 @@ describe('buildHierarchyFocusTargetFromTreeNode', () => {
   it('extracts card navigation coordinates including card id', () => {
     const node = makeTreeNode(['tree-node', 'tree-card'], {
       'data-board-id': 'board-7',
+      'data-row-id': 'row-1',
+      'data-stack-id': 'stack-3',
+      'data-column-id': 'col-4',
       'data-row-index': '1',
       'data-stack-index': '3',
       'data-col-local-index': '4',
@@ -141,6 +158,9 @@ describe('buildHierarchyFocusTargetFromTreeNode', () => {
       parseOptionalSearchIndex: DashboardTree.parseOptionalSearchIndex
     })).toEqual({
       boardId: 'board-7',
+      rowId: 'row-1',
+      stackId: 'stack-3',
+      columnId: 'col-4',
       rowIndex: 1,
       stackIndex: 3,
       colLocalIndex: 4,
@@ -148,6 +168,44 @@ describe('buildHierarchyFocusTargetFromTreeNode', () => {
       cardIndex: 6,
       cardId: 'card-99'
     });
+  });
+});
+
+describe('unfoldSearchTarget', () => {
+  it('prefers stable ids for row, stack, and column unfolding', () => {
+    const rowEl = makeFoldable();
+    const stackEl = makeFoldable();
+    const colEl = makeFoldable();
+    const selectors = {
+      '.board-row[data-row-id="row-7"]': rowEl,
+      '.board-stack[data-stack-id="stack-8"]': stackEl,
+      '.column[data-column-id="col-9"]': colEl,
+    };
+    const container = {
+      querySelector(selector) {
+        return Object.prototype.hasOwnProperty.call(selectors, selector) ? selectors[selector] : null;
+      }
+    };
+    let savedBoardId = null;
+
+    const changed = BoardNavigation.unfoldSearchTarget({
+      boardId: 'board-1',
+      rowId: 'row-7',
+      stackId: 'stack-8',
+      columnId: 'col-9',
+    }, {
+      activeBoardId: 'board-1',
+      columnsContainer: container,
+      saveFoldState(boardId) {
+        savedBoardId = boardId;
+      }
+    });
+
+    expect(changed).toBe(true);
+    expect(rowEl.classList.contains('folded')).toBe(false);
+    expect(stackEl.classList.contains('folded')).toBe(false);
+    expect(colEl.classList.contains('folded')).toBe(false);
+    expect(savedBoardId).toBe('board-1');
   });
 });
 

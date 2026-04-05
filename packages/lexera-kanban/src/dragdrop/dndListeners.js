@@ -83,15 +83,21 @@ var LexeraDndListeners = (function () {
         var source = { type: dragType, boardId: ownerBoardId || activeBoardId };
         if (dragType === 'tree-row') {
           source.rowIndex = parseInt(treeNode.getAttribute('data-row-index'), 10);
+          source.rowId = String(treeNode.getAttribute('data-row-id') || '').trim() || null;
           source.indexMode = source.boardId === activeBoardId ? 'display' : 'full';
         } else if (dragType === 'tree-stack') {
           source.rowIndex = parseInt(treeNode.getAttribute('data-row-index'), 10);
           source.stackIndex = parseInt(treeNode.getAttribute('data-stack-index'), 10);
+          source.rowId = String(treeNode.getAttribute('data-row-id') || '').trim() || null;
+          source.stackId = String(treeNode.getAttribute('data-stack-id') || '').trim() || null;
           source.indexMode = source.boardId === activeBoardId ? 'display' : 'full';
         } else if (dragType === 'tree-column') {
           source.rowIndex = parseInt(treeNode.getAttribute('data-row-index'), 10);
           source.stackIndex = parseInt(treeNode.getAttribute('data-stack-index'), 10);
           source.colIndex = parseInt(treeNode.getAttribute('data-col-local-index'), 10);
+          source.rowId = String(treeNode.getAttribute('data-row-id') || '').trim() || null;
+          source.stackId = String(treeNode.getAttribute('data-stack-id') || '').trim() || null;
+          source.columnId = String(treeNode.getAttribute('data-column-id') || '').trim() || null;
           source.indexMode = source.boardId === activeBoardId ? 'display' : 'full';
         } else if (dragType === 'tree-card') {
           source.rowIndex = parseInt(treeNode.getAttribute('data-row-index'), 10);
@@ -99,6 +105,10 @@ var LexeraDndListeners = (function () {
           source.colIndex = parseInt(treeNode.getAttribute('data-col-local-index'), 10);
           source.flatColIndex = parseInt(treeNode.getAttribute('data-col-index'), 10);
           source.cardIndex = parseInt(treeNode.getAttribute('data-card-index'), 10);
+          source.rowId = String(treeNode.getAttribute('data-row-id') || '').trim() || null;
+          source.stackId = String(treeNode.getAttribute('data-stack-id') || '').trim() || null;
+          source.columnId = String(treeNode.getAttribute('data-column-id') || '').trim() || null;
+          source.cardId = String(treeNode.getAttribute('data-card-id') || '').trim() || null;
           source.cardIndexMode = source.boardId === activeBoardId ? 'visible' : 'full';
           source.indexMode = source.boardId === activeBoardId ? 'display' : 'full';
         }
@@ -289,7 +299,7 @@ var LexeraDndListeners = (function () {
       if (rowHeader) {
         var rowEl = rowHeader.closest('.board-row');
         var rowIdx = parseInt(rowEl.getAttribute('data-row-index'), 10);
-        var newPtrDrag = { type: 'board-row', source: { type: 'board-row', boardId: activeBoardId, rowIndex: rowIdx, indexMode: 'display' }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: rowEl };
+        var newPtrDrag = { type: 'board-row', source: { type: 'board-row', boardId: activeBoardId, rowIndex: rowIdx, rowId: String(rowEl.getAttribute('data-row-id') || '').trim() || null, indexMode: 'display' }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: rowEl };
         var rowStartTop = _deps.toTopFramePoint(window, e.clientX, e.clientY);
         if (rowStartTop) {
           newPtrDrag.startTopX = rowStartTop.x;
@@ -311,7 +321,15 @@ var LexeraDndListeners = (function () {
         var rowContentEl = stackEl.closest('.board-row-content');
         var newPtrDrag = {
           type: 'board-stack',
-          source: { type: 'board-stack', boardId: activeBoardId, rowIndex: rowIdx, stackIndex: stackIdx, indexMode: 'display' },
+          source: {
+            type: 'board-stack',
+            boardId: activeBoardId,
+            rowIndex: rowIdx,
+            stackIndex: stackIdx,
+            rowId: String(stackEl.getAttribute('data-row-id') || '').trim() || null,
+            stackId: String(stackEl.getAttribute('data-stack-id') || '').trim() || null,
+            indexMode: 'display'
+          },
           startX: e.clientX,
           startY: e.clientY,
           startTopX: null,
@@ -351,6 +369,9 @@ var LexeraDndListeners = (function () {
             rowIndex: rowIdx,
             stackIndex: stackIdx,
             colIndex: colIdx,
+            rowId: String(colEl.getAttribute('data-row-id') || '').trim() || null,
+            stackId: String(colEl.getAttribute('data-stack-id') || '').trim() || null,
+            columnId: String(colEl.getAttribute('data-column-id') || '').trim() || null,
             indexMode: 'display'
           },
           startX: e.clientX,
@@ -395,6 +416,10 @@ var LexeraDndListeners = (function () {
             rowIndex: rowIdx,
             stackIndex: stackIdx,
             cardIndex: cardIdx,
+            rowId: stackEl ? (String(stackEl.getAttribute('data-row-id') || '').trim() || null) : null,
+            stackId: stackEl ? (String(stackEl.getAttribute('data-stack-id') || '').trim() || null) : null,
+            columnId: colEl ? (String(colEl.getAttribute('data-column-id') || '').trim() || null) : null,
+            cardId: String(cardEl.getAttribute('data-card-id') || '').trim() || null,
             startX: e.clientX,
             startY: e.clientY,
             started: false,
@@ -603,8 +628,103 @@ var LexeraDndListeners = (function () {
 
   // ── Cross-board mutation helpers ─────────────────────────────────
 
-  function resolveColumnLocationForMutation(boardId, boardData, rowIndex, stackIndex, colIndex, indexMode) {
+  function normalizeStableMutationEntityId(value) {
+    var normalized = String(value == null ? '' : value).trim();
+    return normalized || null;
+  }
+
+  function findMutationRowLocationById(boardData, rowId) {
+    rowId = normalizeStableMutationEntityId(rowId);
+    var rows = Array.isArray(boardData && boardData.rows) ? boardData.rows : [];
+    if (!rowId || rows.length === 0) return null;
+    for (var r = 0; r < rows.length; r++) {
+      if (normalizeStableMutationEntityId(rows[r] && rows[r].id) === rowId) {
+        return { row: rows[r], rowIndex: r };
+      }
+    }
+    return null;
+  }
+
+  function findMutationStackLocationById(boardData, rowId, stackId) {
+    stackId = normalizeStableMutationEntityId(stackId);
+    var rows = Array.isArray(boardData && boardData.rows) ? boardData.rows : [];
+    if (!stackId || rows.length === 0) return null;
+    var rowInfo = findMutationRowLocationById(boardData, rowId);
+    if (rowInfo && rowInfo.row && Array.isArray(rowInfo.row.stacks)) {
+      for (var s = 0; s < rowInfo.row.stacks.length; s++) {
+        if (normalizeStableMutationEntityId(rowInfo.row.stacks[s] && rowInfo.row.stacks[s].id) === stackId) {
+          return {
+            row: rowInfo.row,
+            rowIndex: rowInfo.rowIndex,
+            stack: rowInfo.row.stacks[s],
+            stackIndex: s
+          };
+        }
+      }
+    }
+    for (var r = 0; r < rows.length; r++) {
+      var stacks = Array.isArray(rows[r] && rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (normalizeStableMutationEntityId(stacks[s] && stacks[s].id) === stackId) {
+          return {
+            row: rows[r],
+            rowIndex: r,
+            stack: stacks[s],
+            stackIndex: s
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findMutationColumnLocationById(boardData, rowId, stackId, columnId) {
+    columnId = normalizeStableMutationEntityId(columnId);
+    var rows = Array.isArray(boardData && boardData.rows) ? boardData.rows : [];
+    if (!columnId || rows.length === 0) return null;
+    var stackInfo = findMutationStackLocationById(boardData, rowId, stackId);
+    if (stackInfo && stackInfo.stack && Array.isArray(stackInfo.stack.columns)) {
+      for (var c = 0; c < stackInfo.stack.columns.length; c++) {
+        if (normalizeStableMutationEntityId(stackInfo.stack.columns[c] && stackInfo.stack.columns[c].id) === columnId) {
+          return {
+            row: stackInfo.row,
+            stack: stackInfo.stack,
+            rowIndex: stackInfo.rowIndex,
+            stackIndex: stackInfo.stackIndex,
+            colIndex: c
+          };
+        }
+      }
+    }
+    for (var r = 0; r < rows.length; r++) {
+      var stacks = Array.isArray(rows[r] && rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        var columns = Array.isArray(stacks[s] && stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < columns.length; c++) {
+          if (normalizeStableMutationEntityId(columns[c] && columns[c].id) === columnId) {
+            return {
+              row: rows[r],
+              stack: stacks[s],
+              rowIndex: r,
+              stackIndex: s,
+              colIndex: c
+            };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function resolveColumnLocationForMutation(boardId, boardData, rowIndex, stackIndex, colIndex, indexMode, stableTarget) {
     if (!boardData || !boardData.rows) return null;
+    var stableLocation = findMutationColumnLocationById(
+      boardData,
+      stableTarget && stableTarget.rowId,
+      stableTarget && stableTarget.stackId,
+      stableTarget && stableTarget.columnId
+    );
+    if (stableLocation) return stableLocation;
     if (indexMode === 'display' && boardId === getActiveBoardId()) {
       var row = _deps.findFullDataRow(rowIndex);
       var stack = _deps.findFullDataStack(rowIndex, stackIndex);
@@ -647,8 +767,14 @@ var LexeraDndListeners = (function () {
     };
   }
 
-  function resolveStackForMutation(boardId, boardData, rowIndex, stackIndex, indexMode) {
+  function resolveStackForMutation(boardId, boardData, rowIndex, stackIndex, indexMode, stableTarget) {
     if (!boardData || !boardData.rows) return null;
+    var stableLocation = findMutationStackLocationById(
+      boardData,
+      stableTarget && stableTarget.rowId,
+      stableTarget && stableTarget.stackId
+    );
+    if (stableLocation) return stableLocation;
     if (indexMode === 'display' && boardId === getActiveBoardId()) {
       var row = _deps.findFullDataRow(rowIndex);
       var stack = _deps.findFullDataStack(rowIndex, stackIndex);
@@ -670,8 +796,10 @@ var LexeraDndListeners = (function () {
     };
   }
 
-  function resolveRowForMutation(boardId, boardData, rowIndex, indexMode) {
+  function resolveRowForMutation(boardId, boardData, rowIndex, indexMode, stableTarget) {
     if (!boardData || !boardData.rows) return null;
+    var stableLocation = findMutationRowLocationById(boardData, stableTarget && stableTarget.rowId);
+    if (stableLocation) return stableLocation;
     if (indexMode === 'display' && boardId === getActiveBoardId()) {
       var row = _deps.findFullDataRow(rowIndex);
       if (!row) return null;
@@ -715,7 +843,8 @@ var LexeraDndListeners = (function () {
       sourceBoardId,
       sourceBoardData,
       source.rowIndex,
-      source.indexMode || 'full'
+      source.indexMode || 'full',
+      source
     );
     if (!sourceRowInfo || !sourceRowInfo.row) return;
 
@@ -723,7 +852,8 @@ var LexeraDndListeners = (function () {
       targetBoardId,
       targetBoardData,
       target.rowIndex,
-      target.indexMode || 'full'
+      target.indexMode || 'full',
+      target
     );
 
     var activeTouched = sourceBoardId === getActiveBoardId() || targetBoardId === getActiveBoardId();
@@ -784,7 +914,8 @@ var LexeraDndListeners = (function () {
       sourceBoardData,
       source.rowIndex,
       source.stackIndex,
-      source.indexMode || 'full'
+      source.indexMode || 'full',
+      source
     );
     if (!sourceStackInfo || !sourceStackInfo.stack || !sourceStackInfo.row) return;
 
@@ -795,7 +926,8 @@ var LexeraDndListeners = (function () {
         targetBoardId,
         targetBoardData,
         target.rowIndex,
-        target.indexMode || 'full'
+        target.indexMode || 'full',
+        target
       );
     }
     if (
@@ -878,7 +1010,8 @@ var LexeraDndListeners = (function () {
       targetBoardData,
       target.rowIndex,
       target.stackIndex,
-      target.indexMode || 'full'
+      target.indexMode || 'full',
+      target
     );
 
     var insertAt = targetRowInfo.row.stacks.length;
@@ -924,7 +1057,8 @@ var LexeraDndListeners = (function () {
       source.rowIndex,
       source.stackIndex,
       source.colIndex,
-      source.indexMode || 'full'
+      source.indexMode || 'full',
+      source
     );
     if (!sourceLoc || !sourceLoc.stack || !sourceLoc.stack.columns) { lexeraLogWithTarget('warn', 'COL-XBOARD', 'abort: sourceLoc not resolved'); return; }
 
@@ -997,7 +1131,8 @@ var LexeraDndListeners = (function () {
         targetBoardId,
         targetBoardData,
         target.rowIndex,
-        target.indexMode || 'full'
+        target.indexMode || 'full',
+        target
       );
       if (!targetRowInfo || !targetRowInfo.row || !targetRowInfo.row.stacks) {
         rollbackSameBoard();
@@ -1034,7 +1169,8 @@ var LexeraDndListeners = (function () {
         targetBoardData,
         target.rowIndex,
         target.stackIndex,
-        target.indexMode || 'full'
+        target.indexMode || 'full',
+        target
       );
       if (!targetStackInfo || !targetStackInfo.stack || !targetStackInfo.stack.columns) {
         rollbackSameBoard();
@@ -1048,7 +1184,8 @@ var LexeraDndListeners = (function () {
         targetBoardData,
         target.rowIndex,
         target.stackIndex,
-        target.indexMode || 'full'
+        target.indexMode || 'full',
+        target
       );
       if (!targetStackForCol || !targetStackForCol.stack || !targetStackForCol.stack.columns) {
         rollbackSameBoard();

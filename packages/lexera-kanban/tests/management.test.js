@@ -60,6 +60,26 @@ async function flush() {
 }
 
 describe('management workspace invite permissions', () => {
+  it('removes the empty configuration tab from shared presets while keeping config deep links compatible', async () => {
+    const ManagementUI = loadIIFE('management.js', 'ManagementUI', {
+      window: {},
+      document: {
+        createElement: (tagName) => createElement(tagName),
+        addEventListener() {},
+        removeEventListener() {}
+      },
+      console,
+      setTimeout,
+      clearTimeout
+    });
+
+    expect(ManagementUI.getUiPreset('combinedManagement').topTabs).toEqual(['sharing', 'network', 'logs']);
+    expect(ManagementUI.getUiPreset('backendSettings').topTabs).toEqual(['network', 'logs']);
+    expect(ManagementUI.getUiPreset('backendConfig').topTabs).toEqual(['network']);
+    expect(ManagementUI.getTopTabForContext('config', 'backendSettings')).toBe('network');
+    expect(ManagementUI.getTopTabForContext('config', 'combinedManagement')).toBe('network');
+  });
+
   it('renders a permission message instead of invite controls after workspace invite 403', async () => {
     const workspacesList = createElement();
     const defaultWorkspaceSelect = createElement('select');

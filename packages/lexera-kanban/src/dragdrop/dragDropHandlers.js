@@ -197,6 +197,8 @@ var LexeraDragDropHandlers = (function () {
         boardId: boardId,
         rowIndex: rowIdx,
         stackIndex: stackIdx,
+        rowId: row && row.id != null ? String(row.id) : null,
+        stackId: stack && stack.id != null ? String(stack.id) : null,
         indexMode: boardId === activeBoardId ? 'display' : 'full',
         insertIdx: 0,
         insertMode: 'full',
@@ -217,6 +219,9 @@ var LexeraDragDropHandlers = (function () {
       rowIndex: rowIdx,
       stackIndex: stackIdx,
       colIndex: resolvedColIdx,
+      rowId: row && row.id != null ? String(row.id) : null,
+      stackId: stack && stack.id != null ? String(stack.id) : null,
+      columnId: targetCol && targetCol.id != null ? String(targetCol.id) : null,
       indexMode: boardId === activeBoardId ? 'display' : 'full',
       insertIdx: insertIdx,
       insertMode: 'visible',
@@ -243,6 +248,7 @@ var LexeraDragDropHandlers = (function () {
         kind: 'sidebar',
         boardId: boardId,
         rowIndex: 0,
+        rowId: rows[0] && rows[0].id != null ? String(rows[0].id) : null,
         indexMode: boardId === activeBoardId ? 'display' : 'full',
         insertIdx: 0,
         insertMode: 'full',
@@ -338,6 +344,11 @@ var LexeraDragDropHandlers = (function () {
           rowIndex: treeCardTarget.rowIndex,
           stackIndex: treeCardTarget.stackIndex,
           colIndex: treeCardTarget.colIndex,
+          rowId: treeCardTarget.rowId || null,
+          stackId: treeCardTarget.stackId || null,
+          columnId: treeCardTarget.columnId || null,
+          cardId: treeCardTarget.cardId || null,
+          before: treeCardTarget.before,
           indexMode: treeCardTarget.indexMode,
           insertIdx: tcInsertIdx,
           insertMode: treeCardTarget.boardId === activeBoardId ? 'visible' : 'full',
@@ -378,6 +389,9 @@ var LexeraDragDropHandlers = (function () {
           rowIndex: sidebarRowIdx,
           stackIndex: sidebarStackIdx,
           colIndex: sidebarColIdx,
+          rowId: String(sidebarCol.getAttribute('data-row-id') || '').trim() || null,
+          stackId: String(sidebarCol.getAttribute('data-stack-id') || '').trim() || null,
+          columnId: String(sidebarCol.getAttribute('data-column-id') || '').trim() || null,
           indexMode: sidebarBoardId === activeBoardId ? 'display' : 'full',
           insertIdx: sidebarInsertIdx,
           insertMode: 'visible',
@@ -416,6 +430,7 @@ var LexeraDragDropHandlers = (function () {
             kind: 'sidebar',
             boardId: rowBoardId,
             rowIndex: rowIdx,
+            rowId: String(sidebarRowNode.getAttribute('data-row-id') || '').trim() || null,
             indexMode: rowBoardId === activeBoardId ? 'display' : 'full',
             insertIdx: 0,
             insertMode: 'full',
@@ -441,6 +456,9 @@ var LexeraDragDropHandlers = (function () {
           kind: 'main',
           boardId: activeBoardId,
           flatColIndex: targetColIndex,
+          rowId: targetContainer.getAttribute('data-row-id') || null,
+          stackId: targetContainer.getAttribute('data-stack-id') || null,
+          columnId: targetContainer.getAttribute('data-column-id') || null,
           indexMode: 'display',
           insertIdx: findCardInsertIndex(my, targetContainer),
           insertMode: 'visible',
@@ -460,6 +478,8 @@ var LexeraDragDropHandlers = (function () {
           boardId: activeBoardId,
           rowIndex: stackRowIdx,
           stackIndex: stackIdx,
+          rowId: String(targetStackEl.getAttribute('data-row-id') || '').trim() || null,
+          stackId: String(targetStackEl.getAttribute('data-stack-id') || '').trim() || null,
           indexMode: 'display',
           insertIdx: 0,
           insertMode: 'full',
@@ -477,6 +497,7 @@ var LexeraDragDropHandlers = (function () {
           kind: 'main',
           boardId: activeBoardId,
           rowIndex: mainRowIdx,
+          rowId: String(targetRowEl.getAttribute('data-row-id') || '').trim() || null,
           indexMode: 'display',
           insertIdx: 0,
           insertMode: 'full',
@@ -591,6 +612,10 @@ var LexeraDragDropHandlers = (function () {
       boardId: cardDrag.boardId,
       flatColIndex: cardDrag.flatColIndex,
       cardIndex: cardDrag.cardIndex,
+      rowId: cardDrag.rowId || null,
+      stackId: cardDrag.stackId || null,
+      columnId: cardDrag.columnId || null,
+      cardId: cardDrag.cardId || null,
       cardIndexMode: 'visible',
       indexMode: 'display'
     };
@@ -722,6 +747,10 @@ var LexeraDragDropHandlers = (function () {
         boardId: cardDrag.boardId,
         flatColIndex: cardDrag.flatColIndex,
         cardIndex: cardDrag.cardIndex,
+        rowId: cardDrag.rowId || null,
+        stackId: cardDrag.stackId || null,
+        columnId: cardDrag.columnId || null,
+        cardId: cardDrag.cardId || null,
         cardIndexMode: 'visible',
         indexMode: 'display'
       };
@@ -1262,6 +1291,7 @@ var LexeraDragDropHandlers = (function () {
         return {
           boardId: activeBoardId,
           rowIndex: boardRowIdx,
+          rowId: String(boardTarget.node.getAttribute('data-row-id') || '').trim() || null,
           before: boardTarget.before,
           indexMode: 'display'
         };
@@ -1275,6 +1305,7 @@ var LexeraDragDropHandlers = (function () {
         return {
           boardId: treeBoardId,
           rowIndex: treeRowIdx,
+          rowId: String(treeTarget.node.getAttribute('data-row-id') || '').trim() || null,
           before: treeTarget.before,
           indexMode: treeBoardId === activeBoardId ? 'display' : 'full'
         };
@@ -1296,6 +1327,7 @@ var LexeraDragDropHandlers = (function () {
             node: boardRowNode,
             boardId: activeBoardId,
             rowIndex: boardRowIdx,
+            rowId: String(boardRowNode.getAttribute('data-row-id') || '').trim() || null,
             indexMode: 'display'
           };
         }
@@ -1314,6 +1346,7 @@ var LexeraDragDropHandlers = (function () {
             node: treeRowNode,
             boardId: treeBoardId,
             rowIndex: treeRowIdx,
+            rowId: String(treeRowNode.getAttribute('data-row-id') || '').trim() || null,
             indexMode: treeBoardId === activeBoardId ? 'display' : 'full'
           };
         }
@@ -1336,6 +1369,7 @@ var LexeraDragDropHandlers = (function () {
             contentNode: rowContent,
             boardId: activeBoardId,
             rowIndex: rowIndex,
+            rowId: rowNode ? (String(rowNode.getAttribute('data-row-id') || '').trim() || null) : null,
             indexMode: 'display'
           };
         }
@@ -1359,6 +1393,8 @@ var LexeraDragDropHandlers = (function () {
           boardId: activeBoardId,
           rowIndex: boardRowIdx,
           stackIndex: boardStackIdx,
+          rowId: String(boardTarget.node.getAttribute('data-row-id') || '').trim() || null,
+          stackId: String(boardTarget.node.getAttribute('data-stack-id') || '').trim() || null,
           before: boardTarget.before,
           indexMode: 'display'
         };
@@ -1374,6 +1410,8 @@ var LexeraDragDropHandlers = (function () {
           boardId: treeBoardId,
           rowIndex: treeRowIdx,
           stackIndex: treeStackIdx,
+          rowId: String(treeTarget.node.getAttribute('data-row-id') || '').trim() || null,
+          stackId: String(treeTarget.node.getAttribute('data-stack-id') || '').trim() || null,
           before: treeTarget.before,
           indexMode: treeBoardId === activeBoardId ? 'display' : 'full'
         };
@@ -1408,10 +1446,16 @@ var LexeraDragDropHandlers = (function () {
     }
 
     _deps.moveRowAcrossBoards(
-      { boardId: srcBoardId, rowIndex: srcRowIdx, indexMode: srcIndexMode },
+      {
+        boardId: srcBoardId,
+        rowIndex: srcRowIdx,
+        rowId: source.rowId || null,
+        indexMode: srcIndexMode
+      },
       {
         boardId: rowTarget.boardId,
         rowIndex: rowTarget.rowIndex,
+        rowId: rowTarget.rowId || null,
         before: rowTarget.before,
         indexMode: targetIndexMode
       }
@@ -1444,7 +1488,14 @@ var LexeraDragDropHandlers = (function () {
     });
     if (canvasStackTarget) {
       _deps.moveStackAcrossBoards(
-        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
+        {
+          boardId: srcBoardId,
+          rowIndex: srcRowIdx,
+          stackIndex: srcStackIdx,
+          rowId: source.rowId || null,
+          stackId: source.stackId || null,
+          indexMode: srcIndexMode
+        },
         canvasStackTarget
       ).catch(function (err) {
         _deps.lexeraLog('error', '[moveStackAcrossBoards] Canvas drop failed: ' + err);
@@ -1469,11 +1520,20 @@ var LexeraDragDropHandlers = (function () {
       }
 
       _deps.moveStackAcrossBoards(
-        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
+        {
+          boardId: srcBoardId,
+          rowIndex: srcRowIdx,
+          stackIndex: srcStackIdx,
+          rowId: source.rowId || null,
+          stackId: source.stackId || null,
+          indexMode: srcIndexMode
+        },
         {
           boardId: stackTarget.boardId,
           rowIndex: stackTarget.rowIndex,
           stackIndex: stackTarget.stackIndex,
+          rowId: stackTarget.rowId || null,
+          stackId: stackTarget.stackId || null,
           before: stackTarget.before,
           indexMode: targetIndexMode
         }
@@ -1486,11 +1546,19 @@ var LexeraDragDropHandlers = (function () {
     var rowBodyTarget = resolveRowBodyDropTarget(mx, my);
     if (rowBodyTarget && rowBodyTarget.boardId) {
       _deps.moveStackAcrossBoards(
-        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
+        {
+          boardId: srcBoardId,
+          rowIndex: srcRowIdx,
+          stackIndex: srcStackIdx,
+          rowId: source.rowId || null,
+          stackId: source.stackId || null,
+          indexMode: srcIndexMode
+        },
         {
           kind: 'row',
           boardId: rowBodyTarget.boardId,
           rowIndex: rowBodyTarget.rowIndex,
+          rowId: rowBodyTarget.rowId || null,
           indexMode: rowBodyTarget.indexMode
         }
       ).catch(function (err) {
@@ -1502,11 +1570,19 @@ var LexeraDragDropHandlers = (function () {
     var rowTarget = getRowDropTarget(mx, my);
     if (rowTarget && rowTarget.boardId && rowTarget.rowIndex >= 0) {
       _deps.moveStackAcrossBoards(
-        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
+        {
+          boardId: srcBoardId,
+          rowIndex: srcRowIdx,
+          stackIndex: srcStackIdx,
+          rowId: source.rowId || null,
+          stackId: source.stackId || null,
+          indexMode: srcIndexMode
+        },
         {
           kind: 'new-row',
           boardId: rowTarget.boardId,
           rowIndex: rowTarget.rowIndex,
+          rowId: rowTarget.rowId || null,
           before: rowTarget.before,
           indexMode: rowTarget.indexMode
         }
@@ -1608,6 +1684,9 @@ var LexeraDragDropHandlers = (function () {
       rowIndex: rowIdx,
       stackIndex: stackIdx,
       colIndex: colIdx,
+      rowId: String(treeTarget.node.getAttribute('data-row-id') || '').trim() || null,
+      stackId: String(treeTarget.node.getAttribute('data-stack-id') || '').trim() || null,
+      columnId: String(treeTarget.node.getAttribute('data-column-id') || '').trim() || null,
       before: treeTarget.before,
       indexMode: boardId === activeBoardId ? 'display' : 'full'
     };
@@ -1625,6 +1704,8 @@ var LexeraDragDropHandlers = (function () {
           boardId: boardId,
           rowIndex: rowIdx,
           stackIndex: stackIdx,
+          rowId: String(treeTarget.node.getAttribute('data-row-id') || '').trim() || null,
+          stackId: String(treeTarget.node.getAttribute('data-stack-id') || '').trim() || null,
           before: treeTarget.before,
           indexMode: boardId === activeBoardId ? 'display' : 'full'
         };
@@ -1640,6 +1721,8 @@ var LexeraDragDropHandlers = (function () {
       boardId: zoneBoardId,
       rowIndex: zoneRowIdx,
       stackIndex: zoneStackIdx,
+      rowId: String(zone.getAttribute('data-row-id') || '').trim() || null,
+      stackId: String(zone.getAttribute('data-stack-id') || '').trim() || null,
       before: false,
       indexMode: zoneBoardId === activeBoardId ? 'display' : 'full'
     };
@@ -1662,6 +1745,10 @@ var LexeraDragDropHandlers = (function () {
       stackIndex: stackIdx,
       colIndex: colIdx,
       cardIndex: cardIdx,
+      rowId: String(treeTarget.node.getAttribute('data-row-id') || '').trim() || null,
+      stackId: String(treeTarget.node.getAttribute('data-stack-id') || '').trim() || null,
+      columnId: String(treeTarget.node.getAttribute('data-column-id') || '').trim() || null,
+      cardId: String(treeTarget.node.getAttribute('data-card-id') || '').trim() || null,
       before: treeTarget.before,
       indexMode: boardId === activeBoardId ? 'display' : 'full'
     };
@@ -1736,6 +1823,7 @@ var LexeraDragDropHandlers = (function () {
         kind: 'new-stack',
         boardId: activeBoardId,
         rowIndex: targetRowIdx,
+        rowId: String(zone.getAttribute('data-row-id') || '').trim() || null,
         insertAtStackIdx: insertIdx,
         indexMode: 'display'
       };
@@ -1763,6 +1851,9 @@ var LexeraDragDropHandlers = (function () {
         rowIndex: targetRowIdx,
         stackIndex: targetStackIdx,
         colIndex: targetColIdx,
+        rowId: String(column.getAttribute('data-row-id') || '').trim() || null,
+        stackId: String(column.getAttribute('data-stack-id') || '').trim() || null,
+        columnId: String(column.getAttribute('data-column-id') || '').trim() || null,
         before: insertBefore,
         indexMode: 'display'
       };
@@ -1782,6 +1873,8 @@ var LexeraDragDropHandlers = (function () {
         boardId: activeBoardId,
         rowIndex: targetRowIdx,
         stackIndex: targetStackIdx,
+        rowId: String(stack.getAttribute('data-row-id') || '').trim() || null,
+        stackId: String(stack.getAttribute('data-stack-id') || '').trim() || null,
         indexMode: 'display'
       };
       if (isSameActiveBoardDisplayTarget(stackTarget)) {
@@ -1815,6 +1908,9 @@ var LexeraDragDropHandlers = (function () {
           rowIndex: treeColTarget.rowIndex,
           stackIndex: treeColTarget.stackIndex,
           colIndex: treeColTarget.colIndex,
+          rowId: treeColTarget.rowId || null,
+          stackId: treeColTarget.stackId || null,
+          columnId: treeColTarget.columnId || null,
           before: treeColTarget.before,
           indexMode: treeColTarget.indexMode
         });
@@ -1834,6 +1930,8 @@ var LexeraDragDropHandlers = (function () {
           boardId: treeStackTarget.boardId,
           rowIndex: treeStackTarget.rowIndex,
           stackIndex: treeStackTarget.stackIndex,
+          rowId: treeStackTarget.rowId || null,
+          stackId: treeStackTarget.stackId || null,
           indexMode: treeStackTarget.indexMode
         });
       }
@@ -1846,6 +1944,7 @@ var LexeraDragDropHandlers = (function () {
         kind: 'row',
         boardId: rowBodyTarget.boardId,
         rowIndex: rowBodyTarget.rowIndex,
+        rowId: rowBodyTarget.rowId || null,
         indexMode: rowBodyTarget.indexMode
       });
       return;
@@ -1857,6 +1956,7 @@ var LexeraDragDropHandlers = (function () {
         kind: 'new-row',
         boardId: rowTarget.boardId,
         rowIndex: rowTarget.rowIndex,
+        rowId: rowTarget.rowId || null,
         before: rowTarget.before,
         indexMode: rowTarget.indexMode
       });

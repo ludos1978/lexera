@@ -126,18 +126,18 @@ var ManagementUI = (function () {
     return null;
   }
 
-  var VALID_TABS = ['sharing', 'network', 'config', 'logs', 'workspaces', 'boards', 'workspace-config'];
+  var VALID_TABS = ['sharing', 'network', 'logs', 'workspaces', 'boards', 'workspace-config'];
   var UI_PRESETS = {
     combinedManagement: {
-      topTabs: ['sharing', 'network', 'config', 'logs'],
+      topTabs: ['sharing', 'network', 'logs'],
       defaultTopTab: 'network'
     },
     backendSettings: {
-      topTabs: ['network', 'config', 'logs'],
+      topTabs: ['network', 'logs'],
       defaultTopTab: 'network'
     },
     backendConfig: {
-      topTabs: ['network', 'config'],
+      topTabs: ['network'],
       defaultTopTab: 'network'
     },
     files: {
@@ -189,11 +189,13 @@ var ManagementUI = (function () {
       return UI_PRESETS.files.defaultTopTab;
     }
     if (contextName === 'backendSettings') {
-      if (section === 'network' || section === 'config' || section === 'logs') return section;
+      if (section === 'config') return 'network';
+      if (section === 'network' || section === 'logs') return section;
       return UI_PRESETS.backendSettings.defaultTopTab;
     }
     if (section === 'workspaces' || section === 'boards' || section === 'sharing') return 'sharing';
-    if (section === 'network' || section === 'config' || section === 'logs') return section;
+    if (section === 'config') return 'network';
+    if (section === 'network' || section === 'logs') return section;
     return UI_PRESETS.combinedManagement.defaultTopTab;
   }
 
@@ -475,7 +477,6 @@ var ManagementUI = (function () {
     var needsWorkspaces = anyMountShowingTopTab('sharing') || anyMountShowingTopTab('workspaces');
     var needsBoards = anyMountShowingTopTab('sharing') || anyMountShowingTopTab('boards');
     var needsWsConfig = anyMountShowingTopTab('workspace-config');
-    var needsConfig = anyMountShowingTopTab('config');
     var needsLogs = anyMountShowingTopTab('logs');
 
     if (needsNetwork) await loadIdentity();
@@ -545,7 +546,6 @@ var ManagementUI = (function () {
     html += tabBtn('boards', 'Boards');
     html += tabBtn('workspace-config', 'Workspaces');
     html += tabBtn('network', 'Network');
-    html += tabBtn('config', 'Configuration');
     html += tabBtn('logs', 'Logs');
     html += '</div>';
 
@@ -655,13 +655,6 @@ var ManagementUI = (function () {
     html += '</div>';
 
       html += '</div>'; // end network tab
-    }
-
-    // ── Configuration tab ──
-    if (isTab('config')) {
-      html += tabOpen('config');
-
-      html += '</div>'; // end config tab
     }
 
     // ── Logs tab ──

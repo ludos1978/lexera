@@ -253,7 +253,7 @@ var LexeraManagementWiring = (function () {
   }
 
   function openConnectionWindow() {
-    openManagementPanel({ section: 'config' });
+    openManagementPanel({ section: 'network' });
   }
 
   function openRunningProcessesPanel() {

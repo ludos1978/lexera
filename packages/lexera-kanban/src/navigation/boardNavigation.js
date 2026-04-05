@@ -39,6 +39,12 @@
     function attr(name) { return parse(node.getAttribute(name)); }
 
     var target = { boardId: resolvedBoardId };
+    var rowId = String(node.getAttribute('data-row-id') || '').trim();
+    var stackId = String(node.getAttribute('data-stack-id') || '').trim();
+    var columnId = String(node.getAttribute('data-column-id') || '').trim();
+    if (rowId) target.rowId = rowId;
+    if (stackId) target.stackId = stackId;
+    if (columnId) target.columnId = columnId;
 
     if (node.classList.contains('tree-row')) {
       target.rowIndex = attr('data-row-index');
@@ -76,26 +82,44 @@
     if (!result || !activeBoardId || !container) return false;
     var changed = false;
 
-    if (typeof result.rowIndex === 'number') {
-      var rowEl = container.querySelector('.board-row[data-row-index="' + result.rowIndex + '"]');
+    var rowEl = null;
+    if (result.rowId) {
+      rowEl = container.querySelector('.board-row[data-row-id="' + result.rowId + '"]');
+    }
+    if (!rowEl && typeof result.rowIndex === 'number') {
+      rowEl = container.querySelector('.board-row[data-row-index="' + result.rowIndex + '"]');
+    }
+    if (rowEl) {
       if (rowEl && rowEl.classList.contains('folded')) {
         rowEl.classList.remove('folded');
         changed = true;
       }
     }
 
-    if (typeof result.rowIndex === 'number' && typeof result.stackIndex === 'number') {
+    var stackEl = null;
+    if (result.stackId) {
+      stackEl = container.querySelector('.board-stack[data-stack-id="' + result.stackId + '"]');
+    }
+    if (!stackEl && typeof result.rowIndex === 'number' && typeof result.stackIndex === 'number') {
       var stackSelector = '.board-stack[data-row-index="' + result.rowIndex + '"][data-stack-index="' + result.stackIndex + '"]';
-      var stackEl = container.querySelector(stackSelector);
+      stackEl = container.querySelector(stackSelector);
+    }
+    if (stackEl) {
       if (stackEl && stackEl.classList.contains('folded')) {
         stackEl.classList.remove('folded');
         changed = true;
       }
     }
 
-    if (typeof result.columnIndex === 'number') {
+    var colEl = null;
+    if (result.columnId) {
+      colEl = container.querySelector('.column[data-column-id="' + result.columnId + '"]');
+    }
+    if (!colEl && typeof result.columnIndex === 'number') {
       var cardsEl = container.querySelector('.column-cards[data-col-index="' + result.columnIndex + '"]');
-      var colEl = cardsEl && typeof cardsEl.closest === 'function' ? cardsEl.closest('.column') : null;
+      colEl = cardsEl && typeof cardsEl.closest === 'function' ? cardsEl.closest('.column') : null;
+    }
+    if (colEl) {
       if (colEl && colEl.classList.contains('folded')) {
         colEl.classList.remove('folded');
         changed = true;

@@ -174,10 +174,18 @@ function loadMutationHarness() {
     extractFunction(findLine('function ensureCardTargetColumnForMutation(')),
     extractFunction(findLine('function cleanupUnnamedStructuralContainersInBoard(')),
     extractFunctionAny('function resolveTagTarget('),
+    extractFunctionAny('function normalizeStableMutationEntityId('),
+    extractFunctionAny('function findMutationRowLocationById('),
+    extractFunctionAny('function findMutationStackLocationById('),
+    extractFunctionAny('function findMutationColumnLocationById('),
     extractFunctionAny('function resolveColumnLocationForMutation('),
     extractFunctionAny('function resolveStackForMutation('),
     extractFunctionAny('function resolveRowForMutation('),
+    extractFunctionAny('function trashRowContent('),
+    extractFunction(findLine('function normalizeStableCardMutationId(')),
+    extractFunction(findLine('function findColumnRefByStablePath(')),
     extractFunction(findLine('function resolveColumnRefForCardMutation(')),
+    extractFunction(findLine('function resolveCardIndexByStableId(')),
     extractFunction(findLine('function resolveSourceCardIndex(')),
     extractFunction(findLine('function resolveInsertCardIndex(')),
     extractFunction(findLine('function buildHiddenItemRestoreSource(')),
@@ -869,6 +877,99 @@ describe('Drag/drop structural parity', () => {
     expect(sourceRow.stacks[0].columns.length).toBe(1);
   });
 
+  it('moveCard resolves source and target columns by stable ids when display indices are stale', async () => {
+    var full = makeBoard([
+      makeRow('row-main', 'Main', [
+        makeStack('stack-main', 'Main Stack', [
+          makeColumn('col-source', 'Source Column', [makeCard('card-a', 'Task A')]),
+          makeColumn('col-target', 'Target Column', [makeCard('card-b', 'Task B')]),
+        ]),
+      ]),
+    ]);
+    M.setState(full, buildActiveBoard(M, full), 'test-board');
+
+    await M.moveCard(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 1,
+        rowId: 'row-main',
+        stackId: 'stack-main',
+        columnId: 'col-source',
+        cardIndex: 0,
+        cardId: 'card-a',
+        cardIndexMode: 'visible',
+        indexMode: 'display',
+      },
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 0,
+        rowId: 'row-main',
+        stackId: 'stack-main',
+        columnId: 'col-target',
+        indexMode: 'display',
+        insertIdx: 1,
+        insertMode: 'full',
+      }
+    );
+
+    var rows = M.getState().fullBoardData.rows;
+    expect(rows[0].stacks[0].columns[0].cards).toHaveLength(0);
+    expect(rows[0].stacks[0].columns[1].cards.map(function (card) { return card.id; })).toEqual(['card-b', 'card-a']);
+  });
+
+  it('moveCard prefers the target card id over a stale visible insert index', async () => {
+    var full = makeBoard([
+      makeRow('row-main', 'Main', [
+        makeStack('stack-main', 'Main Stack', [
+          makeColumn('col-source', 'Source Column', [makeCard('card-a', 'Task A')]),
+          makeColumn('col-target', 'Target Column', [
+            makeCard('card-b', 'Task B'),
+            makeCard('card-c', 'Task C')
+          ]),
+        ]),
+      ]),
+    ]);
+    M.setState(full, buildActiveBoard(M, full), 'test-board');
+
+    await M.moveCard(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 0,
+        rowId: 'row-main',
+        stackId: 'stack-main',
+        columnId: 'col-source',
+        cardIndex: 0,
+        cardId: 'card-a',
+        cardIndexMode: 'visible',
+        indexMode: 'display',
+      },
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 0,
+        rowId: 'row-main',
+        stackId: 'stack-main',
+        columnId: 'col-target',
+        cardIndex: 0,
+        cardId: 'card-c',
+        before: false,
+        indexMode: 'display',
+        insertIdx: 1,
+        insertMode: 'visible',
+      }
+    );
+
+    var targetCards = M.getState().fullBoardData.rows[0].stacks[0].columns[1].cards;
+    expect(targetCards.map(function (card) { return card.id; })).toEqual(['card-b', 'card-c', 'card-a']);
+  });
+
   it('moveColumnAcrossBoards creates an unnamed row for top-level drops', async () => {
     var source = makeBoard([
       makeRow('row-source', 'Source', [
@@ -910,6 +1011,56 @@ describe('Drag/drop structural parity', () => {
     expect(targetBoard.rows[1].stacks.length).toBe(1);
     expect(targetBoard.rows[1].stacks[0].title).toBe('');
     expect(targetBoard.rows[1].stacks[0].columns[0].id).toBe('col-source');
+  });
+
+  it('moveColumnAcrossBoards resolves source and target containers by stable ids when indices drift', async () => {
+    var source = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-source', 'Source Stack', [
+          makeColumn('col-a', 'Column A', [makeCard('card-a', 'Task A')]),
+          makeColumn('col-b', 'Column B', [makeCard('card-b', 'Task B')]),
+        ]),
+      ]),
+    ]);
+    var target = makeBoard([
+      makeRow('row-target-a', 'Target A', [
+        makeStack('stack-target-a', 'Target Stack A', [
+          makeColumn('col-target-a', 'Target Column A', []),
+        ]),
+      ]),
+      makeRow('row-target-b', 'Target B', [
+        makeStack('stack-target-b', 'Target Stack B', [
+          makeColumn('col-target-b', 'Target Column B', []),
+        ]),
+      ]),
+    ]);
+    M.setState(source, buildActiveBoard(M, source), 'test-board');
+    M.setBoardState('other-board', target);
+
+    await M.moveColumnAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 1,
+        rowId: 'row-source',
+        stackId: 'stack-source',
+        columnId: 'col-a',
+        indexMode: 'display',
+      },
+      {
+        kind: 'stack',
+        boardId: 'other-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        rowId: 'row-target-b',
+        stackId: 'stack-target-b',
+        indexMode: 'full',
+      }
+    );
+
+    var targetBoard = M.getBoardState('other-board');
+    expect(targetBoard.rows[1].stacks[0].columns.map(function (column) { return column.id; })).toEqual(['col-target-b', 'col-a']);
   });
 
   it('moveColumnAcrossBoards creates an unnamed stack inside an existing row drop target', async () => {
@@ -989,6 +1140,46 @@ describe('Drag/drop structural parity', () => {
     expect(targetBoard.rows[1].stacks[0].id).toBe('stack-source');
   });
 
+  it('moveStackAcrossBoards resolves source stack and target row by stable ids when indices drift', async () => {
+    var source = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-a', 'Stack A', [
+          makeColumn('col-a', 'Column A', []),
+        ]),
+        makeStack('stack-b', 'Stack B', [
+          makeColumn('col-b', 'Column B', []),
+        ]),
+      ]),
+    ]);
+    var target = makeBoard([
+      makeRow('row-target-a', 'Target A', []),
+      makeRow('row-target-b', 'Target B', []),
+    ]);
+    M.setState(source, buildActiveBoard(M, source), 'test-board');
+    M.setBoardState('other-board', target);
+
+    await M.moveStackAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 1,
+        rowId: 'row-source',
+        stackId: 'stack-a',
+        indexMode: 'display',
+      },
+      {
+        kind: 'row',
+        boardId: 'other-board',
+        rowIndex: 0,
+        rowId: 'row-target-b',
+        indexMode: 'full',
+      }
+    );
+
+    var targetBoard = M.getBoardState('other-board');
+    expect(targetBoard.rows[1].stacks.map(function (stack) { return stack.id; })).toEqual(['stack-a']);
+  });
+
   it('moveStackAcrossBoards preserves stack order when repositioning within the same canvas row', async () => {
     var full = makeBoard([
       makeRow('row-main', 'Row Main', [
@@ -1061,6 +1252,46 @@ describe('Drag/drop structural parity', () => {
     expect(rows[0].id).toBe('row-target');
     expect(rows[0].stacks.map(function (stack) { return stack.id; })).toEqual(['stack-b', 'stack-a']);
     expect(rows[0].stacks[1].params).toEqual({ x: '777', y: '222' });
+  });
+
+  it('moveRowAcrossBoards resolves source and target rows by stable ids when indices drift', async () => {
+    var source = makeBoard([
+      makeRow('row-a', 'Row A', [
+        makeStack('stack-a', 'Stack A', [
+          makeColumn('col-a', 'Column A', []),
+        ]),
+      ]),
+      makeRow('row-b', 'Row B', [
+        makeStack('stack-b', 'Stack B', [
+          makeColumn('col-b', 'Column B', []),
+        ]),
+      ]),
+    ]);
+    var target = makeBoard([
+      makeRow('row-target-a', 'Target A', []),
+      makeRow('row-target-b', 'Target B', []),
+    ]);
+    M.setState(source, buildActiveBoard(M, source), 'test-board');
+    M.setBoardState('other-board', target);
+
+    await M.moveRowAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 1,
+        rowId: 'row-a',
+        indexMode: 'display',
+      },
+      {
+        boardId: 'other-board',
+        rowIndex: 0,
+        rowId: 'row-target-b',
+        before: false,
+        indexMode: 'full',
+      }
+    );
+
+    var targetBoard = M.getBoardState('other-board');
+    expect(targetBoard.rows.map(function (row) { return row.id; })).toEqual(['row-target-a', 'row-target-b', 'row-a']);
   });
 });
 

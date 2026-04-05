@@ -145,6 +145,9 @@
                 expanded: false,
                 attrs: {
                   'data-board-id': boardId,
+                  'data-row-id': rowId,
+                  'data-stack-id': stackId,
+                  'data-column-id': col && col.id != null ? String(col.id) : null,
                   'data-row-index': ri.toString(),
                   'data-stack-index': si.toString(),
                   'data-col-local-index': ci.toString(),
@@ -170,6 +173,9 @@
             children: cardNodes.length > 0 ? cardNodes : null,
             attrs: {
               'data-board-id': boardId,
+              'data-row-id': rowId,
+              'data-stack-id': stackId,
+              'data-column-id': col && col.id != null ? String(col.id) : null,
               'data-col-index': colIdx >= 0 ? colIdx.toString() : null,
               'data-row-index': ri.toString(),
               'data-stack-index': si.toString(),
@@ -190,6 +196,8 @@
           children: colNodes,
           attrs: {
             'data-board-id': boardId,
+            'data-row-id': rowId,
+            'data-stack-id': stackId,
             'data-row-index': ri.toString(),
             'data-stack-index': si.toString(),
             'data-tree-drag': 'tree-stack'
@@ -208,6 +216,7 @@
         children: stackNodes,
         attrs: {
           'data-board-id': boardId,
+          'data-row-id': rowId,
           'data-row-index': ri.toString(),
           'data-tree-drag': 'tree-row'
         }

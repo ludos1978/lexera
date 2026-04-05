@@ -5,6 +5,7 @@ function createMenu(overrides = {}) {
   const windowMock = {
     LexeraMenuContributorRegistry: null,
     LexeraActionRegistry: null,
+    prompt: overrides.prompt || vi.fn(() => 'diagram.excalidraw'),
     LexeraTemplates: overrides.templates || {
       getFullTemplate: vi.fn(async () => ({
         parsed: { name: 'Template', variables: [] },
@@ -102,5 +103,56 @@ describe('header creation actions', () => {
     expect(row.stacks[0].columns[0].cards).toHaveLength(1);
     expect(row.stacks[0].columns[0].cards[0].content).toBe('clipboard body');
     expect(deps.persistBoardMutation).toHaveBeenCalledTimes(1);
+  });
+
+  it('routes built-in file templates through the generic content insertion path for every entity type', async () => {
+    const api = {
+      request: vi.fn(() => Promise.resolve()),
+      uploadMedia: vi.fn(async (_boardId, file) => ({ filename: 'media/' + file.name }))
+    };
+    const prompt = vi.fn(() => 'diagram.excalidraw');
+    const RowStackMenu = createMenu({ api, prompt });
+    const deps = createBaseDeps();
+    const fullBoardData = {
+      rows: [{
+        id: 'row-existing',
+        title: 'Existing Row',
+        stacks: [{
+          id: 'stack-existing',
+          title: 'Existing Stack',
+          columns: [{ id: 'col-existing', title: 'Existing Column', cards: [] }]
+        }]
+      }]
+    };
+    deps.getFullBoardData = vi.fn(() => fullBoardData);
+    deps.findFullDataRow = vi.fn((rowIdx) => fullBoardData.rows[rowIdx] || null);
+    deps.findFullDataStack = vi.fn((rowIdx, stackIdx) => {
+      const row = fullBoardData.rows[rowIdx];
+      return row && row.stacks ? row.stacks[stackIdx] || null : null;
+    });
+    deps.findInsertRowIndex = vi.fn((atIndex) => atIndex);
+    deps.findInsertStackIndexInRow = vi.fn((_row, _rowIdx, atStackIdx) => atStackIdx);
+    deps.pushUndo = vi.fn();
+    RowStackMenu.init(deps);
+
+    await RowStackMenu.handleCreationAction('row', 'template:__builtin__:diagram:excalidraw', { atIndex: 1 });
+    await RowStackMenu.handleCreationAction('stack', 'template:__builtin__:diagram:excalidraw', { rowIdx: 0, atStackIdx: 1 });
+    await RowStackMenu.handleCreationAction('column', 'template:__builtin__:diagram:excalidraw', { rowIdx: 0, stackIdx: 0, atColIdx: 1 });
+    await RowStackMenu.handleCreationAction('card', 'template:__builtin__:diagram:excalidraw', { rowIndex: 0, stackIndex: 0, insertIdx: 0, insertMode: 'full', indexMode: 'display' });
+
+    const embed = '![diagram.excalidraw](media/diagram.excalidraw)';
+    expect(prompt).toHaveBeenCalledTimes(4);
+    expect(api.uploadMedia).toHaveBeenCalledTimes(4);
+    expect(fullBoardData.rows).toHaveLength(2);
+    expect(fullBoardData.rows[1].stacks[0].columns[0].cards[0].content).toBe(embed);
+    expect(fullBoardData.rows[0].stacks).toHaveLength(2);
+    expect(fullBoardData.rows[0].stacks[1].columns[0].cards[0].content).toBe(embed);
+    expect(fullBoardData.rows[0].stacks[0].columns).toHaveLength(2);
+    expect(fullBoardData.rows[0].stacks[0].columns[1].cards[0].content).toBe(embed);
+    expect(deps.addCardToActiveBoard).toHaveBeenCalledWith(
+      { rowIndex: 0, stackIndex: 0, insertIdx: 0, insertMode: 'full', indexMode: 'display' },
+      embed
+    );
+    expect(deps.showNotification).not.toHaveBeenCalledWith('Built-in diagram templates are card-only');
   });
 });

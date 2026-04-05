@@ -324,24 +324,7 @@ var LexeraRowStackMenu = (function () {
           deps.lexeraLog('warn', 'Clipboard is empty');
           return;
         }
-        if (entityType === 'card' && context && deps.getActiveBoardId()) {
-          await deps.addCardToActiveBoard(
-            context,
-            text.trim()
-          );
-        } else if (entityType === 'row') {
-          await addRowFromContent(text.trim(), context.atIndex);
-        } else if (entityType === 'stack') {
-          await addStackFromContent(context.rowIdx, text.trim(), context.atStackIdx);
-        } else if (entityType === 'column') {
-          if (context && context.stackIdx != null) {
-            await addColumnFromContent(context.rowIdx, context.stackIdx, text.trim(), context.atColIdx);
-          } else if (context && context.rowIdx != null) {
-            await addStackFromContent(context.rowIdx, text.trim(), context.atStackIdx);
-          } else if (context && context.atIndex != null) {
-            await addRowFromContent(text.trim(), context.atIndex);
-          }
-        }
+        await insertTextContentForEntity(entityType, text.trim(), context);
       } catch (err) {
         deps.lexeraLog('warn', 'Clipboard read failed: ' + err.message);
       }
@@ -352,18 +335,9 @@ var LexeraRowStackMenu = (function () {
     if (action.indexOf('template:') === 0) {
       var templateId = action.substring(9);
       if (templateId.indexOf('__builtin__:diagram:') === 0) {
-        if (entityType !== 'card') {
-          deps.showNotification('Built-in diagram templates are card-only');
-          return;
-        }
-        var diagramCardContent = await buildBuiltInDiagramTemplateCardContent(templateId);
-        if (!diagramCardContent) return;
-        if (deps.getActiveBoardId() && context) {
-          await deps.addCardToActiveBoard(
-            context,
-            diagramCardContent
-          );
-        }
+        var diagramContent = await buildBuiltInDiagramTemplateEmbedMarkdown(templateId);
+        if (!diagramContent) return;
+        await insertTextContentForEntity(entityType, diagramContent, context);
         return;
       }
       try {
@@ -436,6 +410,42 @@ var LexeraRowStackMenu = (function () {
     }
   }
 
+  async function insertTextContentForEntity(entityType, text, context) {
+    var normalized = String(text || '').trim();
+    if (!normalized) {
+      deps.showNotification('No content available');
+      return false;
+    }
+    if (entityType === 'card' && context && deps.getActiveBoardId()) {
+      await deps.addCardToActiveBoard(context, normalized);
+      return true;
+    }
+    if (entityType === 'row') {
+      await addRowFromContent(normalized, context && context.atIndex);
+      return true;
+    }
+    if (entityType === 'stack') {
+      await addStackFromContent(context && context.rowIdx, normalized, context && context.atStackIdx);
+      return true;
+    }
+    if (entityType === 'column') {
+      if (context && context.stackIdx != null) {
+        await addColumnFromContent(context.rowIdx, context.stackIdx, normalized, context.atColIdx);
+        return true;
+      }
+      if (context && context.rowIdx != null) {
+        await addStackFromContent(context.rowIdx, normalized, context.atStackIdx);
+        return true;
+      }
+      if (context && context.atIndex != null) {
+        await addRowFromContent(normalized, context.atIndex);
+        return true;
+      }
+    }
+    deps.showNotification('No insertion target available');
+    return false;
+  }
+
   function sanitizeBuiltInDiagramFileName(value, extension, fallbackBase) {
     var raw = String(value || '').replace(/\\/g, '/').split('/').pop().trim();
     if (!raw) raw = fallbackBase;
@@ -495,7 +505,7 @@ var LexeraRowStackMenu = (function () {
     return null;
   }
 
-  async function buildBuiltInDiagramTemplateCardContent(templateId) {
+  async function buildBuiltInDiagramTemplateEmbedMarkdown(templateId) {
     if (!deps.getActiveBoardId()) {
       deps.showNotification('No active board selected');
       return null;
@@ -519,6 +529,10 @@ var LexeraRowStackMenu = (function () {
       deps.showNotification('Failed to create ' + spec.displayName + ' file');
       return null;
     }
+  }
+
+  async function buildBuiltInDiagramTemplateCardContent(templateId) {
+    return buildBuiltInDiagramTemplateEmbedMarkdown(templateId);
   }
 
   // ── Template insertion helpers ────────────────────────────────────────
@@ -914,9 +928,11 @@ var LexeraRowStackMenu = (function () {
     loadTemplatesOnce: loadTemplatesOnce,
     renderCreationSource: renderCreationSource,
     handleCreationAction: handleCreationAction,
+    insertTextContentForEntity: insertTextContentForEntity,
     sanitizeBuiltInDiagramFileName: sanitizeBuiltInDiagramFileName,
     createBuiltInNamedFile: createBuiltInNamedFile,
     getBuiltInDiagramTemplateSpec: getBuiltInDiagramTemplateSpec,
+    buildBuiltInDiagramTemplateEmbedMarkdown: buildBuiltInDiagramTemplateEmbedMarkdown,
     buildBuiltInDiagramTemplateCardContent: buildBuiltInDiagramTemplateCardContent,
     addRowFromContent: addRowFromContent,
     addStackFromContent: addStackFromContent,

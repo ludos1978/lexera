@@ -320,7 +320,8 @@ var LexeraDndMutations = (function () {
       boardId,
       boardData,
       target.rowIndex,
-      target.indexMode || (boardId === activeBoardId() ? 'display' : 'full')
+      target.indexMode || (boardId === activeBoardId() ? 'display' : 'full'),
+      target
     );
     if (!rowInfo || !rowInfo.row) return boardData.rows.length;
 
@@ -345,7 +346,8 @@ var LexeraDndMutations = (function () {
       boardId,
       boardData,
       target.rowIndex,
-      target.indexMode || (boardId === activeBoardId() ? 'display' : 'full')
+      target.indexMode || (boardId === activeBoardId() ? 'display' : 'full'),
+      target
     );
     if (!rowInfo || !rowInfo.row) return null;
 
@@ -401,7 +403,7 @@ var LexeraDndMutations = (function () {
     var indexMode = descriptor.indexMode || (boardId === activeBoardId() ? 'display' : 'full');
 
     if (typeof descriptor.rowIndex === 'number' && typeof descriptor.stackIndex === 'number') {
-      var stackInfo = _deps.resolveStackForMutation(boardId, boardData, descriptor.rowIndex, descriptor.stackIndex, indexMode);
+      var stackInfo = _deps.resolveStackForMutation(boardId, boardData, descriptor.rowIndex, descriptor.stackIndex, indexMode, descriptor);
       if (!stackInfo || !stackInfo.stack) return null;
       if (!stackInfo.stack.columns) stackInfo.stack.columns = [];
       var preferredColumn = resolvePreferredCardColumnRefInStack(stackInfo.stack, true);
@@ -416,7 +418,7 @@ var LexeraDndMutations = (function () {
     }
 
     if (typeof descriptor.rowIndex === 'number') {
-      var rowInfo = _deps.resolveRowForMutation(boardId, boardData, descriptor.rowIndex, indexMode);
+      var rowInfo = _deps.resolveRowForMutation(boardId, boardData, descriptor.rowIndex, indexMode, descriptor);
       if (!rowInfo || !rowInfo.row) return null;
       if (!rowInfo.row.stacks) rowInfo.row.stacks = [];
       for (var i = 0; i < rowInfo.row.stacks.length; i++) {

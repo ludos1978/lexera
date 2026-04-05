@@ -3002,6 +3002,16 @@ li.tag-line-styled {
   padding: var(--board-inner-padding);
 }
 
+.columns-container.new-format:has(> .board-row) > .board-level-empty-rows {
+  display: none;
+}
+
+.board-row-content:has(> .board-stack) > .board-level-empty-stacks,
+.board-row-content:has(> .canvas-scene > .board-stack) > .board-level-empty-stacks,
+.board-stack-content:has(> .column) > .board-level-empty-columns {
+  display: none;
+}
+
 .add-entity-btn {
   background: var(--btn-bg);
   border: 1px dashed var(--border);
@@ -4886,6 +4896,10 @@ img[data-lazy-src] {
   padding: 4px;
   border-top: 1px solid var(--border);
   background: var(--surface-footer-bg);
+}
+
+.column:has(> .column-cards > .card) > .column-footer:not(:has(.add-card-input)) {
+  display: none;
 }
 
 .add-card-btn {

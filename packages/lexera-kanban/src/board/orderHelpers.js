@@ -821,6 +821,22 @@ var LexeraOrderHelpers = (function () {
         if (!c) return false;
         var el = null;
         if (t.cardId) el = c.querySelector('.card[data-card-id="' + t.cardId + '"]');
+        if (!el && t.columnId) el = c.querySelector('.column[data-column-id="' + t.columnId + '"]');
+        if (!el && t.stackId) el = c.querySelector('.board-stack[data-stack-id="' + t.stackId + '"]');
+        if (!el && t.rowId) el = c.querySelector('.board-row[data-row-id="' + t.rowId + '"]');
+        if (!el && typeof t.rowIndex === 'number' && typeof t.stackIndex === 'number' && typeof t.colLocalIndex === 'number') {
+          el = c.querySelector(
+            '.column[data-row-index="' + t.rowIndex + '"][data-stack-index="' + t.stackIndex + '"][data-col-local-index="' + t.colLocalIndex + '"]'
+          );
+        }
+        if (!el && typeof t.rowIndex === 'number' && typeof t.stackIndex === 'number') {
+          el = c.querySelector(
+            '.board-stack[data-row-index="' + t.rowIndex + '"][data-stack-index="' + t.stackIndex + '"]'
+          );
+        }
+        if (!el && typeof t.rowIndex === 'number') {
+          el = c.querySelector('.board-row[data-row-index="' + t.rowIndex + '"]');
+        }
         if (!el && t.brokenSrc) {
           var broken = c.querySelector('[data-file-path="' + t.brokenSrc + '"]') ||
                        c.querySelector('[data-include-path="' + t.brokenSrc + '"]');
