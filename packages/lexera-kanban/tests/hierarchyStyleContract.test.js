@@ -30,6 +30,32 @@ describe('hierarchy style contract', () => {
     expect(appCss).toMatch(/\.dashboard-group-header,\s*\.workspace-section-header/);
   });
 
+  it('uses one quiet typography and accent-line state model across hierarchy surfaces', () => {
+    expect(appCss).toContain('--app-control-font-size: var(--font-size-base);');
+    expect(appCss).toContain('--app-control-font-weight: 400;');
+    expect(appCss).toContain('--app-font-color: var(--text-primary);');
+    expect(appCss).toContain('--app-font-muted-color: var(--text-secondary);');
+    expect(appCss).toContain('--hierarchy-font-size: var(--app-control-font-size);');
+    expect(appCss).toContain('--hierarchy-font-weight: var(--app-control-font-weight);');
+    expect(appCss).toContain('--hierarchy-hover-bg: transparent;');
+    expect(appCss).toContain('--hierarchy-active-bg: transparent;');
+    expect(appCss).toMatch(/\.tree-node\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
+    expect(appCss).toMatch(/\.dashboard-group-header,\s*\.workspace-section-header\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
+    expect(appCss).toMatch(/\.dashboard-item\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
+    expect(appCss).toMatch(/\.tree-node:hover\s*\{[\s\S]*background:\s*var\(--hierarchy-hover-bg\)/);
+    expect(appCss).toMatch(/\.dashboard-item\.pinned-active\s*\{[\s\S]*background:\s*var\(--hierarchy-active-bg\)[\s\S]*box-shadow:\s*inset 2px 0 0 var\(--hierarchy-active-accent\)/);
+    expect(appCss).toMatch(/\.board-item\.active\s*\{[\s\S]*background:\s*var\(--hierarchy-active-bg\)[\s\S]*box-shadow:\s*inset 2px 0 0 var\(--hierarchy-active-accent\)/);
+  });
+
+  it('keeps burger menu buttons on one shared transparent menu-button style', () => {
+    expect(appCss).toContain('.tree-menu-btn,');
+    expect(appCss).toContain('.wiki-menu-btn,');
+    expect(appCss).toMatch(/\.column-menu-btn,[\s\S]*\.burger-menu-btn\s*\{[\s\S]*border-color:\s*var\(--app-menu-border\)[\s\S]*background:\s*var\(--app-menu-bg\)[\s\S]*color:\s*var\(--app-menu-fg\)/);
+    expect(appCss).toMatch(/\.column-menu-btn:hover,[\s\S]*\.burger-menu-btn:focus-visible\s*\{[\s\S]*border-color:\s*var\(--app-menu-border-hover\)[\s\S]*background:\s*var\(--app-menu-bg-hover\)[\s\S]*color:\s*var\(--app-menu-fg-hover\)/);
+    expect(appCss).toMatch(/\.board-action-btn\s*\{[\s\S]*font-size:\s*var\(--app-control-font-size\)[\s\S]*font-weight:\s*var\(--app-control-font-weight\)/);
+    expect(appCss).toMatch(/\.sidebar-btn\s*\{[\s\S]*font-size:\s*var\(--app-control-font-size\)[\s\S]*font-weight:\s*var\(--app-control-font-weight\)/);
+  });
+
   it('keeps compact root flattening without flattening child depth', () => {
     expect(treeViewSource).toContain("var compactRootFlatten = options && options.variant === 'compact' && level === 1;");
     expect(treeViewSource).toContain("var childIndent = compactRootFlatten ? [] : parentLastFlags.concat([isLast]);");

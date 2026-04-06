@@ -1258,7 +1258,8 @@ var LexeraOrderHelpers = (function () {
   function setDashboardScope(scope) {
     if (!dashboardState) return;
     dashboardState.scope = normalizeDashboardScope(scope);
-    if (_callDep('getElDashboardScopeSelect')) _callDep('getElDashboardScopeSelect').value = dashboardState.scope;
+    var scopeEl = _callDep('getElDashboardScopeSelect');
+    if (scopeEl) scopeEl.checked = dashboardState.scope === 'all';
     persistDashboardPrefs();
     scheduleMirroredDashboardSync();
   }
@@ -1421,7 +1422,7 @@ var LexeraOrderHelpers = (function () {
       var scopeEl = e.target.closest('.lexera-shared-dashboard-scope');
       var canonicalScope = _callDep('getElDashboardScopeSelect');
       if (!scopeEl || !canonicalScope) return;
-      canonicalScope.value = scopeEl.value;
+      canonicalScope.checked = scopeEl.checked;
       canonicalScope.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
@@ -1529,7 +1530,7 @@ var LexeraOrderHelpers = (function () {
       var searchEl = rootEl.querySelector('.lexera-shared-dashboard-search');
       var scopeEl = rootEl.querySelector('.lexera-shared-dashboard-scope');
       if (searchEl && dashboardState) searchEl.value = dashboardState.query || '';
-      if (scopeEl && dashboardState) scopeEl.value = dashboardState.scope || 'active';
+      if (scopeEl && dashboardState) scopeEl.checked = (dashboardState.scope || 'active') === 'all';
       for (var li = 0; li < DASHBOARD_MIRROR_LISTS.length; li++) {
         var binding = DASHBOARD_MIRROR_LISTS[li];
         var localList = rootEl.querySelector(binding.selector);
@@ -2876,7 +2877,7 @@ var LexeraOrderHelpers = (function () {
     }
 
     if (_callDep('getElDashboardSearchInput') && dashboardState) _callDep('getElDashboardSearchInput').value = dashboardState.query || '';
-    if (_callDep('getElDashboardScopeSelect') && dashboardState) _callDep('getElDashboardScopeSelect').value = dashboardState.scope;
+    if (_callDep('getElDashboardScopeSelect') && dashboardState) _callDep('getElDashboardScopeSelect').checked = dashboardState.scope === 'all';
 
     if (_callDep('getElDashboardSearchInput')) {
       _callDep('getElDashboardSearchInput').addEventListener('input', function () {
@@ -2908,7 +2909,7 @@ var LexeraOrderHelpers = (function () {
 
     if (_callDep('getElDashboardScopeSelect')) {
       _callDep('getElDashboardScopeSelect').addEventListener('change', function () {
-        setDashboardScope(_callDep('getElDashboardScopeSelect').value);
+        setDashboardScope(_callDep('getElDashboardScopeSelect').checked ? 'all' : 'active');
         refreshDashboardData({ deferRender: true });
       });
     }

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lexera Kanban</title>
+  <link rel="stylesheet" href="fonts.css">
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="hierarchical.css">
   <link rel="stylesheet" href="app.css">
@@ -36,15 +37,10 @@
         <div class="sidebar-dashboard-controls">
           <div class="dashboard-query-row">
             <input id="dashboard-search-input" class="dashboard-search-input" type="text" placeholder="Search board content...">
-            <button id="btn-dashboard-search" class="sidebar-btn dashboard-search-btn" type="button" title="Run dashboard search">&#8981;</button>
           </div>
           <div class="dashboard-filter-row">
-            <div class="workspace-select-wrap dashboard-select-wrap">
-              <select id="dashboard-scope-select" class="dashboard-select" title="Search scope">
-                <option value="active">Active Board</option>
-                <option value="all">All Boards</option>
-              </select>
-            </div>
+            <button id="btn-dashboard-search" class="sidebar-btn dashboard-search-btn" type="button" title="Run dashboard search">&#8981;</button>
+            <label class="dashboard-scope-label" title="Search all boards instead of only the active board"><input id="dashboard-scope-select" class="dashboard-scope-checkbox" type="checkbox" title="Search all boards">All Boards</label>
             <button id="btn-dashboard-pin" class="board-action-btn" type="button" title="Pin current dashboard query">Pin</button>
           </div>
         </div>

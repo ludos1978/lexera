@@ -48,7 +48,7 @@
   gap: var(--app-space-1);
   margin-left: auto;
   flex-shrink: 0;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   color: var(--text-secondary);
 }
 
@@ -104,7 +104,7 @@
 
 /* Empty state */
 .hierarchical-empty {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   color: var(--text-muted);
   padding: var(--app-space-2) var(--app-space-3);
 }
@@ -113,5 +113,5 @@
 .hierarchical-item.compact {
   padding: var(--app-space-1) var(--app-space-2);
   min-height: auto;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
 }

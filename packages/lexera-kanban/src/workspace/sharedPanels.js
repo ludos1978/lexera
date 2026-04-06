@@ -51,15 +51,10 @@
       '<div class="sidebar-dashboard-controls">' +
         '<div class="dashboard-query-row">' +
           '<input class="dashboard-search-input lexera-shared-dashboard-search" type="text" placeholder="Search board content...">' +
-          '<button class="sidebar-btn dashboard-search-btn lexera-shared-dashboard-search-btn" type="button" title="Run dashboard search">&#8981;</button>' +
         '</div>' +
         '<div class="dashboard-filter-row">' +
-          '<div class="workspace-select-wrap dashboard-select-wrap">' +
-            '<select class="dashboard-select lexera-shared-dashboard-scope" title="Search scope">' +
-              '<option value="active">Active Board</option>' +
-              '<option value="all">All Boards</option>' +
-            '</select>' +
-          '</div>' +
+          '<button class="sidebar-btn dashboard-search-btn lexera-shared-dashboard-search-btn" type="button" title="Run dashboard search">&#8981;</button>' +
+          '<label class="dashboard-scope-label" title="Search all boards instead of only the active board"><input class="dashboard-scope-checkbox lexera-shared-dashboard-scope" type="checkbox" title="Search all boards">All Boards</label>' +
           '<button class="board-action-btn lexera-shared-dashboard-pin" type="button" title="Pin current dashboard query">Pin</button>' +
         '</div>' +
       '</div>' +

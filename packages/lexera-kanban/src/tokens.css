@@ -90,8 +90,9 @@
   --font-size-lg:   calc(15px * var(--ui-scale));  /* panel titles, board header */
   --font-size-xl:   calc(18px * var(--ui-scale));  /* large headings (rare) */
 
-  --font-ui:   'Poppins', 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --font-ui:    'Poppins', 'Segoe UI', system-ui, sans-serif;
+  --font-board: var(--font-ui);  /* kanban/canvas content — overridable per theme or per board via fontFamily setting */
+  --font-mono:  'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 
   /* ── Application Spacing ────────────────────────────────────── */
   --app-space-1: calc(2px  * var(--ui-scale));  /* tight gaps, dividers */

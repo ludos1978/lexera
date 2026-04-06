@@ -1331,6 +1331,13 @@ var LexeraBoardList = (function () {
         return;
       }
       var mirrorNode = e.target.closest('.tree-node[data-board-id]');
+      if (!mirrorNode) {
+        var mirrorBoardRow = e.target.closest('.board-item.tree-board[data-board-id]');
+        if (mirrorBoardRow && !mirrorBoardRow.classList.contains('remote-board')) {
+          if (!e.target.closest('.board-item-title')) return;
+          mirrorNode = mirrorBoardRow;
+        }
+      }
       if (!mirrorNode) return;
       var boardId = String(mirrorNode.getAttribute('data-board-id') || '').trim();
       if (!boardId) return;
@@ -1635,7 +1642,7 @@ var LexeraBoardList = (function () {
 
     // Tree sub-list
     var tree = document.createElement('div');
-    tree.className = 'board-item-tree tree-children' + (isExpanded ? ' expanded' : '');
+    tree.className = 'board-item-tree tree-children' + (isExpanded ? ' expanded' : '') + (isWorkspaceChild ? ' board-item-tree-workspace-child' : '');
     tree.setAttribute('data-tree-depth', '1');
     tree.setAttribute('role', 'tree');
 
@@ -1684,6 +1691,10 @@ var LexeraBoardList = (function () {
         wrapper.setAttribute('data-workspace-child', 'true');
       } else {
         wrapper.removeAttribute('data-workspace-child');
+      }
+      var treeEl = wrapper.querySelector('.board-item-tree');
+      if (treeEl) {
+        treeEl.classList.toggle('board-item-tree-workspace-child', !!isWorkspaceChild);
       }
     }
 
@@ -1745,7 +1756,9 @@ var LexeraBoardList = (function () {
     var stackId = String(node.getAttribute('data-stack-id') || '').trim();
     var columnId = String(node.getAttribute('data-column-id') || '').trim();
     var cardId = String(node.getAttribute('data-card-id') || '').trim();
-    if (node.classList.contains('tree-card')) {
+    if (node.classList.contains('tree-board') && !node.classList.contains('remote-board')) {
+      scope = 'board';
+    } else if (node.classList.contains('tree-card')) {
       scope = 'card';
       ctx.colIndex = isNaN(colIdx) ? -1 : colIdx;
       ctx.cardIndex = isNaN(cardIdx) ? 0 : cardIdx;
@@ -1986,6 +1999,26 @@ var LexeraBoardList = (function () {
     var labelEl = node.querySelector('.tree-label');
     var initialDisplayValue = String(labelEl ? labelEl.textContent || '' : '');
 
+    if (result.scope === 'board') {
+      var boardTitle = boardData && boardData.title != null ? String(boardData.title) : initialDisplayValue;
+      return {
+        scope: 'board',
+        initialValue: boardTitle,
+        initialDisplayValue: initialDisplayValue,
+        targets: [{ type: 'board' }, { type: 'sidebar' }],
+        renderLabel: function (targetLabelEl, nextDisplayValue) {
+          targetLabelEl.textContent = '';
+          var titleTextEl = document.createElement('span');
+          titleTextEl.className = 'board-item-title-text';
+          titleTextEl.textContent = nextDisplayValue;
+          targetLabelEl.appendChild(titleTextEl);
+        },
+        apply: function (nextValue) {
+          boardData.title = nextValue;
+        }
+      };
+    }
+
     if (result.scope === 'row') {
       var rowRef = _findBoardRowRef(boardData, result.ctx);
       if (!rowRef || !rowRef.row) return null;
@@ -2112,6 +2145,7 @@ var LexeraBoardList = (function () {
         inputClassName: spec.inputClassName || 'column-rename-input tree-inline-rename-input',
         normalizeValue: spec.normalizeValue,
         getDisplayValue: spec.getDisplayValue,
+        renderLabel: spec.renderLabel,
         onStart: spec.onStart,
         onCommit: function (nextValue, ctx) {
           try {
@@ -2465,6 +2499,19 @@ var LexeraBoardList = (function () {
           } else if (action === 'reveal' && boardFilePath) {
             _callDep('showInFinder', boardFilePath);
           }
+        });
+      });
+      boardRow.addEventListener('dblclick', function (e) {
+        if (!e.target.closest('.board-item-title') ||
+            e.target.closest('.board-item-toggle') ||
+            e.target.closest('.board-item-remove') ||
+            e.target.closest('.tree-grip')) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        beginHierarchyNodeInlineEdit(boardRow, boardId).catch(function (err) {
+          logFrontendIssue('warn', 'sidebar.board-inline-edit', 'Failed to start board inline edit', err);
         });
       });
       // Board DnD is handled by the pointer-based drag system (mousedown on getElBoardList())

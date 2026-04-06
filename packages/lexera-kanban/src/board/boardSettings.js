@@ -25,15 +25,24 @@ var LexeraBoardSettings = (function () {
 
   function normalizeBoardFontSizeValue(rawValue) {
     var source = String(rawValue || '').trim().toLowerCase();
+    if (source.indexOf('_') !== -1 && /x$/.test(source)) {
+      source = source.replace(/_/g, '.');
+    }
     if (!source || source === 'normal' || source === '1x') return '13px';
     if (source === 'small' || source === '0.75x') return '9.75px';
     if (source === 'large' || source === '1.25x') return '16.25px';
     if (source === '0.5x') return '6.5px';
     if (source === '1.5x') return '19.5px';
     if (source === '2x') return '26px';
+    if (/^\d+(?:\.\d+)?x$/.test(source)) {
+      var multiplier = parseFloat(source.slice(0, -1));
+      if (isFinite(multiplier) && multiplier > 0) {
+        var scaledPx = Math.round(multiplier * 13 * 1000) / 1000;
+        return String(scaledPx).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1') + 'px';
+      }
+    }
     if (/^\d+(?:\.\d+)?px$/.test(source)) return source;
-    var numeric = parseFloat(source);
-    if (isFinite(numeric) && numeric > 0) return numeric + 'px';
+    if (/^\d+(?:\.\d+)?$/.test(source)) return source + 'px';
     return '13px';
   }
 

@@ -85,7 +85,6 @@
 }
 
 .card-description-wysiwyg .wysiwyg-diagram code {
-  font-family: var(--vscode-editor-font-family);
 }
 
 .card-description-wysiwyg .ProseMirror a {

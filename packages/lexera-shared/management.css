@@ -6,6 +6,37 @@
  * All classes are prefixed with "mgmt-" to avoid conflicts with host app styles.
  */
 
+:root {
+  --mgmt-font-size: var(--font-size-base, 13px);
+  --mgmt-font-color: #fff;
+  --app-control-font-size: var(--mgmt-font-size);
+  --app-control-font-weight: 400;
+  --app-font-color: var(--mgmt-font-color);
+  --app-font-muted-color: var(--mgmt-font-color);
+  --text-primary: var(--mgmt-font-color);
+  --text-secondary: var(--mgmt-font-color);
+  --text-muted: var(--mgmt-font-color);
+  --text-bright: var(--mgmt-font-color);
+  --font-size-xs: var(--mgmt-font-size);
+  --font-size-sm: var(--mgmt-font-size);
+  --font-size-md: var(--mgmt-font-size);
+  --app-menu-fg: var(--app-font-muted-color);
+  --app-menu-fg-hover: var(--app-font-color);
+  --app-menu-bg: transparent;
+  --app-menu-bg-hover: transparent;
+  --app-menu-border: transparent;
+  --app-menu-border-hover: transparent;
+  --hierarchy-font-size: var(--font-size-base, 13px);
+  --hierarchy-font-weight: 400;
+  --hierarchy-text-color: var(--app-font-color);
+  --hierarchy-meta-color: var(--app-font-muted-color);
+  --hierarchy-hover-color: var(--hierarchy-text-color);
+  --hierarchy-hover-bg: transparent;
+  --hierarchy-active-color: var(--hierarchy-text-color);
+  --hierarchy-active-bg: transparent;
+  --hierarchy-active-accent: var(--accent, #4c7abf);
+}
+
 /* Top-level tab bar */
 .mgmt-top-tab-bar {
   display: flex;
@@ -19,7 +50,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   font-family: inherit;
   transition: color 0.12s, border-color 0.12s;
 }
@@ -43,7 +74,7 @@
 .mgmt-section:last-child { border-bottom: none; }
 
 .mgmt-section-title {
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
   margin-bottom: 8px;
 }
@@ -65,7 +96,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-primary);
 }
 
@@ -74,7 +105,7 @@
 }
 
 .mgmt-field-label {
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
   min-width: 80px;
   flex-shrink: 0;
@@ -87,7 +118,7 @@
   border-radius: 4px;
   background: var(--input-bg, var(--bg-tertiary));
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   font-family: inherit;
   outline: none;
 }
@@ -103,7 +134,7 @@
   flex: none;
   width: auto;
   padding: 3px 6px;
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
 }
 
 /* Buttons — .mgmt-btn provides its own base reset since management.css
@@ -118,7 +149,7 @@
   border-radius: 4px;
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   font-family: inherit;
   line-height: 1;
   cursor: pointer;
@@ -145,11 +176,11 @@
 }
 .mgmt-btn-small {
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
 }
 .mgmt-btn-fold {
   padding: 3px 5px;
-  font-size: 10px;
+  font-size: var(--mgmt-font-size);
   min-width: 20px;
   text-align: center;
 }
@@ -165,7 +196,7 @@
 /* Lists */
 .mgmt-list-empty {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   padding: 4px 0;
 }
 
@@ -192,10 +223,10 @@
   flex: 1;
   min-width: 0;
   padding: 3px 6px;
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
 }
 .mgmt-ws-count {
-  font-size: 10px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
   white-space: nowrap;
 }
@@ -210,7 +241,7 @@
   margin: 0 6px;
 }
 .mgmt-ws-chip {
-  font-size: 10px;
+  font-size: var(--mgmt-font-size);
   padding: 1px 5px;
   border-radius: 3px;
   background: var(--bg-tertiary);
@@ -229,11 +260,11 @@
   margin-bottom: 4px;
 }
 .mgmt-ws-assign-label {
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
 }
 .mgmt-ws-checkbox {
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -272,13 +303,13 @@
   height: auto;
   padding: 1px 5px;
   border-radius: 8px;
-  font-size: 10px;
+  font-size: var(--mgmt-font-size);
   color: #fff;
 }
 
 /* Authority badge */
 .mgmt-board-authority {
-  font-size: 10px;
+  font-size: var(--mgmt-font-size);
   padding: 1px 5px;
   border-radius: 3px;
   white-space: nowrap;
@@ -295,7 +326,7 @@
 }
 
 .mgmt-board-name {
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-primary);
   flex: 1;
   min-width: 0;
@@ -326,7 +357,7 @@
   background: none;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--mgmt-font-size);
   padding: 0;
   flex-shrink: 0;
   opacity: 0;
@@ -356,7 +387,7 @@
 }
 .mgmt-detail-tab {
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
   cursor: pointer;
   border: none;
@@ -390,7 +421,7 @@
 }
 .mgmt-settings-grid label,
 .mgmt-sync-grid label {
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -406,7 +437,7 @@
   border-radius: 3px;
   background: var(--input-bg, var(--bg-tertiary));
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   font-family: inherit;
   outline: none;
 }
@@ -425,12 +456,12 @@
 
 .mgmt-copy {
   margin: 0 0 8px;
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
 }
 
 .mgmt-subsection-title {
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
   margin: 0;
 }
@@ -455,7 +486,7 @@
 .mgmt-subsection-chevron {
   width: 12px;
   text-align: center;
-  font-size: 10px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
   flex-shrink: 0;
 }
@@ -468,7 +499,7 @@
 
 /* Drop zone for adding boards */
 .mgmt-drop-hint {
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-tertiary, var(--text-secondary));
   text-align: center;
   padding: 4px 0;
@@ -492,7 +523,7 @@
   border-radius: 50%;
   border: 1px solid var(--text-secondary);
   color: var(--text-secondary);
-  font-size: 9px;
+  font-size: var(--mgmt-font-size);
   cursor: help;
   flex-shrink: 0;
   margin-left: 2px;
@@ -546,8 +577,43 @@
  * without TreeView. */
 .mgmt-config-tree .tree-node.selected,
 .mgmt-config-tree .mgmt-config-tree-node.selected {
-  background: var(--bg-active, var(--bg-tertiary));
-  border-left: 2px solid var(--accent);
+  background: var(--hierarchy-active-bg, transparent);
+  color: var(--hierarchy-active-color, var(--text-primary, #2f2f2f));
+  box-shadow: inset 2px 0 0 var(--hierarchy-active-accent, var(--accent, #4c7abf));
+}
+.mgmt-config-tree .tree-menu-btn,
+.mgmt-config-tree .burger-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--app-menu-border, transparent);
+  border-radius: 3px;
+  background: var(--app-menu-bg, transparent);
+  color: var(--app-menu-fg, var(--text-secondary, #999));
+  font-size: var(--mgmt-font-size);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.mgmt-config-tree .tree-node:hover .tree-menu-btn,
+.mgmt-config-tree .tree-node:hover .burger-menu-btn,
+.mgmt-config-tree .tree-menu-btn:focus-visible,
+.mgmt-config-tree .burger-menu-btn:focus-visible {
+  opacity: 1;
+}
+.mgmt-config-tree .tree-menu-btn:hover,
+.mgmt-config-tree .burger-menu-btn:hover,
+.mgmt-config-tree .tree-menu-btn:focus-visible,
+.mgmt-config-tree .burger-menu-btn:focus-visible {
+  color: var(--app-menu-fg-hover, var(--text-primary, #fff));
+  border-color: var(--app-menu-border-hover, transparent);
+  background: var(--app-menu-bg-hover, transparent);
+  outline: none;
 }
 .mgmt-config-tree {
   --tree-indent-step: var(--tree-indent-size, calc(14px * var(--ui-scale, 1)));
@@ -565,28 +631,30 @@
   padding: 2px 6px;
   cursor: pointer;
   border-radius: 3px;
-  font-size: var(--font-size-md, 12px);
-  color: var(--tree-fg, var(--text-primary, #e0e0e0));
+  font-size: var(--mgmt-font-size);
+  font-weight: var(--hierarchy-font-weight, 400);
+  color: var(--hierarchy-text-color, var(--text-primary, #e0e0e0));
   margin: 0 2px;
 }
 .mgmt-config-tree-node:hover {
-  color: var(--tree-fg-hover, var(--text-bright, #fff));
-  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+  color: var(--hierarchy-hover-color, var(--text-bright, #fff));
+  background: var(--hierarchy-hover-bg, transparent);
 }
 .mgmt-config-tree-node.selected {
-  background: var(--bg-tertiary, rgba(255, 255, 255, 0.08));
-  border-left: 2px solid var(--accent, #4c7abf);
+  background: var(--hierarchy-active-bg, transparent);
+  color: var(--hierarchy-active-color, var(--text-primary, #fff));
+  box-shadow: inset 2px 0 0 var(--hierarchy-active-accent, var(--accent, #4c7abf));
 }
 .mgmt-config-tree-child {
   padding-left: 20px;
 }
 .mgmt-config-tree-toggle {
-  font-size: var(--tree-toggle-font-size, 9px);
+  font-size: var(--mgmt-font-size);
   flex-shrink: 0;
   width: var(--tree-toggle-col, 14px);
   min-width: var(--tree-toggle-col, 14px);
   text-align: center;
-  color: var(--tree-toggle-fg, var(--text-secondary, #999));
+  color: var(--hierarchy-meta-color, var(--text-secondary, #999));
 }
 .mgmt-config-tree-label {
   flex: 1;
@@ -596,12 +664,12 @@
   white-space: nowrap;
 }
 .mgmt-config-tree-badge {
-  font-size: var(--font-size-sm, 11px);
-  color: var(--text-secondary, #999);
+  font-size: var(--mgmt-font-size);
+  color: var(--hierarchy-meta-color, var(--text-secondary, #999));
   flex-shrink: 0;
 }
 .mgmt-config-tree-default {
-  font-size: var(--font-size-sm, 11px);
+  font-size: var(--mgmt-font-size);
   color: var(--accent, #4c7abf);
   flex-shrink: 0;
 }
@@ -616,8 +684,9 @@
   gap: 3px;
   padding: 2px 6px;
   margin: 0 2px;
-  font-size: var(--font-size-md, 12px);
-  color: var(--text-secondary, #999);
+  font-size: var(--mgmt-font-size);
+  font-weight: var(--hierarchy-font-weight, 400);
+  color: var(--hierarchy-meta-color, var(--text-secondary, #999));
 }
 .mgmt-config-tree-add {
   padding: 4px 8px;
@@ -630,7 +699,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 4px 0;
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   border-bottom: 1px solid var(--border);
 }
 .mgmt-detail-item:last-child { border-bottom: none; }
@@ -648,8 +717,7 @@
 }
 .mgmt-token-field input {
   flex: 1;
-  font-family: monospace;
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   padding: 3px 6px;
   border: 1px solid var(--input-border, var(--border));
   border-radius: 3px;
@@ -659,7 +727,7 @@
 
 .mgmt-member-role {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
 }
 
 /* Connection and peer rows */
@@ -680,15 +748,14 @@
   min-width: 0;
 }
 .mgmt-connection-url {
-  font-family: monospace;
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .mgmt-connection-board {
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
 }
 .mgmt-connection-status {
@@ -701,47 +768,43 @@
 .mgmt-connection-status.ok { background: var(--success); }
 .mgmt-connection-status.err { background: var(--error); }
 .mgmt-peer-name {
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .mgmt-peer-url {
-  font-family: monospace;
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
 }
 
 /* Status / info text */
 .mgmt-info-text {
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
   margin-top: 4px;
-  font-family: monospace;
 }
 
 .mgmt-board-title {
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-primary);
 }
 
 .mgmt-board-path {
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
-  font-family: monospace;
   word-break: break-all;
 }
 .mgmt-info-stack {
   display: grid;
   gap: 2px;
   margin-top: 6px;
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: var(--text-secondary);
-  font-family: monospace;
 }
 .mgmt-status {
-  font-size: 12px;
+  font-size: var(--mgmt-font-size);
   margin-top: 4px;
   min-height: 16px;
 }
@@ -749,7 +812,7 @@
 .mgmt-status.success { color: var(--success); }
 
 .mgmt-restart-note {
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   color: #e8a838;
   margin-top: 6px;
   padding: 4px 8px;
@@ -771,8 +834,7 @@
   border-radius: 4px;
   background: var(--bg-tertiary);
   padding: 6px 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
+  font-size: var(--mgmt-font-size);
   line-height: 1.45;
 }
 

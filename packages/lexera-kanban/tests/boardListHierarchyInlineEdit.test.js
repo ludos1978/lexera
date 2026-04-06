@@ -138,6 +138,54 @@ describe('LexeraBoardList hierarchy inline edit', () => {
     expect(treeNode.querySelector('.tree-label').textContent).toBe('Row B');
   });
 
+  it('renames board nodes inline and preserves the board title label markup', async () => {
+    const BoardList = loadBoardList();
+    const boardData = createBoardData();
+    const commitHierarchyTreeEdit = vi.fn(async () => true);
+    const pushUndo = vi.fn();
+
+    BoardList.init({
+      get activeBoardId() { return 'board-1'; },
+      getHierarchyControllerApi: () => HierarchyController,
+      getSidebarTreeApi: () => sidebarTreeApi,
+      loadBoardDataForMutation: vi.fn(async () => boardData),
+      commitHierarchyTreeEdit,
+      pushUndo,
+      stripHtmlComments: (text) => String(text || ''),
+      rebuildTitleWithPreservedComments: (nextTitle) => nextTitle,
+      reconstructColumnTitle: (nextTitle) => nextTitle,
+      extractIncludePathFromTitle: () => '',
+      addIncludeSyntaxToTitle: (title) => title,
+      removeIncludeSyntaxFromTitle: (title) => title,
+      stripLayoutTags: (title) => title,
+      showNotification: vi.fn()
+    });
+
+    const treeNode = document.createElement('div');
+    treeNode.className = 'board-item tree-node tree-board';
+    treeNode.setAttribute('data-board-id', 'board-1');
+    treeNode.innerHTML = '<span class="tree-label board-item-title"><span class="board-item-title-text">Board</span></span>';
+    document.body.appendChild(treeNode);
+
+    const handled = await BoardList.beginHierarchyNodeInlineEdit(treeNode, 'board-1');
+    expect(handled).toBe(true);
+
+    const input = treeNode.querySelector('input');
+    expect(input).toBeTruthy();
+    input.value = 'Board B';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    await flushMicrotasks();
+
+    expect(boardData.title).toBe('Board B');
+    expect(pushUndo).toHaveBeenCalledTimes(1);
+    expect(commitHierarchyTreeEdit).toHaveBeenCalledWith('board-1', boardData, {
+      targets: [{ type: 'board' }, { type: 'sidebar' }]
+    });
+    expect(treeNode.querySelector('.board-item-title-text')).toBeTruthy();
+    expect(treeNode.querySelector('.board-item-title-text').textContent).toBe('Board B');
+  });
+
   it('edits card nodes inline with a multiline editor and targeted card refresh', async () => {
     const BoardList = loadBoardList();
     const boardData = createCardBoardData([{
@@ -293,5 +341,58 @@ describe('LexeraBoardList hierarchy inline edit', () => {
     await flushMicrotasks();
 
     expect(mirrorRoot.querySelector('textarea')).toBeTruthy();
+  });
+
+  it('starts inline board title editing inside mirrored workspace views on double click', async () => {
+    const BoardList = loadBoardList();
+    const boardData = createBoardData();
+    const commitHierarchyTreeEdit = vi.fn(async () => true);
+
+    BoardList.init({
+      get activeBoardId() { return 'board-1'; },
+      getHierarchyControllerApi: () => HierarchyController,
+      getSidebarTreeApi: () => sidebarTreeApi,
+      loadBoardDataForMutation: vi.fn(async () => boardData),
+      commitHierarchyTreeEdit,
+      pushUndo: vi.fn(),
+      stripHtmlComments: (text) => String(text || ''),
+      rebuildTitleWithPreservedComments: (nextTitle) => nextTitle,
+      reconstructColumnTitle: (nextTitle) => nextTitle,
+      extractIncludePathFromTitle: () => '',
+      addIncludeSyntaxToTitle: (title) => title,
+      removeIncludeSyntaxFromTitle: (title) => title,
+      stripLayoutTags: (title) => title,
+      showNotification: vi.fn()
+    });
+
+    const mirrorRoot = document.createElement('div');
+    mirrorRoot.innerHTML = `
+      <div class="board-item-wrapper" data-board-id="board-1">
+        <div class="board-item tree-node tree-board" data-board-id="board-1">
+          <span class="tree-label board-item-title"><span class="board-item-title-text">Board</span></span>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(mirrorRoot);
+
+    BoardList.bindMirroredWorkspaceView(mirrorRoot);
+
+    const label = mirrorRoot.querySelector('.board-item-title-text');
+    label.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+
+    await flushMicrotasks();
+
+    const input = mirrorRoot.querySelector('input');
+    expect(input).toBeTruthy();
+    input.value = 'Board C';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    await flushMicrotasks();
+
+    expect(boardData.title).toBe('Board C');
+    expect(commitHierarchyTreeEdit).toHaveBeenCalledWith('board-1', boardData, {
+      targets: [{ type: 'board' }, { type: 'sidebar' }]
+    });
+    expect(mirrorRoot.querySelector('.board-item-title-text').textContent).toBe('Board C');
   });
 });

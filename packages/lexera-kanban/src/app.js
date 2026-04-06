@@ -7719,8 +7719,14 @@ var LexeraDashboard = (function () {
     if (normalizedColWidth) container.style.setProperty('--board-column-width', normalizedColWidth);
     var normalizedStackWidth = normalizeStackWidth(s.stackWidth);
     if (normalizedStackWidth) container.style.setProperty('--board-stack-width', normalizedStackWidth);
-    if (s.fontSize) container.style.setProperty('--board-font-size', s.fontSize);
-    if (s.fontFamily) container.style.setProperty('--board-font-family', s.fontFamily);
+    if (s.fontSize) {
+      var normalizedFontSize = normalizeBoardFontSizeValue(s.fontSize);
+      if (normalizedFontSize) container.style.setProperty('--board-font-size', normalizedFontSize);
+    }
+    if (s.fontFamily) {
+      var resolvedFontFamily = resolveBoardFontFamilyValue(normalizeBoardFontFamilyToken(s.fontFamily));
+      if (resolvedFontFamily) container.style.setProperty('--board-font-family', resolvedFontFamily);
+    }
     if (s.rowHeight) container.style.setProperty('--board-row-height', s.rowHeight);
     if (s.maxRowHeight) container.style.setProperty('--board-max-row-height', s.maxRowHeight + 'px');
     if (s.cardMinHeight) container.style.setProperty('--board-card-min-height', s.cardMinHeight);

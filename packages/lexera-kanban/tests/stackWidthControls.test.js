@@ -50,6 +50,13 @@ beforeAll(() => {
 });
 
 describe('stack width controls', () => {
+  it('normalizes legacy board font-size multipliers instead of collapsing them to raw px values', () => {
+    expect(BoardSettings.normalizeBoardFontSizeValue('1_0x')).toBe('13px');
+    expect(BoardSettings.normalizeBoardFontSizeValue('0_75x')).toBe('9.75px');
+    expect(BoardSettings.normalizeBoardFontSizeValue('1_25x')).toBe('16.25px');
+    expect(BoardSettings.normalizeBoardFontSizeValue('bogus')).toBe('13px');
+  });
+
   it('normalizes stack widths into the supported range', () => {
     expect(BoardSettings.normalizeStackWidth('420')).toBe('420px');
     expect(BoardSettings.normalizeStackWidth('120px')).toBe('200px');

@@ -156,16 +156,63 @@
   --tree-line-color: var(--border);
   --tree-line-width: 1px;
   --tree-indent-size: 14px;
-  --tree-fg: var(--text-secondary);
-  --tree-fg-hover: var(--text-primary);
+  --app-shell-font-size: var(--font-size-base);
+  --app-shell-font-color: #fff;
+  --app-control-font-size: var(--font-size-base);
+  --app-control-font-weight: 400;
+  --app-font-color: var(--app-shell-font-color);
+  --app-font-muted-color: var(--app-shell-font-color);
+  --app-font-strong-color: var(--app-shell-font-color);
+  --app-menu-fg: var(--app-font-muted-color);
+  --app-menu-fg-hover: var(--app-font-color);
+  --app-menu-bg: transparent;
+  --app-menu-bg-hover: transparent;
+  --app-menu-border: transparent;
+  --app-menu-border-hover: transparent;
+  --hierarchy-font-size: var(--app-control-font-size);
+  --hierarchy-font-weight: var(--app-control-font-weight);
+  --hierarchy-text-color: var(--app-font-color);
+  --hierarchy-meta-color: var(--app-font-muted-color);
+  --hierarchy-hover-color: var(--text-primary);
+  --hierarchy-hover-bg: transparent;
+  --hierarchy-active-color: var(--text-primary);
+  --hierarchy-active-bg: transparent;
+  --hierarchy-active-accent: var(--accent);
+  --tree-fg: var(--hierarchy-text-color);
+  --tree-fg-hover: var(--hierarchy-hover-color);
   --tree-guide: var(--tree-line-color);
   --tree-indent-step: var(--tree-indent-size);
   --tree-indent-guide-center: 6px;
   --tree-toggle-col: var(--tree-indent-step);
-  --tree-toggle-fg: var(--text-primary);
-  --tree-toggle-fg-hover: var(--text-bright);
+  --tree-toggle-fg: var(--hierarchy-meta-color);
+  --tree-toggle-fg-hover: var(--hierarchy-text-color);
   --hierarchy-row-min-height: calc(18px * var(--ui-scale, 1));
-  --hierarchy-header-color: var(--text-primary);
+  --hierarchy-header-color: var(--hierarchy-text-color);
+}
+
+/* Application shell typography contract:
+ * keep non-board UI on one text size and one base text color.
+ * Semantic status/tag colors can still override explicitly. */
+:where(
+  .sidebar,
+  .calendar-panel,
+  .mgmt-panel,
+  .log-panel,
+  .shell-settings-container,
+  .log-settings-container,
+  .workspace-shell,
+  .shell-tab-body,
+  .shell-settings-body
+) {
+  --app-control-font-size: var(--app-shell-font-size);
+  --hierarchy-font-size: var(--app-shell-font-size);
+  --font-size-xs: var(--app-shell-font-size);
+  --font-size-sm: var(--app-shell-font-size);
+  --font-size-md: var(--app-shell-font-size);
+  --text-primary: var(--app-shell-font-color);
+  --text-secondary: var(--app-shell-font-color);
+  --text-muted: var(--app-shell-font-color);
+  --text-bright: var(--app-shell-font-color);
 }
 
 /* Integrated light/dark appearance vars are applied by JS via the visual-theme flow. */
@@ -179,7 +226,7 @@
 
 body {
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: var(--text-primary);
   background: var(--bg-primary);
   overflow: hidden;
@@ -377,6 +424,8 @@ textarea {
 .stack-delete-btn,
 .card-menu-btn,
 .embed-menu-btn,
+.wiki-menu-btn,
+.tree-menu-btn,
 .burger-menu-btn,
 .board-item-remove {
   display: inline-flex;
@@ -412,6 +461,8 @@ textarea {
 .stack-delete-btn:hover,
 .card-menu-btn:hover,
 .embed-menu-btn:hover,
+.wiki-menu-btn:hover,
+.tree-menu-btn:hover,
 .burger-menu-btn:hover,
 .board-item-remove:hover {
   color: var(--icon-btn-fg-hover, var(--text-bright));
@@ -434,6 +485,8 @@ textarea {
 .stack-delete-btn:focus-visible,
 .card-menu-btn:focus-visible,
 .embed-menu-btn:focus-visible,
+.wiki-menu-btn:focus-visible,
+.tree-menu-btn:focus-visible,
 .burger-menu-btn:focus-visible,
 .board-item-remove:focus-visible {
   outline: 2px solid var(--accent);
@@ -454,6 +507,8 @@ textarea {
 .stack-delete-btn:active,
 .card-menu-btn:active,
 .embed-menu-btn:active,
+.wiki-menu-btn:active,
+.tree-menu-btn:active,
 .burger-menu-btn:active,
 .board-item-remove:active {
   transform: translateY(1px);
@@ -477,6 +532,8 @@ textarea {
 .stack-delete-btn svg,
 .card-menu-btn svg,
 .embed-menu-btn svg,
+.wiki-menu-btn svg,
+.tree-menu-btn svg,
 .burger-menu-btn svg,
 .board-item-remove svg,
 .dashboard-item-remove svg {
@@ -488,6 +545,40 @@ textarea {
 
 .burger-menu-btn {
   font-size: 0;
+}
+
+.column-menu-btn,
+.stack-menu-btn,
+.row-menu-btn,
+.card-menu-btn,
+.embed-menu-btn,
+.wiki-menu-btn,
+.tree-menu-btn,
+.burger-menu-btn {
+  border-color: var(--app-menu-border);
+  background: var(--app-menu-bg);
+  color: var(--app-menu-fg);
+}
+
+.column-menu-btn:hover,
+.stack-menu-btn:hover,
+.row-menu-btn:hover,
+.card-menu-btn:hover,
+.embed-menu-btn:hover,
+.wiki-menu-btn:hover,
+.tree-menu-btn:hover,
+.burger-menu-btn:hover,
+.column-menu-btn:focus-visible,
+.stack-menu-btn:focus-visible,
+.row-menu-btn:focus-visible,
+.card-menu-btn:focus-visible,
+.embed-menu-btn:focus-visible,
+.wiki-menu-btn:focus-visible,
+.tree-menu-btn:focus-visible,
+.burger-menu-btn:focus-visible {
+  border-color: var(--app-menu-border-hover);
+  background: var(--app-menu-bg-hover);
+  color: var(--app-menu-fg-hover);
 }
 
 .burger-lines {
@@ -684,7 +775,8 @@ textarea {
   min-width: 22px;
   height: 20px;
   padding: 0 5px;
-  font-size: 13px;
+  font-size: var(--app-control-font-size);
+  font-weight: var(--app-control-font-weight);
 }
 .sidebar-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(0, 122, 204, 0.14); }
 
@@ -812,10 +904,22 @@ textarea {
   padding: 0;
 }
 
-.dashboard-select {
-  flex: 1;
-  min-width: 0;
-  padding: 0 18px 0 8px;
+.dashboard-scope-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: inherit;
+  flex-shrink: 0;
+}
+.dashboard-scope-label:hover {
+  color: var(--text-primary);
+}
+.dashboard-scope-checkbox {
+  margin: 0;
+  cursor: pointer;
 }
 
 .sidebar-dashboard-body {
@@ -851,20 +955,21 @@ textarea {
   padding: 2px 6px;
   cursor: pointer;
   border-radius: 3px;
-  font-size: var(--font-size-md);
-  color: var(--tree-fg, var(--hierarchy-header-color));
+  font-size: var(--hierarchy-font-size);
+  font-weight: var(--hierarchy-font-weight);
+  color: var(--hierarchy-text-color);
   column-gap: 0;
   margin: 0 2px;
   user-select: none;
 }
 .dashboard-group-header[data-tree-structural-role="section"],
 .workspace-section-header[data-tree-structural-role="section"] {
-  color: var(--tree-fg, var(--hierarchy-header-color));
+  color: var(--hierarchy-text-color);
 }
 .dashboard-group-header:hover,
 .workspace-section-header:hover {
-  color: var(--tree-fg-hover, var(--text-bright));
-  background: var(--bg-hover);
+  color: var(--hierarchy-hover-color);
+  background: var(--hierarchy-hover-bg);
 }
 /* Dashboard/workspace section toggles match the compact hierarchy chevron. */
 .dashboard-group-toggle,
@@ -936,11 +1041,7 @@ textarea {
 
 .dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"][data-tree-structural-role="group"] > .tree-label,
 .dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"][data-tree-structural-role="group"] > .tree-meta > .tree-count {
-  color: var(--hierarchy-header-color);
-}
-
-.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"][data-tree-structural-role="item"] > .tree-label {
-  color: var(--tree-fg);
+  color: var(--hierarchy-text-color);
 }
 
 /* Standalone calendar panels */
@@ -1177,7 +1278,7 @@ textarea {
 
 /* Dashboard broken elements */
 .dashboard-broken-item {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   padding: 3px 4px;
   white-space: nowrap;
   overflow: hidden;
@@ -1210,11 +1311,11 @@ textarea {
   gap: 6px;
 }
 .dashboard-file-kind {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-md);
   color: var(--text-secondary);
 }
 .dashboard-file-status {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-md);
 }
 .dashboard-file-status-exists {
   color: var(--accent);
@@ -1226,14 +1327,14 @@ textarea {
   color: var(--text-muted);
 }
 .dashboard-file-path {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .dashboard-file-meta {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-md);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -1246,8 +1347,8 @@ textarea {
   color: var(--text-muted);
 }
 .dashboard-file-count {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  color: var(--hierarchy-meta-color);
+  font-size: var(--hierarchy-font-size);
 }
 
 /* Workspace section headers: styled to match the shared .tree-node row
@@ -1268,8 +1369,9 @@ textarea {
   grid-column: 3;
   justify-self: end;
   margin-left: var(--space-1);
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  font-size: var(--hierarchy-font-size);
+  font-weight: var(--hierarchy-font-weight);
+  color: var(--hierarchy-meta-color);
   font-variant-numeric: tabular-nums;
 }
 .workspace-section-focus {
@@ -1277,7 +1379,7 @@ textarea {
   justify-self: end;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--hierarchy-meta-color);
   font: inherit;
   line-height: 1;
   padding: 0;
@@ -1288,7 +1390,7 @@ textarea {
 }
 .workspace-section-focus:hover,
 .workspace-section-focus:focus-visible {
-  color: var(--text-primary);
+  color: var(--hierarchy-text-color);
   opacity: 1;
   outline: none;
 }
@@ -1303,12 +1405,13 @@ textarea {
   padding: 2px 6px;
   margin: 0 2px;
   border-radius: 3px;
-  font-size: var(--font-size-md);
-  color: var(--tree-fg, var(--text-primary));
+  font-size: var(--hierarchy-font-size);
+  font-weight: var(--hierarchy-font-weight);
+  color: var(--hierarchy-text-color);
 }
 .dashboard-empty {
-  color: var(--text-secondary);
-  font-size: var(--font-size-md);
+  color: var(--hierarchy-meta-color);
+  font-size: var(--hierarchy-font-size);
   padding: 2px var(--space-1);
 }
 
@@ -1332,7 +1435,7 @@ textarea {
 
 .dashboard-list.tree-view .tree-dashboard-file .tree-count,
 .dashboard-list.tree-view .tree-dashboard-broken .tree-count {
-  font-size: var(--font-size-xs);
+  font-size: var(--hierarchy-font-size);
 }
 
 .dashboard-list.tree-view .tree-dashboard-file[data-dashboard-status="exists"] .tree-count {
@@ -1357,21 +1460,23 @@ textarea {
   padding: 2px 6px;
   cursor: pointer;
   border-radius: 3px;
-  font-size: var(--font-size-md);
-  color: var(--tree-fg, var(--text-primary));
+  font-size: var(--hierarchy-font-size);
+  font-weight: var(--hierarchy-font-weight);
+  color: var(--hierarchy-text-color);
   gap: 3px;
   margin: 0 2px;
   min-width: 0;
 }
 
 .dashboard-item:hover {
-  color: var(--tree-fg-hover, var(--text-bright));
-  background: var(--bg-hover);
+  color: var(--hierarchy-hover-color);
+  background: var(--hierarchy-hover-bg);
 }
 
 .dashboard-item.pinned-active {
-  background: var(--bg-active);
-  border-left: 2px solid var(--accent);
+  background: var(--hierarchy-active-bg);
+  color: var(--hierarchy-active-color);
+  box-shadow: inset 2px 0 0 var(--hierarchy-active-accent);
 }
 
 .dashboard-item-main {
@@ -1392,8 +1497,8 @@ textarea {
 }
 
 .dashboard-item-meta {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-size: var(--hierarchy-font-size);
+  color: var(--hierarchy-meta-color);
   flex-shrink: 0;
 }
 
@@ -1425,7 +1530,7 @@ textarea {
 
 .dashboard-item-remove:hover {
   color: var(--error);
-  background: rgba(244, 71, 71, 0.14);
+  background: transparent;
   border-radius: var(--radius-sm, 3px);
 }
 
@@ -1438,8 +1543,9 @@ textarea {
  * additions are limited to the active state (accent border) and the
  * title-text truncation helper. */
 .board-item.active {
-  background: var(--bg-active);
-  border-left: 2px solid var(--accent);
+  background: var(--hierarchy-active-bg);
+  color: var(--hierarchy-active-color);
+  box-shadow: inset 2px 0 0 var(--hierarchy-active-accent);
 }
 
 .board-item-title-text {
@@ -1510,6 +1616,10 @@ textarea {
 }
 .board-item-tree.expanded { display: block; }
 
+.board-item-tree-workspace-child {
+  padding-left: var(--tree-indent-step);
+}
+
 .board-item-workspace-child > .tree-indent-root {
   width: var(--tree-indent-step);
   min-width: var(--tree-indent-step);
@@ -1532,14 +1642,15 @@ textarea {
   padding: 2px 6px;
   cursor: pointer;
   border-radius: 3px;
-  font-size: var(--font-size-md);
-  color: var(--tree-fg);
+  font-size: var(--hierarchy-font-size);
+  font-weight: var(--hierarchy-font-weight);
+  color: var(--hierarchy-text-color);
   gap: 3px;
   margin: 0 2px;
 }
 .tree-node:hover {
-  color: var(--tree-fg-hover);
-  background: var(--bg-hover);
+  color: var(--hierarchy-hover-color);
+  background: var(--hierarchy-hover-bg);
 }
 
 .tree-entry {
@@ -1772,8 +1883,9 @@ textarea {
 }
 
 .tree-count {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-size: var(--hierarchy-font-size);
+  font-weight: var(--hierarchy-font-weight);
+  color: var(--hierarchy-meta-color);
   margin-left: auto;
   flex-shrink: 0;
   white-space: nowrap;
@@ -1783,12 +1895,12 @@ textarea {
 .board-list .tree-board .tree-label,
 .tree-node[data-tree-structural-role="group"] > .tree-label,
 .tree-node[data-tree-structural-role="group"] > .tree-meta > .tree-count {
-  color: var(--hierarchy-header-color);
+  color: var(--hierarchy-text-color);
 }
 
 /* Structural item rows stay quieter than container/group rows. */
 .tree-node[data-tree-structural-role="item"] > .tree-label {
-  color: var(--tree-fg);
+  color: var(--hierarchy-text-color);
 }
 
 .tree-node[data-tree-structural-role="item"] > .tree-meta > .tree-count {
@@ -1798,19 +1910,19 @@ textarea {
 
 /* Tree drag grip */
 .tree-grip {
-  font-size: var(--font-size-md);
+  font-size: var(--hierarchy-font-size);
   width: var(--hierarchy-btn-size);
   height: var(--hierarchy-btn-size);
   flex-shrink: 0;
-  color: var(--icon-btn-fg, var(--btn-fg));
+  color: var(--hierarchy-meta-color);
   opacity: 0;
   cursor: grab;
   transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, opacity 0.14s ease;
   text-align: center;
   line-height: 1;
-  border: 1px solid var(--icon-btn-border, var(--border));
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--icon-btn-bg, var(--btn-bg));
+  background: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1818,9 +1930,9 @@ textarea {
 .tree-node:hover .tree-grip { opacity: 1; }
 .tree-grip:hover {
   opacity: 1;
-  color: var(--icon-btn-fg-hover, var(--text-bright));
-  border-color: var(--icon-btn-border-hover, var(--text-secondary));
-  background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
+  color: var(--hierarchy-text-color);
+  border-color: transparent;
+  background: transparent;
 }
 .tree-node.dragging { opacity: 0.4; }
 .tree-node.dragging .tree-grip { cursor: grabbing; transform: translateY(1px); }
@@ -1838,7 +1950,7 @@ textarea {
 }
 
 .tree-view-compact .tree-node[data-tree-root="true"] > .tree-label {
-  color: var(--hierarchy-header-color);
+  color: var(--hierarchy-text-color);
 }
 
 .board-item-remove.hidden {
@@ -1888,12 +2000,8 @@ textarea {
   --sidebar-tree-action-col: 0px;
 }
 .board-list .tree-menu-btn {
-  font-size: 14px;
   line-height: 1;
   padding: 0;
-  border: none;
-  background: none;
-  color: var(--text-secondary);
   cursor: pointer;
   opacity: 0;
   width: var(--icon-button-size, 20px);
@@ -1909,8 +2017,6 @@ textarea {
 }
 .board-list .tree-menu-btn:hover {
   opacity: 1;
-  color: var(--text-bright);
-  background: var(--bg-hover);
 }
 
 .board-list .tree-grip.entity-drag-icon {
@@ -1922,7 +2028,7 @@ textarea {
 .board-list .tree-node:hover .tree-grip.entity-drag-icon,
 .board-list .tree-grip.entity-drag-icon:focus-visible {
   opacity: 0.88;
-  color: var(--text-primary);
+  color: var(--hierarchy-text-color);
 }
 
 @container sidebar-tree (max-width: 270px) {
@@ -1955,22 +2061,25 @@ textarea {
 
 /* Sync highlight */
 .tree-node.sync-highlight {
-  background: var(--bg-active);
-  color: var(--text-primary);
+  background: var(--hierarchy-active-bg);
+  color: var(--hierarchy-active-color);
+  box-shadow: inset 2px 0 0 var(--hierarchy-active-accent);
 }
 
 /* Drop target on tree columns (card DnD to sidebar) */
 .tree-column.drop-target {
-  background: var(--bg-active);
-  color: var(--text-primary);
+  background: var(--hierarchy-active-bg);
+  color: var(--hierarchy-active-color);
+  box-shadow: inset 2px 0 0 var(--hierarchy-active-accent);
   outline: 1px solid var(--accent);
 }
 
 .tree-stack.drop-target,
 .tree-row.drop-target,
 .board-item.drop-target {
-  background: var(--bg-active);
-  color: var(--text-primary);
+  background: var(--hierarchy-active-bg);
+  color: var(--hierarchy-active-color);
+  box-shadow: inset 2px 0 0 var(--hierarchy-active-accent);
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
@@ -2143,7 +2252,9 @@ body.embedded-mode .columns-container {
   gap: calc(4px * var(--ui-scale));
   min-height: var(--btn-square-size);
   padding: 0 calc(7px * var(--ui-scale));
-  font-size: calc(10.5px * var(--ui-scale));
+  font-size: var(--app-control-font-size);
+  font-weight: var(--app-control-font-weight);
+  color: var(--app-font-color);
 }
 
 .board-action-btn:hover {
@@ -2317,9 +2428,14 @@ body.show-special-characters .card-content .ws-nl {
   padding: 0;
   gap: var(--board-stack-gap);
   align-items: flex-start;
-  font-size: var(--board-font-size, 13px);
-  font-family: var(--board-font-family, inherit);
+  font-size: var(--board-font-size, var(--font-size-base));
+  font-family: var(--board-font-family, var(--font-board, inherit));
   user-select: none;
+}
+/* Force the board font on ALL elements inside the board, overriding
+ * browser defaults that set monospace on code/pre/kbd/samp. */
+.columns-container * {
+  font-family: inherit;
   -webkit-user-select: none;
   background: var(--board-bg, var(--bg-primary));
   min-width: 0;
@@ -3129,47 +3245,46 @@ li.tag-line-styled {
   --board-inner-padding: calc(14px * var(--ui-scale));
 }
 
-/* Kanban mode: unified font size — all board text uses the base font size.
- * Canvas mode is excluded (it has its own zoom-based sizing).
- * This block overrides every element that sets a different font-size
- * inside the board content area so kanban text is uniform. */
-.columns-container:not(.layout-canvas) .board-row-title,
-.columns-container:not(.layout-canvas) .board-row-count,
-.columns-container:not(.layout-canvas) .board-row-footer-summary,
-.columns-container:not(.layout-canvas) .board-stack-title,
-.columns-container:not(.layout-canvas) .board-stack-count,
-.columns-container:not(.layout-canvas) .board-stack-footer-summary,
-.columns-container:not(.layout-canvas) .column-header,
-.columns-container:not(.layout-canvas) .column-count,
-.columns-container:not(.layout-canvas) .column-include-badge,
-.columns-container:not(.layout-canvas) .column-rename-input,
-.columns-container:not(.layout-canvas) .card,
-.columns-container:not(.layout-canvas) .card-title-display,
-.columns-container:not(.layout-canvas) .card h1,
-.columns-container:not(.layout-canvas) .card h2,
-.columns-container:not(.layout-canvas) .card h3,
-.columns-container:not(.layout-canvas) .card code,
-.columns-container:not(.layout-canvas) .card .code-block,
-.columns-container:not(.layout-canvas) .card .md-table,
-.columns-container:not(.layout-canvas) .card .media-caption,
-.columns-container:not(.layout-canvas) .card .tag,
-.columns-container:not(.layout-canvas) .card .temporal-tag,
-.columns-container:not(.layout-canvas) .card .kanban-temporal-tag,
-.columns-container:not(.layout-canvas) .card-title-display .temporal-tag,
-.columns-container:not(.layout-canvas) .card-title-display .kanban-temporal-tag,
-.columns-container:not(.layout-canvas) .column-title .temporal-tag,
-.columns-container:not(.layout-canvas) .column-title .kanban-temporal-tag,
-.columns-container:not(.layout-canvas) .card-due-badge,
-.columns-container:not(.layout-canvas) .card-progress-badge,
-.columns-container:not(.layout-canvas) .card-menu-label,
-.columns-container:not(.layout-canvas) .card-drag-ghost,
-.columns-container:not(.layout-canvas) .speaker-note,
-.columns-container:not(.layout-canvas) .footnotes,
-.columns-container:not(.layout-canvas) .plantuml-title,
-.columns-container:not(.layout-canvas) .footnote-ref a,
-.columns-container:not(.layout-canvas) .column-empty-placeholder,
-.columns-container:not(.layout-canvas) .add-card-btn,
-.columns-container:not(.layout-canvas) .add-entity-btn {
+/* Board typography contract: kanban and canvas both inherit the same board
+ * font size. Canvas still zooms as a scene, but it no longer opts out of the
+ * underlying board font-size rules. */
+.columns-container .board-row-title,
+.columns-container .board-row-count,
+.columns-container .board-row-footer-summary,
+.columns-container .board-stack-title,
+.columns-container .board-stack-count,
+.columns-container .board-stack-footer-summary,
+.columns-container .column-header,
+.columns-container .column-count,
+.columns-container .column-include-badge,
+.columns-container .column-rename-input,
+.columns-container .card,
+.columns-container .card-title-display,
+.columns-container .card h1,
+.columns-container .card h2,
+.columns-container .card h3,
+.columns-container .card code,
+.columns-container .card .code-block,
+.columns-container .card .md-table,
+.columns-container .card .media-caption,
+.columns-container .card .tag,
+.columns-container .card .temporal-tag,
+.columns-container .card .kanban-temporal-tag,
+.columns-container .card-title-display .temporal-tag,
+.columns-container .card-title-display .kanban-temporal-tag,
+.columns-container .column-title .temporal-tag,
+.columns-container .column-title .kanban-temporal-tag,
+.columns-container .card-due-badge,
+.columns-container .card-progress-badge,
+.columns-container .card-menu-label,
+.columns-container .card-drag-ghost,
+.columns-container .speaker-note,
+.columns-container .footnotes,
+.columns-container .plantuml-title,
+.columns-container .footnote-ref a,
+.columns-container .column-empty-placeholder,
+.columns-container .add-card-btn,
+.columns-container .add-entity-btn {
   font-size: var(--board-font-size, var(--font-size-base));
 }
 
@@ -4098,15 +4213,10 @@ ins.critic.critic-sub {
   height: var(--icon-button-size);
   padding: 0;
   margin: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  font-size: var(--icon-glyph-size);
   line-height: 1;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4118,8 +4228,6 @@ ins.critic.critic-sub {
 }
 
 .card .wiki-menu-btn:hover {
-  background: var(--accent-soft);
-  color: var(--text-bright);
 }
 
 .column-title .wiki-link-container.wiki-broken .wiki-link,
@@ -4130,8 +4238,7 @@ ins.critic.critic-sub {
 }
 
 .card .wiki-link-container.wiki-broken .wiki-menu-btn {
-  background: rgba(180, 60, 60, 0.22);
-  color: var(--danger);
+  color: var(--error);
 }
 
 .card blockquote {
@@ -4295,15 +4402,9 @@ img[data-lazy-src] {
 
 .embed-container:hover .embed-menu-btn {
   opacity: 1;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .embed-container .embed-menu-btn:hover {
-  background: rgba(0, 0, 0, 0.72);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.28);
 }
 
 /* Broken embed state */
@@ -4387,7 +4488,6 @@ img[data-lazy-src] {
 }
 
 .external-embed-url {
-  font-family: var(--font-mono);
   font-size: var(--font-size-md);
   color: var(--text-muted);
   overflow: hidden;
@@ -5753,7 +5853,6 @@ select.dialog-input option,
 .special-file-editor-path {
   margin-top: -4px;
   margin-bottom: 12px;
-  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-secondary);
   word-break: break-all;
@@ -5799,7 +5898,6 @@ select.dialog-input option,
   width: 100%;
   height: min(60vh, 600px);
   padding: 12px 16px;
-  font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 13px;
   line-height: 1.5;
   border: 0;
@@ -5884,7 +5982,6 @@ select.dialog-input option,
   flex: 1;
   padding: 4px 8px;
   font-size: 12px;
-  font-family: var(--font-mono, monospace);
   border: 1px solid var(--border, #ccc);
   border-radius: 6px;
   background: var(--bg-secondary, #f5f5f5);
@@ -5944,7 +6041,6 @@ select.dialog-input option,
 }
 
 .shortcuts-help-keys {
-  font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
   color: var(--text-primary, #333);
   background: var(--bg-secondary, #f0ece4);
@@ -6389,7 +6485,6 @@ select.dialog-input option,
   display: flex;
   flex-direction: column;
   z-index: 4;
-  font-family: var(--font-ui);
   font-size: var(--font-size-md);
 }
 /* In workspace shell docks, fill the pane instead of using fixed height */
@@ -6430,7 +6525,6 @@ select.dialog-input option,
 .log-panel-error-msg {
   display: none;
   font-size: var(--font-size-sm);
-  font-family: monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6864,7 +6958,6 @@ select.dialog-input option,
 }
 .invite-token-field input {
   flex: 1;
-  font-family: monospace;
   font-size: 12px;
   padding: 4px 8px;
   border: 1px solid var(--input-border);
@@ -6935,7 +7028,7 @@ select.dialog-input option,
   opacity: 1;
 }
 .board-presence-badge {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   background: #4caf50;
   color: #fff;
   border-radius: 8px;
@@ -7799,6 +7892,9 @@ select.export-input {
 /* ── Visual Theme: Sleek ───────────────────────────────────────────── */
 
 :root[data-visual-theme="sleek"] {
+  --font-ui:    'Poppins', 'Segoe UI', system-ui, sans-serif;
+  --font-board: 'Poppins', 'Segoe UI', system-ui, sans-serif;
+  --font-mono:  'SF Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
   --header-height: 48px;
   --btn-gap: calc(4px * var(--ui-scale));
   --radius-sm: calc(2px * var(--ui-scale));
@@ -8157,7 +8253,8 @@ select.export-input {
 :root[data-visual-theme="sleek"] .board-action-btn {
   min-height: var(--btn-square-size);
   padding: 0 calc(6px * var(--ui-scale));
-  font-size: var(--font-size-sm);
+  font-size: var(--app-control-font-size);
+  font-weight: var(--app-control-font-weight);
 }
 
 :root[data-visual-theme="sleek"] .sidebar-btn {
@@ -8319,9 +8416,9 @@ select.export-input {
   --sidebar-tree-count-col: calc(20px * var(--ui-scale));
   --sidebar-tree-action-col: var(--app-icon-button-size);
   --sidebar-tree-grip-col: var(--app-icon-button-size);
-  --sidebar-board-font-size: var(--font-size-md);
+  --sidebar-board-font-size: var(--hierarchy-font-size);
   --sidebar-board-padding-inline: var(--sidebar-tree-root-offset);
-  --sidebar-tree-font-size: var(--font-size-md);
+  --sidebar-tree-font-size: var(--hierarchy-font-size);
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-item,
@@ -8401,7 +8498,7 @@ select.export-input {
   min-width: var(--sidebar-tree-count-col);
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-md);
   color: var(--text-muted);
   margin-left: 0;
   justify-self: end;
@@ -8454,7 +8551,7 @@ select.export-input {
   box-sizing: border-box;
   padding: 0;
   border-radius: 0;
-  color: var(--text-secondary);
+  color: var(--hierarchy-text-color);
 }
 
 :root[data-visual-theme="sleek"] .tree-entry {
@@ -8464,18 +8561,18 @@ select.export-input {
 :root[data-visual-theme="sleek"] .tree-node:hover,
 :root[data-visual-theme="sleek"] .tree-node.sync-highlight {
   background: transparent;
-  color: var(--text-primary);
+  color: var(--hierarchy-hover-color);
 }
 
 :root[data-visual-theme="sleek"] .tree-view-compact .tree-node[data-tree-root="true"] {
-  color: var(--text-primary);
+  color: var(--hierarchy-text-color);
 }
 
 :root[data-visual-theme="sleek"] .tree-node[aria-expanded="true"],
 :root[data-visual-theme="sleek"] .tree-node[aria-expanded="false"],
 :root[data-visual-theme="sleek"] .board-item[aria-expanded="true"],
 :root[data-visual-theme="sleek"] .board-item[aria-expanded="false"] {
-  color: color-mix(in srgb, var(--text-primary) 90%, var(--text-secondary));
+  color: var(--hierarchy-text-color);
 }
 
 :root[data-visual-theme="sleek"] .tree-node[aria-expanded="true"] > .tree-label,
@@ -8484,36 +8581,25 @@ select.export-input {
 :root[data-visual-theme="sleek"] .board-item[aria-expanded="false"] .board-item-title,
 :root[data-visual-theme="sleek"] .workspace-section-header .workspace-section-name,
 :root[data-visual-theme="sleek"] .dashboard-group-header .dashboard-group-title {
-  color: var(--text-primary);
+  color: var(--hierarchy-text-color);
+}
+
+:root[data-visual-theme="sleek"] .tree-count {
+  color: var(--hierarchy-meta-color);
 }
 
 :root[data-visual-theme="sleek"] .tree-card .tree-label,
-:root[data-visual-theme="sleek"] .tree-count {
-  color: var(--text-muted);
-}
-
-:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="group"][data-tree-depth="1"] > .tree-label,
-:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="group"][data-tree-depth="1"] > .tree-meta > .tree-count {
-  color: var(--text-primary);
-}
-
-:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="group"][data-tree-depth="2"] > .tree-label,
-:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="group"][data-tree-depth="2"] > .tree-meta > .tree-count {
-  color: color-mix(in srgb, var(--text-primary) 88%, var(--text-secondary));
-}
-
-:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="group"][data-tree-depth="3"] > .tree-label,
-:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="group"][data-tree-depth="3"] > .tree-meta > .tree-count,
-:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="group"][data-tree-depth="4"] > .tree-label,
-:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="group"][data-tree-depth="4"] > .tree-meta > .tree-count {
-  color: var(--text-secondary);
+:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="group"] > .tree-label,
+:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="group"] > .tree-meta > .tree-count,
+:root[data-visual-theme="sleek"] .tree-node[data-tree-structural-role="item"] > .tree-label {
+  color: var(--hierarchy-text-color);
 }
 
 :root[data-visual-theme="sleek"] .tree-grip:not(.entity-drag-icon) {
   border: none;
   border-radius: 0;
   background: transparent;
-  opacity: 0.1;
+  opacity: 0.28;
   margin-left: calc(2px * var(--ui-scale));
 }
 
@@ -8524,7 +8610,7 @@ select.export-input {
 
 :root[data-visual-theme="sleek"] .tree-grip:not(.entity-drag-icon):hover {
   border-color: transparent;
-  background: var(--bg-hover);
+  background: transparent;
 }
 
 :root[data-visual-theme="sleek"] .tree-indent,
@@ -8691,7 +8777,7 @@ select.export-input {
 :root[data-visual-theme="sleek"] .board-item[aria-expanded="false"] > .board-item-toggle,
 :root[data-visual-theme="sleek"] .workspace-section-toggle,
 :root[data-visual-theme="sleek"] .dashboard-group-toggle {
-  color: var(--text-primary);
+  color: var(--hierarchy-meta-color);
 }
 
 :root[data-visual-theme="sleek"] .tree-view-compact .tree-toggle.expanded::after,
@@ -8715,14 +8801,14 @@ select.export-input {
 :root[data-visual-theme="sleek"] .tree-row,
 :root[data-visual-theme="sleek"] .tree-stack,
 :root[data-visual-theme="sleek"] .tree-column {
-  color: var(--text-secondary);
+  color: var(--hierarchy-text-color);
 }
 
 :root[data-visual-theme="sleek"] .tree-row:hover,
 :root[data-visual-theme="sleek"] .tree-stack:hover,
 :root[data-visual-theme="sleek"] .tree-column:hover,
 :root[data-visual-theme="sleek"] .tree-card:hover {
-  color: var(--text-primary);
+  color: var(--hierarchy-hover-color);
 }
 
 :root[data-visual-theme="sleek"] .board-item-separator {
@@ -8741,7 +8827,8 @@ select.export-input {
 :root[data-visual-theme="sleek"] .tree-stack.drop-target,
 :root[data-visual-theme="sleek"] .tree-row.drop-target,
 :root[data-visual-theme="sleek"] .board-item.drop-target {
-  background: color-mix(in srgb, var(--bg-hover) 82%, transparent);
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--hierarchy-active-accent);
 }
 
 :root[data-visual-theme="sleek"] .add-entity-btn {
