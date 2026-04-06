@@ -59,8 +59,6 @@
   font-size: 12px;
 
   color: var(--text-secondary);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 
 .workspace-shell-toolbar-badge {
@@ -291,7 +289,6 @@
 .ws-fold-zone-label {
   font-size: 10px;
   color: var(--text-muted);
-  letter-spacing: 0.04em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -383,7 +380,6 @@
 
 .ws-fold-indicator.is-drag-handle {
   font-size: var(--icon-glyph-size);
-  letter-spacing: -1.5px;
   width: var(--app-icon-box-size);
   height: var(--app-icon-box-size);
 }
@@ -491,7 +487,6 @@
   background: transparent;
   color: var(--icon-btn-fg, var(--btn-fg));
   font-size: var(--icon-glyph-size);
-  letter-spacing: -1.5px;
   cursor: grab;
   padding: 0;
   opacity: 0.62;
@@ -573,7 +568,6 @@
   flex: 0 0 auto;
   font-size: 9px;
   color: var(--text-muted);
-  text-transform: uppercase;
 }
 
 .ws-view-tab-close {

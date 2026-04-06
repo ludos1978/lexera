@@ -2962,8 +2962,10 @@ var LexeraOrderHelpers = (function () {
     var collapsed = [];
     for (var i = 0; i < groups.length; i++) {
       if (groups[i].classList.contains('collapsed')) {
+        var groupKey = String(groups[i].getAttribute('data-dashboard-group-key') || '').trim();
         var header = groups[i].querySelector('.dashboard-group-header');
-        if (header) collapsed.push(header.textContent.trim());
+        if (groupKey) collapsed.push(groupKey);
+        else if (header) collapsed.push(header.textContent.trim());
       }
     }
     try { if (_Settings) { _Settings.set('dashboardCollapsed', collapsed); } else { localStorage.setItem('lexera-dashboard-collapsed', JSON.stringify(collapsed)); } } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
@@ -2977,8 +2979,9 @@ var LexeraOrderHelpers = (function () {
     if (!Array.isArray(stored) || stored.length === 0) return;
     var groups = root.querySelectorAll('.dashboard-group');
     for (var i = 0; i < groups.length; i++) {
+      var groupKey = String(groups[i].getAttribute('data-dashboard-group-key') || '').trim();
       var header = groups[i].querySelector('.dashboard-group-header');
-      if (header && stored.indexOf(header.textContent.trim()) !== -1) {
+      if ((groupKey && stored.indexOf(groupKey) !== -1) || (header && stored.indexOf(header.textContent.trim()) !== -1)) {
         groups[i].classList.add('collapsed');
       }
     }

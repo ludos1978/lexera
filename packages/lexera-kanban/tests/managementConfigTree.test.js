@@ -96,6 +96,7 @@ describe('ManagementUI config tree hierarchy', () => {
     expect(workspaceNode.getAttribute('data-hierarchy-kind')).toBe('workspace');
     expect(workspaceNode.getAttribute('data-tree-root')).toBe('true');
     expect(workspaceNode.getAttribute('data-tree-node-role')).toBe('branch');
+    expect(workspaceNode.getAttribute('data-tree-structural-role')).toBe('group');
 
     const boardNode = tree.querySelector('.tree-node[data-mgmt-config-type="board"][data-mgmt-config-id="board-1"]');
     expect(boardNode).toBeTruthy();
@@ -106,6 +107,7 @@ describe('ManagementUI config tree hierarchy', () => {
     expect(boardNode.getAttribute('data-hierarchy-capabilities')).toBe('activate');
     expect(boardNode.hasAttribute('data-tree-root')).toBe(false);
     expect(boardNode.getAttribute('data-tree-node-role')).toBe('leaf');
+    expect(boardNode.getAttribute('data-tree-structural-role')).toBe('item');
     expect(boardNode.querySelectorAll('.tree-indent .indent-guide')).toHaveLength(1);
 
     const looseBoardNode = tree.querySelector('.tree-node[data-mgmt-config-type="board"][data-mgmt-config-id="board-3"]');

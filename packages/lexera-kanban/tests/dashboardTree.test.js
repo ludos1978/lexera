@@ -43,6 +43,7 @@ describe('dashboard tree builders', () => {
       label: 'Attachments',
       count: 2,
       type: 'dashboard-group',
+      structuralRole: 'group',
       hierarchy: {
         surface: 'dashboard',
         kind: 'context-group',
@@ -58,6 +59,7 @@ describe('dashboard tree builders', () => {
       label: 'docs/spec.pdf',
       count: 'Missing · x2',
       type: 'dashboard-file',
+      structuralRole: 'item',
       hierarchy: {
         surface: 'dashboard',
         kind: 'file-result',
@@ -105,6 +107,7 @@ describe('dashboard tree builders', () => {
     expect(nodes[0]).toMatchObject({
       id: 'dashboard-broken-image',
       label: 'Image',
+      structuralRole: 'group',
       hierarchy: {
         surface: 'dashboard',
         kind: 'broken-group',
@@ -120,6 +123,7 @@ describe('dashboard tree builders', () => {
     expect(nodes[0].children[0]).toMatchObject({
       label: 'media/missing.png',
       count: 'x3',
+      structuralRole: 'item',
       hierarchy: {
         surface: 'dashboard',
         kind: 'broken-result',
@@ -166,6 +170,7 @@ describe('dashboard tree builders', () => {
     expect(nodes[0]).toMatchObject({
       id: 'dashboard-tag-blocked',
       label: '#blocked',
+      structuralRole: 'group',
       hierarchy: {
         surface: 'dashboard',
         kind: 'tag-group',
@@ -181,6 +186,7 @@ describe('dashboard tree builders', () => {
     expect(nodes[0].children[0]).toMatchObject({
       id: 'dashboard-group-board-1',
       label: 'Project Board',
+      structuralRole: 'group',
       hierarchy: {
         surface: 'dashboard',
         kind: 'board-group',
@@ -195,6 +201,7 @@ describe('dashboard tree builders', () => {
     });
     expect(nodes[0].children[0].children[0]).toMatchObject({
       label: 'Fix release blocker',
+      structuralRole: 'item',
       hierarchy: {
         surface: 'dashboard',
         kind: 'result',

@@ -84,6 +84,8 @@ describe('LexeraBoardList workspace section focus button', () => {
     const workspaceHeader = document.querySelector('.workspace-section-header[data-workspace-id="ws-1"]');
     let focusBtn = workspaceHeader && workspaceHeader.querySelector('.workspace-section-focus');
     expect(focusBtn).toBeTruthy();
+    expect(workspaceHeader?.getAttribute('data-tree-structural-role')).toBe('section');
+    expect(workspaceHeader?.getAttribute('data-tree-node-role')).toBe('branch');
     workspaceHeader.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     focusBtn = document.querySelector('.workspace-section-header[data-workspace-id="ws-1"] .workspace-section-focus');
     expect(focusBtn).toBeTruthy();
@@ -91,6 +93,7 @@ describe('LexeraBoardList workspace section focus button', () => {
 
     const unassignedHeader = document.querySelector('.workspace-section-header.workspace-unassigned');
     expect(unassignedHeader).toBeTruthy();
+    expect(unassignedHeader?.getAttribute('data-tree-structural-role')).toBe('section');
     expect(unassignedHeader.querySelector('.workspace-section-focus')).toBeNull();
 
     focusBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -101,6 +104,8 @@ describe('LexeraBoardList workspace section focus button', () => {
     expect(document.querySelector('.workspace-section-header[data-workspace-id="ws-1"]')).toBeNull();
     expect(document.querySelector('.board-item[data-board-id="board-1"]')).toBeTruthy();
     expect(document.querySelector('.board-item[data-board-id="board-1"]')?.classList.contains('board-item-workspace-child')).toBe(false);
+    expect(document.querySelector('.board-item[data-board-id="board-1"]')?.getAttribute('data-tree-structural-role')).toBe('group');
+    expect(document.querySelector('.board-item[data-board-id="board-1"]')?.getAttribute('data-tree-node-role')).toBe('leaf');
     expect(document.querySelector('.board-item[data-board-id="board-2"]')).toBeNull();
     expect(document.getElementById('workspace-header-title').textContent).toContain('Workspace One');
 
@@ -178,6 +183,8 @@ describe('LexeraBoardList workspace section focus button', () => {
     expect(document.getElementById('workspace-header-title').textContent).toContain('Workspace One');
     expect(mirrorRoot.querySelector('.lexera-shared-workspace-title').textContent).toContain('Workspace One');
     expect(document.querySelector('.board-item[data-board-id="board-1"]')?.classList.contains('board-item-workspace-child')).toBe(false);
+    expect(document.querySelector('.board-item[data-board-id="board-1"]')?.getAttribute('data-tree-structural-role')).toBe('group');
+    expect(document.querySelector('.board-item[data-board-id="board-1"]')?.getAttribute('data-tree-node-role')).toBe('leaf');
     expect(document.querySelector('.board-item[data-board-id="board-2"]')).toBeNull();
     expect(mirrorRoot.querySelector('.board-item[data-board-id="board-2"]')).toBeNull();
 

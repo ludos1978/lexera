@@ -8,6 +8,7 @@ const appCss = readFileSync(resolve(__dirname, '..', 'src', 'app.css'), 'utf8');
 const treeViewSource = readFileSync(resolve(__dirname, '..', 'src', 'treeView.js'), 'utf8');
 const indexHtml = readFileSync(resolve(__dirname, '..', 'src', 'index.html'), 'utf8');
 const sharedPanels = readFileSync(resolve(__dirname, '..', 'src', 'workspace', 'sharedPanels.js'), 'utf8');
+const orderHelpersSource = readFileSync(resolve(__dirname, '..', 'src', 'board', 'orderHelpers.js'), 'utf8');
 
 describe('hierarchy style contract', () => {
   it('keeps dashboard section children visibly owned by their section header', () => {
@@ -16,7 +17,12 @@ describe('hierarchy style contract', () => {
     expect(appCss).toContain('.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"]::before');
     expect(appCss).toContain('.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"]::before');
     expect(indexHtml).toContain('data-hierarchy-section-body="true"');
+    expect(indexHtml).toContain('data-dashboard-group-key=');
+    expect(indexHtml).toContain('data-tree-structural-role="section"');
     expect(sharedPanels).toContain('data-hierarchy-section-body="true"');
+    expect(sharedPanels).toContain('data-dashboard-group-key=');
+    expect(sharedPanels).toContain('data-tree-structural-role="section"');
+    expect(orderHelpersSource).toContain("getAttribute('data-dashboard-group-key')");
   });
 
   it('shares the top-level fold affordance between dashboard and workspace headers', () => {
@@ -29,12 +35,13 @@ describe('hierarchy style contract', () => {
     expect(treeViewSource).toContain("var childIndent = compactRootFlatten ? [] : parentLastFlags.concat([isLast]);");
     expect(treeViewSource).toContain("entry.setAttribute('data-tree-node-role', nodeRole);");
     expect(treeViewSource).toContain("el.setAttribute('data-tree-node-role', nodeRole);");
+    expect(treeViewSource).toContain("entry.setAttribute('data-tree-structural-role', structuralRole);");
+    expect(treeViewSource).toContain("el.setAttribute('data-tree-structural-role', structuralRole);");
     expect(appCss).toContain('.tree-view-compact .tree-node[data-tree-root="true"] > .tree-indent');
   });
 
-  it('does not style Files board leaves as structural headers', () => {
-    expect(appCss).toContain('.mgmt-config-tree .tree-config-root .tree-label');
-    expect(appCss).toContain('.mgmt-config-tree .tree-workspace .tree-label');
-    expect(appCss).not.toContain('.mgmt-config-tree .tree-board .tree-label');
+  it('styles hierarchy groups and items from structural roles instead of per-surface type lists', () => {
+    expect(appCss).toContain('.tree-node[data-tree-structural-role="group"] > .tree-label');
+    expect(appCss).toContain('.tree-node[data-tree-structural-role="item"] > .tree-label');
   });
 });

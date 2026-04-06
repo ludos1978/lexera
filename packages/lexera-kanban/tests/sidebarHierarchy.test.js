@@ -24,6 +24,7 @@ describe('buildSidebarTreeNodes', () => {
     const nodes = SidebarTree.buildSidebarTreeNodes(rows, 'board-1', { rows: [], stacks: [], columns: [] }, false);
     expect(nodes).toHaveLength(1);
     expect(nodes[0].type).toBe('row');
+    expect(nodes[0].structuralRole).toBe('group');
     expect(nodes[0].count).toBeNull();
     expect(nodes[0].hierarchy).toEqual({
       surface: 'workspace',
@@ -34,9 +35,11 @@ describe('buildSidebarTreeNodes', () => {
     });
     expect(nodes[0].children).toHaveLength(1);
     expect(nodes[0].children[0].type).toBe('stack');
+    expect(nodes[0].children[0].structuralRole).toBe('group');
     expect(nodes[0].children[0].count).toBeNull();
     expect(nodes[0].children[0].children).toHaveLength(1);
     expect(nodes[0].children[0].children[0].type).toBe('column');
+    expect(nodes[0].children[0].children[0].structuralRole).toBe('group');
   });
 
   it('only auto-expands the single visible row and single visible stack by default', () => {
@@ -123,6 +126,7 @@ describe('buildSidebarTreeNodes', () => {
     // not its position in the full `cards` array. Expect 0, 1, 2 — NOT 0, 2, 4.
     expect(columnNode.children[0].attrs['data-card-id']).toBe('card-a');
     expect(columnNode.children[0].attrs['data-card-index']).toBe('0');
+    expect(columnNode.children[0].structuralRole).toBe('item');
     expect(columnNode.children[0].hierarchy).toEqual({
       surface: 'workspace',
       kind: 'card',

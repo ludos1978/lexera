@@ -64,40 +64,40 @@
         '</div>' +
       '</div>' +
       '<div class="sidebar-dashboard-body view-loading">' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Pinned Searches</span></div>' +
+        '<div class="dashboard-group" data-dashboard-group-key="pinned">' +
+          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Pinned Searches</span></div>' +
           '<div class="dashboard-list lexera-shared-dashboard-pinned" data-hierarchy-section-body="true"></div>' +
         '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Results</span></div>' +
+        '<div class="dashboard-group" data-dashboard-group-key="results">' +
+          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Results</span></div>' +
           '<div class="dashboard-list lexera-shared-dashboard-results" data-hierarchy-section-body="true"></div>' +
         '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Overdue</span></div>' +
+        '<div class="dashboard-group" data-dashboard-group-key="overdue">' +
+          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Overdue</span></div>' +
           '<div class="dashboard-list lexera-shared-dashboard-overdue" data-hierarchy-section-body="true"></div>' +
         '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Upcoming</span></div>' +
+        '<div class="dashboard-group" data-dashboard-group-key="upcoming">' +
+          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Upcoming</span></div>' +
           '<div class="dashboard-list lexera-shared-dashboard-upcoming" data-hierarchy-section-body="true"></div>' +
         '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Open Tasks</span></div>' +
+        '<div class="dashboard-group" data-dashboard-group-key="open-tasks">' +
+          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Open Tasks</span></div>' +
           '<div class="dashboard-list lexera-shared-dashboard-todos" data-hierarchy-section-body="true"></div>' +
         '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Tagged Items</span></div>' +
+        '<div class="dashboard-group" data-dashboard-group-key="tagged">' +
+          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Tagged Items</span></div>' +
           '<div class="dashboard-list lexera-shared-dashboard-tagged" data-hierarchy-section-body="true"></div>' +
         '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">File Embeds</span></div>' +
+        '<div class="dashboard-group" data-dashboard-group-key="file-embeds">' +
+          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">File Embeds</span></div>' +
           '<div class="dashboard-list lexera-shared-dashboard-embeds" data-hierarchy-section-body="true"></div>' +
         '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Broken Elements</span></div>' +
+        '<div class="dashboard-group" data-dashboard-group-key="broken-elements">' +
+          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Broken Elements</span></div>' +
           '<div class="dashboard-list lexera-shared-dashboard-broken" data-hierarchy-section-body="true"></div>' +
         '</div>' +
-        '<div class="dashboard-group">' +
-          '<div class="dashboard-group-header"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Included Files</span></div>' +
+        '<div class="dashboard-group" data-dashboard-group-key="included-files">' +
+          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Included Files</span></div>' +
           '<div class="dashboard-list lexera-shared-dashboard-included" data-hierarchy-section-body="true"></div>' +
         '</div>' +
       '</div>';

@@ -1538,6 +1538,8 @@ var LexeraBoardList = (function () {
     var wsHeader = document.createElement('div');
     wsHeader.className = 'workspace-section-header' + (wsInfo.expanded ? ' expanded' : '');
     wsHeader.setAttribute('data-workspace-id', wsInfo.ws.id);
+    wsHeader.setAttribute('data-tree-node-role', 'branch');
+    wsHeader.setAttribute('data-tree-structural-role', 'section');
     _updateWsHeaderContent(wsHeader, wsInfo);
     if (wsInfo.unassigned) wsHeader.classList.add('workspace-unassigned');
     (function (wsId) {
@@ -1584,6 +1586,8 @@ var LexeraBoardList = (function () {
     rbEl.className = 'board-item tree-node tree-board remote-board' + (rb.id === activeBoardId ? ' active' : '');
     rbEl.setAttribute('data-board-id', rb.id);
     rbEl.setAttribute('data-tree-depth', '0');
+    rbEl.setAttribute('data-tree-node-role', 'leaf');
+    rbEl.setAttribute('data-tree-structural-role', 'group');
     _updateRemoteBoardContent(rbEl, rb, activeBoardId);
     (function (boardId) {
       rbEl.addEventListener('click', function () {
@@ -1624,6 +1628,8 @@ var LexeraBoardList = (function () {
     el.setAttribute('data-board-index', boardIndex.toString());
     el.setAttribute('data-board-id', board.id);
     el.setAttribute('data-tree-depth', '0');
+    el.setAttribute('data-tree-structural-role', 'group');
+    el.setAttribute('data-tree-node-role', rows.length > 0 ? 'branch' : 'leaf');
 
     _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, isWorkspaceChild, SidebarSync);
 
@@ -1683,8 +1689,10 @@ var LexeraBoardList = (function () {
 
     if (hasContent) {
       el.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+      el.setAttribute('data-tree-node-role', 'branch');
     } else {
       el.removeAttribute('aria-expanded');
+      el.setAttribute('data-tree-node-role', 'leaf');
     }
     el.innerHTML =
       '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +

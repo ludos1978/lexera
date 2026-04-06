@@ -25,6 +25,7 @@ describe('LexeraHierarchyContract', () => {
       id: 'row:1',
       label: 'Row 1',
       type: 'row',
+      structuralRole: 'group',
       hierarchy: {
         surface: 'workspace',
         kind: 'row',
@@ -41,6 +42,7 @@ describe('LexeraHierarchyContract', () => {
       capabilities: ['activate', 'menu'],
       selectable: true
     });
+    expect(node.structuralRole).toBe('group');
     expect(HierarchyContract.nodeSupportsCapability(node.hierarchy, 'menu')).toBe(true);
     expect(HierarchyContract.nodeSupportsCapability(node.hierarchy, 'edit')).toBe(false);
   });
@@ -55,6 +57,7 @@ describe('LexeraHierarchyContract', () => {
         id: 'board:1',
         label: 'Board One',
         type: 'board',
+        structuralRole: 'item',
         grip: false,
         hasToggle: false,
         hierarchy: {
@@ -81,7 +84,9 @@ describe('LexeraHierarchyContract', () => {
       capabilities: ['activate'],
       selectable: true
     });
+    expect(HierarchyContract.readStructuralRoleFromNode(node)).toBe('item');
     expect(node.getAttribute('data-tree-node-role')).toBe('leaf');
+    expect(node.getAttribute('data-tree-structural-role')).toBe('item');
   });
 
   it('marks rendered container nodes as branch roles', () => {
@@ -94,6 +99,7 @@ describe('LexeraHierarchyContract', () => {
         id: 'ctx:1',
         label: 'File Embeds',
         type: 'dashboard-group',
+        structuralRole: 'group',
         grip: false,
         expanded: true,
         children: [
@@ -101,6 +107,7 @@ describe('LexeraHierarchyContract', () => {
             id: 'file:1',
             label: 'PlantUML Diagram Tests',
             type: 'dashboard-file',
+            structuralRole: 'item',
             grip: false,
             hasToggle: false
           })
@@ -111,6 +118,7 @@ describe('LexeraHierarchyContract', () => {
     const branchNode = container.querySelector('.tree-node[data-tree-id="ctx:1"]');
     expect(branchNode).toBeTruthy();
     expect(branchNode.getAttribute('data-tree-node-role')).toBe('branch');
+    expect(branchNode.getAttribute('data-tree-structural-role')).toBe('group');
     expect(branchNode.getAttribute('data-tree-root')).toBe('true');
   });
 });
