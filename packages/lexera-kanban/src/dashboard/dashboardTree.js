@@ -126,7 +126,19 @@
     return parts.join(' / ');
   }
 
-  function buildDashboardResultTreeNodes(items) {
+  /**
+   * Group items into keyed buckets and build a flat list of group nodes,
+   * each containing the grouped children. Extracts the pattern shared by
+   * result / inventory / broken builders.
+   *
+   * @param {Array} items        — raw data items
+   * @param {Function} getKey    — (item, index) → groupKey string
+   * @param {Function} getGroup  — (groupKey, item) → { label, ... } (called once per new key)
+   * @param {Function} buildChild — (item, groupKey, index) → TreeNode
+   * @param {Function} buildGroup — (groupKey, groupData, index) → TreeNode (groupData has .children[])
+   * @returns {Array} TreeNode[]
+   */
+  function buildGroupedDashboardNodes(items, getKey, getGroup, buildChild, buildGroup) {
     if (!Array.isArray(items) || items.length === 0) return [];
 
     var groupOrder = [];
@@ -134,212 +146,208 @@
 
     for (var i = 0; i < items.length; i++) {
       var item = items[i] || {};
-      var boardId = String(item.boardId || '').trim();
-      var boardTitle = String(item.boardTitle || 'Untitled').trim() || 'Untitled';
-      var groupKey = boardId || ('board-title:' + boardTitle);
-      if (!groups[groupKey]) {
-        groups[groupKey] = {
-          boardId: boardId,
-          label: boardTitle,
-          children: []
-        };
-        groupOrder.push(groupKey);
+      var key = getKey(item, i);
+      if (!groups[key]) {
+        groups[key] = getGroup(key, item);
+        groups[key].children = [];
+        groupOrder.push(key);
       }
-      groups[groupKey].children.push(createHierarchyNode({
-        id: null,
-        label: dashboardItemTitle(item),
-        count: dashboardDueLabel(item) || null,
-        type: 'dashboard-result',
-        expanded: false,
-        hasToggle: false,
-        grip: false,
-        hierarchy: {
-          surface: 'dashboard',
-          kind: 'result',
-          entityId: item.cardId ? String(item.cardId) : null,
-          capabilities: ['activate']
-        },
-        attrs: {
-          'data-dashboard-target': 'result',
-          'data-dashboard-board-id': boardId || null,
-          'data-dashboard-card-id': item.cardId ? String(item.cardId) : null,
-          'data-dashboard-column-index': item.columnIndex != null ? String(item.columnIndex) : null,
-          'data-dashboard-row-index': item.rowIndex != null ? String(item.rowIndex) : null,
-          'data-dashboard-stack-index': item.stackIndex != null ? String(item.stackIndex) : null,
-          'data-dashboard-column-title': item.columnTitle ? String(item.columnTitle) : null,
-          title: dashboardTreeNodeTooltip(item) || null
-        }
-      }));
+      groups[key].children.push(buildChild(item, key, i));
     }
 
     var nodes = [];
     for (var gi = 0; gi < groupOrder.length; gi++) {
-      var group = groups[groupOrder[gi]];
-      nodes.push(createHierarchyNode({
-        id: 'dashboard-group-' + (group.boardId || gi),
-        label: group.label,
-        count: group.children.length,
-        type: 'dashboard-group',
-        expanded: true,
-        hasToggle: true,
-        grip: false,
-        hierarchy: {
-          surface: 'dashboard',
-          kind: 'board-group',
-          entityId: group.boardId || null,
-          capabilities: []
-        },
-        attrs: {
-          'data-dashboard-target': 'board',
-          'data-dashboard-board-id': group.boardId || null
-        },
-        children: group.children
-      }));
+      nodes.push(buildGroup(groupOrder[gi], groups[groupOrder[gi]], gi));
     }
     return nodes;
+  }
+
+  function buildDashboardResultTreeNodes(items) {
+    return buildGroupedDashboardNodes(
+      items,
+      function (item) {
+        var boardId = String(item.boardId || '').trim();
+        return boardId || ('board-title:' + (String(item.boardTitle || 'Untitled').trim() || 'Untitled'));
+      },
+      function (key, item) {
+        return {
+          boardId: String(item.boardId || '').trim(),
+          label: String(item.boardTitle || 'Untitled').trim() || 'Untitled'
+        };
+      },
+      function (item, groupKey) {
+        var boardId = String(item.boardId || '').trim();
+        return createHierarchyNode({
+          id: null,
+          label: dashboardItemTitle(item),
+          count: dashboardDueLabel(item) || null,
+          type: 'dashboard-result',
+          expanded: false,
+          hasToggle: false,
+          grip: false,
+          hierarchy: {
+            surface: 'dashboard',
+            kind: 'result',
+            entityId: item.cardId ? String(item.cardId) : null,
+            capabilities: ['activate']
+          },
+          attrs: {
+            'data-dashboard-target': 'result',
+            'data-dashboard-board-id': boardId || null,
+            'data-dashboard-card-id': item.cardId ? String(item.cardId) : null,
+            'data-dashboard-column-index': item.columnIndex != null ? String(item.columnIndex) : null,
+            'data-dashboard-row-index': item.rowIndex != null ? String(item.rowIndex) : null,
+            'data-dashboard-stack-index': item.stackIndex != null ? String(item.stackIndex) : null,
+            'data-dashboard-column-title': item.columnTitle ? String(item.columnTitle) : null,
+            title: dashboardTreeNodeTooltip(item) || null
+          }
+        });
+      },
+      function (key, group, gi) {
+        return createHierarchyNode({
+          id: 'dashboard-group-' + (group.boardId || gi),
+          label: group.label,
+          count: group.children.length,
+          type: 'dashboard-group',
+          expanded: true,
+          hasToggle: true,
+          grip: false,
+          hierarchy: {
+            surface: 'dashboard',
+            kind: 'board-group',
+            entityId: group.boardId || null,
+            capabilities: []
+          },
+          attrs: {
+            'data-dashboard-target': 'board',
+            'data-dashboard-board-id': group.boardId || null
+          },
+          children: group.children
+        });
+      }
+    );
   }
 
   function buildDashboardInventoryTreeNodes(items) {
-    if (!Array.isArray(items) || items.length === 0) return [];
-
-    var groupOrder = [];
-    var groups = Object.create(null);
-
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i] || {};
-      var contextLabel = String(item.firstContextLabel || 'Other').trim() || 'Other';
-      var groupKey = sanitizeDashboardNodeId(contextLabel, 'context-' + i);
-      if (!groups[groupKey]) {
-        groups[groupKey] = {
-          label: contextLabel,
-          children: []
-        };
-        groupOrder.push(groupKey);
+    return buildGroupedDashboardNodes(
+      items,
+      function (item, i) {
+        var contextLabel = String(item.firstContextLabel || 'Other').trim() || 'Other';
+        return sanitizeDashboardNodeId(contextLabel, 'context-' + i);
+      },
+      function (key, item) {
+        return { label: String(item.firstContextLabel || 'Other').trim() || 'Other' };
+      },
+      function (item) {
+        return createHierarchyNode({
+          id: null,
+          label: String(item.path || '').trim() || '(missing path)',
+          count: dashboardInventoryNodeCount(item),
+          type: 'dashboard-file',
+          expanded: false,
+          hasToggle: false,
+          grip: false,
+          hierarchy: {
+            surface: 'dashboard',
+            kind: 'file-result',
+            entityId: item.firstCardId || null,
+            capabilities: ['activate']
+          },
+          attrs: {
+            'data-dashboard-target': 'file',
+            'data-dashboard-card-id': item.firstCardId || null,
+            'data-dashboard-column-index': item.firstColumnIndex != null ? String(item.firstColumnIndex) : null,
+            'data-dashboard-row-index': item.firstRowIndex != null ? String(item.firstRowIndex) : null,
+            'data-dashboard-stack-index': item.firstStackIndex != null ? String(item.firstStackIndex) : null,
+            'data-dashboard-col-local-index': item.firstColLocalIndex != null ? String(item.firstColLocalIndex) : null,
+            'data-dashboard-status': String(item.status || 'unknown').trim().toLowerCase() || 'unknown',
+            title: dashboardInventoryTooltip(item) || null
+          }
+        });
+      },
+      function (key, group) {
+        return createHierarchyNode({
+          id: 'dashboard-context-' + key,
+          label: group.label,
+          count: group.children.length,
+          type: 'dashboard-group',
+          expanded: true,
+          hasToggle: true,
+          grip: false,
+          hierarchy: {
+            surface: 'dashboard',
+            kind: 'context-group',
+            entityId: group.label,
+            capabilities: []
+          },
+          attrs: { 'data-dashboard-target': 'context' },
+          children: group.children
+        });
       }
-      groups[groupKey].children.push(createHierarchyNode({
-        id: null,
-        label: String(item.path || '').trim() || '(missing path)',
-        count: dashboardInventoryNodeCount(item),
-        type: 'dashboard-file',
-        expanded: false,
-        hasToggle: false,
-        grip: false,
-        hierarchy: {
-          surface: 'dashboard',
-          kind: 'file-result',
-          entityId: item.firstCardId || null,
-          capabilities: ['activate']
-        },
-        attrs: {
-          'data-dashboard-target': 'file',
-          'data-dashboard-card-id': item.firstCardId || null,
-          'data-dashboard-column-index': item.firstColumnIndex != null ? String(item.firstColumnIndex) : null,
-          'data-dashboard-row-index': item.firstRowIndex != null ? String(item.firstRowIndex) : null,
-          'data-dashboard-stack-index': item.firstStackIndex != null ? String(item.firstStackIndex) : null,
-          'data-dashboard-col-local-index': item.firstColLocalIndex != null ? String(item.firstColLocalIndex) : null,
-          'data-dashboard-status': String(item.status || 'unknown').trim().toLowerCase() || 'unknown',
-          title: dashboardInventoryTooltip(item) || null
-        }
-      }));
-    }
-
-    var nodes = [];
-    for (var gi = 0; gi < groupOrder.length; gi++) {
-      var group = groups[groupOrder[gi]];
-      nodes.push(createHierarchyNode({
-        id: 'dashboard-context-' + groupOrder[gi],
-        label: group.label,
-        count: group.children.length,
-        type: 'dashboard-group',
-        expanded: true,
-        hasToggle: true,
-        grip: false,
-        hierarchy: {
-          surface: 'dashboard',
-          kind: 'context-group',
-          entityId: group.label,
-          capabilities: []
-        },
-        attrs: {
-          'data-dashboard-target': 'context'
-        },
-        children: group.children
-      }));
-    }
-    return nodes;
+    );
   }
 
   function buildDashboardBrokenTreeNodes(items) {
-    if (!Array.isArray(items) || items.length === 0) return [];
-
-    var groupOrder = [];
-    var groups = Object.create(null);
-
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i] || {};
-      var type = String(item.type || 'embed').trim().toLowerCase() || 'embed';
-      if (!groups[type]) {
-        groups[type] = {
-          label: dashboardBrokenGroupLabel(type),
-          children: []
-        };
-        groupOrder.push(type);
+    return buildGroupedDashboardNodes(
+      items,
+      function (item) {
+        return String(item.type || 'embed').trim().toLowerCase() || 'embed';
+      },
+      function (key) {
+        return { label: dashboardBrokenGroupLabel(key) };
+      },
+      function (item, groupKey) {
+        return createHierarchyNode({
+          id: null,
+          label: String(item.src || '').trim() || '(unknown source)',
+          count: item.count > 1 ? ('x' + item.count) : null,
+          type: 'dashboard-broken',
+          expanded: false,
+          hasToggle: false,
+          grip: false,
+          hierarchy: {
+            surface: 'dashboard',
+            kind: 'broken-result',
+            entityId: item.cardId || String(item.src || '').trim() || null,
+            capabilities: ['activate']
+          },
+          attrs: {
+            'data-dashboard-target': 'broken',
+            'data-dashboard-col-index': item.colIndex != null ? String(item.colIndex) : null,
+            'data-dashboard-card-index': item.cardIndex != null ? String(item.cardIndex) : null,
+            'data-dashboard-card-id': item.cardId || null,
+            'data-dashboard-row-index': item.rowIndex != null ? String(item.rowIndex) : null,
+            'data-dashboard-stack-index': item.stackIndex != null ? String(item.stackIndex) : null,
+            'data-dashboard-col-local-index': item.colLocalIndex != null ? String(item.colLocalIndex) : null,
+            'data-dashboard-broken-src': String(item.src || '') || null,
+            'data-dashboard-broken-type': groupKey,
+            title: dashboardBrokenTooltip(item) || null
+          }
+        });
+      },
+      function (key, group, gi) {
+        return createHierarchyNode({
+          id: 'dashboard-broken-' + sanitizeDashboardNodeId(key, 'broken-' + gi),
+          label: group.label,
+          count: group.children.length,
+          type: 'dashboard-group',
+          expanded: true,
+          hasToggle: true,
+          grip: false,
+          hierarchy: {
+            surface: 'dashboard',
+            kind: 'broken-group',
+            entityId: key,
+            capabilities: []
+          },
+          attrs: {
+            'data-dashboard-target': 'broken-group',
+            'data-dashboard-broken-type': key
+          },
+          children: group.children
+        });
       }
-      groups[type].children.push(createHierarchyNode({
-        id: null,
-        label: String(item.src || '').trim() || '(unknown source)',
-        count: item.count > 1 ? ('x' + item.count) : null,
-        type: 'dashboard-broken',
-        expanded: false,
-        hasToggle: false,
-        grip: false,
-        hierarchy: {
-          surface: 'dashboard',
-          kind: 'broken-result',
-          entityId: item.cardId || String(item.src || '').trim() || null,
-          capabilities: ['activate']
-        },
-        attrs: {
-          'data-dashboard-target': 'broken',
-          'data-dashboard-col-index': item.colIndex != null ? String(item.colIndex) : null,
-          'data-dashboard-card-index': item.cardIndex != null ? String(item.cardIndex) : null,
-          'data-dashboard-card-id': item.cardId || null,
-          'data-dashboard-row-index': item.rowIndex != null ? String(item.rowIndex) : null,
-          'data-dashboard-stack-index': item.stackIndex != null ? String(item.stackIndex) : null,
-          'data-dashboard-col-local-index': item.colLocalIndex != null ? String(item.colLocalIndex) : null,
-          'data-dashboard-broken-src': String(item.src || '') || null,
-          'data-dashboard-broken-type': type,
-          title: dashboardBrokenTooltip(item) || null
-        }
-      }));
-    }
-
-    var nodes = [];
-    for (var gi = 0; gi < groupOrder.length; gi++) {
-      var groupKey = groupOrder[gi];
-      var group = groups[groupKey];
-      nodes.push(createHierarchyNode({
-        id: 'dashboard-broken-' + sanitizeDashboardNodeId(groupKey, 'broken-' + gi),
-        label: group.label,
-        count: group.children.length,
-        type: 'dashboard-group',
-        expanded: true,
-        hasToggle: true,
-        grip: false,
-        hierarchy: {
-          surface: 'dashboard',
-          kind: 'broken-group',
-          entityId: groupKey,
-          capabilities: []
-        },
-        attrs: {
-          'data-dashboard-target': 'broken-group',
-          'data-dashboard-broken-type': groupKey
-        },
-        children: group.children
-      }));
-    }
-    return nodes;
+    );
   }
 
   function buildDashboardTaggedTreeNodes(groups) {

@@ -1613,18 +1613,19 @@ var LexeraBoardList = (function () {
   }
 
   /** Create a board wrapper element with all sub-elements and event listeners. */
-  function _createBoardWrapperEl(board, boardIndex, isExpanded, isActive, rows, totalCards, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell) {
+  function _createBoardWrapperEl(board, boardIndex, isExpanded, isActive, rows, totalCards, isWorkspaceChild, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell) {
     var wrapper = document.createElement('div');
-    wrapper.className = 'board-item-wrapper tree-view-host tree-view-host-compact';
+    wrapper.className = 'board-item-wrapper tree-view-host tree-view-host-compact' + (isWorkspaceChild ? ' board-item-wrapper-workspace-child' : '');
     wrapper.setAttribute('data-board-id', board.id);
+    if (isWorkspaceChild) wrapper.setAttribute('data-workspace-child', 'true');
 
     var el = document.createElement('div');
-    el.className = 'board-item tree-node tree-board' + (isActive ? ' active' : '');
+    el.className = 'board-item tree-node tree-board' + (isActive ? ' active' : '') + (isWorkspaceChild ? ' board-item-workspace-child' : '');
     el.setAttribute('data-board-index', boardIndex.toString());
     el.setAttribute('data-board-id', board.id);
     el.setAttribute('data-tree-depth', '0');
 
-    _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, SidebarSync);
+    _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, isWorkspaceChild, SidebarSync);
 
     // Tree sub-list
     var tree = document.createElement('div');
@@ -1646,7 +1647,7 @@ var LexeraBoardList = (function () {
   }
 
   /** Update the board-item row content (title, count, presence, active, expand state). */
-  function _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, SidebarSync) {
+  function _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, isWorkspaceChild, SidebarSync) {
     var boardName = board.title || _callDep('getDisplayNameFromPath', board.filePath || '') || 'Untitled';
     var hasContent = rows.length > 0;
     var displayTitle = _callDep('escapeHtml', boardName);
@@ -1662,7 +1663,23 @@ var LexeraBoardList = (function () {
       '</span>';
 
     if (isActive) { el.classList.add('active'); } else { el.classList.remove('active'); }
+    el.classList.toggle('board-item-workspace-child', !!isWorkspaceChild);
+    if (isWorkspaceChild) {
+      el.setAttribute('data-workspace-child', 'true');
+    } else {
+      el.removeAttribute('data-workspace-child');
+    }
     el.setAttribute('data-board-index', boardIndex.toString());
+
+    var wrapper = el.parentElement;
+    if (wrapper) {
+      wrapper.classList.toggle('board-item-wrapper-workspace-child', !!isWorkspaceChild);
+      if (isWorkspaceChild) {
+        wrapper.setAttribute('data-workspace-child', 'true');
+      } else {
+        wrapper.removeAttribute('data-workspace-child');
+      }
+    }
 
     if (hasContent) {
       el.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
@@ -2480,7 +2497,7 @@ var LexeraBoardList = (function () {
         if (wsExpanded) {
           for (var wbi = 0; wbi < wsBoards.length; wbi++) {
             var wb = wsBoards[wbi];
-            entries.push({ key: 'board:' + ws.id + ':' + wb.id, type: 'board', board: wb, index: entries.length });
+            entries.push({ key: 'board:' + ws.id + ':' + wb.id, type: 'board', board: wb, index: entries.length, workspaceChild: true });
           }
         }
       }
@@ -2492,7 +2509,7 @@ var LexeraBoardList = (function () {
             entries.push({ key: 'ws:__unassigned__', type: 'ws_header', ws: { id: '__unassigned__', name: 'Unassigned' }, count: 0, expanded: true, unassigned: true });
             hasUnassigned = true;
           }
-          entries.push({ key: 'board:' + orderedBoards[ubi].id, type: 'board', board: orderedBoards[ubi], index: entries.length });
+          entries.push({ key: 'board:' + orderedBoards[ubi].id, type: 'board', board: orderedBoards[ubi], index: entries.length, workspaceChild: true });
         }
       }
     } else {
@@ -2599,7 +2616,7 @@ var LexeraBoardList = (function () {
           // Update existing board wrapper in place
           var boardItem = existing.querySelector('.board-item');
           if (boardItem) {
-            _updateBoardItemContent(boardItem, board, entry.index, isExpanded, isActive, rows, totalCards, SidebarSync);
+            _updateBoardItemContent(boardItem, board, entry.index, isExpanded, isActive, rows, totalCards, !!entry.workspaceChild, SidebarSync);
           }
           // Update tree content
           var treeEl = existing.querySelector('.board-item-tree');
@@ -2614,7 +2631,7 @@ var LexeraBoardList = (function () {
           }
           node = existing;
         } else {
-          node = _createBoardWrapperEl(board, entry.index, isExpanded, isActive, rows, totalCards, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell);
+          node = _createBoardWrapperEl(board, entry.index, isExpanded, isActive, rows, totalCards, !!entry.workspaceChild, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell);
         }
       } else if (entry.type === 'remote_divider') {
         if (existing) {

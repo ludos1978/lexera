@@ -720,15 +720,20 @@ var ManagementUI = (function () {
       return '<div class="mgmt-top-tab-content' + (defaultTopTab === id ? ' active' : '') + '" data-mgmt-top-panel="' + id + '">';
     }
 
-    // Top-level tabs
-    html += '<div class="mgmt-top-tab-bar">';
-    html += tabBtn('sharing', 'Sharing');
-    html += tabBtn('workspaces', 'Workspaces');
-    html += tabBtn('boards', 'Boards');
-    html += tabBtn('workspace-config', 'Workspaces');
-    html += tabBtn('network', 'Network');
-    html += tabBtn('logs', 'Logs');
-    html += '</div>';
+    // Top-level tabs — hidden when there's only one tab (e.g. Files preset)
+    var tabBtns = [
+      tabBtn('sharing', 'Sharing'),
+      tabBtn('workspaces', 'Workspaces'),
+      tabBtn('boards', 'Boards'),
+      tabBtn('workspace-config', 'Workspaces'),
+      tabBtn('network', 'Network'),
+      tabBtn('logs', 'Logs')
+    ].filter(function (s) { return s; });
+    if (tabBtns.length > 1) {
+      html += '<div class="mgmt-top-tab-bar">';
+      html += tabBtns.join('');
+      html += '</div>';
+    }
 
     // ── Sharing tab (legacy: contains both workspaces + boards) ──
     if (isTab('sharing')) {

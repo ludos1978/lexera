@@ -160,12 +160,12 @@
   /* Sidebar tree — shared line variables used by all tree views */
   --tree-line-color: var(--border);
   --tree-line-width: 1px;
-  --tree-indent-size: 12px;
+  --tree-indent-size: 14px;
   --tree-fg: var(--text-secondary);
   --tree-fg-hover: var(--text-primary);
   --tree-guide: var(--tree-line-color);
   --tree-indent-step: var(--tree-indent-size);
-  --tree-indent-guide-center: 5px;
+  --tree-indent-guide-center: 6px;
   --tree-toggle-col: var(--tree-indent-step);
   --tree-toggle-fg: var(--text-primary);
   --tree-toggle-fg-hover: var(--text-bright);
@@ -847,6 +847,7 @@ textarea {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  --dashboard-group-child-indent: calc(var(--tree-indent-step) - 1px);
 }
 
 /* Dashboard group headers match .tree-node + .tree-row exactly so they
@@ -889,6 +890,10 @@ textarea {
 }
 .dashboard-group.collapsed > :not(.dashboard-group-header) {
   display: none;
+}
+
+.dashboard-group > .dashboard-list {
+  padding-left: var(--dashboard-group-child-indent);
 }
 
 /* Standalone calendar panels */
@@ -1498,6 +1503,21 @@ textarea {
   padding-left: 4px;
 }
 .board-item-tree.expanded { display: block; }
+
+.board-item-workspace-child > .tree-indent-root {
+  width: var(--tree-indent-step);
+  min-width: var(--tree-indent-step);
+  position: relative;
+}
+
+.board-item-workspace-child > .tree-indent-root::after {
+  content: '';
+  position: absolute;
+  left: var(--tree-indent-guide-center);
+  top: 50%;
+  right: calc(-1 * var(--space-1) - var(--tree-toggle-col));
+  border-top: var(--tree-line-width) solid var(--tree-guide);
+}
 
 /* Tree node common */
 .tree-node {
@@ -8358,11 +8378,11 @@ select.export-input {
 
 :root[data-visual-theme="sleek"] {
   --sidebar-tree-item-height: calc(18px * var(--ui-scale));
-  --sidebar-tree-indent-step: calc(12px * var(--ui-scale));
+  --sidebar-tree-indent-step: calc(15px * var(--ui-scale));
   --sidebar-tree-root-offset: 0px;
   --sidebar-tree-indent-col: var(--sidebar-tree-indent-step);
   --tree-indent-step: var(--sidebar-tree-indent-step);
-  --tree-indent-guide-center: 4px;
+  --tree-indent-guide-center: calc(6px * var(--ui-scale));
   --sidebar-tree-guide-col: var(--tree-indent-step);
   --sidebar-tree-toggle-col: calc(14px * var(--ui-scale));
   --tree-toggle-col: var(--sidebar-tree-toggle-col);
@@ -8635,12 +8655,12 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .indent-guide::before {
-  left: 4px;
+  left: var(--tree-indent-guide-center);
 }
 
 :root[data-visual-theme="sleek"] .indent-guide.branch::after,
 :root[data-visual-theme="sleek"] .indent-guide.corner::after {
-  left: 4px;
+  left: var(--tree-indent-guide-center);
   right: 0;
 }
 
@@ -8650,7 +8670,7 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .tree-toggle::before {
-  left: 4px;
+  left: var(--tree-indent-guide-center);
 }
 
 :root[data-visual-theme="sleek"] .tree-toggle::after,
@@ -8660,7 +8680,7 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .board-item-toggle::before {
-  left: 4px;
+  left: var(--tree-indent-guide-center);
 }
 
 :root[data-visual-theme="sleek"] .board-item-toggle::after {
