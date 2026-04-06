@@ -39,7 +39,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 500;
 }
 
 /* Meta section: right-aligned counts, badges, actions */
@@ -95,14 +94,12 @@
   display: block;
 }
 
-/* Section header: uppercase group label */
+/* Section header */
 .hierarchical-section-header {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-size: var(--font-size-md);
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: var(--app-space-1) var(--app-space-3);
+  padding: 2px 6px;
+  margin: 0 2px;
 }
 
 /* Empty state */

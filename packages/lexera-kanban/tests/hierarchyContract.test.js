@@ -81,5 +81,36 @@ describe('LexeraHierarchyContract', () => {
       capabilities: ['activate'],
       selectable: true
     });
+    expect(node.getAttribute('data-tree-node-role')).toBe('leaf');
+  });
+
+  it('marks rendered container nodes as branch roles', () => {
+    const TreeView = loadTreeView();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    TreeView.render(container, [
+      HierarchyContract.createNode({
+        id: 'ctx:1',
+        label: 'File Embeds',
+        type: 'dashboard-group',
+        grip: false,
+        expanded: true,
+        children: [
+          HierarchyContract.createNode({
+            id: 'file:1',
+            label: 'PlantUML Diagram Tests',
+            type: 'dashboard-file',
+            grip: false,
+            hasToggle: false
+          })
+        ]
+      })
+    ], { variant: 'compact' });
+
+    const branchNode = container.querySelector('.tree-node[data-tree-id="ctx:1"]');
+    expect(branchNode).toBeTruthy();
+    expect(branchNode.getAttribute('data-tree-node-role')).toBe('branch');
+    expect(branchNode.getAttribute('data-tree-root')).toBe('true');
   });
 });

@@ -301,6 +301,7 @@ var ManagementUI = (function () {
         child: true,
         selected: !!options.selected
       }),
+      structuralRole: 'item',
       expanded: false,
       hasToggle: false,
       grip: false,
@@ -340,6 +341,7 @@ var ManagementUI = (function () {
       id: 'config:global',
       label: 'Global Settings',
       type: buildConfigTreeNodeType('config-root', { selected: !!globalSelected }),
+      structuralRole: 'group',
       expanded: false,
       hasToggle: false,
       grip: false,
@@ -371,6 +373,7 @@ var ManagementUI = (function () {
         label: workspaceLabel,
         count: wsBoards.length,
         type: buildConfigTreeNodeType('workspace', { selected: !!workspaceSelected }),
+        structuralRole: 'group',
         expanded: true,
         hasToggle: wsBoards.length > 0,
         grip: false,
@@ -402,6 +405,7 @@ var ManagementUI = (function () {
         label: 'Unassigned',
         count: unassignedBoards.length,
         type: buildConfigTreeNodeType('group'),
+        structuralRole: 'group',
         expanded: true,
         hasToggle: true,
         grip: false,
@@ -717,23 +721,12 @@ var ManagementUI = (function () {
       return '<button class="mgmt-top-tab' + (defaultTopTab === id ? ' active' : '') + '" data-mgmt-top-tab="' + id + '">' + label + '</button>';
     }
     function tabOpen(id) {
-      return '<div class="mgmt-top-tab-content' + (defaultTopTab === id ? ' active' : '') + '" data-mgmt-top-panel="' + id + '">';
+      return '<div class="mgmt-top-tab-content active" data-mgmt-top-panel="' + id + '">';
     }
 
-    // Top-level tabs — hidden when there's only one tab (e.g. Files preset)
-    var tabBtns = [
-      tabBtn('sharing', 'Sharing'),
-      tabBtn('workspaces', 'Workspaces'),
-      tabBtn('boards', 'Boards'),
-      tabBtn('workspace-config', 'Workspaces'),
-      tabBtn('network', 'Network'),
-      tabBtn('logs', 'Logs')
-    ].filter(function (s) { return s; });
-    if (tabBtns.length > 1) {
-      html += '<div class="mgmt-top-tab-bar">';
-      html += tabBtns.join('');
-      html += '</div>';
-    }
+    // Tab content panels are always rendered; the tab bar is omitted entirely.
+    // The management UI always shows one surface at a time (files OR backend
+    // settings), each with its own mount. There is no multi-tab navigation.
 
     // ── Sharing tab (legacy: contains both workspaces + boards) ──
     if (isTab('sharing')) {

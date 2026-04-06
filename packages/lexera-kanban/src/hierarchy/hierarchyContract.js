@@ -12,6 +12,11 @@
     return text || null;
   }
 
+  function normalizeStructuralRole(value) {
+    var text = normalizeString(value);
+    return text ? text.toLowerCase() : null;
+  }
+
   function normalizeCapabilities(value) {
     var raw = [];
     if (Array.isArray(value)) {
@@ -92,6 +97,7 @@
       label: definition.label == null ? '' : String(definition.label),
       count: definition.count == null ? null : definition.count,
       type: definition.type == null ? null : String(definition.type),
+      structuralRole: normalizeStructuralRole(definition.structuralRole),
       children: Array.isArray(definition.children) ? definition.children : definition.children === null ? null : definition.children,
       expanded: definition.expanded === true,
       hasToggle: definition.hasToggle != null ? definition.hasToggle : undefined,
@@ -121,6 +127,11 @@
     return descriptor;
   }
 
+  function readStructuralRoleFromNode(node) {
+    if (!node || typeof node.getAttribute !== 'function') return null;
+    return normalizeStructuralRole(node.getAttribute('data-tree-structural-role'));
+  }
+
   function nodeSupportsCapability(nodeOrDescriptor, capability) {
     var descriptor = nodeOrDescriptor;
     if (descriptor && typeof descriptor.getAttribute === 'function') {
@@ -137,10 +148,12 @@
   return {
     normalizeCapabilities: normalizeCapabilities,
     normalizeDescriptor: normalizeDescriptor,
+    normalizeStructuralRole: normalizeStructuralRole,
     applyDescriptorToAttrs: applyDescriptorToAttrs,
     composeNodeType: composeNodeType,
     createNode: createNode,
     readDescriptorFromNode: readDescriptorFromNode,
+    readStructuralRoleFromNode: readStructuralRoleFromNode,
     nodeSupportsCapability: nodeSupportsCapability
   };
 }));

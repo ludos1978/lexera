@@ -560,15 +560,17 @@
   border-left: 2px solid var(--accent);
 }
 .mgmt-config-tree {
-  --tree-indent-step: calc(16px * var(--ui-scale, 1));
-  --tree-indent-guide-center: calc(6px * var(--ui-scale, 1));
+  --tree-indent-step: var(--tree-indent-size, calc(14px * var(--ui-scale, 1)));
+  --tree-indent-guide-center: 6px;
 }
+/* No bold on any hierarchy level — all labels inherit the base font-weight */
 /* Legacy fallback classes — only used when TreeView is unavailable.
  * Values match the shared .tree-node layout so the fallback looks
  * identical to the TreeView rendering path. */
 .mgmt-config-tree-node {
   display: flex;
   align-items: center;
+  min-height: var(--hierarchy-row-min-height, 18px);
   gap: 3px;
   padding: 2px 6px;
   cursor: pointer;

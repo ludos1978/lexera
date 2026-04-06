@@ -169,6 +169,8 @@
   --tree-toggle-col: var(--tree-indent-step);
   --tree-toggle-fg: var(--text-primary);
   --tree-toggle-fg-hover: var(--text-bright);
+  --hierarchy-row-min-height: calc(18px * var(--ui-scale, 1));
+  --hierarchy-header-color: var(--text-primary);
 }
 
 /* Integrated light/dark appearance vars are applied by JS via the visual-theme flow. */
@@ -591,10 +593,7 @@ textarea {
   --sidebar-header-action-gap: 8px;
   padding: 10px 12px 8px;
   font-size: var(--font-size-md);
-  font-weight: 600;
-  text-transform: uppercase;
   color: var(--text-secondary);
-  letter-spacing: 0.8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -847,53 +846,111 @@ textarea {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  --dashboard-group-child-indent: calc(var(--tree-indent-step) - 1px);
+  --dashboard-group-child-indent: var(--tree-indent-step);
 }
 
 /* Dashboard group headers match .tree-node + .tree-row exactly so they
- * look like top-level expandable tree rows. font-weight 500 matches
+ * look like top-level expandable tree rows. No bold — all hierarchy
  * .tree-row, not 600 which was visually heavier than tree nodes below. */
-.dashboard-group-header {
-  display: flex;
+.dashboard-group-header,
+.workspace-section-header {
+  display: grid;
+  grid-template-columns: var(--sidebar-tree-toggle-col, var(--tree-toggle-col)) minmax(0, 1fr) max-content max-content;
   align-items: center;
+  position: relative;
+  min-height: var(--hierarchy-row-min-height);
   padding: 2px 6px;
   cursor: pointer;
   border-radius: 3px;
   font-size: var(--font-size-md);
-  font-weight: 500;
-  color: var(--tree-fg, var(--text-primary));
-  gap: 3px;
+
+  color: var(--tree-fg, var(--hierarchy-header-color));
+  column-gap: 0;
   margin: 0 2px;
   user-select: none;
 }
-.dashboard-group-header:hover {
+.dashboard-group-header:hover,
+.workspace-section-header:hover {
   color: var(--tree-fg-hover, var(--text-bright));
   background: var(--bg-hover);
 }
-/* Toggle arrow: uses the same glyph, size, color, and column width as
- * .tree-toggle so the arrow aligns perfectly with TreeView toggle arrows
- * in the rows below. */
-.dashboard-group-header::before {
-  content: '\25B6';
-  font-size: var(--tree-toggle-font-size, 9px);
+/* Dashboard/workspace section toggles match the compact hierarchy chevron. */
+.dashboard-group-toggle,
+.workspace-section-toggle {
+  display: block;
+  grid-column: 1;
+  grid-row: 1;
+  width: var(--sidebar-tree-toggle-col, var(--tree-toggle-col, 14px));
+  min-width: var(--sidebar-tree-toggle-col, var(--tree-toggle-col, 14px));
+  height: 100%;
+  position: relative;
+  box-sizing: border-box;
   color: var(--tree-toggle-fg, var(--text-secondary));
-  width: var(--tree-toggle-col, 14px);
-  min-width: var(--tree-toggle-col, 14px);
-  text-align: center;
-  flex-shrink: 0;
 }
-.dashboard-group:not(.collapsed) > .dashboard-group-header::before {
-  content: '\25BC';
+.dashboard-group-toggle::after,
+.workspace-section-toggle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: var(--sidebar-tree-toggle-gap, 3px);
+  width: var(--sidebar-tree-toggle-icon-size, 6px);
+  height: var(--sidebar-tree-toggle-icon-size, 6px);
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-50%) rotate(-45deg);
 }
-.dashboard-group.collapsed > .dashboard-group-header::before {
-  content: '\25B6';
+.dashboard-group:not(.collapsed) > .dashboard-group-header .dashboard-group-toggle::after,
+.workspace-section-toggle.expanded::after {
+  transform: translateY(-60%) rotate(45deg);
 }
 .dashboard-group.collapsed > :not(.dashboard-group-header) {
   display: none;
 }
 
-.dashboard-group > .dashboard-list {
+.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] {
+  position: relative;
   padding-left: var(--dashboard-group-child-indent);
+}
+
+.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--dashboard-group-child-indent) - var(--tree-indent-step) + var(--tree-indent-guide-center));
+  border-left: var(--tree-line-width) solid var(--tree-guide);
+  pointer-events: none;
+}
+
+.dashboard-group.is-empty > .dashboard-list[data-hierarchy-section-body="true"]::before,
+.dashboard-group.collapsed > .dashboard-list[data-hierarchy-section-body="true"]::before {
+  display: none;
+}
+
+.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"] {
+  position: relative;
+}
+
+.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"]::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: calc(-1 * var(--dashboard-group-child-indent) + var(--tree-indent-guide-center));
+  width: calc(var(--dashboard-group-child-indent) - var(--tree-indent-guide-center));
+  border-top: var(--tree-line-width) solid var(--tree-guide);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry[data-tree-node-role="branch"] > .tree-node[data-tree-root="true"] > .tree-label,
+.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry[data-tree-node-role="branch"] > .tree-node[data-tree-root="true"] > .tree-meta > .tree-count {
+  color: var(--hierarchy-header-color);
+
+}
+
+.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry[data-tree-node-role="leaf"] > .tree-node[data-tree-root="true"] > .tree-label {
+  color: var(--tree-fg);
+  font-weight: 400;
 }
 
 /* Standalone calendar panels */
@@ -1221,48 +1278,28 @@ textarea {
 /* Workspace section headers: styled to match the shared .tree-node row
  * layout — same padding, border-radius, gap, font, hover, and toggle
  * arrow as every other hierarchy node. */
-.workspace-section-header {
-  display: flex;
-  align-items: center;
-  padding: 2px 6px;
-  cursor: pointer;
-  border-radius: 3px;
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  color: var(--tree-fg, var(--text-primary));
-  gap: 3px;
-  margin: 0 2px;
-  user-select: none;
-}
-.workspace-section-header:hover {
-  color: var(--tree-fg-hover, var(--text-bright));
-  background: var(--bg-hover);
-}
 .workspace-section-header.workspace-unassigned .workspace-section-name {
   color: var(--text-muted);
-  font-weight: 500;
 }
-.workspace-section-toggle {
-  font-size: var(--tree-toggle-font-size, 9px);
-  color: var(--tree-toggle-fg, var(--text-secondary));
-  width: var(--tree-toggle-col, 14px);
-  min-width: var(--tree-toggle-col, 14px);
-  text-align: center;
-  flex-shrink: 0;
-}
+.dashboard-group-title,
 .workspace-section-name {
-  flex: 1;
+  grid-column: 2;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .workspace-section-count {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  flex-shrink: 0;
+  grid-column: 3;
+  justify-self: end;
+  margin-left: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 .workspace-section-focus {
+  grid-column: 4;
+  justify-self: end;
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -1285,17 +1322,14 @@ textarea {
   margin: 0;
 }
 .dashboard-tag-section-header {
-  /* Matches the shared .tree-node / .dashboard-group-header layout */
+  /* Matches the shared .tree-node layout — no bold, no letter-spacing */
   display: flex;
   align-items: center;
   padding: 2px 6px;
   margin: 0 2px;
   border-radius: 3px;
   font-size: var(--font-size-md);
-  font-weight: 600;
   color: var(--tree-fg, var(--text-primary));
-  letter-spacing: 0.5px;
-  padding: var(--app-space-1) var(--app-space-3);
 }
 .dashboard-empty {
   color: var(--text-secondary);
@@ -1319,7 +1353,6 @@ textarea {
 }
 
 .dashboard-list.tree-view .tree-dashboard-group {
-  font-weight: 500;
 }
 
 .dashboard-list.tree-view .tree-dashboard-file .tree-count,
@@ -1477,7 +1510,6 @@ textarea {
 }
 .sidebar-section-label {
   font-size: var(--font-size-md);
-  font-weight: 600;
   color: var(--text-secondary);
   white-space: nowrap;
 }
@@ -1774,11 +1806,18 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* Level-specific styling */
-.tree-row { font-weight: 500; }
-.tree-card { font-size: var(--font-size-md); cursor: pointer; }
-.tree-card .tree-label { opacity: 0.7; }
-.tree-card:hover .tree-label { opacity: 1; }
+.board-list .tree-board .tree-label,
+.dashboard-list.tree-view .tree-dashboard-group .tree-label,
+.mgmt-config-tree .tree-config-root .tree-label,
+.mgmt-config-tree .tree-workspace .tree-label,
+.mgmt-config-tree .tree-group .tree-label {
+
+  color: var(--hierarchy-header-color);
+}
+
+/* All hierarchy levels share the same font size, weight, color, and opacity.
+ * No level-specific overrides — every node looks the same. */
+.tree-card { cursor: pointer; }
 
 /* Tree drag grip */
 .tree-grip {
@@ -1812,6 +1851,19 @@ textarea {
 
 .tree-count.hidden {
   display: none;
+}
+
+.tree-view-compact .tree-node[data-tree-root="true"] {
+  min-height: var(--hierarchy-row-min-height);
+}
+
+.tree-view-compact .tree-node[data-tree-root="true"] > .tree-indent {
+  display: none;
+}
+
+.tree-view-compact .tree-node[data-tree-root="true"] > .tree-label {
+
+  color: var(--hierarchy-header-color);
 }
 
 .board-item-remove.hidden {
@@ -1884,6 +1936,18 @@ textarea {
   opacity: 1;
   color: var(--text-bright);
   background: var(--bg-hover);
+}
+
+.board-list .tree-grip.entity-drag-icon {
+  opacity: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.board-list .tree-node:hover .tree-grip.entity-drag-icon,
+.board-list .tree-grip.entity-drag-icon:focus-visible {
+  opacity: 0.88;
+  color: var(--text-primary);
 }
 
 @container sidebar-tree (max-width: 270px) {
@@ -8373,7 +8437,6 @@ select.export-input {
 
 :root[data-visual-theme="sleek"] .board-item-title {
   font-size: var(--sidebar-board-font-size);
-  font-weight: var(--sidebar-board-font-weight);
 }
 
 :root[data-visual-theme="sleek"] {
@@ -8386,15 +8449,14 @@ select.export-input {
   --sidebar-tree-guide-col: var(--tree-indent-step);
   --sidebar-tree-toggle-col: calc(14px * var(--ui-scale));
   --tree-toggle-col: var(--sidebar-tree-toggle-col);
-  --sidebar-tree-toggle-gap: calc(4px * var(--ui-scale));
-  --sidebar-tree-toggle-icon-size: calc(5px * var(--ui-scale));
+  --sidebar-tree-toggle-gap: calc(3px * var(--ui-scale));
+  --sidebar-tree-toggle-icon-size: calc(6px * var(--ui-scale));
   --sidebar-tree-meta-gap: calc(3px * var(--ui-scale));
   --sidebar-tree-presence-col: calc(18px * var(--ui-scale));
   --sidebar-tree-count-col: calc(20px * var(--ui-scale));
   --sidebar-tree-action-col: var(--app-icon-button-size);
   --sidebar-tree-grip-col: var(--app-icon-button-size);
   --sidebar-board-font-size: var(--font-size-md);
-  --sidebar-board-font-weight: 600;
   --sidebar-board-padding-inline: var(--sidebar-tree-root-offset);
   --sidebar-tree-font-size: var(--font-size-md);
 }
@@ -8539,6 +8601,26 @@ select.export-input {
 :root[data-visual-theme="sleek"] .tree-node:hover,
 :root[data-visual-theme="sleek"] .tree-node.sync-highlight {
   background: transparent;
+  color: var(--text-primary);
+}
+
+:root[data-visual-theme="sleek"] .tree-view-compact .tree-node[data-tree-root="true"] {
+  color: var(--text-primary);
+}
+
+:root[data-visual-theme="sleek"] .tree-node[aria-expanded="true"],
+:root[data-visual-theme="sleek"] .tree-node[aria-expanded="false"],
+:root[data-visual-theme="sleek"] .board-item[aria-expanded="true"],
+:root[data-visual-theme="sleek"] .board-item[aria-expanded="false"] {
+  color: color-mix(in srgb, var(--text-primary) 90%, var(--text-secondary));
+}
+
+:root[data-visual-theme="sleek"] .tree-node[aria-expanded="true"] > .tree-label,
+:root[data-visual-theme="sleek"] .tree-node[aria-expanded="false"] > .tree-label,
+:root[data-visual-theme="sleek"] .board-item[aria-expanded="true"] .board-item-title,
+:root[data-visual-theme="sleek"] .board-item[aria-expanded="false"] .board-item-title,
+:root[data-visual-theme="sleek"] .workspace-section-header .workspace-section-name,
+:root[data-visual-theme="sleek"] .dashboard-group-header .dashboard-group-title {
   color: var(--text-primary);
 }
 
@@ -8736,6 +8818,15 @@ select.export-input {
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: translateY(-50%) rotate(-45deg);
+}
+
+:root[data-visual-theme="sleek"] .tree-node[aria-expanded="true"] > .tree-toggle,
+:root[data-visual-theme="sleek"] .tree-node[aria-expanded="false"] > .tree-toggle,
+:root[data-visual-theme="sleek"] .board-item[aria-expanded="true"] > .board-item-toggle,
+:root[data-visual-theme="sleek"] .board-item[aria-expanded="false"] > .board-item-toggle,
+:root[data-visual-theme="sleek"] .workspace-section-toggle,
+:root[data-visual-theme="sleek"] .dashboard-group-toggle {
+  color: var(--text-primary);
 }
 
 :root[data-visual-theme="sleek"] .tree-view-compact .tree-toggle.expanded::after,

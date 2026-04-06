@@ -154,12 +154,19 @@ var TreeView = (function () {
 
     // Determine toggle
     var hasChildren = node.children && node.children.length > 0;
+    var isContainerNode = Array.isArray(node.children);
     var showToggle = node.hasToggle != null ? node.hasToggle : hasChildren;
     var showGrip = node.grip !== false;
+    var nodeRole = (isContainerNode || showToggle) ? 'branch' : 'leaf';
+    var structuralRole = node && node.structuralRole ? String(node.structuralRole).trim().toLowerCase() : '';
+    if (!structuralRole) structuralRole = nodeRole === 'branch' ? 'group' : 'item';
 
     var entry = document.createElement('div');
     entry.className = 'tree-entry' + (node.type ? ' tree-entry-' + node.type : '');
     entry.setAttribute('data-tree-depth', String(level));
+    entry.setAttribute('data-tree-node-role', nodeRole);
+    entry.setAttribute('data-tree-structural-role', structuralRole);
+    if (level === 1) entry.setAttribute('data-tree-root', 'true');
     entry.setAttribute('role', 'none');
 
     // Create .tree-node
@@ -167,6 +174,9 @@ var TreeView = (function () {
     el.className = 'tree-node' + (node.type ? ' tree-' + node.type : '');
     if (node.id) el.setAttribute('data-tree-id', node.id);
     el.setAttribute('data-tree-depth', String(level));
+    el.setAttribute('data-tree-node-role', nodeRole);
+    el.setAttribute('data-tree-structural-role', structuralRole);
+    if (level === 1) el.setAttribute('data-tree-root', 'true');
     el.setAttribute('role', 'treeitem');
     el.setAttribute('aria-level', String(level));
     if (showToggle) {
@@ -221,7 +231,8 @@ var TreeView = (function () {
         options.onChildrenContainer(childContainer, node);
       }
 
-      var childIndent = parentLastFlags.concat([isLast]);
+      var compactRootFlatten = options && options.variant === 'compact' && level === 1;
+      var childIndent = compactRootFlatten ? [] : parentLastFlags.concat([isLast]);
       applyChildrenGuides(childContainer, childIndent, nodePadLeft);
 
       for (var i = 0; i < node.children.length; i++) {

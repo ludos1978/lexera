@@ -1570,7 +1570,7 @@ var LexeraBoardList = (function () {
     var expanded = wsInfo.expanded;
     if (expanded) { wsHeader.classList.add('expanded'); } else { wsHeader.classList.remove('expanded'); }
     wsHeader.innerHTML =
-      '<span class="workspace-section-toggle">' + (expanded ? '\u25BC' : '\u25B6') + '</span>' +
+      '<span class="workspace-section-toggle' + (expanded ? ' expanded' : '') + '" aria-hidden="true"></span>' +
       '<span class="workspace-section-name">' + _callDep('escapeHtml', wsInfo.ws.name || 'Untitled') + '</span>' +
       (wsInfo.count ? '<span class="workspace-section-count">' + wsInfo.count + '</span>' : '') +
       (wsInfo.unassigned
