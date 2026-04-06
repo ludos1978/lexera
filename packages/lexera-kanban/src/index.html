@@ -25,9 +25,7 @@
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-header">
-        <div class="workspace-select-wrap">
-          <select id="workspace-select" class="workspace-select" title="Active workspace"></select>
-        </div>
+        <div id="workspace-header-title" class="sidebar-header-title" title="All Workspaces">All Workspaces</div>
         <div class="sidebar-header-actions">
           <button id="btn-sidebar-menu" class="sidebar-btn" title="Hierarchy options">&#9776;</button>
         </div>
@@ -48,12 +46,6 @@
               </select>
             </div>
             <button id="btn-dashboard-pin" class="board-action-btn" type="button" title="Pin current dashboard query">Pin</button>
-          </div>
-          <div class="dashboard-quick-row">
-            <button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:overdue" type="button"><span class="chip-icon">!!</span>Overdue</button>
-            <button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:today" type="button"><span class="chip-icon">&#9679;</span>Today</button>
-            <button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:week" type="button"><span class="chip-icon">&#9670;</span>Week</button>
-            <button class="board-action-btn dashboard-chip" data-dashboard-query="is:open #hidden-internal-parked" type="button"><span class="chip-icon">&#9646;</span>Parked</button>
           </div>
         </div>
         <div class="sidebar-dashboard-body view-loading">
@@ -448,6 +440,7 @@
   <script src="export/archiveFormatting.js"></script>
   <script src="export/exportUI.js"></script>
   <script src="treeView.js"></script>
+  <script src="hierarchy/hierarchyContract.js"></script>
   <script src="hierarchy/hierarchyController.js"></script>
   <script src="wysiwyg-editor.js"></script>
   <script src="themes.js"></script>

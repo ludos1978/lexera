@@ -41,6 +41,13 @@
   - In-place `activeBoardData` mutations routed through the runtime bridge.
   - Stable row/stack/column/card ids adopted for hierarchy focus and most move paths.
 - [x] Shared hierarchy interaction controller introduced for Workspace and Dashboard.
+- [x] Shared hierarchy contract above `TreeView` introduced for Workspace, Files, and Dashboard.
+  - `packages/lexera-kanban/src/hierarchy/hierarchyContract.js` now defines shared node descriptors and capabilities.
+  - `TreeView` projects the descriptor into DOM metadata.
+  - `hierarchyController` respects explicit capability gating instead of relying on surface-specific assumptions.
+- [x] Files / Management config tree migrated to the shared hierarchy system while keeping inspectors/forms separate.
+- [x] Workspace hierarchy row / stack / column double-click now edits inline in the visible hierarchy surface, including mirrored workspace panels.
+- [x] Hierarchy card nodes now edit inline in the visible hierarchy surface through the shared multiline tree editor, including mirrored workspace panels and hidden-card fallback resolution.
 - [x] Legacy-converter call-site parity / invariant baseline added.
 - [x] Divider-resize, dashboard pending-flag, workspace-shell testability, and capture watcher tests moved out of the active backlog.
 

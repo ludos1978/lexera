@@ -10,7 +10,6 @@
  *   label: string,          // display text (plain text — escaped by renderer)
  *   count: number|null,     // optional count badge
  *   type: string|null,      // CSS class suffix → .tree-{type}
- *   hierarchy: Object|null, // optional shared hierarchy descriptor
  *   children: Array|null,   // child nodes
  *   expanded: boolean,      // expand/collapse state
  *   hasToggle: boolean,     // show toggle vs spacer (default: auto from children)
@@ -122,30 +121,6 @@ var TreeView = (function () {
     return null;
   }
 
-  function applyHierarchyDescriptorAttrs(targetEl, hierarchy) {
-    if (!targetEl || !hierarchy) return;
-    var surface = hierarchy.surface != null ? String(hierarchy.surface).trim() : '';
-    var kind = hierarchy.kind != null ? String(hierarchy.kind).trim() : '';
-    var entityId = hierarchy.entityId != null ? String(hierarchy.entityId).trim() : '';
-    var capabilities = Array.isArray(hierarchy.capabilities) ? hierarchy.capabilities : [];
-    var capabilityTokens = [];
-    for (var i = 0; i < capabilities.length; i++) {
-      var token = String(capabilities[i] == null ? '' : capabilities[i]).trim().toLowerCase();
-      if (!token) continue;
-      if (capabilityTokens.indexOf(token) !== -1) continue;
-      capabilityTokens.push(token);
-    }
-    if (surface) targetEl.setAttribute('data-hierarchy-surface', surface);
-    if (kind) targetEl.setAttribute('data-hierarchy-kind', kind);
-    if (entityId) targetEl.setAttribute('data-hierarchy-entity-id', entityId);
-    if (capabilityTokens.length > 0) {
-      targetEl.setAttribute('data-hierarchy-capabilities', capabilityTokens.join(' '));
-    }
-    if (hierarchy.selectable === true) {
-      targetEl.setAttribute('data-hierarchy-selectable', 'true');
-    }
-  }
-
   // --- Recursive renderer ---
 
   function renderNode(node, parentLastFlags, isLast, options, nodePadLeft, depth) {
@@ -181,7 +156,6 @@ var TreeView = (function () {
         if (v != null) el.setAttribute(keys[k], v);
       }
     }
-    applyHierarchyDescriptorAttrs(el, node.hierarchy);
 
     var presenceHtml = '<span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span>';
     var countHtml = '<span class="tree-count' + (node.count != null ? '' : ' hidden') + '">' +

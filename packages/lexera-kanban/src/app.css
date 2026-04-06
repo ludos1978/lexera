@@ -602,6 +602,42 @@ textarea {
   background: rgba(0, 0, 0, 0.08);
 }
 
+.sidebar-header-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.sidebar-header-title-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-header-back {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.82;
+  flex: 0 0 auto;
+}
+
+.sidebar-header-back:hover,
+.sidebar-header-back:focus-visible {
+  opacity: 1;
+  color: var(--text-primary);
+  outline: none;
+}
+
 .workspace-select {
   width: 100%;
   min-width: 0;
@@ -1262,28 +1298,6 @@ textarea {
   font-size: var(--font-size-xs);
 }
 
-/* Workspace tree navigation */
-.workspace-nav-up {
-  cursor: pointer;
-  margin: 2px 4px 4px;
-}
-.workspace-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--font-size-md);
-  font-weight: 500;
-  color: var(--accent);
-  padding: 4px 8px;
-  border-radius: 4px;
-}
-.workspace-nav-item:hover {
-  background: var(--bg-hover);
-}
-.workspace-nav-icon {
-  font-size: 12px;
-  flex-shrink: 0;
-}
 .workspace-section-header {
   display: flex;
   align-items: center;
@@ -1351,48 +1365,16 @@ textarea {
   min-width: 0;
 }
 
+/* Dashboard tree: inherits the shared `.tree-*` base styles.
+ * Only semantic per-type overrides remain (group bolding, status colors).
+ * Removed: surface-specific padding, border, background, grip/presence
+ * hiding (handled by TreeView's spacer mechanism when grip=false). */
 .dashboard-list.tree-view {
   gap: 0;
 }
 
-.dashboard-list.tree-view .tree-entry + .tree-entry {
-  margin-top: 2px;
-}
-
-.dashboard-list.tree-view .tree-node {
-  min-height: calc(var(--control-height-sm) + 2px);
-  padding: var(--app-space-1) var(--app-space-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: var(--bg-primary);
-}
-
-.dashboard-list.tree-view .tree-node:hover {
-  border-color: var(--border);
-  background: var(--bg-hover);
-}
-
 .dashboard-list.tree-view .tree-dashboard-group {
-  background: transparent;
-  border-color: transparent;
   font-weight: 600;
-}
-
-.dashboard-list.tree-view .tree-dashboard-group:hover {
-  background: transparent;
-}
-
-.dashboard-list.tree-view .tree-dashboard-result {
-  color: var(--text-primary);
-}
-
-.dashboard-list.tree-view .tree-dashboard-result .tree-label {
-  color: var(--text-primary);
-}
-
-.dashboard-list.tree-view .tree-dashboard-file .tree-label,
-.dashboard-list.tree-view .tree-dashboard-broken .tree-label {
-  color: var(--text-primary);
 }
 
 .dashboard-list.tree-view .tree-dashboard-file .tree-count,
@@ -1411,33 +1393,6 @@ textarea {
 
 .dashboard-list.tree-view .tree-dashboard-file[data-dashboard-status="unknown"] .tree-count {
   color: var(--text-muted);
-}
-
-.dashboard-list.tree-view .tree-dashboard-broken[data-dashboard-col-index] {
-  cursor: pointer;
-}
-
-.dashboard-list.tree-view .tree-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.dashboard-list.tree-view .tree-meta-presence,
-.dashboard-list.tree-view .tree-meta-action,
-.dashboard-list.tree-view .tree-grip {
-  display: none !important;
-}
-
-.dashboard-list.tree-view .tree-count {
-  min-width: 0;
-  margin-left: auto;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.dashboard-list.tree-view .tree-children {
-  margin-top: 0;
 }
 
 .dashboard-item {
@@ -1859,6 +1814,29 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tree-node.tree-inline-editing > .tree-label {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.tree-inline-rename-input {
+  min-width: 120px;
+}
+
+.tree-node.tree-card.tree-inline-editing {
+  align-items: flex-start;
+}
+
+.tree-inline-card-textarea {
+  width: 100%;
+  min-width: 220px;
+  min-height: 96px;
+  resize: vertical;
+  overflow: auto;
+  white-space: pre-wrap;
 }
 
 .tree-meta {
@@ -2756,6 +2734,31 @@ body.show-special-characters .card-content .ws-nl {
 .tag-line-styled {
   color: var(--tag-surface-fg, inherit);
   text-shadow: var(--tag-surface-text-shadow, none);
+}
+
+/* ── Text-style primitive tags (`#font-light` / `#font-normal` / `#font-bold`
+ *    / `#font-italic` / `#font-underline` / `#font-uppercase`) ───────────
+ *
+ * These are set via `buildTagStyleInlineCssText` as CSS custom properties
+ * on the nearest `.tag-styled` / `.tag-line-styled` ancestor. Each one is
+ * independent and additive, so `#font-bold #font-italic` stacks cleanly,
+ * and any non-typographic tag (e.g. `#red`) can compose with them.
+ *
+ * The fallback for every variable is `inherit`, which means the rules
+ * below are zero-cost when the variable is not set on the ancestor — they
+ * simply resolve to whatever the parent already had.
+ *
+ * Requirement source: todo.md "Redo the font/style unification pass.
+ * Keep only: light/normal/bold, italic/underlined, uppercase, and
+ * high-contrast background tags …".
+ */
+.card.tag-styled .card-content,
+.card.tag-styled .card-title-display,
+.tag-line-styled {
+  font-weight: var(--tag-text-weight, inherit);
+  font-style: var(--tag-text-font-style, inherit);
+  text-decoration: var(--tag-text-decoration, inherit);
+  text-transform: var(--tag-text-transform, inherit);
 }
 
 /* Burger menu buttons keep standard colors even on tag-styled entities */
@@ -8055,6 +8058,16 @@ select.export-input {
   padding-right: 0;
   padding-left: 0;
   box-sizing: border-box;
+}
+
+:root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar > .sidebar-header .sidebar-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 calc(12px + var(--sidebar-header-action-width) + var(--sidebar-header-action-gap)) 0 12px;
+  box-sizing: border-box;
+  color: var(--text-primary);
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar > .sidebar-header .workspace-select-wrap {

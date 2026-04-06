@@ -218,7 +218,14 @@ var LexeraDndListeners = (function () {
       _linkClickTimer = setTimeout(function () {
         _linkClickTimer = null;
         var href = link.getAttribute('href');
-        if (href) window.open(href, '_blank', 'noopener,noreferrer');
+        if (!href) return;
+        // Route through the system URL opener so external links open in the
+        // default browser (Tauri) instead of trying to navigate the webview.
+        if (typeof _deps.openUrlInSystem === 'function') {
+          _deps.openUrlInSystem(href);
+        } else {
+          window.open(href, '_blank', 'noopener,noreferrer');
+        }
       }, 300);
     });
   }

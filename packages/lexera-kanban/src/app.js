@@ -292,7 +292,8 @@ var LexeraDashboard = (function () {
     findInsertColumnIndexInStack: function(s, c, b) { return findInsertColumnIndexInStack(s, c, b); },
     getCanvasStackDropApi: function() { return getCanvasStackDropApi(); },
     cacheDropTargetGeometry: function() { if (DragDropHandlers) DragDropHandlers.cacheDropTargetGeometry(); },
-    applyInternalHiddenTag: function(text, tag) { return applyInternalHiddenTag(text, tag); }
+    applyInternalHiddenTag: function(text, tag) { return applyInternalHiddenTag(text, tag); },
+    openUrlInSystem: function(url) { openUrlInSystem(url); }
   });
   if (DndListeners) DndListeners.bindAll();
   if (CardEditorModule) CardEditorModule.init({
@@ -2279,12 +2280,21 @@ var LexeraDashboard = (function () {
     getAllColumnsFromBoardData: function(boardData) { return getAllColumnsFromBoardData(boardData); },
     getMutationBoardTitle: function(boardId, boardData) { return getMutationBoardTitle(boardId, boardData); },
     normalizeLegacyColumnsToRows: function(cols, fallbackTitle) { return normalizeLegacyColumnsToRows(cols, fallbackTitle); },
+    loadBoardDataForMutation: function(boardId) { return loadBoardDataForMutation(boardId); },
+    commitHierarchyTreeEdit: function(boardId, boardData, opts) { return commitHierarchyTreeEdit(boardId, boardData, opts); },
     getDisplayNameFromPath: function(filePath) { return getDisplayNameFromPath(filePath); },
     getCreationEntityDragIconSvg: function(type) { return getCreationEntityDragIconSvg(type); },
     getSharedPanelRoots: function(kind) { return getSharedPanelRoots(kind); },
     isRemoteBoardId: function(boardId) { return isRemoteBoardId(boardId); },
     hasTag: function(text, tag) { return hasTag(text, tag); },
     stripStackTag: function(title) { return stripStackTag(title); },
+    stripHtmlComments: function(text) { return stripHtmlComments(text); },
+    rebuildTitleWithPreservedComments: function(nextTitle, previousTitle) { return rebuildTitleWithPreservedComments(nextTitle, previousTitle); },
+    reconstructColumnTitle: function(nextTitle, previousTitle) { return reconstructColumnTitle(nextTitle, previousTitle); },
+    extractIncludePathFromTitle: function(title) { return extractIncludePathFromTitle(title); },
+    addIncludeSyntaxToTitle: function(title, filePath) { return addIncludeSyntaxToTitle(title, filePath); },
+    removeIncludeSyntaxFromTitle: function(title) { return removeIncludeSyntaxFromTitle(title); },
+    pushUndo: function() { pushUndo(); },
     ensureBoardRowsForMutation: function(boardData, title) { ensureBoardRowsForMutation(boardData, title); },
     updateDisplayFromFullBoard: function() { updateDisplayFromFullBoard(); },
     logFrontendIssue: function(level, target, msg, err) { logFrontendIssue(level, target, msg, err); },
@@ -5738,6 +5748,37 @@ var LexeraDashboard = (function () {
     var boardData = response && response.fullBoard ? response.fullBoard : { rows: [], columns: [] };
     ensureBoardRowsForMutation(boardData, response && response.title ? response.title : getMutationBoardTitle(boardId, boardData));
     return setBoardSaveBase(boardData, boardData);
+  }
+
+  function normalizeHierarchyEditTargets(targets) {
+    var normalized = Array.isArray(targets)
+      ? targets.filter(function (target) { return !!(target && target.type); }).map(function (target) { return Object.assign({}, target); })
+      : [];
+    if (normalized.length === 0) normalized.push({ type: 'board' });
+    var hasSidebarTarget = false;
+    for (var i = 0; i < normalized.length; i++) {
+      if (normalized[i].type === 'sidebar') {
+        hasSidebarTarget = true;
+        break;
+      }
+    }
+    if (!hasSidebarTarget) normalized.push({ type: 'sidebar' });
+    return normalized;
+  }
+
+  async function commitHierarchyTreeEdit(boardId, boardData, options) {
+    if (!boardId || !boardData) return false;
+    options = options || {};
+    var targets = normalizeHierarchyEditTargets(options.targets);
+
+    if (boardId === activeBoardId) {
+      persistBoardMutation({ targets: targets });
+      return true;
+    }
+
+    var changedBoards = {};
+    changedBoards[boardId] = boardData;
+    return commitBoardMutations(changedBoards, { refreshSidebar: true });
   }
 
   async function commitBoardMutations(changedBoards, options) {

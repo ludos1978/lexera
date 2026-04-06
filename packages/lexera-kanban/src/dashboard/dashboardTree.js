@@ -59,6 +59,31 @@
     return source.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || (fallback || 'node');
   }
 
+  function getHierarchyContractApi() {
+    if (typeof LexeraHierarchyContract !== 'undefined' && LexeraHierarchyContract) {
+      return LexeraHierarchyContract;
+    }
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraHierarchyContract) {
+      return globalThis.LexeraHierarchyContract;
+    }
+    if (typeof require === 'function') {
+      try {
+        return require('../hierarchy/hierarchyContract.js');
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  function createHierarchyNode(definition) {
+    var hierarchyContract = getHierarchyContractApi();
+    if (hierarchyContract && typeof hierarchyContract.createNode === 'function') {
+      return hierarchyContract.createNode(definition);
+    }
+    return definition;
+  }
+
   function dashboardInventoryStatusLabel(item) {
     var status = String(item && item.status || 'unknown').trim().toLowerCase();
     if (status === 'missing') return 'Missing';
@@ -120,7 +145,7 @@
         };
         groupOrder.push(groupKey);
       }
-      groups[groupKey].children.push({
+      groups[groupKey].children.push(createHierarchyNode({
         id: null,
         label: dashboardItemTitle(item),
         count: dashboardDueLabel(item) || null,
@@ -128,6 +153,12 @@
         expanded: false,
         hasToggle: false,
         grip: false,
+        hierarchy: {
+          surface: 'dashboard',
+          kind: 'result',
+          entityId: item.cardId ? String(item.cardId) : null,
+          capabilities: ['activate']
+        },
         attrs: {
           'data-dashboard-target': 'result',
           'data-dashboard-board-id': boardId || null,
@@ -138,13 +169,13 @@
           'data-dashboard-column-title': item.columnTitle ? String(item.columnTitle) : null,
           title: dashboardTreeNodeTooltip(item) || null
         }
-      });
+      }));
     }
 
     var nodes = [];
     for (var gi = 0; gi < groupOrder.length; gi++) {
       var group = groups[groupOrder[gi]];
-      nodes.push({
+      nodes.push(createHierarchyNode({
         id: 'dashboard-group-' + (group.boardId || gi),
         label: group.label,
         count: group.children.length,
@@ -152,12 +183,18 @@
         expanded: true,
         hasToggle: true,
         grip: false,
+        hierarchy: {
+          surface: 'dashboard',
+          kind: 'board-group',
+          entityId: group.boardId || null,
+          capabilities: []
+        },
         attrs: {
           'data-dashboard-target': 'board',
           'data-dashboard-board-id': group.boardId || null
         },
         children: group.children
-      });
+      }));
     }
     return nodes;
   }
@@ -179,7 +216,7 @@
         };
         groupOrder.push(groupKey);
       }
-      groups[groupKey].children.push({
+      groups[groupKey].children.push(createHierarchyNode({
         id: null,
         label: String(item.path || '').trim() || '(missing path)',
         count: dashboardInventoryNodeCount(item),
@@ -187,6 +224,12 @@
         expanded: false,
         hasToggle: false,
         grip: false,
+        hierarchy: {
+          surface: 'dashboard',
+          kind: 'file-result',
+          entityId: item.firstCardId || null,
+          capabilities: ['activate']
+        },
         attrs: {
           'data-dashboard-target': 'file',
           'data-dashboard-card-id': item.firstCardId || null,
@@ -197,13 +240,13 @@
           'data-dashboard-status': String(item.status || 'unknown').trim().toLowerCase() || 'unknown',
           title: dashboardInventoryTooltip(item) || null
         }
-      });
+      }));
     }
 
     var nodes = [];
     for (var gi = 0; gi < groupOrder.length; gi++) {
       var group = groups[groupOrder[gi]];
-      nodes.push({
+      nodes.push(createHierarchyNode({
         id: 'dashboard-context-' + groupOrder[gi],
         label: group.label,
         count: group.children.length,
@@ -211,11 +254,17 @@
         expanded: true,
         hasToggle: true,
         grip: false,
+        hierarchy: {
+          surface: 'dashboard',
+          kind: 'context-group',
+          entityId: group.label,
+          capabilities: []
+        },
         attrs: {
           'data-dashboard-target': 'context'
         },
         children: group.children
-      });
+      }));
     }
     return nodes;
   }
@@ -236,7 +285,7 @@
         };
         groupOrder.push(type);
       }
-      groups[type].children.push({
+      groups[type].children.push(createHierarchyNode({
         id: null,
         label: String(item.src || '').trim() || '(unknown source)',
         count: item.count > 1 ? ('x' + item.count) : null,
@@ -244,6 +293,12 @@
         expanded: false,
         hasToggle: false,
         grip: false,
+        hierarchy: {
+          surface: 'dashboard',
+          kind: 'broken-result',
+          entityId: item.cardId || String(item.src || '').trim() || null,
+          capabilities: ['activate']
+        },
         attrs: {
           'data-dashboard-target': 'broken',
           'data-dashboard-col-index': item.colIndex != null ? String(item.colIndex) : null,
@@ -256,14 +311,14 @@
           'data-dashboard-broken-type': type,
           title: dashboardBrokenTooltip(item) || null
         }
-      });
+      }));
     }
 
     var nodes = [];
     for (var gi = 0; gi < groupOrder.length; gi++) {
       var groupKey = groupOrder[gi];
       var group = groups[groupKey];
-      nodes.push({
+      nodes.push(createHierarchyNode({
         id: 'dashboard-broken-' + sanitizeDashboardNodeId(groupKey, 'broken-' + gi),
         label: group.label,
         count: group.children.length,
@@ -271,12 +326,18 @@
         expanded: true,
         hasToggle: true,
         grip: false,
+        hierarchy: {
+          surface: 'dashboard',
+          kind: 'broken-group',
+          entityId: groupKey,
+          capabilities: []
+        },
         attrs: {
           'data-dashboard-target': 'broken-group',
           'data-dashboard-broken-type': groupKey
         },
         children: group.children
-      });
+      }));
     }
     return nodes;
   }
@@ -289,7 +350,7 @@
       var tag = String(group.tag || '').trim();
       var children = buildDashboardResultTreeNodes(group.items || []);
       if (!tag) continue;
-      nodes.push({
+      nodes.push(createHierarchyNode({
         id: 'dashboard-tag-' + sanitizeDashboardNodeId(tag, 'tag-' + i),
         label: tag,
         count: Array.isArray(group.items) ? group.items.length : 0,
@@ -297,12 +358,18 @@
         expanded: true,
         hasToggle: true,
         grip: false,
+        hierarchy: {
+          surface: 'dashboard',
+          kind: 'tag-group',
+          entityId: tag,
+          capabilities: []
+        },
         attrs: {
           'data-dashboard-target': 'tag',
           'data-dashboard-tag': tag
         },
         children: children
-      });
+      }));
     }
     return nodes;
   }

@@ -1238,14 +1238,6 @@ var LexeraBoardList = (function () {
     if (!rootEl || rootEl.__lexeraWorkspaceMirrorBound) return;
     rootEl.__lexeraWorkspaceMirrorBound = true;
 
-    rootEl.addEventListener('change', function (e) {
-      var selectEl = e.target.closest('.lexera-shared-workspace-select');
-      if (!selectEl) return;
-      setActiveWorkspaceId(selectEl.value);
-      renderWorkspaceSelect();
-      renderBoardList();
-    });
-
     rootEl.addEventListener('click', function (e) {
       var menuBtn = e.target.closest('.lexera-shared-workspace-menu');
       if (menuBtn) {
@@ -1268,20 +1260,107 @@ var LexeraBoardList = (function () {
       e.stopPropagation();
       dispatchMirrorMouseEvent(canonicalTarget, 'contextmenu', e);
     });
+
+    rootEl.addEventListener('dblclick', function (e) {
+      if (e.target.closest('.tree-toggle') ||
+          e.target.closest('.tree-grip') ||
+          e.target.closest('.tree-menu-btn')) {
+        return;
+      }
+      var mirrorNode = e.target.closest('.tree-node[data-board-id]');
+      if (!mirrorNode) return;
+      var boardId = String(mirrorNode.getAttribute('data-board-id') || '').trim();
+      if (!boardId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      beginHierarchyNodeInlineEdit(mirrorNode, boardId).then(function (handled) {
+        if (handled) return;
+        var canonicalTarget = findCanonicalHierarchyTarget(mirrorNode);
+        if (!canonicalTarget) return;
+        dispatchMirrorMouseEvent(canonicalTarget, 'dblclick', e);
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'sidebar.mirror-dblclick-edit', 'Failed to start mirrored hierarchy edit', err);
+      });
+    });
   }
 
   function isMirrorRootVisible(rootEl) {
     return rootEl.offsetParent !== null;
   }
 
+  function getWorkspaceHeaderState() {
+    var viewWorkspaceId = getWorkspaceViewId();
+    var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
+    if (!viewWorkspaceId || viewWorkspaceId === ALL_WORKSPACES_ID) {
+      return {
+        label: 'All Workspaces',
+        canGoUp: false
+      };
+    }
+    var workspaces = Array.isArray(_dep('workspaces')) ? _dep('workspaces') : [];
+    for (var i = 0; i < workspaces.length; i++) {
+      var workspace = workspaces[i];
+      if (!workspace || workspace.id !== viewWorkspaceId) continue;
+      return {
+        label: String(workspace.name || 'Untitled Workspace'),
+        canGoUp: true
+      };
+    }
+    return {
+      label: 'Workspaces',
+      canGoUp: true
+    };
+  }
+
+  function navigateToAllWorkspaces(event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    setActiveWorkspaceId(_dep('ALL_WORKSPACES_ID'));
+    renderWorkspaceSelect();
+    renderBoardList();
+  }
+
+  function renderWorkspaceHeaderTitle(titleEl, state) {
+    if (!titleEl) return;
+    state = state || { label: 'Workspaces', canGoUp: false };
+    titleEl.textContent = '';
+    titleEl.setAttribute('title', state.label || 'Workspaces');
+    if (state.canGoUp) {
+      var backBtn = document.createElement('button');
+      backBtn.type = 'button';
+      backBtn.className = 'sidebar-header-back';
+      backBtn.setAttribute('aria-label', 'Go to all workspaces');
+      backBtn.setAttribute('title', 'All Workspaces');
+      backBtn.textContent = '\u2190';
+      backBtn.addEventListener('click', navigateToAllWorkspaces);
+      titleEl.appendChild(backBtn);
+    }
+    var textEl = document.createElement('span');
+    textEl.className = 'sidebar-header-title-text';
+    textEl.textContent = state.label || 'Workspaces';
+    titleEl.appendChild(textEl);
+  }
+
+  function syncWorkspaceHeaderTitles() {
+    var state = getWorkspaceHeaderState();
+    var titleEl = document.getElementById('workspace-header-title');
+    if (titleEl) {
+      renderWorkspaceHeaderTitle(titleEl, state);
+    }
+    var mirroredTitles = document.querySelectorAll('.lexera-shared-workspace-title');
+    for (var i = 0; i < mirroredTitles.length; i++) {
+      renderWorkspaceHeaderTitle(mirroredTitles[i], state);
+    }
+  }
+
   function syncMirroredWorkspaceViews() {
     var workspaceRoots = _callDep('getSharedPanelRoots', 'hierarchy');
     var normalizedWorkspaceRoots = Array.isArray(workspaceRoots) ? workspaceRoots : [];
     var workspaceRootCount = normalizedWorkspaceRoots.length;
+    syncWorkspaceHeaderTitles();
     if (!workspaceRootCount) return;
-    var viewWorkspaceId = getWorkspaceViewId();
-    var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
-    var canonicalSelect = document.getElementById('workspace-select');
     var canonicalBoardList = getElBoardList();
     for (var i = 0; i < workspaceRootCount; i++) {
       var rootEl = normalizedWorkspaceRoots[i];
@@ -1292,71 +1371,17 @@ var LexeraBoardList = (function () {
       }
       rootEl.removeAttribute('data-mirror-stale');
       bindMirroredWorkspaceView(rootEl);
-      var selectEl = rootEl.querySelector('.lexera-shared-workspace-select');
       var boardListEl = rootEl.querySelector('.lexera-shared-board-list');
-      if (selectEl && canonicalSelect) {
-        selectEl.innerHTML = canonicalSelect.innerHTML;
-        selectEl.value = viewWorkspaceId || canonicalSelect.value || ALL_WORKSPACES_ID;
-      }
       if (boardListEl && canonicalBoardList) {
         boardListEl.innerHTML = canonicalBoardList.innerHTML;
       }
     }
   }
 
-  // ─── Workspace select rendering ───────────────────────────────────
+  // ─── Workspace header rendering ───────────────────────────────────
 
   function renderWorkspaceSelect() {
-    var sel = document.getElementById('workspace-select');
-    // console.log('[ws-debug] renderWorkspaceSelect: sel=' + (sel ? sel.id + ' connected=' + sel.isConnected + ' parent=' + (sel.parentNode ? sel.parentNode.className : 'null') : 'NULL'));
-    if (!sel) return;
-
     resolveActiveWorkspaceId(null);
-
-    var viewWorkspaceId = getWorkspaceViewId();
-    var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
-    var workspaces = _dep('workspaces');
-    // console.log('[ws-debug] renderWorkspaceSelect: workspaces=' + (workspaces ? workspaces.length : 'null') + ', activeWs=' + activeWorkspaceId + ', ALL=' + ALL_WORKSPACES_ID);
-
-    sel.innerHTML = '';
-
-    var allOpt = document.createElement('option');
-    allOpt.value = ALL_WORKSPACES_ID;
-    allOpt.textContent = 'All Workspaces';
-    if (viewWorkspaceId === ALL_WORKSPACES_ID) allOpt.selected = true;
-    sel.appendChild(allOpt);
-
-    for (var i = 0; i < workspaces.length; i++) {
-      var ws = workspaces[i];
-      var opt = document.createElement('option');
-      opt.value = ws.id;
-      var boardCount = typeof ws.board_count === 'number' ? ws.board_count : null;
-      opt.textContent = boardCount != null ? (ws.name + ' (' + boardCount + ')') : ws.name;
-      if (ws.id === viewWorkspaceId) opt.selected = true;
-      sel.appendChild(opt);
-      // console.log('[ws-debug] renderWorkspaceSelect: added option "' + opt.textContent + '" value=' + opt.value);
-    }
-    // console.log('[ws-debug] renderWorkspaceSelect: sel.children=' + sel.children.length + ', sel.innerHTML.length=' + sel.innerHTML.length);
-    // Check how many workspace-select and board-list elements exist in the DOM
-    var allSelects = document.querySelectorAll('.workspace-select');
-    var allBoardLists = document.querySelectorAll('.board-list');
-    // console.log('[ws-debug] DOM totals: workspace-selects=' + allSelects.length + ', board-lists=' + allBoardLists.length);
-    for (var si = 0; si < allSelects.length; si++) {
-      // console.log('[ws-debug]   select[' + si + ']: id=' + (allSelects[si].id || 'none') + ', children=' + allSelects[si].children.length + ', connected=' + allSelects[si].isConnected + ', visible=' + (allSelects[si].offsetParent !== null));
-    }
-
-    if (!sel.value) {
-      setActiveWorkspaceId(ALL_WORKSPACES_ID);
-      sel.value = ALL_WORKSPACES_ID;
-    } else if (sel.value !== viewWorkspaceId) {
-      sel.value = viewWorkspaceId;
-    }
-
-    sel.onchange = function () {
-      setActiveWorkspaceId(sel.value);
-      renderWorkspaceSelect();
-      renderBoardList();
-    };
     syncMirroredWorkspaceViews();
   }
 
@@ -1430,7 +1455,6 @@ var LexeraBoardList = (function () {
     if (!el || !el.getAttribute) return null;
     var explicitKey = el.getAttribute('data-list-key');
     if (explicitKey) return explicitKey;
-    if (el.classList.contains('workspace-nav-up')) return '__nav_up__';
     var wsId = el.getAttribute('data-workspace-id');
     if (wsId) return 'ws:' + wsId;
     if (el.classList.contains('sidebar-section-divider')) return '__remote_divider__';
@@ -1438,19 +1462,6 @@ var LexeraBoardList = (function () {
     if (boardId && el.classList.contains('remote-board')) return 'remote:' + boardId;
     if (boardId) return 'board:' + boardId;
     return null;
-  }
-
-  /** Create a "Go up" nav element for workspace sub-views. */
-  function _createNavUpEl() {
-    var upEl = document.createElement('div');
-    upEl.className = 'board-item-wrapper workspace-nav-up';
-    upEl.innerHTML = '<div class="tree-node workspace-nav-item" data-tree-depth="0"><span class="workspace-nav-icon">\u2190</span> All Workspaces</div>';
-    upEl.addEventListener('dblclick', function () {
-      setActiveWorkspaceId(_dep('ALL_WORKSPACES_ID'));
-      renderWorkspaceSelect();
-      renderBoardList();
-    });
-    return upEl;
   }
 
   /** Create a workspace section header element. */
@@ -1685,6 +1696,362 @@ var LexeraBoardList = (function () {
     return null;
   }
 
+  function _loadBoardDataForHierarchyEdit(boardId) {
+    if (typeof _deps.loadBoardDataForMutation === 'function') {
+      return Promise.resolve(_callDep('loadBoardDataForMutation', boardId));
+    }
+    if (boardId === _dep('activeBoardId') && _dep('fullBoardData')) {
+      return Promise.resolve(_dep('fullBoardData'));
+    }
+    return Promise.resolve(null);
+  }
+
+  function _findBoardRowRef(boardData, ctx) {
+    var rows = boardData && Array.isArray(boardData.rows) ? boardData.rows : [];
+    var rowId = ctx && ctx.rowId ? String(ctx.rowId) : '';
+    var rowIdx = ctx && typeof ctx.rowIdx === 'number' ? ctx.rowIdx : -1;
+    var i;
+    if (rowId) {
+      for (i = 0; i < rows.length; i++) {
+        if (rows[i] && rows[i].id != null && String(rows[i].id) === rowId) {
+          return { row: rows[i], rowIdx: i };
+        }
+      }
+    }
+    if (rowIdx >= 0 && rowIdx < rows.length && rows[rowIdx]) {
+      return { row: rows[rowIdx], rowIdx: rowIdx };
+    }
+    return null;
+  }
+
+  function _findBoardStackRef(boardData, ctx) {
+    var rowRef = _findBoardRowRef(boardData, ctx);
+    if (!rowRef || !rowRef.row) return null;
+    var stacks = Array.isArray(rowRef.row.stacks) ? rowRef.row.stacks : [];
+    var stackId = ctx && ctx.stackId ? String(ctx.stackId) : '';
+    var stackIdx = ctx && typeof ctx.stackIdx === 'number' ? ctx.stackIdx : -1;
+    var i;
+    if (stackId) {
+      for (i = 0; i < stacks.length; i++) {
+        if (stacks[i] && stacks[i].id != null && String(stacks[i].id) === stackId) {
+          return {
+            row: rowRef.row,
+            rowIdx: rowRef.rowIdx,
+            stack: stacks[i],
+            stackIdx: i
+          };
+        }
+      }
+    }
+    if (stackIdx >= 0 && stackIdx < stacks.length && stacks[stackIdx]) {
+      return {
+        row: rowRef.row,
+        rowIdx: rowRef.rowIdx,
+        stack: stacks[stackIdx],
+        stackIdx: stackIdx
+      };
+    }
+    return null;
+  }
+
+  function _findBoardColumnRef(boardData, ctx) {
+    var stackRef = _findBoardStackRef(boardData, ctx);
+    var columnId = ctx && ctx.columnId ? String(ctx.columnId) : '';
+    var colIndex = ctx && typeof ctx.colIndex === 'number' ? ctx.colIndex : -1;
+    var colLocalIdx = ctx && typeof ctx.colLocalIdx === 'number' ? ctx.colLocalIdx : -1;
+    var rows = boardData && Array.isArray(boardData.rows) ? boardData.rows : [];
+    var ri;
+    var si;
+    var ci;
+
+    if (columnId || colIndex >= 0) {
+      for (ri = 0; ri < rows.length; ri++) {
+        var row = rows[ri];
+        var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
+        for (si = 0; si < stacks.length; si++) {
+          var stack = stacks[si];
+          var columns = stack && Array.isArray(stack.columns) ? stack.columns : [];
+          for (ci = 0; ci < columns.length; ci++) {
+            var column = columns[ci];
+            if (!column) continue;
+            if (columnId && column.id != null && String(column.id) === columnId) {
+              return {
+                row: row,
+                rowIdx: ri,
+                stack: stack,
+                stackIdx: si,
+                column: column,
+                colLocalIdx: ci
+              };
+            }
+            if (!columnId && colIndex >= 0 && column.index === colIndex) {
+              return {
+                row: row,
+                rowIdx: ri,
+                stack: stack,
+                stackIdx: si,
+                column: column,
+                colLocalIdx: ci
+              };
+            }
+          }
+        }
+      }
+    }
+
+    if (!stackRef || !stackRef.stack) return null;
+    var columnsInStack = Array.isArray(stackRef.stack.columns) ? stackRef.stack.columns : [];
+    if (colLocalIdx >= 0 && colLocalIdx < columnsInStack.length && columnsInStack[colLocalIdx]) {
+      return {
+        row: stackRef.row,
+        rowIdx: stackRef.rowIdx,
+        stack: stackRef.stack,
+        stackIdx: stackRef.stackIdx,
+        column: columnsInStack[colLocalIdx],
+        colLocalIdx: colLocalIdx
+      };
+    }
+    return null;
+  }
+
+  function _isHiddenHierarchyCardContent(content) {
+    var sidebarTreeApi = _callDep('getSidebarTreeApi');
+    if (sidebarTreeApi && typeof sidebarTreeApi.isHiddenCard === 'function') {
+      return sidebarTreeApi.isHiddenCard(content);
+    }
+    return /#hidden-internal-(?:deleted|archived|parked|incoming)\b|(^|\s)#hidden(\s|$)/.test(content || '');
+  }
+
+  function _findBoardCardRef(boardData, ctx) {
+    var columnRef = _findBoardColumnRef(boardData, ctx);
+    if (!columnRef || !columnRef.column) return null;
+    var cards = Array.isArray(columnRef.column.cards) ? columnRef.column.cards : [];
+    var cardId = ctx && ctx.cardId ? String(ctx.cardId) : '';
+    var visibleCardIdx = ctx && typeof ctx.cardIndex === 'number' ? ctx.cardIndex : -1;
+    var i;
+    var visibleIdx = 0;
+
+    if (cardId) {
+      for (i = 0; i < cards.length; i++) {
+        var byIdCard = cards[i];
+        if (!byIdCard) continue;
+        var isHiddenById = _isHiddenHierarchyCardContent(byIdCard.content);
+        if (byIdCard.id != null && String(byIdCard.id) === cardId) {
+          return {
+            row: columnRef.row,
+            rowIdx: columnRef.rowIdx,
+            stack: columnRef.stack,
+            stackIdx: columnRef.stackIdx,
+            column: columnRef.column,
+            colLocalIdx: columnRef.colLocalIdx,
+            card: byIdCard,
+            fullCardIdx: i,
+            visibleCardIdx: isHiddenById ? -1 : visibleIdx
+          };
+        }
+        if (!isHiddenById) visibleIdx++;
+      }
+    }
+
+    if (visibleCardIdx >= 0) {
+      visibleIdx = 0;
+      for (i = 0; i < cards.length; i++) {
+        var byVisibleCard = cards[i];
+        if (!byVisibleCard || _isHiddenHierarchyCardContent(byVisibleCard.content)) continue;
+        if (visibleIdx === visibleCardIdx) {
+          return {
+            row: columnRef.row,
+            rowIdx: columnRef.rowIdx,
+            stack: columnRef.stack,
+            stackIdx: columnRef.stackIdx,
+            column: columnRef.column,
+            colLocalIdx: columnRef.colLocalIdx,
+            card: byVisibleCard,
+            fullCardIdx: i,
+            visibleCardIdx: visibleIdx
+          };
+        }
+        visibleIdx++;
+      }
+    }
+
+    return null;
+  }
+
+  function _resolveHierarchyTreeEditSpec(boardData, node) {
+    var result = _extractTreeNodeScopeCtx(node);
+    if (!result) return null;
+    var labelEl = node.querySelector('.tree-label');
+    var initialDisplayValue = String(labelEl ? labelEl.textContent || '' : '');
+
+    if (result.scope === 'row') {
+      var rowRef = _findBoardRowRef(boardData, result.ctx);
+      if (!rowRef || !rowRef.row) return null;
+      var rowTitle = rowRef.row.title || '';
+      return {
+        scope: 'row',
+        initialValue: _callDep('stripHtmlComments', rowTitle),
+        initialDisplayValue: initialDisplayValue,
+        targets: [{ type: 'row', rowIndex: rowRef.rowIdx }, { type: 'sidebar' }],
+        apply: function (nextValue) {
+          rowRef.row.title = _callDep('rebuildTitleWithPreservedComments', nextValue, rowTitle);
+        }
+      };
+    }
+
+    if (result.scope === 'stack') {
+      var stackRef = _findBoardStackRef(boardData, result.ctx);
+      if (!stackRef || !stackRef.stack) return null;
+      var stackTitle = stackRef.stack.title || '';
+      return {
+        scope: 'stack',
+        initialValue: _callDep('stripHtmlComments', stackTitle),
+        initialDisplayValue: initialDisplayValue,
+        targets: [{ type: 'stack', rowIndex: stackRef.rowIdx, stackIndex: stackRef.stackIdx }, { type: 'sidebar' }],
+        apply: function (nextValue) {
+          stackRef.stack.title = _callDep('rebuildTitleWithPreservedComments', nextValue, stackTitle);
+        }
+      };
+    }
+
+    if (result.scope === 'column') {
+      var columnRef = _findBoardColumnRef(boardData, result.ctx);
+      if (!columnRef || !columnRef.column) return null;
+      var column = columnRef.column;
+      var columnTitle = column.title || '';
+      var includePath = _callDep('extractIncludePathFromTitle', columnTitle);
+      var cleanTitle = _callDep('removeIncludeSyntaxFromTitle', _callDep('stripLayoutTags', columnTitle));
+      return {
+        scope: 'column',
+        initialValue: cleanTitle,
+        initialDisplayValue: initialDisplayValue,
+        targets: typeof column.index === 'number' && column.index >= 0
+          ? [{ type: 'column', colIndex: column.index }, { type: 'sidebar' }]
+          : [{ type: 'board' }, { type: 'sidebar' }],
+        apply: function (nextValue) {
+          var rebuilt = _callDep('reconstructColumnTitle', nextValue, columnTitle);
+          if (includePath) rebuilt = _callDep('addIncludeSyntaxToTitle', rebuilt, includePath);
+          column.title = rebuilt;
+        }
+      };
+    }
+
+    if (result.scope === 'card') {
+      var cardRef = _findBoardCardRef(boardData, result.ctx);
+      if (!cardRef || !cardRef.card) return null;
+      var initialContent = String(cardRef.card.content || '');
+      var cardTargets =
+        typeof cardRef.column.index === 'number' &&
+        cardRef.column.index >= 0 &&
+        typeof cardRef.visibleCardIdx === 'number' &&
+        cardRef.visibleCardIdx >= 0
+          ? [{ type: 'card', colIndex: cardRef.column.index, cardIndex: cardRef.visibleCardIdx }, { type: 'sidebar' }]
+          : [{ type: 'board' }, { type: 'sidebar' }];
+      return {
+        scope: 'card',
+        multiline: true,
+        allowEmpty: true,
+        autoResize: true,
+        rows: 4,
+        selectAll: false,
+        commitKeys: ['Mod+Enter'],
+        initialValue: initialContent,
+        initialDisplayValue: initialDisplayValue,
+        inputClassName: 'card-edit-input tree-inline-card-textarea',
+        placeholder: 'Card content',
+        targets: cardTargets,
+        normalizeValue: function (nextValue) {
+          return String(nextValue == null ? '' : nextValue).replace(/\r\n?/g, '\n');
+        },
+        getDisplayValue: function (nextValue) {
+          return cardPreviewText(nextValue);
+        },
+        onStart: function (ctx) {
+          if (ctx && ctx.input && typeof ctx.input.setSelectionRange === 'function') {
+            var end = ctx.input.value.length;
+            ctx.input.setSelectionRange(end, end);
+          }
+        },
+        apply: function (nextValue) {
+          cardRef.card.content = nextValue;
+        }
+      };
+    }
+
+    return null;
+  }
+
+  function beginHierarchyNodeInlineEdit(node, boardId) {
+    var controller = _getHierarchyControllerApi();
+    if (!node || !boardId || !controller || typeof controller.beginInlineLabelEdit !== 'function') {
+      return Promise.resolve(false);
+    }
+
+    var scope = _extractTreeNodeScopeCtx(node);
+    if (!scope) {
+      return Promise.resolve(false);
+    }
+
+    return _loadBoardDataForHierarchyEdit(boardId).then(function (boardData) {
+      if (!boardData) return false;
+      var spec = _resolveHierarchyTreeEditSpec(boardData, node);
+      if (!spec) return false;
+
+      controller.beginInlineLabelEdit(node, {
+        initialValue: spec.initialValue,
+        initialDisplayValue: spec.initialDisplayValue,
+        multiline: spec.multiline === true,
+        allowEmpty: spec.allowEmpty === true,
+        autoResize: spec.autoResize !== false,
+        rows: spec.rows,
+        selectAll: spec.selectAll,
+        commitKeys: spec.commitKeys,
+        placeholder: spec.placeholder,
+        inputClassName: spec.inputClassName || 'column-rename-input tree-inline-rename-input',
+        normalizeValue: spec.normalizeValue,
+        getDisplayValue: spec.getDisplayValue,
+        onStart: spec.onStart,
+        onCommit: function (nextValue, ctx) {
+          try {
+            if (boardId === _dep('activeBoardId') && typeof _deps.pushUndo === 'function') {
+              _callDep('pushUndo');
+            }
+            spec.apply(nextValue);
+          } catch (err) {
+            logFrontendIssue('warn', 'sidebar.hierarchy-inline-edit', 'Failed to apply hierarchy inline edit', err);
+            return false;
+          }
+          if (typeof _deps.commitHierarchyTreeEdit !== 'function') return false;
+          return Promise.resolve(_callDep('commitHierarchyTreeEdit', boardId, boardData, {
+            targets: spec.targets
+          })).then(function (saved) {
+            if (saved === false) {
+              ctx.restoreOriginal();
+              _callDep('showNotification', 'Failed to update hierarchy item');
+              return false;
+            }
+            return true;
+          }).catch(function (err) {
+            logFrontendIssue('warn', 'sidebar.hierarchy-inline-edit', 'Failed to persist hierarchy inline edit', err);
+            ctx.restoreOriginal();
+            _callDep('showNotification', 'Failed to update hierarchy item');
+            return false;
+          });
+        },
+        onError: function (err) {
+          logFrontendIssue('warn', 'sidebar.hierarchy-inline-edit', 'Hierarchy inline edit failed', err);
+          _callDep('showNotification', 'Failed to update hierarchy item');
+        }
+      });
+
+      return true;
+    }).catch(function (err) {
+      logFrontendIssue('warn', 'sidebar.hierarchy-inline-edit', 'Failed to load board data for hierarchy edit', err);
+      _callDep('showNotification', 'Failed to edit hierarchy item');
+      return false;
+    });
+  }
+
   function _bindBoardTreeInteractions(treeEl, boardId, workspaceShellEnabled, WorkspaceShell) {
     var controller = _getHierarchyControllerApi();
     if (!controller || typeof controller.bindTreeInteractions !== 'function') return false;
@@ -1761,19 +2128,24 @@ var LexeraBoardList = (function () {
       },
       onNodeEdit: function (node) {
         if (!node) return;
-        var editTarget = _callDep('buildHierarchyFocusTargetFromTreeNode', node, boardId);
-        if (!editTarget) return;
-        if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
-          WorkspaceShell.focusHierarchyTarget(editTarget, boardId, { edit: true });
-          return;
-        }
-        _callDep('navigateToHierarchyTarget', editTarget).then(function () {
-          var dash = typeof window !== 'undefined' ? window.LexeraDashboard : null;
-          if (dash && typeof dash.openEditForHierarchyTarget === 'function') {
-            dash.openEditForHierarchyTarget(editTarget);
+        beginHierarchyNodeInlineEdit(node, boardId).then(function (handled) {
+          if (handled) return;
+          var editTarget = _callDep('buildHierarchyFocusTargetFromTreeNode', node, boardId);
+          if (!editTarget) return;
+          if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
+            WorkspaceShell.focusHierarchyTarget(editTarget, boardId, { edit: true });
+            return;
           }
+          _callDep('navigateToHierarchyTarget', editTarget).then(function () {
+            var dash = typeof window !== 'undefined' ? window.LexeraDashboard : null;
+            if (dash && typeof dash.openEditForHierarchyTarget === 'function') {
+              dash.openEditForHierarchyTarget(editTarget);
+            }
+          }).catch(function (err) {
+            logFrontendIssue('warn', 'sidebar.hierarchy-dblclick-edit', 'Failed to focus hierarchy target for edit', err);
+          });
         }).catch(function (err) {
-          logFrontendIssue('warn', 'sidebar.hierarchy-dblclick-edit', 'Failed to focus hierarchy target for edit', err);
+          logFrontendIssue('warn', 'sidebar.hierarchy-dblclick-edit', 'Failed to start hierarchy inline edit', err);
         });
       }
     });
@@ -1927,22 +2299,27 @@ var LexeraBoardList = (function () {
           if (!node) return;
           e.preventDefault();
           e.stopPropagation();
-          var editTarget = _callDep('buildHierarchyFocusTargetFromTreeNode', node, boardId);
-          if (!editTarget) return;
-          if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
-            WorkspaceShell.focusHierarchyTarget(editTarget, boardId, { edit: true });
-            return;
-          }
-          // Non-shell fallback: navigate locally then dispatch the edit action
-          // via the same mapping the iframe uses. Requires LexeraDashboard to
-          // have loaded in this window (it has — this file is loaded by it).
-          _callDep('navigateToHierarchyTarget', editTarget).then(function () {
-            var dash = typeof window !== 'undefined' ? window.LexeraDashboard : null;
-            if (dash && typeof dash.openEditForHierarchyTarget === 'function') {
-              dash.openEditForHierarchyTarget(editTarget);
+          beginHierarchyNodeInlineEdit(node, boardId).then(function (handled) {
+            if (handled) return;
+            var editTarget = _callDep('buildHierarchyFocusTargetFromTreeNode', node, boardId);
+            if (!editTarget) return;
+            if (workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.focusHierarchyTarget === 'function') {
+              WorkspaceShell.focusHierarchyTarget(editTarget, boardId, { edit: true });
+              return;
             }
+            // Non-shell fallback: navigate locally then dispatch the edit action
+            // via the same mapping the iframe uses. Requires LexeraDashboard to
+            // have loaded in this window (it has — this file is loaded by it).
+            _callDep('navigateToHierarchyTarget', editTarget).then(function () {
+              var dash = typeof window !== 'undefined' ? window.LexeraDashboard : null;
+              if (dash && typeof dash.openEditForHierarchyTarget === 'function') {
+                dash.openEditForHierarchyTarget(editTarget);
+              }
+            }).catch(function (err) {
+              logFrontendIssue('warn', 'sidebar.hierarchy-dblclick-edit', 'Failed to focus hierarchy target for edit', err);
+            });
           }).catch(function (err) {
-            logFrontendIssue('warn', 'sidebar.hierarchy-dblclick-edit', 'Failed to focus hierarchy target for edit', err);
+            logFrontendIssue('warn', 'sidebar.hierarchy-dblclick-edit', 'Failed to start hierarchy inline edit', err);
           });
         });
 
@@ -2005,11 +2382,6 @@ var LexeraBoardList = (function () {
     var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; }) || filteredBoards;
     var expandedIds = getSidebarExpandedBoards();
     var entries = [];
-
-    // "Go up" entry when inside a specific workspace
-    if (!isAllView) {
-      entries.push({ key: '__nav_up__', type: 'nav_up' });
-    }
 
     // In "All Workspaces" view, show workspace section headers
     if (isAllView && workspaces.length > 0) {
@@ -2130,10 +2502,7 @@ var LexeraBoardList = (function () {
       var existing = existingByKey[entry.key];
       var node;
 
-      if (entry.type === 'nav_up') {
-        // Nav-up is static, reuse if exists
-        node = existing || _createNavUpEl();
-      } else if (entry.type === 'ws_header') {
+      if (entry.type === 'ws_header') {
         if (existing) {
           _updateWsHeaderContent(existing, entry);
           node = existing;
@@ -2315,6 +2684,7 @@ var LexeraBoardList = (function () {
     findCanonicalHierarchyTarget: findCanonicalHierarchyTarget,
     bindMirroredWorkspaceView: bindMirroredWorkspaceView,
     syncMirroredWorkspaceViews: syncMirroredWorkspaceViews,
+    beginHierarchyNodeInlineEdit: beginHierarchyNodeInlineEdit,
     renderWorkspaceSelect: renderWorkspaceSelect,
     getBoardWorkspaceIds: getBoardWorkspaceIds,
     removeBoardFromSidebar: removeBoardFromSidebar,

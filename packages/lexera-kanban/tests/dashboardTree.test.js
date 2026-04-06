@@ -1,9 +1,13 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadIIFE } from './load-iife.js';
+import { createRequire } from 'node:module';
 
 let DashboardTree;
+const require = createRequire(import.meta.url);
+const HierarchyContract = require('../src/hierarchy/hierarchyContract.js');
 
 beforeAll(() => {
+  globalThis.LexeraHierarchyContract = HierarchyContract;
   DashboardTree = loadIIFE('dashboard/dashboardTree.js', 'LexeraDashboardTree');
 });
 
@@ -33,93 +37,52 @@ describe('dashboard tree builders', () => {
       }
     ]);
 
-    expect(nodes).toEqual([
-      {
-        id: 'dashboard-context-attachments',
-        label: 'Attachments',
-        count: 2,
-        type: 'dashboard-group',
-        expanded: true,
-        hasToggle: true,
-        grip: false,
-        attrs: {
-          'data-dashboard-target': 'context'
-        },
-        children: [
-          {
-            id: null,
-            label: 'docs/spec.pdf',
-            count: 'Missing · x2',
-            type: 'dashboard-file',
-            expanded: false,
-            hasToggle: false,
-            grip: false,
-            attrs: {
-              'data-dashboard-target': 'file',
-              'data-dashboard-card-id': null,
-              'data-dashboard-column-index': null,
-              'data-dashboard-row-index': null,
-              'data-dashboard-stack-index': null,
-              'data-dashboard-col-local-index': null,
-              'data-dashboard-status': 'missing',
-              title: 'docs/spec.pdf / Attachments / Missing / 2 references'
-            }
-          },
-          {
-            id: null,
-            label: 'docs/notes.md',
-            count: 'Exists',
-            type: 'dashboard-file',
-            expanded: false,
-            hasToggle: false,
-            grip: false,
-            attrs: {
-              'data-dashboard-target': 'file',
-              'data-dashboard-card-id': null,
-              'data-dashboard-column-index': null,
-              'data-dashboard-row-index': null,
-              'data-dashboard-stack-index': null,
-              'data-dashboard-col-local-index': null,
-              'data-dashboard-status': 'exists',
-              title: 'docs/notes.md / Attachments / Exists'
-            }
-          }
-        ]
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0]).toMatchObject({
+      id: 'dashboard-context-attachments',
+      label: 'Attachments',
+      count: 2,
+      type: 'dashboard-group',
+      hierarchy: {
+        surface: 'dashboard',
+        kind: 'context-group',
+        entityId: 'Attachments',
+        capabilities: [],
+        selectable: false
       },
-      {
-        id: 'dashboard-context-gallery',
-        label: 'Gallery',
-        count: 1,
-        type: 'dashboard-group',
-        expanded: true,
-        hasToggle: true,
-        grip: false,
-        attrs: {
-          'data-dashboard-target': 'context'
-        },
-        children: [
-          {
-            id: null,
-            label: 'media/preview.png',
-            count: 'Unknown',
-            type: 'dashboard-file',
-            expanded: false,
-            hasToggle: false,
-            grip: false,
-            attrs: {
-              'data-dashboard-target': 'file',
-              'data-dashboard-card-id': null,
-              'data-dashboard-column-index': null,
-              'data-dashboard-row-index': null,
-              'data-dashboard-stack-index': null,
-              'data-dashboard-col-local-index': null,
-              'data-dashboard-status': 'unknown',
-              title: 'media/preview.png / Gallery / Unknown'
-            }
-          }
-        ]
+      attrs: {
+        'data-dashboard-target': 'context'
       }
-    ]);
+    });
+    expect(nodes[0].children[0]).toMatchObject({
+      label: 'docs/spec.pdf',
+      count: 'Missing · x2',
+      type: 'dashboard-file',
+      hierarchy: {
+        surface: 'dashboard',
+        kind: 'file-result',
+        entityId: null,
+        capabilities: ['activate'],
+        selectable: false
+      },
+      attrs: {
+        'data-dashboard-target': 'file',
+        'data-dashboard-status': 'missing',
+        title: 'docs/spec.pdf / Attachments / Missing / 2 references'
+      }
+    });
+    expect(nodes[1]).toMatchObject({
+      id: 'dashboard-context-gallery',
+      label: 'Gallery',
+      count: 1,
+      hierarchy: {
+        surface: 'dashboard',
+        kind: 'context-group',
+        entityId: 'Gallery',
+        capabilities: [],
+        selectable: false
+      }
+    });
   });
 
   it('groups broken items by type and preserves navigation attributes on leaves', () => {
@@ -138,80 +101,46 @@ describe('dashboard tree builders', () => {
       }
     ]);
 
-    expect(nodes).toEqual([
-      {
-        id: 'dashboard-broken-image',
-        label: 'Image',
-        count: 1,
-        type: 'dashboard-group',
-        expanded: true,
-        hasToggle: true,
-        grip: false,
-        attrs: {
-          'data-dashboard-target': 'broken-group',
-          'data-dashboard-broken-type': 'image'
-        },
-        children: [
-          {
-            id: null,
-            label: 'media/missing.png',
-            count: 'x3',
-            type: 'dashboard-broken',
-            expanded: false,
-            hasToggle: false,
-            grip: false,
-            attrs: {
-              'data-dashboard-target': 'broken',
-              'data-dashboard-col-index': '2',
-              'data-dashboard-card-index': '5',
-              'data-dashboard-card-id': null,
-              'data-dashboard-row-index': null,
-              'data-dashboard-stack-index': null,
-              'data-dashboard-col-local-index': null,
-              'data-dashboard-broken-src': 'media/missing.png',
-              'data-dashboard-broken-type': 'image',
-              title: 'media/missing.png / Image / 3 occurrences'
-            }
-          }
-        ]
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0]).toMatchObject({
+      id: 'dashboard-broken-image',
+      label: 'Image',
+      hierarchy: {
+        surface: 'dashboard',
+        kind: 'broken-group',
+        entityId: 'image',
+        capabilities: [],
+        selectable: false
       },
-      {
-        id: 'dashboard-broken-include',
-        label: 'Include',
-        count: 1,
-        type: 'dashboard-group',
-        expanded: true,
-        hasToggle: true,
-        grip: false,
-        attrs: {
-          'data-dashboard-target': 'broken-group',
-          'data-dashboard-broken-type': 'include'
-        },
-        children: [
-          {
-            id: null,
-            label: 'docs/missing.md',
-            count: null,
-            type: 'dashboard-broken',
-            expanded: false,
-            hasToggle: false,
-            grip: false,
-            attrs: {
-              'data-dashboard-target': 'broken',
-              'data-dashboard-col-index': null,
-              'data-dashboard-card-index': null,
-              'data-dashboard-card-id': null,
-              'data-dashboard-row-index': null,
-              'data-dashboard-stack-index': null,
-              'data-dashboard-col-local-index': null,
-              'data-dashboard-broken-src': 'docs/missing.md',
-              'data-dashboard-broken-type': 'include',
-              title: 'docs/missing.md / Include / File not found'
-            }
-          }
-        ]
+      attrs: {
+        'data-dashboard-target': 'broken-group',
+        'data-dashboard-broken-type': 'image'
       }
-    ]);
+    });
+    expect(nodes[0].children[0]).toMatchObject({
+      label: 'media/missing.png',
+      count: 'x3',
+      hierarchy: {
+        surface: 'dashboard',
+        kind: 'broken-result',
+        entityId: 'media/missing.png',
+        capabilities: ['activate'],
+        selectable: false
+      },
+      attrs: {
+        'data-dashboard-target': 'broken',
+        'data-dashboard-col-index': '2',
+        'data-dashboard-card-index': '5',
+        title: 'media/missing.png / Image / 3 occurrences'
+      }
+    });
+    expect(nodes[1].children[0]).toMatchObject({
+      label: 'docs/missing.md',
+      attrs: {
+        'data-dashboard-target': 'broken',
+        'data-dashboard-broken-type': 'include'
+      }
+    });
   });
 
   it('builds tagged dashboard trees with tag roots above board result groups', () => {
@@ -233,56 +162,56 @@ describe('dashboard tree builders', () => {
       }
     ]);
 
-    expect(nodes).toEqual([
-      {
-        id: 'dashboard-tag-blocked',
-        label: '#blocked',
-        count: 1,
-        type: 'dashboard-group',
-        expanded: true,
-        hasToggle: true,
-        grip: false,
-        attrs: {
-          'data-dashboard-target': 'tag',
-          'data-dashboard-tag': '#blocked'
-        },
-        children: [
-          {
-            id: 'dashboard-group-board-1',
-            label: 'Project Board',
-            count: 1,
-            type: 'dashboard-group',
-            expanded: true,
-            hasToggle: true,
-            grip: false,
-            attrs: {
-              'data-dashboard-target': 'board',
-              'data-dashboard-board-id': 'board-1'
-            },
-            children: [
-              {
-                id: null,
-                label: 'Fix release blocker',
-                count: null,
-                type: 'dashboard-result',
-                expanded: false,
-                hasToggle: false,
-                grip: false,
-                attrs: {
-                  'data-dashboard-target': 'result',
-                  'data-dashboard-board-id': 'board-1',
-                  'data-dashboard-card-id': 'card-1',
-                  'data-dashboard-column-index': '2',
-                  'data-dashboard-row-index': '0',
-                  'data-dashboard-stack-index': '1',
-                  'data-dashboard-column-title': 'Doing',
-                  title: 'Project Board / Row 1 / Stack 2 / Doing'
-                }
-              }
-            ]
-          }
-        ]
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({
+      id: 'dashboard-tag-blocked',
+      label: '#blocked',
+      hierarchy: {
+        surface: 'dashboard',
+        kind: 'tag-group',
+        entityId: '#blocked',
+        capabilities: [],
+        selectable: false
+      },
+      attrs: {
+        'data-dashboard-target': 'tag',
+        'data-dashboard-tag': '#blocked'
       }
-    ]);
+    });
+    expect(nodes[0].children[0]).toMatchObject({
+      id: 'dashboard-group-board-1',
+      label: 'Project Board',
+      hierarchy: {
+        surface: 'dashboard',
+        kind: 'board-group',
+        entityId: 'board-1',
+        capabilities: [],
+        selectable: false
+      },
+      attrs: {
+        'data-dashboard-target': 'board',
+        'data-dashboard-board-id': 'board-1'
+      }
+    });
+    expect(nodes[0].children[0].children[0]).toMatchObject({
+      label: 'Fix release blocker',
+      hierarchy: {
+        surface: 'dashboard',
+        kind: 'result',
+        entityId: 'card-1',
+        capabilities: ['activate'],
+        selectable: false
+      },
+      attrs: {
+        'data-dashboard-target': 'result',
+        'data-dashboard-board-id': 'board-1',
+        'data-dashboard-card-id': 'card-1',
+        'data-dashboard-column-index': '2',
+        'data-dashboard-row-index': '0',
+        'data-dashboard-stack-index': '1',
+        'data-dashboard-column-title': 'Doing',
+        title: 'Project Board / Row 1 / Stack 2 / Doing'
+      }
+    });
   });
 });

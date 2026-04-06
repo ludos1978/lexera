@@ -15,36 +15,6 @@
     return match;
   }
 
-  function getHierarchyContractApi(options) {
-    if (options && options.HierarchyContract) return options.HierarchyContract;
-    if (typeof LexeraHierarchyContract !== 'undefined' && LexeraHierarchyContract) {
-      return LexeraHierarchyContract;
-    }
-    if (typeof globalThis !== 'undefined' && globalThis.LexeraHierarchyContract) {
-      return globalThis.LexeraHierarchyContract;
-    }
-    return null;
-  }
-
-  function readNodeDescriptor(node, options) {
-    if (!node) return null;
-    var hierarchyContract = getHierarchyContractApi(options);
-    if (hierarchyContract && typeof hierarchyContract.readDescriptorFromNode === 'function') {
-      return hierarchyContract.readDescriptorFromNode(node);
-    }
-    return null;
-  }
-
-  function nodeSupportsCapability(node, capability, options) {
-    var descriptor = readNodeDescriptor(node, options);
-    if (!descriptor) return true;
-    var hierarchyContract = getHierarchyContractApi(options);
-    if (hierarchyContract && typeof hierarchyContract.nodeSupportsCapability === 'function') {
-      return hierarchyContract.nodeSupportsCapability(descriptor, capability);
-    }
-    return true;
-  }
-
   function findTreeNode(target, container) {
     return closestWithin(target, '.tree-node', container);
   }
@@ -130,10 +100,8 @@
 
       var grip = closestWithin(target, gripSelector, targetEl);
       if (grip) {
-        var gripNode = findTreeNode(grip, targetEl);
-        if (!nodeSupportsCapability(gripNode, 'drag', options)) return;
         if (typeof options.onGripClick === 'function') {
-          options.onGripClick(gripNode, event, helpers);
+          options.onGripClick(findTreeNode(grip, targetEl), event, helpers);
         } else {
           event.stopPropagation();
         }
@@ -142,11 +110,9 @@
 
       var menu = closestWithin(target, menuSelector, targetEl);
       if (menu) {
-        var menuNode = findTreeNode(menu, targetEl);
-        if (!nodeSupportsCapability(menuNode, 'menu', options)) return;
         if (typeof options.onNodeMenu === 'function') {
           event.stopPropagation();
-          options.onNodeMenu(menuNode, event, helpers);
+          options.onNodeMenu(findTreeNode(menu, targetEl), event, helpers);
         }
         return;
       }
@@ -163,7 +129,6 @@
       if (typeof options.onNodeActivate !== 'function') return;
       var node = findTreeNode(target, targetEl);
       if (!node) return;
-      if (!nodeSupportsCapability(node, 'activate', options)) return;
       event.stopPropagation();
       options.onNodeActivate(node, event, helpers);
     });
@@ -172,7 +137,6 @@
       targetEl.addEventListener('contextmenu', function (event) {
         var node = findTreeNode(event.target, targetEl);
         if (!node) return;
-        if (!nodeSupportsCapability(node, 'menu', options)) return;
         event.preventDefault();
         event.stopPropagation();
         options.onNodeContextMenu(node, event, helpers);
@@ -188,7 +152,6 @@
         }
         var node = findTreeNode(event.target, targetEl);
         if (!node) return;
-        if (!nodeSupportsCapability(node, 'edit', options)) return;
         event.preventDefault();
         event.stopPropagation();
         options.onNodeEdit(node, event, helpers);

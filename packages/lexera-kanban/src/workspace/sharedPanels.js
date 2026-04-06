@@ -36,9 +36,7 @@
     var root = createPanelRoot('sidebar lexera-shared-panel lexera-shared-panel-hierarchy', 'hierarchy', instanceId);
     root.innerHTML =
       '<div class="sidebar-header">' +
-        '<div class="workspace-select-wrap">' +
-          '<select class="workspace-select lexera-shared-workspace-select" title="Active workspace"></select>' +
-        '</div>' +
+        '<div class="sidebar-header-title lexera-shared-workspace-title" title="All Workspaces">All Workspaces</div>' +
         '<div class="sidebar-header-actions">' +
           '<button class="sidebar-btn lexera-shared-workspace-menu" title="Hierarchy options" type="button">&#9776;</button>' +
         '</div>' +
@@ -63,12 +61,6 @@
             '</select>' +
           '</div>' +
           '<button class="board-action-btn lexera-shared-dashboard-pin" type="button" title="Pin current dashboard query">Pin</button>' +
-        '</div>' +
-        '<div class="dashboard-quick-row">' +
-          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:overdue" type="button"><span class="chip-icon">!!</span>Overdue</button>' +
-          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:today" type="button"><span class="chip-icon">&#9679;</span>Today</button>' +
-          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:week" type="button"><span class="chip-icon">&#9670;</span>Week</button>' +
-          '<button class="board-action-btn dashboard-chip" data-dashboard-query="is:open #hidden-internal-parked" type="button"><span class="chip-icon">&#9646;</span>Parked</button>' +
         '</div>' +
       '</div>' +
       '<div class="sidebar-dashboard-body view-loading">' +

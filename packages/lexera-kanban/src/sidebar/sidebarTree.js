@@ -73,6 +73,31 @@
     return entries;
   }
 
+  function getHierarchyContractApi() {
+    if (typeof LexeraHierarchyContract !== 'undefined' && LexeraHierarchyContract) {
+      return LexeraHierarchyContract;
+    }
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraHierarchyContract) {
+      return globalThis.LexeraHierarchyContract;
+    }
+    if (typeof require === 'function') {
+      try {
+        return require('../hierarchy/hierarchyContract.js');
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  function createHierarchyNode(definition) {
+    var hierarchyContract = getHierarchyContractApi();
+    if (hierarchyContract && typeof hierarchyContract.createNode === 'function') {
+      return hierarchyContract.createNode(definition);
+    }
+    return definition;
+  }
+
   function buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState, options) {
     rows = Array.isArray(rows) ? rows : [];
     treeState = treeState || { rows: [], stacks: [], columns: [] };
@@ -133,7 +158,7 @@
             for (var cdi = 0; cdi < cards.length; cdi++) {
               var card = cards[cdi] || {};
               if (isHiddenCard(card.content)) continue;
-              cardNodes.push({
+              cardNodes.push(createHierarchyNode({
                 id: null,
                 label: cardPreviewText(card.content),
                 type: 'card',
@@ -143,6 +168,12 @@
                 hasToggle: false,
                 children: null,
                 expanded: false,
+                hierarchy: {
+                  surface: 'workspace',
+                  kind: 'card',
+                  entityId: card && card.id != null ? String(card.id) : null,
+                  capabilities: ['activate', 'menu', 'drag', 'edit']
+                },
                 attrs: {
                   'data-board-id': boardId,
                   'data-row-id': rowId,
@@ -156,12 +187,12 @@
                   'data-card-index': visibleCardIdx.toString(),
                   'data-tree-drag': 'tree-card'
                 }
-              });
+              }));
               visibleCardIdx++;
             }
           }
 
-          colNodes.push({
+          colNodes.push(createHierarchyNode({
             id: colId,
             label: stripLayout(col.title),
             count: cardCount,
@@ -171,6 +202,12 @@
             grip: true,
             menu: true,
             children: cardNodes.length > 0 ? cardNodes : null,
+            hierarchy: {
+              surface: 'workspace',
+              kind: 'column',
+              entityId: col && col.id != null ? String(col.id) : null,
+              capabilities: ['activate', 'menu', 'drag', 'edit']
+            },
             attrs: {
               'data-board-id': boardId,
               'data-row-id': rowId,
@@ -182,10 +219,10 @@
               'data-col-local-index': ci.toString(),
               'data-tree-drag': 'tree-column'
             }
-          });
+          }));
         }
 
-        stackNodes.push({
+        stackNodes.push(createHierarchyNode({
           id: stackId,
           label: stack.title || 'Stack ' + (si + 1),
           count: rowStacks.length > 1 ? stackCardCount : null,
@@ -194,6 +231,12 @@
           grip: true,
           menu: true,
           children: colNodes,
+          hierarchy: {
+            surface: 'workspace',
+            kind: 'stack',
+            entityId: stackId,
+            capabilities: ['activate', 'menu', 'drag', 'edit']
+          },
           attrs: {
             'data-board-id': boardId,
             'data-row-id': rowId,
@@ -202,10 +245,10 @@
             'data-stack-index': si.toString(),
             'data-tree-drag': 'tree-stack'
           }
-        });
+        }));
       }
 
-      nodes.push({
+      nodes.push(createHierarchyNode({
         id: rowId,
         label: row.title || 'Row ' + (ri + 1),
         count: rows.length > 1 ? rowCardCount : null,
@@ -214,13 +257,19 @@
         grip: true,
         menu: true,
         children: stackNodes,
+        hierarchy: {
+          surface: 'workspace',
+          kind: 'row',
+          entityId: rowId,
+          capabilities: ['activate', 'menu', 'drag', 'edit']
+        },
         attrs: {
           'data-board-id': boardId,
           'data-row-id': rowId,
           'data-row-index': ri.toString(),
           'data-tree-drag': 'tree-row'
         }
-      });
+      }));
     }
     return nodes;
   }
@@ -229,6 +278,7 @@
     extractHtmlComments: extractHtmlComments,
     stripHtmlComments: stripHtmlComments,
     stripLayoutTags: stripLayoutTags,
+    isHiddenCard: isHiddenCard,
     countCardsInRow: countCardsInRow,
     countCardsInStack: countCardsInStack,
     cardPreviewText: cardPreviewText,

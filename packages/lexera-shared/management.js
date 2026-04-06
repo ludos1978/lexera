@@ -246,6 +246,184 @@ var ManagementUI = (function () {
     return wsIds;
   }
 
+  function getManagementTreeViewApi() {
+    if (typeof window !== 'undefined' && window.TreeView) return window.TreeView;
+    return null;
+  }
+
+  function getManagementHierarchyControllerApi() {
+    if (typeof window !== 'undefined' && window.LexeraHierarchyController) return window.LexeraHierarchyController;
+    return null;
+  }
+
+  function getManagementHierarchyContractApi() {
+    if (typeof window !== 'undefined' && window.LexeraHierarchyContract) return window.LexeraHierarchyContract;
+    if (typeof LexeraHierarchyContract !== 'undefined' && LexeraHierarchyContract) return LexeraHierarchyContract;
+    return null;
+  }
+
+  function getManagementBoardDisplayName(board) {
+    return board.title || (board.filePath || board.file_path || board.id || '').split('/').pop().replace('.md', '') || 'Untitled';
+  }
+
+  function buildConfigTreeNodeType(baseType, options) {
+    var hierarchyContract = getManagementHierarchyContractApi();
+    if (hierarchyContract && typeof hierarchyContract.composeNodeType === 'function') {
+      return hierarchyContract.composeNodeType(String(baseType || '').trim(), {
+        'mgmt-config-tree-node': true,
+        'mgmt-config-tree-child': !!(options && options.child),
+        selected: !!(options && options.selected)
+      });
+    }
+    var classes = [String(baseType || '').trim(), 'mgmt-config-tree-node'];
+    if (options && options.child) classes.push('mgmt-config-tree-child');
+    if (options && options.selected) classes.push('selected');
+    return classes.join(' ');
+  }
+
+  function createHierarchyNode(definition) {
+    var hierarchyContract = getManagementHierarchyContractApi();
+    if (hierarchyContract && typeof hierarchyContract.createNode === 'function') {
+      return hierarchyContract.createNode(definition);
+    }
+    return definition;
+  }
+
+  function buildConfigBoardTreeNode(board, options) {
+    options = options || {};
+    return createHierarchyNode({
+      id: 'board:' + String(board.id || ''),
+      label: getManagementBoardDisplayName(board),
+      type: buildConfigTreeNodeType('board', {
+        child: true,
+        selected: !!options.selected
+      }),
+      expanded: false,
+      hasToggle: false,
+      grip: false,
+      menu: false,
+      attrs: {
+        'data-mgmt-config-type': 'board',
+        'data-mgmt-config-id': String(board.id || ''),
+        'data-mgmt-tree-selectable': 'true'
+      },
+      hierarchy: {
+        surface: 'files',
+        kind: 'board',
+        entityId: String(board.id || ''),
+        capabilities: ['activate'],
+        selectable: true
+      }
+    });
+  }
+
+  function getConfigUnassignedBoards() {
+    return cachedBoards.filter(function (board) {
+      var wsIds = getBoardWorkspaceIds(board);
+      if (wsIds.length === 0) return true;
+      for (var i = 0; i < wsIds.length; i++) {
+        for (var j = 0; j < cachedWorkspaces.length; j++) {
+          if (cachedWorkspaces[j].id === wsIds[i]) return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  function buildConfigTreeNodes() {
+    var nodes = [];
+    var globalSelected = configSelectedItem && configSelectedItem.type === 'global';
+    nodes.push(createHierarchyNode({
+      id: 'config:global',
+      label: 'Global Settings',
+      type: buildConfigTreeNodeType('config-root', { selected: !!globalSelected }),
+      expanded: false,
+      hasToggle: false,
+      grip: false,
+      menu: false,
+      attrs: {
+        'data-mgmt-config-type': 'global',
+        'data-mgmt-config-id': 'global',
+        'data-mgmt-tree-selectable': 'true'
+      },
+      hierarchy: {
+        surface: 'files',
+        kind: 'global',
+        entityId: 'global',
+        capabilities: ['activate'],
+        selectable: true
+      }
+    }));
+
+    for (var i = 0; i < cachedWorkspaces.length; i++) {
+      var ws = cachedWorkspaces[i];
+      var wsBoards = cachedBoards.filter(function (board) {
+        return getBoardWorkspaceIds(board).indexOf(ws.id) >= 0;
+      });
+      var workspaceSelected = configSelectedItem && configSelectedItem.type === 'workspace' && configSelectedItem.id === ws.id;
+      var workspaceLabel = ws.name || 'Untitled Workspace';
+      if (ws.id === cachedDefaultWorkspaceId) workspaceLabel += ' \u2605';
+      nodes.push(createHierarchyNode({
+        id: 'workspace:' + String(ws.id || ''),
+        label: workspaceLabel,
+        count: wsBoards.length,
+        type: buildConfigTreeNodeType('workspace', { selected: !!workspaceSelected }),
+        expanded: true,
+        hasToggle: wsBoards.length > 0,
+        grip: false,
+        menu: false,
+        children: wsBoards.map(function (board) {
+          return buildConfigBoardTreeNode(board, {
+            selected: !!(configSelectedItem && configSelectedItem.type === 'board' && configSelectedItem.id === board.id)
+          });
+        }),
+        attrs: {
+          'data-mgmt-config-type': 'workspace',
+          'data-mgmt-config-id': String(ws.id || ''),
+          'data-mgmt-tree-selectable': 'true'
+        },
+        hierarchy: {
+          surface: 'files',
+          kind: 'workspace',
+          entityId: String(ws.id || ''),
+          capabilities: ['activate'],
+          selectable: true
+        }
+      }));
+    }
+
+    var unassignedBoards = getConfigUnassignedBoards();
+    if (unassignedBoards.length > 0) {
+      nodes.push(createHierarchyNode({
+        id: 'group:unassigned',
+        label: 'Unassigned',
+        count: unassignedBoards.length,
+        type: buildConfigTreeNodeType('group'),
+        expanded: true,
+        hasToggle: true,
+        grip: false,
+        menu: false,
+        children: unassignedBoards.map(function (board) {
+          return buildConfigBoardTreeNode(board, {
+            selected: !!(configSelectedItem && configSelectedItem.type === 'board' && configSelectedItem.id === board.id)
+          });
+        }),
+        attrs: {
+          'data-mgmt-config-type': 'group',
+          'data-mgmt-config-id': 'unassigned'
+        },
+        hierarchy: {
+          surface: 'files',
+          kind: 'workspace-group',
+          entityId: 'unassigned',
+          capabilities: []
+        }
+      }));
+    }
+
+    return nodes;
+  }
+
   function workspaceSectionKey(wsId, section) {
     return String(wsId || '') + '::' + String(section || '');
   }
@@ -2063,10 +2241,7 @@ var ManagementUI = (function () {
     renderConfigInspector();
   }
 
-  function renderConfigTree() {
-    var el = queryFirst('#mgmt-config-tree');
-    if (!el) return;
-
+  function renderLegacyConfigTree(el) {
     var html = '';
 
     // Global Settings node
@@ -2146,6 +2321,55 @@ var ManagementUI = (function () {
     html += '</div>';
 
     el.innerHTML = html;
+  }
+
+  function bindConfigTreeInteractions(el) {
+    var controller = getManagementHierarchyControllerApi();
+    var TreeView = getManagementTreeViewApi();
+    if (!el || !controller || !TreeView || typeof controller.bindTreeInteractions !== 'function' || el.__mgmtConfigTreeBound) {
+      return false;
+    }
+
+    controller.bindTreeInteractions(el, {
+      TreeView: TreeView,
+      onNodeActivate: function (node) {
+        if (!node) return;
+        var configType = node.getAttribute('data-mgmt-config-type');
+        var configId = node.getAttribute('data-mgmt-config-id');
+        if (configType !== 'global' && configType !== 'workspace' && configType !== 'board') return;
+        configSelectedItem = { type: configType, id: configId };
+        renderConfigPanel();
+      }
+    });
+
+    el.__mgmtConfigTreeBound = true;
+    return true;
+  }
+
+  function renderSharedConfigTree(el) {
+    var TreeView = getManagementTreeViewApi();
+    var controller = getManagementHierarchyControllerApi();
+    if (!el || !TreeView || !controller || typeof TreeView.render !== 'function') return false;
+
+    el.innerHTML = '';
+    TreeView.render(el, buildConfigTreeNodes(), {
+      escapeHtml: function (text) { return esc(text); },
+      variant: 'compact'
+    });
+    bindConfigTreeInteractions(el);
+
+    var addWrap = document.createElement('div');
+    addWrap.className = 'mgmt-config-tree-add';
+    addWrap.innerHTML = '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="config-add-workspace">+ Add Workspace</button>';
+    el.appendChild(addWrap);
+    return true;
+  }
+
+  function renderConfigTree() {
+    var el = queryFirst('#mgmt-config-tree');
+    if (!el) return;
+    if (renderSharedConfigTree(el)) return;
+    renderLegacyConfigTree(el);
   }
 
   function renderConfigInspector() {

@@ -1371,7 +1371,7 @@ body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-
 
 /* ── Compact panel modes ── */
 
-/* Workspaces compact: hide workspace dropdown, show only board names */
+/* Workspaces compact: hide the hierarchy header, show only board names */
 .workspace-shell-panel-dock.is-compact .sidebar-header {
   display: none;
 }

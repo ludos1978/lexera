@@ -25,6 +25,13 @@ describe('buildSidebarTreeNodes', () => {
     expect(nodes).toHaveLength(1);
     expect(nodes[0].type).toBe('row');
     expect(nodes[0].count).toBeNull();
+    expect(nodes[0].hierarchy).toEqual({
+      surface: 'workspace',
+      kind: 'row',
+      entityId: 'row-1',
+      capabilities: ['activate', 'menu', 'drag', 'edit'],
+      selectable: false
+    });
     expect(nodes[0].children).toHaveLength(1);
     expect(nodes[0].children[0].type).toBe('stack');
     expect(nodes[0].children[0].count).toBeNull();
@@ -116,6 +123,13 @@ describe('buildSidebarTreeNodes', () => {
     // not its position in the full `cards` array. Expect 0, 1, 2 — NOT 0, 2, 4.
     expect(columnNode.children[0].attrs['data-card-id']).toBe('card-a');
     expect(columnNode.children[0].attrs['data-card-index']).toBe('0');
+    expect(columnNode.children[0].hierarchy).toEqual({
+      surface: 'workspace',
+      kind: 'card',
+      entityId: 'card-a',
+      capabilities: ['activate', 'menu', 'drag', 'edit'],
+      selectable: false
+    });
 
     expect(columnNode.children[1].attrs['data-card-id']).toBe('card-b');
     expect(columnNode.children[1].attrs['data-card-index']).toBe('1');

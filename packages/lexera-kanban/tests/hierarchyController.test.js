@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+const HierarchyContract = require('../src/hierarchy/hierarchyContract.js');
 const HierarchyController = require('../src/hierarchy/hierarchyController.js');
 
 function createTreeDom() {
@@ -95,5 +96,96 @@ describe('LexeraHierarchyController.bindTreeInteractions', () => {
     dom.label.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     expect(onNodeActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('respects hierarchy capability gating for activate, menu, edit, and drag affordances', () => {
+    const dom = createTreeDom();
+    dom.node.setAttribute('data-hierarchy-capabilities', 'activate');
+    const onNodeActivate = vi.fn();
+    const onNodeMenu = vi.fn();
+    const onNodeEdit = vi.fn();
+    const onGripClick = vi.fn();
+
+    HierarchyController.bindTreeInteractions(dom.container, {
+      HierarchyContract,
+      onNodeActivate,
+      onNodeMenu,
+      onNodeEdit,
+      onGripClick
+    });
+
+    dom.label.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    dom.menu.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    dom.label.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    dom.grip.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(onNodeActivate).toHaveBeenCalledTimes(1);
+    expect(onNodeMenu).not.toHaveBeenCalled();
+    expect(onNodeEdit).not.toHaveBeenCalled();
+    expect(onGripClick).not.toHaveBeenCalled();
+  });
+});
+
+describe('LexeraHierarchyController.beginInlineLabelEdit', () => {
+  it('commits a renamed label and restores on escape', async () => {
+    const dom = createTreeDom();
+    const onCommit = vi.fn(() => Promise.resolve(true));
+
+    const editSession = HierarchyController.beginInlineLabelEdit(dom.node, {
+      initialValue: 'Original',
+      initialDisplayValue: 'Original',
+      onCommit
+    });
+
+    expect(editSession).toBeTruthy();
+    expect(dom.node.getAttribute('data-tree-inline-editing')).toBe('true');
+    editSession.input.value = 'Renamed';
+    editSession.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(onCommit).toHaveBeenCalledWith('Renamed', expect.objectContaining({
+      initialValue: 'Original',
+      displayValue: 'Renamed'
+    }));
+    expect(dom.node.querySelector('.tree-label').textContent).toBe('Renamed');
+
+    await Promise.resolve();
+
+    const secondSession = HierarchyController.beginInlineLabelEdit(dom.node, {
+      initialValue: 'Renamed',
+      initialDisplayValue: 'Renamed',
+      onCommit
+    });
+    secondSession.input.value = 'Discarded';
+    secondSession.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(dom.node.querySelector('.tree-label').textContent).toBe('Renamed');
+  });
+
+  it('supports multiline editing, empty commits, and shortcut-based save', () => {
+    const dom = createTreeDom();
+    const onCommit = vi.fn(() => true);
+
+    const editSession = HierarchyController.beginInlineLabelEdit(dom.node, {
+      initialValue: 'Original body',
+      initialDisplayValue: 'Original preview',
+      multiline: true,
+      allowEmpty: true,
+      commitKeys: ['Mod+Enter'],
+      selectAll: false,
+      onCommit
+    });
+
+    expect(editSession.input.tagName).toBe('TEXTAREA');
+    editSession.input.value = '';
+    editSession.input.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter',
+      ctrlKey: true,
+      bubbles: true
+    }));
+
+    expect(onCommit).toHaveBeenCalledWith('', expect.objectContaining({
+      initialValue: 'Original body',
+      displayValue: ''
+    }));
   });
 });

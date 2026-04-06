@@ -89,6 +89,26 @@
   }
 
   var TAG_CATEGORIES = {
+    // Text-style primitives. These do NOT paint the entity — they only
+    // change the typographic presentation of the text that already sits on
+    // top of whatever the rest of the tag composition produces. The names
+    // are deliberately prefixed with `font-` so they cannot collide with
+    // the existing `#normal` (importance) and `#light-*` (color) tags.
+    //
+    // Each one maps to exactly one CSS property:
+    //   #font-light     -> font-weight: 300
+    //   #font-normal    -> font-weight: 400
+    //   #font-bold      -> font-weight: 700
+    //   #font-italic    -> font-style: italic
+    //   #font-underline -> text-decoration: underline (the task item calls
+    //                      this "underscored"; `underline` is the HTML/CSS
+    //                      term used everywhere else in the app)
+    //   #font-uppercase -> text-transform: uppercase
+    //
+    // See todo.md item "redo an iteration of font size and style
+    // unification — there must only be these styles: light/normal/bold,
+    // italic/underscored, uppercase, …".
+    'font-style': ['font-light', 'font-normal', 'font-bold', 'font-italic', 'font-underline', 'font-uppercase'],
     special: ['header', 'footer', 'hide', 'exclude', 'private', 'draft', 'surface'],
     importance: ['critical', 'normal'],
     status: ['todo', 'inprogress', 'done', 'transferred', 'blocked', 'review', 'testing', 'wip', 'cancelled', 'archived'],
@@ -120,6 +140,7 @@
   };
 
   var TAG_STYLE_ROLE_BY_CATEGORY = {
+    'font-style': 'text-style',
     importance: 'header',
     status: 'header',
     workflow: 'header',
@@ -518,6 +539,13 @@
       headerBar: null,
       footerBar: null,
       badge: null,
+      // `textStyle` carries typographic primitives (weight / italic /
+      // underline / uppercase) for `#font-*` tags. Null means "no
+      // typographic override"; any non-null object is merged into the
+      // combined descriptor via `buildCombinedTagStyleDescriptor` so a
+      // content can compose `#red #font-bold #font-italic` and get all
+      // three effects at once.
+      textStyle: null,
       opacity: '',
       filter: '',
       pattern: ''
@@ -642,6 +670,28 @@
       };
     } else if (styleRole === 'border-only') {
       // Only border, no bar/badge/background
+    } else if (styleRole === 'text-style') {
+      // Text-style primitives: font-weight / font-style / text-decoration /
+      // text-transform. These never paint the entity — they only influence
+      // the typographic presentation of the content on top. We nullify the
+      // border here so `#font-bold` on its own does not draw a 2 px color
+      // stripe alongside the entity; a composition like `#red #font-bold`
+      // still draws its border because the `#red` descriptor contributes
+      // one during `buildCombinedTagStyleDescriptor`.
+      descriptor.border = null;
+      if (normalized === 'font-light') {
+        descriptor.textStyle = { weight: '300' };
+      } else if (normalized === 'font-normal') {
+        descriptor.textStyle = { weight: '400' };
+      } else if (normalized === 'font-bold') {
+        descriptor.textStyle = { weight: '700' };
+      } else if (normalized === 'font-italic') {
+        descriptor.textStyle = { italic: true };
+      } else if (normalized === 'font-underline') {
+        descriptor.textStyle = { underline: true };
+      } else if (normalized === 'font-uppercase') {
+        descriptor.textStyle = { uppercase: true };
+      }
     } else if (styleRole === 'effect') {
       if (normalized === 'exclude') {
         descriptor.opacity = '0.20';
@@ -702,6 +752,11 @@
     var opacity = '';
     var filter = '';
     var pattern = '';
+    // `textStyle` is MERGED across every contributing descriptor rather than
+    // first-wins, so `#font-bold #font-italic` stacks. Later descriptors win
+    // per-field collisions (e.g. `#font-light #font-bold` -> bold), matching
+    // the intuitive "last tag wins" mental model users have for stacked tags.
+    var combinedTextStyle = null;
 
     for (var j = 0; j < descriptors.length; j++) {
       var current = descriptors[j];
@@ -710,6 +765,13 @@
       if (!headerDescriptor && current.headerBar) headerDescriptor = current;
       if (!footerDescriptor && current.footerBar) footerDescriptor = current;
       if (!badgeDescriptor && current.badge) badgeDescriptor = current;
+      if (current.textStyle) {
+        if (!combinedTextStyle) combinedTextStyle = {};
+        var keys = Object.keys(current.textStyle);
+        for (var k = 0; k < keys.length; k++) {
+          combinedTextStyle[keys[k]] = current.textStyle[keys[k]];
+        }
+      }
       if (current.opacity) opacity = current.opacity;
       if (current.filter) filter = current.filter;
       if (current.pattern) pattern = current.pattern;
@@ -733,6 +795,7 @@
       headerBar: cloneTagStyleValue(headerDescriptor && headerDescriptor.headerBar),
       footerBar: cloneTagStyleValue(footerDescriptor && footerDescriptor.footerBar),
       badge: cloneTagStyleValue(badgeDescriptor && badgeDescriptor.badge),
+      textStyle: combinedTextStyle,
       opacity: opacity,
       filter: filter,
       pattern: pattern
@@ -848,6 +911,25 @@
         declarations.push('--tag-badge-fg:' + descriptor.badge.labelColor);
       }
       declarations.push('--tag-badge-text-shadow:' + (descriptor.badge.labelShadow || 'none'));
+    }
+    // Text-style primitives. Emit every variable unconditionally (not only
+    // the ones set on the descriptor) so `var(--tag-text-weight, inherit)`
+    // in app.css always resolves cleanly — missing values fall back to the
+    // CSS default and don't leak from a previous tag onto the next render.
+    if (descriptor.textStyle) {
+      var ts = descriptor.textStyle;
+      if (ts.weight) {
+        declarations.push('--tag-text-weight:' + ts.weight);
+      }
+      if (ts.italic) {
+        declarations.push('--tag-text-font-style:italic');
+      }
+      if (ts.underline) {
+        declarations.push('--tag-text-decoration:underline');
+      }
+      if (ts.uppercase) {
+        declarations.push('--tag-text-transform:uppercase');
+      }
     }
     if (descriptor.opacity) declarations.push('--tag-effect-opacity:' + descriptor.opacity);
     if (descriptor.filter) declarations.push('--tag-effect-filter:' + descriptor.filter);
