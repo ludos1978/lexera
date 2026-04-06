@@ -783,10 +783,9 @@ textarea {
 .sidebar-dashboard-controls {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  gap: 2px;
+  padding: 4px 6px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-tertiary);
 }
 
 .dashboard-query-row,
@@ -835,38 +834,58 @@ textarea {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-3);
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 0;
 }
 
+/* Dashboard group sections: styled to match the shared .tree-node layout
+ * so they look like foldable tree group headers — same row height, padding,
+ * font size, and toggle arrow as every other hierarchy node. */
 .dashboard-group {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
   min-width: 0;
 }
 
+/* Dashboard group headers match .tree-node + .tree-row exactly so they
+ * look like top-level expandable tree rows. font-weight 500 matches
+ * .tree-row, not 600 which was visually heavier than tree nodes below. */
 .dashboard-group-header {
-  font-size: var(--font-size-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-secondary);
-  font-weight: 600;
-  cursor: pointer;
-  user-select: none;
   display: flex;
   align-items: center;
-  gap: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  color: var(--tree-fg, var(--text-primary));
+  gap: 3px;
+  margin: 0 2px;
+  user-select: none;
 }
+.dashboard-group-header:hover {
+  color: var(--tree-fg-hover, var(--text-bright));
+  background: var(--bg-hover);
+}
+/* Toggle arrow: uses the same glyph, size, color, and column width as
+ * .tree-toggle so the arrow aligns perfectly with TreeView toggle arrows
+ * in the rows below. */
 .dashboard-group-header::before {
-  content: '\25BE';
-  font-size: 8px;
-  transition: transform 0.15s ease;
+  content: '\25B6';
+  font-size: var(--tree-toggle-font-size, 9px);
+  color: var(--tree-toggle-fg, var(--text-secondary));
+  width: var(--tree-toggle-col, 14px);
+  min-width: var(--tree-toggle-col, 14px);
+  text-align: center;
+  flex-shrink: 0;
+}
+.dashboard-group:not(.collapsed) > .dashboard-group-header::before {
+  content: '\25BC';
 }
 .dashboard-group.collapsed > .dashboard-group-header::before {
-  transform: rotate(-90deg);
+  content: '\25B6';
 }
 .dashboard-group.collapsed > :not(.dashboard-group-header) {
   display: none;
@@ -1194,21 +1213,24 @@ textarea {
   font-size: var(--font-size-xs);
 }
 
+/* Workspace section headers: styled to match the shared .tree-node row
+ * layout — same padding, border-radius, gap, font, hover, and toggle
+ * arrow as every other hierarchy node. */
 .workspace-section-header {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 6px 8px 4px;
-  margin: 2px 4px 0;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 3px;
   font-size: var(--font-size-md);
   font-weight: 600;
-  color: var(--text-bright);
-  cursor: pointer;
+  color: var(--tree-fg, var(--text-primary));
+  gap: 3px;
+  margin: 0 2px;
   user-select: none;
-  border-radius: 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
 }
 .workspace-section-header:hover {
+  color: var(--tree-fg-hover, var(--text-bright));
   background: var(--bg-hover);
 }
 .workspace-section-header.workspace-unassigned .workspace-section-name {
@@ -1216,9 +1238,10 @@ textarea {
   font-weight: 500;
 }
 .workspace-section-toggle {
-  font-size: 8px;
-  color: var(--text-muted);
-  width: 12px;
+  font-size: var(--tree-toggle-font-size, 9px);
+  color: var(--tree-toggle-fg, var(--text-secondary));
+  width: var(--tree-toggle-col, 14px);
+  min-width: var(--tree-toggle-col, 14px);
   text-align: center;
   flex-shrink: 0;
 }
@@ -1230,21 +1253,42 @@ textarea {
   white-space: nowrap;
 }
 .workspace-section-count {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
   flex-shrink: 0;
+}
+.workspace-section-focus {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  line-height: 1;
+  padding: 0;
+  margin-left: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.78;
+}
+.workspace-section-focus:hover,
+.workspace-section-focus:focus-visible {
+  color: var(--text-primary);
+  opacity: 1;
+  outline: none;
 }
 
 .dashboard-tag-section {
-  margin: 4px 0;
+  margin: 0;
 }
 .dashboard-tag-section-header {
-  /* inherits from hierarchical-section-header pattern */
-  font-size: var(--font-size-sm);
+  /* Matches the shared .tree-node / .dashboard-group-header layout */
+  display: flex;
+  align-items: center;
+  padding: 2px 6px;
+  margin: 0 2px;
+  border-radius: 3px;
+  font-size: var(--font-size-md);
   font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
+  color: var(--tree-fg, var(--text-primary));
   letter-spacing: 0.5px;
   padding: var(--app-space-1) var(--app-space-3);
 }
@@ -1257,7 +1301,7 @@ textarea {
 .dashboard-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   min-width: 0;
 }
 
@@ -1270,7 +1314,7 @@ textarea {
 }
 
 .dashboard-list.tree-view .tree-dashboard-group {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .dashboard-list.tree-view .tree-dashboard-file .tree-count,
@@ -1291,52 +1335,53 @@ textarea {
   color: var(--text-muted);
 }
 
+/* Dashboard pinned items: styled to match the shared .tree-node row layout
+ * so they look like tree leaf nodes — same padding, font, gap, hover, and
+ * density as every other hierarchy row. */
 .dashboard-item {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  min-width: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2);
+  align-items: center;
+  padding: 2px 6px;
   cursor: pointer;
-  color: var(--text-primary);
-  background: var(--bg-primary);
+  border-radius: 3px;
+  font-size: var(--font-size-md);
+  color: var(--tree-fg, var(--text-primary));
+  gap: 3px;
+  margin: 0 2px;
+  min-width: 0;
 }
 
 .dashboard-item:hover {
-  border-color: var(--border);
+  color: var(--tree-fg-hover, var(--text-bright));
   background: var(--bg-hover);
 }
 
 .dashboard-item.pinned-active {
-  border-color: var(--accent);
   background: var(--bg-active);
+  border-left: 2px solid var(--accent);
 }
 
 .dashboard-item-main {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  gap: 3px;
   min-width: 0;
   flex: 1;
-}
-
-.dashboard-item-title,
-.dashboard-item-meta {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .dashboard-item-title {
-  font-size: var(--font-size-md);
-  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
 }
 
 .dashboard-item-meta {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .dashboard-item-right {
@@ -1344,29 +1389,31 @@ textarea {
   align-items: center;
   gap: var(--space-1);
   flex-shrink: 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
   margin-left: auto;
 }
 
 .dashboard-item-remove {
-  border: 1px solid var(--icon-btn-border);
-  background: var(--icon-btn-bg);
-  color: var(--text-secondary);
-  border-radius: var(--radius-sm);
-  min-width: calc(var(--icon-button-size) - 2px);
-  width: calc(var(--icon-button-size) - 2px);
-  height: calc(var(--icon-button-size) - 2px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--hierarchy-btn-size, 18px);
+  width: var(--hierarchy-btn-size, 18px);
+  height: var(--hierarchy-btn-size, 18px);
+  font-size: var(--icon-glyph-size, 14px);
+  color: var(--error);
+  border: none;
+  background: none;
   padding: 0;
-  font-size: var(--icon-glyph-size);
-  line-height: 1;
   cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
 }
+.dashboard-item:hover .dashboard-item-remove { opacity: 1; }
 
 .dashboard-item-remove:hover {
-  border-color: var(--error);
   color: var(--error);
   background: rgba(244, 71, 71, 0.14);
+  border-radius: var(--radius-sm, 3px);
 }
 
 .board-item-wrapper {}
@@ -1415,19 +1462,17 @@ textarea {
   background: rgba(244, 71, 71, 0.14);
 }
 
-/* Remote boards section divider */
+/* Remote boards section divider — uses tree-node-aligned padding/margin */
 .sidebar-section-divider {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px 2px;
-  margin-top: 4px;
+  gap: 3px;
+  padding: 2px 6px;
+  margin: 0 2px;
 }
 .sidebar-section-label {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--text-secondary);
   white-space: nowrap;
 }
@@ -7978,106 +8023,22 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-list,
+/* Sleek theme: hierarchy surfaces share a single set of density/spacing
+ * overrides so board-list, dashboard-body, and management-tree all match.
+ * No surface-specific padding or gap overrides — that's the whole point
+ * of the unified hierarchy layout. */
+:root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-list,
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar-dashboard-body {
-  padding: 6px 0 12px;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-list {
-  padding: 4px 0 12px;
-  padding-right: 4px;
+  padding: 0;
+  gap: 0;
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar-dashboard-controls {
-  padding: 8px 12px 12px;
+  padding: 4px 6px;
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar-dashboard {
   background: transparent;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar-dashboard-header {
-  padding-top: 14px;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar-dashboard-body {
-  padding: 4px 12px 18px;
-  gap: calc(14px * var(--ui-scale));
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-query-row,
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-filter-row {
-  gap: calc(6px * var(--ui-scale));
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-select-wrap {
-  flex: 1;
-  min-width: 0;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-item,
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item {
-  margin: 0;
-  border: none;
-  border-radius: 0;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-item {
-  min-height: var(--sidebar-tree-item-height);
-  padding: 0 10px;
-  border-left: 2px solid transparent;
-  gap: calc(3px * var(--ui-scale));
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-item.active {
-  background: transparent;
-  border-left-color: var(--accent);
-  box-shadow: none;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item:hover,
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-item:hover {
-  background: var(--bg-hover);
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item {
-  padding: 5px 0;
-  background: transparent;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item.pinned-active {
-  border-color: transparent;
-  background: transparent;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item-main {
-  gap: 2px;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item-title {
-  font-size: var(--font-size-md);
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item-meta,
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item-right,
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-empty {
-  color: var(--text-muted);
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item-remove {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  opacity: 0.18;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item:hover .dashboard-item-remove,
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item-remove:focus-visible {
-  opacity: 1;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item-remove:hover {
-  border-color: transparent;
-  background: var(--bg-hover);
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar-width-divider,
@@ -9255,48 +9216,11 @@ select.export-input {
   padding: 0 12px 12px;
 }
 
-:root[data-visual-theme="sleek"] .dashboard-group-header {
-  text-transform: none;
-  letter-spacing: 0.04em;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-query-row,
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-filter-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: calc(8px * var(--ui-scale));
-}
-
-:root[data-visual-theme="sleek"] .dashboard-group + .dashboard-group {
-  margin-top: calc(8px * var(--ui-scale));
-  padding-top: calc(12px * var(--ui-scale));
-  border-top: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent);
-}
-
+/* Sleek theme: dashboard groups, items, and lists inherit the shared tree
+ * density — no surface-specific padding/margin/gap overrides. The only
+ * retained rule is hiding fully-empty groups to reduce visual noise. */
 :root[data-visual-theme="sleek"] .dashboard-group.is-empty {
   display: none;
-}
-
-:root[data-visual-theme="sleek"] .dashboard-group-header {
-  margin-bottom: calc(4px * var(--ui-scale));
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--text-secondary);
-}
-
-:root[data-visual-theme="sleek"] .dashboard-list {
-  gap: calc(6px * var(--ui-scale));
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item {
-  padding: 7px 8px;
-  border-left: 2px solid transparent;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-item.pinned-active {
-  border-left-color: var(--accent);
 }
 
 /* ── Sidebar display overrides for sleek theme ──────────────────── */

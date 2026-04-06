@@ -2,9 +2,14 @@
 
 > Active backlog only. Completed, superseded, and parked items moved to [todo-archive.md](todo-archive.md).
 
+- [ ] remove the default search suggestions below the "active board, all boards" dropdown.
+  - instead the user can search and pin the searches, these should be placed below, similar to the default results we have in there already (tasks, tags, embeds, broken includes/embeds)
+
 - [x] pressing a url link should open it in the browser by default.
   - `packages/lexera-kanban/src/dragdrop/dndListeners.js` link-click handler now routes through `openUrlInSystem()` (Tauri `open_url` command → default browser) instead of `window.open()` (which tried to navigate the webview).
   - `openUrlInSystem` injected into the DndListeners dep bag from `app.js:296`.
+
+- [ ] make a structure map view using a similar system as https://www.reddit.com/r/Markdown/comments/1sdm1a2/inklink_markdown_to_mindmap_converter/  https://github.com/lalulali/inklink  
 
 - [ ] unify the hierarchy in workspace, dashboard and in files > workspaces!
   - it needs to feature a top element that can be repeated nicely.

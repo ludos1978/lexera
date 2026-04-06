@@ -54,6 +54,16 @@ var LexeraBoardList = (function () {
     return normalizeWorkspaceId(_dep('activeWorkspaceId'));
   }
 
+  function getWorkspaceViewMode() {
+    return _dep('workspaceViewMode') === 'manual' ? 'manual' : 'follow-active-board';
+  }
+
+  function setWorkspaceViewMode(mode) {
+    if (typeof _deps.setWorkspaceViewModeState === 'function') {
+      _deps.setWorkspaceViewModeState(mode === 'manual' ? 'manual' : 'follow-active-board');
+    }
+  }
+
   var _runtimeSubscriptionsBound = false;
   var _runtimeSubscriptions = [];
   var _scheduledRefresh = {
@@ -1126,26 +1136,62 @@ var LexeraBoardList = (function () {
 
   function setActiveWorkspaceId(workspaceId) {
     var normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    setWorkspaceViewMode('follow-active-board');
     if (typeof _deps.setViewWorkspaceIdState === 'function') {
       _deps.setViewWorkspaceIdState(normalizedWorkspaceId);
     }
-    _callDep('setActiveWorkspaceIdState', normalizedWorkspaceId);
+    _callDep('setActiveWorkspaceIdState', normalizedWorkspaceId, { syncView: true });
     if (_Settings) { _Settings.set('activeWorkspace', normalizedWorkspaceId); }
     else { localStorage.setItem('lexera-active-workspace', normalizedWorkspaceId); }
+  }
+
+  function setWorkspaceViewId(workspaceId, options) {
+    options = options || {};
+    var normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    setWorkspaceViewMode(options.mode === 'manual' ? 'manual' : 'follow-active-board');
+    if (typeof _deps.setViewWorkspaceIdState === 'function') {
+      _deps.setViewWorkspaceIdState(normalizedWorkspaceId);
+      return normalizedWorkspaceId;
+    }
+    setActiveWorkspaceId(normalizedWorkspaceId);
+    return normalizedWorkspaceId;
+  }
+
+  function isWorkspaceViewIdKnown(workspaceId) {
+    var normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    if (normalizedWorkspaceId === _dep('ALL_WORKSPACES_ID')) return true;
+    var workspaces = Array.isArray(_dep('workspaces')) ? _dep('workspaces') : [];
+    for (var i = 0; i < workspaces.length; i++) {
+      if (workspaces[i] && workspaces[i].id === normalizedWorkspaceId) return true;
+    }
+    return false;
   }
 
   function syncWorkspaceContextForBoard(boardId, options) {
     options = options || {};
     var context = resolveWorkspaceContextForBoard(boardId, options);
-    if (typeof _deps.setViewWorkspaceIdState === 'function') {
-      _deps.setViewWorkspaceIdState(context.workspaceId);
+    var preserveManualView = options.preserveManualView === true && getWorkspaceViewMode() === 'manual';
+    var nextViewWorkspaceId = context.workspaceId;
+    var nextViewMode = 'follow-active-board';
+    if (preserveManualView) {
+      var manualWorkspaceId = getWorkspaceViewId();
+      if (isWorkspaceViewIdKnown(manualWorkspaceId)) {
+        nextViewWorkspaceId = manualWorkspaceId;
+        nextViewMode = 'manual';
+      }
     }
     if (
       options.syncSelection !== false &&
       normalizeWorkspaceId(_dep('activeWorkspaceId')) !== context.workspaceId
     ) {
-      setActiveWorkspaceId(context.workspaceId);
+      _callDep('setActiveWorkspaceIdState', context.workspaceId, { syncView: !preserveManualView });
+      if (_Settings) { _Settings.set('activeWorkspace', context.workspaceId); }
+      else { localStorage.setItem('lexera-active-workspace', context.workspaceId); }
     }
+    if (typeof _deps.setViewWorkspaceIdState === 'function') {
+      _deps.setViewWorkspaceIdState(nextViewWorkspaceId);
+    }
+    setWorkspaceViewMode(nextViewMode);
     if (options.render === false) return context;
     if (!_rt) {
       renderWorkspaceSelect();
@@ -1169,6 +1215,7 @@ var LexeraBoardList = (function () {
         workspaceId: workspaceId
       };
     }
+    if (options.preserveManualView !== false) options.preserveManualView = true;
     return syncWorkspaceContextForBoard(activeBoardId, options);
   }
 
@@ -1216,6 +1263,13 @@ var LexeraBoardList = (function () {
     if (!boardList || !sourceTarget || typeof sourceTarget.closest !== 'function') return null;
     var treeNode = sourceTarget.closest('.tree-node[data-tree-id]');
     var boardRow = sourceTarget.closest('.board-item[data-board-id]');
+    var workspaceHeader = sourceTarget.closest('.workspace-section-header[data-workspace-id]');
+    if (sourceTarget.closest('.workspace-section-focus') && workspaceHeader) {
+      return boardList.querySelector('.workspace-section-header[data-workspace-id="' + workspaceHeader.getAttribute('data-workspace-id') + '"] .workspace-section-focus');
+    }
+    if (workspaceHeader) {
+      return boardList.querySelector('.workspace-section-header[data-workspace-id="' + workspaceHeader.getAttribute('data-workspace-id') + '"]');
+    }
     if (sourceTarget.closest('.board-item-remove') && boardRow) {
       return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-remove');
     }
@@ -1244,6 +1298,15 @@ var LexeraBoardList = (function () {
         e.preventDefault();
         e.stopPropagation();
         _callDep('showSidebarHierarchyMenu', menuBtn);
+        return;
+      }
+      var focusBtn = e.target.closest('.workspace-section-focus');
+      if (focusBtn) {
+        var localWorkspaceHeader = focusBtn.closest('.workspace-section-header[data-workspace-id]');
+        if (!localWorkspaceHeader) return;
+        e.preventDefault();
+        e.stopPropagation();
+        focusWorkspaceView(localWorkspaceHeader.getAttribute('data-workspace-id'));
         return;
       }
       var canonicalTarget = findCanonicalHierarchyTarget(e.target);
@@ -1317,7 +1380,7 @@ var LexeraBoardList = (function () {
       event.preventDefault();
       event.stopPropagation();
     }
-    setActiveWorkspaceId(_dep('ALL_WORKSPACES_ID'));
+    setWorkspaceViewId(_dep('ALL_WORKSPACES_ID'), { mode: 'manual' });
     renderWorkspaceSelect();
     renderBoardList();
   }
@@ -1464,6 +1527,12 @@ var LexeraBoardList = (function () {
     return null;
   }
 
+  function focusWorkspaceView(workspaceId) {
+    setWorkspaceViewId(workspaceId, { mode: 'manual' });
+    renderWorkspaceSelect();
+    renderBoardList();
+  }
+
   /** Create a workspace section header element. */
   function _createWsHeaderEl(wsInfo) {
     var wsHeader = document.createElement('div');
@@ -1473,12 +1542,17 @@ var LexeraBoardList = (function () {
     if (wsInfo.unassigned) wsHeader.classList.add('workspace-unassigned');
     (function (wsId) {
       wsHeader.addEventListener('dblclick', function (e) {
+        if (e.target.closest('.workspace-section-focus')) return;
         e.stopPropagation();
-        setActiveWorkspaceId(wsId);
-        renderWorkspaceSelect();
-        renderBoardList();
+        focusWorkspaceView(wsId);
       });
       wsHeader.addEventListener('click', function (e) {
+        if (e.target.closest('.workspace-section-focus')) {
+          e.preventDefault();
+          e.stopPropagation();
+          focusWorkspaceView(wsId);
+          return;
+        }
         if (e.detail > 1) return;
         var ids = getSidebarExpandedBoards();
         var key = 'ws:' + wsId;
@@ -1498,7 +1572,10 @@ var LexeraBoardList = (function () {
     wsHeader.innerHTML =
       '<span class="workspace-section-toggle">' + (expanded ? '\u25BC' : '\u25B6') + '</span>' +
       '<span class="workspace-section-name">' + _callDep('escapeHtml', wsInfo.ws.name || 'Untitled') + '</span>' +
-      (wsInfo.count ? '<span class="workspace-section-count">' + wsInfo.count + '</span>' : '');
+      (wsInfo.count ? '<span class="workspace-section-count">' + wsInfo.count + '</span>' : '') +
+      (wsInfo.unassigned
+        ? ''
+        : '<button class="workspace-section-focus" type="button" title="Focus workspace" aria-label="Focus workspace">\u2192</button>');
   }
 
   /** Create a remote board element. */

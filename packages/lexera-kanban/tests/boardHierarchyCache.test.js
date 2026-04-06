@@ -153,6 +153,41 @@ describe('board hierarchy cache refresh', () => {
     expect(state.viewWorkspaceId).toBe('ws-2');
   });
 
+  it('preserves a manually focused workspace view during reconciliation', () => {
+    const localStorage = createLocalStorage();
+    const BoardList = loadBoardList({ localStorage });
+    const state = {
+      activeBoardId: 'board-a',
+      boards: [{ id: 'board-a', title: 'Board A', workspace_ids: ['ws-2'] }],
+      remoteBoards: [],
+      workspaces: [{ id: 'ws-1', name: 'Workspace One' }, { id: 'ws-2', name: 'Workspace Two' }],
+      activeWorkspaceId: 'ws-2',
+      viewWorkspaceId: 'ws-1',
+      workspaceViewMode: 'manual',
+    };
+
+    BoardList.init({
+      get activeBoardId() { return state.activeBoardId; },
+      get boards() { return state.boards; },
+      get remoteBoards() { return state.remoteBoards; },
+      get workspaces() { return state.workspaces; },
+      get activeWorkspaceId() { return state.activeWorkspaceId; },
+      get viewWorkspaceId() { return state.viewWorkspaceId; },
+      get workspaceViewMode() { return state.workspaceViewMode; },
+      get ALL_WORKSPACES_ID() { return '__all__'; },
+      setActiveWorkspaceIdState(nextWorkspaceId) { state.activeWorkspaceId = nextWorkspaceId; },
+      setViewWorkspaceIdState(nextWorkspaceId) { state.viewWorkspaceId = nextWorkspaceId; },
+      setWorkspaceViewModeState(nextMode) { state.workspaceViewMode = nextMode; },
+    });
+
+    const context = BoardList.reconcileActiveWorkspaceContext({ render: false });
+
+    expect(context.workspaceId).toBe('ws-2');
+    expect(state.activeWorkspaceId).toBe('ws-2');
+    expect(state.viewWorkspaceId).toBe('ws-1');
+    expect(state.workspaceViewMode).toBe('manual');
+  });
+
   it('reuses cached hierarchy rows instead of reloading every board on each pass', async () => {
     const localStorage = createLocalStorage();
     localStorage.setItem('lexera-sidebar-expanded', JSON.stringify(['board-b', 'board-c']));

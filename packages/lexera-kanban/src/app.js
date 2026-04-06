@@ -16,6 +16,7 @@ var LexeraDashboard = (function () {
     _rt.defineState('workspaces', []);
     _rt.defineState('activeWorkspaceId', (Settings ? Settings.get('activeWorkspace') : localStorage.getItem('lexera-active-workspace')) || null);
     _rt.defineState('viewWorkspaceId', (Settings ? Settings.get('activeWorkspace') : localStorage.getItem('lexera-active-workspace')) || null);
+    _rt.defineState('workspaceViewMode', 'follow-active-board');
     _rt.defineState('activeBoardId', null);
     _rt.defineState('activeBoardData', null);
     _rt.defineState('fullBoardData', null);
@@ -33,6 +34,7 @@ var LexeraDashboard = (function () {
   const ALL_WORKSPACES_ID = '__all__';
   let activeWorkspaceId = (Settings ? Settings.get('activeWorkspace') : localStorage.getItem('lexera-active-workspace')) || null;
   let viewWorkspaceId = activeWorkspaceId;
+  let workspaceViewMode = 'follow-active-board';
   let activeBoardId = null;
   let activeBoardData = null;
   let fullBoardData = null;
@@ -100,6 +102,13 @@ var LexeraDashboard = (function () {
     syncRuntimeState('viewWorkspaceId', viewWorkspaceId);
   }
 
+  function setWorkspaceViewModeState(nextMode) {
+    var normalizedMode = nextMode === 'manual' ? 'manual' : 'follow-active-board';
+    if (workspaceViewMode === normalizedMode) return;
+    workspaceViewMode = normalizedMode;
+    syncRuntimeState('workspaceViewMode', workspaceViewMode);
+  }
+
   function setActiveBoardDataState(nextBoardData) {
     activeBoardData = nextBoardData;
     syncRuntimeState('activeBoardData', nextBoardData);
@@ -148,15 +157,22 @@ var LexeraDashboard = (function () {
     syncWorkspaceShellCatalogSnapshot();
   }
 
-  function setActiveWorkspaceIdState(nextWorkspaceId) {
+  function setActiveWorkspaceIdState(nextWorkspaceId, options) {
+    options = options || {};
     nextWorkspaceId = nextWorkspaceId || ALL_WORKSPACES_ID;
     if (activeWorkspaceId === nextWorkspaceId) {
-      setViewWorkspaceIdState(nextWorkspaceId);
+      if (options.syncView !== false) {
+        setWorkspaceViewModeState('follow-active-board');
+        setViewWorkspaceIdState(nextWorkspaceId);
+      }
       return;
     }
     activeWorkspaceId = nextWorkspaceId;
     syncRuntimeState('activeWorkspaceId', activeWorkspaceId);
-    setViewWorkspaceIdState(activeWorkspaceId);
+    if (options.syncView !== false) {
+      setWorkspaceViewModeState('follow-active-board');
+      setViewWorkspaceIdState(activeWorkspaceId);
+    }
     refreshWorkspaceSettings();
     if (OrderHelpers && typeof OrderHelpers.refreshDashboardTagsFromBackend === 'function') {
       OrderHelpers.refreshDashboardTagsFromBackend();
@@ -447,6 +463,7 @@ var LexeraDashboard = (function () {
     get workspaces() { return workspaces; },
     get activeWorkspaceId() { return activeWorkspaceId; },
     get viewWorkspaceId() { return viewWorkspaceId; },
+    get workspaceViewMode() { return workspaceViewMode; },
     get embeddedMode() { return embeddedMode; },
     get ALL_WORKSPACES_ID() { return ALL_WORKSPACES_ID; },
     get boardPresenceCache() { return boardPresenceCache; },
@@ -460,8 +477,9 @@ var LexeraDashboard = (function () {
     setActiveBoardData: function (v) { setActiveBoardDataState(v); },
     updateActiveBoardData: function (updater) { return updateActiveBoardDataState(updater); },
     setBoards: function (v) { setBoardsState(v); },
-    setActiveWorkspaceIdState: function (v) { setActiveWorkspaceIdState(v); },
+    setActiveWorkspaceIdState: function (v, opts) { setActiveWorkspaceIdState(v, opts); },
     setViewWorkspaceIdState: function (v) { setViewWorkspaceIdState(v); },
+    setWorkspaceViewModeState: function (v) { setWorkspaceViewModeState(v); },
     commitLocalBoardChange: function (boardId, boardData, opts) { return commitLocalBoardChange(boardId, boardData, opts); },
     setLastLoadedGeneration: function (v) { _lastLoadedGeneration = v; },
     setLastLoadedRevision: function (v) { _lastLoadedRevision = v; },
@@ -2244,6 +2262,7 @@ var LexeraDashboard = (function () {
     get workspaces() { return workspaces; },
     get activeWorkspaceId() { return activeWorkspaceId; },
     get viewWorkspaceId() { return viewWorkspaceId; },
+    get workspaceViewMode() { return workspaceViewMode; },
     get embeddedMode() { return embeddedMode; },
     get liveSyncState() { return liveSyncState; },
     get boardPresenceCache() { return boardPresenceCache; },
@@ -2267,8 +2286,9 @@ var LexeraDashboard = (function () {
     updateActiveBoardData: function(updater) { return updateActiveBoardDataState(updater); },
     setFullBoardData: function(boardData) { setFullBoardDataState(boardData); },
     setBoards: function(nextBoards) { setBoardsState(nextBoards); },
-    setActiveWorkspaceIdState: function(id) { setActiveWorkspaceIdState(id); },
+    setActiveWorkspaceIdState: function(id, opts) { setActiveWorkspaceIdState(id, opts); },
     setViewWorkspaceIdState: function(id) { setViewWorkspaceIdState(id); },
+    setWorkspaceViewModeState: function(id) { setWorkspaceViewModeState(id); },
     commitLocalBoardChange: function(boardId, boardData, opts) { return commitLocalBoardChange(boardId, boardData, opts); },
     setPendingExternalRebaseConflict: function(conflict) { pendingExternalRebaseConflict = conflict; },
     tauriInvoke: function(cmd, args) { return window.__TAURI__ && window.__TAURI__.core.invoke(cmd, args); },

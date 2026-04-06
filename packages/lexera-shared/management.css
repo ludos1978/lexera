@@ -525,8 +525,9 @@
   min-width: 180px;
   max-width: 50%;
   border-right: 1px solid var(--border, #474747);
-  padding: 8px 0;
+  padding: 0;
   flex-shrink: 0;
+  overflow-y: auto;
 }
 .mgmt-config-inspector {
   flex: 1;
@@ -553,37 +554,43 @@
  * .tree-label, .tree-count handle everything. The legacy fallback path
  * (renderLegacyConfigTree) still references some of these for environments
  * without TreeView. */
-.selected {
-  background: var(--bg-tertiary);
+.mgmt-config-tree .tree-node.selected,
+.mgmt-config-tree .mgmt-config-tree-node.selected {
+  background: var(--bg-active, var(--bg-tertiary));
   border-left: 2px solid var(--accent);
 }
-/* Legacy fallback classes — only used when TreeView is unavailable */
+/* Legacy fallback classes — only used when TreeView is unavailable.
+ * Values match the shared .tree-node layout so the fallback looks
+ * identical to the TreeView rendering path. */
 .mgmt-config-tree-node {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: 3px;
+  padding: 2px 6px;
   cursor: pointer;
-  font-size: 12px;
-  color: var(--text-primary);
-  border-left: 2px solid transparent;
+  border-radius: 3px;
+  font-size: var(--font-size-md, 12px);
+  color: var(--tree-fg, var(--text-primary, #e0e0e0));
+  margin: 0 2px;
 }
 .mgmt-config-tree-node:hover {
+  color: var(--tree-fg-hover, var(--text-bright, #fff));
   background: var(--bg-hover, rgba(255, 255, 255, 0.05));
 }
 .mgmt-config-tree-node.selected {
-  background: var(--bg-tertiary);
-  border-left-color: var(--accent);
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.08));
+  border-left: 2px solid var(--accent, #4c7abf);
 }
 .mgmt-config-tree-child {
-  padding-left: 28px;
+  padding-left: 20px;
 }
 .mgmt-config-tree-toggle {
-  font-size: 10px;
+  font-size: var(--tree-toggle-font-size, 9px);
   flex-shrink: 0;
-  width: 12px;
+  width: var(--tree-toggle-col, 14px);
+  min-width: var(--tree-toggle-col, 14px);
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--tree-toggle-fg, var(--text-secondary, #999));
 }
 .mgmt-config-tree-label {
   flex: 1;
@@ -593,33 +600,32 @@
   white-space: nowrap;
 }
 .mgmt-config-tree-badge {
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  font-size: var(--font-size-sm, 11px);
+  color: var(--text-secondary, #999);
   flex-shrink: 0;
 }
 .mgmt-config-tree-default {
-  font-size: 10px;
-  color: var(--accent);
+  font-size: var(--font-size-sm, 11px);
+  color: var(--accent, #4c7abf);
   flex-shrink: 0;
 }
 .mgmt-config-tree-divider {
   height: 1px;
   background: var(--border, #474747);
-  margin: 6px 10px;
+  margin: 4px 8px;
 }
 .mgmt-config-tree-heading {
-  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  margin: 0 2px;
+  font-size: var(--font-size-md, 12px);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-  padding: 4px 10px;
+  color: var(--text-secondary, #999);
 }
 .mgmt-config-tree-add {
-  padding: 8px 10px;
+  padding: 4px 8px;
 }
 
 /* Detail items (invites, members) */

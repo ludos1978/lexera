@@ -309,3 +309,6 @@ var TreeView = (function () {
     GUIDE_WIDTH: GUIDE_WIDTH
   };
 })();
+// Ensure TreeView is on window so management.js and other shared modules
+// can find it via window.TreeView even in strict-mode or module contexts.
+if (typeof window !== 'undefined') window.TreeView = TreeView;

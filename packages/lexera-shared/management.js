@@ -2351,14 +2351,18 @@ var ManagementUI = (function () {
 
   function renderSharedConfigTree(el) {
     var TreeView = getManagementTreeViewApi();
-    var controller = getManagementHierarchyControllerApi();
-    if (!el || !TreeView || !controller || typeof TreeView.render !== 'function') return false;
+    if (!el || !TreeView || typeof TreeView.render !== 'function') {
+      return false;
+    }
 
     el.innerHTML = '';
     TreeView.render(el, buildConfigTreeNodes(), {
       escapeHtml: function (text) { return esc(text); },
       variant: 'compact'
     });
+    // Interaction binding is optional — if the controller isn't available
+    // yet, the tree still renders correctly; clicking just won't work until
+    // the controller loads and the next re-render binds it.
     bindConfigTreeInteractions(el);
 
     var addWrap = document.createElement('div');
@@ -2372,6 +2376,12 @@ var ManagementUI = (function () {
     var el = queryFirst('#mgmt-config-tree');
     if (!el) return;
     if (renderSharedConfigTree(el)) return;
+    // Legacy fallback: only used when TreeView/HierarchyController aren't
+    // loaded. Log a warning so the issue is visible in the console.
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('[management] TreeView not available — falling back to legacy config tree rendering. ' +
+        'Ensure treeView.js + hierarchy/hierarchyContract.js + hierarchy/hierarchyController.js load BEFORE management.js.');
+    }
     renderLegacyConfigTree(el);
   }
 

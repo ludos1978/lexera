@@ -97,7 +97,10 @@ describe('ManagementUI config tree hierarchy', () => {
 
     const boardNode = tree.querySelector('.tree-node[data-mgmt-config-type="board"][data-mgmt-config-id="board-1"]');
     expect(boardNode).toBeTruthy();
-    expect(boardNode.classList.contains('mgmt-config-tree-child')).toBe(true);
+    // mgmt-config-tree-child is no longer applied — board nodes use the
+    // shared TreeView indent system instead of custom child CSS classes.
+    // TreeView prefixes type → .tree-board.
+    expect(boardNode.classList.contains('tree-board')).toBe(true);
     expect(boardNode.getAttribute('data-hierarchy-capabilities')).toBe('activate');
 
     const looseBoardNode = tree.querySelector('.tree-node[data-mgmt-config-type="board"][data-mgmt-config-id="board-3"]');
