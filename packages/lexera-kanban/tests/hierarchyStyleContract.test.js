@@ -31,14 +31,17 @@ describe('hierarchy style contract', () => {
   });
 
   it('uses one quiet typography and accent-line state model across hierarchy surfaces', () => {
+    expect(appCss).toContain('--app-shell-font-size: var(--font-size-base);');
+    expect(appCss).toContain('--app-shell-font-color: #fff;');
     expect(appCss).toContain('--app-control-font-size: var(--font-size-base);');
     expect(appCss).toContain('--app-control-font-weight: 400;');
-    expect(appCss).toContain('--app-font-color: var(--text-primary);');
-    expect(appCss).toContain('--app-font-muted-color: var(--text-secondary);');
+    expect(appCss).toContain('--app-font-color: var(--app-shell-font-color);');
+    expect(appCss).toContain('--app-font-muted-color: var(--app-shell-font-color);');
     expect(appCss).toContain('--hierarchy-font-size: var(--app-control-font-size);');
     expect(appCss).toContain('--hierarchy-font-weight: var(--app-control-font-weight);');
     expect(appCss).toContain('--hierarchy-hover-bg: transparent;');
     expect(appCss).toContain('--hierarchy-active-bg: transparent;');
+    expect(appCss).toMatch(/:where\([\s\S]*\.sidebar,[\s\S]*\.calendar-panel,[\s\S]*\.mgmt-panel,[\s\S]*\.log-panel[\s\S]*\)\s*\{[\s\S]*--font-size-xs:\s*var\(--app-shell-font-size\)[\s\S]*--font-size-sm:\s*var\(--app-shell-font-size\)[\s\S]*--font-size-md:\s*var\(--app-shell-font-size\)[\s\S]*--text-primary:\s*var\(--app-shell-font-color\)[\s\S]*--text-secondary:\s*var\(--app-shell-font-color\)/);
     expect(appCss).toMatch(/\.tree-node\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
     expect(appCss).toMatch(/\.dashboard-group-header,\s*\.workspace-section-header\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
     expect(appCss).toMatch(/\.dashboard-item\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);

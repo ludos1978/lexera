@@ -2,6 +2,8 @@
 
 > Active backlog only. Completed, superseded, and parked items moved to [todo-archive.md](todo-archive.md).
 
+- [ ] make the icons have a unified size and icon size! some are very small, others are way bigger!
+
 - [ ] remove the default search suggestions below the "active board, all boards" dropdown.
   - instead the user can search and pin the searches, these should be placed below, similar to the default results we have in there already (tasks, tags, embeds, broken includes/embeds)
 

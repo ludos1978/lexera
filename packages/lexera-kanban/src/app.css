@@ -213,6 +213,8 @@
   --text-secondary: var(--app-shell-font-color);
   --text-muted: var(--app-shell-font-color);
   --text-bright: var(--app-shell-font-color);
+  color: var(--text-primary);
+  font-size: var(--app-control-font-size);
 }
 
 /* Integrated light/dark appearance vars are applied by JS via the visual-theme flow. */
@@ -289,8 +291,8 @@ textarea {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 13px;
+  color: inherit;
+  font-size: inherit;
   outline: none;
 }
 
@@ -300,7 +302,8 @@ textarea {
 }
 
 .search-input::placeholder {
-  color: var(--text-secondary);
+  color: inherit;
+  opacity: 0.7;
 }
 
 .header-actions {
@@ -675,8 +678,6 @@ textarea {
   --sidebar-header-action-width: 24px;
   --sidebar-header-action-gap: 8px;
   padding: 10px 12px 8px;
-  font-size: var(--font-size-md);
-  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -716,7 +717,7 @@ textarea {
 .sidebar-header-back:hover,
 .sidebar-header-back:focus-visible {
   opacity: 1;
-  color: var(--text-primary);
+  color: inherit;
   outline: none;
 }
 
@@ -725,9 +726,9 @@ textarea {
   min-width: 0;
   padding: 2px 18px 2px 4px;
   font-family: inherit;
-  font-size: var(--font-size-md);
+  font-size: inherit;
   background: transparent;
-  color: var(--text-secondary);
+  color: inherit;
   border: none;
   outline: none;
   cursor: pointer;
@@ -753,13 +754,13 @@ textarea {
   height: 6px;
   border-right: 1px solid currentColor;
   border-bottom: 1px solid currentColor;
-  color: var(--text-secondary);
+  color: inherit;
   opacity: 0.7;
   pointer-events: none;
   transform: translateY(-65%) rotate(45deg);
 }
 .workspace-select:focus {
-  color: var(--text-primary);
+  color: inherit;
 }
 
 .sidebar-header-actions {
@@ -880,10 +881,10 @@ textarea {
   min-height: var(--btn-square-size);
   border: 1px solid var(--input-border);
   background: var(--input-bg);
-  color: var(--text-primary);
+  color: inherit;
   border-radius: var(--radius-sm);
   font-family: inherit;
-  font-size: 12px;
+  font-size: inherit;
 }
 
 .dashboard-search-input {
@@ -910,12 +911,12 @@ textarea {
   gap: 4px;
   white-space: nowrap;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: inherit;
   font-size: inherit;
   flex-shrink: 0;
 }
 .dashboard-scope-label:hover {
-  color: var(--text-primary);
+  color: inherit;
 }
 .dashboard-scope-checkbox {
   margin: 0;
@@ -1050,7 +1051,7 @@ textarea {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  color: var(--text-primary);
+  color: inherit;
 }
 .calendar-panel-header {
   display: flex;
@@ -1061,7 +1062,7 @@ textarea {
   flex-shrink: 0;
 }
 .calendar-panel-title {
-  font-size: 0.85rem;
+  font-size: inherit;
 }
 .calendar-panel-controls {
   display: flex;
@@ -1072,12 +1073,12 @@ textarea {
   min-width: 0;
 }
 .calendar-scope-select {
-  font-size: 0.75rem;
+  font-size: inherit;
   padding: 2px 4px;
   border-radius: 3px;
   border: 1px solid var(--border);
   background: var(--bg-secondary);
-  color: var(--text-primary);
+  color: inherit;
 }
 .calendar-panel-body {
   flex: 1;
@@ -1109,15 +1110,15 @@ textarea {
   align-items: center;
   gap: 4px;
   padding: 4px 6px;
-  font-size: 0.75rem;
+  font-size: inherit;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 .cal-timeline-day {
-  color: var(--text-primary);
+  color: inherit;
 }
 .cal-timeline-date {
-  color: var(--text-secondary);
+  color: inherit;
 }
 .cal-timeline-tasks {
   flex: 1;
@@ -1128,18 +1129,18 @@ textarea {
   gap: 2px;
 }
 .cal-timeline-task {
-  font-size: 0.7rem;
+  font-size: inherit;
   padding: 2px 4px;
   border-radius: 3px;
   background: var(--bg-primary);
-  color: var(--text-primary);
+  color: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .cal-timeline-empty {
-  font-size: 0.7rem;
-  color: var(--text-muted);
+  font-size: inherit;
+  color: inherit;
   padding: 2px 4px;
   text-align: center;
 }
@@ -1154,8 +1155,8 @@ textarea {
   background: none;
   border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
+  color: inherit;
+  font-size: inherit;
   padding: 1px 6px;
   cursor: pointer;
 }
@@ -1177,47 +1178,47 @@ textarea {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  font-size: inherit;
+  color: inherit;
   margin-bottom: 2px;
 }
 .cal-week-day-name {
-  color: var(--text-secondary);
+  color: inherit;
   width: 28px;
 }
 .cal-week-day-date {
-  color: var(--text-muted);
+  color: inherit;
 }
 .cal-week-task {
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  font-size: inherit;
+  color: inherit;
   padding: 1px 0 1px 34px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .cal-week-task-board, .cal-task-board {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  color: inherit;
+  font-size: inherit;
 }
 .cal-week-empty {
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  font-size: inherit;
+  color: inherit;
   padding: 1px 0 1px 34px;
 }
 .cal-week-more {
-  color: var(--text-muted);
+  color: inherit;
 }
 
 /* Calendar task list (text below grid) */
 .cal-task-date-header {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-size: inherit;
+  color: inherit;
   padding: 4px 0 1px;
 }
 .cal-task-item {
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  font-size: inherit;
+  color: inherit;
   padding: 1px 0;
   white-space: nowrap;
   overflow: hidden;
@@ -1231,11 +1232,11 @@ textarea {
 .dashboard-calendar-grid {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-size-sm);
+  font-size: inherit;
   table-layout: fixed;
 }
 .dashboard-calendar-grid th {
-  color: var(--text-muted);
+  color: inherit;
   padding: 2px 0;
   text-align: center;
 }
@@ -1245,9 +1246,9 @@ textarea {
   position: relative;
 }
 .cal-cw {
-  color: var(--text-muted);
+  color: inherit;
   width: 24px;
-  font-size: var(--font-size-xs);
+  font-size: inherit;
 }
 .cal-day {
   border-radius: 4px;
@@ -1256,7 +1257,7 @@ textarea {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .cal-past .cal-date {
-  color: var(--text-muted);
+  color: inherit;
 }
 .cal-has-tasks {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -1266,19 +1267,19 @@ textarea {
 }
 .cal-date {
   display: block;
-  color: var(--text-primary);
+  color: inherit;
   line-height: 1.4;
 }
 .cal-count {
   display: block;
-  font-size: 8px;
+  font-size: inherit;
   color: var(--accent);
   line-height: 1;
 }
 
 /* Dashboard broken elements */
 .dashboard-broken-item {
-  font-size: var(--font-size-md);
+  font-size: inherit;
   padding: 3px 4px;
   white-space: nowrap;
   overflow: hidden;
@@ -1311,11 +1312,11 @@ textarea {
   gap: 6px;
 }
 .dashboard-file-kind {
-  font-size: var(--font-size-md);
-  color: var(--text-secondary);
+  font-size: inherit;
+  color: inherit;
 }
 .dashboard-file-status {
-  font-size: var(--font-size-md);
+  font-size: inherit;
 }
 .dashboard-file-status-exists {
   color: var(--accent);
@@ -1324,18 +1325,18 @@ textarea {
   color: var(--error);
 }
 .dashboard-file-status-unknown {
-  color: var(--text-muted);
+  color: inherit;
 }
 .dashboard-file-path {
-  font-size: var(--font-size-md);
-  color: var(--text-primary);
+  font-size: inherit;
+  color: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .dashboard-file-meta {
-  font-size: var(--font-size-md);
-  color: var(--text-muted);
+  font-size: inherit;
+  color: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1344,7 +1345,7 @@ textarea {
   color: var(--error);
 }
 .broken-src {
-  color: var(--text-muted);
+  color: inherit;
 }
 .dashboard-file-count {
   color: var(--hierarchy-meta-color);
@@ -1355,7 +1356,7 @@ textarea {
  * layout — same padding, border-radius, gap, font, hover, and toggle
  * arrow as every other hierarchy node. */
 .workspace-section-header.workspace-unassigned .workspace-section-name {
-  color: var(--text-muted);
+  color: inherit;
 }
 .dashboard-group-title,
 .workspace-section-name {
@@ -1557,7 +1558,7 @@ textarea {
 }
 
 .board-item-separator {
-  color: var(--text-secondary);
+  color: inherit;
   opacity: 0.5;
   margin: 0 1px;
 }
@@ -1589,8 +1590,8 @@ textarea {
   margin: 0 2px;
 }
 .sidebar-section-label {
-  font-size: var(--font-size-md);
-  color: var(--text-secondary);
+  font-size: inherit;
+  color: inherit;
   white-space: nowrap;
 }
 .sidebar-section-divider::after {
@@ -1600,7 +1601,7 @@ textarea {
   background: var(--border);
 }
 .board-item-remote-icon {
-  font-size: var(--font-size-md);
+  font-size: inherit;
   flex-shrink: 0;
 }
 

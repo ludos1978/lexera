@@ -47,14 +47,14 @@
   padding: 8px 16px;
   border: none;
   background: none;
-  color: var(--text-secondary);
+  color: inherit;
   cursor: pointer;
   border-bottom: 2px solid transparent;
   font-size: var(--mgmt-font-size);
   font-family: inherit;
   transition: color 0.12s, border-color 0.12s;
 }
-.mgmt-top-tab:hover { color: var(--text-primary); }
+.mgmt-top-tab:hover { color: inherit; }
 .mgmt-top-tab.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
@@ -75,7 +75,7 @@
 
 .mgmt-section-title {
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: inherit;
   margin-bottom: 8px;
 }
 
@@ -97,7 +97,7 @@
   align-items: center;
   gap: 6px;
   font-size: var(--mgmt-font-size);
-  color: var(--text-primary);
+  color: inherit;
 }
 
 .mgmt-check-label input {
@@ -106,7 +106,7 @@
 
 .mgmt-field-label {
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: inherit;
   min-width: 80px;
   flex-shrink: 0;
 }
@@ -117,7 +117,7 @@
   border: 1px solid var(--input-border, var(--border));
   border-radius: 4px;
   background: var(--input-bg, var(--bg-tertiary));
-  color: var(--text-primary);
+  color: inherit;
   font-size: var(--mgmt-font-size);
   font-family: inherit;
   outline: none;
@@ -127,7 +127,7 @@
 }
 .mgmt-field-input option {
   background: var(--bg-secondary);
-  color: var(--text-primary);
+  color: inherit;
 }
 
 .mgmt-field-select-small {
@@ -148,7 +148,7 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg-tertiary);
-  color: var(--text-primary);
+  color: inherit;
   font-size: var(--mgmt-font-size);
   font-family: inherit;
   line-height: 1;
@@ -195,7 +195,7 @@
 
 /* Lists */
 .mgmt-list-empty {
-  color: var(--text-secondary);
+  color: inherit;
   font-size: var(--mgmt-font-size);
   padding: 4px 0;
 }
@@ -227,7 +227,7 @@
 }
 .mgmt-ws-count {
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: inherit;
   white-space: nowrap;
 }
 
@@ -245,7 +245,7 @@
   padding: 1px 5px;
   border-radius: 3px;
   background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  color: inherit;
   white-space: nowrap;
 }
 
@@ -578,7 +578,7 @@
 .mgmt-config-tree .tree-node.selected,
 .mgmt-config-tree .mgmt-config-tree-node.selected {
   background: var(--hierarchy-active-bg, transparent);
-  color: var(--hierarchy-active-color, var(--text-primary, #2f2f2f));
+  color: var(--hierarchy-active-color, inherit);
   box-shadow: inset 2px 0 0 var(--hierarchy-active-accent, var(--accent, #4c7abf));
 }
 .mgmt-config-tree .tree-menu-btn,
@@ -593,7 +593,7 @@
   border: 1px solid var(--app-menu-border, transparent);
   border-radius: 3px;
   background: var(--app-menu-bg, transparent);
-  color: var(--app-menu-fg, var(--text-secondary, #999));
+  color: var(--app-menu-fg, inherit);
   font-size: var(--mgmt-font-size);
   line-height: 1;
   cursor: pointer;
@@ -610,7 +610,7 @@
 .mgmt-config-tree .burger-menu-btn:hover,
 .mgmt-config-tree .tree-menu-btn:focus-visible,
 .mgmt-config-tree .burger-menu-btn:focus-visible {
-  color: var(--app-menu-fg-hover, var(--text-primary, #fff));
+  color: var(--app-menu-fg-hover, inherit);
   border-color: var(--app-menu-border-hover, transparent);
   background: var(--app-menu-bg-hover, transparent);
   outline: none;
@@ -633,16 +633,16 @@
   border-radius: 3px;
   font-size: var(--mgmt-font-size);
   font-weight: var(--hierarchy-font-weight, 400);
-  color: var(--hierarchy-text-color, var(--text-primary, #e0e0e0));
+  color: var(--hierarchy-text-color, inherit);
   margin: 0 2px;
 }
 .mgmt-config-tree-node:hover {
-  color: var(--hierarchy-hover-color, var(--text-bright, #fff));
+  color: var(--hierarchy-hover-color, inherit);
   background: var(--hierarchy-hover-bg, transparent);
 }
 .mgmt-config-tree-node.selected {
   background: var(--hierarchy-active-bg, transparent);
-  color: var(--hierarchy-active-color, var(--text-primary, #fff));
+  color: var(--hierarchy-active-color, inherit);
   box-shadow: inset 2px 0 0 var(--hierarchy-active-accent, var(--accent, #4c7abf));
 }
 .mgmt-config-tree-child {
@@ -654,7 +654,7 @@
   width: var(--tree-toggle-col, 14px);
   min-width: var(--tree-toggle-col, 14px);
   text-align: center;
-  color: var(--hierarchy-meta-color, var(--text-secondary, #999));
+  color: var(--hierarchy-meta-color, inherit);
 }
 .mgmt-config-tree-label {
   flex: 1;
@@ -665,7 +665,7 @@
 }
 .mgmt-config-tree-badge {
   font-size: var(--mgmt-font-size);
-  color: var(--hierarchy-meta-color, var(--text-secondary, #999));
+  color: var(--hierarchy-meta-color, inherit);
   flex-shrink: 0;
 }
 .mgmt-config-tree-default {
@@ -686,7 +686,7 @@
   margin: 0 2px;
   font-size: var(--mgmt-font-size);
   font-weight: var(--hierarchy-font-weight, 400);
-  color: var(--hierarchy-meta-color, var(--text-secondary, #999));
+  color: var(--hierarchy-meta-color, inherit);
 }
 .mgmt-config-tree-add {
   padding: 4px 8px;
@@ -722,11 +722,11 @@
   border: 1px solid var(--input-border, var(--border));
   border-radius: 3px;
   background: var(--input-bg, var(--bg-tertiary));
-  color: var(--text-primary);
+  color: inherit;
 }
 
 .mgmt-member-role {
-  color: var(--text-secondary);
+  color: inherit;
   font-size: var(--mgmt-font-size);
 }
 
@@ -749,14 +749,14 @@
 }
 .mgmt-connection-url {
   font-size: var(--mgmt-font-size);
-  color: var(--text-primary);
+  color: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .mgmt-connection-board {
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: inherit;
 }
 .mgmt-connection-status {
   display: inline-block;
@@ -769,31 +769,31 @@
 .mgmt-connection-status.err { background: var(--error); }
 .mgmt-peer-name {
   font-size: var(--mgmt-font-size);
-  color: var(--text-primary);
+  color: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .mgmt-peer-url {
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: inherit;
 }
 
 /* Status / info text */
 .mgmt-info-text {
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: inherit;
   margin-top: 4px;
 }
 
 .mgmt-board-title {
   font-size: var(--mgmt-font-size);
-  color: var(--text-primary);
+  color: inherit;
 }
 
 .mgmt-board-path {
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: inherit;
   word-break: break-all;
 }
 .mgmt-info-stack {
@@ -801,7 +801,7 @@
   gap: 2px;
   margin-top: 6px;
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: inherit;
 }
 .mgmt-status {
   font-size: var(--mgmt-font-size);
@@ -853,7 +853,7 @@
 
 .mgmt-log-ts,
 .mgmt-log-target {
-  color: var(--text-secondary);
+  color: inherit;
   white-space: nowrap;
 }
 
@@ -865,16 +865,16 @@
   min-height: 18px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  color: var(--text-secondary);
+  color: inherit;
   background: var(--bg-secondary);
 }
 
 .mgmt-log-source-backend {
-  color: var(--text-primary);
+  color: inherit;
 }
 
 .mgmt-log-message {
-  color: var(--text-primary);
+  color: inherit;
   white-space: pre-wrap;
   word-break: break-word;
 }
