@@ -1438,21 +1438,6 @@ var LexeraOrderHelpers = (function () {
         _callDep('getElDashboardPinBtn').click();
         return;
       }
-      var chipBtn = e.target.closest('.dashboard-chip[data-dashboard-query]');
-      if (chipBtn && _callDep('getElDashboardRoot')) {
-        e.preventDefault();
-        var query = chipBtn.getAttribute('data-dashboard-query') || '';
-        var canonicalChip = null;
-        var canonicalChips = _callDep('getElDashboardRoot').querySelectorAll('.dashboard-chip[data-dashboard-query]');
-        for (var chipIdx = 0; chipIdx < canonicalChips.length; chipIdx++) {
-          if ((canonicalChips[chipIdx].getAttribute('data-dashboard-query') || '') === query) {
-            canonicalChip = canonicalChips[chipIdx];
-            break;
-          }
-        }
-        if (canonicalChip) canonicalChip.click();
-        return;
-      }
 
       var containerInfo = getDashboardMirrorContainerInfo(e.target);
       if (!containerInfo || !containerInfo.canonical) return;
@@ -2949,15 +2934,6 @@ var LexeraOrderHelpers = (function () {
         renderDashboardPinnedList();
       });
     }
-
-    _callDep('getElDashboardRoot').addEventListener('click', function (e) {
-      var chip = e.target.closest('.dashboard-chip[data-dashboard-query]');
-      if (!chip) return;
-      e.preventDefault();
-      var query = chip.getAttribute('data-dashboard-query') || '';
-      setDashboardQuery(query);
-      refreshDashboardData({ deferRender: true });
-    });
 
     // Dashboard group fold/unfold via header click
     _callDep('getElDashboardRoot').addEventListener('click', function (e) {
