@@ -122,6 +122,17 @@ describe('Calendar Panel Integration', function () {
     expect(panel.innerHTML).not.toContain('lexera-shared-workspace-select');
   });
 
+  it('LexeraSharedPanels creates dashboard panels without the removed default suggestion chips', function () {
+    var panel = globalThis.LexeraSharedPanels.createPanelElement('dashboard', 'dashboard');
+    expect(panel).not.toBeNull();
+    expect(panel.className).toContain('lexera-shared-panel-dashboard');
+    expect(panel.innerHTML).toContain('lexera-shared-dashboard-pin');
+    expect(panel.innerHTML).toContain('lexera-shared-dashboard-pinned');
+    expect(panel.innerHTML).not.toContain('dashboard-quick-row');
+    expect(panel.innerHTML).not.toContain('dashboard-chip');
+    expect(panel.innerHTML).not.toContain('data-dashboard-query');
+  });
+
   it('getRoots returns created calendar panels', function () {
     var weekRoots = globalThis.LexeraSharedPanels.getRoots('weekCalendar');
     var monthRoots = globalThis.LexeraSharedPanels.getRoots('monthCalendar');

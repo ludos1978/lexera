@@ -1384,8 +1384,7 @@ body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-
   display: none;
 }
 
-/* Dashboard compact: hide quick chips, group headers, pin button */
-.workspace-shell-panel-dock.is-compact .dashboard-quick-row,
+/* Dashboard compact: hide group headers and pin button */
 .workspace-shell-panel-dock.is-compact .dashboard-group-header,
 .workspace-shell-panel-dock.is-compact .dashboard-filter-row {
   display: none;

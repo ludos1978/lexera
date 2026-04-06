@@ -544,57 +544,46 @@
     border-bottom: 1px solid var(--border, #474747);
   }
 }
-/* Management tree: inherits the shared `.tree-*` base styles from app.css.
- * Only layout-container sizing, selected state, and the `.tree-count` pill
- * badge style remain as management-specific overrides. Removed: complete
- * parallel redefinition of tree-node, tree-toggle, tree-label, tree-meta,
- * tree-grip, tree-children — all of which are now handled by the shared base. */
-.mgmt-config-tree .tree-node {
-  margin: 0;
-  border-radius: 0;
+/* Management tree: inherits the shared `.tree-*` base styles from app.css
+ * including indent guides, toggle, label, meta, count, grip, and hover.
+ * The only management-specific rule is the selected-state highlight. The
+ * old mgmt-config-tree-node / mgmt-config-tree-child / mgmt-config-tree-
+ * toggle / mgmt-config-tree-label / mgmt-config-tree-badge classes are
+ * no longer applied to TreeView nodes — TreeView's own .tree-toggle,
+ * .tree-label, .tree-count handle everything. The legacy fallback path
+ * (renderLegacyConfigTree) still references some of these for environments
+ * without TreeView. */
+.selected {
+  background: var(--bg-tertiary);
+  border-left: 2px solid var(--accent);
 }
-.mgmt-config-tree .tree-indent,
-.mgmt-config-tree .tree-children-guide {
-  display: none;
+/* Legacy fallback classes — only used when TreeView is unavailable */
+.mgmt-config-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-primary);
+  border-left: 2px solid transparent;
+}
+.mgmt-config-tree-node:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
 }
 .mgmt-config-tree-node.selected {
   background: var(--bg-tertiary);
   border-left-color: var(--accent);
 }
-.mgmt-config-tree .tree-count {
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-}
 .mgmt-config-tree-child {
   padding-left: 28px;
-  position: relative;
-}
-.mgmt-config-tree-child::before {
-  content: '';
-  position: absolute;
-  left: 14px;
-  top: 0;
-  bottom: 50%;
-  border-left: var(--tree-line-width, 1px) solid var(--tree-line-color, var(--border, #474747));
-}
-.mgmt-config-tree-child::after {
-  content: '';
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  width: 6px;
-  border-top: var(--tree-line-width, 1px) solid var(--tree-line-color, var(--border, #474747));
 }
 .mgmt-config-tree-toggle {
   font-size: 10px;
   flex-shrink: 0;
-  width: var(--tree-indent-size, 12px);
+  width: 12px;
   text-align: center;
   color: var(--text-secondary);
-  transition: transform 0.12s;
 }
 .mgmt-config-tree-label {
   flex: 1;

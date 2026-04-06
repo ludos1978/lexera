@@ -267,16 +267,19 @@ var ManagementUI = (function () {
   }
 
   function buildConfigTreeNodeType(baseType, options) {
+    // Only the base entity type (e.g. "board", "workspace", "config-root")
+    // plus the selected state. The old mgmt-config-tree-node / mgmt-config-
+    // tree-child classes are no longer added — TreeView's own indent guides
+    // handle the visual hierarchy, and the base .tree-node CSS handles
+    // padding/spacing. This keeps the management tree visually unified with
+    // the workspace and dashboard trees.
     var hierarchyContract = getManagementHierarchyContractApi();
     if (hierarchyContract && typeof hierarchyContract.composeNodeType === 'function') {
       return hierarchyContract.composeNodeType(String(baseType || '').trim(), {
-        'mgmt-config-tree-node': true,
-        'mgmt-config-tree-child': !!(options && options.child),
         selected: !!(options && options.selected)
       });
     }
-    var classes = [String(baseType || '').trim(), 'mgmt-config-tree-node'];
-    if (options && options.child) classes.push('mgmt-config-tree-child');
+    var classes = [String(baseType || '').trim()];
     if (options && options.selected) classes.push('selected');
     return classes.join(' ');
   }

@@ -790,16 +790,11 @@ textarea {
 }
 
 .dashboard-query-row,
-.dashboard-filter-row,
-.dashboard-quick-row {
+.dashboard-filter-row {
   display: flex;
   align-items: center;
   gap: var(--btn-gap);
   min-width: 0;
-}
-
-.dashboard-quick-row {
-  flex-wrap: wrap;
 }
 
 .dashboard-search-input {
@@ -834,105 +829,6 @@ textarea {
   flex: 1;
   min-width: 0;
   padding: 0 18px 0 8px;
-}
-
-.dashboard-chip {
-  min-height: calc(26px * var(--ui-scale));
-  padding: 3px 12px;
-  font-size: calc(10.5px * var(--ui-scale));
-  line-height: 1.3;
-  white-space: nowrap;
-  border-radius: var(--radius-md);
-  font-weight: 550;
-  letter-spacing: 0.02em;
-  gap: 6px;
-  display: inline-flex;
-  align-items: center;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-  user-select: none;
-}
-
-.dashboard-chip .chip-icon {
-  font-size: calc(11px * var(--ui-scale));
-  line-height: 1;
-  opacity: 0.75;
-  flex-shrink: 0;
-  width: calc(14px * var(--ui-scale));
-  text-align: center;
-}
-
-.dashboard-chip[data-dashboard-query*="overdue"] {
-  color: var(--error);
-  border-color: rgba(211, 47, 47, 0.25);
-  background: rgba(211, 47, 47, 0.06);
-}
-.dashboard-chip[data-dashboard-query*="overdue"]:hover {
-  background: rgba(211, 47, 47, 0.13);
-  border-color: rgba(211, 47, 47, 0.45);
-  box-shadow: 0 1px 3px rgba(211, 47, 47, 0.1);
-}
-
-.dashboard-chip[data-dashboard-query*="today"] {
-  color: var(--accent);
-  border-color: rgba(0, 122, 204, 0.25);
-  background: rgba(0, 122, 204, 0.06);
-}
-.dashboard-chip[data-dashboard-query*="today"]:hover {
-  background: rgba(0, 122, 204, 0.13);
-  border-color: rgba(0, 122, 204, 0.45);
-  box-shadow: 0 1px 3px rgba(0, 122, 204, 0.1);
-}
-
-.dashboard-chip[data-dashboard-query*="week"] {
-  color: var(--success);
-  border-color: rgba(56, 138, 108, 0.25);
-  background: rgba(56, 138, 108, 0.06);
-}
-.dashboard-chip[data-dashboard-query*="week"]:hover {
-  background: rgba(56, 138, 108, 0.13);
-  border-color: rgba(56, 138, 108, 0.45);
-  box-shadow: 0 1px 3px rgba(56, 138, 108, 0.1);
-}
-
-.dashboard-chip[data-dashboard-query*="parked"] {
-  color: var(--text-muted);
-  border-color: rgba(138, 138, 138, 0.2);
-  background: rgba(138, 138, 138, 0.04);
-}
-.dashboard-chip[data-dashboard-query*="parked"]:hover {
-  background: rgba(138, 138, 138, 0.1);
-  border-color: rgba(138, 138, 138, 0.4);
-  box-shadow: 0 1px 3px rgba(138, 138, 138, 0.08);
-}
-
-.dashboard-chip.active {
-  font-weight: 650;
-  box-shadow: inset 0 0 0 1px currentColor;
-}
-.dashboard-chip[data-dashboard-query*="overdue"].active {
-  background: rgba(211, 47, 47, 0.16);
-  border-color: rgba(211, 47, 47, 0.5);
-  color: var(--error);
-  box-shadow: inset 0 0 0 1px rgba(211, 47, 47, 0.25), 0 1px 3px rgba(211, 47, 47, 0.12);
-}
-.dashboard-chip[data-dashboard-query*="today"].active {
-  background: rgba(0, 122, 204, 0.16);
-  border-color: rgba(0, 122, 204, 0.5);
-  color: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(0, 122, 204, 0.25), 0 1px 3px rgba(0, 122, 204, 0.12);
-}
-.dashboard-chip[data-dashboard-query*="week"].active {
-  background: rgba(56, 138, 108, 0.16);
-  border-color: rgba(56, 138, 108, 0.5);
-  color: var(--success);
-  box-shadow: inset 0 0 0 1px rgba(56, 138, 108, 0.25), 0 1px 3px rgba(56, 138, 108, 0.12);
-}
-.dashboard-chip[data-dashboard-query*="parked"].active {
-  background: rgba(138, 138, 138, 0.14);
-  border-color: rgba(138, 138, 138, 0.4);
-  color: var(--text-secondary);
-  box-shadow: inset 0 0 0 1px rgba(138, 138, 138, 0.2), 0 1px 3px rgba(138, 138, 138, 0.08);
 }
 
 .sidebar-dashboard-body {
@@ -1475,41 +1371,15 @@ textarea {
 
 .board-item-wrapper {}
 
-.board-item {
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  cursor: pointer;
-  display: grid;
-  grid-template-columns: auto 12px minmax(0, 1fr) max-content;
-  align-items: center;
-  border-left: 2px solid transparent;
-  gap: var(--btn-gap);
-  border-radius: 4px;
-  margin: 1px 4px;
-}
-
-.board-item:hover {
-  background: var(--bg-hover);
-}
-
+/* Board-item: inherits .tree-node flex layout — no grid override.
+ * The board-item level uses the same DOM anatomy as every other TreeView
+ * node (tree-indent + tree-toggle + tree-label + tree-meta), so the base
+ * .tree-node styles handle spacing, alignment, and hover. Board-specific
+ * additions are limited to the active state (accent border) and the
+ * title-text truncation helper. */
 .board-item.active {
   background: var(--bg-active);
-  border-left-color: var(--accent);
-}
-
-.board-item-toggle-spacer {
-  width: var(--tree-toggle-col);
-  min-width: var(--tree-toggle-col);
-  flex-shrink: 0;
-}
-
-.board-item-title {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  grid-column: 3;
-  overflow: hidden;
-  font-size: 12.5px;
+  border-left: 2px solid var(--accent);
 }
 
 .board-item-title-text {
@@ -1525,23 +1395,6 @@ textarea {
   opacity: 0.5;
   font-weight: 400;
   margin: 0 1px;
-}
-
-.board-item-count {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  margin-left: auto;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.board-item-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  grid-column: 4;
-  justify-self: end;
-  flex-shrink: 0;
 }
 
 .board-item-remove {
@@ -1896,18 +1749,21 @@ textarea {
   display: none;
 }
 
-.board-item-remove.hidden,
-.tree-grip-spacer,
-.tree-meta-presence-spacer,
-.tree-meta-action-spacer {
+.board-item-remove.hidden {
   visibility: hidden;
   pointer-events: none;
 }
 
+/* Spacers for absent grip/presence/action elements: `display: none` so they
+ * don't waste horizontal space. The workspace sidebar's visibility toggle
+ * settings (data-sidebar-tree-grips, data-sidebar-tree-menus, etc.) handle
+ * the show/hide of REAL grip/menu elements; spacers are only rendered when
+ * the node definition has grip=false or menu=false, meaning the feature is
+ * structurally absent, not just toggled off by a user setting. */
 .tree-grip-spacer,
 .tree-meta-presence-spacer,
 .tree-meta-action-spacer {
-  display: inline-flex;
+  display: none;
 }
 
 :root[data-sidebar-tree-counts="off"] .board-list .board-item-count,
@@ -8149,18 +8005,13 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-query-row,
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-filter-row,
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-quick-row {
+:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-filter-row {
   gap: calc(6px * var(--ui-scale));
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-select-wrap {
   flex: 1;
   min-width: 0;
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-quick-row {
-  padding-top: 2px;
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-item,
@@ -8513,10 +8364,6 @@ select.export-input {
   background: var(--bg-secondary);
 }
 
-:root[data-visual-theme="sleek"] .dashboard-chip {
-  border-color: transparent;
-}
-
 :root[data-visual-theme="sleek"] #btn-dashboard-pin:hover,
 :root[data-visual-theme="sleek"] .dashboard-search-btn:hover {
   background: var(--bg-hover);
@@ -8525,12 +8372,6 @@ select.export-input {
 :root[data-visual-theme="sleek"] .dashboard-search-btn,
 :root[data-visual-theme="sleek"] #btn-dashboard-pin {
   opacity: 0.82;
-}
-
-:root[data-visual-theme="sleek"] .dashboard-chip {
-  min-height: calc(18px * var(--ui-scale));
-  padding: 0 7px;
-  font-size: var(--font-size-sm);
 }
 
 :root[data-visual-theme="sleek"] .sidebar-section-divider {
@@ -9425,21 +9266,6 @@ select.export-input {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
-}
-
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-quick-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: calc(8px * var(--ui-scale));
-}
-
-:root[data-visual-theme="sleek"] .dashboard-chip {
-  width: 100%;
-  min-height: calc(24px * var(--ui-scale));
-  padding: 0 8px;
-  justify-content: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 :root[data-visual-theme="sleek"] .dashboard-group + .dashboard-group {
