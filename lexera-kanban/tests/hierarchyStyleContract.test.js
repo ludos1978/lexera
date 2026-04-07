@@ -12,13 +12,13 @@ const orderHelpersSource = readFileSync(resolve(__dirname, '..', 'src', 'board',
 
 describe('hierarchy style contract', () => {
   it('keeps dashboard section children visibly owned by their section header', () => {
-    expect(appCss).toMatch(/\.dashboard-group\s*\{[\s\S]*--dashboard-group-child-indent:\s*var\(--tree-indent-step\)/);
-    expect(appCss).toMatch(/\.dashboard-group\s*>\s*\.dashboard-list\[data-hierarchy-section-body="true"\]\s*\{[\s\S]*position:\s*relative[\s\S]*padding-left:\s*var\(--dashboard-group-child-indent\)/);
-    expect(appCss).toContain('.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"]::before');
-    expect(appCss).toContain('.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"]::before');
+    // Dashboard groups use tree-entry/tree-node/tree-children structure
+    // No extra padding-left — TreeView indent guides handle all indentation
     expect(indexHtml).toContain('data-hierarchy-section-body="true"');
     expect(indexHtml).toContain('data-dashboard-group-key=');
     expect(indexHtml).toContain('data-tree-structural-role="section"');
+    expect(indexHtml).toContain('class="dashboard-group tree-entry"');
+    expect(indexHtml).toContain('class="dashboard-list tree-children expanded');
     expect(sharedPanels).toContain('data-hierarchy-section-body="true"');
     expect(sharedPanels).toContain('data-dashboard-group-key=');
     expect(sharedPanels).toContain('data-tree-structural-role="section"');
@@ -26,8 +26,8 @@ describe('hierarchy style contract', () => {
   });
 
   it('shares the top-level fold affordance between dashboard and workspace headers', () => {
-    expect(appCss).toMatch(/\.dashboard-group-toggle,\s*\.workspace-section-toggle/);
-    expect(appCss).toMatch(/\.dashboard-group-header,\s*\.workspace-section-header/);
+    // Both use tree-toggle for expand/collapse, shared .tree-node styling
+    expect(appCss).toMatch(/\.dashboard-group-header,\s*\n?\.workspace-section-header/);
   });
 
   it('uses one quiet typography and accent-line state model across hierarchy surfaces', () => {
@@ -66,14 +66,14 @@ describe('hierarchy style contract', () => {
     expect(appCss).toMatch(/\.sidebar-btn\s*\{[\s\S]*font-size:\s*var\(--app-control-font-size\)[\s\S]*font-weight:\s*var\(--app-control-font-weight\)/);
   });
 
-  it('keeps compact root flattening without flattening child depth', () => {
-    expect(treeViewSource).toContain("var compactRootFlatten = options && options.variant === 'compact' && level === 1;");
-    expect(treeViewSource).toContain("var childIndent = compactRootFlatten ? [] : parentLastFlags.concat([isLast]);");
+  it('uses full indentation without compact root flattening', () => {
+    // compact variant was removed — all levels get proper indent
+    expect(treeViewSource).toContain("var childIndent = parentLastFlags.concat([isLast]);");
     expect(treeViewSource).toContain("entry.setAttribute('data-tree-node-role', nodeRole);");
     expect(treeViewSource).toContain("el.setAttribute('data-tree-node-role', nodeRole);");
     expect(treeViewSource).toContain("entry.setAttribute('data-tree-structural-role', structuralRole);");
     expect(treeViewSource).toContain("el.setAttribute('data-tree-structural-role', structuralRole);");
-    expect(appCss).toContain('.tree-view-compact .tree-node[data-tree-root="true"] > .tree-indent');
+    // compact root flattening CSS was removed — all tree nodes get indent guides
   });
 
   it('styles hierarchy groups and items from structural roles instead of per-surface type lists', () => {

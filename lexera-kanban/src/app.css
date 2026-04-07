@@ -977,78 +977,8 @@ textarea {
   color: var(--hierarchy-hover-color);
   background: var(--hierarchy-hover-bg);
 }
-/* Dashboard/workspace section toggles match the compact hierarchy chevron. */
-.dashboard-group-toggle,
-.workspace-section-toggle {
-  display: block;
-  grid-column: 1;
-  grid-row: 1;
-  width: var(--sidebar-tree-toggle-col, var(--tree-toggle-col, 14px));
-  min-width: var(--sidebar-tree-toggle-col, var(--tree-toggle-col, 14px));
-  height: 100%;
-  position: relative;
-  box-sizing: border-box;
-  color: var(--tree-toggle-fg, var(--text-secondary));
-}
-.dashboard-group-toggle::after,
-.workspace-section-toggle::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  right: var(--sidebar-tree-toggle-gap, 3px);
-  width: var(--sidebar-tree-toggle-icon-size, 6px);
-  height: var(--sidebar-tree-toggle-icon-size, 6px);
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-50%) rotate(-45deg);
-}
-.dashboard-group:not(.collapsed) > .dashboard-group-header .dashboard-group-toggle::after,
-.workspace-section-toggle.expanded::after {
-  transform: translateY(-60%) rotate(45deg);
-}
-.dashboard-group.collapsed > :not(.dashboard-group-header) {
-  display: none;
-}
+/* Dashboard and workspace section headers use tree-toggle for expand/collapse. */
 
-.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] {
-  position: relative;
-  padding-left: var(--dashboard-group-child-indent);
-}
-
-.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"]::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: calc(var(--dashboard-group-child-indent) - var(--tree-indent-step) + var(--tree-indent-guide-center));
-  border-left: var(--tree-line-width) solid var(--tree-guide);
-  pointer-events: none;
-}
-
-.dashboard-group.is-empty > .dashboard-list[data-hierarchy-section-body="true"]::before,
-.dashboard-group.collapsed > .dashboard-list[data-hierarchy-section-body="true"]::before {
-  display: none;
-}
-
-.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"] {
-  position: relative;
-}
-
-.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"]::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: calc(-1 * var(--dashboard-group-child-indent) + var(--tree-indent-guide-center));
-  width: calc(var(--dashboard-group-child-indent) - var(--tree-indent-guide-center));
-  border-top: var(--tree-line-width) solid var(--tree-guide);
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"][data-tree-structural-role="group"] > .tree-label,
-.dashboard-group > .dashboard-list[data-hierarchy-section-body="true"] > .tree-entry > .tree-node[data-tree-root="true"][data-tree-structural-role="group"] > .tree-meta > .tree-count {
-  color: var(--hierarchy-text-color);
-}
 
 /* Standalone calendar panels */
 .calendar-panel {
@@ -1602,14 +1532,9 @@ textarea {
 /* Board item tree (hierarchy below board name) */
 .board-item-tree {
   display: none;
-  padding-left: var(--tree-indent-step);
 }
 .board-item-tree.expanded { display: block; }
 
-/* Boards inside workspace tree-children get indentation from the tree structure */
-.workspace-section-boards {
-  padding-left: var(--tree-indent-step);
-}
 
 /* Tree node common */
 .tree-node {
@@ -1906,17 +1831,6 @@ textarea {
   display: none;
 }
 
-.tree-view-compact .tree-node[data-tree-root="true"] {
-  min-height: var(--hierarchy-row-min-height);
-}
-
-.tree-view-compact .tree-node[data-tree-root="true"] > .tree-indent {
-  display: none;
-}
-
-.tree-view-compact .tree-node[data-tree-root="true"] > .tree-label {
-  color: var(--hierarchy-text-color);
-}
 
 .board-item-remove.hidden {
   visibility: hidden;
@@ -8570,8 +8484,7 @@ select.export-input {
 :root[data-visual-theme="sleek"] .tree-node[aria-expanded="false"] > .tree-toggle,
 :root[data-visual-theme="sleek"] .board-item[aria-expanded="true"] > .board-item-toggle,
 :root[data-visual-theme="sleek"] .board-item[aria-expanded="false"] > .board-item-toggle,
-:root[data-visual-theme="sleek"] .workspace-section-toggle,
-:root[data-visual-theme="sleek"] .dashboard-group-toggle {
+:root[data-visual-theme="sleek"] .workspace-section-toggle {
   color: var(--hierarchy-meta-color);
 }
 

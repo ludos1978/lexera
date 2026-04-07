@@ -45,6 +45,18 @@
     return root;
   }
 
+  function _dashboardGroupHtml(key, title, listClass) {
+    return '<div class="dashboard-group tree-entry" data-dashboard-group-key="' + key + '">' +
+      '<div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true">' +
+        '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +
+        '<span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span>' +
+        '<span class="tree-label dashboard-group-title">' + title + '</span>' +
+        '<span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span>' +
+      '</div>' +
+      '<div class="dashboard-list tree-children expanded ' + listClass + '" data-hierarchy-section-body="true"></div>' +
+    '</div>';
+  }
+
   function createDashboardPanelElement(instanceId) {
     var root = createPanelRoot('sidebar-dashboard lexera-shared-panel lexera-shared-panel-dashboard', 'dashboard', instanceId);
     root.innerHTML =
@@ -59,42 +71,15 @@
         '</div>' +
       '</div>' +
       '<div class="sidebar-dashboard-body view-loading">' +
-        '<div class="dashboard-group" data-dashboard-group-key="pinned">' +
-          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Pinned Searches</span></div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-pinned" data-hierarchy-section-body="true"></div>' +
-        '</div>' +
-        '<div class="dashboard-group" data-dashboard-group-key="results">' +
-          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Results</span></div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-results" data-hierarchy-section-body="true"></div>' +
-        '</div>' +
-        '<div class="dashboard-group" data-dashboard-group-key="overdue">' +
-          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Overdue</span></div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-overdue" data-hierarchy-section-body="true"></div>' +
-        '</div>' +
-        '<div class="dashboard-group" data-dashboard-group-key="upcoming">' +
-          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Upcoming</span></div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-upcoming" data-hierarchy-section-body="true"></div>' +
-        '</div>' +
-        '<div class="dashboard-group" data-dashboard-group-key="open-tasks">' +
-          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Open Tasks</span></div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-todos" data-hierarchy-section-body="true"></div>' +
-        '</div>' +
-        '<div class="dashboard-group" data-dashboard-group-key="tagged">' +
-          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Tagged Items</span></div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-tagged" data-hierarchy-section-body="true"></div>' +
-        '</div>' +
-        '<div class="dashboard-group" data-dashboard-group-key="file-embeds">' +
-          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">File Embeds</span></div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-embeds" data-hierarchy-section-body="true"></div>' +
-        '</div>' +
-        '<div class="dashboard-group" data-dashboard-group-key="broken-elements">' +
-          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Broken Elements</span></div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-broken" data-hierarchy-section-body="true"></div>' +
-        '</div>' +
-        '<div class="dashboard-group" data-dashboard-group-key="included-files">' +
-          '<div class="dashboard-group-header" data-tree-node-role="branch" data-tree-structural-role="section"><span class="dashboard-group-toggle" aria-hidden="true"></span><span class="dashboard-group-title">Included Files</span></div>' +
-          '<div class="dashboard-list lexera-shared-dashboard-included" data-hierarchy-section-body="true"></div>' +
-        '</div>' +
+        _dashboardGroupHtml('pinned', 'Pinned Searches', 'lexera-shared-dashboard-pinned') +
+        _dashboardGroupHtml('results', 'Results', 'lexera-shared-dashboard-results') +
+        _dashboardGroupHtml('overdue', 'Overdue', 'lexera-shared-dashboard-overdue') +
+        _dashboardGroupHtml('upcoming', 'Upcoming', 'lexera-shared-dashboard-upcoming') +
+        _dashboardGroupHtml('open-tasks', 'Open Tasks', 'lexera-shared-dashboard-todos') +
+        _dashboardGroupHtml('tagged', 'Tagged Items', 'lexera-shared-dashboard-tagged') +
+        _dashboardGroupHtml('file-embeds', 'File Embeds', 'lexera-shared-dashboard-embeds') +
+        _dashboardGroupHtml('broken-elements', 'Broken Elements', 'lexera-shared-dashboard-broken') +
+        _dashboardGroupHtml('included-files', 'Included Files', 'lexera-shared-dashboard-included') +
       '</div>';
     return root;
   }

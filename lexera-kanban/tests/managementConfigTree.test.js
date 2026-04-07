@@ -108,7 +108,7 @@ describe('ManagementUI config tree hierarchy', () => {
     expect(boardNode.hasAttribute('data-tree-root')).toBe(false);
     expect(boardNode.getAttribute('data-tree-node-role')).toBe('leaf');
     expect(boardNode.getAttribute('data-tree-structural-role')).toBe('item');
-    expect(boardNode.querySelectorAll('.tree-indent .indent-guide')).toHaveLength(1);
+    expect(boardNode.querySelectorAll('.tree-indent .indent-guide')).toHaveLength(2);
 
     const looseBoardNode = tree.querySelector('.tree-node[data-mgmt-config-type="board"][data-mgmt-config-id="board-3"]');
     expect(looseBoardNode).toBeTruthy();

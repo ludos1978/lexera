@@ -2919,8 +2919,18 @@ var LexeraOrderHelpers = (function () {
       if (e.target.closest('button, a, input, select')) return;
       var group = header.closest('.dashboard-group');
       if (!group) return;
-      group.classList.toggle('collapsed');
-      // Persist fold state
+      var isCollapsed = group.classList.toggle('collapsed');
+      // Sync tree-children expanded state
+      var childContainer = group.querySelector('.tree-children');
+      if (childContainer) {
+        if (isCollapsed) { childContainer.classList.remove('expanded'); } else { childContainer.classList.add('expanded'); }
+      }
+      // Sync toggle arrow
+      var toggle = header.querySelector('.tree-toggle');
+      if (toggle) {
+        if (isCollapsed) { toggle.classList.remove('expanded'); } else { toggle.classList.add('expanded'); }
+      }
+      header.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
       saveDashboardFoldState();
     });
     restoreDashboardFoldState();
@@ -2959,6 +2969,11 @@ var LexeraOrderHelpers = (function () {
       var header = groups[i].querySelector('.dashboard-group-header');
       if ((groupKey && stored.indexOf(groupKey) !== -1) || (header && stored.indexOf(header.textContent.trim()) !== -1)) {
         groups[i].classList.add('collapsed');
+        var childContainer = groups[i].querySelector('.tree-children');
+        if (childContainer) childContainer.classList.remove('expanded');
+        var toggle = groups[i].querySelector('.tree-toggle');
+        if (toggle) toggle.classList.remove('expanded');
+        if (header) header.setAttribute('aria-expanded', 'false');
       }
     }
   }
