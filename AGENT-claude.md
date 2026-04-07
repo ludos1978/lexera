@@ -123,14 +123,14 @@
 
 ## Shared Management UI (lexera-shared)
 
-The management interface (`packages/lexera-shared/management.js` + `management.css`) is a SINGLE shared source of truth used by both `lexera-backend` and `lexera-kanban`. This is a critical architectural principle:
+The management interface (`lexera-shared/management.js` + `management.css`) is a SINGLE shared source of truth used by both `lexera-backend` and `lexera-kanban`. This is a critical architectural principle:
 
 - **Same code, not copies**: Both apps use the exact same `ManagementUI` module from `lexera-shared/`. The files are copied into each app's `src/` directory by Tauri's `beforeDevCommand`/`beforeBuildCommand`.
 - **Backend data only**: The management UI only affects backend data (server config, collab, identity, boards). It must NEVER contain frontend-only settings.
 - **API adapter pattern**: Each app provides its own `{ get, post, put, delete }` API adapter to the shared module. The kanban uses `LexeraApi`, the backend uses direct `fetch`.
 - **Callbacks for app-specific behavior**: Theme changes, notifications, confirmations, and board list updates are handled via callbacks passed to `ManagementUI.init()`.
-- **Copied files are gitignored**: Both `packages/lexera-backend/src/.gitignore` and `packages/lexera-kanban/src/.gitignore` exclude `management.js` and `management.css`.
-- **To modify the management UI**: Edit ONLY `packages/lexera-shared/management.js` and `packages/lexera-shared/management.css`. Never edit the copied versions in the app `src/` directories.
+- **Copied files are gitignored**: Both `lexera-backend/src/.gitignore` and `lexera-kanban/src/.gitignore` exclude `management.js` and `management.css`.
+- **To modify the management UI**: Edit ONLY `lexera-shared/management.js` and `lexera-shared/management.css`. Never edit the copied versions in the app `src/` directories.
 
 ## Project Specific
 
@@ -148,4 +148,3 @@ The order of the columns is fixed using translateZ:
 kanban-column-stack and kanban-full-height-column must never receive any styling for the column! it must allways only affect column-header, column-title, column-content and column-footer nothing else! the background from the #exclude tag for example war wrong and set the background previously.
 
 ALL RULES IN THE AGENT.MD DO NOT NEED TO BE VERIFIED BY ASKING THE USER AGAIN.
-

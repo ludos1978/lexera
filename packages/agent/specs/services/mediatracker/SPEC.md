@@ -1,7 +1,7 @@
 # Media Tracker Service Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-backend`  
+**V2 Target**: `lexera-backend`  
 **V1 Reference**: `src/services/MediaTracker.ts` (~555 lines)  
 **Dependencies**: File watchers, [Content Plugins](../plugins/content/SPEC.md)
 

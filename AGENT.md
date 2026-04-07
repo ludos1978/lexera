@@ -10,7 +10,13 @@ Read enough informations so you can do you job well! If you dont know enougth to
 
 Version 2 is in the folders:
 - packages/agent
-- packages/lexera-*
+- lexera-core
+- lexera-backend
+- lexera-kanban
+- lexera-capture-ios
+- lexera-shared
+- lexera-web-clipper
+- packages/shared
 
 Both version share (version 1 and 2)
 - packages/marp-engine
@@ -19,7 +25,7 @@ We are working on Version 2.
 
 ---
 
-Read the index of packages/agent/specs for the applications specifications! When working on anything read the files that are connected to the task.
+Read the index of `packages/agent/specs` for the application specifications. When working on anything in V2, read the files that are connected to the task and prefer the promoted top-level Lexera directories over historical `packages/lexera-*` paths.
 
 Version 1 is in the folders:
 - _ARCHIVE/agent
@@ -32,4 +38,3 @@ only read the agent document assigned to you:
 - if you are claude code read @AGENT-claude.md
 - if you are openai / codex read @AGENT-openai.md
 - if you are any other agent read @AGENT-claude.md
-

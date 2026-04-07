@@ -4,10 +4,10 @@
 
 Use the proven behavior from v1 as the baseline, but organize v2 around the actual Lexera package split:
 
-- `packages/lexera-core` = shared board model and data operations
-- `packages/lexera-backend` = desktop host, API surface, sync, discovery, collaboration
-- `packages/lexera-kanban` = Kanban client UI
-- `packages/lexera-capture-ios` = mobile capture client
+- `lexera-core` = shared board model and data operations
+- `lexera-backend` = desktop host, API surface, sync, discovery, collaboration
+- `lexera-kanban` = Kanban client UI
+- `lexera-capture-ios` = mobile capture client
 - `packages/marp-engine` = shared export/presentation engine
 
 V1 references come from:
@@ -17,7 +17,7 @@ V1 references come from:
 
 ## Base Architecture
 
-### 1. Shared board core: `packages/lexera-core`
+### 1. Shared board core: `lexera-core`
 
 Base from v1:
 
@@ -46,7 +46,7 @@ Change for v2:
 - CRDT/live-sync support is part of the core direction
 - Rows/stacks/columns are first-class, not an afterthought
 
-### 2. Desktop backend: `packages/lexera-backend`
+### 2. Desktop backend: `lexera-backend`
 
 Base from v1:
 
@@ -72,7 +72,7 @@ Change for v2:
 - Tray, clipboard capture, peer discovery, and collaboration become first-class backend features
 - Persistence and sync orchestration live beside the board store, not in a separate extension layer
 
-### 3. Kanban client: `packages/lexera-kanban`
+### 3. Kanban client: `lexera-kanban`
 
 Base from v1:
 
@@ -137,7 +137,7 @@ Base-plan implementation goals:
 - ensure every destructive or ambiguous workflow has an explicit confirmation path
 - tie user-facing notifications to structured logs where the event is operationally important
 
-### 5. Capture clients: `packages/lexera-backend` and `packages/lexera-capture-ios`
+### 5. Capture clients: `lexera-backend` and `lexera-capture-ios`
 
 Base from v1:
 
@@ -153,7 +153,7 @@ Change for v2:
 - Desktop backend owns quick-capture window and clipboard flows
 - iOS client can create/edit/search boards directly against shared Lexera concepts
 
-### 6. Shared export/presentation: `packages/lexera-core` + `packages/marp-engine`
+### 6. Shared export/presentation: `lexera-core` + `packages/marp-engine`
 
 Base from v1:
 

@@ -1,7 +1,7 @@
 # Dashboard Scanner Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-core` (scanning), `packages/lexera-kanban` (UI)  
+**V2 Target**: `lexera-core` (scanning), `lexera-kanban` (UI)  
 **V1 Reference**: `src/dashboard/DashboardScanner.ts` (~600 lines)  
 **Dependencies**: [Types](../shared/types/SPEC.md), DateTime utilities
 

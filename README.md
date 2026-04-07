@@ -1,15 +1,24 @@
 
-# Ludos Kanban Editor
+# Lexera Standalone
 
-Current active application code lives under [`packages/`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages).
+Current active application code now lives in the promoted top-level V2 directories:
 
-The root-level VS Code extension setup is legacy reference material from the older product line. It is no longer the active build, test, or runtime surface in this branch.
+- [`lexera-core`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-core)
+- [`lexera-backend`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-backend)
+- [`lexera-kanban`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-kanban)
+- [`lexera-capture-ios`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-capture-ios)
+- [`lexera-shared`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-shared)
+- [`lexera-web-clipper`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-web-clipper)
+
+Shared support code still lives under [`packages/shared`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/shared) and [`packages/marp-engine`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/marp-engine).
+
+The old VS Code extension layout is legacy reference material from the earlier product line. It is not the active build, test, or runtime surface in this branch.
 
 ---
 
 ## Description
 
-This is a feature packed kanban editor that runs as an visual studio code editor extension.
+Lexera is a local-first markdown kanban suite with a standalone desktop frontend, a desktop/backend companion app, shared core logic, export tooling, capture flows, and a browser clipper.
 
 I started this project to create and maintain lecture presentations for my university lectures. As i have been using marp (markdown based presentation tool) several years, and my structure and plugins got more and more complex i wanted to simplify my work environment. I have been using vscode because it's an versatile editor, has lots of plugins, integrates visual editors and allows moving, renaming files within the workspaces. I have started to create and manage new lectures and i found no good tool to create an extensive research storage with a good overview that is local first and doesnt need any subscription (i would never use a subscription based tool that can lock in my data).
 
@@ -36,6 +45,15 @@ This markdown editor contains to many features.
 ---
 
 ## Installation
+
+The V2 repo is currently run from the top-level app folders, for example:
+
+- `./run-lexera.sh`
+- `cd lexera-backend && cargo tauri dev`
+- `cd lexera-kanban && cargo tauri dev`
+- `cd lexera-web-clipper && npm run build`
+
+The VS Code extension instructions below are legacy reference notes from the earlier product generation and are not the primary V2 setup path.
 
 If you installed a version before 0.61.1 please remove the old one before installing the new one.
 

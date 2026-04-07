@@ -1,8 +1,8 @@
 # Board Mutations Specification
 
 **Status**: ✅ Baseline
-**V2 Target**: `packages/lexera-kanban` (frontend), `packages/lexera-core` (CRDT bridge)
-**V1 Reference**: `packages/lexera-kanban/src/app.js`
+**V2 Target**: `lexera-kanban` (frontend), `lexera-core` (CRDT bridge)
+**V1 Reference**: `lexera-kanban/src/app.js`
 **Dependencies**: [Board Renderer](../board/SPEC.md), [Drag/Drop](../../ux/dragdrop/SPEC.md), [API](../../services/api/SPEC.md)
 
 ---

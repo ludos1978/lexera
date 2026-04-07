@@ -1,7 +1,7 @@
 # Board Registry Service Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-backend`  
+**V2 Target**: `lexera-backend`  
 **V1 Reference**: `src/services/BoardRegistryService.ts` (~995 lines)  
 **Dependencies**: [API](../services/api/SPEC.md), VS Code workspace state (v1)
 

@@ -1,7 +1,7 @@
 # Notification System Specification
 
 **Status**: Base-plan critical for v2  
-**V2 Targets**: `packages/lexera-backend`, `packages/lexera-kanban`  
+**V2 Targets**: `lexera-backend`, `lexera-kanban`  
 **V1 Reference**: `src/services/NotificationService.ts`, conflict/unsaved-change flows in `src/services/*`, client feedback patterns in `src/html/*`
 
 ---
@@ -26,7 +26,7 @@ This is not just a port of the v1 VS Code notification wrapper. In v2, the notif
 
 ## Ownership Split
 
-### `packages/lexera-kanban`
+### `lexera-kanban`
 
 Owns in-app notification surfaces:
 
@@ -37,7 +37,7 @@ Owns in-app notification surfaces:
 - status bar state
 - expandable log panel
 
-### `packages/lexera-backend`
+### `lexera-backend`
 
 Owns host/native feedback where needed:
 
@@ -46,7 +46,7 @@ Owns host/native feedback where needed:
 - future OS-native dialogs and notifications
 - background-only feedback when no Kanban window is focused
 
-### `packages/lexera-core`
+### `lexera-core`
 
 Does not present UI directly. It provides structured errors and state that backend/client surfaces can render.
 
@@ -56,7 +56,7 @@ Does not present UI directly. It provides structured errors and state that backe
 
 ### Client feedback already present
 
-From `packages/lexera-kanban/src/app.js`:
+From `lexera-kanban/src/app.js`:
 
 - ephemeral toast notifications via `showNotification(message)`
 - merge conflict dialog
@@ -73,7 +73,7 @@ From `packages/lexera-kanban/src/app.js`:
 
 ### Backend feedback already present
 
-From `packages/lexera-backend/src-tauri/src/lib.rs` and related modules:
+From `lexera-backend/src-tauri/src/lib.rs` and related modules:
 
 - structured logging for shortcut failures, watcher issues, tray setup failures, setup errors
 - background/tray style runtime ownership

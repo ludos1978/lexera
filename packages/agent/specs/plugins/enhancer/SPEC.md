@@ -1,8 +1,8 @@
 # Content Enhancer Pipeline Specification
 
 **Status**: Planned
-**V2 Target**: `packages/lexera-kanban`
-**V1 Reference**: `packages/lexera-kanban/src/app.js` (lines 21932-22270)
+**V2 Target**: `lexera-kanban`
+**V1 Reference**: `lexera-kanban/src/app.js` (lines 21932-22270)
 **Dependencies**: [Content Plugins](../content/SPEC.md), [Diagram Registry](../diagram/SPEC.md)
 
 ---

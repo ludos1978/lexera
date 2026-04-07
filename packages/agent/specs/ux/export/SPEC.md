@@ -1,7 +1,7 @@
 # Export UI Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-kanban` (UI), `packages/lexera-backend` (pipeline)  
+**V2 Target**: `lexera-kanban` (UI), `lexera-backend` (pipeline)  
 **V1 Reference**: `src/html/exportMarpUI.js` (~2,147 lines)  
 **Dependencies**: [Content Plugins](../plugins/content/SPEC.md), Marp engine, Pandoc
 

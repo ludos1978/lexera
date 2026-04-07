@@ -1,7 +1,7 @@
 # Sync & Collaboration System Specification
 
 **Status**: Active v2 workstream  
-**V2 Targets**: `packages/lexera-backend`, `packages/lexera-core`  
+**V2 Targets**: `lexera-backend`, `lexera-core`  
 **V1 Reference**: `packages/ludos-sync/`
 
 ---
@@ -23,7 +23,7 @@ Define the v2 sync and collaboration architecture that replaces the v1 Node/WebD
 
 ## Ownership Split
 
-### `packages/lexera-core`
+### `lexera-core`
 
 Owns sync-compatible data structures:
 
@@ -32,7 +32,7 @@ Owns sync-compatible data structures:
 - Merge semantics at card level
 - Conflict detection logic
 
-### `packages/lexera-backend`
+### `lexera-backend`
 
 Owns sync orchestration:
 

@@ -38,7 +38,7 @@ Scope: the active Lexera code currently lives under `packages/lexera-*`, but the
 - [ ] Decide the final location of `lexera-core` as the canonical shared domain library in the promoted structure.
 - [ ] Decide whether `lexera-capture-ios` is a first-class app in the promoted structure or a platform experiment that should move to support or archive space.
 - [ ] Decide whether `packages/shared` should become a true shared contracts library, be merged into `lexera-core`, or be removed after consolidation.
-- [ ] Decide whether `packages/lexera-shared` is active shared UI code, a temporary bridge, or an archive candidate.
+- [ ] Decide whether `lexera-shared` is active shared UI code, a temporary bridge, or an archive candidate.
 - [ ] Classify non-Lexera directories such as `ludos-*`, `marp-engine`, `agent`, and platform experiments as active support code, tooling, vendor code, or archive.
 - [ ] Move non-mainline experimental or historical packages out of the primary app and core tree so the main repository structure stays focused.
 - [ ] Update root `package.json`, workspace manifests, Cargo workspace members, TypeScript references, and Tauri config paths after the moves.
@@ -70,8 +70,8 @@ Scope: the active Lexera code currently lives under `packages/lexera-*`, but the
 - [ ] Rename shared package identifiers from Ludos naming to Lexera naming if the code remains part of the mainline product.
 - [ ] Decide whether temporal parsing belongs in the shared contract layer, `lexera-core`, or a dedicated parsing library.
 - [ ] Remove the current line-by-line parser port arrangement by choosing one source of parser truth and verifying the other runtime with fixtures or generated contracts.
-- [ ] Replace the `packages/lexera-shared/management.js` and `management.css` file-copy workflow with a real shared frontend module or shared build artifact.
-- [ ] Turn `packages/lexera-shared` into a real package with its own manifest, build, and tests if it remains active shared UI code.
+- [ ] Replace the `lexera-shared/management.js` and `management.css` file-copy workflow with a real shared frontend module or shared build artifact.
+- [ ] Turn `lexera-shared` into a real package with its own manifest, build, and tests if it remains active shared UI code.
 - [ ] Stop copying shared management assets into app source folders during Tauri build hooks.
 - [ ] Define ownership boundaries for shared frontend code so management UI, theme helpers, and transport helpers do not become an unstructured misc package.
 - [ ] Consolidate backend discovery, REST helpers, SSE helpers, and connection bootstrap logic that is currently split across frontend entrypoints.
@@ -163,7 +163,7 @@ Scope: the active Lexera code currently lives under `packages/lexera-*`, but the
 
 ## Frontend Structure
 
-- [ ] Break the Kanban frontend entrypoint, currently `packages/lexera-kanban/src/app.js`, into a small bootstrap plus feature modules with explicit ownership.
+- [ ] Break the Kanban frontend entrypoint, currently `lexera-kanban/src/app.js`, into a small bootstrap plus feature modules with explicit ownership.
 - [ ] Convert global registry patterns in the frontend into module-scoped APIs with explicit imports and exports.
 - [ ] Introduce one board store layer that owns board state, derived state, and mutations.
 - [ ] Separate pure state mutations from DOM rendering so behavior can be tested without the browser.

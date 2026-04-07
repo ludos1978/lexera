@@ -1,7 +1,7 @@
 # Core Types Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-core`  
+**V2 Target**: `lexera-core`  
 **V1 Reference**: `src/board/KanbanTypes.ts`  
 **Dependencies**: None (base types)
 

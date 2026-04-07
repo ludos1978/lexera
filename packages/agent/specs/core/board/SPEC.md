@@ -1,7 +1,7 @@
 # Board Renderer Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-kanban`  
+**V2 Target**: `lexera-kanban`  
 **V1 Reference**: `src/html/boardRenderer.js` (~3,935 lines)  
 **Dependencies**: [Markdown Renderer](../shared/markdown/SPEC.md), [Drag/Drop](../ux/dragdrop/SPEC.md), [Editor](../core/editor/SPEC.md)
 

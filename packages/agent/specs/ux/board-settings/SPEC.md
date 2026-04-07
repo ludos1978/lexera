@@ -1,8 +1,8 @@
 # Board Settings Descriptor Registry Specification
 
 **Status**: Planned
-**V2 Target**: `packages/lexera-kanban`, `packages/lexera-kanban/src-tauri`
-**V1 Reference**: `packages/lexera-kanban/src/app.js` (lines 8937-9076, 9187-9596), `packages/lexera-kanban/src-tauri/src/app_menu.rs` (lines 4-275, 289-435)
+**V2 Target**: `lexera-kanban`, `lexera-kanban/src-tauri`
+**V1 Reference**: `lexera-kanban/src/app.js` (lines 8937-9076, 9187-9596), `lexera-kanban/src-tauri/src/app_menu.rs` (lines 4-275, 289-435)
 **Dependencies**: [Action Registry](../actions/SPEC.md)
 
 ---

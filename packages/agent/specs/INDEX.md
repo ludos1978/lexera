@@ -19,11 +19,11 @@
 
 | Workstream | V2 target | Main v1 base | Shared dependency | Specs |
 |------------|-----------|--------------|-------------------|-------|
-| Board model, parser, includes, search, merge, storage | `packages/lexera-core` | `src/`, mainly parser/types/state/search logic | `packages/marp-engine` for presentation/export pipeline | [Types](shared/types/SPEC.md), [Parser](shared/parser/SPEC.md), [Gather](core/gather/SPEC.md), [State Machine](core/statemachine/SPEC.md), [Save & Recovery](services/save/SPEC.md) |
-| Desktop runtime, board registry, watcher, sync, collaboration, capture | `packages/lexera-backend` | `src/services/*`, `src/files/*`, `src/core/*`, `packages/ludos-sync/` | `packages/lexera-core` | [API](services/api/SPEC.md), [Save & Recovery](services/save/SPEC.md), [Board Registry](services/boardregistry/SPEC.md), [Keybinding](services/keybinding/SPEC.md), [Notification](services/notification/SPEC.md), [Sync](sync/SPEC.md) |
-| Board UI, editor, drag/drop, menus, dashboard | `packages/lexera-kanban` | `src/html/*`, `src/kanbanWebviewPanel.ts`, board/editor UX | `packages/lexera-core`, backend API | [Board Renderer](core/board/SPEC.md), [Editor](core/editor/SPEC.md), [Drag/Drop](ux/dragdrop/SPEC.md), [Menus](ux/menus/SPEC.md), [Search](ux/search/SPEC.md), [Export](ux/export/SPEC.md), [Save & Recovery](services/save/SPEC.md) |
-| Mobile capture | `packages/lexera-capture-ios` | no direct v1 package equivalent | `packages/lexera-core` concepts | (planned) |
-| Presentation and export | `packages/lexera-core` + `packages/lexera-backend` + `packages/lexera-kanban` | `src/services/export/*`, `src/html/exportMarpUI.js` | `packages/marp-engine` | [Export](ux/export/SPEC.md), [Content Plugins](plugins/content/SPEC.md) |
+| Board model, parser, includes, search, merge, storage | `lexera-core` | `src/`, mainly parser/types/state/search logic | `packages/marp-engine` for presentation/export pipeline | [Types](shared/types/SPEC.md), [Parser](shared/parser/SPEC.md), [Gather](core/gather/SPEC.md), [State Machine](core/statemachine/SPEC.md), [Save & Recovery](services/save/SPEC.md) |
+| Desktop runtime, board registry, watcher, sync, collaboration, capture | `lexera-backend` | `src/services/*`, `src/files/*`, `src/core/*`, `packages/ludos-sync/` | `lexera-core` | [API](services/api/SPEC.md), [Save & Recovery](services/save/SPEC.md), [Board Registry](services/boardregistry/SPEC.md), [Keybinding](services/keybinding/SPEC.md), [Notification](services/notification/SPEC.md), [Sync](sync/SPEC.md) |
+| Board UI, editor, drag/drop, menus, dashboard | `lexera-kanban` | `src/html/*`, `src/kanbanWebviewPanel.ts`, board/editor UX | `lexera-core`, backend API | [Board Renderer](core/board/SPEC.md), [Editor](core/editor/SPEC.md), [Drag/Drop](ux/dragdrop/SPEC.md), [Menus](ux/menus/SPEC.md), [Search](ux/search/SPEC.md), [Export](ux/export/SPEC.md), [Save & Recovery](services/save/SPEC.md) |
+| Mobile capture | `lexera-capture-ios` | no direct v1 package equivalent | `lexera-core` concepts | (planned) |
+| Presentation and export | `lexera-core` + `lexera-backend` + `lexera-kanban` | `src/services/export/*`, `src/html/exportMarpUI.js` | `packages/marp-engine` | [Export](ux/export/SPEC.md), [Content Plugins](plugins/content/SPEC.md) |
 
 ---
 

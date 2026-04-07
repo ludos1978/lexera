@@ -1,7 +1,7 @@
 # Backend API Surface Specification
 
 **Status**: Base-plan critical for v2  
-**V2 Target**: `packages/lexera-backend`  
+**V2 Target**: `lexera-backend`  
 **Related**: `sync/SPEC.md`, `save/SPEC.md`, `boardregistry/SPEC.md`, `keybinding/SPEC.md`, `notification/SPEC.md`
 
 ---

@@ -1,7 +1,7 @@
 # Drag & Drop System Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-kanban`  
+**V2 Target**: `lexera-kanban`  
 **V1 Reference**: `src/html/dragDrop.js` (~6,514 lines)  
 **Dependencies**: [Board Renderer](../core/board/SPEC.md), [Menus](../ux/menus/SPEC.md), Backend API
 

@@ -3,8 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Build all packages (shared, marp-engine, ludos-sync)
+# Build active shared/tooling packages first.
 "$SCRIPT_DIR/build-packages.sh"
 
-npm run package
-vsce package
+echo "Building lexera-web-clipper..."
+(cd "$SCRIPT_DIR/lexera-web-clipper" && npm run build)
+
+echo ""
+echo "Build complete."

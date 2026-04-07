@@ -1,7 +1,7 @@
 # Card Editor Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-kanban`  
+**V2 Target**: `lexera-kanban`  
 **V1 Reference**: `src/html/cardEditor.js` (~3,135 lines)  
 **Dependencies**: [Board Renderer](../core/board/SPEC.md), WYSIWYG editor, [Markdown Renderer](../shared/markdown/SPEC.md)
 

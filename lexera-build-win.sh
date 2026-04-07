@@ -27,8 +27,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BACKEND_DIR="$SCRIPT_DIR/packages/lexera-backend"
-KANBAN_DIR="$SCRIPT_DIR/packages/lexera-kanban"
+BACKEND_DIR="$SCRIPT_DIR/lexera-backend"
+KANBAN_DIR="$SCRIPT_DIR/lexera-kanban"
 BUILDS_DIR="$SCRIPT_DIR/builds"
 TARGET="x86_64-pc-windows-msvc"
 BUILD_TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
@@ -150,7 +150,7 @@ else
 fi
 
 # Try workspace-level target first, then per-package
-for candidate in "$SCRIPT_DIR/packages/target" "$BACKEND_DIR/src-tauri/target" "$KANBAN_DIR/src-tauri/target"; do
+for candidate in "$SCRIPT_DIR/target" "$BACKEND_DIR/src-tauri/target" "$KANBAN_DIR/src-tauri/target"; do
   if [[ -d "$candidate/$TARGET_SUBDIR" ]]; then
     TARGET_BASE="$candidate/$TARGET_SUBDIR"
     break

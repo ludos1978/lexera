@@ -1,11 +1,11 @@
 # Lexera Kanban Frontend Function Catalog
 
-This document catalogs all PUBLIC functions across the major modules of the Lexera Kanban frontend (`packages/lexera-kanban/src/`). Functions are organized by module with their descriptions and cross-module callers.
+This document catalogs all PUBLIC functions across the major modules of the Lexera Kanban frontend (`lexera-kanban/src/`). Functions are organized by module with their descriptions and cross-module callers.
 
 ---
 
 ## Module: app.js (LexeraDashboard)
-**Path:** `packages/lexera-kanban/src/app.js`
+**Path:** `lexera-kanban/src/app.js`
 **Type:** Main application module (12,142 lines) — IIFE with 1000+ internal functions
 **Public API:** Single exported function
 
@@ -18,7 +18,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: board/orderHelpers.js (LexeraOrderHelpers)
-**Path:** `packages/lexera-kanban/src/board/orderHelpers.js`
+**Path:** `lexera-kanban/src/board/orderHelpers.js`
 **Type:** UI state, layout, and search helpers (3,164 lines)
 **Public API:** 96 exported functions
 
@@ -99,7 +99,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: board/boardSettings.js (LexeraBoardSettings)
-**Path:** `packages/lexera-kanban/src/board/boardSettings.js`
+**Path:** `lexera-kanban/src/board/boardSettings.js`
 **Type:** Board setting normalizers and tiered value lookup (~230 lines)
 **Public API:** 13 exported functions
 
@@ -122,7 +122,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: board/boardList.js (LexeraBoardList)
-**Path:** `packages/lexera-kanban/src/board/boardList.js`
+**Path:** `lexera-kanban/src/board/boardList.js`
 **Type:** Board/workspace state and sidebar management (1,832 lines)
 **Public API:** 35 exported functions
 
@@ -184,7 +184,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: dragdrop/dragDropHandlers.js (LexeraDragDropHandlers)
-**Path:** `packages/lexera-kanban/src/dragdrop/dragDropHandlers.js`
+**Path:** `lexera-kanban/src/dragdrop/dragDropHandlers.js`
 **Type:** Drag-and-drop event handling and geometry (2,044 lines)
 **Public API:** 67 exported functions
 
@@ -263,7 +263,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: workspace/workspaceShell.js (LexeraWorkspaceShell)
-**Path:** `packages/lexera-kanban/src/workspace/workspaceShell.js`
+**Path:** `lexera-kanban/src/workspace/workspaceShell.js`
 **Type:** Multi-pane workspace UI layout manager (4,453 lines)
 **Public API:** 17 exported functions
 
@@ -294,7 +294,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: menu/embedMenu.js (LexeraEmbedMenu)
-**Path:** `packages/lexera-kanban/src/menu/embedMenu.js`
+**Path:** `lexera-kanban/src/menu/embedMenu.js`
 **Type:** Embed/include/link mutation and content management (4,428 lines)
 **Public API:** 41 exported functions
 
@@ -351,7 +351,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: editor/cardEditor.js (CardEditor)
-**Path:** `packages/lexera-kanban/src/editor/cardEditor.js`
+**Path:** `lexera-kanban/src/editor/cardEditor.js`
 **Type:** Card content editor overlay UI (1,205 lines)
 **Public API:** 32 exported functions
 
@@ -400,7 +400,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: core/moduleRuntime.js (LexeraRuntime)
-**Path:** `packages/lexera-kanban/src/core/moduleRuntime.js`
+**Path:** `lexera-kanban/src/core/moduleRuntime.js`
 **Type:** Shared module infrastructure and state management (217 lines)
 **Public API:** 14 exported functions
 
@@ -425,7 +425,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: core/settingsStore.js (LexeraSettings)
-**Path:** `packages/lexera-kanban/src/core/settingsStore.js`
+**Path:** `lexera-kanban/src/core/settingsStore.js`
 **Type:** localStorage-backed configuration store (276 lines)
 **Public API:** 12 exported functions
 
@@ -449,7 +449,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: sync/pollingService.js (LexeraPollingService)
-**Path:** `packages/lexera-kanban/src/sync/pollingService.js`
+**Path:** `lexera-kanban/src/sync/pollingService.js`
 **Type:** Board/workspace polling and sync coordination (375 lines)
 **Public API:** 4 exported functions
 
@@ -464,7 +464,7 @@ This document catalogs all PUBLIC functions across the major modules of the Lexe
 ---
 
 ## Module: render/cardContentRenderer.js (LexeraCardContentRenderer)
-**Path:** `packages/lexera-kanban/src/render/cardContentRenderer.js`
+**Path:** `lexera-kanban/src/render/cardContentRenderer.js`
 **Type:** Markdown to HTML rendering with inline syntax (402 lines)
 **Public API:** 5 exported functions
 

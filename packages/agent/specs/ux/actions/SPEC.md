@@ -1,8 +1,8 @@
 # Action Dispatch Registry Specification
 
 **Status**: Planned
-**V2 Target**: `packages/lexera-kanban`
-**V1 Reference**: `packages/lexera-kanban/src/app.js` (lines 9187-9596, 18596-18650, 19171-19250, 12820-12860, 12861-12900)
+**V2 Target**: `lexera-kanban`
+**V1 Reference**: `lexera-kanban/src/app.js` (lines 9187-9596, 18596-18650, 19171-19250, 12820-12860, 12861-12900)
 **Dependencies**: [Menus](../menus/SPEC.md)
 
 ---

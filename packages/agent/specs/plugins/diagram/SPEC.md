@@ -1,8 +1,8 @@
 # Diagram Renderer Registry Specification
 
 **Status**: Planned
-**V2 Target**: `packages/lexera-kanban`
-**V1 Reference**: `packages/lexera-kanban/src/app.js` (lines 25170-25250, 573-578)
+**V2 Target**: `lexera-kanban`
+**V1 Reference**: `lexera-kanban/src/app.js` (lines 25170-25250, 573-578)
 **Dependencies**: [Content Plugins](../content/SPEC.md), [Plugin Registry](../registry/SPEC.md)
 
 ---

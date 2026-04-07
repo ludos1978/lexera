@@ -1,7 +1,7 @@
 # Save & Recovery System Specification
 
 **Status**: 🚧 In Progress  
-**V2 Targets**: `packages/lexera-core`, `packages/lexera-backend`, `packages/lexera-kanban`  
+**V2 Targets**: `lexera-core`, `lexera-backend`, `lexera-kanban`  
 **Dependencies**: [API](../api/SPEC.md), [Sync](../../sync/SPEC.md), [State Machine](../../core/statemachine/SPEC.md), [Mutations](../../core/mutations/SPEC.md), [Notification](../notification/SPEC.md)
 
 ---
@@ -109,12 +109,12 @@ Define the save architecture that makes user changes durable across local UI edi
 
 | Component | Package | Responsibility |
 |-----------|---------|----------------|
-| `Working draft` | `packages/lexera-kanban` | User-visible board state and dirty tracking |
-| `Durable draft journal` | `packages/lexera-kanban` + backend persistence | Survives reloads and crashes until canonical commit succeeds |
-| `SaveCoordinator` | `packages/lexera-core` + `packages/lexera-backend` | Centralizes save, rebase, and recovery decisions |
-| `Canonical CRDT store` | `packages/lexera-core` | Converges local/network/filesystem revisions |
-| `CrashsaveManager` | `packages/lexera-core` | Writes recovery snapshots with stable naming |
-| `Recovery UI` | `packages/lexera-kanban` | Explains crashsaves, retries, and conflicts |
+| `Working draft` | `lexera-kanban` | User-visible board state and dirty tracking |
+| `Durable draft journal` | `lexera-kanban` + backend persistence | Survives reloads and crashes until canonical commit succeeds |
+| `SaveCoordinator` | `lexera-core` + `lexera-backend` | Centralizes save, rebase, and recovery decisions |
+| `Canonical CRDT store` | `lexera-core` | Converges local/network/filesystem revisions |
+| `CrashsaveManager` | `lexera-core` | Writes recovery snapshots with stable naming |
+| `Recovery UI` | `lexera-kanban` | Explains crashsaves, retries, and conflicts |
 
 ---
 
@@ -257,15 +257,15 @@ interface CrashsaveResponse {
 ## Integration Points
 
 ### Called By
-- `packages/lexera-kanban` save actions and dirty-draft handling
-- `packages/lexera-backend` board save and rebase endpoints
+- `lexera-kanban` save actions and dirty-draft handling
+- `lexera-backend` board save and rebase endpoints
 - file watcher / SSE handlers when external revisions arrive
 - live-sync and remote sync import paths
 
 ### Calls
-- `packages/lexera-core` CRDT store for convergence
-- `packages/lexera-core` parser and markdown writer for canonical and crashsave output
-- `packages/lexera-kanban` notification and recovery UI
+- `lexera-core` CRDT store for convergence
+- `lexera-core` parser and markdown writer for canonical and crashsave output
+- `lexera-kanban` notification and recovery UI
 
 ---
 

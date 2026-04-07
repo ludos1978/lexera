@@ -1,7 +1,7 @@
 # Plugin Registry Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-core` (manifests), `packages/lexera-kanban` (runtime)  
+**V2 Target**: `lexera-core` (manifests), `lexera-kanban` (runtime)  
 **V1 Reference**: `src/plugins/registry/PluginRegistry.ts` (~500 lines)  
 **Dependencies**: [Content Plugins](../plugins/content/SPEC.md)
 

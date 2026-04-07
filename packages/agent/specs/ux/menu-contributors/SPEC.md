@@ -1,8 +1,8 @@
 # Menu Contributor Registry Specification
 
 **Status**: Planned
-**V2 Target**: `packages/lexera-kanban`
-**V1 Reference**: `packages/lexera-kanban/src/app.js` (lines 18517-18594, 18945-19038, 12726-12818)
+**V2 Target**: `lexera-kanban`
+**V1 Reference**: `lexera-kanban/src/app.js` (lines 18517-18594, 18945-19038, 12726-12818)
 **Dependencies**: [Action Registry](../actions/SPEC.md), [Menus](../menus/SPEC.md)
 
 ---

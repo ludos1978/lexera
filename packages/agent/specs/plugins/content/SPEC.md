@@ -1,7 +1,7 @@
 # Content Plugin System Specification
 
 **Status**: Base-plan critical for v2  
-**V2 Targets**: `packages/lexera-core`, `packages/lexera-kanban`, `packages/lexera-backend`, `packages/marp-engine`  
+**V2 Targets**: `lexera-core`, `lexera-kanban`, `lexera-backend`, `packages/marp-engine`  
 **V1 Reference**: `src/plugins/registry/PluginRegistry.ts`, `src/plugins/markdown/markdownPluginManifest.ts`, `src/html/markdownRenderer.js`, `src/html/wysiwygEditor.ts`, `src/services/export/ExportService.ts`
 
 ---
@@ -216,7 +216,7 @@ Primary home:
 
 Current v2 baseline:
 
-- `packages/lexera-kanban/src-tauri/src/export_commands.rs`
+- `lexera-kanban/src-tauri/src/export_commands.rs`
 
 Possible future consolidation:
 

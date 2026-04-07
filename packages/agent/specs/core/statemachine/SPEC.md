@@ -1,7 +1,7 @@
 # Change State Machine Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-core`  
+**V2 Target**: `lexera-core`  
 **V1 Reference**: `src/core/ChangeStateMachine.ts` (~730 lines)  
 **Dependencies**: [Parser](../shared/parser/SPEC.md), [Types](../shared/types/SPEC.md), File/Include services
 

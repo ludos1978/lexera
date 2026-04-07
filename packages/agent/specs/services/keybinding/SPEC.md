@@ -1,7 +1,7 @@
 # Keybinding System Specification
 
 **Status**: Base-plan critical for v2  
-**V2 Targets**: `packages/lexera-backend`, `packages/lexera-kanban`  
+**V2 Targets**: `lexera-backend`, `lexera-kanban`  
 **V1 Reference**: `src/services/KeybindingService.ts`, `src/html/*`
 
 ---
@@ -26,7 +26,7 @@ This is not a direct port of the v1 VS Code keybinding service. In v2, Lexera ow
 
 ## Ownership Split
 
-### `packages/lexera-backend`
+### `lexera-backend`
 
 Owns host-level and system-level shortcuts:
 
@@ -35,7 +35,7 @@ Owns host-level and system-level shortcuts:
 - Desktop-only actions that must work even when the board window is unfocused
 - Platform registration through Tauri
 
-### `packages/lexera-kanban`
+### `lexera-kanban`
 
 Owns in-app shortcuts:
 
@@ -58,14 +58,14 @@ Owns in-app shortcuts:
 
 ### Backend shortcuts already present
 
-From `packages/lexera-backend/src-tauri/src/lib.rs`:
+From `lexera-backend/src-tauri/src/lib.rs`:
 
 - `CmdOrCtrl+Shift+C`: capture selection and open quick capture
 - `CmdOrCtrl+B`: focus capture popup
 
 ### Client shortcuts already present
 
-From `packages/lexera-kanban/src/app.js`:
+From `lexera-kanban/src/app.js`:
 
 - `CmdOrCtrl+Shift+L`: toggle log panel
 - `CmdOrCtrl+F`: expand/focus board search
@@ -92,7 +92,7 @@ From `packages/lexera-kanban/src/app.js`:
 
 ### Audited board-navigation shortcuts already present
 
-Also from `packages/lexera-kanban/src/app.js`, `keyboard/keyboardNavigation.js`, and the shortcut help overlay:
+Also from `lexera-kanban/src/app.js`, `keyboard/keyboardNavigation.js`, and the shortcut help overlay:
 
 - Card focus navigation:
   - `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`

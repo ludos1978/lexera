@@ -5,8 +5,7 @@
   "version": "1.0.0",
   "workspaces": [
     "packages/shared",
-    "packages/lexera-shared",
-    "packages/lexera-web-clipper"
+    "packages/shared-fixtures"
   ],
   "scripts": {},
   "dependencies": {

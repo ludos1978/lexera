@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+  "lexera-core",
+  "lexera-backend/src-tauri",
+  "lexera-kanban/src-tauri",
+  "lexera-capture-ios/src-tauri",
+]
+
+[profile.release]
+# Keep line info and symbols in release builds so panic backtraces are actionable
+# on Windows/macOS crash reports.
+debug = 1

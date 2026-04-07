@@ -1,7 +1,7 @@
 # Markdown Renderer Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-kanban` (rendering), `packages/lexera-core` (transforms)  
+**V2 Target**: `lexera-kanban` (rendering), `lexera-core` (transforms)  
 **V1 Reference**: `src/html/markdownRenderer.js` (~3,806 lines)  
 **Dependencies**: markdown-it, 20+ markdown-it plugins, Mermaid, PlantUML, [Content Plugins](../plugins/content/SPEC.md)
 

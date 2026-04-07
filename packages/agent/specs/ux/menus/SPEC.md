@@ -1,7 +1,7 @@
 # Menu Operations Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-kanban`  
+**V2 Target**: `lexera-kanban`  
 **V1 Reference**: `src/html/menuOperations.js` (~3,989 lines)  
 **Dependencies**: [Board Renderer](../core/board/SPEC.md), [Editor](../core/editor/SPEC.md), Backend API
 

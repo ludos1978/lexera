@@ -6,5 +6,5 @@ the web clipper extension. Published as `@ludos/shared`.
 
 Backend discovery functions (`discoverLexeraBackend`, `buildLexeraBackendCandidates`,
 etc.) are a browser-only variant of the authoritative Tauri implementation in
-`packages/lexera-shared/backendDiscovery.js`. Both use the same port candidate
+`lexera-shared/backendDiscovery.js`. Both use the same port candidate
 list and discovery protocol but target different runtimes.

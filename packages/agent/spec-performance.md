@@ -36,12 +36,12 @@ With dozens of boards containing hundreds of cards each, the app suffers from:
 - Card click navigates to board+card (already works)
 
 ### Files to Modify
-- `packages/lexera-core/src/storage/local.rs` — `search_with_options()`, `calendar_tasks()`
-- `packages/lexera-core/src/types.rs` — `SearchOptions` struct (add limit/offset/truncate)
-- `packages/lexera-backend/src-tauri/src/api/search.rs` — parse query params
-- `packages/lexera-backend/src-tauri/src/api/calendar.rs` — parse query params
-- `packages/lexera-kanban/src/board/orderHelpers.js` — pass limit params
-- `packages/lexera-kanban/src/api.js` — update search/calendar signatures
+- `lexera-core/src/storage/local.rs` — `search_with_options()`, `calendar_tasks()`
+- `lexera-core/src/types.rs` — `SearchOptions` struct (add limit/offset/truncate)
+- `lexera-backend/src-tauri/src/api/search.rs` — parse query params
+- `lexera-backend/src-tauri/src/api/calendar.rs` — parse query params
+- `lexera-kanban/src/board/orderHelpers.js` — pass limit params
+- `lexera-kanban/src/api.js` — update search/calendar signatures
 
 ---
 
@@ -64,8 +64,8 @@ With dozens of boards containing hundreds of cards each, the app suffers from:
 - File watcher setup must happen AFTER all boards are loaded
 
 ### Files to Modify
-- `packages/lexera-backend/src-tauri/src/lib.rs` — `init_storage_and_boards()`
-- `packages/lexera-core/src/storage/local.rs` — extract `prepare_board_state()` (parse-only, no lock)
+- `lexera-backend/src-tauri/src/lib.rs` — `init_storage_and_boards()`
+- `lexera-core/src/storage/local.rs` — extract `prepare_board_state()` (parse-only, no lock)
 
 ---
 
@@ -97,9 +97,9 @@ struct CardRef {
 - Search queries: check index first for tag/temporal/date queries, fall back to full scan for free-text
 
 ### Files to Modify
-- `packages/lexera-core/src/storage/local.rs` — new `SearchIndex` struct + update methods
-- `packages/lexera-core/src/storage/search_index.rs` — new file
-- `packages/lexera-core/src/types.rs` — `CardRef` struct
+- `lexera-core/src/storage/local.rs` — new `SearchIndex` struct + update methods
+- `lexera-core/src/storage/search_index.rs` — new file
+- `lexera-core/src/types.rs` — `CardRef` struct
 
 ---
 
@@ -118,8 +118,8 @@ struct CardRef {
 - Fall back to full snapshot for complex multi-entity operations
 
 ### Files to Modify
-- `packages/lexera-kanban/src/app.js` — `pushUndoSnapshot()`, `undo()`, `redo()`
-- Potentially extract to `packages/lexera-kanban/src/undo/undoSystem.js`
+- `lexera-kanban/src/app.js` — `pushUndoSnapshot()`, `undo()`, `redo()`
+- Potentially extract to `lexera-kanban/src/undo/undoSystem.js`
 
 ---
 
@@ -144,9 +144,9 @@ struct CardRef {
 - Full re-render only for: board load, board switch, multi-entity operations
 
 ### Files to Modify
-- `packages/lexera-kanban/src/app.js` — `persistBoardMutation()`, card edit handlers
-- `packages/lexera-kanban/src/menu/cardContextMenu.js` — targeted updates
-- `packages/lexera-kanban/src/dragdrop/dndMutations.js` — DOM node moves
+- `lexera-kanban/src/app.js` — `persistBoardMutation()`, card edit handlers
+- `lexera-kanban/src/menu/cardContextMenu.js` — targeted updates
+- `lexera-kanban/src/dragdrop/dndMutations.js` — DOM node moves
 
 ---
 
@@ -167,9 +167,9 @@ struct CardRef {
 - Drag-drop needs all card positions calculated (not just visible)
 
 ### Files to Modify
-- `packages/lexera-kanban/src/app.js` — `renderColumns()` virtual path
-- `packages/lexera-kanban/src/render/virtualScroll.js` — new module
-- `packages/lexera-kanban/src/app.css` — virtual scroll container styles
+- `lexera-kanban/src/app.js` — `renderColumns()` virtual path
+- `lexera-kanban/src/render/virtualScroll.js` — new module
+- `lexera-kanban/src/app.css` — virtual scroll container styles
 
 ---
 
@@ -189,10 +189,10 @@ struct CardRef {
 - Full fetch as fallback if delta is too large or generation gap too big
 
 ### Files to Modify
-- `packages/lexera-core/src/storage/local.rs` — per-card generation tracking, delta API
-- `packages/lexera-backend/src-tauri/src/api/board.rs` — `/changes` endpoint
-- `packages/lexera-kanban/src/sync/pollingService.js` — delta fetch logic
-- `packages/lexera-kanban/src/app.js` — delta apply logic
+- `lexera-core/src/storage/local.rs` — per-card generation tracking, delta API
+- `lexera-backend/src-tauri/src/api/board.rs` — `/changes` endpoint
+- `lexera-kanban/src/sync/pollingService.js` — delta fetch logic
+- `lexera-kanban/src/app.js` — delta apply logic
 
 ---
 

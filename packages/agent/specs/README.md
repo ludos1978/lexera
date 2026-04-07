@@ -10,7 +10,7 @@
 
 ## Scope
 
-- V2 targets: `packages/lexera-core`, `packages/lexera-backend`, `packages/lexera-kanban`, `packages/lexera-capture-ios`
+- V2 targets: `lexera-core`, `lexera-backend`, `lexera-kanban`, `lexera-capture-ios`
 - V1 source of truth for behavior: `src/` and `packages/ludos-sync/`
 - Shared across v1 and v2: `packages/marp-engine/`
 

@@ -77,17 +77,17 @@ This file tracks the simplified v2 planning view with implementation priorities 
 
 | Track | Status | Source of truth | Notes |
 |-------|--------|-----------------|-------|
-| Board model and markdown I/O | ✅ Baseline | `packages/lexera-core` | Built from v1 parser/types behavior, but owned by Rust in v2 |
-| Storage, watcher, merge, and search | ✅ Baseline | `packages/lexera-core` | Replaces extension-side file/state handling with atomic, core-owned logic |
-| Backend runtime and API | 📋 Spec'd | `packages/lexera-backend` | API surface defined, ready for implementation |
-| Save coordinator and recovery | 🚧 In Progress | `packages/lexera-core` + `packages/lexera-backend` + `packages/lexera-kanban` | Durable drafts, revisioned commit flow, and crashsave fallback |
-| Live sync and collaboration | 🔜 Planned | `packages/lexera-backend` + `packages/lexera-core` | Sync spec complete, live-sync needs design |
-| Kanban UI | ✅ Baseline | `packages/lexera-kanban` | Port v1 board/editor UX selectively, but keep the client thinner |
-| Keybinding system | ✅ Baseline | `packages/lexera-backend` + `packages/lexera-kanban` | Native/global shortcuts in backend, in-app shortcuts in client |
-| Notification system | ✅ Baseline | `packages/lexera-backend` + `packages/lexera-kanban` | In-app toasts/dialogs plus native confirmations are part of the base plan |
-| Content plugin system | 📋 Spec'd | `packages/lexera-core` + `packages/lexera-kanban` + `packages/lexera-backend` + `packages/marp-engine` | Manifest spec complete, implementation pending |
-| Capture flows | ✅ Baseline | `packages/lexera-backend` + `packages/lexera-capture-ios` | Desktop capture ready, iOS client planned |
-| Presentation/export | ✅ Baseline | `packages/lexera-core` + `packages/lexera-backend` + `packages/lexera-kanban` + `packages/marp-engine` | Backend handles extract/transform APIs, Kanban desktop shell currently handles runner commands |
+| Board model and markdown I/O | ✅ Baseline | `lexera-core` | Built from v1 parser/types behavior, but owned by Rust in v2 |
+| Storage, watcher, merge, and search | ✅ Baseline | `lexera-core` | Replaces extension-side file/state handling with atomic, core-owned logic |
+| Backend runtime and API | 📋 Spec'd | `lexera-backend` | API surface defined, ready for implementation |
+| Save coordinator and recovery | 🚧 In Progress | `lexera-core` + `lexera-backend` + `lexera-kanban` | Durable drafts, revisioned commit flow, and crashsave fallback |
+| Live sync and collaboration | 🔜 Planned | `lexera-backend` + `lexera-core` | Sync spec complete, live-sync needs design |
+| Kanban UI | ✅ Baseline | `lexera-kanban` | Port v1 board/editor UX selectively, but keep the client thinner |
+| Keybinding system | ✅ Baseline | `lexera-backend` + `lexera-kanban` | Native/global shortcuts in backend, in-app shortcuts in client |
+| Notification system | ✅ Baseline | `lexera-backend` + `lexera-kanban` | In-app toasts/dialogs plus native confirmations are part of the base plan |
+| Content plugin system | 📋 Spec'd | `lexera-core` + `lexera-kanban` + `lexera-backend` + `packages/marp-engine` | Manifest spec complete, implementation pending |
+| Capture flows | ✅ Baseline | `lexera-backend` + `lexera-capture-ios` | Desktop capture ready, iOS client planned |
+| Presentation/export | ✅ Baseline | `lexera-core` + `lexera-backend` + `lexera-kanban` + `packages/marp-engine` | Backend handles extract/transform APIs, Kanban desktop shell currently handles runner commands |
 | Open third-party plugin ecosystem | ⏸️ Deferred | none | Internal plugin structure first, marketplace behavior later |
 
 ---

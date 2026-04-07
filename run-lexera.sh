@@ -9,10 +9,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BACKEND_DIR="$SCRIPT_DIR/packages/lexera-backend"
-KANBAN_DIR="$SCRIPT_DIR/packages/lexera-kanban"
-WEB_CLIPPER_DIR="$SCRIPT_DIR/packages/lexera-web-clipper"
-TARGET_DIR="$SCRIPT_DIR/packages/target"
+BACKEND_DIR="$SCRIPT_DIR/lexera-backend"
+KANBAN_DIR="$SCRIPT_DIR/lexera-kanban"
+WEB_CLIPPER_DIR="$SCRIPT_DIR/lexera-web-clipper"
+TARGET_DIR="$SCRIPT_DIR/target"
 PATH_MARKER="$TARGET_DIR/.project-path"
 BACKEND_READY_PORTS=(13080 8083 1431 12080 14080 11080 15080)
 
@@ -84,7 +84,7 @@ if [[ -d "$TARGET_DIR" ]]; then
     CACHED_PATH="$(cat "$PATH_MARKER")"
     if [[ "$CACHED_PATH" != "$SCRIPT_DIR" ]]; then
       echo "Project path changed ($CACHED_PATH -> $SCRIPT_DIR), cleaning build cache..."
-      (cd "$SCRIPT_DIR/packages" && cargo clean)
+      (cd "$SCRIPT_DIR" && cargo clean)
     fi
   else
     # No marker exists but target dir does — could be stale from before

@@ -1,7 +1,7 @@
 # Gather Query Engine Specification
 
 **Status**: ✅ Baseline  
-**V2 Target**: `packages/lexera-core`  
+**V2 Target**: `lexera-core`  
 **V1 Reference**: `src/board/GatherQueryEngine.ts` (~400 lines)  
 **Dependencies**: [Types](../shared/types/SPEC.md), DateTime utilities
 

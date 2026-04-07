@@ -1,7 +1,7 @@
 # Workspace Shell Panels Specification
 
 **Status**: In Progress
-**V2 Target**: `packages/lexera-kanban`
+**V2 Target**: `lexera-kanban`
 **Dependencies**: [Board Settings](../board-settings/SPEC.md), [Actions](../actions/SPEC.md), [Menus](../menus/SPEC.md)
 
 ---
@@ -48,7 +48,7 @@ The Files panel has exactly **2 tabs**:
 
 ### Architecture
 
-The Files panel reuses the shared `ManagementUI` module (`packages/lexera-shared/management.js`) via its multi-mount architecture:
+The Files panel reuses the shared `ManagementUI` module (`lexera-shared/management.js`) via its multi-mount architecture:
 
 ```
 ┌──────────────────────────────────────────────┐
