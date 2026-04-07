@@ -35,6 +35,7 @@ const srcDir = resolve(__dirname, '..', 'src');
  */
 
 function loadTagColors() {
+  const titleHelpersSource = readFileSync(resolve(srcDir, 'titleHelpers.js'), 'utf-8');
   const tagSystemSource = readFileSync(resolve(srcDir, 'tagSystem.js'), 'utf-8');
   const tagColorsSource = readFileSync(resolve(srcDir, 'tagcolors', 'tagColors.js'), 'utf-8');
   const factory = new Function(
@@ -42,6 +43,7 @@ function loadTagColors() {
     'console',
     `
       var window = globalThis;
+      ${titleHelpersSource}
       ${tagSystemSource}
       ${tagColorsSource}
       return globalThis.LexeraTagColors;

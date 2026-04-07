@@ -2681,12 +2681,8 @@ var LexeraEmbedMenu = (function () {
 
     var fileLink = e.target.closest('.markdown-file-link');
     if (fileLink) {
+      // Prevent anchor navigation on single click; preview opens on dblclick
       e.preventDefault();
-      e.stopPropagation();
-      showBoardFilePreview(
-        fileLink.getAttribute('data-board-id') || activeBoardId || '',
-        fileLink.getAttribute('data-file-path') || fileLink.getAttribute('data-original-href') || ''
-      );
       return;
     }
 
@@ -2790,6 +2786,19 @@ var LexeraEmbedMenu = (function () {
       closeEmbedMenu();
     }
   }, true);
+
+  // Double-click on file links → open preview
+  document.addEventListener('dblclick', function (e) {
+    var fileLink = e.target.closest('.markdown-file-link');
+    if (fileLink) {
+      e.preventDefault();
+      e.stopPropagation();
+      showBoardFilePreview(
+        fileLink.getAttribute('data-board-id') || activeBoardId || '',
+        fileLink.getAttribute('data-file-path') || fileLink.getAttribute('data-original-href') || ''
+      );
+    }
+  });
 
   // Right-click on embeds and file links → native context menu
   document.addEventListener('contextmenu', function (e) {

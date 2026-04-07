@@ -1608,23 +1608,8 @@ textarea {
 }
 .board-item-tree.expanded { display: block; }
 
-.board-item-tree-workspace-child {
+.board-item-indent-group {
   padding-left: var(--tree-indent-step);
-}
-
-.board-item-workspace-child > .tree-indent-root {
-  width: var(--tree-indent-step);
-  min-width: var(--tree-indent-step);
-  position: relative;
-}
-
-.board-item-workspace-child > .tree-indent-root::after {
-  content: '';
-  position: absolute;
-  left: var(--tree-indent-guide-center);
-  top: 50%;
-  right: calc(-1 * var(--space-1) - var(--tree-toggle-col));
-  border-top: var(--tree-line-width) solid var(--tree-guide);
 }
 
 /* Tree node common */
@@ -1635,7 +1620,6 @@ textarea {
   padding: var(--hierarchy-row-pad-y) var(--hierarchy-row-pad-x);
   cursor: pointer;
   border-radius: var(--hierarchy-row-radius);
-  font-size: var(--hierarchy-font-size);
   font-weight: var(--hierarchy-font-weight);
   color: var(--hierarchy-text-color);
   gap: var(--hierarchy-row-gap);

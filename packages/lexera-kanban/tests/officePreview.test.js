@@ -54,6 +54,10 @@ function loadEmbedMenuFunctions() {
   var puSrc = readFileSync(resolve(srcDir, 'utils', 'pathUtils.js'), 'utf-8');
   new Function(puSrc)();
 
+  // Load TitleHelpers so TagSystem can delegate to it
+  var thSrc = readFileSync(resolve(srcDir, 'titleHelpers.js'), 'utf-8');
+  new Function(thSrc)();
+
   // Load TagSystem
   var tsSrc = readFileSync(resolve(srcDir, 'tagSystem.js'), 'utf-8');
   new Function(tsSrc)();

@@ -21,6 +21,10 @@ function loadAppUtils() {
   const pathUtilsSource = readFileSync(resolve(srcDir, 'utils', 'pathUtils.js'), 'utf-8');
   new Function(pathUtilsSource)();
 
+  // Load TitleHelpers so TagSystem and OrderHelpers can delegate to it
+  const titleHelpersSource = readFileSync(resolve(srcDir, 'titleHelpers.js'), 'utf-8');
+  new Function(titleHelpersSource)();
+
   // Load TagSystem so delegating functions in app.js can reference it
   const tagSystemSource = readFileSync(resolve(srcDir, 'tagSystem.js'), 'utf-8');
   new Function(tagSystemSource)();

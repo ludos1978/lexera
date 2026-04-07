@@ -2,6 +2,12 @@
 
 > Active backlog only. Completed items moved to [todo-archive.md](todo-archive.md).
 
+- [ ] i think the tree-children-guide must be removed, it adds a double line where there shoudnt be one!
+
+- [ ] when auto-fixing a include link it doesnt update it afterwards, it doesnt include the new content.
+
+
+
 ## Immediate UX / Product
 - [ ] Unify visual styles by removing complexity — buttons, fonts, icons should use consistent sizing. Remove redundant CSS rather than adding overrides.
 - [ ] Unify icon sizes — some are very small, others much bigger. Standardize on `--icon-glyph-size`.

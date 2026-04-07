@@ -7,19 +7,15 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  // Delegates to LexeraTitleHelpers (titleHelpers.js)
   function extractHtmlComments(text) {
-    var matches = String(text || '').match(/<!--[\s\S]*?-->/g);
-    return matches ? matches.slice() : [];
+    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
+    return h ? h.extractHtmlComments(text) : (String(text || '').match(/<!--[\s\S]*?-->/g) || []).slice();
   }
 
   function stripHtmlComments(text) {
-    return String(text || '')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/[ \t]{2,}/g, ' ')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n[ \t]+/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
+    return h ? h.stripHtmlComments(text) : String(text || '').replace(/<!--[\s\S]*?-->/g, ' ').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   }
 
   function stripLayoutTags(title) {

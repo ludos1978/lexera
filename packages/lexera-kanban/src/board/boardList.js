@@ -1631,7 +1631,7 @@ var LexeraBoardList = (function () {
     if (isWorkspaceChild) wrapper.setAttribute('data-workspace-child', 'true');
 
     var el = document.createElement('div');
-    el.className = 'board-item tree-node tree-board' + (isActive ? ' active' : '') + (isWorkspaceChild ? ' board-item-workspace-child' : '');
+    el.className = 'board-item tree-node tree-board' + (isActive ? ' active' : '');
     el.setAttribute('data-board-index', boardIndex.toString());
     el.setAttribute('data-board-id', board.id);
     el.setAttribute('data-tree-depth', '0');
@@ -1642,7 +1642,7 @@ var LexeraBoardList = (function () {
 
     // Tree sub-list
     var tree = document.createElement('div');
-    tree.className = 'board-item-tree tree-children' + (isExpanded ? ' expanded' : '') + (isWorkspaceChild ? ' board-item-tree-workspace-child' : '');
+    tree.className = 'board-item-tree tree-children' + (isExpanded ? ' expanded' : '');
     tree.setAttribute('data-tree-depth', '1');
     tree.setAttribute('role', 'tree');
 
@@ -1651,8 +1651,16 @@ var LexeraBoardList = (function () {
       _renderBoardTree(tree, board.id, rows, tv);
     }
 
-    wrapper.appendChild(el);
-    wrapper.appendChild(tree);
+    if (isWorkspaceChild) {
+      var indentGroup = document.createElement('div');
+      indentGroup.className = 'board-item-indent-group';
+      indentGroup.appendChild(el);
+      indentGroup.appendChild(tree);
+      wrapper.appendChild(indentGroup);
+    } else {
+      wrapper.appendChild(el);
+      wrapper.appendChild(tree);
+    }
 
     _bindBoardWrapperEvents(wrapper, board.id, boardIndex, board.filePath, workspaceShellEnabled, WorkspaceShell);
 
@@ -1676,15 +1684,10 @@ var LexeraBoardList = (function () {
       '</span>';
 
     if (isActive) { el.classList.add('active'); } else { el.classList.remove('active'); }
-    el.classList.toggle('board-item-workspace-child', !!isWorkspaceChild);
-    if (isWorkspaceChild) {
-      el.setAttribute('data-workspace-child', 'true');
-    } else {
-      el.removeAttribute('data-workspace-child');
-    }
     el.setAttribute('data-board-index', boardIndex.toString());
 
-    var wrapper = el.parentElement;
+    // Find the wrapper — may be el's direct parent or grandparent (if indent-group exists)
+    var wrapper = el.closest('.board-item-wrapper');
     if (wrapper) {
       wrapper.classList.toggle('board-item-wrapper-workspace-child', !!isWorkspaceChild);
       if (isWorkspaceChild) {
@@ -1692,9 +1695,25 @@ var LexeraBoardList = (function () {
       } else {
         wrapper.removeAttribute('data-workspace-child');
       }
+
+      var existingGroup = wrapper.querySelector('.board-item-indent-group');
       var treeEl = wrapper.querySelector('.board-item-tree');
-      if (treeEl) {
-        treeEl.classList.toggle('board-item-tree-workspace-child', !!isWorkspaceChild);
+
+      if (isWorkspaceChild && !existingGroup) {
+        // Becoming workspace child — create indent-group and reparent
+        var indentGroup = document.createElement('div');
+        indentGroup.className = 'board-item-indent-group';
+        if (el.parentNode === wrapper) wrapper.removeChild(el);
+        if (treeEl && treeEl.parentNode === wrapper) wrapper.removeChild(treeEl);
+        indentGroup.appendChild(el);
+        if (treeEl) indentGroup.appendChild(treeEl);
+        wrapper.appendChild(indentGroup);
+      } else if (!isWorkspaceChild && existingGroup) {
+        // Becoming non-workspace child — move children out and remove group
+        while (existingGroup.firstChild) {
+          wrapper.appendChild(existingGroup.firstChild);
+        }
+        wrapper.removeChild(existingGroup);
       }
     }
 

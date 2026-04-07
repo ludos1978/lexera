@@ -128,11 +128,17 @@ function loadOrderHelpersConverter() {
     'utf8'
   );
 
-  // Wrap all three so they install themselves on a shared globalThis.
+  const titleHelpersSource = fs.readFileSync(
+    path.resolve('src/titleHelpers.js'),
+    'utf8'
+  );
+
+  // Wrap all so they install themselves on a shared globalThis.
   const factory = new Function(
     'globalThis', 'console',
     `
     var window = globalThis;
+    ${titleHelpersSource}
     ${tagSystemSource}
     ${tagColorsSource}
     ${orderHelpersSource}
@@ -163,6 +169,10 @@ function loadOrderHelpersConverter() {
 // a free global, so we preload that too.
 
 function loadExportTreeBuilderConverter() {
+  const titleHelpersSource2 = fs.readFileSync(
+    path.resolve('src/titleHelpers.js'),
+    'utf8'
+  );
   const tagSystemSource = fs.readFileSync(
     path.resolve('src/tagSystem.js'),
     'utf8'
@@ -176,6 +186,7 @@ function loadExportTreeBuilderConverter() {
     'globalThis',
     `
     var window = globalThis;
+    ${titleHelpersSource2}
     ${tagSystemSource}
     ${exportTreeBuilderSource}
     return globalThis.ExportTreeBuilder;

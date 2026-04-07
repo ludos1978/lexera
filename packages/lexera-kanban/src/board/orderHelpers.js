@@ -32,26 +32,20 @@ var LexeraOrderHelpers = (function () {
 
   // ─── Title / HTML-comment helpers ──────────────────────────────────────
 
+  // Delegates to LexeraTitleHelpers (titleHelpers.js)
   function extractHtmlComments(text) {
-    var matches = String(text || '').match(/<!--[\s\S]*?-->/g);
-    return matches ? matches.slice() : [];
+    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
+    return h ? h.extractHtmlComments(text) : (String(text || '').match(/<!--[\s\S]*?-->/g) || []).slice();
   }
 
   function stripHtmlComments(text) {
-    return String(text || '')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/[ \t]{2,}/g, ' ')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n[ \t]+/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
+    return h ? h.stripHtmlComments(text) : String(text || '').replace(/<!--[\s\S]*?-->/g, ' ').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   }
 
   function rebuildTitleWithPreservedComments(userInput, originalTitle) {
-    var cleanTitle = stripHtmlComments(userInput);
-    var comments = extractHtmlComments(originalTitle);
-    if (comments.length === 0) return cleanTitle;
-    return ((cleanTitle ? cleanTitle + ' ' : '') + comments.join(' ')).trim();
+    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
+    return h ? h.rebuildTitleWithPreservedComments(userInput, originalTitle) : stripHtmlComments(userInput);
   }
 
   // ─── Board layout helpers ─────────────────────────────────────────────
