@@ -30,24 +30,6 @@ var LexeraOrderHelpers = (function () {
     return undefined;
   }
 
-  // ─── Title / HTML-comment helpers ──────────────────────────────────────
-
-  // Delegates to LexeraTitleHelpers (titleHelpers.js)
-  function extractHtmlComments(text) {
-    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
-    return h ? h.extractHtmlComments(text) : (String(text || '').match(/<!--[\s\S]*?-->/g) || []).slice();
-  }
-
-  function stripHtmlComments(text) {
-    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
-    return h ? h.stripHtmlComments(text) : String(text || '').replace(/<!--[\s\S]*?-->/g, ' ').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  }
-
-  function rebuildTitleWithPreservedComments(userInput, originalTitle) {
-    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
-    return h ? h.rebuildTitleWithPreservedComments(userInput, originalTitle) : stripHtmlComments(userInput);
-  }
-
   // ─── Board layout helpers ─────────────────────────────────────────────
 
   function normalizeBoardLayoutValue(value) {
@@ -3005,9 +2987,6 @@ var LexeraOrderHelpers = (function () {
 
   return {
     init: init,
-    extractHtmlComments: extractHtmlComments,
-    stripHtmlComments: stripHtmlComments,
-    rebuildTitleWithPreservedComments: rebuildTitleWithPreservedComments,
     normalizeBoardLayoutValue: normalizeBoardLayoutValue,
     normalizeCanvasGridValue: normalizeCanvasGridValue,
     getCurrentBoardLayout: getCurrentBoardLayout,

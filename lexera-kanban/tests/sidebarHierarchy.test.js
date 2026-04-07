@@ -2,6 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+const { readFileSync } = await import('node:fs');
+const { resolve, dirname } = await import('node:path');
+const { fileURLToPath } = await import('node:url');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const srcDir = resolve(__dirname, '..', 'src');
+
+// Load LexeraTitleHelpers (needed by LexeraTagSystem)
+new Function(readFileSync(resolve(srcDir, 'titleHelpers.js'), 'utf-8'))();
+
+// Load LexeraTagSystem (needed by sidebarTree.js)
+new Function(readFileSync(resolve(srcDir, 'tagSystem.js'), 'utf-8'))();
+
 const HierarchyContract = require('../src/hierarchy/hierarchyContract.js');
 globalThis.LexeraHierarchyContract = HierarchyContract;
 const SidebarTree = require('../src/sidebar/sidebarTree.js');

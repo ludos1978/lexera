@@ -1,9 +1,17 @@
 import { describe, it, expect, beforeAll } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadIIFE } from './load-iife.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const srcDir = resolve(__dirname, '..', 'src');
 
 let T;
 
 beforeAll(() => {
+  // tagSystem.js expects LexeraTitleHelpers to be available globally
+  new Function(readFileSync(resolve(srcDir, 'titleHelpers.js'), 'utf-8'))();
   T = loadIIFE('tagSystem.js', 'LexeraTagSystem');
 });
 

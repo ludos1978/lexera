@@ -7,24 +7,6 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  // Delegates to LexeraTitleHelpers (titleHelpers.js)
-  function extractHtmlComments(text) {
-    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
-    return h ? h.extractHtmlComments(text) : (String(text || '').match(/<!--[\s\S]*?-->/g) || []).slice();
-  }
-
-  function stripHtmlComments(text) {
-    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
-    return h ? h.stripHtmlComments(text) : String(text || '').replace(/<!--[\s\S]*?-->/g, ' ').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  }
-
-  function stripLayoutTags(title) {
-    return stripHtmlComments(String(title || ''))
-      .replace(/\s*\[(#[^\]\s]+)\]\u007B[^\u007D]+\u007D/gi, '')
-      .replace(/\s*#(?:row\d*|span\d*|stack|header|footer|wip-\d+|width\{\d+\}|height\{\d+\})\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
 
   function countCardsInStack(stack) {
     var columns = stack && Array.isArray(stack.columns) ? stack.columns : [];
@@ -74,7 +56,7 @@
     rows = Array.isArray(rows) ? rows : [];
     treeState = treeState || { rows: [], stacks: [], columns: [] };
     options = options || {};
-    var stripLayout = typeof options.stripLayoutTags === 'function' ? options.stripLayoutTags : stripLayoutTags;
+    var stripLayout = typeof options.stripLayoutTags === 'function' ? options.stripLayoutTags : LexeraTagSystem.stripLayoutTags;
     var getDisplayOrderedColumnEntries = typeof options.getDisplayOrderedColumnEntries === 'function'
       ? options.getDisplayOrderedColumnEntries
       : getDefaultDisplayOrderedColumnEntries;
@@ -251,9 +233,6 @@
   }
 
   return {
-    extractHtmlComments: extractHtmlComments,
-    stripHtmlComments: stripHtmlComments,
-    stripLayoutTags: stripLayoutTags,
     isHiddenCard: isHiddenCard,
     countCardsInRow: countCardsInRow,
     countCardsInStack: countCardsInStack,

@@ -631,6 +631,7 @@ textarea {
 .stack-fold-btn,
 .column-fold-btn {
   transform: rotate(90deg);
+  margin-right: 0;
 }
 
 .board-row.folded .board-row-header .row-fold-btn,
@@ -2984,11 +2985,6 @@ li.tag-line-styled {
   order: 40;
 }
 
-.stack-fold-btn,
-.column-fold-btn {
-  margin-right: 0;
-}
-
 .stack-delete-btn {
   min-width: var(--icon-button-size);
   width: var(--icon-button-size);
@@ -3461,7 +3457,17 @@ li.tag-line-styled {
   position: sticky;
   top: 0;
   z-index: 6;
-  background: var(--surface-header-bg, var(--bg-primary));
+  padding: var(--layout-column-header-pad-y) var(--layout-column-header-pad-x);
+  font-size: var(--font-size-md);
+  color: var(--title-column-color);
+  border-bottom: 1px solid var(--surface-header-border);
+  cursor: grab;
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--btn-gap);
+  align-items: center;
+  user-select: none;
+  background: var(--surface-header-bg);
 }
 
 /* Board setting: HTML comment rendering */
@@ -3641,20 +3647,6 @@ u {
   overflow: hidden;
 }
 
-.column-header {
-  padding: var(--layout-column-header-pad-y) var(--layout-column-header-pad-x);
-  font-size: var(--font-size-md);
-  color: var(--title-column-color);
-  border-bottom: 1px solid var(--surface-header-border);
-  cursor: grab;
-  display: flex;
-  justify-content: flex-start;
-  gap: var(--btn-gap);
-  align-items: center;
-  user-select: none;
-  background: var(--surface-header-bg);
-}
-
 .column.folded .column-header {
   border-bottom: none;
 }
@@ -3820,10 +3812,26 @@ u {
 
 .card-due-badge {
   order: 30;
+  font-size: var(--font-size-sm);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--bg-secondary, #f0f0f0);
+  color: var(--text-secondary, #666);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
 }
 
 .card-progress-badge {
   order: 40;
+  font-size: var(--font-size-sm);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--bg-secondary, #f0f0f0);
+  color: var(--text-secondary, #666);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
 }
 
 .card-menu-btn {
@@ -3835,17 +3843,6 @@ u {
 .card:hover .card-menu-btn,
 .card:focus-within .card-menu-btn { opacity: 0.95; }
 
-.card-due-badge {
-  font-size: var(--font-size-sm);
-  padding: 1px 5px;
-  border-radius: var(--radius-sm, 4px);
-  background: var(--bg-secondary, #f0f0f0);
-  color: var(--text-secondary, #666);
-  white-space: nowrap;
-  flex-shrink: 0;
-  line-height: 1.4;
-}
-
 .card-due-badge.due-today {
   background: var(--warning-bg, #fff3cd);
   color: var(--warning-fg, #856404);
@@ -3854,17 +3851,6 @@ u {
 .card-due-badge.overdue {
   background: var(--danger-bg, #f8d7da);
   color: var(--danger-fg, #721c24);
-}
-
-.card-progress-badge {
-  font-size: var(--font-size-sm);
-  padding: 1px 5px;
-  border-radius: var(--radius-sm, 4px);
-  background: var(--bg-secondary, #f0f0f0);
-  color: var(--text-secondary, #666);
-  white-space: nowrap;
-  flex-shrink: 0;
-  line-height: 1.4;
 }
 
 .card-progress-badge.complete {
@@ -5279,6 +5265,10 @@ select.dialog-input option,
   opacity: 0;
   transform: translateY(10px);
   transition: opacity 0.3s, transform 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 400px;
 }
 
 .notification.visible {
@@ -5301,7 +5291,6 @@ select.dialog-input option,
   font-size: var(--font-size-md);
 }
 .notification-action:hover { background: var(--bg-primary); }
-.notification { display: flex; align-items: center; gap: 8px; max-width: 400px; }
 
 /* Card editing */
 .card.editing-overlay { border-color: var(--accent); }

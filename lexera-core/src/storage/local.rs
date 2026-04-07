@@ -2884,6 +2884,8 @@ impl LocalStorage {
         state.recent_generations = recent_generations;
         state.crdt = crdt;
 
+        self.sync_include_map_for_board(board_id, &state.board, &board_dir);
+
         Ok(true)
     }
 

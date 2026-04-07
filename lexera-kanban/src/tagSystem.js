@@ -69,15 +69,10 @@
     return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  // Delegates to LexeraTitleHelpers (titleHelpers.js)
-  function stripHtmlComments(text) {
-    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
-    return h ? h.stripHtmlComments(text) : String(text || '').replace(/<!--[\s\S]*?-->/g, ' ').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').trim();
-  }
-
-  function extractHtmlComments(text) {
-    var h = typeof LexeraTitleHelpers !== 'undefined' ? LexeraTitleHelpers : null;
-    return h ? h.extractHtmlComments(text) : (String(text || '').match(/<!--[\s\S]*?-->/g) || []).slice();
+  function getTitleHelpers() {
+    if (typeof LexeraTitleHelpers !== 'undefined' && LexeraTitleHelpers) return LexeraTitleHelpers;
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraTitleHelpers) return globalThis.LexeraTitleHelpers;
+    return null;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -85,7 +80,7 @@
   // ═══════════════════════════════════════════════════════════════════════════
 
   function stripLayoutTags(title) {
-    return stripHtmlComments(String(title || ''))
+    return getTitleHelpers().stripHtmlComments(String(title || ''))
       .replace(/\s*\[(#[^\]\s]+)\]\{[^\}]+\}/gi, '')
       .replace(STRIP_LAYOUT_RE, '')
       .replace(/\s+/g, ' ')
@@ -93,7 +88,7 @@
   }
 
   function stripLegacyStructureTags(title) {
-    return stripHtmlComments(String(title || ''))
+    return getTitleHelpers().stripHtmlComments(String(title || ''))
       .replace(/\s*#row\d*\b/gi, '')
       .replace(/\s*#stack\b/gi, '')
       .replace(/\s+/g, ' ')
@@ -140,7 +135,7 @@
     var source = String(userInput || '');
     var original = extractLayoutTags(originalTitle);
     var next = extractLayoutTags(source);
-    var preservedComments = extractHtmlComments(originalTitle);
+    var preservedComments = getTitleHelpers().extractHtmlComments(originalTitle);
 
     // Strip all known tag syntax from user input to get clean title text
     var cleanTitle = source

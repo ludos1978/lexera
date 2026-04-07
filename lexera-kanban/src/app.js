@@ -1084,9 +1084,9 @@ var LexeraDashboard = (function () {
 
   resolveOrderHelpersModule();
 
-  function extractHtmlComments(text) { return OrderHelpers.extractHtmlComments(text); }
-  function stripHtmlComments(text) { return OrderHelpers.stripHtmlComments(text); }
-  function rebuildTitleWithPreservedComments(userInput, originalTitle) { return OrderHelpers.rebuildTitleWithPreservedComments(userInput, originalTitle); }
+  function extractHtmlComments(text) { return LexeraTitleHelpers.extractHtmlComments(text); }
+  function stripHtmlComments(text) { return LexeraTitleHelpers.stripHtmlComments(text); }
+  function rebuildTitleWithPreservedComments(userInput, originalTitle) { return LexeraTitleHelpers.rebuildTitleWithPreservedComments(userInput, originalTitle); }
   function normalizeBoardLayoutValue(value) { return getCanvasModeHelpers().normalizeBoardLayoutValue(value); }
   function normalizeCanvasGridValue(value) { return getCanvasModeHelpers().normalizeCanvasGridValue(value); }
   function getCurrentBoardLayout() {
