@@ -2,6 +2,14 @@
 
 Scope: the active Lexera code now lives in the promoted top-level V2 directories such as `lexera-core`, `lexera-backend`, `lexera-kanban`, `lexera-capture-ios`, `lexera-shared`, and `lexera-web-clipper`. This backlog tracks the remaining architecture, boundary, tooling, and cleanup work after that repository promotion. Completed promotion-path tasks were moved to `todo-archive.md`.
 
+- [ ] why this error? [kanban]       Running BeforeDevCommand (`node ../lexera-shared/scripts/sync-runtime-assets.mjs src && sh scripts/sync-excalidraw-assets.sh`)
+[kanban]       Running DevCommand (`cargo  run --no-default-features --color always --`)
+[kanban]          Info Watching /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-kanban/src-tauri for changes...
+[kanban]          Info Watching /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-core for changes...
+[kanban]  [lexera-shared] synced runtime assets -> /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-kanban/src
+[kanban]  cp: /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-kanban/../../node_modules/react/umd/react.production.min.js: No such file or directory
+[kanban]         Error The "beforeDevCommand" terminated with a non-zero status code.
+
 ## Repository Foundation
 
 - [ ] Decide whether to keep the current promoted top-level layout or normalize it further into `apps/`, `core/`, `shared/`, `tools/`, and `archive/`.

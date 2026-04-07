@@ -69,28 +69,6 @@
     return entries;
   }
 
-  function getHierarchyContractApi() {
-    if (typeof LexeraHierarchyContract !== 'undefined' && LexeraHierarchyContract) {
-      return LexeraHierarchyContract;
-    }
-    if (typeof globalThis !== 'undefined' && globalThis.LexeraHierarchyContract) {
-      return globalThis.LexeraHierarchyContract;
-    }
-    if (typeof require === 'function') {
-      try {
-        return require('../hierarchy/hierarchyContract.js');
-      } catch (_) {
-        return null;
-      }
-    }
-    return null;
-  }
-
-  // Delegates to LexeraHierarchyContract.createHierarchyNode (hierarchyContract.js)
-  function createHierarchyNode(definition) {
-    var c = getHierarchyContractApi();
-    return c ? c.createHierarchyNode(definition) : definition;
-  }
 
   function buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState, options) {
     rows = Array.isArray(rows) ? rows : [];
@@ -152,7 +130,7 @@
             for (var cdi = 0; cdi < cards.length; cdi++) {
               var card = cards[cdi] || {};
               if (isHiddenCard(card.content)) continue;
-              cardNodes.push(createHierarchyNode({
+              cardNodes.push(LexeraHierarchyContract.createHierarchyNode({
                 id: null,
                 label: cardPreviewText(card.content),
                 type: 'card',
@@ -187,7 +165,7 @@
             }
           }
 
-          colNodes.push(createHierarchyNode({
+          colNodes.push(LexeraHierarchyContract.createHierarchyNode({
             id: colId,
             label: stripLayout(col.title),
             count: cardCount,
@@ -218,7 +196,7 @@
           }));
         }
 
-        stackNodes.push(createHierarchyNode({
+        stackNodes.push(LexeraHierarchyContract.createHierarchyNode({
           id: stackId,
           label: stack.title || 'Stack ' + (si + 1),
           count: rowStacks.length > 1 ? stackCardCount : null,
@@ -245,7 +223,7 @@
         }));
       }
 
-      nodes.push(createHierarchyNode({
+      nodes.push(LexeraHierarchyContract.createHierarchyNode({
         id: rowId,
         label: row.title || 'Row ' + (ri + 1),
         count: rows.length > 1 ? rowCardCount : null,

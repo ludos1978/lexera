@@ -59,28 +59,6 @@
     return source.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || (fallback || 'node');
   }
 
-  function getHierarchyContractApi() {
-    if (typeof LexeraHierarchyContract !== 'undefined' && LexeraHierarchyContract) {
-      return LexeraHierarchyContract;
-    }
-    if (typeof globalThis !== 'undefined' && globalThis.LexeraHierarchyContract) {
-      return globalThis.LexeraHierarchyContract;
-    }
-    if (typeof require === 'function') {
-      try {
-        return require('../hierarchy/hierarchyContract.js');
-      } catch (_) {
-        return null;
-      }
-    }
-    return null;
-  }
-
-  // Delegates to LexeraHierarchyContract.createHierarchyNode (hierarchyContract.js)
-  function createHierarchyNode(definition) {
-    var c = getHierarchyContractApi();
-    return c ? c.createHierarchyNode(definition) : definition;
-  }
 
   function dashboardInventoryStatusLabel(item) {
     var status = String(item && item.status || 'unknown').trim().toLowerCase();
@@ -175,7 +153,7 @@
       },
       function (item, groupKey) {
         var boardId = String(item.boardId || '').trim();
-        return createHierarchyNode({
+        return LexeraHierarchyContract.createHierarchyNode({
           id: null,
           label: dashboardItemTitle(item),
           count: dashboardDueLabel(item) || null,
@@ -203,7 +181,7 @@
         });
       },
       function (key, group, gi) {
-        return createHierarchyNode({
+        return LexeraHierarchyContract.createHierarchyNode({
           id: 'dashboard-group-' + (group.boardId || gi),
           label: group.label,
           count: group.children.length,
@@ -239,7 +217,7 @@
         return { label: String(item.firstContextLabel || 'Other').trim() || 'Other' };
       },
       function (item) {
-        return createHierarchyNode({
+        return LexeraHierarchyContract.createHierarchyNode({
           id: null,
           label: String(item.path || '').trim() || '(missing path)',
           count: dashboardInventoryNodeCount(item),
@@ -267,7 +245,7 @@
         });
       },
       function (key, group) {
-        return createHierarchyNode({
+        return LexeraHierarchyContract.createHierarchyNode({
           id: 'dashboard-context-' + key,
           label: group.label,
           count: group.children.length,
@@ -299,7 +277,7 @@
         return { label: dashboardBrokenGroupLabel(key) };
       },
       function (item, groupKey) {
-        return createHierarchyNode({
+        return LexeraHierarchyContract.createHierarchyNode({
           id: null,
           label: String(item.src || '').trim() || '(unknown source)',
           count: item.count > 1 ? ('x' + item.count) : null,
@@ -329,7 +307,7 @@
         });
       },
       function (key, group, gi) {
-        return createHierarchyNode({
+        return LexeraHierarchyContract.createHierarchyNode({
           id: 'dashboard-broken-' + sanitizeDashboardNodeId(key, 'broken-' + gi),
           label: group.label,
           count: group.children.length,
@@ -362,7 +340,7 @@
       var tag = String(group.tag || '').trim();
       var children = buildDashboardResultTreeNodes(group.items || []);
       if (!tag) continue;
-      nodes.push(createHierarchyNode({
+      nodes.push(LexeraHierarchyContract.createHierarchyNode({
         id: 'dashboard-tag-' + sanitizeDashboardNodeId(tag, 'tag-' + i),
         label: tag,
         count: Array.isArray(group.items) ? group.items.length : 0,

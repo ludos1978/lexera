@@ -44,11 +44,6 @@ var TreeView = (function () {
     return readCssPixelVar('--tree-indent-step', GUIDE_WIDTH);
   }
 
-  function computeGuideCenter(guideWidth) {
-    var fallback = Math.max(0, Math.round((guideWidth || GUIDE_WIDTH) / 2) - 1);
-    return readCssPixelVar('--tree-indent-guide-center', fallback);
-  }
-
   function getNodeDragIconSvg(nodeType) {
     var value = String(nodeType || '').trim().toLowerCase();
     if (value === 'board') {
@@ -76,19 +71,6 @@ var TreeView = (function () {
     return h;
   }
 
-  function applyChildrenGuides(container, parentLastFlags, nodeLeftPad) {
-    container.style.position = 'relative';
-    var guideWidth = computeGuideWidth();
-    var guideCenter = computeGuideCenter(guideWidth);
-    for (var g = 0; g < parentLastFlags.length; g++) {
-      if (!parentLastFlags[g]) {
-        var line = document.createElement('span');
-        line.className = 'tree-children-guide';
-        line.style.left = (nodeLeftPad + g * guideWidth + guideCenter) + 'px';
-        container.appendChild(line);
-      }
-    }
-  }
 
   function getNodeEntry(nodeEl) {
     if (!nodeEl || !nodeEl.parentElement) return null;
@@ -196,8 +178,6 @@ var TreeView = (function () {
       }
 
       var childIndent = parentLastFlags.concat([isLast]);
-      applyChildrenGuides(childContainer, childIndent, nodePadLeft);
-
       for (var i = 0; i < node.children.length; i++) {
         var childIsLast = i === node.children.length - 1;
         var childFrag = renderNode(node.children[i], childIndent, childIsLast, options, nodePadLeft, level + 1);
@@ -277,7 +257,6 @@ var TreeView = (function () {
     getNodeChildrenContainer: getNodeChildrenContainer,
     getChildrenOwnerNode: getChildrenOwnerNode,
     buildIndentHtml: buildIndentHtml,
-    applyChildrenGuides: applyChildrenGuides,
     computeNodePadLeft: computeNodePadLeft,
     computeGuideWidth: computeGuideWidth,
     GUIDE_WIDTH: GUIDE_WIDTH

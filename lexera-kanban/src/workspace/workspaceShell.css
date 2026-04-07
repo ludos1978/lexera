@@ -40,7 +40,7 @@
   min-width: 0;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-size: var(--font-size-unified, var(--font-size-base, 13px));
+  font-size: var(--font-size-base, 13px);
 }
 
 .workspace-shell-body {

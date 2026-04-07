@@ -284,15 +284,10 @@ var ManagementUI = (function () {
     return classes.join(' ');
   }
 
-  // Delegates to LexeraHierarchyContract.createHierarchyNode (hierarchyContract.js)
-  function createHierarchyNode(definition) {
-    var c = getManagementHierarchyContractApi();
-    return c ? c.createHierarchyNode(definition) : definition;
-  }
 
   function buildConfigBoardTreeNode(board, options) {
     options = options || {};
-    return createHierarchyNode({
+    return LexeraHierarchyContract.createHierarchyNode({
       id: 'board:' + String(board.id || ''),
       label: getManagementBoardDisplayName(board),
       type: buildConfigTreeNodeType('board', {
@@ -335,7 +330,7 @@ var ManagementUI = (function () {
   function buildConfigTreeNodes() {
     var nodes = [];
     var globalSelected = configSelectedItem && configSelectedItem.type === 'global';
-    nodes.push(createHierarchyNode({
+    nodes.push(LexeraHierarchyContract.createHierarchyNode({
       id: 'config:global',
       label: 'Global Settings',
       type: buildConfigTreeNodeType('config-root', { selected: !!globalSelected }),
@@ -366,7 +361,7 @@ var ManagementUI = (function () {
       var workspaceSelected = configSelectedItem && configSelectedItem.type === 'workspace' && configSelectedItem.id === ws.id;
       var workspaceLabel = ws.name || 'Untitled Workspace';
       if (ws.id === cachedDefaultWorkspaceId) workspaceLabel += ' \u2605';
-      nodes.push(createHierarchyNode({
+      nodes.push(LexeraHierarchyContract.createHierarchyNode({
         id: 'workspace:' + String(ws.id || ''),
         label: workspaceLabel,
         count: wsBoards.length,
@@ -398,7 +393,7 @@ var ManagementUI = (function () {
 
     var unassignedBoards = getConfigUnassignedBoards();
     if (unassignedBoards.length > 0) {
-      nodes.push(createHierarchyNode({
+      nodes.push(LexeraHierarchyContract.createHierarchyNode({
         id: 'group:unassigned',
         label: 'Unassigned',
         count: unassignedBoards.length,

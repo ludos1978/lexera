@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+const HierarchyContract = require('../src/hierarchy/hierarchyContract.js');
+globalThis.LexeraHierarchyContract = HierarchyContract;
 const SidebarTree = require('../src/sidebar/sidebarTree.js');
 
 describe('buildSidebarTreeNodes', () => {

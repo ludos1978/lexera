@@ -17,9 +17,6 @@
   --text-secondary: var(--font-color-unified);
   --text-muted: var(--font-color-unified);
   --text-bright: var(--font-color-unified);
-  --font-size-xs: var(--mgmt-font-size);
-  --font-size-sm: var(--mgmt-font-size);
-  --font-size-md: var(--mgmt-font-size);
   --app-menu-fg: var(--app-font-muted-color);
   --app-menu-fg-hover: var(--app-font-color);
   --app-menu-bg: transparent;

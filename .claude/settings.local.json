@@ -255,7 +255,8 @@
       "Bash(sed:*)",
       "WebFetch(domain:esm.sh)",
       "Read(//Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-backend/src-tauri/src/**)",
-      "Bash(find /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-kanban -type f \\\\\\(-name *.swift -o -name *.m -o -name *.mm \\\\\\))"
+      "Bash(find /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-kanban -type f \\\\\\(-name *.swift -o -name *.m -o -name *.mm \\\\\\))",
+      "Bash(sh scripts/sync-excalidraw-assets.sh)"
     ],
     "deny": [],
     "ask": []

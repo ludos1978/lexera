@@ -83,11 +83,10 @@
 
 :root {
   /* ── Typography ─────────────────────────────────────────────── */
-  --font-size-unified: calc(13px * var(--ui-scale));
-  --font-size-base: var(--font-size-unified);
-  --font-size-xs: var(--font-size-unified);
-  --font-size-sm: var(--font-size-unified);
-  --font-size-md: var(--font-size-unified);
+  --font-size-xs:   calc(11px * var(--ui-scale));
+  --font-size-sm:   calc(12px * var(--ui-scale));
+  --font-size-base: calc(13px * var(--ui-scale));
+  --font-size-md:   var(--font-size-base);
   --font-ui:    'Poppins', 'Segoe UI', system-ui, sans-serif;
   --font-board: var(--font-ui);  /* kanban/canvas content — overridable per theme or per board via fontFamily setting */
 
@@ -95,8 +94,6 @@
   --app-space-1: calc(2px  * var(--ui-scale));  /* tight gaps, dividers */
   --app-space-2: calc(4px  * var(--ui-scale));  /* button gaps, inline spacing */
   --app-space-3: calc(8px  * var(--ui-scale));  /* section padding, card padding */
-  --app-space-4: calc(12px * var(--ui-scale));  /* panel padding, group gaps */
-  --app-space-5: calc(16px * var(--ui-scale));  /* large section gaps, dialog padding */
 
   /* ── Control Sizes ──────────────────────────────────────────── */
   --control-height-sm: calc(22px * var(--ui-scale));  /* compact buttons, icon buttons */

@@ -42,7 +42,9 @@ describe('hierarchy style contract', () => {
     expect(appCss).toContain('--hierarchy-font-weight: var(--app-control-font-weight);');
     expect(appCss).toContain('--hierarchy-hover-bg: transparent;');
     expect(appCss).toContain('--hierarchy-active-bg: transparent;');
-    expect(appCss).toMatch(/:where\([\s\S]*\.sidebar,[\s\S]*\.calendar-panel,[\s\S]*\.mgmt-panel,[\s\S]*\.log-panel[\s\S]*\)\s*\{[\s\S]*--font-size-xs:\s*var\(--app-shell-font-size\)[\s\S]*--font-size-sm:\s*var\(--app-shell-font-size\)[\s\S]*--font-size-md:\s*var\(--app-shell-font-size\)[\s\S]*--text-primary:\s*var\(--app-shell-font-color\)[\s\S]*--text-secondary:\s*var\(--app-shell-font-color\)/);
+    // Font-size tokens (xs, sm, md) are NOT overridden per container — they retain
+    // their distinct values from tokens.css and body inherits --font-size-base.
+    expect(appCss).toMatch(/:where\([\s\S]*\.sidebar,[\s\S]*\.calendar-panel,[\s\S]*\.mgmt-panel,[\s\S]*\.log-panel[\s\S]*\)\s*\{[\s\S]*--text-primary:\s*var\(--app-shell-font-color\)[\s\S]*--text-secondary:\s*var\(--app-shell-font-color\)/);
     // Containers set font-size; children inherit it
     expect(appCss).toMatch(/\.board-list\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)/);
     expect(appCss).toMatch(/\.sidebar-dashboard-body\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)/);
