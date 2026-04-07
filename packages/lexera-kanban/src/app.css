@@ -38,16 +38,17 @@
 
 /* Light theme (default when OS is light) */
 :root {
+  --font-color-unified: var(--font-color-mode, #000000);
   --bg-primary: #ffffff;
   --bg-secondary: #f3f3f3;
   --bg-tertiary: #e8e8e8;
   --bg-hover: #e0e0e0;
   --bg-active: #cce5ff;
   --border: #d4d4d4;
-  --text-primary: #333333;
-  --text-secondary: #717171;
-  --text-bright: #1e1e1e;
-  --text-muted: #8a8a8a;
+  --text-primary: var(--font-color-unified);
+  --text-secondary: var(--font-color-unified);
+  --text-bright: var(--font-color-unified);
+  --text-muted: var(--font-color-unified);
   --accent: #007acc;
   --accent-hover: #0066b8;
   --success: #388a6c;
@@ -157,7 +158,7 @@
   --tree-line-width: 1px;
   --tree-indent-size: 14px;
   --app-shell-font-size: var(--font-size-base);
-  --app-shell-font-color: #fff;
+  --app-shell-font-color: var(--font-color-unified);
   --app-control-font-size: var(--font-size-base);
   --app-control-font-weight: 400;
   --app-font-color: var(--app-shell-font-color);
@@ -187,6 +188,10 @@
   --tree-toggle-fg: var(--hierarchy-meta-color);
   --tree-toggle-fg-hover: var(--hierarchy-text-color);
   --hierarchy-row-min-height: calc(18px * var(--ui-scale, 1));
+  --hierarchy-row-pad-y: 2px;
+  --hierarchy-row-pad-x: 6px;
+  --hierarchy-row-gap: 3px;
+  --hierarchy-row-radius: 3px;
   --hierarchy-header-color: var(--hierarchy-text-color);
 }
 
@@ -247,6 +252,13 @@ textarea {
   font: inherit;
 }
 
+/* Force browser placeholder internals onto the unified text color contract. */
+[useragentpart="placeholder"],
+::placeholder {
+  color: var(--font-color-unified) !important;
+  opacity: 1;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
@@ -290,7 +302,7 @@ textarea {
   padding: 5px 12px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   color: inherit;
   font-size: inherit;
   outline: none;
@@ -347,25 +359,25 @@ textarea {
 }
 
 .connection-status-btn.connected {
-  background: rgba(56, 138, 108, 0.16);
-  border-color: rgba(56, 138, 108, 0.52);
-  color: #eefbf5;
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  border-color: color-mix(in srgb, var(--success) 52%, var(--border));
+  color: inherit;
 }
 
 .connection-status-btn.disconnected {
-  background: rgba(211, 47, 47, 0.14);
-  border-color: rgba(211, 47, 47, 0.42);
-  color: #ffe8e8;
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+  border-color: color-mix(in srgb, var(--error) 42%, var(--border));
+  color: inherit;
 }
 
 .connection-status-btn.connected:hover {
-  background: rgba(56, 138, 108, 0.22);
-  border-color: rgba(56, 138, 108, 0.62);
+  background: color-mix(in srgb, var(--success) 22%, transparent);
+  border-color: color-mix(in srgb, var(--success) 62%, var(--border));
 }
 
 .connection-status-btn.disconnected:hover {
-  background: rgba(211, 47, 47, 0.2);
-  border-color: rgba(211, 47, 47, 0.52);
+  background: color-mix(in srgb, var(--error) 20%, transparent);
+  border-color: color-mix(in srgb, var(--error) 52%, var(--border));
 }
 
 /* ── Wire existing button families to shared .btn base (tokens.css) ── */
@@ -515,10 +527,6 @@ textarea {
 .burger-menu-btn:active,
 .board-item-remove:active {
   transform: translateY(1px);
-}
-
-.btn-icon {
-  font-size: var(--icon-glyph-size);
 }
 
 .btn-icon svg,
@@ -788,6 +796,7 @@ textarea {
   min-width: 0;
   container-type: inline-size;
   container-name: sidebar-tree;
+  font-size: var(--hierarchy-font-size);
 }
 
 .sidebar-dashboard-divider {
@@ -867,6 +876,7 @@ textarea {
   gap: 2px;
   padding: 4px 6px;
   border-bottom: 1px solid var(--border);
+  font-size: var(--hierarchy-font-size);
 }
 
 .dashboard-query-row,
@@ -885,9 +895,6 @@ textarea {
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: inherit;
-}
-
-.dashboard-search-input {
   flex: 1;
   min-width: 0;
   padding: 0 var(--space-3);
@@ -931,6 +938,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0;
+  font-size: var(--hierarchy-font-size);
 }
 
 /* Dashboard group sections: styled to match the shared .tree-node layout
@@ -953,10 +961,9 @@ textarea {
   align-items: center;
   position: relative;
   min-height: var(--hierarchy-row-min-height);
-  padding: 2px 6px;
+  padding: var(--hierarchy-row-pad-y) var(--hierarchy-row-pad-x);
   cursor: pointer;
-  border-radius: 3px;
-  font-size: var(--hierarchy-font-size);
+  border-radius: var(--hierarchy-row-radius);
   font-weight: var(--hierarchy-font-weight);
   color: var(--hierarchy-text-color);
   column-gap: 0;
@@ -1067,7 +1074,7 @@ textarea {
 .calendar-panel-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .calendar-scope-wrap {
   min-width: 0;
@@ -1075,7 +1082,7 @@ textarea {
 .calendar-scope-select {
   font-size: inherit;
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg-secondary);
   color: inherit;
@@ -1098,7 +1105,7 @@ textarea {
   min-width: 90px;
   display: flex;
   flex-direction: column;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--bg-secondary);
   overflow: hidden;
 }
@@ -1131,7 +1138,7 @@ textarea {
 .cal-timeline-task {
   font-size: inherit;
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: var(--bg-primary);
   color: inherit;
   white-space: nowrap;
@@ -1154,7 +1161,7 @@ textarea {
 .dashboard-calendar-tab {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   color: inherit;
   font-size: inherit;
   padding: 1px 6px;
@@ -1177,7 +1184,7 @@ textarea {
 .cal-week-day-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   font-size: inherit;
   color: inherit;
   margin-bottom: 2px;
@@ -1251,7 +1258,7 @@ textarea {
   font-size: inherit;
 }
 .cal-day {
-  border-radius: 4px;
+  border-radius: var(--radius-md);
 }
 .cal-today {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
@@ -1279,12 +1286,11 @@ textarea {
 
 /* Dashboard broken elements */
 .dashboard-broken-item {
-  font-size: inherit;
   padding: 3px 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .dashboard-broken-item[data-col-index] {
   cursor: pointer;
@@ -1312,11 +1318,7 @@ textarea {
   gap: 6px;
 }
 .dashboard-file-kind {
-  font-size: inherit;
   color: inherit;
-}
-.dashboard-file-status {
-  font-size: inherit;
 }
 .dashboard-file-status-exists {
   color: var(--accent);
@@ -1328,14 +1330,12 @@ textarea {
   color: inherit;
 }
 .dashboard-file-path {
-  font-size: inherit;
   color: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .dashboard-file-meta {
-  font-size: inherit;
   color: inherit;
   white-space: nowrap;
   overflow: hidden;
@@ -1349,7 +1349,6 @@ textarea {
 }
 .dashboard-file-count {
   color: var(--hierarchy-meta-color);
-  font-size: var(--hierarchy-font-size);
 }
 
 /* Workspace section headers: styled to match the shared .tree-node row
@@ -1370,7 +1369,6 @@ textarea {
   grid-column: 3;
   justify-self: end;
   margin-left: var(--space-1);
-  font-size: var(--hierarchy-font-size);
   font-weight: var(--hierarchy-font-weight);
   color: var(--hierarchy-meta-color);
   font-variant-numeric: tabular-nums;
@@ -1403,16 +1401,16 @@ textarea {
   /* Matches the shared .tree-node layout — no bold, no letter-spacing */
   display: flex;
   align-items: center;
-  padding: 2px 6px;
+  min-height: var(--hierarchy-row-min-height);
+  gap: var(--hierarchy-row-gap);
+  padding: var(--hierarchy-row-pad-y) var(--hierarchy-row-pad-x);
   margin: 0 2px;
-  border-radius: 3px;
-  font-size: var(--hierarchy-font-size);
+  border-radius: var(--hierarchy-row-radius);
   font-weight: var(--hierarchy-font-weight);
   color: var(--hierarchy-text-color);
 }
 .dashboard-empty {
   color: var(--hierarchy-meta-color);
-  font-size: var(--hierarchy-font-size);
   padding: 2px var(--space-1);
 }
 
@@ -1434,11 +1432,6 @@ textarea {
 .dashboard-list.tree-view .tree-dashboard-group {
 }
 
-.dashboard-list.tree-view .tree-dashboard-file .tree-count,
-.dashboard-list.tree-view .tree-dashboard-broken .tree-count {
-  font-size: var(--hierarchy-font-size);
-}
-
 .dashboard-list.tree-view .tree-dashboard-file[data-dashboard-status="exists"] .tree-count {
   color: var(--accent);
 }
@@ -1458,13 +1451,13 @@ textarea {
 .dashboard-item {
   display: flex;
   align-items: center;
-  padding: 2px 6px;
+  min-height: var(--hierarchy-row-min-height);
+  padding: var(--hierarchy-row-pad-y) var(--hierarchy-row-pad-x);
   cursor: pointer;
-  border-radius: 3px;
-  font-size: var(--hierarchy-font-size);
+  border-radius: var(--hierarchy-row-radius);
   font-weight: var(--hierarchy-font-weight);
   color: var(--hierarchy-text-color);
-  gap: 3px;
+  gap: var(--hierarchy-row-gap);
   margin: 0 2px;
   min-width: 0;
 }
@@ -1483,7 +1476,7 @@ textarea {
 .dashboard-item-main {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--hierarchy-row-gap);
   min-width: 0;
   flex: 1;
   overflow: hidden;
@@ -1498,7 +1491,6 @@ textarea {
 }
 
 .dashboard-item-meta {
-  font-size: var(--hierarchy-font-size);
   color: var(--hierarchy-meta-color);
   flex-shrink: 0;
 }
@@ -1585,12 +1577,12 @@ textarea {
 .sidebar-section-divider {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
+  min-height: var(--hierarchy-row-min-height);
+  gap: var(--hierarchy-row-gap);
+  padding: var(--hierarchy-row-pad-y) var(--hierarchy-row-pad-x);
   margin: 0 2px;
 }
 .sidebar-section-label {
-  font-size: inherit;
   color: inherit;
   white-space: nowrap;
 }
@@ -1601,7 +1593,6 @@ textarea {
   background: var(--border);
 }
 .board-item-remote-icon {
-  font-size: inherit;
   flex-shrink: 0;
 }
 
@@ -1640,13 +1631,14 @@ textarea {
 .tree-node {
   display: flex;
   align-items: center;
-  padding: 2px 6px;
+  min-height: var(--hierarchy-row-min-height);
+  padding: var(--hierarchy-row-pad-y) var(--hierarchy-row-pad-x);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--hierarchy-row-radius);
   font-size: var(--hierarchy-font-size);
   font-weight: var(--hierarchy-font-weight);
   color: var(--hierarchy-text-color);
-  gap: 3px;
+  gap: var(--hierarchy-row-gap);
   margin: 0 2px;
 }
 .tree-node:hover {
@@ -1735,7 +1727,7 @@ textarea {
   min-height: 14px;
   margin: 2px 0 4px;
   border: var(--tree-line-width) dashed var(--tree-guide);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .tree-children.tree-stack-drop-zone.tree-drop-stack-target {
   border-color: var(--accent);
@@ -1884,7 +1876,6 @@ textarea {
 }
 
 .tree-count {
-  font-size: var(--hierarchy-font-size);
   font-weight: var(--hierarchy-font-weight);
   color: var(--hierarchy-meta-color);
   margin-left: auto;
@@ -1911,7 +1902,6 @@ textarea {
 
 /* Tree drag grip */
 .tree-grip {
-  font-size: var(--hierarchy-font-size);
   width: var(--hierarchy-btn-size);
   height: var(--hierarchy-btn-size);
   flex-shrink: 0;
@@ -2001,22 +1991,10 @@ textarea {
   --sidebar-tree-action-col: 0px;
 }
 .board-list .tree-menu-btn {
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
   opacity: 0;
-  width: var(--icon-button-size, 20px);
-  height: var(--icon-button-size, 20px);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm, 3px);
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .board-list .tree-node:hover .tree-menu-btn {
-  opacity: 1;
-}
-.board-list .tree-menu-btn:hover {
   opacity: 1;
 }
 
@@ -2263,8 +2241,6 @@ body.embedded-mode .columns-container {
 }
 
 .board-action-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
   pointer-events: auto;
 }
 
@@ -2799,6 +2775,9 @@ body.show-special-characters .card-content .ws-nl {
  * good contrast to the chosen background. take the values formulae from v1,
  * also add contrast enhancing bloom around its background exactly as in v1".
  */
+/* .tag-line-styled appears in multiple rules below — intentionally split
+   because each rule shares selectors with different .card.tag-styled contexts
+   or applies a distinct property group (surface, text, effects). */
 .card.tag-styled .card-content,
 .tag-line-styled {
   color: var(--tag-surface-fg, inherit);
@@ -3761,41 +3740,6 @@ u {
   margin-left: var(--btn-gap);
 }
 
-.column-menu-btn {
-  min-width: var(--icon-button-size);
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
-  opacity: 1;
-}
-
-.column-add-btn,
-.column-edit-btn,
-.stack-add-column-btn,
-.row-add-stack-btn,
-.stack-edit-btn,
-.row-edit-btn,
-.stack-menu-btn,
-.row-menu-btn {
-  min-width: var(--icon-button-size);
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
-  padding: 0;
-  line-height: 1;
-  opacity: 1;
-}
-
-.column-header:hover .column-menu-btn,
-.column-header:hover .column-add-btn,
-.column-header:hover .column-edit-btn,
-.board-stack-header:hover .stack-add-column-btn,
-.board-stack-header:hover .stack-edit-btn,
-.board-stack-header:hover .stack-menu-btn,
-.board-row-header:hover .row-add-stack-btn,
-.board-row-header:hover .row-edit-btn,
-.board-row-header:hover .row-menu-btn {
-  opacity: 1;
-}
-
 .column-rename-input {
   background: var(--bg-primary);
   border: 1px solid var(--accent);
@@ -3912,8 +3856,6 @@ u {
 
 .card-menu-btn {
   order: 90;
-  min-width: var(--icon-button-size);
-  height: var(--icon-button-size);
   opacity: 0.5;
   transition: opacity 0.15s;
   margin-left: 0;
@@ -4209,26 +4151,14 @@ ins.critic.critic-sub {
 }
 
 .card .wiki-menu-btn {
-  min-width: var(--icon-button-size);
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
-  padding: 0;
   margin: 0;
-  line-height: 1;
-  cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  transition: opacity 0.15s ease;
 }
 
 .card .wiki-link-container:hover .wiki-menu-btn,
 .card .wiki-link-container.wiki-broken .wiki-menu-btn {
   opacity: 1;
-}
-
-.card .wiki-menu-btn:hover {
 }
 
 .column-title .wiki-link-container.wiki-broken .wiki-link,
@@ -4392,10 +4322,6 @@ img[data-lazy-src] {
   position: absolute;
   top: 4px;
   right: 4px;
-  min-width: var(--icon-button-size);
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
-  font-size: var(--icon-glyph-size);
   opacity: 0;
   transition: opacity 0.15s;
   z-index: 2;
@@ -4403,9 +4329,6 @@ img[data-lazy-src] {
 
 .embed-container:hover .embed-menu-btn {
   opacity: 1;
-}
-
-.embed-container .embed-menu-btn:hover {
 }
 
 /* Broken embed state */
@@ -4748,7 +4671,7 @@ img[data-lazy-src] {
   color: var(--text-secondary);
   font-size: 14px;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .office-pptx-nav-btn:hover {
   background: var(--bg-primary);
@@ -7029,7 +6952,6 @@ select.dialog-input option,
   opacity: 1;
 }
 .board-presence-badge {
-  font-size: var(--font-size-md);
   background: #4caf50;
   color: #fff;
   border-radius: 8px;
@@ -7895,7 +7817,6 @@ select.export-input {
 :root[data-visual-theme="sleek"] {
   --font-ui:    'Poppins', 'Segoe UI', system-ui, sans-serif;
   --font-board: 'Poppins', 'Segoe UI', system-ui, sans-serif;
-  --font-mono:  'SF Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
   --header-height: 48px;
   --btn-gap: calc(4px * var(--ui-scale));
   --radius-sm: calc(2px * var(--ui-scale));
@@ -8199,18 +8120,6 @@ select.export-input {
 :root[data-visual-theme="sleek"] .btn-icon,
 :root[data-visual-theme="sleek"] .sidebar-btn,
 :root[data-visual-theme="sleek"] .fold-btn,
-:root[data-visual-theme="sleek"] .column-menu-btn,
-:root[data-visual-theme="sleek"] .column-add-btn,
-:root[data-visual-theme="sleek"] .column-edit-btn,
-:root[data-visual-theme="sleek"] .stack-add-column-btn,
-:root[data-visual-theme="sleek"] .stack-edit-btn,
-:root[data-visual-theme="sleek"] .row-add-stack-btn,
-:root[data-visual-theme="sleek"] .row-edit-btn,
-:root[data-visual-theme="sleek"] .stack-delete-btn,
-:root[data-visual-theme="sleek"] .card-menu-btn,
-:root[data-visual-theme="sleek"] .embed-menu-btn,
-:root[data-visual-theme="sleek"] .wiki-menu-btn,
-:root[data-visual-theme="sleek"] .burger-menu-btn,
 :root[data-visual-theme="sleek"] .board-item-remove {
   border-radius: 0;
   border: none;
@@ -8222,24 +8131,13 @@ select.export-input {
 :root[data-visual-theme="sleek"] .board-action-btn,
 :root[data-visual-theme="sleek"] .btn-icon,
 :root[data-visual-theme="sleek"] .sidebar-btn,
-:root[data-visual-theme="sleek"] .burger-menu-btn {
+:root[data-visual-theme="sleek"] .fold-btn {
   opacity: 0.72;
 }
 
 :root[data-visual-theme="sleek"] .btn-icon,
 :root[data-visual-theme="sleek"] .sidebar-btn,
 :root[data-visual-theme="sleek"] .fold-btn,
-:root[data-visual-theme="sleek"] .column-menu-btn,
-:root[data-visual-theme="sleek"] .column-add-btn,
-:root[data-visual-theme="sleek"] .column-edit-btn,
-:root[data-visual-theme="sleek"] .stack-add-column-btn,
-:root[data-visual-theme="sleek"] .stack-edit-btn,
-:root[data-visual-theme="sleek"] .row-add-stack-btn,
-:root[data-visual-theme="sleek"] .row-edit-btn,
-:root[data-visual-theme="sleek"] .stack-delete-btn,
-:root[data-visual-theme="sleek"] .card-menu-btn,
-:root[data-visual-theme="sleek"] .embed-menu-btn,
-:root[data-visual-theme="sleek"] .wiki-menu-btn,
 :root[data-visual-theme="sleek"] .card-drag-handle,
 :root[data-visual-theme="sleek"] .drag-grip,
 :root[data-visual-theme="sleek"] .tree-grip,
@@ -8262,20 +8160,6 @@ select.export-input {
   padding: 0;
 }
 
-:root[data-visual-theme="sleek"] .column-menu-btn,
-:root[data-visual-theme="sleek"] .column-add-btn,
-:root[data-visual-theme="sleek"] .column-edit-btn,
-:root[data-visual-theme="sleek"] .stack-add-column-btn,
-:root[data-visual-theme="sleek"] .stack-edit-btn,
-:root[data-visual-theme="sleek"] .row-add-stack-btn,
-:root[data-visual-theme="sleek"] .row-edit-btn,
-:root[data-visual-theme="sleek"] .stack-delete-btn,
-:root[data-visual-theme="sleek"] .card-menu-btn,
-:root[data-visual-theme="sleek"] .embed-menu-btn,
-:root[data-visual-theme="sleek"] .board-item-remove {
-  opacity: 0.14;
-}
-
 :root[data-visual-theme="sleek"] .card-drag-handle:not(.entity-drag-icon) {
   opacity: 0.28;
   color: color-mix(in srgb, var(--text-muted) 88%, transparent);
@@ -8291,27 +8175,10 @@ select.export-input {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 42%, transparent);
 }
 
-:root[data-visual-theme="sleek"] .column-header:hover .column-menu-btn,
-:root[data-visual-theme="sleek"] .column-header:hover .column-add-btn,
-:root[data-visual-theme="sleek"] .column-header:hover .column-edit-btn,
-:root[data-visual-theme="sleek"] .board-stack-header:hover .stack-add-column-btn,
-:root[data-visual-theme="sleek"] .board-stack-header:hover .stack-edit-btn,
-:root[data-visual-theme="sleek"] .board-stack-header:hover .stack-delete-btn,
-:root[data-visual-theme="sleek"] .board-row-header:hover .row-add-stack-btn,
-:root[data-visual-theme="sleek"] .board-row-header:hover .row-edit-btn,
-:root[data-visual-theme="sleek"] .card:hover .card-menu-btn,
-:root[data-visual-theme="sleek"] .card:hover .embed-menu-btn,
 :root[data-visual-theme="sleek"] .board-item:hover .board-item-remove,
-:root[data-visual-theme="sleek"] .column-menu-btn:focus-visible,
-:root[data-visual-theme="sleek"] .column-add-btn:focus-visible,
-:root[data-visual-theme="sleek"] .column-edit-btn:focus-visible,
-:root[data-visual-theme="sleek"] .stack-add-column-btn:focus-visible,
-:root[data-visual-theme="sleek"] .stack-edit-btn:focus-visible,
-:root[data-visual-theme="sleek"] .row-add-stack-btn:focus-visible,
-:root[data-visual-theme="sleek"] .row-edit-btn:focus-visible,
-:root[data-visual-theme="sleek"] .stack-delete-btn:focus-visible,
-:root[data-visual-theme="sleek"] .card-menu-btn:focus-visible,
-:root[data-visual-theme="sleek"] .embed-menu-btn:focus-visible,
+:root[data-visual-theme="sleek"] .btn-icon:focus-visible,
+:root[data-visual-theme="sleek"] .sidebar-btn:focus-visible,
+:root[data-visual-theme="sleek"] .fold-btn:focus-visible,
 :root[data-visual-theme="sleek"] .board-item-remove:focus-visible {
   opacity: 1;
 }
@@ -8320,18 +8187,6 @@ select.export-input {
 :root[data-visual-theme="sleek"] .btn-icon:hover,
 :root[data-visual-theme="sleek"] .sidebar-btn:hover,
 :root[data-visual-theme="sleek"] .fold-btn:hover,
-:root[data-visual-theme="sleek"] .column-menu-btn:hover,
-:root[data-visual-theme="sleek"] .column-add-btn:hover,
-:root[data-visual-theme="sleek"] .column-edit-btn:hover,
-:root[data-visual-theme="sleek"] .stack-add-column-btn:hover,
-:root[data-visual-theme="sleek"] .stack-edit-btn:hover,
-:root[data-visual-theme="sleek"] .row-add-stack-btn:hover,
-:root[data-visual-theme="sleek"] .row-edit-btn:hover,
-:root[data-visual-theme="sleek"] .stack-delete-btn:hover,
-:root[data-visual-theme="sleek"] .card-menu-btn:hover,
-:root[data-visual-theme="sleek"] .embed-menu-btn:hover,
-:root[data-visual-theme="sleek"] .wiki-menu-btn:hover,
-:root[data-visual-theme="sleek"] .burger-menu-btn:hover,
 :root[data-visual-theme="sleek"] .board-item-remove:hover,
 :root[data-visual-theme="sleek"] .card-drag-handle:not(.entity-drag-icon):hover {
   border-color: transparent;
@@ -8341,21 +8196,8 @@ select.export-input {
   opacity: 1;
 }
 
-:root[data-visual-theme="sleek"] .embed-container:hover .embed-menu-btn {
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.18);
-}
-
 :root[data-visual-theme="sleek"] .embed-container:has(.embed-preview-pdf) .embed-menu-btn {
   opacity: 1;
-}
-
-:root[data-visual-theme="sleek"] .embed-container .embed-menu-btn:hover {
-  background: rgba(0, 0, 0, 0.72);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow: none;
 }
 
 :root[data-visual-theme="sleek"] .board-action-btn.has-items,
@@ -8396,12 +8238,8 @@ select.export-input {
   color: var(--text-muted);
 }
 
-:root[data-visual-theme="sleek"] .board-item-title {
-  font-size: var(--sidebar-board-font-size);
-}
-
 :root[data-visual-theme="sleek"] {
-  --sidebar-tree-item-height: calc(18px * var(--ui-scale));
+  --sidebar-tree-item-height: var(--hierarchy-row-min-height);
   --sidebar-tree-indent-step: calc(15px * var(--ui-scale));
   --sidebar-tree-root-offset: 0px;
   --sidebar-tree-indent-col: var(--sidebar-tree-indent-step);
@@ -8458,7 +8296,6 @@ select.export-input {
   grid-column: 3;
   grid-row: 1;
   min-width: 0;
-  font-size: var(--sidebar-tree-font-size);
   line-height: 1.25;
   color: inherit;
   margin-left: 0;
@@ -8499,7 +8336,6 @@ select.export-input {
   min-width: var(--sidebar-tree-count-col);
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-md);
   color: var(--text-muted);
   margin-left: 0;
   justify-self: end;
@@ -9353,10 +9189,10 @@ select.export-input {
   width: 100%;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   padding: 7px 10px;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: inherit;
   font-family: inherit;
   outline: none;
   margin-bottom: 8px;
@@ -9370,7 +9206,7 @@ select.export-input {
   flex: 1;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--bg-tertiary);
   min-height: 120px;
   max-height: 50vh;
@@ -9380,13 +9216,13 @@ select.export-input {
   padding: 16px;
   text-align: center;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: inherit;
 }
 
 .file-search-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   padding: 5px 8px;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
@@ -9404,7 +9240,7 @@ select.export-input {
   flex-shrink: 0;
   font-size: var(--font-size-xs);
   padding: 2px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .file-search-badge.badge-image {
@@ -9433,7 +9269,7 @@ select.export-input {
 }
 
 .file-search-filename {
-  font-size: 12px;
+  font-size: inherit;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;

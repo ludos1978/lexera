@@ -8,15 +8,15 @@
 
 :root {
   --mgmt-font-size: var(--font-size-base, 13px);
-  --mgmt-font-color: #fff;
+  --font-color-unified: var(--font-color-mode, #000000);
   --app-control-font-size: var(--mgmt-font-size);
   --app-control-font-weight: 400;
-  --app-font-color: var(--mgmt-font-color);
-  --app-font-muted-color: var(--mgmt-font-color);
-  --text-primary: var(--mgmt-font-color);
-  --text-secondary: var(--mgmt-font-color);
-  --text-muted: var(--mgmt-font-color);
-  --text-bright: var(--mgmt-font-color);
+  --app-font-color: var(--font-color-unified);
+  --app-font-muted-color: var(--font-color-unified);
+  --text-primary: var(--font-color-unified);
+  --text-secondary: var(--font-color-unified);
+  --text-muted: var(--font-color-unified);
+  --text-bright: var(--font-color-unified);
   --font-size-xs: var(--mgmt-font-size);
   --font-size-sm: var(--mgmt-font-size);
   --font-size-md: var(--mgmt-font-size);
@@ -235,7 +235,7 @@
 .mgmt-board-ws-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
+  gap: var(--hierarchy-row-gap, 3px);
   flex: 1;
   min-width: 0;
   margin: 0 6px;
@@ -243,7 +243,7 @@
 .mgmt-ws-chip {
   font-size: var(--mgmt-font-size);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm, 3px);
   background: var(--bg-tertiary);
   color: inherit;
   white-space: nowrap;
@@ -311,7 +311,7 @@
 .mgmt-board-authority {
   font-size: var(--mgmt-font-size);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm, 3px);
   white-space: nowrap;
   flex-shrink: 0;
   margin-right: 4px;
@@ -434,7 +434,7 @@
   width: 100%;
   padding: 3px 6px;
   border: 1px solid var(--input-border, var(--border));
-  border-radius: 3px;
+  border-radius: var(--radius-sm, 3px);
   background: var(--input-bg, var(--bg-tertiary));
   color: var(--text-primary);
   font-size: var(--mgmt-font-size);
@@ -586,12 +586,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  min-width: 18px;
-  height: 18px;
+  width: var(--icon-button-size, 18px);
+  min-width: var(--icon-button-size, 18px);
+  height: var(--icon-button-size, 18px);
   padding: 0;
   border: 1px solid var(--app-menu-border, transparent);
-  border-radius: 3px;
+  border-radius: var(--radius-md, 3px);
   background: var(--app-menu-bg, transparent);
   color: var(--app-menu-fg, inherit);
   font-size: var(--mgmt-font-size);
@@ -627,10 +627,10 @@
   display: flex;
   align-items: center;
   min-height: var(--hierarchy-row-min-height, 18px);
-  gap: 3px;
-  padding: 2px 6px;
+  gap: var(--hierarchy-row-gap, 3px);
+  padding: var(--hierarchy-row-pad-y, 2px) var(--hierarchy-row-pad-x, 6px);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--hierarchy-row-radius, 3px);
   font-size: var(--mgmt-font-size);
   font-weight: var(--hierarchy-font-weight, 400);
   color: var(--hierarchy-text-color, inherit);
@@ -681,8 +681,9 @@
 .mgmt-config-tree-heading {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
+  min-height: var(--hierarchy-row-min-height, 18px);
+  gap: var(--hierarchy-row-gap, 3px);
+  padding: var(--hierarchy-row-pad-y, 2px) var(--hierarchy-row-pad-x, 6px);
   margin: 0 2px;
   font-size: var(--mgmt-font-size);
   font-weight: var(--hierarchy-font-weight, 400);
@@ -720,7 +721,7 @@
   font-size: var(--mgmt-font-size);
   padding: 3px 6px;
   border: 1px solid var(--input-border, var(--border));
-  border-radius: 3px;
+  border-radius: var(--radius-sm, 3px);
   background: var(--input-bg, var(--bg-tertiary));
   color: inherit;
 }
@@ -798,15 +799,15 @@
 }
 .mgmt-info-stack {
   display: grid;
-  gap: 2px;
-  margin-top: 6px;
+  gap: var(--space-1, 2px);
+  margin-top: var(--space-2, 6px);
   font-size: var(--mgmt-font-size);
   color: inherit;
 }
 .mgmt-status {
   font-size: var(--mgmt-font-size);
   margin-top: 4px;
-  min-height: 16px;
+  min-height: var(--hierarchy-row-min-height, 16px);
 }
 .mgmt-status.error { color: var(--error); }
 .mgmt-status.success { color: var(--success); }
@@ -814,10 +815,10 @@
 .mgmt-restart-note {
   font-size: var(--mgmt-font-size);
   color: #e8a838;
-  margin-top: 6px;
-  padding: 4px 8px;
+  margin-top: var(--space-2, 6px);
+  padding: var(--space-1, 4px) var(--space-3, 8px);
   background: rgba(232, 168, 56, 0.1);
-  border-radius: 3px;
+  border-radius: var(--radius-sm, 3px);
   border: 1px solid rgba(232, 168, 56, 0.3);
 }
 
@@ -827,13 +828,13 @@
 }
 
 .mgmt-log-view {
-  margin-top: 8px;
+  margin-top: var(--space-3, 8px);
   max-height: 320px;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md, 4px);
   background: var(--bg-tertiary);
-  padding: 6px 8px;
+  padding: var(--space-2, 6px) var(--space-3, 8px);
   font-size: var(--mgmt-font-size);
   line-height: 1.45;
 }

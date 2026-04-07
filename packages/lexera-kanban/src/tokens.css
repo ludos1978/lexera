@@ -83,16 +83,13 @@
 
 :root {
   /* ── Typography ─────────────────────────────────────────────── */
-  --font-size-xs:   calc(9px  * var(--ui-scale));  /* badges, metadata, timestamps */
-  --font-size-sm:   calc(10px * var(--ui-scale));  /* secondary text, dashboard groups, log entries */
-  --font-size-md:   calc(11px * var(--ui-scale));  /* sidebar items, section headers */
-  --font-size-base: calc(13px * var(--ui-scale));  /* body text, card content, inputs */
-  --font-size-lg:   calc(15px * var(--ui-scale));  /* panel titles, board header */
-  --font-size-xl:   calc(18px * var(--ui-scale));  /* large headings (rare) */
-
+  --font-size-unified: calc(13px * var(--ui-scale));
+  --font-size-base: var(--font-size-unified);
+  --font-size-xs: var(--font-size-unified);
+  --font-size-sm: var(--font-size-unified);
+  --font-size-md: var(--font-size-unified);
   --font-ui:    'Poppins', 'Segoe UI', system-ui, sans-serif;
   --font-board: var(--font-ui);  /* kanban/canvas content — overridable per theme or per board via fontFamily setting */
-  --font-mono:  'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 
   /* ── Application Spacing ────────────────────────────────────── */
   --app-space-1: calc(2px  * var(--ui-scale));  /* tight gaps, dividers */
@@ -103,6 +100,4 @@
 
   /* ── Control Sizes ──────────────────────────────────────────── */
   --control-height-sm: calc(22px * var(--ui-scale));  /* compact buttons, icon buttons */
-  --control-height-md: calc(28px * var(--ui-scale));  /* standard buttons, inputs */
-  --control-height-lg: calc(34px * var(--ui-scale));  /* large buttons, search fields */
 }

@@ -16,6 +16,7 @@ var LEXERA_THEMES = [
     light: {
       '--bg-primary': '#ffffff', '--bg-secondary': '#f3f3f3', '--bg-tertiary': '#e8e8e8',
       '--bg-hover': '#e0e0e0', '--bg-active': '#cce5ff', '--border': '#d4d4d4',
+      '--font-color-mode': '#000000',
       '--text-primary': '#333333', '--text-secondary': '#717171', '--text-bright': '#1e1e1e', '--text-muted': '#8a8a8a',
       '--accent': '#007acc', '--accent-hover': '#0066b8', '--success': '#388a6c', '--error': '#d32f2f',
       '--card-bg': '#ffffff', '--card-border': '#d4d4d4', '--card-checked': '#f0f0f0',
@@ -26,6 +27,7 @@ var LEXERA_THEMES = [
     dark: {
       '--bg-primary': '#1e1e1e', '--bg-secondary': '#252526', '--bg-tertiary': '#2d2d30',
       '--bg-hover': '#2a2d2e', '--bg-active': '#094771', '--border': '#474747',
+      '--font-color-mode': '#ffffff',
       '--text-primary': '#e8e8e8', '--text-secondary': '#b0b0b0', '--text-bright': '#ffffff', '--text-muted': '#909090',
       '--accent': '#007acc', '--accent-hover': '#1a8cff', '--success': '#4ec9b0', '--error': '#f44747',
       '--card-bg': '#1e1e1e', '--card-border': '#474747', '--card-checked': '#2d2d30',

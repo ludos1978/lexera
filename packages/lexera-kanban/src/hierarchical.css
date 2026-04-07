@@ -11,7 +11,6 @@
   align-items: center;
   gap: var(--app-space-2);
   padding: var(--app-space-2) var(--app-space-3);
-  font-size: var(--font-size-md);
   color: var(--text-primary);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
@@ -48,7 +47,6 @@
   gap: var(--app-space-1);
   margin-left: auto;
   flex-shrink: 0;
-  font-size: var(--font-size-md);
   color: var(--text-secondary);
 }
 
@@ -96,7 +94,6 @@
 
 /* Section header */
 .hierarchical-section-header {
-  font-size: var(--font-size-md);
   color: var(--text-secondary);
   padding: 2px 6px;
   margin: 0 2px;
@@ -104,7 +101,6 @@
 
 /* Empty state */
 .hierarchical-empty {
-  font-size: var(--font-size-md);
   color: var(--text-muted);
   padding: var(--app-space-2) var(--app-space-3);
 }
@@ -113,5 +109,4 @@
 .hierarchical-item.compact {
   padding: var(--app-space-1) var(--app-space-2);
   min-height: auto;
-  font-size: var(--font-size-md);
 }

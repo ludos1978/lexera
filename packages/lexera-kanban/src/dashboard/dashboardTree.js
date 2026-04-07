@@ -76,12 +76,10 @@
     return null;
   }
 
+  // Delegates to LexeraHierarchyContract.createHierarchyNode (hierarchyContract.js)
   function createHierarchyNode(definition) {
-    var hierarchyContract = getHierarchyContractApi();
-    if (hierarchyContract && typeof hierarchyContract.createNode === 'function') {
-      return hierarchyContract.createNode(definition);
-    }
-    return definition;
+    var c = getHierarchyContractApi();
+    return c ? c.createHierarchyNode(definition) : definition;
   }
 
   function dashboardInventoryStatusLabel(item) {

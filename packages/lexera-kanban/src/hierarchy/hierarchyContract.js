@@ -152,6 +152,7 @@
     applyDescriptorToAttrs: applyDescriptorToAttrs,
     composeNodeType: composeNodeType,
     createNode: createNode,
+    createHierarchyNode: createNode,
     readDescriptorFromNode: readDescriptorFromNode,
     readStructuralRoleFromNode: readStructuralRoleFromNode,
     nodeSupportsCapability: nodeSupportsCapability

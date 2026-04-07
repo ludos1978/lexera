@@ -284,12 +284,10 @@ var ManagementUI = (function () {
     return classes.join(' ');
   }
 
+  // Delegates to LexeraHierarchyContract.createHierarchyNode (hierarchyContract.js)
   function createHierarchyNode(definition) {
-    var hierarchyContract = getManagementHierarchyContractApi();
-    if (hierarchyContract && typeof hierarchyContract.createNode === 'function') {
-      return hierarchyContract.createNode(definition);
-    }
-    return definition;
+    var c = getManagementHierarchyContractApi();
+    return c ? c.createHierarchyNode(definition) : definition;
   }
 
   function buildConfigBoardTreeNode(board, options) {

@@ -32,7 +32,8 @@ describe('hierarchy style contract', () => {
 
   it('uses one quiet typography and accent-line state model across hierarchy surfaces', () => {
     expect(appCss).toContain('--app-shell-font-size: var(--font-size-base);');
-    expect(appCss).toContain('--app-shell-font-color: #fff;');
+    expect(appCss).toContain('--font-color-unified: var(--font-color-mode, #000000);');
+    expect(appCss).toContain('--app-shell-font-color: var(--font-color-unified);');
     expect(appCss).toContain('--app-control-font-size: var(--font-size-base);');
     expect(appCss).toContain('--app-control-font-weight: 400;');
     expect(appCss).toContain('--app-font-color: var(--app-shell-font-color);');
@@ -42,9 +43,13 @@ describe('hierarchy style contract', () => {
     expect(appCss).toContain('--hierarchy-hover-bg: transparent;');
     expect(appCss).toContain('--hierarchy-active-bg: transparent;');
     expect(appCss).toMatch(/:where\([\s\S]*\.sidebar,[\s\S]*\.calendar-panel,[\s\S]*\.mgmt-panel,[\s\S]*\.log-panel[\s\S]*\)\s*\{[\s\S]*--font-size-xs:\s*var\(--app-shell-font-size\)[\s\S]*--font-size-sm:\s*var\(--app-shell-font-size\)[\s\S]*--font-size-md:\s*var\(--app-shell-font-size\)[\s\S]*--text-primary:\s*var\(--app-shell-font-color\)[\s\S]*--text-secondary:\s*var\(--app-shell-font-color\)/);
-    expect(appCss).toMatch(/\.tree-node\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
-    expect(appCss).toMatch(/\.dashboard-group-header,\s*\.workspace-section-header\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
-    expect(appCss).toMatch(/\.dashboard-item\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
+    // Containers set font-size; children inherit it
+    expect(appCss).toMatch(/\.board-list\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)/);
+    expect(appCss).toMatch(/\.sidebar-dashboard-body\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)/);
+    expect(appCss).toMatch(/\.sidebar-dashboard-controls\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)/);
+    expect(appCss).toMatch(/\.tree-node\s*\{[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
+    expect(appCss).toMatch(/\.dashboard-group-header,\s*\.workspace-section-header\s*\{[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
+    expect(appCss).toMatch(/\.dashboard-item\s*\{[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
     expect(appCss).toMatch(/\.tree-node:hover\s*\{[\s\S]*background:\s*var\(--hierarchy-hover-bg\)/);
     expect(appCss).toMatch(/\.dashboard-item\.pinned-active\s*\{[\s\S]*background:\s*var\(--hierarchy-active-bg\)[\s\S]*box-shadow:\s*inset 2px 0 0 var\(--hierarchy-active-accent\)/);
     expect(appCss).toMatch(/\.board-item\.active\s*\{[\s\S]*background:\s*var\(--hierarchy-active-bg\)[\s\S]*box-shadow:\s*inset 2px 0 0 var\(--hierarchy-active-accent\)/);

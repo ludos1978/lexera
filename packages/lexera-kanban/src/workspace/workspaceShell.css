@@ -16,12 +16,31 @@
 }
 
 .workspace-shell {
+  --font-color-unified: var(--font-color-mode, #000000);
+  --workspace-row-min-height: var(--hierarchy-row-min-height, calc(18px * var(--ui-scale, 1)));
+  --workspace-row-pad-y: var(--hierarchy-row-pad-y, 2px);
+  --workspace-row-pad-x: var(--hierarchy-row-pad-x, 6px);
+  --workspace-row-gap: var(--hierarchy-row-gap, 3px);
+  --workspace-row-radius: var(--hierarchy-row-radius, 3px);
+  --workspace-header-row-min-height: var(--workspace-row-min-height);
+  --text-primary: var(--font-color-unified);
+  --text-secondary: var(--font-color-unified);
+  --text-muted: var(--font-color-unified);
+  --text-bright: var(--font-color-unified);
+  --app-menu-fg: var(--font-color-unified);
+  --app-menu-fg-hover: var(--font-color-unified);
+  --app-menu-border: transparent;
+  --app-menu-border-hover: transparent;
+  --app-menu-bg: transparent;
+  --app-menu-bg-hover: transparent;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
   background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--font-size-unified, var(--font-size-base, 13px));
 }
 
 .workspace-shell-body {
@@ -43,7 +62,7 @@
 .workspace-shell-toolbar {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--workspace-row-gap);
   min-height: 0;
   padding: 0;
   background: var(--surface-header-bg, var(--bg-secondary));
@@ -56,9 +75,9 @@
 .workspace-shell-toolbar-title {
   min-width: 0;
   margin-right: auto;
-  font-size: 12px;
+  font-size: inherit;
 
-  color: var(--text-secondary);
+  color: inherit;
 }
 
 .workspace-shell-toolbar-badge {
@@ -66,8 +85,8 @@
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--bg-primary);
-  color: var(--text-secondary);
-  font-size: 11px;
+  color: inherit;
+  font-size: inherit;
 
 }
 
@@ -213,18 +232,18 @@
 .workspace-shell-panel-dock.is-folded[data-dock="bottom"] > .ws-fold-strip .log-panel-status {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--workspace-row-gap);
   margin-left: auto;
   min-width: 0;
-  font-size: 11px;
+  font-size: inherit;
   height: 100%;
 }
 .ws-fold-strip .log-panel-status .status-msg {
   max-width: 160px;
 }
 .ws-fold-strip .log-panel-status .log-panel-status-btn {
-  height: 16px;
-  font-size: 10px;
+  height: var(--icon-button-size);
+  font-size: inherit;
   padding: 0 4px;
 }
 
@@ -233,10 +252,10 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 10px;
+  font-size: inherit;
   padding: 2px 4px;
   opacity: 0.5;
-  color: var(--text-muted);
+  color: inherit;
 }
 .ws-fold-lock-btn:hover {
   opacity: 1;
@@ -254,7 +273,7 @@
   min-height: 0;
   cursor: pointer;
   padding: 2px;
-  border-radius: 3px;
+  border-radius: var(--workspace-row-radius);
   overflow: hidden;
 }
 .ws-fold-zone:hover {
@@ -275,7 +294,7 @@
   width: var(--icon-button-size);
   height: var(--icon-button-size);
   font-size: var(--icon-glyph-size);
-  color: var(--text-muted);
+  color: inherit;
   line-height: 1;
 }
 .ws-fold-indicator.is-active {
@@ -287,8 +306,8 @@
 
 /* Zone label: panel title, rotated for side docks */
 .ws-fold-zone-label {
-  font-size: 10px;
-  color: var(--text-muted);
+  font-size: inherit;
+  color: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -300,7 +319,7 @@
 .workspace-shell-panel-dock.is-folded[data-dock="right"] .ws-fold-zone {
   flex-direction: column;
   justify-content: flex-start;
-  gap: 6px;
+  gap: var(--workspace-row-gap);
   padding: 6px 0;
 }
 /* Left/right docks: vertical label */
@@ -327,43 +346,38 @@
   padding: 0 2px;
 }
 
-.ws-fold-dot {
+.ws-fold-dot,
+.ws-fold-status-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--text-muted);
 }
 .ws-fold-dot.is-connected {
-  background: #22c55e;
+  background: var(--success);
 }
 .ws-fold-dot.is-disconnected {
-  background: #ef4444;
+  background: var(--error);
 }
 
 /* ── Folded log status badges ── */
 .ws-fold-status-badges {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  color: var(--text-muted);
+  gap: var(--workspace-row-gap);
+  font-size: inherit;
+  color: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
 }
-.ws-fold-status-dot {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
+.ws-fold-status-dot { flex-shrink: 0; }
 .ws-fold-status-dot.is-connected {
-  background: #22c55e;
+  background: var(--success);
 }
 .ws-fold-status-dot.is-disconnected {
-  background: #ef4444;
+  background: var(--error);
 }
 .ws-fold-badge {
   flex-shrink: 0;
@@ -459,8 +473,8 @@
   display: flex;
   align-items: stretch;
   gap: 1px;
-  min-height: calc(var(--icon-button-size) + 5px);
-  padding: 0 1px;
+  min-height: var(--workspace-header-row-min-height);
+  padding: var(--workspace-row-pad-y) var(--workspace-row-pad-x);
   background: var(--surface-header-bg, var(--bg-secondary));
   overflow: visible;
 }
@@ -473,34 +487,27 @@
  * The is-single class hides tabs, showing title + controls in a single row.
  */
 
-.ws-view-drag {
+.ws-view-drag,
+.ws-view-tab-close,
+.ws-tab-overflow-btn,
+.ws-tab-overflow-menu-item-close,
+.ws-view-fold {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
   width: var(--icon-button-size);
-  min-width: var(--icon-button-size);
   height: var(--icon-button-size);
-  align-self: center;
+  min-width: var(--icon-button-size);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--icon-btn-fg, var(--btn-fg));
+  color: inherit;
   font-size: var(--icon-glyph-size);
-  cursor: grab;
+  cursor: pointer;
+  line-height: 1;
+  text-align: center;
   padding: 0;
-  opacity: 0.62;
-  -webkit-app-region: no-drag;
-}
-
-.ws-view-drag:hover {
-  color: var(--icon-btn-fg-hover, var(--text-bright));
-  background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
-  opacity: 1;
-}
-
-.ws-view-drag:active {
-  cursor: grabbing;
 }
 
 .ws-view-title {
@@ -511,8 +518,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  /* font-size: 11px; */
-  color: var(--text-secondary);
+  /* font-size: inherit; */
+  color: inherit;
   user-select: none;
 }
 
@@ -529,14 +536,15 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 0;
+  min-height: var(--workspace-row-min-height);
   min-width: 0;
   max-width: 260px;
-  padding: 0 2px;
+  padding: 0 var(--space-1);
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--workspace-row-radius);
   background: transparent;
-  color: var(--text-secondary);
-  font-size: 11px;
+  color: inherit;
+  font-size: inherit;
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
@@ -550,7 +558,7 @@
 .ws-view-tab.is-active {
   border-color: var(--border);
   background: var(--bg-primary);
-  color: var(--text-bright);
+  color: inherit;
 }
 
 .ws-view-tab.is-selected {
@@ -566,34 +574,17 @@
 
 .ws-view-tab-meta {
   flex: 0 0 auto;
-  font-size: 9px;
-  color: var(--text-muted);
+  font-size: inherit;
+  color: inherit;
+  opacity: 0.7;
 }
 
 .ws-view-tab-close {
-  flex: 0 0 auto;
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: var(--icon-glyph-size);
-  line-height: 1;
-  text-align: center;
-  padding: 0;
   opacity: 0.62;
 }
 
 .ws-view-tab:hover .ws-view-tab-close {
   opacity: 0.8;
-}
-
-.ws-view-tab-close:hover {
-  background: color-mix(in srgb, var(--error) 16%, transparent);
-  color: var(--text-bright);
-  opacity: 1;
 }
 
 /* Hidden tab (overflowed into dropdown) */
@@ -603,24 +594,13 @@
 
 /* Tab overflow dropdown trigger */
 .ws-tab-overflow-btn {
-  flex: 0 0 auto;
   display: none;
-  align-items: center;
-  justify-content: center;
   gap: 1px;
-  min-width: var(--icon-button-size);
-  height: var(--icon-button-size);
   align-self: center;
   padding: 0 2px;
   border: 1px solid transparent;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--icon-glyph-size);
-  cursor: pointer;
   white-space: nowrap;
   user-select: none;
-  line-height: 1;
 }
 
 .ws-tab-overflow-btn.is-visible {
@@ -647,9 +627,9 @@
   max-width: 280px;
   max-height: 300px;
   overflow-y: auto;
-  padding: 4px;
+  padding: var(--space-1);
   border: 1px solid var(--menu-border, var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: var(--menu-bg, var(--bg-secondary));
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
 }
@@ -661,13 +641,13 @@
 .ws-tab-overflow-menu-item {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--menu-item-fg, var(--text-primary));
-  font-size: 12px;
+  font-size: inherit;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -693,46 +673,45 @@
   text-overflow: ellipsis;
 }
 
-.ws-tab-overflow-menu-item-close {
-  flex: 0 0 auto;
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
+.ws-view-tab-close:hover,
+.ws-tab-overflow-menu-item-close:hover {
+  background: color-mix(in srgb, var(--error) 16%, transparent);
   color: inherit;
-  cursor: pointer;
-  font-size: var(--icon-glyph-size);
-  line-height: 1;
-  text-align: center;
-  padding: 0;
+  opacity: 1;
+}
+
+.ws-tab-overflow-menu-item-close {
   opacity: 0.78;
 }
 
 .ws-tab-overflow-menu-item-close:hover {
-  background: color-mix(in srgb, var(--error) 16%, transparent);
   color: var(--menu-item-fg-hover, var(--text-bright));
   opacity: 1;
 }
 
 .ws-view-fold {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
   align-self: center;
   margin-left: auto;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
   color: var(--icon-btn-fg, var(--btn-fg));
   font-size: var(--fold-icon-size);
-  cursor: pointer;
   opacity: 0.7;
   transition: opacity 0.15s, background 0.15s, color 0.15s;
-  padding: 0;
+}
+.ws-view-drag {
+  border-radius: var(--radius-md);
+  align-self: center;
+  color: var(--icon-btn-fg, var(--btn-fg));
+  cursor: grab;
+  opacity: 0.62;
+  -webkit-app-region: no-drag;
+}
+.ws-view-drag:hover {
+  color: var(--icon-btn-fg-hover, var(--text-bright));
+  background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
+  opacity: 1;
+}
+.ws-view-drag:active {
+  cursor: grabbing;
 }
 .ws-view-fold:hover {
   background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
@@ -889,7 +868,7 @@
 
 .ws-view-close:hover {
   background: color-mix(in srgb, var(--error) 16%, transparent);
-  color: var(--text-bright);
+  color: inherit;
   opacity: 1;
 }
 
@@ -1241,8 +1220,8 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspa
   border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--border));
   border-radius: 6px;
   background: color-mix(in srgb, var(--bg-primary) 92%, var(--accent) 8%);
-  color: var(--text-bright);
-  font-size: 12px;
+  color: inherit;
+  font-size: inherit;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
   pointer-events: none;
   transform: translate(-50%, -50%);
@@ -1254,7 +1233,7 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspa
   justify-content: center;
   height: 100%;
   padding: 24px;
-  color: var(--text-secondary);
+  color: inherit;
   text-align: center;
   line-height: 1.5;
 }
@@ -1275,9 +1254,9 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspa
 .workspace-shell-panel-only-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 8px;
-  min-height: 24px;
+  gap: var(--workspace-row-gap);
+  padding: var(--workspace-row-pad-y) var(--workspace-row-pad-x);
+  min-height: var(--workspace-header-row-min-height);
   background: var(--surface-header-bg, var(--bg-secondary));
 }
 .workspace-shell-panel-only-title {
@@ -1286,18 +1265,18 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspa
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: inherit;
 
-  color: var(--text-secondary);
+  color: inherit;
 }
 .workspace-shell-panel-only-dock-btn {
   flex: 0 0 auto;
   padding: 2px 8px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-hover);
-  color: var(--text-secondary);
-  font-size: 11px;
+  color: inherit;
+  font-size: inherit;
   font-family: inherit;
   cursor: pointer;
 }
@@ -1371,7 +1350,7 @@ body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-
 }
 .workspace-shell-panel-dock.is-compact .board-list .board-item {
   padding: 2px 4px;
-  font-size: 11px;
+  font-size: inherit;
 }
 .workspace-shell-panel-dock.is-compact .board-item-actions,
 .workspace-shell-panel-dock.is-compact .board-item-icon {
@@ -1384,7 +1363,7 @@ body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-
   display: none;
 }
 .workspace-shell-panel-dock.is-compact .dashboard-search-input {
-  font-size: 11px;
+  font-size: inherit;
   padding: 2px 4px;
 }
 
@@ -1393,7 +1372,7 @@ body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-
   gap: 2px;
 }
 .workspace-shell-panel-dock.is-compact .log-panel-btn {
-  font-size: 9px;
+  font-size: inherit;
   padding: 1px 4px;
   min-height: 0;
 }
@@ -1402,11 +1381,11 @@ body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-
   padding: 2px 4px;
 }
 .workspace-shell-panel-dock.is-compact .log-panel-tab {
-  font-size: 10px;
+  font-size: inherit;
   padding: 1px 4px;
 }
 .workspace-shell-panel-dock.is-compact .log-entries {
-  font-size: 10px;
+  font-size: inherit;
   line-height: 1.3;
 }
 
@@ -1415,5 +1394,5 @@ body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-
   padding: 2px 4px;
 }
 .workspace-shell-panel-dock.is-compact .mgmt-section-title {
-  font-size: 10px;
+  font-size: inherit;
 }

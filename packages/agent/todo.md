@@ -1,100 +1,88 @@
 # Lexera Kanban Todo
 
-> Active backlog only. Completed, superseded, and parked items moved to [todo-archive.md](todo-archive.md).
-
-- [ ] make the icons have a unified size and icon size! some are very small, others are way bigger!
-
-- [ ] remove the default search suggestions below the "active board, all boards" dropdown.
-  - instead the user can search and pin the searches, these should be placed below, similar to the default results we have in there already (tasks, tags, embeds, broken includes/embeds)
-
-- [x] pressing a url link should open it in the browser by default.
-  - `packages/lexera-kanban/src/dragdrop/dndListeners.js` link-click handler now routes through `openUrlInSystem()` (Tauri `open_url` command → default browser) instead of `window.open()` (which tried to navigate the webview).
-  - `openUrlInSystem` injected into the DndListeners dep bag from `app.js:296`.
-
-- [ ] make a structure map view using a similar system as https://www.reddit.com/r/Markdown/comments/1sdm1a2/inklink_markdown_to_mindmap_converter/  https://github.com/lalulali/inklink  
-
-- [ ] unify the hierarchy in workspace, dashboard and in files > workspaces!
-  - it needs to feature a top element that can be repeated nicely.
-  - it needs to have a hierarchy below that can be folded.
-  - each row can have one or more buttons or texts aligned at the right.
-  - clicking on each row can focus an element.
-  - **remaining visual gaps (2026-04-06)**:
-    - [ ] **Dashboard group headers must become TreeView nodes** — "Open Tasks", "Tagged Items", "File Embeds", "Broken Elements" are currently static HTML `<div class="dashboard-group-header">` with CSS `::before` Unicode triangle toggles (`▶/▼`). The workspace tree uses TreeView's `.tree-toggle` which draws arrows with CSS borders (thin lines, not solid Unicode glyphs). Fix: render the entire dashboard as ONE TreeView tree where these groups are top-level expandable nodes (like workspace boards), with their `.dashboard-list` content as children. This eliminates the `::before` toggle entirely and gives the groups the same indent guides + connector lines as workspace board items. Location: `packages/lexera-kanban/src/workspace/sharedPanels.js` creates the static `<div class="dashboard-group">` HTML; `packages/lexera-kanban/src/board/orderHelpers.js::renderDashboard()` populates each `.dashboard-list` separately. Both need to change to produce one unified tree.
-    - [ ] **Files > Workspaces TreeView is working** — `renderSharedConfigTree` now succeeds (TreeView + HierarchyContract + HierarchyController all load before management.js). Indent guides are visible. The remaining visual difference: workspace tree nodes show grip icons + burger menus (`grip: true, menu: true`), Files tree nodes don't (`grip: false, menu: false`). The management nodes intentionally have no drag/menu because it's a settings panel, not a board hierarchy. This is a design decision, not a bug — but if the user wants them to look identical, add `menu: true` to the workspace/board nodes in `management.js::buildConfigTreeNodes()`.
-    - [ ] **"Active Board" dropdown + "Pin" button** in the dashboard controls area still uses form-control styling, not tree-node styling. This is a control, not a hierarchy node — it should stay as-is unless the user explicitly wants it changed.
-  - **analysis 2026-04-06**: all three surfaces already share the same `TreeView` renderer (`packages/lexera-kanban/src/treeView.js`) and the same `HierarchyContract` metadata system (`packages/lexera-kanban/src/hierarchy/hierarchyContract.js`). The divergence is in the three separate **node-builder + interaction-wiring** layers above them. Unification does NOT require a new tree component — it requires collapsing the three builder/wiring layers into one shared pipeline.
-  - **Current state per surface**:
-    - **Workspace** (`sidebarTree.js` + `boardList.js` + `sidebarSync.js`): 5-level tree (board→row→stack→column→card), full drag-drop via `data-tree-drag`, context menus via `.tree-menu-btn`, sync-highlight, persisted expand/collapse, double-click-to-edit. Node builder: `buildSidebarTreeNodes()`.
-    - **Dashboard** (`dashboardTree.js` + `orderHelpers.js`): 2-level tree (group→result), click-to-navigate, no drag/menu/persist. Node builders: `buildDashboardResultTreeNodes()`, `buildDashboardInventoryTreeNodes()`, `buildDashboardBrokenTreeNodes()`, `buildDashboardTaggedTreeNodes()`.
-    - **Management** (`management.js`): 2-3 level tree (root/workspace→board), single-select with inspector panel, no drag/menu/persist. Node builder: `buildConfigTreeNodes()`.
-  - **Already-shared infrastructure**:
-    - TreeView renders all three using the same DOM structure (`.tree-entry`, `.tree-node`, `.tree-children`, `.tree-toggle`, `.tree-label`, `.tree-meta`, `.tree-grip`, `.tree-menu-btn`, `.tree-count`).
-    - HierarchyContract stamps `data-hierarchy-surface`, `data-hierarchy-kind`, `data-hierarchy-entity-id`, `data-hierarchy-capabilities` on every node in all three surfaces.
-    - HierarchyController provides event delegation and capability-based action routing.
-  - **Concrete divergences to resolve**:
-    1. **Node builders**: three separate functions that each produce node objects in slightly different ways (different `type` strings, different `attrs` maps, different `hierarchy.capabilities` arrays). Need one `buildTreeNodes(source, surface)` entry point that delegates to surface-specific data adapters.
-    2. **Interaction wiring**: three separate `bind*Interactions()` functions. HierarchyController is supposed to replace all three but workspace still has direct event handlers in `boardList.js:1732-1804`.
-    3. **Style tokens**: workspace uses `data-tree-drag`, dashboard uses `data-dashboard-*`, management uses `data-mgmt-config-*`. The hierarchy-contract attributes ALREADY exist on every node — the surface-specific `data-*` attributes are a legacy parallel channel that should be eliminated.
-    4. **Right-side actions**: workspace renders grip+menu+count, dashboard renders count only, management renders count+star. Need a unified "slot" model where the node definition declares what goes in the right-side meta area and TreeView renders it.
-    5. **Selection model**: workspace = focus-highlight, dashboard = navigate-away, management = select-for-inspector. These are three different "activate" semantics that should be handled by capability tokens (`activate-focus`, `activate-navigate`, `activate-select`), not three separate event handlers.
-    6. **Expand/collapse persistence**: only workspace persists; dashboard and management don't. Should be a per-surface option on the tree host, not hardcoded into the builder.
-  - **Implementation plan** (tasks below in Architecture section).
+> Active backlog only. Completed items moved to [todo-archive.md](todo-archive.md).
 
 ## Immediate UX / Product
-- [ ] Redo the font/style unification pass.
-  - Keep only: light/normal/bold, italic/underlined, uppercase, and high-contrast background tags with the version-1 contrast and bloom behavior.
-- [ ] Remove the workspace dropdown once the hierarchy/catalog tree can express the same workspace filtering and navigation directly.
+- [ ] Unify visual styles by removing complexity — buttons, fonts, icons should use consistent sizing. Remove redundant CSS rather than adding overrides.
+- [ ] Unify icon sizes — some are very small, others much bigger. Standardize on `--icon-glyph-size`.
+- [ ] Remove the workspace dropdown once the hierarchy tree can express workspace filtering directly.
 
-## Architecture
-### Hierarchy unification — concrete tasks (analysis 2026-04-06)
-> All three surfaces already share `TreeView` (renderer) and `HierarchyContract` (metadata). The work is to collapse the three separate node-builder + interaction-wiring layers into one shared pipeline.
+## Hierarchy Unification
+> All three surfaces (workspace, dashboard, files) share `TreeView` + `HierarchyContract`. The work is collapsing the three node-builder + interaction-wiring layers into one pipeline.
 
-**Phase 1: One node-builder interface** (re-audited 2026-04-06)
-> Re-audit finding: all three surfaces already stamp `data-hierarchy-*` attributes via HierarchyContract, BUT: `data-hierarchy-entity-id` alone is not sufficient for navigation — dashboard and workspace activation code needs `boardId`, `rowIndex`, `stackIndex`, `colLocalIndex`, `cardIndex`, `columnTitle`, `brokenSrc` to build a navigation target. The hierarchy contract only carries `surface/kind/entityId/capabilities/selectable`. The surface-specific `data-*` attributes carry the positional navigation data that the hierarchy contract was never designed to hold. Eliminating them requires either (a) extending the hierarchy contract with a generic `data: {}` bag, or (b) having each surface provide an `extractNavigationTarget(node)` adapter function. Approach (b) is minimal and already partially exists (`buildDashboardNavResultFromTreeNode`, `buildHierarchyFocusTargetFromTreeNode`).
+### Phase 1: Consolidate shared code
+- [ ] Consolidate `createHierarchyNode()` — identical 6-line wrapper in sidebarTree.js, dashboardTree.js, management.js. Move to shared module.
+- [ ] Consolidate title helpers — `stripHtmlComments()`, `extractHtmlComments()`, `stripLayoutTags()` duplicated in 3-4 files. Create shared `TitleHelpers` module.
+- [ ] Standardize navigation-target extraction — unify `buildHierarchyFocusTargetFromTreeNode` (workspace), `buildDashboardNavResultFromTreeNode` (dashboard), inline reads (management) into one `extractActivationTarget(node, surface)`.
 
-- [x] ~~**Define `HierarchyNodeAdapter` interface**~~ — **ALREADY EXISTS**: `HierarchyController.bindTreeInteractions(el, options)` takes an options bag with `onNodeActivate`, `onNodeMenu`, `onNodeEdit`, `onGripClick`, `onNodeToggle`, `onNodeContextMenu`. All three surfaces already pass these callbacks. A separate adapter class would be a wrapper over something that already works.
-- [x] ~~**Route all tree interactions through HierarchyController**~~ — **ALREADY DONE**: workspace (`boardList.js:2059`), dashboard (`orderHelpers.js:2104`), and management (`management.js:2333`) all call `bindTreeInteractions`. The direct event handlers in `boardList.js:1732-1804` were replaced by `_bindBoardTreeInteractions`.
-- [ ] **Standardize the navigation-target extraction** — each surface currently has its own function to extract a navigation target from a DOM node: workspace uses `buildHierarchyFocusTargetFromTreeNode` (reads `data-row-id`, `data-card-id`, etc.), dashboard uses `buildDashboardNavResultFromTreeNode` (reads `data-dashboard-board-id`, `data-dashboard-card-id`, etc.), management reads `data-mgmt-config-type` + `data-mgmt-config-id` inline. Unify to one `extractActivationTarget(node, surface)` that delegates to the surface-appropriate parser.
-- [ ] **Migrate workspace node builder** — `buildSidebarTreeNodes()` in `sidebarTree.js` still carries domain-specific `data-board-id` / `data-row-index` / etc. alongside the hierarchy-contract attributes. These positional attributes are consumed by `_extractTreeNodeScopeCtx`, `buildHierarchyFocusTargetFromTreeNode`, and the DnD system. Migration: switch consumers to read from the hierarchy descriptor + a surface-specific `extractActivationTarget`, then remove the duplicate `data-*` attributes from the builder.
-- [ ] **Migrate dashboard node builders** — `dashboardTree.js` still stamps `data-dashboard-*` on every node alongside the hierarchy descriptor. Migration: switch `activateDashboardTreeNode` and `buildDashboardNavResultFromTreeNode` to read from the hierarchy descriptor where possible, keep a minimal surface-specific payload only for fields the descriptor can't carry (boardId, positional indices), then consolidate the extraction into one function.
-- [ ] **Migrate management node builder** — `management.js::buildConfigTreeNodes` stamps `data-mgmt-config-type` and `data-mgmt-config-id` alongside the hierarchy descriptor. Migration: switch the selection handler to read from `data-hierarchy-kind` + `data-hierarchy-entity-id`, then remove the parallel attributes.
+### Phase 2: Migrate node builders to hierarchy contract
+- [ ] Migrate workspace node builder — switch consumers of `data-board-id`/`data-row-index` etc. to use hierarchy descriptor, then remove duplicate `data-*` attrs.
+- [ ] Migrate dashboard node builders — switch `activateDashboardTreeNode` to read from hierarchy descriptor, remove `data-dashboard-*` attrs.
+- [ ] Migrate management node builder — switch selection handler to use `data-hierarchy-kind` + `data-hierarchy-entity-id`, remove `data-mgmt-config-*` attrs.
+- [ ] Dashboard group headers → TreeView nodes — render dashboard as one TreeView tree instead of static `<div class="dashboard-group-header">` with CSS triangles. Location: `sharedPanels.js` + `orderHelpers.js::renderDashboard()`.
 
-**Phase 3: One style contract**
-- [ ] **Unify the right-side "meta slot" model** — TreeView already renders `.tree-meta` with count + grip + menu-btn. Extend the node definition with a `metaSlots: [{ type: 'count'|'badge'|'button'|'label', … }]` array so each surface can declare what goes there without forking the renderer.
-- [ ] **Collapse workspace hierarchy projection onto the same row/stack/column/card view model as main board rendering** — remove duplicated label/count/visibility logic between `sidebarTree.js` and `app.js::buildColumnElement`.
-- [ ] **Write one shared CSS rule set for tree surfaces** — currently app.css has separate rule blocks for sidebar tree, dashboard tree, and management tree. Consolidate into one `.tree-view-host .tree-*` rule set that all three surfaces inherit.
+### Phase 3: Unify style and interaction contracts
+- [ ] Unify right-side "meta slot" model — extend node definition with `metaSlots` array so each surface declares what goes in `.tree-meta`.
+- [ ] Write one shared CSS rule set for all tree surfaces — consolidate sidebar/dashboard/management tree CSS blocks.
 
-**Phase 4: Cutover and cleanup**
-- [ ] **Finish the hierarchy cutover by surface**: workspace = catalog + structure, files = catalog only, dashboard = results only.
-- [ ] **Delete `sidebarTree.js`** after the workspace adapter handles all its node building.
-- [ ] **Delete `dashboardTree.js`** after the dashboard adapter handles all its node building.
-- [ ] **Delete the `buildConfigTreeNodes` / `bindConfigTreeInteractions` functions from `management.js`** after the management adapter handles them.
-- [ ] **Add regression tests** — one test per surface verifying the adapter produces the same node tree as the old builder, and that interactions (click, dblclick, contextmenu, drag) dispatch the right actions via HierarchyController.
+### Phase 4: Cutover and cleanup
+- [ ] Delete `sidebarTree.js`, `dashboardTree.js`, and `buildConfigTreeNodes` from `management.js` after adapters handle everything.
+- [ ] Add regression tests — one per surface verifying node tree output and interaction dispatch.
 
-### Board / session update pipeline
-- [ ] Introduce one authoritative board-session store.
-  - Separate structure updates from content updates.
-  - Remove overlapping ownership across `app.js`, `LexeraRuntime`, hierarchy cache, and iframe bridges.
-- [ ] Finish the stable-id cross-view entity move contract.
-  - One normalized move command path for workspace, kanban, canvas, and multi-pane moves.
-  - Correct highlighting/focus before, during, and after moves.
-- [ ] Close the remaining reorder/focus/cross-view-move regression gaps.
-- [ ] Remove iframe workspace-shell composition after the in-process state and move pipeline is ready.
+## CSS Simplification (analysis 2026-04-07)
+> app.css is 9,565 lines (75% of all CSS). Font-size chaos, sleek theme bloat, hardcoded px values.
 
-### Legacy retirement — one canonical codepath
-- [ ] Freeze the canonical board contract: `rows -> stacks -> columns -> cards`.
-- [ ] Make legacy board loading one-way and boundary-only.
-- [ ] Delete frontend legacy converters and fallback readers.
-- [ ] Delete shared legacy flat-column schema/types.
-- [ ] Collapse backend parsing onto the canonical model.
-- [ ] Remove dual runtime structures (`rows` plus derived legacy `columns`).
-- [ ] Delete format branching from normal runtime flow.
-- [ ] Extend invariant coverage beyond converter call-site counts.
-- [ ] Document the cutover order in the board/core specs.
+- [ ] Fix font-size dual-variable problem — set `font-size` once on containers (`.board-list`, `.sidebar`), remove ~20 per-element declarations, let inheritance work.
+- [ ] Replace 86 hardcoded px font-sizes with variables — `12px` (58×) → `var(--font-size-sm)`, `13px` (28×) → `var(--font-size-base)`.
+- [ ] Remove unused CSS variables from tokens.css.
+- [ ] Merge duplicate selectors in app.css.
+- [ ] Shrink sleek theme (1,322 lines) — consolidate redundant declarations, estimated 40-50% reduction.
+- [ ] Split app.css into logical modules — sidebar, board, cards, dialogs, tags.
 
-## Code Health
-- [ ] Break `app.js` into smaller modules.
-  - Highest-value slices: board rendering, board event wiring, workspace-shell bridge, dashboard wiring.
+## JS Simplification (analysis 2026-04-07)
+> app.js is 11,560 lines with 1,049 functions. 66 localStorage keys with no schema. DI pattern adds boilerplate.
+
+### Break up app.js
+- [ ] Extract board data store (~2,300 lines) — `fullBoardData`/`activeBoardData` mutations, loading, saving, diffing.
+- [ ] Extract undo/redo system (~1,150 lines) — `undoStack`, `pushUndo()`, delta computation.
+- [ ] Extract action registry config (~1,700 lines) — 200+ `ActionRegistry.register()` calls.
+- [ ] Extract state initialization (~580 lines) — 48 state variables + `_rt.defineState()` calls.
+
+### Centralize state management
+- [ ] Create state key registry — document all 66 `lexera-*` localStorage keys in one file.
+- [ ] Create `StateManager` facade — wrap `Settings ? Settings.get() : localStorage.getItem()` pattern.
+
+### Reduce large modules
+| File | Lines | Action |
+|------|-------|--------|
+| workspaceShell.js | 4,877 | Split UI from iframe bridge |
+| embedMenu.js | 4,768 | Split by embed domain, audit 63 `_callDep()` calls |
+| orderHelpers.js | 3,138 | Extract TitleHelpers, LayoutHelpers, DashboardState |
+| management.js | 2,855 | Extract tree node builders |
+| boardList.js | 2,844 | Move draft storage to BoardDraftStore |
+
+### Event listener hygiene
+- [ ] Audit event listener lifecycle — identify listeners that leak across board switches (407 total across 40 files).
+
+## Board / Session Pipeline
+- [ ] Introduce one authoritative board-session store with separate structure/content update paths.
+- [ ] Finish stable-id cross-view entity move contract.
+- [ ] Remove iframe workspace-shell after in-process state pipeline is ready.
+
+## Legacy Retirement
+- [ ] Freeze canonical board contract: `rows → stacks → columns → cards`.
+- [ ] Make legacy loading one-way and boundary-only, then delete frontend converters, flat-column schema, format branching.
+
+## Feature Backlog
+- [ ] Structure map view (mindmap-style, cf. inklink).
+- [ ] Mobile web clipper (`lexera-capture-ios`).
+- [ ] Keyboard Phase 2: entity context menu, rename, creation shortcuts.
+- [ ] Keyboard Phase 3: command palette, board history, multi-select.
+- [ ] Stack width grid (1-12) and column fractional widths.
+
+## Parked Until Explicit Spec
+- [ ] Per-user isolation beyond local-user model.
+- [ ] Additional sources/editors/pipeline: email, filesystem, office editor, build pipeline, typed API.
 
 ## Manual Verification
 - [ ] Quick capture: screen resolution change on macOS, Windows, Linux.
