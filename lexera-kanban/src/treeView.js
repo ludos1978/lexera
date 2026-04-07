@@ -213,8 +213,7 @@ var TreeView = (function () {
         options.onChildrenContainer(childContainer, node);
       }
 
-      var compactRootFlatten = options && options.variant === 'compact' && level === 1;
-      var childIndent = compactRootFlatten ? [] : parentLastFlags.concat([isLast]);
+      var childIndent = parentLastFlags.concat([isLast]);
       for (var i = 0; i < node.children.length; i++) {
         var childIsLast = i === node.children.length - 1;
         var childFrag = renderNode(node.children[i], childIndent, childIsLast, options, nodePadLeft, level + 1);

@@ -1602,11 +1602,12 @@ textarea {
 /* Board item tree (hierarchy below board name) */
 .board-item-tree {
   display: none;
-  padding-left: 4px;
+  padding-left: var(--tree-indent-step);
 }
 .board-item-tree.expanded { display: block; }
 
-.board-item-indent-group {
+/* Boards inside workspace tree-children get indentation from the tree structure */
+.workspace-section-boards {
   padding-left: var(--tree-indent-step);
 }
 

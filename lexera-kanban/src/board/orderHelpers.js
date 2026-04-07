@@ -2111,8 +2111,7 @@ var LexeraOrderHelpers = (function () {
     setDashboardGroupEmptyState(targetEl, false);
     var TreeView = _dep('TreeView');
     TreeView.render(targetEl, treeNodes, {
-      escapeHtml: _dep('escapeHtml'),
-      variant: 'compact'
+      escapeHtml: _dep('escapeHtml')
     });
     bindDashboardTreeInteractions(targetEl);
   }

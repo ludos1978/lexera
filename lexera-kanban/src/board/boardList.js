@@ -1540,15 +1540,28 @@ var LexeraBoardList = (function () {
     renderBoardList();
   }
 
-  /** Create a workspace section header element. */
+  /** Create a workspace tree-entry element with header and children container. */
   function _createWsHeaderEl(wsInfo) {
+    var entry = document.createElement('div');
+    entry.className = 'tree-entry tree-entry-workspace';
+    entry.setAttribute('data-workspace-id', wsInfo.ws.id);
+
     var wsHeader = document.createElement('div');
-    wsHeader.className = 'workspace-section-header' + (wsInfo.expanded ? ' expanded' : '');
+    wsHeader.className = 'workspace-section-header tree-node' + (wsInfo.expanded ? ' expanded' : '');
     wsHeader.setAttribute('data-workspace-id', wsInfo.ws.id);
     wsHeader.setAttribute('data-tree-node-role', 'branch');
     wsHeader.setAttribute('data-tree-structural-role', 'section');
+    wsHeader.setAttribute('aria-expanded', wsInfo.expanded ? 'true' : 'false');
     _updateWsHeaderContent(wsHeader, wsInfo);
     if (wsInfo.unassigned) wsHeader.classList.add('workspace-unassigned');
+
+    var childContainer = document.createElement('div');
+    childContainer.className = 'tree-children workspace-section-boards' + (wsInfo.expanded ? ' expanded' : '');
+    childContainer.setAttribute('role', 'group');
+
+    entry.appendChild(wsHeader);
+    entry.appendChild(childContainer);
+
     (function (wsId) {
       wsHeader.addEventListener('dblclick', function (e) {
         if (e.target.closest('.workspace-section-focus')) return;
@@ -1571,20 +1584,26 @@ var LexeraBoardList = (function () {
         renderBoardList();
       });
     })(wsInfo.ws.id);
-    return wsHeader;
+    return entry;
   }
 
   /** Update workspace header content in place. */
   function _updateWsHeaderContent(wsHeader, wsInfo) {
     var expanded = wsInfo.expanded;
     if (expanded) { wsHeader.classList.add('expanded'); } else { wsHeader.classList.remove('expanded'); }
+    wsHeader.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     wsHeader.innerHTML =
-      '<span class="workspace-section-toggle' + (expanded ? ' expanded' : '') + '" aria-hidden="true"></span>' +
-      '<span class="workspace-section-name">' + _callDep('escapeHtml', wsInfo.ws.name || 'Untitled') + '</span>' +
-      (wsInfo.count ? '<span class="workspace-section-count">' + wsInfo.count + '</span>' : '') +
-      (wsInfo.unassigned
-        ? ''
-        : '<button class="workspace-section-focus" type="button" title="Focus workspace" aria-label="Focus workspace">\u2192</button>');
+      '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +
+      '<span class="workspace-section-toggle tree-toggle' + (expanded ? ' expanded' : '') + '" aria-hidden="true"></span>' +
+      '<span class="tree-label workspace-section-name">' + _callDep('escapeHtml', wsInfo.ws.name || 'Untitled') + '</span>' +
+      '<span class="tree-meta">' +
+        '<span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span>' +
+        (wsInfo.count ? '<span class="tree-count workspace-section-count">' + wsInfo.count + '</span>' : '<span class="tree-count hidden"></span>') +
+        (wsInfo.unassigned
+          ? '<span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span>'
+          : '<button class="tree-meta-action workspace-section-focus" type="button" title="Focus workspace" aria-label="Focus workspace">\u2192</button>') +
+        '<span class="tree-grip tree-grip-spacer" aria-hidden="true"></span>' +
+      '</span>';
   }
 
   /** Create a remote board element. */
@@ -1651,16 +1670,8 @@ var LexeraBoardList = (function () {
       _renderBoardTree(tree, board.id, rows, tv);
     }
 
-    if (isWorkspaceChild) {
-      var indentGroup = document.createElement('div');
-      indentGroup.className = 'board-item-indent-group';
-      indentGroup.appendChild(el);
-      indentGroup.appendChild(tree);
-      wrapper.appendChild(indentGroup);
-    } else {
-      wrapper.appendChild(el);
-      wrapper.appendChild(tree);
-    }
+    wrapper.appendChild(el);
+    wrapper.appendChild(tree);
 
     _bindBoardWrapperEvents(wrapper, board.id, boardIndex, board.filePath, workspaceShellEnabled, WorkspaceShell);
 
@@ -1695,26 +1706,6 @@ var LexeraBoardList = (function () {
       } else {
         wrapper.removeAttribute('data-workspace-child');
       }
-
-      var existingGroup = wrapper.querySelector('.board-item-indent-group');
-      var treeEl = wrapper.querySelector('.board-item-tree');
-
-      if (isWorkspaceChild && !existingGroup) {
-        // Becoming workspace child — create indent-group and reparent
-        var indentGroup = document.createElement('div');
-        indentGroup.className = 'board-item-indent-group';
-        if (el.parentNode === wrapper) wrapper.removeChild(el);
-        if (treeEl && treeEl.parentNode === wrapper) wrapper.removeChild(treeEl);
-        indentGroup.appendChild(el);
-        if (treeEl) indentGroup.appendChild(treeEl);
-        wrapper.appendChild(indentGroup);
-      } else if (!isWorkspaceChild && existingGroup) {
-        // Becoming non-workspace child — move children out and remove group
-        while (existingGroup.firstChild) {
-          wrapper.appendChild(existingGroup.firstChild);
-        }
-        wrapper.removeChild(existingGroup);
-      }
     }
 
     if (hasContent) {
@@ -1745,7 +1736,6 @@ var LexeraBoardList = (function () {
     if (tv && typeof tv.render === 'function') {
       tv.render(treeEl, treeNodes, {
         escapeHtml: function (s) { return _callDep('escapeHtml', s); },
-        variant: 'compact',
         onChildrenContainer: function (el, node) {
           if (node.type === 'stack') {
             el.classList.add('tree-stack-drop-zone');
@@ -2551,7 +2541,7 @@ var LexeraBoardList = (function () {
     var expandedIds = getSidebarExpandedBoards();
     var entries = [];
 
-    // In "All Workspaces" view, show workspace section headers
+    // In "All Workspaces" view, show workspace section headers with boards nested inside
     if (isAllView && workspaces.length > 0) {
       var wsBoardMap = {};
       var assignedBoardIds = {};
@@ -2567,24 +2557,21 @@ var LexeraBoardList = (function () {
         var wsBoards = wsBoardMap[ws.id] || [];
         if (wsBoards.length === 0) continue;
         var wsExpanded = expandedIds.indexOf('ws:' + ws.id) !== -1;
-        entries.push({ key: 'ws:' + ws.id, type: 'ws_header', ws: ws, count: wsBoards.length, expanded: wsExpanded, unassigned: false });
-        if (wsExpanded) {
-          for (var wbi = 0; wbi < wsBoards.length; wbi++) {
-            var wb = wsBoards[wbi];
-            entries.push({ key: 'board:' + ws.id + ':' + wb.id, type: 'board', board: wb, index: entries.length, workspaceChild: true });
-          }
+        var wsBoardEntries = [];
+        for (var wbi = 0; wbi < wsBoards.length; wbi++) {
+          wsBoardEntries.push({ key: 'board:' + ws.id + ':' + wsBoards[wbi].id, type: 'board', board: wsBoards[wbi], index: 0, workspaceChild: true });
         }
+        entries.push({ key: 'ws:' + ws.id, type: 'ws_header', ws: ws, count: wsBoards.length, expanded: wsExpanded, unassigned: false, boards: wsBoardEntries });
       }
       // Unassigned
-      var hasUnassigned = false;
+      var unassignedBoards = [];
       for (var ubi = 0; ubi < orderedBoards.length; ubi++) {
         if (!assignedBoardIds[orderedBoards[ubi].id]) {
-          if (!hasUnassigned) {
-            entries.push({ key: 'ws:__unassigned__', type: 'ws_header', ws: { id: '__unassigned__', name: 'Unassigned' }, count: 0, expanded: true, unassigned: true });
-            hasUnassigned = true;
-          }
-          entries.push({ key: 'board:' + orderedBoards[ubi].id, type: 'board', board: orderedBoards[ubi], index: entries.length, workspaceChild: true });
+          unassignedBoards.push({ key: 'board:' + orderedBoards[ubi].id, type: 'board', board: orderedBoards[ubi], index: 0, workspaceChild: true });
         }
+      }
+      if (unassignedBoards.length > 0) {
+        entries.push({ key: 'ws:__unassigned__', type: 'ws_header', ws: { id: '__unassigned__', name: 'Unassigned' }, count: unassignedBoards.length, expanded: true, unassigned: true, boards: unassignedBoards });
       }
     } else {
       // Simple flat list or single-workspace view
@@ -2601,10 +2588,15 @@ var LexeraBoardList = (function () {
       }
     }
 
-    // Fix board indices to be sequential among board entries only
+    // Fix board indices to be sequential among all board entries (flat + nested)
     var boardIdx = 0;
     for (var fi = 0; fi < entries.length; fi++) {
       if (entries[fi].type === 'board') { entries[fi].index = boardIdx++; }
+      if (entries[fi].type === 'ws_header' && entries[fi].boards) {
+        for (var fbi = 0; fbi < entries[fi].boards.length; fbi++) {
+          entries[fi].boards[fbi].index = boardIdx++;
+        }
+      }
     }
 
     return entries;
@@ -2663,8 +2655,49 @@ var LexeraBoardList = (function () {
       }
     }
 
+    // Helper: reconcile a single board entry into a target container
+    function _reconcileBoardEntry(bEntry, bIdx, targetEl, boardIdx) {
+      var board = bEntry.board;
+      var isExpanded = expandedIds.indexOf(board.id) !== -1;
+      var isActive = board.id === activeBoardId;
+      var rows = getBoardHierarchyRows(board.id) || [];
+      var totalCards = rows.length > 0
+        ? countCardsInRows(rows)
+        : board.columns.reduce(function (sum, c) { return sum + c.cardCount; }, 0);
+      bEntry.index = boardIdx;
+      var existingBoard = existingByKey[bEntry.key];
+      var boardNode;
+      if (existingBoard) {
+        var boardItem = existingBoard.querySelector('.board-item');
+        if (boardItem) {
+          _updateBoardItemContent(boardItem, board, boardIdx, isExpanded, isActive, rows, totalCards, !!bEntry.workspaceChild, SidebarSync);
+        }
+        var treeEl = existingBoard.querySelector('.board-item-tree');
+        if (treeEl) {
+          if (isExpanded) { treeEl.classList.add('expanded'); } else { treeEl.classList.remove('expanded'); }
+          if (rows.length > 0) {
+            _renderBoardTree(treeEl, board.id, rows, tv);
+          } else {
+            treeEl.innerHTML = '';
+          }
+        }
+        boardNode = existingBoard;
+      } else {
+        boardNode = _createBoardWrapperEl(board, boardIdx, isExpanded, isActive, rows, totalCards, !!bEntry.workspaceChild, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell);
+      }
+      if (boardNode) {
+        boardNode.setAttribute('data-list-key', bEntry.key);
+        var currentAtPos = targetEl.children[bIdx];
+        if (currentAtPos !== boardNode) {
+          targetEl.insertBefore(boardNode, currentAtPos || null);
+        }
+      }
+      return boardNode;
+    }
+
     // Reconcile: walk the desired list and ensure each entry is at the right position
     // with correct content. Reuse existing nodes where possible.
+    var globalBoardIdx = 0;
     for (var i = 0; i < desired.length; i++) {
       var entry = desired[i];
       var existing = existingByKey[entry.key];
@@ -2672,41 +2705,35 @@ var LexeraBoardList = (function () {
 
       if (entry.type === 'ws_header') {
         if (existing) {
-          _updateWsHeaderContent(existing, entry);
+          var wsHeaderEl = existing.querySelector('.workspace-section-header');
+          if (wsHeaderEl) _updateWsHeaderContent(wsHeaderEl, entry);
           node = existing;
         } else {
           node = _createWsHeaderEl(entry);
         }
-      } else if (entry.type === 'board') {
-        var board = entry.board;
-        var isExpanded = expandedIds.indexOf(board.id) !== -1;
-        var isActive = board.id === activeBoardId;
-        var rows = getBoardHierarchyRows(board.id) || [];
-        var totalCards = rows.length > 0
-          ? countCardsInRows(rows)
-          : board.columns.reduce(function (sum, c) { return sum + c.cardCount; }, 0);
-
-        if (existing) {
-          // Update existing board wrapper in place
-          var boardItem = existing.querySelector('.board-item');
-          if (boardItem) {
-            _updateBoardItemContent(boardItem, board, entry.index, isExpanded, isActive, rows, totalCards, !!entry.workspaceChild, SidebarSync);
+        // Reconcile boards inside the workspace's .tree-children container
+        var wsChildContainer = node.querySelector('.tree-children');
+        if (wsChildContainer) {
+          if (entry.expanded) { wsChildContainer.classList.add('expanded'); } else { wsChildContainer.classList.remove('expanded'); }
+          var wsBoards = entry.boards || [];
+          // Remove stale children
+          for (var wri = wsChildContainer.children.length - 1; wri >= 0; wri--) {
+            var wck = _nodeKey(wsChildContainer.children[wri]);
+            var found = false;
+            for (var wfi = 0; wfi < wsBoards.length; wfi++) { if (wsBoards[wfi].key === wck) { found = true; break; } }
+            if (!found) wsChildContainer.removeChild(wsChildContainer.children[wri]);
           }
-          // Update tree content
-          var treeEl = existing.querySelector('.board-item-tree');
-          if (treeEl) {
-            if (isExpanded) { treeEl.classList.add('expanded'); } else { treeEl.classList.remove('expanded'); }
-            var hasContent = rows.length > 0;
-            if (hasContent) {
-              _renderBoardTree(treeEl, board.id, rows, tv);
-            } else {
-              treeEl.innerHTML = '';
+          if (entry.expanded) {
+            for (var wbi = 0; wbi < wsBoards.length; wbi++) {
+              _reconcileBoardEntry(wsBoards[wbi], wbi, wsChildContainer, globalBoardIdx++);
             }
+          } else {
+            wsChildContainer.innerHTML = '';
           }
-          node = existing;
-        } else {
-          node = _createBoardWrapperEl(board, entry.index, isExpanded, isActive, rows, totalCards, !!entry.workspaceChild, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell);
         }
+      } else if (entry.type === 'board') {
+        _reconcileBoardEntry(entry, i, boardListEl, globalBoardIdx++);
+        node = null; // already placed by _reconcileBoardEntry
       } else if (entry.type === 'remote_divider') {
         if (existing) {
           node = existing;
