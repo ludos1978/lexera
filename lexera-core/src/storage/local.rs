@@ -1036,7 +1036,7 @@ impl LocalStorage {
                 if result.card_content.len() > max_chars {
                     let end = result.card_content.floor_char_boundary(max_chars);
                     result.card_content.truncate(end);
-                    result.card_content.push_str("…");
+                    result.card_content.push('…');
                 }
             }
         }
@@ -5221,7 +5221,6 @@ kanban-plugin: board
         let mut tmp = NamedTempFile::new().unwrap();
         write!(
             tmp,
-            "{}",
             "\
 ---
 kanban-plugin: board
@@ -5493,7 +5492,7 @@ kanban-plugin: board
 
         // Write corrupt .crdt to force recovery
         let crdt_path = dir.path().join("board.md.crdt");
-        fs::write(&crdt_path, &[0xFF, 0xFE, 0x00, 0x01, 0x02]).unwrap();
+        fs::write(&crdt_path, [0xFF, 0xFE, 0x00, 0x01, 0x02]).unwrap();
 
         let storage = LocalStorage::new();
         let id = storage.add_board(&board_path).unwrap();

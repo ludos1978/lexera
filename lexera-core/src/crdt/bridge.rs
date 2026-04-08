@@ -4201,7 +4201,7 @@ mod tests {
             result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(),
             Some("k001")
         );
-        assert_eq!(result.rows[0].stacks[0].columns[0].cards[1].checked, true);
+        assert!(result.rows[0].stacks[0].columns[0].cards[1].checked);
     }
 
     // ═══════════════════════════════════════════════════════════════════

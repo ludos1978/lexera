@@ -955,7 +955,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("PUT")
-                    .uri(&format!("/config/boards/{}/sync", board_id))
+                    .uri(format!("/config/boards/{}/sync", board_id))
                     .header("content-type", "application/json")
                     .header("authorization", format!("Bearer {}", token))
                     .body(Body::from(

@@ -518,9 +518,9 @@ mod tests {
 
         let removed = svc.cleanup_expired();
         assert_eq!(removed, 1);
-        assert!(svc.invites.get("old").is_none());
-        assert!(svc.invites.get("fresh").is_some());
-        assert!(svc.invites.get("forever").is_some());
+        assert!(!svc.invites.contains_key("old"));
+        assert!(svc.invites.contains_key("fresh"));
+        assert!(svc.invites.contains_key("forever"));
     }
 
     #[test]
@@ -543,7 +543,7 @@ mod tests {
         let token = invite.token.clone();
 
         svc.revoke_invite(&token, "room-a").unwrap();
-        assert!(svc.invites.get(&token).is_none());
+        assert!(!svc.invites.contains_key(&token));
     }
 
     #[test]
@@ -556,7 +556,7 @@ mod tests {
         let err = svc.revoke_invite(&token, "room-b").unwrap_err();
         assert!(matches!(err, InviteError::NotFound));
         // Invite should still exist
-        assert!(svc.invites.get(&token).is_some());
+        assert!(svc.invites.contains_key(&token));
     }
 
     #[test]

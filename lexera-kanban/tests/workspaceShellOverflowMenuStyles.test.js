@@ -15,11 +15,11 @@ describe('workspace shell overflow menu styles', () => {
     expect(workspaceShellCss).toContain('background: var(--menu-bg, var(--bg-secondary));');
     expect(workspaceShellCss).toContain('color: var(--menu-item-fg, var(--text-primary));');
     expect(workspaceShellCss).toContain('background: var(--menu-item-bg-hover, var(--bg-hover));');
-    expect(workspaceShellCss).toContain('color: var(--menu-item-fg-hover, var(--text-bright));');
+    expect(workspaceShellCss).toContain('color: var(--menu-item-fg-hover, var(--text-primary));');
   });
 
   it('keeps overflow-menu close controls readable against the menu palette', () => {
     expect(workspaceShellCss).toContain('opacity: 0.78;');
-    expect(workspaceShellCss).toContain('color: var(--menu-item-fg-hover, var(--text-bright));');
+    expect(workspaceShellCss).toContain('color: var(--menu-item-fg-hover, var(--text-primary));');
   });
 });

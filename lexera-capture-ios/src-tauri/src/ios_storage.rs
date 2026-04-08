@@ -578,7 +578,7 @@ impl BoardStorage for IosStorage {
                 if r.card_content.len() > max_chars {
                     let end = r.card_content.floor_char_boundary(max_chars);
                     r.card_content.truncate(end);
-                    r.card_content.push_str("…");
+                    r.card_content.push('…');
                 }
             }
         }

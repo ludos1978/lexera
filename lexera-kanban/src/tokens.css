@@ -25,7 +25,7 @@
 .btn:hover {
   background: var(--btn-bg-hover, #d0d0d0);
   color: var(--text-primary, #222);
-  border-color: var(--text-secondary, #666);
+  border-color: var(--text-muted);
 }
 .btn:focus-visible {
   outline: 2px solid var(--accent, cornflowerblue);
@@ -64,7 +64,7 @@
 .btn-quiet {
   background: transparent;
   border-color: transparent;
-  color: var(--text-secondary, #666);
+  color: var(--text-muted);
 }
 .btn-quiet:hover {
   background: var(--bg-hover, #e5e5e5);

@@ -573,10 +573,10 @@ pub fn toggle_devtools(window: tauri::WebviewWindow) -> Result<bool, String> {
     {
         if window.is_devtools_open() {
             window.close_devtools();
-            return Ok(false);
+            Ok(false)
         } else {
             window.open_devtools();
-            return Ok(true);
+            Ok(true)
         }
     }
     #[cfg(not(any(debug_assertions, target_os = "macos")))]

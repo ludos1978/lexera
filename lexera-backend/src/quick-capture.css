@@ -5,9 +5,8 @@
   --bg-tertiary: #2d2d2d;
   --bg-hover: #383838;
   --border: #3c3c3c;
-  --text-primary: #cccccc;
-  --text-secondary: #969696;
-  --text-bright: #e0e0e0;
+  --text-primary: #e0e0e0;
+  --text-muted: #969696;
   --accent: #0078d4;
   --accent-hover: #1a8cff;
   --success: #4ec9b0;
@@ -59,7 +58,7 @@ body.snap-left .strip-view {
 
 .strip-icon {
   font-size: 18px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   cursor: grab;
   width: 100%;
   text-align: center;
@@ -69,7 +68,7 @@ body.snap-left .strip-view {
 }
 
 .strip-icon:hover {
-  color: var(--text-bright);
+  color: var(--text-primary);
   background: var(--bg-hover);
 }
 
@@ -88,7 +87,7 @@ body.snap-left .strip-view {
 
 .strip-drop-zone {
   font-size: 9px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
   -webkit-app-region: no-drag;
@@ -143,7 +142,7 @@ body.snap-left .capture-container {
 .capture-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-bright);
+  color: var(--text-primary);
   margin-bottom: 0;
   -webkit-app-region: drag;
   cursor: grab;
@@ -155,7 +154,7 @@ body.snap-left .capture-container {
   background: none;
   border: 1px solid var(--border);
   border-radius: 3px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 10px;
   width: 22px;
   height: 22px;
@@ -169,14 +168,14 @@ body.snap-left .capture-container {
 
 .snap-btn:hover {
   background: var(--bg-hover);
-  color: var(--text-bright);
-  border-color: var(--text-secondary);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
 }
 
 .capture-hint {
   -webkit-app-region: no-drag;
   font-size: 10px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -191,7 +190,7 @@ body.snap-left .capture-container {
 }
 
 .clipboard-empty {
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 11px;
   text-align: center;
   padding: 8px 10px;
@@ -299,7 +298,7 @@ body.snap-left .capture-container {
 .clipboard-text-more {
   display: block;
   font-size: 10px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-style: italic;
   margin-top: 2px;
 }
@@ -326,7 +325,7 @@ body.snap-left .capture-container {
 }
 
 .search-input::placeholder {
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 /* ── Browse area (folding tree) ── */
@@ -342,14 +341,14 @@ body.snap-left .capture-container {
 .browse-empty {
   padding: 16px;
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 /* Breadcrumb */
 .level-breadcrumb {
   font-size: 10px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -416,7 +415,7 @@ body.snap-left .capture-container {
 
 .badge-card {
   background: rgba(150, 150, 150, 0.15);
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .level-item .item-info {
@@ -429,7 +428,7 @@ body.snap-left .capture-container {
 
 .level-item .item-context {
   font-size: 10px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -445,13 +444,13 @@ body.snap-left .capture-container {
 
 .level-item .item-detail {
   font-size: 10px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .level-drill {
   flex-shrink: 0;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   margin-left: auto;
 }
 

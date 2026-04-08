@@ -741,8 +741,8 @@ mod tests {
         assert!(vevent.contains("\\n"));
         // But should NOT contain literal newlines inside a property value.
         for line in vevent.split("\r\n") {
-            if line.starts_with("DESCRIPTION:") {
-                assert!(!line[12..].contains('\n'));
+            if let Some(rest) = line.strip_prefix("DESCRIPTION:") {
+                assert!(!rest.contains('\n'));
             }
         }
     }

@@ -1261,8 +1261,10 @@ kanban-plugin: board
 
     #[test]
     fn test_update_yaml_no_existing_header() {
-        let mut settings = BoardSettings::default();
-        settings.column_width = Some("300px".to_string());
+        let settings = BoardSettings {
+            column_width: Some("300px".to_string()),
+            ..Default::default()
+        };
         let yaml = update_yaml_with_board_settings(None, settings);
         assert!(yaml.contains("kanban-plugin: board"));
         assert!(yaml.contains("columnWidth: 300px"));
@@ -1271,8 +1273,10 @@ kanban-plugin: board
     #[test]
     fn test_update_yaml_existing_header() {
         let header = "---\nkanban-plugin: board\ncolumnWidth: 450px\n---";
-        let mut settings = BoardSettings::default();
-        settings.column_width = Some("300px".to_string());
+        let settings = BoardSettings {
+            column_width: Some("300px".to_string()),
+            ..Default::default()
+        };
         let updated = update_yaml_with_board_settings(Some(header), settings);
         assert!(updated.contains("columnWidth: 300px"));
         assert!(!updated.contains("columnWidth: 450px"));

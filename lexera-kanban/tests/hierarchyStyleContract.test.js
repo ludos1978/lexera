@@ -33,18 +33,20 @@ describe('hierarchy style contract', () => {
   it('uses one quiet typography and accent-line state model across hierarchy surfaces', () => {
     expect(appCss).toContain('--app-shell-font-size: var(--font-size-base);');
     expect(appCss).toContain('--font-color-unified: var(--font-color-mode, #000000);');
-    expect(appCss).toContain('--app-shell-font-color: var(--font-color-unified);');
+    // --app-shell-font-color removed — text colors use --text-primary and --text-muted directly
     expect(appCss).toContain('--app-control-font-size: var(--font-size-base);');
     expect(appCss).toContain('--app-control-font-weight: 400;');
-    expect(appCss).toContain('--app-font-color: var(--app-shell-font-color);');
-    expect(appCss).toContain('--app-font-muted-color: var(--app-shell-font-color);');
+    expect(appCss).toContain('--app-font-color: var(--text-primary);');
+    expect(appCss).toContain('--app-font-muted-color: var(--text-muted);');
     expect(appCss).toContain('--hierarchy-font-size: var(--app-control-font-size);');
     expect(appCss).toContain('--hierarchy-font-weight: var(--app-control-font-weight);');
     expect(appCss).toContain('--hierarchy-hover-bg: transparent;');
     expect(appCss).toContain('--hierarchy-active-bg: transparent;');
     // Font-size tokens (xs, sm, md) are NOT overridden per container — they retain
     // their distinct values from tokens.css and body inherits --font-size-base.
-    expect(appCss).toMatch(/:where\([\s\S]*\.sidebar,[\s\S]*\.calendar-panel,[\s\S]*\.mgmt-panel,[\s\S]*\.log-panel[\s\S]*\)\s*\{[\s\S]*--text-primary:\s*var\(--app-shell-font-color\)[\s\S]*--text-secondary:\s*var\(--app-shell-font-color\)/);
+    // Text color tokens are no longer overridden per container — they use
+    // distinct color-mix values from :root and inherit naturally.
+    expect(appCss).toMatch(/:where\([\s\S]*\.sidebar,[\s\S]*\.calendar-panel,[\s\S]*\.mgmt-panel,[\s\S]*\.log-panel[\s\S]*\)\s*\{/);
     // Containers set font-size; children inherit it
     expect(appCss).toMatch(/\.board-list\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)/);
     expect(appCss).toMatch(/\.sidebar-dashboard-body\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)/);

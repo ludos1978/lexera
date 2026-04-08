@@ -745,9 +745,9 @@ mod tests {
         let initial = monitor(0, 0, 1920, 1080);
         let moved = monitor(1920, 0, 2560, 1440);
 
-        assert_eq!(did_monitor_rect_change(initial), false);
-        assert_eq!(did_monitor_rect_change(initial), false);
-        assert_eq!(did_monitor_rect_change(moved), true);
+        assert!(!did_monitor_rect_change(initial));
+        assert!(!did_monitor_rect_change(initial));
+        assert!(did_monitor_rect_change(moved));
     }
 
     #[test]

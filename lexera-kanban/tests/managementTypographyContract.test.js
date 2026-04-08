@@ -13,10 +13,11 @@ describe('management typography contract', () => {
     expect(managementCss).toContain('--app-control-font-size: var(--mgmt-font-size);');
     expect(managementCss).toContain('--hierarchy-font-size: var(--font-size-base, 13px);');
     expect(managementCss).toContain('--hierarchy-font-weight: 400;');
+    // Text tokens use distinct opacities via color-mix for visual hierarchy
+    // --text-bright removed — --text-primary is now the brightest text token
     expect(managementCss).toContain('--text-primary: var(--font-color-unified);');
-    expect(managementCss).toContain('--text-secondary: var(--font-color-unified);');
-    expect(managementCss).toContain('--text-muted: var(--font-color-unified);');
-    expect(managementCss).toContain('--text-bright: var(--font-color-unified);');
+    // --text-secondary removed — only --text-primary and --text-muted remain
+    expect(managementCss).toMatch(/--text-muted:\s*color-mix/);
   });
 
   it('uses only one text font size across the management stylesheet', () => {

@@ -2101,7 +2101,7 @@ var LexeraOrderHelpers = (function () {
     targetEl.innerHTML = '';
 
     if (!treeNodes || treeNodes.length === 0) {
-      setDashboardGroupEmptyState(targetEl, !!options.collapseWhenEmpty);
+      setDashboardGroupEmptyState(targetEl, true);
       var empty = document.createElement('div');
       empty.className = 'dashboard-empty';
       empty.textContent = emptyText;

@@ -10,6 +10,8 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 [kanban]  cp: /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-kanban/../../node_modules/react/umd/react.production.min.js: No such file or directory
 [kanban]         Error The "beforeDevCommand" terminated with a non-zero status code.
 
+- [ ] when i have a stack with "!!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0" i cant remove the text, it doesnt update the view when clearing it out. the include functionality isnt supposed to work in a row title (it correctly doesnt include anything).
+
 ## Repository Foundation
 
 - [ ] Decide whether to keep the current promoted top-level layout or normalize it further into `apps/`, `core/`, `shared/`, `tools/`, and `archive/`.

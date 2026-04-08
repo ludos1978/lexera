@@ -1206,7 +1206,7 @@ kanban-plugin: board
         let resp = app
             .oneshot(
                 Request::builder()
-                    .uri(&format!("/boards/{}/columns", board_id))
+                    .uri(format!("/boards/{}/columns", board_id))
                     .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
@@ -1243,7 +1243,7 @@ kanban-plugin: board
         let resp = app
             .oneshot(
                 Request::builder()
-                    .uri(&format!("/boards/{}/hierarchy", board_id))
+                    .uri(format!("/boards/{}/hierarchy", board_id))
                     .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
@@ -1276,7 +1276,7 @@ kanban-plugin: board
         let resp = app
             .oneshot(
                 Request::builder()
-                    .uri(&format!("/boards/{}/changes?since_generation=0", board_id))
+                    .uri(format!("/boards/{}/changes?since_generation=0", board_id))
                     .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
@@ -1305,7 +1305,7 @@ kanban-plugin: board
             .oneshot(
                 Request::builder()
                     .method("DELETE")
-                    .uri(&format!("/boards/{}", board_id))
+                    .uri(format!("/boards/{}", board_id))
                     .header("authorization", format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
@@ -1405,7 +1405,7 @@ kanban-plugin: board
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/boards/{}/sync-save", board_id))
+                    .uri(format!("/boards/{}/sync-save", board_id))
                     .header("content-type", "application/json")
                     .header("authorization", format!("Bearer {}", token))
                     .body(Body::from(body.to_string()))

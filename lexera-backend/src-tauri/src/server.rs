@@ -65,35 +65,6 @@ fn build_app(state: AppState) -> Router {
         .with_state(state)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::is_allowed_app_origin;
-
-    #[test]
-    fn allows_tauri_window_origins() {
-        assert!(is_allowed_app_origin("tauri://localhost"));
-        assert!(is_allowed_app_origin("http://tauri.localhost"));
-        assert!(is_allowed_app_origin("https://tauri.localhost"));
-        assert!(is_allowed_app_origin("http://ipc.localhost"));
-        assert!(is_allowed_app_origin("https://ipc.localhost"));
-    }
-
-    #[test]
-    fn allows_loopback_http_origins() {
-        assert!(is_allowed_app_origin("http://localhost"));
-        assert!(is_allowed_app_origin("http://localhost:1431"));
-        assert!(is_allowed_app_origin("http://127.0.0.1"));
-        assert!(is_allowed_app_origin("http://127.0.0.1:1431"));
-        assert!(is_allowed_app_origin("https://localhost:1431"));
-    }
-
-    #[test]
-    fn rejects_unrelated_origins() {
-        assert!(!is_allowed_app_origin("http://example.com"));
-        assert!(!is_allowed_app_origin("https://192.168.1.5:1431"));
-    }
-}
-
 /// Try to bind a TCP listener on the given address:port.
 async fn try_bind(bind_addr: &str, port: u16) -> Option<(tokio::net::TcpListener, u16)> {
     match tokio::net::TcpListener::bind(format!("{}:{}", bind_addr, port)).await {
@@ -273,4 +244,33 @@ pub async fn restart_server(
     }
 
     Ok(actual_port)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_allowed_app_origin;
+
+    #[test]
+    fn allows_tauri_window_origins() {
+        assert!(is_allowed_app_origin("tauri://localhost"));
+        assert!(is_allowed_app_origin("http://tauri.localhost"));
+        assert!(is_allowed_app_origin("https://tauri.localhost"));
+        assert!(is_allowed_app_origin("http://ipc.localhost"));
+        assert!(is_allowed_app_origin("https://ipc.localhost"));
+    }
+
+    #[test]
+    fn allows_loopback_http_origins() {
+        assert!(is_allowed_app_origin("http://localhost"));
+        assert!(is_allowed_app_origin("http://localhost:1431"));
+        assert!(is_allowed_app_origin("http://127.0.0.1"));
+        assert!(is_allowed_app_origin("http://127.0.0.1:1431"));
+        assert!(is_allowed_app_origin("https://localhost:1431"));
+    }
+
+    #[test]
+    fn rejects_unrelated_origins() {
+        assert!(!is_allowed_app_origin("http://example.com"));
+        assert!(!is_allowed_app_origin("https://192.168.1.5:1431"));
+    }
 }

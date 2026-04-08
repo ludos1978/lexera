@@ -5,9 +5,8 @@
   --bg-tertiary: #2d2d2d;
   --bg-hover: #383838;
   --border: #3c3c3c;
-  --text-primary: #cccccc;
-  --text-secondary: #969696;
-  --text-bright: #e0e0e0;
+  --text-primary: #e0e0e0;
+  --text-muted: #969696;
   --accent: #0078d4;
   --accent-hover: #1a8cff;
   --success: #4ec9b0;
@@ -79,7 +78,7 @@ body {
 
 .shell-settings-title {
   font-weight: 600;
-  color: var(--text-bright);
+  color: var(--text-primary);
 }
 
 .shell-settings-body {
@@ -159,7 +158,7 @@ body {
 
 .log-panel-header.log-panel-has-error .log-panel-tab.active {
   opacity: 1;
-  color: var(--text-bright);
+  color: var(--text-primary);
 }
 
 .log-panel-error-msg {
@@ -188,7 +187,7 @@ body {
 
 .log-panel-title {
   font-weight: 600;
-  color: var(--text-bright);
+  color: var(--text-primary);
   font-size: 12px;
 }
 
@@ -201,7 +200,7 @@ body {
 .log-panel-tab {
   background: transparent;
   border: 1px solid transparent;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   padding: 2px 8px;
   border-radius: 3px;
   cursor: pointer;
@@ -216,7 +215,7 @@ body {
 .log-panel-tab.active {
   background: var(--bg-primary);
   border-color: var(--border);
-  color: var(--text-bright);
+  color: var(--text-primary);
 }
 
 .log-panel-actions {
@@ -255,7 +254,7 @@ body {
   white-space: nowrap;
   min-width: 0;
   flex: 1;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   max-width: 200px;
 }
 
@@ -268,7 +267,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 2px;
   background: var(--btn-bg);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font: inherit;
   font-size: 11px;
   line-height: 1;
@@ -279,7 +278,7 @@ body {
 
 .log-panel-status-btn:hover {
   background: var(--btn-bg-hover);
-  color: var(--text-bright);
+  color: var(--text-primary);
 }
 
 .log-panel-status-btn.connection-status-btn.connected {
@@ -324,7 +323,7 @@ body {
   flex-shrink: 0;
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-bright);
+  color: var(--text-primary);
   background: var(--bg-tertiary);
   border-radius: 8px;
   padding: 0 5px;
@@ -335,13 +334,13 @@ body {
 
 .log-entry-source {
   width: 58px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   flex-shrink: 0;
   text-transform: uppercase;
 }
 
 .log-entry-target {
-  color: var(--text-secondary);
+  color: var(--text-muted);
   flex-shrink: 0;
   max-width: 180px;
   overflow: hidden;
@@ -350,7 +349,7 @@ body {
 }
 
 .log-time {
-  color: var(--text-secondary);
+  color: var(--text-muted);
   flex-shrink: 0;
   min-width: 65px;
 }

@@ -89,8 +89,7 @@ impl FileEncryptor {
             .cipher
             .encrypt(nonce, plaintext.as_bytes())
             .map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                std::io::Error::other(
                     format!("Encryption failed: {}", e),
                 )
             })?;

@@ -1591,7 +1591,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/collab/invites/{}/accept", token))
+                    .uri(format!("/collab/invites/{}/accept", token))
                     .header("authorization", format!("Bearer {}", bob_token))
                     .body(Body::empty())
                     .unwrap(),

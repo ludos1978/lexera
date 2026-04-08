@@ -172,17 +172,17 @@ var LexeraAppearance = (function () {
     root.style.setProperty('--surface-header-bg', palette['--bg-tertiary'] || palette['--bg-secondary'] || '');
     root.style.setProperty('--surface-header-border', palette['--border'] || '');
     root.style.setProperty('--surface-footer-bg', palette['--bg-secondary'] || '');
-    root.style.setProperty('--title-row-color', palette['--text-bright'] || '');
-    root.style.setProperty('--title-stack-color', palette['--text-secondary'] || '');
-    root.style.setProperty('--title-column-color', palette['--text-bright'] || '');
+    root.style.setProperty('--title-row-color', palette['--text-primary'] || '');
+    root.style.setProperty('--title-stack-color', palette['--text-muted'] || '');
+    root.style.setProperty('--title-column-color', palette['--text-primary'] || '');
 
     root.style.setProperty('--icon-btn-bg', palette['--bg-tertiary'] || palette['--btn-bg'] || '');
     root.style.setProperty('--icon-btn-bg-hover', palette['--bg-hover'] || palette['--btn-bg-hover'] || '');
     root.style.setProperty('--icon-btn-bg-active', 'rgba(0, 122, 204, 0.22)');
-    root.style.setProperty('--icon-btn-border', palette['--text-secondary'] || palette['--border'] || '');
-    root.style.setProperty('--icon-btn-border-hover', palette['--text-bright'] || palette['--text-primary'] || '');
-    root.style.setProperty('--icon-btn-fg', palette['--text-bright'] || palette['--btn-fg'] || '');
-    root.style.setProperty('--icon-btn-fg-hover', palette['--text-bright'] || palette['--text-primary'] || '');
+    root.style.setProperty('--icon-btn-border', palette['--text-muted'] || palette['--border'] || '');
+    root.style.setProperty('--icon-btn-border-hover', palette['--text-primary'] || '');
+    root.style.setProperty('--icon-btn-fg', palette['--text-primary'] || palette['--btn-fg'] || '');
+    root.style.setProperty('--icon-btn-fg-hover', palette['--text-primary'] || '');
 
     // Update theme selector if present
     var themeSelectors = [

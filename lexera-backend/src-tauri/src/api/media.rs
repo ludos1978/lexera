@@ -233,7 +233,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/boards/{}/media", board_id))
+                    .uri(format!("/boards/{}/media", board_id))
                     .header(
                         "content-type",
                         format!("multipart/form-data; boundary={}", boundary),

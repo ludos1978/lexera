@@ -11,12 +11,10 @@
   --font-color-unified: var(--font-color-mode, #000000);
   --app-control-font-size: var(--mgmt-font-size);
   --app-control-font-weight: 400;
-  --app-font-color: var(--font-color-unified);
-  --app-font-muted-color: var(--font-color-unified);
+  --app-font-color: var(--text-primary);
+  --app-font-muted-color: var(--text-muted);
   --text-primary: var(--font-color-unified);
-  --text-secondary: var(--font-color-unified);
-  --text-muted: var(--font-color-unified);
-  --text-bright: var(--font-color-unified);
+  --text-muted: color-mix(in srgb, var(--font-color-unified) 38%, transparent);
   --app-menu-fg: var(--app-font-muted-color);
   --app-menu-fg-hover: var(--app-font-color);
   --app-menu-bg: transparent;
@@ -258,7 +256,7 @@
 }
 .mgmt-ws-assign-label {
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 .mgmt-ws-checkbox {
   font-size: var(--mgmt-font-size);
@@ -287,7 +285,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-secondary);
+  background: var(--text-muted);
   opacity: 0.3;
   margin-right: 6px;
   flex-shrink: 0;
@@ -315,7 +313,7 @@
 }
 .mgmt-board-authority.local {
   background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 .mgmt-board-authority.remote {
   background: rgba(88, 166, 255, 0.15);
@@ -333,7 +331,7 @@
   cursor: pointer;
 }
 .mgmt-board-name:hover {
-  color: var(--text-bright);
+  color: var(--text-primary);
 }
 
 .mgmt-board-actions {
@@ -352,7 +350,7 @@
   border: 1px solid transparent;
   border-radius: 4px;
   background: none;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: var(--mgmt-font-size);
   padding: 0;
@@ -385,7 +383,7 @@
 .mgmt-detail-tab {
   padding: 4px 10px;
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   cursor: pointer;
   border: none;
   background: none;
@@ -419,7 +417,7 @@
 .mgmt-settings-grid label,
 .mgmt-sync-grid label {
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -454,12 +452,12 @@
 .mgmt-copy {
   margin: 0 0 8px;
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .mgmt-subsection-title {
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   margin: 0;
 }
 
@@ -484,7 +482,7 @@
   width: 12px;
   text-align: center;
   font-size: var(--mgmt-font-size);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 .mgmt-workspace-subsection {
@@ -497,7 +495,7 @@
 /* Drop zone for adding boards */
 .mgmt-drop-hint {
   font-size: var(--mgmt-font-size);
-  color: var(--text-tertiary, var(--text-secondary));
+  color: var(--text-tertiary, var(--text-muted));
   text-align: center;
   padding: 4px 0;
 }
@@ -518,8 +516,8 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 1px solid var(--text-secondary);
-  color: var(--text-secondary);
+  border: 1px solid var(--text-muted);
+  color: var(--text-muted);
   font-size: var(--mgmt-font-size);
   cursor: help;
   flex-shrink: 0;

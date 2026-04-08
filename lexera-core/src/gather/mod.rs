@@ -212,7 +212,7 @@ fn parse_temporal_query(query_content: &str) -> GatherExpr {
     }
 
     // wnn — short week notation
-    if lc.starts_with('w') && lc.len() > 1 && lc[1..].chars().next().map_or(false, |c| c.is_ascii_digit()) {
+    if lc.starts_with('w') && lc.len() > 1 && lc[1..].chars().next().is_some_and(|c| c.is_ascii_digit()) {
         if let Ok(n) = lc[1..].parse::<u32>() {
             return GatherExpr::WeekNum(CompOp::Eq, n);
         }
@@ -332,7 +332,7 @@ fn eval_expr(
         GatherExpr::Tag(tag_name) => {
             // extract_hash_tags returns tags WITH "#" prefix (lowercased)
             let expected = format!("#{}", tag_name);
-            hash_tags.iter().any(|t| *t == expected)
+            hash_tags.contains(&expected)
         }
         GatherExpr::DayOffset(op, value) => card_date
             .map(|d| compare_i64((d - today).num_days(), *value, *op))
@@ -408,7 +408,7 @@ fn has_person_or_custom_tags(hash_tags: &[String]) -> bool {
     })
 }
 
-fn sort_column_by_date(cards: &mut Vec<KanbanCard>, today: NaiveDate) {
+fn sort_column_by_date(cards: &mut [KanbanCard], today: NaiveDate) {
     cards.sort_by(|a, b| {
         let da = get_card_due_date(&a.content, today);
         let db = get_card_due_date(&b.content, today);
@@ -421,7 +421,7 @@ fn sort_column_by_date(cards: &mut Vec<KanbanCard>, today: NaiveDate) {
     });
 }
 
-fn sort_column_by_name(cards: &mut Vec<KanbanCard>) {
+fn sort_column_by_name(cards: &mut [KanbanCard]) {
     cards.sort_by(|a, b| {
         let ta = a.content.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
         let tb = b.content.lines().find(|l| !l.trim().is_empty()).unwrap_or("");

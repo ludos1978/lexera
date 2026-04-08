@@ -940,14 +940,14 @@ fn render_csv_text_to_svg(source: &str, title: &str, page_number: u32) -> String
     }
 
     let mut col_widths = vec![120f32; visible_columns];
-    for col_idx in 0..visible_columns {
+    for (col_idx, col_width) in col_widths.iter_mut().enumerate() {
         let mut width = 120f32;
         for row in &display_rows {
             let cell = row.get(col_idx).map(|value| value.as_str()).unwrap_or("");
             let chars = cell.chars().count().min(36) as f32;
             width = width.max(28.0 + chars * 7.2);
         }
-        col_widths[col_idx] = width.min(280.0);
+        *col_width = width.min(280.0);
     }
 
     let header_height = 36f32;
@@ -1063,7 +1063,7 @@ fn render_plaintext_to_svg(source: &str, title: &str, page_number: u32) -> Strin
     let width = outer_padding * 2.0 + max_line_chars as f32 * 7.4 + 20.0;
     let height = outer_padding * 2.0 + title_height + meta_height + content_height + footer_height;
 
-    let total_pages = (total_lines + max_lines_per_page - 1) / max_lines_per_page;
+    let total_pages = total_lines.div_ceil(max_lines_per_page);
     let footer_note = format!(
         "Lines {}-{} of {} | Page {} of {}",
         if start < total_lines { start + 1 } else { 0 },
@@ -2000,7 +2000,7 @@ pub async fn pandoc_export(opts: PandocExportOptions) -> Result<MarpResult, Stri
 #[tauri::command]
 pub async fn check_marp_available() -> CliStatus {
     if let Some(marp_path) = find_marp_cli() {
-        let cmd = if marp_path == PathBuf::from("npx") {
+        let cmd = if marp_path == Path::new("npx") {
             Command::new("npx")
                 .args(["--yes", "@marp-team/marp-cli", "--version"])
                 .output()

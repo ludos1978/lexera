@@ -47,7 +47,7 @@
   gap: var(--app-space-1);
   margin-left: auto;
   flex-shrink: 0;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .hierarchical-count {
@@ -77,9 +77,9 @@
 }
 
 .hierarchical-action:hover {
-  border-color: var(--icon-btn-border-hover, var(--text-secondary));
+  border-color: var(--icon-btn-border-hover, var(--text-muted));
   background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
-  color: var(--icon-btn-fg-hover, var(--text-bright));
+  color: var(--icon-btn-fg-hover, var(--text-primary));
 }
 
 /* Children container: indented, collapsible */
@@ -94,7 +94,7 @@
 
 /* Section header */
 .hierarchical-section-header {
-  color: var(--text-secondary);
+  color: var(--text-muted);
   padding: 2px 6px;
   margin: 0 2px;
 }

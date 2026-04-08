@@ -24,9 +24,7 @@
   --workspace-row-radius: var(--hierarchy-row-radius, 3px);
   --workspace-header-row-min-height: var(--workspace-row-min-height);
   --text-primary: var(--font-color-unified);
-  --text-secondary: var(--font-color-unified);
-  --text-muted: var(--font-color-unified);
-  --text-bright: var(--font-color-unified);
+  --text-muted: color-mix(in srgb, var(--font-color-unified) 38%, transparent);
   --app-menu-fg: var(--font-color-unified);
   --app-menu-fg-hover: var(--font-color-unified);
   --app-menu-border: transparent;
@@ -658,12 +656,12 @@
 
 .ws-tab-overflow-menu-item:hover {
   background: var(--menu-item-bg-hover, var(--bg-hover));
-  color: var(--menu-item-fg-hover, var(--text-bright));
+  color: var(--menu-item-fg-hover, var(--text-primary));
 }
 
 .ws-tab-overflow-menu-item.is-active {
   background: color-mix(in srgb, var(--menu-item-bg-hover, var(--bg-hover)) 82%, transparent);
-  color: var(--menu-item-fg-hover, var(--text-bright));
+  color: var(--menu-item-fg-hover, var(--text-primary));
 }
 
 .ws-tab-overflow-menu-item-label {
@@ -685,7 +683,7 @@
 }
 
 .ws-tab-overflow-menu-item-close:hover {
-  color: var(--menu-item-fg-hover, var(--text-bright));
+  color: var(--menu-item-fg-hover, var(--text-primary));
   opacity: 1;
 }
 
@@ -706,7 +704,7 @@
   -webkit-app-region: no-drag;
 }
 .ws-view-drag:hover {
-  color: var(--icon-btn-fg-hover, var(--text-bright));
+  color: var(--icon-btn-fg-hover, var(--text-primary));
   background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
   opacity: 1;
 }
@@ -715,7 +713,7 @@
 }
 .ws-view-fold:hover {
   background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
-  color: var(--icon-btn-fg-hover, var(--text-bright));
+  color: var(--icon-btn-fg-hover, var(--text-primary));
   opacity: 1;
 }
 .ws-view-fold.is-folded {
@@ -1282,7 +1280,7 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspa
 }
 .workspace-shell-panel-only-dock-btn:hover {
   background: var(--accent);
-  color: var(--text-bright, #fff);
+  color: var(--text-primary);
 }
 
 body.workspace-shell-sidebar-hidden .sidebar,
