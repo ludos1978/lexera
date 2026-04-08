@@ -293,6 +293,19 @@ var LexeraDragDropHandlers = (function () {
     return cards.length;
   }
 
+  function findSidebarCardInsertIndex(mouseY, sidebarColNode) {
+    var childContainer = sidebarColNode.querySelector('.tree-children');
+    if (!childContainer) return null;
+    var treeCards = childContainer.querySelectorAll(':scope > .tree-node[data-tree-drag="tree-card"]');
+    for (var i = 0; i < treeCards.length; i++) {
+      var rect = getCachedRect(treeCards[i]);
+      if (mouseY < rect.top + rect.height / 2) {
+        return i;
+      }
+    }
+    return treeCards.length;
+  }
+
   function showCardDropIndicator(cardsEl, insertIdx) {
     if (!cardsEl) return;
     var indicator = document.querySelector('.card-drop-indicator');
@@ -396,7 +409,8 @@ var LexeraDragDropHandlers = (function () {
           var activeTargetCol = sidebarColumnId
             ? findColumnByIdInBoardData(_deps.getFullBoardData(), sidebarColumnId)
             : null;
-          sidebarInsertIdx = getVisibleCardCountInColumn(activeTargetCol);
+          var sidebarPosIdx = findSidebarCardInsertIndex(my, sidebarCol);
+          sidebarInsertIdx = sidebarPosIdx != null ? sidebarPosIdx : getVisibleCardCountInColumn(activeTargetCol);
         } else {
           var sidebarRows = _deps.getBoardHierarchyRows(sidebarBoardId) || [];
           var sidebarTargetCol = sidebarColumnId
@@ -407,7 +421,8 @@ var LexeraDragDropHandlers = (function () {
             var sidebarStack = sidebarRow && sidebarRow.stacks ? sidebarRow.stacks[sidebarStackIdx] : null;
             sidebarTargetCol = sidebarStack && sidebarStack.columns ? sidebarStack.columns[sidebarColIdx] : null;
           }
-          sidebarInsertIdx = getVisibleCardCountInColumn(sidebarTargetCol);
+          var sidebarPosIdx2 = findSidebarCardInsertIndex(my, sidebarCol);
+          sidebarInsertIdx = sidebarPosIdx2 != null ? sidebarPosIdx2 : getVisibleCardCountInColumn(sidebarTargetCol);
         }
         return {
           kind: 'sidebar',

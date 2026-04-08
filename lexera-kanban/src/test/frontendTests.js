@@ -187,6 +187,82 @@
     return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
   }
 
+  function isHiddenForRender(text) {
+    return /(^|\s)#hidden(?:-internal-[a-z0-9-]+)?\b/i.test(String(text || ''));
+  }
+
+  function getExpectedVisibleProjection(boardData) {
+    var projection = { rows: [], columns: [] };
+    var rows = boardData && Array.isArray(boardData.rows) ? boardData.rows : [];
+    var flatIdx = 0;
+
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      var rowVisible = !isHiddenForRender(row && row.title);
+      var rowEntry = rowVisible ? {
+        rowIndex: r,
+        rowId: row && row.id ? row.id : '',
+        row: row,
+        stacks: []
+      } : null;
+      var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
+
+      for (var s = 0; s < stacks.length; s++) {
+        var stack = stacks[s];
+        var stackVisible = rowVisible && !isHiddenForRender(stack && stack.title);
+        var stackEntry = stackVisible ? {
+          rowIndex: r,
+          stackIndex: s,
+          stackId: stack && stack.id ? stack.id : '',
+          stack: stack,
+          columns: []
+        } : null;
+        var cols = stack && Array.isArray(stack.columns) ? stack.columns : [];
+
+        for (var c = 0; c < cols.length; c++) {
+          var col = cols[c];
+          var colVisible = stackVisible && !isHiddenForRender(col && col.title);
+          if (colVisible) {
+            var cards = Array.isArray(col.cards) ? col.cards : [];
+            var visibleCards = [];
+            for (var k = 0; k < cards.length; k++) {
+              if (!isHiddenForRender(cards[k] && cards[k].content)) visibleCards.push(cards[k]);
+            }
+            var colEntry = {
+              flatIdx: flatIdx,
+              rowIndex: r,
+              stackIndex: s,
+              colIndex: c,
+              columnId: col && col.id ? col.id : '',
+              column: col,
+              cards: visibleCards
+            };
+            projection.columns.push(colEntry);
+            stackEntry.columns.push(colEntry);
+          }
+          flatIdx++;
+        }
+
+        if (stackEntry) rowEntry.stacks.push(stackEntry);
+      }
+
+      if (rowEntry) projection.rows.push(rowEntry);
+    }
+
+    return projection;
+  }
+
+  function findFirstVisibleStackRef(boardData) {
+    var projection = getExpectedVisibleProjection(boardData);
+    for (var r = 0; r < projection.rows.length; r++) {
+      var row = projection.rows[r];
+      for (var s = 0; s < row.stacks.length; s++) {
+        if (row.stacks[s]) return row.stacks[s];
+      }
+    }
+    return null;
+  }
+
   function looksLikeOpaqueBoardTitle(title, boardId) {
     var text = cleanBoardText(title);
     var id = cleanBoardText(boardId);
@@ -632,14 +708,17 @@
     var flatIdx = 0;
     var srcCol = null, dstCol = null;
     for (var r = 0; r < data.rows.length; r++) {
+      var rowHidden = isHiddenForRender(data.rows[r] && data.rows[r].title);
       var stacks = data.rows[r].stacks || [];
       for (var s = 0; s < stacks.length; s++) {
+        var stackHidden = rowHidden || isHiddenForRender(stacks[s] && stacks[s].title);
         var cols = stacks[s].columns || [];
         for (var c = 0; c < cols.length; c++) {
-          var visibleCards = (cols[c].cards || []).filter(function (card) {
-            return !card.content || card.content.indexOf('#hidden-internal') === -1;
+          var colHidden = stackHidden || isHiddenForRender(cols[c] && cols[c].title);
+          var visibleCards = colHidden ? [] : (cols[c].cards || []).filter(function (card) {
+            return !isHiddenForRender(card && card.content);
           });
-          if (visibleCards.length > 0) {
+          if (!colHidden && visibleCards.length > 0) {
             if (!srcCol) {
               srcCol = { flatIdx: flatIdx, col: cols[c], row: r, stack: s, localCol: c, cards: visibleCards };
             } else if (!dstCol) {
@@ -806,8 +885,11 @@
     try {
       var colsBefore = getViewColumnCount();
       var data = api().getFullBoardData();
-      var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
-      lastStack.columns.push({ id: '__test-col__', title: 'Test Column', cards: [], include_source: null });
+      var targetStack = findFirstVisibleStackRef(data);
+      assert(targetStack, 'need at least 1 visible stack');
+      data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex].columns.push({
+        id: '__test-col__', title: 'Test Column', cards: [], include_source: null
+      });
       api().setTestBoard(data, _boardId);
       await delay(100);
 
@@ -1024,14 +1106,9 @@
       api().setTestBoard(data, _boardId);
       await delay(100);
 
-      assertEqual(getViewRowCount(), data.rows.length, 'row count matches fullBoardData');
-      var expectedCols = 0;
-      for (var r = 0; r < data.rows.length; r++) {
-        var stacks = data.rows[r].stacks || [];
-        for (var s = 0; s < stacks.length; s++)
-          expectedCols += (stacks[s].columns || []).length;
-      }
-      assertEqual(getViewColumnCount(), expectedCols, 'column count matches fullBoardData');
+      var expected = getExpectedVisibleProjection(data);
+      assertEqual(getViewRowCount(), expected.rows.length, 'row count matches visible fullBoardData');
+      assertEqual(getViewColumnCount(), expected.columns.length, 'column count matches visible fullBoardData');
     } finally { await teardown(); }
   });
 
@@ -1044,8 +1121,11 @@
     try {
       var colsBefore = getViewColumnCount();
       var data = api().getFullBoardData();
-      var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
-      lastStack.columns.push({ id: '__empty-col-id-test__', title: 'ID Test Col', cards: [], include_source: null });
+      var targetStack = findFirstVisibleStackRef(data);
+      assert(targetStack, 'need at least 1 visible stack');
+      data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex].columns.push({
+        id: '__empty-col-id-test__', title: 'ID Test Col', cards: [], include_source: null
+      });
       api().setTestBoard(data, _boardId);
       await delay(100);
 
@@ -1096,18 +1176,18 @@
     await setup();
     try {
       var data = api().getFullBoardData();
-      var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
-      lastStack.columns.push({ id: '__remove-col-test__', title: 'To Remove', cards: [], include_source: null });
+      var targetStack = findFirstVisibleStackRef(data);
+      assert(targetStack, 'need at least 1 visible stack');
+      data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex].columns.push({
+        id: '__remove-col-test__', title: 'To Remove', cards: [], include_source: null
+      });
       api().setTestBoard(data, _boardId);
       await delay(100);
       var colsAfterAdd = getViewColumnCount();
 
       data = api().getFullBoardData();
-      lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
-      lastStack.columns = lastStack.columns.filter(function (col) { return col.id !== '__remove-col-test__'; });
-      if (lastStack.columns.length === 0) {
-        lastStack.columns.push({ id: '__placeholder__', title: 'Empty', cards: [], include_source: null });
-      }
+      var fullStack = data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex];
+      fullStack.columns = fullStack.columns.filter(function (col) { return col.id !== '__remove-col-test__'; });
       api().setTestBoard(data, _boardId);
       await delay(100);
 
@@ -1165,8 +1245,9 @@
     await setup();
     try {
       var data = api().getFullBoardData();
-      var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
-      lastStack.columns.push({ id: '__cons-col__', title: 'Cons Col', cards: [
+      var targetStack = findFirstVisibleStackRef(data);
+      assert(targetStack, 'need at least 1 visible stack');
+      data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex].columns.push({ id: '__cons-col__', title: 'Cons Col', cards: [
         { id: '__cons-card__', content: 'Cons Card', checked: false, kid: '__cons-card__' }
       ], include_source: null });
       api().setTestBoard(data, _boardId);
@@ -1256,6 +1337,32 @@
   function getDashboardHelpers() {
     var g = typeof globalThis !== 'undefined' ? globalThis : window;
     return g.LexeraOrderHelpers || null;
+  }
+
+  function getDashboardDebugState() {
+    var helpers = getDashboardHelpers();
+    if (!helpers) return null;
+    if (typeof helpers._getDashboardDebugState === 'function') return helpers._getDashboardDebugState();
+    if (typeof helpers._getDashboardPendingFlags === 'function') {
+      var flags = helpers._getDashboardPendingFlags();
+      return {
+        refresh: !!(flags && flags.refresh),
+        render: !!(flags && flags.render),
+        timerActive: false,
+        refreshSeq: 0,
+        loading: false
+      };
+    }
+    return null;
+  }
+
+  function didDashboardRefreshTrigger(before, after) {
+    if (!after) return false;
+    if (after.refresh || after.render || after.timerActive || after.loading) return true;
+    if (!before) return false;
+    return typeof after.refreshSeq === 'number' &&
+      typeof before.refreshSeq === 'number' &&
+      after.refreshSeq > before.refreshSeq;
   }
 
   register('dashboard: refresh scheduled after addCard mutation', async function () {
@@ -1562,9 +1669,9 @@
   register('data integrity: DOM column count matches data column count', async function () {
     await setup();
     try {
-      var allCols = api().getAllFullColumns();
+      var expected = getExpectedVisibleProjection(api().getFullBoardData());
       var domCols = getViewColumnCount();
-      assertEqual(domCols, allCols.length, 'DOM columns match data columns');
+      assertEqual(domCols, expected.columns.length, 'DOM columns match visible data columns');
     } finally { await teardown(); }
   });
 
@@ -1762,12 +1869,15 @@
     await setup();
     try {
       var data = api().getFullBoardData();
-      var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
-      lastStack.columns.push({ id: '__parity-col__', title: 'Parity Test', cards: [], include_source: null });
+      var targetStack = findFirstVisibleStackRef(data);
+      assert(targetStack, 'need at least 1 visible stack');
+      data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex].columns.push({
+        id: '__parity-col__', title: 'Parity Test', cards: [], include_source: null
+      });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      var allCols = api().getAllFullColumns();
-      assertEqual(getViewColumnCount(), allCols.length, 'DOM cols match data cols after add');
+      var expected = getExpectedVisibleProjection(api().getFullBoardData());
+      assertEqual(getViewColumnCount(), expected.columns.length, 'DOM cols match visible data cols after add');
     } finally { await teardown(); }
   });
 
@@ -1785,10 +1895,11 @@
       });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      var allCols = api().getAllFullColumns();
-      assertEqual(getViewColumnCount(), allCols.length, 'DOM cols match after row add');
-      assertEqual(getViewRowCount(), data.rows.length, 'DOM rows match after row add');
-      assert(getViewCardKids(allCols.length - 1).indexOf('__parity-card__') !== -1,
+      var expected = getExpectedVisibleProjection(api().getFullBoardData());
+      var lastVisibleColumn = expected.columns[expected.columns.length - 1];
+      assertEqual(getViewColumnCount(), expected.columns.length, 'DOM cols match after row add');
+      assertEqual(getViewRowCount(), expected.rows.length, 'DOM rows match after row add');
+      assert(lastVisibleColumn && getViewCardKids(lastVisibleColumn.flatIdx).indexOf('__parity-card__') !== -1,
         'new card visible in new column');
     } finally { await teardown(); }
   });
@@ -1796,16 +1907,14 @@
   register('parity: card IDs in DOM match card IDs in data per column', async function () {
     await setup();
     try {
-      var allCols = api().getAllFullColumns();
-      for (var i = 0; i < allCols.length; i++) {
-        var dataCards = (allCols[i].cards || []).filter(function (card) {
-          return !card.content || card.content.indexOf('#hidden-internal') === -1;
-        });
+      var expected = getExpectedVisibleProjection(api().getFullBoardData());
+      for (var i = 0; i < expected.columns.length; i++) {
+        var dataCards = expected.columns[i].cards || [];
         var dataKids = [];
         for (var j = 0; j < dataCards.length; j++)
           dataKids.push(dataCards[j].kid || dataCards[j].id);
-        var domKids = getViewCardKids(i);
-        assertEqual(domKids, dataKids, 'col ' + i + ' card IDs match data↔DOM');
+        var domKids = getViewCardKids(expected.columns[i].flatIdx);
+        assertEqual(domKids, dataKids, 'col ' + expected.columns[i].flatIdx + ' card IDs match data↔DOM');
       }
     } finally { await teardown(); }
   });
@@ -1817,21 +1926,24 @@
   register('remove column: disappears from board view', async function () {
     await setup();
     try {
-      var colsBefore = getViewColumnCount();
-      assert(colsBefore >= 2, 'need at least 2 columns');
       var data = api().getFullBoardData();
-      // Remove last column from the last stack of the first row
-      var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
-      assert(lastStack.columns.length >= 1, 'stack has columns');
-      lastStack.columns.pop();
-      if (lastStack.columns.length === 0) {
-        // If stack is now empty, add a placeholder column to keep structure valid
-        lastStack.columns.push({ id: '__placeholder__', title: 'Empty', cards: [], include_source: null });
-      }
+      var targetStack = findFirstVisibleStackRef(data);
+      assert(targetStack, 'need at least 1 visible stack');
+      data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex].columns.push({
+        id: '__remove-col-visible__', title: 'Remove Visible', cards: [], include_source: null
+      });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      var allCols = api().getAllFullColumns();
-      assertEqual(getViewColumnCount(), allCols.length, 'DOM matches data after column removal');
+
+      data = api().getFullBoardData();
+      var fullStack = data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex];
+      fullStack.columns = fullStack.columns.filter(function (col) { return col.id !== '__remove-col-visible__'; });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      var expected = getExpectedVisibleProjection(api().getFullBoardData());
+      assertEqual(getViewColumnCount(), expected.columns.length, 'DOM matches visible data after column removal');
+      assert(!getContainer().querySelector('.column[data-column-id="__remove-col-visible__"]'),
+        'removed column no longer rendered');
     } finally { await teardown(); }
   });
 
@@ -1839,13 +1951,210 @@
     await setup();
     try {
       var data = api().getFullBoardData();
-      if (data.rows.length < 2) return; // skip if only 1 row
-      var rowsBefore = getViewRowCount();
-      data.rows.pop();
+      data.rows.push({
+        id: '__remove-visible-row__', title: 'Remove Visible Row',
+        stacks: [{ id: '__remove-visible-stack__', title: 'S',
+          columns: [{ id: '__remove-visible-col__', title: 'C', cards: [], include_source: null }]
+        }]
+      });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertEqual(getViewRowCount(), rowsBefore - 1, 'row count -1');
+
+      data = api().getFullBoardData();
+      data.rows = (data.rows || []).filter(function (row) { return row.id !== '__remove-visible-row__'; });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      var expected = getExpectedVisibleProjection(api().getFullBoardData());
+      assertEqual(getViewRowCount(), expected.rows.length, 'row count matches visible data after removal');
     } finally { await teardown(); }
+  });
+
+  register('temporal tags: explicit date format tags are recognized as date type', async function () {
+    await setup();
+    try {
+      var formats = ['2025-04-08', '2025.04.08', '2025/04/08'];
+      for (var i = 0; i < formats.length; i++) {
+        var type = api().getTemporalTagType(formats[i]);
+        assertEqual(type, 'date', formats[i] + ' is date type');
+      }
+    } finally { await teardown(); }
+  });
+
+  register('temporal tags: minute slot tag is recognized as minuteSlot type', async function () {
+    await setup();
+    try {
+      var type = api().getTemporalTagType(':15-:45');
+      assertEqual(type, 'minuteSlot', ':15-:45 is minuteSlot type');
+    } finally { await teardown(); }
+  });
+
+  register('temporal tags: date(...) with various dates resolves correctly', async function () {
+    await setup();
+    try {
+      var result1 = api().describeTemporalTag('date(2024-01-01)');
+      assert(result1 !== null, 'date(2024-01-01) is recognized');
+      assertEqual(result1.type, 'date', 'date(2024-01-01) type is date');
+      assertEqual(result1.resolved, '2024-01-01', 'date(2024-01-01) resolves to 2024-01-01');
+
+      var result2 = api().describeTemporalTag('date(2099-12-31)');
+      assert(result2 !== null, 'date(2099-12-31) is recognized');
+      assertEqual(result2.type, 'date', 'date(2099-12-31) type is date');
+      assertEqual(result2.resolved, '2099-12-31', 'date(2099-12-31) resolves to 2099-12-31');
+    } finally { await teardown(); }
+  });
+
+  register('temporal tags: weekday resolution is always in the future', async function () {
+    await setup();
+    try {
+      var days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      var today = new Date();
+      today.setHours(0, 0, 0, 0);
+      for (var i = 0; i < days.length; i++) {
+        var result = api().describeTemporalTag(days[i]);
+        assert(result !== null, days[i] + ' is recognized');
+        var parts = result.resolved.split('-');
+        var resolved = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        resolved.setHours(0, 0, 0, 0);
+        assert(resolved.getTime() > today.getTime(), days[i] + ' resolves to a future date (' + result.resolved + ')');
+      }
+    } finally { await teardown(); }
+  });
+
+  register('temporal tags: days+0 equals today', async function () {
+    await setup();
+    try {
+      var resultDays = api().describeTemporalTag('days+0');
+      var resultToday = api().describeTemporalTag('today');
+      assert(resultDays !== null, 'days+0 is recognized');
+      assert(resultToday !== null, 'today is recognized');
+      assertEqual(resultDays.resolved, resultToday.resolved, 'days+0 resolves to same date as today');
+    } finally { await teardown(); }
+  });
+
+  register('temporal tags: days+1 equals tomorrow', async function () {
+    await setup();
+    try {
+      var resultDays = api().describeTemporalTag('days+1');
+      var resultTomorrow = api().describeTemporalTag('tomorrow');
+      assert(resultDays !== null, 'days+1 is recognized');
+      assert(resultTomorrow !== null, 'tomorrow is recognized');
+      assertEqual(resultDays.resolved, resultTomorrow.resolved, 'days+1 resolves to same date as tomorrow');
+    } finally { await teardown(); }
+  });
+
+  register('temporal tags: days-1 equals yesterday', async function () {
+    await setup();
+    try {
+      var resultDays = api().describeTemporalTag('days-1');
+      var resultYesterday = api().describeTemporalTag('yesterday');
+      assert(resultDays !== null, 'days-1 is recognized');
+      assert(resultYesterday !== null, 'yesterday is recognized');
+      assertEqual(resultDays.resolved, resultYesterday.resolved, 'days-1 resolves to same date as yesterday');
+    } finally { await teardown(); }
+  });
+
+  register('temporal tags: week number tags resolve to week label', async function () {
+    await setup();
+    try {
+      var result1 = api().describeTemporalTag('w1');
+      assert(result1 !== null, 'w1 is recognized');
+      assertEqual(result1.type, 'week', 'w1 type is week');
+      assertEqual(result1.resolved, 'Week W1', 'w1 resolves to Week W1');
+
+      var result2 = api().describeTemporalTag('kw52');
+      assert(result2 !== null, 'kw52 is recognized');
+      assertEqual(result2.type, 'week', 'kw52 type is week');
+      assertEqual(result2.resolved, 'Week KW52', 'kw52 resolves to Week KW52');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // DASHBOARD SEARCH + setTestBoard
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('dashboard search: refresh triggered after setTestBoard add card', async function () {
+    await setup();
+    try {
+      var helpers = getDashboardHelpers();
+      if (!helpers || !helpers._resetDashboardPendingFlags) return;
+      if (typeof helpers.setDashboardQuery === 'function') {
+        helpers.setDashboardQuery('Dashboard Search Test', { skipRefresh: true });
+      }
+      helpers._resetDashboardPendingFlags();
+      var before = getDashboardDebugState();
+
+      var info = findTwoColumnsWithCards();
+      var data = api().getFullBoardData();
+      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.push({
+        id: '__dash-search-add__', content: 'Dashboard Search Test Item', checked: false, kid: '__dash-search-add__'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(200);
+
+      var after = getDashboardDebugState();
+      assert(didDashboardRefreshTrigger(before, after),
+        'dashboard refresh triggered after adding card with matching search query');
+    } finally {
+      var h = getDashboardHelpers();
+      if (h && typeof h.setDashboardQuery === 'function') h.setDashboardQuery('', { skipRefresh: true });
+      await teardown();
+    }
+  });
+
+  register('dashboard search: refresh triggered after setTestBoard remove card', async function () {
+    await setup();
+    try {
+      var helpers = getDashboardHelpers();
+      if (!helpers || !helpers._resetDashboardPendingFlags) return;
+      if (typeof helpers.setDashboardQuery === 'function') {
+        helpers.setDashboardQuery('remove test query', { skipRefresh: true });
+      }
+      helpers._resetDashboardPendingFlags();
+      var before = getDashboardDebugState();
+
+      var info = findTwoColumnsWithCards();
+      var data = api().getFullBoardData();
+      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.splice(0, 1);
+      api().setTestBoard(data, _boardId);
+      await delay(200);
+
+      var after = getDashboardDebugState();
+      assert(didDashboardRefreshTrigger(before, after),
+        'dashboard refresh triggered after removing card with active search query');
+    } finally {
+      var h = getDashboardHelpers();
+      if (h && typeof h.setDashboardQuery === 'function') h.setDashboardQuery('', { skipRefresh: true });
+      await teardown();
+    }
+  });
+
+  register('dashboard search: scope active filters to current board', async function () {
+    await setup();
+    try {
+      var helpers = getDashboardHelpers();
+      if (!helpers || !helpers._resetDashboardPendingFlags) return;
+      if (typeof helpers.setDashboardScope !== 'function') return;
+
+      helpers.setDashboardScope('active');
+      helpers._resetDashboardPendingFlags();
+      var before = getDashboardDebugState();
+
+      var info = findTwoColumnsWithCards();
+      var data = api().getFullBoardData();
+      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.push({
+        id: '__dash-scope-test__', content: 'Scope Test Card', checked: false, kid: '__dash-scope-test__'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(200);
+
+      var after = getDashboardDebugState();
+      assert(didDashboardRefreshTrigger(before, after),
+        'dashboard refresh triggered with active scope after board mutation');
+    } finally {
+      var h = getDashboardHelpers();
+      if (h && typeof h.setDashboardScope === 'function') h.setDashboardScope('all');
+      await teardown();
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════════════

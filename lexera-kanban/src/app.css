@@ -2156,7 +2156,7 @@ body.embedded-mode .columns-container {
   width: var(--icon-button-size);
   height: var(--icon-button-size);
   padding: 0;
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--font-size-sm);
 }
 
 .board-header.board-header-compact .board-header-file-title {
@@ -2829,7 +2829,7 @@ li.tag-line-styled {
 }
 
 .board-stack-title {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--font-size-sm);
   color: var(--title-stack-color);
   min-width: calc(40px * var(--ui-scale));
   flex: 1;
@@ -8543,6 +8543,13 @@ select.export-input {
   left: var(--tree-indent-guide-center);
 }
 
+/* Hide the expanded-toggle vertical continuation line (tree-children-guide).
+   The indent-guide system in child nodes already draws the connecting lines,
+   so this extra segment just creates a redundant separator line. */
+:root[data-visual-theme="sleek"] .tree-toggle.expanded::before {
+  display: none;
+}
+
 :root[data-visual-theme="sleek"] .tree-toggle::after,
 :root[data-visual-theme="sleek"] .tree-toggle-spacer::before,
 :root[data-visual-theme="sleek"] .board-item-toggle::after {
@@ -8949,7 +8956,7 @@ select.export-input {
 
 /* Sleek Uniform keeps the sleek layout, but flattens board/canvas typography. */
 :root[data-visual-theme-lineage~="sleek-uniform"] .columns-container {
-  --sleek-uniform-font-size: var(--board-font-size, calc(12px * var(--ui-scale)));
+  --sleek-uniform-font-size: var(--board-font-size, var(--font-size-sm));
   --sleek-uniform-line-height: 1.32;
 }
 
@@ -9365,7 +9372,7 @@ select.export-input {
   top: 4px;
   right: 4px;
   color: var(--red, #c44);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   white-space: nowrap;
   pointer-events: none;
   z-index: 2;
@@ -9390,7 +9397,7 @@ select.export-input {
 }
 
 .replace-doc-subtitle {
-  font-size: var(--font-size-sm, 12px);
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   padding: 0 4px 10px;
   word-break: break-all;
@@ -9411,7 +9418,7 @@ select.export-input {
 }
 
 .replace-doc-section-title {
-  font-size: var(--font-size-sm, 12px);
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   padding: 4px 4px 6px;
 }

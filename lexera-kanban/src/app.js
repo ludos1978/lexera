@@ -11378,6 +11378,8 @@ var LexeraDashboard = (function () {
         rebuildTitleWithPreservedComments: function (newTitle, oldTitle) { return rebuildTitleWithPreservedComments(newTitle, oldTitle); },
         getColumnLayoutTags: function (title) { return getColumnLayoutTags(title); },
         extractIncludePathFromTitle: function (title) { return extractIncludePathFromTitle(title); },
+        removeIncludeSyntaxFromTitle: function (title) { return removeIncludeSyntaxFromTitle(title); },
+        stripLayoutTags: function (title) { return stripLayoutTags(title); },
         getColumnSortState: function () { return _ColCtx ? _ColCtx.getColumnSortState() : {}; },
         applyDefaultCanvasPlacementToStack: function (row, stack) { applyDefaultCanvasPlacementToStack(row, stack); },
         isCanvasBoardLayout: function () { return isCanvasBoardLayout(); },
@@ -11423,7 +11425,8 @@ var LexeraDashboard = (function () {
         collectHeaderTagTokens: function (content, opts) { return collectHeaderTagTokens(content, opts); },
         getTemporalTagType: function (token) { return getTemporalTagType(token); },
         resolveTemporalTag: function (token) { return resolveTemporalTag(token); },
-        isNumericIndexTag: function (token) { return isNumericIndexTag(token); }
+        isNumericIndexTag: function (token) { return isNumericIndexTag(token); },
+        loadBoard: function (boardId) { return loadBoard(boardId); }
       });
     }
 
@@ -11632,20 +11635,24 @@ var LexeraDashboard = (function () {
     setTestBoard: function (boardData, boardId) {
       activeBoardId = boardId || '__test__';
       setFullBoardDataState(boardData);
-      if (fullBoardData) setBoardSaveBase(fullBoardData, fullBoardData);
-      updateDisplayFromFullBoard();
+      if (fullBoardData) {
+        ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
+        setBoardSaveBase(fullBoardData, fullBoardData);
+      }
       setActiveBoardDataState({
         valid: true,
         title: boardData.title || 'Test Board',
         fullBoard: fullBoardData,
-        columns: activeBoardData ? activeBoardData.columns : [],
-        rows: activeBoardData ? activeBoardData.rows : []
+        columns: [],
+        rows: []
       });
+      updateDisplayFromFullBoard();
       commitLocalBoardChange(activeBoardId, fullBoardData, {
         setLocalState: false,
         refreshHierarchy: true
       });
       renderMainView();
+      scheduleDashboardRefresh(80);
     },
     moveCard: moveCard,
     loadBoard: loadBoard,

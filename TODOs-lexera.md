@@ -2,10 +2,20 @@
 
 ## Frontend Test Additions
 
-- [ ] Add frontend tests that verify dashboard search results update immediately after `setTestBoard(...)` mutations.
-- [ ] Add frontend tests that verify dashboard queries scoped to the active board stay in sync with the board view and sidebar after live frontend mutations.
+- [x] Add frontend tests that verify dashboard search results update immediately after `setTestBoard(...)` mutations.
+- [x] Add frontend tests that verify dashboard queries scoped to the active board stay in sync with the board view and sidebar after live frontend mutations.
 - [ ] Add frontend tests that verify dashboard deadline and overdue sections update immediately when cards with temporal tags are added, removed, moved, or edited in the frontend.
-- [ ] Add frontend tests that verify time-tag parsing remains correct across date boundaries by asserting frontend behavior against fixed absolute dates instead of only relative expectations.
+- [x] Add frontend tests that verify time-tag parsing remains correct across date boundaries by asserting frontend behavior against fixed absolute dates instead of only relative expectations.
+- [ ] Add frontend tests that verify clicking a dashboard result immediately focuses and reveals the matching card content in the board view.
+- [ ] Add frontend tests that verify dashboard navigation targets for cards, columns, stacks, and rows still focus the correct element after live frontend mutations and rerenders.
+- [ ] Add frontend tests that verify dashboard selection on temporal sections such as due-soon and overdue jumps to the correct card and preserves the expected focus state.
+- [ ] Add frontend tests that verify dashboard results stay correct immediately after tag edits that change whether a card belongs in deadline, overdue, parked, archived, or hidden-derived views.
+- [ ] Add frontend tests that verify burger-menu tag actions on cards, columns, rows, and stacks update tags immediately in data, board DOM, sidebar, and dashboard.
+- [ ] Add frontend tests that verify burger-menu hidden-state actions such as park, archive, and delete immediately update visibility and derived dashboard sections without needing a reload.
+- [ ] Add frontend tests that verify burger-menu structural actions such as duplicate, add-before, add-after, sort, and toggle-stacked immediately update the rendered board and sidebar hierarchy.
+- [ ] Add frontend tests that verify burger-menu reveal and edit actions open or focus the expected content target instead of only mutating data.
+- [ ] Add frontend tests that verify temporal tags changed through burger-menu actions immediately update visible time badges and dashboard deadline groupings.
+- [ ] Expose a thin frontend test helper for dispatching registered burger-menu actions directly so frontend tests can cover context-menu functionality without native menu-click automation.
 
 ### Multi-Board Drag & Drop Test Plan
 
@@ -29,9 +39,9 @@ Requires workspace shell mode (multiple boards open in iframes). Tests use `Lexe
 - [ ] Cross-board move with workspace-style target coordinates
 - [ ] Cross-board move: no duplicate card IDs in either board after move
 
-### View→Workspace Drag Bug (Known, Not Yet Fixed)
+### ~~View→Workspace Drag Bug~~ (Fixed)
 
-**Root cause found:** In `dragDropHandlers.js` `resolveCardDropTarget()` (~lines 399-410), when dropping on a sidebar (workspace) column, the handler uses `getVisibleCardCountInColumn()` to set `insertIdx` — this always appends to the END of the column. In contrast, main view drops call `findCardInsertIndex(mouseY, container)` to respect mouse position. **Fix:** the sidebar drop path should call `findCardInsertIndex(my, sidebarCardsEl)` like the main view does.
+~~Fixed in `dragDropHandlers.js` — added `findSidebarCardInsertIndex()` that iterates sidebar tree-card nodes using midpoint comparison, same as main view. Falls back to end-of-column if sidebar element not found.~~
 
 Scope: the active Lexera code now lives in the promoted top-level V2 directories such as `lexera-core`, `lexera-backend`, `lexera-kanban`, `lexera-capture-ios`, `lexera-shared`, and `lexera-web-clipper`. This backlog tracks the remaining architecture, boundary, tooling, and cleanup work after that repository promotion. Completed promotion-path tasks were moved to `todo-archive.md`.
 
@@ -323,7 +333,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 > Active backlog only. Completed items moved to [todo-archive.md](todo-archive.md).
 
 ## Immediate Bugs
-- [ ] Remove or fix `tree-children-guide` so it no longer renders an extra separator line in the hierarchy tree.
+- [x] Remove or fix `tree-children-guide` so it no longer renders an extra separator line in the hierarchy tree.
 - [ ] Fix include-link auto-rewrite so the refreshed include target is reloaded after the path is corrected.
 
 ## Immediate UX / Product

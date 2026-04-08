@@ -3111,8 +3111,24 @@ var LexeraOrderHelpers = (function () {
       return { refresh: dashboardRefreshPending, render: dashboardRenderPending };
     },
     _resetDashboardPendingFlags: function () {
+      if (dashboardRefreshTimer) {
+        clearTimeout(dashboardRefreshTimer);
+        dashboardRefreshTimer = null;
+      }
       dashboardRefreshPending = false;
       dashboardRenderPending = false;
+    },
+    _getDashboardDebugState: function () {
+      return {
+        refresh: dashboardRefreshPending,
+        render: dashboardRenderPending,
+        timerActive: !!dashboardRefreshTimer,
+        refreshSeq: dashboardRefreshSeq,
+        loading: !!(dashboardState && dashboardState.loading),
+        query: dashboardState ? dashboardState.query || '' : '',
+        scope: dashboardState ? dashboardState.scope || 'all' : 'all',
+        resultCount: dashboardState && Array.isArray(dashboardState.results) ? dashboardState.results.length : 0
+      };
     },
     setupDashboardControls: setupDashboardControls,
     getCalendarTasks: getCalendarTasks,

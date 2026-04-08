@@ -46,7 +46,12 @@ var LexeraColumnContextMenu = (function () {
     deps.pushUndo();
     col.title = nextTitle;
     col.includeSource = { rawPath: cleanPath };
-    return deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    // Reload board from backend so the include gets re-resolved with the new path
+    if (typeof deps.loadBoard === 'function') {
+      setTimeout(function () { deps.loadBoard(deps.getActiveBoardId()); }, 300);
+    }
+    return true;
   }
 
   async function enableColumnIncludeMode(colIndex) {

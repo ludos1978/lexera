@@ -431,7 +431,11 @@ var LexeraRowStackMenu = (function () {
     var headerSelector = type === 'row' ? '.board-row-header' : '.board-stack-header';
     var headerEl = rootEl.querySelector(headerSelector);
     var currentTitle = target.title;
-    var currentDisplayTitle = deps.stripHtmlComments(currentTitle);
+    // Strip both HTML comments and include syntax for the editable display title
+    // (include directives don't function in row/stack titles anyway)
+    var currentDisplayTitle = deps.removeIncludeSyntaxFromTitle(
+      deps.stripLayoutTags(currentTitle)
+    );
     var input = document.createElement('input');
     input.type = 'text';
     input.className = 'column-rename-input';
@@ -455,13 +459,13 @@ var LexeraRowStackMenu = (function () {
       done = true;
       var newTitle = input.value.trim();
       cleanup();
-      if (newTitle && newTitle !== currentDisplayTitle) {
-        titleEl.textContent = getDisplayTitle(newTitle);
+      if (newTitle !== currentDisplayTitle) {
+        titleEl.textContent = newTitle ? getDisplayTitle(newTitle) : '\u00A0';
         deps.pushUndo();
         target.title = deps.rebuildTitleWithPreservedComments(newTitle, currentTitle);
         deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
       } else {
-        titleEl.textContent = getDisplayTitle(currentDisplayTitle);
+        titleEl.textContent = currentDisplayTitle ? getDisplayTitle(currentDisplayTitle) : '\u00A0';
       }
     }
     input.addEventListener('blur', save);
