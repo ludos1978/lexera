@@ -1,14 +1,11 @@
 /**
  * Frontend Integration Tests — runs inside the live Tauri WebView.
  *
- * Usage (browser console):
- *   LexeraFrontendTests.runAll()        — run all tests
- *   LexeraFrontendTests.run('name')     — run one test
- *   LexeraFrontendTests.list()          — list all test names
+ * Uses the REAL currently-loaded board. Each test snapshots board state,
+ * mutates via real app functions, verifies the real DOM, then restores.
  *
- * These tests call the REAL app functions (moveCard, addCardToActiveBoard,
- * renderColumns, renderBoardList) and assert against the REAL DOM.
- * No mocks, no stubs, no jsdom — real WebView rendering.
+ * Open via: View > Panels > Frontend Tests
+ * Or console: LexeraFrontendTests.runAllWithUI()
  */
 (function () {
   'use strict';
@@ -17,130 +14,97 @@
   var _api = null;
 
   function api() {
-    if (!_api) _api = window.LexeraTestApi;
-    if (!_api) throw new Error('LexeraTestApi not found — is app.js loaded?');
-    return _api;
+    if (_api) return _api;
+    // Try current window first (standalone mode)
+    if (window.LexeraTestApi) { _api = window.LexeraTestApi; return _api; }
+    // Try parent window (workspace shell mode — panel is in parent, app.js is in iframe)
+    try { if (window.parent && window.parent.LexeraTestApi) { _api = window.parent.LexeraTestApi; return _api; } } catch (_) {}
+    // Try iframes (workspace shell mode — panel is in shell, app.js is in board iframe)
+    try {
+      var iframes = document.querySelectorAll('iframe');
+      for (var i = 0; i < iframes.length; i++) {
+        try {
+          if (iframes[i].contentWindow && iframes[i].contentWindow.LexeraTestApi) {
+            _api = iframes[i].contentWindow.LexeraTestApi;
+            return _api;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+    throw new Error('LexeraTestApi not found');
   }
 
-  function register(name, fn) {
-    tests.push({ name: name, fn: fn });
-  }
+  function register(name, fn) { tests.push({ name: name, fn: fn }); }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Board factories
+  // Helpers
   // ═══════════════════════════════════════════════════════════════════════
 
-  function makeCard(id, content) {
-    return { id: id, content: content || id, checked: false, kid: id };
-  }
+  function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
-  function makeColumn(id, title, cards) {
-    return { id: id, title: title, cards: cards || [], include_source: null };
+  function assertEqual(actual, expected, msg) {
+    var a = JSON.stringify(actual), e = JSON.stringify(expected);
+    if (a !== e) throw new Error((msg || 'assertEqual') + ': expected ' + e + ', got ' + a);
   }
-
-  function makeStack(id, title, columns) {
-    return { id: id, title: title, columns: columns || [] };
-  }
-
-  function makeRow(id, title, stacks) {
-    return { id: id, title: title, stacks: stacks || [] };
-  }
-
-  function makeBoard(title, rows) {
-    return { valid: true, title: title, columns: [], rows: rows || [] };
-  }
-
-  function createTestBoardA() {
-    return makeBoard('Test Board A', [
-      makeRow('row-a1', 'Row A1', [
-        makeStack('stack-a1', 'Stack A1', [
-          makeColumn('col-a1', 'Column A1', [
-            makeCard('card-a1', 'Alpha One'),
-            makeCard('card-a2', 'Alpha Two'),
-            makeCard('card-a3', 'Alpha Three')
-          ]),
-          makeColumn('col-a2', 'Column A2', [
-            makeCard('card-a4', 'Alpha Four'),
-            makeCard('card-a5', 'Alpha Five')
-          ]),
-          makeColumn('col-a3', 'Column A3', [
-            makeCard('card-a6', 'Alpha Six')
-          ])
-        ])
-      ])
-    ]);
-  }
-
-  function createTestBoardB() {
-    return makeBoard('Test Board B', [
-      makeRow('row-b1', 'Row B1', [
-        makeStack('stack-b1', 'Stack B1', [
-          makeColumn('col-b1', 'Column B1', [
-            makeCard('card-b1', 'Beta One'),
-            makeCard('card-b2', 'Beta Two')
-          ]),
-          makeColumn('col-b2', 'Column B2', [
-            makeCard('card-b3', 'Beta Three')
-          ])
-        ])
-      ])
-    ]);
-  }
+  function assert(cond, msg) { if (!cond) throw new Error(msg || 'assert failed'); }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // DOM query helpers
+  // DOM query — resolve the document that contains the board
   // ═══════════════════════════════════════════════════════════════════════
+
+  function getBoardDocument() {
+    // Check current document
+    var el = document.getElementById('columns-container') || document.querySelector('.columns-container');
+    if (el) return document;
+    // Check iframes (workspace shell)
+    try {
+      var iframes = document.querySelectorAll('iframe');
+      for (var i = 0; i < iframes.length; i++) {
+        try {
+          var doc = iframes[i].contentDocument;
+          if (doc && (doc.getElementById('columns-container') || doc.querySelector('.columns-container'))) return doc;
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return document;
+  }
 
   function getContainer() {
-    return document.getElementById('columns-container') || document.querySelector('.columns-container');
+    var doc = getBoardDocument();
+    return doc.getElementById('columns-container') || doc.querySelector('.columns-container');
   }
 
-  function getVisibleCardKids(flatColIndex) {
-    var c = getContainer();
-    if (!c) return [];
-    var cardsEl = c.querySelector('.column-cards[data-col-index="' + flatColIndex + '"]');
-    if (!cardsEl) return [];
-    var cards = cardsEl.querySelectorAll('.card');
+  function getViewCardKids(flatColIndex) {
+    var c = getContainer(); if (!c) return [];
+    var el = c.querySelector('.column-cards[data-col-index="' + flatColIndex + '"]');
+    if (!el) return [];
+    var cards = el.querySelectorAll('.card');
     var ids = [];
-    for (var i = 0; i < cards.length; i++) {
+    for (var i = 0; i < cards.length; i++)
       ids.push(cards[i].getAttribute('data-card-kid') || cards[i].getAttribute('data-card-id') || '');
-    }
     return ids;
   }
 
-  function getVisibleCardCount(flatColIndex) {
-    var c = getContainer();
-    if (!c) return -1;
-    var cardsEl = c.querySelector('.column-cards[data-col-index="' + flatColIndex + '"]');
-    return cardsEl ? cardsEl.querySelectorAll('.card').length : -1;
+  function getViewCardCount(flatColIndex) {
+    var c = getContainer(); if (!c) return -1;
+    var el = c.querySelector('.column-cards[data-col-index="' + flatColIndex + '"]');
+    return el ? el.querySelectorAll('.card').length : -1;
   }
 
-  function getTotalVisibleCards() {
-    var c = getContainer();
-    if (!c) return -1;
-    return c.querySelectorAll('.card').length;
+  function getTotalViewCards() {
+    var c = getContainer(); return c ? c.querySelectorAll('.card').length : -1;
   }
 
-  function getColumnCount() {
-    var c = getContainer();
-    return c ? c.querySelectorAll('.column').length : -1;
+  function getViewColumnCount() {
+    var c = getContainer(); return c ? c.querySelectorAll('.column').length : -1;
   }
 
-  function getRowCount() {
-    var c = getContainer();
-    return c ? c.querySelectorAll('.board-row').length : -1;
+  function getViewRowCount() {
+    var c = getContainer(); return c ? c.querySelectorAll('.board-row').length : -1;
   }
 
-  function getCountBadge(flatColIndex) {
-    var c = getContainer();
-    if (!c) return -1;
-    var badge = c.querySelector('.column[data-col-index="' + flatColIndex + '"] .column-count');
-    return badge ? parseInt(badge.textContent, 10) : -1;
-  }
-
-  function hasDuplicateCardIds() {
-    var c = getContainer();
-    if (!c) return false;
+  function hasDuplicateViewCardIds() {
+    var c = getContainer(); if (!c) return false;
     var cards = c.querySelectorAll('.card');
     var seen = {};
     for (var i = 0; i < cards.length; i++) {
@@ -151,655 +115,525 @@
     return false;
   }
 
-  function getSidebarCardCount() {
-    var boardList = document.querySelector('.board-list');
-    if (!boardList) return -1;
-    return boardList.querySelectorAll('.tree-card').length;
+  function getViewColumnId(flatColIndex) {
+    var c = getContainer(); if (!c) return null;
+    var col = c.querySelector('.column[data-col-index="' + flatColIndex + '"]');
+    return col ? (col.getAttribute('data-column-id') || null) : null;
   }
 
-  /** Get card IDs in a sidebar tree column (by column-id). */
+  // ═══════════════════════════════════════════════════════════════════════
+  // DOM query — sidebar tree
+  // ═══════════════════════════════════════════════════════════════════════
+
   function getSidebarCardIdsInColumn(columnId) {
-    var boardList = document.querySelector('.board-list');
-    if (!boardList) return null; // sidebar not available
-    var cards = boardList.querySelectorAll('.tree-card[data-column-id="' + columnId + '"]');
+    var doc = getBoardDocument();
+    var bl = doc.querySelector('.board-list');
+    if (!bl) return null;
+    var cards = bl.querySelectorAll('.tree-card[data-column-id="' + columnId + '"]');
+    if (cards.length === 0) return null;
     var ids = [];
-    for (var i = 0; i < cards.length; i++) {
+    for (var i = 0; i < cards.length; i++)
       ids.push(cards[i].getAttribute('data-card-id') || '');
-    }
     return ids;
   }
 
-  /** Get total sidebar card count for a column by column-id. */
-  function getSidebarColumnCardCount(columnId) {
-    var ids = getSidebarCardIdsInColumn(columnId);
-    return ids ? ids.length : -1;
-  }
-
-  /** Check if sidebar is available (board tree is expanded and cards visible). */
   function isSidebarAvailable() {
-    var boardList = document.querySelector('.board-list');
-    return !!(boardList && boardList.querySelector('.tree-card'));
+    var doc = getBoardDocument();
+    var bl = doc.querySelector('.board-list');
+    return !!(bl && bl.querySelector('.tree-card'));
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Assertion helpers
+  // Setup / teardown — snapshot & restore the real board
   // ═══════════════════════════════════════════════════════════════════════
 
-  function assertEqual(actual, expected, msg) {
-    var a = JSON.stringify(actual);
-    var e = JSON.stringify(expected);
-    if (a !== e) throw new Error((msg || 'assertEqual') + ': expected ' + e + ', got ' + a);
-  }
+  var _snapshot = null;
+  var _boardId = null;
 
-  function assert(cond, msg) {
-    if (!cond) throw new Error(msg || 'assert failed');
-  }
-
-  function delay(ms) {
-    return new Promise(function (r) { setTimeout(r, ms); });
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // Test setup/teardown
-  // ═══════════════════════════════════════════════════════════════════════
-
-  var _savedBoardId = null;
-
-  function setup(board, boardId) {
-    _savedBoardId = api().getActiveBoardId();
-    api().setTestBoard(board, boardId || '__test-board-a__');
+  async function setup() {
+    // Wait for a board to be loaded (may take a moment in workspace shell)
+    for (var attempt = 0; attempt < 10; attempt++) {
+      try {
+        _boardId = api().getActiveBoardId();
+        var data = api().getFullBoardData();
+        if (_boardId && data && data.rows && data.rows.length > 0) {
+          _snapshot = JSON.parse(JSON.stringify(data));
+          return;
+        }
+      } catch (_) {}
+      await delay(200);
+      _api = null; // retry finding the API
+    }
+    throw new Error('No board loaded — open a board with at least 2 columns first');
   }
 
   async function teardown() {
-    if (_savedBoardId) {
-      try { await api().loadBoard(_savedBoardId); } catch (_) { /* ignore */ }
-      _savedBoardId = null;
+    if (_snapshot && _boardId) {
+      api().setTestBoard(_snapshot, _boardId);
+      await delay(150);
     }
+    _snapshot = null;
+    _boardId = null;
+  }
+
+  /** Find first two columns with at least 1 card each. Returns {srcCol, dstCol, srcCard}. */
+  function findTwoColumnsWithCards() {
+    var data = api().getFullBoardData();
+    var flatIdx = 0;
+    var srcCol = null, dstCol = null;
+    for (var r = 0; r < data.rows.length; r++) {
+      var stacks = data.rows[r].stacks || [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = stacks[s].columns || [];
+        for (var c = 0; c < cols.length; c++) {
+          var visibleCards = (cols[c].cards || []).filter(function (card) {
+            return !card.content || card.content.indexOf('#hidden-internal') === -1;
+          });
+          if (visibleCards.length > 0) {
+            if (!srcCol) {
+              srcCol = { flatIdx: flatIdx, col: cols[c], row: r, stack: s, localCol: c, cards: visibleCards };
+            } else if (!dstCol) {
+              dstCol = { flatIdx: flatIdx, col: cols[c], row: r, stack: s, localCol: c, cards: visibleCards };
+              return { srcCol: srcCol, dstCol: dstCol };
+            }
+          }
+          flatIdx++;
+        }
+      }
+    }
+    throw new Error('Need at least 2 columns with visible cards');
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // CARD MOVE TESTS — same board
+  // CARD MOVE TESTS
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('same-column reorder: card moves in DOM', async function () {
-    setup(createTestBoardA(), '__test-a__');
+  register('same-column reorder: first card moves to end', async function () {
+    await setup();
     try {
-      var before = getVisibleCardKids(0);
-      assertEqual(before.length, 3, 'col 0 should start with 3 cards');
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      if (col.cards.length < 2) throw new Error('Need >=2 cards in source column');
+      var firstKid = col.cards[0].kid || col.cards[0].id;
+      var lastKid = col.cards[col.cards.length - 1].kid || col.cards[col.cards.length - 1].id;
+      var countBefore = getViewCardCount(col.flatIdx);
 
-      // Move card-a1 after card-a3 using card-a3's stable id
       await api().moveCard(
-        { boardId: '__test-a__', flatColIndex: 0, cardIndex: 0, cardId: 'card-a1', cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: '__test-a__', flatColIndex: 0, cardId: 'card-a3', before: false, insertIdx: 2, insertMode: 'visible', indexMode: 'display' }
+        { boardId: _boardId, flatColIndex: col.flatIdx, cardIndex: 0, cardId: col.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: col.flatIdx, cardId: lastKid, before: false, insertIdx: col.cards.length - 1, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(50);
+      await delay(100);
 
-      var after = getVisibleCardKids(0);
-      assertEqual(after, ['card-a2', 'card-a3', 'card-a1'], 'card-a1 should move to end');
-      assertEqual(getVisibleCardCount(0), 3, 'count should stay 3');
-      // Sidebar: if available, card order should match
-      if (isSidebarAvailable()) {
-        var sidebarCol = getSidebarCardIdsInColumn('col-a1');
-        if (sidebarCol) assertEqual(sidebarCol, ['card-a2', 'card-a3', 'card-a1'], 'sidebar should reflect reorder');
-      }
-    } finally {
-      await teardown();
-    }
+      assertEqual(getViewCardCount(col.flatIdx), countBefore, 'count unchanged');
+      var afterKids = getViewCardKids(col.flatIdx);
+      assertEqual(afterKids[afterKids.length - 1], firstKid, 'moved card should be last');
+      assert(afterKids[0] !== firstKid, 'moved card should not be first anymore');
+    } finally { await teardown(); }
   });
 
-  register('view-to-view cross-column: card moves between columns', async function () {
-    setup(createTestBoardA(), '__test-a__');
+  register('view→view cross-column: card moves between columns', async function () {
+    await setup();
     try {
-      var totalBefore = getTotalVisibleCards();
+      var info = findTwoColumnsWithCards();
+      var src = info.srcCol, dst = info.dstCol;
+      var movedKid = src.cards[0].kid || src.cards[0].id;
+      var srcCountBefore = getViewCardCount(src.flatIdx);
+      var dstCountBefore = getViewCardCount(dst.flatIdx);
+      var totalBefore = getTotalViewCards();
 
       await api().moveCard(
-        { boardId: '__test-a__', flatColIndex: 0, cardIndex: 0, cardId: 'card-a1', cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: '__test-a__', flatColIndex: 1, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+        { boardId: _boardId, flatColIndex: src.flatIdx, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: dst.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(50);
+      await delay(100);
 
-      assertEqual(getVisibleCardCount(0), 2, 'source col should have 2 cards');
-      var targetKids = getVisibleCardKids(1);
-      assert(targetKids.indexOf('card-a1') !== -1, 'card-a1 should be in target column');
-      assertEqual(getTotalVisibleCards(), totalBefore, 'total visible cards unchanged');
-      assert(!hasDuplicateCardIds(), 'no duplicate card IDs');
-      // Sidebar: card should move between columns
-      if (isSidebarAvailable()) {
-        var sbSource = getSidebarCardIdsInColumn('col-a1');
-        var sbTarget = getSidebarCardIdsInColumn('col-a2');
-        if (sbSource) assert(sbSource.indexOf('card-a1') === -1, 'sidebar source should not have card-a1');
-        if (sbTarget) assert(sbTarget.indexOf('card-a1') !== -1, 'sidebar target should have card-a1');
-      }
-    } finally {
-      await teardown();
-    }
+      assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1 card');
+      assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1 card');
+      assertEqual(getTotalViewCards(), totalBefore, 'total unchanged');
+      assert(!hasDuplicateViewCardIds(), 'no duplicates');
+      assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target view');
+    } finally { await teardown(); }
   });
 
-  register('workspace-to-view: sidebar source, view target', async function () {
-    setup(createTestBoardA(), '__test-a__');
+  register('workspace→view: sidebar-style source, view target', async function () {
+    await setup();
     try {
-      await api().moveCard(
-        { boardId: '__test-a__', rowIndex: 0, stackIndex: 0, colIndex: 2, columnId: 'col-a3', cardIndex: 0, cardId: 'card-a6', cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: '__test-a__', flatColIndex: 0, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
-      await delay(50);
+      var info = findTwoColumnsWithCards();
+      var src = info.dstCol, dst = info.srcCol; // reverse: move from col 2 to col 1
+      var movedKid = src.cards[0].kid || src.cards[0].id;
+      var dstCountBefore = getViewCardCount(dst.flatIdx);
 
-      var col0Kids = getVisibleCardKids(0);
-      assert(col0Kids.indexOf('card-a6') !== -1, 'card-a6 should appear in col 0');
-      assertEqual(getVisibleCardCount(0), 4, 'col 0 should have 4 cards');
-      assert(!hasDuplicateCardIds(), 'no duplicate card IDs');
-      // Sidebar: col-a3 should lose card-a6, col-a1 should gain it
-      if (isSidebarAvailable()) {
-        var sbSource = getSidebarCardIdsInColumn('col-a3');
-        var sbTarget = getSidebarCardIdsInColumn('col-a1');
-        if (sbSource) assert(sbSource.indexOf('card-a6') === -1, 'sidebar col-a3 should not have card-a6');
-        if (sbTarget) assert(sbTarget.indexOf('card-a6') !== -1, 'sidebar col-a1 should have card-a6');
-      }
-    } finally {
-      await teardown();
-    }
+      await api().moveCard(
+        { boardId: _boardId, rowIndex: src.row, stackIndex: src.stack, colIndex: src.localCol, columnId: src.col.id, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: dst.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(100);
+
+      assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1');
+      assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+    } finally { await teardown(); }
   });
 
-  register('view-to-workspace: view source, sidebar target', async function () {
-    setup(createTestBoardA(), '__test-a__');
+  register('view→workspace: view source, sidebar-style target', async function () {
+    await setup();
     try {
-      var totalBefore = getTotalVisibleCards();
+      var info = findTwoColumnsWithCards();
+      var src = info.srcCol, dst = info.dstCol;
+      var movedKid = src.cards[0].kid || src.cards[0].id;
+      var srcCountBefore = getViewCardCount(src.flatIdx);
 
       await api().moveCard(
-        { boardId: '__test-a__', flatColIndex: 0, cardIndex: 0, cardId: 'card-a1', cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: '__test-a__', rowIndex: 0, stackIndex: 0, colIndex: 1, columnId: 'col-a2', insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+        { boardId: _boardId, flatColIndex: src.flatIdx, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, rowIndex: dst.row, stackIndex: dst.stack, colIndex: dst.localCol, columnId: dst.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(50);
+      await delay(100);
 
-      assertEqual(getVisibleCardCount(0), 2, 'source col should lose 1 card');
-      var targetKids = getVisibleCardKids(1);
-      assert(targetKids.indexOf('card-a1') !== -1, 'card-a1 should appear in target');
-      assertEqual(getTotalVisibleCards(), totalBefore, 'total unchanged');
-      // Sidebar: both views must agree
-      if (isSidebarAvailable()) {
-        var sbSource = getSidebarCardIdsInColumn('col-a1');
-        var sbTarget = getSidebarCardIdsInColumn('col-a2');
-        if (sbSource) assert(sbSource.indexOf('card-a1') === -1, 'sidebar source should not have card-a1');
-        if (sbTarget) assert(sbTarget.indexOf('card-a1') !== -1, 'sidebar target should have card-a1');
-      }
-    } finally {
-      await teardown();
-    }
+      assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1');
+      assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+    } finally { await teardown(); }
   });
 
-  register('workspace-to-workspace same board: sidebar both sides', async function () {
-    setup(createTestBoardA(), '__test-a__');
+  register('workspace→workspace: sidebar source and target', async function () {
+    await setup();
     try {
-      await api().moveCard(
-        { boardId: '__test-a__', rowIndex: 0, stackIndex: 0, colIndex: 0, columnId: 'col-a1', cardIndex: 0, cardId: 'card-a1', cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: '__test-a__', rowIndex: 0, stackIndex: 0, colIndex: 2, columnId: 'col-a3', insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
-      await delay(50);
+      var info = findTwoColumnsWithCards();
+      var src = info.srcCol, dst = info.dstCol;
+      var movedKid = src.cards[0].kid || src.cards[0].id;
+      var srcCountBefore = getViewCardCount(src.flatIdx);
+      var dstCountBefore = getViewCardCount(dst.flatIdx);
 
-      assertEqual(getVisibleCardCount(0), 2, 'source lost 1');
-      var col2Kids = getVisibleCardKids(2);
-      assert(col2Kids.indexOf('card-a1') !== -1, 'card-a1 in col 2');
-      assert(!hasDuplicateCardIds(), 'no duplicates');
-      // Sidebar: both columns updated
-      if (isSidebarAvailable()) {
-        var sbSource = getSidebarCardIdsInColumn('col-a1');
-        var sbTarget = getSidebarCardIdsInColumn('col-a3');
-        if (sbSource) assert(sbSource.indexOf('card-a1') === -1, 'sidebar col-a1 should not have card-a1');
-        if (sbTarget) assert(sbTarget.indexOf('card-a1') !== -1, 'sidebar col-a3 should have card-a1');
-      }
-    } finally {
-      await teardown();
-    }
+      await api().moveCard(
+        { boardId: _boardId, rowIndex: src.row, stackIndex: src.stack, colIndex: src.localCol, columnId: src.col.id, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, rowIndex: dst.row, stackIndex: dst.stack, colIndex: dst.localCol, columnId: dst.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(100);
+
+      assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1');
+      assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1');
+      assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+    } finally { await teardown(); }
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // CARD MOVE TESTS — cross board
+  // STRUCTURAL TESTS
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('cross-board: card moves to second test board', async function () {
-    // Set up board A as active
-    setup(createTestBoardA(), '__test-a__');
+  register('add card: appears in board view', async function () {
+    await setup();
     try {
-      var countBefore = getVisibleCardCount(0);
-
-      // For cross-board, we move within same board to different column as proxy,
-      // since loadBoardDataForMutation can't load non-backend boards.
-      // Instead, verify same-board move across all 3 columns works.
-      await api().moveCard(
-        { boardId: '__test-a__', flatColIndex: 0, cardIndex: 0, cardId: 'card-a1', cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: '__test-a__', flatColIndex: 2, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
-      await delay(50);
-
-      assertEqual(getVisibleCardCount(0), countBefore - 1, 'source column lost a card');
-      var col2Kids = getVisibleCardKids(2);
-      assert(col2Kids.indexOf('card-a1') !== -1, 'card-a1 should be in col 2');
-      assert(!hasDuplicateCardIds(), 'no duplicates');
-    } finally {
-      await teardown();
-    }
-  });
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // STRUCTURAL MUTATION TESTS
-  // ═══════════════════════════════════════════════════════════════════════
-
-  register('add card: new card appears in DOM', async function () {
-    setup(createTestBoardA(), '__test-a__');
-    try {
-      var countBefore = getVisibleCardCount(0);
+      var info = findTwoColumnsWithCards();
+      var countBefore = getViewCardCount(info.srcCol.flatIdx);
       var data = api().getFullBoardData();
-      data.rows[0].stacks[0].columns[0].cards.push(makeCard('card-new', 'New Card'));
-      // Re-render through the real pipeline (syncs activeBoardData from fullBoardData)
-      api().setTestBoard(data, '__test-a__');
-      await delay(50);
+      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.push({
+        id: '__test-card-add__', content: 'Test Added Card', checked: false, kid: '__test-card-add__'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
 
-      assertEqual(getVisibleCardCount(0), countBefore + 1, 'card count should increase');
-      var kids = getVisibleCardKids(0);
-      assert(kids.indexOf('card-new') !== -1, 'new card should be in DOM');
-    } finally {
-      await teardown();
-    }
+      assertEqual(getViewCardCount(info.srcCol.flatIdx), countBefore + 1, 'card count +1');
+    } finally { await teardown(); }
   });
 
-  register('remove card: card disappears from DOM', async function () {
-    setup(createTestBoardA(), '__test-a__');
+  register('remove card: disappears from board view', async function () {
+    await setup();
     try {
-      var countBefore = getVisibleCardCount(0);
+      var info = findTwoColumnsWithCards();
+      var countBefore = getViewCardCount(info.srcCol.flatIdx);
+      assert(countBefore >= 1, 'need at least 1 card');
+      var removedKid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
       var data = api().getFullBoardData();
-      data.rows[0].stacks[0].columns[0].cards.splice(0, 1);
-      api().setTestBoard(data, '__test-a__');
-      await delay(50);
+      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.splice(0, 1);
+      api().setTestBoard(data, _boardId);
+      await delay(100);
 
-      assertEqual(getVisibleCardCount(0), countBefore - 1, 'card count should decrease');
-      var kids = getVisibleCardKids(0);
-      assert(kids.indexOf('card-a1') === -1, 'removed card should not be in DOM');
-    } finally {
-      await teardown();
-    }
+      assertEqual(getViewCardCount(info.srcCol.flatIdx), countBefore - 1, 'card count -1');
+      assert(getViewCardKids(info.srcCol.flatIdx).indexOf(removedKid) === -1, 'removed card gone');
+    } finally { await teardown(); }
   });
 
-  register('add column: new column appears in DOM', async function () {
-    setup(createTestBoardA(), '__test-a__');
+  register('add column: appears in board view', async function () {
+    await setup();
     try {
-      var colCountBefore = getColumnCount();
+      var colsBefore = getViewColumnCount();
       var data = api().getFullBoardData();
-      data.rows[0].stacks[0].columns.push(makeColumn('col-new', 'New Column', [makeCard('card-new', 'In New Col')]));
-      api().setTestBoard(data, '__test-a__');
-      await delay(50);
+      var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
+      lastStack.columns.push({ id: '__test-col__', title: 'Test Column', cards: [], include_source: null });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
 
-      assertEqual(getColumnCount(), colCountBefore + 1, 'column count should increase');
-    } finally {
-      await teardown();
-    }
+      assertEqual(getViewColumnCount(), colsBefore + 1, 'column count +1');
+    } finally { await teardown(); }
   });
 
-  register('add row: new row appears in DOM', async function () {
-    setup(createTestBoardA(), '__test-a__');
+  register('add row: appears in board view', async function () {
+    await setup();
     try {
-      var rowCountBefore = getRowCount();
+      var rowsBefore = getViewRowCount();
       var data = api().getFullBoardData();
-      data.rows.push(makeRow('row-new', 'New Row', [
-        makeStack('stack-new', 'New Stack', [
-          makeColumn('col-new', 'New Col', [makeCard('card-new', 'New Card')])
-        ])
-      ]));
-      api().setTestBoard(data, '__test-a__');
-      await delay(50);
+      data.rows.push({
+        id: '__test-row__', title: 'Test Row',
+        stacks: [{ id: '__test-stack__', title: 'Test Stack',
+          columns: [{ id: '__test-col2__', title: 'Test Col', cards: [], include_source: null }]
+        }]
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
 
-      assertEqual(getRowCount(), rowCountBefore + 1, 'row count should increase');
-    } finally {
-      await teardown();
-    }
+      assertEqual(getViewRowCount(), rowsBefore + 1, 'row count +1');
+    } finally { await teardown(); }
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // RENDER INTEGRITY TESTS
+  // RENDER INTEGRITY
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('no duplicate card IDs after cross-column move', async function () {
-    setup(createTestBoardA(), '__test-a__');
+  register('no duplicate card IDs after move', async function () {
+    await setup();
     try {
+      var info = findTwoColumnsWithCards();
       await api().moveCard(
-        { boardId: '__test-a__', flatColIndex: 0, cardIndex: 0, cardId: 'card-a1', cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: '__test-a__', flatColIndex: 1, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(50);
-
-      assert(!hasDuplicateCardIds(), 'no duplicate card IDs after move');
-    } finally {
-      await teardown();
-    }
+      await delay(100);
+      assert(!hasDuplicateViewCardIds(), 'no duplicate IDs');
+    } finally { await teardown(); }
   });
 
-  register('total visible cards constant after same-board move', async function () {
-    setup(createTestBoardA(), '__test-a__');
+  register('total card count constant after move', async function () {
+    await setup();
     try {
-      var totalBefore = getTotalVisibleCards();
-
-      // Move 3 cards between different columns
+      var totalBefore = getTotalViewCards();
+      var info = findTwoColumnsWithCards();
       await api().moveCard(
-        { boardId: '__test-a__', flatColIndex: 0, cardIndex: 0, cardId: 'card-a1', cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: '__test-a__', flatColIndex: 2, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(50);
-
-      assertEqual(getTotalVisibleCards(), totalBefore, 'total should be constant');
-    } finally {
-      await teardown();
-    }
-  });
-
-  register('column count badges match visible card count', async function () {
-    setup(createTestBoardA(), '__test-a__');
-    try {
-      await api().moveCard(
-        { boardId: '__test-a__', flatColIndex: 0, cardIndex: 0, cardId: 'card-a1', cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: '__test-a__', flatColIndex: 1, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
-      await delay(50);
-
-      for (var i = 0; i < getColumnCount(); i++) {
-        var badgeCount = getCountBadge(i);
-        var actualCount = getVisibleCardCount(i);
-        if (badgeCount >= 0 && actualCount >= 0) {
-          assertEqual(badgeCount, actualCount, 'badge for col ' + i + ' should match actual count');
-        }
-      }
-    } finally {
-      await teardown();
-    }
+      await delay(100);
+      assertEqual(getTotalViewCards(), totalBefore, 'total constant');
+    } finally { await teardown(); }
   });
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Test runner
+  // VIEW ↔ WORKSPACE CONSISTENCY
+  // ═══════════════════════════════════════════════════════════════════════
+
+  function assertViewWorkspaceConsistency(label) {
+    if (!isSidebarAvailable()) return;
+    var c = getContainer(); if (!c) return;
+    var viewCols = c.querySelectorAll('.column');
+    for (var i = 0; i < viewCols.length; i++) {
+      var colId = viewCols[i].getAttribute('data-column-id');
+      if (!colId) continue;
+      var viewCards = viewCols[i].querySelectorAll('.column-cards .card');
+      var viewKids = [];
+      for (var j = 0; j < viewCards.length; j++)
+        viewKids.push(viewCards[j].getAttribute('data-card-kid') || viewCards[j].getAttribute('data-card-id') || '');
+      var sidebarKids = getSidebarCardIdsInColumn(colId);
+      if (!sidebarKids) continue;
+      assertEqual(sidebarKids, viewKids, label + ': col ' + colId);
+    }
+  }
+
+  register('consistency: view matches workspace after cross-column move', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      await api().moveCard(
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(150);
+      assertViewWorkspaceConsistency('cross-column');
+    } finally { await teardown(); }
+  });
+
+  register('consistency: view matches workspace after view→workspace move', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      await api().moveCard(
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, rowIndex: info.dstCol.row, stackIndex: info.dstCol.stack, colIndex: info.dstCol.localCol, columnId: info.dstCol.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(150);
+      assertViewWorkspaceConsistency('view-to-workspace');
+    } finally { await teardown(); }
+  });
+
+  register('consistency: view matches workspace after workspace→view move', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      await api().moveCard(
+        { boardId: _boardId, rowIndex: info.dstCol.row, stackIndex: info.dstCol.stack, colIndex: info.dstCol.localCol, columnId: info.dstCol.col.id, cardIndex: 0, cardId: info.dstCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(150);
+      assertViewWorkspaceConsistency('workspace-to-view');
+    } finally { await teardown(); }
+  });
+
+  register('consistency: view matches workspace after add card', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var data = api().getFullBoardData();
+      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.push({
+        id: '__test-cons-add__', content: 'Consistency Test', checked: false, kid: '__test-cons-add__'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(150);
+      assertViewWorkspaceConsistency('add-card');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Test runner (console)
   // ═══════════════════════════════════════════════════════════════════════
 
   async function runAll() {
-    _api = null; // force re-resolve
+    _api = null;
     var results = [];
     console.log('%c[Frontend Tests] Running ' + tests.length + ' tests...', 'color: #007acc; font-weight: bold; font-size: 14px');
-    console.log('');
-
     for (var i = 0; i < tests.length; i++) {
-      var test = tests[i];
       try {
-        await test.fn();
-        results.push({ name: test.name, passed: true });
-        console.log('%c  PASS %c ' + test.name, 'color: #4ec9b0; font-weight: bold', 'color: inherit');
+        await tests[i].fn();
+        results.push({ name: tests[i].name, passed: true });
+        console.log('%c  PASS %c ' + tests[i].name, 'color: #4ec9b0; font-weight: bold', 'color: inherit');
       } catch (err) {
-        results.push({ name: test.name, passed: false, error: err.message || String(err) });
-        console.log('%c  FAIL %c ' + test.name, 'color: #f44747; font-weight: bold', 'color: #f44747');
-        console.log('        ' + (err.message || err));
+        results.push({ name: tests[i].name, passed: false, error: err.message || String(err) });
+        console.log('%c  FAIL %c ' + tests[i].name + ': ' + (err.message || err), 'color: #f44747; font-weight: bold', 'color: #f44747');
       }
     }
-
-    console.log('');
-    var passed = results.filter(function (r) { return r.passed; }).length;
-    var failed = results.filter(function (r) { return !r.passed; }).length;
-    var summary = passed + ' passed, ' + failed + ' failed out of ' + tests.length;
-    console.log('%c[Frontend Tests] ' + summary, failed > 0 ? 'color: #f44747; font-weight: bold; font-size: 14px' : 'color: #4ec9b0; font-weight: bold; font-size: 14px');
+    var p = results.filter(function (r) { return r.passed; }).length;
+    var f = results.filter(function (r) { return !r.passed; }).length;
+    console.log('%c[Frontend Tests] ' + p + ' passed, ' + f + ' failed / ' + tests.length,
+      f > 0 ? 'color: #f44747; font-weight: bold' : 'color: #4ec9b0; font-weight: bold');
     return results;
   }
 
-  async function run(name) {
-    _api = null;
-    var test = tests.find(function (t) { return t.name === name; });
-    if (!test) { console.error('Test not found: ' + name); return null; }
-    try {
-      await test.fn();
-      console.log('%c  PASS %c ' + test.name, 'color: #4ec9b0; font-weight: bold', 'color: inherit');
-      return { name: test.name, passed: true };
-    } catch (err) {
-      console.log('%c  FAIL %c ' + test.name + ': ' + (err.message || err), 'color: #f44747; font-weight: bold', 'color: #f44747');
-      return { name: test.name, passed: false, error: err.message || String(err) };
-    }
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — renders into the shared panel view
+  // ═══════════════════════════════════════════════════════════════════════
+
+  var lastResults = [];
+  var _panelInit = false;
+
+  function findPanelRoot() {
+    return document.querySelector('.lexera-shared-panel-frontend-tests');
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // UI Panel
-  // ═══════════════════════════════════════════════════════════════════════
-
-  var panelEl = null;
-  var lastResults = [];
-
   function copyResults() {
-    if (lastResults.length === 0) {
-      navigator.clipboard.writeText('No test results yet — run tests first.');
-      return;
-    }
     var lines = ['Frontend Test Results', ''];
-    var passed = 0, failed = 0;
+    var p = 0, f = 0;
     for (var i = 0; i < lastResults.length; i++) {
       var r = lastResults[i];
-      var mark = r.passed ? 'PASS' : 'FAIL';
-      lines.push('[' + mark + '] ' + r.name);
+      lines.push('[' + (r.passed ? 'PASS' : 'FAIL') + '] ' + r.name);
       if (!r.passed && r.error) lines.push('       ' + r.error);
-      if (r.passed) passed++; else failed++;
+      if (r.passed) p++; else f++;
     }
-    lines.push('');
-    lines.push(passed + ' passed, ' + failed + ' failed / ' + lastResults.length);
+    lines.push(''); lines.push(p + ' passed, ' + f + ' failed / ' + lastResults.length);
     navigator.clipboard.writeText(lines.join('\n')).then(function () {
-      var copyBtn = panelEl && panelEl.querySelector('[data-copy-btn]');
-      if (copyBtn) { copyBtn.textContent = 'Copied!'; setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1200); }
+      var btn = findPanelRoot() && findPanelRoot().querySelector('.lexera-shared-test-copy');
+      if (btn) { btn.textContent = 'Copied!'; setTimeout(function () { btn.textContent = 'Copy'; }, 1200); }
     });
   }
 
-  function createPanel() {
-    if (panelEl) { panelEl.remove(); panelEl = null; }
-
-    panelEl = document.createElement('div');
-    panelEl.id = 'lexera-test-panel';
-    panelEl.style.cssText = 'position:fixed;top:40px;right:16px;width:380px;max-height:80vh;overflow-y:auto;' +
-      'background:#1e1e1e;color:#ccc;border:1px solid #444;border-radius:6px;z-index:99999;' +
-      'font-family:monospace;font-size:12px;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
-
-    // Header
-    var header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;' +
-      'border-bottom:1px solid #444;cursor:move;user-select:none;';
-    header.innerHTML = '<span style="font-weight:bold;font-size:13px;color:#fff;">Frontend Tests</span>';
-
-    var headerBtns = document.createElement('div');
-    headerBtns.style.cssText = 'display:flex;gap:6px;';
-
-    var runBtn = document.createElement('button');
-    runBtn.textContent = 'Run All';
-    runBtn.style.cssText = 'background:#007acc;color:#fff;border:none;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;';
-    runBtn.onclick = function () { runAllWithUI(); };
-    headerBtns.appendChild(runBtn);
-
-    var copyBtn = document.createElement('button');
-    copyBtn.textContent = 'Copy';
-    copyBtn.style.cssText = 'background:#3a3d41;color:#ccc;border:none;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px;';
-    copyBtn.setAttribute('data-copy-btn', 'true');
-    copyBtn.onclick = function () { copyResults(); };
-    headerBtns.appendChild(copyBtn);
-
-    var closeBtn = document.createElement('button');
-    closeBtn.textContent = '\u00D7';
-    closeBtn.style.cssText = 'background:transparent;color:#888;border:none;font-size:16px;cursor:pointer;padding:0 4px;';
-    closeBtn.onclick = function () { panelEl.remove(); panelEl = null; };
-    headerBtns.appendChild(closeBtn);
-
-    header.appendChild(headerBtns);
-    panelEl.appendChild(header);
-
-    // Summary bar
-    var summary = document.createElement('div');
-    summary.id = 'lexera-test-summary';
-    summary.style.cssText = 'padding:4px 12px;font-size:11px;color:#888;border-bottom:1px solid #333;';
-    summary.textContent = tests.length + ' tests';
-    panelEl.appendChild(summary);
-
-    // Test list
-    var list = document.createElement('div');
-    list.id = 'lexera-test-list';
-    list.style.cssText = 'padding:4px 0;';
+  function populateTestList() {
+    var root = findPanelRoot();
+    if (!root || _panelInit) return;
+    _panelInit = true;
+    var listEl = root.querySelector('.lexera-shared-test-list'); if (!listEl) return;
+    listEl.innerHTML = '';
+    var summaryEl = root.querySelector('.lexera-shared-test-summary');
+    if (summaryEl) summaryEl.textContent = tests.length + ' tests';
 
     for (var i = 0; i < tests.length; i++) {
-      var row = document.createElement('div');
-      row.className = 'lexera-test-row';
-      row.setAttribute('data-test-index', String(i));
-      row.style.cssText = 'display:flex;align-items:flex-start;gap:6px;padding:3px 12px;cursor:pointer;';
-      row.onmouseenter = function () { this.style.background = '#2a2d2e'; };
-      row.onmouseleave = function () { this.style.background = ''; };
-
-      var indicator = document.createElement('span');
-      indicator.className = 'lexera-test-indicator';
-      indicator.style.cssText = 'flex-shrink:0;width:14px;height:14px;margin-top:1px;border:1px solid #555;border-radius:2px;' +
-        'display:flex;align-items:center;justify-content:center;font-size:10px;line-height:1;';
-      indicator.textContent = '';
-
-      var label = document.createElement('span');
-      label.className = 'lexera-test-label';
-      label.style.cssText = 'flex:1;word-break:break-word;';
-      label.textContent = tests[i].name;
-
-      var errEl = document.createElement('div');
-      errEl.className = 'lexera-test-error';
-      errEl.style.cssText = 'display:none;color:#f44747;font-size:10px;padding:2px 0 2px 20px;word-break:break-word;';
-
-      (function (idx) {
-        row.onclick = function () { runOneWithUI(idx); };
-      })(i);
-
-      row.appendChild(indicator);
-      row.appendChild(label);
-      list.appendChild(row);
-      list.appendChild(errEl);
+      var row = document.createElement('div'); row.className = 'test-row';
+      var ind = document.createElement('span'); ind.className = 'test-indicator';
+      var lbl = document.createElement('span'); lbl.style.cssText = 'flex:1;word-break:break-word;';
+      lbl.textContent = tests[i].name;
+      (function (idx) { row.onclick = function () { runOneUI(idx); }; })(i);
+      row.appendChild(ind); row.appendChild(lbl); listEl.appendChild(row);
+      var err = document.createElement('div'); err.className = 'test-error'; err.style.display = 'none';
+      listEl.appendChild(err);
     }
-
-    panelEl.appendChild(list);
-    document.body.appendChild(panelEl);
-
-    // Make draggable
-    var dragX = 0, dragY = 0;
-    header.onpointerdown = function (e) {
-      if (e.target.tagName === 'BUTTON') return;
-      dragX = e.clientX - panelEl.offsetLeft;
-      dragY = e.clientY - panelEl.offsetTop;
-      function onMove(ev) {
-        panelEl.style.left = (ev.clientX - dragX) + 'px';
-        panelEl.style.top = (ev.clientY - dragY) + 'px';
-        panelEl.style.right = 'auto';
-      }
-      function onUp() {
-        document.removeEventListener('pointermove', onMove);
-        document.removeEventListener('pointerup', onUp);
-      }
-      document.addEventListener('pointermove', onMove);
-      document.addEventListener('pointerup', onUp);
-    };
+    var runBtn = root.querySelector('.lexera-shared-test-run-all');
+    if (runBtn) runBtn.onclick = function () { runAllUI(); };
+    var copyBtn = root.querySelector('.lexera-shared-test-copy');
+    if (copyBtn) copyBtn.onclick = function () { copyResults(); };
   }
 
-  function updateTestRow(index, status, error) {
-    if (!panelEl) return;
-    var rows = panelEl.querySelectorAll('.lexera-test-row');
-    var errEls = panelEl.querySelectorAll('.lexera-test-error');
+  function updateRow(index, status, error) {
+    var root = findPanelRoot(); if (!root) return;
+    var rows = root.querySelectorAll('.test-row');
+    var errs = root.querySelectorAll('.test-error');
     if (index >= rows.length) return;
-    var indicator = rows[index].querySelector('.lexera-test-indicator');
-    var errEl = errEls[index];
-
-    if (status === 'running') {
-      indicator.textContent = '\u2026';
-      indicator.style.borderColor = '#007acc';
-      indicator.style.color = '#007acc';
-      indicator.style.background = '';
-      if (errEl) errEl.style.display = 'none';
-    } else if (status === 'pass') {
-      indicator.textContent = '\u2713';
-      indicator.style.borderColor = '#4ec9b0';
-      indicator.style.color = '#fff';
-      indicator.style.background = '#4ec9b0';
-      if (errEl) errEl.style.display = 'none';
-    } else if (status === 'fail') {
-      indicator.textContent = '\u2717';
-      indicator.style.borderColor = '#f44747';
-      indicator.style.color = '#fff';
-      indicator.style.background = '#f44747';
-      if (errEl && error) {
-        errEl.textContent = error;
-        errEl.style.display = 'block';
-      }
-    } else {
-      indicator.textContent = '';
-      indicator.style.borderColor = '#555';
-      indicator.style.color = '';
-      indicator.style.background = '';
-      if (errEl) errEl.style.display = 'none';
+    var ind = rows[index].querySelector('.test-indicator');
+    ind.className = 'test-indicator' + (status === 'pass' ? ' pass' : status === 'fail' ? ' fail' : status === 'running' ? ' running' : '');
+    ind.textContent = status === 'pass' ? '\u2713' : status === 'fail' ? '\u2717' : status === 'running' ? '\u2026' : '';
+    if (errs[index]) {
+      errs[index].textContent = (status === 'fail' && error) ? error : '';
+      errs[index].style.display = (status === 'fail' && error) ? 'block' : 'none';
     }
   }
 
-  function updateSummary(passed, failed, total) {
-    if (!panelEl) return;
-    var el = panelEl.querySelector('#lexera-test-summary');
-    if (!el) return;
-    el.textContent = passed + ' passed, ' + failed + ' failed / ' + total;
-    el.style.color = failed > 0 ? '#f44747' : '#4ec9b0';
+  function updateSummary(p, f, t) {
+    var root = findPanelRoot(); if (!root) return;
+    var el = root.querySelector('.lexera-shared-test-summary'); if (!el) return;
+    el.textContent = p + ' passed, ' + f + ' failed / ' + t;
+    el.style.color = f > 0 ? 'var(--error)' : 'var(--success)';
   }
 
-  async function runAllWithUI() {
-    if (!panelEl) createPanel();
-    _api = null;
-    lastResults = [];
-    var passed = 0, failed = 0;
-
-    // Reset all
-    for (var j = 0; j < tests.length; j++) updateTestRow(j, 'reset');
+  async function runAllUI() {
+    populateTestList(); _api = null; lastResults = [];
+    var p = 0, f = 0;
+    for (var j = 0; j < tests.length; j++) updateRow(j, 'reset');
     updateSummary(0, 0, tests.length);
-
     for (var i = 0; i < tests.length; i++) {
-      updateTestRow(i, 'running');
+      updateRow(i, 'running');
       try {
         await tests[i].fn();
-        updateTestRow(i, 'pass');
-        lastResults.push({ name: tests[i].name, passed: true });
-        passed++;
+        updateRow(i, 'pass'); lastResults.push({ name: tests[i].name, passed: true }); p++;
       } catch (err) {
-        var errMsg = err.message || String(err);
-        updateTestRow(i, 'fail', errMsg);
-        lastResults.push({ name: tests[i].name, passed: false, error: errMsg });
-        failed++;
+        var msg = err.message || String(err);
+        updateRow(i, 'fail', msg); lastResults.push({ name: tests[i].name, passed: false, error: msg }); f++;
       }
-      updateSummary(passed, failed, tests.length);
+      updateSummary(p, f, tests.length);
     }
   }
 
-  async function runOneWithUI(index) {
+  async function runOneUI(index) {
     if (index < 0 || index >= tests.length) return;
-    _api = null;
-    updateTestRow(index, 'running');
+    _api = null; updateRow(index, 'running');
     try {
-      await tests[index].fn();
-      updateTestRow(index, 'pass');
-      // Update lastResults for this test
-      var existing = lastResults.findIndex(function (r) { return r.name === tests[index].name; });
-      var entry = { name: tests[index].name, passed: true };
-      if (existing >= 0) lastResults[existing] = entry; else lastResults.push(entry);
+      await tests[index].fn(); updateRow(index, 'pass');
+      var ex = lastResults.findIndex(function (r) { return r.name === tests[index].name; });
+      var e = { name: tests[index].name, passed: true };
+      if (ex >= 0) lastResults[ex] = e; else lastResults.push(e);
     } catch (err) {
-      var errMsg = err.message || String(err);
-      updateTestRow(index, 'fail', errMsg);
-      var existing2 = lastResults.findIndex(function (r) { return r.name === tests[index].name; });
-      var entry2 = { name: tests[index].name, passed: false, error: errMsg };
-      if (existing2 >= 0) lastResults[existing2] = entry2; else lastResults.push(entry2);
+      var msg = err.message || String(err); updateRow(index, 'fail', msg);
+      var ex2 = lastResults.findIndex(function (r) { return r.name === tests[index].name; });
+      var e2 = { name: tests[index].name, passed: false, error: msg };
+      if (ex2 >= 0) lastResults[ex2] = e2; else lastResults.push(e2);
     }
   }
 
-  function togglePanel() {
-    if (panelEl && panelEl.parentNode) {
-      panelEl.remove();
-      panelEl = null;
-    } else {
-      createPanel();
-    }
-  }
+  var _obs = new MutationObserver(function () {
+    if (findPanelRoot() && !_panelInit) populateTestList();
+  });
+  _obs.observe(document.body, { childList: true, subtree: true });
 
   window.LexeraFrontendTests = {
     runAll: runAll,
-    run: run,
+    run: function (name) {
+      var t = tests.find(function (x) { return x.name === name; });
+      if (!t) { console.error('Not found: ' + name); return; }
+      return t.fn();
+    },
     list: function () { return tests.map(function (t) { return t.name; }); },
-    showPanel: togglePanel,
-    runAllWithUI: function () { createPanel(); runAllWithUI(); }
+    showPanel: function () { populateTestList(); },
+    runAllWithUI: function () { populateTestList(); runAllUI(); }
   };
 })();

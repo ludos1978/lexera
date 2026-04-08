@@ -11030,10 +11030,8 @@ var LexeraDashboard = (function () {
     });
 
     // Frontend tests
-    ActionRegistry.register('board', 'toggle-frontend-tests', function () {
-      if (window.LexeraFrontendTests && typeof window.LexeraFrontendTests.showPanel === 'function') {
-        window.LexeraFrontendTests.showPanel();
-      }
+    ActionRegistry.register('board', 'reveal-panel:frontendTests', function () {
+      if (WorkspaceShell) WorkspaceShell.revealPanel('frontendTests');
     });
 
     // Search

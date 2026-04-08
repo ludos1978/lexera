@@ -9,7 +9,8 @@
     backendSettings: true,
     frontendSettings: true,
     renderApps: true,
-    files: true
+    files: true,
+    frontendTests: true
   };
 
   var instancesByKind = {
@@ -21,7 +22,8 @@
     backendSettings: {},
     frontendSettings: {},
     renderApps: {},
-    files: {}
+    files: {},
+    frontendTests: {}
   };
 
   function createPanelRoot(className, kind, instanceId) {
@@ -336,6 +338,21 @@
     return root;
   }
 
+  function createFrontendTestsPanelElement(instanceId) {
+    var root = createPanelRoot('test-panel lexera-shared-panel lexera-shared-panel-frontend-tests', 'frontendTests', instanceId);
+    root.innerHTML =
+      '<div class="test-panel-header">' +
+        '<span class="test-panel-title">Frontend Tests</span>' +
+        '<div class="test-panel-actions">' +
+          '<button class="test-panel-btn lexera-shared-test-run-all" type="button">Run All</button>' +
+          '<button class="test-panel-btn lexera-shared-test-copy" type="button">Copy</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="test-panel-summary lexera-shared-test-summary"></div>' +
+      '<div class="test-panel-body lexera-shared-test-list"></div>';
+    return root;
+  }
+
   var PANEL_FACTORIES = {
     hierarchy: createHierarchyPanelElement,
     dashboard: createDashboardPanelElement,
@@ -345,7 +362,8 @@
     backendSettings: createBackendSettingsPanelElement,
     frontendSettings: createFrontendSettingsPanelElement,
     renderApps: createRenderAppsPanelElement,
-    files: createFilesPanelElement
+    files: createFilesPanelElement,
+    frontendTests: createFrontendTestsPanelElement
   };
 
   function createPanelElement(kind, instanceId) {

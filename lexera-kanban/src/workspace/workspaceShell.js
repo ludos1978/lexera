@@ -111,7 +111,8 @@
     backendSettings: { id: 'backendSettings', title: 'Backend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
     frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
     renderApps: { id: 'renderApps', title: 'Render Applications', defaultDock: 'right', duplicable: true, integratedHeader: true },
-    files: { id: 'files', title: 'Files', defaultDock: 'right', duplicable: true, integratedHeader: true }
+    files: { id: 'files', title: 'Files', defaultDock: 'right', duplicable: true, integratedHeader: true },
+    frontendTests: { id: 'frontendTests', title: 'Frontend Tests', defaultDock: 'right', duplicable: true, integratedHeader: true }
   };
 
   var DEFAULT_PANEL_VISIBILITY = {
@@ -123,7 +124,8 @@
     backendSettings: false,
     frontendSettings: false,
     renderApps: false,
-    files: false
+    files: false,
+    frontendTests: false
   };
 
   var runtimeAllowedPanelKinds = Object.keys(PANEL_DEFINITIONS);
@@ -2452,6 +2454,7 @@
       (sharedPanels ? sharedPanels.createPanelElement('frontendSettings', 'frontendSettings') : null);
     var renderAppsPanelEl = hookPanels.renderApps || (sharedPanels ? sharedPanels.createPanelElement('renderApps', 'renderApps') : null);
     var filesPanelEl = hookPanels.files || (sharedPanels ? sharedPanels.createPanelElement('files', 'files') : null);
+    var frontendTestsPanelEl = hookPanels.frontendTests || (sharedPanels ? sharedPanels.createPanelElement('frontendTests', 'frontendTests') : null);
 
     if (!logPanelEl && sharedPanels && typeof sharedPanels.createPanelElement === 'function') {
       logPanelEl = sharedPanels.createPanelElement('logs', 'logs');
@@ -2487,6 +2490,7 @@
     if (frontendSettingsPanelEl) frontendSettingsPanelEl.setAttribute('data-shell-panel', 'frontendSettings');
     if (renderAppsPanelEl) renderAppsPanelEl.setAttribute('data-shell-panel', 'renderApps');
     if (filesPanelEl) filesPanelEl.setAttribute('data-shell-panel', 'files');
+    if (frontendTestsPanelEl) frontendTestsPanelEl.setAttribute('data-shell-panel', 'frontendTests');
 
     state.panelElements = {
       hierarchy: sidebarEl,
@@ -2495,7 +2499,8 @@
       backendSettings: backendSettingsPanelEl,
       frontendSettings: frontendSettingsPanelEl,
       renderApps: renderAppsPanelEl,
-      files: filesPanelEl
+      files: filesPanelEl,
+      frontendTests: frontendTestsPanelEl
     };
     return state.panelElements;
   }

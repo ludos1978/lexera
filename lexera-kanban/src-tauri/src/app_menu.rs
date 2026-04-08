@@ -328,7 +328,7 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("view-panel-backend-settings", "reveal-panel:backendSettings"),
     ("view-panel-frontend-settings", "reveal-panel:frontendSettings"),
     ("view-panel-render-apps", "reveal-panel:renderApps"),
-    ("view-panel-frontend-tests", "toggle-frontend-tests"),
+    ("view-panel-frontend-tests", "reveal-panel:frontendTests"),
     ("view-panel-week-calendar", "reveal-panel:weekCalendar"),
     ("view-panel-month-calendar", "reveal-panel:monthCalendar"),
     ("view-panel-files", "reveal-panel:files"),

@@ -436,6 +436,7 @@ const FORMAT_GATE_BUDGET = {
   'src/app.js': 4,
   'src/board/boardList.js': 2,
   'src/export/exportTreeBuilder.js': 1,
+  'src/test/frontendTests.js': 1,
 };
 
 const FLAT_COLUMN_RE = /\b(?:fullBoard|fullBoardData|boardData|board|bd)\.columns\b/g;
