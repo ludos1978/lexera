@@ -82,4 +82,17 @@ describe('hierarchy style contract', () => {
     expect(appCss).toContain('.tree-node[data-tree-structural-role="group"] > .tree-label');
     expect(appCss).toContain('.tree-node[data-tree-structural-role="item"] > .tree-label');
   });
+
+  it('keeps workspace-shell tree action icons visible without hover', () => {
+    expect(appCss).toContain('body.workspace-shell-mode .board-list,');
+    expect(appCss).toContain('--sidebar-tree-action-col: var(--app-icon-button-size);');
+    expect(appCss).toContain('--sidebar-tree-grip-col: var(--app-icon-button-size);');
+    expect(appCss).toContain('body.workspace-shell-mode .board-list .tree-menu-btn,');
+    expect(appCss).toContain('body.workspace-shell-mode .lexera-shared-board-list .tree-menu-btn,');
+    expect(appCss).toContain('body.workspace-shell-mode .board-list .tree-grip.entity-drag-icon,');
+    expect(appCss).toContain('body.workspace-shell-mode .lexera-shared-board-list .tree-grip.entity-drag-icon {');
+    expect(appCss).toContain('display: inline-flex !important;');
+    expect(appCss).toContain(':root:not([data-sidebar-tree-menus="on"]) body.workspace-shell-mode .board-list .tree-menu-btn,');
+    expect(appCss).toContain(':root[data-sidebar-tree-grips="off"] body.workspace-shell-mode .board-list .tree-grip.entity-drag-icon,');
+  });
 });

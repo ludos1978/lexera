@@ -148,7 +148,7 @@ function createEmbeddedBoardListHarness(onParentMessage, overrides = {}) {
   return { BoardList, state };
 }
 
-function loadEmbeddedMutationHarness(onParentMessage) {
+function loadEmbeddedMutationHarness(onParentMessage, onSaveFullBoard) {
   const source = fs.readFileSync(path.resolve('src/app.js'), 'utf8');
   const lines = source.split('\n');
 
@@ -228,7 +228,16 @@ function loadEmbeddedMutationHarness(onParentMessage) {
     }
     function showSaving() {}
     function hideSaving() {}
-    async function saveFullBoard() { return true; }
+    async function saveFullBoard() {
+      if (typeof onSaveFullBoard === 'function') {
+        return onSaveFullBoard({
+          activeBoardId: activeBoardId,
+          fullBoardData: structuredClone(fullBoardData),
+          activeBoardData: structuredClone(activeBoardData),
+        });
+      }
+      return true;
+    }
     function refreshTargetedElements() {}
     function refreshHeaderFileControls() {}
     function scheduleDashboardRefresh() {}
@@ -285,8 +294,8 @@ function loadEmbeddedMutationHarness(onParentMessage) {
     };
   `;
 
-  const factory = new Function('onParentMessage', 'structuredClone', wrappedSource);
-  return factory(onParentMessage, structuredClone);
+  const factory = new Function('onParentMessage', 'onSaveFullBoard', 'structuredClone', wrappedSource);
+  return factory(onParentMessage, onSaveFullBoard, structuredClone);
 }
 
 describe('embedded hierarchy mutation paths', () => {
@@ -345,6 +354,41 @@ describe('embedded hierarchy mutation paths', () => {
 
     expect(committed).toBe(true);
     expect(parent.getRows('board-a')).toEqual(sourceBoard.rows);
+    expect(parent.getRows('board-b')).toEqual(targetBoard.rows);
+  });
+
+  it('hydrates active board state before saving cross-board mutations when local state is missing', async () => {
+    const parent = createParentHierarchyObserver();
+    let saveSnapshot = null;
+    const harness = loadEmbeddedMutationHarness(
+      (message) => parent.observe(message),
+      (payload) => {
+        saveSnapshot = payload;
+        return true;
+      }
+    );
+    const activeBoard = createBoardData('Active Missing Local');
+    const targetBoard = createBoardData('Target Missing Local');
+
+    harness.setState({
+      activeBoardId: 'board-a',
+      fullBoardData: null,
+      activeBoardData: null,
+    });
+
+    const committed = await harness.commitBoardMutations({
+      'board-a': structuredClone(activeBoard),
+      'board-b': structuredClone(targetBoard),
+    }, {
+      refreshSidebar: true,
+    });
+
+    expect(committed).toBe(true);
+    expect(saveSnapshot).not.toBeNull();
+    expect(saveSnapshot.fullBoardData.rows).toEqual(activeBoard.rows);
+    expect(saveSnapshot.activeBoardData.fullBoard.rows).toEqual(activeBoard.rows);
+    expect(harness.getState().fullBoardData.rows).toEqual(activeBoard.rows);
+    expect(parent.getRows('board-a')).toEqual(activeBoard.rows);
     expect(parent.getRows('board-b')).toEqual(targetBoard.rows);
   });
 

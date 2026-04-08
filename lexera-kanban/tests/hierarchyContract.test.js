@@ -121,4 +121,27 @@ describe('LexeraHierarchyContract', () => {
     expect(branchNode.getAttribute('data-tree-structural-role')).toBe('group');
     expect(branchNode.getAttribute('data-tree-root')).toBe('true');
   });
+
+  it('renders tree menu buttons with shared burger icon markup', () => {
+    const TreeView = loadTreeView();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    TreeView.render(container, [
+      HierarchyContract.createNode({
+        id: 'card:1',
+        label: 'Card One',
+        type: 'card',
+        structuralRole: 'item',
+        menu: true,
+        grip: false,
+        hasToggle: false
+      })
+    ]);
+
+    const menuButton = container.querySelector('.tree-menu-btn.burger-menu-btn');
+    expect(menuButton).toBeTruthy();
+    expect(menuButton.getAttribute('aria-label')).toBe('Options');
+    expect(menuButton.querySelector('.burger-lines')).toBeTruthy();
+  });
 });

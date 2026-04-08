@@ -3286,9 +3286,9 @@ var LexeraEmbedMenu = (function () {
     if (!container) return;
     var filePath = container.getAttribute('data-file-path') || '';
     var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
-    if (!filePath || !boardId) return;
-    var fileRef = parseLocalFileReference(filePath);
-    var isAbsolute = isAbsoluteFilePath(fileRef.path);
+    if (!filePath) return;
+    var isGenericLink = isGenericMarkdownLinkTarget(filePath);
+    var isEditable = container.getAttribute('data-link-editable') !== '0';
     var x = 0;
     var y = 0;
     if (trigger && typeof trigger.clientX === 'number' && typeof trigger.clientY === 'number') {
@@ -3304,6 +3304,28 @@ var LexeraEmbedMenu = (function () {
       y = containerRect.bottom;
     }
 
+    if (isGenericLink) {
+      var openLabel = 'Open Link';
+      if (/^mailto:/i.test(filePath)) openLabel = 'Open Mail Link';
+      else if (filePath.indexOf('#footnote-') === 0) openLabel = 'Jump to Footnote';
+      else if (filePath.charAt(0) === '#') openLabel = 'Open Target';
+      var genericItems = [
+        { id: 'open-link', label: openLabel },
+        { id: 'copy-link', label: 'Copy Link' }
+      ];
+      if (isEditable) {
+        genericItems.push({ separator: true });
+        genericItems.push({ id: 'edit-link', label: 'Edit Link' });
+      }
+      showNativeMenu(genericItems, x, y).then(function (action) {
+        if (action) handleBoardFileLinkAction(action, container);
+      });
+      return;
+    }
+
+    if (!boardId) return;
+    var fileRef = parseLocalFileReference(filePath);
+    var isAbsolute = isAbsoluteFilePath(fileRef.path);
     showNativeMenu([
       { id: 'preview', label: 'Preview File' },
       { separator: true },
@@ -3382,7 +3404,31 @@ var LexeraEmbedMenu = (function () {
     }
     var filePath = container.getAttribute('data-file-path') || '';
     var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
-    if (!filePath || !boardId) return;
+    var isGenericLink = isGenericMarkdownLinkTarget(filePath);
+    if (!filePath || (!boardId && !isGenericLink)) return;
+
+    if (isGenericLink) {
+      closeEmbedMenu();
+      if (action === 'open-link') {
+        openMarkdownLinkTarget(filePath);
+        return;
+      }
+      if (action === 'copy-link') {
+        copyTextToClipboard(filePath, 'Link copied to clipboard', 'Failed to copy link');
+        return;
+      }
+      if (action === 'edit-link') {
+        if (container.getAttribute('data-link-editable') === '0') return;
+        var nextLinkTarget = promptForEmbedTarget(filePath, 'Update link target');
+        if (!nextLinkTarget || nextLinkTarget === filePath) return;
+        updateBoardFileLinkTarget(container, nextLinkTarget).then(function (changed) {
+          if (changed) showNotification('Link updated');
+          else showNotification('Unable to update link');
+        });
+      }
+      return;
+    }
+
     var fileRef = parseLocalFileReference(filePath);
 
     if (action === 'preview') {
@@ -4707,6 +4753,7 @@ var LexeraEmbedMenu = (function () {
     // Rendering
     renderInlineFileEmbedHtml: _w(renderInlineFileEmbedHtml),
     renderBoardFileLinkHtml: _w(renderBoardFileLinkHtml),
+    renderMarkdownLinkHtml: _w(renderMarkdownLinkHtml),
     renderIncludeDirectiveHtml: _w(renderIncludeDirectiveHtml),
     renderWikiLinkHtml: _w(renderWikiLinkHtml),
     renderTagChipHtml: _w(renderTagChipHtml),

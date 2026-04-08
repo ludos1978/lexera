@@ -23,6 +23,7 @@ var TreeView = (function () {
   'use strict';
 
   var GUIDE_WIDTH = 12; // fallback px per indent level
+  var BURGER_MENU_ICON_HTML = '<span class="burger-lines" aria-hidden="true"></span>';
 
   // --- Internal helpers ---
 
@@ -180,7 +181,7 @@ var TreeView = (function () {
       (node.count != null ? esc(String(node.count)) : '') +
       '</span>';
     var actionHtml = node.menu
-      ? '<button class="tree-meta-action tree-menu-btn burger-menu-btn" title="Options" aria-haspopup="menu">\u2261</button>'
+      ? '<button class="tree-meta-action tree-menu-btn burger-menu-btn" title="Options" aria-label="Options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>'
       : '<span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span>';
     var gripHtml = showGrip
       ? '<span class="tree-grip entity-drag-icon entity-drag-icon-' + escAttr(node.type || 'card') + '" title="' + escAttr(node.gripTitle || 'Drag to reorder') + '">' + getNodeDragIconSvg(node.type) + '</span>'

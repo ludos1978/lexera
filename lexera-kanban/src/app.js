@@ -5165,6 +5165,12 @@ var LexeraDashboard = (function () {
     });
     showSaving();
     try {
+      if (!fullBoardData) {
+        traceFrontendAction('warn', 'save.skip.no-board', 'Skipped board save because no full board data is loaded', {
+          boardId: activeBoardId || null
+        });
+        return false;
+      }
       do {
         _savePending = false;
         lastSaveTime = Date.now();
@@ -5855,8 +5861,25 @@ var LexeraDashboard = (function () {
         if (boardId === activeBoardId) {
           // Active board: refresh UI and save immediately so cross-board
           // moves are persisted before the next poll can overwrite them.
+          ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
+          if (!getBoardSaveBase(boardData)) setBoardSaveBase(boardData, boardData);
+          if (fullBoardData !== boardData) setFullBoardDataState(boardData);
+          if (!activeBoardData) {
+            setActiveBoardDataState({
+              valid: true,
+              title: getMutationBoardTitle(boardId, boardData),
+              fullBoard: boardData,
+              columns: [],
+              rows: []
+            });
+          } else if (activeBoardData.fullBoard !== boardData) {
+            updateActiveBoardDataState(function (nextBoardData) {
+              nextBoardData.fullBoard = boardData;
+              if (!nextBoardData.title) nextBoardData.title = getMutationBoardTitle(boardId, boardData);
+            });
+          }
           updateDisplayFromFullBoard();
-          commitLocalBoardChange(boardId, fullBoardData, {
+          commitLocalBoardChange(boardId, boardData, {
             setLocalState: false,
             refreshHierarchy: true
           });
@@ -9838,6 +9861,7 @@ var LexeraDashboard = (function () {
 
   function renderInlineFileEmbedHtml(f, b, a, t, e, i) { return _EmbedMenu ? _EmbedMenu.renderInlineFileEmbedHtml(f, b, a, t, e, i) : ''; }
   function renderBoardFileLinkHtml(f, b, l, t, c, o) { return _EmbedMenu ? _EmbedMenu.renderBoardFileLinkHtml(f, b, l, t, c, o) : ''; }
+  function renderMarkdownLinkHtml(h, b, l, t, c, o) { return _EmbedMenu ? _EmbedMenu.renderMarkdownLinkHtml(h, b, l, t, c, o) : ''; }
   function renderIncludeDirectiveHtml(r, b, c, o) { return _EmbedMenu ? _EmbedMenu.renderIncludeDirectiveHtml(r, b, c, o) : ''; }
   function renderWikiLinkHtml(d, l, o) { return _EmbedMenu ? _EmbedMenu.renderWikiLinkHtml(d, l, o) : ''; }
   function renderTagChipHtml(tag) { return _EmbedMenu ? _EmbedMenu.renderTagChipHtml(tag) : ''; }
@@ -10382,6 +10406,7 @@ var LexeraDashboard = (function () {
       parseMarkdownTarget: parseMarkdownTarget,
       escapeAttr: escapeAttr,
       renderBoardFileLinkHtml: renderBoardFileLinkHtml,
+      renderMarkdownLinkHtml: renderMarkdownLinkHtml,
       buildAngleBracketAutolinkHtml: buildAngleBracketAutolinkHtml,
       decodeHtmlEntities: decodeHtmlEntities,
       renderWikiLinkHtml: renderWikiLinkHtml,

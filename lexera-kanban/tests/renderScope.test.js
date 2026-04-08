@@ -32,7 +32,15 @@ function loadRenderScopeHelpers() {
   const InlineRenderer = loadIIFE('render/inlineRenderer.js', 'LexeraInlineRenderer');
   return InlineRenderer.createInlineRenderers({
     getActiveBoardId: () => '',
-    extractAngleBracketAutolinks: (text) => ({ text: String(text || ''), links: [] }),
+    extractAngleBracketAutolinks: (text) => {
+      const links = [];
+      const rewritten = String(text || '').replace(/<((?:https?:\/\/|mailto:)[^>\s]+)>/gi, (_, href) => {
+        const token = '@@AUTOLINKTOKEN' + links.length + '@@';
+        links.push(String(href || '').trim());
+        return token;
+      });
+      return { text: rewritten, links };
+    },
     stripHtmlComments: (text) => String(text || ''),
     escapeHtml,
     stashRenderedHtmlToken,
@@ -41,6 +49,8 @@ function loadRenderScopeHelpers() {
     parseMarkdownTarget: (raw) => ({ path: String(raw || '').trim(), title: '' }),
     escapeAttr,
     renderBoardFileLinkHtml: (href, _boardId, label) => '<board-link href="' + escapeAttr(href) + '">' + escapeHtml(label) + '</board-link>',
+    renderMarkdownLinkHtml: (href, _boardId, label, _title, _extraClass, options = {}) =>
+      '<generic-link href="' + escapeAttr(href) + '" data-link-index="' + escapeAttr(String(options.linkIndex ?? '')) + '" data-editable="' + (options.editable === false ? '0' : '1') + '">' + label + '</generic-link>',
     buildAngleBracketAutolinkHtml: (href) => '<a href="' + escapeAttr(href) + '">' + escapeHtml(href) + '</a>',
     decodeHtmlEntities: (value) => String(value || ''),
     renderWikiLinkHtml: (_documentName, label) => '<wiki-link>' + escapeHtml(label) + '</wiki-link>',
@@ -116,5 +126,18 @@ describe('render scopes', () => {
     const embedHtml = RenderScopeHelpers.renderInline('![Preview](image.png)', 'board-1', {});
     expect(embedHtml).toContain('embed-container');
     expect(embedHtml).toContain('/file/board-1/image.png');
+  });
+
+  it('renders generic markdown links through the inline link helper', () => {
+    const html = RenderScopeHelpers.renderInline('See [site](https://example.com)', 'board-1', {});
+    expect(html).toContain('<generic-link href="https://example.com"');
+    expect(html).toContain('data-link-index="0"');
+    expect(html).toContain('data-editable="1"');
+  });
+
+  it('renders autolinks through the inline link helper as non-editable', () => {
+    const html = RenderScopeHelpers.renderInline('See <https://example.com>', 'board-1', {});
+    expect(html).toContain('<generic-link href="https://example.com"');
+    expect(html).toContain('data-editable="0"');
   });
 });

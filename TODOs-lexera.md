@@ -2,6 +2,17 @@
 
 ## Frontend Test Additions
 
+- [ ] Add frontend tests that verify the "create new row" action immediately creates a row in data, board DOM, sidebar, and dashboard-derived counts.
+- [ ] Add frontend tests that verify the "create new stack" action immediately creates a stack in data, board DOM, and sidebar hierarchy.
+- [ ] Add frontend tests that verify the "create new column" action immediately creates a column in data, board DOM, sidebar hierarchy, and relevant dashboard rollups.
+- [ ] Add frontend tests that verify the "create new card" action immediately creates a card in data, board DOM, sidebar hierarchy, and dashboard search results.
+- [ ] Add frontend tests that verify moving cards, columns, stacks, or rows to Trash immediately removes them from normal board visibility and places them in the trash-derived surface.
+- [ ] Add frontend tests that verify moving cards, columns, stacks, or rows to Archive immediately updates board visibility, archived dashboard sections, and sidebar-derived views.
+- [ ] Add frontend tests that verify moving cards, columns, stacks, or rows to Park immediately updates board visibility, parked dashboard sections, and related tags or badges.
+- [ ] Add frontend tests that verify moving cards, columns, stacks, or rows to Incoming immediately updates board visibility and incoming-derived dashboard or navigation surfaces.
+- [ ] Add export tests that verify Marp export succeeds for the active board and produces output containing the expected card and column content.
+- [ ] Add export tests that verify Marp export preserves or intentionally degrades embeds, includes, links, and time-tag content in a predictable way.
+- [ ] Add export tests that verify Marp export reflects row, stack, column, and card ordering from the current visible board state.
 - [x] Add frontend tests that verify dashboard search results update immediately after `setTestBoard(...)` mutations.
 - [x] Add frontend tests that verify dashboard queries scoped to the active board stay in sync with the board view and sidebar after live frontend mutations.
 - [ ] Add frontend tests that verify dashboard deadline and overdue sections update immediately when cards with temporal tags are added, removed, moved, or edited in the frontend.
@@ -342,7 +353,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 
 ## Immediate UX / Product
 - [ ] Unify visual styles by removing complexity — buttons, fonts, icons should use consistent sizing. Remove redundant CSS rather than adding overrides.
-- [ ] Unify icon sizes — some are very small, others much bigger. Standardize on `--icon-glyph-size`.
+- [x] Unify icon sizes — some are very small, others much bigger. Standardize on `--icon-glyph-size`.
 - [ ] Remove the workspace dropdown once the hierarchy tree can express workspace filtering directly.
 
 ## Hierarchy Unification
@@ -370,10 +381,10 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 ## CSS Simplification (analysis 2026-04-07)
 > app.css is 9,565 lines (75% of all CSS). Font-size chaos, sleek theme bloat, hardcoded px values.
 
-- [ ] Fix font-size dual-variable problem — set `font-size` once on containers (`.board-list`, `.sidebar`), remove ~20 per-element declarations, let inheritance work.
+- [x] Fix font-size dual-variable problem — set `font-size` once on containers (`.board-list`, `.sidebar`), remove ~20 per-element declarations, let inheritance work.
 - [x] Replace 86 hardcoded px font-sizes with variables — `12px` (58×) → `var(--font-size-sm)`, `13px` (28×) → `var(--font-size-base)`.
 - [x] Remove unused CSS variables from tokens.css.
-- [ ] Merge duplicate selectors in app.css.
+- [x] Merge duplicate selectors in app.css.
 - [ ] Shrink sleek theme (1,322 lines) — consolidate redundant declarations, estimated 40-50% reduction.
 - [ ] Split app.css into logical modules — sidebar, board, cards, dialogs, tags.
 

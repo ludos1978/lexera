@@ -1862,6 +1862,59 @@
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // INCLUDES & EMBEDS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('include: column include badge renders immediately after setTestBoard', async function () {
+    await setup();
+    try {
+      var data = api().getFullBoardData();
+      var targetStack = findFirstVisibleStackRef(data);
+      assert(targetStack, 'need at least 1 visible stack');
+      var includeSource = { rawPath: 'docs/include-test.md', missing: false };
+      data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex].columns.push({
+        id: '__include-col-test__',
+        title: 'Include Test Column',
+        cards: [],
+        include_source: includeSource,
+        includeSource: includeSource
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var c = getContainer();
+      var colEl = c.querySelector('.column[data-column-id="__include-col-test__"]');
+      assert(colEl, 'include test column rendered');
+      var badge = colEl.querySelector('.column-include-badge[data-include-path="docs/include-test.md"]');
+      assert(badge, 'include badge rendered with expected path');
+      assert(!badge.classList.contains('include-broken'), 'include badge is not marked broken');
+    } finally { await teardown(); }
+  });
+
+  register('embed: markdown image embed renders immediately after setTestBoard', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var data = api().getFullBoardData();
+      data.rows[col.row].stacks[col.stack].columns[col.localCol].cards.push({
+        id: '__embed-card-test__',
+        kid: '__embed-card-test__',
+        checked: false,
+        content: 'Embed Test Card\n![Preview](assets/embed-test.png)'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var c = getContainer();
+      var cardEl = c.querySelector('.card[data-card-kid="__embed-card-test__"]');
+      assert(cardEl, 'embed test card rendered');
+      var embedEl = cardEl.querySelector('.embed-container[data-file-path="assets/embed-test.png"]');
+      assert(embedEl, 'markdown embed container rendered with expected file path');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // DATA ↔ DOM PARITY AFTER STRUCTURAL MUTATIONS
   // ═══════════════════════════════════════════════════════════════════════
 

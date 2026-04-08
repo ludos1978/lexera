@@ -15,6 +15,7 @@ var LexeraInlineRenderer = (function () {
     var parseMarkdownTarget = deps.parseMarkdownTarget;
     var escapeAttr = deps.escapeAttr;
     var renderBoardFileLinkHtml = deps.renderBoardFileLinkHtml;
+    var renderMarkdownLinkHtml = deps.renderMarkdownLinkHtml;
     var buildAngleBracketAutolinkHtml = deps.buildAngleBracketAutolinkHtml;
     var decodeHtmlEntities = deps.decodeHtmlEntities;
     var renderWikiLinkHtml = deps.renderWikiLinkHtml;
@@ -65,22 +66,36 @@ var LexeraInlineRenderer = (function () {
         var parsed = parseMarkdownTarget(rawHref);
         var href = parsed.path;
         var titleText = parsed.title ? parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '') : '';
-        var titleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
         var isExternal = /^https?:\/\//.test(href);
         var isAnchor = href.indexOf('#') === 0;
         var isMailto = href.indexOf('mailto:') === 0;
+        var linkIndex = titleLinkIndex++;
         if (!isExternal && !isAnchor && !isMailto && href) {
           return stashRenderedHtmlToken(htmlTokens, renderBoardFileLinkHtml(href, boardId, label, titleText, '', {
             withMenu: true,
-            linkIndex: titleLinkIndex++
+            linkIndex: linkIndex
           }));
         }
+        if ((isExternal || isAnchor || isMailto) && href && renderMarkdownLinkHtml) {
+          return stashRenderedHtmlToken(htmlTokens, renderMarkdownLinkHtml(href, boardId, label, titleText, '', {
+            withMenu: true,
+            linkIndex: linkIndex,
+            editable: true
+          }));
+        }
+        var titleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
         var safeHref = escapeAttr(href);
         var targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
         return stashRenderedHtmlToken(htmlTokens, '<a href="' + safeHref + '"' + titleAttr + targetAttr + '>' + label + '</a>');
       });
       safe = safe.replace(/@@AUTOLINKTOKEN(\d+)@@/g, function (_, index) {
         var href = autolinkData.links[parseInt(index, 10)] || '';
+        if (renderMarkdownLinkHtml && href) {
+          return stashRenderedHtmlToken(htmlTokens, renderMarkdownLinkHtml(href, boardId, escapeHtml(href), '', '', {
+            withMenu: true,
+            editable: false
+          }));
+        }
         return stashRenderedHtmlToken(htmlTokens, buildAngleBracketAutolinkHtml(href));
       });
       safe = safe.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, function (_, rawDocument, rawTitle) {
@@ -232,18 +247,26 @@ var LexeraInlineRenderer = (function () {
       safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_, label, rawHref) {
         var parsed = parseMarkdownTarget(rawHref);
         var href = parsed.path;
-        var titleAttr = parsed.title ? ' title="' + escapeAttr(parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '')) + '"' : '';
+        var titleText = parsed.title ? parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '') : '';
         var isExternal = /^https?:\/\//.test(href);
         var isAnchor = href.indexOf('#') === 0;
         var isMailto = href.indexOf('mailto:') === 0;
+        var linkIndex = renderState.linkCounter || 0;
+        renderState.linkCounter = linkIndex + 1;
         if (!isExternal && !isAnchor && !isMailto && href && boardId) {
-          var linkIndex = renderState.linkCounter || 0;
-          renderState.linkCounter = linkIndex + 1;
-          return stashRenderedHtmlToken(htmlTokens, renderBoardFileLinkHtml(href, boardId, label, parsed.title ? parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '') : '', '', {
+          return stashRenderedHtmlToken(htmlTokens, renderBoardFileLinkHtml(href, boardId, label, titleText, '', {
             withMenu: true,
             linkIndex: linkIndex
           }));
         }
+        if ((isExternal || isAnchor || isMailto) && href && renderMarkdownLinkHtml) {
+          return stashRenderedHtmlToken(htmlTokens, renderMarkdownLinkHtml(href, boardId, label, titleText, '', {
+            withMenu: true,
+            linkIndex: linkIndex,
+            editable: true
+          }));
+        }
+        var titleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
         var safeHref = escapeAttr(href);
         var targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
         return stashRenderedHtmlToken(htmlTokens, '<a href="' + safeHref + '"' + titleAttr + targetAttr + '>' + label + '</a>');
@@ -251,6 +274,12 @@ var LexeraInlineRenderer = (function () {
 
       safe = safe.replace(/@@AUTOLINKTOKEN(\d+)@@/g, function (_, index) {
         var href = autolinkData.links[parseInt(index, 10)] || '';
+        if (renderMarkdownLinkHtml && href) {
+          return stashRenderedHtmlToken(htmlTokens, renderMarkdownLinkHtml(href, boardId, escapeHtml(href), '', '', {
+            withMenu: true,
+            editable: false
+          }));
+        }
         return stashRenderedHtmlToken(htmlTokens, buildAngleBracketAutolinkHtml(href));
       });
 
