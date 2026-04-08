@@ -2775,6 +2775,39 @@ var LexeraDashboard = (function () {
     return (flatIndex >= 0 && flatIndex < cols.length) ? cols[flatIndex] : null;
   }
 
+  function cloneVisibleCardForRender(card) {
+    return {
+      id: card.id,
+      content: card.content,
+      checked: !!card.checked,
+      kid: card.kid,
+      params: card.params || {}
+    };
+  }
+
+  function buildRenderableColumnSnapshot(fullCol, flatIdx) {
+    if (!fullCol) return null;
+    return {
+      index: flatIdx,
+      id: fullCol.id,
+      title: fullCol.title,
+      cards: (fullCol.cards || []).filter(function (card) {
+        return !is_archived_or_deleted(card && card.content ? card.content : '');
+      }).map(function (card) {
+        return cloneVisibleCardForRender(card);
+      }),
+      params: fullCol.params || {}
+    };
+  }
+
+  function getRenderableColumnByIndex(flatIndex) {
+    var visibleCols = activeBoardData && Array.isArray(activeBoardData.columns) ? activeBoardData.columns : [];
+    for (var i = 0; i < visibleCols.length; i++) {
+      if (visibleCols[i] && visibleCols[i].index === flatIndex) return visibleCols[i];
+    }
+    return buildRenderableColumnSnapshot(getFullColumn(flatIndex), flatIndex);
+  }
+
   function updateDisplayFromFullBoard() {
     if (!fullBoardData || !activeBoardData) return;
 
@@ -2798,13 +2831,7 @@ var LexeraDashboard = (function () {
                 });
                 var flatIdx = allCols.indexOf(col);
                 var visibleCards = cards.map(function (card) {
-                  return {
-                    id: card.id,
-                    content: card.content,
-                    checked: !!card.checked,
-                    kid: card.kid,
-                    params: card.params || {}
-                  };
+                  return cloneVisibleCardForRender(card);
                 });
                 var visibleCol = {
                   index: flatIdx,
@@ -5676,7 +5703,7 @@ var LexeraDashboard = (function () {
         }
 
         case 'column': {
-          var colData = getFullColumn(target.colIndex);
+          var colData = getRenderableColumnByIndex(target.colIndex);
           if (!colData) break;
           var oldColEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + target.colIndex + '"]');
           var oldColumn = oldColEl ? oldColEl.closest('.column') : null;
@@ -9235,7 +9262,9 @@ var LexeraDashboard = (function () {
     cardId = normalizeStableCardMutationId(cardId);
     if (!column || !column.cards || !cardId) return -1;
     for (var i = 0; i < column.cards.length; i++) {
-      if (normalizeStableCardMutationId(column.cards[i] && column.cards[i].id) === cardId) return i;
+      var card = column.cards[i] || null;
+      if (normalizeStableCardMutationId(card && card.id) === cardId) return i;
+      if (normalizeStableCardMutationId(card && card.kid) === cardId) return i;
     }
     return -1;
   }
@@ -11578,6 +11607,28 @@ var LexeraDashboard = (function () {
     getActiveBoardId: function () { return activeBoardId; },
     getFullBoardData: function () { return fullBoardData; },
     getActiveBoardData: function () { return activeBoardData; },
+    getAvailableBoards: function () {
+      var list = [];
+      var seen = {};
+      var groups = [
+        { items: boards, isRemote: false },
+        { items: remoteBoards, isRemote: true }
+      ];
+      for (var g = 0; g < groups.length; g++) {
+        var items = Array.isArray(groups[g].items) ? groups[g].items : [];
+        for (var i = 0; i < items.length; i++) {
+          var board = items[i];
+          if (!board || !board.id || seen[board.id]) continue;
+          seen[board.id] = true;
+          list.push({
+            id: board.id,
+            title: board.title || board.name || board.id,
+            isRemote: !!groups[g].isRemote
+          });
+        }
+      }
+      return list;
+    },
     setTestBoard: function (boardData, boardId) {
       activeBoardId = boardId || '__test__';
       setFullBoardDataState(boardData);
@@ -11603,7 +11654,10 @@ var LexeraDashboard = (function () {
     renderBoardList: renderBoardList,
     addCardToActiveBoard: addCardToActiveBoard,
     getAllFullColumns: getAllFullColumns,
-    getFullColumn: getFullColumn
+    getFullColumn: getFullColumn,
+    getTemporalTagType: getTemporalTagType,
+    describeTemporalTag: describeTemporalTag,
+    resolveTemporalTag: resolveTemporalTag
   };
   if (typeof window !== 'undefined') window.LexeraTestApi = _testApi;
 

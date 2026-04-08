@@ -356,6 +356,25 @@ function getLogEntries(source) {
   return source === 'backend' ? backendLogEntries : frontendLogEntries;
 }
 
+function getLogEntriesSnapshot(source, options) {
+  var entries;
+  if (source === 'all') {
+    entries = backendLogEntries.map(function (entry) {
+      return Object.assign({ source: 'backend' }, entry);
+    }).concat(frontendLogEntries.map(function (entry) {
+      return Object.assign({ source: 'frontend' }, entry);
+    }));
+  } else {
+    entries = getLogEntries(source).map(function (entry) {
+      return Object.assign({ source: source === 'backend' ? 'backend' : 'frontend' }, entry);
+    });
+  }
+  if (options && options.level) {
+    entries = entries.filter(function (entry) { return entry.level === options.level; });
+  }
+  return entries.slice();
+}
+
 function escapeLogHtml(value) {
   return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -1006,6 +1025,9 @@ function updateFoldedLogStatusBadges() {
 
 window.getLogFoldedStatusData = getLogFoldedStatusData;
 window.updateFoldedLogStatusBadges = updateFoldedLogStatusBadges;
+window.LexeraLoggingSystem = {
+  getEntriesSnapshot: getLogEntriesSnapshot
+};
 
 var foldedLogRuntime = typeof window !== 'undefined' ? window.LexeraRuntime : null;
 if (foldedLogRuntime && typeof foldedLogRuntime.onStateChange === 'function') {

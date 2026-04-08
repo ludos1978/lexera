@@ -621,3 +621,39 @@ Specs: `packages/agent/specs/plugins/diagram/SPEC.md`, `plugins/enhancer/SPEC.md
 - [x] ~~Hierarchy tree lines improved~~ (b75a9edc)
 - [x] ~~Broken elements focus fixed~~ (342df375)
 - [x] ~~Hierarchy context menu~~ (cab7dfe4)
+
+## Archived During Frontend Test Sprint — 2026-04-08
+
+### Frontend test additions (implemented in frontendTests.js)
+- [x] Same-column reorder: last card moves to start
+- [x] Cross-column move: inserted card asserted first in target column
+- [x] Source-column card order remains stable after moving first card out
+- [x] `setTestBoard(...)` rerenders row and column counts to match `fullBoardData`
+- [x] Add empty column renders with expected `data-column-id`
+- [x] Add row with multiple columns renders both row and nested column structure
+- [x] Remove empty column disappears from board view and sidebar
+- [x] Remove empty row disappears from board view
+- [x] `#hidden-internal` cards excluded from visible DOM card counts
+- [x] View/sidebar consistency after removing a card
+- [x] View/sidebar consistency after adding a column
+- [x] View/sidebar consistency after adding a row
+- [x] Column identity stays stable after card move
+- [x] Total column count stays constant after card moves
+- [x] Total row count stays constant after card moves
+- [x] Dashboard refresh scheduled after add/remove/move card, add column, add row
+- [x] Temporal tags (#today, #tomorrow, #yesterday, #week, date(...)) render and classify correctly
+- [x] Cards with temporal tags consistent across board view, sidebar, and dashboard
+
+### Bug investigations
+- [x] View→workspace drag bug: root cause found in `dragDropHandlers.js` `resolveCardDropTarget()` — sidebar drops use `getVisibleCardCountInColumn()` (always appends to end) instead of `findCardInsertIndex(mouseY)` like main view
+- [x] BeforeDevCommand error: missing react UMD file from node_modules
+
+### Frontend integration test infrastructure (completed)
+- [x] Exposed test API on `window.LexeraTestApi`: `setTestBoard`, `moveCard`, `getActiveBoardId`, `loadBoard`, `renderColumns`, `selectBoard`, `addCardToActiveBoard`, `getAllFullColumns`, `getFullColumn`, `getTemporalTagType`, `describeTemporalTag`, `resolveTemporalTag`
+- [x] Created `src/test/frontendTests.js` — 63-test suite with `register()`, `runAll()`, `run(name)`, UI panel, result copy
+- [x] Same-board card moves: same-column reorder (first→last, last→first), cross-column, workspace→view, view→workspace, workspace→workspace
+- [x] Structural mutations: add/remove card, add/remove column, add/remove row, multi-column row
+- [x] Sidebar tree sync after all mutation types
+- [x] Render integrity: no duplicate IDs, total card count constant, column/row count stability, column identity stability
+- [x] Data integrity: getAllFullColumns, getFullColumn bounds, DOM↔data parity, unique IDs
+- [x] Hidden-internal card filtering (archived + deleted excluded from DOM)

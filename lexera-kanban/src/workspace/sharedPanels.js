@@ -342,10 +342,20 @@
     var root = createPanelRoot('test-panel lexera-shared-panel lexera-shared-panel-frontend-tests', 'frontendTests', instanceId);
     root.innerHTML =
       '<div class="test-panel-header">' +
-        '<span class="test-panel-title">Frontend Tests</span>' +
         '<div class="test-panel-actions">' +
-          '<button class="test-panel-btn lexera-shared-test-run-all" type="button">Run All</button>' +
-          '<button class="test-panel-btn lexera-shared-test-copy" type="button">Copy</button>' +
+          '<div class="test-panel-action-group test-panel-action-group-run">' +
+            '<select class="test-panel-board-select lexera-shared-test-board-select" title="Board to test"></select>' +
+            '<button class="test-panel-btn lexera-shared-test-run-all" type="button">Run All</button>' +
+            '<button class="test-panel-btn test-panel-btn-stop lexera-shared-test-stop" type="button">Stop</button>' +
+          '</div>' +
+          '<div class="test-panel-action-group test-panel-action-group-copy">' +
+            '<select class="test-panel-copy-scope lexera-shared-test-copy-scope" title="Copy scope">' +
+              '<option value="all">All Results</option>' +
+              '<option value="errors">Only Errors</option>' +
+              '<option value="errors-with-logs">Errors + FE/BE Logs</option>' +
+            '</select>' +
+            '<button class="test-panel-btn lexera-shared-test-copy" type="button">Copy</button>' +
+          '</div>' +
         '</div>' +
       '</div>' +
       '<div class="test-panel-summary lexera-shared-test-summary"></div>' +

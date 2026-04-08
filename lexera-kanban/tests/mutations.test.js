@@ -1872,6 +1872,31 @@ describe('Card move scenarios', () => {
     expect(M.getLastCommitBoardIds()).toBeNull();
   });
 
+  it('view-to-view same-column reorder can anchor by target card kid', async () => {
+    var board = makeBoard([
+      makeRow('row-a1', 'Row A1', [
+        makeStack('stack-a1', 'Stack A1', [
+          makeColumn('col-a1', 'Column A1', [
+            makeCard('card-1', 'Card One', { kid: 'kid-1' }),
+            makeCard('card-2', 'Card Two', { kid: 'kid-2' })
+          ])
+        ])
+      ])
+    ]);
+    M.setState(board, buildActiveBoard(M, board), 'board-a');
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-a', flatColIndex: 0, cardId: 'kid-2', before: false, insertIdx: 1, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    var col = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    expect(col.cards.map(function (c) { return c.id; })).toEqual(['card-2', 'card-1']);
+    expect(M.getLastPersistTargets()).toContain('column');
+    expect(M.getLastPersistTargets()).toContain('sidebar');
+  });
+
   // ── View → View (same board, cross column) ─────────────────────────────
   it('view-to-view cross-column refreshes board and sidebar', async () => {
     var setup = makeTwoBoardSetup();
