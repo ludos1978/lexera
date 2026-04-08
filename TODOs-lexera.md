@@ -45,7 +45,11 @@ Requires workspace shell mode (multiple boards open in iframes). Tests use `Lexe
 
 Scope: the active Lexera code now lives in the promoted top-level V2 directories such as `lexera-core`, `lexera-backend`, `lexera-kanban`, `lexera-capture-ios`, `lexera-shared`, and `lexera-web-clipper`. This backlog tracks the remaining architecture, boundary, tooling, and cleanup work after that repository promotion. Completed promotion-path tasks were moved to `todo-archive.md`.
 
-- [ ] when i have a stack with "!!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0" i cant remove the text, it doesnt update the view when clearing it out. the include functionality isnt supposed to work in a row title (it correctly doesnt include anything).
+- [x] when i have a stack with "!!!include(...)!!!" i cant remove the text, it doesnt update the view when clearing it out. Fixed in `rowStackMenu.js` — inline edit now strips include syntax from displayed text and properly handles empty results.
+
+## Major Features
+
+- Compare our solution to https://github.com/andes90/collabmd?tab=readme-ov-file#installation-options , what can we leanr from it's implementation. what can we copy?
 
 ## Repository Foundation
 
@@ -334,7 +338,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 
 ## Immediate Bugs
 - [x] Remove or fix `tree-children-guide` so it no longer renders an extra separator line in the hierarchy tree.
-- [ ] Fix include-link auto-rewrite so the refreshed include target is reloaded after the path is corrected.
+- [x] Fix include-link auto-rewrite so the refreshed include target is reloaded after the path is corrected.
 
 ## Immediate UX / Product
 - [ ] Unify visual styles by removing complexity — buttons, fonts, icons should use consistent sizing. Remove redundant CSS rather than adding overrides.
@@ -367,8 +371,8 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 > app.css is 9,565 lines (75% of all CSS). Font-size chaos, sleek theme bloat, hardcoded px values.
 
 - [ ] Fix font-size dual-variable problem — set `font-size` once on containers (`.board-list`, `.sidebar`), remove ~20 per-element declarations, let inheritance work.
-- [ ] Replace 86 hardcoded px font-sizes with variables — `12px` (58×) → `var(--font-size-sm)`, `13px` (28×) → `var(--font-size-base)`.
-- [ ] Remove unused CSS variables from tokens.css.
+- [x] Replace 86 hardcoded px font-sizes with variables — `12px` (58×) → `var(--font-size-sm)`, `13px` (28×) → `var(--font-size-base)`.
+- [x] Remove unused CSS variables from tokens.css.
 - [ ] Merge duplicate selectors in app.css.
 - [ ] Shrink sleek theme (1,322 lines) — consolidate redundant declarations, estimated 40-50% reduction.
 - [ ] Split app.css into logical modules — sidebar, board, cards, dialogs, tags.

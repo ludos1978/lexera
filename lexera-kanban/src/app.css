@@ -85,7 +85,6 @@
   --fold-icon-size: var(--app-fold-icon-size);
   --btn-gap: var(--space-2);
   --layout-row-rail-width: calc(36px * var(--ui-scale));
-  --layout-folded-stack-width: calc(36px * var(--ui-scale));
   --layout-stack-min-width: calc(228px * var(--ui-scale));
   --layout-row-header-pad-y: var(--space-3);
   --layout-row-header-pad-x: var(--space-2);
@@ -188,7 +187,6 @@
   --hierarchy-row-pad-x: 6px;
   --hierarchy-row-gap: 3px;
   --hierarchy-row-radius: 3px;
-  --hierarchy-header-color: var(--hierarchy-text-color);
 }
 
 /* Application shell typography contract:
@@ -3162,7 +3160,6 @@ li.tag-line-styled {
 
 .columns-container.layout-canvas .board-row-content {
   --canvas-grid-size: 32px;
-  --canvas-grid-color: color-mix(in srgb, var(--border) 34%, transparent);
   display: block;
   position: relative;
   width: 100%;
@@ -7838,13 +7835,6 @@ select.export-input {
   --board-icon-svg-size: var(--app-icon-svg-size);
   --board-fold-icon-size: var(--app-fold-icon-size);
   --layout-row-rail-width: calc(32px * var(--ui-scale));
-  --layout-folded-stack-width: calc(
-    var(--layout-stack-header-pad-x) +
-    var(--btn-square-size) +
-    var(--btn-gap) +
-    var(--btn-square-size) +
-    var(--btn-gap)
-  );
   --layout-stack-min-width: calc(240px * var(--ui-scale));
   --layout-row-header-pad-y: calc(7px * var(--ui-scale));
   --layout-row-header-pad-x: calc(5px * var(--ui-scale));
@@ -8249,7 +8239,6 @@ select.export-input {
   --sidebar-tree-indent-col: var(--sidebar-tree-indent-step);
   --tree-indent-step: var(--sidebar-tree-indent-step);
   --tree-indent-guide-center: calc(6px * var(--ui-scale));
-  --sidebar-tree-guide-col: var(--tree-indent-step);
   --sidebar-tree-toggle-col: calc(14px * var(--ui-scale));
   --tree-toggle-col: var(--sidebar-tree-toggle-col);
   --sidebar-tree-toggle-gap: calc(3px * var(--ui-scale));
@@ -8259,9 +8248,7 @@ select.export-input {
   --sidebar-tree-count-col: calc(20px * var(--ui-scale));
   --sidebar-tree-action-col: var(--app-icon-button-size);
   --sidebar-tree-grip-col: var(--app-icon-button-size);
-  --sidebar-board-font-size: var(--hierarchy-font-size);
   --sidebar-board-padding-inline: var(--sidebar-tree-root-offset);
-  --sidebar-tree-font-size: var(--hierarchy-font-size);
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-item,

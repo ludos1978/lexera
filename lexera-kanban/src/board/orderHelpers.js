@@ -933,6 +933,9 @@ var LexeraOrderHelpers = (function () {
       },
       refreshBoardHierarchy: function (boardId, fullBoard) {
         _callDep('refreshBoardHierarchyProjection', boardId, fullBoard, '');
+      },
+      refreshDashboard: function () {
+        scheduleDashboardRefresh(0);
       }
     });
     // Ensure hierarchy panel is visible after mount — guards against corrupted persisted state

@@ -4381,6 +4381,9 @@
         if (fullBoard && state.hooks && typeof state.hooks.refreshBoardHierarchy === 'function') {
           state.hooks.refreshBoardHierarchy(mutatedBoardId, fullBoard);
         }
+        if (state.hooks && typeof state.hooks.refreshDashboard === 'function') {
+          state.hooks.refreshDashboard(mutatedBoardId, fullBoard, data.pane || '');
+        }
       }
       return;
     }

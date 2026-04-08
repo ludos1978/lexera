@@ -1395,14 +1395,17 @@ var LexeraEmbedMenu = (function () {
     var indexAttr = options.linkIndex != null
       ? ' data-link-index="' + escapeAttr(String(options.linkIndex)) + '"'
       : '';
+    var editableAttr = options.editable === false ? ' data-link-editable="0"' : ' data-link-editable="1"';
     var wrapperStyle = 'display:inline-flex;align-items:center;gap:2px;vertical-align:baseline;max-width:100%';
     var buttonStyle = 'position:static;top:auto;right:auto;opacity:1;margin:0 0 0 2px';
+    var buttonTitle = options.buttonTitle || 'Path options';
     return '<span class="link-path-overlay-container" data-board-id="' + escapeAttr(boardId || '') + '"' +
       ' data-file-path="' + escapeAttr(filePath || '') + '"' +
       ' style="' + escapeAttr(wrapperStyle) + '"' +
+      editableAttr +
       indexAttr + '>' +
       linkHtml +
-      '<button class="embed-menu-btn link-menu-btn" data-action="link-menu" title="Path options" style="' + escapeAttr(buttonStyle) + '">&#8942;</button>' +
+      '<button class="embed-menu-btn link-menu-btn" data-action="link-menu" title="' + escapeAttr(buttonTitle) + '" style="' + escapeAttr(buttonStyle) + '">&#8942;</button>' +
       '</span>';
   }
 
@@ -1718,6 +1721,26 @@ var LexeraEmbedMenu = (function () {
     return buildBoardFileLinkWrapper(normalizedPath, boardId, linkHtml, options);
   }
 
+  function renderMarkdownLinkHtml(targetHref, boardId, labelHtml, titleText, extraClass, options) {
+    options = options || {};
+    var normalizedHref = decodeHtmlEntities(String(targetHref || '').trim());
+    if (!normalizedHref) return labelHtml || '';
+    var className = 'markdown-inline-link';
+    if (extraClass) className += ' ' + extraClass;
+    var boardAttr = boardId ? ' data-board-id="' + escapeAttr(boardId) + '"' : '';
+    var titleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
+    var targetAttr = /^https?:\/\//i.test(normalizedHref) ? ' target="_blank" rel="noopener noreferrer"' : '';
+    var linkHtml = '<a href="' + escapeAttr(normalizedHref) + '" class="' + className + '"' + boardAttr +
+      ' data-original-href="' + escapeAttr(normalizedHref) + '"' +
+      titleAttr + targetAttr + '>' + labelHtml + '</a>';
+    if (!options.withMenu) return linkHtml;
+    return buildBoardFileLinkWrapper(normalizedHref, boardId, linkHtml, {
+      linkIndex: options.linkIndex,
+      editable: options.editable !== false,
+      buttonTitle: options.buttonTitle || 'Link options'
+    });
+  }
+
   function renderIncludeDirectiveHtml(rawPath, boardId, extraClass, options) {
     options = options || {};
     var includePath = decodeHtmlEntities(String(rawPath || '').trim());
@@ -1755,6 +1778,30 @@ var LexeraEmbedMenu = (function () {
       '<a href="#" class="wiki-link" data-document="' + escapeAttr(documentName) + '"' + boardAttr + ' title="Wiki link: ' + escapeAttr(documentName) + '">' + labelHtml + '</a>' +
       (options.withMenu ? '<button class="wiki-menu-btn" data-action="wiki-menu" title="Wiki link options">☰</button>' : '') +
       '</span>';
+  }
+
+  function isGenericMarkdownLinkTarget(target) {
+    return /^(https?:\/\/|mailto:|#)/i.test(String(target || '').trim());
+  }
+
+  function openMarkdownLinkTarget(target) {
+    var href = String(target || '').trim();
+    if (!href) return;
+    if (/^(https?:\/\/|mailto:)/i.test(href)) {
+      openUrlInSystem(href);
+      return;
+    }
+    if (href.charAt(0) === '#') {
+      if (href.indexOf('#footnote-') === 0) {
+        var footnoteTarget = null;
+        try { footnoteTarget = document.querySelector(href); } catch (_) { footnoteTarget = null; }
+        if (footnoteTarget && typeof footnoteTarget.scrollIntoView === 'function') {
+          footnoteTarget.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      } else {
+        openWikiSearch(href);
+      }
+    }
   }
 
   function renderTemporalTagHtml(tag) {

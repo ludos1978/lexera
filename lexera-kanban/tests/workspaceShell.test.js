@@ -264,9 +264,10 @@ describe('workspace shell active-board notifications', () => {
 });
 
 describe('workspace shell hierarchy mutation bridge', () => {
-  it('refreshes hierarchy from the embedded mutation payload without re-reading the iframe', () => {
+  it('refreshes hierarchy and dashboard from the embedded mutation payload without re-reading the iframe', () => {
     const { shell, window, mainContent } = createShellHarness();
     const refreshBoardHierarchy = vi.fn();
+    const refreshDashboard = vi.fn();
     const fullBoard = {
       title: 'Alpha',
       rows: [{ id: 'row-1', title: 'Row', stacks: [] }],
@@ -275,6 +276,7 @@ describe('workspace shell hierarchy mutation bridge', () => {
     shell.mount({
       getMainContent: () => mainContent,
       refreshBoardHierarchy,
+      refreshDashboard,
     });
 
     window.emit('message', {
@@ -287,6 +289,7 @@ describe('workspace shell hierarchy mutation bridge', () => {
     });
 
     expect(refreshBoardHierarchy).toHaveBeenCalledWith('alpha', fullBoard);
+    expect(refreshDashboard).toHaveBeenCalledWith('alpha', fullBoard, 'pane-1');
   });
 });
 
