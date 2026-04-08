@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(__dirname, '..');
@@ -64,9 +64,7 @@ if (process.argv.includes('--clean')) {
 
 ensureSharedPackageBuild();
 
-const esbuildPath = path.join(repoDir, 'node_modules', 'esbuild', 'lib', 'main.js');
-const esbuildModule = await import(pathToFileURL(esbuildPath).href);
-const { build } = esbuildModule;
+const { build } = await import('esbuild');
 
 fs.rmSync(distDir, { recursive: true, force: true });
 

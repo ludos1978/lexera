@@ -10,5 +10,8 @@
     "build": "node scripts/build.mjs",
     "clean": "node scripts/build.mjs --clean",
     "test": "npm run build && node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
   }
 }
