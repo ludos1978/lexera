@@ -173,6 +173,27 @@ var LexeraDragDropHandlers = (function () {
     return findNodeAtPoint(getElBoardList().querySelectorAll('.tree-column[data-tree-drag="tree-column"]'), mx, my);
   }
 
+  // --- Column ID lookup helpers ---
+
+  function findColumnByIdInRows(rows, columnId) {
+    if (!rows || !columnId) return null;
+    for (var r = 0; r < rows.length; r++) {
+      var stacks = rows[r] && rows[r].stacks ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = stacks[s] && stacks[s].columns ? stacks[s].columns : [];
+        for (var c = 0; c < cols.length; c++) {
+          if (cols[c] && String(cols[c].id) === columnId) return cols[c];
+        }
+      }
+    }
+    return null;
+  }
+
+  function findColumnByIdInBoardData(boardData, columnId) {
+    if (!boardData || !columnId) return null;
+    return findColumnByIdInRows(boardData.rows || [], columnId);
+  }
+
   // --- Card Drop Helpers ---
 
   function getVisibleCardCountInColumn(col) {
@@ -366,21 +387,26 @@ var LexeraDragDropHandlers = (function () {
       var sidebarColIdx = parseInt(sidebarCol.getAttribute('data-col-local-index'), 10);
       if (sidebarBoardId && !isNaN(sidebarRowIdx) && !isNaN(sidebarStackIdx) && !isNaN(sidebarColIdx)) {
         var sidebarInsertIdx = 0;
+        var sidebarColumnId = String(sidebarCol.getAttribute('data-column-id') || '').trim() || null;
         if (sidebarBoardId === activeBoardId && _deps.getFullBoardData()) {
-          var activeTargetCol = null;
-          var activeTargetStack = _deps.findFullDataStack(sidebarRowIdx, sidebarStackIdx);
-          if (activeTargetStack) {
-            var activeTargetColIdx = _deps.findFullColumnIndexInStack(activeTargetStack, sidebarColIdx);
-            if (activeTargetColIdx >= 0 && activeTargetColIdx < activeTargetStack.columns.length) {
-              activeTargetCol = activeTargetStack.columns[activeTargetColIdx];
-            }
-          }
+          // Use stable column ID to find the column in fullBoardData.
+          // Sidebar data-row-index/data-stack-index are full-data indices
+          // (they include hidden items), but findFullDataStack expects
+          // display indices — so we bypass index lookup entirely.
+          var activeTargetCol = sidebarColumnId
+            ? findColumnByIdInBoardData(_deps.getFullBoardData(), sidebarColumnId)
+            : null;
           sidebarInsertIdx = getVisibleCardCountInColumn(activeTargetCol);
         } else {
           var sidebarRows = _deps.getBoardHierarchyRows(sidebarBoardId) || [];
-          var sidebarRow = sidebarRows[sidebarRowIdx];
-          var sidebarStack = sidebarRow && sidebarRow.stacks ? sidebarRow.stacks[sidebarStackIdx] : null;
-          var sidebarTargetCol = sidebarStack && sidebarStack.columns ? sidebarStack.columns[sidebarColIdx] : null;
+          var sidebarTargetCol = sidebarColumnId
+            ? findColumnByIdInRows(sidebarRows, sidebarColumnId)
+            : null;
+          if (!sidebarTargetCol) {
+            var sidebarRow = sidebarRows[sidebarRowIdx];
+            var sidebarStack = sidebarRow && sidebarRow.stacks ? sidebarRow.stacks[sidebarStackIdx] : null;
+            sidebarTargetCol = sidebarStack && sidebarStack.columns ? sidebarStack.columns[sidebarColIdx] : null;
+          }
           sidebarInsertIdx = getVisibleCardCountInColumn(sidebarTargetCol);
         }
         return {

@@ -828,6 +828,21 @@ textarea {
   border-right-color: var(--accent);
 }
 
+/* Kill transitions, contain layout, and block pointer theft during divider drag */
+.layout.resizing-sidebar-width *,
+.sidebar.resizing-sections * {
+  transition: none !important;
+}
+.layout.resizing-sidebar-width > .main {
+  contain: strict;
+}
+.layout.resizing-sidebar-width iframe,
+.layout.resizing-sidebar-width webview,
+.sidebar.resizing-sections iframe,
+.sidebar.resizing-sections webview {
+  pointer-events: none;
+}
+
 .layout.resizing-sidebar-width .sidebar-width-divider {
   background: var(--bg-hover);
   border-right-color: var(--accent);

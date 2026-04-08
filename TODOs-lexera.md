@@ -1,5 +1,11 @@
 # Lexera Repository Architecture Todo
 
+- [ ] I want a list of tests that can be run in the frontend which automatically create 2 boards with content. It must also simulate drag & drop between the boards and trough the different views (boards views, workspace view)! It doesnt need to simulate mouse movements, but as close as possible without x/y coordinate handling! It must use the frontend, not the backend, the backend is to abstracted already! 
+Add a todo list first add it to the todos-lexera.md . we can skip the bugs for now, we must have automatated tests, so i dont miss any bugs that come up again! do not simulate the mouse cursor, but everything below!
+
+
+- [ ] dragging a card from the view to the workspace same board other column doesnt work properly when testing manually! does the test pass? what is the difference!?! why isnt the test failing as the user tests do!`!
+
 Scope: the active Lexera code now lives in the promoted top-level V2 directories such as `lexera-core`, `lexera-backend`, `lexera-kanban`, `lexera-capture-ios`, `lexera-shared`, and `lexera-web-clipper`. This backlog tracks the remaining architecture, boundary, tooling, and cleanup work after that repository promotion. Completed promotion-path tasks were moved to `todo-archive.md`.
 
 - [x] why this error? [kanban]       Running BeforeDevCommand (`node ../lexera-shared/scripts/sync-runtime-assets.mjs src && sh scripts/sync-excalidraw-assets.sh`)
@@ -382,6 +388,47 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 ## Parked Until Explicit Spec
 - [ ] Per-user isolation beyond local-user model.
 - [ ] Additional sources/editors/pipeline: email, filesystem, office editor, build pipeline, typed API.
+
+## Frontend Integration Tests (in-app, no mouse simulation)
+
+Automated test suite that runs INSIDE the live Tauri WebView. Tests call the real mutation + rendering pipeline (everything below the mouse event layer). Each test creates boards, performs operations via the real app functions, and asserts the DOM reflects the changes.
+
+### Infrastructure
+- [ ] Expose test API on `window.LexeraApp`: `setTestBoard(boardData, boardId)`, `moveCard()`, `getActiveBoardId()`, `loadBoard()`, `renderColumns()`, `selectBoard()`
+- [ ] Create `src/test/frontendTests.js` — test runner with `register()`, `runAll()`, `run(name)`, result logging to console
+- [ ] Add `<script>` include for frontendTests.js (dev-only, behind a flag or only in dev builds)
+- [ ] Board factory: `createTestBoardPair()` — creates Board A (3 columns, 6 cards) + Board B (2 columns, 3 cards) via `setTestBoard`
+
+### Card move tests (same board)
+- [ ] View → View same-column reorder: move card within column, verify DOM order changes
+- [ ] View → View cross-column: move card from col 0 to col 1, verify card disappears from source DOM, appears in target DOM, counts update
+- [ ] Workspace → View: call moveCard with sidebar-style source (rowIndex/stackIndex/colIndex), view-style target (flatColIndex), verify DOM
+- [ ] View → Workspace: call moveCard with view-style source, sidebar-style target, verify both board view and sidebar tree update
+- [ ] Workspace → Workspace same board: both source and target use rowIndex/stackIndex/colIndex
+
+### Card move tests (cross-board)
+- [ ] View → View cross-board: move card from Board A to Board B, verify source card trashed, switch to Board B, verify card present
+- [ ] View → Workspace cross-board: move card from Board A view to Board B sidebar target
+- [ ] Workspace → View cross-board: sidebar source on Board A, view target on Board B
+- [ ] Workspace → Workspace cross-board: both sidebar-style, different boardIds
+
+### Structural mutation tests
+- [ ] Add card: add to column, verify new card element appears at correct index
+- [ ] Remove card: remove from column, verify card element gone, remaining cards re-indexed
+- [ ] Add column: add to stack, verify new column appears with header and empty card list
+- [ ] Add row: add row with stack+column, verify new row element in DOM
+- [ ] Add stack: add stack to existing row, verify stack element appears
+
+### Sidebar tree sync tests
+- [ ] After card move: sidebar tree card count updates for both source and target columns
+- [ ] After add card: sidebar tree shows new card node
+- [ ] After structural change (add row/stack/column): sidebar tree reflects new hierarchy
+
+### Render integrity tests
+- [ ] After any mutation: no duplicate card IDs in DOM
+- [ ] After any mutation: column count badges match actual visible card count
+- [ ] After cross-column move: total visible cards across all columns stays constant
+- [ ] After board reload: DOM matches freshly rendered state (no stale elements)
 
 ## Manual Verification
 - [ ] Quick capture: screen resolution change on macOS, Windows, Linux.

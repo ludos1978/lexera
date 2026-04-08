@@ -2103,7 +2103,8 @@ var LexeraDashboard = (function () {
     if (kind === 'MainFileChanged' || kind === 'IncludeFileChanged') {
       // Skip echoes caused by our own saves
       if (Date.now() - lastSaveTime < SAVE_DEBOUNCE_MS) return;
-      if (canUseLiveSync(activeBoardId) && Date.now() - liveSyncLastLocalBroadcastAt < SAVE_DEBOUNCE_MS) return;
+      // When live sync is active, CRDT is the source of truth — skip file-watcher reloads
+      if (kind === 'MainFileChanged' && canUseLiveSync(activeBoardId)) return;
       var eventGen = event.generation;
       var eventRevision = typeof event.revision === 'string' && event.revision ? event.revision : null;
       var remoteActive = isActiveRemoteBoard();
@@ -5564,16 +5565,28 @@ var LexeraDashboard = (function () {
   function refreshTargetedElements(targets) {
     if (!targets || targets.length === 0) return;
 
-    // Coalesce: if any target is 'board' or 'main-view', skip all others
+    // Check if a full board or main-view render is needed
+    var didFullRender = false;
     for (var i = 0; i < targets.length; i++) {
       if (targets[i].type === 'main-view') {
         renderMainView();
-        return;
+        didFullRender = true;
+        break;
       }
       if (targets[i].type === 'board') {
         renderColumns();
-        return;
+        didFullRender = true;
+        break;
       }
+    }
+    // If full render was done, still process non-board targets (sidebar, etc.)
+    if (didFullRender) {
+      for (var j = 0; j < targets.length; j++) {
+        if (targets[j].type === 'sidebar') {
+          renderBoardList();
+        }
+      }
+      return;
     }
 
     var fs = getFoldState();
@@ -8014,6 +8027,7 @@ var LexeraDashboard = (function () {
     if (typeof rowIdx === 'number') colEl.setAttribute('data-row-index', rowIdx.toString());
     if (typeof stackIdx === 'number') colEl.setAttribute('data-stack-index', stackIdx.toString());
     if (typeof colLocalIdx === 'number') colEl.setAttribute('data-col-local-index', colLocalIdx.toString());
+    if (col.index != null) colEl.setAttribute('data-col-index', col.index.toString());
     if (!isCanvasLayout && hasSavedFoldMatch(foldedCols, colFoldKey, col.title)) {
       colEl.classList.add('folded');
     }
@@ -9334,25 +9348,29 @@ var LexeraDashboard = (function () {
       if (targetInsertIdx > targetRef.column.cards.length) targetInsertIdx = targetRef.column.cards.length;
       targetRef.column.cards.splice(targetInsertIdx, 0, movedCard);
 
-      removeEmptyStacksAndRowsInBoard(sourceBoardData);
-      if (sourceBoardData !== targetBoardData) removeEmptyStacksAndRowsInBoard(targetBoardData);
-
-      // Same-column reorder on the active board: targeted DOM update
-      var isSameColumnOnActiveBoard = source.boardId === activeBoardId &&
+      // Same-board move on the active board: targeted DOM surgery
+      var isSameBoardActive = source.boardId === activeBoardId &&
         target.boardId === activeBoardId &&
-        sourceBoardData === targetBoardData &&
-        sourceRef.column === targetRef.column;
-      if (isSameColumnOnActiveBoard) {
-        var srcVisible = typeof source.cardIndex === 'number' ? source.cardIndex : -1;
-        var dstVisible = findVisibleCardIndexById(source.flatColIndex, movedCard.id);
-        if (srcVisible >= 0 && dstVisible >= 0) {
-          await persistBoardMutation({ targets: [{ type: 'column', colIndex: source.flatColIndex }] });
+        sourceBoardData === targetBoardData;
+
+      if (isSameBoardActive) {
+        if (sourceRef.column === targetRef.column) {
+          // Same-column reorder: rebuild just that column
+          await persistBoardMutation({ targets: [
+            { type: 'column', colIndex: source.flatColIndex },
+            { type: 'sidebar' }
+          ] });
         } else {
-          await persistBoardMutation({ targets: [{ type: 'board' }] });
+          // Cross-column move: rebuild board from local data (no server re-read)
+          removeEmptyStacksAndRowsInBoard(sourceBoardData);
+          await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
         }
         return;
       }
 
+      // Cross-board move: must save both boards
+      removeEmptyStacksAndRowsInBoard(sourceBoardData);
+      if (sourceBoardData !== targetBoardData) removeEmptyStacksAndRowsInBoard(targetBoardData);
       var changedBoards = {};
       changedBoards[source.boardId] = sourceBoardData;
       if (target.boardId !== source.boardId) changedBoards[target.boardId] = targetBoardData;
@@ -11011,6 +11029,13 @@ var LexeraDashboard = (function () {
       if (WorkspaceShell) WorkspaceShell.revealPanel('monthCalendar');
     });
 
+    // Frontend tests
+    ActionRegistry.register('board', 'toggle-frontend-tests', function () {
+      if (window.LexeraFrontendTests && typeof window.LexeraFrontendTests.showPanel === 'function') {
+        window.LexeraFrontendTests.showPanel();
+      }
+    });
+
     // Search
     ActionRegistry.register('board', 'open-search', function () { openSearchReplacePanel(); });
     ActionRegistry.register('board', 'open-search-replace', function () { openSearchReplacePanel(); });
@@ -11549,6 +11574,40 @@ var LexeraDashboard = (function () {
     }
     return false;
   }
+
+  // ── Test API (exposed for in-app frontend integration tests) ──────────
+  var _testApi = {
+    getActiveBoardId: function () { return activeBoardId; },
+    getFullBoardData: function () { return fullBoardData; },
+    getActiveBoardData: function () { return activeBoardData; },
+    setTestBoard: function (boardData, boardId) {
+      activeBoardId = boardId || '__test__';
+      setFullBoardDataState(boardData);
+      if (fullBoardData) setBoardSaveBase(fullBoardData, fullBoardData);
+      updateDisplayFromFullBoard();
+      setActiveBoardDataState({
+        valid: true,
+        title: boardData.title || 'Test Board',
+        fullBoard: fullBoardData,
+        columns: activeBoardData ? activeBoardData.columns : [],
+        rows: activeBoardData ? activeBoardData.rows : []
+      });
+      commitLocalBoardChange(activeBoardId, fullBoardData, {
+        setLocalState: false,
+        refreshHierarchy: true
+      });
+      renderMainView();
+    },
+    moveCard: moveCard,
+    loadBoard: loadBoard,
+    selectBoard: function (boardId) { return selectBoard(boardId); },
+    renderColumns: renderColumns,
+    renderBoardList: renderBoardList,
+    addCardToActiveBoard: addCardToActiveBoard,
+    getAllFullColumns: getAllFullColumns,
+    getFullColumn: getFullColumn
+  };
+  if (typeof window !== 'undefined') window.LexeraTestApi = _testApi;
 
   return {
     poll: poll,

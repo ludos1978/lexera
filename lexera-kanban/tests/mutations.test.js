@@ -264,9 +264,14 @@ function loadMutationHarness() {
     var canvasBoardLayout = false;
     var mutationEntityIdSeed = 0;
     var undoCalls = 0;
+    var lastPersistTargets = null;
+    var lastCommitBoardIds = null;
     function pushUndo() { undoCalls++; }
     function isCanvasBoardLayout() { return canvasBoardLayout; }
-    async function persistBoardMutation(opts) { return true; }
+    async function persistBoardMutation(opts) {
+      lastPersistTargets = (opts && opts.targets) ? opts.targets.map(function(t) { return t.type; }) : [];
+      return true;
+    }
     async function loadBoardDataForMutation(boardId) {
       if (!boardId) return null;
       if (boardId === activeBoardId) return fullBoardData;
@@ -274,6 +279,7 @@ function loadMutationHarness() {
     }
     async function commitBoardMutations(changedBoards, options) {
       var ids = Object.keys(changedBoards || {});
+      lastCommitBoardIds = ids.slice();
       for (var i = 0; i < ids.length; i++) {
         var boardId = ids[i];
         if (boardId === activeBoardId) fullBoardData = changedBoards[boardId];
@@ -411,6 +417,9 @@ function loadMutationHarness() {
       getState: function() {
         return { fullBoardData: fullBoardData, activeBoardData: activeBoardData };
       },
+      getLastPersistTargets: function() { return lastPersistTargets; },
+      getLastCommitBoardIds: function() { return lastCommitBoardIds; },
+      resetRefreshTracking: function() { lastPersistTargets = null; lastCommitBoardIds = null; },
       getBoardState: function(boardId) {
         return boardId === activeBoardId ? fullBoardData : boardStore[boardId];
       },
@@ -1815,5 +1824,304 @@ describe('Integration', () => {
     // 4. Verify nothing was clobbered
     expect(M.getState().fullBoardData.rows[0].stacks[0].columns[0].cards.length).toBe(4);
     expect(M.getState().fullBoardData.rows[0].stacks[0].columns[0].cards[3].content).toBe('Step 1');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Card move scenarios: view ↔ workspace, same board, cross board
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('Card move scenarios', () => {
+  // Two-board setup for cross-board tests
+  function makeTwoBoardSetup() {
+    var boardA = makeBoard([
+      makeRow('row-a1', 'Row A1', [
+        makeStack('stack-a1', 'Stack A1', [
+          makeColumn('col-a1', 'Column A1', [makeCard('card-1', 'Card One'), makeCard('card-2', 'Card Two')]),
+          makeColumn('col-a2', 'Column A2', [makeCard('card-3', 'Card Three')]),
+        ]),
+      ]),
+    ]);
+    var boardB = makeBoard([
+      makeRow('row-b1', 'Row B1', [
+        makeStack('stack-b1', 'Stack B1', [
+          makeColumn('col-b1', 'Column B1', [makeCard('card-b1', 'Card B-One')]),
+        ]),
+      ]),
+    ]);
+    return { boardA: boardA, boardB: boardB };
+  }
+
+  // ── View → View (same board, same column reorder) ──────────────────────
+  it('view-to-view same-column reorder refreshes the column and sidebar', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-a', flatColIndex: 0, insertIdx: 2, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    var col = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    expect(col.cards.map(function (c) { return c.id; })).toEqual(['card-2', 'card-1']);
+    // UI: targeted column + sidebar refresh (no full board rebuild)
+    expect(M.getLastPersistTargets()).toContain('column');
+    expect(M.getLastPersistTargets()).toContain('sidebar');
+    expect(M.getLastPersistTargets()).not.toContain('board');
+    expect(M.getLastCommitBoardIds()).toBeNull();
+  });
+
+  // ── View → View (same board, cross column) ─────────────────────────────
+  it('view-to-view cross-column refreshes board and sidebar', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-a', flatColIndex: 1, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    var colA1 = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    var colA2 = M.getState().fullBoardData.rows[0].stacks[0].columns[1];
+    expect(colA1.cards.map(function (c) { return c.id; })).toEqual(['card-2']);
+    expect(colA2.cards.map(function (c) { return c.id; })).toEqual(['card-1', 'card-3']);
+    // UI: board + sidebar refresh via persistBoardMutation
+    expect(M.getLastPersistTargets()).toContain('board');
+    expect(M.getLastPersistTargets()).toContain('sidebar');
+    expect(M.getLastCommitBoardIds()).toBeNull();
+  });
+
+  // ── View → Workspace sidebar (same board) ──────────────────────────────
+  it('view-to-workspace same-board refreshes board and sidebar', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 1, cardId: 'card-2', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-a', rowIndex: 0, stackIndex: 0, colIndex: 1, columnId: 'col-a2', insertIdx: 1, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    var colA1 = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    var colA2 = M.getState().fullBoardData.rows[0].stacks[0].columns[1];
+    expect(colA1.cards.map(function (c) { return c.id; })).toEqual(['card-1']);
+    expect(colA2.cards.map(function (c) { return c.id; })).toEqual(['card-3', 'card-2']);
+    // UI: board + sidebar refresh via persistBoardMutation
+    expect(M.getLastPersistTargets()).toContain('board');
+    expect(M.getLastPersistTargets()).toContain('sidebar');
+    expect(M.getLastCommitBoardIds()).toBeNull();
+  });
+
+  // ── Workspace → View (same board) ──────────────────────────────────────
+  it('workspace-to-view same-board refreshes board and sidebar', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', rowIndex: 0, stackIndex: 0, colIndex: 1, columnId: 'col-a2', cardIndex: 0, cardId: 'card-3', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-a', flatColIndex: 0, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    var colA1 = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    var colA2 = M.getState().fullBoardData.rows[0].stacks[0].columns[1];
+    expect(colA1.cards.map(function (c) { return c.id; })).toEqual(['card-3', 'card-1', 'card-2']);
+    expect(colA2.cards.length).toBe(0);
+    // UI: board + sidebar refresh via persistBoardMutation
+    expect(M.getLastPersistTargets()).toContain('board');
+    expect(M.getLastPersistTargets()).toContain('sidebar');
+    expect(M.getLastCommitBoardIds()).toBeNull();
+  });
+
+  // ── View → Workspace (different board, cross-board) ────────────────────
+  it('view-to-workspace cross-board commits both boards for UI refresh', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.setBoardState('board-b', setup.boardB);
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-b', rowId: 'row-b1', stackId: 'stack-b1', columnId: 'col-b1', insertIdx: 1, insertMode: 'full', indexMode: 'full' }
+    );
+
+    var sourceCol = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    expect(sourceCol.cards[0].content).toContain('#hidden-internal-deleted');
+    var targetCol = M.getBoardState('board-b').rows[0].stacks[0].columns[0];
+    expect(targetCol.cards.map(function (c) { return c.id; })).toEqual(['card-b1', 'card-1']);
+    // UI: commitBoardMutations called with both boards
+    expect(M.getLastCommitBoardIds()).toContain('board-a');
+    expect(M.getLastCommitBoardIds()).toContain('board-b');
+    expect(M.getLastPersistTargets()).toBeNull();
+  });
+
+  // ── Workspace → Workspace (different board, cross-board) ───────────────
+  it('workspace-to-workspace cross-board commits both boards for UI refresh', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.setBoardState('board-b', setup.boardB);
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', rowId: 'row-a1', stackId: 'stack-a1', columnId: 'col-a1', cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-b', rowId: 'row-b1', stackId: 'stack-b1', columnId: 'col-b1', insertIdx: 0, insertMode: 'full', indexMode: 'full' }
+    );
+
+    var sourceCol = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    expect(sourceCol.cards[0].content).toContain('#hidden-internal-deleted');
+    var targetCol = M.getBoardState('board-b').rows[0].stacks[0].columns[0];
+    expect(targetCol.cards[0].id).toBe('card-1');
+    // UI: commitBoardMutations called with both boards
+    expect(M.getLastCommitBoardIds()).toContain('board-a');
+    expect(M.getLastCommitBoardIds()).toContain('board-b');
+    expect(M.getLastPersistTargets()).toBeNull();
+  });
+
+  // ── Same board, card identity preserved ────────────────────────────────
+  it('same-board moves preserve card id and content and trigger UI refresh', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-a', flatColIndex: 1, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    var movedCard = M.getState().fullBoardData.rows[0].stacks[0].columns[1].cards[0];
+    expect(movedCard.id).toBe('card-1');
+    expect(movedCard.content).toBe('Card One');
+    // UI: persistBoardMutation with board + sidebar
+    expect(M.getLastPersistTargets()).not.toBeNull();
+    expect(M.getLastPersistTargets()).toContain('sidebar');
+  });
+
+  // ── Workspace → Workspace (same board) ──────────────────────────────────
+  it('workspace-to-workspace same-board refreshes board and sidebar', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', rowIndex: 0, stackIndex: 0, colIndex: 0, columnId: 'col-a1', cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-a', rowIndex: 0, stackIndex: 0, colIndex: 1, columnId: 'col-a2', insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    var colA1 = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    var colA2 = M.getState().fullBoardData.rows[0].stacks[0].columns[1];
+    expect(colA1.cards.map(function (c) { return c.id; })).toEqual(['card-2']);
+    expect(colA2.cards.map(function (c) { return c.id; })).toEqual(['card-1', 'card-3']);
+    // UI: persistBoardMutation with board + sidebar
+    expect(M.getLastPersistTargets()).toContain('board');
+    expect(M.getLastPersistTargets()).toContain('sidebar');
+    expect(M.getLastCommitBoardIds()).toBeNull();
+  });
+
+  // ── View → View (different board) ──────────────────────────────────────
+  it('view-to-view cross-board commits both boards for UI refresh', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.setBoardState('board-b', setup.boardB);
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-b', rowId: 'row-b1', stackId: 'stack-b1', columnId: 'col-b1', insertIdx: 0, insertMode: 'full', indexMode: 'full' }
+    );
+
+    // Source card trashed on active board
+    var sourceCol = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    expect(sourceCol.cards[0].content).toContain('#hidden-internal-deleted');
+
+    // Target board has the card
+    var targetCol = M.getBoardState('board-b').rows[0].stacks[0].columns[0];
+    expect(targetCol.cards[0].id).toBe('card-1');
+    // UI: commitBoardMutations with both boards
+    expect(M.getLastCommitBoardIds()).toContain('board-a');
+    expect(M.getLastCommitBoardIds()).toContain('board-b');
+  });
+
+  // ── Workspace → View (different board) ─────────────────────────────────
+  it('workspace-to-view cross-board commits both boards for UI refresh', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.setBoardState('board-b', setup.boardB);
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', rowId: 'row-a1', stackId: 'stack-a1', columnId: 'col-a1', cardIndex: 1, cardId: 'card-2', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-b', rowId: 'row-b1', stackId: 'stack-b1', columnId: 'col-b1', insertIdx: 0, insertMode: 'full', indexMode: 'full' }
+    );
+
+    var sourceCol = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    expect(sourceCol.cards[1].content).toContain('#hidden-internal-deleted');
+    var targetCol = M.getBoardState('board-b').rows[0].stacks[0].columns[0];
+    expect(targetCol.cards[0].id).toBe('card-2');
+    // UI: commitBoardMutations with both boards
+    expect(M.getLastCommitBoardIds()).toContain('board-a');
+    expect(M.getLastCommitBoardIds()).toContain('board-b');
+    expect(M.getLastPersistTargets()).toBeNull();
+  });
+
+  // ── Cross-board move with stable IDs ───────────────────────────────────
+  it('cross-board move uses stable IDs for column resolution', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.setBoardState('board-b', setup.boardB);
+
+    await M.moveCard(
+      { boardId: 'board-a', rowId: 'row-a1', stackId: 'stack-a1', columnId: 'col-a1', cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-b', rowId: 'row-b1', stackId: 'stack-b1', columnId: 'col-b1', insertIdx: 0, insertMode: 'full', indexMode: 'full' }
+    );
+
+    var targetCol = M.getBoardState('board-b').rows[0].stacks[0].columns[0];
+    expect(targetCol.cards[0].id).toBe('card-1');
+    expect(targetCol.cards[0].content).toBe('Card One');
+  });
+
+  // ── View → Workspace with hidden items (regression) ──────────────────
+  // Exercises the exact scenario that fails in manual testing: a board with
+  // hidden rows/stacks/columns, moving a card from the board view (flatColIndex)
+  // to a sidebar column (structural indices + columnId) on the same board.
+  it('view-to-workspace same-board with hidden items resolves correctly', async () => {
+    // Build a board where hidden items cause index gaps:
+    //   Row 0 "Main"
+    //     Stack 0 "Active"
+    //       Col 0 "Todo"        — [card-a, card-b (#deleted), card-c]
+    //       Col 1 "Done #parked" (hidden column)
+    //     Stack 1 "Inactive #archived" (hidden stack)
+    //       Col 2 "Old"         — [card-d]
+    //   Row 1 "Deleted Row #deleted" (hidden row)
+    //   Row 2 "Secondary"
+    //     Stack 0 "Other"
+    //       Col 3 "Backlog"     — [card-f, card-g]
+    var fixture = buildTestFixture(M);
+    M.setState(
+      JSON.parse(JSON.stringify(fixture.full)),
+      JSON.parse(JSON.stringify(fixture.active)),
+      'test-board'
+    );
+    M.resetRefreshTracking();
+
+    // Source: card-a from "Todo" column via board view (flatColIndex 0, visible card idx 0)
+    // Target: "Backlog" column via sidebar tree (display row 1, display stack 0, display col 0)
+    // "Backlog" has columnId 'col-backlog', so stable-ID resolution handles it.
+    await M.moveCard(
+      { boardId: 'test-board', flatColIndex: 0, cardIndex: 0, cardId: 'card-a', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'test-board', rowIndex: 1, stackIndex: 0, colIndex: 0, columnId: 'col-backlog', insertIdx: 2, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    // card-a moved from Todo to Backlog
+    var srcCol = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    expect(srcCol.cards.map(function (c) { return c.id; })).toEqual(['card-b', 'card-c']);
+    var dstCol = M.getState().fullBoardData.rows[2].stacks[0].columns[0];
+    expect(dstCol.cards.map(function (c) { return c.id; })).toEqual(['card-f', 'card-g', 'card-a']);
+
+    // UI: board + sidebar refresh (same-board cross-column)
+    expect(M.getLastPersistTargets()).toContain('board');
+    expect(M.getLastPersistTargets()).toContain('sidebar');
+    expect(M.getLastCommitBoardIds()).toBeNull();
   });
 });

@@ -3,10 +3,10 @@
 kanban-plugin: board
 
 fontSize: 1_0x
-generation: 975
+generation: 976
 contentHash: 2750b8a27403e78736b92caeb60d9012dbe2d8ae83e3bb9a8a572757961a9b0e
-resolvedHash: b287ad8cd3cf4b454116ae80ac27db820ea64aa6695e4815c3e8233479a8e8ab
-writerId: fd2566bb-5de3-49ef-8119-a29b6018f3b9
+resolvedHash: 3571d124fa3bac00a2eb27800603a0728f308f01c772fc9c43a1e120c24b9d18
+writerId: 055d65b2-7ae8-452d-b41a-a4f85699ee47
 stickyStackMode: top
 columnWidth: 450px
 ---

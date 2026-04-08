@@ -745,7 +745,7 @@ var LexeraApi = (function () {
   }
 
   function isSyncConnected() {
-    return syncWs !== null && syncWs.readyState === WebSocket.OPEN;
+    return syncWs !== null && (syncWs.readyState === WebSocket.OPEN || syncWs.readyState === WebSocket.CONNECTING);
   }
 
   function getSyncBoardId() {

@@ -444,7 +444,8 @@ var LexeraDndListeners = (function () {
   }
 
   function _bindCardDragMousemoveMouseup() {
-    // Card drag: mousemove + mouseup
+    // Card drag: mousemove + mouseup — drop target update batched via rAF
+    var cardDragRaf = 0;
     document.addEventListener('mousemove', function (e) {
       var DDH = getDragDropHandlers();
       var cd = DDH ? DDH.getCardDrag() : null;
@@ -460,7 +461,15 @@ var LexeraDndListeners = (function () {
         cd.ghost.style.left = (e.clientX + 8) + 'px';
         cd.ghost.style.top = (e.clientY - 12) + 'px';
       }
-      if (DDH.updateCardDropTarget) DDH.updateCardDropTarget(e.clientX, e.clientY);
+      if (DDH.updateCardDropTarget) {
+        var mx = e.clientX, my = e.clientY;
+        if (!cardDragRaf) {
+          cardDragRaf = requestAnimationFrame(function () {
+            cardDragRaf = 0;
+            DDH.updateCardDropTarget(mx, my);
+          });
+        }
+      }
     });
     document.addEventListener('mouseup', function (e) {
       var DDH = getDragDropHandlers();
@@ -470,13 +479,15 @@ var LexeraDndListeners = (function () {
         DDH.setCardDrag(null);
         return;
       }
+      if (cardDragRaf) { cancelAnimationFrame(cardDragRaf); cardDragRaf = 0; }
       _deps.finishCardDrag(e.clientX, e.clientY);
       _deps.cleanupCardDrag();
     });
   }
 
   function _bindPtrDragMousemoveMouseup() {
-    // Pointer drag: mousemove
+    // Pointer drag: mousemove — drop target update batched via rAF
+    var ptrDragRaf = 0;
     document.addEventListener('mousemove', function (e) {
       var DDH = getDragDropHandlers();
       var ptrDrag = DDH ? DDH.getPtrDrag() : null;
@@ -565,7 +576,13 @@ var LexeraDndListeners = (function () {
         ptrDrag.ghost.style.top = (e.clientY - 12) + 'px';
       }
 
-      _deps.updatePtrDropTarget(e.clientX, e.clientY);
+      var pmx = e.clientX, pmy = e.clientY;
+      if (!ptrDragRaf) {
+        ptrDragRaf = requestAnimationFrame(function () {
+          ptrDragRaf = 0;
+          _deps.updatePtrDropTarget(pmx, pmy);
+        });
+      }
       } catch (err) {
         logFrontendIssue('error', 'drag.ptr', 'Error in ptr mousemove handler', err);
         _deps.cleanupPtrDrag();
@@ -574,6 +591,7 @@ var LexeraDndListeners = (function () {
 
     // Pointer drag: mouseup
     document.addEventListener('mouseup', function (e) {
+      if (ptrDragRaf) { cancelAnimationFrame(ptrDragRaf); ptrDragRaf = 0; }
       var DDH = getDragDropHandlers();
       var ptrDrag = DDH ? DDH.getPtrDrag() : null;
       if (!ptrDrag) return;

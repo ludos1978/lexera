@@ -70,6 +70,7 @@
     }
 
     var nodes = [];
+    var displayRi = 0;
     for (var ri = 0; ri < rows.length; ri++) {
       var row = rows[ri] || {};
       if (isHiddenTitle(row.title)) continue;
@@ -80,6 +81,7 @@
       var singleStack = rowStacks.length === 1;
 
       var stackNodes = [];
+      var displaySi = 0;
       for (var si = 0; si < rowStacks.length; si++) {
         var stack = rowStacks[si] || {};
         if (isHiddenTitle(stack.title)) continue;
@@ -134,8 +136,8 @@
                   'data-row-id': rowId,
                   'data-stack-id': stackId,
                   'data-column-id': col && col.id != null ? String(col.id) : null,
-                  'data-row-index': ri.toString(),
-                  'data-stack-index': si.toString(),
+                  'data-row-index': displayRi.toString(),
+                  'data-stack-index': displaySi.toString(),
                   'data-col-local-index': ci.toString(),
                   'data-col-index': colIdx >= 0 ? colIdx.toString() : null,
                   'data-card-id': card && card.id != null ? String(card.id) : null,
@@ -170,8 +172,8 @@
               'data-stack-id': stackId,
               'data-column-id': col && col.id != null ? String(col.id) : null,
               'data-col-index': colIdx >= 0 ? colIdx.toString() : null,
-              'data-row-index': ri.toString(),
-              'data-stack-index': si.toString(),
+              'data-row-index': displayRi.toString(),
+              'data-stack-index': displaySi.toString(),
               'data-col-local-index': ci.toString(),
               'data-tree-drag': 'tree-column'
             }
@@ -180,7 +182,7 @@
 
         stackNodes.push(LexeraHierarchyContract.createHierarchyNode({
           id: stackId,
-          label: stack.title || 'Stack ' + (si + 1),
+          label: stack.title || 'Stack ' + (displaySi + 1),
           count: rowStacks.length > 1 ? stackCardCount : null,
           type: 'stack',
           structuralRole: 'group',
@@ -198,16 +200,17 @@
             'data-board-id': boardId,
             'data-row-id': rowId,
             'data-stack-id': stackId,
-            'data-row-index': ri.toString(),
-            'data-stack-index': si.toString(),
+            'data-row-index': displayRi.toString(),
+            'data-stack-index': displaySi.toString(),
             'data-tree-drag': 'tree-stack'
           }
         }));
+        displaySi++;
       }
 
       nodes.push(LexeraHierarchyContract.createHierarchyNode({
         id: rowId,
-        label: row.title || 'Row ' + (ri + 1),
+        label: row.title || 'Row ' + (displayRi + 1),
         count: rows.length > 1 ? rowCardCount : null,
         type: 'row',
         structuralRole: 'group',
@@ -224,10 +227,11 @@
         attrs: {
           'data-board-id': boardId,
           'data-row-id': rowId,
-          'data-row-index': ri.toString(),
+          'data-row-index': displayRi.toString(),
           'data-tree-drag': 'tree-row'
         }
       }));
+      displayRi++;
     }
     return nodes;
   }
