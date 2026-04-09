@@ -2,7 +2,10 @@
 
 - [x] Dashboard search speed — deferred render to rAF (board paints first, dashboard catches up next frame), early fingerprint check skips expensive tree-building on cache hit, removed array copies in scope filtering, visibility guard for hidden panels, 300ms debounce.
 
-- [ ] make sure we do targeted refreshes of the content (in the kanban/canvas views, the workspace view and the dashboard view). we should never really need to re-render any full view. make sure we update the source and the target in moves.
+- [x] Targeted refresh for common operations — cross-column card moves now refresh only source+target columns (not all 917 cards), column sorts use column target, row/stack sorts use row/stack targets, title renames use targeted row/stack/column. Added warning when full board re-render triggered on boards >200 cards.
+- [ ] We need to modify (possibly all) Remaining `type: 'board'` board updates: hidden tag changes, column move/duplicate/delete, board-wide sort, tag style preset change. These need structural handling or multi-target refresh.
+
+- [ ] the tests are still EXTREMELY slow, each tests takes currently 3 to 4 seconds, they should be finished within milliseconds even in a board with thousands of cards! We need to optimize it way more!!!
 
 ### Dashboard search — remaining optimizations
 - [ ] **Render only visible/unfolded sections** — currently rebuilds all 10+ sections (results, overdue, today, thisWeek, upcoming, todos, tagged, embeds, includes, broken) on every refresh. Only render sections that are unfolded.

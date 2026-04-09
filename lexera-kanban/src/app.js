@@ -8519,9 +8519,29 @@ var LexeraDashboard = (function () {
             { type: 'sidebar' }
           ] });
         } else {
-          // Cross-column move: rebuild board from local data (no server re-read)
+          // Cross-column move: refresh only source and target columns
+          var colsBefore = getAllColumnsFromBoardData(sourceBoardData).length;
           removeEmptyStacksAndRowsInBoard(sourceBoardData);
-          await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+          var colsAfter = getAllColumnsFromBoardData(sourceBoardData).length;
+          if (colsBefore !== colsAfter) {
+            // Structure changed (row/stack removed) — need full render
+            await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+          } else {
+            // No structural change — targeted refresh of source + target columns
+            // Resolve flat column indices for workspace-coordinate descriptors
+            var allMoveCols = getAllColumnsFromBoardData(sourceBoardData);
+            var srcFlatIdx = source.flatColIndex != null ? source.flatColIndex
+              : (sourceRef && sourceRef.column ? allMoveCols.indexOf(sourceRef.column) : -1);
+            var tgtFlatIdx = target.flatColIndex != null ? target.flatColIndex
+              : (targetRef && targetRef.column ? allMoveCols.indexOf(targetRef.column) : -1);
+            var moveTargets = [{ type: 'sidebar' }];
+            if (srcFlatIdx >= 0) moveTargets.push({ type: 'column', colIndex: srcFlatIdx });
+            if (tgtFlatIdx >= 0 && tgtFlatIdx !== srcFlatIdx) {
+              moveTargets.push({ type: 'column', colIndex: tgtFlatIdx });
+            }
+            if (moveTargets.length === 1) moveTargets.push({ type: 'board' }); // fallback
+            await persistBoardMutation({ targets: moveTargets });
+          }
         }
         return;
       }

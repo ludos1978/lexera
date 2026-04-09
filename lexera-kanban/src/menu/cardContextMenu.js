@@ -210,6 +210,9 @@ var CardContextMenu = (function () {
     if (!force && marpClassDiscoveryState.pending) {
       return marpClassDiscoveryState.pending;
     }
+    if (!force && marpClassDiscoveryState.failedOnce) {
+      return Promise.resolve(existing);
+    }
     if (!force && existing.length > 0 && marpClassDiscoveryState.lastDirKey === dirKey) {
       return Promise.resolve(existing);
     }
@@ -219,10 +222,15 @@ var CardContextMenu = (function () {
       marpClassDiscoveryState.lastDirKey = dirKey;
       marpClassDiscoveryState.lastUpdatedAt = Date.now();
       marpClassDiscoveryState.pending = null;
+      marpClassDiscoveryState.failedOnce = false;
       return window.marpAvailableClasses;
     }).catch(function (err) {
       marpClassDiscoveryState.pending = null;
-      deps.logFrontendIssue('warn', 'marp.classes', 'Failed to discover Marp classes', err);
+      marpClassDiscoveryState.failedOnce = true;
+      if (!marpClassDiscoveryState.warningLogged) {
+        marpClassDiscoveryState.warningLogged = true;
+        deps.logFrontendIssue('warn', 'marp.classes', 'Failed to discover Marp classes (will not retry until forced)', err);
+      }
       return existing;
     });
 
