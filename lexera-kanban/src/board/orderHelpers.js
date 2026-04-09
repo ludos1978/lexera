@@ -1263,7 +1263,7 @@ var LexeraOrderHelpers = (function () {
 
   function filterDashboardResultsByScope(results) {
     if (!Array.isArray(results)) return [];
-    if (!dashboardState || dashboardState.scope !== 'active') return results.slice();
+    if (!dashboardState || dashboardState.scope !== 'active') return results;
     if (!_dep('activeBoardId')) return [];
     var boardId = _dep('activeBoardId');
     return results.filter(function (item) {
@@ -2518,11 +2518,19 @@ var LexeraOrderHelpers = (function () {
   }
 
   function renderDashboardResultItems(targetEl, items, emptyText, options) {
+    if (!targetEl) return;
+    options = options || {};
+    // Early fingerprint check on raw items to skip expensive tree building
+    var cacheKey = options._cacheKey || null;
+    if (cacheKey) {
+      var rawFp = _dashboardFingerprint(items, emptyText + '|' + (options.collapseWhenEmpty ? '1' : '0'));
+      if (_dashboardCacheHit(cacheKey, rawFp)) return;
+    }
     renderDashboardTreeItems(
       targetEl,
       _callDep('getDashboardTreeApi').buildDashboardResultTreeNodes(items),
       emptyText,
-      options
+      { collapseWhenEmpty: options.collapseWhenEmpty }
     );
   }
 
@@ -2798,7 +2806,11 @@ var LexeraOrderHelpers = (function () {
       var dashBodyOk = _callDep('getElDashboardRoot') ? _callDep('getElDashboardRoot').querySelector('.sidebar-dashboard-body') : null;
       if (rtOk && dashBodyOk) rtOk.setViewError(dashBodyOk, false);
       markFileInventoryDirty();
-      renderDashboard();
+      // Defer render to next frame so board view updates aren't blocked
+      requestAnimationFrame(function () {
+        if (refreshId !== dashboardRefreshSeq) return;
+        renderDashboard();
+      });
     });
   }
 
@@ -2808,9 +2820,26 @@ var LexeraOrderHelpers = (function () {
       window.LexeraSharedPanels.getRoots('monthCalendar').length > 0;
   }
 
+  function isDashboardVisible() {
+    var root = _callDep('getElDashboardRoot');
+    if (root && root.offsetParent !== null) return true;
+    if (hasAnyCalendarPanel()) return true;
+    // Check mirrored dashboard views in workspace shell
+    var mirroredRoots = typeof document !== 'undefined' ? document.querySelectorAll('.lexera-shared-panel-dashboard') : [];
+    for (var i = 0; i < mirroredRoots.length; i++) {
+      if (mirroredRoots[i].offsetParent !== null) return true;
+    }
+    return false;
+  }
+
   function scheduleDashboardRefresh(delayMs) {
     if (_dep('embeddedMode')) return;
     if (!_callDep('getElDashboardRoot') && !hasAnyCalendarPanel()) {
+      dashboardRefreshPending = true;
+      return;
+    }
+    // Skip refresh if dashboard is not visible — mark pending for when it becomes visible
+    if (!isDashboardVisible()) {
       dashboardRefreshPending = true;
       return;
     }
@@ -2818,7 +2847,7 @@ var LexeraOrderHelpers = (function () {
     clearTimeout(dashboardRefreshTimer);
     dashboardRefreshTimer = setTimeout(function () {
       refreshDashboardData();
-    }, typeof delayMs === 'number' ? delayMs : 120);
+    }, typeof delayMs === 'number' ? delayMs : 300);
   }
 
   function flushPendingDashboardRefresh() {

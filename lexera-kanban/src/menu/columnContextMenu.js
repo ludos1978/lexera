@@ -265,7 +265,7 @@ var LexeraColumnContextMenu = (function () {
       var cmp = compareCardsForSort(a, b, mode);
       return dir === 'desc' ? -cmp : cmp;
     });
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'column', colIndex: colIndex }] });
   }
 
   function sortColumnsCards(columns, mode) {
@@ -290,7 +290,7 @@ var LexeraColumnContextMenu = (function () {
     if (cols.length === 0) return;
     deps.pushUndo();
     sortColumnsCards(cols, mode);
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'row', rowIndex: rowIdx }] });
   }
 
   async function sortStackCards(rowIdx, stackIdx, mode) {
@@ -298,7 +298,7 @@ var LexeraColumnContextMenu = (function () {
     if (!stack || !stack.columns) return;
     deps.pushUndo();
     sortColumnsCards(stack.columns, mode);
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'stack', rowIndex: rowIdx, stackIndex: stackIdx }] });
   }
 
   async function sortAllCardsAcrossBoard(mode) {

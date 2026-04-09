@@ -461,7 +461,16 @@ var LexeraRowStackMenu = (function () {
         titleEl.textContent = newTitle ? getDisplayTitle(newTitle) : '\u00A0';
         deps.pushUndo();
         target.title = deps.rebuildTitleWithPreservedComments(newTitle, currentTitle);
-        deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+        // Title-only change: use targeted refresh instead of full board re-render
+        var renameTargets = [{ type: 'sidebar' }];
+        if (entityType === 'row' && typeof rowIdx === 'number') {
+          renameTargets.unshift({ type: 'row', rowIndex: rowIdx });
+        } else if (entityType === 'stack' && typeof rowIdx === 'number' && typeof stackIdx === 'number') {
+          renameTargets.unshift({ type: 'stack', rowIndex: rowIdx, stackIndex: stackIdx });
+        } else {
+          renameTargets.unshift({ type: 'board' });
+        }
+        deps.persistBoardMutation({ targets: renameTargets });
       } else {
         titleEl.textContent = currentDisplayTitle ? getDisplayTitle(currentDisplayTitle) : '\u00A0';
       }

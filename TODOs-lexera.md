@@ -1,6 +1,15 @@
 # Lexera Repository Architecture Todo
 
-- [ ] could we make the dashboard search threaded or use some other way to improve it's speed (partial updates?)? it might be slowing down everything as it has to search each changed content, possibly in all boards! it might also only immediately update unfolded elements. it definetly should not block the other view such as the workspace and the kanban/canvas views!
+- [x] Dashboard search speed — deferred render to rAF (board paints first, dashboard catches up next frame), early fingerprint check skips expensive tree-building on cache hit, removed array copies in scope filtering, visibility guard for hidden panels, 300ms debounce.
+
+- [ ] make sure we do targeted refreshes of the content (in the kanban/canvas views, the workspace view and the dashboard view). we should never really need to re-render any full view. make sure we update the source and the target in moves.
+
+### Dashboard search — remaining optimizations
+- [ ] **Render only visible/unfolded sections** — currently rebuilds all 10+ sections (results, overdue, today, thisWeek, upcoming, todos, tagged, embeds, includes, broken) on every refresh. Only render sections that are unfolded.
+- [ ] **Incremental DOM updates** — `renderDashboard()` does `innerHTML = ''` on every call. Diff and update only changed items.
+- [ ] **Virtual scrolling for result lists** — currently renders 80 result + 60 todo + 40×4 calendar items as DOM nodes. Only render visible viewport items.
+- [ ] **Move search to Web Worker** — the backend search itself is fast, but parsing/grouping/tree-building on the main thread blocks rendering. Move post-processing off-thread.
+- [ ] **Request only scoped data from backend** — currently fetches all boards then filters client-side. Pass active boardId to backend query to reduce response size.
 
 ## Large Board Performance (analysis 2026-04-10)
 

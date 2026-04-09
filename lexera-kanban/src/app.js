@@ -4850,6 +4850,14 @@ var LexeraDashboard = (function () {
         break;
       }
       if (targets[i].type === 'board') {
+        var cardCount = activeBoardData && activeBoardData.columns ? activeBoardData.columns.reduce(function (sum, col) { return sum + (col.cards ? col.cards.length : 0); }, 0) : 0;
+        if (cardCount > 200) {
+          traceFrontendAction('warn', 'render.fullBoard', 'Full board re-render triggered on large board (' + cardCount + ' cards). Consider using targeted refresh.', {
+            cardCount: cardCount,
+            targets: targets.map(function (t) { return t.type; }),
+            stack: new Error().stack
+          });
+        }
         renderColumns();
         didFullRender = true;
         break;
