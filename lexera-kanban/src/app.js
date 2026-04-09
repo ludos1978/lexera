@@ -10588,792 +10588,162 @@ var LexeraDashboard = (function () {
   function vsRemeasureColumn(colIndex) { if (VirtualScroll) VirtualScroll.remeasureColumn(colIndex); }
 
   // ===== Action Registry Registrations =====
-  if (ActionRegistry) {
-    // ----- Board scope -----
-    // Recent boards
-    ActionRegistry.register('board', 'recent:*', function (action) { var id = action.substring(7); if (id) selectBoard(id); });
-
-    // Window management
-    ActionRegistry.register('board', 'new-window', function () {
-      if (hasTauri) tauriInvoke('open_new_window', { boardId: null });
+  // Delegated to core/actionRegistrations.js
+  if (ActionRegistry && window.LexeraActionRegistrations) {
+    window.LexeraActionRegistrations.registerAll({
+      ActionRegistry: ActionRegistry,
+      BoardSettingRegistry: BoardSettingRegistry,
+      Settings: Settings,
+      // State accessors
+      getActiveBoardData: function () { return activeBoardData; },
+      getActiveBoardId: function () { return activeBoardId; },
+      getFullBoardData: function () { return fullBoardData; },
+      hasTauri: hasTauri,
+      tauriInvoke: tauriInvoke,
+      WorkspaceShell: WorkspaceShell,
+      // Board operations
+      selectBoard: selectBoard,
+      undo: undo,
+      redo: redo,
+      addRow: addRow,
+      addStackToRow: addStackToRow,
+      addColumnToStack: addColumnToStack,
+      addColumn: addColumn,
+      addColumnRelativeToDisplayPosition: addColumnRelativeToDisplayPosition,
+      insertCardAtIndex: insertCardAtIndex,
+      openCardEditor: openCardEditor,
+      getElColumnsContainer: getElColumnsContainer,
+      // Fold
+      toggleFoldAll: toggleFoldAll,
+      toggleFoldAllColumns: toggleFoldAllColumns,
+      toggleFoldAllCards: toggleFoldAllCards,
+      // Sort
+      sortAllCardsAcrossBoard: sortAllCardsAcrossBoard,
+      sortColumnCards: sortColumnCards,
+      sortRowCards: sortRowCards,
+      sortStackCards: sortStackCards,
+      // Board settings
+      getBoardSettingValue: getBoardSettingValue,
+      setBoardSettingValue: setBoardSettingValue,
+      normalizeColumnWidth: normalizeColumnWidth,
+      normalizeStackWidth: normalizeStackWidth,
+      normalizeWhitespaceValue: normalizeWhitespaceValue,
+      normalizeBoardFontSizeValue: normalizeBoardFontSizeValue,
+      normalizeBoardFontFamilyToken: normalizeBoardFontFamilyToken,
+      resolveBoardFontFamilyValue: resolveBoardFontFamilyValue,
+      normalizeBoardLayoutValue: normalizeBoardLayoutValue,
+      normalizeCanvasGridValue: normalizeCanvasGridValue,
+      normalizeArrowKeyFocusScrollMode: normalizeArrowKeyFocusScrollMode,
+      normalizeBoardScrollSpeedValue: normalizeBoardScrollSpeedValue,
+      normalizeBoardZoomSpeedValue: normalizeBoardZoomSpeedValue,
+      normalizeHtmlCommentRenderMode: normalizeHtmlCommentRenderMode,
+      normalizeTagVisibilityMode: normalizeTagVisibilityMode,
+      // Theme
+      TAG_STYLE_PRESETS: TAG_STYLE_PRESETS,
+      VISUAL_THEMES: VISUAL_THEMES,
+      VISUAL_THEME_LABELS: VISUAL_THEME_LABELS,
+      getActiveTagStylePreset: getActiveTagStylePreset,
+      setActiveTagStylePreset: setActiveTagStylePreset,
+      refreshTargetedElements: refreshTargetedElements,
+      applyVisualTheme: applyVisualTheme,
+      getLexeraCurrentVisualThemeId: typeof getLexeraCurrentVisualThemeId === 'function' ? getLexeraCurrentVisualThemeId : null,
+      // Feature toggles
+      setOverlayEditorEnabled: setOverlayEditorEnabled,
+      isOverlayEditorEnabled: isOverlayEditorEnabled,
+      setSpecialCharactersVisible: setSpecialCharactersVisible,
+      isSpecialCharactersVisible: isSpecialCharactersVisible,
+      syncMenuCheckStates: syncMenuCheckStates,
+      getHtmlContentRenderMode: getHtmlContentRenderMode,
+      toggleSidebarTreeDisplayOption: toggleSidebarTreeDisplayOption,
+      toggleInspector: toggleInspector,
+      // Save/export
+      isBoardDirty: isBoardDirty,
+      getBoardDirtyGeneration: getBoardDirtyGeneration,
+      saveFullBoard: saveFullBoard,
+      clearBoardDirtyIfUnchanged: clearBoardDirtyIfUnchanged,
+      showSaveTrackingMenu: showSaveTrackingMenu,
+      refreshBoardHeaderActionStates: refreshBoardHeaderActionStates,
+      triggerBoardExport: triggerBoardExport,
+      exportColumn: exportColumn,
+      requestApplicationQuitWithCleanup: requestApplicationQuitWithCleanup,
+      openSettingsDialogForBoard: openSettingsDialogForBoard,
+      // Panels
+      openRunningProcessesPanel: openRunningProcessesPanel,
+      openManagementPanel: openManagementPanel,
+      openFrontendSettingsPanel: openFrontendSettingsPanel,
+      openConnectionWindow: openConnectionWindow,
+      openSearchReplacePanel: openSearchReplacePanel,
+      // View
+      showParkedItems: showParkedItems,
+      showArchivedItems: showArchivedItems,
+      showDeletedItems: showDeletedItems,
+      renameActiveBoardFile: renameActiveBoardFile,
+      openActiveBoardFolder: openActiveBoardFolder,
+      copyElementAsMarkdown: copyElementAsMarkdown,
+      showNotification: showNotification,
+      // Zoom
+      isCanvasBoardLayout: isCanvasBoardLayout,
+      applyCanvasZoom: applyCanvasZoom,
+      resetCanvasPan: resetCanvasPan,
+      nudgeCanvasZoom: nudgeCanvasZoom,
+      getCanvasZoomStep: getCanvasZoomStep,
+      nudgeUiScale: nudgeUiScale,
+      getUiZoomStep: getUiZoomStep,
+      applyUiScale: applyUiScale,
+      // Navigation
+      navigateCards: navigateCards,
+      toggleBoardStatsBar: toggleBoardStatsBar,
+      showKeyboardShortcutsHelp: showKeyboardShortcutsHelp,
+      // Card operations
+      revealCardContent: revealCardContent,
+      findVisibleCardElement: findVisibleCardElement,
+      duplicateCard: duplicateCard,
+      duplicateCardToColumn: duplicateCardToColumn,
+      moveCard: moveCard,
+      tagCard: tagCard,
+      parkCopyCard: parkCopyCard,
+      deleteCard: deleteCard,
+      handleEntityMarpMenuAction: handleEntityMarpMenuAction,
+      handleEntityTagMenuAction: handleEntityTagMenuAction,
+      // Column operations
+      moveColumnToStack: moveColumnToStack,
+      enterColumnRename: enterColumnRename,
+      revealColumnContent: revealColumnContent,
+      duplicateColumn: duplicateColumn,
+      toggleColCards: toggleColCards,
+      setColumnHiddenTag: setColumnHiddenTag,
+      deleteColumn: deleteColumn,
+      toggleColumnWidth: toggleColumnWidth,
+      setColumnSpan: setColumnSpan,
+      toggleTag: toggleTag,
+      extractIncludePathFromTitle: extractIncludePathFromTitle,
+      showBoardFilePreview: showBoardFilePreview,
+      openBoardFileInSystem: openBoardFileInSystem,
+      enableColumnIncludeMode: enableColumnIncludeMode,
+      editColumnIncludeFile: editColumnIncludeFile,
+      disableColumnIncludeMode: disableColumnIncludeMode,
+      pasteClipboardAsCard: pasteClipboardAsCard,
+      smartPasteAsCard: smartPasteAsCard,
+      // Row operations
+      renameRowOrStack: renameRowOrStack,
+      revealRowContent: revealRowContent,
+      duplicateRow: duplicateRow,
+      setRowHiddenTag: setRowHiddenTag,
+      deleteRow: deleteRow,
+      // Stack operations
+      revealStackContent: revealStackContent,
+      duplicateStack: duplicateStack,
+      setStackHiddenTag: setStackHiddenTag,
+      deleteStack: deleteStack,
+      findFullDataStack: findFullDataStack,
+      getElementSizeTag: getElementSizeTag,
+      getFullColumn: getFullColumn,
+      pushUndo: pushUndo,
+      persistBoardMutation: persistBoardMutation
     });
 
-    // Undo/redo
-    ActionRegistry.register('board', 'undo', function () { undo(); });
-    ActionRegistry.register('board', 'redo', function () { redo(); });
-
-    // Board structure
-    ActionRegistry.register('board', 'add-row', function () { addRow(); });
-    ActionRegistry.register('board', 'add-stack', function () {
-      if (activeBoardData && activeBoardData.rows && activeBoardData.rows.length > 0) addStackToRow(activeBoardData.rows.length - 1);
-    });
-    ActionRegistry.register('board', 'add-column', function () {
-      if (activeBoardData && activeBoardData.rows && activeBoardData.rows.length > 0) {
-        var lastRow = activeBoardData.rows[activeBoardData.rows.length - 1];
-        if (lastRow.stacks && lastRow.stacks.length > 0) addColumnToStack(activeBoardData.rows.length - 1, lastRow.stacks.length - 1);
-      }
-    });
-    ActionRegistry.register('board', 'add-card', function () {
-      var columns = activeBoardData ? activeBoardData.columns : [];
-      if (columns.length > 0) {
-        insertCardAtIndex(columns[0].index).then(function (ok) {
-          if (!ok) return;
-          var allCards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + columns[0].index + '"]');
-          var cardEl = allCards.length > 0 ? allCards[allCards.length - 1] : null;
-          if (cardEl) openCardEditor(cardEl, columns[0].index, parseInt(cardEl.getAttribute('data-card-index'), 10), 'inline');
-        });
-      }
-    });
-
-    // Fold
-    ActionRegistry.register('board', 'fold-all', function () { toggleFoldAll(); });
-    ActionRegistry.register('board', 'unfold-all', function () { toggleFoldAll(); });
-    ActionRegistry.register('board', 'fold-columns', function () { toggleFoldAllColumns(); });
-    ActionRegistry.register('board', 'unfold-columns', function () { toggleFoldAllColumns(); });
-    ActionRegistry.register('board', 'fold-cards', function () { toggleFoldAllCards(); });
-    ActionRegistry.register('board', 'unfold-cards', function () { toggleFoldAllCards(); });
-    ActionRegistry.register('board', 'toggle-fold-cards', function () { toggleFoldAllCards(); });
-    ActionRegistry.register('board', 'toggle-fold-columns', function () { toggleFoldAllColumns(); });
-
-    // Sorting
-    ActionRegistry.register('board', 'sort-all-cards:*', function (action) {
-      var sortMode = action.substring('sort-all-cards:'.length);
-      var resolvedMode = sortMode === 'tag' ? 'tag' : sortMode === 'duedate' ? 'duedate' : 'title';
-      sortAllCardsAcrossBoard(resolvedMode);
-    });
-
-    // ── Board Setting Descriptors ─────────────────────────────────────
-    BoardSettingRegistry.register({
-      id: 'columnWidth', label: 'Column Width', category: 'format',
-      settingsKey: 'columnWidth', actionPrefix: 'set-column-width', defaultValue: '350px',
-      normalize: normalizeColumnWidth,
-      options: [
-        { value: '250px', label: '250px' }, { value: '350px', label: '350px' },
-        { value: '450px', label: '450px' }, { value: '550px', label: '550px' },
-        { value: '650px', label: '650px' }, { separator: true },
-        { value: '31.5vw', label: '1/3 Screen' }, { value: '48vw', label: '1/2 Screen' },
-        { value: '63vw', label: '2/3 Screen' }, { value: '95vw', label: 'Full Width' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'stackWidth', label: 'Stack Width', category: 'format',
-      settingsKey: 'stackWidth', actionPrefix: 'set-stack-width-default', defaultValue: '350px',
-      normalize: normalizeStackWidth,
-      options: [
-        { value: '200px', label: '200px' }, { value: '250px', label: '250px' },
-        { value: '300px', label: '300px' }, { value: '350px', label: '350px (default)' },
-        { value: '400px', label: '400px' }, { value: '500px', label: '500px' },
-        { value: '600px', label: '600px' }, { value: '800px', label: '800px' },
-        { value: '1000px', label: '1000px' }, { value: '1200px', label: '1200px' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'cardHeight', label: 'Card Height', category: 'format',
-      settingsKey: 'cardMinHeight', actionPrefix: 'set-card-height', defaultValue: 'auto',
-      normalize: function (v) { return String(v || 'auto').trim().toLowerCase(); },
-      options: [
-        { value: 'auto', label: 'Auto' }, { separator: true },
-        { value: '200px', label: 'Small' }, { value: '400px', label: 'Medium' },
-        { value: '600px', label: 'Large' }, { separator: true },
-        { value: '26.5vh', label: '1/3 Screen' }, { value: '43.5vh', label: '1/2 Screen' },
-        { value: '59vh', label: '2/3 Screen' }, { value: '92vh', label: 'Full Screen' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'whitespace', label: 'Whitespace', category: 'format',
-      settingsKey: 'whitespace', actionPrefix: 'set-whitespace', defaultValue: '8px',
-      normalize: normalizeWhitespaceValue,
-      options: [
-        { value: '8px', label: 'Compact' }, { value: '16px', label: 'Relaxed' },
-        { value: '32px', label: 'Spacious' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'fontSize', label: 'Font Size', category: 'format',
-      settingsKey: 'fontSize', actionPrefix: 'set-font-size', defaultValue: '13px',
-      normalize: normalizeBoardFontSizeValue,
-      options: [
-        { value: '6.5px', label: '0.5x' }, { value: '9.75px', label: '0.75x' },
-        { value: '13px', label: '1x' }, { value: '16.25px', label: '1.25x' },
-        { value: '19.5px', label: '1.5x' }, { value: '26px', label: '2x' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'fontFamily', label: 'Font Family', category: 'format',
-      settingsKey: 'fontFamily', actionPrefix: 'set-font-family', defaultValue: 'system',
-      normalize: normalizeBoardFontFamilyToken,
-      resolve: resolveBoardFontFamilyValue,
-      options: [
-        { value: 'system', label: 'System Default' },
-        { value: 'roboto', label: 'Roboto' }, { value: 'opensans', label: 'Open Sans' },
-        { value: 'lato', label: 'Lato' }, { value: 'plusjakarta', label: 'Plus Jakarta Sans' },
-        { value: 'inter', label: 'Inter' }, { value: 'poppins', label: 'Poppins' },
-        { separator: true },
-        { value: 'helvetica', label: 'Helvetica' }, { value: 'arial', label: 'Arial' },
-        { value: 'georgia', label: 'Georgia' }, { value: 'times', label: 'Times New Roman' },
-        { separator: true },
-        { value: 'firacode', label: 'Fira Code' }, { value: 'jetbrains', label: 'JetBrains Mono' },
-        { value: 'sourcecodepro', label: 'Source Code Pro' }, { value: 'consolas', label: 'Consolas' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'rowHeight', label: 'Row Height', category: 'format',
-      settingsKey: 'rowHeight', actionPrefix: 'set-row-height', defaultValue: 'auto',
-      normalize: function (v) { return String(v || 'auto').trim().toLowerCase(); },
-      options: [
-        { value: 'auto', label: 'Auto' }, { separator: true },
-        { value: '300px', label: 'Small' }, { value: '500px', label: 'Medium' },
-        { value: '700px', label: 'Large' }, { separator: true },
-        { value: '31.5vh', label: '1/3 Screen' }, { value: '48vh', label: '1/2 Screen' },
-        { value: '63vh', label: '2/3 Screen' }, { value: '95vh', label: 'Full Screen' }
-      ]
-    });
-    // --- Named Layout Presets (save/load/delete) ---
-    var LAYOUT_PRESET_SETTINGS_KEYS = [
-      'columnWidth', 'stackWidth', 'whitespace', 'fontSize', 'fontFamily',
-      'layoutRows', 'rowHeight', 'cardMinHeight', 'layoutSpacing'
-    ];
-    var LAYOUT_PRESETS_STORAGE_KEY = 'lexera-layout-presets';
-
-    function getSavedLayoutPresets() {
-      if (Settings) return Settings.get('layoutPresets') || {};
-      try { return JSON.parse(localStorage.getItem(LAYOUT_PRESETS_STORAGE_KEY)) || {}; }
-      catch (_) { return {}; } /* localStorage/JSON parse fallback */
-    }
-
-    function saveLayoutPreset(name, settings) {
-      var presets = getSavedLayoutPresets();
-      presets[name] = settings;
-      if (Settings) Settings.set('layoutPresets', presets); else localStorage.setItem(LAYOUT_PRESETS_STORAGE_KEY, JSON.stringify(presets));
-    }
-
-    function deleteLayoutPreset(name) {
-      var presets = getSavedLayoutPresets();
-      delete presets[name];
-      if (Settings) Settings.set('layoutPresets', presets); else localStorage.setItem(LAYOUT_PRESETS_STORAGE_KEY, JSON.stringify(presets));
-    }
-
-    function captureCurrentLayoutSettings() {
-      var captured = {};
-      for (var i = 0; i < LAYOUT_PRESET_SETTINGS_KEYS.length; i++) {
-        var key = LAYOUT_PRESET_SETTINGS_KEYS[i];
-        captured[key] = getBoardSettingValue(key, null);
-      }
-      return captured;
-    }
-
-    function applyLayoutPresetSettings(settings) {
-      for (var i = 0; i < LAYOUT_PRESET_SETTINGS_KEYS.length; i++) {
-        var key = LAYOUT_PRESET_SETTINGS_KEYS[i];
-        setBoardSettingValue(key, settings[key] || null);
-      }
-    }
-
-    BoardSettingRegistry.register({
-      id: 'boardLayout', label: 'Board Layout', category: 'format',
-      settingsKey: 'boardLayout', actionPrefix: 'set-board-layout', defaultValue: 'kanban',
-      normalize: normalizeBoardLayoutValue,
-      options: [
-        { value: 'kanban', label: 'Kanban' }, { value: 'canvas', label: 'Canvas' }
-      ],
-      handler: function (raw) {
-        var v = normalizeBoardLayoutValue(raw);
-        setBoardSettingValue('boardLayout', v);
-      }
-    });
-    BoardSettingRegistry.register({
-      id: 'canvasGrid', label: 'Canvas Grid', category: 'format',
-      settingsKey: 'canvasGrid', actionPrefix: 'set-canvas-grid', defaultValue: '32',
-      normalize: normalizeCanvasGridValue,
-      options: [
-        { value: 'off', label: 'Off' },
-        { value: '16', label: 'Fine 16px' },
-        { value: '32', label: 'Medium 32px' },
-        { value: '64', label: 'Large 64px' },
-        { value: 'largest', label: 'Largest Element' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'layoutPreset', label: 'Layout Preset', category: 'format',
-      settingsKey: 'layoutPreset', actionPrefix: 'set-layout-preset', defaultValue: 'normal',
-      normalize: function (v) { return String(v || 'normal').toLowerCase(); },
-      handler: function (raw) {
-        var v = String(raw || '').trim().toLowerCase();
-        if (v === 'spacious') {
-          setBoardSettingValue('layoutPreset', 'spacious');
-          setBoardSettingValue('layoutSpacing', 'spacious');
-        } else if (v === 'normal' || !v) {
-          setBoardSettingValue('layoutPreset', null);
-          setBoardSettingValue('layoutSpacing', null);
-        } else {
-          // Custom saved preset
-          var presets = getSavedLayoutPresets();
-          if (presets[v]) {
-            applyLayoutPresetSettings(presets[v]);
-            setBoardSettingValue('layoutPreset', v);
-            showNotification('Layout preset: ' + v);
-          }
-        }
-      },
-      options: [
-        { value: 'normal', label: 'Normal' }, { value: 'spacious', label: 'Spacious' }
-      ]
-    });
-    // stickyHeaders registry entry removed — always sticky at top
-    BoardSettingRegistry.register({
-      id: 'arrowFocusScroll', label: 'Arrow Key Focus Scroll', category: 'format',
-      settingsKey: 'arrowKeyFocusScroll', actionPrefix: 'set-arrow-focus-scroll', defaultValue: 'nearest',
-      normalize: normalizeArrowKeyFocusScrollMode,
-      options: [
-        { value: 'nearest', label: 'Nearest' }, { value: 'center', label: 'Center' },
-        { value: 'disabled', label: 'Disabled' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'scrollSpeed', label: 'Scroll Speed', category: 'format',
-      settingsKey: 'scrollSpeed', actionPrefix: 'set-scroll-speed', defaultValue: '1',
-      normalize: normalizeBoardScrollSpeedValue,
-      options: [
-        { value: '0.01', label: '1%' }, { value: '0.02', label: '2%' },
-        { value: '0.03', label: '3%' }, { value: '0.06', label: '6%' },
-        { value: '0.1', label: '10%' }, { value: '0.18', label: '18%' },
-        { value: '0.32', label: '32%' }, { value: '0.56', label: '56%' },
-        { value: '1', label: '100%' }, { value: '1.33', label: '133%' },
-        { value: '1.67', label: '167%' }, { value: '2', label: '200%' },
-        { value: '3', label: '300%' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'zoomSpeed', label: 'Zoom Speed', category: 'format',
-      settingsKey: 'zoomSpeed', actionPrefix: 'set-zoom-speed', defaultValue: '0.06',
-      normalize: normalizeBoardZoomSpeedValue,
-      options: [
-        { value: '0.01', label: '1%' }, { value: '0.02', label: '2%' },
-        { value: '0.03', label: '3%' }, { value: '0.06', label: '6%' },
-        { value: '0.1', label: '10%' }, { value: '0.18', label: '18%' },
-        { value: '0.32', label: '32%' }, { value: '0.56', label: '56%' },
-        { value: '1', label: '100%' }, { value: '1.33', label: '133%' },
-        { value: '1.67', label: '167%' }, { value: '2', label: '200%' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'htmlComments', label: 'HTML Comments', category: 'display',
-      settingsKey: 'htmlCommentRenderMode', actionPrefix: 'set-html-comments', defaultValue: 'hidden',
-      normalize: normalizeHtmlCommentRenderMode,
-      options: [
-        { value: 'hidden', label: 'Hide Comments' }, { value: 'text', label: 'Show as Text' },
-        { value: 'dim', label: 'Dim Comments' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'htmlContent', label: 'HTML Content', category: 'display',
-      settingsKey: 'htmlContentRenderMode', actionPrefix: 'set-html-content', defaultValue: 'html',
-      normalize: function (v) { return v === 'html' ? 'html' : 'text'; },
-      options: [
-        { value: 'html', label: 'Render HTML' }, { value: 'text', label: 'Show as Text' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'tagVisibility', label: 'Tag Visibility', category: 'display',
-      settingsKey: 'tagVisibility', actionPrefix: 'set-tag-visibility', defaultValue: 'allexcludinglayout',
-      normalize: normalizeTagVisibilityMode,
-      options: [
-        { value: 'all', label: 'All Tags' }, { value: 'allexcludinglayout', label: 'All Except Layout Tags' },
-        { value: 'customonly', label: 'Custom Tags Only' }, { value: 'mentionsonly', label: 'Mentions Only' },
-        { value: 'dim', label: 'Dim Tags' }, { value: 'none', label: 'Hide Tags' }
-      ]
-    });
-    BoardSettingRegistry.register({
-      id: 'tagStylePreset', label: 'Tag Style Preset', category: 'display',
-      settingsKey: null, actionPrefix: 'set-tag-style-preset', defaultValue: 'default',
-      getCurrentValue: function () { return getActiveTagStylePreset(); },
-      handler: function (raw) {
-        setActiveTagStylePreset(raw);
-        refreshTargetedElements([{ type: 'board' }]);
-        showNotification('Tag style: ' + (TAG_STYLE_PRESETS[raw] ? TAG_STYLE_PRESETS[raw].label : raw));
-      },
-      options: (function () {
-        var items = [];
-        var keys = Object.keys(TAG_STYLE_PRESETS);
-        for (var i = 0; i < keys.length; i++) {
-          var p = TAG_STYLE_PRESETS[keys[i]];
-          items.push({ value: keys[i], label: p.label + (p.description ? ' \u2014 ' + p.description : '') });
-        }
-        return items;
-      })()
-    });
-    BoardSettingRegistry.register({
-      id: 'visualTheme', label: 'Visual Theme', category: 'display',
-      settingsKey: null, actionPrefix: 'set-visual-theme', defaultValue: 'sleek-uniform',
-      getCurrentValue: function () {
-        return (typeof getLexeraCurrentVisualThemeId === 'function' && getLexeraCurrentVisualThemeId()) || 'sleek-uniform';
-      },
-      handler: function (raw) {
-        var applied = applyVisualTheme(raw);
-        var label = (applied && applied.name) || VISUAL_THEME_LABELS[String(raw || '').trim()] || String(raw || 'sleek-uniform');
-        showNotification('Visual theme: ' + label);
-      },
-      options: function () {
-        return VISUAL_THEMES.map(function (theme) {
-          return {
-            value: theme.id,
-            label: theme.name + (theme.description ? ' \u2014 ' + theme.description : '')
-          };
-        });
-      }
-    });
-
-    // Auto-wire board setting action handlers from descriptors
-    var allSettingDescs = BoardSettingRegistry.getAll();
-    for (var bsi = 0; bsi < allSettingDescs.length; bsi++) {
-      (function (desc) {
-        ActionRegistry.register('board', desc.actionPrefix + ':*', function (action) {
-          var raw = action.substring(desc.actionPrefix.length + 1);
-          if (desc.handler) {
-            desc.handler(raw);
-          } else {
-            var v = desc.normalize ? desc.normalize(raw) : raw;
-            if (desc.resolve) v = desc.resolve(v);
-            setBoardSettingValue(desc.settingsKey, v || null);
-          }
-        });
-      })(allSettingDescs[bsi]);
-    }
-    ActionRegistry.register('board', 'set-ui-template:*', function (action) {
-      var raw = action.substring('set-ui-template:'.length);
-      var applied = applyVisualTheme(raw);
-      showNotification('Visual theme: ' + ((applied && applied.name) || VISUAL_THEME_LABELS[raw] || raw));
-    });
-    ActionRegistry.register('board', 'set-board-theme:*', function (action) {
-      var raw = action.substring('set-board-theme:'.length);
-      var applied = applyVisualTheme(raw);
-      showNotification('Visual theme: ' + ((applied && applied.name) || VISUAL_THEME_LABELS[raw] || raw));
-    });
-
-    // Layout preset save/delete actions
-    ActionRegistry.register('board', 'save-layout-preset', function () {
-      var name = window.prompt('Preset name');
-      if (!name) return;
-      name = name.trim();
-      if (!name || name === 'normal' || name === 'spacious') {
-        showNotification('Cannot use reserved preset name');
-        return;
-      }
-      saveLayoutPreset(name, captureCurrentLayoutSettings());
-      setBoardSettingValue('layoutPreset', name);
-      showNotification('Layout preset saved: ' + name);
-    });
-    ActionRegistry.register('board', 'delete-layout-preset:*', function (action) {
-      var name = action.substring('delete-layout-preset:'.length);
-      deleteLayoutPreset(name);
-      var current = getBoardSettingValue('layoutPreset', 'normal');
-      if (current === name) {
-        setBoardSettingValue('layoutPreset', null);
-        setBoardSettingValue('layoutSpacing', null);
-      }
-      showNotification('Layout preset deleted: ' + name);
-    });
-
-    // Feature toggles
-    // pin-headers/unpin-headers actions removed — always sticky at top
-    ActionRegistry.register('board', 'toggle-overlay-editor', function () { setOverlayEditorEnabled(!isOverlayEditorEnabled()); syncMenuCheckStates(); });
-    ActionRegistry.register('board', 'toggle-special-chars', function () { setSpecialCharactersVisible(!isSpecialCharactersVisible()); syncMenuCheckStates(); });
-    ActionRegistry.register('board', 'toggle-html-comments', function () {
-      var mode = normalizeHtmlCommentRenderMode(getBoardSettingValue('htmlCommentRenderMode', 'hidden'));
-      setBoardSettingValue('htmlCommentRenderMode', mode === 'hidden' ? 'text' : 'hidden');
-    });
-    ActionRegistry.register('board', 'toggle-html-content', function () {
-      setBoardSettingValue('htmlContentRenderMode', getHtmlContentRenderMode() === 'html' ? 'text' : 'html');
-    });
-    ActionRegistry.register('board', 'toggle-tag-visibility', function () {
-      var mode = normalizeTagVisibilityMode(getBoardSettingValue('tagVisibility', 'allexcludinglayout'));
-      setBoardSettingValue('tagVisibility', mode === 'none' ? 'allexcludinglayout' : 'none');
-    });
-    ActionRegistry.register('board', 'toggle-sidebar-counts', function () {
-      var next = toggleSidebarTreeDisplayOption('counts');
-      showNotification('Sidebar counts ' + (next.counts ? 'shown' : 'hidden'));
-    });
-    ActionRegistry.register('board', 'toggle-sidebar-presence', function () {
-      var next = toggleSidebarTreeDisplayOption('presence');
-      showNotification('Sidebar presence ' + (next.presence ? 'shown' : 'hidden'));
-    });
-    ActionRegistry.register('board', 'toggle-sidebar-grips', function () {
-      var next = toggleSidebarTreeDisplayOption('grips');
-      showNotification('Sidebar drag icons ' + (next.grips ? 'shown' : 'hidden'));
-    });
-    ActionRegistry.register('board', 'toggle-sidebar-menus', function () {
-      var next = toggleSidebarTreeDisplayOption('menus');
-      showNotification('Sidebar burger menus ' + (next.menus ? 'shown' : 'hidden'));
-    });
-    ActionRegistry.register('board', 'toggle-inspector', function () { toggleInspector(); });
-    // Save/export/settings
-    ActionRegistry.register('board', 'save-now', function () {
-      if (activeBoardId && fullBoardData && isBoardDirty()) {
-        var gen = getBoardDirtyGeneration();
-        saveFullBoard().then(function (saved) { if (saved) clearBoardDirtyIfUnchanged(gen); });
-      } else {
-        var trackingBtn = document.getElementById('btn-save-tracking');
-        if (trackingBtn) showSaveTrackingMenu(trackingBtn);
-        else showNotification('No unsaved changes');
-      }
-      refreshBoardHeaderActionStates();
-    });
-    ActionRegistry.register('board', 'set-canvas-zoom:*', function (action) {
-      var zoom = parseFloat(action.substring('set-canvas-zoom:'.length));
-      if (isFinite(zoom) && zoom > 0) applyCanvasZoom(zoom);
-    });
-    ActionRegistry.register('board', 'quit-app', function () {
-      requestApplicationQuitWithCleanup();
-    });
-    ActionRegistry.register('board', 'file-open-board-settings', function () { openSettingsDialogForBoard(activeBoardId); });
-    ActionRegistry.register('board', 'file-open-export-settings', function () { triggerBoardExport(); });
-    ActionRegistry.register('board', 'export-board', function () { triggerBoardExport(); });
-
-    // Panels
-    ActionRegistry.register('board', 'running-processes', function () { openRunningProcessesPanel(); });
-    ActionRegistry.register('board', 'show-processes', function () { openRunningProcessesPanel(); });
-    ActionRegistry.register('board', 'open-save-tracking', function () {
-      var btn = document.getElementById('btn-save-tracking');
-      if (btn) showSaveTrackingMenu(btn);
-    });
-    ActionRegistry.register('board', 'open-management', function () { openManagementPanel(); });
-    ActionRegistry.register('board', 'open-theme-zoom', function () {
-      openFrontendSettingsPanel();
-    });
-    ActionRegistry.register('board', 'open-frontend-settings', function () { openFrontendSettingsPanel(); });
-
-    // View management
-    ActionRegistry.register('board', 'show-parked', function () { showParkedItems(); });
-    ActionRegistry.register('board', 'show-archived', function () { showArchivedItems(); });
-    ActionRegistry.register('board', 'show-trash', function () { showDeletedItems(); });
-    ActionRegistry.register('board', 'rename-file', function () { renameActiveBoardFile(); });
-    ActionRegistry.register('board', 'open-folder', function () { openActiveBoardFolder(); });
-    ActionRegistry.register('board', 'copy-board-markdown', function () { copyElementAsMarkdown('board', {}); });
-
-    // Backend/connection
-    ActionRegistry.register('board', 'backend-settings', function () { openConnectionWindow(); });
-    ActionRegistry.register('board', 'settings', function () { openConnectionWindow(); });
-    ActionRegistry.register('board', 'collab', function () { openConnectionWindow(); });
-    ActionRegistry.register('board', 'reveal-panel:hierarchy', function () {
-      if (WorkspaceShell) WorkspaceShell.revealPanel('hierarchy');
-    });
-    ActionRegistry.register('board', 'reveal-panel:dashboard', function () {
-      if (WorkspaceShell) WorkspaceShell.revealPanel('dashboard');
-    });
-    ActionRegistry.register('board', 'reveal-panel:logs', function () {
-      if (WorkspaceShell) WorkspaceShell.revealPanel('logs');
-    });
-    ActionRegistry.register('board', 'reveal-panel:backendSettings', function () {
-      if (WorkspaceShell) WorkspaceShell.revealPanel('backendSettings');
-      else openConnectionWindow();
-    });
-    ActionRegistry.register('board', 'reveal-panel:frontendSettings', function () {
-      if (WorkspaceShell) WorkspaceShell.revealPanel('frontendSettings');
-    });
-    ActionRegistry.register('board', 'reveal-panel:renderApps', function () {
-      if (WorkspaceShell) WorkspaceShell.revealPanel('renderApps');
-    });
-    ActionRegistry.register('board', 'reveal-panel:files', function () {
-      if (WorkspaceShell) WorkspaceShell.revealPanel('files');
-    });
-    ActionRegistry.register('board', 'reveal-panel:weekCalendar', function () {
-      if (WorkspaceShell) WorkspaceShell.revealPanel('weekCalendar');
-    });
-    ActionRegistry.register('board', 'reveal-panel:monthCalendar', function () {
-      if (WorkspaceShell) WorkspaceShell.revealPanel('monthCalendar');
-    });
-
-    // Frontend tests
-    ActionRegistry.register('board', 'reveal-panel:frontendTests', function () {
-      if (WorkspaceShell) WorkspaceShell.revealPanel('frontendTests');
-    });
-
-    // Search
-    ActionRegistry.register('board', 'open-search', function () { openSearchReplacePanel(); });
-    ActionRegistry.register('board', 'open-search-replace', function () { openSearchReplacePanel(); });
-    ActionRegistry.register('board', 'paste-as-card', function () {
-      var columns = activeBoardData ? activeBoardData.columns : [];
-      if (columns.length > 0) pasteClipboardAsCard(columns[0].index);
-    });
-    ActionRegistry.register('board', 'smart-paste', function () {
-      smartPasteAsCard();
-    });
-
-    // Zoom
-    ActionRegistry.register('board', 'zoom-in', function () {
-      if (isCanvasBoardLayout()) { nudgeCanvasZoom(getCanvasZoomStep(0.1)); } else { nudgeUiScale(getUiZoomStep(0.05)); }
-    });
-    ActionRegistry.register('board', 'zoom-out', function () {
-      if (isCanvasBoardLayout()) { nudgeCanvasZoom(getCanvasZoomStep(-0.1)); } else { nudgeUiScale(getUiZoomStep(-0.05)); }
-    });
-    ActionRegistry.register('board', 'zoom-reset', function () {
-      if (isCanvasBoardLayout()) { applyCanvasZoom(1); resetCanvasPan(); } else { applyUiScale(1); showNotification('Zoom 100%'); }
-    });
-
-    // Navigation
-    ActionRegistry.register('board', 'show-recent-boards', function () {
-      var items = document.querySelectorAll('.sidebar-board-item');
-      if (items.length > 0) items[0].scrollIntoView({ behavior: 'smooth' });
-    });
-    ActionRegistry.register('board', 'focus-next-card', function () { navigateCards('ArrowDown'); });
-    ActionRegistry.register('board', 'focus-prev-card', function () { navigateCards('ArrowUp'); });
-    ActionRegistry.register('board', 'focus-next-column', function () { navigateCards('ArrowRight'); });
-    ActionRegistry.register('board', 'focus-prev-column', function () { navigateCards('ArrowLeft'); });
-
-    // Stats
-    ActionRegistry.register('board', 'toggle-board-stats', function () { toggleBoardStatsBar(); });
-    ActionRegistry.register('board', 'show-keyboard-shortcuts', function () { showKeyboardShortcutsHelp(); });
-
-    // ----- Card scope -----
-    ActionRegistry.register('card', 'add-card', function (action, ctx) {
-      insertCardAtIndex(ctx.colIndex, typeof ctx.cardIndex === 'number' ? ctx.cardIndex + 1 : undefined).then(function (ok) {
-        if (!ok) return;
-        var insertIdx = typeof ctx.cardIndex === 'number' ? ctx.cardIndex + 1 : undefined;
-        var cardEl = insertIdx != null
-          ? getElColumnsContainer().querySelector('.card[data-col-index="' + ctx.colIndex + '"][data-card-index="' + insertIdx + '"]')
-          : null;
-        if (!cardEl) {
-          var allCards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"]');
-          cardEl = allCards.length > 0 ? allCards[allCards.length - 1] : null;
-        }
-        if (cardEl) openCardEditor(cardEl, ctx.colIndex, parseInt(cardEl.getAttribute('data-card-index'), 10), 'inline');
-      });
-    });
-    ActionRegistry.register('card', 'edit', function (action, ctx) {
-      var els = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"][data-card-index="' + ctx.cardIndex + '"]');
-      if (els.length > 0) openCardEditor(els[0], ctx.colIndex, ctx.cardIndex, 'inline');
-    });
-    ActionRegistry.register('card', 'edit-inline', function (action, ctx) {
-      var els = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"][data-card-index="' + ctx.cardIndex + '"]');
-      if (els.length > 0) openCardEditor(els[0], ctx.colIndex, ctx.cardIndex, 'inline');
-    });
-    ActionRegistry.register('card', 'edit-overlay', function (action, ctx) {
-      // Overlay editor is always available — the setting only controls the DEFAULT editor
-      var els = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"][data-card-index="' + ctx.cardIndex + '"]');
-      if (els.length > 0) openCardEditor(els[0], ctx.colIndex, ctx.cardIndex, 'overlay');
-    });
-    ActionRegistry.register('card', 'reveal', function (action, ctx) { revealCardContent(ctx.colIndex, ctx.cardIndex); });
-    ActionRegistry.register('card', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('card', { colIndex: ctx.colIndex, cardIndex: ctx.cardIndex }); });
-    ActionRegistry.register('card', 'copy-html', function (action, ctx) {
-      var cardEl = findVisibleCardElement(ctx.colIndex, ctx.cardIndex);
-      if (!cardEl) return;
-      var contentEl = cardEl.querySelector('.card-content');
-      if (!contentEl) return;
-      var html = contentEl.innerHTML;
-      if (navigator.clipboard && navigator.clipboard.write) {
-        navigator.clipboard.write([new ClipboardItem({
-          'text/html': new Blob([html], { type: 'text/html' }),
-          'text/plain': new Blob([contentEl.textContent || ''], { type: 'text/plain' })
-        })]).catch(function () {
-          // Fallback to text
-          if (navigator.clipboard.writeText) navigator.clipboard.writeText(contentEl.textContent || '');
-        });
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(contentEl.textContent || '');
-      }
-    });
-    ActionRegistry.register('card', 'insert-before', function (action, ctx) { insertCardAtIndex(ctx.colIndex, ctx.cardIndex); });
-    ActionRegistry.register('card', 'insert-after', function (action, ctx) { insertCardAtIndex(ctx.colIndex, ctx.cardIndex + 1); });
-    ActionRegistry.register('card', 'duplicate', function (action, ctx) { duplicateCard(ctx.colIndex, ctx.cardIndex); });
-    ActionRegistry.register('card', 'move-up', function (action, ctx) { if (ctx.cardIndex > 0) moveCard(ctx.colIndex, ctx.cardIndex, ctx.colIndex, ctx.cardIndex - 1); });
-    ActionRegistry.register('card', 'move-down', function (action, ctx) { moveCard(ctx.colIndex, ctx.cardIndex, ctx.colIndex, ctx.cardIndex + 2); });
-    ActionRegistry.register('card', 'move-top', function (action, ctx) { if (ctx.cardIndex > 0) moveCard(ctx.colIndex, ctx.cardIndex, ctx.colIndex, 0); });
-    ActionRegistry.register('card', 'move-bottom', function (action, ctx) {
-      var col = getFullColumn(ctx.colIndex);
-      if (col && ctx.cardIndex < col.cards.length - 1) moveCard(ctx.colIndex, ctx.cardIndex, ctx.colIndex, col.cards.length);
-    });
-    ActionRegistry.register('card', 'move-to:*', function (action, ctx) {
-      var targetColIdx = parseInt(action.substring(8), 10);
-      if (isFinite(targetColIdx)) moveCard(ctx.colIndex, ctx.cardIndex, targetColIdx, 0);
-    });
-    ActionRegistry.register('card', 'dup-to:*', function (action, ctx) {
-      var dupTargetIdx = parseInt(action.substring(7), 10);
-      if (isFinite(dupTargetIdx)) duplicateCardToColumn(ctx.colIndex, ctx.cardIndex, dupTargetIdx);
-    });
-    ActionRegistry.register('card', 'park', function (action, ctx) { tagCard(ctx.colIndex, ctx.cardIndex, '#hidden-internal-parked'); });
-    ActionRegistry.register('card', 'park-copy', function (action, ctx) { parkCopyCard(ctx.colIndex, ctx.cardIndex); });
-    ActionRegistry.register('card', 'archive', function (action, ctx) { tagCard(ctx.colIndex, ctx.cardIndex, '#hidden-internal-archived'); });
-    ActionRegistry.register('card', 'delete', function (action, ctx) { deleteCard(ctx.colIndex, ctx.cardIndex); });
-    ActionRegistry.register('card', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'card', { colIndex: ctx.colIndex, cardIndex: ctx.cardIndex }); });
-    ActionRegistry.register('card', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'card', { colIndex: ctx.colIndex, cardIndex: ctx.cardIndex }); });
-
-    // ----- Column scope -----
-    ActionRegistry.register('column', /^move-to-stack-(\d+)-(\d+)$/, function (action, ctx) {
-      var m = action.match(/^move-to-stack-(\d+)-(\d+)$/);
-      if (m) moveColumnToStack(ctx.colIndex, parseInt(m[1], 10), parseInt(m[2], 10));
-    });
-    ActionRegistry.register('column', 'rename', function (action, ctx) {
-      var colCardsEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + ctx.colIndex + '"]');
-      var colRootEl = colCardsEl ? colCardsEl.closest('.column') : null;
-      if (colRootEl) enterColumnRename(colRootEl, ctx.colIndex);
-    });
-    ActionRegistry.register('column', 'add-card', function (action, ctx) {
-      insertCardAtIndex(ctx.colIndex).then(function (ok) {
-        if (!ok) return;
-        var allCards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"]');
-        var cardEl = allCards.length > 0 ? allCards[allCards.length - 1] : null;
-        if (cardEl) openCardEditor(cardEl, ctx.colIndex, parseInt(cardEl.getAttribute('data-card-index'), 10), 'inline');
-      });
-    });
-    ActionRegistry.register('column', 'add-card-top', function (action, ctx) { insertCardAtIndex(ctx.colIndex, 0); });
-    ActionRegistry.register('column', 'paste-as-card', function (action, ctx) { pasteClipboardAsCard(ctx.colIndex); });
-    ActionRegistry.register('column', 'smart-paste', function (action, ctx) { smartPasteAsCard(ctx.colIndex); });
-    ActionRegistry.register('column', 'reveal-all', function (action, ctx) { revealColumnContent(ctx.colIndex); });
-    ActionRegistry.register('column', 'add-before', function (action, ctx) {
-      if (!(ctx.rowIdx !== undefined && addColumnRelativeToDisplayPosition(ctx.rowIdx, ctx.stackIdx, ctx.colLocalIdx, true))) {
-        addColumn(ctx.colIndex);
-      }
-    });
-    ActionRegistry.register('column', 'add-after', function (action, ctx) {
-      if (!(ctx.rowIdx !== undefined && addColumnRelativeToDisplayPosition(ctx.rowIdx, ctx.stackIdx, ctx.colLocalIdx, false))) {
-        addColumn(ctx.colIndex + 1);
-      }
-    });
-    ActionRegistry.register('column', 'duplicate', function (action, ctx) { duplicateColumn(ctx.colIndex); });
-    ActionRegistry.register('column', 'fold-all', function (action, ctx) { toggleColCards(ctx.colIndex, true); });
-    ActionRegistry.register('column', 'unfold-all', function (action, ctx) { toggleColCards(ctx.colIndex, false); });
-    ActionRegistry.register('column', 'park', function (action, ctx) { setColumnHiddenTag(ctx.colIndex, '#hidden-internal-parked'); });
-    ActionRegistry.register('column', 'archive', function (action, ctx) { setColumnHiddenTag(ctx.colIndex, '#hidden-internal-archived'); });
-    ActionRegistry.register('column', 'delete', function (action, ctx) { deleteColumn(ctx.colIndex); });
-    ActionRegistry.register('column', 'toggle-width', function (action, ctx) { toggleColumnWidth(ctx.colIndex); });
-    ActionRegistry.register('column', 'set-span-*', function (action, ctx) { setColumnSpan(ctx.colIndex, parseInt(action.substring(9), 10)); });
-    ActionRegistry.register('column', 'toggle-stacked', function (action, ctx) { toggleTag('column', { colIndex: ctx.colIndex }, '#stack'); });
-    ActionRegistry.register('column', 'sort-title', function (action, ctx) { sortColumnCards(ctx.colIndex, 'title'); });
-    ActionRegistry.register('column', 'sort-tag', function (action, ctx) { sortColumnCards(ctx.colIndex, 'tag'); });
-    ActionRegistry.register('column', 'sort-duedate', function (action, ctx) { sortColumnCards(ctx.colIndex, 'duedate'); });
-    ActionRegistry.register('column', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('column', { colIndex: ctx.colIndex }); });
-    ActionRegistry.register('column', 'copy-html', function (action, ctx) {
-      var cardsEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + ctx.colIndex + '"]');
-      if (!cardsEl) return;
-      var html = cardsEl.innerHTML;
-      if (navigator.clipboard && navigator.clipboard.write) {
-        navigator.clipboard.write([new ClipboardItem({
-          'text/html': new Blob([html], { type: 'text/html' }),
-          'text/plain': new Blob([cardsEl.textContent || ''], { type: 'text/plain' })
-        })]).catch(function () {
-          if (navigator.clipboard.writeText) navigator.clipboard.writeText(cardsEl.textContent || '');
-        });
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(cardsEl.textContent || '');
-      }
-    });
-    ActionRegistry.register('column', 'export-column', function (action, ctx) { exportColumn(ctx.colIndex); });
-    ActionRegistry.register('column', 'preview-include', function (action, ctx) {
-      var col = getFullColumn(ctx.colIndex);
-      var path = col && col.includeSource && col.includeSource.rawPath ? String(col.includeSource.rawPath) : extractIncludePathFromTitle(col && col.title ? col.title : '');
-      if (path) showBoardFilePreview(activeBoardId, path);
-    });
-    ActionRegistry.register('column', 'open-include', function (action, ctx) {
-      var col = getFullColumn(ctx.colIndex);
-      var path = col && col.includeSource && col.includeSource.rawPath ? String(col.includeSource.rawPath) : extractIncludePathFromTitle(col && col.title ? col.title : '');
-      if (path) openBoardFileInSystem(activeBoardId, path);
-    });
-    ActionRegistry.register('column', 'enable-include', function (action, ctx) { enableColumnIncludeMode(ctx.colIndex); });
-    ActionRegistry.register('column', 'edit-include', function (action, ctx) { editColumnIncludeFile(ctx.colIndex); });
-    ActionRegistry.register('column', 'disable-include', function (action, ctx) { disableColumnIncludeMode(ctx.colIndex); });
-    ActionRegistry.register('column', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'column', { colIndex: ctx.colIndex }); });
-    ActionRegistry.register('column', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'column', { colIndex: ctx.colIndex }); });
-
-    // ----- Row scope -----
-    ActionRegistry.register('row', 'rename', function (action, ctx) { renameRowOrStack('row', ctx.rowIdx); });
-    ActionRegistry.register('row', 'add-stack', function (action, ctx) { addStackToRow(ctx.rowIdx); });
-    ActionRegistry.register('row', 'reveal-all', function (action, ctx) { revealRowContent(ctx.rowIdx); });
-    ActionRegistry.register('row', 'insert-before', function (action, ctx) { addRow(ctx.rowIdx); });
-    ActionRegistry.register('row', 'add-row-before', function (action, ctx) { addRow(ctx.rowIdx); });
-    ActionRegistry.register('row', 'insert-after', function (action, ctx) { addRow(ctx.rowIdx + 1); });
-    ActionRegistry.register('row', 'add-row-after', function (action, ctx) { addRow(ctx.rowIdx + 1); });
-    ActionRegistry.register('row', 'duplicate', function (action, ctx) { duplicateRow(ctx.rowIdx); });
-    ActionRegistry.register('row', 'park', function (action, ctx) { setRowHiddenTag(ctx.rowIdx, '#hidden-internal-parked'); });
-    ActionRegistry.register('row', 'archive', function (action, ctx) { setRowHiddenTag(ctx.rowIdx, '#hidden-internal-archived'); });
-    ActionRegistry.register('row', 'delete', function (action, ctx) { deleteRow(ctx.rowIdx); });
-    ActionRegistry.register('row', 'sort-title', function (action, ctx) { sortRowCards(ctx.rowIdx, 'title'); });
-    ActionRegistry.register('row', 'sort-tag', function (action, ctx) { sortRowCards(ctx.rowIdx, 'tag'); });
-    ActionRegistry.register('row', 'sort-duedate', function (action, ctx) { sortRowCards(ctx.rowIdx, 'duedate'); });
-    ActionRegistry.register('row', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('row', { rowIdx: ctx.rowIdx }); });
-    ActionRegistry.register('row', 'copy-html', function (action, ctx) {
-      var rowEl = getElColumnsContainer().querySelector('.board-row[data-row-index="' + ctx.rowIdx + '"]');
-      if (!rowEl) return;
-      var contentEl = rowEl.querySelector('.board-row-content');
-      if (!contentEl) return;
-      var html = contentEl.innerHTML;
-      if (navigator.clipboard && navigator.clipboard.write) {
-        navigator.clipboard.write([new ClipboardItem({
-          'text/html': new Blob([html], { type: 'text/html' }),
-          'text/plain': new Blob([contentEl.textContent || ''], { type: 'text/plain' })
-        })]).catch(function () {
-          if (navigator.clipboard.writeText) navigator.clipboard.writeText(contentEl.textContent || '');
-        });
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(contentEl.textContent || '');
-      }
-    });
-    ActionRegistry.register('row', 'export-row', function (action, ctx) {
-      triggerBoardExport({ selection: { scope: 'row', rowIndex: ctx.rowIdx } });
-    });
-    ActionRegistry.register('row', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'row', { rowIdx: ctx.rowIdx }); });
-    ActionRegistry.register('row', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'row', { rowIdx: ctx.rowIdx }); });
-
-    // ----- Canvas background scope -----
-    ActionRegistry.register('canvas', 'add-stack-here', function (action, ctx) {
-      addStackToRow(ctx.rowIdx, { canvasPosition: ctx.canvasPosition });
-    });
-
-    // ----- Stack scope -----
-    ActionRegistry.register('stack', 'rename', function (action, ctx) { renameRowOrStack('stack', ctx.rowIdx, ctx.stackIdx); });
-    ActionRegistry.register('stack', 'add-column', function (action, ctx) { addColumnToStack(ctx.rowIdx, ctx.stackIdx); });
-    ActionRegistry.register('stack', 'reveal-all', function (action, ctx) { revealStackContent(ctx.rowIdx, ctx.stackIdx); });
-    ActionRegistry.register('stack', 'insert-before', function (action, ctx) { addStackToRow(ctx.rowIdx, ctx.stackIdx); });
-    ActionRegistry.register('stack', 'add-stack-before', function (action, ctx) { addStackToRow(ctx.rowIdx, ctx.stackIdx); });
-    ActionRegistry.register('stack', 'insert-after', function (action, ctx) { addStackToRow(ctx.rowIdx, ctx.stackIdx + 1); });
-    ActionRegistry.register('stack', 'add-stack-after', function (action, ctx) { addStackToRow(ctx.rowIdx, ctx.stackIdx + 1); });
-    ActionRegistry.register('stack', 'duplicate', function (action, ctx) { duplicateStack(ctx.rowIdx, ctx.stackIdx); });
-    ActionRegistry.register('stack', 'park', function (action, ctx) { setStackHiddenTag(ctx.rowIdx, ctx.stackIdx, '#hidden-internal-parked'); });
-    ActionRegistry.register('stack', 'archive', function (action, ctx) { setStackHiddenTag(ctx.rowIdx, ctx.stackIdx, '#hidden-internal-archived'); });
-    ActionRegistry.register('stack', 'delete', function (action, ctx) { deleteStack(ctx.rowIdx, ctx.stackIdx); });
-    ActionRegistry.register('stack', 'sort-title', function (action, ctx) { sortStackCards(ctx.rowIdx, ctx.stackIdx, 'title'); });
-    ActionRegistry.register('stack', 'sort-tag', function (action, ctx) { sortStackCards(ctx.rowIdx, ctx.stackIdx, 'tag'); });
-    ActionRegistry.register('stack', 'sort-duedate', function (action, ctx) { sortStackCards(ctx.rowIdx, ctx.stackIdx, 'duedate'); });
-    ActionRegistry.register('stack', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
-    ActionRegistry.register('stack', 'copy-html', function (action, ctx) {
-      var stackEl = getElColumnsContainer().querySelector('.board-stack[data-row-index="' + ctx.rowIdx + '"][data-stack-index="' + ctx.stackIdx + '"]');
-      if (!stackEl) return;
-      var contentEl = stackEl.querySelector('.board-stack-content');
-      if (!contentEl) return;
-      var html = contentEl.innerHTML;
-      if (navigator.clipboard && navigator.clipboard.write) {
-        navigator.clipboard.write([new ClipboardItem({
-          'text/html': new Blob([html], { type: 'text/html' }),
-          'text/plain': new Blob([contentEl.textContent || ''], { type: 'text/plain' })
-        })]).catch(function () {
-          if (navigator.clipboard.writeText) navigator.clipboard.writeText(contentEl.textContent || '');
-        });
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(contentEl.textContent || '');
-      }
-    });
-    ActionRegistry.register('stack', 'export-stack', function (action, ctx) {
-      triggerBoardExport({ selection: { scope: 'stack', rowIndex: ctx.rowIdx, stackIndex: ctx.stackIdx } });
-    });
-    ActionRegistry.register('stack', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
-    ActionRegistry.register('stack', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
-    ActionRegistry.register('stack', 'set-stack-width:*', function (action, ctx) {
-      var op = action.substring('set-stack-width:'.length);
-      var stack = findFullDataStack(ctx.rowIdx, ctx.stackIdx);
-      if (!stack) return;
-      var currentTag = getElementSizeTag(stack.title, 'width');
-      var current = currentTag > 0 ? currentTag : (parseInt(normalizeStackWidth(getBoardSettingValue('stackWidth', '350px'))) || 350);
-      var next;
-      if (op === 'increase') next = Math.min(1200, current + 50);
-      else if (op === 'decrease') next = Math.max(200, current - 50);
-      else if (op === 'reset') next = 0;
-      else return;
-      var newTitle = String(stack.title || '').replace(/#width\{\d+\}/gi, '').replace(/\s+/g, ' ').trim();
-      if (next > 0) newTitle = newTitle ? (newTitle + ' #width{' + next + '}') : ('#width{' + next + '}');
-      if (newTitle === stack.title) return;
-      pushUndo();
-      stack.title = newTitle;
-      persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
-    });
+    // (All action registrations — board, card, column, row, canvas, stack — and board
+    //  setting descriptors moved to core/actionRegistrations.js)
 
     // ── LexeraRowStackMenu init ──
     if (_RSM) {

@@ -657,3 +657,40 @@ Specs: `packages/agent/specs/plugins/diagram/SPEC.md`, `plugins/enhancer/SPEC.md
 - [x] Render integrity: no duplicate IDs, total card count constant, column/row count stability, column identity stability
 - [x] Data integrity: getAllFullColumns, getFullColumn bounds, DOM↔data parity, unique IDs
 - [x] Hidden-internal card filtering (archived + deleted excluded from DOM)
+
+## Archived During Sessions — 2026-04-09
+
+### Frontend tests (additional batches)
+- [x] Create new row/stack/column/card actions create entities in data, DOM, sidebar, dashboard
+- [x] Moving entities to Trash/Archive/Park/Incoming updates visibility and derived surfaces
+- [x] Marp export tests: succeeds, preserves content, reflects ordering
+- [x] Dashboard search results update after setTestBoard mutations
+- [x] Dashboard queries scoped to active board stay in sync
+- [x] Time-tag parsing correct across date boundaries (explicit formats, minute slots, weekday-is-future, days±N equivalence)
+- [x] Burger-menu test helper exposed for dispatching actions without native menu automation
+
+### Bug fixes
+- [x] View→workspace drag bug fixed in `dragDropHandlers.js` — `findSidebarCardInsertIndex()` respects mouse Y
+- [x] tree-children-guide extra separator line fixed in sleek theme CSS
+- [x] Include-link auto-rewrite: `setColumnIncludePath` now triggers `loadBoard()` after path change
+- [x] Stack include text clearing: inline edit strips `!!!include(...)!!!` syntax, handles empty results
+
+### CSS simplification
+- [x] Fix font-size dual-variable problem — removed redundant per-element declarations where containers inherit
+- [x] Replace 86 hardcoded px font-sizes with CSS variables
+- [x] Remove 6 unused CSS variables
+- [x] Merge duplicate selectors
+- [x] Shrink sleek theme (1,310 → 1,205 lines) via `:is()` mega-resets
+- [x] Unify visual styles — consolidated menu-item/danger/divider, removed redundant icon button overrides
+- [x] Unify icon sizes on `--icon-glyph-size`, made remaining px font-sizes respect `--ui-scale`
+
+### JS simplification
+- [x] Extract action registry config → `core/actionRegistrations.js` (830 lines), app.js reduced by 630 lines
+- [x] Create state key registry — 40 localStorage keys documented in `shared/stateKeyRegistry.js`
+- [x] Create StateManager facade — `shared/stateManager.js` wraps Settings Store + localStorage
+- [x] Audit event listener lifecycle — 0 active leaks, report in `shared/eventListenerAudit.md`
+
+### Hierarchy unification (Phase 1)
+- [x] Consolidate `createHierarchyNode()` — already in `hierarchyContract.js`
+- [x] Consolidate title helpers — already in `titleHelpers.js` and `tagSystem.js`
+- [x] Standardize nav-target extraction — investigated: 3 fundamentally different data shapes, current separation appropriate

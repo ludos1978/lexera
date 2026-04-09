@@ -433,8 +433,9 @@ const FLAT_COLUMN_BUDGET = {
 // cleanup task will have to justify and remove each one; the count should
 // only ever decrease.
 const FORMAT_GATE_BUDGET = {
-  'src/app.js': 4,
+  'src/app.js': 2,
   'src/board/boardList.js': 2,
+  'src/core/actionRegistrations.js': 2,
   'src/export/exportTreeBuilder.js': 1,
   'src/test/frontendTests.js': 1,
 };

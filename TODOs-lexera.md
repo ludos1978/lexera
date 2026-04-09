@@ -2,21 +2,7 @@
 
 ## Frontend Test Additions
 
-- [x] Add frontend tests that verify the "create new row" action immediately creates a row in data, board DOM, sidebar, and dashboard-derived counts.
-- [x] Add frontend tests that verify the "create new stack" action immediately creates a stack in data, board DOM, and sidebar hierarchy.
-- [x] Add frontend tests that verify the "create new column" action immediately creates a column in data, board DOM, sidebar hierarchy, and relevant dashboard rollups.
-- [x] Add frontend tests that verify the "create new card" action immediately creates a card in data, board DOM, sidebar hierarchy, and dashboard search results.
-- [x] Add frontend tests that verify moving cards, columns, stacks, or rows to Trash immediately removes them from normal board visibility and places them in the trash-derived surface.
-- [x] Add frontend tests that verify moving cards, columns, stacks, or rows to Archive immediately updates board visibility, archived dashboard sections, and sidebar-derived views.
-- [x] Add frontend tests that verify moving cards, columns, stacks, or rows to Park immediately updates board visibility, parked dashboard sections, and related tags or badges.
-- [x] Add frontend tests that verify moving cards, columns, stacks, or rows to Incoming immediately updates board visibility and incoming-derived dashboard or navigation surfaces.
-- [x] Add export tests that verify Marp export succeeds for the active board and produces output containing the expected card and column content.
-- [x] Add export tests that verify Marp export preserves or intentionally degrades embeds, includes, links, and time-tag content in a predictable way.
-- [x] Add export tests that verify Marp export reflects row, stack, column, and card ordering from the current visible board state.
-- [x] Add frontend tests that verify dashboard search results update immediately after `setTestBoard(...)` mutations.
-- [x] Add frontend tests that verify dashboard queries scoped to the active board stay in sync with the board view and sidebar after live frontend mutations.
 - [ ] Add frontend tests that verify dashboard deadline and overdue sections update immediately when cards with temporal tags are added, removed, moved, or edited in the frontend.
-- [x] Add frontend tests that verify time-tag parsing remains correct across date boundaries by asserting frontend behavior against fixed absolute dates instead of only relative expectations.
 - [ ] Add frontend tests that verify clicking a dashboard result immediately focuses and reveals the matching card content in the board view.
 - [ ] Add frontend tests that verify dashboard navigation targets for cards, columns, stacks, and rows still focus the correct element after live frontend mutations and rerenders.
 - [ ] Add frontend tests that verify dashboard selection on temporal sections such as due-soon and overdue jumps to the correct card and preserves the expected focus state.
@@ -26,7 +12,6 @@
 - [ ] Add frontend tests that verify burger-menu structural actions such as duplicate, add-before, add-after, sort, and toggle-stacked immediately update the rendered board and sidebar hierarchy.
 - [ ] Add frontend tests that verify burger-menu reveal and edit actions open or focus the expected content target instead of only mutating data.
 - [ ] Add frontend tests that verify temporal tags changed through burger-menu actions immediately update visible time badges and dashboard deadline groupings.
-- [x] Expose a thin frontend test helper for dispatching registered burger-menu actions directly so frontend tests can cover context-menu functionality without native menu-click automation.
 
 ### Multi-Board Drag & Drop Test Plan
 
@@ -50,17 +35,11 @@ Requires workspace shell mode (multiple boards open in iframes). Tests use `Lexe
 - [ ] Cross-board move with workspace-style target coordinates
 - [ ] Cross-board move: no duplicate card IDs in either board after move
 
-### ~~View→Workspace Drag Bug~~ (Fixed)
-
-~~Fixed in `dragDropHandlers.js` — added `findSidebarCardInsertIndex()` that iterates sidebar tree-card nodes using midpoint comparison, same as main view. Falls back to end-of-column if sidebar element not found.~~
-
 Scope: the active Lexera code now lives in the promoted top-level V2 directories such as `lexera-core`, `lexera-backend`, `lexera-kanban`, `lexera-capture-ios`, `lexera-shared`, and `lexera-web-clipper`. This backlog tracks the remaining architecture, boundary, tooling, and cleanup work after that repository promotion. Completed promotion-path tasks were moved to `todo-archive.md`.
-
-- [x] when i have a stack with "!!!include(...)!!!" i cant remove the text, it doesnt update the view when clearing it out. Fixed in `rowStackMenu.js` — inline edit now strips include syntax from displayed text and properly handles empty results.
 
 ## Major Features
 
-- Compare our solution to https://github.com/andes90/collabmd?tab=readme-ov-file#installation-options , what can we leanr from it's implementation. what can we copy?
+- Compare our solution to https://github.com/andes90/collabmd?tab=readme-ov-file#installation-options , what can we learn from its implementation. What can we copy?
 
 ## Repository Foundation
 
@@ -218,7 +197,6 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Split rendering pipelines for board content, overlays, and management UI so each can evolve independently.
 - [ ] Reduce direct DOM querying at runtime by defining feature-local mount points and UI controllers.
 - [ ] Introduce a frontend event and action convention so interactions do not become stringly-typed and implicit.
-- [ ] Split built-in plugin, menu, action, and board-setting registration out of `app.js` into dedicated registration modules or manifests.
 - [ ] Add contract tests for frontend registries and feature modules so extraction from `app.js` stays safe.
 - [ ] Migrate browser scripts that are effectively application code from plain JS to TypeScript where it improves safety.
 - [ ] Standardize CSS tokens, layout variables, and theme definitions across frontend packages.
@@ -347,22 +325,11 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 
 > Active backlog only. Completed items moved to [todo-archive.md](todo-archive.md).
 
-## Immediate Bugs
-- [x] Remove or fix `tree-children-guide` so it no longer renders an extra separator line in the hierarchy tree.
-- [x] Fix include-link auto-rewrite so the refreshed include target is reloaded after the path is corrected.
-
 ## Immediate UX / Product
-- [ ] Unify visual styles by removing complexity — buttons, fonts, icons should use consistent sizing. Remove redundant CSS rather than adding overrides.
-- [x] Unify icon sizes — some are very small, others much bigger. Standardize on `--icon-glyph-size`.
 - [ ] Remove the workspace dropdown once the hierarchy tree can express workspace filtering directly.
 
 ## Hierarchy Unification
-> All three surfaces (workspace, dashboard, files) share `TreeView` + `HierarchyContract`. The work is collapsing the three node-builder + interaction-wiring layers into one pipeline.
-
-### Phase 1: Consolidate shared code
-- [ ] Consolidate `createHierarchyNode()` — identical 6-line wrapper in sidebarTree.js, dashboardTree.js, management.js. Move to shared module.
-- [x] Consolidate title helpers — `stripHtmlComments()`, `extractHtmlComments()`, `stripLayoutTags()` already consolidated into `titleHelpers.js` and `tagSystem.js` with all consumers delegating.
-- [ ] Standardize navigation-target extraction — unify `buildHierarchyFocusTargetFromTreeNode` (workspace), `buildDashboardNavResultFromTreeNode` (dashboard), inline reads (management) into one `extractActivationTarget(node, surface)`.
+> All three surfaces (workspace, dashboard, files) share `TreeView` + `HierarchyContract`. Phase 1 (consolidate shared code) is complete.
 
 ### Phase 2: Migrate node builders to hierarchy contract
 - [ ] Migrate workspace node builder — switch consumers of `data-board-id`/`data-row-index` etc. to use hierarchy descriptor, then remove duplicate `data-*` attrs.
@@ -378,28 +345,15 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Delete `sidebarTree.js`, `dashboardTree.js`, and `buildConfigTreeNodes` from `management.js` after adapters handle everything.
 - [ ] Add regression tests — one per surface verifying node tree output and interaction dispatch.
 
-## CSS Simplification (analysis 2026-04-07)
-> app.css is 9,565 lines (75% of all CSS). Font-size chaos, sleek theme bloat, hardcoded px values.
-
-- [x] Fix font-size dual-variable problem — set `font-size` once on containers (`.board-list`, `.sidebar`), remove ~20 per-element declarations, let inheritance work.
-- [x] Replace 86 hardcoded px font-sizes with variables — `12px` (58×) → `var(--font-size-sm)`, `13px` (28×) → `var(--font-size-base)`.
-- [x] Remove unused CSS variables from tokens.css.
-- [x] Merge duplicate selectors in app.css.
-- [x] Shrink sleek theme (1,310 → 1,205 lines, -8%) — consolidated via `:is()` mega-resets, merged variable blocks, removed redundant declarations. Tree system left intact.
+## CSS Simplification
 - [ ] Split app.css into logical modules — sidebar, board, cards, dialogs, tags.
 
-## JS Simplification (analysis 2026-04-07)
-> app.js is 11,560 lines with 1,049 functions. 66 localStorage keys with no schema. DI pattern adds boilerplate.
+## JS Simplification
 
 ### Break up app.js
 - [ ] Extract board data store (~2,300 lines) — `fullBoardData`/`activeBoardData` mutations, loading, saving, diffing.
 - [ ] Extract undo/redo system (~1,150 lines) — `undoStack`, `pushUndo()`, delta computation.
-- [ ] Extract action registry config (~1,700 lines) — 200+ `ActionRegistry.register()` calls.
 - [ ] Extract state initialization (~580 lines) — 48 state variables + `_rt.defineState()` calls.
-
-### Centralize state management
-- [x] Create state key registry — documented 40 `lexera-*` localStorage keys in `shared/stateKeyRegistry.js` (26 via Settings Store, 14 direct).
-- [ ] Create `StateManager` facade — wrap `Settings ? Settings.get() : localStorage.getItem()` pattern.
 
 ### Reduce large modules
 | File | Lines | Action |
@@ -409,9 +363,6 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 | orderHelpers.js | 3,138 | Extract TitleHelpers, LayoutHelpers, DashboardState |
 | management.js | 2,855 | Extract tree node builders |
 | boardList.js | 2,844 | Move draft storage to BoardDraftStore |
-
-### Event listener hygiene
-- [ ] Audit event listener lifecycle — identify listeners that leak across board switches (407 total across 40 files).
 
 ## Board / Session Pipeline
 - [ ] Introduce one authoritative board-session store with separate structure/content update paths.
@@ -434,9 +385,6 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Additional sources/editors/pipeline: email, filesystem, office editor, build pipeline, typed API.
 
 ## Frontend Integration Tests — Remaining
-
-> Infrastructure, same-board card moves, structural mutations, sidebar sync, and render integrity tests are implemented (63 tests in `frontendTests.js`). Cross-board tests and remaining dashboard tests are listed above under "Frontend Test Additions" and "Multi-Board Drag & Drop Test Plan".
-
 - [ ] Board factory: `createTestBoardPair()` — creates Board A (3 columns, 6 cards) + Board B (2 columns, 3 cards) via `setTestBoard` (needed for cross-board tests)
 
 ## Manual Verification

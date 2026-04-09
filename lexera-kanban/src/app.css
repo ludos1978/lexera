@@ -1467,11 +1467,9 @@ textarea {
 }
 
 .board-item-remove {
-  display: inline-flex;
   min-width: var(--hierarchy-btn-size);
   width: var(--hierarchy-btn-size);
   height: var(--hierarchy-btn-size);
-  font-size: var(--icon-glyph-size);
   color: var(--error);
   margin-left: 0;
   visibility: hidden;
@@ -2896,11 +2894,7 @@ li.tag-line-styled {
 }
 
 .stack-delete-btn {
-  min-width: var(--icon-button-size);
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
   color: var(--error);
-  opacity: 1;
 }
 .stack-delete-btn:hover {
   color: var(--error);
@@ -4585,7 +4579,8 @@ img[data-lazy-src] {
   z-index: 9999;
 }
 
-.embed-menu-item {
+.embed-menu-item,
+.card-menu-item {
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -4599,7 +4594,8 @@ img[data-lazy-src] {
   white-space: nowrap;
 }
 
-.embed-menu-item:hover {
+.embed-menu-item:hover,
+.card-menu-item:hover {
   background: var(--menu-item-bg-hover);
   color: var(--menu-item-fg-hover);
 }
@@ -4615,17 +4611,20 @@ img[data-lazy-src] {
   color: var(--text-primary);
 }
 
-.embed-menu-divider {
+.embed-menu-divider,
+.card-menu-divider {
   height: 1px;
   background: var(--menu-border);
   margin: var(--space-2);
 }
 
-.embed-menu-danger {
+.embed-menu-danger,
+.card-menu-danger {
   color: var(--error);
 }
 
-.embed-menu-danger:hover {
+.embed-menu-danger:hover,
+.card-menu-danger:hover {
   background: rgba(244, 71, 71, 0.18);
   color: #ffffff;
 }
@@ -5465,42 +5464,8 @@ select.dialog-input option,
   z-index: 9999;
 }
 
-.card-menu-item {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  min-height: calc(var(--btn-square-size) + 2px);
-  margin: 0 var(--space-1);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  color: var(--menu-item-fg);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.card-menu-item:hover {
-  background: var(--menu-item-bg-hover);
-  color: var(--menu-item-fg-hover);
-}
-
 .card-menu-sub {
   padding-left: 20px;
-}
-
-.card-menu-divider {
-  height: 1px;
-  background: var(--menu-border);
-  margin: var(--space-2);
-}
-
-.card-menu-danger {
-  color: var(--error);
-}
-
-.card-menu-danger:hover {
-  background: rgba(244, 71, 71, 0.18);
-  color: #ffffff;
 }
 
 .card-menu-header {
