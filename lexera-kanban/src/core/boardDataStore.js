@@ -151,6 +151,9 @@ var LexeraBoardDataStore = (function () {
     if (!fullBoardData || !activeBoardData) return;
 
     var allCols = getAllFullColumns();
+    // Build identity-based index map to avoid O(n) indexOf per column
+    var colIndexMap = new Map();
+    for (var ci = 0; ci < allCols.length; ci++) colIndexMap.set(allCols[ci], ci);
     var visibleColumns = [];
     var is_archived_or_deleted = dep('is_archived_or_deleted');
     var visibleRows = (fullBoardData.rows || [])
@@ -169,7 +172,7 @@ var LexeraBoardDataStore = (function () {
                 var cards = (col.cards || []).filter(function (c) {
                   return !is_archived_or_deleted(c && c.content ? c.content : '');
                 });
-                var flatIdx = allCols.indexOf(col);
+                var flatIdx = colIndexMap.has(col) ? colIndexMap.get(col) : -1;
                 var visibleCards = cards.map(function (card) {
                   return cloneVisibleCardForRender(card);
                 });
@@ -730,6 +733,48 @@ var LexeraBoardDataStore = (function () {
     });
   }
 
+  // ── Debounced draft save ───────────────────────────────────────────
+
+  var _draftSaveTimer = null;
+
+  function scheduleDraftSave(boardId) {
+    if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
+    _draftSaveTimer = setTimeout(function () {
+      _draftSaveTimer = null;
+      var fullBoardData = getFullBoardData();
+      var activeBoardId = getActiveBoardId();
+      if (activeBoardId && fullBoardData) {
+        dep('saveLocalBoardDraft')(activeBoardId, fullBoardData);
+      }
+    }, 500);
+  }
+
+  // ── Debounced hierarchy refresh ────────────────────────────────────
+
+  var _hierarchyRefreshTimer = null;
+  var _hierarchyRefreshArgs = null;
+
+  function scheduleHierarchyRefresh(targetBoardId, boardData, title, opts) {
+    _hierarchyRefreshArgs = { targetBoardId: targetBoardId, boardData: boardData, title: title, opts: opts };
+    if (_hierarchyRefreshTimer) return; // already scheduled
+    _hierarchyRefreshTimer = setTimeout(function () {
+      _hierarchyRefreshTimer = null;
+      var args = _hierarchyRefreshArgs;
+      _hierarchyRefreshArgs = null;
+      if (args) dep('refreshBoardHierarchyProjection')(args.targetBoardId, args.boardData, args.title, args.opts);
+    }, 150);
+  }
+
+  function flushHierarchyRefresh() {
+    if (_hierarchyRefreshTimer) {
+      clearTimeout(_hierarchyRefreshTimer);
+      _hierarchyRefreshTimer = null;
+    }
+    var args = _hierarchyRefreshArgs;
+    _hierarchyRefreshArgs = null;
+    if (args) dep('refreshBoardHierarchyProjection')(args.targetBoardId, args.boardData, args.title, args.opts);
+  }
+
   // ── Commit local board change ──────────────────────────────────────
 
   function commitLocalBoardChange(boardId, nextBoardData, options) {
@@ -765,7 +810,7 @@ var LexeraBoardDataStore = (function () {
       if (hierarchyRevision == null && targetBoardId === activeBoardId && getActiveBoardData()) {
         hierarchyRevision = getActiveBoardData().revision || null;
       }
-      dep('refreshBoardHierarchyProjection')(targetBoardId, boardData, getMutationBoardTitle(targetBoardId, boardData), {
+      scheduleHierarchyRefresh(targetBoardId, boardData, getMutationBoardTitle(targetBoardId, boardData), {
         revision: hierarchyRevision || null
       });
     }
@@ -819,9 +864,9 @@ var LexeraBoardDataStore = (function () {
     if (typeof options.afterRefresh === 'function') {
       options.afterRefresh();
     }
-    dep('scheduleDashboardRefresh')(80);
+    dep('scheduleDashboardRefresh')(300);
     markBoardDirty();
-    dep('saveLocalBoardDraft')(activeBoardId, fullBoardData);
+    scheduleDraftSave(activeBoardId);
     if (options.skipAutoSave) {
       dep('traceFrontendAction')('info', 'save.auto.skip', 'Skipped auto-save due to explicit persistBoardMutation option', {
         boardId: activeBoardId || null,
@@ -963,7 +1008,7 @@ var LexeraBoardDataStore = (function () {
       dep('refreshTargetedElements')(commitTargets);
       if (boardIds.indexOf(activeBoardId) !== -1) dep('refreshHeaderFileControls')();
       if (typeof options.afterRefresh === 'function') options.afterRefresh();
-      dep('scheduleDashboardRefresh')(80);
+      dep('scheduleDashboardRefresh')(300);
       return true;
     } catch (err) {
       dep('logFrontendIssue')('error', 'commitBoardMutations', 'Save failed for non-active board', err);
@@ -1185,7 +1230,7 @@ var LexeraBoardDataStore = (function () {
       loadStage = 'render-main-view';
       dep('renderMainView')();
       loadStage = 'schedule-dashboard-refresh';
-      dep('scheduleDashboardRefresh')(80);
+      dep('scheduleDashboardRefresh')(300);
       loadStage = 'connect-sync';
       dep('connectSyncForBoard')(boardId);
     } catch (err) {
@@ -1201,7 +1246,7 @@ var LexeraBoardDataStore = (function () {
       _lastLoadedGeneration = null;
       _lastLoadedRevision = null;
       dep('renderMainView')();
-      dep('scheduleDashboardRefresh')(80);
+      dep('scheduleDashboardRefresh')(300);
     }
   }
 

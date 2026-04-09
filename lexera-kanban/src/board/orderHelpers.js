@@ -884,7 +884,7 @@ var LexeraOrderHelpers = (function () {
       }
     }
     refreshHeaderFileControls();
-    scheduleDashboardRefresh(120);
+    scheduleDashboardRefresh(300);
   }
 
   function flushStaleMirrors() {

@@ -14,17 +14,17 @@
 
 ### Fixes — high impact
 - [ ] **Incremental card rendering** — when only a card changes, update just that card's DOM element instead of rebuilding the entire board. `renderColumns` currently does `innerHTML = ''` for any structural change.
-- [ ] **Fix O(n²) in updateDisplayFromFullBoard** — replace `allCols.indexOf(col)` with a pre-built index map. With 104 columns, this does 104 linear scans of the flat array on every mutation.
-- [ ] **Debounce sidebar hierarchy refresh** — `refreshBoardHierarchyProjection` runs on every mutation with no batching. Add 100-200ms debounce.
+- [x] **Fix O(n²) in updateDisplayFromFullBoard** — replaced `allCols.indexOf(col)` with `Map`-based O(1) lookup.
+- [x] **Debounce sidebar hierarchy refresh** — added 150ms debounce in `commitLocalBoardChange`. Rapid mutations coalesce.
 - [ ] **Debounce/skip undo snapshots for rapid mutations** — coalesce rapid edits (typing, drag sequences) into one undo snapshot instead of `structuredClone` on every keystroke.
-- [ ] **Skip draft save for non-dirty mutations** — `saveLocalBoardDraft` serializes the full board to localStorage on every mutation, even view-only changes.
+- [x] **Debounce draft save** — `saveLocalBoardDraft` now 500ms debounced instead of firing on every mutation.
 
 ### Fixes — medium impact
 - [ ] **Lazy card content rendering** — defer `renderCardContent()` (markdown parsing, tag extraction, embed detection) for off-screen cards. Only render visible viewport cards immediately.
 - [ ] **Virtual scrolling for columns** — with 104 columns, most are off-screen. Only render columns in/near the viewport.
 - [ ] **Batch multiple mutations before refresh** — when doing multi-card operations, collect mutations and refresh once at the end instead of per-card.
 - [ ] **Cache rendered card HTML** — if card content hasn't changed, reuse the previous render output instead of re-parsing markdown.
-- [ ] **Increase dashboard refresh debounce** — 80ms = 12 refreshes/sec during rapid edits. Increase to 300-500ms.
+- [x] **Increase dashboard refresh debounce** — changed from 80ms/120ms to 300ms across all mutation paths.
 - [ ] **Make dashboard refresh conditional** — only run dashboard search refresh and file-inventory refresh when a mutation can affect dashboard results, temporal groups, or file references.
 
 ### Fixes — lower priority
@@ -137,11 +137,9 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Add a guardrail such as a lint rule, grep-based check, or architecture test that blocks new raw `localStorage` access outside the approved settings layer.
 - [ ] Finish the board-setting descriptor work so one manifest owns menu metadata, action IDs, persistence target, default values, normalization, and CSS application instead of splitting that behavior across Rust and JS files.
 - [ ] Remove duplicated board-setting action wiring between native menu code and frontend registration by generating both from the same descriptor manifest or shared contract.
-- [ ] Add parser parity coverage for any retained non-authoritative runtime so shared fixtures catch drift in rows, stacks, includes, metadata, and round-trip behavior.
 - [ ] Centralize temporal tag parsing and resolution in one semantic owner so search, shared utilities, and Kanban UI do not keep separate feature sets for the same domain concept.
 - [ ] Replace duplicated backend auth, discovery, retry, and JSON request helpers across Kanban, backend webviews, quick capture, and web clipper with one shared client layer per runtime family.
 - [ ] Align the backend API implementation and API spec on one contract, including whether routes stay unversioned or move under `/api/v1`, so frontend clients stop inventing their own ad hoc shapes.
-- [ ] Replace checked-in file-copy workflows for shared frontend JS and CSS assets with real shared modules, imports, or generated build artifacts so there is only one authored source file for each shared asset.
 - [ ] Reduce intentional source duplication such as `themes.js`, `backendDiscovery.js`, management assets, and workspace shell assets to one authored location plus reproducible build outputs.
 
 ## Build And Asset Pipeline
