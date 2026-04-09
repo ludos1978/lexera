@@ -1,6 +1,37 @@
 # Lexera Repository Architecture Todo
 
-- [x] add tests for !!!include(somefile.md)!!! in column headers — 7 tests: add include (badge+cards), missing include (broken badge), change path (badge updates), remove include (badge+cards gone), pre-existing cards preserved, full lifecycle (add→change→remove), syntax functions unit tests.
+## Large Board Performance (analysis 2026-04-10)
+
+> With ~917 cards, 104 columns, 15 stacks: every single action triggers a full DOM rebuild, full display tree reconstruction, sidebar tree rebuild, undo snapshot (structuredClone ~450KB), draft save to localStorage, and dashboard refresh. No incremental rendering exists.
+
+### Critical hotpath: every mutation triggers ALL of these
+1. `renderColumns()` — full `innerHTML = ''` + rebuild 917 card DOM elements (app.js:7306)
+2. `updateDisplayFromFullBoard()` — O(n²) due to `allCols.indexOf(col)` per column (boardDataStore.js:172)
+3. `refreshBoardHierarchyProjection()` — full sidebar tree rebuild, NO debounce (boardList.js:1066)
+4. `pushUndo()` — `structuredClone()` of entire board (~450KB) before every action (undoRedoSystem.js:82)
+5. `saveLocalBoardDraft()` — serialize full board to localStorage on every mutation (boardDataStore.js:824)
+6. `scheduleDashboardRefresh(80)` — fires 80ms after every mutation (boardDataStore.js:822)
+
+### Fixes — high impact
+- [ ] **Incremental card rendering** — when only a card changes, update just that card's DOM element instead of rebuilding the entire board. `renderColumns` currently does `innerHTML = ''` for any structural change.
+- [ ] **Fix O(n²) in updateDisplayFromFullBoard** — replace `allCols.indexOf(col)` with a pre-built index map. With 104 columns, this does 104 linear scans of the flat array on every mutation.
+- [ ] **Debounce sidebar hierarchy refresh** — `refreshBoardHierarchyProjection` runs on every mutation with no batching. Add 100-200ms debounce.
+- [ ] **Debounce/skip undo snapshots for rapid mutations** — coalesce rapid edits (typing, drag sequences) into one undo snapshot instead of `structuredClone` on every keystroke.
+- [ ] **Skip draft save for non-dirty mutations** — `saveLocalBoardDraft` serializes the full board to localStorage on every mutation, even view-only changes.
+
+### Fixes — medium impact
+- [ ] **Lazy card content rendering** — defer `renderCardContent()` (markdown parsing, tag extraction, embed detection) for off-screen cards. Only render visible viewport cards immediately.
+- [ ] **Virtual scrolling for columns** — with 104 columns, most are off-screen. Only render columns in/near the viewport.
+- [ ] **Batch multiple mutations before refresh** — when doing multi-card operations, collect mutations and refresh once at the end instead of per-card.
+- [ ] **Cache rendered card HTML** — if card content hasn't changed, reuse the previous render output instead of re-parsing markdown.
+- [ ] **Increase dashboard refresh debounce** — 80ms = 12 refreshes/sec during rapid edits. Increase to 300-500ms.
+- [ ] **Make dashboard refresh conditional** — only run dashboard search refresh and file-inventory refresh when a mutation can affect dashboard results, temporal groups, or file references.
+
+### Fixes — lower priority
+- [ ] **Delta-based undo** — instead of `structuredClone` of the full board, store only the diff (changed cards/columns). Would reduce undo memory and CPU by 90%+ for single-card edits.
+- [ ] **Targeted sidebar updates** — when only a card changes, update just that card's sidebar tree node instead of rebuilding the entire hierarchy.
+- [ ] **Gate heavy mutation diagnostics behind debug mode** — skip board summary and identity-comparison logging on the normal mutation path for large boards.
+- [ ] **Web Worker for heavy operations** — move markdown rendering, undo diffing, and board serialization off the main thread.
 
 ## Frontend Test Additions
 
@@ -45,30 +76,25 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 
 ## Repository Foundation
 
-- [ ] Decide whether to keep the current promoted top-level layout or normalize it further into `apps/`, `core/`, `shared/`, `tools/`, and `archive/`.
+- [ ] Decide the final repository structure: keep the promoted flat top-level layout or normalize it further into grouped directories such as `apps/`, `core/`, `shared/`, `tools/`, and `archive/`.
 - [ ] Move legacy `src/` into an explicit archive location such as `archive/v1/` while preserving history and build reproducibility.
 - [ ] Keep the restructure mostly path-level and boundary-level first, without mixing it with feature refactors in the same change set.
 - [ ] Convert fragile relative cross-module imports to stable workspace or crate references before large directory moves.
 - [ ] Choose one package manager for the whole repository and remove mixed lockfile usage after migration.
-- [x] Create one root `test` command — `test.sh` runs Rust workspace tests then Vitest frontend tests with summary.
 - [ ] Create one root `lint` command that runs all supported packages in dependency order.
 - [ ] Standardize TypeScript base config and let packages extend it instead of drifting independently.
 - [ ] Standardize Rust workspace settings and shared lint rules for all Tauri and core crates.
 - [ ] Add package boundary checks so app packages do not reach into each other through private files.
 - [ ] Split repository concerns into clear groups such as apps, libraries, tooling, docs, and archived code paths.
 - [ ] Add a dependency map document that shows which active packages are allowed to depend on which other packages.
-- [ ] Isolate archived legacy code from active package code so new work cannot accidentally cross that boundary.
-- [ ] Document archived legacy code as reference-only so active development stays inside the promoted Lexera app and core structure.
-- [ ] Define the end-state for archived legacy code such as permanent archive, frozen compatibility layer, or deletion after the packages cover the required scope.
-- [ ] Exclude archived legacy directories from default CI, lint, coverage, and search scopes unless a dedicated archive check is needed.
+- [ ] Isolate archived legacy code behind a clear boundary, exclude it from default CI, lint, coverage, and search scopes, and prevent active development from depending on it accidentally.
+- [ ] Document the archival policy for legacy code: reference-only, frozen compatibility layer, or eventual deletion after the promoted packages cover the required scope.
 - [ ] Separate generated schemas, vendor assets, and test-only support code from authored product code in the promoted layout so architecture reviews do not keep mixing them together.
 
 ## Repository Promotion Mapping
 
-- [ ] Decide whether the promoted top-level structure should stay flat or move to `apps/`, `libs/`, `core/`, and `shared/`.
 - [ ] Decide whether `lexera-capture-ios` is a first-class app in the long-term structure or a platform experiment that should move to support or archive space.
-- [ ] Decide whether `packages/shared` should become a true shared contracts library, be merged into `lexera-core`, or be removed after consolidation.
-- [ ] Decide whether `lexera-shared` is active shared UI code, a temporary bridge, or an archive candidate.
+- [ ] Decide the end-state of `packages/shared` and `lexera-shared`: canonical shared contracts or UI packages, merge targets, temporary bridges, or archive candidates.
 - [ ] Classify non-Lexera directories such as `ludos-*`, `marp-engine`, `agent`, and platform experiments as active support code, tooling, vendor code, or archive.
 - [ ] Move non-mainline experimental or historical packages out of the primary app and core tree so the main repository structure stays focused.
 - [ ] Add temporary compatibility notes or wrapper scripts if old paths are still referenced by local tooling during the migration.
@@ -91,12 +117,9 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 
 ## Shared Contracts And Shared UI
 
-- [ ] Decide whether `packages/shared` becomes the Lexera contract library, is merged into `lexera-core`, or is archived with Ludos-specific support code.
 - [ ] Rename shared package identifiers from Ludos naming to Lexera naming if the code remains part of the mainline product.
 - [ ] Decide whether temporal parsing belongs in the shared contract layer, `lexera-core`, or a dedicated parsing library.
-- [ ] Remove the current line-by-line parser port arrangement by choosing one source of parser truth and verifying the other runtime with fixtures or generated contracts.
-- [ ] Replace the `lexera-shared/management.js` and `management.css` file-copy workflow with a real shared frontend module or shared build artifact.
-- [ ] Turn `lexera-shared` into a real package with its own manifest, build, and tests if it remains active shared UI code.
+- [ ] If `lexera-shared` remains active, replace the current `management.js` and `management.css` file-copy workflow with a real shared package that has its own manifest, build, and tests.
 - [ ] Stop copying shared management assets into app source folders during Tauri build hooks.
 - [ ] Define ownership boundaries for shared frontend code so management UI, theme helpers, and transport helpers do not become an unstructured misc package.
 - [ ] Consolidate backend discovery, REST helpers, SSE helpers, and connection bootstrap logic that is currently split across frontend entrypoints.
@@ -114,9 +137,6 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Add a guardrail such as a lint rule, grep-based check, or architecture test that blocks new raw `localStorage` access outside the approved settings layer.
 - [ ] Finish the board-setting descriptor work so one manifest owns menu metadata, action IDs, persistence target, default values, normalization, and CSS application instead of splitting that behavior across Rust and JS files.
 - [ ] Remove duplicated board-setting action wiring between native menu code and frontend registration by generating both from the same descriptor manifest or shared contract.
-- [ ] Define one canonical persisted board schema in `lexera-core` for rows, stacks, columns, cards, board settings, generation metadata, include metadata, and format hints.
-- [ ] Remove the current flat-versus-hierarchical board model drift between `packages/shared` TypeScript types and `lexera-core` Rust types by generating contracts, sharing a schema, or retiring one representation.
-- [ ] Stop maintaining line-by-line parser ports as peer implementations; choose one parser owner and make any secondary runtime a verified consumer with fixtures rather than an independent semantic source.
 - [ ] Add parser parity coverage for any retained non-authoritative runtime so shared fixtures catch drift in rows, stacks, includes, metadata, and round-trip behavior.
 - [ ] Centralize temporal tag parsing and resolution in one semantic owner so search, shared utilities, and Kanban UI do not keep separate feature sets for the same domain concept.
 - [ ] Replace duplicated backend auth, discovery, retry, and JSON request helpers across Kanban, backend webviews, quick capture, and web clipper with one shared client layer per runtime family.
@@ -192,7 +212,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Convert global registry patterns in the frontend into module-scoped APIs with explicit imports and exports.
 - [ ] Introduce one board store layer that owns board state, derived state, and mutations.
 - [ ] Separate pure state mutations from DOM rendering so behavior can be tested without the browser.
-- [ ] Separate API calls from UI modules behind a typed client layer.
+- [ ] Extract one typed backend API client from UI orchestration so transport, retries, caching, SSE, and WebSocket sync are not mixed into view code.
 - [ ] Extract a shared frontend platform layer for Tauri invoke, event, dialog, clipboard, and backend discovery so feature modules stay host-agnostic.
 - [ ] Group frontend code by feature area such as board, export, clipboard, dashboard, management, and settings.
 - [ ] Move shared UI primitives such as dialogs, menus, notifications, and status bars into reusable modules.
@@ -201,18 +221,14 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Introduce a frontend event and action convention so interactions do not become stringly-typed and implicit.
 - [ ] Add contract tests for frontend registries and feature modules so extraction from `app.js` stays safe.
 - [ ] Migrate browser scripts that are effectively application code from plain JS to TypeScript where it improves safety.
-- [ ] Standardize CSS tokens, layout variables, and theme definitions across frontend packages.
+- [ ] Split `lexera-kanban/src/app.css` into tokens, layout, components, and feature styles, and standardize those CSS tokens, layout variables, and theme definitions across frontend packages.
 - [ ] Split the Kanban shell into explicit feature modules for sidebar tree, dashboard, board view, log panel, management panel, export flow, and sync state.
-- [ ] Extract the backend API client from UI orchestration so transport, retries, caching, SSE, and WebSocket sync are not mixed into view code.
 - [ ] Extract theme bootstrap and persistence from individual entrypoints so Kanban, management, and quick capture do not each apply theme state differently.
 - [ ] Replace `window.Lexera*` global registries with a single app bootstrap that wires modules together explicitly.
 - [ ] Replace `index.html` script-chain loading with module imports or a bundle manifest so load order is no longer part of the architecture.
-- [ ] Convert IIFE-oriented frontend tests to direct module imports as modules are extracted from the current globals-based structure.
-- [ ] Remove the need for source-string test loaders like `tests/load-iife.js` by exposing real module entrypoints for frontend logic.
+- [ ] Convert IIFE-oriented frontend tests to direct module imports and remove source-string loaders like `tests/load-iife.js` as real module entrypoints are extracted.
 - [ ] Separate pure board rendering, DOM event wiring, and persisted preference handling into different layers.
-- [ ] Split oversized CSS into tokens, layout, components, and feature styles so styling changes stop depending on one global stylesheet.
 - [ ] Bring `lexera-capture-ios` styling under the same token and component structure if that app remains an active product surface.
-- [ ] Centralize browser preference persistence so board theme, visual theme, log panel state, and UI toggles are not stored ad hoc across modules.
 - [ ] Reduce direct `innerHTML` rendering in the Kanban app by defining clearer render boundaries for trusted HTML, plugin output, and normal UI content.
 - [ ] Decide whether the management panel belongs inside the Kanban app shell or should be mounted as a shared app-independent module.
 - [ ] Extract export UI state and export tree state into dedicated modules so export behavior is not coupled to the main board runtime.
@@ -347,14 +363,9 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Delete `sidebarTree.js`, `dashboardTree.js`, and `buildConfigTreeNodes` from `management.js` after adapters handle everything.
 - [ ] Add regression tests — one per surface verifying node tree output and interaction dispatch.
 
-## CSS Simplification
-- [ ] Split app.css into logical modules — sidebar, board, cards, dialogs, tags.
-
 ## JS Simplification
 
 ### Break up app.js
-- [x] Extract board data store — moved to `core/boardDataStore.js` (1,297 lines), app.js reduced by 1,029 lines.
-- [x] Extract undo/redo system — moved to `core/undoRedoSystem.js` (167 lines).
 - [ ] Extract state initialization (~580 lines) — 48 state variables + `_rt.defineState()` calls.
 
 ### Reduce large modules
@@ -377,7 +388,6 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 
 ## Feature Backlog
 - [ ] Structure map view (mindmap-style, cf. inklink).
-- [ ] Mature the mobile capture surface (`lexera-capture-ios`) into a clearly scoped product or archive candidate.
 - [ ] Keyboard Phase 2: entity context menu, rename, creation shortcuts.
 - [ ] Keyboard Phase 3: command palette, board history, multi-select.
 - [ ] Stack width grid (1-12) and column fractional widths.

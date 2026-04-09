@@ -129,7 +129,43 @@ var LexeraApi = (function () {
 
   function getInFlightCount() { return inFlightCount; }
 
-  async function request(path, options) {
+  function clearCachedBackendState(options) {
+    options = options || {};
+    baseUrl = null;
+    if (options.clearToken !== false) {
+      bearerToken = null;
+      bearerTokenPromise = null;
+    }
+  }
+
+  function summarizeResponsePreview(bodyText) {
+    if (typeof bodyText !== 'string') return '<non-text>';
+    var normalized = bodyText.replace(/\s+/g, ' ').trim();
+    if (!normalized) return '<empty>';
+    if (normalized.length > 180) return normalized.slice(0, 180) + '...';
+    return normalized;
+  }
+
+  function buildRetryState(prev) {
+    return Object.assign({}, prev || {}, { recoveredOnce: true });
+  }
+
+  function canRecoverAndRetry(retryState) {
+    return !retryState || !retryState.recoveredOnce;
+  }
+
+  async function retryWithBackendRecovery(target, path, reason, retryState, retryFn) {
+    if (!canRecoverAndRetry(retryState)) return null;
+    logApiIssue('warn', target, reason + ' — clearing cached backend session and retrying once', undefined, {
+      dedupeKey: target + '.recover|' + path,
+      dedupeWindowMs: 3000
+    });
+    clearCachedBackendState();
+    return retryFn(buildRetryState(retryState));
+  }
+
+  async function request(path, options, retryState) {
+    retryState = retryState || null;
     const method = options && options.method ? String(options.method).toUpperCase() : 'GET';
     var suppressErrorStatuses = options && Array.isArray(options.suppressErrorStatuses)
       ? options.suppressErrorStatuses
@@ -165,6 +201,17 @@ var LexeraApi = (function () {
         logApiIssue('error', 'api.request', method + ' ' + path + ' timed out after ' + timeoutMs + 'ms', timeoutError);
         throw timeoutError;
       }
+      if (canRecoverAndRetry(retryState)) {
+        return retryWithBackendRecovery(
+          'api.request',
+          path,
+          method + ' ' + path + ' transport failed',
+          retryState,
+          function (nextRetryState) {
+            return request(path, options, nextRetryState);
+          }
+        );
+      }
       logApiIssue('error', 'api.request', method + ' ' + path + ' transport failed', error);
       throw error;
     }
@@ -190,6 +237,17 @@ var LexeraApi = (function () {
       var error = new Error(errorMsg);
       error.status = res.status;
       if (payload) error.data = payload;
+      if (res.status === 401 && path !== '/collab/me' && canRecoverAndRetry(retryState)) {
+        return retryWithBackendRecovery(
+          'api.request',
+          path,
+          method + ' ' + path + ' returned 401',
+          retryState,
+          function (nextRetryState) {
+            return request(path, options, nextRetryState);
+          }
+        );
+      }
       var shouldSuppressStatusLog = suppressErrorStatuses && suppressErrorStatuses.indexOf(res.status) !== -1;
       if (!shouldSuppressStatusLog) {
         logApiIssue(res.status >= 500 ? 'error' : 'warn', 'api.request', method + ' ' + path + ' failed: ' + errorMsg, error);
@@ -201,7 +259,19 @@ var LexeraApi = (function () {
       if (!bodyText || !bodyText.trim()) return null;
       return JSON.parse(bodyText);
     } catch (error) {
-      logApiIssue('error', 'api.request', method + ' ' + path + ' returned invalid JSON', error);
+      var preview = typeof bodyText === 'string' ? summarizeResponsePreview(bodyText) : '<unavailable>';
+      if (canRecoverAndRetry(retryState)) {
+        return retryWithBackendRecovery(
+          'api.request',
+          path,
+          method + ' ' + path + ' returned invalid JSON (preview: ' + preview + ')',
+          retryState,
+          function (nextRetryState) {
+            return request(path, options, nextRetryState);
+          }
+        );
+      }
+      logApiIssue('error', 'api.request', method + ' ' + path + ' returned invalid JSON (preview: ' + preview + ')', error);
       throw error;
     }
   }
@@ -222,7 +292,8 @@ var LexeraApi = (function () {
     return request('/boards/' + boardId + '/changes?since_generation=' + encodeURIComponent(String(sinceGeneration)));
   }
 
-  async function requestCachedJson(path, revision, target) {
+  async function requestCachedJson(path, revision, target, retryState) {
+    retryState = retryState || null;
     const url = await discover();
     if (!url) {
       const error = new Error('Backend not available');
@@ -249,6 +320,11 @@ var LexeraApi = (function () {
         logApiIssue('error', target, 'GET ' + path + ' timed out after ' + DEFAULT_TIMEOUT_MS + 'ms', timeoutError);
         throw timeoutError;
       }
+      if (canRecoverAndRetry(retryState)) {
+        return retryWithBackendRecovery(target, path, 'GET ' + path + ' transport failed', retryState, function (nextRetryState) {
+          return requestCachedJson(path, revision, target, nextRetryState);
+        });
+      }
       logApiIssue('error', target, 'GET ' + path + ' transport failed', error);
       throw error;
     }
@@ -260,6 +336,11 @@ var LexeraApi = (function () {
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);
       const error = new Error(`${res.status}: ${text}`);
+      if (res.status === 401 && path !== '/collab/me' && canRecoverAndRetry(retryState)) {
+        return retryWithBackendRecovery(target, path, 'GET ' + path + ' returned 401', retryState, function (nextRetryState) {
+          return requestCachedJson(path, revision, target, nextRetryState);
+        });
+      }
       logApiIssue(res.status >= 500 ? 'error' : 'warn', target, 'GET ' + path + ' failed', error);
       throw error;
     }
@@ -268,7 +349,13 @@ var LexeraApi = (function () {
       if (!cachedBodyText || !cachedBodyText.trim()) return null;
       return JSON.parse(cachedBodyText);
     } catch (error) {
-      logApiIssue('error', target, 'GET ' + path + ' returned invalid JSON', error);
+      var preview = typeof cachedBodyText === 'string' ? summarizeResponsePreview(cachedBodyText) : '<unavailable>';
+      if (canRecoverAndRetry(retryState)) {
+        return retryWithBackendRecovery(target, path, 'GET ' + path + ' returned invalid JSON (preview: ' + preview + ')', retryState, function (nextRetryState) {
+          return requestCachedJson(path, revision, target, nextRetryState);
+        });
+      }
+      logApiIssue('error', target, 'GET ' + path + ' returned invalid JSON (preview: ' + preview + ')', error);
       throw error;
     }
   }
@@ -933,7 +1020,13 @@ var LexeraApi = (function () {
     getConnections, connectRemote, disconnectRemote, getDiscoveredPeers,
     getTheme, setTheme,
     getInFlightCount: getInFlightCount,
+    _setTestBaseUrl: function(url) { baseUrl = url || null; },
     _setTestToken: function(t) { bearerToken = t; bearerTokenPromise = null; },
+    _resetTestState: function() {
+      clearCachedBackendState();
+      recentApiLogAt = Object.create(null);
+      inFlightCount = 0;
+    },
   };
 })();
 if (typeof window !== 'undefined') window.LexeraApi = LexeraApi;

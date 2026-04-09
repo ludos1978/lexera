@@ -58,7 +58,7 @@ var LexeraInlineRenderer = (function () {
         safe = safe.replace(/!!!include\(([^)]+)\)!!!/g, function (_, rawPath) {
           return stashRenderedHtmlToken(htmlTokens, renderIncludeDirectiveHtml(rawPath, boardId, 'include-filename-link', {
             includeIndex: titleIncludeIndex++,
-            allowActions: false
+            allowActions: true
           }));
         });
       }

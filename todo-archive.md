@@ -1,5 +1,14 @@
 # Lexera Kanban — Completed Items Archive
 
+## Archived During Backlog Cleanup — 2026-04-10
+
+### Completed items moved out of the active backlog
+- [x] Added tests for `!!!include(somefile.md)!!!` in column headers, including add, missing-file, change-path, remove, and lifecycle coverage.
+- [x] Restored the burger menu for include directives in column headers.
+- [x] Created one root `test` command via [`test.sh`](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/test.sh).
+- [x] Extracted the board data store into `lexera-kanban/src/core/boardDataStore.js`.
+- [x] Extracted the undo/redo system into `lexera-kanban/src/core/undoRedoSystem.js`.
+
 ## Archived During Backlog Cleanup — 2026-04-07
 
 ### Repository promotion items completed and removed from the active backlog
