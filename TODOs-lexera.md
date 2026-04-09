@@ -1,5 +1,7 @@
 # Lexera Repository Architecture Todo
 
+- [ ] could we make the dashboard search threaded or use some other way to improve it's speed (partial updates?)? it might be slowing down everything as it has to search each changed content, possibly in all boards! it might also only immediately update unfolded elements. it definetly should not block the other view such as the workspace and the kanban/canvas views!
+
 ## Large Board Performance (analysis 2026-04-10)
 
 > With ~917 cards, 104 columns, 15 stacks: every single action triggers a full DOM rebuild, full display tree reconstruction, sidebar tree rebuild, undo snapshot (structuredClone ~450KB), draft save to localStorage, and dashboard refresh. No incremental rendering exists.
@@ -16,21 +18,21 @@
 - [ ] **Incremental card rendering** — when only a card changes, update just that card's DOM element instead of rebuilding the entire board. `renderColumns` currently does `innerHTML = ''` for any structural change.
 - [x] **Fix O(n²) in updateDisplayFromFullBoard** — replaced `allCols.indexOf(col)` with `Map`-based O(1) lookup.
 - [x] **Debounce sidebar hierarchy refresh** — added 150ms debounce in `commitLocalBoardChange`. Rapid mutations coalesce.
-- [ ] **Debounce/skip undo snapshots for rapid mutations** — coalesce rapid edits (typing, drag sequences) into one undo snapshot instead of `structuredClone` on every keystroke.
+- [x] **Debounce undo snapshots for rapid mutations** — `pushUndo(mutationType)` now coalesces same-type mutations within 500ms, reusing the first snapshot.
 - [x] **Debounce draft save** — `saveLocalBoardDraft` now 500ms debounced instead of firing on every mutation.
 
 ### Fixes — medium impact
 - [ ] **Lazy card content rendering** — defer `renderCardContent()` (markdown parsing, tag extraction, embed detection) for off-screen cards. Only render visible viewport cards immediately.
 - [ ] **Virtual scrolling for columns** — with 104 columns, most are off-screen. Only render columns in/near the viewport.
 - [ ] **Batch multiple mutations before refresh** — when doing multi-card operations, collect mutations and refresh once at the end instead of per-card.
-- [ ] **Cache rendered card HTML** — if card content hasn't changed, reuse the previous render output instead of re-parsing markdown.
+- [x] **Cache rendered card HTML** — added `_cardRenderCache` (Map, max 2000 entries) keyed by cardId+content, skips `renderCardContent` on cache hit. Cleared on board switch.
 - [x] **Increase dashboard refresh debounce** — changed from 80ms/120ms to 300ms across all mutation paths.
 - [ ] **Make dashboard refresh conditional** — only run dashboard search refresh and file-inventory refresh when a mutation can affect dashboard results, temporal groups, or file references.
 
 ### Fixes — lower priority
 - [ ] **Delta-based undo** — instead of `structuredClone` of the full board, store only the diff (changed cards/columns). Would reduce undo memory and CPU by 90%+ for single-card edits.
 - [ ] **Targeted sidebar updates** — when only a card changes, update just that card's sidebar tree node instead of rebuilding the entire hierarchy.
-- [ ] **Gate heavy mutation diagnostics behind debug mode** — skip board summary and identity-comparison logging on the normal mutation path for large boards.
+- [x] **Gate heavy mutation diagnostics behind debug mode** — `summarizeBoardHierarchy`, `boardCardSummary`, and verbose save logging now gated behind `window.__lexeraDebugMutations`.
 - [ ] **Web Worker for heavy operations** — move markdown rendering, undo diffing, and board serialization off the main thread.
 
 ## Frontend Test Additions

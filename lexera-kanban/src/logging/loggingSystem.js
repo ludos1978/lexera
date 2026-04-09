@@ -741,6 +741,88 @@ function traceFrontendAction(level, target, message, details) {
   lexeraLogWithTarget(level, target, message + formatTraceDetails(details));
 }
 
+var SLOW_FRONTEND_TASK_THRESHOLD_MS = 300;
+
+function getFrontendTimestampMs() {
+  if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function mergeSlowTaskDetails(taskName, durationMs, thresholdMs, details, options) {
+  var payload = {};
+  if (details && typeof details === 'object' && !Array.isArray(details)) {
+    for (var key in details) {
+      if (Object.prototype.hasOwnProperty.call(details, key)) payload[key] = details[key];
+    }
+  } else if (details != null) {
+    payload.details = normalizeLogMessage(details);
+  }
+  payload.task = taskName || 'unnamed-task';
+  payload.durationMs = Math.round(durationMs * 10) / 10;
+  payload.thresholdMs = thresholdMs;
+  if (options && typeof options === 'object') {
+    if (options.phase) payload.phase = options.phase;
+    if (options.status) payload.status = options.status;
+    if (options.error != null) payload.error = formatErrorDetails(options.error);
+  }
+  return payload;
+}
+
+function traceSlowFrontendTask(target, taskName, startedAtMs, details, options) {
+  if (typeof startedAtMs !== 'number' || !isFinite(startedAtMs)) return 0;
+  options = options || {};
+  var thresholdMs = typeof options.thresholdMs === 'number' && options.thresholdMs > 0
+    ? options.thresholdMs
+    : SLOW_FRONTEND_TASK_THRESHOLD_MS;
+  var endedAtMs = typeof options.endedAtMs === 'number' && isFinite(options.endedAtMs)
+    ? options.endedAtMs
+    : getFrontendTimestampMs();
+  var durationMs = Math.max(0, endedAtMs - startedAtMs);
+  if (durationMs < thresholdMs) return durationMs;
+  traceFrontendAction('warn', target || 'frontend.slow', 'Slow frontend task: ' + (taskName || 'unnamed-task'), mergeSlowTaskDetails(taskName, durationMs, thresholdMs, details, options));
+  return durationMs;
+}
+
+function withSlowFrontendTaskWarning(target, taskName, details, fn, options) {
+  if (typeof fn !== 'function') throw new Error('withSlowFrontendTaskWarning requires a function');
+  var startedAtMs = getFrontendTimestampMs();
+  try {
+    var result = fn();
+    if (result && typeof result.then === 'function') {
+      return result.then(function (value) {
+        traceSlowFrontendTask(target, taskName, startedAtMs, details, options);
+        return value;
+      }, function (err) {
+        var failedOptions = {};
+        if (options && typeof options === 'object') {
+          for (var key in options) {
+            if (Object.prototype.hasOwnProperty.call(options, key)) failedOptions[key] = options[key];
+          }
+        }
+        failedOptions.status = failedOptions.status || 'failed';
+        failedOptions.error = err;
+        traceSlowFrontendTask(target, taskName, startedAtMs, details, failedOptions);
+        throw err;
+      });
+    }
+    traceSlowFrontendTask(target, taskName, startedAtMs, details, options);
+    return result;
+  } catch (err) {
+    var syncFailedOptions = {};
+    if (options && typeof options === 'object') {
+      for (var optionKey in options) {
+        if (Object.prototype.hasOwnProperty.call(options, optionKey)) syncFailedOptions[optionKey] = options[optionKey];
+      }
+    }
+    syncFailedOptions.status = syncFailedOptions.status || 'failed';
+    syncFailedOptions.error = err;
+    traceSlowFrontendTask(target, taskName, startedAtMs, details, syncFailedOptions);
+    throw err;
+  }
+}
+
 function summarizeMenuItems(items) {
   var result = [];
   if (!Array.isArray(items)) return result;
@@ -1078,8 +1160,14 @@ function updateFoldedLogStatusBadges() {
 
 window.getLogFoldedStatusData = getLogFoldedStatusData;
 window.updateFoldedLogStatusBadges = updateFoldedLogStatusBadges;
+window.traceFrontendAction = traceFrontendAction;
+window.traceSlowFrontendTask = traceSlowFrontendTask;
+window.withSlowFrontendTaskWarning = withSlowFrontendTaskWarning;
 window.LexeraLoggingSystem = {
-  getEntriesSnapshot: getLogEntriesSnapshot
+  getEntriesSnapshot: getLogEntriesSnapshot,
+  traceSlowFrontendTask: traceSlowFrontendTask,
+  withSlowFrontendTaskWarning: withSlowFrontendTaskWarning,
+  getSlowTaskThresholdMs: function () { return SLOW_FRONTEND_TASK_THRESHOLD_MS; }
 };
 
 var foldedLogRuntime = typeof window !== 'undefined' ? window.LexeraRuntime : null;

@@ -18,10 +18,14 @@
   var MAX_UNDO = 30;
   var MAX_UNDO_BYTES = 10 * 1024 * 1024;
 
+  var COALESCE_MS = 500;
+
   var undoStack = [];
   var redoStack = [];
   var undoTotalBytes = 0;
   var undoPendingSnapshot = null;
+  var _lastSnapshotTime = 0;
+  var _lastMutationType = null;
 
   // Dependencies injected via init()
   var _deps = null;
@@ -73,14 +77,37 @@
   /**
    * Capture a snapshot of the current board state for undo.
    * Call this BEFORE making a mutation.
+   *
+   * @param {string} [mutationType] - optional label for the kind of mutation
+   *   (e.g. 'card-edit', 'card-move'). When provided, rapid mutations of the
+   *   same type within COALESCE_MS are coalesced into a single undo entry —
+   *   only the first snapshot in the burst is kept.
    */
-  function pushUndo() {
+  function pushUndo(mutationType) {
     _ensureDeps();
     var fullBoardData = _deps.getFullBoardData();
     if (!fullBoardData) return;
+
+    var now = Date.now();
+    var sameMutation = mutationType != null && mutationType === _lastMutationType;
+    var withinWindow = (now - _lastSnapshotTime) < COALESCE_MS;
+
+    if (sameMutation && withinWindow && undoPendingSnapshot) {
+      // Rapid repeat of the same mutation type — reuse existing pending
+      // snapshot so the undo point stays at the start of the burst.
+      redoStack = [];
+      return;
+    }
+
+    var _undoStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
     finalizePendingUndo();
     undoPendingSnapshot = _deps.cloneBoardData(fullBoardData);
+    _lastSnapshotTime = now;
+    _lastMutationType = mutationType != null ? mutationType : null;
     redoStack = [];
+    if (typeof window.traceSlowFrontendTask === 'function') {
+      window.traceSlowFrontendTask('undo.snapshot', 'pushUndo (structuredClone)', _undoStart);
+    }
   }
 
   /**
@@ -151,6 +178,8 @@
     redoStack = [];
     undoTotalBytes = 0;
     undoPendingSnapshot = null;
+    _lastSnapshotTime = 0;
+    _lastMutationType = null;
   }
 
   return {

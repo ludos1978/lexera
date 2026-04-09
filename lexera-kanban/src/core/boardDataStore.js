@@ -146,6 +146,7 @@ var LexeraBoardDataStore = (function () {
   // ── Display update ─────────────────────────────────────────────────
 
   function updateDisplayFromFullBoard() {
+    var _udStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
     var fullBoardData = getFullBoardData();
     var activeBoardData = getActiveBoardData();
     if (!fullBoardData || !activeBoardData) return;
@@ -195,6 +196,11 @@ var LexeraBoardDataStore = (function () {
       nextBoardData.columns = visibleColumns;
       nextBoardData.rows = visibleRows;
     });
+    if (typeof window.traceSlowFrontendTask === 'function') {
+      window.traceSlowFrontendTask('board.updateDisplay', 'updateDisplayFromFullBoard', _udStart, {
+        columns: visibleColumns.length
+      });
+    }
   }
 
   // ── Board structure helpers ────────────────────────────────────────
@@ -417,7 +423,7 @@ var LexeraBoardDataStore = (function () {
     dep('traceFrontendAction')('warn', 'board.crashsave', 'Attempting to persist crashsave for active board', {
       boardId: activeBoardId,
       reason: crashsaveReason,
-      summary: dep('summarizeBoardHierarchy')(boardData),
+      summary: window.__lexeraDebugMutations ? dep('summarizeBoardHierarchy')(boardData) : undefined,
       extra: extra || null
     });
     try {
@@ -451,7 +457,7 @@ var LexeraBoardDataStore = (function () {
       dep('traceFrontendAction')('warn', 'board.save.force', 'Overwriting external board version with local draft', {
         boardId: activeBoardId,
         trigger: trigger || null,
-        workingSummary: dep('summarizeBoardHierarchy')(fullBoardData),
+        workingSummary: window.__lexeraDebugMutations ? dep('summarizeBoardHierarchy')(fullBoardData) : undefined,
         conflictSummary: dep('hasPendingExternalRebaseConflict')()
           ? (function () {
               var c = dep('getPendingExternalRebaseConflict')();
@@ -553,7 +559,7 @@ var LexeraBoardDataStore = (function () {
         if (!fullBoardData.columns) fullBoardData.columns = [];
 
         var liveSession = dep('getLiveSyncSession')(activeBoardId);
-        if (liveSession) {
+        if (liveSession && window.__lexeraDebugMutations) {
           dep('traceBoardIdentityPair')('info', 'save.preflight', 'Pre-save identity comparison against live sync session', activeBoardId, 'local', fullBoardData, 'session', liveSession.board);
         }
         if (liveSession && dep('hasBoardIdentityMismatch')(fullBoardData, liveSession.board)) {
@@ -574,9 +580,9 @@ var LexeraBoardDataStore = (function () {
           return false;
         }
 
-        dep('traceFrontendAction')('debug', 'save.board', 'Saving board', { summary: dep('boardCardSummary')(fullBoardData) });
+        if (window.__lexeraDebugMutations) dep('traceFrontendAction')('debug', 'save.board', 'Saving board', { summary: dep('boardCardSummary')(fullBoardData) });
         if (await dep('applyBoardToLiveSyncSession')(activeBoardId, fullBoardData, { skipBoardReplace: true, syncSaveBase: true })) {
-          dep('traceFrontendAction')('debug', 'save.board', 'Live sync save path succeeded', {});
+          if (window.__lexeraDebugMutations) dep('traceFrontendAction')('debug', 'save.board', 'Live sync save path succeeded', {});
           if (dep('getPendingRefresh')()) {
             dep('setPendingRefresh')(false);
             await dep('flushPendingLiveSyncUpdates')({ refreshSidebar: true });
@@ -585,7 +591,7 @@ var LexeraBoardDataStore = (function () {
           break;
         }
         var baseBoardData = dep('getBoardSaveBase')(fullBoardData);
-        if (baseBoardData) {
+        if (baseBoardData && window.__lexeraDebugMutations) {
           dep('traceBoardIdentityPair')('info', 'save.preflight', 'Pre-save identity comparison against save base', activeBoardId, 'local', fullBoardData, 'saveBase', baseBoardData);
         }
         if (baseBoardData && dep('hasBoardIdentityMismatch')(fullBoardData, baseBoardData)) {
@@ -605,8 +611,8 @@ var LexeraBoardDataStore = (function () {
           );
           return false;
         }
-        dep('traceFrontendAction')('debug', 'save.board', 'Using REST save path', { hasBase: !!baseBoardData, baseSummary: baseBoardData ? dep('boardCardSummary')(baseBoardData) : null });
-        if (dep('isActiveRemoteBoard')()) {
+        if (window.__lexeraDebugMutations) dep('traceFrontendAction')('debug', 'save.board', 'Using REST save path', { hasBase: !!baseBoardData, baseSummary: baseBoardData ? dep('boardCardSummary')(baseBoardData) : null });
+        if (dep('isActiveRemoteBoard')() && window.__lexeraDebugMutations) {
           dep('traceFrontendAction')('info', 'save.remote', 'Saving remote board via REST', {
             boardId: activeBoardId,
             hasBase: !!baseBoardData,
@@ -825,16 +831,19 @@ var LexeraBoardDataStore = (function () {
   // ── Persist board mutation ─────────────────────────────────────────
 
   function persistBoardMutation(options) {
+    var _pmStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
     options = options || {};
     var activeBoardId = getActiveBoardId();
     var fullBoardData = getFullBoardData();
     var targets = Array.isArray(options.targets) ? options.targets : [{ type: 'board' }];
-    dep('traceFrontendAction')('info', 'board.persist', 'Persist board mutation (UI refresh, no immediate save)', {
-      boardId: activeBoardId || null,
-      targets: targets.map(function (t) { return t.type; }),
-      skipAutoSave: !!options.skipAutoSave,
-      summaryBefore: dep('summarizeBoardHierarchy')(fullBoardData)
-    });
+    if (window.__lexeraDebugMutations) {
+      dep('traceFrontendAction')('info', 'board.persist', 'Persist board mutation (UI refresh, no immediate save)', {
+        boardId: activeBoardId || null,
+        targets: targets.map(function (t) { return t.type; }),
+        skipAutoSave: !!options.skipAutoSave,
+        summaryBefore: dep('summarizeBoardHierarchy')(fullBoardData)
+      });
+    }
     if (typeof options.beforeRefresh === 'function') {
       options.beforeRefresh();
     }
@@ -882,21 +891,28 @@ var LexeraBoardDataStore = (function () {
         autoSaveDelay
       );
     }
-    dep('traceFrontendAction')('info', 'board.persist', 'Persist board mutation success', {
-      boardId: activeBoardId || null,
-      targets: targets.map(function (t) { return t.type; }),
-      summaryAfter: dep('summarizeBoardHierarchy')(getFullBoardData())
-    });
-    fullBoardData = getFullBoardData();
-    if (activeBoardId && fullBoardData) {
-      var session = dep('getLiveSyncSession')(activeBoardId);
-      if (session && session.board) {
-        dep('traceBoardIdentityPair')('info', 'board.persist.identity', 'Identity comparison after board mutation against live sync session', activeBoardId, 'local', fullBoardData, 'session', session.board);
+    if (window.__lexeraDebugMutations) {
+      dep('traceFrontendAction')('info', 'board.persist', 'Persist board mutation success', {
+        boardId: activeBoardId || null,
+        targets: targets.map(function (t) { return t.type; }),
+        summaryAfter: dep('summarizeBoardHierarchy')(getFullBoardData())
+      });
+      fullBoardData = getFullBoardData();
+      if (activeBoardId && fullBoardData) {
+        var session = dep('getLiveSyncSession')(activeBoardId);
+        if (session && session.board) {
+          dep('traceBoardIdentityPair')('info', 'board.persist.identity', 'Identity comparison after board mutation against live sync session', activeBoardId, 'local', fullBoardData, 'session', session.board);
+        }
+        var saveBase = dep('getBoardSaveBase')(fullBoardData);
+        if (saveBase) {
+          dep('traceBoardIdentityPair')('info', 'board.persist.identity', 'Identity comparison after board mutation against save base', activeBoardId, 'local', fullBoardData, 'saveBase', saveBase);
+        }
       }
-      var saveBase = dep('getBoardSaveBase')(fullBoardData);
-      if (saveBase) {
-        dep('traceBoardIdentityPair')('info', 'board.persist.identity', 'Identity comparison after board mutation against save base', activeBoardId, 'local', fullBoardData, 'saveBase', saveBase);
-      }
+    }
+    if (typeof window.traceSlowFrontendTask === 'function') {
+      window.traceSlowFrontendTask('board.persist', 'persistBoardMutation', _pmStart, {
+        targets: (options.targets || []).map(function (t) { return t.type; }).join(',')
+      });
     }
     return true;
   }
@@ -1208,7 +1224,7 @@ var LexeraBoardDataStore = (function () {
           if (shouldPrepareLiveSync) {
             await dep('ensureLiveSyncSession')(boardId);
             var liveSyncState = dep('getLiveSyncState')();
-            if (liveSyncState && liveSyncState.boardId === boardId && fullBoardData) {
+            if (liveSyncState && liveSyncState.boardId === boardId && fullBoardData && window.__lexeraDebugMutations) {
               dep('traceBoardIdentityPair')('info', 'board.load.identity', 'Identity comparison after board load session prepare', boardId, 'local', fullBoardData, 'session', liveSyncState.board);
             }
           } else {

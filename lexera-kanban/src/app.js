@@ -573,6 +573,9 @@ var LexeraDashboard = (function () {
   var headerSearchExpanded = Settings ? Settings.get('headerSearchExpanded') : localStorage.getItem('lexera-header-search-expanded') === 'true';
   var _headerSavingInProgress = false;
   var suppressHeaderCreationClickUntil = 0;
+  // Card render cache: avoids re-running renderCardContent for unchanged cards
+  var _cardRenderCache = new Map();
+  var _CARD_RENDER_CACHE_MAX = 2000;
   // activeHeaderSourceDropdown and HEADER_SOURCE_ENTITY_TYPES moved to hiddenItems/hiddenItemsDropdown.js
   var incomingCaptureCache = {
     items: [],
@@ -1692,14 +1695,16 @@ var LexeraDashboard = (function () {
       board: response.board || null,
       pendingRemoteUpdates: []
     };
-    traceFrontendAction('info', 'liveSync.session', 'Opened live sync session', {
-      boardId: boardId,
-      sessionId: response.sessionId,
-      vvLength: response && response.vv ? response.vv.length : 0,
-      sessionIdentity: summarizeBoardIdentity(response.board)
-    });
-    if (activeBoardId === boardId && fullBoardData && response && response.board) {
-      traceBoardIdentityPair('info', 'liveSync.session', 'Identity comparison after live sync session open', boardId, 'local', fullBoardData, 'session', response.board);
+    if (window.__lexeraDebugMutations) {
+      traceFrontendAction('info', 'liveSync.session', 'Opened live sync session', {
+        boardId: boardId,
+        sessionId: response.sessionId,
+        vvLength: response && response.vv ? response.vv.length : 0,
+        sessionIdentity: summarizeBoardIdentity(response.board)
+      });
+      if (activeBoardId === boardId && fullBoardData && response && response.board) {
+        traceBoardIdentityPair('info', 'liveSync.session', 'Identity comparison after live sync session open', boardId, 'local', fullBoardData, 'session', response.board);
+      }
     }
     return liveSyncState;
   }
@@ -1732,31 +1737,35 @@ var LexeraDashboard = (function () {
     var session = getLiveSyncSession(boardId);
     if (!session) return false;
 
-    traceFrontendAction('debug', 'liveSync.apply', 'Sending board to live sync', { board: boardCardSummary(boardData), sessionBoard: boardCardSummary(session.board) });
-    traceBoardIdentityPair('info', 'liveSync.apply', 'Applying local board into live sync session', boardId, 'local', boardData, 'session', session.board, {
-      vvLength: session.vv ? session.vv.length : 0
-    });
+    if (window.__lexeraDebugMutations) {
+      traceFrontendAction('debug', 'liveSync.apply', 'Sending board to live sync', { board: boardCardSummary(boardData), sessionBoard: boardCardSummary(session.board) });
+      traceBoardIdentityPair('info', 'liveSync.apply', 'Applying local board into live sync session', boardId, 'local', boardData, 'session', session.board, {
+        vvLength: session.vv ? session.vv.length : 0
+      });
+    }
     var response = await LexeraApi.applyLiveSyncBoard(session.sessionId, boardData);
     if (response && response.vv) session.vv = response.vv;
     if (response && response.board) session.board = response.board;
-    traceFrontendAction('debug', 'liveSync.apply', 'Live sync response received', { changed: response && response.changed, responseBoard: boardCardSummary(response && response.board), updatesLen: response && response.updates ? response.updates.length : 0 });
+    if (window.__lexeraDebugMutations) traceFrontendAction('debug', 'liveSync.apply', 'Live sync response received', { changed: response && response.changed, responseBoard: boardCardSummary(response && response.board), updatesLen: response && response.updates ? response.updates.length : 0 });
     if (response && response.board && options.syncSaveBase && boardId === activeBoardId && fullBoardData) {
       var savedLiveBoard = resolveLiveSyncBoardData(cloneBoardData(response.board), boardId);
       setBoardSaveBase(fullBoardData, savedLiveBoard);
       pendingExternalRebaseConflict = null;
-      traceFrontendAction('info', 'liveSync.saveBase', 'Updated local save base from live sync save result', {
-        boardId: boardId,
-        liveSummary: summarizeBoardHierarchy(savedLiveBoard),
-        workingSummary: summarizeBoardHierarchy(fullBoardData)
-      });
-      traceBoardIdentityPair('info', 'liveSync.saveBase', 'Identity comparison after live sync save result', boardId, 'local', fullBoardData, 'saveBase', savedLiveBoard);
+      if (window.__lexeraDebugMutations) {
+        traceFrontendAction('info', 'liveSync.saveBase', 'Updated local save base from live sync save result', {
+          boardId: boardId,
+          liveSummary: summarizeBoardHierarchy(savedLiveBoard),
+          workingSummary: summarizeBoardHierarchy(fullBoardData)
+        });
+        traceBoardIdentityPair('info', 'liveSync.saveBase', 'Identity comparison after live sync save result', boardId, 'local', fullBoardData, 'saveBase', savedLiveBoard);
+      }
     }
     if (response && response.changed && response.updates) {
       if (!LexeraApi.sendSyncUpdate(response.updates)) {
         traceFrontendAction('warn', 'liveSync.apply', 'sendSyncUpdate failed', { updatesLen: response.updates.length });
         return false;
       }
-      traceFrontendAction('debug', 'liveSync.apply', 'Sent WS sync update', { updatesLen: response.updates.length });
+      if (window.__lexeraDebugMutations) traceFrontendAction('debug', 'liveSync.apply', 'Sent WS sync update', { updatesLen: response.updates.length });
       liveSyncLastLocalBroadcastAt = Date.now();
       lastSaveTime = liveSyncLastLocalBroadcastAt;
     }
@@ -1781,16 +1790,20 @@ var LexeraDashboard = (function () {
     if (response && response.vv) session.vv = response.vv;
     if (response && response.board) session.board = response.board;
     if (response && response.changed && response.board && boardId === activeBoardId) {
-      traceBoardIdentityPair('info', 'liveSync.import', 'Received remote live sync board update', boardId, 'local', fullBoardData, 'remote', response.board, {
-        updateBytes: updates ? updates.length : 0,
-        dirty: isBoardDirty()
-      });
-      if (isBoardDirty()) {
-        traceFrontendAction('info', 'liveSync.rebase', 'Rebasing dirty local board after remote live sync update', {
-          boardId: boardId,
-          incomingSummary: summarizeBoardHierarchy(response.board),
-          workingSummary: summarizeBoardHierarchy(fullBoardData)
+      if (window.__lexeraDebugMutations) {
+        traceBoardIdentityPair('info', 'liveSync.import', 'Received remote live sync board update', boardId, 'local', fullBoardData, 'remote', response.board, {
+          updateBytes: updates ? updates.length : 0,
+          dirty: isBoardDirty()
         });
+      }
+      if (isBoardDirty()) {
+        if (window.__lexeraDebugMutations) {
+          traceFrontendAction('info', 'liveSync.rebase', 'Rebasing dirty local board after remote live sync update', {
+            boardId: boardId,
+            incomingSummary: summarizeBoardHierarchy(response.board),
+            workingSummary: summarizeBoardHierarchy(fullBoardData)
+          });
+        }
         await rebaseDirtyBoardFromServer('live-sync');
       } else {
         applyLiveSyncBoardSnapshot(boardId, response.board, options);
@@ -1836,16 +1849,20 @@ var LexeraDashboard = (function () {
       }
     }
     if (changed && lastBoard && session.boardId === activeBoardId) {
-      traceBoardIdentityPair('info', 'liveSync.import', 'Applying queued remote live sync updates', session.boardId, 'local', fullBoardData, 'remote', lastBoard, {
-        batchCount: pending.length,
-        dirty: isBoardDirty()
-      });
-      if (isBoardDirty()) {
-        traceFrontendAction('info', 'liveSync.rebase', 'Rebasing dirty local board after queued remote live sync updates', {
-          boardId: session.boardId,
-          incomingSummary: summarizeBoardHierarchy(lastBoard),
-          workingSummary: summarizeBoardHierarchy(fullBoardData)
+      if (window.__lexeraDebugMutations) {
+        traceBoardIdentityPair('info', 'liveSync.import', 'Applying queued remote live sync updates', session.boardId, 'local', fullBoardData, 'remote', lastBoard, {
+          batchCount: pending.length,
+          dirty: isBoardDirty()
         });
+      }
+      if (isBoardDirty()) {
+        if (window.__lexeraDebugMutations) {
+          traceFrontendAction('info', 'liveSync.rebase', 'Rebasing dirty local board after queued remote live sync updates', {
+            boardId: session.boardId,
+            incomingSummary: summarizeBoardHierarchy(lastBoard),
+            workingSummary: summarizeBoardHierarchy(fullBoardData)
+          });
+        }
         await rebaseDirtyBoardFromServer('live-sync-pending');
       } else {
         applyLiveSyncBoardSnapshot(session.boardId, lastBoard, options);
@@ -4924,6 +4941,11 @@ var LexeraDashboard = (function () {
           if (ccFullIdx === -1) break;
           var ccCard = ccCol.cards[ccFullIdx];
           if (!ccCard) break;
+          // Invalidate render cache for this card (content changed)
+          var ccCardIdStr = String(ccCard.id);
+          _cardRenderCache.forEach(function(_v, k) {
+            if (k.indexOf(ccCardIdStr + ':') === 0) _cardRenderCache.delete(k);
+          });
           var ccCardEl = findVisibleCardElement(target.colIndex, target.cardIndex);
           if (!ccCardEl) break;
           var contentEl = ccCardEl.querySelector('.card-content');
@@ -6786,6 +6808,7 @@ var LexeraDashboard = (function () {
   function resolveActiveBoardColor(settings) { return BoardSettingsModule.resolveActiveBoardColor(settings); }
 
   function applyBoardSettings() {
+    _cardRenderCache.clear();
     var container = getElColumnsContainer();
     var cssProps = [
       '--board-column-width', '--board-font-size', '--board-font-family',
@@ -6975,9 +6998,25 @@ var LexeraDashboard = (function () {
 
     var contentBody = document.createElement('div');
     contentBody.className = 'card-content';
-    contentBody.innerHTML = renderCardContent(getIncludeResolvedContent(card.content, colIndex), activeBoardId, null, {
-      skipFirstLineTagStyle: true
-    });
+    var _resolvedContent = getIncludeResolvedContent(card.content, colIndex);
+    var _hasInclude = _resolvedContent !== card.content;
+    var _cacheKey = _hasInclude ? null : (cardId + ':' + (_resolvedContent || '').length + ':' + (_resolvedContent || '').substring(0, 80));
+    var _cachedHtml = _cacheKey ? _cardRenderCache.get(_cacheKey) : undefined;
+    if (_cachedHtml !== undefined) {
+      contentBody.innerHTML = _cachedHtml;
+    } else {
+      var _renderedHtml = renderCardContent(_resolvedContent, activeBoardId, null, {
+        skipFirstLineTagStyle: true
+      });
+      contentBody.innerHTML = _renderedHtml;
+      if (_cacheKey) {
+        if (_cardRenderCache.size >= _CARD_RENDER_CACHE_MAX) {
+          var _firstKey = _cardRenderCache.keys().next().value;
+          _cardRenderCache.delete(_firstKey);
+        }
+        _cardRenderCache.set(_cacheKey, _renderedHtml);
+      }
+    }
     cardEl.appendChild(contentBody);
 
     (function (el, ci, cj, btn) {
@@ -7293,6 +7332,7 @@ var LexeraDashboard = (function () {
   }
 
   function renderColumns() {
+    var _renderStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
     try {
     vsTeardown();
     clearCardSelection();
@@ -7337,6 +7377,12 @@ var LexeraDashboard = (function () {
       updateCardEditingIndicators();
       refreshBoardHeaderActionStates();
     });
+    if (typeof traceSlowFrontendTask === 'function') {
+      traceSlowFrontendTask('render.columns', 'renderColumns', _renderStart, {
+        rows: activeBoardData ? (activeBoardData.rows || []).length : 0,
+        columns: activeBoardData ? (activeBoardData.columns || []).length : 0
+      });
+    }
     } catch (err) {
       logFrontendIssue('error', 'render', 'Failed to render columns', err);
     }
