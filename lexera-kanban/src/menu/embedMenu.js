@@ -3210,13 +3210,13 @@ var LexeraEmbedMenu = (function () {
       if (!embeddedMode) {
         menuItems.push({ id: 'open-new-tab', label: 'Open in New Tab' });
       }
-      menuItems.push({ id: 'search', label: 'Search for Reference' });
+      menuItems.push({ id: 'search', label: 'Search Reference In Dashboard' });
     } else if (resolved.kind === 'tag') {
       menuItems.push({ label: resolved.document, disabled: true });
-      menuItems.push({ id: 'search', label: 'Search Tag' });
+      menuItems.push({ id: 'search', label: 'Search Tag In Dashboard' });
     } else {
       menuItems.push({ label: 'No matching board', disabled: true });
-      menuItems.push({ id: 'search', label: 'Search for Matching Board' });
+      menuItems.push({ id: 'search', label: 'Search Matching Board In Dashboard' });
     }
 
     menuItems.push({ separator: true });

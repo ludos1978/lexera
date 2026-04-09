@@ -3433,13 +3433,19 @@ li.tag-line-styled {
 
 .md-multicolumn {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 12px;
+  min-height: max-content;
   margin: 8px 0;
+  overflow: visible;
 }
 
 .md-multicolumn-column {
+  display: flex;
+  flex-direction: column;
+  min-height: max-content;
   min-width: 0;
+  overflow: visible;
 }
 
 .md-multicolumn-column > :first-child {
@@ -3645,10 +3651,12 @@ u {
   display: flex;
   flex-direction: column;
   cursor: default;
+  height: auto;
+  max-height: none;
   min-height: var(--board-card-min-height, auto);
   user-select: none;
   -webkit-user-select: none;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: var(--card-shadow);
 }
 
@@ -3762,11 +3770,12 @@ u {
 }
 
 .card-content {
+  flex: 0 0 auto;
   padding: var(--card-content-padding);
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
-  overflow: hidden;
+  overflow: visible;
   min-width: 0;
 }
 .card-content img,
@@ -6333,6 +6342,25 @@ select.dialog-input option,
   background: var(--bg-primary);
   border-color: var(--border);
   color: var(--text-primary);
+}
+
+.log-panel-filter-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+/* Log filter: hide entries that don't match the active filter */
+.log-panel[data-log-filter="errors"] .log-entry:not(.log-error) {
+  display: none;
+}
+.log-panel[data-log-filter="warnings"] .log-entry.log-info,
+.log-panel[data-log-filter="warnings"] .log-entry.log-debug,
+.log-panel[data-log-filter="warnings"] .log-entry.log-trace {
+  display: none;
 }
 
 .log-panel-actions {

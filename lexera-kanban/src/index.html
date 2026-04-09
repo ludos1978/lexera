@@ -45,13 +45,13 @@
           </div>
         </div>
         <div class="sidebar-dashboard-body view-loading">
-          <div class="dashboard-group tree-entry" data-dashboard-group-key="pinned">
-            <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Pinned Searches</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
-            <div id="dashboard-pinned-list" class="dashboard-list tree-children expanded" data-hierarchy-section-body="true"></div>
-          </div>
           <div class="dashboard-group tree-entry" data-dashboard-group-key="results">
             <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Results</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
             <div id="dashboard-results-list" class="dashboard-list tree-children expanded" data-hierarchy-section-body="true"></div>
+          </div>
+          <div class="dashboard-group tree-entry" data-dashboard-group-key="pinned">
+            <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Pinned Searches</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
+            <div id="dashboard-pinned-list" class="dashboard-list tree-children expanded" data-hierarchy-section-body="true"></div>
           </div>
           <div class="dashboard-group tree-entry" data-dashboard-group-key="overdue">
             <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Overdue</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
@@ -108,13 +108,18 @@
   </div>
 
   <!-- Bottom Panel -->
-  <div id="log-panel" class="log-panel hidden">
+  <div id="log-panel" class="log-panel hidden" data-log-filter="all">
     <div class="log-panel-header">
       <div class="log-panel-header-main">
         <span class="log-panel-title">Logs</span>
         <div class="log-panel-tabs">
           <button id="log-tab-backend" class="log-panel-tab active" type="button">Backend</button>
           <button id="log-tab-frontend" class="log-panel-tab" type="button">Frontend</button>
+        </div>
+        <div class="log-panel-filter-tabs">
+          <button id="log-filter-all" class="log-panel-tab log-panel-filter-tab active" type="button" data-log-filter-value="all">All</button>
+          <button id="log-filter-warnings" class="log-panel-tab log-panel-filter-tab" type="button" data-log-filter-value="warnings">Warnings+</button>
+          <button id="log-filter-errors" class="log-panel-tab log-panel-filter-tab" type="button" data-log-filter-value="errors">Errors</button>
         </div>
       </div>
       <div class="log-panel-actions">
@@ -123,7 +128,7 @@
           <span class="connection-status-label">Disconnected</span>
         </button>
         <button id="log-refresh-btn" class="log-panel-btn" title="Reload backend logs">Reload</button>
-        <button id="log-copy-btn" class="log-panel-btn" title="Copy logs to clipboard">Copy</button>
+        <button id="log-copy-btn" class="log-panel-btn" title="Copy visible logs to clipboard">Copy</button>
         <button id="log-clear-btn" class="log-panel-btn" title="Clear log">Clear</button>
       </div>
     </div>
@@ -503,7 +508,9 @@
   <script src="board/boardHeader.js"></script>
   <script src="utils/appUtils.js"></script>
   <script src="management/managementWiring.js"></script>
+  <script src="core/boardDataStore.js"></script>
   <script src="core/actionRegistrations.js"></script>
+  <script src="core/undoRedoSystem.js"></script>
   <script src="app.js"></script>
   <script src="test/frontendTests.js"></script>
 </body>

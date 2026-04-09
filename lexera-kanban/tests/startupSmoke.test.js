@@ -122,6 +122,7 @@ describe('Frontend Startup Smoke Tests', () => {
 
   it('loads all scripts without crashes', () => {
     sandbox = createBrowserSandbox();
+    sandbox.localStorage.setItem('lexera-sidebar-sync', 'true');
     result = loadAllScripts(sandbox);
     expect(result.errors).toEqual([]);
   });
@@ -170,5 +171,11 @@ describe('Frontend Startup Smoke Tests', () => {
     expect(typeof rt.setState).toBe('function');
     expect(typeof rt.on).toBe('function');
     expect(typeof rt.emit).toBe('function');
+  });
+
+  it('sidebar sync can run after startup without crashing', () => {
+    const sidebarSync = sandbox.window.LexeraSidebarSync || sandbox.LexeraSidebarSync;
+    expect(typeof sidebarSync.syncSidebarToView).toBe('function');
+    expect(() => sidebarSync.syncSidebarToView()).not.toThrow();
   });
 });

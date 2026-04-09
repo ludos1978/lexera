@@ -7,7 +7,9 @@
     "packages/shared",
     "packages/shared-fixtures"
   ],
-  "scripts": {},
+  "scripts": {
+    "test": "./test.sh"
+  },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.17.6",
     "@ludos/shared": "file:packages/shared",

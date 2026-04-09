@@ -28,6 +28,10 @@ function loadMutationHarness() {
   const dndMutationsSource = readFileSync(resolve(srcDir, 'dragdrop', 'dndMutations.js'), 'utf-8');
   new Function(dndMutationsSource)();
 
+  // Load BoardDataStore so delegation stubs in app.js can reference it
+  const boardDataStoreSource = readFileSync(resolve(srcDir, 'core', 'boardDataStore.js'), 'utf-8');
+  new Function(boardDataStoreSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
@@ -258,6 +262,7 @@ function loadMutationHarness() {
 
   const wrappedSource = `
     var DndListeners = (typeof window !== 'undefined' && window.LexeraDndListeners) || (typeof globalThis !== 'undefined' && globalThis.LexeraDndListeners) || null;
+    var BoardDataStore = (typeof window !== 'undefined' && window.LexeraBoardDataStore) || (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDataStore) || null;
     // --- Injectable closure state ---
     var fullBoardData, activeBoardData, activeBoardId;
     var boardStore = {};
@@ -389,6 +394,88 @@ function loadMutationHarness() {
         stripInternalHiddenTags: typeof stripInternalHiddenTags === 'function' ? stripInternalHiddenTags : function (t) { return t; },
         stripHtmlComments: typeof stripHtmlComments === 'function' ? stripHtmlComments : function (t) { return t; },
         addColumnToStack: typeof addColumnToStack === 'function' ? addColumnToStack : function () {}
+      });
+    }
+
+    // Initialize BoardDataStore with test mock deps so delegation stubs work
+    if (BoardDataStore && typeof BoardDataStore.init === 'function') {
+      BoardDataStore.init({
+        getFullBoardData: function () { return fullBoardData; },
+        getActiveBoardData: function () { return activeBoardData; },
+        getActiveBoardId: function () { return activeBoardId; },
+        setFullBoardDataState: function (v) { fullBoardData = v; },
+        setActiveBoardDataState: function (v) { activeBoardData = v; },
+        updateActiveBoardDataState: function (updater) {
+          if (!activeBoardData || typeof updater !== 'function') return activeBoardData;
+          var draft = Object.assign({}, activeBoardData);
+          var result = updater(draft, activeBoardData);
+          activeBoardData = typeof result === 'undefined' ? draft : result;
+          return activeBoardData;
+        },
+        is_archived_or_deleted: function (text) { return typeof is_archived_or_deleted === 'function' ? is_archived_or_deleted(text) : false; },
+        buildRowsFromLegacyColumns: function (cols, t) { return typeof buildRowsFromLegacyColumns === 'function' ? buildRowsFromLegacyColumns(cols, t) : []; },
+        findBoardMeta: function () { return null; },
+        cloneBoardData: function (bd) { return JSON.parse(JSON.stringify(bd)); },
+        refreshBoardHeaderActionStates: function () {},
+        clearPendingExternalRebaseConflict: function () {},
+        hasPendingExternalRebaseConflict: function () { return false; },
+        getPendingExternalRebaseConflict: function () { return null; },
+        setPendingExternalRebaseConflict: function () {},
+        clearLocalBoardDraft: function () {},
+        saveLocalBoardDraft: function () {},
+        loadLocalBoardDraft: function () { return null; },
+        traceFrontendAction: function () {},
+        logFrontendIssue: function () {},
+        showSaving: function () {},
+        hideSaving: function () {},
+        showNotification: function () {},
+        showConfirmDialog: function () { return false; },
+        showExternalRebaseConflictDialog: function () {},
+        showConflictDialog: function () {},
+        setLastSaveTime: function () {},
+        isActiveRemoteBoard: function () { return false; },
+        isRemoteBoardId: function () { return false; },
+        LexeraApi: function () { return { getBoardColumns: function () { return Promise.resolve({ fullBoard: null }); }, saveBoard: function () { return Promise.resolve({}); }, saveBoardWithBase: function () { return Promise.resolve({}); } }; },
+        setBoardSaveBase: function () {},
+        getBoardSaveBase: function () { return null; },
+        hasBoardIdentityMismatch: function () { return false; },
+        getBoardCardIdentityStats: function () { return {}; },
+        summarizeBoardHierarchy: function () { return {}; },
+        summarizeBoardIdentity: function () { return {}; },
+        boardCardSummary: function () { return ''; },
+        traceBoardIdentityPair: function () {},
+        resolveSavedBoardData: function (bd) { return bd; },
+        getLiveSyncSession: function () { return null; },
+        getLiveSyncState: function () { return null; },
+        setLiveSyncState: function () {},
+        closeLiveSyncSession: function () { return Promise.resolve(); },
+        ensureLiveSyncSession: function () { return Promise.resolve(); },
+        reopenLiveSyncSession: function () { return Promise.resolve(); },
+        applyBoardToLiveSyncSession: function () { return Promise.resolve(false); },
+        flushPendingLiveSyncUpdates: function () { return Promise.resolve(); },
+        getPendingRefresh: function () { return false; },
+        setPendingRefresh: function () {},
+        triggerAutoExportAfterBoardSave: function () {},
+        renderMainView: function () {},
+        renderColumns: function () {},
+        refreshTargetedElements: function () {},
+        refreshHeaderFileControls: function () {},
+        scheduleDashboardRefresh: function () {},
+        refreshBoardHierarchyProjection: function () {},
+        isEmbeddedMode: function () { return false; },
+        getEmbeddedPaneId: function () { return ''; },
+        incrementBoardLoadSeq: function () { return 0; },
+        getBoardLoadSeq: function () { return 0; },
+        resetBoardStatsFilter: function () {},
+        resetColumnSortState: function () {},
+        closeSearchReplacePanel: function () {},
+        getCanvasZoom: function () { return 1; },
+        applyCanvasZoom: function () {},
+        resetCanvasPan: function () {},
+        clearBoardPreviewCaches: function () {},
+        clearEditingPresenceMap: function () {},
+        refreshAvailableMarpClasses: function () { return Promise.resolve(); },
+        connectSyncForBoard: function () {}
       });
     }
 

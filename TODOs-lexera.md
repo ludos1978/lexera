@@ -1,5 +1,7 @@
 # Lexera Repository Architecture Todo
 
+- [x] add tests for !!!include(somefile.md)!!! in column headers — 7 tests: add include (badge+cards), missing include (broken badge), change path (badge updates), remove include (badge+cards gone), pre-existing cards preserved, full lifecycle (add→change→remove), syntax functions unit tests.
+
 ## Frontend Test Additions
 
 - [ ] Add frontend tests that verify dashboard deadline and overdue sections update immediately when cards with temporal tags are added, removed, moved, or edited in the frontend.
@@ -48,7 +50,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Keep the restructure mostly path-level and boundary-level first, without mixing it with feature refactors in the same change set.
 - [ ] Convert fragile relative cross-module imports to stable workspace or crate references before large directory moves.
 - [ ] Choose one package manager for the whole repository and remove mixed lockfile usage after migration.
-- [ ] Create one root `test` command that runs all supported packages in dependency order.
+- [x] Create one root `test` command — `test.sh` runs Rust workspace tests then Vitest frontend tests with summary.
 - [ ] Create one root `lint` command that runs all supported packages in dependency order.
 - [ ] Standardize TypeScript base config and let packages extend it instead of drifting independently.
 - [ ] Standardize Rust workspace settings and shared lint rules for all Tauri and core crates.
@@ -351,8 +353,8 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 ## JS Simplification
 
 ### Break up app.js
-- [ ] Extract board data store (~2,300 lines) — `fullBoardData`/`activeBoardData` mutations, loading, saving, diffing.
-- [ ] Extract undo/redo system (~1,150 lines) — `undoStack`, `pushUndo()`, delta computation.
+- [x] Extract board data store — moved to `core/boardDataStore.js` (1,297 lines), app.js reduced by 1,029 lines.
+- [x] Extract undo/redo system — moved to `core/undoRedoSystem.js` (167 lines).
 - [ ] Extract state initialization (~580 lines) — 48 state variables + `_rt.defineState()` calls.
 
 ### Reduce large modules

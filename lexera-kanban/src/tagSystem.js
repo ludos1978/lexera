@@ -136,6 +136,9 @@
     var original = extractLayoutTags(originalTitle);
     var next = extractLayoutTags(source);
     var preservedComments = getTitleHelpers().extractHtmlComments(originalTitle);
+    var includeMatch = source.match(/!!!include\(([^)]+)\)!!!/i);
+    var includePath = includeMatch ? String(includeMatch[1] || '').trim() : '';
+    var includeDirective = includePath ? ('!!!include(' + includePath + ')!!!') : '';
 
     // Strip all known tag syntax from user input to get clean title text
     var cleanTitle = source
@@ -189,6 +192,9 @@
 
     if (preservedComments.length > 0) {
       parts = parts.concat(preservedComments);
+    }
+    if (includeDirective) {
+      parts.push(includeDirective);
     }
 
     return parts.join(' ').trim();

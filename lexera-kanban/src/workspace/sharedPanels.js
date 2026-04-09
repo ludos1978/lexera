@@ -73,8 +73,8 @@
         '</div>' +
       '</div>' +
       '<div class="sidebar-dashboard-body view-loading">' +
-        _dashboardGroupHtml('pinned', 'Pinned Searches', 'lexera-shared-dashboard-pinned') +
         _dashboardGroupHtml('results', 'Results', 'lexera-shared-dashboard-results') +
+        _dashboardGroupHtml('pinned', 'Pinned Searches', 'lexera-shared-dashboard-pinned') +
         _dashboardGroupHtml('overdue', 'Overdue', 'lexera-shared-dashboard-overdue') +
         _dashboardGroupHtml('upcoming', 'Upcoming', 'lexera-shared-dashboard-upcoming') +
         _dashboardGroupHtml('open-tasks', 'Open Tasks', 'lexera-shared-dashboard-todos') +
@@ -88,6 +88,7 @@
 
   function createLogsPanelElement(instanceId) {
     var root = createPanelRoot('log-panel lexera-shared-panel lexera-shared-panel-logs', 'logs', instanceId);
+    root.setAttribute('data-log-filter', 'all');
     root.innerHTML =
       '<div class="log-panel-header">' +
         '<div class="log-panel-header-main">' +
@@ -96,6 +97,11 @@
             '<button class="log-panel-tab lexera-shared-log-tab-backend active" type="button">Backend</button>' +
             '<button class="log-panel-tab lexera-shared-log-tab-frontend" type="button">Frontend</button>' +
           '</div>' +
+          '<div class="log-panel-filter-tabs">' +
+            '<button class="log-panel-tab log-panel-filter-tab lexera-shared-log-filter-all active" type="button" data-log-filter-value="all">All</button>' +
+            '<button class="log-panel-tab log-panel-filter-tab lexera-shared-log-filter-warnings" type="button" data-log-filter-value="warnings">Warnings+</button>' +
+            '<button class="log-panel-tab log-panel-filter-tab lexera-shared-log-filter-errors" type="button" data-log-filter-value="errors">Errors</button>' +
+          '</div>' +
         '</div>' +
         '<div class="log-panel-actions">' +
           '<button class="log-panel-status-btn connection-status-btn disconnected" type="button" title="Backend disconnected" aria-label="Backend disconnected">' +
@@ -103,7 +109,7 @@
             '<span class="connection-status-label">Disconnected</span>' +
           '</button>' +
           '<button class="log-panel-btn lexera-shared-log-refresh" title="Reload backend logs" type="button">Reload</button>' +
-          '<button class="log-panel-btn lexera-shared-log-copy" title="Copy logs to clipboard" type="button">Copy</button>' +
+          '<button class="log-panel-btn lexera-shared-log-copy" title="Copy visible logs to clipboard" type="button">Copy</button>' +
           '<button class="log-panel-btn lexera-shared-log-clear" title="Clear log" type="button">Clear</button>' +
         '</div>' +
       '</div>' +

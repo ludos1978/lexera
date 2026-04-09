@@ -151,3 +151,55 @@ describe('board search local focus targeting', () => {
     expect(syncSidebarToView).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('board search wiki search routing', () => {
+  it('routes wiki searches into dashboard search instead of mutating header search input', async () => {
+    const searchInput = { value: '' };
+    const openDashboardSearch = vi.fn().mockResolvedValue(true);
+    const performSearch = vi.fn();
+    const BoardSearch = createBoardSearch({
+      querySelector() {
+        return null;
+      }
+    });
+
+    BoardSearch.init({
+      $searchInput: searchInput,
+      isHeaderSearchExpanded() {
+        return false;
+      },
+      setHeaderSearchExpanded: vi.fn(),
+      openDashboardSearch,
+      LexeraApi: {
+        search: performSearch
+      }
+    });
+
+    await BoardSearch.openWikiSearch('#priority');
+
+    expect(openDashboardSearch).toHaveBeenCalledWith('#priority', undefined);
+    expect(searchInput.value).toBe('');
+    expect(performSearch).not.toHaveBeenCalled();
+  });
+
+  it('opens tag wiki documents through dashboard search', async () => {
+    const openDashboardSearch = vi.fn().mockResolvedValue(true);
+    const BoardSearch = createBoardSearch({
+      querySelector() {
+        return null;
+      }
+    });
+
+    BoardSearch.init({
+      resolveWikiDocument(name) {
+        return { kind: 'tag', document: String(name || '').trim() };
+      },
+      openDashboardSearch
+    });
+
+    const resolved = await BoardSearch.openWikiDocument('#backend');
+
+    expect(resolved).toEqual({ kind: 'tag', document: '#backend' });
+    expect(openDashboardSearch).toHaveBeenCalledWith('#backend', undefined);
+  });
+});

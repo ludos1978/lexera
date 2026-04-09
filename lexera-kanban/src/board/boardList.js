@@ -1262,6 +1262,7 @@ var LexeraBoardList = (function () {
     var boardList = getElBoardList();
     if (!boardList || !sourceTarget || typeof sourceTarget.closest !== 'function') return null;
     var treeNode = sourceTarget.closest('.tree-node[data-tree-id]');
+    var anyTreeNode = sourceTarget.closest('.tree-node');
     var boardRow = sourceTarget.closest('.board-item[data-board-id]');
     var workspaceHeader = sourceTarget.closest('.workspace-section-header[data-workspace-id]');
     if (sourceTarget.closest('.workspace-section-focus') && workspaceHeader) {
@@ -1279,11 +1280,46 @@ var LexeraBoardList = (function () {
     if (sourceTarget.closest('.tree-toggle') && treeNode) {
       return boardList.querySelector('.tree-node[data-tree-id="' + treeNode.getAttribute('data-tree-id') + '"] .tree-toggle');
     }
+    if (sourceTarget.closest('.tree-menu-btn') && treeNode) {
+      return boardList.querySelector('.tree-node[data-tree-id="' + treeNode.getAttribute('data-tree-id') + '"] .tree-menu-btn');
+    }
+    // Card tree-nodes lack data-tree-id — resolve via data-card-id or index attrs
+    if (sourceTarget.closest('.tree-menu-btn') && anyTreeNode && !treeNode) {
+      var resolved = _resolveCanonicalTreeNodeByAttrs(boardList, anyTreeNode);
+      if (resolved) {
+        var resolvedBtn = resolved.querySelector('.tree-menu-btn');
+        if (resolvedBtn) return resolvedBtn;
+      }
+    }
     if (treeNode) {
       return boardList.querySelector('.tree-node[data-tree-id="' + treeNode.getAttribute('data-tree-id') + '"]');
     }
+    // Tree-nodes without data-tree-id (cards) — resolve via attrs
+    if (anyTreeNode && !treeNode) {
+      return _resolveCanonicalTreeNodeByAttrs(boardList, anyTreeNode);
+    }
     if (boardRow) {
       return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"]');
+    }
+    return null;
+  }
+
+  function _resolveCanonicalTreeNodeByAttrs(boardList, mirrorNode) {
+    var cardId = mirrorNode.getAttribute('data-card-id');
+    var boardId = mirrorNode.getAttribute('data-board-id');
+    // Prefer data-card-id lookup (unique within a board)
+    if (cardId && boardId) {
+      var byCardId = boardList.querySelector('.board-item[data-board-id="' + boardId + '"] .tree-node[data-card-id="' + cardId + '"]');
+      if (byCardId) return byCardId;
+    }
+    // Fall back to col-index + card-index within the board
+    var colIndex = mirrorNode.getAttribute('data-col-index');
+    var cardIndex = mirrorNode.getAttribute('data-card-index');
+    if (colIndex != null && cardIndex != null && boardId) {
+      var byIndex = boardList.querySelector(
+        '.board-item[data-board-id="' + boardId + '"] .tree-node[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]'
+      );
+      if (byIndex) return byIndex;
     }
     return null;
   }
@@ -2063,19 +2099,15 @@ var LexeraBoardList = (function () {
       if (!columnRef || !columnRef.column) return null;
       var column = columnRef.column;
       var columnTitle = column.title || '';
-      var includePath = _callDep('extractIncludePathFromTitle', columnTitle);
-      var cleanTitle = _callDep('removeIncludeSyntaxFromTitle', _callDep('stripLayoutTags', columnTitle));
       return {
         scope: 'column',
-        initialValue: cleanTitle,
+        initialValue: _callDep('stripHtmlComments', columnTitle),
         initialDisplayValue: initialDisplayValue,
         targets: typeof column.index === 'number' && column.index >= 0
           ? [{ type: 'column', colIndex: column.index }, { type: 'sidebar' }]
           : [{ type: 'board' }, { type: 'sidebar' }],
         apply: function (nextValue) {
-          var rebuilt = _callDep('reconstructColumnTitle', nextValue, columnTitle);
-          if (includePath) rebuilt = _callDep('addIncludeSyntaxToTitle', rebuilt, includePath);
-          column.title = rebuilt;
+          column.title = _callDep('reconstructColumnTitle', nextValue, columnTitle);
         }
       };
     }
@@ -2345,28 +2377,31 @@ var LexeraBoardList = (function () {
       if (treeEl && !_bindBoardTreeInteractions(treeEl, boardId, workspaceShellEnabled, WorkspaceShell)) {
         treeEl.addEventListener('click', function (e) {
           var target = e.target;
+          var gripTarget = target && typeof target.closest === 'function' ? target.closest('.tree-grip') : null;
+          var menuTarget = target && typeof target.closest === 'function' ? target.closest('.tree-menu-btn') : null;
+          var toggleTarget = target && typeof target.closest === 'function' ? target.closest('.tree-toggle') : null;
 
           // Grip click — do nothing (grip is for drag only)
-          if (target.classList.contains('tree-grip')) {
+          if (gripTarget) {
             e.stopPropagation();
             return;
           }
 
           // Menu button click — open context menu for this node
-          if (target.classList.contains('tree-menu-btn')) {
+          if (menuTarget) {
             e.stopPropagation();
-            var menuNode = target.closest('.tree-node');
+            var menuNode = menuTarget.closest('.tree-node');
             if (menuNode) {
-              var btnRect = target.getBoundingClientRect();
+              var btnRect = menuTarget.getBoundingClientRect();
               _showTreeNodeContextMenu(boardId, menuNode, btnRect.right, btnRect.bottom, workspaceShellEnabled, WorkspaceShell);
             }
             return;
           }
 
           // Toggle arrow click (Alt+click = fold children only, not self)
-          if (target.classList.contains('tree-toggle')) {
+          if (toggleTarget) {
             e.stopPropagation();
-            var node = target.closest('.tree-node');
+            var node = toggleTarget.closest('.tree-node');
             if (!node) return;
             var children = getSidebarTreeChildrenContainer(node);
             if (children) {
@@ -2381,7 +2416,7 @@ var LexeraBoardList = (function () {
               } else {
                 var expanding = !children.classList.contains('expanded');
                 children.classList.toggle('expanded');
-                target.classList.toggle('expanded');
+                toggleTarget.classList.toggle('expanded');
                 node.setAttribute('aria-expanded', expanding ? 'true' : 'false');
                 // Persist fold state
                 var treeId = node.getAttribute('data-tree-id');
@@ -2435,9 +2470,9 @@ var LexeraBoardList = (function () {
         treeEl.addEventListener('dblclick', function (e) {
           // Ignore double-clicks on controls that already have their own handler
           // (toggle arrow, grip, burger menu button).
-          if (e.target.classList.contains('tree-toggle') ||
-              e.target.classList.contains('tree-grip') ||
-              e.target.classList.contains('tree-menu-btn')) {
+          if ((e.target && typeof e.target.closest === 'function' && e.target.closest('.tree-toggle')) ||
+              (e.target && typeof e.target.closest === 'function' && e.target.closest('.tree-grip')) ||
+              (e.target && typeof e.target.closest === 'function' && e.target.closest('.tree-menu-btn'))) {
             return;
           }
           var node = e.target.closest('.tree-node');

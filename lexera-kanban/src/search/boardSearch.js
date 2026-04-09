@@ -129,6 +129,13 @@ var LexeraBoardSearch = (function () {
     return _deps.LexeraApi || null;
   }
 
+  function openDashboardSearch(query, options) {
+    if (typeof _deps.openDashboardSearch === 'function') {
+      return _deps.openDashboardSearch(query, options);
+    }
+    return Promise.resolve(false);
+  }
+
   // ── search functions ──
 
   function onSearchInput() {
@@ -159,11 +166,8 @@ var LexeraBoardSearch = (function () {
 
   function openWikiSearch(query) {
     var value = String(query || '').trim();
-    if (!value) return;
-    var input = getSearchInput();
-    if (input) input.value = value;
-    if (!isHeaderSearchExpanded()) setHeaderSearchExpanded(true);
-    performSearch(value);
+    if (!value) return Promise.resolve(false);
+    return openDashboardSearch(value);
   }
 
   async function openWikiDocument(documentName, options) {

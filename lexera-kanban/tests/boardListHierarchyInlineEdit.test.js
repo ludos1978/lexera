@@ -186,6 +186,67 @@ describe('LexeraBoardList hierarchy inline edit', () => {
     expect(treeNode.querySelector('.board-item-title-text').textContent).toBe('Board B');
   });
 
+  it('edits column include titles inline as raw text', async () => {
+    const BoardList = loadBoardList();
+    const boardData = createBoardData();
+    boardData.rows[0].stacks[0].columns[0].title = '!!!include(0500-EN-Schedule.md)!!!';
+    const commitHierarchyTreeEdit = vi.fn(async () => true);
+    const pushUndo = vi.fn();
+    const reconstructColumnTitle = vi.fn((nextTitle) => nextTitle);
+
+    BoardList.init({
+      get activeBoardId() { return 'board-1'; },
+      getHierarchyControllerApi: () => HierarchyController,
+      getSidebarTreeApi: () => sidebarTreeApi,
+      loadBoardDataForMutation: vi.fn(async () => boardData),
+      commitHierarchyTreeEdit,
+      pushUndo,
+      stripHtmlComments: (text) => String(text || '').replace(/<!--[\s\S]*?-->/g, ' ').replace(/\s+/g, ' ').trim(),
+      rebuildTitleWithPreservedComments: (nextTitle) => nextTitle,
+      reconstructColumnTitle,
+      extractIncludePathFromTitle: () => '',
+      addIncludeSyntaxToTitle: vi.fn((title) => title),
+      removeIncludeSyntaxFromTitle: (title) => title,
+      stripLayoutTags: (title) => title,
+      showNotification: vi.fn()
+    });
+
+    const treeNode = document.createElement('div');
+    treeNode.className = 'tree-node tree-column';
+    treeNode.setAttribute('data-board-id', 'board-1');
+    treeNode.setAttribute('data-row-id', 'row-1');
+    treeNode.setAttribute('data-stack-id', 'stack-1');
+    treeNode.setAttribute('data-column-id', 'col-1');
+    treeNode.setAttribute('data-row-index', '0');
+    treeNode.setAttribute('data-stack-index', '0');
+    treeNode.setAttribute('data-col-local-index', '0');
+    treeNode.setAttribute('data-col-index', '0');
+    treeNode.innerHTML = '<span class="tree-label">!(0500-EN-Schedule)!</span>';
+    document.body.appendChild(treeNode);
+
+    const handled = await BoardList.beginHierarchyNodeInlineEdit(treeNode, 'board-1');
+    expect(handled).toBe(true);
+
+    const input = treeNode.querySelector('input');
+    expect(input).toBeTruthy();
+    expect(input.value).toBe('!!!include(0500-EN-Schedule.md)!!!');
+
+    input.value = 'Schedule !!!include(0600-FR-Schedule.md)!!!';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    await flushMicrotasks();
+
+    expect(reconstructColumnTitle).toHaveBeenCalledWith(
+      'Schedule !!!include(0600-FR-Schedule.md)!!!',
+      '!!!include(0500-EN-Schedule.md)!!!'
+    );
+    expect(boardData.rows[0].stacks[0].columns[0].title).toBe('Schedule !!!include(0600-FR-Schedule.md)!!!');
+    expect(pushUndo).toHaveBeenCalledTimes(1);
+    expect(commitHierarchyTreeEdit).toHaveBeenCalledWith('board-1', boardData, {
+      targets: [{ type: 'column', colIndex: 0 }, { type: 'sidebar' }]
+    });
+  });
+
   it('edits card nodes inline with a multiline editor and targeted card refresh', async () => {
     const BoardList = loadBoardList();
     const boardData = createCardBoardData([{

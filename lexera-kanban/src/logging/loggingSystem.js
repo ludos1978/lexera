@@ -7,6 +7,7 @@ var LOG_MAX = 1000;
 var _LogSettings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 var storedLogSource = _LogSettings ? _LogSettings.get('logSource') : (function () { try { return localStorage.getItem('lexera-log-source'); } catch (_) { return null; } })();
 var activeLogSource = storedLogSource === 'backend' ? 'backend' : 'frontend';
+var activeLogFilter = 'all'; // 'all' | 'warnings' | 'errors'
 var backendLogLoaded = false;
 var backendLogEventSource = null;
 var backendLogConnectPending = false;
@@ -153,6 +154,9 @@ function getMirroredLogViews() {
       refreshBtn: root.querySelector('.lexera-shared-log-refresh'),
       copyBtn: root.querySelector('.lexera-shared-log-copy'),
       clearBtn: root.querySelector('.lexera-shared-log-clear'),
+      filterAllBtn: root.querySelector('.lexera-shared-log-filter-all'),
+      filterWarningsBtn: root.querySelector('.lexera-shared-log-filter-warnings'),
+      filterErrorsBtn: root.querySelector('.lexera-shared-log-filter-errors'),
       titleEl: root.querySelector('.log-panel-title'),
       tabsEl: root.querySelector('.log-panel-tabs'),
       backendEntries: root.querySelector('.lexera-shared-log-entries-backend'),
@@ -201,6 +205,15 @@ function bindMirroredLogView(view) {
       setActiveLogSource('stats');
     });
   }
+  var filterBtns = [view.filterAllBtn, view.filterWarningsBtn, view.filterErrorsBtn];
+  filterBtns.forEach(function (btn) {
+    if (!btn) return;
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var value = btn.getAttribute('data-log-filter-value') || 'all';
+      setActiveLogFilter(value);
+    });
+  });
 }
 
 function syncMirroredLogViews() {
@@ -228,6 +241,10 @@ function syncMirroredLogViews() {
     if (view.refreshBtn) view.refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
     if (view.titleEl) view.titleEl.textContent = titleText;
     if (view.tabsEl) view.tabsEl.style.display = canonicalTabs ? canonicalTabs.style.display : '';
+    view.root.setAttribute('data-log-filter', activeLogFilter);
+    if (view.filterAllBtn) view.filterAllBtn.classList.toggle('active', activeLogFilter === 'all');
+    if (view.filterWarningsBtn) view.filterWarningsBtn.classList.toggle('active', activeLogFilter === 'warnings');
+    if (view.filterErrorsBtn) view.filterErrorsBtn.classList.toggle('active', activeLogFilter === 'errors');
   }
   syncAllLogStatusMessages();
   syncAllConnectionStatusButtons();
@@ -540,8 +557,16 @@ function replaceLogEntries(source, entries) {
   updateFoldedLogStatusBadges();
 }
 
+function entryMatchesLogFilter(entry) {
+  if (activeLogFilter === 'all') return true;
+  var level = String(entry.level || '').toLowerCase();
+  if (activeLogFilter === 'errors') return level === 'error';
+  if (activeLogFilter === 'warnings') return level === 'error' || level === 'warn';
+  return true;
+}
+
 function copyActiveLogsToClipboard(copyBtn) {
-  var entries = getLogEntries(activeLogSource);
+  var entries = getLogEntries(activeLogSource).filter(entryMatchesLogFilter);
   var text = entries.map(function (entry) {
     var ts = formatLogTimestamp(entry);
     var level = String(entry.level || '').toUpperCase();
@@ -555,6 +580,22 @@ function copyActiveLogsToClipboard(copyBtn) {
       setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
     });
   }
+}
+
+function setActiveLogFilter(filter) {
+  if (filter !== 'warnings' && filter !== 'errors') filter = 'all';
+  activeLogFilter = filter;
+  // Update all log panels (canonical + mirrored)
+  var allPanels = document.querySelectorAll('.log-panel');
+  for (var i = 0; i < allPanels.length; i++) {
+    allPanels[i].setAttribute('data-log-filter', filter);
+    var tabs = allPanels[i].querySelectorAll('.log-panel-filter-tab');
+    for (var j = 0; j < tabs.length; j++) {
+      tabs[j].classList.toggle('active', tabs[j].getAttribute('data-log-filter-value') === filter);
+    }
+  }
+  // Sync mirrored views
+  syncMirroredLogViews();
 }
 
 function setActiveLogSource(source) {
@@ -934,6 +975,18 @@ document.addEventListener('DOMContentLoaded', function () {
     e.stopPropagation();
     setActiveLogSource('stats');
   });
+
+  // Log filter buttons (canonical panel)
+  var filterBtns = document.querySelectorAll('#log-panel .log-panel-filter-tab');
+  for (var fi = 0; fi < filterBtns.length; fi++) {
+    (function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var value = btn.getAttribute('data-log-filter-value') || 'all';
+        setActiveLogFilter(value);
+      });
+    })(filterBtns[fi]);
+  }
 
   // Drain early errors captured before logging system loaded, then
   // disable the early catcher so it doesn't double-fire alongside addEventListener.

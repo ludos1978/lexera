@@ -291,6 +291,28 @@ describe('workspace shell hierarchy mutation bridge', () => {
     expect(refreshBoardHierarchy).toHaveBeenCalledWith('alpha', fullBoard);
     expect(refreshDashboard).toHaveBeenCalledWith('alpha', fullBoard, 'pane-1');
   });
+
+  it('forwards embedded dashboard searches to the parent dashboard app', async () => {
+    const { shell, window, mainContent } = createShellHarness();
+    const openDashboardSearch = vi.fn().mockResolvedValue(true);
+    window.LexeraDashboard = { openDashboardSearch };
+
+    shell.mount({
+      getMainContent: () => mainContent
+    });
+
+    window.emit('message', {
+      data: {
+        type: 'lexera-pane-dashboard-search',
+        pane: 'pane-1',
+        query: '#frontend'
+      }
+    });
+
+    await Promise.resolve();
+
+    expect(openDashboardSearch).toHaveBeenCalledWith('#frontend', { forceLocal: true });
+  });
 });
 
 describe('workspace shell catalog sync', () => {

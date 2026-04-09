@@ -694,3 +694,28 @@ Specs: `packages/agent/specs/plugins/diagram/SPEC.md`, `plugins/enhancer/SPEC.md
 - [x] Consolidate `createHierarchyNode()` — already in `hierarchyContract.js`
 - [x] Consolidate title helpers — already in `titleHelpers.js` and `tagSystem.js`
 - [x] Standardize nav-target extraction — investigated: 3 fundamentally different data shapes, current separation appropriate
+
+## Archived During Sessions — 2026-04-09 (continued)
+
+### Bug fixes
+- [x] Workspace scroll-to-top on card add — fixed in `renderColumns()`: saves/restores scrollTop+scrollLeft around innerHTML rebuild
+- [x] Burger menu click responsiveness in workspaces — fixed click delegation in boardList.js and workspaceShell.js
+
+### Features
+- [x] Log panel error/warning filter — All/Warnings+/Errors filter tabs, CSS-based filtering, copy respects filter
+
+### Frontend tests (122 total)
+- [x] `assertBoardIntegrity()` comprehensive helper: data↔DOM parity, unique IDs, counts, sidebar sync
+- [x] 8 integrity tests: cross-column move, reorder, add/remove card/column/row
+- [x] 5 archive/park/trash visual state tests + restore test
+- [x] 2 mutation chain tests (multi-step sequences with integrity check after each step)
+- [x] 4 include/embed tests (no broken embed, valid/broken badges)
+- [x] 4 scroll preservation tests (setTestBoard, add card, move card, archive)
+- [x] 5 tag-edit tests (archive/unarchive, park-to-delete, temporal badge, checked state)
+- [x] 2 workspace move + integrity tests
+- [x] 3 structural edge cases (empty column, minimal board, bulk board)
+
+### JS simplification
+- [x] Extract board data store → `core/boardDataStore.js` (1,297 lines), app.js reduced by 1,029 lines
+- [x] Extract undo/redo system → `core/undoRedoSystem.js` (167 lines)
+- [x] Root test command → `test.sh` runs Rust + Vitest tests with summary

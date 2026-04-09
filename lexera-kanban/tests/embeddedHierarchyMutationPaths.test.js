@@ -266,10 +266,102 @@ function loadEmbeddedMutationHarness(onParentMessage, onSaveFullBoard) {
       for (var j = 0; j < nextKeys.length; j++) board[nextKeys[j]] = nextBoard[nextKeys[j]];
     }
 
-    ${notifyEmbeddedBoardMutationSource}
     ${updateActiveBoardDataStateSource}
-    ${commitLocalBoardChangeSource}
-    ${commitBoardMutationsSource}
+
+    // BoardDataStore mock — provides the interface that app.js thin delegation stubs call
+    var BoardDataStore = {
+      notifyEmbeddedBoardMutation: function (boardId, boardData) {
+        if (!embeddedMode || !window.parent || window.parent === window || !boardId) return;
+        requestAnimationFrame(function () {
+          try {
+            window.parent.postMessage({
+              type: 'lexera-board-mutated',
+              boardId: boardId,
+              pane: embeddedPaneId,
+              fullBoard: boardData || null
+            }, '*');
+          } catch (e) { /* ignore */ }
+        });
+      },
+      commitLocalBoardChange: function (boardId, nextBoardData, options) {
+        options = options || {};
+        var targetBoardId = boardId || activeBoardId || null;
+        var hasExplicitBoardData = arguments.length >= 2;
+        var shouldSetLocalState = options.setLocalState !== false && hasExplicitBoardData && targetBoardId === activeBoardId;
+        if (shouldSetLocalState) { fullBoardData = nextBoardData || null; }
+        var boardData = hasExplicitBoardData ? nextBoardData : fullBoardData;
+        if (!targetBoardId || !boardData) {
+          if (options.notifyParent !== false) BoardDataStore.notifyEmbeddedBoardMutation(targetBoardId, boardData || null);
+          return boardData || null;
+        }
+        if (options.ensureRows !== false) {
+          ensureBoardRowsForMutation(boardData, getMutationBoardTitle(targetBoardId, boardData));
+          if (!boardData.columns) boardData.columns = [];
+        }
+        if (targetBoardId === activeBoardId && activeBoardData) {
+          updateActiveBoardDataState(function (nextBoardData) { nextBoardData.fullBoard = boardData; });
+        }
+        if (options.refreshHierarchy !== false) {
+          refreshBoardHierarchyProjection(targetBoardId, boardData, getMutationBoardTitle(targetBoardId, boardData), { revision: options.revision || null });
+        }
+        if (options.notifyParent !== false) {
+          BoardDataStore.notifyEmbeddedBoardMutation(targetBoardId, boardData);
+        }
+        return boardData;
+      },
+      commitBoardMutations: async function (changedBoards, options) {
+        options = options || {};
+        var boardIds = Object.keys(changedBoards || {});
+        if (boardIds.length === 0) return true;
+        try {
+          for (var i = 0; i < boardIds.length; i++) {
+            var boardId = boardIds[i];
+            var boardData = changedBoards[boardId];
+            if (!boardData) continue;
+            if (boardId === activeBoardId) {
+              ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
+              if (!getBoardSaveBase(boardData)) setBoardSaveBase(boardData, boardData);
+              if (fullBoardData !== boardData) fullBoardData = boardData;
+              if (!activeBoardData) {
+                activeBoardData = { valid: true, title: getMutationBoardTitle(boardId, boardData), fullBoard: boardData, columns: [], rows: [] };
+              } else if (activeBoardData.fullBoard !== boardData) {
+                updateActiveBoardDataState(function (nextBoardData) { nextBoardData.fullBoard = boardData; if (!nextBoardData.title) nextBoardData.title = getMutationBoardTitle(boardId, boardData); });
+              }
+              updateDisplayFromFullBoard();
+              BoardDataStore.commitLocalBoardChange(boardId, boardData, { setLocalState: false, refreshHierarchy: true });
+              markBoardDirty();
+              try { await saveFullBoard(); } catch (saveErr) { logFrontendIssue('warn', 'commitBoardMutations', 'Failed to save', saveErr); }
+              continue;
+            }
+            showSaving();
+            lastSaveTime = Date.now();
+            ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
+            if (!boardData.columns) boardData.columns = [];
+            var baseBoardData = getBoardSaveBase(boardData);
+            var result = baseBoardData
+              ? await LexeraApi.saveBoardWithBase(boardId, baseBoardData, boardData)
+              : await LexeraApi.saveBoard(boardId, boardData);
+            var savedBoardData = resolveSavedBoardData(boardData, result, boardId);
+            changedBoards[boardId] = savedBoardData;
+            BoardDataStore.commitLocalBoardChange(boardId, savedBoardData, { setLocalState: false, refreshHierarchy: true });
+          }
+          if (typeof options.beforeRefresh === 'function') options.beforeRefresh();
+          if (typeof options.afterRefresh === 'function') options.afterRefresh();
+          scheduleDashboardRefresh(80);
+          return true;
+        } catch (err) {
+          logFrontendIssue('error', 'commitBoardMutations', 'Save failed', err);
+          return false;
+        } finally {
+          hideSaving();
+        }
+      },
+      setLastLoadedGeneration: function (v) { _lastLoadedGeneration = v; },
+      setLastLoadedRevision: function (v) { _lastLoadedRevision = v; }
+    };
+    function notifyEmbeddedBoardMutation(boardId, boardData) { BoardDataStore.notifyEmbeddedBoardMutation(boardId, boardData); }
+    function commitLocalBoardChange(boardId, nextBoardData, options) { return BoardDataStore.commitLocalBoardChange(boardId, nextBoardData, options); }
+    async function commitBoardMutations(changedBoards, options) { return BoardDataStore.commitBoardMutations(changedBoards, options); }
     ${applyPollingBoardDeltaSource}
 
     return {

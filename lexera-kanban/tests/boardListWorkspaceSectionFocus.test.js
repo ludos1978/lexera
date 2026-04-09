@@ -194,4 +194,43 @@ describe('LexeraBoardList workspace section focus button', () => {
     expect(state.viewWorkspaceId).toBe('ws-1');
     expect(state.workspaceViewMode).toBe('manual');
   });
+
+  it('routes mirrored tree burger clicks to the canonical tree menu button', () => {
+    const BoardList = loadBoardList();
+    const canonicalBoardList = document.getElementById('board-list');
+    canonicalBoardList.innerHTML = `
+      <div class="board-item-tree">
+        <div class="tree-node tree-card" data-tree-id="card:1" data-board-id="board-1">
+          <button class="tree-menu-btn burger-menu-btn" type="button" aria-label="Options">
+            <span class="burger-lines" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    const mirrorRoot = document.createElement('div');
+    mirrorRoot.innerHTML = `
+      <div class="board-list lexera-shared-board-list">
+        <div class="board-item-tree">
+          <div class="tree-node tree-card" data-tree-id="card:1" data-board-id="board-1">
+            <button class="tree-menu-btn burger-menu-btn" type="button" aria-label="Options">
+              <span class="burger-lines" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(mirrorRoot);
+
+    const canonicalMenuBtn = canonicalBoardList.querySelector('.tree-menu-btn');
+    const canonicalClickSpy = vi.fn();
+    canonicalMenuBtn.addEventListener('click', canonicalClickSpy);
+
+    BoardList.bindMirroredWorkspaceView(mirrorRoot);
+
+    const mirrorBurgerLines = mirrorRoot.querySelector('.tree-menu-btn .burger-lines');
+    mirrorBurgerLines.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    expect(canonicalClickSpy).toHaveBeenCalledTimes(1);
+  });
 });

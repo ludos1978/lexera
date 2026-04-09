@@ -662,6 +662,26 @@ describe('reconstructColumnTitle', () => {
     const result = U.reconstructColumnTitle('Title #row1', '');
     expect(result).toBe('Title');
   });
+
+  it('preserves a user-edited include directive as part of text editing', () => {
+    const result = U.reconstructColumnTitle(
+      'Schedule !!!include(0600-FR-Schedule.md)!!!',
+      'Old Title #stack !!!include(0500-EN-Schedule.md)!!!'
+    );
+    expect(result).toContain('Schedule');
+    expect(result).toContain('#stack');
+    expect(result).toContain('!!!include(0600-FR-Schedule.md)!!!');
+    expect(result).not.toContain('0500-EN-Schedule.md');
+  });
+
+  it('allows text editing to remove an include directive', () => {
+    const result = U.reconstructColumnTitle(
+      'Plain Title',
+      'Old Title #span3 !!!include(0500-EN-Schedule.md)!!!'
+    );
+    expect(result).toBe('Plain Title #span3');
+    expect(result).not.toContain('!!!include(');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

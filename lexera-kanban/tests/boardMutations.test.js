@@ -42,6 +42,10 @@ function loadMutationFunctions() {
   const appUtilsSource = readFileSync(resolve(srcDir, 'utils', 'appUtils.js'), 'utf-8');
   new Function(appUtilsSource)();
 
+  // Load BoardDataStore so delegation stubs in app.js can reference it
+  const boardDataStoreSource = readFileSync(resolve(srcDir, 'core', 'boardDataStore.js'), 'utf-8');
+  new Function(boardDataStoreSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
@@ -268,10 +272,87 @@ function loadMutationFunctions() {
     var OrderHelpers = (typeof globalThis !== 'undefined' && globalThis.LexeraOrderHelpers) || null;
     var _AppUtils = (typeof globalThis !== 'undefined' && globalThis.LexeraAppUtils) || null;
     var BoardSettingsModule = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardSettings) || null;
+    var BoardDataStore = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDataStore) || null;
     var PathUtils = globalThis.LexeraPathUtils;
     var TagColors = globalThis.LexeraTagColors;
     var LexeraTagSystem = globalThis.LexeraTagSystem || null;
     ${fnDefs.join('\n\n')}
+
+    // Initialize BoardDataStore with test mock deps
+    if (BoardDataStore && typeof BoardDataStore.init === 'function') {
+      BoardDataStore.init({
+        getFullBoardData: function () { return null; },
+        getActiveBoardData: function () { return null; },
+        getActiveBoardId: function () { return null; },
+        setFullBoardDataState: function () {},
+        setActiveBoardDataState: function () {},
+        updateActiveBoardDataState: function () {},
+        is_archived_or_deleted: typeof is_archived_or_deleted === 'function' ? is_archived_or_deleted : function () { return false; },
+        buildRowsFromLegacyColumns: function () { return []; },
+        findBoardMeta: function () { return null; },
+        cloneBoardData: function (bd) { return JSON.parse(JSON.stringify(bd)); },
+        refreshBoardHeaderActionStates: function () {},
+        clearPendingExternalRebaseConflict: function () {},
+        hasPendingExternalRebaseConflict: function () { return false; },
+        getPendingExternalRebaseConflict: function () { return null; },
+        setPendingExternalRebaseConflict: function () {},
+        clearLocalBoardDraft: function () {},
+        saveLocalBoardDraft: function () {},
+        loadLocalBoardDraft: function () { return null; },
+        traceFrontendAction: function () {},
+        logFrontendIssue: function () {},
+        showSaving: function () {},
+        hideSaving: function () {},
+        showNotification: function () {},
+        showConfirmDialog: function () { return false; },
+        showExternalRebaseConflictDialog: function () {},
+        showConflictDialog: function () {},
+        setLastSaveTime: function () {},
+        isActiveRemoteBoard: function () { return false; },
+        isRemoteBoardId: function () { return false; },
+        LexeraApi: function () { return {}; },
+        setBoardSaveBase: function () {},
+        getBoardSaveBase: function () { return null; },
+        hasBoardIdentityMismatch: function () { return false; },
+        getBoardCardIdentityStats: function () { return {}; },
+        summarizeBoardHierarchy: function () { return {}; },
+        summarizeBoardIdentity: function () { return {}; },
+        boardCardSummary: function () { return ''; },
+        traceBoardIdentityPair: function () {},
+        resolveSavedBoardData: function (bd) { return bd; },
+        getLiveSyncSession: function () { return null; },
+        getLiveSyncState: function () { return null; },
+        setLiveSyncState: function () {},
+        closeLiveSyncSession: function () { return Promise.resolve(); },
+        ensureLiveSyncSession: function () { return Promise.resolve(); },
+        reopenLiveSyncSession: function () { return Promise.resolve(); },
+        applyBoardToLiveSyncSession: function () { return Promise.resolve(false); },
+        flushPendingLiveSyncUpdates: function () { return Promise.resolve(); },
+        getPendingRefresh: function () { return false; },
+        setPendingRefresh: function () {},
+        triggerAutoExportAfterBoardSave: function () {},
+        renderMainView: function () {},
+        renderColumns: function () {},
+        refreshTargetedElements: function () {},
+        refreshHeaderFileControls: function () {},
+        scheduleDashboardRefresh: function () {},
+        refreshBoardHierarchyProjection: function () {},
+        isEmbeddedMode: function () { return false; },
+        getEmbeddedPaneId: function () { return ''; },
+        incrementBoardLoadSeq: function () { return 0; },
+        getBoardLoadSeq: function () { return 0; },
+        resetBoardStatsFilter: function () {},
+        resetColumnSortState: function () {},
+        closeSearchReplacePanel: function () {},
+        getCanvasZoom: function () { return 1; },
+        applyCanvasZoom: function () {},
+        resetCanvasPan: function () {},
+        clearBoardPreviewCaches: function () {},
+        clearEditingPresenceMap: function () {},
+        refreshAvailableMarpClasses: function () { return Promise.resolve(); },
+        connectSyncForBoard: function () {}
+      });
+    }
 
     // Initialize OrderHelpers with extracted functions so delegation stubs work
     if (OrderHelpers && typeof OrderHelpers.init === 'function') {

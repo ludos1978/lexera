@@ -197,7 +197,9 @@ var LexeraApi = (function () {
       throw error;
     }
     try {
-      return await res.json();
+      var bodyText = await res.text();
+      if (!bodyText || !bodyText.trim()) return null;
+      return JSON.parse(bodyText);
     } catch (error) {
       logApiIssue('error', 'api.request', method + ' ' + path + ' returned invalid JSON', error);
       throw error;
@@ -262,7 +264,9 @@ var LexeraApi = (function () {
       throw error;
     }
     try {
-      return await res.json();
+      var cachedBodyText = await res.text();
+      if (!cachedBodyText || !cachedBodyText.trim()) return null;
+      return JSON.parse(cachedBodyText);
     } catch (error) {
       logApiIssue('error', target, 'GET ' + path + ' returned invalid JSON', error);
       throw error;

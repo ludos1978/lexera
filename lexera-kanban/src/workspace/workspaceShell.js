@@ -4402,6 +4402,12 @@
       setTabViewKind(data.pane, data.viewKind, { activate: true });
       return;
     }
+    if (data.type === 'lexera-pane-dashboard-search') {
+      var dashboardApp = window.LexeraDashboard;
+      if (!dashboardApp || typeof dashboardApp.openDashboardSearch !== 'function') return;
+      Promise.resolve(dashboardApp.openDashboardSearch(data.query, { forceLocal: true })).catch(function () {});
+      return;
+    }
   }
 
   function handleBackendConnectionStateChanged(event) {

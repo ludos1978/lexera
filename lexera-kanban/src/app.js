@@ -61,18 +61,18 @@ var LexeraDashboard = (function () {
   var liveSyncMutex = Promise.resolve();
   var liveDraftSyncTimer = null;
   var liveDraftSyncRequest = null;
-  var undoStack = [];
-  var redoStack = [];
-  var MAX_UNDO = 30;
-  var MAX_UNDO_BYTES = 10 * 1024 * 1024;
-  var undoTotalBytes = 0;
-  var undoPendingSnapshot = null; // snapshot taken before the last mutation, awaiting delta computation
+  var UndoRedo = window.LexeraUndoRedo;
   var SidebarSync = window.LexeraSidebarSync;
   var DiagramRegistry = window.LexeraDiagramRegistry;
   var CardContentRenderer = window.LexeraCardContentRenderer;
   var ContentEnhancerRegistry = window.LexeraContentEnhancerRegistry;
   var ActionRegistry = window.LexeraActionRegistry;
   var AppShellShortcuts = window.LexeraAppShellShortcuts;
+  var cardAutoSizeObserver = null;
+  var cardAutoSizeSyncFrame = 0;
+  var cardAutoSizePendingCols = new Set();
+  var cardAutoSizeNeedsCanvasBoundsSync = false;
+  var cardAutoSizeNeedsLayoutUnlockCleanup = false;
 
   function syncRuntimeState(key, value) {
     if (_rt) _rt.setState(key, value);
@@ -194,7 +194,7 @@ var LexeraDashboard = (function () {
     isHorizontalCanvasStack: function(stackEl) { return isHorizontalCanvasStackElement(stackEl); }
   });
   if (SidebarSync) SidebarSync.init({
-    getFocusedCardEl: function () { return focusedCardEl; },
+    getFocusedCardEl: function () { return getFocusedCardEl(); },
     getElColumnsContainer: function () { return getElColumnsContainer(); },
     getElBoardList: function () { return getElBoardList(); },
     getSidebarTreeOwnerNode: function (el) { return getSidebarTreeOwnerNode(el); },
@@ -467,8 +467,8 @@ var LexeraDashboard = (function () {
     get embeddedMode() { return embeddedMode; },
     get ALL_WORKSPACES_ID() { return ALL_WORKSPACES_ID; },
     get boardPresenceCache() { return boardPresenceCache; },
-    get _lastLoadedRevision() { return _lastLoadedRevision; },
-    get _saveInFlight() { return _saveInFlight; },
+    get _lastLoadedRevision() { return BoardDataStore.getLastLoadedRevision(); },
+    get _saveInFlight() { return BoardDataStore.getSaveInFlight(); },
     get workspaceShellEnabled() { return workspaceShellEnabled; },
     get WorkspaceShell() { return WorkspaceShell; },
     get hasTauri() { return hasTauri; },
@@ -481,8 +481,8 @@ var LexeraDashboard = (function () {
     setViewWorkspaceIdState: function (v) { setViewWorkspaceIdState(v); },
     setWorkspaceViewModeState: function (v) { setWorkspaceViewModeState(v); },
     commitLocalBoardChange: function (boardId, boardData, opts) { return commitLocalBoardChange(boardId, boardData, opts); },
-    setLastLoadedGeneration: function (v) { _lastLoadedGeneration = v; },
-    setLastLoadedRevision: function (v) { _lastLoadedRevision = v; },
+    setLastLoadedGeneration: function (v) { BoardDataStore.setLastLoadedGeneration(v); },
+    setLastLoadedRevision: function (v) { BoardDataStore.setLastLoadedRevision(v); },
     setPendingExternalRebaseConflict: function (v) { pendingExternalRebaseConflict = v; },
     getSidebarTreeApi: function () { return getSidebarTreeApi(); },
     getHierarchyControllerApi: function () { return getHierarchyControllerApi(); },
@@ -966,8 +966,8 @@ var LexeraDashboard = (function () {
     updateActiveBoardData: function (updater) { return updateActiveBoardDataState(updater); },
     setFullBoardData: function (v) { setFullBoardDataState(v); },
     setPendingExternalRebaseConflict: function (v) { pendingExternalRebaseConflict = v; },
-    setLastLoadedGeneration: function (v) { _lastLoadedGeneration = v; },
-    setLastLoadedRevision: function (v) { _lastLoadedRevision = v; },
+    setLastLoadedGeneration: function (v) { BoardDataStore.setLastLoadedGeneration(v); },
+    setLastLoadedRevision: function (v) { BoardDataStore.setLastLoadedRevision(v); },
     trackRecentBoard: function (id) { return trackRecentBoard(id); },
     get connected() { return connected; },
     dashboardState: dashboardState,
@@ -1197,6 +1197,29 @@ var LexeraDashboard = (function () {
   async function refreshDashboardData(options) { return OrderHelpers.refreshDashboardData(options); }
   function scheduleDashboardRefresh(delayMs) { return OrderHelpers.scheduleDashboardRefresh(delayMs); }
   function setupDashboardControls() { return OrderHelpers.setupDashboardControls(); }
+  function requestWorkspaceShellDashboardSearch(query) {
+    var value = String(query || '').trim();
+    if (!value || !embeddedWorkspaceShellParent || !embeddedPaneId) return false;
+    if (!window.parent || window.parent === window) return false;
+    window.parent.postMessage({
+      type: 'lexera-pane-dashboard-search',
+      pane: embeddedPaneId,
+      query: value
+    }, '*');
+    return true;
+  }
+  async function openDashboardSearch(query, options) {
+    options = options || {};
+    var value = String(query || '').trim();
+    if (!value) return false;
+    if (!options.forceLocal && requestWorkspaceShellDashboardSearch(value)) return true;
+    setDashboardQuery(value, { keepPinnedSelection: !!options.keepPinnedSelection });
+    if (options.revealPanel !== false && workspaceShellEnabled && WorkspaceShell && typeof WorkspaceShell.revealPanel === 'function') {
+      WorkspaceShell.revealPanel('dashboard');
+    }
+    await refreshDashboardData({ deferRender: true });
+    return true;
+  }
 
   // ── Cached DOM element getters ──────────────────────────────────────
   function _cachedEl(key, id) {
@@ -1257,6 +1280,19 @@ var LexeraDashboard = (function () {
 
   function init() {
     try {
+    // Initialize undo/redo system with required dependencies
+    UndoRedo.init({
+      getFullBoardData: function () { return fullBoardData; },
+      getActiveBoardId: function () { return activeBoardId; },
+      computeBoardDelta: computeBoardDelta,
+      cloneBoardData: cloneBoardData,
+      estimateDeltaSize: estimateDeltaSize,
+      applyBoardDelta: applyBoardDelta,
+      getBoardSaveBase: getBoardSaveBase,
+      setBoardSaveBase: setBoardSaveBase,
+      persistBoardMutation: persistBoardMutation
+    });
+
     window.__LEXERA_FRONTEND_BUILD = FRONTEND_BUILD_STAMP;
 
     // Startup health check — discover modules and report status
@@ -2108,12 +2144,12 @@ var LexeraDashboard = (function () {
       var eventGen = event.generation;
       var eventRevision = typeof event.revision === 'string' && event.revision ? event.revision : null;
       var remoteActive = isActiveRemoteBoard();
-      if (!remoteActive && kind === 'MainFileChanged' && eventRevision && _lastLoadedRevision && eventRevision === _lastLoadedRevision) {
+      if (!remoteActive && kind === 'MainFileChanged' && eventRevision && BoardDataStore.getLastLoadedRevision() && eventRevision === BoardDataStore.getLastLoadedRevision()) {
         traceFrontendAction('info', 'sse.fileChanged.stale', 'Ignoring stale file change event', {
           eventRevision: eventRevision,
-          loadedRevision: _lastLoadedRevision,
+          loadedRevision: BoardDataStore.getLastLoadedRevision(),
           eventGeneration: eventGen,
-          loadedGeneration: _lastLoadedGeneration,
+          loadedGeneration: BoardDataStore.getLastLoadedGeneration(),
           writerId: writerId
         });
         return;
@@ -2121,16 +2157,16 @@ var LexeraDashboard = (function () {
       traceFrontendAction('info', 'sse.fileChanged', 'File changed on disk, reconciling with active board', {
         boardId: activeBoardId,
         kind: kind,
-        dirty: _boardDirty,
+        dirty: isBoardDirty(),
         isRemoteBoard: remoteActive,
         writerId: writerId,
         eventRevision: eventRevision,
-        loadedRevision: _lastLoadedRevision,
+        loadedRevision: BoardDataStore.getLastLoadedRevision(),
         eventGeneration: eventGen,
-        loadedGeneration: _lastLoadedGeneration,
+        loadedGeneration: BoardDataStore.getLastLoadedGeneration(),
         includeBoardIds: includeBoardIds
       });
-      if (!_boardDirty && !_saveInFlight) {
+      if (!isBoardDirty() && !BoardDataStore.getSaveInFlight()) {
         traceFrontendAction('info', 'sse.fileChanged.reload', 'Reloading clean active board after external change event', {
           boardId: activeBoardId,
           kind: kind,
@@ -2148,7 +2184,7 @@ var LexeraDashboard = (function () {
           });
         return;
       }
-      if (_saveInFlight && !_boardDirty) {
+      if (BoardDataStore.getSaveInFlight() && !isBoardDirty()) {
         traceFrontendAction('info', 'sse.fileChanged.deferred', 'Deferring board reload because save is in flight', {
           boardId: activeBoardId,
           kind: kind
@@ -2160,9 +2196,9 @@ var LexeraDashboard = (function () {
         kind: kind,
         isRemoteBoard: isActiveRemoteBoard(),
         eventRevision: eventRevision,
-        loadedRevision: _lastLoadedRevision,
+        loadedRevision: BoardDataStore.getLastLoadedRevision(),
         eventGeneration: eventGen,
-        loadedGeneration: _lastLoadedGeneration
+        loadedGeneration: BoardDataStore.getLastLoadedGeneration()
       });
       updateSyncStatusIndicator('syncing');
       Promise.resolve()
@@ -2210,8 +2246,8 @@ var LexeraDashboard = (function () {
     get embeddedMode() { return embeddedMode; },
     get embeddedPreferredBoardId() { return embeddedPreferredBoardId; },
     get urlParams() { return urlParams; },
-    get _lastLoadedRevision() { return _lastLoadedRevision; },
-    get _lastLoadedGeneration() { return _lastLoadedGeneration; },
+    get _lastLoadedRevision() { return BoardDataStore.getLastLoadedRevision(); },
+    get _lastLoadedGeneration() { return BoardDataStore.getLastLoadedGeneration(); },
     setConnectedState: function (v) { connected = v; if (_rt) _rt.setState('connected', v); if (!_headerSavingInProgress) updateSyncStatusIndicator(v ? 'connected' : 'disconnected'); if (v) { refreshWorkspaceSettings(); OrderHelpers.refreshDashboardTagsFromBackend(); if (!embeddedMode) scheduleDashboardRefresh(60); } },
     setWorkspaces: function (v) { setWorkspacesState(v); },
     setBoards: function (v) { setBoardsState(v); },
@@ -2220,8 +2256,8 @@ var LexeraDashboard = (function () {
     setActiveBoardData: function (v) { setActiveBoardDataState(v); },
     updateActiveBoardData: function (updater) { return updateActiveBoardDataState(updater); },
     setFullBoardData: function (v) { setFullBoardDataState(v); },
-    setLastLoadedGeneration: function (v) { _lastLoadedGeneration = v; },
-    setLastLoadedRevision: function (v) { _lastLoadedRevision = v; },
+    setLastLoadedGeneration: function (v) { BoardDataStore.setLastLoadedGeneration(v); },
+    setLastLoadedRevision: function (v) { BoardDataStore.setLastLoadedRevision(v); },
     connectSSEIfReady: function () { connectSSEIfReady(); },
     connectBackendLogStreamIfReady: function () { connectBackendLogStreamIfReady(); },
     loadTemplatesOnce: function () { loadTemplatesOnce(); },
@@ -2269,8 +2305,8 @@ var LexeraDashboard = (function () {
     get boardPresenceCache() { return boardPresenceCache; },
     get workspaceShellEnabled() { return workspaceShellEnabled; },
     get hasTauri() { return hasTauri; },
-    get _lastLoadedRevision() { return _lastLoadedRevision; },
-    get _saveInFlight() { return _saveInFlight; },
+    get _lastLoadedRevision() { return BoardDataStore.getLastLoadedRevision(); },
+    get _saveInFlight() { return BoardDataStore.getSaveInFlight(); },
     LexeraApi: LexeraApi,
     TreeView: TreeView,
     SidebarSync: window.LexeraSidebarSync,
@@ -2280,8 +2316,8 @@ var LexeraDashboard = (function () {
     clearBoardDirty: function() { clearBoardDirty(); },
     markBoardDirty: function() { markBoardDirty(); },
     selectBoard: function(boardId) { selectBoard(boardId); },
-    setLastLoadedRevision: function(rev) { _lastLoadedRevision = rev; },
-    setLastLoadedGeneration: function(generation) { _lastLoadedGeneration = generation; },
+    setLastLoadedRevision: function(rev) { BoardDataStore.setLastLoadedRevision(rev); },
+    setLastLoadedGeneration: function(generation) { BoardDataStore.setLastLoadedGeneration(generation); },
     setActiveBoardId: function(boardId) { setActiveBoardIdState(boardId); },
     setActiveBoardData: function(boardData) { setActiveBoardDataState(boardData); },
     updateActiveBoardData: function(updater) { return updateActiveBoardDataState(updater); },
@@ -2411,6 +2447,93 @@ var LexeraDashboard = (function () {
 
   function renderBoardList() { _bl('renderBoardList'); }
 
+  // ── BoardDataStore init ────────────────────────────────────────────
+  var BoardDataStore = window.LexeraBoardDataStore;
+  if (BoardDataStore) BoardDataStore.init({
+    // State accessors
+    getFullBoardData: function () { return fullBoardData; },
+    getActiveBoardData: function () { return activeBoardData; },
+    getActiveBoardId: function () { return activeBoardId; },
+    setFullBoardDataState: function (v) { setFullBoardDataState(v); },
+    setActiveBoardDataState: function (v) { setActiveBoardDataState(v); },
+    updateActiveBoardDataState: function (updater) { return updateActiveBoardDataState(updater); },
+    // Board data helpers (via BoardList)
+    is_archived_or_deleted: function (text) { return is_archived_or_deleted(text); },
+    buildRowsFromLegacyColumns: function (cols, t) { return buildRowsFromLegacyColumns(cols, t); },
+    findBoardMeta: function (id) { return findBoardMeta(id); },
+    cloneBoardData: function (bd) { return cloneBoardData(bd); },
+    // Dirty state deps
+    refreshBoardHeaderActionStates: function () { refreshBoardHeaderActionStates(); },
+    clearPendingExternalRebaseConflict: function () { pendingExternalRebaseConflict = null; },
+    hasPendingExternalRebaseConflict: function () { return !!(pendingExternalRebaseConflict && pendingExternalRebaseConflict.result); },
+    getPendingExternalRebaseConflict: function () { return pendingExternalRebaseConflict; },
+    setPendingExternalRebaseConflict: function (v) { pendingExternalRebaseConflict = v; },
+    clearLocalBoardDraft: function (id) { clearLocalBoardDraft(id); },
+    saveLocalBoardDraft: function (id, bd) { saveLocalBoardDraft(id, bd); },
+    loadLocalBoardDraft: function (id) { return loadLocalBoardDraft(id); },
+    // Logging
+    traceFrontendAction: function (level, target, msg, details) { traceFrontendAction(level, target, msg, details); },
+    logFrontendIssue: function (level, area, msg, err) { logFrontendIssue(level, area, msg, err); },
+    // Save pipeline deps
+    showSaving: function () { showSaving(); },
+    hideSaving: function () { hideSaving(); },
+    showNotification: function (msg) { showNotification(msg); },
+    showConfirmDialog: function (msg) { return showConfirmDialog(msg); },
+    showExternalRebaseConflictDialog: function (r) { showExternalRebaseConflictDialog(r); },
+    showConflictDialog: function (conflicts, autoMerged) { showConflictDialog(conflicts, autoMerged); },
+    setLastSaveTime: function (t) { lastSaveTime = t; },
+    isActiveRemoteBoard: function () { return isActiveRemoteBoard(); },
+    isRemoteBoardId: function (id) { return isRemoteBoardId(id); },
+    LexeraApi: function () { return LexeraApi; },
+    // Board identity / save base helpers (via BoardList)
+    setBoardSaveBase: function (bd, base) { return setBoardSaveBase(bd, base); },
+    getBoardSaveBase: function (bd) { return getBoardSaveBase(bd); },
+    hasBoardIdentityMismatch: function (a, b) { return hasBoardIdentityMismatch(a, b); },
+    getBoardCardIdentityStats: function (a, b) { return getBoardCardIdentityStats(a, b); },
+    summarizeBoardHierarchy: function (bd) { return summarizeBoardHierarchy(bd); },
+    summarizeBoardIdentity: function (bd, limit) { return summarizeBoardIdentity(bd, limit); },
+    boardCardSummary: function (bd) { return boardCardSummary(bd); },
+    traceBoardIdentityPair: function (level, target, message, boardId, labelA, boardA, labelB, boardB, extra) { traceBoardIdentityPair(level, target, message, boardId, labelA, boardA, labelB, boardB, extra); },
+    resolveSavedBoardData: function (bd, result, boardId) { return resolveSavedBoardData(bd, result, boardId); },
+    // Live sync
+    getLiveSyncSession: function (id) { return getLiveSyncSession(id); },
+    getLiveSyncState: function () { return liveSyncState; },
+    setLiveSyncState: function (v) { liveSyncState = v; },
+    closeLiveSyncSession: function (id) { return closeLiveSyncSession(id); },
+    ensureLiveSyncSession: function (id) { return ensureLiveSyncSession(id); },
+    reopenLiveSyncSession: function (id) { return reopenLiveSyncSession(id); },
+    applyBoardToLiveSyncSession: function (id, bd, opts) { return applyBoardToLiveSyncSession(id, bd, opts); },
+    flushPendingLiveSyncUpdates: function (opts) { return flushPendingLiveSyncUpdates(opts); },
+    getPendingRefresh: function () { return pendingRefresh; },
+    setPendingRefresh: function (v) { pendingRefresh = v; },
+    // Auto export
+    triggerAutoExportAfterBoardSave: function (id) { triggerAutoExportAfterBoardSave(id); },
+    // Rendering
+    renderMainView: function () { renderMainView(); },
+    renderColumns: function () { renderColumns(); },
+    refreshTargetedElements: function (targets) { refreshTargetedElements(targets); },
+    refreshHeaderFileControls: function () { refreshHeaderFileControls(); },
+    scheduleDashboardRefresh: function (ms) { scheduleDashboardRefresh(ms); },
+    refreshBoardHierarchyProjection: function (boardId, fullBoard, fallbackTitle, options) { return refreshBoardHierarchyProjection(boardId, fullBoard, fallbackTitle, options); },
+    // Embedded mode
+    isEmbeddedMode: function () { return embeddedMode; },
+    getEmbeddedPaneId: function () { return embeddedPaneId; },
+    // Board load sequence
+    incrementBoardLoadSeq: function () { return ++boardLoadSeq; },
+    getBoardLoadSeq: function () { return boardLoadSeq; },
+    // Board load deps
+    resetBoardStatsFilter: function () { if (BoardStatsFilter) BoardStatsFilter.resetState(); },
+    resetColumnSortState: function () { if (_ColCtx) _ColCtx.resetColumnSortState(); },
+    closeSearchReplacePanel: function () { closeSearchReplacePanel(); },
+    getCanvasZoom: function () { return getCanvasOpsApi().getCanvasZoom(); },
+    applyCanvasZoom: function (z) { applyCanvasZoom(z); },
+    resetCanvasPan: function () { resetCanvasPan(); },
+    clearBoardPreviewCaches: function (id) { clearBoardPreviewCaches(id); },
+    clearEditingPresenceMap: function () { editingPresenceMap = {}; },
+    refreshAvailableMarpClasses: function (force) { return refreshAvailableMarpClasses(force); },
+    connectSyncForBoard: function (id) { connectSyncForBoard(id); }
+  });
+
   // --- Sidebar Sync --- (delegated to LexeraSidebarSync module)
 
   function syncSidebarToView() { if (SidebarSync) SidebarSync.syncSidebarToView(); }
@@ -2457,8 +2580,8 @@ var LexeraDashboard = (function () {
     setActiveBoardDataState(null);
     setFullBoardDataState(null);
     pendingExternalRebaseConflict = null;
-    _lastLoadedGeneration = null;
-    _lastLoadedRevision = null;
+    BoardDataStore.setLastLoadedGeneration(null);
+    BoardDataStore.setLastLoadedRevision(null);
     addCardColumn = null;
     resetBoardDirtyState('selectBoard-switch', boardId);
     if (!embeddedMode) {
@@ -2491,368 +2614,19 @@ var LexeraDashboard = (function () {
     }
   }
 
-  async function loadBoard(boardId) {
-    var seq = ++boardLoadSeq;
-    var isBoardSwitch = boardId !== activeBoardId;
-    if (BoardStatsFilter) BoardStatsFilter.resetState();
-    if (_ColCtx) _ColCtx.resetColumnSortState();
-    closeSearchReplacePanel();
-    // Reset canvas zoom and pan only when switching to a different board.
-    // Reloading the same board (e.g. poll, save-then-poll) must preserve viewport.
-    if (isBoardSwitch) {
-      if (getCanvasOpsApi().getCanvasZoom() !== 1) applyCanvasZoom(1);
-      resetCanvasPan();
-    }
-    var loadStage = 'start';
-    try {
-      loadStage = 'clear-caches';
-      clearBoardPreviewCaches(boardId);
-      editingPresenceMap = {};
-      var cachedRevision = (!isBoardSwitch && (_lastLoadedRevision || (activeBoardData && activeBoardData.revision)))
-        ? (_lastLoadedRevision || activeBoardData.revision)
-        : null;
-      loadStage = cachedRevision != null ? 'fetch-cached' : 'fetch';
-      var response = cachedRevision != null
-        ? await LexeraApi.getBoardColumnsCached(boardId, cachedRevision)
-        : await LexeraApi.getBoardColumns(boardId);
-      if (seq !== boardLoadSeq) return; // stale response, a newer load was started
-      if (response && response.notModified) {
-        traceFrontendAction('info', 'board.load.notModified', 'Skipped board reload because backend returned not-modified', {
-          boardId: boardId,
-          revision: cachedRevision || null,
-          dirty: isBoardDirty(),
-          isRemoteBoard: isRemoteBoardId(boardId)
-        });
-        loadStage = 'connect-sync-not-modified';
-        connectSyncForBoard(boardId);
-        return;
-      }
-      loadStage = 'prepare-board-meta';
-      var boardMeta = findBoardMeta(boardId);
-      if (boardMeta && boardMeta.filePath) {
-        response.filePath = boardMeta.filePath;
-      }
-      loadStage = 'assign-board-data';
-      setFullBoardDataState(response.fullBoard || null);
-      if (fullBoardData) setBoardSaveBase(fullBoardData, fullBoardData);
-      var isRemoteBoard = !!(response && response.isRemote);
-      if (fullBoardData) {
-        traceFrontendAction('info', 'board.load.identity', 'Loaded board from backend', {
-          boardId: boardId,
-          identity: summarizeBoardIdentity(fullBoardData)
-        });
-      }
-      setActiveBoardDataState(response);
-      try {
-        await refreshAvailableMarpClasses(false);
-      } catch (marpClassErr) {
-        logFrontendIssue('warn', 'board.load.marp-classes', 'Failed to refresh Marp classes during board load', marpClassErr);
-      }
-      pendingExternalRebaseConflict = null;
-      resetBoardDirtyState('loadBoard-fresh-backend-snapshot', boardId);
-      var draftSnapshot = isRemoteBoard ? null : loadLocalBoardDraft(boardId);
-      var shouldPrepareLiveSync = true;
-      if (response && typeof response.generation === 'number') {
-        _lastLoadedGeneration = response.generation;
-      }
-      _lastLoadedRevision = response && response.revision ? response.revision : null;
-      // Auto-convert legacy boards and save immediately
-      if (isRemoteBoard) {
-        clearLocalBoardDraft(boardId);
-      } else if (fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
-        loadStage = 'migrate-legacy-board';
-        migrateLegacyBoard();
-        try {
-          loadStage = 'save-migrated-board';
-          await saveFullBoard();
-        } catch (err) {
-          logFrontendIssue('warn', 'board.load.migrate', 'Failed to persist migrated board ' + boardId, err);
-        }
-        if (seq !== boardLoadSeq) return; // check again after second await
-      }
-      // Draft restore only makes sense on board switches (opening a board for
-      // the first time or navigating to a different one).  When the same board
-      // is reloaded (poll, SSE file-changed from remote peer), any draft is
-      // from the current editing session — clear it so it doesn't trigger a
-      // spurious restore prompt.  Crash recovery still works: the next time
-      // the app starts and opens this board, isBoardSwitch will be true.
-      if (!isBoardSwitch && draftSnapshot) {
-        clearLocalBoardDraft(boardId);
-        draftSnapshot = null;
-        traceFrontendAction('info', 'board.draft.sessionClear',
-          'Cleared current-session draft during board reload (not a board switch)', { boardId: boardId });
-      }
-      if (draftSnapshot && draftSnapshot.board) {
-        var currentSerialized = JSON.stringify(cloneBoardData(fullBoardData));
-        var draftSerialized = JSON.stringify(draftSnapshot.board);
-        if (currentSerialized !== draftSerialized) {
-          var currentBoard = response.fullBoard || null;
-          var draftBaseBoard = draftSnapshot.baseBoard || null;
-          var sameRevision = !!(draftSnapshot.revision && response.revision && draftSnapshot.revision === response.revision);
-          var draftIdentity = getBoardCardIdentityStats(currentBoard, draftSnapshot.board);
-          var draftMatchesCurrentIds = !hasBoardIdentityMismatch(currentBoard, draftSnapshot.board);
-          var draftHasBase = !!draftBaseBoard;
-          var canRestoreDirectly = sameRevision && draftMatchesCurrentIds;
-          var canRestoreViaRebase = draftHasBase && !sameRevision;
-          if (!canRestoreDirectly && !canRestoreViaRebase) {
-            loadStage = 'restore-local-draft-blocked';
-            shouldPrepareLiveSync = true;
-            var discardUnrecoverableDraft = sameRevision && !draftHasBase && draftIdentity.overlap === 0;
-            if (discardUnrecoverableDraft) {
-              clearLocalBoardDraft(boardId);
-              traceFrontendAction('info', 'board.draft.discard', 'Discarded incompatible stale local draft during board load', {
-                boardId: boardId,
-                currentRevision: response.revision || null,
-                draftRevision: draftSnapshot.revision || null,
-                hasBaseBoard: draftHasBase,
-                identity: draftIdentity
-              });
-            } else {
-              traceFrontendAction('warn', 'board.draft.restore', 'Skipped unsafe local draft restore because card identities no longer match current board', {
-                boardId: boardId,
-                currentRevision: response.revision || null,
-                draftRevision: draftSnapshot.revision || null,
-                hasBaseBoard: draftHasBase,
-                discarded: false,
-                identity: draftIdentity
-              });
-              showNotification('A local draft was preserved but not restored because it no longer matches the current board revision safely.');
-            }
-          } else {
-            loadStage = 'restore-local-draft';
-            var restoreMessage = canRestoreDirectly
-              ? 'Restore the unsaved local draft for this board?\n\nIt was saved automatically on this device.'
-              : (canRestoreViaRebase
-                ? 'Restore the unsaved local draft for this board?\n\nExternal changes will be rebased against its saved base first.'
-                : 'Restore the unsaved local draft for this board?\n\nIt was saved automatically on this device.');
-            var restoreDraft = await showConfirmDialog(restoreMessage);
-          }
-          if (typeof restoreDraft !== 'undefined') {
-            if (restoreDraft) {
-              if (canRestoreViaRebase) {
-                loadStage = 'restore-local-draft-rebase';
-                try {
-                  var rebasedDraft = await LexeraApi.rebaseBoardWithBase(boardId, draftBaseBoard, draftSnapshot.board);
-                  if (rebasedDraft && rebasedDraft.currentBoard && !rebasedDraft.hasConflicts) {
-                    setFullBoardDataState(rebasedDraft.board || draftSnapshot.board);
-                    ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
-                    if (!fullBoardData.columns) fullBoardData.columns = [];
-                    setBoardSaveBase(fullBoardData, rebasedDraft.currentBoard || response.fullBoard || fullBoardData);
-                    markBoardDirty();
-                  } else if (rebasedDraft && rebasedDraft.hasConflicts) {
-                    shouldPrepareLiveSync = false;
-                    pendingExternalRebaseConflict = {
-                      result: rebasedDraft,
-                      savedAt: Date.now()
-                    };
-                    traceFrontendAction('warn', 'board.draft.restore', 'Draft restore blocked by rebase conflicts', {
-                      boardId: boardId,
-                      currentRevision: response.revision || null,
-                      draftRevision: draftSnapshot.revision || null,
-                      conflicts: rebasedDraft.conflicts || 0
-                    });
-                    showNotification('The local draft was preserved, but it conflicts with the current board and was not restored automatically.');
-                  }
-                } catch (restoreErr) {
-                  shouldPrepareLiveSync = false;
-                  logFrontendIssue('warn', 'board.draft.restore', 'Failed to rebase local draft before restore', restoreErr);
-                  showNotification('The local draft was preserved, but automatic restore failed.');
-                }
-              } else {
-                setFullBoardDataState(draftSnapshot.board);
-                ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
-                if (!fullBoardData.columns) fullBoardData.columns = [];
-                setBoardSaveBase(fullBoardData, draftBaseBoard || response.fullBoard || fullBoardData);
-                markBoardDirty();
-              }
-            } else {
-              clearLocalBoardDraft(boardId);
-            }
-          }
-        } else {
-          clearLocalBoardDraft(boardId);
-        }
-      }
-      if (fullBoardData) {
-        try {
-          loadStage = 'prepare-live-sync';
-          await closeLiveSyncSession(boardId);
-          if (shouldPrepareLiveSync) {
-            await ensureLiveSyncSession(boardId);
-            if (liveSyncState && liveSyncState.boardId === boardId && fullBoardData) {
-              traceBoardIdentityPair('info', 'board.load.identity', 'Identity comparison after board load session prepare', boardId, 'local', fullBoardData, 'session', liveSyncState.board);
-            }
-          } else {
-            liveSyncState = null;
-            LexeraApi.disconnectSync();
-          }
-        } catch (e) {
-          logFrontendIssue('warn', 'board.load.live-sync', 'Failed to prepare live sync session for board ' + boardId, e);
-        }
-      }
-      loadStage = 'update-display';
-      updateDisplayFromFullBoard(); // populate activeBoardData.rows before sidebar render
-      loadStage = 'set-board-hierarchy';
-      // Route through commitLocalBoardChange so the workspace-shell parent
-      // is notified via lexera-board-mutated on initial load and tab-switch
-      // reloads. Without this, the parent sidebar stays stale until the
-      // next poll interval or user mutation.
-      commitLocalBoardChange(boardId, fullBoardData, {
-        setLocalState: false, // already set above via setFullBoardDataState
-        refreshHierarchy: true,
-        revision: response.revision || null
-      });
-      loadStage = 'render-main-view';
-      renderMainView();
-      loadStage = 'schedule-dashboard-refresh';
-      scheduleDashboardRefresh(80);
-      // Connect WS sync for this board (no-op if already connected)
-      loadStage = 'connect-sync';
-      connectSyncForBoard(boardId);
-    } catch (err) {
-      if (seq !== boardLoadSeq) return; // stale error, ignore
-      logFrontendIssue('error', 'board.load', 'Failed to load board ' + boardId + ' during ' + loadStage, err);
-      try {
-        await closeLiveSyncSession(boardId);
-      } catch (closeErr) {
-        logFrontendIssue('warn', 'board.load.live-sync', 'Failed to close live sync session after load failure for board ' + boardId, closeErr);
-      }
-      setActiveBoardDataState(null);
-      setFullBoardDataState(null);
-      _lastLoadedGeneration = null;
-      _lastLoadedRevision = null;
-      renderMainView();
-      scheduleDashboardRefresh(80);
-    }
-  }
+  async function loadBoard(boardId) { return BoardDataStore.loadBoard(boardId); }
 
-  /**
-   * Migrate legacy flat-column board to rows→stacks→columns format.
-   * Called once on load; on next save the new format is persisted.
-   */
-  function migrateLegacyBoard() {
-    if (!fullBoardData) return;
-    if (fullBoardData.rows && fullBoardData.rows.length > 0) return; // already new format
-    var cols = fullBoardData.columns || [];
-    if (cols.length === 0) {
-      fullBoardData.rows = [];
-      return;
-    }
-    fullBoardData.rows = buildRowsFromLegacyColumns(cols, fullBoardData.title || 'Default');
-    fullBoardData.columns = [];
-  }
+  function migrateLegacyBoard() { BoardDataStore.migrateLegacyBoard(); }
 
-  /**
-   * Get a flat list of all columns from fullBoardData (rows→stacks→columns).
-   */
-  function getAllColumnsFromBoardData(boardData) {
-    var cols = [];
-    if (!boardData || !boardData.rows) return cols;
-    for (var r = 0; r < boardData.rows.length; r++) {
-      var row = boardData.rows[r];
-      for (var s = 0; s < row.stacks.length; s++) {
-        var stack = row.stacks[s];
-        for (var c = 0; c < stack.columns.length; c++) {
-          cols.push(stack.columns[c]);
-        }
-      }
-    }
-    return cols;
-  }
+  function getAllColumnsFromBoardData(boardData) { return BoardDataStore.getAllColumnsFromBoardData(boardData); }
+  function getAllFullColumns() { return BoardDataStore.getAllFullColumns(); }
+  function getFullColumn(flatIndex) { return BoardDataStore.getFullColumn(flatIndex); }
 
-  /**
-   * Get a flat list of all columns from fullBoardData (rows→stacks→columns).
-   */
-  function getAllFullColumns() {
-    return getAllColumnsFromBoardData(fullBoardData);
-  }
+  function cloneVisibleCardForRender(card) { return BoardDataStore.cloneVisibleCardForRender(card); }
+  function buildRenderableColumnSnapshot(fullCol, flatIdx) { return BoardDataStore.buildRenderableColumnSnapshot(fullCol, flatIdx); }
+  function getRenderableColumnByIndex(flatIndex) { return BoardDataStore.getRenderableColumnByIndex(flatIndex); }
 
-  /**
-   * Get the column at flat index from fullBoardData (either format).
-   */
-  function getFullColumn(flatIndex) {
-    var cols = getAllColumnsFromBoardData(fullBoardData);
-    return (flatIndex >= 0 && flatIndex < cols.length) ? cols[flatIndex] : null;
-  }
-
-  function cloneVisibleCardForRender(card) {
-    return {
-      id: card.id,
-      content: card.content,
-      checked: !!card.checked,
-      kid: card.kid,
-      params: card.params || {}
-    };
-  }
-
-  function buildRenderableColumnSnapshot(fullCol, flatIdx) {
-    if (!fullCol) return null;
-    return {
-      index: flatIdx,
-      id: fullCol.id,
-      title: fullCol.title,
-      cards: (fullCol.cards || []).filter(function (card) {
-        return !is_archived_or_deleted(card && card.content ? card.content : '');
-      }).map(function (card) {
-        return cloneVisibleCardForRender(card);
-      }),
-      params: fullCol.params || {}
-    };
-  }
-
-  function getRenderableColumnByIndex(flatIndex) {
-    var visibleCols = activeBoardData && Array.isArray(activeBoardData.columns) ? activeBoardData.columns : [];
-    for (var i = 0; i < visibleCols.length; i++) {
-      if (visibleCols[i] && visibleCols[i].index === flatIndex) return visibleCols[i];
-    }
-    return buildRenderableColumnSnapshot(getFullColumn(flatIndex), flatIndex);
-  }
-
-  function updateDisplayFromFullBoard() {
-    if (!fullBoardData || !activeBoardData) return;
-
-    var allCols = getAllFullColumns();
-    var visibleColumns = [];
-    var visibleRows = (fullBoardData.rows || [])
-      .filter(function (row) {
-        return !is_archived_or_deleted(row && row.title ? row.title : '');
-      })
-      .map(function (row) {
-        var stacks = (row.stacks || [])
-          .filter(function (stack) {
-            return !is_archived_or_deleted(stack && stack.title ? stack.title : '');
-          })
-          .map(function (stack) {
-            var cols = (stack.columns || [])
-              .filter(function (col) { return !is_archived_or_deleted(col && col.title ? col.title : ''); })
-              .map(function (col) {
-                var cards = (col.cards || []).filter(function (c) {
-                  return !is_archived_or_deleted(c && c.content ? c.content : '');
-                });
-                var flatIdx = allCols.indexOf(col);
-                var visibleCards = cards.map(function (card) {
-                  return cloneVisibleCardForRender(card);
-                });
-                var visibleCol = {
-                  index: flatIdx,
-                  id: col.id,
-                  title: col.title,
-                  cards: visibleCards,
-                  params: col.params || {}
-                };
-                visibleColumns.push(visibleCol);
-                return visibleCol;
-              });
-            return { id: stack.id, title: stack.title, columns: cols, params: stack.params };
-          });
-        return { id: row.id, title: row.title, stacks: stacks, params: row.params || {} };
-      });
-
-    updateActiveBoardDataState(function (nextBoardData) {
-      nextBoardData.columns = visibleColumns;
-      nextBoardData.rows = visibleRows;
-    });
-  }
+  function updateDisplayFromFullBoard() { BoardDataStore.updateDisplayFromFullBoard(); }
 
   function is_archived_or_deleted(text) {
     return LexeraTagSystem.isArchivedOrDeleted(text);
@@ -2870,31 +2644,10 @@ var LexeraDashboard = (function () {
     return LexeraTagSystem.applyInternalHiddenTag(text, tag);
   }
 
-  function getColumnByLocation(rowIndex, stackIndex, colIndex) {
-    if (!fullBoardData || !fullBoardData.rows) return null;
-    var row = fullBoardData.rows[rowIndex];
-    if (!row || !row.stacks) return null;
-    var stack = row.stacks[stackIndex];
-    if (!stack || !stack.columns) return null;
-    return stack.columns[colIndex] || null;
-  }
-
-  function getRowByLocation(rowIndex) {
-    if (!fullBoardData || !fullBoardData.rows) return null;
-    return fullBoardData.rows[rowIndex] || null;
-  }
-
-  function getStackByLocation(rowIndex, stackIndex) {
-    var row = getRowByLocation(rowIndex);
-    if (!row || !row.stacks) return null;
-    return row.stacks[stackIndex] || null;
-  }
-
-  function getCardByLocation(rowIndex, stackIndex, colIndex, cardIndex) {
-    var col = getColumnByLocation(rowIndex, stackIndex, colIndex);
-    if (!col || !col.cards) return null;
-    return col.cards[cardIndex] || null;
-  }
+  function getColumnByLocation(rowIndex, stackIndex, colIndex) { return BoardDataStore.getColumnByLocation(rowIndex, stackIndex, colIndex); }
+  function getRowByLocation(rowIndex) { return BoardDataStore.getRowByLocation(rowIndex); }
+  function getStackByLocation(rowIndex, stackIndex) { return BoardDataStore.getStackByLocation(rowIndex, stackIndex); }
+  function getCardByLocation(rowIndex, stackIndex, colIndex, cardIndex) { return BoardDataStore.getCardByLocation(rowIndex, stackIndex, colIndex, cardIndex); }
 
   function getRowByLocationInBoard(boardData, rowIndex) {
     return getBoardCleanupApi().getRowByLocationInBoard(boardData, rowIndex);
@@ -4086,7 +3839,7 @@ var LexeraDashboard = (function () {
   function showSaveTrackingMenu(btnElement, forcedX, forcedY) {
     if (!btnElement) return;
     var dirty = isBoardDirty();
-    var revision = _lastLoadedRevision || (activeBoardData && activeBoardData.revision) || '';
+    var revision = BoardDataStore.getLastLoadedRevision() || (activeBoardData && activeBoardData.revision) || '';
     var statusLabel = _headerSavingInProgress
       ? 'Saving in progress'
       : (dirty ? 'Unsaved local changes' : 'All changes saved');
@@ -4098,12 +3851,12 @@ var LexeraDashboard = (function () {
       : null;
     var changeStats = collectBoardChangeStatsFromDelta(delta);
     var changeSummaryLabel = buildChangeSummaryLabel(changeStats, dirty);
-    var historyUndoDepth = undoStack.length + (undoPendingSnapshot ? 1 : 0);
-    var historyRedoDepth = redoStack.length;
-    var saveFlowLabel = _saveInFlight
+    var historyUndoDepth = UndoRedo.getUndoDepth();
+    var historyRedoDepth = UndoRedo.getRedoDepth();
+    var saveFlowLabel = BoardDataStore.getSaveInFlight()
       ? 'Save flow: in-flight'
-      : (_savePending ? 'Save flow: queued' : 'Save flow: idle');
-    var autoSaveLabel = _autoSaveTimer ? 'Auto-save: scheduled' : 'Auto-save: idle';
+      : (BoardDataStore.getSavePending() ? 'Save flow: queued' : 'Save flow: idle');
+    var autoSaveLabel = BoardDataStore.getAutoSaveTimer() ? 'Auto-save: scheduled' : 'Auto-save: idle';
     var conflictCount = (pendingExternalRebaseConflict && pendingExternalRebaseConflict.result)
       ? (pendingExternalRebaseConflict.result.conflicts || 0)
       : 0;
@@ -4912,625 +4665,97 @@ var LexeraDashboard = (function () {
     el.title = titles[state] || state;
   }
 
-  // Save coalescing: when a save is already in-flight, new requests are
-  // deferred and coalesced into a single follow-up save.  This is purely
-  // an optimisation to avoid redundant network round-trips.
-  //
-  // DESIGN INVARIANT — local edits live in fullBoardData until they are saved
-  // or explicitly rebased. Clean boards may adopt authoritative external
-  // snapshots directly so card identities stay aligned with live sync/storage.
-  // Dirty boards keep their working copy and rebase when external changes land.
-  var _saveInFlight = false;
-  var _savePending = false;
-  var _autoSaveTimer = null;
-  var _autoSaveRetryCount = 0;
-  var AUTO_SAVE_DELAY_MS = 1200;
-  var AUTO_SAVE_REMOTE_DELAY_MS = 180;
-  var AUTO_SAVE_MAX_RETRIES = 5;
-  var AUTO_SAVE_RETRY_DELAYS = [2000, 5000, 10000, 30000, 60000];
+  // Save coalescing state and auto-save are now owned by BoardDataStore.
+  // These accessors are kept for code that reads them directly.
+  var AUTO_SAVE_DELAY_MS = BoardDataStore.AUTO_SAVE_DELAY_MS;
+  var AUTO_SAVE_REMOTE_DELAY_MS = BoardDataStore.AUTO_SAVE_REMOTE_DELAY_MS;
 
-  function clearScheduledAutoSave(reason) {
-    if (_autoSaveTimer) {
-      clearTimeout(_autoSaveTimer);
-      _autoSaveTimer = null;
-      traceFrontendAction('info', 'save.auto.cancel', 'Cancelled pending auto-save', {
-        boardId: activeBoardId || null,
-        reason: reason || null
-      });
+  function clearScheduledAutoSave(reason) { BoardDataStore.clearScheduledAutoSave(reason); }
+  function scheduleAutoSave(reason, delayMs) { return BoardDataStore.scheduleAutoSave(reason, delayMs); }
+
+  async function writeBoardCrashsave(reason, boardData, extra) { return BoardDataStore.writeBoardCrashsave(reason, boardData, extra); }
+
+  async function overwriteBoardWithLocalDraft(trigger) { return BoardDataStore.overwriteBoardWithLocalDraft(trigger); }
+
+  async function saveFullBoard() { return BoardDataStore.saveFullBoard(); }
+
+  // Board dirty state is now owned by BoardDataStore.
+  function resetBoardDirtyState(reason, boardId) { BoardDataStore.resetBoardDirtyState(reason, boardId); }
+  function markBoardDirty() { BoardDataStore.markBoardDirty(); }
+  function getBoardDirtyGeneration() { return BoardDataStore.getBoardDirtyGeneration(); }
+  function clearBoardDirtyIfUnchanged(savedGeneration) { BoardDataStore.clearBoardDirtyIfUnchanged(savedGeneration); }
+  function clearBoardDirty() { BoardDataStore.clearBoardDirty(); }
+  function isBoardDirty() { return BoardDataStore.isBoardDirty(); }
+  function notifyEmbeddedBoardMutation(boardId, boardData) { BoardDataStore.notifyEmbeddedBoardMutation(boardId, boardData); }
+
+  function commitLocalBoardChange(boardId, nextBoardData, options) { return BoardDataStore.commitLocalBoardChange(boardId, nextBoardData, options); }
+  function persistBoardMutation(options) { return BoardDataStore.persistBoardMutation(options); }
+
+  function flushCardAutoSizeSync() {
+    cardAutoSizeSyncFrame = 0;
+    var pendingCols = Array.from(cardAutoSizePendingCols);
+    var needsCanvasBoundsSync = cardAutoSizeNeedsCanvasBoundsSync;
+    var needsLayoutUnlockCleanup = cardAutoSizeNeedsLayoutUnlockCleanup;
+    cardAutoSizePendingCols.clear();
+    cardAutoSizeNeedsCanvasBoundsSync = false;
+    cardAutoSizeNeedsLayoutUnlockCleanup = false;
+    if (needsLayoutUnlockCleanup && !isCanvasBoardLayout()) {
+      clearLayoutLockStyles();
+    }
+    if (needsCanvasBoundsSync) {
+      var container = getElColumnsContainer();
+      if (container) scheduleCanvasRowBoundsSync(container);
+    }
+    for (var i = 0; i < pendingCols.length; i++) {
+      vsRemeasureColumn(pendingCols[i]);
     }
   }
 
-  function scheduleAutoSave(reason, delayMs) {
-    var boardId = activeBoardId || null;
-    var waitMs = typeof delayMs === 'number' && isFinite(delayMs) && delayMs >= 0
-      ? Math.floor(delayMs)
-      : AUTO_SAVE_DELAY_MS;
-    if (!boardId || !fullBoardData) {
-      traceFrontendAction('warn', 'save.auto.skip', 'Skipped auto-save scheduling because active board is not ready', {
-        boardId: boardId,
-        reason: reason || null,
-        hasBoardData: !!fullBoardData
-      });
-      return false;
-    }
-    if (!isBoardDirty()) {
-      traceFrontendAction('info', 'save.auto.skip', 'Skipped auto-save scheduling because board is not dirty', {
-        boardId: boardId,
-        reason: reason || null
-      });
-      return false;
-    }
-    if (pendingExternalRebaseConflict && pendingExternalRebaseConflict.result) {
-      traceFrontendAction('warn', 'save.auto.skip', 'Skipped auto-save scheduling because unresolved rebase conflicts exist', {
-        boardId: boardId,
-        reason: reason || null,
-        conflicts: pendingExternalRebaseConflict.result.conflicts || 0
-      });
-      return false;
-    }
-    if (_autoSaveTimer) {
-      clearTimeout(_autoSaveTimer);
-      _autoSaveTimer = null;
-    }
-    traceFrontendAction('info', 'save.auto.schedule', 'Scheduled auto-save after board mutation', {
-      boardId: boardId,
-      reason: reason || null,
-      delayMs: waitMs,
-      dirty: isBoardDirty(),
-      saveInFlight: _saveInFlight
-    });
-    _autoSaveTimer = setTimeout(async function () {
-      _autoSaveTimer = null;
-      if (activeBoardId !== boardId) {
-        traceFrontendAction('warn', 'save.auto.skip', 'Skipped auto-save because active board changed before timer fired', {
-          scheduledBoardId: boardId,
-          activeBoardId: activeBoardId || null,
-          reason: reason || null
-        });
-        return;
-      }
-      if (!isBoardDirty()) {
-        traceFrontendAction('info', 'save.auto.skip', 'Skipped auto-save because board is no longer dirty', {
-          boardId: boardId,
-          reason: reason || null
-        });
-        return;
-      }
-      if (pendingExternalRebaseConflict && pendingExternalRebaseConflict.result) {
-        traceFrontendAction('warn', 'save.auto.skip', 'Skipped auto-save because unresolved rebase conflicts exist at execution time', {
-          boardId: boardId,
-          reason: reason || null,
-          conflicts: pendingExternalRebaseConflict.result.conflicts || 0
-        });
-        return;
-      }
-      traceFrontendAction('info', 'save.auto.run', 'Executing auto-save', {
-        boardId: boardId,
-        reason: reason || null,
-        dirty: isBoardDirty(),
-        saveInFlight: _saveInFlight
-      });
-      try {
-        var genAtSaveStart = getBoardDirtyGeneration();
-        var saved = await saveFullBoard();
-        if (saved) {
-          _autoSaveRetryCount = 0;
-          clearBoardDirtyIfUnchanged(genAtSaveStart);
-          traceFrontendAction('info', 'save.auto.success', 'Auto-save completed successfully', {
-            boardId: boardId,
-            reason: reason || null
-          });
-        } else {
-          traceFrontendAction('warn', 'save.auto.blocked', 'Auto-save did not persist changes (blocked or deferred)', {
-            boardId: boardId,
-            reason: reason || null,
-            dirty: isBoardDirty(),
-            saveInFlight: _saveInFlight
-          });
-        }
-      } catch (err) {
-        logFrontendIssue('error', 'save.auto', 'Auto-save failed (retry ' + _autoSaveRetryCount + '/' + AUTO_SAVE_MAX_RETRIES + ')', err);
-        if (isBoardDirty()) {
-          _autoSaveRetryCount++;
-          if (_autoSaveRetryCount <= AUTO_SAVE_MAX_RETRIES) {
-            var retryDelay = AUTO_SAVE_RETRY_DELAYS[Math.min(_autoSaveRetryCount - 1, AUTO_SAVE_RETRY_DELAYS.length - 1)];
-            scheduleAutoSave('retry-after-failure-' + _autoSaveRetryCount, retryDelay);
-          } else {
-            logFrontendIssue('error', 'save.auto', 'Auto-save retries exhausted, writing crashsave to prevent data loss');
-            writeBoardCrashsave('auto-save-retries-exhausted', fullBoardData);
-          }
-        }
-      }
-    }, waitMs);
-    return true;
-  }
-
-  async function writeBoardCrashsave(reason, boardData, extra) {
-    if (!activeBoardId || !boardData) return null;
-    var payload = boardData;
-    var crashsaveReason = reason || 'save-recovery';
-    traceFrontendAction('warn', 'board.crashsave', 'Attempting to persist crashsave for active board', {
-      boardId: activeBoardId,
-      reason: crashsaveReason,
-      summary: summarizeBoardHierarchy(boardData),
-      extra: extra || null
-    });
-    try {
-      var result = await LexeraApi.createBoardCrashsave(activeBoardId, payload, crashsaveReason);
-      traceFrontendAction('warn', 'board.crashsave', 'Crashsave persisted for active board', {
-        boardId: activeBoardId,
-        reason: crashsaveReason,
-        path: result && result.path ? result.path : null,
-        filename: result && result.filename ? result.filename : null
-      });
-      return result || null;
-    } catch (err) {
-      logFrontendIssue('error', 'board.crashsave', 'Failed to persist crashsave for active board', err);
-      return null;
-    }
-  }
-
-  async function overwriteBoardWithLocalDraft(trigger) {
-    if (!activeBoardId || !fullBoardData) return false;
-    if (_saveInFlight) return false;
-    _saveInFlight = true;
-    showSaving();
-    try {
-      lastSaveTime = Date.now();
-      ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
-      if (!fullBoardData.columns) fullBoardData.columns = [];
-      traceFrontendAction('warn', 'board.save.force', 'Overwriting external board version with local draft', {
-        boardId: activeBoardId,
-        trigger: trigger || null,
-        workingSummary: summarizeBoardHierarchy(fullBoardData),
-        conflictSummary: pendingExternalRebaseConflict && pendingExternalRebaseConflict.result
-          ? {
-              conflicts: pendingExternalRebaseConflict.result.conflicts || 0,
-              autoMerged: pendingExternalRebaseConflict.result.autoMerged || 0
-            }
-          : null
-      });
-      var result = await LexeraApi.saveBoard(activeBoardId, fullBoardData);
-      var savedBoard = result && result.board ? result.board : null;
-      if (savedBoard) {
-        ensureBoardRowsForMutation(savedBoard, getMutationBoardTitle(activeBoardId, savedBoard));
-        setBoardSaveBase(fullBoardData, savedBoard);
-      } else {
-        setBoardSaveBase(fullBoardData, fullBoardData);
-      }
-      pendingExternalRebaseConflict = null;
-      if (activeBoardData && result) {
-        updateActiveBoardDataState(function (nextBoardData) {
-          if (typeof result.version === 'number') nextBoardData.version = result.version;
-          if (result.revision) nextBoardData.revision = result.revision;
-        });
-      }
-      if (result && typeof result.generation === 'number') {
-        _lastLoadedGeneration = result.generation;
-      }
-      _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
-      clearBoardDirty();
-      try {
-        await reopenLiveSyncSession(activeBoardId);
-      } catch (err) {
-        logFrontendIssue('warn', 'board.save.force', 'Forced overwrite save succeeded but live sync session could not be reopened', err);
-      }
-      triggerAutoExportAfterBoardSave(activeBoardId);
-      showNotification('Local draft saved and overwrote the external board version.');
-      return true;
-    } catch (err) {
-      logFrontendIssue('error', 'board.save.force', 'Failed to overwrite external board version with local draft', err);
-      var overwriteCrashsave = await writeBoardCrashsave('force-overwrite-save-exception', fullBoardData, {
-        error: err && err.message ? err.message : String(err),
-        trigger: trigger || null
-      });
-      showNotification(
-        overwriteCrashsave && overwriteCrashsave.filename
-          ? ('Overwrite failed. Recovery copy written: ' + overwriteCrashsave.filename)
-          : 'Overwrite failed. The local draft remains open, but crashsave could not be written.'
-      );
-      return false;
-    } finally {
-      _saveInFlight = false;
-      hideSaving();
-    }
-  }
-
-  async function saveFullBoard() {
-    clearScheduledAutoSave('saveFullBoard-start');
-    if (pendingExternalRebaseConflict && pendingExternalRebaseConflict.result) {
-      traceFrontendAction('warn', 'save.blocked.conflict', 'Blocked save because unresolved external rebase conflict exists', {
-        boardId: activeBoardId || null,
-        conflicts: pendingExternalRebaseConflict.result.conflicts || 0,
-        autoMerged: pendingExternalRebaseConflict.result.autoMerged || 0
-      });
-      showExternalRebaseConflictDialog(pendingExternalRebaseConflict.result);
-      return false;
-    }
-    if (_saveInFlight) {
-      _savePending = true;
-      traceFrontendAction('info', 'save.coalesce', 'Save request coalesced because another save is in flight', {
-        boardId: activeBoardId || null,
-        dirty: isBoardDirty()
-      });
-      return false;
-    }
-    _saveInFlight = true;
-    var saveSucceeded = false;
-    traceFrontendAction('info', 'save.begin', 'Starting board save', {
-      boardId: activeBoardId || null,
-      isRemoteBoard: isActiveRemoteBoard(),
-      dirty: isBoardDirty(),
-      savePending: _savePending
-    });
-    showSaving();
-    try {
-      if (!fullBoardData) {
-        traceFrontendAction('warn', 'save.skip.no-board', 'Skipped board save because no full board data is loaded', {
-          boardId: activeBoardId || null
-        });
-        return false;
-      }
-      do {
-        _savePending = false;
-        lastSaveTime = Date.now();
-        // Ensure columns field exists (backend requires it)
-        if (!fullBoardData.columns) fullBoardData.columns = [];
-
-        var liveSession = getLiveSyncSession(activeBoardId);
-        if (liveSession) {
-          traceBoardIdentityPair('info', 'save.preflight', 'Pre-save identity comparison against live sync session', activeBoardId, 'local', fullBoardData, 'session', liveSession.board);
-        }
-        if (liveSession && hasBoardIdentityMismatch(fullBoardData, liveSession.board)) {
-          traceFrontendAction('error', 'save.identityMismatch', 'Blocked save because local board identities do not match live sync session', {
-            boardId: activeBoardId,
-            local: getBoardCardIdentityStats(fullBoardData, liveSession.board),
-            incomingSummary: summarizeBoardHierarchy(fullBoardData),
-            sessionSummary: summarizeBoardHierarchy(liveSession.board)
-          });
-          var liveSessionCrashsave = await writeBoardCrashsave('identity-mismatch-live-session', fullBoardData, {
-            sessionSummary: summarizeBoardHierarchy(liveSession.board)
-          });
-          showNotification(
-            liveSessionCrashsave && liveSessionCrashsave.filename
-              ? ('Save blocked. Recovery copy written: ' + liveSessionCrashsave.filename)
-              : 'Save blocked and crashsave failed. The local draft remains open in the app.'
-          );
-          return false;
-        }
-
-        traceFrontendAction('debug', 'save.board', 'Saving board', { summary: boardCardSummary(fullBoardData) });
-        if (await applyBoardToLiveSyncSession(activeBoardId, fullBoardData, { skipBoardReplace: true, syncSaveBase: true })) {
-          traceFrontendAction('debug', 'save.board', 'Live sync save path succeeded', {});
-          if (pendingRefresh) {
-            pendingRefresh = false;
-            await flushPendingLiveSyncUpdates({ refreshSidebar: true });
-          }
-          saveSucceeded = true;
-          break;
-        }
-        var baseBoardData = getBoardSaveBase(fullBoardData);
-        if (baseBoardData) {
-          traceBoardIdentityPair('info', 'save.preflight', 'Pre-save identity comparison against save base', activeBoardId, 'local', fullBoardData, 'saveBase', baseBoardData);
-        }
-        if (baseBoardData && hasBoardIdentityMismatch(fullBoardData, baseBoardData)) {
-          traceFrontendAction('error', 'save.identityMismatch', 'Blocked save because local board identities do not match its save base', {
-            boardId: activeBoardId,
-            local: getBoardCardIdentityStats(fullBoardData, baseBoardData),
-            incomingSummary: summarizeBoardHierarchy(fullBoardData),
-            baseSummary: summarizeBoardHierarchy(baseBoardData)
-          });
-          var baseMismatchCrashsave = await writeBoardCrashsave('identity-mismatch-save-base', fullBoardData, {
-            baseSummary: summarizeBoardHierarchy(baseBoardData)
-          });
-          showNotification(
-            baseMismatchCrashsave && baseMismatchCrashsave.filename
-              ? ('Save blocked. Recovery copy written: ' + baseMismatchCrashsave.filename)
-              : 'Save blocked and crashsave failed. The local draft remains open in the app.'
-          );
-          return false;
-        }
-        traceFrontendAction('debug', 'save.board', 'Using REST save path', { hasBase: !!baseBoardData, baseSummary: baseBoardData ? boardCardSummary(baseBoardData) : null });
-        if (isActiveRemoteBoard()) {
-          traceFrontendAction('info', 'save.remote', 'Saving remote board via REST', {
-            boardId: activeBoardId,
-            hasBase: !!baseBoardData,
-            summary: summarizeBoardHierarchy(fullBoardData)
-          });
-        }
-        var result;
-        try {
-          result = baseBoardData
-            ? await LexeraApi.saveBoardWithBase(activeBoardId, baseBoardData, fullBoardData)
-            : await LexeraApi.saveBoard(activeBoardId, fullBoardData);
-        } catch (err) {
-          if (err && err.status === 409) {
-            traceFrontendAction('warn', 'board.save.conflict', 'Save blocked by external conflicting changes', {
-              boardId: activeBoardId,
-              hasBase: !!baseBoardData,
-              error: err && err.message ? err.message : String(err)
-            });
-            if (baseBoardData) {
-              try {
-                var conflictResult = await LexeraApi.rebaseBoardWithBase(activeBoardId, baseBoardData, fullBoardData);
-                if (conflictResult && conflictResult.hasConflicts) {
-                  pendingExternalRebaseConflict = {
-                    result: conflictResult,
-                    savedAt: Date.now()
-                  };
-                  showExternalRebaseConflictDialog(conflictResult);
-                  return false;
-                }
-              } catch (rebaseErr) {
-                logFrontendIssue('error', 'board.save.conflict', 'Failed to fetch rebase preview after conflict', rebaseErr);
-              }
-            }
-            showNotification('Save blocked: the board changed externally and needs to be reloaded or rebased before saving.');
-            return false;
-          }
-          throw err;
-        }
-
-        // Never replace fullBoardData — only update the save base.
-        var savedBoard = result && result.board ? result.board : null;
-        if (savedBoard) {
-          ensureBoardRowsForMutation(savedBoard, getMutationBoardTitle(activeBoardId, savedBoard));
-          setBoardSaveBase(fullBoardData, savedBoard);
-          pendingExternalRebaseConflict = null;
-        } else {
-          setBoardSaveBase(fullBoardData, fullBoardData);
-        }
-        // Legacy→v2 redirect: backend saved to a new filename to preserve
-        // the original v1 file.  Update the tracked file path everywhere.
-        if (activeBoardData && result) {
-          updateActiveBoardDataState(function (nextBoardData) {
-            if (result.redirectedPath) nextBoardData.filePath = result.redirectedPath;
-            if (typeof result.version === 'number') nextBoardData.version = result.version;
-            if (result.revision) nextBoardData.revision = result.revision;
-          });
-        }
-        if (result && result.redirectedPath) {
-          traceFrontendAction('info', 'save.legacy_redirect', 'Board saved to new file to preserve original v1 file', {
-            boardId: activeBoardId,
-            redirectedPath: result.redirectedPath
-          });
-        }
-        if (result && typeof result.generation === 'number') {
-          _lastLoadedGeneration = result.generation;
-        }
-        _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
-
-        try {
-          await reopenLiveSyncSession(activeBoardId);
-        } catch (e) {
-          // REST save succeeded even if the live session cannot be refreshed.
-        }
-        if (result && result.hasConflicts) {
-          showConflictDialog(result.conflicts, result.autoMerged);
-        } else if (result && result.merged && result.autoMerged > 0) {
-          showNotification('Auto-merged ' + result.autoMerged + ' change(s) with server version');
-        }
-        if (isActiveRemoteBoard()) {
-          traceFrontendAction('info', 'save.remote', 'Remote board save finished', {
-            boardId: activeBoardId,
-            revision: result && result.revision ? result.revision : null,
-            generation: result && typeof result.generation === 'number' ? result.generation : null,
-            hasConflicts: !!(result && result.hasConflicts)
-          });
-        }
-        saveSucceeded = true;
-      } while (_savePending);
-      if (saveSucceeded) triggerAutoExportAfterBoardSave(activeBoardId);
-      return saveSucceeded;
-    } catch (err) {
-      var saveErrMsg = err && err.message ? err.message : String(err);
-      logFrontendIssue('error', 'board.save', 'Save failed: ' + saveErrMsg, err);
-      var failedSaveCrashsave = await writeBoardCrashsave('save-exception', fullBoardData, {
-        error: saveErrMsg
-      });
-      showNotification(
-        failedSaveCrashsave && failedSaveCrashsave.filename
-          ? ('Save failed (' + saveErrMsg + '). Recovery copy written: ' + failedSaveCrashsave.filename)
-          : ('Save failed (' + saveErrMsg + '). The local draft remains open, but crashsave could not be written.')
-      );
-      throw err;
-    } finally {
-      _saveInFlight = false;
-      hideSaving();
-    }
-  }
-
-  // Generation is kept for diagnostics only; backend-computed revision is the
-  // authoritative freshness token for external file changes.
-  var _lastLoadedGeneration = null;
-  var _lastLoadedRevision = null;
-
-  // Board dirty state: tracks whether fullBoardData has unsaved changes.
-  // _boardDirtyGeneration increments on each mutation. Save captures the generation
-  // at start and only clears dirty if no new mutations arrived during the save.
-  var _boardDirty = false;
-  var _boardDirtyGeneration = 0;
-
-  function resetBoardDirtyState(reason, boardId) {
-    clearScheduledAutoSave('resetBoardDirtyState:' + (reason || 'unknown'));
-    _boardDirty = false;
-    pendingExternalRebaseConflict = null;
-    refreshBoardHeaderActionStates();
-    traceFrontendAction('info', 'board.dirty.reset', 'Reset board dirty state', {
-      boardId: boardId || activeBoardId || null,
-      reason: reason || null
-    });
-  }
-
-  function markBoardDirty() {
-    _boardDirtyGeneration++;
-    if (_boardDirty) return;
-    _boardDirty = true;
-    refreshBoardHeaderActionStates();
-  }
-
-  function getBoardDirtyGeneration() {
-    return _boardDirtyGeneration;
-  }
-
-  function clearBoardDirtyIfUnchanged(savedGeneration) {
-    if (_boardDirtyGeneration !== savedGeneration) {
-      // New mutations arrived during save — keep dirty, schedule another auto-save
-      traceFrontendAction('info', 'board.dirty.keepDirty', 'Keeping board dirty because mutations arrived during save', {
-        boardId: activeBoardId || null,
-        savedGeneration: savedGeneration,
-        currentGeneration: _boardDirtyGeneration
-      });
-      scheduleAutoSave('post-save-still-dirty', AUTO_SAVE_DELAY_MS);
-      return;
-    }
-    resetBoardDirtyState('clearBoardDirty', activeBoardId);
-    clearLocalBoardDraft(activeBoardId);
-  }
-
-  function clearBoardDirty() {
-    resetBoardDirtyState('clearBoardDirty', activeBoardId);
-    clearLocalBoardDraft(activeBoardId);
-  }
-
-  function isBoardDirty() {
-    return _boardDirty;
-  }
-
-  function notifyEmbeddedBoardMutation(boardId, boardData) {
-    if (!embeddedMode || !window.parent || window.parent === window || !boardId) return;
-    var mutatedBoardId = boardId;
-    var mutatedPaneId = embeddedPaneId;
-    var serializedBoard = boardData || null;
-    requestAnimationFrame(function () {
-      try {
-        window.parent.postMessage({
-          type: 'lexera-board-mutated',
-          boardId: mutatedBoardId,
-          pane: mutatedPaneId,
-          fullBoard: serializedBoard
-        }, '*');
-      } catch (e) { /* ignore */ }
-    });
-  }
-
-  function commitLocalBoardChange(boardId, nextBoardData, options) {
+  function queueCardAutoSizeSync(colIndex, options) {
     options = options || {};
-    var targetBoardId = boardId || activeBoardId || null;
-    var hasExplicitBoardData = arguments.length >= 2;
-    var shouldSetLocalState = options.setLocalState !== false && hasExplicitBoardData && targetBoardId === activeBoardId;
-
-    if (shouldSetLocalState) {
-      setFullBoardDataState(nextBoardData || null);
+    if (typeof colIndex === 'number' && colIndex >= 0) {
+      cardAutoSizePendingCols.add(colIndex);
     }
-
-    var boardData = hasExplicitBoardData ? nextBoardData : fullBoardData;
-    if (!targetBoardId || !boardData) {
-      if (options.notifyParent !== false) notifyEmbeddedBoardMutation(targetBoardId, boardData || null);
-      return boardData || null;
-    }
-
-    if (options.ensureRows !== false) {
-      ensureBoardRowsForMutation(boardData, getMutationBoardTitle(targetBoardId, boardData));
-      if (!boardData.columns) boardData.columns = [];
-    }
-
-    if (targetBoardId === activeBoardId && activeBoardData) {
-      updateActiveBoardDataState(function (nextBoardData) {
-        nextBoardData.fullBoard = boardData;
-      });
-    }
-
-    if (options.refreshHierarchy !== false) {
-      var hierarchyRevision = options.revision;
-      if (hierarchyRevision == null && targetBoardId === activeBoardId && activeBoardData) {
-        hierarchyRevision = activeBoardData.revision || null;
-      }
-      refreshBoardHierarchyProjection(targetBoardId, boardData, getMutationBoardTitle(targetBoardId, boardData), {
-        revision: hierarchyRevision || null
-      });
-    }
-
-    if (options.notifyParent !== false) {
-      notifyEmbeddedBoardMutation(targetBoardId, boardData);
-    }
-
-    return boardData;
+    if (options.canvas) cardAutoSizeNeedsCanvasBoundsSync = true;
+    if (options.clearLayoutLocks) cardAutoSizeNeedsLayoutUnlockCleanup = true;
+    if (cardAutoSizeSyncFrame) return;
+    cardAutoSizeSyncFrame = requestAnimationFrame(flushCardAutoSizeSync);
   }
 
-  function persistBoardMutation(options) {
-    options = options || {};
-    var targets = Array.isArray(options.targets) ? options.targets : [{ type: 'board' }];
-    traceFrontendAction('info', 'board.persist', 'Persist board mutation (UI refresh, no immediate save)', {
-      boardId: activeBoardId || null,
-      targets: targets.map(function (t) { return t.type; }),
-      skipAutoSave: !!options.skipAutoSave,
-      summaryBefore: summarizeBoardHierarchy(fullBoardData)
+  function ensureCardAutoSizeObserver() {
+    if (cardAutoSizeObserver || typeof ResizeObserver === 'undefined') return cardAutoSizeObserver;
+    cardAutoSizeObserver = new ResizeObserver(function (entries) {
+      if (!entries || !entries.length) return;
+      for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i];
+        var cardEl = entry ? entry.target : null;
+        if (!cardEl || !cardEl.isConnected) continue;
+        var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
+        var isCanvasCard = !!(cardEl.closest && cardEl.closest('.columns-container.layout-canvas'));
+        queueCardAutoSizeSync(colIndex, {
+          canvas: isCanvasCard,
+          clearLayoutLocks: !isCanvasCard
+        });
+      }
     });
-    if (typeof options.beforeRefresh === 'function') {
-      options.beforeRefresh();
-    }
-    updateDisplayFromFullBoard();
+    return cardAutoSizeObserver;
+  }
 
-    // Structural targets need hierarchy sync
-    var hasStructural = false;
-    for (var ti = 0; ti < targets.length; ti++) {
-      var tt = targets[ti].type;
-      if (tt === 'board' || tt === 'main-view' || tt === 'row' || tt === 'stack' || tt === 'column' || tt === 'sidebar') {
-        hasStructural = true;
-        break;
-      }
+  function observeCardAutoSize(root) {
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    var observer = ensureCardAutoSizeObserver();
+    if (!observer) return;
+    var seen = new Set();
+    function observeCard(cardEl) {
+      if (!cardEl || seen.has(cardEl)) return;
+      seen.add(cardEl);
+      observer.observe(cardEl);
     }
-    if (hasStructural && activeBoardId && fullBoardData) {
-      commitLocalBoardChange(activeBoardId, fullBoardData, {
-        setLocalState: false,
-        refreshHierarchy: true
-      });
-    } else if (activeBoardId && fullBoardData) {
-      commitLocalBoardChange(activeBoardId, fullBoardData, {
-        setLocalState: false,
-        refreshHierarchy: false
-      });
-    }
-    refreshTargetedElements(targets);
-
-    if (typeof options.afterRefresh === 'function') {
-      options.afterRefresh();
-    }
-    scheduleDashboardRefresh(80);
-    markBoardDirty();
-    saveLocalBoardDraft(activeBoardId, fullBoardData);
-    if (options.skipAutoSave) {
-      traceFrontendAction('info', 'save.auto.skip', 'Skipped auto-save due to explicit persistBoardMutation option', {
-        boardId: activeBoardId || null,
-        reason: options.autoSaveReason || 'persist-option-skip'
-      });
-    } else {
-      var isRemoteMutationBoard = isActiveRemoteBoard();
-      var autoSaveDelay = typeof options.autoSaveDelayMs === 'number'
-        ? options.autoSaveDelayMs
-        : (isRemoteMutationBoard ? AUTO_SAVE_REMOTE_DELAY_MS : AUTO_SAVE_DELAY_MS);
-      scheduleAutoSave(
-        options.autoSaveReason || (isRemoteMutationBoard ? 'persist-remote-board-mutation' : 'persist-board-mutation'),
-        autoSaveDelay
-      );
-    }
-    traceFrontendAction('info', 'board.persist', 'Persist board mutation success', {
-      boardId: activeBoardId || null,
-      targets: targets.map(function (t) { return t.type; }),
-      summaryAfter: summarizeBoardHierarchy(fullBoardData)
-    });
-    if (activeBoardId && fullBoardData) {
-      var session = getLiveSyncSession(activeBoardId);
-      if (session && session.board) {
-        traceBoardIdentityPair('info', 'board.persist.identity', 'Identity comparison after board mutation against live sync session', activeBoardId, 'local', fullBoardData, 'session', session.board);
-      }
-      var saveBase = getBoardSaveBase(fullBoardData);
-      if (saveBase) {
-        traceBoardIdentityPair('info', 'board.persist.identity', 'Identity comparison after board mutation against save base', activeBoardId, 'local', fullBoardData, 'saveBase', saveBase);
-      }
-    }
-    return true;
+    if (root.classList && root.classList.contains('card')) observeCard(root);
+    var ownerCard = typeof root.closest === 'function' ? root.closest('.card') : null;
+    if (ownerCard) observeCard(ownerCard);
+    var cards = root.querySelectorAll ? root.querySelectorAll('.card') : [];
+    for (var i = 0; i < cards.length; i++) observeCard(cards[i]);
   }
 
   /**
@@ -5552,6 +4777,7 @@ var LexeraDashboard = (function () {
     attachRenderedTagInteractions(el);
     flushPendingDiagramQueues();
     if (window.LexeraContentEnhancerRegistry) window.LexeraContentEnhancerRegistry.enhance(el);
+    observeCardAutoSize(el);
     if (opts.structural) {
       // full virtual-scroll re-init for structural changes
       vsActivate();
@@ -5780,153 +5006,12 @@ var LexeraDashboard = (function () {
     }
   }
 
-  function ensureBoardRowsForMutation(boardData, fallbackTitle) {
-    if (!boardData) return;
-    if (boardData.rows && boardData.rows.length > 0) {
-      if (!boardData.columns) boardData.columns = [];
-      return;
-    }
-    var cols = boardData.columns || [];
-    if (cols.length === 0) {
-      boardData.rows = [];
-      boardData.columns = [];
-      return;
-    }
-    boardData.rows = buildRowsFromLegacyColumns(cols, boardData.title || fallbackTitle || 'Default');
-    boardData.columns = [];
-  }
-
-  function getMutationBoardTitle(boardId, boardData) {
-    if (boardData && boardData.title) return boardData.title;
-    if (boardId === activeBoardId && activeBoardData && activeBoardData.title) return activeBoardData.title;
-    var meta = findBoardMeta(boardId);
-    return meta && meta.title ? meta.title : 'Board';
-  }
-
-  async function loadBoardDataForMutation(boardId) {
-    if (!boardId) return null;
-    if (boardId === activeBoardId && fullBoardData) {
-      ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
-      if (!getBoardSaveBase(fullBoardData)) setBoardSaveBase(fullBoardData, fullBoardData);
-      return fullBoardData;
-    }
-    var response = await LexeraApi.getBoardColumns(boardId);
-    var boardData = response && response.fullBoard ? response.fullBoard : { rows: [], columns: [] };
-    ensureBoardRowsForMutation(boardData, response && response.title ? response.title : getMutationBoardTitle(boardId, boardData));
-    return setBoardSaveBase(boardData, boardData);
-  }
-
-  function normalizeHierarchyEditTargets(targets) {
-    var normalized = Array.isArray(targets)
-      ? targets.filter(function (target) { return !!(target && target.type); }).map(function (target) { return Object.assign({}, target); })
-      : [];
-    if (normalized.length === 0) normalized.push({ type: 'board' });
-    var hasSidebarTarget = false;
-    for (var i = 0; i < normalized.length; i++) {
-      if (normalized[i].type === 'sidebar') {
-        hasSidebarTarget = true;
-        break;
-      }
-    }
-    if (!hasSidebarTarget) normalized.push({ type: 'sidebar' });
-    return normalized;
-  }
-
-  async function commitHierarchyTreeEdit(boardId, boardData, options) {
-    if (!boardId || !boardData) return false;
-    options = options || {};
-    var targets = normalizeHierarchyEditTargets(options.targets);
-
-    if (boardId === activeBoardId) {
-      persistBoardMutation({ targets: targets });
-      return true;
-    }
-
-    var changedBoards = {};
-    changedBoards[boardId] = boardData;
-    return commitBoardMutations(changedBoards, { refreshSidebar: true });
-  }
-
-  async function commitBoardMutations(changedBoards, options) {
-    options = options || {};
-    var boardIds = Object.keys(changedBoards || {});
-    if (boardIds.length === 0) return true;
-
-    try {
-      for (var i = 0; i < boardIds.length; i++) {
-        var boardId = boardIds[i];
-        var boardData = changedBoards[boardId];
-        if (!boardData) continue;
-
-        if (boardId === activeBoardId) {
-          // Active board: refresh UI and save immediately so cross-board
-          // moves are persisted before the next poll can overwrite them.
-          ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
-          if (!getBoardSaveBase(boardData)) setBoardSaveBase(boardData, boardData);
-          if (fullBoardData !== boardData) setFullBoardDataState(boardData);
-          if (!activeBoardData) {
-            setActiveBoardDataState({
-              valid: true,
-              title: getMutationBoardTitle(boardId, boardData),
-              fullBoard: boardData,
-              columns: [],
-              rows: []
-            });
-          } else if (activeBoardData.fullBoard !== boardData) {
-            updateActiveBoardDataState(function (nextBoardData) {
-              nextBoardData.fullBoard = boardData;
-              if (!nextBoardData.title) nextBoardData.title = getMutationBoardTitle(boardId, boardData);
-            });
-          }
-          updateDisplayFromFullBoard();
-          commitLocalBoardChange(boardId, boardData, {
-            setLocalState: false,
-            refreshHierarchy: true
-          });
-          markBoardDirty();
-          try {
-            await saveFullBoard();
-          } catch (saveErr) {
-            logFrontendIssue('warn', 'commitBoardMutations', 'Failed to save active board during cross-board mutation', saveErr);
-          }
-          continue;
-        }
-
-        // Non-active boards: must save since they're not kept in memory.
-        showSaving();
-        lastSaveTime = Date.now();
-        ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
-        if (!boardData.columns) boardData.columns = [];
-        var baseBoardData = getBoardSaveBase(boardData);
-        var result = baseBoardData
-          ? await LexeraApi.saveBoardWithBase(boardId, baseBoardData, boardData)
-          : await LexeraApi.saveBoard(boardId, boardData);
-        var savedBoardData = resolveSavedBoardData(boardData, result, boardId);
-        changedBoards[boardId] = savedBoardData;
-        commitLocalBoardChange(boardId, savedBoardData, {
-          setLocalState: false,
-          refreshHierarchy: true
-        });
-      }
-      if (typeof options.beforeRefresh === 'function') options.beforeRefresh();
-      var commitTargets = [];
-      if (boardIds.indexOf(activeBoardId) !== -1) {
-        commitTargets.push({ type: 'board' });
-      }
-      if (options.refreshSidebar) commitTargets.push({ type: 'sidebar' });
-      refreshTargetedElements(commitTargets);
-      if (boardIds.indexOf(activeBoardId) !== -1) refreshHeaderFileControls();
-      if (typeof options.afterRefresh === 'function') options.afterRefresh();
-      scheduleDashboardRefresh(80);
-      return true;
-    } catch (err) {
-      logFrontendIssue('error', 'commitBoardMutations', 'Save failed for non-active board', err);
-      if (typeof options.onError === 'function') options.onError(err);
-      return false;
-    } finally {
-      hideSaving();
-    }
-  }
+  function ensureBoardRowsForMutation(boardData, fallbackTitle) { BoardDataStore.ensureBoardRowsForMutation(boardData, fallbackTitle); }
+  function getMutationBoardTitle(boardId, boardData) { return BoardDataStore.getMutationBoardTitle(boardId, boardData); }
+  async function loadBoardDataForMutation(boardId) { return BoardDataStore.loadBoardDataForMutation(boardId); }
+  function normalizeHierarchyEditTargets(targets) { return BoardDataStore.normalizeHierarchyEditTargets(targets); }
+  async function commitHierarchyTreeEdit(boardId, boardData, options) { return BoardDataStore.commitHierarchyTreeEdit(boardId, boardData, options); }
+  async function commitBoardMutations(changedBoards, options) { return BoardDataStore.commitBoardMutations(changedBoards, options); }
 
   function showConflictDialog(conflictCount, autoMerged) {
     var overlay = document.createElement('div');
@@ -6602,10 +5687,10 @@ var LexeraDashboard = (function () {
       if (typeof payload.isRemote === 'boolean') nextBoardData.isRemote = payload.isRemote;
     });
     if (typeof payload.generation === 'number') {
-      _lastLoadedGeneration = payload.generation;
+      BoardDataStore.setLastLoadedGeneration(payload.generation);
     }
     if (payload.revision) {
-      _lastLoadedRevision = payload.revision;
+      BoardDataStore.setLastLoadedRevision(payload.revision);
     }
     updateDisplayFromFullBoard();
     commitLocalBoardChange(boardId, fullBoardData, {
@@ -6624,54 +5709,11 @@ var LexeraDashboard = (function () {
   }
 
 
-  /**
-   * Finalize any pending undo snapshot by computing the delta
-   * between the snapshot (pre-mutation state) and current fullBoardData (post-mutation state).
-   */
-  function finalizePendingUndo() {
-    if (!undoPendingSnapshot || !fullBoardData) return;
-    var delta = computeBoardDelta(undoPendingSnapshot, fullBoardData);
-    var deltaSize = estimateDeltaSize(delta);
-    undoStack.push({ delta: delta, size: deltaSize });
-    undoTotalBytes += deltaSize;
-    while (undoStack.length > MAX_UNDO) {
-      undoTotalBytes -= undoStack.shift().size;
-    }
-    while (undoTotalBytes > MAX_UNDO_BYTES && undoStack.length > 0) {
-      undoTotalBytes -= undoStack.shift().size;
-    }
-    undoPendingSnapshot = null;
-  }
-
-  function pushUndo() {
-    if (!fullBoardData) return;
-    finalizePendingUndo();
-    undoPendingSnapshot = cloneBoardData(fullBoardData);
-    redoStack = [];
-  }
-
-  async function undo() {
-    finalizePendingUndo();
-    if (undoStack.length === 0 || !fullBoardData || !activeBoardId) return;
-    var saveBase = getBoardSaveBase(fullBoardData);
-    var entry = undoStack.pop();
-    undoTotalBytes -= entry.size;
-    redoStack.push(entry);
-    applyBoardDelta(fullBoardData, entry.delta, true);
-    setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
-    await persistBoardMutation({ targets: [{ type: 'board' }] });
-  }
-
-  async function redo() {
-    if (redoStack.length === 0 || !fullBoardData || !activeBoardId) return;
-    var saveBase = getBoardSaveBase(fullBoardData);
-    var entry = redoStack.pop();
-    undoStack.push(entry);
-    undoTotalBytes += entry.size;
-    applyBoardDelta(fullBoardData, entry.delta, false);
-    setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
-    await persistBoardMutation({ targets: [{ type: 'board' }] });
-  }
+  // Undo/redo delegated to LexeraUndoRedo module (core/undoRedoSystem.js)
+  function finalizePendingUndo() { UndoRedo.finalizePendingUndo(); }
+  function pushUndo() { UndoRedo.pushUndo(); }
+  function undo() { return UndoRedo.undo(); }
+  function redo() { return UndoRedo.redo(); }
 
   function showKeyboardShortcutsHelp() {
     var existing = document.querySelector('.shortcuts-help-overlay');
@@ -7554,7 +6596,7 @@ var LexeraDashboard = (function () {
     }
 
     if (!changed) {
-      undoStack.pop();
+      UndoRedo.popUndo();
       return false;
     }
     await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
@@ -7586,7 +6628,7 @@ var LexeraDashboard = (function () {
     var currentColor = getTagColor(normalizedTag);
     var items = [
       { id: 'filter-current-board', label: 'Filter Current Board By ' + normalizedTag, disabled: !activeBoardId },
-      { id: 'search-everywhere', label: 'Search For ' + normalizedTag },
+      { id: 'search-dashboard', label: 'Search In Dashboard For ' + normalizedTag },
       { separator: true },
       { id: 'rename-tag', label: 'Rename ' + normalizedTag + ' In This Board', disabled: !activeBoardId },
       { id: 'change-color', label: 'Change Color (' + currentColor + ')' },
@@ -7600,8 +6642,8 @@ var LexeraDashboard = (function () {
         toggleBoardTagFilter(normalizedTag);
         return;
       }
-      if (action === 'search-everywhere') {
-        await performSearch(normalizedTag);
+      if (action === 'search-dashboard') {
+        await openDashboardSearch(normalizedTag);
         return;
       }
       if (action === 'rename-tag') {
@@ -8257,11 +7299,18 @@ var LexeraDashboard = (function () {
     unfocusCard();
     // Defensive cleanup: stale drag artifacts can inflate row widths.
     cleanupPtrDrag();
-    getElColumnsContainer().innerHTML = '';
+    // Preserve scroll position before destroying DOM
+    var cc = getElColumnsContainer();
+    var savedScrollTop = cc.scrollTop;
+    var savedScrollLeft = cc.scrollLeft;
+    cc.innerHTML = '';
     if (!activeBoardData) return;
 
-    getElColumnsContainer().classList.add('new-format');
+    cc.classList.add('new-format');
     renderNewFormatBoard();
+    // Restore scroll position immediately after DOM rebuild
+    cc.scrollTop = savedScrollTop;
+    cc.scrollLeft = savedScrollLeft;
     var isCanvas = isCanvasBoardLayout();
     if (!isCanvas) {
       clearLayoutLockStyles();
@@ -8275,6 +7324,9 @@ var LexeraDashboard = (function () {
     // the reads/writes.
     requestAnimationFrame(function () {
       var container = getElColumnsContainer();
+      // Re-apply scroll position after layout (browser may have clamped it)
+      container.scrollTop = savedScrollTop;
+      container.scrollLeft = savedScrollLeft;
       if (isCanvas) {
         syncCanvasRowBounds(container);
       } else {
@@ -9654,6 +8706,7 @@ var LexeraDashboard = (function () {
     selectBoard: function (id, opts) { return selectBoard(id, opts); },
     loadBoard: function () { return loadBoard(); },
     resolveWikiDocument: function (name) { return resolveWikiDocument(name); },
+    openDashboardSearch: function (query, options) { return openDashboardSearch(query, options); },
     showNotification: function (msg) { showNotification(msg); },
     lexeraLog: function (level, msg) { lexeraLog(level, msg); },
     logFrontendIssue: function (level, area, msg, err) { logFrontendIssue(level, area, msg, err); },
@@ -9673,7 +8726,7 @@ var LexeraDashboard = (function () {
 
   function onSearchInput() { if (_BoardSearch) _BoardSearch.onSearchInput(); }
   function performSearch(query) { return _BoardSearch ? _BoardSearch.performSearch(query) : Promise.resolve(); }
-  function openWikiSearch(query) { if (_BoardSearch) _BoardSearch.openWikiSearch(query); }
+  function openWikiSearch(query) { return _BoardSearch ? _BoardSearch.openWikiSearch(query) : Promise.resolve(false); }
   function openWikiDocument(documentName, options) { return _BoardSearch ? _BoardSearch.openWikiDocument(documentName, options) : Promise.resolve({ kind: 'unknown' }); }
   function exitSearchMode() { if (_BoardSearch) _BoardSearch.exitSearchMode(); }
   function parseOptionalSearchIndex(value) { return _BoardSearch ? _BoardSearch.parseOptionalSearchIndex(value) : null; }
@@ -10804,6 +9857,7 @@ var LexeraDashboard = (function () {
         showConfirmDialog: function (msg) { return showConfirmDialog(msg); },
         traceFrontendAction: function (level, area, msg, data) { traceFrontendAction(level, area, msg, data); },
         reconstructColumnTitle: function (newTitle, oldTitle) { return reconstructColumnTitle(newTitle, oldTitle); },
+        stripHtmlComments: function (text) { return stripHtmlComments(text); },
         addIncludeSyntaxToTitle: function (title, path) { return addIncludeSyntaxToTitle(title, path); },
         removeIncludeSyntaxFromTitle: function (title) { return removeIncludeSyntaxFromTitle(title); },
         extractIncludePathFromTitle: function (title) { return extractIncludePathFromTitle(title); },
@@ -11104,6 +10158,7 @@ var LexeraDashboard = (function () {
     poll: poll,
     showElementContextMenu: showElementContextMenu,
     getFullBoardData: function () { return fullBoardData; },
+    openDashboardSearch: openDashboardSearch,
     openEditForHierarchyTarget: openEditForHierarchyTarget
   };
 })();

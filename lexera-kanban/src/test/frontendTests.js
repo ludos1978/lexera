@@ -2999,6 +2999,1218 @@
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // BOARD INTEGRITY HELPER — verifies everything the user expects after
+  // any mutation: data↔DOM parity, no duplicates, sidebar sync, counts
+  // ═══════════════════════════════════════════════════════════════════════
+
+  function assertBoardIntegrity(label) {
+    var data = api().getFullBoardData();
+    assert(data && data.rows && data.rows.length > 0, label + ': board data exists');
+
+    // 1. Data structure: unique IDs
+    var cardIdsSeen = {};
+    var colIdsSeen = {};
+    var expectedColCount = 0;
+    var expectedVisibleCardCount = 0;
+    for (var r = 0; r < data.rows.length; r++) {
+      var stacks = data.rows[r].stacks || [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = stacks[s].columns || [];
+        for (var c = 0; c < cols.length; c++) {
+          assert(!colIdsSeen[cols[c].id], label + ': duplicate col ID ' + cols[c].id);
+          colIdsSeen[cols[c].id] = true;
+          expectedColCount++;
+          var cards = cols[c].cards || [];
+          for (var k = 0; k < cards.length; k++) {
+            var cid = cards[k].kid || cards[k].id;
+            assert(!cardIdsSeen[cid], label + ': duplicate card ID ' + cid);
+            cardIdsSeen[cid] = true;
+            if (!cards[k].content || cards[k].content.indexOf('#hidden-internal') === -1) {
+              expectedVisibleCardCount++;
+            }
+          }
+        }
+      }
+    }
+
+    // 2. DOM counts match data
+    assertEqual(getViewColumnCount(), expectedColCount, label + ': DOM col count matches data');
+    assertEqual(getViewRowCount(), data.rows.length, label + ': DOM row count matches data');
+    assertEqual(getTotalViewCards(), expectedVisibleCardCount, label + ': DOM visible card count matches data');
+
+    // 3. No duplicate card IDs in DOM
+    assert(!hasDuplicateViewCardIds(), label + ': no duplicate card IDs in DOM');
+
+    // 4. Per-column card ID parity (data vs DOM)
+    var allCols = api().getAllFullColumns();
+    for (var i = 0; i < allCols.length; i++) {
+      var visibleCards = (allCols[i].cards || []).filter(function (card) {
+        return !card.content || card.content.indexOf('#hidden-internal') === -1;
+      });
+      var dataKids = [];
+      for (var j = 0; j < visibleCards.length; j++)
+        dataKids.push(visibleCards[j].kid || visibleCards[j].id);
+      var domKids = getViewCardKids(i);
+      assertEqual(domKids, dataKids, label + ': col ' + i + ' card IDs data↔DOM');
+    }
+
+    // 5. Sidebar consistency (if available)
+    assertViewWorkspaceConsistency(label);
+
+    // 6. Every DOM column has a valid data-column-id
+    var container = getContainer();
+    if (container) {
+      var domCols = container.querySelectorAll('.column');
+      for (var d = 0; d < domCols.length; d++) {
+        var domColId = domCols[d].getAttribute('data-column-id');
+        assert(domColId, label + ': DOM column ' + d + ' has data-column-id');
+        assert(colIdsSeen[domColId], label + ': DOM column ' + d + ' ID exists in data');
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // COMPREHENSIVE INTEGRITY TESTS — each action + full verification
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('integrity: board valid after cross-column card move', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      await api().moveCard(
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(100);
+      assertBoardIntegrity('after cross-column move');
+    } finally { await teardown(); }
+  });
+
+  register('integrity: board valid after same-column reorder', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      if (col.cards.length < 2) throw new Error('Need >=2 cards');
+      var lastCard = col.cards[col.cards.length - 1];
+      await api().moveCard(
+        { boardId: _boardId, flatColIndex: col.flatIdx, cardIndex: col.cards.length - 1, cardId: lastCard.id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: col.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(100);
+      assertBoardIntegrity('after same-column reorder');
+    } finally { await teardown(); }
+  });
+
+  register('integrity: board valid after adding card via API', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      await api().addCardToActiveBoard(info.srcCol.flatIdx, 'Integrity Test Card __integ__');
+      await delay(150);
+      assertBoardIntegrity('after addCard API');
+    } finally { await teardown(); }
+  });
+
+  register('integrity: board valid after removing card', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var data = api().getFullBoardData();
+      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.splice(0, 1);
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('after remove card');
+    } finally { await teardown(); }
+  });
+
+  register('integrity: board valid after adding column', async function () {
+    await setup();
+    try {
+      var data = api().getFullBoardData();
+      var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
+      lastStack.columns.push({ id: '__integ-col__', title: 'Integrity Col', cards: [], include_source: null });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('after add column');
+    } finally { await teardown(); }
+  });
+
+  register('integrity: board valid after adding row with cards', async function () {
+    await setup();
+    try {
+      var data = api().getFullBoardData();
+      data.rows.push({
+        id: '__integ-row__', title: 'Integrity Row',
+        stacks: [{ id: '__integ-stack__', title: 'IS',
+          columns: [{ id: '__integ-rcol__', title: 'IC', cards: [
+            { id: '__integ-card1__', content: 'Card 1', checked: false, kid: '__integ-card1__' },
+            { id: '__integ-card2__', content: 'Card 2', checked: false, kid: '__integ-card2__' }
+          ], include_source: null }]
+        }]
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('after add row with cards');
+    } finally { await teardown(); }
+  });
+
+  register('integrity: board valid after removing column', async function () {
+    await setup();
+    try {
+      // Add a column first so we can safely remove it
+      var data = api().getFullBoardData();
+      var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
+      lastStack.columns.push({ id: '__integ-rmcol__', title: 'To Remove', cards: [], include_source: null });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      data = api().getFullBoardData();
+      lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
+      lastStack.columns = lastStack.columns.filter(function (col) { return col.id !== '__integ-rmcol__'; });
+      if (lastStack.columns.length === 0) {
+        lastStack.columns.push({ id: '__integ-placeholder__', title: 'Empty', cards: [], include_source: null });
+      }
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('after remove column');
+    } finally { await teardown(); }
+  });
+
+  register('integrity: board valid after removing row', async function () {
+    await setup();
+    try {
+      var data = api().getFullBoardData();
+      if (data.rows.length < 2) {
+        // Add a row so we can remove it
+        data.rows.push({
+          id: '__integ-rmrow__', title: 'To Remove',
+          stacks: [{ id: '__integ-rms__', title: 'S',
+            columns: [{ id: '__integ-rmc__', title: 'C', cards: [], include_source: null }]
+          }]
+        });
+        api().setTestBoard(data, _boardId);
+        await delay(100);
+        data = api().getFullBoardData();
+      }
+      data.rows.pop();
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('after remove row');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ARCHIVE / PARK / TRASH VISUAL STATE TESTS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('hidden state: archiving a card removes it from view and keeps board valid', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var countBefore = getViewCardCount(col.flatIdx);
+      var totalBefore = getTotalViewCards();
+      var archivedKid = col.cards[0].kid || col.cards[0].id;
+
+      // Archive the first card by adding #hidden-internal-archived tag
+      var data = api().getFullBoardData();
+      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
+      card.content = (card.content || '') + ' #hidden-internal-archived';
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      // Card should be gone from view
+      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'archived card gone from column');
+      assertEqual(getTotalViewCards(), totalBefore - 1, 'total visible cards decreased');
+      var kids = getViewCardKids(col.flatIdx);
+      assert(kids.indexOf(archivedKid) === -1, 'archived card not in DOM');
+
+      // Board should still be structurally valid
+      assertBoardIntegrity('after archive card');
+    } finally { await teardown(); }
+  });
+
+  register('hidden state: trashing a card removes it from view and keeps board valid', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var countBefore = getViewCardCount(col.flatIdx);
+      var trashedKid = col.cards[0].kid || col.cards[0].id;
+
+      var data = api().getFullBoardData();
+      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
+      card.content = (card.content || '') + ' #hidden-internal-deleted';
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'trashed card gone');
+      assert(getViewCardKids(col.flatIdx).indexOf(trashedKid) === -1, 'trashed card not in DOM');
+      assertBoardIntegrity('after trash card');
+    } finally { await teardown(); }
+  });
+
+  register('hidden state: parking a card removes it from view and keeps board valid', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var countBefore = getViewCardCount(col.flatIdx);
+      var parkedKid = col.cards[0].kid || col.cards[0].id;
+
+      var data = api().getFullBoardData();
+      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
+      card.content = (card.content || '') + ' #hidden-internal-parked';
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'parked card gone');
+      assert(getViewCardKids(col.flatIdx).indexOf(parkedKid) === -1, 'parked card not in DOM');
+      assertBoardIntegrity('after park card');
+    } finally { await teardown(); }
+  });
+
+  register('hidden state: restoring an archived card makes it visible again', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var countBefore = getViewCardCount(col.flatIdx);
+
+      // Archive a card
+      var data = api().getFullBoardData();
+      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
+      var originalContent = card.content || '';
+      card.content = originalContent + ' #hidden-internal-archived';
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'archived card gone');
+
+      // Restore it by removing the tag
+      data = api().getFullBoardData();
+      card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
+      card.content = originalContent;
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      assertEqual(getViewCardCount(col.flatIdx), countBefore, 'restored card visible');
+      assertBoardIntegrity('after restore archived card');
+    } finally { await teardown(); }
+  });
+
+  register('hidden state: multiple hidden cards in same column all excluded', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var countBefore = getViewCardCount(col.flatIdx);
+
+      var data = api().getFullBoardData();
+      var cards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      cards.push({ id: '__multi-arch__', content: 'A #hidden-internal-archived', checked: false, kid: '__multi-arch__' });
+      cards.push({ id: '__multi-del__', content: 'D #hidden-internal-deleted', checked: false, kid: '__multi-del__' });
+      cards.push({ id: '__multi-park__', content: 'P #hidden-internal-parked', checked: false, kid: '__multi-park__' });
+      cards.push({ id: '__multi-vis__', content: 'Visible Card', checked: false, kid: '__multi-vis__' });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      assertEqual(getViewCardCount(col.flatIdx), countBefore + 1, 'only visible card counted');
+      var kids = getViewCardKids(col.flatIdx);
+      assert(kids.indexOf('__multi-vis__') !== -1, 'visible card in DOM');
+      assert(kids.indexOf('__multi-arch__') === -1, 'archived not in DOM');
+      assert(kids.indexOf('__multi-del__') === -1, 'deleted not in DOM');
+      assert(kids.indexOf('__multi-park__') === -1, 'parked not in DOM');
+      assertBoardIntegrity('after multiple hidden cards');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SEQUENTIAL MUTATION + INTEGRITY — chain of actions
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('chain: add card → move card → remove card, board valid after each step', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var src = info.srcCol, dst = info.dstCol;
+
+      // Step 1: Add card
+      var data = api().getFullBoardData();
+      data.rows[src.row].stacks[src.stack].columns[src.localCol].cards.push({
+        id: '__chain-card__', content: 'Chain Test', checked: false, kid: '__chain-card__'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('chain step 1: add card');
+
+      // Step 2: Move the new card to another column
+      data = api().getFullBoardData();
+      var srcCards = data.rows[src.row].stacks[src.stack].columns[src.localCol].cards;
+      var chainIdx = -1;
+      for (var i = 0; i < srcCards.length; i++) {
+        if (srcCards[i].kid === '__chain-card__') { chainIdx = i; break; }
+      }
+      assert(chainIdx >= 0, 'chain card found in source');
+      var chainCard = srcCards.splice(chainIdx, 1)[0];
+      data.rows[dst.row].stacks[dst.stack].columns[dst.localCol].cards.push(chainCard);
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('chain step 2: move card');
+
+      // Step 3: Remove the card
+      data = api().getFullBoardData();
+      var dstCards = data.rows[dst.row].stacks[dst.stack].columns[dst.localCol].cards;
+      data.rows[dst.row].stacks[dst.stack].columns[dst.localCol].cards = dstCards.filter(function (c) {
+        return c.kid !== '__chain-card__';
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('chain step 3: remove card');
+    } finally { await teardown(); }
+  });
+
+  register('chain: add row → add column → add cards → archive card → remove row, valid after each', async function () {
+    await setup();
+    try {
+      // Step 1: Add row
+      var data = api().getFullBoardData();
+      data.rows.push({
+        id: '__chain-row__', title: 'Chain Row',
+        stacks: [{ id: '__chain-stack__', title: 'CS',
+          columns: [{ id: '__chain-col1__', title: 'CC1', cards: [], include_source: null }]
+        }]
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('chain: after add row');
+
+      // Step 2: Add column to the new row
+      data = api().getFullBoardData();
+      var newRow = data.rows[data.rows.length - 1];
+      newRow.stacks[0].columns.push({ id: '__chain-col2__', title: 'CC2', cards: [], include_source: null });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('chain: after add column');
+
+      // Step 3: Add cards to both columns
+      data = api().getFullBoardData();
+      newRow = data.rows[data.rows.length - 1];
+      newRow.stacks[0].columns[0].cards.push({ id: '__cc1__', content: 'Card in col1', checked: false, kid: '__cc1__' });
+      newRow.stacks[0].columns[1].cards.push({ id: '__cc2__', content: 'Card in col2', checked: false, kid: '__cc2__' });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('chain: after add cards');
+
+      // Step 4: Archive one card
+      data = api().getFullBoardData();
+      newRow = data.rows[data.rows.length - 1];
+      newRow.stacks[0].columns[0].cards[0].content += ' #hidden-internal-archived';
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('chain: after archive card');
+
+      // Step 5: Remove the entire row
+      data = api().getFullBoardData();
+      data.rows = data.rows.filter(function (r) { return r.id !== '__chain-row__'; });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('chain: after remove row');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // INCLUDE / EMBED — no broken state
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('include: card with include syntax does not render broken embed', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var data = api().getFullBoardData();
+      data.rows[col.row].stacks[col.stack].columns[col.localCol].cards.push({
+        id: '__incl-card-test__', kid: '__incl-card-test__', checked: false,
+        content: 'Include Card\n!!!include(docs/included-file.md)!!!'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var c = getContainer();
+      var cardEl = c.querySelector('.card[data-card-kid="__incl-card-test__"]');
+      assert(cardEl, 'include card rendered');
+      // The include directive should NOT produce a broken embed container
+      var brokenEmbed = cardEl.querySelector('.embed-container.embed-broken');
+      assert(!brokenEmbed, 'no broken embed in card with include syntax');
+      assertBoardIntegrity('after include card added');
+    } finally { await teardown(); }
+  });
+
+  register('include: column with includeSource does not show broken badge', async function () {
+    await setup();
+    try {
+      var data = api().getFullBoardData();
+      var targetStack = data.rows[0].stacks[0];
+      targetStack.columns.push({
+        id: '__incl-col-ok__', title: 'Included Column',
+        cards: [{ id: '__incl-ok-card__', content: 'Included card content', checked: false, kid: '__incl-ok-card__' }],
+        include_source: null,
+        includeSource: { rawPath: 'docs/valid-include.md', missing: false }
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var c = getContainer();
+      var colEl = c.querySelector('.column[data-column-id="__incl-col-ok__"]');
+      assert(colEl, 'include column rendered');
+      var badge = colEl.querySelector('.column-include-badge');
+      if (badge) {
+        assert(!badge.classList.contains('include-broken'), 'include badge not broken for valid path');
+      }
+      assertBoardIntegrity('after include column added');
+    } finally { await teardown(); }
+  });
+
+  register('include: column with missing includeSource shows broken badge', async function () {
+    await setup();
+    try {
+      var data = api().getFullBoardData();
+      var targetStack = data.rows[0].stacks[0];
+      targetStack.columns.push({
+        id: '__incl-col-bad__', title: 'Broken Include Column',
+        cards: [],
+        include_source: null,
+        includeSource: { rawPath: 'docs/nonexistent.md', missing: true }
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var c = getContainer();
+      var colEl = c.querySelector('.column[data-column-id="__incl-col-bad__"]');
+      assert(colEl, 'broken include column rendered');
+      var badge = colEl.querySelector('.column-include-badge');
+      if (badge) {
+        assert(badge.classList.contains('include-broken'), 'include badge marked broken for missing path');
+      }
+      assertBoardIntegrity('after broken include column added');
+    } finally { await teardown(); }
+  });
+
+  register('embed: card with valid image embed does not show broken state', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var data = api().getFullBoardData();
+      data.rows[col.row].stacks[col.stack].columns[col.localCol].cards.push({
+        id: '__embed-ok-test__', kid: '__embed-ok-test__', checked: false,
+        content: 'Embed OK\n![Photo](assets/photo.jpg)'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var c = getContainer();
+      var cardEl = c.querySelector('.card[data-card-kid="__embed-ok-test__"]');
+      assert(cardEl, 'embed card rendered');
+      var brokenEmbed = cardEl.querySelector('.embed-container.embed-broken');
+      assert(!brokenEmbed, 'no broken embed state for valid image syntax');
+      assertBoardIntegrity('after embed card added');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SCROLL / FOCUS PRESERVATION — view stays where user is working
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('focus: setTestBoard preserves scroll position', async function () {
+    await setup();
+    try {
+      var c = getContainer();
+      if (!c) return;
+      // Scroll the container down a bit (only meaningful if content is tall enough)
+      var scrollable = c.closest('.board-row-content') || c;
+      var maxScroll = scrollable.scrollHeight - scrollable.clientHeight;
+      if (maxScroll < 10) return; // skip if not scrollable
+      scrollable.scrollTop = Math.min(50, maxScroll);
+      await delay(50);
+      var scrollBefore = scrollable.scrollTop;
+      assert(scrollBefore > 0, 'scrolled down');
+
+      // Mutate via setTestBoard — should not reset scroll
+      var data = api().getFullBoardData();
+      api().setTestBoard(data, _boardId);
+      await delay(150);
+
+      var scrollAfter = scrollable.scrollTop;
+      // Allow small variance (browser rounding)
+      assert(Math.abs(scrollAfter - scrollBefore) < 5, 'scroll preserved after setTestBoard: before=' + scrollBefore + ' after=' + scrollAfter);
+    } finally { await teardown(); }
+  });
+
+  register('focus: adding card to column does not scroll view to top', async function () {
+    await setup();
+    try {
+      var c = getContainer();
+      if (!c) return;
+      var scrollable = c.closest('.board-row-content') || c;
+      var maxScroll = scrollable.scrollHeight - scrollable.clientHeight;
+      if (maxScroll < 10) return;
+      scrollable.scrollTop = Math.min(50, maxScroll);
+      await delay(50);
+      var scrollBefore = scrollable.scrollTop;
+
+      // Add a card
+      var info = findTwoColumnsWithCards();
+      var data = api().getFullBoardData();
+      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.push({
+        id: '__scroll-card__', content: 'Scroll Test', checked: false, kid: '__scroll-card__'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(150);
+
+      var scrollAfter = scrollable.scrollTop;
+      assert(Math.abs(scrollAfter - scrollBefore) < 5, 'scroll preserved after add card: before=' + scrollBefore + ' after=' + scrollAfter);
+    } finally { await teardown(); }
+  });
+
+  register('focus: moving card between columns does not scroll view to top', async function () {
+    await setup();
+    try {
+      var c = getContainer();
+      if (!c) return;
+      var scrollable = c.closest('.board-row-content') || c;
+      var maxScroll = scrollable.scrollHeight - scrollable.clientHeight;
+      if (maxScroll < 10) return;
+      scrollable.scrollTop = Math.min(50, maxScroll);
+      await delay(50);
+      var scrollBefore = scrollable.scrollTop;
+
+      var info = findTwoColumnsWithCards();
+      await api().moveCard(
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(150);
+
+      var scrollAfter = scrollable.scrollTop;
+      assert(Math.abs(scrollAfter - scrollBefore) < 5, 'scroll preserved after move card: before=' + scrollBefore + ' after=' + scrollAfter);
+    } finally { await teardown(); }
+  });
+
+  register('focus: archiving card does not scroll view to top', async function () {
+    await setup();
+    try {
+      var c = getContainer();
+      if (!c) return;
+      var scrollable = c.closest('.board-row-content') || c;
+      var maxScroll = scrollable.scrollHeight - scrollable.clientHeight;
+      if (maxScroll < 10) return;
+      scrollable.scrollTop = Math.min(50, maxScroll);
+      await delay(50);
+      var scrollBefore = scrollable.scrollTop;
+
+      var info = findTwoColumnsWithCards();
+      var data = api().getFullBoardData();
+      var card = data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards[0];
+      card.content = (card.content || '') + ' #hidden-internal-archived';
+      api().setTestBoard(data, _boardId);
+      await delay(150);
+
+      var scrollAfter = scrollable.scrollTop;
+      assert(Math.abs(scrollAfter - scrollBefore) < 5, 'scroll preserved after archive: before=' + scrollBefore + ' after=' + scrollAfter);
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // TAG EDITS — changing tags updates card visibility and board state
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('tag edit: adding #hidden-internal-archived removes card from view', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var countBefore = getViewCardCount(col.flatIdx);
+      var kid = col.cards[0].kid || col.cards[0].id;
+
+      var data = api().getFullBoardData();
+      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
+      card.content = (card.content || '') + ' #hidden-internal-archived';
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'card removed from view');
+      assert(getViewCardKids(col.flatIdx).indexOf(kid) === -1, 'card ID gone from DOM');
+      assertBoardIntegrity('after tag edit: archive');
+    } finally { await teardown(); }
+  });
+
+  register('tag edit: removing #hidden-internal-archived restores card to view', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var countBefore = getViewCardCount(col.flatIdx);
+
+      // Archive it
+      var data = api().getFullBoardData();
+      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
+      var original = card.content || '';
+      card.content = original + ' #hidden-internal-archived';
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'card archived');
+
+      // Remove tag to restore
+      data = api().getFullBoardData();
+      data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0].content = original;
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertEqual(getViewCardCount(col.flatIdx), countBefore, 'card restored to view');
+      assertBoardIntegrity('after tag edit: unarchive');
+    } finally { await teardown(); }
+  });
+
+  register('tag edit: changing card from parked to deleted keeps it hidden', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var countBefore = getViewCardCount(col.flatIdx);
+      var kid = col.cards[0].kid || col.cards[0].id;
+
+      // Park it
+      var data = api().getFullBoardData();
+      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
+      var original = card.content || '';
+      card.content = original + ' #hidden-internal-parked';
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'card parked');
+
+      // Switch to deleted
+      data = api().getFullBoardData();
+      data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0].content =
+        original + ' #hidden-internal-deleted';
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'card still hidden after tag change');
+      assert(getViewCardKids(col.flatIdx).indexOf(kid) === -1, 'card still not in DOM');
+      assertBoardIntegrity('after tag edit: park to delete');
+    } finally { await teardown(); }
+  });
+
+  register('tag edit: adding temporal tag to card keeps it visible and renders badge', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var countBefore = getViewCardCount(col.flatIdx);
+
+      var data = api().getFullBoardData();
+      data.rows[col.row].stacks[col.stack].columns[col.localCol].cards.push({
+        id: '__tag-temporal__', kid: '__tag-temporal__', checked: false,
+        content: 'Deadline card #today'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      assertEqual(getViewCardCount(col.flatIdx), countBefore + 1, 'temporal tag card visible');
+      var c = getContainer();
+      var cardEl = c.querySelector('.card[data-card-kid="__tag-temporal__"]');
+      assert(cardEl, 'card rendered');
+      // Check for due badge
+      var badge = cardEl.querySelector('.card-due-badge');
+      if (badge) {
+        assert(badge.textContent.length > 0, 'due badge has content');
+      }
+      assertBoardIntegrity('after temporal tag card');
+    } finally { await teardown(); }
+  });
+
+  register('tag edit: adding checked state preserves card in view', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var col = info.srcCol;
+      var countBefore = getViewCardCount(col.flatIdx);
+
+      var data = api().getFullBoardData();
+      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
+      card.checked = true;
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      // Checked cards should still be visible (not hidden)
+      assertEqual(getViewCardCount(col.flatIdx), countBefore, 'checked card still visible');
+      assertBoardIntegrity('after check card');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // WORKSPACE MOVE TESTS — view+workspace coordinate combinations
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('workspace move: view→view + integrity check', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var movedKid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
+      var srcCountBefore = getViewCardCount(info.srcCol.flatIdx);
+      var dstCountBefore = getViewCardCount(info.dstCol.flatIdx);
+
+      await api().moveCard(
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(100);
+
+      assertEqual(getViewCardCount(info.srcCol.flatIdx), srcCountBefore - 1, 'source -1');
+      assertEqual(getViewCardCount(info.dstCol.flatIdx), dstCountBefore + 1, 'target +1');
+      assertEqual(getViewCardKids(info.dstCol.flatIdx)[0], movedKid, 'card is first in target');
+      assertBoardIntegrity('after view→view move');
+    } finally { await teardown(); }
+  });
+
+  register('workspace move: workspace→workspace + integrity check', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var src = info.srcCol, dst = info.dstCol;
+      var movedKid = src.cards[0].kid || src.cards[0].id;
+
+      await api().moveCard(
+        { boardId: _boardId, rowIndex: src.row, stackIndex: src.stack, colIndex: src.localCol, columnId: src.col.id, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, rowIndex: dst.row, stackIndex: dst.stack, colIndex: dst.localCol, columnId: dst.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(100);
+
+      assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+      assertBoardIntegrity('after workspace→workspace move');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // STRUCTURAL EDGE CASES
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('structure: adding card to empty column renders correctly', async function () {
+    await setup();
+    try {
+      var data = api().getFullBoardData();
+      var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
+      lastStack.columns.push({
+        id: '__empty-then-card__', title: 'Empty Col',
+        cards: [], include_source: null
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      var allCols = api().getAllFullColumns();
+      var emptyIdx = allCols.length - 1;
+      assertEqual(getViewCardCount(emptyIdx), 0, 'column starts empty');
+
+      // Now add a card to it
+      data = api().getFullBoardData();
+      allCols = api().getAllFullColumns();
+      allCols[allCols.length - 1].cards.push({
+        id: '__empty-card__', content: 'First card in empty col', checked: false, kid: '__empty-card__'
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      assertEqual(getViewCardCount(emptyIdx), 1, 'card added to formerly empty column');
+      assert(getViewCardKids(emptyIdx).indexOf('__empty-card__') !== -1, 'card visible');
+      assertBoardIntegrity('after card in empty column');
+    } finally { await teardown(); }
+  });
+
+  register('structure: board with single row, single stack, single column stays valid', async function () {
+    await setup();
+    try {
+      var minimalBoard = {
+        title: 'Minimal Board',
+        rows: [{
+          id: '__min-row__', title: 'Only Row',
+          stacks: [{ id: '__min-stack__', title: 'Only Stack',
+            columns: [{ id: '__min-col__', title: 'Only Column', cards: [
+              { id: '__min-card__', content: 'Only Card', checked: false, kid: '__min-card__' }
+            ], include_source: null }]
+          }]
+        }]
+      };
+      api().setTestBoard(minimalBoard, _boardId);
+      await delay(100);
+
+      assertEqual(getViewRowCount(), 1, '1 row');
+      assertEqual(getViewColumnCount(), 1, '1 column');
+      assertEqual(getTotalViewCards(), 1, '1 card');
+      assertBoardIntegrity('minimal board');
+    } finally { await teardown(); }
+  });
+
+  register('structure: board with many rows and columns stays valid', async function () {
+    await setup();
+    try {
+      var data = api().getFullBoardData();
+      // Add 3 rows with 2 columns each
+      for (var r = 0; r < 3; r++) {
+        data.rows.push({
+          id: '__bulk-row-' + r + '__', title: 'Bulk Row ' + r,
+          stacks: [{ id: '__bulk-stack-' + r + '__', title: 'BS' + r,
+            columns: [
+              { id: '__bulk-col-' + r + 'a__', title: 'BC' + r + 'A', cards: [
+                { id: '__bulk-card-' + r + 'a__', content: 'R' + r + 'A', checked: false, kid: '__bulk-card-' + r + 'a__' }
+              ], include_source: null },
+              { id: '__bulk-col-' + r + 'b__', title: 'BC' + r + 'B', cards: [
+                { id: '__bulk-card-' + r + 'b__', content: 'R' + r + 'B', checked: false, kid: '__bulk-card-' + r + 'b__' }
+              ], include_source: null }
+            ]
+          }]
+        });
+      }
+      api().setTestBoard(data, _boardId);
+      await delay(150);
+      assertBoardIntegrity('bulk board with many rows and columns');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // COLUMN INCLUDE TESTS — !!!include(path)!!! in column headers
+  // ═══════════════════════════════════════════════════════════════════════
+
+  function getOrderHelpers() {
+    var g = typeof globalThis !== 'undefined' ? globalThis : window;
+    return g.LexeraOrderHelpers || null;
+  }
+
+  register('include header: adding include syntax to column title renders include badge', async function () {
+    await setup();
+    try {
+      var data = api().getFullBoardData();
+      var targetStack = data.rows[0].stacks[0];
+      targetStack.columns.push({
+        id: '__incl-hdr-add__', title: 'Backlog !!!include(docs/backlog.md)!!!',
+        cards: [
+          { id: '__incl-hdr-c1__', content: 'Included Card 1', checked: false, kid: '__incl-hdr-c1__' },
+          { id: '__incl-hdr-c2__', content: 'Included Card 2', checked: false, kid: '__incl-hdr-c2__' }
+        ],
+        include_source: null,
+        includeSource: { rawPath: 'docs/backlog.md', missing: false }
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var c = getContainer();
+      var colEl = c.querySelector('.column[data-column-id="__incl-hdr-add__"]');
+      assert(colEl, 'include column rendered');
+
+      // Badge should exist and not be broken
+      var badge = colEl.querySelector('.column-include-badge');
+      assert(badge, 'include badge rendered');
+      assert(!badge.classList.contains('include-broken'), 'badge not marked broken');
+      assertEqual(badge.getAttribute('data-include-path'), 'docs/backlog.md', 'badge has correct path');
+
+      // Cards should be visible
+      var allCols = api().getAllFullColumns();
+      var colIdx = allCols.length - 1;
+      assertEqual(getViewCardCount(colIdx), 2, 'included cards visible');
+      assertBoardIntegrity('after include header add');
+    } finally { await teardown(); }
+  });
+
+  register('include header: column with missing include shows broken badge', async function () {
+    await setup();
+    try {
+      var data = api().getFullBoardData();
+      var targetStack = data.rows[0].stacks[0];
+      targetStack.columns.push({
+        id: '__incl-hdr-miss__', title: 'Missing !!!include(nonexistent.md)!!!',
+        cards: [],
+        include_source: null,
+        includeSource: { rawPath: 'nonexistent.md', missing: true }
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var c = getContainer();
+      var colEl = c.querySelector('.column[data-column-id="__incl-hdr-miss__"]');
+      assert(colEl, 'column rendered');
+      var badge = colEl.querySelector('.column-include-badge');
+      assert(badge, 'badge rendered');
+      assert(badge.classList.contains('include-broken'), 'badge marked broken for missing file');
+      assertBoardIntegrity('after missing include');
+    } finally { await teardown(); }
+  });
+
+  register('include header: changing include path updates badge and column data', async function () {
+    await setup();
+    try {
+      // Step 1: Add column with include
+      var data = api().getFullBoardData();
+      var targetStack = data.rows[0].stacks[0];
+      targetStack.columns.push({
+        id: '__incl-hdr-chg__', title: 'Schedule !!!include(docs/old.md)!!!',
+        cards: [{ id: '__incl-chg-c1__', content: 'Old Card', checked: false, kid: '__incl-chg-c1__' }],
+        include_source: null,
+        includeSource: { rawPath: 'docs/old.md', missing: false }
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var c = getContainer();
+      var badge = c.querySelector('.column[data-column-id="__incl-hdr-chg__"] .column-include-badge');
+      assert(badge, 'initial badge exists');
+      assertEqual(badge.getAttribute('data-include-path'), 'docs/old.md', 'initial path');
+
+      // Step 2: Change to new include path
+      data = api().getFullBoardData();
+      var allCols = api().getAllFullColumns();
+      var targetCol = null;
+      for (var i = 0; i < allCols.length; i++) {
+        if (allCols[i].id === '__incl-hdr-chg__') { targetCol = allCols[i]; break; }
+      }
+      assert(targetCol, 'target column found in data');
+
+      // Update title and includeSource
+      var helpers = getOrderHelpers();
+      if (helpers && typeof helpers.addIncludeSyntaxToTitle === 'function') {
+        targetCol.title = helpers.addIncludeSyntaxToTitle(
+          helpers.removeIncludeSyntaxFromTitle(targetCol.title || ''),
+          'docs/new.md'
+        );
+      } else {
+        targetCol.title = 'Schedule !!!include(docs/new.md)!!!';
+      }
+      targetCol.includeSource = { rawPath: 'docs/new.md', missing: false };
+      targetCol.cards = [{ id: '__incl-chg-c2__', content: 'New Card', checked: false, kid: '__incl-chg-c2__' }];
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      c = getContainer();
+      badge = c.querySelector('.column[data-column-id="__incl-hdr-chg__"] .column-include-badge');
+      assert(badge, 'badge still exists after path change');
+      assertEqual(badge.getAttribute('data-include-path'), 'docs/new.md', 'updated path');
+      assertBoardIntegrity('after include path change');
+    } finally { await teardown(); }
+  });
+
+  register('include header: removing include syntax removes badge and cards', async function () {
+    await setup();
+    try {
+      // Step 1: Add column with include and cards
+      var data = api().getFullBoardData();
+      var targetStack = data.rows[0].stacks[0];
+      targetStack.columns.push({
+        id: '__incl-hdr-rm__', title: 'Reports !!!include(docs/reports.md)!!!',
+        cards: [
+          { id: '__incl-rm-c1__', content: 'Report 1', checked: false, kid: '__incl-rm-c1__' },
+          { id: '__incl-rm-c2__', content: 'Report 2', checked: false, kid: '__incl-rm-c2__' }
+        ],
+        include_source: null,
+        includeSource: { rawPath: 'docs/reports.md', missing: false }
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var allCols = api().getAllFullColumns();
+      var colIdx = allCols.length - 1;
+      assertEqual(getViewCardCount(colIdx), 2, 'cards visible before remove');
+
+      // Step 2: Remove include syntax and cards (simulating disableColumnIncludeMode)
+      data = api().getFullBoardData();
+      allCols = api().getAllFullColumns();
+      var targetCol = allCols[allCols.length - 1];
+
+      var helpers = getOrderHelpers();
+      if (helpers && typeof helpers.removeIncludeSyntaxFromTitle === 'function') {
+        targetCol.title = helpers.removeIncludeSyntaxFromTitle(targetCol.title || '');
+      } else {
+        targetCol.title = 'Reports';
+      }
+      targetCol.includeSource = null;
+      targetCol.cards = []; // Cards removed when include is disabled
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var c = getContainer();
+      var colEl = c.querySelector('.column[data-column-id="__incl-hdr-rm__"]');
+      assert(colEl, 'column still exists');
+      var badge = colEl.querySelector('.column-include-badge');
+      assert(!badge, 'badge removed after include syntax removed');
+
+      allCols = api().getAllFullColumns();
+      colIdx = allCols.length - 1;
+      assertEqual(getViewCardCount(colIdx), 0, 'cards removed after include disabled');
+      assertBoardIntegrity('after include removed');
+    } finally { await teardown(); }
+  });
+
+  register('include header: pre-existing cards are preserved in data when include is added', async function () {
+    await setup();
+    try {
+      // Step 1: Column with regular cards (no include)
+      var data = api().getFullBoardData();
+      var targetStack = data.rows[0].stacks[0];
+      targetStack.columns.push({
+        id: '__incl-hdr-pre__', title: 'Existing Work',
+        cards: [
+          { id: '__incl-pre-c1__', content: 'Existing Card 1', checked: false, kid: '__incl-pre-c1__' },
+          { id: '__incl-pre-c2__', content: 'Existing Card 2', checked: false, kid: '__incl-pre-c2__' }
+        ],
+        include_source: null
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      var allCols = api().getAllFullColumns();
+      var colIdx = allCols.length - 1;
+      assertEqual(getViewCardCount(colIdx), 2, 'existing cards visible');
+
+      // Step 2: Add include syntax — the existing cards should still be in data
+      // (In real usage, the backend would suggest moving them to the included file)
+      data = api().getFullBoardData();
+      allCols = api().getAllFullColumns();
+      var targetCol = allCols[allCols.length - 1];
+
+      var helpers = getOrderHelpers();
+      if (helpers && typeof helpers.addIncludeSyntaxToTitle === 'function') {
+        targetCol.title = helpers.addIncludeSyntaxToTitle(targetCol.title || '', 'docs/work.md');
+      } else {
+        targetCol.title = 'Existing Work !!!include(docs/work.md)!!!';
+      }
+      targetCol.includeSource = { rawPath: 'docs/work.md', missing: false };
+      // Pre-existing cards remain (they'd be suggested for migration in real flow)
+      api().setTestBoard(data, _boardId);
+      await delay(120);
+
+      // Cards should still be visible
+      allCols = api().getAllFullColumns();
+      colIdx = allCols.length - 1;
+      assertEqual(getViewCardCount(colIdx), 2, 'pre-existing cards still visible after include added');
+      assert(getViewCardKids(colIdx).indexOf('__incl-pre-c1__') !== -1, 'card 1 preserved');
+      assert(getViewCardKids(colIdx).indexOf('__incl-pre-c2__') !== -1, 'card 2 preserved');
+
+      // Badge should render
+      var c = getContainer();
+      var badge = c.querySelector('.column[data-column-id="__incl-hdr-pre__"] .column-include-badge');
+      assert(badge, 'include badge renders with pre-existing cards');
+      assertBoardIntegrity('after include added with pre-existing cards');
+    } finally { await teardown(); }
+  });
+
+  register('include header: full lifecycle — add include → change path → remove include', async function () {
+    await setup();
+    try {
+      var helpers = getOrderHelpers();
+
+      // Step 1: Start with plain column
+      var data = api().getFullBoardData();
+      var targetStack = data.rows[0].stacks[0];
+      targetStack.columns.push({
+        id: '__incl-lifecycle__', title: 'Lifecycle Column',
+        cards: [{ id: '__lc-c1__', content: 'Original Card', checked: false, kid: '__lc-c1__' }],
+        include_source: null
+      });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+      assertBoardIntegrity('lifecycle step 0: plain column');
+
+      // Step 2: Add include
+      data = api().getFullBoardData();
+      var allCols = api().getAllFullColumns();
+      var col = allCols[allCols.length - 1];
+      if (helpers && helpers.addIncludeSyntaxToTitle) {
+        col.title = helpers.addIncludeSyntaxToTitle(col.title || '', 'docs/first.md');
+      } else {
+        col.title = col.title + ' !!!include(docs/first.md)!!!';
+      }
+      col.includeSource = { rawPath: 'docs/first.md', missing: false };
+      col.cards.push({ id: '__lc-c2__', content: 'Included Card', checked: false, kid: '__lc-c2__' });
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      var c = getContainer();
+      var badge = c.querySelector('.column[data-column-id="__incl-lifecycle__"] .column-include-badge');
+      assert(badge, 'badge after add');
+      assertEqual(badge.getAttribute('data-include-path'), 'docs/first.md', 'first path');
+      assertBoardIntegrity('lifecycle step 1: add include');
+
+      // Step 3: Change path
+      data = api().getFullBoardData();
+      allCols = api().getAllFullColumns();
+      col = allCols[allCols.length - 1];
+      if (helpers && helpers.removeIncludeSyntaxFromTitle && helpers.addIncludeSyntaxToTitle) {
+        col.title = helpers.addIncludeSyntaxToTitle(
+          helpers.removeIncludeSyntaxFromTitle(col.title || ''), 'docs/second.md'
+        );
+      } else {
+        col.title = 'Lifecycle Column !!!include(docs/second.md)!!!';
+      }
+      col.includeSource = { rawPath: 'docs/second.md', missing: false };
+      col.cards = [{ id: '__lc-c3__', content: 'New Included Card', checked: false, kid: '__lc-c3__' }];
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      c = getContainer();
+      badge = c.querySelector('.column[data-column-id="__incl-lifecycle__"] .column-include-badge');
+      assert(badge, 'badge after path change');
+      assertEqual(badge.getAttribute('data-include-path'), 'docs/second.md', 'second path');
+      assertBoardIntegrity('lifecycle step 2: change path');
+
+      // Step 4: Remove include
+      data = api().getFullBoardData();
+      allCols = api().getAllFullColumns();
+      col = allCols[allCols.length - 1];
+      if (helpers && helpers.removeIncludeSyntaxFromTitle) {
+        col.title = helpers.removeIncludeSyntaxFromTitle(col.title || '');
+      } else {
+        col.title = 'Lifecycle Column';
+      }
+      col.includeSource = null;
+      col.cards = [];
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      c = getContainer();
+      badge = c.querySelector('.column[data-column-id="__incl-lifecycle__"] .column-include-badge');
+      assert(!badge, 'badge gone after remove');
+      allCols = api().getAllFullColumns();
+      var colIdx = allCols.length - 1;
+      assertEqual(getViewCardCount(colIdx), 0, 'cards gone after include removed');
+      assertBoardIntegrity('lifecycle step 3: remove include');
+    } finally { await teardown(); }
+  });
+
+  register('include header: include syntax functions produce correct title strings', async function () {
+    await setup();
+    try {
+      var helpers = getOrderHelpers();
+      if (!helpers || !helpers.addIncludeSyntaxToTitle || !helpers.removeIncludeSyntaxFromTitle || !helpers.extractIncludePathFromTitle) return;
+
+      // addIncludeSyntaxToTitle
+      var result = helpers.addIncludeSyntaxToTitle('My Column', 'docs/data.md');
+      assert(result.indexOf('!!!include(docs/data.md)!!!') !== -1, 'include syntax added');
+      assert(result.indexOf('My Column') !== -1, 'title text preserved');
+
+      // extractIncludePathFromTitle
+      var path = helpers.extractIncludePathFromTitle(result);
+      assertEqual(path, 'docs/data.md', 'path extracted correctly');
+
+      // removeIncludeSyntaxFromTitle
+      var cleaned = helpers.removeIncludeSyntaxFromTitle(result);
+      assert(cleaned.indexOf('!!!include') === -1, 'include syntax removed');
+      assert(cleaned.indexOf('My Column') !== -1, 'title text preserved after removal');
+
+      // Double add doesn't duplicate
+      var doubled = helpers.addIncludeSyntaxToTitle(result, 'docs/other.md');
+      var occurrences = (doubled.match(/!!!include/g) || []).length;
+      assertEqual(occurrences, 1, 'only one include directive after re-add');
+      assertEqual(helpers.extractIncludePathFromTitle(doubled), 'docs/other.md', 'path updated to new value');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // Test runner (console)
   // ═══════════════════════════════════════════════════════════════════════
 

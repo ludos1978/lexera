@@ -384,8 +384,9 @@ var LexeraColumnContextMenu = (function () {
     if (!col) return;
     var titleEl = colEl.querySelector('.column-title');
     if (!titleEl) return;
-    var includePath = deps.extractIncludePathFromTitle(col.title);
-    var currentTitle = deps.removeIncludeSyntaxFromTitle(deps.stripLayoutTags(col.title));
+    var currentTitle = typeof deps.stripHtmlComments === 'function'
+      ? deps.stripHtmlComments(col.title || '')
+      : String(col.title || '').replace(/<!--[\s\S]*?-->/g, ' ').replace(/\s+/g, ' ').trim();
     var input = document.createElement('input');
     input.type = 'text';
     input.className = 'column-rename-input';
@@ -403,16 +404,13 @@ var LexeraColumnContextMenu = (function () {
       if (newTitle && newTitle !== currentTitle) {
         deps.pushUndo();
         var rebuilt = deps.reconstructColumnTitle(newTitle, col.title);
-        if (includePath) {
-          rebuilt = deps.addIncludeSyntaxToTitle(rebuilt, includePath);
-        }
         col.title = rebuilt;
         // Update title in place — no full re-render needed
-        var displayNew = includePath ? deps.addIncludeSyntaxToTitle(newTitle, includePath) : newTitle;
+        var displayNew = deps.stripLayoutTags(rebuilt || '');
         titleEl.innerHTML = deps.renderTitleInline(displayNew, deps.getActiveBoardId(), { allowIncludeDirectives: true });
         deps.persistBoardMutation({ targets: [{ type: 'column', colIndex: colIndex }] });
       } else {
-        var displayTitle = includePath ? deps.addIncludeSyntaxToTitle(currentTitle, includePath) : currentTitle;
+        var displayTitle = deps.stripLayoutTags(col.title || '');
         titleEl.innerHTML = deps.renderTitleInline(displayTitle, deps.getActiveBoardId(), { allowIncludeDirectives: true });
       }
     }
