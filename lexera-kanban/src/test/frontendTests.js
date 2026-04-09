@@ -159,6 +159,25 @@
       poll = setTimeout(pollCancel, Math.min(50, ms));
     });
   }
+
+  async function waitForCondition(predicate, timeoutMs, stepMs, message) {
+    var timeout = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 3000;
+    var step = typeof stepMs === 'number' && stepMs > 0 ? stepMs : 50;
+    var started = Date.now();
+    while ((Date.now() - started) <= timeout) {
+      throwIfRunCancelled();
+      try {
+        if (predicate()) return true;
+      } catch (_) {}
+      await delay(step);
+    }
+    throw new Error(message || 'Timed out waiting for condition');
+  }
+
+  function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
   function getBoardRowCount(boardData) { return boardData && boardData.rows ? boardData.rows.length : 0; }
 
   function assertEqual(actual, expected, msg) {
@@ -258,6 +277,68 @@
       var row = projection.rows[r];
       for (var s = 0; s < row.stacks.length; s++) {
         if (row.stacks[s]) return row.stacks[s];
+      }
+    }
+    return null;
+  }
+
+  function findFirstVisibleColumnRef(boardData) {
+    var projection = getExpectedVisibleProjection(boardData);
+    return projection.columns.length > 0 ? projection.columns[0] : null;
+  }
+
+  function findFirstVisibleRowRef(boardData) {
+    var projection = getExpectedVisibleProjection(boardData);
+    return projection.rows.length > 0 ? projection.rows[0] : null;
+  }
+
+  function findVisibleStackRefById(boardData, rowId, stackId) {
+    var projection = getExpectedVisibleProjection(boardData);
+    rowId = cleanBoardText(rowId);
+    stackId = cleanBoardText(stackId);
+    for (var r = 0; r < projection.rows.length; r++) {
+      var row = projection.rows[r];
+      if (rowId && cleanBoardText(row.rowId) !== rowId) continue;
+      for (var s = 0; s < row.stacks.length; s++) {
+        var stack = row.stacks[s];
+        if (stackId && cleanBoardText(stack.stackId) !== stackId) continue;
+        return stack;
+      }
+    }
+    return null;
+  }
+
+  function findVisibleColumnRefById(boardData, columnId) {
+    var projection = getExpectedVisibleProjection(boardData);
+    columnId = cleanBoardText(columnId);
+    for (var i = 0; i < projection.columns.length; i++) {
+      if (cleanBoardText(projection.columns[i].columnId) === columnId) return projection.columns[i];
+    }
+    return null;
+  }
+
+  function findCardInBoardDataById(boardData, cardId) {
+    var normalized = cleanBoardText(cardId);
+    if (!normalized || !boardData || !Array.isArray(boardData.rows)) return null;
+    for (var r = 0; r < boardData.rows.length; r++) {
+      var stacks = boardData.rows[r] && Array.isArray(boardData.rows[r].stacks) ? boardData.rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < cols.length; c++) {
+          var cards = Array.isArray(cols[c].cards) ? cols[c].cards : [];
+          for (var k = 0; k < cards.length; k++) {
+            var candidateId = cleanBoardText(cards[k] && (cards[k].kid || cards[k].id));
+            if (candidateId === normalized) {
+              return {
+                card: cards[k],
+                rowIndex: r,
+                stackIndex: s,
+                colIndex: c,
+                columnId: cols[c] && cols[c].id ? String(cols[c].id) : ''
+              };
+            }
+          }
+        }
       }
     }
     return null;
@@ -572,6 +653,10 @@
     var c = getContainer(); return c ? c.querySelectorAll('.board-row').length : -1;
   }
 
+  function getViewStackCount() {
+    var c = getContainer(); return c ? c.querySelectorAll('.board-stack').length : -1;
+  }
+
   function hasDuplicateViewCardIds() {
     var c = getContainer(); if (!c) return false;
     var cards = c.querySelectorAll('.card');
@@ -595,7 +680,7 @@
   // ═══════════════════════════════════════════════════════════════════════
 
   function getSidebarCardIdsInColumn(columnId) {
-    var doc = getBoardDocument();
+    var doc = getSidebarDocument();
     var bl = doc.querySelector('.board-list');
     if (!bl) return null;
     var cards = bl.querySelectorAll('.tree-card[data-column-id="' + columnId + '"]');
@@ -607,9 +692,280 @@
   }
 
   function isSidebarAvailable() {
-    var doc = getBoardDocument();
+    var doc = getSidebarDocument();
     var bl = doc.querySelector('.board-list');
     return !!(bl && bl.querySelector('.tree-card'));
+  }
+
+  function getSidebarDocument() {
+    var docs = getReachableDocuments();
+    for (var i = 0; i < docs.length; i++) {
+      var doc = docs[i];
+      if (!doc || typeof doc.querySelector !== 'function') continue;
+      try {
+        if (doc.querySelector('.board-list')) return doc;
+      } catch (_) {}
+    }
+    return getBoardDocument();
+  }
+
+  function getSidebarRoot() {
+    var doc = getSidebarDocument();
+    return doc ? doc.querySelector('.board-list') : null;
+  }
+
+  function getSidebarRowCount() {
+    var root = getSidebarRoot();
+    return root ? root.querySelectorAll('.tree-row[data-row-id]').length : -1;
+  }
+
+  function getSidebarStackCount() {
+    var root = getSidebarRoot();
+    return root ? root.querySelectorAll('.tree-stack[data-stack-id]').length : -1;
+  }
+
+  function getSidebarColumnCount() {
+    var root = getSidebarRoot();
+    return root ? root.querySelectorAll('.tree-column[data-column-id]').length : -1;
+  }
+
+  function getSidebarNodeByAttr(selector) {
+    var root = getSidebarRoot();
+    return root ? root.querySelector(selector) : null;
+  }
+
+  function getHeaderButton(buttonId) {
+    var doc = getBoardDocument();
+    return doc ? doc.getElementById(buttonId) : null;
+  }
+
+  function getHeaderButtonText(buttonId) {
+    var btn = getHeaderButton(buttonId);
+    return cleanBoardText(btn ? btn.textContent : '');
+  }
+
+  function headerButtonHasItems(buttonId) {
+    var btn = getHeaderButton(buttonId);
+    return !!(btn && btn.classList && btn.classList.contains('has-items'));
+  }
+
+  function assertHeaderBucketState(buttonId, label, expectedCount) {
+    var expectedText = expectedCount > 0 ? (label + ' (' + expectedCount + ')') : label;
+    assertEqual(getHeaderButtonText(buttonId), expectedText, label + ' header label');
+    assertEqual(headerButtonHasItems(buttonId), expectedCount > 0, label + ' header has-items state');
+  }
+
+  function getExportDocument() {
+    return getBoardDocument();
+  }
+
+  function getExportService() {
+    var doc = getExportDocument();
+    var win = doc && doc.defaultView ? doc.defaultView : window;
+    return win ? (win.ExportService || null) : null;
+  }
+
+  function getExportUi() {
+    var doc = getExportDocument();
+    var win = doc && doc.defaultView ? doc.defaultView : window;
+    return win ? (win._exportUI || null) : null;
+  }
+
+  function closeExportModal() {
+    var ui = getExportUi();
+    if (ui && typeof ui.hide === 'function') ui.hide();
+    var doc = getExportDocument();
+    var modal = doc ? doc.getElementById('export-modal') : null;
+    if (modal) modal.hidden = true;
+  }
+
+  function setExportSelectValue(id, value) {
+    var doc = getExportDocument();
+    var el = doc ? doc.getElementById(id) : null;
+    assert(el, id + ' exists');
+    el.value = value;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function setExportCheckboxValue(id, checked) {
+    var doc = getExportDocument();
+    var el = doc ? doc.getElementById(id) : null;
+    assert(el, id + ' exists');
+    el.checked = !!checked;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  async function openExportModal(initialOptions) {
+    closeExportModal();
+    await api().triggerBoardExport(initialOptions || null);
+    await waitForCondition(function () {
+      var doc = getExportDocument();
+      var modal = doc ? doc.getElementById('export-modal') : null;
+      return !!(modal && !modal.hidden && getExportUi());
+    }, 3000, 50, 'Export modal did not open');
+    return getExportUi();
+  }
+
+  function getDashboardDocument() {
+    var docs = getReachableDocuments();
+    for (var i = 0; i < docs.length; i++) {
+      var doc = docs[i];
+      if (!doc || typeof doc.getElementById !== 'function') continue;
+      try {
+        if (doc.getElementById('dashboard-results-list') || doc.querySelector('.lexera-shared-dashboard-results')) return doc;
+      } catch (_) {}
+    }
+    return getBoardDocument();
+  }
+
+  function getDashboardList(listId) {
+    var doc = getDashboardDocument();
+    return doc ? doc.getElementById(listId) : null;
+  }
+
+  function getDashboardCardIds(listId) {
+    var list = getDashboardList(listId);
+    if (!list) return [];
+    var nodes = list.querySelectorAll('.tree-node[data-dashboard-card-id]');
+    var ids = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var id = cleanBoardText(nodes[i].getAttribute('data-dashboard-card-id'));
+      if (id) ids.push(id);
+    }
+    return ids;
+  }
+
+  function getDashboardCardCount(listId) {
+    return getDashboardCardIds(listId).length;
+  }
+
+  function getVisibleRowIds(boardData) {
+    var projection = getExpectedVisibleProjection(boardData);
+    var ids = [];
+    for (var i = 0; i < projection.rows.length; i++) {
+      if (projection.rows[i].rowId) ids.push(cleanBoardText(projection.rows[i].rowId));
+    }
+    return ids;
+  }
+
+  function getVisibleStackIds(boardData) {
+    var projection = getExpectedVisibleProjection(boardData);
+    var ids = [];
+    for (var r = 0; r < projection.rows.length; r++) {
+      var stacks = projection.rows[r].stacks || [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (stacks[s].stackId) ids.push(cleanBoardText(stacks[s].stackId));
+      }
+    }
+    return ids;
+  }
+
+  function getVisibleColumnIds(boardData) {
+    var projection = getExpectedVisibleProjection(boardData);
+    var ids = [];
+    for (var i = 0; i < projection.columns.length; i++) {
+      if (projection.columns[i].columnId) ids.push(cleanBoardText(projection.columns[i].columnId));
+    }
+    return ids;
+  }
+
+  function getVisibleCardIds(boardData) {
+    var projection = getExpectedVisibleProjection(boardData);
+    var ids = [];
+    for (var i = 0; i < projection.columns.length; i++) {
+      var cards = projection.columns[i].cards || [];
+      for (var k = 0; k < cards.length; k++) {
+        var id = cleanBoardText(cards[k] && (cards[k].kid || cards[k].id));
+        if (id) ids.push(id);
+      }
+    }
+    return ids;
+  }
+
+  function findNewId(beforeIds, afterIds) {
+    var seen = {};
+    for (var i = 0; i < beforeIds.length; i++) seen[cleanBoardText(beforeIds[i])] = true;
+    for (var j = 0; j < afterIds.length; j++) {
+      var next = cleanBoardText(afterIds[j]);
+      if (next && !seen[next]) return next;
+    }
+    return '';
+  }
+
+  function createFrontendActionFixtureBoard() {
+    var includeSource = { rawPath: './slides/intro.md', missing: false };
+    return {
+      title: 'Frontend Test Fixture Board',
+      columns: [],
+      rows: [
+        {
+          id: 'ft-row-1',
+          title: 'Roadmap',
+          stacks: [
+            {
+              id: 'ft-stack-1',
+              title: 'Primary Stack',
+              columns: [
+                {
+                  id: 'ft-col-1',
+                  title: 'Alpha Column',
+                  cards: [
+                    { id: 'ft-card-1', kid: 'ft-card-1', content: 'ORDER-1 Alpha Task [Spec](https://example.com/spec) #today', checked: false }
+                  ],
+                  include_source: null,
+                  includeSource: null
+                },
+                {
+                  id: 'ft-col-2',
+                  title: 'Included Column !!!include(./slides/intro.md)!!!',
+                  cards: [
+                    { id: 'ft-card-2', kid: 'ft-card-2', content: 'ORDER-2 ![Diagram](./diagram.png)\n[Doc](./guide.pdf)\n!!!include(./nested.md)!!!\nDue #tomorrow', checked: false }
+                  ],
+                  include_source: includeSource,
+                  includeSource: includeSource
+                }
+              ]
+            },
+            {
+              id: 'ft-stack-2',
+              title: 'Secondary Stack',
+              columns: [
+                {
+                  id: 'ft-col-3',
+                  title: 'Gamma Column',
+                  cards: [
+                    { id: 'ft-card-3', kid: 'ft-card-3', content: 'ORDER-3 Gamma Task', checked: false }
+                  ],
+                  include_source: null,
+                  includeSource: null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: 'ft-row-2',
+          title: 'Backlog',
+          stacks: [
+            {
+              id: 'ft-stack-3',
+              title: 'Archive Candidate',
+              columns: [
+                {
+                  id: 'ft-col-4',
+                  title: 'Delta Column',
+                  cards: [
+                    { id: 'ft-card-4', kid: 'ft-card-4', content: 'ORDER-4 Delta Task', checked: false }
+                  ],
+                  include_source: null,
+                  includeSource: null
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -619,6 +975,7 @@
   var _snapshot = null;
   var _boardId = null;
   var _uiStateSnapshot = null;
+  var _restoreSavedSnapshot = false;
 
   function getBoardUiStateKeys(boardId) {
     if (!boardId) return [];
@@ -689,10 +1046,27 @@
     throw new Error('No board loaded — open a board with at least 2 columns first');
   }
 
+  async function persistFixtureBoard(boardData) {
+    assert(_boardId, 'board id available');
+    api().setTestBoard(cloneJson(boardData), _boardId);
+    await delay(180);
+    assert(typeof api().saveCurrentBoard === 'function', 'saveCurrentBoard is available');
+    _restoreSavedSnapshot = true;
+    var saved = await api().saveCurrentBoard();
+    assert(saved !== false, 'fixture board saved');
+    await delay(220);
+  }
+
   async function teardown() {
     if (_snapshot && _boardId) {
       api().setTestBoard(_snapshot, _boardId);
       await wait(150);
+      if (_restoreSavedSnapshot && typeof api().saveCurrentBoard === 'function') {
+        try {
+          await api().saveCurrentBoard();
+          await wait(180);
+        } catch (_) {}
+      }
       restoreBoardUiState(_uiStateSnapshot, _boardId);
       try { api().renderMainView(); } catch (_) {}
       await wait(80);
@@ -700,6 +1074,7 @@
     _snapshot = null;
     _boardId = null;
     _uiStateSnapshot = null;
+    _restoreSavedSnapshot = false;
   }
 
   /** Find first two columns with at least 1 card each. Returns {srcCol, dstCol, srcCard}. */
@@ -1363,6 +1738,36 @@
     return typeof after.refreshSeq === 'number' &&
       typeof before.refreshSeq === 'number' &&
       after.refreshSeq > before.refreshSeq;
+  }
+
+  async function setDashboardStateForTest(query, scope, skipRefresh) {
+    var helpers = getDashboardHelpers();
+    if (!helpers) return;
+    if (typeof helpers.setDashboardScope === 'function' && scope) helpers.setDashboardScope(scope);
+    if (typeof helpers.setDashboardQuery === 'function') {
+      helpers.setDashboardQuery(query || '', { skipRefresh: !!skipRefresh });
+    }
+    if (!skipRefresh) await delay(260);
+  }
+
+  function resetDashboardPendingFlags() {
+    var helpers = getDashboardHelpers();
+    if (helpers && typeof helpers._resetDashboardPendingFlags === 'function') helpers._resetDashboardPendingFlags();
+  }
+
+  async function waitForDashboardCardCount(listId, expectedCount, message) {
+    await waitForCondition(function () {
+      return getDashboardCardCount(listId) === expectedCount;
+    }, 5000, 75, message || ('Dashboard list ' + listId + ' did not reach expected count'));
+  }
+
+  async function waitForDashboardCardPresence(listId, cardId, expectedPresent, message) {
+    var normalized = cleanBoardText(cardId);
+    await waitForCondition(function () {
+      var ids = getDashboardCardIds(listId);
+      var present = ids.indexOf(normalized) !== -1;
+      return expectedPresent ? present : !present;
+    }, 5000, 75, message || ('Dashboard card presence mismatch for ' + normalized));
   }
 
   register('dashboard: refresh scheduled after addCard mutation', async function () {
@@ -2206,6 +2611,389 @@
     } finally {
       var h = getDashboardHelpers();
       if (h && typeof h.setDashboardScope === 'function') h.setDashboardScope('all');
+      await teardown();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // HEADER CREATION ACTIONS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('header create: row action adds row to data, board DOM, sidebar, and keeps dashboard counts in sync', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      await setDashboardStateForTest('', 'active', false);
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'initial dashboard todos should match fixture board');
+      resetDashboardPendingFlags();
+      var beforeDashboard = getDashboardDebugState();
+      var beforeData = api().getFullBoardData();
+      var beforeIds = getVisibleRowIds(beforeData);
+      var rowsBefore = getViewRowCount();
+      var sidebarRowsBefore = getSidebarRowCount();
+
+      await api().runHeaderCreationAction('row', 'empty');
+      await delay(260);
+
+      var afterData = api().getFullBoardData();
+      var newRowId = findNewId(beforeIds, getVisibleRowIds(afterData));
+      var afterDashboard = getDashboardDebugState();
+      assert(newRowId, 'new row id discovered');
+      assertEqual(getExpectedVisibleProjection(afterData).rows.length, beforeIds.length + 1, 'visible row count +1 in data');
+      assertEqual(getViewRowCount(), rowsBefore + 1, 'board DOM row count +1');
+      assertEqual(getSidebarRowCount(), sidebarRowsBefore + 1, 'sidebar row count +1');
+      assert(getContainer().querySelector('.board-row[data-row-id="' + newRowId + '"]'), 'new row rendered in board DOM');
+      assert(getSidebarNodeByAttr('.tree-row[data-row-id="' + newRowId + '"]'), 'new row rendered in sidebar');
+      assert(didDashboardRefreshTrigger(beforeDashboard, afterDashboard), 'dashboard refresh triggered after row creation');
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'empty row should not change dashboard todo count');
+    } finally {
+      await setDashboardStateForTest('', 'all', true);
+      await teardown();
+    }
+  });
+
+  register('header create: stack action adds stack to data, board DOM, sidebar, and keeps dashboard counts in sync', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      await setDashboardStateForTest('', 'active', false);
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'initial dashboard todos should match fixture board');
+      resetDashboardPendingFlags();
+      var beforeDashboard = getDashboardDebugState();
+      var beforeData = api().getFullBoardData();
+      var beforeIds = getVisibleStackIds(beforeData);
+      var stacksBefore = getViewStackCount();
+      var sidebarStacksBefore = getSidebarStackCount();
+
+      await api().runHeaderCreationAction('stack', 'empty');
+      await delay(260);
+
+      var afterData = api().getFullBoardData();
+      var newStackId = findNewId(beforeIds, getVisibleStackIds(afterData));
+      var afterDashboard = getDashboardDebugState();
+      assert(newStackId, 'new stack id discovered');
+      assertEqual(getExpectedVisibleProjection(afterData).rows[0].stacks.length, 3, 'first row gained a third visible stack');
+      assertEqual(getViewStackCount(), stacksBefore + 1, 'board DOM stack count +1');
+      assertEqual(getSidebarStackCount(), sidebarStacksBefore + 1, 'sidebar stack count +1');
+      assert(getContainer().querySelector('.board-stack[data-stack-id="' + newStackId + '"]'), 'new stack rendered in board DOM');
+      assert(getSidebarNodeByAttr('.tree-stack[data-stack-id="' + newStackId + '"]'), 'new stack rendered in sidebar');
+      assert(didDashboardRefreshTrigger(beforeDashboard, afterDashboard), 'dashboard refresh triggered after stack creation');
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'empty stack should not change dashboard todo count');
+    } finally {
+      await setDashboardStateForTest('', 'all', true);
+      await teardown();
+    }
+  });
+
+  register('header create: column action adds column to data, board DOM, sidebar, and keeps dashboard counts in sync', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      await setDashboardStateForTest('', 'active', false);
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'initial dashboard todos should match fixture board');
+      resetDashboardPendingFlags();
+      var beforeDashboard = getDashboardDebugState();
+      var beforeData = api().getFullBoardData();
+      var beforeIds = getVisibleColumnIds(beforeData);
+      var colsBefore = getViewColumnCount();
+      var sidebarColsBefore = getSidebarColumnCount();
+
+      await api().runHeaderCreationAction('column', 'empty');
+      await delay(260);
+
+      var afterData = api().getFullBoardData();
+      var newColumnId = findNewId(beforeIds, getVisibleColumnIds(afterData));
+      var afterDashboard = getDashboardDebugState();
+      assert(newColumnId, 'new column id discovered');
+      assertEqual(getViewColumnCount(), colsBefore + 1, 'board DOM column count +1');
+      assertEqual(getSidebarColumnCount(), sidebarColsBefore + 1, 'sidebar column count +1');
+      assert(getContainer().querySelector('.column[data-column-id="' + newColumnId + '"]'), 'new column rendered in board DOM');
+      assert(getSidebarNodeByAttr('.tree-column[data-column-id="' + newColumnId + '"]'), 'new column rendered in sidebar');
+      assert(didDashboardRefreshTrigger(beforeDashboard, afterDashboard), 'dashboard refresh triggered after column creation');
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'empty column should not change dashboard todo count');
+    } finally {
+      await setDashboardStateForTest('', 'all', true);
+      await teardown();
+    }
+  });
+
+  register('header create: card action adds card to data, board DOM, sidebar, and dashboard search results', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'fixture should start with four todo cards');
+      await setDashboardStateForTest('Header Search Card', 'active', false);
+      await waitForDashboardCardCount('dashboard-results-list', 0, 'fixture should still have no matching dashboard results before creation');
+      resetDashboardPendingFlags();
+      var beforeDashboard = getDashboardDebugState();
+      var beforeData = api().getFullBoardData();
+      var beforeCardIds = getVisibleCardIds(beforeData);
+      var firstColumn = findFirstVisibleColumnRef(beforeData);
+      assert(firstColumn, 'fixture exposes a visible column for header card creation');
+      var sidebarBefore = getSidebarCardIdsInColumn(firstColumn.columnId) || [];
+      var viewCountBefore = getViewCardCount(firstColumn.flatIdx);
+
+      assert(typeof api().createHeaderEntityFromText === 'function', 'createHeaderEntityFromText is available');
+      await api().createHeaderEntityFromText('card', 'Header Search Card');
+      await delay(320);
+
+      var afterData = api().getFullBoardData();
+      var newCardId = findNewId(beforeCardIds, getVisibleCardIds(afterData));
+      var afterDashboard = getDashboardDebugState();
+      assert(newCardId, 'new card id discovered');
+      assertEqual(getViewCardCount(firstColumn.flatIdx), viewCountBefore + 1, 'board DOM card count +1 in first column');
+      assertEqual((getSidebarCardIdsInColumn(firstColumn.columnId) || []).length, sidebarBefore.length + 1, 'sidebar card count +1 in first column');
+      assert(getViewCardKids(firstColumn.flatIdx).indexOf(newCardId) !== -1, 'new card rendered in board DOM');
+      assert((getSidebarCardIdsInColumn(firstColumn.columnId) || []).indexOf(newCardId) !== -1, 'new card rendered in sidebar');
+      assert(didDashboardRefreshTrigger(beforeDashboard, afterDashboard), 'dashboard refresh triggered after card creation');
+      await waitForDashboardCardCount('dashboard-todos-list', 5, 'card creation should increase dashboard todo count');
+      await waitForDashboardCardPresence('dashboard-results-list', newCardId, true, 'created card should appear in dashboard search results');
+    } finally {
+      await setDashboardStateForTest('', 'all', true);
+      await teardown();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // HIDDEN DESTINATION SURFACES
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('hidden destination: incoming card updates header bucket, board visibility, and dashboard todos', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      await setDashboardStateForTest('', 'active', false);
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'fixture should start with four todo cards');
+      var totalBefore = getTotalViewCards();
+
+      await api().tagCard(0, 0, '#hidden-internal-incoming');
+      await delay(260);
+
+      assertEqual(api().getIncomingCount(), 1, 'incoming bucket count +1');
+      assertHeaderBucketState('btn-incoming', 'Incoming', 1);
+      assertEqual(getTotalViewCards(), totalBefore - 1, 'incoming card removed from visible board');
+      await waitForDashboardCardCount('dashboard-todos-list', 3, 'incoming card removed from dashboard todos');
+      assertEqual(getViewCardKids(0).indexOf('ft-card-1'), -1, 'incoming card removed from source column DOM');
+    } finally {
+      await setDashboardStateForTest('', 'all', true);
+      await teardown();
+    }
+  });
+
+  register('hidden destination: parked card updates header bucket, board visibility, and dashboard todos', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      await setDashboardStateForTest('', 'active', false);
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'fixture should start with four todo cards');
+      var totalBefore = getTotalViewCards();
+
+      await api().tagCard(0, 0, '#hidden-internal-parked');
+      await delay(260);
+
+      assertEqual(api().getParkedCount(), 1, 'park bucket count +1');
+      assertHeaderBucketState('btn-parked', 'Park', 1);
+      assertEqual(getTotalViewCards(), totalBefore - 1, 'parked card removed from visible board');
+      await waitForDashboardCardCount('dashboard-todos-list', 3, 'parked card removed from dashboard todos');
+      assertEqual(getViewCardKids(0).indexOf('ft-card-1'), -1, 'parked card removed from source column DOM');
+    } finally {
+      await setDashboardStateForTest('', 'all', true);
+      await teardown();
+    }
+  });
+
+  register('hidden destination: archived column updates header bucket, board visibility, sidebar, and dashboard todos', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      await setDashboardStateForTest('', 'active', false);
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'fixture should start with four todo cards');
+      var totalColsBefore = getViewColumnCount();
+      var totalCardsBefore = getTotalViewCards();
+
+      await api().setColumnHiddenTag(1, '#hidden-internal-archived');
+      await delay(260);
+
+      assertEqual(api().getArchivedCount(), 1, 'archive bucket count +1');
+      assertHeaderBucketState('btn-archived', 'Archive', 1);
+      assertEqual(getViewColumnCount(), totalColsBefore - 1, 'archived column removed from board DOM');
+      assertEqual(getTotalViewCards(), totalCardsBefore - 1, 'archived column cards removed from visible board');
+      await waitForDashboardCardCount('dashboard-todos-list', 3, 'archived column cards removed from dashboard todos');
+      assert(!getContainer().querySelector('.column[data-column-id="ft-col-2"]'), 'archived column no longer rendered');
+      assert(!getSidebarNodeByAttr('.tree-column[data-column-id="ft-col-2"]'), 'archived column removed from sidebar');
+    } finally {
+      await setDashboardStateForTest('', 'all', true);
+      await teardown();
+    }
+  });
+
+  register('hidden destination: parked stack updates header bucket, board visibility, sidebar, and dashboard todos', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      await setDashboardStateForTest('', 'active', false);
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'fixture should start with four todo cards');
+      var stacksBefore = getViewStackCount();
+      var cardsBefore = getTotalViewCards();
+
+      await api().setStackHiddenTag(0, 1, '#hidden-internal-parked');
+      await delay(260);
+
+      assertEqual(api().getParkedCount(), 1, 'park bucket count +1 from stack');
+      assertHeaderBucketState('btn-parked', 'Park', 1);
+      assertEqual(getViewStackCount(), stacksBefore - 1, 'parked stack removed from board DOM');
+      assertEqual(getTotalViewCards(), cardsBefore - 1, 'parked stack cards removed from visible board');
+      await waitForDashboardCardCount('dashboard-todos-list', 3, 'parked stack cards removed from dashboard todos');
+      assert(!getContainer().querySelector('.board-stack[data-stack-id="ft-stack-2"]'), 'parked stack no longer rendered');
+      assert(!getSidebarNodeByAttr('.tree-stack[data-stack-id="ft-stack-2"]'), 'parked stack removed from sidebar');
+    } finally {
+      await setDashboardStateForTest('', 'all', true);
+      await teardown();
+    }
+  });
+
+  register('hidden destination: trashed row updates header bucket, board visibility, sidebar, and dashboard todos', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      await setDashboardStateForTest('', 'active', false);
+      await waitForDashboardCardCount('dashboard-todos-list', 4, 'fixture should start with four todo cards');
+      var rowsBefore = getViewRowCount();
+      var cardsBefore = getTotalViewCards();
+
+      await api().setRowHiddenTag(1, '#hidden-internal-deleted');
+      await delay(260);
+
+      assertEqual(api().getDeletedCount(), 1, 'trash bucket count +1 from row');
+      assertHeaderBucketState('btn-trash', 'Trash', 1);
+      assertEqual(getViewRowCount(), rowsBefore - 1, 'trashed row removed from board DOM');
+      assertEqual(getTotalViewCards(), cardsBefore - 1, 'trashed row cards removed from visible board');
+      await waitForDashboardCardCount('dashboard-todos-list', 3, 'trashed row cards removed from dashboard todos');
+      assert(!getContainer().querySelector('.board-row[data-row-id="ft-row-2"]'), 'trashed row no longer rendered');
+      assert(!getSidebarNodeByAttr('.tree-row[data-row-id="ft-row-2"]'), 'trashed row removed from sidebar');
+    } finally {
+      await setDashboardStateForTest('', 'all', true);
+      await teardown();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MARP EXPORT
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('marp export: board preset enables presentation settings and full-board selection', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      var ui = await openExportModal({ preset: 'marp-presentation' });
+      var options = ui.collectOptions();
+      assertEqual(options.format, 'presentation', 'export format is presentation');
+      assertEqual(!!options.runMarp, true, 'Marp is enabled');
+      assertEqual(options.marpFormat, 'html', 'Marp format defaults to html presentation');
+      assert(options.selectionScopes && options.selectionScopes.length === 1, 'full-board selection scope is present');
+      assertEqual(options.selectionScopes[0].scope, 'board', 'full-board scope selected');
+      closeExportModal();
+    } finally {
+      closeExportModal();
+      await teardown();
+    }
+  });
+
+  register('marp export: row, stack, and column export actions preselect the expected scopes and columns', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+
+      await api().dispatchAction('row', 'export-row', { rowIdx: 0, rowId: 'ft-row-1' });
+      await delay(220);
+      var rowUi = getExportUi();
+      assert(rowUi, 'row export opened the export modal');
+      var rowOptions = rowUi.collectOptions();
+      assertEqual(rowOptions.selectionScopes.length, 1, 'row export selected a single scope');
+      assertEqual(rowOptions.selectionScopes[0].scope, 'row', 'row export selected row scope');
+      assertEqual(rowOptions.columnIds, ['ft-col-1', 'ft-col-2', 'ft-col-3'], 'row export selected row columns in visible order');
+      closeExportModal();
+
+      await api().dispatchAction('stack', 'export-stack', { rowIdx: 0, stackIdx: 0, rowId: 'ft-row-1', stackId: 'ft-stack-1' });
+      await delay(220);
+      var stackUi = getExportUi();
+      assert(stackUi, 'stack export opened the export modal');
+      var stackOptions = stackUi.collectOptions();
+      assertEqual(stackOptions.selectionScopes.length, 1, 'stack export selected a single scope');
+      assertEqual(stackOptions.selectionScopes[0].scope, 'stack', 'stack export selected stack scope');
+      assertEqual(stackOptions.columnIds, ['ft-col-1', 'ft-col-2'], 'stack export selected stack columns in visible order');
+      closeExportModal();
+
+      await api().dispatchAction('column', 'export-column', {
+        colIndex: 1,
+        rowIdx: 0,
+        stackIdx: 0,
+        colLocalIdx: 1,
+        rowId: 'ft-row-1',
+        stackId: 'ft-stack-1',
+        columnId: 'ft-col-2'
+      });
+      await delay(220);
+      var columnUi = getExportUi();
+      assert(columnUi, 'column export opened the export modal');
+      var columnOptions = columnUi.collectOptions();
+      assertEqual(columnOptions.selectionScopes.length, 1, 'column export selected a single scope');
+      assertEqual(columnOptions.selectionScopes[0].scope, 'column', 'column export selected column scope');
+      assertEqual(columnOptions.columnIds, ['ft-col-2'], 'column export selected the target column');
+      closeExportModal();
+    } finally {
+      closeExportModal();
+      await teardown();
+    }
+  });
+
+  register('marp export: copy includes expected content and predictable include/embed/link/time rewrites', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      var ui = await openExportModal({ preset: 'marp-presentation' });
+      var options = ui.collectOptions();
+      var exportService = getExportService();
+      assert(exportService && typeof exportService.export === 'function', 'ExportService is available');
+      closeExportModal();
+
+      options.mode = 'copy';
+      var result = await exportService.export(options);
+      var markdown = String(result && result.content || '');
+      assert(markdown.indexOf('Alpha Column') !== -1, 'export includes first column title');
+      assert(markdown.indexOf('ORDER-1 Alpha Task') !== -1, 'export includes first card content');
+      assert(markdown.indexOf('ORDER-2') !== -1, 'export includes second card content');
+      assert(/!\[Diagram\]\((?:\.\/)?slides\/diagram\.png\)/.test(markdown), 'image embed path rewritten relative to include source');
+      assert(/\[Doc\]\((?:\.\/)?slides\/guide\.pdf\)/.test(markdown), 'markdown link path rewritten relative to include source');
+      assert(/!!!include\((?:\.\/)?slides\/nested\.md\)!!!/.test(markdown), 'nested include path rewritten relative to include source');
+      assert(markdown.indexOf('https://example.com/spec') !== -1, 'external link preserved');
+      assert(markdown.indexOf('#today') !== -1 && markdown.indexOf('#tomorrow') !== -1, 'time tags preserved in export markdown');
+    } finally {
+      closeExportModal();
+      await teardown();
+    }
+  });
+
+  register('marp export: copy preserves visible card ordering across rows, stacks, and columns', async function () {
+    await setup();
+    try {
+      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      var ui = await openExportModal({ preset: 'marp-presentation' });
+      var options = ui.collectOptions();
+      var exportService = getExportService();
+      closeExportModal();
+
+      options.mode = 'copy';
+      var result = await exportService.export(options);
+      var markdown = String(result && result.content || '');
+      var order1 = markdown.indexOf('ORDER-1');
+      var order2 = markdown.indexOf('ORDER-2');
+      var order3 = markdown.indexOf('ORDER-3');
+      var order4 = markdown.indexOf('ORDER-4');
+      assert(order1 !== -1 && order2 !== -1 && order3 !== -1 && order4 !== -1, 'all ordered markers present in export');
+      assert(order1 < order2 && order2 < order3 && order3 < order4, 'export preserves visible ordering across the board');
+    } finally {
+      closeExportModal();
       await teardown();
     }
   });

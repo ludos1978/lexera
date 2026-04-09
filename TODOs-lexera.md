@@ -2,17 +2,17 @@
 
 ## Frontend Test Additions
 
-- [ ] Add frontend tests that verify the "create new row" action immediately creates a row in data, board DOM, sidebar, and dashboard-derived counts.
-- [ ] Add frontend tests that verify the "create new stack" action immediately creates a stack in data, board DOM, and sidebar hierarchy.
-- [ ] Add frontend tests that verify the "create new column" action immediately creates a column in data, board DOM, sidebar hierarchy, and relevant dashboard rollups.
-- [ ] Add frontend tests that verify the "create new card" action immediately creates a card in data, board DOM, sidebar hierarchy, and dashboard search results.
-- [ ] Add frontend tests that verify moving cards, columns, stacks, or rows to Trash immediately removes them from normal board visibility and places them in the trash-derived surface.
-- [ ] Add frontend tests that verify moving cards, columns, stacks, or rows to Archive immediately updates board visibility, archived dashboard sections, and sidebar-derived views.
-- [ ] Add frontend tests that verify moving cards, columns, stacks, or rows to Park immediately updates board visibility, parked dashboard sections, and related tags or badges.
-- [ ] Add frontend tests that verify moving cards, columns, stacks, or rows to Incoming immediately updates board visibility and incoming-derived dashboard or navigation surfaces.
-- [ ] Add export tests that verify Marp export succeeds for the active board and produces output containing the expected card and column content.
-- [ ] Add export tests that verify Marp export preserves or intentionally degrades embeds, includes, links, and time-tag content in a predictable way.
-- [ ] Add export tests that verify Marp export reflects row, stack, column, and card ordering from the current visible board state.
+- [x] Add frontend tests that verify the "create new row" action immediately creates a row in data, board DOM, sidebar, and dashboard-derived counts.
+- [x] Add frontend tests that verify the "create new stack" action immediately creates a stack in data, board DOM, and sidebar hierarchy.
+- [x] Add frontend tests that verify the "create new column" action immediately creates a column in data, board DOM, sidebar hierarchy, and relevant dashboard rollups.
+- [x] Add frontend tests that verify the "create new card" action immediately creates a card in data, board DOM, sidebar hierarchy, and dashboard search results.
+- [x] Add frontend tests that verify moving cards, columns, stacks, or rows to Trash immediately removes them from normal board visibility and places them in the trash-derived surface.
+- [x] Add frontend tests that verify moving cards, columns, stacks, or rows to Archive immediately updates board visibility, archived dashboard sections, and sidebar-derived views.
+- [x] Add frontend tests that verify moving cards, columns, stacks, or rows to Park immediately updates board visibility, parked dashboard sections, and related tags or badges.
+- [x] Add frontend tests that verify moving cards, columns, stacks, or rows to Incoming immediately updates board visibility and incoming-derived dashboard or navigation surfaces.
+- [x] Add export tests that verify Marp export succeeds for the active board and produces output containing the expected card and column content.
+- [x] Add export tests that verify Marp export preserves or intentionally degrades embeds, includes, links, and time-tag content in a predictable way.
+- [x] Add export tests that verify Marp export reflects row, stack, column, and card ordering from the current visible board state.
 - [x] Add frontend tests that verify dashboard search results update immediately after `setTestBoard(...)` mutations.
 - [x] Add frontend tests that verify dashboard queries scoped to the active board stay in sync with the board view and sidebar after live frontend mutations.
 - [ ] Add frontend tests that verify dashboard deadline and overdue sections update immediately when cards with temporal tags are added, removed, moved, or edited in the frontend.
@@ -26,7 +26,7 @@
 - [ ] Add frontend tests that verify burger-menu structural actions such as duplicate, add-before, add-after, sort, and toggle-stacked immediately update the rendered board and sidebar hierarchy.
 - [ ] Add frontend tests that verify burger-menu reveal and edit actions open or focus the expected content target instead of only mutating data.
 - [ ] Add frontend tests that verify temporal tags changed through burger-menu actions immediately update visible time badges and dashboard deadline groupings.
-- [ ] Expose a thin frontend test helper for dispatching registered burger-menu actions directly so frontend tests can cover context-menu functionality without native menu-click automation.
+- [x] Expose a thin frontend test helper for dispatching registered burger-menu actions directly so frontend tests can cover context-menu functionality without native menu-click automation.
 
 ### Multi-Board Drag & Drop Test Plan
 
@@ -361,7 +361,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 
 ### Phase 1: Consolidate shared code
 - [ ] Consolidate `createHierarchyNode()` — identical 6-line wrapper in sidebarTree.js, dashboardTree.js, management.js. Move to shared module.
-- [ ] Consolidate title helpers — `stripHtmlComments()`, `extractHtmlComments()`, `stripLayoutTags()` duplicated in 3-4 files. Create shared `TitleHelpers` module.
+- [x] Consolidate title helpers — `stripHtmlComments()`, `extractHtmlComments()`, `stripLayoutTags()` already consolidated into `titleHelpers.js` and `tagSystem.js` with all consumers delegating.
 - [ ] Standardize navigation-target extraction — unify `buildHierarchyFocusTargetFromTreeNode` (workspace), `buildDashboardNavResultFromTreeNode` (dashboard), inline reads (management) into one `extractActivationTarget(node, surface)`.
 
 ### Phase 2: Migrate node builders to hierarchy contract
@@ -385,7 +385,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [x] Replace 86 hardcoded px font-sizes with variables — `12px` (58×) → `var(--font-size-sm)`, `13px` (28×) → `var(--font-size-base)`.
 - [x] Remove unused CSS variables from tokens.css.
 - [x] Merge duplicate selectors in app.css.
-- [ ] Shrink sleek theme (1,322 lines) — consolidate redundant declarations, estimated 40-50% reduction.
+- [x] Shrink sleek theme (1,310 → 1,205 lines, -8%) — consolidated via `:is()` mega-resets, merged variable blocks, removed redundant declarations. Tree system left intact.
 - [ ] Split app.css into logical modules — sidebar, board, cards, dialogs, tags.
 
 ## JS Simplification (analysis 2026-04-07)
@@ -398,7 +398,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Extract state initialization (~580 lines) — 48 state variables + `_rt.defineState()` calls.
 
 ### Centralize state management
-- [ ] Create state key registry — document all 66 `lexera-*` localStorage keys in one file.
+- [x] Create state key registry — documented 40 `lexera-*` localStorage keys in `shared/stateKeyRegistry.js` (26 via Settings Store, 14 direct).
 - [ ] Create `StateManager` facade — wrap `Settings ? Settings.get() : localStorage.getItem()` pattern.
 
 ### Reduce large modules

@@ -11683,6 +11683,43 @@ var LexeraDashboard = (function () {
     loadBoard: loadBoard,
     selectBoard: function (boardId) { return selectBoard(boardId); },
     renderColumns: renderColumns,
+    saveCurrentBoard: function () { return saveFullBoard(); },
+    triggerBoardExport: function (initialOptions) { return triggerBoardExport(initialOptions || null); },
+    runHeaderCreationAction: function (entityType, actionMode, templateId) {
+      return runHeaderCreationAction(entityType, actionMode, templateId);
+    },
+    createHeaderEntityFromText: async function (entityType, text) {
+      var context = await resolveHeaderCreationContext(entityType);
+      if (!context || !_RSM || typeof _RSM.insertTextContentForEntity !== 'function') return false;
+      return _RSM.insertTextContentForEntity(entityType, String(text || ''), context);
+    },
+    dispatchAction: async function (scope, action, rawContext) {
+      if (!ActionRegistry || !scope || !action) return { handled: false, context: rawContext || null, result: null };
+      var ctx = rawContext || {};
+      var rowStackMenuApi = (typeof _RSM !== 'undefined' && _RSM)
+        ? _RSM
+        : ((typeof window !== 'undefined' && window && window.LexeraRowStackMenu) ? window.LexeraRowStackMenu : null);
+      if (rowStackMenuApi && typeof rowStackMenuApi.buildEnrichedContext === 'function' &&
+          (scope === 'card' || scope === 'column' || scope === 'row' || scope === 'stack' || scope === 'canvas')) {
+        ctx = rowStackMenuApi.buildEnrichedContext(scope, rawContext || {}) || ctx;
+      }
+      var entry = typeof ActionRegistry.find === 'function' ? ActionRegistry.find(scope, action) : null;
+      if (!entry || typeof entry.handler !== 'function') {
+        return { handled: false, context: ctx, result: null };
+      }
+      var result = entry.handler(action, ctx);
+      if (result && typeof result.then === 'function') result = await result;
+      return { handled: true, context: ctx, result: result };
+    },
+    tagCard: function (colIndex, cardIndex, tag) { return tagCard(colIndex, cardIndex, tag); },
+    setColumnHiddenTag: function (colIndex, tag) { return setColumnHiddenTag(colIndex, tag); },
+    setRowHiddenTag: function (rowIdx, tag) { return setRowHiddenTag(rowIdx, tag); },
+    setStackHiddenTag: function (rowIdx, stackIdx, tag) { return setStackHiddenTag(rowIdx, stackIdx, tag); },
+    getIncomingCount: function () { return getIncomingCount(); },
+    getParkedCount: function () { return getParkedCount(); },
+    getArchivedCount: function () { return getArchivedCount(); },
+    getDeletedCount: function () { return getDeletedCount(); },
+    refreshBoardHeaderActionStates: function () { return refreshBoardHeaderActionStates(); },
     renderBoardList: renderBoardList,
     addCardToActiveBoard: addCardToActiveBoard,
     getAllFullColumns: getAllFullColumns,
