@@ -421,6 +421,10 @@ var LexeraBoardList = (function () {
     }, 500);
   }
 
+  function cancelPendingDraftSave() {
+    if (_draftSaveTimer) { clearTimeout(_draftSaveTimer); _draftSaveTimer = null; }
+  }
+
   function loadLocalBoardDraft(boardId) {
     if (!boardId) return null;
     try {
@@ -2888,6 +2892,7 @@ var LexeraBoardList = (function () {
     traceBoardIdentityPair: traceBoardIdentityPair,
     hasBoardIdentityMismatch: hasBoardIdentityMismatch,
     saveLocalBoardDraft: saveLocalBoardDraft,
+    cancelPendingDraftSave: cancelPendingDraftSave,
     loadLocalBoardDraft: loadLocalBoardDraft,
     clearLocalBoardDraft: clearLocalBoardDraft,
     boardCardSummary: boardCardSummary,

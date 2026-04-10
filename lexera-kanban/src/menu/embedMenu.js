@@ -4334,7 +4334,7 @@ var LexeraEmbedMenu = (function () {
       }
     }
     if (hasNewCards) {
-      await persistBoardMutation({ targets: [{ type: 'board' }] });
+      await persistBoardMutation({ targets: [{ type: 'column', colIndex: colIndex }] });
     }
   }
 

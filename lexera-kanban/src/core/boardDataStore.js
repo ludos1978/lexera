@@ -46,7 +46,7 @@ var LexeraBoardDataStore = (function () {
   function getFullBoardData() { return dep('getFullBoardData')(); }
   function getActiveBoardData() { return dep('getActiveBoardData')(); }
   function getActiveBoardId() { return dep('getActiveBoardId')(); }
-  function setFullBoardDataState(v) { dep('setFullBoardDataState')(v); }
+  function setFullBoardDataState(v) { _invalidateAllColsCache(); dep('setFullBoardDataState')(v); }
   function setActiveBoardDataState(v) { dep('setActiveBoardDataState')(v); }
   function updateActiveBoardDataState(updater) { return dep('updateActiveBoardDataState')(updater); }
 
@@ -55,7 +55,17 @@ var LexeraBoardDataStore = (function () {
   /**
    * Get a flat list of all columns from board data (rows->stacks->columns).
    */
+  // Cache for getAllColumnsFromBoardData to avoid O(n) rebuilds on every call.
+  // Invalidated whenever board structure could change (setFullBoardDataState,
+  // commitLocalBoardChange, mutation paths that add/remove rows/stacks/cols).
+  var _allColsCacheBoard = null;
+  var _allColsCacheResult = null;
+  function _invalidateAllColsCache() { _allColsCacheBoard = null; _allColsCacheResult = null; }
+
   function getAllColumnsFromBoardData(boardData) {
+    if (boardData && boardData === _allColsCacheBoard && _allColsCacheResult) {
+      return _allColsCacheResult;
+    }
     var cols = [];
     if (!boardData || !boardData.rows) return cols;
     for (var r = 0; r < boardData.rows.length; r++) {
@@ -67,6 +77,8 @@ var LexeraBoardDataStore = (function () {
         }
       }
     }
+    _allColsCacheBoard = boardData;
+    _allColsCacheResult = cols;
     return cols;
   }
 
@@ -739,20 +751,16 @@ var LexeraBoardDataStore = (function () {
     });
   }
 
-  // ── Debounced draft save ───────────────────────────────────────────
-
-  var _draftSaveTimer = null;
+  // Draft save is already debounced inside saveLocalBoardDraft (boardList.js:401).
+  // No need for a second layer of debouncing here.
+  var _draftSaveTimer = null; // kept for cancelAllDeferredWork compatibility
 
   function scheduleDraftSave(boardId) {
-    if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
-    _draftSaveTimer = setTimeout(function () {
-      _draftSaveTimer = null;
-      var fullBoardData = getFullBoardData();
-      var activeBoardId = getActiveBoardId();
-      if (activeBoardId && fullBoardData) {
-        dep('saveLocalBoardDraft')(activeBoardId, fullBoardData);
-      }
-    }, 500);
+    var fullBoardData = getFullBoardData();
+    var activeBoardId = getActiveBoardId();
+    if (activeBoardId && fullBoardData) {
+      dep('saveLocalBoardDraft')(activeBoardId, fullBoardData);
+    }
   }
 
   // ── Debounced hierarchy refresh ────────────────────────────────────
@@ -779,6 +787,15 @@ var LexeraBoardDataStore = (function () {
     var args = _hierarchyRefreshArgs;
     _hierarchyRefreshArgs = null;
     if (args) dep('refreshBoardHierarchyProjection')(args.targetBoardId, args.boardData, args.title, args.opts);
+  }
+
+  // Cancel all pending deferred work (tests use this between runs to avoid
+  // stale timers firing during the next test's assertions).
+  function cancelAllDeferredWork() {
+    if (_draftSaveTimer) { clearTimeout(_draftSaveTimer); _draftSaveTimer = null; }
+    if (_hierarchyRefreshTimer) { clearTimeout(_hierarchyRefreshTimer); _hierarchyRefreshTimer = null; }
+    _hierarchyRefreshArgs = null;
+    if (_autoSaveTimer) { clearTimeout(_autoSaveTimer); _autoSaveTimer = null; }
   }
 
   // ── Commit local board change ──────────────────────────────────────
@@ -832,6 +849,10 @@ var LexeraBoardDataStore = (function () {
 
   function persistBoardMutation(options) {
     var _pmStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    var _phaseTrace = window.__lexeraProfileMutations ? {} : null;
+    function _mark(name) {
+      if (_phaseTrace) _phaseTrace[name] = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _pmStart;
+    }
     options = options || {};
     var activeBoardId = getActiveBoardId();
     var fullBoardData = getFullBoardData();
@@ -847,16 +868,27 @@ var LexeraBoardDataStore = (function () {
     if (typeof options.beforeRefresh === 'function') {
       options.beforeRefresh();
     }
-    updateDisplayFromFullBoard();
+    _mark('afterBeforeRefresh');
 
     var hasStructural = false;
+    var allCardOnly = true;
     for (var ti = 0; ti < targets.length; ti++) {
       var tt = targets[ti].type;
       if (tt === 'board' || tt === 'main-view' || tt === 'row' || tt === 'stack' || tt === 'column' || tt === 'sidebar') {
         hasStructural = true;
-        break;
+      }
+      if (tt !== 'card' && tt !== 'card-insert' && tt !== 'card-remove' && tt !== 'card-content') {
+        allCardOnly = false;
       }
     }
+    // Invalidate column cache for structural mutations (board/row/stack/column)
+    // Card-only mutations don't change the column list
+    if (hasStructural) _invalidateAllColsCache();
+    // Skip expensive display tree rebuild for pure card-only mutations
+    if (!allCardOnly) {
+      updateDisplayFromFullBoard();
+    }
+    _mark('afterUpdateDisplay');
     if (hasStructural && activeBoardId && fullBoardData) {
       commitLocalBoardChange(activeBoardId, fullBoardData, {
         setLocalState: false,
@@ -868,14 +900,18 @@ var LexeraBoardDataStore = (function () {
         refreshHierarchy: false
       });
     }
+    _mark('afterCommit');
     dep('refreshTargetedElements')(targets);
+    _mark('afterRefreshTargeted');
 
     if (typeof options.afterRefresh === 'function') {
       options.afterRefresh();
     }
     dep('scheduleDashboardRefresh')(300);
+    _mark('afterDashboardSchedule');
     markBoardDirty();
     scheduleDraftSave(activeBoardId);
+    _mark('afterDraftSave');
     if (options.skipAutoSave) {
       dep('traceFrontendAction')('info', 'save.auto.skip', 'Skipped auto-save due to explicit persistBoardMutation option', {
         boardId: activeBoardId || null,
@@ -907,6 +943,21 @@ var LexeraBoardDataStore = (function () {
         if (saveBase) {
           dep('traceBoardIdentityPair')('info', 'board.persist.identity', 'Identity comparison after board mutation against save base', activeBoardId, 'local', fullBoardData, 'saveBase', saveBase);
         }
+      }
+    }
+    if (_phaseTrace) {
+      var _total = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _pmStart;
+      if (!window.__lexeraMutationProfile) window.__lexeraMutationProfile = [];
+      window.__lexeraMutationProfile.push({
+        total: _total,
+        targets: targets.map(function (t) { return t.type; }).join(','),
+        phases: _phaseTrace
+      });
+      // Only warn on genuinely slow mutations so the log isn't spammy
+      if (_total > 100) {
+        console.warn('[slow persistBoardMutation]', 'total=' + _total.toFixed(1) + 'ms',
+          'targets=' + targets.map(function (t) { return t.type; }).join(','),
+          _phaseTrace);
       }
     }
     if (typeof window.traceSlowFrontendTask === 'function') {
@@ -1334,6 +1385,10 @@ var LexeraBoardDataStore = (function () {
     scheduleAutoSave: scheduleAutoSave,
     AUTO_SAVE_DELAY_MS: AUTO_SAVE_DELAY_MS,
     AUTO_SAVE_REMOTE_DELAY_MS: AUTO_SAVE_REMOTE_DELAY_MS,
+
+    // Deferred work control (for tests and shutdown)
+    cancelAllDeferredWork: cancelAllDeferredWork,
+    flushHierarchyRefresh: flushHierarchyRefresh,
 
     // Save pipeline
     saveFullBoard: saveFullBoard,

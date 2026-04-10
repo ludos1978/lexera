@@ -46,7 +46,7 @@ var LexeraColumnContextMenu = (function () {
     deps.pushUndo();
     col.title = nextTitle;
     col.includeSource = { rawPath: cleanPath };
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'column', colIndex: colIndex }, { type: 'sidebar' }] });
     // Reload board from backend so the include gets re-resolved with the new path
     if (typeof deps.loadBoard === 'function') {
       setTimeout(function () { deps.loadBoard(deps.getActiveBoardId()); }, 300);
@@ -94,7 +94,7 @@ var LexeraColumnContextMenu = (function () {
     deps.pushUndo();
     col.title = deps.reconstructColumnTitle(cleanTitle, col.title || '');
     col.includeSource = null;
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'column', colIndex: colIndex }, { type: 'sidebar' }] });
   }
 
   // ── Move column to stack ───────────────────────────────────────────
@@ -161,10 +161,25 @@ var LexeraColumnContextMenu = (function () {
       targetStackIdx: targetStackIdx
     });
     deps.pushUndo();
+    var srcRowIdx = container.rowIdx;
+    var srcStackIdx = container.stackIdx;
     var removed = container.arr.splice(container.localIdx, 1)[0];
     targetStack.columns.push(removed);
+    // Check if structure changed (empty stacks/rows removed)
+    var colsBeforeCleanup = deps.getAllColumnsFromBoardData(deps.getFullBoardData()).length;
     deps.removeEmptyStacksAndRows();
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    var colsAfterCleanup = deps.getAllColumnsFromBoardData(deps.getFullBoardData()).length;
+    if (colsBeforeCleanup !== colsAfterCleanup) {
+      // Stack/row was removed — indices shifted, need full render
+      await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    } else {
+      // Refresh only source and target stacks
+      await deps.persistBoardMutation({ targets: [
+        { type: 'stack', rowIndex: srcRowIdx, stackIndex: srcStackIdx },
+        { type: 'stack', rowIndex: targetRowIdx, stackIndex: targetStackIdx },
+        { type: 'sidebar' }
+      ] });
+    }
   }
 
   // ── Hidden tag ─────────────────────────────────────────────────────
@@ -182,7 +197,15 @@ var LexeraColumnContextMenu = (function () {
     if (nextTitle === col.title) return;
     deps.pushUndo();
     col.title = nextTitle;
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    // Hiding a column removes it from its stack — refresh the stack
+    var container = findColumnContainer(colIndex);
+    var hiddenTargets = [{ type: 'sidebar' }];
+    if (container) {
+      hiddenTargets.unshift({ type: 'stack', rowIndex: container.rowIdx, stackIndex: container.stackIdx });
+    } else {
+      hiddenTargets.unshift({ type: 'board' });
+    }
+    await deps.persistBoardMutation({ targets: hiddenTargets });
     var postSaveCol = deps.getFullColumn(colIndex);
     var postTitle = postSaveCol ? postSaveCol.title : '(col gone)';
     var tagSurvived = postTitle.indexOf(tag) !== -1;
@@ -557,7 +580,10 @@ var LexeraColumnContextMenu = (function () {
       clone.cards[k].kid = null;
     }
     container.arr.splice(container.localIdx + 1, 0, clone);
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    await deps.persistBoardMutation({ targets: [
+      { type: 'stack', rowIndex: container.rowIdx, stackIndex: container.stackIdx },
+      { type: 'sidebar' }
+    ] });
   }
 
   // ── Collapse / reveal ──────────────────────────────────────────────

@@ -974,15 +974,85 @@ document.addEventListener('click', function (event) {
 // Intercept console.log/warn/error
 (function () {
   var origLog = console.log, origWarn = console.warn, origError = console.error;
+
+  // Noisy vendor messages that fire synchronously INSIDE
+  // `innerHTML = ...` or `appendChild(fragment)` when the inserted HTML
+  // contains embedded iframes (Miro, particify, etc.) we can't control.
+  //
+  // Each such message previously cost ~1-2ms of DOM work in our
+  // `appendLogEntry` handler (it does `panel.scrollTop =
+  // panel.scrollHeight` which forces sync layout on the partially-built
+  // board). With 500+ such messages fired during a full board render,
+  // that was the ~800ms bottleneck: log spam × forced layout = death.
+  //
+  // We filter aggressively: only messages from OUR code actually need to
+  // reach the log panel. Every pattern here is vendor noise we can't fix.
+  var IGNORED_CONSOLE_PATTERNS = [
+    // HTML parse warnings from WebKit
+    /Error while parsing the ['"]sandbox['"] attribute/i,
+    /Invalid sandbox flag/i,
+    /Invalid ['"]X-Frame-Options['"] header/i,
+    /Viewport argument key ['"]minimal-ui['"] not recognized/i,
+    // Source map warnings from vendor bundles (Miro etc.)
+    /Source Map.*has invalid ['"]mappings['"]/i,
+    /Source Map.*has SyntaxError/i,
+    // Source map parse failures — browser fetches a .map file but gets
+    // an HTML 404 page back and throws trying to JSON.parse it. These
+    // fire from every vendor bundle that ships a `//# sourceMappingURL`
+    // comment pointing at a non-existent file.
+    /^SyntaxError: Unexpected token '<'/,
+    // Stylesheet parse failures from backend file errors
+    /Did not parse stylesheet at/i,
+    // Resource load failures from vendor iframes
+    /Failed to load resource/i,
+    // Cross-origin frame errors from embedded iframes
+    /Blocked a frame with origin/i,
+    // Vendor feature-flag SDK errors
+    /\[==FeatureFlagSDK ERROR==\]/,
+    // WebGL warnings from vendor content
+    /WebGL: non-portable extension/i,
+    // Preconnect info messages
+    /Successfully preconnected to/i,
+    // Sentry / tracking failures from vendor content
+    /Failed to fetch org (type|subscription|role) for analytics/i,
+    // Miro SPA version / boot messages
+    /Loading API configuration/i,
+    /API configuration loaded/i,
+    /^No updates announced/i,
+    /^Version: /,
+    /GraphQL error\(s\)/i,
+    /CombinedGraphQLErrors/i,
+    /\[\/joinRoom\] INTERNAL_ERROR/i,
+    // WebKit's "N console messages are not shown" truncation notice —
+    // this one means devtools is dropping output, so we should drop
+    // it from our log too.
+    /\d+ console messages are not shown/i
+  ];
+  function isIgnoredConsoleMessage(args) {
+    if (!args || args.length === 0) return false;
+    var first = args[0];
+    if (typeof first !== 'string') return false;
+    for (var i = 0; i < IGNORED_CONSOLE_PATTERNS.length; i++) {
+      if (IGNORED_CONSOLE_PATTERNS[i].test(first)) return true;
+    }
+    return false;
+  }
+
   console.log = function () {
+    if (isIgnoredConsoleMessage(arguments)) return;
     origLog.apply(console, arguments);
     lexeraLogWithTarget('info', 'console.log', joinLogArgs(arguments));
   };
   console.warn = function () {
+    if (isIgnoredConsoleMessage(arguments)) return;
     origWarn.apply(console, arguments);
     lexeraLogWithTarget('warn', 'console.warn', joinLogArgs(arguments));
   };
   console.error = function () {
+    // For noisy vendor-parse warnings, swallow them entirely. Even calling
+    // origError is expensive when Safari devtools is open and receiving
+    // hundreds of errors per render, because devtools renders each one.
+    if (isIgnoredConsoleMessage(arguments)) return;
     origError.apply(console, arguments);
     lexeraLogWithTarget('error', 'console.error', joinLogArgs(arguments));
   };

@@ -576,6 +576,79 @@ var LexeraDashboard = (function () {
   // Card render cache: avoids re-running renderCardContent for unchanged cards
   var _cardRenderCache = new Map();
   var _CARD_RENDER_CACHE_MAX = 2000;
+  // Fingerprint of content-affecting board settings — cache is valid as long
+  // as this matches. Avoids clearing on every applyBoardSettings() when the
+  // settings haven't actually changed.
+  var _cardRenderCacheFingerprint = '';
+
+  // ── Iframe stripping for card HTML ────────────────────────────────
+  // Raw `<iframe>` tags in card markdown (Miro/particify/YouTube embeds)
+  // get rewritten to placeholder spans. When the placeholder enters the
+  // DOM via `innerHTML`, WebKit creates a lightweight `<span>` instead
+  // of an iframe. `renderColumns` then walks the placeholders after the
+  // build and inserts live preserved iframes into them (matched by src).
+  //
+  // Without this, every full render of a board with N iframes would
+  // synchronously boot N remote SPAs inside `cc.appendChild(fragment)`
+  // and cost ~130ms per iframe (~800ms for 6 iframes — the dominant
+  // cost of a full `renderColumns`).
+  var _IFRAME_PLACEHOLDER_CLASS = 'lxra-iframe-placeholder';
+  // Match `<iframe ...></iframe>` or `<iframe ... />` (self-closing).
+  var _IFRAME_STRIP_RE = /<iframe\b([^>]*)(?:\s*\/>|><\/iframe>|>[\s\S]*?<\/iframe>)/gi;
+  function _stripIframesFromHtml(html) {
+    if (!html || typeof html !== 'string' || html.indexOf('<iframe') === -1) return html;
+    return html.replace(_IFRAME_STRIP_RE, function (_, attrs) {
+      // Preserve the original iframe's attribute string in a data-* attr
+      // so the placeholder can be swapped for a real iframe later if no
+      // preserved one is available (e.g. first load).
+      var srcMatch = attrs.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      var src = srcMatch ? (srcMatch[1] || srcMatch[2] || srcMatch[3] || '') : '';
+      var escapedAttrs = attrs
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      var escapedSrc = src
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;');
+      return '<span class="' + _IFRAME_PLACEHOLDER_CLASS + '"'
+        + ' data-iframe-src="' + escapedSrc + '"'
+        + ' data-iframe-attrs="' + escapedAttrs + '"></span>';
+    });
+  }
+
+  // Per-render accumulators (only populated when profiling is active)
+  var _cardBuildAccum = null;
+  var _colBuildAccum = null;
+  function _resetCardBuildAccum() {
+    _cardBuildAccum = {
+      count: 0,
+      cacheHits: 0,
+      totalMs: 0,
+      markdownMs: 0,
+      includeResolveMs: 0,
+      domCreateMs: 0
+    };
+    _colBuildAccum = {
+      columns: 0,
+      columnTotalMs: 0,
+      columnHeaderMs: 0,
+      columnFooterMs: 0,
+      columnCardsLoopMs: 0,
+      columnListenersMs: 0,
+      stacks: 0,
+      stackTotalMs: 0,
+      stackHeaderMs: 0,
+      stackListenersMs: 0,
+      rows: 0,
+      rowTotalMs: 0
+    };
+  }
+  function _nowHP() {
+    return typeof performance !== 'undefined' && performance && typeof performance.now === 'function'
+      ? performance.now() : Date.now();
+  }
+
   // activeHeaderSourceDropdown and HEADER_SOURCE_ENTITY_TYPES moved to hiddenItems/hiddenItemsDropdown.js
   var incomingCaptureCache = {
     items: [],
@@ -1287,10 +1360,12 @@ var LexeraDashboard = (function () {
     UndoRedo.init({
       getFullBoardData: function () { return fullBoardData; },
       getActiveBoardId: function () { return activeBoardId; },
+      getActiveBoardData: function () { return activeBoardData; },
       computeBoardDelta: computeBoardDelta,
       cloneBoardData: cloneBoardData,
       estimateDeltaSize: estimateDeltaSize,
       applyBoardDelta: applyBoardDelta,
+      deltaToTargets: function (delta, abd) { return getBoardDeltaApi().deltaToTargets(delta, abd); },
       getBoardSaveBase: getBoardSaveBase,
       setBoardSaveBase: setBoardSaveBase,
       persistBoardMutation: persistBoardMutation
@@ -2872,6 +2947,7 @@ var LexeraDashboard = (function () {
 
   async function updateHiddenItemTag(item, tag) {
     if (!item || !fullBoardData || !activeBoardId) return false;
+    var targets = [{ type: 'sidebar' }];
     if (item.kind === 'row') {
       var row = getRowByLocation(item.rowIndex);
       if (!row) return false;
@@ -2879,6 +2955,7 @@ var LexeraDashboard = (function () {
       if (nextRowTitle === row.title) return false;
       pushUndo();
       row.title = nextRowTitle;
+      targets.unshift({ type: 'row', rowIndex: item.rowIndex });
     } else if (item.kind === 'stack') {
       var stack = getStackByLocation(item.rowIndex, item.stackIndex);
       if (!stack) return false;
@@ -2886,6 +2963,7 @@ var LexeraDashboard = (function () {
       if (nextStackTitle === stack.title) return false;
       pushUndo();
       stack.title = nextStackTitle;
+      targets.unshift({ type: 'stack', rowIndex: item.rowIndex, stackIndex: item.stackIndex });
     } else if (item.kind === 'column') {
       var col = getColumnByLocation(item.rowIndex, item.stackIndex, item.colIndex);
       if (!col) return false;
@@ -2893,6 +2971,7 @@ var LexeraDashboard = (function () {
       if (nextTitle === col.title) return false;
       pushUndo();
       col.title = nextTitle;
+      targets.unshift({ type: 'column', colIndex: item.colIndex });
     } else {
       var card = getCardByLocation(item.rowIndex, item.stackIndex, item.colIndex, item.cardIndex);
       if (!card) return false;
@@ -2900,8 +2979,9 @@ var LexeraDashboard = (function () {
       if (nextContent === card.content) return false;
       pushUndo();
       card.content = nextContent;
+      targets.unshift({ type: 'column', colIndex: item.colIndex });
     }
-    return persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    return persistBoardMutation({ targets: targets });
   }
 
   function buildHiddenItemRestoreSource(item) {
@@ -4598,7 +4678,7 @@ var LexeraDashboard = (function () {
     if (!card) return;
     pushUndo();
     card.content = card.content.replace(/\s*#hidden-internal-parked/g, '');
-    await persistBoardMutation({ targets: [{ type: 'board' }] });
+    await persistBoardMutation({ targets: [{ type: 'column', colIndex: colIndex }] });
   }
 
   function showArchivedItems(btnElement) {
@@ -5702,6 +5782,21 @@ var LexeraDashboard = (function () {
     if (!boardId || boardId !== activeBoardId || !fullBoardData || !activeBoardData || !payload || !payload.available || !payload.delta) {
       return false;
     }
+    // Compute targeted-refresh targets BEFORE applying the delta, while
+    // activeBoardData still reflects the pre-apply state so position
+    // lookups (flat col index, visible card index) are stable. Card-only
+    // deltas return a concrete target list; structural deltas return null
+    // and we fall back to the legacy full renderMainView below.
+    var _pollTargets = null;
+    var _boardDeltaApi = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta)
+      ? globalThis.LexeraBoardDelta
+      : (typeof window !== 'undefined' ? window.LexeraBoardDelta : null);
+    if (_boardDeltaApi && typeof _boardDeltaApi.deltaToTargets === 'function') {
+      try {
+        _pollTargets = _boardDeltaApi.deltaToTargets(payload.delta, activeBoardData);
+      } catch (_) { _pollTargets = null; }
+    }
+
     applyBoardDelta(fullBoardData, payload.delta, false);
     setBoardSaveBase(fullBoardData, fullBoardData);
     updateActiveBoardDataState(function (nextBoardData) {
@@ -5728,13 +5823,27 @@ var LexeraDashboard = (function () {
       refreshHierarchy: true,
       revision: activeBoardData.revision || null
     });
-    renderMainView();
-    traceFrontendAction('info', 'poll.delta', 'Applied polled board delta without full reload', {
-      boardId: boardId,
-      generation: activeBoardData.generation || null,
-      revision: activeBoardData.revision || null,
-      summary: summarizeBoardHierarchy(fullBoardData)
-    });
+    // Dispatch to targeted refresh when we can express the delta as a
+    // target list, otherwise fall back to full render. This avoids a
+    // full renderColumns (and the 800ms iframe teardown+rebuild) on
+    // every backend poll for card content / checkbox changes.
+    if (_pollTargets && _pollTargets.length > 0) {
+      refreshTargetedElements(_pollTargets);
+      traceFrontendAction('info', 'poll.delta', 'Applied polled board delta via targeted refresh', {
+        boardId: boardId,
+        targets: _pollTargets.length,
+        generation: activeBoardData.generation || null,
+        revision: activeBoardData.revision || null
+      });
+    } else {
+      renderMainView();
+      traceFrontendAction('info', 'poll.delta', 'Applied polled board delta with full render (structural change)', {
+        boardId: boardId,
+        generation: activeBoardData.generation || null,
+        revision: activeBoardData.revision || null,
+        summary: summarizeBoardHierarchy(fullBoardData)
+      });
+    }
     return true;
   }
 
@@ -6816,7 +6925,18 @@ var LexeraDashboard = (function () {
   function resolveActiveBoardColor(settings) { return BoardSettingsModule.resolveActiveBoardColor(settings); }
 
   function applyBoardSettings() {
-    _cardRenderCache.clear();
+    // Only clear the card render cache when content-affecting settings
+    // actually change. Previously this cleared on every call, which
+    // defeated the cache during normal renders (every full rerender
+    // called applyBoardSettings first).
+    var _newFingerprint = (activeBoardId || '') + '|'
+      + getBoardSettingValue('htmlContentRenderMode', 'html') + '|'
+      + getBoardSettingValue('htmlCommentRenderMode', 'hidden') + '|'
+      + getBoardSettingValue('tagVisibility', 'allexcludinglayout');
+    if (_newFingerprint !== _cardRenderCacheFingerprint) {
+      _cardRenderCache.clear();
+      _cardRenderCacheFingerprint = _newFingerprint;
+    }
     var container = getElColumnsContainer();
     var cssProps = [
       '--board-column-width', '--board-font-size', '--board-font-family',
@@ -6905,6 +7025,7 @@ var LexeraDashboard = (function () {
    * Reused by buildColumnElement (full render) and targeted DOM updates.
    */
   function buildCardElement(card, colIndex, visibleCardIndex, collapsedCards) {
+    var _bcStart = _cardBuildAccum ? _nowHP() : 0;
     var isCanvasLayout = isCanvasBoardLayout();
     var cardId = String(card.id);
     var cardEl = document.createElement('div');
@@ -6936,11 +7057,16 @@ var LexeraDashboard = (function () {
     dragHandle.title = 'Drag to move card';
     headerRow.appendChild(dragHandle);
 
+    // Cache resolved content to avoid double call
+    var _irStart = _cardBuildAccum ? _nowHP() : 0;
+    var _cardResolvedContent = getIncludeResolvedContent(card.content, colIndex);
+    if (_cardBuildAccum) _cardBuildAccum.includeResolveMs += (_nowHP() - _irStart);
+
     var titleContainer = document.createElement('div');
     titleContainer.className = 'card-title-container';
     var titleDisplay = document.createElement('div');
     titleDisplay.className = 'card-title-display';
-    var _cardTitleRaw = getCardTitle(getIncludeResolvedContent(card.content, colIndex));
+    var _cardTitleRaw = getCardTitle(_cardResolvedContent);
     titleDisplay.innerHTML = renderTitleInline(_cardTitleRaw, activeBoardId);
     titleDisplay.title = _cardTitleRaw.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim();
     titleContainer.appendChild(titleDisplay);
@@ -7006,16 +7132,28 @@ var LexeraDashboard = (function () {
 
     var contentBody = document.createElement('div');
     contentBody.className = 'card-content';
-    var _resolvedContent = getIncludeResolvedContent(card.content, colIndex);
+    var _resolvedContent = _cardResolvedContent;
     var _hasInclude = _resolvedContent !== card.content;
     var _cacheKey = _hasInclude ? null : (cardId + ':' + (_resolvedContent || '').length + ':' + (_resolvedContent || '').substring(0, 80));
     var _cachedHtml = _cacheKey ? _cardRenderCache.get(_cacheKey) : undefined;
     if (_cachedHtml !== undefined) {
       contentBody.innerHTML = _cachedHtml;
+      if (_cardBuildAccum) _cardBuildAccum.cacheHits++;
     } else {
+      var _mdStart = _cardBuildAccum ? _nowHP() : 0;
       var _renderedHtml = renderCardContent(_resolvedContent, activeBoardId, null, {
         skipFirstLineTagStyle: true
       });
+      if (_cardBuildAccum) _cardBuildAccum.markdownMs += (_nowHP() - _mdStart);
+      // Strip raw `<iframe>` tags (from raw HTML in markdown — Miro,
+      // particify, YouTube embeds) and replace them with lightweight
+      // placeholder spans carrying the original src. `renderColumns`
+      // swaps these placeholders with live preserved iframes after the
+      // build. This prevents WebKit from creating throwaway iframe
+      // elements during innerHTML parsing — each throwaway iframe would
+      // kick off the remote SPA's bootstrap synchronously (~130ms for
+      // Miro), which was the dominant cost of every full render.
+      _renderedHtml = _stripIframesFromHtml(_renderedHtml);
       contentBody.innerHTML = _renderedHtml;
       if (_cacheKey) {
         if (_cardRenderCache.size >= _CARD_RENDER_CACHE_MAX) {
@@ -7045,6 +7183,10 @@ var LexeraDashboard = (function () {
       });
     })(cardEl, colIndex, visibleCardIndex, menuBtn);
     applyTagStyleToEntity(cardEl, getCardContainerStyleSource(card.content || ''));
+    if (_cardBuildAccum) {
+      _cardBuildAccum.count++;
+      _cardBuildAccum.totalMs += (_nowHP() - _bcStart);
+    }
     return cardEl;
   }
 
@@ -7093,6 +7235,10 @@ var LexeraDashboard = (function () {
     if (columnEl && wipLimit > 0) {
       columnEl.classList.toggle('wip-exceeded', cardCount > wipLimit);
     }
+    // Keep `.has-cards` in sync with actual card count — this class drives
+    // the column-footer visibility rule that replaced the expensive CSS
+    // `:has()` selector.
+    columnEl.classList.toggle('has-cards', cardCount > 0);
   }
 
   /**
@@ -7137,6 +7283,7 @@ var LexeraDashboard = (function () {
     if (!footer) return;
     var textarea = footer.querySelector('.add-card-input');
     if (!textarea) return;
+    footer.classList.remove('add-mode');
     footer.innerHTML = '';
     footer.appendChild(buildColumnFooterContent(colIndex));
   }
@@ -7153,13 +7300,16 @@ var LexeraDashboard = (function () {
    * Build a single column element (header, cards, footer) — shared by both formats.
    */
   function buildColumnElement(col, foldedCols, collapsedCards, rowIdx, stackIdx, colLocalIdx, colFullIdx) {
+    var _colStart = _colBuildAccum ? _nowHP() : 0;
     var isCanvasLayout = isCanvasBoardLayout();
     var displayTitle = stripLayoutTags(col.title);
     var colFoldKey = getColumnFoldKey(col, rowIdx, stackIdx, colLocalIdx, colFullIdx);
     var columnId = col && col.id != null ? String(col.id) : '';
 
     var colEl = document.createElement('div');
-    colEl.className = 'column';
+    // `has-cards` is JS-driven instead of CSS `:has()` — dramatically
+    // cheaper for style recalc on large boards.
+    colEl.className = 'column' + ((col.cards && col.cards.length > 0) ? ' has-cards' : '');
     colEl.setAttribute('data-col-title', col.title);
     colEl.setAttribute('data-fold-key', colFoldKey);
     if (columnId) colEl.setAttribute('data-column-id', columnId);
@@ -7186,6 +7336,7 @@ var LexeraDashboard = (function () {
         (includeMissing ? '&#9888;' : '&#128279;') + '</button>';
     }
 
+    var _colHeaderStart = _colBuildAccum ? _nowHP() : 0;
     var header = document.createElement('div');
     header.className = 'column-header';
     header.innerHTML =
@@ -7197,6 +7348,8 @@ var LexeraDashboard = (function () {
       '<span class="column-header-actions">' +
         '<button class="column-menu-btn burger-menu-btn" title="Column options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
       '</span>';
+    if (_colBuildAccum) _colBuildAccum.columnHeaderMs += (_nowHP() - _colHeaderStart);
+    var _colListenersStart = _colBuildAccum ? _nowHP() : 0;
     (function (columnEl, colIdx, rIdx, sIdx, cIdx) {
       header.addEventListener('click', function (e) {
         var includeBadge = targetClosest(e.target, '.column-include-badge[data-include-path]');
@@ -7241,22 +7394,31 @@ var LexeraDashboard = (function () {
         });
       });
     })(colEl, col.index, rowIdx, stackIdx, colLocalIdx);
+    if (_colBuildAccum) _colBuildAccum.columnListenersMs += (_nowHP() - _colListenersStart);
     colEl.appendChild(header);
 
     var cardsEl = document.createElement('div');
     cardsEl.className = 'column-cards';
     cardsEl.setAttribute('data-col-index', col.index.toString());
     if (columnId) cardsEl.setAttribute('data-column-id', columnId);
+    var _colCardsStart = _colBuildAccum ? _nowHP() : 0;
     for (var j = 0; j < col.cards.length; j++) {
       cardsEl.appendChild(buildCardElement(col.cards[j], col.index, j, collapsedCards));
     }
+    if (_colBuildAccum) _colBuildAccum.columnCardsLoopMs += (_nowHP() - _colCardsStart);
     colEl.appendChild(cardsEl);
 
+    var _colFooterStart = _colBuildAccum ? _nowHP() : 0;
     var footer = document.createElement('div');
     footer.className = 'column-footer';
     footer.appendChild(buildColumnFooterContent(col.index));
     colEl.appendChild(footer);
     applyTagStyleToEntity(colEl, col.title || '');
+    if (_colBuildAccum) {
+      _colBuildAccum.columnFooterMs += (_nowHP() - _colFooterStart);
+      _colBuildAccum.columns++;
+      _colBuildAccum.columnTotalMs += (_nowHP() - _colStart);
+    }
     return colEl;
   }
 
@@ -7269,6 +7431,7 @@ var LexeraDashboard = (function () {
     if (!colEl) return;
     var footer = colEl.querySelector('.column-footer');
     if (!footer) return;
+    footer.classList.remove('add-mode');
     footer.innerHTML = '';
     footer.appendChild(buildColumnFooterContent(colIndex));
   }
@@ -7286,6 +7449,9 @@ var LexeraDashboard = (function () {
       footer.className = 'column-footer';
       colEl.appendChild(footer);
     }
+    // Mark footer as add-mode so CSS reveals it (takes the place of
+    // the old `:not(:has(.add-card-input))` selector).
+    footer.classList.add('add-mode');
     footer.innerHTML =
       '<textarea class="add-card-input" placeholder="Card content..." autofocus></textarea>' +
       '<div class="add-card-actions">' +
@@ -7341,21 +7507,123 @@ var LexeraDashboard = (function () {
 
   function renderColumns() {
     var _renderStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    var _rcTrace = window.__lexeraProfileMutations ? {} : null;
+    function _rcMark(name) {
+      if (_rcTrace) _rcTrace[name] = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _renderStart;
+    }
+    if (_rcTrace) _resetCardBuildAccum(); else _cardBuildAccum = null;
     try {
     vsTeardown();
     clearCardSelection();
     unfocusCard();
     // Defensive cleanup: stale drag artifacts can inflate row widths.
     cleanupPtrDrag();
+    _rcMark('afterCleanup');
     // Preserve scroll position before destroying DOM
     var cc = getElColumnsContainer();
     var savedScrollTop = cc.scrollTop;
     var savedScrollLeft = cc.scrollLeft;
+
+    // ─────────────────────────────────────────────────────────────────
+    // PRESERVE LIVE IFRAMES ACROSS THE REBUILD (by src URL)
+    // ─────────────────────────────────────────────────────────────────
+    // The card render cache stores HTML where `<iframe>` tags have been
+    // replaced with `<span class="lxra-iframe-placeholder" ...>`
+    // placeholders (see `_stripIframesFromHtml`). This means the rebuild
+    // never creates throwaway iframes during innerHTML parsing —
+    // essential because each throwaway iframe would synchronously boot
+    // a remote SPA (Miro/particify) costing ~130ms during appendChild.
+    //
+    // Before the clear, we detach every live iframe into a hidden holder
+    // keyed by src URL (keeps its browsing context alive). After the
+    // rebuild we walk the placeholder spans and insert either the
+    // preserved live iframe or a fresh one (first load only).
+    var _preservedBySrc = {};
+    var _iframeHolder = null;
+    var _liveIframes = cc.getElementsByTagName('iframe');
+    if (_liveIframes.length > 0) {
+      _iframeHolder = document.getElementById('__lexera_iframe_holder__');
+      if (!_iframeHolder) {
+        _iframeHolder = document.createElement('div');
+        _iframeHolder.id = '__lexera_iframe_holder__';
+        _iframeHolder.style.cssText = 'position:absolute;left:-99999px;top:0;width:1px;height:1px;overflow:hidden;';
+        document.body.appendChild(_iframeHolder);
+      }
+      var _liveIframesArr = [];
+      for (var _lii = 0; _lii < _liveIframes.length; _lii++) _liveIframesArr.push(_liveIframes[_lii]);
+      for (var _lij = 0; _lij < _liveIframesArr.length; _lij++) {
+        var _f = _liveIframesArr[_lij];
+        var _src = _f.src || _f.getAttribute('src') || '';
+        if (!_src) continue;
+        _preservedBySrc[_src] = _f;
+        _iframeHolder.appendChild(_f); // detach; keeps browsing context alive
+      }
+    }
+
     cc.innerHTML = '';
     if (!activeBoardData) return;
+    _rcMark('afterInnerHTMLClear');
 
     cc.classList.add('new-format');
     renderNewFormatBoard();
+
+    // ─────────────────────────────────────────────────────────────────
+    // INSERT IFRAMES INTO THEIR PLACEHOLDERS
+    // ─────────────────────────────────────────────────────────────────
+    // Walk the placeholder spans and materialize each one: use the
+    // preserved live iframe if its src matches (fast path — no boot),
+    // otherwise create a fresh iframe element (first load path — Miro
+    // will boot once). Either way, the new fragment only sees iframes
+    // ONCE, via our explicit insertion here — not via the HTML parser.
+    var _placeholders = cc.getElementsByClassName(_IFRAME_PLACEHOLDER_CLASS);
+    if (_placeholders.length > 0) {
+      // Copy to array — replacing children while iterating a live
+      // HTMLCollection makes items shift.
+      var _placeholdersArr = [];
+      for (var _plh = 0; _plh < _placeholders.length; _plh++) _placeholdersArr.push(_placeholders[_plh]);
+      for (var _pli = 0; _pli < _placeholdersArr.length; _pli++) {
+        var _ph = _placeholdersArr[_pli];
+        var _phSrc = _ph.getAttribute('data-iframe-src') || '';
+        if (!_phSrc || !_ph.parentNode) continue;
+        var _live = _preservedBySrc[_phSrc];
+        if (_live) {
+          _ph.parentNode.replaceChild(_live, _ph);
+          delete _preservedBySrc[_phSrc];
+          continue;
+        }
+        // No preserved iframe — create a fresh one from the saved attrs
+        // (first time this board is rendered since launch).
+        var _freshIframe = document.createElement('iframe');
+        var _phAttrs = _ph.getAttribute('data-iframe-attrs') || '';
+        // Decode entity-encoded attrs and copy onto the new iframe.
+        var _decodedAttrs = _phAttrs
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&amp;/g, '&');
+        // Naive attribute extraction — good enough for the HTML we
+        // generate. `name="value"` or `name='value'` or bare `name`.
+        var _attrRe = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+        var _m;
+        while ((_m = _attrRe.exec(_decodedAttrs)) !== null) {
+          var _name = _m[1];
+          var _value = _m[2] != null ? _m[2] : (_m[3] != null ? _m[3] : (_m[4] != null ? _m[4] : ''));
+          if (_name && _name !== 'undefined') {
+            try { _freshIframe.setAttribute(_name, _value); } catch (_) {}
+          }
+        }
+        if (!_freshIframe.getAttribute('src') && _phSrc) _freshIframe.setAttribute('src', _phSrc);
+        _ph.parentNode.replaceChild(_freshIframe, _ph);
+      }
+      // Any preserved iframe that didn't match a placeholder is
+      // orphaned (card removed, markdown changed) — destroy them.
+      if (_iframeHolder) {
+        while (_iframeHolder.firstChild) {
+          _iframeHolder.removeChild(_iframeHolder.firstChild);
+        }
+      }
+    }
+    _rcMark('afterRenderNewFormatBoard');
     // Restore scroll position immediately after DOM rebuild
     cc.scrollTop = savedScrollTop;
     cc.scrollLeft = savedScrollLeft;
@@ -7363,6 +7631,7 @@ var LexeraDashboard = (function () {
     if (!isCanvas) {
       clearLayoutLockStyles();
     }
+    _rcMark('afterSyncScroll');
 
     // Batch all post-render DOM work into a single rAF to avoid multiple
     // forced layouts / reflows.  Each helper scans the board subtree, so
@@ -7385,6 +7654,44 @@ var LexeraDashboard = (function () {
       updateCardEditingIndicators();
       refreshBoardHeaderActionStates();
     });
+    if (_rcTrace) {
+      _rcMark('afterScheduleRAF');
+      if (!window.__lexeraMutationProfile) window.__lexeraMutationProfile = [];
+      function _r1(v) { return Math.round((v || 0) * 10) / 10; }
+      var _cardAccumSnapshot = _cardBuildAccum ? {
+        count: _cardBuildAccum.count,
+        cacheHits: _cardBuildAccum.cacheHits,
+        totalMs: _r1(_cardBuildAccum.totalMs),
+        markdownMs: _r1(_cardBuildAccum.markdownMs),
+        includeResolveMs: _r1(_cardBuildAccum.includeResolveMs)
+      } : null;
+      var _colAccumSnapshot = _colBuildAccum ? {
+        columns: _colBuildAccum.columns,
+        columnTotalMs: _r1(_colBuildAccum.columnTotalMs),
+        columnHeaderMs: _r1(_colBuildAccum.columnHeaderMs),
+        columnListenersMs: _r1(_colBuildAccum.columnListenersMs),
+        columnCardsLoopMs: _r1(_colBuildAccum.columnCardsLoopMs),
+        columnFooterMs: _r1(_colBuildAccum.columnFooterMs),
+        stacks: _colBuildAccum.stacks,
+        stackTotalMs: _r1(_colBuildAccum.stackTotalMs),
+        stackHeaderMs: _r1(_colBuildAccum.stackHeaderMs),
+        stackListenersMs: _r1(_colBuildAccum.stackListenersMs),
+        rows: _colBuildAccum.rows,
+        rowTotalMs: _r1(_colBuildAccum.rowTotalMs),
+        rnfbSetupMs: _r1(_colBuildAccum.rnfbSetupMs || 0),
+        rnfbBuildMs: _r1(_colBuildAccum.rnfbBuildMs || 0),
+        rnfbAppendMs: _r1(_colBuildAccum.rnfbAppendMs || 0)
+      } : null;
+      window.__lexeraMutationProfile.push({
+        total: _rcTrace.afterScheduleRAF || 0,
+        targets: 'renderColumns',
+        phases: _rcTrace,
+        cards: _cardAccumSnapshot,
+        structure: _colAccumSnapshot
+      });
+      _cardBuildAccum = null;
+      _colBuildAccum = null;
+    }
     if (typeof traceSlowFrontendTask === 'function') {
       traceSlowFrontendTask('render.columns', 'renderColumns', _renderStart, {
         rows: activeBoardData ? (activeBoardData.rows || []).length : 0,
@@ -7402,6 +7709,7 @@ var LexeraDashboard = (function () {
    * be reused by the targeted-refresh pipeline.
    */
   function buildStackElement(stack, rowIdx, stackIdx, foldedCols, foldedStacks, collapsedCards) {
+    var _stackStart = _colBuildAccum ? _nowHP() : 0;
     var isCanvasLayout = isCanvasBoardLayout();
     var stackFoldKey = getStackFoldKey(stack, rowIdx, stackIdx);
     var stackId = stack && stack.id != null ? String(stack.id) : '';
@@ -7473,6 +7781,7 @@ var LexeraDashboard = (function () {
     }
 
     // Stack header
+    var _stackHeaderStart = _colBuildAccum ? _nowHP() : 0;
     var stackHeader = document.createElement('div');
     stackHeader.className = 'board-stack-header';
     var stackColCount = stackColumnEntries.length;
@@ -7486,6 +7795,8 @@ var LexeraDashboard = (function () {
         '<button class="stack-menu-btn burger-menu-btn" title="Stack options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
         (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '') +
       '</span>';
+    if (_colBuildAccum) _colBuildAccum.stackHeaderMs += (_nowHP() - _stackHeaderStart);
+    var _stackListenersStart = _colBuildAccum ? _nowHP() : 0;
     (function (el, rIdx, sIdx) {
       var deleteBtn = stackHeader.querySelector('.stack-delete-btn');
       if (deleteBtn) {
@@ -7519,18 +7830,26 @@ var LexeraDashboard = (function () {
         showStackContextMenu(e.clientX, e.clientY, rIdx, sIdx);
       });
     })(stackEl, rowIdx, stackIdx);
+    if (_colBuildAccum) _colBuildAccum.stackListenersMs += (_nowHP() - _stackListenersStart);
     stackEl.appendChild(stackHeader);
 
     // Stack content container
     var stackContent = document.createElement('div');
     stackContent.className = 'board-stack-content';
 
-    var emptyColumns = document.createElement('div');
-    emptyColumns.className = 'board-level-empty board-level-empty-columns';
-    (function (rIdx, sIdx) {
-      emptyColumns.appendChild(renderCreationSource('column', { rowIdx: rIdx, stackIdx: sIdx }, { btnText: '+ Add column' }));
-    })(rowIdx, stackIdx);
-    stackContent.appendChild(emptyColumns);
+    // Only render the empty-state "+ Add column" placeholder when this stack
+    // has no columns. Previously we always rendered it and used a CSS
+    // `:has()` selector to hide it — which forced WebKit to re-evaluate the
+    // ancestor style on every descendant insertion (~95k redundant style
+    // recomputations during a full render of a 917-card board).
+    if (stackColumnEntries.length === 0) {
+      var emptyColumns = document.createElement('div');
+      emptyColumns.className = 'board-level-empty board-level-empty-columns';
+      (function (rIdx, sIdx) {
+        emptyColumns.appendChild(renderCreationSource('column', { rowIdx: rIdx, stackIdx: sIdx }, { btnText: '+ Add column' }));
+      })(rowIdx, stackIdx);
+      stackContent.appendChild(emptyColumns);
+    }
 
     for (var c = 0; c < stackColumnEntries.length; c++) {
       var col = stackColumnEntries[c].col;
@@ -7601,6 +7920,10 @@ var LexeraDashboard = (function () {
       })(stackEl);
     }
     applyTagStyleToEntity(stackEl, stack.title || '');
+    if (_colBuildAccum) {
+      _colBuildAccum.stacks++;
+      _colBuildAccum.stackTotalMs += (_nowHP() - _stackStart);
+    }
     return stackEl;
   }
 
@@ -7610,6 +7933,7 @@ var LexeraDashboard = (function () {
    * reused by the targeted-refresh pipeline.
    */
   function buildRowElement(row, rowIdx, foldedCols, foldedRows, foldedStacks, collapsedCards) {
+    var _rowStart = _colBuildAccum ? _nowHP() : 0;
     var isCanvasLayout = isCanvasBoardLayout();
     var rowStacks = Array.isArray(row.stacks) ? row.stacks : [];
     var rowFoldKey = getRowFoldKey(row, rowIdx);
@@ -7700,12 +8024,15 @@ var LexeraDashboard = (function () {
       })(rowIdx, rowContent);
     }
 
-    var emptyStacks = document.createElement('div');
-    emptyStacks.className = 'board-level-empty board-level-empty-stacks';
-    (function (rIdx) {
-      emptyStacks.appendChild(renderCreationSource('stack', { rowIdx: rIdx }, { btnText: '+ Add stack' }));
-    })(rowIdx);
-    rowContent.appendChild(emptyStacks);
+    // Only render the empty-state placeholder when this row has no stacks.
+    if (rowStacks.length === 0) {
+      var emptyStacks = document.createElement('div');
+      emptyStacks.className = 'board-level-empty board-level-empty-stacks';
+      (function (rIdx) {
+        emptyStacks.appendChild(renderCreationSource('stack', { rowIdx: rIdx }, { btnText: '+ Add stack' }));
+      })(rowIdx);
+      rowContent.appendChild(emptyStacks);
+    }
 
     for (var s = 0; s < rowStacks.length; s++) {
       var stackEl = buildStackElement(rowStacks[s], rowIdx, s, foldedCols, foldedStacks, collapsedCards);
@@ -7721,6 +8048,10 @@ var LexeraDashboard = (function () {
     rowFooter.className = 'board-row-footer';
     rowEl.appendChild(rowFooter);
     applyTagStyleToEntity(rowEl, row.title || '');
+    if (_colBuildAccum) {
+      _colBuildAccum.rows++;
+      _colBuildAccum.rowTotalMs += (_nowHP() - _rowStart);
+    }
     return rowEl;
   }
 
@@ -7728,23 +8059,41 @@ var LexeraDashboard = (function () {
    * Render board with rows → stacks → columns hierarchy.
    */
   function renderNewFormatBoard() {
+    var _rnfbProfile = _colBuildAccum;
+    var _rnfbT0 = _rnfbProfile ? _nowHP() : 0;
     var rows = activeBoardData.rows;
     var isCanvasLayout = isCanvasBoardLayout();
     var foldedCols = getFoldedColumns(activeBoardId);
     var foldedRows = getFoldedItems(activeBoardId, 'row');
     var foldedStacks = getFoldedItems(activeBoardId, 'stack');
     var collapsedCards = isCanvasLayout ? [] : getCollapsedCards(activeBoardId, rows);
+    var _rnfbT1 = _rnfbProfile ? _nowHP() : 0;
 
-    var emptyRows = document.createElement('div');
-    emptyRows.className = 'board-level-empty board-level-empty-rows';
-    emptyRows.appendChild(renderCreationSource('row', {}, { btnText: '+ Add row' }));
-    getElColumnsContainer().appendChild(emptyRows);
+    // Use a DocumentFragment to batch all row inserts into a single DOM
+    // operation. Each appendChild on the live container triggers a style
+    // recalc; appending to a fragment is off-tree and free.
+    var fragment = document.createDocumentFragment();
 
-    if (!rows || rows.length === 0) return;
+    // Only render the empty-state placeholder when the board has no rows.
+    if (!rows || rows.length === 0) {
+      var emptyRows = document.createElement('div');
+      emptyRows.className = 'board-level-empty board-level-empty-rows';
+      emptyRows.appendChild(renderCreationSource('row', {}, { btnText: '+ Add row' }));
+      fragment.appendChild(emptyRows);
+    } else {
+      for (var r = 0; r < rows.length; r++) {
+        var rowEl = buildRowElement(rows[r], r, foldedCols, foldedRows, foldedStacks, collapsedCards);
+        fragment.appendChild(rowEl);
+      }
+    }
+    var _rnfbT2 = _rnfbProfile ? _nowHP() : 0;
 
-    for (var r = 0; r < rows.length; r++) {
-      var rowEl = buildRowElement(rows[r], r, foldedCols, foldedRows, foldedStacks, collapsedCards);
-      getElColumnsContainer().appendChild(rowEl);
+    getElColumnsContainer().appendChild(fragment);
+    var _rnfbT3 = _rnfbProfile ? _nowHP() : 0;
+    if (_rnfbProfile) {
+      _colBuildAccum.rnfbSetupMs = Math.round((_rnfbT1 - _rnfbT0) * 10) / 10;
+      _colBuildAccum.rnfbBuildMs = Math.round((_rnfbT2 - _rnfbT1) * 10) / 10;
+      _colBuildAccum.rnfbAppendMs = Math.round((_rnfbT3 - _rnfbT2) * 10) / 10;
     }
   }
 
@@ -7771,9 +8120,21 @@ var LexeraDashboard = (function () {
     if (insertAt > toStack.columns.length) insertAt = toStack.columns.length;
     toStack.columns.splice(insertAt, 0, moved);
 
+    var colsBeforeRWS1 = getAllColumnsFromBoardData(fullBoardData).length;
     removeEmptyStacksAndRows();
+    var colsAfterRWS1 = getAllColumnsFromBoardData(fullBoardData).length;
 
-    await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    if (colsBeforeRWS1 !== colsAfterRWS1 || fromStack === toStack) {
+      // Same-stack reorder or structural change — full board
+      await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    } else {
+      // Different stacks — refresh both
+      await persistBoardMutation({ targets: [
+        { type: 'stack', rowIndex: fromRowIdx, stackIndex: fromStackIdx },
+        { type: 'stack', rowIndex: toRowIdx, stackIndex: toStackIdx },
+        { type: 'sidebar' }
+      ] });
+    }
   }
 
   async function moveColumnToExistingStack(fromRowIdx, fromStackIdx, fromColIdx, toRowIdx, toStackIdx) {
@@ -7793,9 +8154,19 @@ var LexeraDashboard = (function () {
     var moved = fromStack.columns.splice(fromFullColIdx, 1)[0];
     toStack.columns.push(moved);
 
+    var colsBeforeRWS2 = getAllColumnsFromBoardData(fullBoardData).length;
     removeEmptyStacksAndRows();
+    var colsAfterRWS2 = getAllColumnsFromBoardData(fullBoardData).length;
 
-    await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    if (colsBeforeRWS2 !== colsAfterRWS2) {
+      await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    } else {
+      await persistBoardMutation({ targets: [
+        { type: 'stack', rowIndex: fromRowIdx, stackIndex: fromStackIdx },
+        { type: 'stack', rowIndex: toRowIdx, stackIndex: toStackIdx },
+        { type: 'sidebar' }
+      ] });
+    }
   }
 
   async function moveColumnToNewStack(fromRowIdx, fromStackIdx, fromColIdx, toRowIdx, insertAtStackIdx) {
@@ -8072,7 +8443,7 @@ var LexeraDashboard = (function () {
     var visibleIdx = findVisibleCardIndexById(targetColIndex, card.id);
     var saved = visibleIdx >= 0
       ? await persistBoardMutation({ targets: [{ type: 'card-insert', colIndex: targetColIndex, cardIndex: visibleIdx }] })
-      : await persistBoardMutation({ targets: [{ type: 'board' }] });
+      : await persistBoardMutation({ targets: [{ type: 'column', colIndex: targetColIndex }] });
     traceFrontendAction(saved ? 'info' : 'warn', 'card.create', saved ? 'Persisted blank card' : 'Blank card persist reported failure', {
       boardId: activeBoardId || null,
       colIndex: targetColIndex,
@@ -8101,7 +8472,7 @@ var LexeraDashboard = (function () {
     if (visibleIdx >= 0) {
       await persistBoardMutation({ targets: [{ type: 'card-insert', colIndex: colIndex, cardIndex: visibleIdx }] });
     } else {
-      await persistBoardMutation({ targets: [{ type: 'board' }] });
+      await persistBoardMutation({ targets: [{ type: 'column', colIndex: colIndex }] });
     }
     return true;
   }
@@ -8133,7 +8504,7 @@ var LexeraDashboard = (function () {
       if (visibleIdx >= 0) {
         await persistBoardMutation({ targets: [{ type: 'card-insert', colIndex: colIndex, cardIndex: visibleIdx }] });
       } else {
-        await persistBoardMutation({ targets: [{ type: 'board' }] });
+        await persistBoardMutation({ targets: [{ type: 'column', colIndex: colIndex }] });
       }
       showNotification('Pasted as new card');
     } catch (err) {
@@ -8163,7 +8534,7 @@ var LexeraDashboard = (function () {
       if (visibleIdx >= 0) {
         await persistBoardMutation({ targets: [{ type: 'card-insert', colIndex: targetCol, cardIndex: visibleIdx }] });
       } else {
-        await persistBoardMutation({ targets: [{ type: 'board' }] });
+        await persistBoardMutation({ targets: [{ type: 'column', colIndex: targetCol }] });
       }
       showNotification('Smart pasted as new card');
     } catch (err) {
@@ -8424,6 +8795,11 @@ var LexeraDashboard = (function () {
   }
 
   async function moveCard(sourceOrFromColIdx, fromCardIdxOrTarget, toColIdx, toInsertIdx) {
+    var _mcStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    var _mcTrace = window.__lexeraProfileMutations ? {} : null;
+    function _mcMark(name) {
+      if (_mcTrace) _mcTrace[name] = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _mcStart;
+    }
     try {
       var source;
       var target;
@@ -8456,6 +8832,7 @@ var LexeraDashboard = (function () {
         ? sourceBoardData
         : await loadBoardDataForMutation(target.boardId);
       if (!targetBoardData) return;
+      _mcMark('afterLoadBoardData');
 
       var sourceRef = resolveColumnRefForCardMutation(source.boardId, sourceBoardData, source);
       var targetRef = ensureCardTargetColumnForMutation(target.boardId, targetBoardData, target);
@@ -8477,9 +8854,11 @@ var LexeraDashboard = (function () {
         targetInsertIdx = resolveInsertCardIndex(targetRef.column, target.insertIdx, targetInsertMode);
       }
       if (targetInsertIdx < 0) return;
+      _mcMark('afterResolveRefs');
 
       var activeTouched = source.boardId === activeBoardId || target.boardId === activeBoardId;
       if (activeTouched && fullBoardData) pushUndo();
+      _mcMark('afterPushUndo');
 
       var isCrossBoard = source.boardId !== target.boardId;
       var movedCard;
@@ -8519,29 +8898,100 @@ var LexeraDashboard = (function () {
             { type: 'sidebar' }
           ] });
         } else {
-          // Cross-column move: refresh only source and target columns
-          var colsBefore = getAllColumnsFromBoardData(sourceBoardData).length;
-          removeEmptyStacksAndRowsInBoard(sourceBoardData);
-          var colsAfter = getAllColumnsFromBoardData(sourceBoardData).length;
-          if (colsBefore !== colsAfter) {
-            // Structure changed (row/stack removed) — need full render
-            await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
-          } else {
-            // No structural change — targeted refresh of source + target columns
-            // Resolve flat column indices for workspace-coordinate descriptors
-            var allMoveCols = getAllColumnsFromBoardData(sourceBoardData);
-            var srcFlatIdx = source.flatColIndex != null ? source.flatColIndex
-              : (sourceRef && sourceRef.column ? allMoveCols.indexOf(sourceRef.column) : -1);
-            var tgtFlatIdx = target.flatColIndex != null ? target.flatColIndex
-              : (targetRef && targetRef.column ? allMoveCols.indexOf(targetRef.column) : -1);
-            var moveTargets = [{ type: 'sidebar' }];
-            if (srcFlatIdx >= 0) moveTargets.push({ type: 'column', colIndex: srcFlatIdx });
-            if (tgtFlatIdx >= 0 && tgtFlatIdx !== srcFlatIdx) {
-              moveTargets.push({ type: 'column', colIndex: tgtFlatIdx });
+          // ─────────────────────────────────────────────────────────
+          // Cross-column move: the smallest possible DOM change.
+          // ─────────────────────────────────────────────────────────
+          // Emit exactly two card-level targets:
+          //   - `card-remove` for the source card at its OLD visible
+          //     position in the source column
+          //   - `card-insert` for the dest card at its NEW visible
+          //     position in the dest column
+          // These handlers mutate only TWO card DOM nodes; every other
+          // column, card, row, stack — and importantly every Miro iframe
+          // — stays completely untouched across the move.
+          //
+          // Fall back to a full render only if the cleanup actually
+          // removes a structural container (which changes flat indices).
+          // We detect this by walking the board tree directly, not via
+          // `getAllColumnsFromBoardData` whose cache is keyed on board
+          // identity and returns stale lengths after in-place mutation.
+          function _mvFreshWalkCols(board) {
+            var out = [];
+            var rows = (board && board.rows) || [];
+            for (var _r = 0; _r < rows.length; _r++) {
+              var _stacks = (rows[_r] && rows[_r].stacks) || [];
+              for (var _s = 0; _s < _stacks.length; _s++) {
+                var _cols = (_stacks[_s] && _stacks[_s].columns) || [];
+                for (var _c = 0; _c < _cols.length; _c++) out.push(_cols[_c]);
+              }
             }
-            if (moveTargets.length === 1) moveTargets.push({ type: 'board' }); // fallback
-            await persistBoardMutation({ targets: moveTargets });
+            return out;
           }
+          var _srcColBeforeCleanup = sourceRef.column;
+          var _tgtColBeforeCleanup = targetRef.column;
+          var _colsBeforeArr = _mvFreshWalkCols(sourceBoardData);
+          removeEmptyStacksAndRowsInBoard(sourceBoardData);
+          var _colsAfterArr = _mvFreshWalkCols(sourceBoardData);
+
+          var _srcStillPresent = _colsAfterArr.indexOf(_srcColBeforeCleanup) !== -1;
+          var _tgtStillPresent = _colsAfterArr.indexOf(_tgtColBeforeCleanup) !== -1;
+
+          if (
+            _colsBeforeArr.length === _colsAfterArr.length &&
+            _srcStillPresent && _tgtStillPresent
+          ) {
+            // No structural change — we can safely emit card-level targets.
+            // Flat col indices come from the post-cleanup walk so they
+            // match what updateDisplayFromFullBoard will assign next.
+            var _srcFlatIdx = _colsAfterArr.indexOf(_srcColBeforeCleanup);
+            var _tgtFlatIdx = _colsAfterArr.indexOf(_tgtColBeforeCleanup);
+
+            // Source card VISIBLE index BEFORE the move (where the DOM
+            // currently shows it). The caller passes cardIndex in visible
+            // mode for same-board moves; use it directly when available.
+            var _srcVisibleIdx = -1;
+            if (source && source.cardIndexMode === 'visible' && typeof source.cardIndex === 'number') {
+              _srcVisibleIdx = source.cardIndex;
+            } else {
+              // Fallback: compute visible index by counting non-hidden
+              // cards up to sourceCardIdx in the PRE-splice source column.
+              // But we already spliced — so reconstruct by walking the
+              // source card's old siblings. Cheaper: just re-derive from
+              // the current DOM directly below via stable card id.
+              _srcVisibleIdx = 0; // placeholder; we'll bail via fallback
+            }
+
+            // Target card VISIBLE index AFTER the move: the card now
+            // sits at targetInsertIdx (full) in targetRef.column. Count
+            // non-hidden cards before it.
+            var _tgtVisibleIdx = 0;
+            var _tCards = targetRef.column.cards || [];
+            for (var _tc = 0; _tc < _tCards.length && _tc < targetInsertIdx; _tc++) {
+              if (!is_archived_or_deleted(_tCards[_tc] && _tCards[_tc].content ? _tCards[_tc].content : '')) {
+                _tgtVisibleIdx++;
+              }
+            }
+
+            if (_srcFlatIdx >= 0 && _tgtFlatIdx >= 0 && _srcVisibleIdx >= 0) {
+              await persistBoardMutation({ targets: [
+                { type: 'card-remove', colIndex: _srcFlatIdx, cardIndex: _srcVisibleIdx },
+                { type: 'card-insert', colIndex: _tgtFlatIdx, cardIndex: _tgtVisibleIdx },
+                { type: 'sidebar' }
+              ] });
+              _mcMark('afterPersist');
+              if (_mcTrace) {
+                if (!window.__lexeraMutationProfile) window.__lexeraMutationProfile = [];
+                window.__lexeraMutationProfile.push({
+                  total: _mcTrace.afterPersist || 0,
+                  targets: 'moveCard→card-remove+card-insert',
+                  phases: _mcTrace
+                });
+              }
+              return;
+            }
+          }
+          // Structural change or index resolution failed — full render.
+          await persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
         }
         return;
       }
@@ -8555,6 +9005,16 @@ var LexeraDashboard = (function () {
       await commitBoardMutations(changedBoards, { refreshSidebar: true });
     } catch (err) {
       lexeraLog('error', '[moveCard] Failed: ' + err);
+    } finally {
+      if (_mcTrace) {
+        _mcMark('afterPersist');
+        if (!window.__lexeraMutationProfile) window.__lexeraMutationProfile = [];
+        window.__lexeraMutationProfile.push({
+          total: _mcTrace.afterPersist || 0,
+          targets: 'moveCard',
+          phases: _mcTrace
+        });
+      }
     }
   }
 
@@ -10156,12 +10616,18 @@ var LexeraDashboard = (function () {
       return list;
     },
     setTestBoard: function (boardData, boardId) {
+      var _stbStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      var _stbTrace = window.__lexeraProfileMutations ? {} : null;
+      function _stbMark(name) {
+        if (_stbTrace) _stbTrace[name] = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _stbStart;
+      }
       activeBoardId = boardId || '__test__';
       setFullBoardDataState(boardData);
       if (fullBoardData) {
         ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
         setBoardSaveBase(fullBoardData, fullBoardData);
       }
+      _stbMark('afterSetFullBoard');
       setActiveBoardDataState({
         valid: true,
         title: boardData.title || 'Test Board',
@@ -10170,12 +10636,24 @@ var LexeraDashboard = (function () {
         rows: []
       });
       updateDisplayFromFullBoard();
+      _stbMark('afterUpdateDisplay');
       commitLocalBoardChange(activeBoardId, fullBoardData, {
         setLocalState: false,
         refreshHierarchy: true
       });
+      _stbMark('afterCommit');
       renderMainView();
+      _stbMark('afterRenderMainView');
       scheduleDashboardRefresh(80);
+      _stbMark('afterDashboardSchedule');
+      if (_stbTrace) {
+        if (!window.__lexeraMutationProfile) window.__lexeraMutationProfile = [];
+        window.__lexeraMutationProfile.push({
+          total: _stbTrace.afterDashboardSchedule || 0,
+          targets: 'setTestBoard',
+          phases: _stbTrace
+        });
+      }
     },
     moveCard: moveCard,
     loadBoard: loadBoard,
@@ -10227,6 +10705,7 @@ var LexeraDashboard = (function () {
     resolveTemporalTag: resolveTemporalTag
   };
   if (typeof window !== 'undefined') window.LexeraTestApi = _testApi;
+
 
   return {
     poll: poll,

@@ -876,7 +876,7 @@ var LexeraRowStackMenu = (function () {
     };
     deps.applyDefaultCanvasPlacementToStack(row, newStack);
     row.stacks.splice(insertAt, 0, newStack);
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'row', rowIndex: rowIdx }, { type: 'sidebar' }] });
   }
 
   async function addColumnFromContent(rowIdx, stackIdx, text, atColIdx) {
@@ -891,7 +891,7 @@ var LexeraRowStackMenu = (function () {
     if (insertAt < 0) insertAt = 0;
     if (insertAt > stack.columns.length) insertAt = stack.columns.length;
     stack.columns.splice(insertAt, 0, { id: 'col-' + ts, title: 'New Column', cards: [card] });
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'stack', rowIndex: rowIdx, stackIndex: stackIdx }, { type: 'sidebar' }] });
   }
 
   async function insertTemplateColumns(rowIdx, stackIdx, cols, atColIdx) {
@@ -906,7 +906,7 @@ var LexeraRowStackMenu = (function () {
     for (var i = 0; i < cols.length; i++) {
       stack.columns.splice(insertAt + i, 0, cols[i]);
     }
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'stack', rowIndex: rowIdx, stackIndex: stackIdx }, { type: 'sidebar' }] });
   }
 
   async function insertTemplateStack(rowIdx, stack, atStackIdx) {
@@ -923,7 +923,7 @@ var LexeraRowStackMenu = (function () {
     if (insertAt > row.stacks.length) insertAt = row.stacks.length;
     deps.applyDefaultCanvasPlacementToStack(row, stack);
     row.stacks.splice(insertAt, 0, stack);
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'row', rowIndex: rowIdx }, { type: 'sidebar' }] });
   }
 
   async function insertTemplateRow(atIndex, row) {
@@ -992,6 +992,7 @@ var LexeraRowStackMenu = (function () {
     if (nextTitle === row.title) return;
     deps.pushUndo();
     row.title = nextTitle;
+    // Hiding a row removes it from view — board-level structural change
     await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 
@@ -1095,7 +1096,7 @@ var LexeraRowStackMenu = (function () {
       canvasPosition: deps.isCanvasBoardLayout() ? { x: newStack.params && newStack.params.x, y: newStack.params && newStack.params.y } : null
     });
     row.stacks.splice(insertAt, 0, newStack);
-    var saved = await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    var saved = await deps.persistBoardMutation({ targets: [{ type: 'row', rowIndex: rowIdx }, { type: 'sidebar' }] });
     deps.traceFrontendAction(saved ? 'info' : 'warn', 'stack.create', saved ? 'Persisted new stack' : 'Stack persist reported failure', {
       boardId: deps.getActiveBoardId() || null,
       rowIdx: rowIdx,
@@ -1162,7 +1163,7 @@ var LexeraRowStackMenu = (function () {
     var fullStackIdx = deps.findFullDataStackIndex(row, rowIdx, stackIdx);
     if (fullStackIdx === -1) fullStackIdx = row.stacks.length - 1;
     row.stacks.splice(fullStackIdx + 1, 0, clone);
-    await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    await deps.persistBoardMutation({ targets: [{ type: 'row', rowIndex: rowIdx }, { type: 'sidebar' }] });
   }
 
   async function addColumnToStack(rowIdx, stackIdx, atColIdx) {
@@ -1195,7 +1196,7 @@ var LexeraRowStackMenu = (function () {
       stackColumnCountBefore: stack.columns.length
     });
     stack.columns.splice(insertAt, 0, newColumn);
-    var saved = await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
+    var saved = await deps.persistBoardMutation({ targets: [{ type: 'stack', rowIndex: rowIdx, stackIndex: stackIdx }, { type: 'sidebar' }] });
     deps.traceFrontendAction(saved ? 'info' : 'warn', 'column.create', saved ? 'Persisted new column in stack' : 'Column persist reported failure', {
       boardId: deps.getActiveBoardId() || null,
       rowIdx: rowIdx,

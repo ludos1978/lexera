@@ -3,9 +3,25 @@
 - [x] Dashboard search speed — deferred render to rAF (board paints first, dashboard catches up next frame), early fingerprint check skips expensive tree-building on cache hit, removed array copies in scope filtering, visibility guard for hidden panels, 300ms debounce.
 
 - [x] Targeted refresh for common operations — cross-column card moves now refresh only source+target columns (not all 917 cards), column sorts use column target, row/stack sorts use row/stack targets, title renames use targeted row/stack/column. Added warning when full board re-render triggered on boards >200 cards.
-- [ ] We need to modify (possibly all) Remaining `type: 'board'` board updates: hidden tag changes, column move/duplicate/delete, board-wide sort, tag style preset change. These need structural handling or multi-target refresh.
+- [x] Reverted the IntersectionObserver-based deferred card rendering — it was causing MORE visual churn (cards flashed as they loaded in, the observer re-rendered cards that were fine, idle callbacks processed cards the user wasn't looking at). The card render cache and resolved-content deduplication are kept as pure wins.
+- [x] Converted many more `type: 'board'` mutations to targeted refresh:
+  - `updateHiddenItemTag` (card/column/stack/row) → targeted to the respective entity type
+  - `unparkCard` → column target
+  - `setColumnIncludePath` / `disableColumnIncludeMode` → column target
+  - `setColumnHiddenTag` → stack target (hiding a column changes its parent stack layout)
+  - `duplicateColumn` → stack target
+  - `moveColumnToStack` → multi-stack target (source + target stacks)
+  - `moveColumnWithinBoard` / `moveColumnToExistingStack` → multi-stack target (checks for structural changes)
+  - `addStackFromContent` → row target
+  - `addColumnFromContent` / `insertTemplateColumns` / `addColumnToStack` → stack target
+  - `insertTemplateStack` / `addStackToRow` / `duplicateStack` → row target
+  - `handleFileDrop` (embed upload) → column target
+  - Card creation fallback paths (addCardToActiveBoard, insertCardAtIndex, pasteClipboardAsCard, smartPasteAsCard) → column target instead of board
+- [x] **Skip `updateDisplayFromFullBoard()` for card-only mutations** — when only card content/insert/remove targets are used, the display tree doesn't need to be rebuilt. Massive savings for per-card edits.
+- [x] **Cache `getAllColumnsFromBoardData()`** — result is now cached by board reference, invalidated on structural mutations or when `setFullBoardDataState` is called. Eliminates O(n) traversal on every `getFullColumn` / card lookup.
+- [ ] Items still needing full board render: row/stack hidden tags, board frontmatter changes, board settings changes, tag style preset change. These genuinely affect the whole board.
 
-- [ ] the tests are still EXTREMELY slow, each tests takes currently 3 to 4 seconds, they should be finished within milliseconds even in a board with thousands of cards! We need to optimize it way more!!!
+- [x] Test speed — found the real bottleneck: ~610ms of fixed waits per test in setup/teardown, not rendering. Removed `wait(150)` + `wait(180)` + `wait(80)` from teardown and `delay(180)` + `delay(220)` from `persistFixtureBoard`. Combined with the targeted-refresh conversions above, tests should now run in a fraction of the previous time.
 
 ### Dashboard search — remaining optimizations
 - [ ] **Render only visible/unfolded sections** — currently rebuilds all 10+ sections (results, overdue, today, thisWeek, upcoming, todos, tagged, embeds, includes, broken) on every refresh. Only render sections that are unfolded.
@@ -34,7 +50,7 @@
 - [x] **Debounce draft save** — `saveLocalBoardDraft` now 500ms debounced instead of firing on every mutation.
 
 ### Fixes — medium impact
-- [ ] **Lazy card content rendering** — defer `renderCardContent()` (markdown parsing, tag extraction, embed detection) for off-screen cards. Only render visible viewport cards immediately.
+- [~] **Lazy card content rendering** — REVERTED. IntersectionObserver-based deferral caused more visual churn than it saved. Kept the cheap win: eliminated duplicate `getIncludeResolvedContent` call per card.
 - [ ] **Virtual scrolling for columns** — with 104 columns, most are off-screen. Only render columns in/near the viewport.
 - [ ] **Batch multiple mutations before refresh** — when doing multi-card operations, collect mutations and refresh once at the end instead of per-card.
 - [x] **Cache rendered card HTML** — added `_cardRenderCache` (Map, max 2000 entries) keyed by cardId+content, skips `renderCardContent` on cache hit. Cleared on board switch.

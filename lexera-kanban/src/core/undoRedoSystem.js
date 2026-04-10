@@ -111,6 +111,24 @@
   }
 
   /**
+   * Resolve targets for an undo/redo operation. If the delta is card-content-only
+   * and every affected card is visible in activeBoardData, returns targeted refresh
+   * targets (fast path). Otherwise returns [{type: 'board'}] (full render fallback).
+   *
+   * Note: for undo, cards' positions are unchanged between pre- and post-delta states
+   * (since card-content-only deltas don't add/remove/reorder), so we can look up
+   * positions in the CURRENT activeBoardData regardless of direction.
+   */
+  function _resolveTargetsForDelta(delta) {
+    if (typeof _deps.deltaToTargets !== 'function') return [{ type: 'board' }];
+    if (typeof _deps.getActiveBoardData !== 'function') return [{ type: 'board' }];
+    var abd = _deps.getActiveBoardData();
+    if (!abd) return [{ type: 'board' }];
+    var targeted = _deps.deltaToTargets(delta, abd);
+    return (targeted && targeted.length > 0) ? targeted : [{ type: 'board' }];
+  }
+
+  /**
    * Undo the last board mutation.
    */
   async function undo() {
@@ -123,9 +141,12 @@
     var entry = undoStack.pop();
     undoTotalBytes -= entry.size;
     redoStack.push(entry);
+    // Resolve targets BEFORE applying — activeBoardData still reflects current
+    // DOM state and card positions are stable across card-content deltas.
+    var targets = _resolveTargetsForDelta(entry.delta);
     _deps.applyBoardDelta(fullBoardData, entry.delta, true);
     _deps.setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
-    await _deps.persistBoardMutation({ targets: [{ type: 'board' }] });
+    await _deps.persistBoardMutation({ targets: targets });
   }
 
   /**
@@ -140,9 +161,10 @@
     var entry = redoStack.pop();
     undoStack.push(entry);
     undoTotalBytes += entry.size;
+    var targets = _resolveTargetsForDelta(entry.delta);
     _deps.applyBoardDelta(fullBoardData, entry.delta, false);
     _deps.setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
-    await _deps.persistBoardMutation({ targets: [{ type: 'board' }] });
+    await _deps.persistBoardMutation({ targets: targets });
   }
 
   /**

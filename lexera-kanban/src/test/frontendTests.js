@@ -84,6 +84,44 @@
     throw new Error('LexeraTestApi not found');
   }
 
+  // Return every window (parent + iframes) that has a LexeraTestApi. The board
+  // app runs in an iframe in workspace-shell mode, so performance flags must
+  // be set on THAT window, not the parent. Profile data is also collected there.
+  function getAllBoardWindows() {
+    var wins = [];
+    function pushWin(win) {
+      if (!win || wins.indexOf(win) !== -1) return;
+      try { if (win.LexeraTestApi) wins.push(win); } catch (_) {}
+    }
+    pushWin(window);
+    try { if (window.parent && window.parent !== window) pushWin(window.parent); } catch (_) {}
+    var entries = getIframeEntries(document);
+    for (var i = 0; i < entries.length; i++) pushWin(entries[i].win);
+    return wins;
+  }
+
+  function setMutationProfilingFlag(enabled) {
+    var wins = getAllBoardWindows();
+    for (var i = 0; i < wins.length; i++) {
+      try { wins[i].__lexeraProfileMutations = !!enabled; } catch (_) {}
+      try { wins[i].__lexeraMutationProfile = []; } catch (_) {}
+    }
+  }
+
+  function collectMutationProfile() {
+    var all = [];
+    var wins = getAllBoardWindows();
+    for (var i = 0; i < wins.length; i++) {
+      try {
+        var samples = wins[i].__lexeraMutationProfile;
+        if (Array.isArray(samples) && samples.length > 0) {
+          for (var j = 0; j < samples.length; j++) all.push(samples[j]);
+        }
+      } catch (_) {}
+    }
+    return all;
+  }
+
   function register(name, fn) { tests.push({ name: name, fn: fn }); }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -110,10 +148,6 @@
 
   function throwIfRunCancelled() {
     if (isRunCancelled()) throw createCancelledError();
-  }
-
-  function wait(ms) {
-    return new Promise(function (resolve) { setTimeout(resolve, ms); });
   }
 
   function delay(ms) {
@@ -1020,10 +1054,26 @@
       localStorage.removeItem('lexera-card-expanded:' + boardId);
     } catch (_) {}
     try { api().renderMainView(); } catch (_) {}
-    await delay(120);
+    // No wait — renderMainView is synchronous
+  }
+
+  // Phase timing — populated during test execution, read by test runner
+  var _phaseTimings = null; // { setup, body, teardown }
+
+  function _startPhase(name) {
+    if (!_phaseTimings) return 0;
+    var start = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    _phaseTimings[name + 'Start'] = start;
+    return start;
+  }
+  function _endPhase(name) {
+    if (!_phaseTimings) return;
+    var end = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    _phaseTimings[name] = end - (_phaseTimings[name + 'Start'] || end);
   }
 
   async function setup() {
+    _startPhase('setup');
     refreshBoardSelector();
     await ensureSelectedBoardLoaded();
     // Wait for a board to be loaded (may take a moment in workspace shell)
@@ -1037,44 +1087,53 @@
           await unfoldBoardForTests(_boardId);
           data = api().getFullBoardData();
           _snapshot = JSON.parse(JSON.stringify(data));
+          _endPhase('setup');
           return;
         }
       } catch (_) {}
       await delay(200);
       _api = null; // retry finding the API
     }
+    _endPhase('setup');
     throw new Error('No board loaded — open a board with at least 2 columns first');
   }
 
   async function persistFixtureBoard(boardData) {
     assert(_boardId, 'board id available');
     api().setTestBoard(cloneJson(boardData), _boardId);
-    await delay(180);
     assert(typeof api().saveCurrentBoard === 'function', 'saveCurrentBoard is available');
     _restoreSavedSnapshot = true;
     var saved = await api().saveCurrentBoard();
     assert(saved !== false, 'fixture board saved');
-    await delay(220);
   }
 
   async function teardown() {
+    _startPhase('teardown');
     if (_snapshot && _boardId) {
       api().setTestBoard(_snapshot, _boardId);
-      await wait(150);
+      // setTestBoard is synchronous at the DOM level — no wait needed
       if (_restoreSavedSnapshot && typeof api().saveCurrentBoard === 'function') {
         try {
           await api().saveCurrentBoard();
-          await wait(180);
         } catch (_) {}
       }
       restoreBoardUiState(_uiStateSnapshot, _boardId);
       try { api().renderMainView(); } catch (_) {}
-      await wait(80);
     }
     _snapshot = null;
     _boardId = null;
     _uiStateSnapshot = null;
     _restoreSavedSnapshot = false;
+    // Cancel pending debounced work so it doesn't leak into the next test
+    try {
+      if (window.LexeraBoardDataStore && typeof window.LexeraBoardDataStore.cancelAllDeferredWork === 'function') {
+        window.LexeraBoardDataStore.cancelAllDeferredWork();
+      }
+      if (window.LexeraBoardList && typeof window.LexeraBoardList.cancelPendingDraftSave === 'function') {
+        window.LexeraBoardList.cancelPendingDraftSave();
+      }
+    } catch (_) {}
+    _endPhase('teardown');
   }
 
   /** Find first two columns with at least 1 card each. Returns {srcCol, dstCol, srcCard}. */
@@ -4217,20 +4276,27 @@
   async function runAll() {
     _api = null;
     var results = [];
+    var totalStart = _nowMs();
     console.log('%c[Frontend Tests] Running ' + tests.length + ' tests...', 'color: #007acc; font-weight: bold; font-size: 14px');
     for (var i = 0; i < tests.length; i++) {
+      var testStart = _nowMs();
       try {
         await tests[i].fn();
-        results.push({ name: tests[i].name, passed: true });
-        console.log('%c  PASS %c ' + tests[i].name, 'color: #4ec9b0; font-weight: bold', 'color: inherit');
+        var testDur = _nowMs() - testStart;
+        results.push({ name: tests[i].name, passed: true, durationMs: testDur });
+        console.log('%c  PASS %c ' + tests[i].name + ' %c(' + formatDurationMs(testDur) + ')',
+          'color: #4ec9b0; font-weight: bold', 'color: inherit', 'color: #888');
       } catch (err) {
-        results.push({ name: tests[i].name, passed: false, error: err.message || String(err) });
-        console.log('%c  FAIL %c ' + tests[i].name + ': ' + (err.message || err), 'color: #f44747; font-weight: bold', 'color: #f44747');
+        var testDurFail = _nowMs() - testStart;
+        results.push({ name: tests[i].name, passed: false, error: err.message || String(err), durationMs: testDurFail });
+        console.log('%c  FAIL %c ' + tests[i].name + ' %c(' + formatDurationMs(testDurFail) + ')%c: ' + (err.message || err),
+          'color: #f44747; font-weight: bold', 'color: #f44747', 'color: #888', 'color: #f44747');
       }
     }
+    var totalDur = _nowMs() - totalStart;
     var p = results.filter(function (r) { return r.passed; }).length;
     var f = results.filter(function (r) { return !r.passed; }).length;
-    console.log('%c[Frontend Tests] ' + p + ' passed, ' + f + ' failed / ' + tests.length,
+    console.log('%c[Frontend Tests] ' + p + ' passed, ' + f + ' failed / ' + tests.length + ' in ' + formatDurationMs(totalDur),
       f > 0 ? 'color: #f44747; font-weight: bold' : 'color: #4ec9b0; font-weight: bold');
     return results;
   }
@@ -4324,18 +4390,111 @@
   function buildCopiedResultsText(scope) {
     var lines = ['Frontend Test Results', ''];
     var p = 0, f = 0;
+    var totalDurMs = 0;
     var includePasses = scope === 'all';
     for (var i = 0; i < lastResults.length; i++) {
       var r = lastResults[i];
+      if (typeof r.durationMs === 'number') totalDurMs += r.durationMs;
       if (!includePasses && r.passed) {
         if (r.passed) p++;
         continue;
       }
-      lines.push('[' + (r.passed ? 'PASS' : 'FAIL') + '] ' + r.name);
+      var durLabel = '';
+      if (typeof r.durationMs === 'number') {
+        durLabel = ' (' + formatDurationMs(r.durationMs);
+        if (typeof r.setupMs === 'number' || typeof r.bodyMs === 'number' || typeof r.teardownMs === 'number') {
+          durLabel += ' s:' + formatDurationMs(r.setupMs || 0)
+            + ' b:' + formatDurationMs(r.bodyMs || 0)
+            + ' t:' + formatDurationMs(r.teardownMs || 0);
+        }
+        durLabel += ')';
+      }
+      lines.push('[' + (r.passed ? 'PASS' : 'FAIL') + ']' + durLabel + ' ' + r.name);
       if (!r.passed && r.error) lines.push('       ' + r.error);
+      // Include mutation profile: show top samples with phase breakdowns
+      if (r.mutationProfile && r.mutationProfile.count > 0) {
+        var mp = r.mutationProfile;
+        lines.push('       mutations=' + mp.count
+          + ' total=' + formatDurationMs(mp.total));
+        var samples = mp.topSamples || [mp.slowest];
+        var phaseOrder = [
+          'afterLoadBoardData', 'afterResolveRefs', 'afterPushUndo',
+          'afterBeforeRefresh', 'afterUpdateDisplay', 'afterCommit', 'afterRefreshTargeted',
+          'afterDashboardSchedule', 'afterDraftSave', 'afterPersist',
+          'afterSetFullBoard', 'afterRenderMainView',
+          'afterCleanup', 'afterInnerHTMLClear', 'afterRenderNewFormatBoard', 'afterSyncScroll', 'afterScheduleRAF'
+        ];
+        var phaseNames = {
+          afterLoadBoardData: 'loadBoardData',
+          afterResolveRefs: 'resolveRefs',
+          afterPushUndo: 'pushUndo',
+          afterBeforeRefresh: 'before',
+          afterUpdateDisplay: 'updateDisplay',
+          afterCommit: 'commit',
+          afterRefreshTargeted: 'refreshTargeted',
+          afterDashboardSchedule: 'dashSched',
+          afterDraftSave: 'draftSave',
+          afterPersist: 'persist',
+          afterSetFullBoard: 'setFullBoard',
+          afterRenderMainView: 'renderMainView',
+          afterCleanup: 'cleanup',
+          afterInnerHTMLClear: 'innerHTMLClear',
+          afterRenderNewFormatBoard: 'buildDOM',
+          afterSyncScroll: 'syncScroll',
+          afterScheduleRAF: 'scheduleRAF'
+        };
+        for (var si = 0; si < samples.length; si++) {
+          var s = samples[si];
+          if (!s) continue;
+          lines.push('       ' + (si + 1) + '. ' + formatDurationMs(s.total) + ' [' + s.targets + ']');
+          if (s.phases) {
+            var phaseLabels = [];
+            var prev = 0;
+            for (var phi = 0; phi < phaseOrder.length; phi++) {
+              var key = phaseOrder[phi];
+              if (typeof s.phases[key] === 'number') {
+                var delta = s.phases[key] - prev;
+                if (delta > 1) phaseLabels.push(phaseNames[key] + '=' + formatDurationMs(delta));
+                prev = s.phases[key];
+              }
+            }
+            if (phaseLabels.length > 0) lines.push('          ' + phaseLabels.join(' '));
+          }
+          if (s.cards && s.cards.count > 0) {
+            var perCardUs = s.cards.count > 0 ? Math.round((s.cards.totalMs / s.cards.count) * 1000) : 0;
+            lines.push('          cards=' + s.cards.count
+              + ' cacheHits=' + s.cards.cacheHits
+              + ' cardTotal=' + formatDurationMs(s.cards.totalMs)
+              + ' markdown=' + formatDurationMs(s.cards.markdownMs)
+              + ' include=' + formatDurationMs(s.cards.includeResolveMs)
+              + ' perCard=' + perCardUs + 'µs');
+          }
+          if (s.structure && s.structure.columns > 0) {
+            var perColUs = s.structure.columns > 0 ? Math.round((s.structure.columnTotalMs / s.structure.columns) * 1000) : 0;
+            lines.push('          cols=' + s.structure.columns
+              + ' colTotal=' + formatDurationMs(s.structure.columnTotalMs)
+              + ' colHeader=' + formatDurationMs(s.structure.columnHeaderMs)
+              + ' colListeners=' + formatDurationMs(s.structure.columnListenersMs)
+              + ' colCardsLoop=' + formatDurationMs(s.structure.columnCardsLoopMs)
+              + ' colFooter=' + formatDurationMs(s.structure.columnFooterMs)
+              + ' perCol=' + perColUs + 'µs');
+            lines.push('          stacks=' + s.structure.stacks
+              + ' stackTotal=' + formatDurationMs(s.structure.stackTotalMs)
+              + ' stackHeader=' + formatDurationMs(s.structure.stackHeaderMs)
+              + ' stackListeners=' + formatDurationMs(s.structure.stackListenersMs)
+              + ' rows=' + s.structure.rows
+              + ' rowTotal=' + formatDurationMs(s.structure.rowTotalMs));
+            lines.push('          rnfb: setup=' + formatDurationMs(s.structure.rnfbSetupMs)
+              + ' buildLoop=' + formatDurationMs(s.structure.rnfbBuildMs)
+              + ' liveAppend=' + formatDurationMs(s.structure.rnfbAppendMs));
+          }
+        }
+      }
       if (r.passed) p++; else f++;
     }
-    lines.push(''); lines.push(p + ' passed, ' + f + ' failed / ' + lastResults.length);
+    lines.push('');
+    var totalLabel = totalDurMs > 0 ? ' in ' + formatDurationMs(totalDurMs) : '';
+    lines.push(p + ' passed, ' + f + ' failed / ' + lastResults.length + totalLabel);
     if (scope === 'errors-with-logs') {
       var logEntries = getErrorLogSnapshots();
       lines.push('');
@@ -4377,8 +4536,10 @@
       var ind = document.createElement('span'); ind.className = 'test-indicator';
       var lbl = document.createElement('span'); lbl.style.cssText = 'flex:1;word-break:break-word;';
       lbl.textContent = tests[i].name;
+      var dur = document.createElement('span'); dur.className = 'test-duration';
+      dur.style.cssText = 'flex:0 0 auto;margin-left:8px;font-size:var(--font-size-xs);color:var(--text-muted);font-variant-numeric:tabular-nums;';
       (function (idx) { row.onclick = function () { if (!isRunActive()) runOneUI(idx); }; })(i);
-      row.appendChild(ind); row.appendChild(lbl); listEl.appendChild(row);
+      row.appendChild(ind); row.appendChild(lbl); row.appendChild(dur); listEl.appendChild(row);
       var err = document.createElement('div'); err.className = 'test-error'; err.style.display = 'none';
       listEl.appendChild(err);
     }
@@ -4398,7 +4559,14 @@
     updateRunControls();
   }
 
-  function updateRow(index, status, error) {
+  function formatDurationMs(ms) {
+    if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) return '';
+    if (ms < 1) return '<1ms';
+    if (ms < 1000) return Math.round(ms) + 'ms';
+    return (ms / 1000).toFixed(2) + 's';
+  }
+
+  function updateRow(index, status, error, durationMs, phases) {
     var root = findPanelRoot(); if (!root) return;
     var rows = root.querySelectorAll('.test-row');
     var errs = root.querySelectorAll('.test-error');
@@ -4406,6 +4574,33 @@
     var ind = rows[index].querySelector('.test-indicator');
     ind.className = 'test-indicator' + (status === 'pass' ? ' pass' : status === 'fail' ? ' fail' : status === 'running' ? ' running' : '');
     ind.textContent = status === 'pass' ? '\u2713' : status === 'fail' ? '\u2717' : status === 'running' ? '\u2026' : '';
+    var dur = rows[index].querySelector('.test-duration');
+    if (dur) {
+      if (status === 'reset' || status === 'running') {
+        dur.textContent = status === 'running' ? '…' : '';
+        dur.style.color = 'var(--text-muted)';
+        dur.title = '';
+      } else if (typeof durationMs === 'number') {
+        // Show phase breakdown directly in the label when available
+        var label = formatDurationMs(durationMs);
+        if (phases && (phases.setup || phases.body || phases.teardown)) {
+          label += ' (s:' + formatDurationMs(phases.setup || 0)
+            + ' b:' + formatDurationMs(phases.body || 0)
+            + ' t:' + formatDurationMs(phases.teardown || 0) + ')';
+          dur.title = 'setup: ' + formatDurationMs(phases.setup || 0)
+            + '\nbody: ' + formatDurationMs(phases.body || 0)
+            + '\nteardown: ' + formatDurationMs(phases.teardown || 0)
+            + '\ntotal: ' + formatDurationMs(durationMs);
+        } else {
+          dur.title = '';
+        }
+        dur.textContent = label;
+        // Color slow tests: >1s red, >500ms yellow
+        if (durationMs > 1000) dur.style.color = 'var(--error)';
+        else if (durationMs > 500) dur.style.color = 'var(--warning, #e6a700)';
+        else dur.style.color = 'var(--text-muted)';
+      }
+    }
     if (errs[index]) {
       errs[index].textContent = (status === 'fail' && error) ? error : '';
       errs[index].style.display = (status === 'fail' && error) ? 'block' : 'none';
@@ -4416,12 +4611,33 @@
     setSummaryText(p + ' passed, ' + f + ' failed / ' + t, f > 0 ? 'var(--error)' : 'var(--success)');
   }
 
+  function _nowMs() {
+    return typeof performance !== 'undefined' && performance && typeof performance.now === 'function'
+      ? performance.now() : Date.now();
+  }
+
+  function _summarizeMutationProfile(samples) {
+    if (!samples || samples.length === 0) return null;
+    var total = 0;
+    var sorted = samples.slice().sort(function (a, b) { return (b.total || 0) - (a.total || 0); });
+    for (var i = 0; i < samples.length; i++) total += samples[i].total || 0;
+    return {
+      count: samples.length,
+      total: total,
+      slowest: sorted[0],
+      topSamples: sorted.slice(0, 5) // top 5 slowest
+    };
+  }
+
   async function runAllUI() {
     if (isRunActive()) return;
     populateTestList(); _api = null; lastResults = [];
     beginRun(tests.length);
     refreshBoardSelector();
+    // Enable mutation profiling in ALL board windows (parent + iframes)
+    setMutationProfilingFlag(true);
     var p = 0, f = 0;
+    var totalStart = _nowMs();
     for (var j = 0; j < tests.length; j++) updateRow(j, 'reset');
     updateSummary(0, 0, tests.length);
     try {
@@ -4429,23 +4645,57 @@
         throwIfRunCancelled();
         _runState.currentIndex = i;
         updateRow(i, 'running');
+        _phaseTimings = { setup: 0, body: 0, teardown: 0, setupStart: 0, teardownStart: 0 };
+        // Reset profile arrays in all board windows (parent + iframes)
+        setMutationProfilingFlag(true);
+        var testStart = _nowMs();
+        var bodyStart = 0, bodyEnd = 0;
         try {
+          bodyStart = _nowMs();
           await tests[i].fn();
+          bodyEnd = _nowMs();
           throwIfRunCancelled();
-          updateRow(i, 'pass'); lastResults.push({ name: tests[i].name, passed: true }); p++;
+          var testDur = _nowMs() - testStart;
+          // body time = test body minus any setup/teardown that happened within it
+          _phaseTimings.body = (bodyEnd - bodyStart) - (_phaseTimings.setup || 0) - (_phaseTimings.teardown || 0);
+          if (_phaseTimings.body < 0) _phaseTimings.body = 0;
+          var profSummary = _summarizeMutationProfile(collectMutationProfile());
+          updateRow(i, 'pass', null, testDur, _phaseTimings);
+          lastResults.push({
+            name: tests[i].name, passed: true, durationMs: testDur,
+            setupMs: _phaseTimings.setup, bodyMs: _phaseTimings.body, teardownMs: _phaseTimings.teardown,
+            mutationProfile: profSummary
+          });
+          p++;
         } catch (err) {
+          bodyEnd = _nowMs();
+          var testDurFail = _nowMs() - testStart;
           if (isCancelledError(err)) {
             updateRow(i, 'reset');
             setSummaryText('Stopped: ' + p + ' passed, ' + f + ' failed / ' + tests.length, 'var(--text-muted)');
             return;
           }
           var msg = err.message || String(err);
-          updateRow(i, 'fail', msg); lastResults.push({ name: tests[i].name, passed: false, error: msg }); f++;
+          _phaseTimings.body = (bodyEnd - bodyStart) - (_phaseTimings.setup || 0) - (_phaseTimings.teardown || 0);
+          if (_phaseTimings.body < 0) _phaseTimings.body = 0;
+          var profSummaryFail = _summarizeMutationProfile(collectMutationProfile());
+          updateRow(i, 'fail', msg, testDurFail, _phaseTimings);
+          lastResults.push({
+            name: tests[i].name, passed: false, error: msg, durationMs: testDurFail,
+            setupMs: _phaseTimings.setup, bodyMs: _phaseTimings.body, teardownMs: _phaseTimings.teardown,
+            mutationProfile: profSummaryFail
+          });
+          f++;
         }
+        _phaseTimings = null;
         updateSummary(p, f, tests.length);
       }
       if (isRunCancelled()) {
         setSummaryText('Stopped: ' + p + ' passed, ' + f + ' failed / ' + tests.length, 'var(--text-muted)');
+      } else {
+        var totalDur = _nowMs() - totalStart;
+        setSummaryText(p + ' passed, ' + f + ' failed / ' + tests.length + ' (' + formatDurationMs(totalDur) + ')',
+          f > 0 ? 'var(--error)' : 'var(--success)');
       }
     } catch (err) {
       if (isCancelledError(err)) {
@@ -4462,34 +4712,100 @@
     if (index < 0 || index >= tests.length || isRunActive()) return;
     beginRun(1);
     _api = null; refreshBoardSelector(); updateRow(index, 'running');
+    setMutationProfilingFlag(true);
+    _phaseTimings = { setup: 0, body: 0, teardown: 0, setupStart: 0, teardownStart: 0 };
+    var testStart = _nowMs();
+    var bodyStart = 0, bodyEnd = 0;
     try {
+      bodyStart = _nowMs();
       await tests[index].fn();
+      bodyEnd = _nowMs();
       throwIfRunCancelled();
-      updateRow(index, 'pass');
+      var testDur = _nowMs() - testStart;
+      _phaseTimings.body = (bodyEnd - bodyStart) - (_phaseTimings.setup || 0) - (_phaseTimings.teardown || 0);
+      if (_phaseTimings.body < 0) _phaseTimings.body = 0;
+      var profSummary = _summarizeMutationProfile(collectMutationProfile());
+      updateRow(index, 'pass', null, testDur, _phaseTimings);
       var ex = lastResults.findIndex(function (r) { return r.name === tests[index].name; });
-      var e = { name: tests[index].name, passed: true };
+      var e = {
+        name: tests[index].name, passed: true, durationMs: testDur,
+        setupMs: _phaseTimings.setup, bodyMs: _phaseTimings.body, teardownMs: _phaseTimings.teardown,
+        mutationProfile: profSummary
+      };
       if (ex >= 0) lastResults[ex] = e; else lastResults.push(e);
       updateSummary(1, 0, 1);
     } catch (err) {
+      bodyEnd = _nowMs();
+      var testDurFail = _nowMs() - testStart;
       if (isCancelledError(err)) {
         updateRow(index, 'reset');
         setSummaryText('Stopped: 0 passed, 0 failed / 1', 'var(--text-muted)');
         return;
       }
-      var msg = err.message || String(err); updateRow(index, 'fail', msg);
+      var msg = err.message || String(err);
+      _phaseTimings.body = (bodyEnd - bodyStart) - (_phaseTimings.setup || 0) - (_phaseTimings.teardown || 0);
+      if (_phaseTimings.body < 0) _phaseTimings.body = 0;
+      var profSummaryFail = _summarizeMutationProfile(collectMutationProfile());
+      updateRow(index, 'fail', msg, testDurFail, _phaseTimings);
       var ex2 = lastResults.findIndex(function (r) { return r.name === tests[index].name; });
-      var e2 = { name: tests[index].name, passed: false, error: msg };
+      var e2 = {
+        name: tests[index].name, passed: false, error: msg, durationMs: testDurFail,
+        setupMs: _phaseTimings.setup, bodyMs: _phaseTimings.body, teardownMs: _phaseTimings.teardown,
+        mutationProfile: profSummaryFail
+      };
       if (ex2 >= 0) lastResults[ex2] = e2; else lastResults.push(e2);
       updateSummary(0, 1, 1);
     } finally {
+      _phaseTimings = null;
       endRun();
     }
   }
 
-  var _obs = new MutationObserver(function () {
-    if (findPanelRoot() && !_panelInit) populateTestList();
-  });
-  _obs.observe(document.body, { childList: true, subtree: true });
+  // Wait for the test panel DOM to be mounted, then populate it once.
+  //
+  // Previously we used a MutationObserver with `subtree: true` watching
+  // document.body — but that made WebKit generate a mutation record for
+  // every descendant insertion anywhere in the document. During a full
+  // board render (~10k DOM nodes), that cost ~800ms of synchronous
+  // bookkeeping inside `appendChild(fragment)`. The observer callback
+  // itself was already a no-op after the first populate (`_panelInit`
+  // latched to true), so the subtree watching was 100% wasted work.
+  //
+  // Fix: (1) observe only direct children of body without `subtree`, so
+  // the cost is proportional to body-level mutations only, and (2) self-
+  // disconnect as soon as we populate successfully. Fall back to a few
+  // retry ticks in case the panel shows up deep inside a workspace-shell
+  // tab that was injected after this module loaded.
+  (function () {
+    var disconnected = false;
+    function tryPopulate() {
+      if (disconnected) return true;
+      if (findPanelRoot() && !_panelInit) {
+        populateTestList();
+      }
+      if (_panelInit) {
+        disconnected = true;
+        if (_obs) _obs.disconnect();
+        return true;
+      }
+      return false;
+    }
+    var _obs = null;
+    if (typeof MutationObserver !== 'undefined') {
+      _obs = new MutationObserver(tryPopulate);
+      // childList only (no subtree) — direct body children only.
+      _obs.observe(document.body, { childList: true });
+    }
+    // Retry on next frame / after 500ms to catch panels mounted deeper
+    // in the tree (e.g. workspace-shell dock) that we wouldn't observe
+    // without subtree: true.
+    if (!tryPopulate()) {
+      requestAnimationFrame(tryPopulate);
+      setTimeout(tryPopulate, 500);
+      setTimeout(tryPopulate, 1500);
+      setTimeout(tryPopulate, 4000);
+    }
+  })();
 
   window.LexeraFrontendTests = {
     runAll: runAll,

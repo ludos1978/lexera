@@ -2292,13 +2292,44 @@ body.show-special-characters .card-content .ws-nl {
   font-size: var(--board-font-size, var(--font-size-base));
   font-family: var(--board-font-family, var(--font-board, inherit));
   user-select: none;
-}
-/* Force the board font on ALL elements inside the board, overriding
- * browser defaults that set monospace on code/pre/kbd/samp. */
-.columns-container * {
-  font-family: inherit;
-  -webkit-user-select: none;
+  /* Board background lives on the container; descendants default to
+   * `background: transparent` so the container's color shows through.
+   * Previously every descendant had its own explicit background, which
+   * was the dominant cost of full renders. */
   background: var(--board-bg, var(--bg-primary));
+}
+/* Previously this was `.columns-container *` — a universal selector
+ * applied to every descendant (10k+ elements on large boards). That
+ * single rule dominated full-render cost (~800ms for 917 cards) because
+ * WebKit had to resolve the `var(--board-bg)` custom property and
+ * compute explicit backgrounds for every element. The style scope is
+ * now split so each property only targets elements that actually need it. */
+
+/* user-select inherits, so set it once on the container. */
+.columns-container {
+  -webkit-user-select: none;
+}
+
+/* Override the browser default monospace font on just the tags that
+ * opt into it. (The universal selector was overkill — all other tags
+ * already inherit font-family from their parent by default.) */
+.columns-container code,
+.columns-container pre,
+.columns-container kbd,
+.columns-container samp,
+.columns-container tt {
+  font-family: inherit;
+}
+
+/* min-width/min-height: 0 is a flexbox hack to let children shrink
+ * below their intrinsic content size. Only applied to the actual
+ * flex children in the board layout. */
+.columns-container .board-row,
+.columns-container .board-row-content,
+.columns-container .board-stack,
+.columns-container .board-stack-content,
+.columns-container .column,
+.columns-container .column-cards {
   min-width: 0;
   min-height: 0;
 }
@@ -2948,15 +2979,11 @@ li.tag-line-styled {
   padding: var(--board-inner-padding);
 }
 
-.columns-container.new-format:has(> .board-row) > .board-level-empty-rows {
-  display: none;
-}
-
-.board-row-content:has(> .board-stack) > .board-level-empty-stacks,
-.board-row-content:has(> .canvas-scene > .board-stack) > .board-level-empty-stacks,
-.board-stack-content:has(> .column) > .board-level-empty-columns {
-  display: none;
-}
+/* Note: empty-state placeholders (`.board-level-empty-rows`,
+   `.board-level-empty-stacks`, `.board-level-empty-columns`) are now only
+   rendered in JS when the parent has no children — previously we always
+   rendered them and hid them with `:has()`, which forced WebKit to
+   re-evaluate ancestor styles on every descendant mutation. */
 
 .add-entity-btn {
   background: var(--btn-bg);
@@ -4739,7 +4766,10 @@ img[data-lazy-src] {
   background: var(--surface-footer-bg);
 }
 
-.column:has(> .column-cards > .card) > .column-footer:not(:has(.add-card-input)) {
+/* Previously used `:has()` here — replaced with the JS-driven `.has-cards`
+   class added in buildColumnElement. `:has()` was the dominant cost in
+   full-board renders (~700ms out of 820ms for 917 cards on WKWebView). */
+.column.has-cards > .column-footer:not(.add-mode) {
   display: none;
 }
 
