@@ -730,18 +730,49 @@ var LexeraBoardList = (function () {
     }
     _callDep('applyBoardSettings');
 
-    // Try incremental card update when only card content changed
-    var didIncrementalUpdate = false;
+    // Targeted refresh pipeline — three levels of specificity, each
+    // falls through to the next. The rule: a full board render should
+    // only ever happen on initial board load. Live-sync snapshots must
+    // always diff and use targeted refresh, even for structural changes,
+    // so Miro iframes and untouched card DOM survive the update.
+    var didTargetedRefresh = false;
     if (!options.refreshMainView && oldBoardForDelta && fullBoardData) {
       var BoardDelta = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta) ? globalThis.LexeraBoardDelta : null;
       if (BoardDelta) {
         var liveSyncDelta = BoardDelta.computeBoardDelta(oldBoardForDelta, fullBoardData);
+        // Level 1 (fastest): per-card content update for card-content-only
+        // deltas. Tries to minimize DOM churn even further than our generic
+        // target handlers by updating just the .card-content innerHTML.
         if (isDeltaCardContentOnly(liveSyncDelta)) {
-          didIncrementalUpdate = tryIncrementalCardUpdate(liveSyncDelta, fullBoardData);
+          didTargetedRefresh = tryIncrementalCardUpdate(liveSyncDelta, fullBoardData);
+        }
+        // Level 2: generic deltaToTargets path. Covers card add/remove,
+        // column/stack/row title changes, etc. Computes against the PRE-
+        // delta activeBoardData (which we cached in oldBoardForDelta) so
+        // index lookups are stable.
+        if (!didTargetedRefresh && typeof BoardDelta.deltaToTargets === 'function') {
+          try {
+            // Build a temporary active-like view from oldBoardForDelta so
+            // deltaToTargets can resolve ids → positions against the
+            // pre-apply state. updateDisplayFromFullBoard() has already
+            // run above, updating the real activeBoardData to the new
+            // state; but position lookups must match what the DOM has
+            // right now, which is the old state.
+            var prevActiveLike = _dep('activeBoardData');
+            var lsTargets = BoardDelta.deltaToTargets(liveSyncDelta, prevActiveLike);
+            if (lsTargets && lsTargets.length > 0) {
+              _callDep('refreshTargetedElements', lsTargets);
+              didTargetedRefresh = true;
+            }
+          } catch (_) { /* fall through */ }
         }
       }
     }
-    if (!didIncrementalUpdate) {
+    if (!didTargetedRefresh) {
+      // Level 3 (slow fallback): full board render. Should only happen
+      // on structural deltas our helper can't express (row add/remove,
+      // board settings changes) or the very first render of a board.
+      // Every hit here is a performance bug worth investigating.
       _callDep('refreshTargetedElements', [{ type: 'board' }]);
     }
     _deps.commitLocalBoardChange(boardId, fullBoardData, {

@@ -38,6 +38,7 @@
       var iframes = rootDoc.querySelectorAll('iframe');
       for (var i = 0; i < iframes.length; i++) {
         var iframe = iframes[i];
+        if (!isInspectableIframe(iframe, rootDoc)) continue;
         try {
           entries.push({
             iframe: iframe,
@@ -49,6 +50,20 @@
       }
     } catch (_) {}
     return entries;
+  }
+
+  function isInspectableIframe(iframe, rootDoc) {
+    if (!iframe) return false;
+    try {
+      var rawSrc = iframe.getAttribute('src') || '';
+      if (!rawSrc || rawSrc.indexOf('about:') === 0) return true;
+      var baseHref = rootDoc && rootDoc.location && rootDoc.location.href ? rootDoc.location.href : window.location.href;
+      var frameUrl = new URL(rawSrc, baseHref);
+      var baseUrl = new URL(baseHref, window.location.href);
+      return frameUrl.origin === baseUrl.origin;
+    } catch (_) {
+      return false;
+    }
   }
 
   function getCandidateApis() {
@@ -120,6 +135,42 @@
       } catch (_) {}
     }
     return all;
+  }
+
+  function resetRenderCounters() {
+    var wins = getAllBoardWindows();
+    for (var i = 0; i < wins.length; i++) {
+      try {
+        wins[i].__lexeraRenderColumnsCount = 0;
+        wins[i].__lexeraRnfbCount = 0;
+        wins[i].__lexeraIframeReuseCount = 0;
+        wins[i].__lexeraIframeFreshCount = 0;
+      } catch (_) {}
+    }
+  }
+
+  function collectRenderCounters() {
+    var counters = { renderColumnsCount: 0, rnfbCount: 0, iframeReuseCount: 0, iframeFreshCount: 0 };
+    var wins = getAllBoardWindows();
+    for (var i = 0; i < wins.length; i++) {
+      try {
+        counters.renderColumnsCount += wins[i].__lexeraRenderColumnsCount || 0;
+        counters.rnfbCount += wins[i].__lexeraRnfbCount || 0;
+        counters.iframeReuseCount += wins[i].__lexeraIframeReuseCount || 0;
+        counters.iframeFreshCount += wins[i].__lexeraIframeFreshCount || 0;
+      } catch (_) {}
+    }
+    return counters;
+  }
+
+  function attachRenderCounters(profileSummary) {
+    if (!profileSummary) return profileSummary;
+    var counters = collectRenderCounters();
+    profileSummary.renderColumnsCount = counters.renderColumnsCount;
+    profileSummary.rnfbCount = counters.rnfbCount;
+    profileSummary.iframeReuseCount = counters.iframeReuseCount;
+    profileSummary.iframeFreshCount = counters.iframeFreshCount;
+    return profileSummary;
   }
 
   function register(name, fn) { tests.push({ name: name, fn: fn }); }
@@ -4414,8 +4465,16 @@
       // Include mutation profile: show top samples with phase breakdowns
       if (r.mutationProfile && r.mutationProfile.count > 0) {
         var mp = r.mutationProfile;
+        var _rcLine = '';
+        if (mp.renderColumnsCount != null) {
+          _rcLine = ' renderColumns=' + mp.renderColumnsCount
+                  + ' rnfb=' + (mp.rnfbCount || 0)
+                  + ' iframeReuse=' + (mp.iframeReuseCount || 0)
+                  + ' iframeFresh=' + (mp.iframeFreshCount || 0);
+        }
         lines.push('       mutations=' + mp.count
-          + ' total=' + formatDurationMs(mp.total));
+          + ' total=' + formatDurationMs(mp.total)
+          + _rcLine);
         var samples = mp.topSamples || [mp.slowest];
         var phaseOrder = [
           'afterLoadBoardData', 'afterResolveRefs', 'afterPushUndo',
@@ -4648,6 +4707,7 @@
         _phaseTimings = { setup: 0, body: 0, teardown: 0, setupStart: 0, teardownStart: 0 };
         // Reset profile arrays in all board windows (parent + iframes)
         setMutationProfilingFlag(true);
+        resetRenderCounters();
         var testStart = _nowMs();
         var bodyStart = 0, bodyEnd = 0;
         try {
@@ -4659,7 +4719,7 @@
           // body time = test body minus any setup/teardown that happened within it
           _phaseTimings.body = (bodyEnd - bodyStart) - (_phaseTimings.setup || 0) - (_phaseTimings.teardown || 0);
           if (_phaseTimings.body < 0) _phaseTimings.body = 0;
-          var profSummary = _summarizeMutationProfile(collectMutationProfile());
+          var profSummary = attachRenderCounters(_summarizeMutationProfile(collectMutationProfile()));
           updateRow(i, 'pass', null, testDur, _phaseTimings);
           lastResults.push({
             name: tests[i].name, passed: true, durationMs: testDur,
@@ -4678,7 +4738,7 @@
           var msg = err.message || String(err);
           _phaseTimings.body = (bodyEnd - bodyStart) - (_phaseTimings.setup || 0) - (_phaseTimings.teardown || 0);
           if (_phaseTimings.body < 0) _phaseTimings.body = 0;
-          var profSummaryFail = _summarizeMutationProfile(collectMutationProfile());
+          var profSummaryFail = attachRenderCounters(_summarizeMutationProfile(collectMutationProfile()));
           updateRow(i, 'fail', msg, testDurFail, _phaseTimings);
           lastResults.push({
             name: tests[i].name, passed: false, error: msg, durationMs: testDurFail,
@@ -4713,6 +4773,7 @@
     beginRun(1);
     _api = null; refreshBoardSelector(); updateRow(index, 'running');
     setMutationProfilingFlag(true);
+    resetRenderCounters();
     _phaseTimings = { setup: 0, body: 0, teardown: 0, setupStart: 0, teardownStart: 0 };
     var testStart = _nowMs();
     var bodyStart = 0, bodyEnd = 0;
@@ -4724,7 +4785,7 @@
       var testDur = _nowMs() - testStart;
       _phaseTimings.body = (bodyEnd - bodyStart) - (_phaseTimings.setup || 0) - (_phaseTimings.teardown || 0);
       if (_phaseTimings.body < 0) _phaseTimings.body = 0;
-      var profSummary = _summarizeMutationProfile(collectMutationProfile());
+      var profSummary = attachRenderCounters(_summarizeMutationProfile(collectMutationProfile()));
       updateRow(index, 'pass', null, testDur, _phaseTimings);
       var ex = lastResults.findIndex(function (r) { return r.name === tests[index].name; });
       var e = {
@@ -4745,7 +4806,7 @@
       var msg = err.message || String(err);
       _phaseTimings.body = (bodyEnd - bodyStart) - (_phaseTimings.setup || 0) - (_phaseTimings.teardown || 0);
       if (_phaseTimings.body < 0) _phaseTimings.body = 0;
-      var profSummaryFail = _summarizeMutationProfile(collectMutationProfile());
+      var profSummaryFail = attachRenderCounters(_summarizeMutationProfile(collectMutationProfile()));
       updateRow(index, 'fail', msg, testDurFail, _phaseTimings);
       var ex2 = lastResults.findIndex(function (r) { return r.name === tests[index].name; });
       var e2 = {

@@ -7506,6 +7506,28 @@ var LexeraDashboard = (function () {
   }
 
   function renderColumns() {
+    // Render counter: increments on every call so we can see how many
+    // times a single test triggers a full rebuild. Reset from the test
+    // harness at the start of each test run.
+    if (typeof window !== 'undefined') {
+      window.__lexeraRenderColumnsCount = (window.__lexeraRenderColumnsCount || 0) + 1;
+    }
+    // Full-render tracer: logs a warning with a stack trace the SECOND
+    // time renderColumns is called after a page load. The first call is
+    // the legitimate initial board render; anything after that should
+    // go through targeted refresh. The trace message shows in the log
+    // panel and pinpoints the exact call chain that slipped through.
+    if (typeof window !== 'undefined') {
+      if (!window.__lexeraRenderColumnsEverCalled) {
+        window.__lexeraRenderColumnsEverCalled = true;
+      } else if (typeof traceFrontendAction === 'function') {
+        var _rcStack = '';
+        try { _rcStack = new Error().stack || ''; } catch (_) {}
+        traceFrontendAction('warn', 'render.fullBoard',
+          'Full renderColumns call after initial load — should have used targeted refresh',
+          { stack: _rcStack.split('\n').slice(0, 10).join(' | ') });
+      }
+    }
     var _renderStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
     var _rcTrace = window.__lexeraProfileMutations ? {} : null;
     function _rcMark(name) {
@@ -7575,6 +7597,14 @@ var LexeraDashboard = (function () {
     // otherwise create a fresh iframe element (first load path — Miro
     // will boot once). Either way, the new fragment only sees iframes
     // ONCE, via our explicit insertion here — not via the HTML parser.
+    // Iframe lifecycle counters — initialized once per test via the
+    // test harness. _reusedCount tracks preserved iframes that were
+    // successfully swapped in (no browsing-context rebuild). _freshCount
+    // tracks newly-created iframes (first load or unmatched src).
+    if (typeof window !== 'undefined') {
+      if (window.__lexeraIframeReuseCount == null) window.__lexeraIframeReuseCount = 0;
+      if (window.__lexeraIframeFreshCount == null) window.__lexeraIframeFreshCount = 0;
+    }
     var _placeholders = cc.getElementsByClassName(_IFRAME_PLACEHOLDER_CLASS);
     if (_placeholders.length > 0) {
       // Copy to array — replacing children while iterating a live
@@ -7589,10 +7619,12 @@ var LexeraDashboard = (function () {
         if (_live) {
           _ph.parentNode.replaceChild(_live, _ph);
           delete _preservedBySrc[_phSrc];
+          if (typeof window !== 'undefined') window.__lexeraIframeReuseCount++;
           continue;
         }
         // No preserved iframe — create a fresh one from the saved attrs
         // (first time this board is rendered since launch).
+        if (typeof window !== 'undefined') window.__lexeraIframeFreshCount++;
         var _freshIframe = document.createElement('iframe');
         var _phAttrs = _ph.getAttribute('data-iframe-attrs') || '';
         // Decode entity-encoded attrs and copy onto the new iframe.
@@ -8059,6 +8091,14 @@ var LexeraDashboard = (function () {
    * Render board with rows → stacks → columns hierarchy.
    */
   function renderNewFormatBoard() {
+    // Counter: increments on every invocation. Reset by the test harness
+    // at the start of each test and displayed in the test result line
+    // so we can see exactly how many full board builds a single test
+    // triggers (separate from `renderColumns` — they're 1:1 today but
+    // we want to count the expensive function directly).
+    if (typeof window !== 'undefined') {
+      window.__lexeraRnfbCount = (window.__lexeraRnfbCount || 0) + 1;
+    }
     var _rnfbProfile = _colBuildAccum;
     var _rnfbT0 = _rnfbProfile ? _nowHP() : 0;
     var rows = activeBoardData.rows;
@@ -10591,7 +10631,7 @@ var LexeraDashboard = (function () {
   // ── Test API (exposed for in-app frontend integration tests) ──────────
   var _testApi = {
     getActiveBoardId: function () { return activeBoardId; },
-    getFullBoardData: function () { return fullBoardData; },
+    getFullBoardData: function () { return cloneBoardData(fullBoardData); },
     getActiveBoardData: function () { return activeBoardData; },
     getAvailableBoards: function () {
       var list = [];
@@ -10621,7 +10661,49 @@ var LexeraDashboard = (function () {
       function _stbMark(name) {
         if (_stbTrace) _stbTrace[name] = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _stbStart;
       }
-      activeBoardId = boardId || '__test__';
+
+      // ─────────────────────────────────────────────────────────────────
+      // PATH DECISION: targeted refresh vs full render
+      // ─────────────────────────────────────────────────────────────────
+      // Rule: a full board rebuild should only happen on initial load.
+      // Every other call (including test teardown restoring a snapshot)
+      // should diff against the current state and use targeted refresh.
+      //
+      // We take the full-render path only when:
+      //   (a) No previous board is loaded (first-time setup), or
+      //   (b) The board id changed (switching boards), or
+      //   (c) The delta is too large / structural for deltaToTargets
+      //       to express as a list of targets (it returns null).
+      //
+      // Otherwise: apply the new fullBoardData in place, diff old→new,
+      // translate to targets, and dispatch refreshTargetedElements.
+      // Miro iframes and all unchanged DOM nodes survive across the
+      // swap because nothing touches them.
+      var _stbPrevFullBoard = fullBoardData;
+      var _stbPrevActive = activeBoardData;
+      var _stbPrevBoardId = activeBoardId;
+      var _stbNextBoardId = boardId || '__test__';
+      var _stbIsSameBoard = _stbPrevBoardId && _stbPrevBoardId === _stbNextBoardId
+                            && _stbPrevFullBoard && _stbPrevActive
+                            && Array.isArray(_stbPrevActive.columns);
+      var _stbTargets = null;
+      if (_stbIsSameBoard) {
+        try {
+          var _stbApi = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta)
+            ? globalThis.LexeraBoardDelta
+            : (typeof window !== 'undefined' ? window.LexeraBoardDelta : null);
+          if (_stbApi && typeof _stbApi.computeBoardDelta === 'function'
+              && typeof _stbApi.deltaToTargets === 'function') {
+            var _stbDelta = _stbApi.computeBoardDelta(_stbPrevFullBoard, boardData);
+            // Compute targets against the PRE-change activeBoardData so
+            // position lookups (flat col index, visible card index)
+            // resolve to the DOM's current layout.
+            _stbTargets = _stbApi.deltaToTargets(_stbDelta, _stbPrevActive);
+          }
+        } catch (_) { _stbTargets = null; }
+      }
+
+      activeBoardId = _stbNextBoardId;
       setFullBoardDataState(boardData);
       if (fullBoardData) {
         ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
@@ -10642,7 +10724,16 @@ var LexeraDashboard = (function () {
         refreshHierarchy: true
       });
       _stbMark('afterCommit');
-      renderMainView();
+      if (_stbTargets && _stbTargets.length > 0) {
+        // Fast path: targeted refresh only. No renderMainView, no
+        // renderColumns. Test teardown + most polling updates land here.
+        refreshTargetedElements(_stbTargets);
+      } else {
+        // Slow path: full render. Only hit on first load, board switch,
+        // or a structural delta deltaToTargets can't express (e.g.
+        // rows added/removed).
+        renderMainView();
+      }
       _stbMark('afterRenderMainView');
       scheduleDashboardRefresh(80);
       _stbMark('afterDashboardSchedule');
@@ -10650,7 +10741,9 @@ var LexeraDashboard = (function () {
         if (!window.__lexeraMutationProfile) window.__lexeraMutationProfile = [];
         window.__lexeraMutationProfile.push({
           total: _stbTrace.afterDashboardSchedule || 0,
-          targets: 'setTestBoard',
+          targets: (_stbTargets && _stbTargets.length > 0)
+            ? ('setTestBoard→targeted(' + _stbTargets.length + ')')
+            : 'setTestBoard→full',
           phases: _stbTrace
         });
       }
