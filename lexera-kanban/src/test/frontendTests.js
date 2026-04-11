@@ -19,6 +19,9 @@
     currentIndex: -1,
     total: 0
   };
+  var _manualInspectState = {
+    awaitingUndo: false
+  };
 
   function hasLoadedBoard(candidateApi) {
     if (!candidateApi) return false;
@@ -73,12 +76,11 @@
       candidates.push(win.LexeraTestApi);
     }
 
-    pushCandidate(window);
-    try { if (window.parent && window.parent !== window) pushCandidate(window.parent); } catch (_) {}
-
     var entries = getIframeEntries(document);
     for (var i = 0; i < entries.length; i++) if (entries[i].isActive) pushCandidate(entries[i].win);
     for (var j = 0; j < entries.length; j++) pushCandidate(entries[j].win);
+    pushCandidate(window);
+    try { if (window.parent && window.parent !== window) pushCandidate(window.parent); } catch (_) {}
 
     return candidates;
   }
@@ -259,6 +261,25 @@
     throw new Error(message || 'Timed out waiting for condition');
   }
 
+  async function waitForAssertion(assertionFn, timeoutMs, stepMs, message) {
+    var timeout = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 1000;
+    var step = typeof stepMs === 'number' && stepMs > 0 ? stepMs : 16;
+    var started = Date.now();
+    var lastErr = null;
+    while ((Date.now() - started) <= timeout) {
+      throwIfRunCancelled();
+      try {
+        assertionFn();
+        return true;
+      } catch (err) {
+        lastErr = err;
+      }
+      await delay(step);
+    }
+    if (lastErr) throw lastErr;
+    throw new Error(message || 'Timed out waiting for assertion');
+  }
+
   function cloneJson(value) {
     return JSON.parse(JSON.stringify(value));
   }
@@ -270,6 +291,38 @@
     if (a !== e) throw new Error((msg || 'assertEqual') + ': expected ' + e + ', got ' + a);
   }
   function assert(cond, msg) { if (!cond) throw new Error(msg || 'assert failed'); }
+
+  function rawDelay(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  function getManualInspectCheckbox() {
+    var root = findPanelRoot();
+    return root ? root.querySelector('.lexera-shared-test-manual-inspect') : null;
+  }
+
+  function isManualInspectEnabled() {
+    var checkbox = getManualInspectCheckbox();
+    return !!(checkbox && checkbox.checked);
+  }
+
+  function continueManualUndo() {
+    _manualInspectState.awaitingUndo = false;
+    updateRunControls();
+  }
+
+  async function waitForManualUndoStep() {
+    if (!isManualInspectEnabled()) return;
+    _manualInspectState.awaitingUndo = true;
+    setSummaryText('Inspect the current board state, then click Restore & Continue.', 'var(--warning, #e6a700)');
+    updateRunControls();
+    while (_manualInspectState.awaitingUndo && !isRunCancelled()) {
+      await rawDelay(100);
+    }
+    _manualInspectState.awaitingUndo = false;
+    setSummaryText(isRunCancelled() ? 'Restoring snapshot after stop...' : 'Restoring test snapshot...', 'var(--text-muted)');
+    updateRunControls();
+  }
 
   function getStoredBoardSelection() {
     try { return localStorage.getItem('lexera-frontend-tests-board') || ''; } catch (_) { return ''; }
@@ -720,6 +773,18 @@
     return ids;
   }
 
+  function getExpectedColumnCardIds(flatColIndex) {
+    var projection = getExpectedVisibleProjection(api().getFullBoardData());
+    for (var i = 0; i < projection.columns.length; i++) {
+      var col = projection.columns[i];
+      if (col.flatIdx !== flatColIndex) continue;
+      return col.cards.map(function (card) {
+        return card && (card.kid || card.id) ? String(card.kid || card.id) : '';
+      });
+    }
+    return [];
+  }
+
   function getViewCardCount(flatColIndex) {
     var c = getContainer(); if (!c) return -1;
     var el = c.querySelector('.column-cards[data-col-index="' + flatColIndex + '"]');
@@ -765,21 +830,38 @@
   // ═══════════════════════════════════════════════════════════════════════
 
   function getSidebarCardIdsInColumn(columnId) {
-    var doc = getSidebarDocument();
-    var bl = doc.querySelector('.board-list');
-    if (!bl) return null;
-    var cards = bl.querySelectorAll('.tree-card[data-column-id="' + columnId + '"]');
-    if (cards.length === 0) return null;
+    var root = getSidebarBoardRoot(_boardId);
+    if (!root) return null;
+    var cards = root.querySelectorAll('.tree-card');
+    var matching = [];
+    for (var c = 0; c < cards.length; c++) {
+      if ((cards[c].getAttribute('data-column-id') || '') === columnId) matching.push(cards[c]);
+    }
+    if (matching.length === 0) return null;
     var ids = [];
-    for (var i = 0; i < cards.length; i++)
-      ids.push(cards[i].getAttribute('data-card-id') || '');
+    for (var i = 0; i < matching.length; i++)
+      ids.push(matching[i].getAttribute('data-card-id') || '');
     return ids;
   }
 
+  function getSidebarBoardRoot(boardId) {
+    var bl = getSidebarRoot();
+    if (!bl || !boardId) return null;
+    var wrappers = bl.querySelectorAll('.board-item-wrapper[data-board-id]');
+    var fallback = null;
+    for (var i = 0; i < wrappers.length; i++) {
+      var wrapper = wrappers[i];
+      if ((wrapper.getAttribute('data-board-id') || '') !== boardId) continue;
+      if (!fallback) fallback = wrapper;
+      var boardNode = wrapper.querySelector('.tree-board[data-board-id]');
+      if (boardNode && boardNode.classList.contains('active')) return wrapper;
+    }
+    return fallback;
+  }
+
   function isSidebarAvailable() {
-    var doc = getSidebarDocument();
-    var bl = doc.querySelector('.board-list');
-    return !!(bl && bl.querySelector('.tree-card'));
+    var root = getSidebarBoardRoot(_boardId);
+    return !!(root && root.querySelector('.tree-card'));
   }
 
   function getSidebarDocument() {
@@ -1159,6 +1241,23 @@
   }
 
   async function teardown() {
+    if (_snapshot && _boardId) {
+      // Yield one paint frame so the browser can actually render the
+      // test's mutation on the board before we snap it back. Without
+      // this, the mutation and the restore collapse into a single
+      // paint and the user never sees what the test did. This is a
+      // single rAF + setTimeout (~16ms), not a configurable pause.
+      try {
+        await new Promise(function (resolve) {
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(function () { setTimeout(resolve, 0); });
+          } else {
+            setTimeout(resolve, 16);
+          }
+        });
+      } catch (_) {}
+      await waitForManualUndoStep();
+    }
     _startPhase('teardown');
     if (_snapshot && _boardId) {
       api().setTestBoard(_snapshot, _boardId);
@@ -1228,20 +1327,25 @@
       var info = findTwoColumnsWithCards();
       var col = info.srcCol;
       if (col.cards.length < 2) throw new Error('Need >=2 cards in source column');
-      var firstKid = col.cards[0].kid || col.cards[0].id;
-      var lastKid = col.cards[col.cards.length - 1].kid || col.cards[col.cards.length - 1].id;
+      var firstKid = String(col.cards[0].kid || col.cards[0].id);
+      var lastKid = String(col.cards[col.cards.length - 1].kid || col.cards[col.cards.length - 1].id);
+      var expectedOrder = col.cards.slice(1).map(function (card) {
+        return card && (card.kid || card.id) ? String(card.kid || card.id) : '';
+      }).concat([firstKid]);
       var countBefore = getViewCardCount(col.flatIdx);
 
       await api().moveCard(
         { boardId: _boardId, flatColIndex: col.flatIdx, cardIndex: 0, cardId: col.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: col.flatIdx, cardId: lastKid, before: false, insertIdx: col.cards.length - 1, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(100);
-
-      assertEqual(getViewCardCount(col.flatIdx), countBefore, 'count unchanged');
-      var afterKids = getViewCardKids(col.flatIdx);
-      assertEqual(afterKids[afterKids.length - 1], firstKid, 'moved card should be last');
-      assert(afterKids[0] !== firstKid, 'moved card should not be first anymore');
+      await waitForAssertion(function () {
+        assertEqual(getViewCardCount(col.flatIdx), countBefore, 'count unchanged');
+        assertEqual(getExpectedColumnCardIds(col.flatIdx), expectedOrder, 'data order after move');
+        var afterKids = getViewCardKids(col.flatIdx);
+        assertEqual(afterKids, getExpectedColumnCardIds(col.flatIdx), 'DOM order matches data after move');
+        assertEqual(afterKids[afterKids.length - 1], firstKid, 'moved card should be last');
+        assert(afterKids[0] !== firstKid, 'moved card should not be first anymore');
+      });
     } finally { await teardown(); }
   });
 
@@ -1259,13 +1363,13 @@
         { boardId: _boardId, flatColIndex: src.flatIdx, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: dst.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(100);
-
-      assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1 card');
-      assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1 card');
-      assertEqual(getTotalViewCards(), totalBefore, 'total unchanged');
-      assert(!hasDuplicateViewCardIds(), 'no duplicates');
-      assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target view');
+      await waitForAssertion(function () {
+        assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1 card');
+        assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1 card');
+        assertEqual(getTotalViewCards(), totalBefore, 'total unchanged');
+        assert(!hasDuplicateViewCardIds(), 'no duplicates');
+        assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target view');
+      });
     } finally { await teardown(); }
   });
 
@@ -1281,10 +1385,10 @@
         { boardId: _boardId, rowIndex: src.row, stackIndex: src.stack, colIndex: src.localCol, columnId: src.col.id, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: dst.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(100);
-
-      assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1');
-      assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+      await waitForAssertion(function () {
+        assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1');
+        assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+      });
     } finally { await teardown(); }
   });
 
@@ -1300,10 +1404,10 @@
         { boardId: _boardId, flatColIndex: src.flatIdx, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, rowIndex: dst.row, stackIndex: dst.stack, colIndex: dst.localCol, columnId: dst.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(100);
-
-      assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1');
-      assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+      await waitForAssertion(function () {
+        assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1');
+        assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+      });
     } finally { await teardown(); }
   });
 
@@ -1320,11 +1424,11 @@
         { boardId: _boardId, rowIndex: src.row, stackIndex: src.stack, colIndex: src.localCol, columnId: src.col.id, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, rowIndex: dst.row, stackIndex: dst.stack, colIndex: dst.localCol, columnId: dst.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(100);
-
-      assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1');
-      assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1');
-      assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+      await waitForAssertion(function () {
+        assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1');
+        assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1');
+        assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+      });
     } finally { await teardown(); }
   });
 
@@ -1342,9 +1446,9 @@
         id: '__test-card-add__', content: 'Test Added Card', checked: false, kid: '__test-card-add__'
       });
       api().setTestBoard(data, _boardId);
-      await delay(100);
-
-      assertEqual(getViewCardCount(info.srcCol.flatIdx), countBefore + 1, 'card count +1');
+      await waitForAssertion(function () {
+        assertEqual(getViewCardCount(info.srcCol.flatIdx), countBefore + 1, 'card count +1');
+      });
     } finally { await teardown(); }
   });
 
@@ -1358,10 +1462,10 @@
       var data = api().getFullBoardData();
       data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.splice(0, 1);
       api().setTestBoard(data, _boardId);
-      await delay(100);
-
-      assertEqual(getViewCardCount(info.srcCol.flatIdx), countBefore - 1, 'card count -1');
-      assert(getViewCardKids(info.srcCol.flatIdx).indexOf(removedKid) === -1, 'removed card gone');
+      await waitForAssertion(function () {
+        assertEqual(getViewCardCount(info.srcCol.flatIdx), countBefore - 1, 'card count -1');
+        assert(getViewCardKids(info.srcCol.flatIdx).indexOf(removedKid) === -1, 'removed card gone');
+      });
     } finally { await teardown(); }
   });
 
@@ -1376,9 +1480,9 @@
         id: '__test-col__', title: 'Test Column', cards: [], include_source: null
       });
       api().setTestBoard(data, _boardId);
-      await delay(100);
-
-      assertEqual(getViewColumnCount(), colsBefore + 1, 'column count +1');
+      await waitForAssertion(function () {
+        assertEqual(getViewColumnCount(), colsBefore + 1, 'column count +1');
+      });
     } finally { await teardown(); }
   });
 
@@ -1394,9 +1498,9 @@
         }]
       });
       api().setTestBoard(data, _boardId);
-      await delay(100);
-
-      assertEqual(getViewRowCount(), rowsBefore + 1, 'row count +1');
+      await waitForAssertion(function () {
+        assertEqual(getViewRowCount(), rowsBefore + 1, 'row count +1');
+      });
     } finally { await teardown(); }
   });
 
@@ -1408,12 +1512,15 @@
     await setup();
     try {
       var info = findTwoColumnsWithCards();
+      var movedKid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
       await api().moveCard(
         { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(100);
-      assert(!hasDuplicateViewCardIds(), 'no duplicate IDs');
+      await waitForAssertion(function () {
+        assert(!hasDuplicateViewCardIds(), 'no duplicate IDs');
+        assert(getViewCardKids(info.dstCol.flatIdx).indexOf(movedKid) !== -1, 'moved card in target');
+      });
     } finally { await teardown(); }
   });
 
@@ -1422,12 +1529,15 @@
     try {
       var totalBefore = getTotalViewCards();
       var info = findTwoColumnsWithCards();
+      var movedKid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
       await api().moveCard(
         { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(100);
-      assertEqual(getTotalViewCards(), totalBefore, 'total constant');
+      await waitForAssertion(function () {
+        assertEqual(getTotalViewCards(), totalBefore, 'total constant');
+        assert(getViewCardKids(info.dstCol.flatIdx).indexOf(movedKid) !== -1, 'moved card in target');
+      });
     } finally { await teardown(); }
   });
 
@@ -1445,7 +1555,7 @@
       var viewCards = viewCols[i].querySelectorAll('.column-cards .card');
       var viewKids = [];
       for (var j = 0; j < viewCards.length; j++)
-        viewKids.push(viewCards[j].getAttribute('data-card-kid') || viewCards[j].getAttribute('data-card-id') || '');
+        viewKids.push(viewCards[j].getAttribute('data-card-id') || '');
       var sidebarKids = getSidebarCardIdsInColumn(colId);
       if (!sidebarKids) continue;
       assertEqual(sidebarKids, viewKids, label + ': col ' + colId);
@@ -1460,8 +1570,7 @@
         { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(150);
-      assertViewWorkspaceConsistency('cross-column');
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('cross-column'); });
     } finally { await teardown(); }
   });
 
@@ -1473,8 +1582,7 @@
         { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, rowIndex: info.dstCol.row, stackIndex: info.dstCol.stack, colIndex: info.dstCol.localCol, columnId: info.dstCol.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(150);
-      assertViewWorkspaceConsistency('view-to-workspace');
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('view-to-workspace'); });
     } finally { await teardown(); }
   });
 
@@ -1486,8 +1594,7 @@
         { boardId: _boardId, rowIndex: info.dstCol.row, stackIndex: info.dstCol.stack, colIndex: info.dstCol.localCol, columnId: info.dstCol.col.id, cardIndex: 0, cardId: info.dstCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(150);
-      assertViewWorkspaceConsistency('workspace-to-view');
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('workspace-to-view'); });
     } finally { await teardown(); }
   });
 
@@ -1500,8 +1607,7 @@
         id: '__test-cons-add__', content: 'Consistency Test', checked: false, kid: '__test-cons-add__'
       });
       api().setTestBoard(data, _boardId);
-      await delay(150);
-      assertViewWorkspaceConsistency('add-card');
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('add-card'); });
     } finally { await teardown(); }
   });
 
@@ -1523,12 +1629,12 @@
         { boardId: _boardId, flatColIndex: col.flatIdx, cardIndex: col.cards.length - 1, cardId: lastCard.id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: col.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(100);
-
-      assertEqual(getViewCardCount(col.flatIdx), countBefore, 'count unchanged');
-      var afterKids = getViewCardKids(col.flatIdx);
-      assertEqual(afterKids[0], lastKid, 'moved card should be first');
-      assert(afterKids[afterKids.length - 1] !== lastKid, 'moved card should not be last anymore');
+      await waitForAssertion(function () {
+        assertEqual(getViewCardCount(col.flatIdx), countBefore, 'count unchanged');
+        var afterKids = getViewCardKids(col.flatIdx);
+        assertEqual(afterKids[0], lastKid, 'moved card should be first');
+        assert(afterKids[afterKids.length - 1] !== lastKid, 'moved card should not be last anymore');
+      });
     } finally { await teardown(); }
   });
 
@@ -1543,10 +1649,10 @@
         { boardId: _boardId, flatColIndex: src.flatIdx, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: dst.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(100);
-
-      var dstKids = getViewCardKids(dst.flatIdx);
-      assertEqual(dstKids[0], movedKid, 'moved card is first in target');
+      await waitForAssertion(function () {
+        var dstKids = getViewCardKids(dst.flatIdx);
+        assertEqual(dstKids[0], movedKid, 'moved card is first in target');
+      });
     } finally { await teardown(); }
   });
 
@@ -1564,10 +1670,10 @@
         { boardId: _boardId, flatColIndex: src.flatIdx, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: dst.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(100);
-
-      var remaining = getViewCardKids(src.flatIdx);
-      assertEqual(remaining, originalOrder, 'remaining source cards keep original order');
+      await waitForAssertion(function () {
+        var remaining = getViewCardKids(src.flatIdx);
+        assertEqual(remaining, originalOrder, 'remaining source cards keep original order');
+      });
     } finally { await teardown(); }
   });
 
@@ -4400,12 +4506,21 @@
     var runBtn = root.querySelector('.lexera-shared-test-run-all');
     var stopBtn = root.querySelector('.lexera-shared-test-stop');
     var boardSelect = root.querySelector('.lexera-shared-test-board-select');
+    var manualInspect = root.querySelector('.lexera-shared-test-manual-inspect');
+    var continueUndoBtn = root.querySelector('.lexera-shared-test-continue-undo');
     var rows = root.querySelectorAll('.test-row');
     var running = isRunActive();
+    var awaitingUndo = !!_manualInspectState.awaitingUndo;
     if (runBtn) runBtn.disabled = running;
     if (stopBtn) {
       stopBtn.disabled = !running;
-      stopBtn.textContent = _runState.cancelRequested ? 'Stopping…' : 'Stop';
+      stopBtn.textContent = _runState.cancelRequested ? 'Stopping…' : 'Stop Run';
+    }
+    if (manualInspect) {
+      manualInspect.disabled = running && !awaitingUndo;
+    }
+    if (continueUndoBtn) {
+      continueUndoBtn.disabled = !awaitingUndo;
     }
     if (boardSelect) {
       var hasBoardOptions = boardSelect.options && boardSelect.options.length > 0 && !!boardSelect.options[0].value;
@@ -4593,12 +4708,18 @@
     for (var i = 0; i < tests.length; i++) {
       var row = document.createElement('div'); row.className = 'test-row';
       var ind = document.createElement('span'); ind.className = 'test-indicator';
-      var lbl = document.createElement('span'); lbl.style.cssText = 'flex:1;word-break:break-word;';
+      // Body is a vertical stack: test name on top, duration on the
+      // line below. This keeps longer duration breakdowns readable
+      // without truncating the test name or pushing it onto two lines
+      // because of flex-squeezing.
+      var body = document.createElement('div'); body.className = 'test-row-body';
+      var lbl = document.createElement('div'); lbl.className = 'test-row-label';
       lbl.textContent = tests[i].name;
-      var dur = document.createElement('span'); dur.className = 'test-duration';
-      dur.style.cssText = 'flex:0 0 auto;margin-left:8px;font-size:var(--font-size-xs);color:var(--text-muted);font-variant-numeric:tabular-nums;';
+      var dur = document.createElement('div'); dur.className = 'test-duration';
+      body.appendChild(lbl);
+      body.appendChild(dur);
       (function (idx) { row.onclick = function () { if (!isRunActive()) runOneUI(idx); }; })(i);
-      row.appendChild(ind); row.appendChild(lbl); row.appendChild(dur); listEl.appendChild(row);
+      row.appendChild(ind); row.appendChild(body); listEl.appendChild(row);
       var err = document.createElement('div'); err.className = 'test-error'; err.style.display = 'none';
       listEl.appendChild(err);
     }
@@ -4606,6 +4727,10 @@
     if (runBtn) runBtn.onclick = function () { runAllUI(); };
     var stopBtn = root.querySelector('.lexera-shared-test-stop');
     if (stopBtn) stopBtn.onclick = function () { requestStopRun(); };
+    var continueUndoBtn = root.querySelector('.lexera-shared-test-continue-undo');
+    if (continueUndoBtn) continueUndoBtn.onclick = function () { continueManualUndo(); };
+    var manualInspect = root.querySelector('.lexera-shared-test-manual-inspect');
+    if (manualInspect) manualInspect.onchange = function () { updateRunControls(); };
     if (boardSelect) {
       boardSelect.onchange = function () { setStoredBoardSelection(boardSelect.value || ''); };
       boardSelect.onfocus = function () { refreshBoardSelector(); };
@@ -4688,6 +4813,24 @@
     };
   }
 
+  // Wait for the browser to actually paint pending DOM changes. `delay(0)`
+  // (setTimeout 0) is NOT enough — WebKit often coalesces same-task layout
+  // work and won't paint until it has no more JS to run. Using an rAF
+  // guarantees at least one paint boundary; chaining a setTimeout after
+  // moves us past the post-paint microtask barrier so the next JS task
+  // runs on a fresh tick.
+  function waitForPaint() {
+    return new Promise(function (resolve) {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function () {
+          setTimeout(resolve, 0);
+        });
+      } else {
+        setTimeout(resolve, 16);
+      }
+    });
+  }
+
   async function runAllUI() {
     if (isRunActive()) return;
     populateTestList(); _api = null; lastResults = [];
@@ -4699,11 +4842,22 @@
     var totalStart = _nowMs();
     for (var j = 0; j < tests.length; j++) updateRow(j, 'reset');
     updateSummary(0, 0, tests.length);
+    // Yield once before the first test so the reset UI (all rows cleared,
+    // summary "0 passed 0 failed") actually paints before the first test
+    // body takes the main thread.
+    await waitForPaint();
     try {
       for (var i = 0; i < tests.length; i++) {
         throwIfRunCancelled();
         _runState.currentIndex = i;
         updateRow(i, 'running');
+        // Always yield one paint frame before each test body so:
+        //   1. The 'running' indicator on the test row paints
+        //   2. The prior test's result paints if it hasn't yet
+        //   3. Pending UI events (Stop button click, scroll, Copy
+        //      button click) get a chance to run — otherwise the app
+        //      feels 100% locked up until the whole suite finishes.
+        await waitForPaint();
         _phaseTimings = { setup: 0, body: 0, teardown: 0, setupStart: 0, teardownStart: 0 };
         // Reset profile arrays in all board windows (parent + iframes)
         setMutationProfilingFlag(true);
@@ -4877,6 +5031,7 @@
     },
     list: function () { return tests.map(function (t) { return t.name; }); },
     stop: function () { requestStopRun(); },
+    continueUndo: function () { continueManualUndo(); },
     showPanel: function () { populateTestList(); },
     runAllWithUI: function () { populateTestList(); runAllUI(); }
   };

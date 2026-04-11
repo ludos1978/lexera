@@ -874,7 +874,7 @@ var LexeraBoardDataStore = (function () {
     var allCardOnly = true;
     for (var ti = 0; ti < targets.length; ti++) {
       var tt = targets[ti].type;
-      if (tt === 'board' || tt === 'main-view' || tt === 'row' || tt === 'stack' || tt === 'column' || tt === 'sidebar') {
+      if (tt === 'board' || tt === 'main-view' || tt === 'row' || tt === 'row-insert' || tt === 'row-remove' || tt === 'stack' || tt === 'column' || tt === 'sidebar') {
         hasStructural = true;
       }
       if (tt !== 'card' && tt !== 'card-insert' && tt !== 'card-remove' && tt !== 'card-content') {

@@ -351,8 +351,16 @@
         '<div class="test-panel-actions">' +
           '<div class="test-panel-action-group test-panel-action-group-run">' +
             '<select class="test-panel-board-select lexera-shared-test-board-select" title="Board to test"></select>' +
-            '<button class="test-panel-btn lexera-shared-test-run-all" type="button">Run All</button>' +
-            '<button class="test-panel-btn test-panel-btn-stop lexera-shared-test-stop" type="button">Stop</button>' +
+            '<span class="test-panel-control-cluster test-panel-run-controls">' +
+              '<button class="test-panel-btn lexera-shared-test-run-all" type="button">Run All</button>' +
+              '<button class="test-panel-btn test-panel-btn-stop lexera-shared-test-stop" type="button">Stop Run</button>' +
+            '</span>' +
+            '<span class="test-panel-control-cluster test-panel-restore-controls">' +
+              '<label class="test-panel-restore-toggle" title="Pause before the test restores its snapshot so you can inspect the live result. This is not app undo.">' +
+                '<input class="lexera-shared-test-manual-inspect" type="checkbox"> Pause before restore' +
+              '</label>' +
+              '<button class="test-panel-btn lexera-shared-test-continue-undo" type="button" title="Restore the test snapshot and continue. This is not Ctrl+Z." disabled>Restore &amp; Continue</button>' +
+            '</span>' +
           '</div>' +
           '<div class="test-panel-action-group test-panel-action-group-copy">' +
             '<select class="test-panel-copy-scope lexera-shared-test-copy-scope" title="Copy scope">' +

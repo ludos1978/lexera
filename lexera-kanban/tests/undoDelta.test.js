@@ -390,6 +390,69 @@ describe('computeBoardDelta + applyBoardDelta round-trip', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// deltaToTargets
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('deltaToTargets', () => {
+  it('targets appending a visible row', () => {
+    const old = makeBoard({
+      rows: [
+        makeRow('r1', 'Row 1', [])
+      ]
+    });
+    const nw = makeBoard({
+      rows: [
+        makeRow('r1', 'Row 1', []),
+        makeRow('r2', 'Row 2', [])
+      ]
+    });
+
+    const delta = D.computeBoardDelta(old, nw);
+    expect(D.deltaToTargets(delta, old)).toEqual([
+      { type: 'row-insert', rowIndex: 1, rowId: 'r2' }
+    ]);
+  });
+
+  it('targets removing the last visible row', () => {
+    const old = makeBoard({
+      rows: [
+        makeRow('r1', 'Row 1', []),
+        makeRow('r2', 'Row 2', [])
+      ]
+    });
+    const nw = makeBoard({
+      rows: [
+        makeRow('r1', 'Row 1', [])
+      ]
+    });
+
+    const delta = D.computeBoardDelta(old, nw);
+    expect(D.deltaToTargets(delta, old)).toEqual([
+      { type: 'row-remove', rowIndex: 1, rowId: 'r2' }
+    ]);
+  });
+
+  it('falls back for middle row insertion', () => {
+    const old = makeBoard({
+      rows: [
+        makeRow('r1', 'Row 1', []),
+        makeRow('r3', 'Row 3', [])
+      ]
+    });
+    const nw = makeBoard({
+      rows: [
+        makeRow('r1', 'Row 1', []),
+        makeRow('r2', 'Row 2', []),
+        makeRow('r3', 'Row 3', [])
+      ]
+    });
+
+    const delta = D.computeBoardDelta(old, nw);
+    expect(D.deltaToTargets(delta, old)).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // estimateDeltaSize
 // ═══════════════════════════════════════════════════════════════════════════
 

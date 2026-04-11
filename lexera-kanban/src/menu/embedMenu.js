@@ -870,6 +870,26 @@ var LexeraEmbedMenu = (function () {
     return pendingFileInfoCache[cacheKey];
   }
 
+  // Synchronous peek at the file-info cache. Used by HTML-generation
+  // paths to bake in `broken` state immediately when we already know
+  // the file is missing. Returns undefined if the file info has never
+  // been fetched, a truthy info object if we know it exists, or `null`
+  // if we know the fetch failed / the file does not exist.
+  //
+  // The async `requestFileInfo` is still the source of truth — this
+  // peek only reads the cache it populated. During a re-render (e.g.
+  // test teardown restoring a snapshot), previously-probed files are
+  // already in the cache and we can bake the broken marker into the
+  // HTML straight away, so the enhance pass doesn't have to swap in
+  // visible class/title changes after the fact.
+  function peekFileInfoSync(boardId, filePath) {
+    var cacheKey = getFileInfoCacheKey(boardId, filePath);
+    if (Object.prototype.hasOwnProperty.call(fileInfoCache, cacheKey)) {
+      return fileInfoCache[cacheKey];
+    }
+    return undefined;
+  }
+
   function clearCachedFilePreviewState(boardId, filePath) {
     var cacheKey = getEmbedPreviewCacheKey(boardId, filePath);
     var infoKey = getFileInfoCacheKey(boardId, parseLocalFileReference(filePath).path);
@@ -1399,7 +1419,11 @@ var LexeraEmbedMenu = (function () {
     var wrapperStyle = 'display:inline-flex;align-items:center;gap:2px;vertical-align:baseline;max-width:100%';
     var buttonStyle = 'position:static;top:auto;right:auto;opacity:1;margin:0 0 0 2px';
     var buttonTitle = options.buttonTitle || 'Path options';
-    return '<span class="link-path-overlay-container" data-board-id="' + escapeAttr(boardId || '') + '"' +
+    // `preKnownMissing` is set by `renderBoardFileLinkHtml` when the
+    // sync file-info cache peek already tells us the file is missing.
+    // Bake in `link-broken` so we don't flicker on re-render.
+    var wrapperClass = 'link-path-overlay-container' + (options.preKnownMissing ? ' link-broken' : '');
+    return '<span class="' + wrapperClass + '" data-board-id="' + escapeAttr(boardId || '') + '"' +
       ' data-file-path="' + escapeAttr(filePath || '') + '"' +
       ' style="' + escapeAttr(wrapperStyle) + '"' +
       editableAttr +
@@ -1709,16 +1733,45 @@ var LexeraEmbedMenu = (function () {
     options = options || {};
     var normalizedPath = decodeHtmlEntities(String(filePath || '').trim());
     if (!normalizedPath) return labelHtml || '';
+    // Synchronously check whether we already know this file is missing.
+    // If so, bake the `link-broken` class + title directly into the
+    // generated HTML so the enhance pass doesn't produce a visible
+    // "broken file appeared" flicker on every re-render. Skip the peek
+    // for absolute URLs, mailto:, #anchors — those don't live in the
+    // board file tree and the cache will never have them.
+    var isLocalFile = normalizedPath && !/^(https?:\/\/|mailto:|#)/i.test(normalizedPath);
+    var preKnownMissing = false;
+    var preKnownInfo;
+    if (isLocalFile && boardId) {
+      preKnownInfo = peekFileInfoSync(boardId, parseLocalFileReference(normalizedPath).path);
+      preKnownMissing = !!(preKnownInfo && preKnownInfo.exists === false && !preKnownInfo.external);
+    }
     var className = 'markdown-file-link';
     if (extraClass) className += ' ' + extraClass;
+    if (preKnownMissing) className += ' link-broken';
     var boardAttr = boardId ? ' data-board-id="' + escapeAttr(boardId) + '"' : '';
-    var titleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
+    // If we know the file is missing, override the caller's title with
+    // the standard "Missing file: ..." title used by `applyFileLinkInfo`.
+    // Otherwise preserve the caller's title (e.g. "Include: path").
+    var effectiveTitle = preKnownMissing
+      ? ('Missing file: ' + normalizedPath)
+      : titleText;
+    var titleAttr = effectiveTitle ? ' title="' + escapeAttr(effectiveTitle) + '"' : '';
     var linkHtml = '<a href="#" class="' + className + '"' + boardAttr +
       ' data-file-path="' + escapeAttr(normalizedPath) + '"' +
       ' data-original-href="' + escapeAttr(normalizedPath) + '"' +
       titleAttr + '>' + labelHtml + '</a>';
     if (!options.withMenu) return linkHtml;
-    return buildBoardFileLinkWrapper(normalizedPath, boardId, linkHtml, options);
+    // Pass preKnownMissing so the wrapper picks up `link-broken` too —
+    // applyFileLinkInfo normally toggles it on both the <a> and the
+    // parent `.link-path-overlay-container`.
+    var wrapperOptions = options;
+    if (preKnownMissing) {
+      wrapperOptions = {};
+      for (var _k in options) if (Object.prototype.hasOwnProperty.call(options, _k)) wrapperOptions[_k] = options[_k];
+      wrapperOptions.preKnownMissing = true;
+    }
+    return buildBoardFileLinkWrapper(normalizedPath, boardId, linkHtml, wrapperOptions);
   }
 
   function renderMarkdownLinkHtml(targetHref, boardId, labelHtml, titleText, extraClass, options) {

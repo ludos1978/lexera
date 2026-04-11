@@ -4912,6 +4912,8 @@ var LexeraDashboard = (function () {
    *   { type: 'column', colIndex }                          — replace one column
    *   { type: 'stack', rowIndex, stackIndex }               — replace one stack
    *   { type: 'row', rowIndex }                             — replace one row
+   *   { type: 'row-insert', rowIndex }                      — insert one row
+   *   { type: 'row-remove', rowIndex }                      — remove one row
    *   { type: 'sidebar' }                                   — refresh board list sidebar
    *
    * An empty array means persist-only (no DOM changes).
@@ -5065,7 +5067,8 @@ var LexeraDashboard = (function () {
         }
 
         case 'stack': {
-          var stackData = findFullDataStack(target.rowIndex, target.stackIndex);
+          var activeRowForStack = activeBoardData && activeBoardData.rows ? activeBoardData.rows[target.rowIndex] : null;
+          var stackData = activeRowForStack && activeRowForStack.stacks ? activeRowForStack.stacks[target.stackIndex] : null;
           if (!stackData) break;
           var oldStackEl = getElColumnsContainer().querySelector(
             '.board-stack[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"]'
@@ -5085,7 +5088,7 @@ var LexeraDashboard = (function () {
         }
 
         case 'row': {
-          var rowData = findFullDataRow(target.rowIndex);
+          var rowData = activeBoardData && activeBoardData.rows ? activeBoardData.rows[target.rowIndex] : null;
           if (!rowData) break;
           var oldRowEl = getElColumnsContainer().querySelector(
             '.board-row[data-row-index="' + target.rowIndex + '"]'
@@ -5096,6 +5099,32 @@ var LexeraDashboard = (function () {
           oldRowEl.parentNode.replaceChild(newRowEl, oldRowEl);
           enhanceRenderedElement(newRowEl, { structural: true });
           needsStructuralVs = true;
+          break;
+        }
+
+        case 'row-insert': {
+          var insertedRowData = activeBoardData && activeBoardData.rows ? activeBoardData.rows[target.rowIndex] : null;
+          if (!insertedRowData) break;
+          var rowContainer = getElColumnsContainer();
+          if (!rowContainer) break;
+          var insertedRowEl = buildRowElement(insertedRowData, target.rowIndex,
+            fs.foldedCols, fs.foldedRows, fs.foldedStacks, fs.collapsedCards);
+          var existingRows = rowContainer.querySelectorAll(':scope > .board-row');
+          if (target.rowIndex < existingRows.length) rowContainer.insertBefore(insertedRowEl, existingRows[target.rowIndex]);
+          else rowContainer.appendChild(insertedRowEl);
+          enhanceRenderedElement(insertedRowEl, { structural: true });
+          needsStructuralVs = true;
+          break;
+        }
+
+        case 'row-remove': {
+          var removedRowEl = getElColumnsContainer().querySelector(
+            '.board-row[data-row-index="' + target.rowIndex + '"]'
+          );
+          if (removedRowEl) {
+            removedRowEl.remove();
+            needsStructuralVs = true;
+          }
           break;
         }
 
@@ -10686,8 +10715,46 @@ var LexeraDashboard = (function () {
       var _stbIsSameBoard = _stbPrevBoardId && _stbPrevBoardId === _stbNextBoardId
                             && _stbPrevFullBoard && _stbPrevActive
                             && Array.isArray(_stbPrevActive.columns);
-      var _stbTargets = null;
+      // Structural-signature guard: the targeted-refresh path is only
+      // safe when the previous board and the new board have the same
+      // row/stack/column structure by id. Otherwise (e.g. test fixture
+      // boards replacing a 917-card board with a 4-card fixture) the
+      // diff is too large to express as targets, and any partial
+      // application leaves the DOM in an inconsistent state. In that
+      // case we fall through to the full renderMainView path so the
+      // DOM is rebuilt from scratch against the new structure.
+      function _stbSignature(board) {
+        if (!board || !Array.isArray(board.rows)) return null;
+        var parts = [];
+        for (var r = 0; r < board.rows.length; r++) {
+          var row = board.rows[r];
+          if (!row || !row.id) return null;
+          var stacks = Array.isArray(row.stacks) ? row.stacks : [];
+          var sparts = [];
+          for (var s = 0; s < stacks.length; s++) {
+            var stack = stacks[s];
+            if (!stack || !stack.id) return null;
+            var cols = Array.isArray(stack.columns) ? stack.columns : [];
+            var cparts = [];
+            for (var c = 0; c < cols.length; c++) {
+              var col = cols[c];
+              if (!col || !col.id) return null;
+              cparts.push(col.id);
+            }
+            sparts.push(stack.id + ':[' + cparts.join(',') + ']');
+          }
+          parts.push(row.id + ':(' + sparts.join(';') + ')');
+        }
+        return parts.join('|');
+      }
+      var _stbSameStructure = false;
       if (_stbIsSameBoard) {
+        var _stbPrevSig = _stbSignature(_stbPrevFullBoard);
+        var _stbNextSig = _stbSignature(boardData);
+        _stbSameStructure = !!(_stbPrevSig && _stbNextSig && _stbPrevSig === _stbNextSig);
+      }
+      var _stbTargets = null;
+      if (_stbIsSameBoard && _stbSameStructure) {
         try {
           var _stbApi = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta)
             ? globalThis.LexeraBoardDelta

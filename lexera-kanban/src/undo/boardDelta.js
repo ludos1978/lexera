@@ -268,7 +268,9 @@
    *
    * Strategy: walk delta.rows top-down and emit the coarsest target that
    * covers the scope of the change at each level:
-   *   - Board scalar / boardSettings / row add/remove/reorder → null (full)
+   *   - Board scalar / boardSettings → null (full)
+   *   - Row append/remove-last → {type:'row-insert'|'row-remove',...}
+   *   - Other row add/remove/reorder → null (full)
    *   - Row title change, stack add/remove/reorder → {type:'row',...}
    *   - Stack title change, column add/remove/reorder → {type:'stack',...}
    *   - Column title/include_source change, card add/remove/reorder → {type:'column',...}
@@ -293,13 +295,13 @@
       if (delta[scalarKeys[k]]) return null;
     }
     if (delta.boardSettings) return null;
-    if (delta.rows && _hasArrayShapeChange(delta.rows)) return null;
+    var hasRowShapeChange = !!(delta.rows && _hasArrayShapeChange(delta.rows));
     if (delta.columns && _hasArrayShapeChange(delta.columns)) return null;
 
     // If nothing modified, nothing to do
     var hasRowMods = delta.rows && delta.rows.modified;
     var hasColMods = delta.columns && delta.columns.modified;
-    if (!hasRowMods && !hasColMods) return null;
+    if (!hasRowShapeChange && !hasRowMods && !hasColMods) return null;
 
     // Build id→location maps from activeBoardData.
     // Any delta id that can't be found here means the change touches a
@@ -316,6 +318,12 @@
       if (seen[key]) return;
       seen[key] = true;
       targets.push(t);
+    }
+
+    if (hasRowShapeChange) {
+      var rowShapeTarget = _rowShapeDeltaToTarget(delta.rows, maps);
+      if (!rowShapeTarget) return null;
+      emit(rowShapeTarget);
     }
 
     // Walk delta.rows.modified
@@ -446,6 +454,46 @@
       || idArrayDelta.oldOrder || idArrayDelta.newOrder);
   }
 
+  function _isHiddenForTargeting(text) {
+    return /(^|\s)#hidden(?:-internal-[a-z0-9-]+)?\b/i.test(String(text || ''));
+  }
+
+  function _rowShapeDeltaToTarget(rowDelta, maps) {
+    if (!rowDelta || rowDelta.modified) return null;
+    var added = rowDelta.added || null;
+    var removed = rowDelta.removed || null;
+    var addedIds = added ? Object.keys(added) : [];
+    var removedIds = removed ? Object.keys(removed) : [];
+
+    if (addedIds.length === 1 && removedIds.length === 0 && Array.isArray(rowDelta.newOrder)) {
+      var addedId = String(addedIds[0]);
+      var addedRow = added[addedId] || null;
+      if (_isHiddenForTargeting(addedRow && addedRow.title)) return null;
+      var newDisplayIdx = 0;
+      for (var ni = 0; ni < rowDelta.newOrder.length; ni++) {
+        var nextId = String(rowDelta.newOrder[ni]);
+        if (nextId === addedId) break;
+        if (maps.rowIdToDisplayIdx[nextId] != null) newDisplayIdx++;
+        else if (added[nextId] && !_isHiddenForTargeting(added[nextId] && added[nextId].title)) newDisplayIdx++;
+      }
+      if (newDisplayIdx === maps.visibleRowCount) {
+        return { type: 'row-insert', rowIndex: newDisplayIdx, rowId: addedId };
+      }
+      return null;
+    }
+
+    if (removedIds.length === 1 && addedIds.length === 0) {
+      var removedId = String(removedIds[0]);
+      var oldDisplayIdx = maps.rowIdToDisplayIdx[removedId];
+      if (oldDisplayIdx == null) return null;
+      if (oldDisplayIdx === maps.visibleRowCount - 1) {
+        return { type: 'row-remove', rowIndex: oldDisplayIdx, rowId: removedId };
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Build id→index lookup maps from activeBoardData, matching the index
    * conventions that refreshTargetedElements expects:
@@ -459,9 +507,11 @@
       rowIdToDisplayIdx: {},
       stackIdToLoc: {},
       colIdToFlatIdx: {},
-      colIdToCardMap: {}
+      colIdToCardMap: {},
+      visibleRowCount: 0
     };
     var rows = (activeBoardData.rows || []);
+    maps.visibleRowCount = rows.length;
     for (var r = 0; r < rows.length; r++) {
       var row = rows[r];
       if (row && row.id != null) maps.rowIdToDisplayIdx[String(row.id)] = r;
