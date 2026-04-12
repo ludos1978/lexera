@@ -351,6 +351,7 @@
         '<div class="test-panel-actions">' +
           '<div class="test-panel-action-group test-panel-action-group-run">' +
             '<select class="test-panel-board-select lexera-shared-test-board-select" title="Board to test"></select>' +
+            '<input class="test-panel-filter lexera-shared-test-filter" type="text" placeholder="Filter tests\u2026" title="Filter by test name (substring match)" />' +
             '<span class="test-panel-control-cluster test-panel-run-controls">' +
               '<button class="test-panel-btn lexera-shared-test-run-all" type="button">Run All</button>' +
               '<button class="test-panel-btn test-panel-btn-stop lexera-shared-test-stop" type="button">Stop Run</button>' +

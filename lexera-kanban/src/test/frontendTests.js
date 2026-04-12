@@ -10,29 +10,6 @@
 (function () {
   'use strict';
 
-  // DIAGNOSTIC: immediately emit a load marker so we can confirm this
-  // script executed even if the auto-run bootstrap later fails. This
-  // runs synchronously at script eval time and uses a detached Tauri
-  // invoke — if Tauri IPC isn't ready, the invoke silently no-ops.
-  try {
-    setTimeout(function () {
-      try {
-        if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
-          window.__TAURI__.core.invoke('write_text_file', {
-            path: '/tmp/lexera-test-load-marker.txt',
-            content: '[frontendTests.js] loaded at ' + new Date().toISOString() + '\nTAURI=' + (typeof window.__TAURI__) + '\nhref=' + location.href + '\n'
-          });
-        } else {
-          // Still write a marker via fetch to backend — use known auth token path
-          // Actually: just note in a window global
-          window.__LEXERA_TEST_JS_LOADED_TAURI_MISSING__ = true;
-        }
-      } catch (e) {
-        window.__LEXERA_TEST_JS_LOAD_ERROR__ = String(e && e.message ? e.message : e);
-      }
-    }, 500);
-  } catch (_) {}
-
   var tests = [];
   var _api = null;
   var TEST_RUN_CANCELLED = 'lexera-frontend-tests-cancelled';
@@ -336,6 +313,34 @@
   // ═══════════════════════════════════════════════════════════════════════
   // Helpers
   // ═══════════════════════════════════════════════════════════════════════
+
+  // ── Auto-dismiss conflict dialogs during test runs ──────────────
+  // External file changes (e.g. from auto-save or another agent)
+  // can trigger "External Changes Need Resolution" or "Merge
+  // Conflict" dialogs that overlay the board and block the tests.
+  // During a test run, auto-click "Load Disk Version" to dismiss
+  // them immediately so the suite doesn't hang indefinitely.
+  function dismissConflictDialogs() {
+    var docs = getReachableDocuments();
+    for (var d = 0; d < docs.length; d++) {
+      var doc = docs[d];
+      if (!doc || typeof doc.querySelectorAll !== 'function') continue;
+      try {
+        // "External Changes Need Resolution" dialog
+        var rebaseBtn = doc.querySelector('[data-rebase-action="reload"]');
+        if (rebaseBtn) {
+          rebaseBtn.click();
+          console.warn('[test-runner] auto-dismissed external rebase conflict dialog');
+        }
+        // "Merge Conflict" dialog
+        var conflictBtn = doc.querySelector('[data-conflict-action="reload"]');
+        if (conflictBtn) {
+          conflictBtn.click();
+          console.warn('[test-runner] auto-dismissed merge conflict dialog');
+        }
+      } catch (_) {}
+    }
+  }
 
   function createCancelledError() {
     var err = new Error('Test run stopped');
@@ -1363,6 +1368,7 @@
 
   async function setup() {
     _startPhase('setup');
+    dismissConflictDialogs();
     refreshBoardSelector();
     await ensureSelectedBoardLoaded();
     // Wait for a board to be loaded (may take a moment in workspace shell)
@@ -1442,9 +1448,22 @@
     _endPhase('teardown');
   }
 
-  /** Find first two columns with at least 1 card each. Returns {srcCol, dstCol, srcCard}. */
+  /** Find first two columns with at least 1 card each. Returns {srcCol, dstCol}.
+   *  Self-sufficient: if there aren't enough cards/columns, injects
+   *  temporary test data so the test can always run regardless of the
+   *  board's actual state.
+   */
+  var _findTwoColsRecursion = 0;
   function findTwoColumnsWithCards() {
+    _findTwoColsRecursion++;
+    if (_findTwoColsRecursion > 3) {
+      _findTwoColsRecursion = 0;
+      throw new Error('findTwoColumnsWithCards: failed to ensure preconditions after 3 attempts');
+    }
     var data = api().getFullBoardData();
+    assert(data && data.rows && data.rows.length > 0, 'board has at least one row');
+
+    // ── Phase 1: Try to find two existing columns with visible cards ──
     var flatIdx = 0;
     var srcCol = null, dstCol = null;
     for (var r = 0; r < data.rows.length; r++) {
@@ -1463,6 +1482,7 @@
               srcCol = { flatIdx: flatIdx, col: cols[c], row: r, stack: s, localCol: c, cards: visibleCards };
             } else if (!dstCol) {
               dstCol = { flatIdx: flatIdx, col: cols[c], row: r, stack: s, localCol: c, cards: visibleCards };
+              _findTwoColsRecursion = 0;
               return { srcCol: srcCol, dstCol: dstCol };
             }
           }
@@ -1470,7 +1490,62 @@
         }
       }
     }
-    throw new Error('Need at least 2 columns with visible cards');
+
+    // ── Phase 2: Ensure preconditions by injecting test cards/columns ──
+    // Walk the board again: find all visible columns and fill up with
+    // test cards if needed. If only one column with cards exists, add a
+    // test card to the next visible column. If no columns have cards,
+    // add test cards to the first two visible columns.
+    var _ts = '_test_' + Date.now() + '_';
+    var visibleCols = [];
+    flatIdx = 0;
+    for (var r2 = 0; r2 < data.rows.length; r2++) {
+      var rowHidden2 = isHiddenForRender(data.rows[r2] && data.rows[r2].title);
+      var stacks2 = data.rows[r2].stacks || [];
+      for (var s2 = 0; s2 < stacks2.length; s2++) {
+        var stackHidden2 = rowHidden2 || isHiddenForRender(stacks2[s2] && stacks2[s2].title);
+        var cols2 = stacks2[s2].columns || [];
+        for (var c2 = 0; c2 < cols2.length; c2++) {
+          var colHidden2 = stackHidden2 || isHiddenForRender(cols2[c2] && cols2[c2].title);
+          if (!colHidden2) {
+            visibleCols.push({ col: cols2[c2], row: r2, stack: s2, localCol: c2, flatIdx: flatIdx });
+          }
+          flatIdx++;
+        }
+      }
+    }
+
+    // If we only have 1 visible column total, add a second one
+    if (visibleCols.length < 2) {
+      var firstStack = data.rows[0].stacks[0];
+      firstStack.columns.push({
+        id: _ts + 'col', title: 'Test Column', cards: [
+          { id: _ts + 'card1', content: 'Test Card A', checked: false, kid: _ts + 'card1' }
+        ], include_source: null
+      });
+      api().setTestBoard(data, _boardId);
+      data = api().getFullBoardData();
+      return findTwoColumnsWithCards(); // recurse — now has enough
+    }
+
+    // Add test cards to the first two visible columns that need them
+    var filled = 0;
+    for (var vc = 0; vc < visibleCols.length && filled < 2; vc++) {
+      var vcCards = (visibleCols[vc].col.cards || []).filter(function (card) {
+        return !isHiddenForRender(card && card.content);
+      });
+      if (vcCards.length === 0) {
+        visibleCols[vc].col.cards.push({
+          id: _ts + 'card_' + vc, content: 'Test Card ' + vc,
+          checked: false, kid: _ts + 'card_' + vc
+        });
+      }
+      filled++;
+    }
+    api().setTestBoard(data, _boardId);
+    data = api().getFullBoardData();
+    // Recurse once — the injected cards should be enough now
+    return findTwoColumnsWithCards();
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -4707,6 +4782,17 @@
     return select ? String(select.value || 'all') : 'all';
   }
 
+  function getTestFilter() {
+    var root = findPanelRoot();
+    var input = root && root.querySelector('.lexera-shared-test-filter');
+    return input ? String(input.value || '').trim().toLowerCase() : '';
+  }
+
+  function isTestIncludedByFilter(testName, filter) {
+    if (!filter) return true;
+    return testName.toLowerCase().indexOf(filter) !== -1;
+  }
+
   function formatLogTimestamp(entry) {
     try {
       return new Date(entry && entry.timestampMs ? entry.timestampMs : Date.now()).toLocaleTimeString('en-GB', { hour12: false });
@@ -4897,6 +4983,27 @@
     }
     var runBtn = root.querySelector('.lexera-shared-test-run-all');
     if (runBtn) runBtn.onclick = function () { runAllUI(); };
+    // Update run button label to indicate filtered mode
+    function updateRunBtnLabel() {
+      if (!runBtn) return;
+      var filter = getTestFilter();
+      if (filter) {
+        var count = 0;
+        for (var fi2 = 0; fi2 < tests.length; fi2++) {
+          if (isTestIncludedByFilter(tests[fi2].name, filter)) count++;
+        }
+        runBtn.textContent = 'Run ' + count + '/' + tests.length;
+      } else {
+        runBtn.textContent = 'Run All';
+      }
+    }
+    if (filterInput) {
+      var origOninput = filterInput.oninput;
+      filterInput.oninput = function () {
+        if (origOninput) origOninput.call(this);
+        updateRunBtnLabel();
+      };
+    }
     var stopBtn = root.querySelector('.lexera-shared-test-stop');
     if (stopBtn) stopBtn.onclick = function () { requestStopRun(); };
     var continueUndoBtn = root.querySelector('.lexera-shared-test-continue-undo');
@@ -4912,6 +5019,19 @@
     }
     var copyBtn = root.querySelector('.lexera-shared-test-copy');
     if (copyBtn) copyBtn.onclick = function () { copyResults(); };
+    var filterInput = root.querySelector('.lexera-shared-test-filter');
+    if (filterInput) {
+      filterInput.oninput = function () {
+        var filter = filterInput.value.trim().toLowerCase();
+        var rows = listEl.querySelectorAll('.test-row');
+        var errs = listEl.querySelectorAll('.test-error');
+        for (var fi = 0; fi < rows.length && fi < tests.length; fi++) {
+          var show = isTestIncludedByFilter(tests[fi].name, filter);
+          rows[fi].style.display = show ? '' : 'none';
+          if (errs[fi]) errs[fi].style.display = show ? '' : 'none';
+        }
+      };
+    }
     updateRunControls();
   }
 
@@ -4928,11 +5048,15 @@
     var errs = root.querySelectorAll('.test-error');
     if (index >= rows.length) return;
     var ind = rows[index].querySelector('.test-indicator');
-    ind.className = 'test-indicator' + (status === 'pass' ? ' pass' : status === 'fail' ? ' fail' : status === 'running' ? ' running' : '');
-    ind.textContent = status === 'pass' ? '\u2713' : status === 'fail' ? '\u2717' : status === 'running' ? '\u2026' : '';
+    ind.className = 'test-indicator' + (status === 'pass' ? ' pass' : status === 'fail' ? ' fail' : status === 'running' ? ' running' : status === 'skip' ? ' skip' : '');
+    ind.textContent = status === 'pass' ? '\u2713' : status === 'fail' ? '\u2717' : status === 'running' ? '\u2026' : status === 'skip' ? '\u2013' : '';
     var dur = rows[index].querySelector('.test-duration');
     if (dur) {
-      if (status === 'reset' || status === 'running') {
+      if (status === 'skip') {
+        dur.textContent = 'skipped';
+        dur.style.color = 'var(--text-muted)';
+        dur.title = '';
+      } else if (status === 'reset' || status === 'running') {
         dur.textContent = status === 'running' ? '…' : '';
         dur.style.color = 'var(--text-muted)';
         dur.title = '';
@@ -5006,14 +5130,19 @@
   async function runAllUI() {
     if (isRunActive()) return;
     populateTestList(); _api = null; lastResults = [];
-    beginRun(tests.length);
+    var filter = getTestFilter();
+    var filteredCount = 0;
+    for (var fc = 0; fc < tests.length; fc++) {
+      if (isTestIncludedByFilter(tests[fc].name, filter)) filteredCount++;
+    }
+    beginRun(filteredCount || tests.length);
     refreshBoardSelector();
     // Enable mutation profiling in ALL board windows (parent + iframes)
     setMutationProfilingFlag(true);
     var p = 0, f = 0;
     var totalStart = _nowMs();
-    for (var j = 0; j < tests.length; j++) updateRow(j, 'reset');
-    updateSummary(0, 0, tests.length);
+    for (var j = 0; j < tests.length; j++) updateRow(j, filter && !isTestIncludedByFilter(tests[j].name, filter) ? 'skip' : 'reset');
+    updateSummary(0, 0, filteredCount || tests.length);
     // Yield once before the first test so the reset UI (all rows cleared,
     // summary "0 passed 0 failed") actually paints before the first test
     // body takes the main thread.
@@ -5021,6 +5150,10 @@
     try {
       for (var i = 0; i < tests.length; i++) {
         throwIfRunCancelled();
+        if (filter && !isTestIncludedByFilter(tests[i].name, filter)) {
+          continue; // skip filtered-out tests
+        }
+        dismissConflictDialogs();
         _runState.currentIndex = i;
         updateRow(i, 'running');
         // Always yield one paint frame before each test body so:
@@ -5205,7 +5338,10 @@
     stop: function () { requestStopRun(); },
     continueUndo: function () { continueManualUndo(); },
     showPanel: function () { populateTestList(); },
-    runAllWithUI: function () { populateTestList(); runAllUI(); }
+    runAllWithUI: function () { populateTestList(); runAllUI(); },
+    // Exposed for Rust-side auto-run eval to poll completion + get results
+    _runState: _runState,
+    _buildResults: function () { return buildCopiedResultsText('all'); }
   };
 
   // ──────────────────────────────────────────────────────────────────
@@ -5225,9 +5361,11 @@
   //   __LEXERA_AUTO_RUN_TESTS_QUIT__     when true, call `quit_app`
   //     after the output file has been flushed. This lets a shell
   //     script block on the kanban process exit.
-  // Pull-based bootstrap: ask the Rust side for the test-runner
-  // config once Tauri is ready. This avoids the on_page_load timing
-  // race that eval()-based injection suffers from.
+  // ── Auto-run via config file ──────────────��──────────────────────
+  // The Rust side writes `src/auto-run-config.json` at startup.
+  // The frontend polls for it via fetch(). This is the only mechanism
+  // that reliably works in WKWebView under `cargo tauri dev` — both
+  // eval() and event emission fail silently in that mode.
   function tauriInvokeLocal(cmd, args) {
     try {
       if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
@@ -5237,42 +5375,47 @@
     return null;
   }
 
+  // Always check for the auto-run config file on startup. This is a
+  // single fetch that 404s silently when not auto-running. When the
+  // Rust side wrote the config file, the fetch succeeds and we start.
   (function () {
-    // Single-shot guard so multiple reloads don't schedule multiple runs.
     if (window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__) return;
-    // Wait until __TAURI__.core.invoke is available, then fetch the
-    // config. Give up after 30s if Tauri never wires up (e.g. running
-    // in a plain browser for dev).
-    var pollDeadline = Date.now() + 30000;
+    var attempts = 0;
+    var maxAttempts = 30;
     function tryFetchConfig() {
-      if (!window.__TAURI__ || !window.__TAURI__.core || typeof window.__TAURI__.core.invoke !== 'function') {
-        if (Date.now() > pollDeadline) return;
-        setTimeout(tryFetchConfig, 100);
-        return;
-      }
-      var invokePromise = tauriInvokeLocal('get_test_runner_config');
-      if (!invokePromise || typeof invokePromise.then !== 'function') return;
-      invokePromise.then(function (config) {
-        if (!config || !config.auto_run) return;
-        startAutoRun(config);
-      }).catch(function (err) {
-        console.error('[auto-run-tests] failed to fetch config:', err);
-      });
+      if (window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__) return;
+      attempts++;
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/auto-run-config.json?_=' + Date.now(), true);
+      xhr.onload = function () {
+        if (xhr.status === 200) {
+          try {
+            var config = JSON.parse(xhr.responseText);
+            if (config && typeof config === 'object') {
+              startAutoRunFromConfig(config);
+              return;
+            }
+          } catch (_) {}
+        }
+        if (attempts < maxAttempts) setTimeout(tryFetchConfig, 1000);
+      };
+      xhr.onerror = function () {
+        if (attempts < maxAttempts) setTimeout(tryFetchConfig, 1000);
+      };
+      xhr.send();
     }
-    tryFetchConfig();
+    // Start checking 3s after page load
+    setTimeout(tryFetchConfig, 3000);
   })();
 
-  function startAutoRun(config) {
+  function startAutoRunFromConfig(payload) {
     if (window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__) return;
     window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__ = true;
 
-    var delayMs = typeof config.delay_ms === 'number' ? config.delay_ms : 10000;
-    var outputPath = typeof config.output_path === 'string' ? config.output_path : null;
-    var quitAfter = !!config.quit_after;
-    var pinnedBoard = typeof config.board === 'string' ? config.board : '';
+    var outputPath = payload.output || null;
+    var quitAfter = !!payload.quit;
+    var pinnedBoard = payload.board || '';
 
-    // If a board id was pinned, seed the stored-board localStorage key
-    // so `ensureSelectedBoardLoaded()` picks it up in setup().
     if (pinnedBoard) {
       try { setStoredBoardSelection(pinnedBoard); } catch (_) {}
     }
@@ -5285,7 +5428,7 @@
     }
 
     async function performAutoRun() {
-      console.log('[auto-run-tests] starting after ' + delayMs + 'ms');
+      console.log('[auto-run-tests] event received, starting tests');
       populateTestList();
       var runPromise = runAllUI();
       try { await runPromise; } catch (_) {}
@@ -5318,21 +5461,8 @@
       }
     }
 
-    // Early marker: write immediately so a parent script can verify
-    // the bootstrap fired regardless of the delay.
-    if (outputPath) {
-      try {
-        tauriInvokeLocal('write_text_file', {
-          path: outputPath,
-          content: '[auto-run-tests] bootstrap fired, delay=' + delayMs + 'ms, board=' + (pinnedBoard || '(none)') + ', waiting...\n'
-        });
-      } catch (_) {}
-    }
-
-    setTimeout(function () {
-      performAutoRun().catch(function (e) {
-        console.error('[auto-run-tests] failed:', e);
-      });
-    }, delayMs);
+    performAutoRun().catch(function (e) {
+      console.error('[auto-run-tests] failed:', e);
+    });
   }
 })();

@@ -186,7 +186,21 @@ else
   echo "Skipping capture (--no-capture or dir missing)."
 fi
 
-# ── Start kanban with --run-tests ────────────────────────────────
+# ── Build kanban (if needed) ──────────────────────────────────────
+echo "Building lexera-kanban (dev profile)..."
+(cd "$KANBAN_DIR/src-tauri" && cargo build) 2>&1 | tail -5 | sed 's/^/[build]  /'
+KANBAN_BINARY="$TARGET_DIR/debug/lexera-kanban"
+if [[ ! -x "$KANBAN_BINARY" ]]; then
+  echo "ERROR: kanban binary not found at $KANBAN_BINARY"
+  cleanup
+  exit 1
+fi
+
+# ── Run beforeDevCommand to sync shared assets ──────────────────
+echo "Syncing shared assets..."
+(cd "$KANBAN_DIR" && node ../lexera-shared/scripts/sync-runtime-assets.mjs src && sh scripts/sync-excalidraw-assets.sh) 2>&1 | sed 's/^/[sync]   /'
+
+# ── Start kanban binary directly with --run-tests ────────────────
 KANBAN_CLI_ARGS=(
   --run-tests
   "--run-tests-delay=$DELAY_MS"
@@ -199,9 +213,7 @@ if [[ -n "$BOARD_ID" ]]; then
 else
   echo "Starting lexera-kanban with --run-tests (delay=${DELAY_MS}ms, output=$OUTPUT_PATH)..."
 fi
-(
-  cd "$KANBAN_DIR" && exec cargo tauri dev -- -- "${KANBAN_CLI_ARGS[@]}"
-) 2>&1 | sed 's/^/[kanban]  /' &
+"$KANBAN_BINARY" "${KANBAN_CLI_ARGS[@]}" 2>&1 | sed 's/^/[kanban]  /' &
 KANBAN_CARGO_PID=$!
 
 echo ""

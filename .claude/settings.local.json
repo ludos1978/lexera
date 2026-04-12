@@ -264,7 +264,14 @@
       "Read(//Users/rspoerri/**)",
       "Read(//Users/rspoerri/_REPOSITORIES/**)",
       "Bash(osascript -e 'tell application \"System Events\" to tell process \"Lexera Kanban\" to get name of windows')",
-      "Bash(osascript -e 'tell application \"System Events\" to get name of every process whose visible is true')"
+      "Bash(osascript -e 'tell application \"System Events\" to get name of every process whose visible is true')",
+      "Bash(osascript -e ':*)",
+      "Bash(osascript -e 'tell application \"System Events\" to get name of window 1 of process \"lexera-kanban\"')",
+      "Bash(./run-lexera-tests.sh --board=630a7420c558 --delay=15000 --no-capture)",
+      "Bash(./run-lexera-tests.sh --board=630a7420c558 --delay=5000 --no-capture)",
+      "Read(//Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/lexera-kanban/src-tauri/**)",
+      "Bash(./run-lexera-tests.sh --board=630a7420c558 --delay=8000 --no-capture)",
+      "Bash(./run-lexera-tests.sh --board=630a7420c558 --delay=10000 --no-capture)"
     ],
     "deny": [],
     "ask": []

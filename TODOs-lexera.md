@@ -1,5 +1,7 @@
 # Lexera Repository Architecture Todo
 
+- [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.
+
 - [x] Dashboard search speed — deferred render to rAF (board paints first, dashboard catches up next frame), early fingerprint check skips expensive tree-building on cache hit, removed array copies in scope filtering, visibility guard for hidden panels, 300ms debounce.
 
 - [x] Targeted refresh for common operations — cross-column card moves now refresh only source+target columns (not all 917 cards), column sorts use column target, row/stack sorts use row/stack targets, title renames use targeted row/stack/column. Added warning when full board re-render triggered on boards >200 cards.

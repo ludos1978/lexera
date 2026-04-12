@@ -312,13 +312,34 @@ fn main() {
         .setup(move |app| {
             let menu = app_menu::create_app_menu(app)?;
             app.set_menu(menu)?;
+
+            // ── Auto-run: write config file + navigate with query param ──
+            // Write a JSON config to `src/auto-run-config.json` (served
+            // by the dev server) AND navigate to `index.html?autoRunTests=1`
+            // so the frontend can detect auto-run from location.search
+            // synchronously at IIFE time, then fetch() the config file
+            // for the details (board, output path, quit flag).
+            if auto_run_tests {
+                // Write config file for fetch()
+                let config_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .join("src")
+                    .join("auto-run-config.json");
+                let config_json = serde_json::json!({
+                    "board": auto_run_board,
+                    "output": auto_run_output_path,
+                    "quit": quit_after_tests,
+                    "delay": auto_run_delay_ms
+                });
+                let _ = std::fs::write(&config_path, config_json.to_string());
+
+                // The frontend polls for `auto-run-config.json` via
+                // XHR on startup (every 1s for 30 attempts). When it
+                // finds the file, it reads the config and starts.
+            }
             Ok(())
         })
-        // Test-runner CLI config is exposed via the
-        // `get_test_runner_config` command; the frontend pulls it from
-        // its auto-run bootstrap. No eval() injection here — that runs
-        // AFTER the webview's script evaluation, causing timing races
-        // with the frontend IIFE.
         .on_menu_event(|app, event| {
             let id = event.id().0.as_str();
             if let Some(action) = app_menu::menu_id_to_action(id) {
