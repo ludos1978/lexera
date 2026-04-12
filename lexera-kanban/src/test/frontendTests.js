@@ -257,13 +257,18 @@
       } finally {
         // Fail-safe: if the test threw between `do` and `undo`, run
         // undo anyway so the next test starts from a clean board.
-        // Without this, a failing registerDoUndo test would leak its
-        // mutated state into every subsequent test, cascading failures.
         if (didDo && !didUndo && !spec.skipUndo) {
           try { await api().undo(); } catch (_) {}
         }
-        // Cancel any pending debounced work so it doesn't leak into
-        // the next test's assertions.
+        // Flush pending hierarchy refresh so the sidebar tree rebuild
+        // doesn't fire during the NEXT test's body and produce stale
+        // DOM mutations that cause duplicate-card false positives.
+        try {
+          if (window.LexeraBoardDataStore && typeof window.LexeraBoardDataStore.flushHierarchyRefresh === 'function') {
+            window.LexeraBoardDataStore.flushHierarchyRefresh();
+          }
+        } catch (_) {}
+        // Cancel remaining debounced work (draft save, auto-save).
         try {
           if (window.LexeraBoardDataStore && typeof window.LexeraBoardDataStore.cancelAllDeferredWork === 'function') {
             window.LexeraBoardDataStore.cancelAllDeferredWork();
@@ -1436,7 +1441,14 @@
     _boardId = null;
     _uiStateSnapshot = null;
     _restoreSavedSnapshot = false;
-    // Cancel pending debounced work so it doesn't leak into the next test
+    // Flush pending hierarchy refresh before cancelling other work,
+    // so the sidebar rebuild doesn't fire during the next test's body.
+    try {
+      if (window.LexeraBoardDataStore && typeof window.LexeraBoardDataStore.flushHierarchyRefresh === 'function') {
+        window.LexeraBoardDataStore.flushHierarchyRefresh();
+      }
+    } catch (_) {}
+    // Cancel remaining debounced work so it doesn't leak into the next test
     try {
       if (window.LexeraBoardDataStore && typeof window.LexeraBoardDataStore.cancelAllDeferredWork === 'function') {
         window.LexeraBoardDataStore.cancelAllDeferredWork();
