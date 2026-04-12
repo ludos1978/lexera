@@ -11,6 +11,27 @@ use tauri::{Emitter, Manager, WebviewUrl};
 
 static WINDOW_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
+/// CLI-derived test-runner config, populated once in `main()` and
+/// exposed to the frontend via the `get_test_runner_config` command.
+/// Pull-based delivery sidesteps timing races between Tauri's
+/// `on_page_load` hook (which fires AFTER scripts have already run)
+/// and the frontend test harness's IIFE initialization.
+#[derive(serde::Serialize, Default, Clone)]
+struct TestRunnerConfig {
+    auto_run: bool,
+    delay_ms: u64,
+    output_path: Option<String>,
+    quit_after: bool,
+    board: Option<String>,
+}
+
+static TEST_RUNNER_CONFIG: std::sync::OnceLock<TestRunnerConfig> = std::sync::OnceLock::new();
+
+#[tauri::command]
+fn get_test_runner_config() -> TestRunnerConfig {
+    TEST_RUNNER_CONFIG.get().cloned().unwrap_or_default()
+}
+
 #[tauri::command]
 fn open_new_window(
     app: tauri::AppHandle,
@@ -222,12 +243,82 @@ fn find_lowest_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
 fn main() {
     install_panic_hook();
 
+    // Parse CLI flags.
+    //   --run-tests             Auto-run the frontend test suite a few
+    //                            seconds after the window loads. Used to
+    //                            iterate on test failures without clicking
+    //                            through the test panel UI every time.
+    //   --run-tests-delay=N      Override the delay before the tests start
+    //                            (milliseconds). Defaults to 10000.
+    //   --run-tests-output=PATH  After the run completes, write the full
+    //                            result text (same format as the test
+    //                            panel's "Copy" button, `all` scope) to
+    //                            PATH. The file can be tailed by a parent
+    //                            process to observe results headlessly.
+    //   --quit-after-tests       Exit the process once the run completes
+    //                            and the output file (if any) has been
+    //                            flushed. Pair with --run-tests-output so
+    //                            a parent script knows when to proceed.
+    //   --run-tests-board=ID     Pre-seed the test harness's board
+    //                            selector with this board id so
+    //                            `ensureSelectedBoardLoaded()` loads it
+    //                            before the first test runs. Without
+    //                            this, auto-run depends on whatever
+    //                            board localStorage happens to have.
+    let args: Vec<String> = std::env::args().collect();
+    let auto_run_tests = args.iter().any(|a| a == "--run-tests");
+    let auto_run_delay_ms: u64 = args
+        .iter()
+        .find_map(|a| a.strip_prefix("--run-tests-delay="))
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(10_000);
+    let auto_run_output_path: Option<String> = args
+        .iter()
+        .find_map(|a| a.strip_prefix("--run-tests-output=").map(|v| v.to_string()));
+    let quit_after_tests = args.iter().any(|a| a == "--quit-after-tests");
+    let auto_run_board: Option<String> = args
+        .iter()
+        .find_map(|a| a.strip_prefix("--run-tests-board=").map(|v| v.to_string()));
+
+    // Publish the parsed config so the frontend can pull it via
+    // `get_test_runner_config`. Once set, `.get()` is lock-free.
+    let _ = TEST_RUNNER_CONFIG.set(TestRunnerConfig {
+        auto_run: auto_run_tests,
+        delay_ms: auto_run_delay_ms,
+        output_path: auto_run_output_path.clone(),
+        quit_after: quit_after_tests,
+        board: auto_run_board.clone(),
+    });
+
+    // Diagnostic: when auto-run is requested, write a "kanban started"
+    // marker to the configured output path at process start. This
+    // confirms the right binary is running even if the frontend
+    // bootstrap silently fails. The frontend will overwrite the file
+    // once the run completes.
+    if auto_run_tests {
+        if let Some(ref path) = auto_run_output_path {
+            let marker = format!(
+                "[kanban-startup] binary started, auto_run={}, delay_ms={}, board={:?}, quit_after={}\n",
+                auto_run_tests, auto_run_delay_ms, auto_run_board, quit_after_tests
+            );
+            if let Some(parent) = std::path::Path::new(path).parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(path, marker);
+        }
+    }
+
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(move |app| {
             let menu = app_menu::create_app_menu(app)?;
             app.set_menu(menu)?;
             Ok(())
         })
+        // Test-runner CLI config is exposed via the
+        // `get_test_runner_config` command; the frontend pulls it from
+        // its auto-run bootstrap. No eval() injection here — that runs
+        // AFTER the webview's script evaluation, causing timing races
+        // with the frontend IIFE.
         .on_menu_event(|app, event| {
             let id = event.id().0.as_str();
             if let Some(action) = app_menu::menu_id_to_action(id) {
@@ -254,6 +345,7 @@ fn main() {
         .manage(export_commands::MarpWatchState::new())
         .invoke_handler(tauri::generate_handler![
             open_new_window,
+            get_test_runner_config,
             commands::get_backend_url,
             commands::open_in_system,
             commands::open_url,

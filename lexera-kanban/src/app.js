@@ -583,24 +583,23 @@ var LexeraDashboard = (function () {
 
   // ── Iframe stripping for card HTML ────────────────────────────────
   // Raw `<iframe>` tags in card markdown (Miro/particify/YouTube embeds)
-  // get rewritten to placeholder spans. When the placeholder enters the
-  // DOM via `innerHTML`, WebKit creates a lightweight `<span>` instead
-  // of an iframe. `renderColumns` then walks the placeholders after the
-  // build and inserts live preserved iframes into them (matched by src).
+  // get rewritten to a clickable placeholder at render time. The
+  // placeholder does NOT auto-load the iframe — the user must click
+  // "Load embed" to materialize it, at which point we:
+  //   1. Probe the URL for embeddability (X-Frame-Options / CSP)
+  //   2. If allowed: insert a real iframe in place of the placeholder
+  //   3. If blocked: offer an "Open in browser" button instead
   //
-  // Without this, every full render of a board with N iframes would
-  // synchronously boot N remote SPAs inside `cc.appendChild(fragment)`
-  // and cost ~130ms per iframe (~800ms for 6 iframes — the dominant
-  // cost of a full `renderColumns`).
+  // This prevents the ~800ms-per-iframe boot cost on every board
+  // render AND the ~1000 log messages per iframe that were slowing
+  // Safari devtools to a crawl. The user only pays the cost of
+  // loading an embed when they explicitly ask for it.
   var _IFRAME_PLACEHOLDER_CLASS = 'lxra-iframe-placeholder';
   // Match `<iframe ...></iframe>` or `<iframe ... />` (self-closing).
   var _IFRAME_STRIP_RE = /<iframe\b([^>]*)(?:\s*\/>|><\/iframe>|>[\s\S]*?<\/iframe>)/gi;
   function _stripIframesFromHtml(html) {
     if (!html || typeof html !== 'string' || html.indexOf('<iframe') === -1) return html;
     return html.replace(_IFRAME_STRIP_RE, function (_, attrs) {
-      // Preserve the original iframe's attribute string in a data-* attr
-      // so the placeholder can be swapped for a real iframe later if no
-      // preserved one is available (e.g. first load).
       var srcMatch = attrs.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
       var src = srcMatch ? (srcMatch[1] || srcMatch[2] || srcMatch[3] || '') : '';
       var escapedAttrs = attrs
@@ -611,10 +610,131 @@ var LexeraDashboard = (function () {
       var escapedSrc = src
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;');
+      // Try to show a recognizable hostname in the prompt label.
+      var hostDisplay = '';
+      try {
+        hostDisplay = src ? (new URL(src, 'http://_').hostname || '') : '';
+      } catch (_) { hostDisplay = ''; }
+      var escapedHost = hostDisplay
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
       return '<span class="' + _IFRAME_PLACEHOLDER_CLASS + '"'
         + ' data-iframe-src="' + escapedSrc + '"'
-        + ' data-iframe-attrs="' + escapedAttrs + '"></span>';
+        + ' data-iframe-attrs="' + escapedAttrs + '"'
+        + ' data-iframe-state="idle"'
+        + ' title="Embed: ' + escapedSrc + '">'
+        + '<span class="lxra-iframe-placeholder-label">Embed</span>'
+        + '<span class="lxra-iframe-placeholder-host">' + (escapedHost || 'external page') + '</span>'
+        + '<button type="button" class="lxra-iframe-placeholder-load">Load embed</button>'
+        + '</span>';
     });
+  }
+
+  // Click handler for iframe placeholders. Delegation: attach one
+  // listener to the columns-container so every placeholder click goes
+  // through this function without per-placeholder listeners.
+  function _setupIframePlaceholderClickHandler() {
+    var cc = getElColumnsContainer();
+    if (!cc || cc.__lxraIframePlaceholderHandlerWired) return;
+    cc.__lxraIframePlaceholderHandlerWired = true;
+    cc.addEventListener('click', function (e) {
+      var btn = e.target && typeof e.target.closest === 'function'
+        ? e.target.closest('.lxra-iframe-placeholder-load, .lxra-iframe-placeholder-open-browser')
+        : null;
+      if (!btn) return;
+      var placeholder = btn.closest('.' + _IFRAME_PLACEHOLDER_CLASS);
+      if (!placeholder) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (btn.classList.contains('lxra-iframe-placeholder-open-browser')) {
+        var _urlForBrowser = placeholder.getAttribute('data-iframe-src') || '';
+        if (_urlForBrowser && typeof openUrlInSystem === 'function') {
+          openUrlInSystem(_urlForBrowser);
+        }
+        return;
+      }
+      _activateIframePlaceholder(placeholder);
+    });
+  }
+
+  // Activate a single placeholder: probe the URL for embeddability,
+  // then either swap in a real iframe (embeddable) or show an
+  // "open in browser" fallback.
+  function _activateIframePlaceholder(placeholder) {
+    if (!placeholder || !placeholder.parentNode) return;
+    var state = placeholder.getAttribute('data-iframe-state') || 'idle';
+    if (state !== 'idle') return;
+    var src = placeholder.getAttribute('data-iframe-src') || '';
+    if (!src) return;
+    placeholder.setAttribute('data-iframe-state', 'loading');
+    var labelEl = placeholder.querySelector('.lxra-iframe-placeholder-label');
+    if (labelEl) labelEl.textContent = 'Checking embed policy…';
+    var loadBtn = placeholder.querySelector('.lxra-iframe-placeholder-load');
+    if (loadBtn) loadBtn.disabled = true;
+    var probe = null;
+    try {
+      if (_EmbedMenu && typeof _EmbedMenu.requestExternalEmbedPolicy === 'function') {
+        var parentOrigin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : '';
+        probe = _EmbedMenu.requestExternalEmbedPolicy(src, { parentOrigin: parentOrigin });
+      }
+    } catch (err) { probe = null; }
+    var done = function (policy) {
+      if (!placeholder.parentNode) return;
+      var embeddable = !!(policy && policy.embeddable);
+      if (embeddable) {
+        _materializeIframeFromPlaceholder(placeholder);
+        return;
+      }
+      // Not embeddable — show an "open in browser" fallback.
+      placeholder.setAttribute('data-iframe-state', 'blocked');
+      if (labelEl) labelEl.textContent = 'Cannot embed';
+      var hostEl = placeholder.querySelector('.lxra-iframe-placeholder-host');
+      if (hostEl) {
+        var reason = (policy && policy.reason) || 'The page cannot be embedded (iframe policy).';
+        hostEl.textContent = reason;
+      }
+      if (loadBtn) {
+        loadBtn.className = 'lxra-iframe-placeholder-open-browser';
+        loadBtn.textContent = 'Open in browser';
+        loadBtn.disabled = false;
+      }
+    };
+    if (probe && typeof probe.then === 'function') {
+      probe.then(done).catch(function () { done(null); });
+    } else {
+      // No probe available — assume embeddable and just materialize.
+      _materializeIframeFromPlaceholder(placeholder);
+    }
+  }
+
+  // Replace a placeholder span with a real iframe element built from
+  // the saved data-iframe-attrs. Used by both the click handler and
+  // the legacy "preserve live iframes across rebuild" path.
+  function _materializeIframeFromPlaceholder(placeholder) {
+    if (!placeholder || !placeholder.parentNode) return null;
+    var src = placeholder.getAttribute('data-iframe-src') || '';
+    var attrs = placeholder.getAttribute('data-iframe-attrs') || '';
+    var decoded = attrs
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&');
+    var iframe = document.createElement('iframe');
+    var attrRe = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+    var m;
+    while ((m = attrRe.exec(decoded)) !== null) {
+      if (m.index === attrRe.lastIndex) attrRe.lastIndex++;
+      var name = m[1];
+      var value = m[2] != null ? m[2] : (m[3] != null ? m[3] : (m[4] != null ? m[4] : ''));
+      if (name && name !== 'undefined') {
+        try { iframe.setAttribute(name, value); } catch (_) {}
+      }
+    }
+    if (!iframe.getAttribute('src') && src) iframe.setAttribute('src', src);
+    placeholder.parentNode.replaceChild(iframe, placeholder);
+    return iframe;
   }
 
   // Per-render accumulators (only populated when profiling is active)
@@ -2278,6 +2398,18 @@ var LexeraDashboard = (function () {
       }
       if (BoardDataStore.getSaveInFlight() && !isBoardDirty()) {
         traceFrontendAction('info', 'sse.fileChanged.deferred', 'Deferring board reload because save is in flight', {
+          boardId: activeBoardId,
+          kind: kind
+        });
+        return;
+      }
+      // If the user is already looking at the conflict dialog, don't
+      // fire another rebase for each additional SSE event. The user
+      // must resolve the current conflict first; when they do, any
+      // newer state is handled either via "reload" (fetches latest)
+      // or "overwrite" (pushes local draft against latest base).
+      if (_externalRebaseDialogState && _externalRebaseDialogState.overlay && _externalRebaseDialogState.overlay.isConnected) {
+        traceFrontendAction('info', 'sse.fileChanged.dialogOpen', 'Conflict dialog already open; skipping redundant rebase', {
           boardId: activeBoardId,
           kind: kind
         });
@@ -5152,11 +5284,12 @@ var LexeraDashboard = (function () {
   async function commitHierarchyTreeEdit(boardId, boardData, options) { return BoardDataStore.commitHierarchyTreeEdit(boardId, boardData, options); }
   async function commitBoardMutations(changedBoards, options) { return BoardDataStore.commitBoardMutations(changedBoards, options); }
 
-  function showConflictDialog(conflictCount, autoMerged) {
-    var overlay = document.createElement('div');
-    overlay.className = 'dialog-overlay';
-    var dialog = document.createElement('div');
-    dialog.className = 'dialog dialog--wide';
+  // Singleton guard mirroring the external-rebase dialog: at most one
+  // merge-conflict modal on screen at a time, even if save-time merge
+  // conflicts fire repeatedly.
+  var _mergeConflictDialogState = null;
+
+  function _renderMergeConflictDialogBody(dialog, conflictCount, autoMerged) {
     dialog.innerHTML =
       '<div class="dialog-title">Merge Conflict</div>' +
       '<div class="dialog-message">' +
@@ -5168,15 +5301,31 @@ var LexeraDashboard = (function () {
         '<button class="btn-small btn-cancel" data-conflict-action="reload">Load Server Version</button>' +
         '<button class="btn-small btn-primary" data-conflict-action="overwrite">Overwrite With My Version</button>' +
       '</div>';
+  }
+
+  function showConflictDialog(conflictCount, autoMerged) {
+    if (_mergeConflictDialogState && _mergeConflictDialogState.overlay && _mergeConflictDialogState.overlay.isConnected) {
+      _renderMergeConflictDialogBody(_mergeConflictDialogState.dialog, conflictCount, autoMerged);
+      return;
+    }
+    var overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'dialog dialog--wide';
+    _renderMergeConflictDialogBody(dialog, conflictCount, autoMerged);
 
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
+
+    var state = { overlay: overlay, dialog: dialog };
+    _mergeConflictDialogState = state;
 
     dialog.addEventListener('click', async function (e) {
       var btn = e.target.closest('[data-conflict-action]');
       if (!btn) return;
       var action = btn.getAttribute('data-conflict-action');
       overlay.remove();
+      if (_mergeConflictDialogState === state) _mergeConflictDialogState = null;
       if (action === 'reload') {
         loadBoard(activeBoardId);
         return;
@@ -5187,12 +5336,23 @@ var LexeraDashboard = (function () {
     });
   }
 
-  function showExternalRebaseConflictDialog(result) {
-    if (!result) return;
-    var overlay = document.createElement('div');
-    overlay.className = 'dialog-overlay';
-    var dialog = document.createElement('div');
-    dialog.className = 'dialog dialog--wide';
+  // Singleton tracker for the external-rebase conflict dialog.
+  // Without this, every SSE `MainFileChanged` event that arrives while
+  // the dialog is already open spawns another rebase → another modal
+  // on top of the existing one. After ~10 rapid file saves from an
+  // external editor the user was buried under a stack of identical
+  // dialogs.
+  //
+  // Contract: at most ONE dialog is ever on screen. If a new conflict
+  // arrives while the dialog is open, we update the existing dialog's
+  // body so the user always sees the latest conflict counts, and the
+  // click handler reads `state.result` (not a closure over the first
+  // result) so their action applies to the newest payload. New changes
+  // are still handled because both "reload" and "overwrite" operate
+  // against the latest server state anyway.
+  var _externalRebaseDialogState = null;
+
+  function _renderExternalRebaseDialogBody(dialog, result) {
     dialog.innerHTML =
       '<div class="dialog-title">External Changes Need Resolution</div>' +
       '<div class="dialog-message">' +
@@ -5207,15 +5367,38 @@ var LexeraDashboard = (function () {
         '<button class="btn-small btn-cancel" data-rebase-action="reload">Load Disk Version</button>' +
         '<button class="btn-small btn-primary" data-rebase-action="overwrite">Overwrite Disk With Local Draft</button>' +
       '</div>';
+  }
+
+  function showExternalRebaseConflictDialog(result) {
+    if (!result) return;
+
+    // Already open — just refresh its body with the latest result and
+    // return. The existing click handler will read the updated result
+    // from `state.result` when the user eventually clicks.
+    if (_externalRebaseDialogState && _externalRebaseDialogState.overlay && _externalRebaseDialogState.overlay.isConnected) {
+      _externalRebaseDialogState.result = result;
+      _renderExternalRebaseDialogBody(_externalRebaseDialogState.dialog, result);
+      return;
+    }
+
+    var overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'dialog dialog--wide';
+    _renderExternalRebaseDialogBody(dialog, result);
 
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
+
+    var state = { overlay: overlay, dialog: dialog, result: result };
+    _externalRebaseDialogState = state;
 
     dialog.addEventListener('click', async function (e) {
       var btn = e.target.closest('[data-rebase-action]');
       if (!btn) return;
       var action = btn.getAttribute('data-rebase-action');
       overlay.remove();
+      if (_externalRebaseDialogState === state) _externalRebaseDialogState = null;
       if (action === 'reload') {
         pendingExternalRebaseConflict = null;
         loadBoard(activeBoardId);
@@ -5225,7 +5408,7 @@ var LexeraDashboard = (function () {
         await overwriteBoardWithLocalDraft('external-rebase-conflict-dialog');
         return;
       }
-      pendingExternalRebaseConflict = pendingExternalRebaseConflict || { result: result, savedAt: Date.now() };
+      pendingExternalRebaseConflict = pendingExternalRebaseConflict || { result: state.result, savedAt: Date.now() };
       showNotification('Local draft kept. Resolve the external change before saving.');
     });
   }
@@ -5714,20 +5897,37 @@ var LexeraDashboard = (function () {
 
   var _notificationQueue = [];
   var _notificationActive = null;
+  var _notificationActiveMessage = null;
 
   /**
    * Show a toast notification.
    * @param {string} message — text to display
-   * @param {object} [opts] — optional: { variant: 'error'|'success'|'warn'|'info', duration: ms, action: { label, callback } }
+   * @param {object} [opts] — optional: { variant: 'error'|'success'|'warn'|'info', duration: ms, action: { label, callback }, dedupe: boolean }
+   *
+   * Dedupe: by default, if the same message is currently showing OR
+   * already queued, the new call is dropped. This prevents 10 stacked
+   * "Board file changed on disk" toasts when an external editor saves
+   * rapidly. Pass `dedupe: false` to force-queue (e.g. distinct user
+   * actions that happen to have identical wording).
    */
   function showNotification(message, opts) {
     opts = opts || {};
+    if (opts.dedupe !== false) {
+      if (_notificationActiveMessage === message) return;
+      for (var qi = 0; qi < _notificationQueue.length; qi++) {
+        if (_notificationQueue[qi].message === message) return;
+      }
+    }
     _notificationQueue.push({ message: message, opts: opts });
     if (!_notificationActive) _drainNotificationQueue();
   }
 
   function _drainNotificationQueue() {
-    if (_notificationQueue.length === 0) { _notificationActive = null; return; }
+    if (_notificationQueue.length === 0) {
+      _notificationActive = null;
+      _notificationActiveMessage = null;
+      return;
+    }
     var item = _notificationQueue.shift();
     var el = document.createElement('div');
     var variant = item.opts.variant || 'info';
@@ -5752,6 +5952,7 @@ var LexeraDashboard = (function () {
     el.offsetHeight; // force reflow
     el.classList.add('visible');
     _notificationActive = el;
+    _notificationActiveMessage = item.message;
     var duration = item.opts.duration || 3000;
     setTimeout(function () {
       if (!el.isConnected) return;
@@ -7578,17 +7779,22 @@ var LexeraDashboard = (function () {
     // ─────────────────────────────────────────────────────────────────
     // PRESERVE LIVE IFRAMES ACROSS THE REBUILD (by src URL)
     // ─────────────────────────────────────────────────────────────────
-    // The card render cache stores HTML where `<iframe>` tags have been
-    // replaced with `<span class="lxra-iframe-placeholder" ...>`
-    // placeholders (see `_stripIframesFromHtml`). This means the rebuild
-    // never creates throwaway iframes during innerHTML parsing —
-    // essential because each throwaway iframe would synchronously boot
-    // a remote SPA (Miro/particify) costing ~130ms during appendChild.
+    // ─────────────────────────────────────────────────────────────────
+    // PRESERVE ALREADY-LIVE IFRAMES ACROSS THE REBUILD
+    // ─────────────────────────────────────────────────────────────────
+    // Card HTML has `<iframe>` tags stripped into placeholder spans at
+    // render-cache time (see `_stripIframesFromHtml`). Placeholders are
+    // NOT auto-materialized — the user must click "Load embed" to
+    // activate each one (see `_activateIframePlaceholder`). This keeps
+    // the initial board render fast and avoids the ~1000 log messages
+    // per Miro iframe boot.
     //
-    // Before the clear, we detach every live iframe into a hidden holder
-    // keyed by src URL (keeps its browsing context alive). After the
-    // rebuild we walk the placeholder spans and insert either the
-    // preserved live iframe or a fresh one (first load only).
+    // However, if the user HAS clicked to load an embed, that iframe
+    // is now live and we must not destroy it on re-render. Before the
+    // rebuild we detach every live iframe into a hidden holder keyed
+    // by src URL. After the rebuild, we walk the placeholder spans
+    // and swap back any iframe whose src matches — so users don't lose
+    // their loaded embeds to a re-render.
     var _preservedBySrc = {};
     var _iframeHolder = null;
     var _liveIframes = cc.getElementsByTagName('iframe');
@@ -7619,25 +7825,21 @@ var LexeraDashboard = (function () {
     renderNewFormatBoard();
 
     // ─────────────────────────────────────────────────────────────────
-    // INSERT IFRAMES INTO THEIR PLACEHOLDERS
+    // SWAP BACK PREVIOUSLY-LOADED IFRAMES INTO THEIR PLACEHOLDERS
     // ─────────────────────────────────────────────────────────────────
-    // Walk the placeholder spans and materialize each one: use the
-    // preserved live iframe if its src matches (fast path — no boot),
-    // otherwise create a fresh iframe element (first load path — Miro
-    // will boot once). Either way, the new fragment only sees iframes
-    // ONCE, via our explicit insertion here — not via the HTML parser.
-    // Iframe lifecycle counters — initialized once per test via the
-    // test harness. _reusedCount tracks preserved iframes that were
-    // successfully swapped in (no browsing-context rebuild). _freshCount
-    // tracks newly-created iframes (first load or unmatched src).
+    // Walk placeholder spans and ONLY swap in an iframe for placeholders
+    // whose src has a matching preserved iframe in the holder. Unloaded
+    // placeholders stay as visible "Load embed" prompts. Placeholders
+    // for iframes not in the holder (fresh render, nothing was clicked
+    // yet) remain untouched — the user clicks to load them individually.
     if (typeof window !== 'undefined') {
       if (window.__lexeraIframeReuseCount == null) window.__lexeraIframeReuseCount = 0;
       if (window.__lexeraIframeFreshCount == null) window.__lexeraIframeFreshCount = 0;
     }
-    var _placeholders = cc.getElementsByClassName(_IFRAME_PLACEHOLDER_CLASS);
-    if (_placeholders.length > 0) {
-      // Copy to array — replacing children while iterating a live
-      // HTMLCollection makes items shift.
+    var _preservedCount = 0;
+    for (var _psk in _preservedBySrc) _preservedCount++;
+    if (_preservedCount > 0) {
+      var _placeholders = cc.getElementsByClassName(_IFRAME_PLACEHOLDER_CLASS);
       var _placeholdersArr = [];
       for (var _plh = 0; _plh < _placeholders.length; _plh++) _placeholdersArr.push(_placeholders[_plh]);
       for (var _pli = 0; _pli < _placeholdersArr.length; _pli++) {
@@ -7649,32 +7851,7 @@ var LexeraDashboard = (function () {
           _ph.parentNode.replaceChild(_live, _ph);
           delete _preservedBySrc[_phSrc];
           if (typeof window !== 'undefined') window.__lexeraIframeReuseCount++;
-          continue;
         }
-        // No preserved iframe — create a fresh one from the saved attrs
-        // (first time this board is rendered since launch).
-        if (typeof window !== 'undefined') window.__lexeraIframeFreshCount++;
-        var _freshIframe = document.createElement('iframe');
-        var _phAttrs = _ph.getAttribute('data-iframe-attrs') || '';
-        // Decode entity-encoded attrs and copy onto the new iframe.
-        var _decodedAttrs = _phAttrs
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/&amp;/g, '&');
-        // Naive attribute extraction — good enough for the HTML we
-        // generate. `name="value"` or `name='value'` or bare `name`.
-        var _attrRe = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
-        var _m;
-        while ((_m = _attrRe.exec(_decodedAttrs)) !== null) {
-          var _name = _m[1];
-          var _value = _m[2] != null ? _m[2] : (_m[3] != null ? _m[3] : (_m[4] != null ? _m[4] : ''));
-          if (_name && _name !== 'undefined') {
-            try { _freshIframe.setAttribute(_name, _value); } catch (_) {}
-          }
-        }
-        if (!_freshIframe.getAttribute('src') && _phSrc) _freshIframe.setAttribute('src', _phSrc);
-        _ph.parentNode.replaceChild(_freshIframe, _ph);
       }
       // Any preserved iframe that didn't match a placeholder is
       // orphaned (card removed, markdown changed) — destroy them.
@@ -7684,6 +7861,8 @@ var LexeraDashboard = (function () {
         }
       }
     }
+    // Make sure the delegated click handler is wired once per container.
+    _setupIframePlaceholderClickHandler();
     _rcMark('afterRenderNewFormatBoard');
     // Restore scroll position immediately after DOM rebuild
     cc.scrollTop = savedScrollTop;
@@ -9458,6 +9637,7 @@ var LexeraDashboard = (function () {
   function clearCachedFilePreviewState(b, f) { if (_EmbedMenu) _EmbedMenu.clearCachedFilePreviewState(b, f); }
   function clearBoardPreviewCaches(b) { if (_EmbedMenu) _EmbedMenu.clearBoardPreviewCaches(b); }
   function requestFileInfo(b, f) { return _EmbedMenu ? _EmbedMenu.requestFileInfo(b, f) : Promise.resolve(null); }
+  function peekFileInfoSync(b, f) { return _EmbedMenu && typeof _EmbedMenu.peekFileInfoSync === 'function' ? _EmbedMenu.peekFileInfoSync(b, f) : undefined; }
   function renderCachedSpecialPreview(el, b, f, k, o) { return _EmbedMenu ? _EmbedMenu.renderCachedSpecialPreview(el, b, f, k, o) : Promise.resolve(false); }
   function requestRenderedPlantUmlSvg(b, c) { return _EmbedMenu ? _EmbedMenu.requestRenderedPlantUmlSvg(b, c) : Promise.reject(new Error('module not loaded')); }
   function buildSpecialPreviewPlaceholderMessage(k, b, f) { return _EmbedMenu ? _EmbedMenu.buildSpecialPreviewPlaceholderMessage(k, b, f) : ''; }
@@ -10087,7 +10267,14 @@ var LexeraDashboard = (function () {
       getDisplayFileNameFromPath: getDisplayFileNameFromPath,
       isRenderedSpecialPreviewKind: isRenderedSpecialPreviewKind,
       applyAbbreviationsToHtml: applyAbbreviationsToHtml,
-      sanitizeCssLength: sanitizeCssLength
+      sanitizeCssLength: sanitizeCssLength,
+      // Sync cache peek for file-existence. When the inline renderer
+      // is emitting a `<video>` / `<audio>` / `<img>` for a local
+      // file, it asks the cache whether we already know the file is
+      // missing. If so, the renderer bakes a broken-media placeholder
+      // into the HTML instead of emitting a tag that will 404 on load.
+      peekFileInfoSync: peekFileInfoSync,
+      requestFileInfo: requestFileInfo
     });
     return _inlineRendererHelpers;
   }
@@ -10684,7 +10871,7 @@ var LexeraDashboard = (function () {
       }
       return list;
     },
-    setTestBoard: function (boardData, boardId) {
+    setTestBoard: function (boardData, boardId, options) {
       var _stbStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
       var _stbTrace = window.__lexeraProfileMutations ? {} : null;
       function _stbMark(name) {
@@ -10692,85 +10879,29 @@ var LexeraDashboard = (function () {
       }
 
       // ─────────────────────────────────────────────────────────────────
-      // PATH DECISION: targeted refresh vs full render
+      // setTestBoard({boardData, boardId, options})
       // ─────────────────────────────────────────────────────────────────
-      // Rule: a full board rebuild should only happen on initial load.
-      // Every other call (including test teardown restoring a snapshot)
-      // should diff against the current state and use targeted refresh.
+      // Rule: never run renderColumns/renderNewFormatBoard after the
+      // initial board load. The test harness always knows what it
+      // changed on a board — it should tell us via `options.targets`
+      // (a list of refresh-targets compatible with
+      // refreshTargetedElements) so we can skip the diff and run the
+      // minimal DOM work.
       //
-      // We take the full-render path only when:
-      //   (a) No previous board is loaded (first-time setup), or
-      //   (b) The board id changed (switching boards), or
-      //   (c) The delta is too large / structural for deltaToTargets
-      //       to express as a list of targets (it returns null).
+      // Supported option shapes:
+      //   options.targets    — array of {type, ...} refresh targets
+      //   options.fullRender — if true, force a full renderMainView
+      //                        (for board switches, fixture swaps, etc.)
       //
-      // Otherwise: apply the new fullBoardData in place, diff old→new,
-      // translate to targets, and dispatch refreshTargetedElements.
-      // Miro iframes and all unchanged DOM nodes survive across the
-      // swap because nothing touches them.
-      var _stbPrevFullBoard = fullBoardData;
-      var _stbPrevActive = activeBoardData;
-      var _stbPrevBoardId = activeBoardId;
-      var _stbNextBoardId = boardId || '__test__';
-      var _stbIsSameBoard = _stbPrevBoardId && _stbPrevBoardId === _stbNextBoardId
-                            && _stbPrevFullBoard && _stbPrevActive
-                            && Array.isArray(_stbPrevActive.columns);
-      // Structural-signature guard: the targeted-refresh path is only
-      // safe when the previous board and the new board have the same
-      // row/stack/column structure by id. Otherwise (e.g. test fixture
-      // boards replacing a 917-card board with a 4-card fixture) the
-      // diff is too large to express as targets, and any partial
-      // application leaves the DOM in an inconsistent state. In that
-      // case we fall through to the full renderMainView path so the
-      // DOM is rebuilt from scratch against the new structure.
-      function _stbSignature(board) {
-        if (!board || !Array.isArray(board.rows)) return null;
-        var parts = [];
-        for (var r = 0; r < board.rows.length; r++) {
-          var row = board.rows[r];
-          if (!row || !row.id) return null;
-          var stacks = Array.isArray(row.stacks) ? row.stacks : [];
-          var sparts = [];
-          for (var s = 0; s < stacks.length; s++) {
-            var stack = stacks[s];
-            if (!stack || !stack.id) return null;
-            var cols = Array.isArray(stack.columns) ? stack.columns : [];
-            var cparts = [];
-            for (var c = 0; c < cols.length; c++) {
-              var col = cols[c];
-              if (!col || !col.id) return null;
-              cparts.push(col.id);
-            }
-            sparts.push(stack.id + ':[' + cparts.join(',') + ']');
-          }
-          parts.push(row.id + ':(' + sparts.join(';') + ')');
-        }
-        return parts.join('|');
-      }
-      var _stbSameStructure = false;
-      if (_stbIsSameBoard) {
-        var _stbPrevSig = _stbSignature(_stbPrevFullBoard);
-        var _stbNextSig = _stbSignature(boardData);
-        _stbSameStructure = !!(_stbPrevSig && _stbNextSig && _stbPrevSig === _stbNextSig);
-      }
-      var _stbTargets = null;
-      if (_stbIsSameBoard && _stbSameStructure) {
-        try {
-          var _stbApi = (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta)
-            ? globalThis.LexeraBoardDelta
-            : (typeof window !== 'undefined' ? window.LexeraBoardDelta : null);
-          if (_stbApi && typeof _stbApi.computeBoardDelta === 'function'
-              && typeof _stbApi.deltaToTargets === 'function') {
-            var _stbDelta = _stbApi.computeBoardDelta(_stbPrevFullBoard, boardData);
-            // Compute targets against the PRE-change activeBoardData so
-            // position lookups (flat col index, visible card index)
-            // resolve to the DOM's current layout.
-            _stbTargets = _stbApi.deltaToTargets(_stbDelta, _stbPrevActive);
-          }
-        } catch (_) { _stbTargets = null; }
-      }
+      // If neither is given we assume the caller doesn't know what
+      // changed and fall back to a full render. This is the safe
+      // default for initial test setup but should be avoided in
+      // per-test mutations.
+      options = options || {};
+      var _stbHasTargets = Array.isArray(options.targets);
+      var _stbForceFull = !!options.fullRender;
 
-      activeBoardId = _stbNextBoardId;
+      activeBoardId = boardId || '__test__';
       setFullBoardDataState(boardData);
       if (fullBoardData) {
         ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
@@ -10791,14 +10922,19 @@ var LexeraDashboard = (function () {
         refreshHierarchy: true
       });
       _stbMark('afterCommit');
-      if (_stbTargets && _stbTargets.length > 0) {
-        // Fast path: targeted refresh only. No renderMainView, no
-        // renderColumns. Test teardown + most polling updates land here.
-        refreshTargetedElements(_stbTargets);
+      if (_stbHasTargets && !_stbForceFull) {
+        // Fast path: caller told us exactly what to refresh. No diff,
+        // no walk of 917-card arrays, no full render. Miro iframes
+        // and unchanged DOM nodes survive across the swap.
+        if (options.targets.length > 0) {
+          refreshTargetedElements(options.targets);
+        }
+        // If caller explicitly passed [] (empty targets), that's a
+        // no-op — data is updated, DOM is left alone.
       } else {
-        // Slow path: full render. Only hit on first load, board switch,
-        // or a structural delta deltaToTargets can't express (e.g.
-        // rows added/removed).
+        // Slow path: full render. Used for initial load, board
+        // switch, fixture swap (fundamentally different structure),
+        // or any call that doesn't pass targets.
         renderMainView();
       }
       _stbMark('afterRenderMainView');
@@ -10808,14 +10944,25 @@ var LexeraDashboard = (function () {
         if (!window.__lexeraMutationProfile) window.__lexeraMutationProfile = [];
         window.__lexeraMutationProfile.push({
           total: _stbTrace.afterDashboardSchedule || 0,
-          targets: (_stbTargets && _stbTargets.length > 0)
-            ? ('setTestBoard→targeted(' + _stbTargets.length + ')')
+          targets: (_stbHasTargets && !_stbForceFull)
+            ? ('setTestBoard→targeted(' + options.targets.length + ')')
             : 'setTestBoard→full',
           phases: _stbTrace
         });
       }
     },
     moveCard: moveCard,
+    // Full board-operation surface for the do/undo test pattern.
+    // Tests call these exactly the way production code does, so the
+    // test exercises the real refresh/undo path — no snapshot restore.
+    undo: function () { return undo(); },
+    redo: function () { return redo(); },
+    addRow: function (atIndex) { return addRow(atIndex); },
+    addColumnToStack: function (rowIdx, stackIdx, atColIdx) { return addColumnToStack(rowIdx, stackIdx, atColIdx); },
+    addColumn: function (atIndex) { return addColumn(atIndex); },
+    addColumnRelativeToDisplayPosition: function (r, s, c, b) { return addColumnRelativeToDisplayPosition(r, s, c, b); },
+    insertCardAtIndex: function (colIdx, atCardIdx) { return insertCardAtIndex(colIdx, atCardIdx); },
+    addCardToActiveBoard: addCardToActiveBoard,
     loadBoard: loadBoard,
     selectBoard: function (boardId) { return selectBoard(boardId); },
     renderColumns: renderColumns,

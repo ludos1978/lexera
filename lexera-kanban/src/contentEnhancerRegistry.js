@@ -26,9 +26,38 @@
     return lazyObserver;
   }
 
-  // ── Lazy image handling ────────────────────────────────────────────
-  // Images with data-lazy-src get their src swapped when observed
+  // ── Lazy media handling ────────────────────────────────────────────
+  // <img>, <video>, and <audio> elements with `data-lazy-src` stay
+  // empty (no network fetch) until they enter the viewport. Without
+  // this, every card with a video/audio tag would fire a network
+  // request for the media URL on every render — including broken
+  // references that generate 404s logged to the console.
+  //
+  // The image pattern uses a 1x1 gif placeholder for `src`; video and
+  // audio don't need any placeholder since empty src is valid HTML
+  // and doesn't load anything.
   var imageObserver = null;
+
+  function _activateLazyMedia(el) {
+    if (!el) return;
+    var lazySrc = el.getAttribute('data-lazy-src');
+    if (!lazySrc) return;
+    var tag = el.tagName ? el.tagName.toLowerCase() : '';
+    if (tag === 'img') {
+      el.src = lazySrc;
+    } else if (tag === 'video' || tag === 'audio') {
+      // For video/audio, setting .src triggers a metadata load based on
+      // the `preload` attribute already on the element.
+      el.src = lazySrc;
+      // If the element is already in the DOM, `load()` re-reads the
+      // new src according to the preload attribute. Otherwise setting
+      // src is enough.
+      try { if (typeof el.load === 'function') el.load(); } catch (_) {}
+    } else {
+      el.src = lazySrc;
+    }
+    el.removeAttribute('data-lazy-src');
+  }
 
   function getImageObserver() {
     if (imageObserver) return imageObserver;
@@ -36,13 +65,9 @@
     imageObserver = new IntersectionObserver(function (entries) {
       for (var i = 0; i < entries.length; i++) {
         if (!entries[i].isIntersecting) continue;
-        var img = entries[i].target;
-        imageObserver.unobserve(img);
-        var lazySrc = img.getAttribute('data-lazy-src');
-        if (lazySrc) {
-          img.src = lazySrc;
-          img.removeAttribute('data-lazy-src');
-        }
+        var el = entries[i].target;
+        imageObserver.unobserve(el);
+        _activateLazyMedia(el);
       }
     }, { rootMargin: LAZY_ROOT_MARGIN });
     return imageObserver;
@@ -52,23 +77,18 @@
     if (!root) return;
     var observer = getImageObserver();
     if (!observer) return;
-    var imgs = root.querySelectorAll('img[data-lazy-src]');
-    for (var i = 0; i < imgs.length; i++) {
-      observer.observe(imgs[i]);
+    // Cover img, video, and audio with a single observer.
+    var els = root.querySelectorAll('img[data-lazy-src], video[data-lazy-src], audio[data-lazy-src]');
+    for (var i = 0; i < els.length; i++) {
+      observer.observe(els[i]);
     }
   }
 
   function swapLazyImages(el) {
     if (!el) return;
-    // Swap images within the element that just became visible
-    var imgs = el.querySelectorAll ? el.querySelectorAll('img[data-lazy-src]') : [];
-    for (var i = 0; i < imgs.length; i++) {
-      var lazySrc = imgs[i].getAttribute('data-lazy-src');
-      if (lazySrc) {
-        imgs[i].src = lazySrc;
-        imgs[i].removeAttribute('data-lazy-src');
-      }
-    }
+    // Activate any lazy media within the element that just became visible.
+    var els = el.querySelectorAll ? el.querySelectorAll('img[data-lazy-src], video[data-lazy-src], audio[data-lazy-src]') : [];
+    for (var i = 0; i < els.length; i++) _activateLazyMedia(els[i]);
   }
 
   // ── Registry ───────────────────────────────────────────────────────

@@ -256,7 +256,15 @@
       "WebFetch(domain:esm.sh)",
       "Read(//Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-backend/src-tauri/src/**)",
       "Bash(find /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-kanban -type f \\\\\\(-name *.swift -o -name *.m -o -name *.mm \\\\\\))",
-      "Bash(sh scripts/sync-excalidraw-assets.sh)"
+      "Bash(sh scripts/sync-excalidraw-assets.sh)",
+      "Bash(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/run-lexera-tests.sh --kill)",
+      "Bash(./run-lexera-tests.sh)",
+      "Bash(./run-lexera-tests.sh --board=630a7400c558 --delay=15000)",
+      "Bash(./run-lexera-tests.sh --board=630a7420c558 --delay=15000)",
+      "Read(//Users/rspoerri/**)",
+      "Read(//Users/rspoerri/_REPOSITORIES/**)",
+      "Bash(osascript -e 'tell application \"System Events\" to tell process \"Lexera Kanban\" to get name of windows')",
+      "Bash(osascript -e 'tell application \"System Events\" to get name of every process whose visible is true')"
     ],
     "deny": [],
     "ask": []

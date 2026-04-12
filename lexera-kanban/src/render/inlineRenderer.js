@@ -41,6 +41,8 @@ var LexeraInlineRenderer = (function () {
     var isRenderedSpecialPreviewKind = deps.isRenderedSpecialPreviewKind;
     var applyAbbreviationsToHtml = deps.applyAbbreviationsToHtml;
     var sanitizeCssLength = deps.sanitizeCssLength;
+    var peekFileInfoSync = typeof deps.peekFileInfoSync === 'function' ? deps.peekFileInfoSync : null;
+    var requestFileInfo = typeof deps.requestFileInfo === 'function' ? deps.requestFileInfo : null;
 
     function renderTitleInline(text, boardId, options) {
       boardId = boardId || getActiveBoardId() || '';
@@ -205,6 +207,23 @@ var LexeraInlineRenderer = (function () {
           src = LexeraApi.fileUrl(boardId, fileRef.path);
         }
 
+        // Sync cache peek for local files: if the cache already knows
+        // the file is missing, bake the `embed-broken` class into the
+        // container HTML so we skip loading the media entirely. If the
+        // cache is unknown, kick off an async probe so the next render
+        // knows. This prevents 404 spam on every render of a card that
+        // references a moved/deleted file.
+        var preKnownMissing = false;
+        if (!isExternal && boardId && peekFileInfoSync) {
+          var cached = peekFileInfoSync(boardId, fileRef.path);
+          if (cached && cached.exists === false && !cached.external) {
+            preKnownMissing = true;
+          } else if (cached === undefined && requestFileInfo) {
+            // Fire-and-forget: populates the cache for the next render.
+            try { requestFileInfo(boardId, fileRef.path); } catch (_) {}
+          }
+        }
+
         var mediaStyleAttr = getMarkdownMediaStyleAttr(imageAttrs, { allowHeightOnImages: true });
         var previewKind = getEmbedPreviewKind(filePath);
         var inner = '';
@@ -212,9 +231,13 @@ var LexeraInlineRenderer = (function () {
           var imageTitleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
           inner = '<img data-lazy-src="' + src + '" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="' + alt + '"' + imageTitleAttr + mediaStyleAttr + ' onerror="if(this.getAttribute(\'data-lazy-src\')){return}this.parentElement.classList.add(\'embed-broken\')">';
         } else if (category === 'video') {
-          inner = '<video controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
+          // data-lazy-src defers the network fetch until the element
+          // enters the viewport. contentEnhancerRegistry swaps it into
+          // `src` and calls .load() at that point, which then honors
+          // `preload="metadata"` to fetch just enough to show duration.
+          inner = '<video controls preload="metadata" data-lazy-src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
         } else if (category === 'audio') {
-          inner = '<audio controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
+          inner = '<audio controls preload="metadata" data-lazy-src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
         } else if (isRenderedSpecialPreviewKind(previewKind)) {
           inner = getFileEmbedChipHtml(previewKind, filePath, mediaStyleAttr);
         } else if (category === 'document') {
@@ -228,7 +251,8 @@ var LexeraInlineRenderer = (function () {
         var previewPageAttr = /^\d+$/.test(String(previewPageValue || ''))
           ? ' data-preview-page="' + escapeAttr(String(Math.max(1, parseInt(previewPageValue, 10)))) + '"'
           : '';
-        var embedHtml = '<span class="embed-container" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '" data-embed-index="' + escapeAttr(String(embedIndex)) + '"' +
+        var containerClass = 'embed-container' + (preKnownMissing ? ' embed-broken' : '');
+        var embedHtml = '<span class="' + containerClass + '" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '" data-embed-index="' + escapeAttr(String(embedIndex)) + '"' +
           ' data-alt-text="' + escapeAttr(decodeHtmlEntities(alt || '')) + '"' +
           ' data-embed-caption="' + escapeAttr(titleText || '') + '"' +
           previewPageAttr + '>' +

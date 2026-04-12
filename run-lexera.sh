@@ -16,6 +16,10 @@ TARGET_DIR="$SCRIPT_DIR/target"
 PATH_MARKER="$TARGET_DIR/.project-path"
 BACKEND_READY_PORTS=(13080 8083 1431 12080 14080 11080 15080)
 
+# Extra args forwarded to the kanban binary after `--`. Used by
+# `--run-tests` (auto-start frontend tests) etc.
+KANBAN_EXTRA_ARGS=()
+
 read_configured_backend_port() {
   node <<'EOF'
 const fs = require('fs');
@@ -109,6 +113,16 @@ if [[ "${1:-}" == "--kill" ]]; then
   exit 0
 fi
 
+# Parse forwarded kanban args. Everything starting with `--run-tests`
+# or `--quit-after-tests` is passed through to the kanban binary.
+for arg in "$@"; do
+  case "$arg" in
+    --run-tests|--run-tests=*|--run-tests-delay=*|--run-tests-output=*|--run-tests-board=*|--quit-after-tests)
+      KANBAN_EXTRA_ARGS+=("$arg")
+      ;;
+  esac
+done
+
 # ── Build browser clipper assets ────────────────────────────────
 if [[ -d "$WEB_CLIPPER_DIR" ]]; then
   echo "Building lexera-web-clipper..."
@@ -148,7 +162,12 @@ echo "Backend ready at $BACKEND_READY_URL"
 
 # ── Start kanban ─────────────────────────────────────────────────
 echo "Starting lexera-kanban..."
-(cd "$KANBAN_DIR" && exec cargo tauri dev) 2>&1 | sed 's/^/[kanban]  /' &
+if [[ ${#KANBAN_EXTRA_ARGS[@]} -gt 0 ]]; then
+  echo "  (with extra args: ${KANBAN_EXTRA_ARGS[*]})"
+  (cd "$KANBAN_DIR" && exec cargo tauri dev -- -- "${KANBAN_EXTRA_ARGS[@]}") 2>&1 | sed 's/^/[kanban]  /' &
+else
+  (cd "$KANBAN_DIR" && exec cargo tauri dev) 2>&1 | sed 's/^/[kanban]  /' &
+fi
 
 echo ""
 echo "Both services running. Press Ctrl+C to stop."

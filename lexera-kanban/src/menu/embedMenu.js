@@ -4818,6 +4818,7 @@ var LexeraEmbedMenu = (function () {
     getSpecialPreviewError: _w(getSpecialPreviewError),
     buildSpecialPreviewPlaceholderMessage: _w(buildSpecialPreviewPlaceholderMessage),
     requestFileInfo: _w(requestFileInfo),
+    peekFileInfoSync: _w(peekFileInfoSync),
     clearCachedFilePreviewState: _w(clearCachedFilePreviewState),
     clearBoardPreviewCaches: _w(clearBoardPreviewCaches),
     clearExternalEmbedPolicyCache: _w(clearExternalEmbedPolicyCache),

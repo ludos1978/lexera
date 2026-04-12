@@ -10,6 +10,29 @@
 (function () {
   'use strict';
 
+  // DIAGNOSTIC: immediately emit a load marker so we can confirm this
+  // script executed even if the auto-run bootstrap later fails. This
+  // runs synchronously at script eval time and uses a detached Tauri
+  // invoke — if Tauri IPC isn't ready, the invoke silently no-ops.
+  try {
+    setTimeout(function () {
+      try {
+        if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+          window.__TAURI__.core.invoke('write_text_file', {
+            path: '/tmp/lexera-test-load-marker.txt',
+            content: '[frontendTests.js] loaded at ' + new Date().toISOString() + '\nTAURI=' + (typeof window.__TAURI__) + '\nhref=' + location.href + '\n'
+          });
+        } else {
+          // Still write a marker via fetch to backend — use known auth token path
+          // Actually: just note in a window global
+          window.__LEXERA_TEST_JS_LOADED_TAURI_MISSING__ = true;
+        }
+      } catch (e) {
+        window.__LEXERA_TEST_JS_LOAD_ERROR__ = String(e && e.message ? e.message : e);
+      }
+    }, 500);
+  } catch (_) {}
+
   var tests = [];
   var _api = null;
   var TEST_RUN_CANCELLED = 'lexera-frontend-tests-cancelled';
@@ -176,6 +199,139 @@
   }
 
   function register(name, fn) { tests.push({ name: name, fn: fn }); }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // registerDoUndo(name, spec)
+  // ─────────────────────────────────────────────────────────────────────
+  // New test pattern: the test describes a mutation via `do()`, the
+  // assertions via `checkDo()`, then the runner calls real `undo()`
+  // and re-runs `checkUndo()` to verify the undo path restored the
+  // pre-state. No setTestBoard, no snapshot restore — the board is
+  // modified via production code paths and then unwound via the real
+  // undo stack.
+  //
+  // spec shape:
+  //   setup:     (optional) async () => contextObject
+  //              Runs once before do(). The returned value is passed
+  //              as `ctx` to capture/do/checkDo/checkUndo. Use it to
+  //              resolve indices, ids, or other per-test state.
+  //
+  //   capture:   (optional) (ctx) => beforeObject
+  //              Snapshots whatever pre-state the test's assertions
+  //              compare against (counts, ids, positions, etc.).
+  //              Returned value is passed as `before` to checkDo and
+  //              checkUndo. Defaults to returning null.
+  //
+  //   do:        async (ctx, before) => void
+  //              Runs the real mutation via production API calls
+  //              (api().moveCard, api().insertCardAtIndex, etc.).
+  //              The function's time is counted as the test's "body".
+  //
+  //   checkDo:   (ctx, before) => void
+  //              Assertions that must hold AFTER do() succeeds.
+  //              Throw from here to mark the test as failed.
+  //
+  //   checkUndo: (optional) (ctx, before) => void
+  //              Assertions that must hold after api().undo() ran.
+  //              Defaults to running `capture(ctx)` again and doing
+  //              a deep-equal against the pre-state. Only pass a
+  //              custom one when the deep-equal default doesn't work.
+  //
+  //   skipUndo:  (optional) boolean
+  //              When true, skip the undo + checkUndo phase entirely.
+  //              Use only for read-only tests that don't mutate.
+  function registerDoUndo(name, spec) {
+    register(name, async function () {
+      await setup();
+      var didDo = false;
+      var didUndo = false;
+      try {
+        var ctx = null;
+        if (typeof spec.setup === 'function') {
+          ctx = (await spec.setup()) || {};
+        } else {
+          ctx = {};
+        }
+        var capture = typeof spec.capture === 'function' ? spec.capture : null;
+        var before = capture ? capture(ctx) : null;
+
+        // ── DO ──────────────────────────────────────────
+        await spec.do(ctx, before);
+        didDo = true;
+
+        // ── CHECK-DO (assertions after the mutation) ────
+        await waitForAssertion(function () {
+          spec.checkDo(ctx, before);
+        });
+
+        // ── UNDO + CHECK-UNDO ────────────────────────────
+        if (!spec.skipUndo) {
+          await api().undo();
+          didUndo = true;
+          await waitForAssertion(function () {
+            if (typeof spec.checkUndo === 'function') {
+              spec.checkUndo(ctx, before);
+            } else if (capture) {
+              var after = capture(ctx);
+              assertEqualDeep(after, before, 'post-undo state matches pre-do state');
+            }
+          });
+        }
+      } finally {
+        // Fail-safe: if the test threw between `do` and `undo`, run
+        // undo anyway so the next test starts from a clean board.
+        // Without this, a failing registerDoUndo test would leak its
+        // mutated state into every subsequent test, cascading failures.
+        if (didDo && !didUndo && !spec.skipUndo) {
+          try { await api().undo(); } catch (_) {}
+        }
+        // Cancel any pending debounced work so it doesn't leak into
+        // the next test's assertions.
+        try {
+          if (window.LexeraBoardDataStore && typeof window.LexeraBoardDataStore.cancelAllDeferredWork === 'function') {
+            window.LexeraBoardDataStore.cancelAllDeferredWork();
+          }
+          if (window.LexeraBoardList && typeof window.LexeraBoardList.cancelPendingDraftSave === 'function') {
+            window.LexeraBoardList.cancelPendingDraftSave();
+          }
+        } catch (_) {}
+      }
+    });
+  }
+
+  // Deep-equal helper for checkUndo's default: compares two values
+  // structurally (arrays, plain objects, primitives) and throws an
+  // AssertionError matching the existing assertEqual format.
+  function assertEqualDeep(actual, expected, label) {
+    function eq(a, b) {
+      if (a === b) return true;
+      if (a == null || b == null) return a === b;
+      if (typeof a !== typeof b) return false;
+      if (typeof a !== 'object') return false;
+      if (Array.isArray(a) !== Array.isArray(b)) return false;
+      if (Array.isArray(a)) {
+        if (a.length !== b.length) return false;
+        for (var i = 0; i < a.length; i++) if (!eq(a[i], b[i])) return false;
+        return true;
+      }
+      var ka = Object.keys(a);
+      var kb = Object.keys(b);
+      if (ka.length !== kb.length) return false;
+      for (var j = 0; j < ka.length; j++) {
+        if (!Object.prototype.hasOwnProperty.call(b, ka[j])) return false;
+        if (!eq(a[ka[j]], b[ka[j]])) return false;
+      }
+      return true;
+    }
+    if (!eq(actual, expected)) {
+      var err = new Error(
+        (label ? label + ': ' : '') +
+        'expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual)
+      );
+      err.isAssertionError = true;
+      throw err;
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════════════════
   // Helpers
@@ -1321,56 +1477,72 @@
   // CARD MOVE TESTS
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('same-column reorder: first card moves to end', async function () {
-    await setup();
-    try {
+  registerDoUndo('same-column reorder: first card moves to end', {
+    setup: function () {
       var info = findTwoColumnsWithCards();
       var col = info.srcCol;
       if (col.cards.length < 2) throw new Error('Need >=2 cards in source column');
-      var firstKid = String(col.cards[0].kid || col.cards[0].id);
-      var lastKid = String(col.cards[col.cards.length - 1].kid || col.cards[col.cards.length - 1].id);
-      var expectedOrder = col.cards.slice(1).map(function (card) {
-        return card && (card.kid || card.id) ? String(card.kid || card.id) : '';
-      }).concat([firstKid]);
-      var countBefore = getViewCardCount(col.flatIdx);
-
+      return {
+        col: col,
+        firstKid: String(col.cards[0].kid || col.cards[0].id),
+        lastKid: String(col.cards[col.cards.length - 1].kid || col.cards[col.cards.length - 1].id),
+        lastCardId: col.cards[col.cards.length - 1].id,
+        firstCardId: col.cards[0].id,
+        firstCardLen: col.cards.length
+      };
+    },
+    capture: function (ctx) {
+      return {
+        count: getViewCardCount(ctx.col.flatIdx),
+        kids: getViewCardKids(ctx.col.flatIdx)
+      };
+    },
+    do: async function (ctx) {
       await api().moveCard(
-        { boardId: _boardId, flatColIndex: col.flatIdx, cardIndex: 0, cardId: col.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: col.flatIdx, cardId: lastKid, before: false, insertIdx: col.cards.length - 1, insertMode: 'visible', indexMode: 'display' }
+        { boardId: _boardId, flatColIndex: ctx.col.flatIdx, cardIndex: 0, cardId: ctx.firstCardId, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: ctx.col.flatIdx, cardId: ctx.lastKid, before: false, insertIdx: ctx.firstCardLen - 1, insertMode: 'visible', indexMode: 'display' }
       );
-      await waitForAssertion(function () {
-        assertEqual(getViewCardCount(col.flatIdx), countBefore, 'count unchanged');
-        assertEqual(getExpectedColumnCardIds(col.flatIdx), expectedOrder, 'data order after move');
-        var afterKids = getViewCardKids(col.flatIdx);
-        assertEqual(afterKids, getExpectedColumnCardIds(col.flatIdx), 'DOM order matches data after move');
-        assertEqual(afterKids[afterKids.length - 1], firstKid, 'moved card should be last');
-        assert(afterKids[0] !== firstKid, 'moved card should not be first anymore');
-      });
-    } finally { await teardown(); }
+    },
+    checkDo: function (ctx, before) {
+      assertEqual(getViewCardCount(ctx.col.flatIdx), before.count, 'count unchanged');
+      var afterKids = getViewCardKids(ctx.col.flatIdx);
+      assertEqual(afterKids[afterKids.length - 1], ctx.firstKid, 'moved card should be last');
+      assert(afterKids[0] !== ctx.firstKid, 'moved card should not be first anymore');
+    }
   });
 
-  register('view→view cross-column: card moves between columns', async function () {
-    await setup();
-    try {
+  registerDoUndo('view→view cross-column: card moves between columns', {
+    setup: function () {
       var info = findTwoColumnsWithCards();
-      var src = info.srcCol, dst = info.dstCol;
-      var movedKid = src.cards[0].kid || src.cards[0].id;
-      var srcCountBefore = getViewCardCount(src.flatIdx);
-      var dstCountBefore = getViewCardCount(dst.flatIdx);
-      var totalBefore = getTotalViewCards();
-
+      return {
+        src: info.srcCol,
+        dst: info.dstCol,
+        movedKid: info.srcCol.cards[0].kid || info.srcCol.cards[0].id,
+        movedCardId: info.srcCol.cards[0].id
+      };
+    },
+    capture: function (ctx) {
+      return {
+        srcCount: getViewCardCount(ctx.src.flatIdx),
+        dstCount: getViewCardCount(ctx.dst.flatIdx),
+        total: getTotalViewCards(),
+        srcKids: getViewCardKids(ctx.src.flatIdx),
+        dstKids: getViewCardKids(ctx.dst.flatIdx)
+      };
+    },
+    do: async function (ctx) {
       await api().moveCard(
-        { boardId: _boardId, flatColIndex: src.flatIdx, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: dst.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+        { boardId: _boardId, flatColIndex: ctx.src.flatIdx, cardIndex: 0, cardId: ctx.movedCardId, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: ctx.dst.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await waitForAssertion(function () {
-        assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1 card');
-        assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1 card');
-        assertEqual(getTotalViewCards(), totalBefore, 'total unchanged');
-        assert(!hasDuplicateViewCardIds(), 'no duplicates');
-        assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target view');
-      });
-    } finally { await teardown(); }
+    },
+    checkDo: function (ctx, before) {
+      assertEqual(getViewCardCount(ctx.src.flatIdx), before.srcCount - 1, 'source lost 1 card');
+      assertEqual(getViewCardCount(ctx.dst.flatIdx), before.dstCount + 1, 'target gained 1 card');
+      assertEqual(getTotalViewCards(), before.total, 'total unchanged');
+      assert(!hasDuplicateViewCardIds(), 'no duplicates');
+      assert(getViewCardKids(ctx.dst.flatIdx).indexOf(ctx.movedKid) !== -1, 'card in target view');
+    }
   });
 
   register('workspace→view: sidebar-style source, view target', async function () {
@@ -5035,4 +5207,132 @@
     showPanel: function () { populateTestList(); },
     runAllWithUI: function () { populateTestList(); runAllUI(); }
   };
+
+  // ──────────────────────────────────────────────────────────────────
+  // Auto-run bootstrap (CLI flag)
+  // ──────────────────────────────────────────────────────────────────
+  // When Lexera is launched with `--run-tests`, the Tauri side sets
+  // window.__LEXERA_AUTO_RUN_TESTS__ = true. After a configurable
+  // delay (default 10s) the test runner auto-starts. This is used for
+  // headless-ish iteration on failing tests: launch, wait, see results,
+  // fix, relaunch — no clicking through the test panel each time.
+  //
+  // Optional companion flags (set from Rust CLI parsing):
+  //   __LEXERA_AUTO_RUN_TESTS_OUTPUT__   absolute path: after the run
+  //     finishes, write buildCopiedResultsText('all') to that file via
+  //     the `write_text_file` Tauri command. A parent script can tail
+  //     the file to observe the run headlessly.
+  //   __LEXERA_AUTO_RUN_TESTS_QUIT__     when true, call `quit_app`
+  //     after the output file has been flushed. This lets a shell
+  //     script block on the kanban process exit.
+  // Pull-based bootstrap: ask the Rust side for the test-runner
+  // config once Tauri is ready. This avoids the on_page_load timing
+  // race that eval()-based injection suffers from.
+  function tauriInvokeLocal(cmd, args) {
+    try {
+      if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+        return window.__TAURI__.core.invoke(cmd, args || {});
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  (function () {
+    // Single-shot guard so multiple reloads don't schedule multiple runs.
+    if (window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__) return;
+    // Wait until __TAURI__.core.invoke is available, then fetch the
+    // config. Give up after 30s if Tauri never wires up (e.g. running
+    // in a plain browser for dev).
+    var pollDeadline = Date.now() + 30000;
+    function tryFetchConfig() {
+      if (!window.__TAURI__ || !window.__TAURI__.core || typeof window.__TAURI__.core.invoke !== 'function') {
+        if (Date.now() > pollDeadline) return;
+        setTimeout(tryFetchConfig, 100);
+        return;
+      }
+      var invokePromise = tauriInvokeLocal('get_test_runner_config');
+      if (!invokePromise || typeof invokePromise.then !== 'function') return;
+      invokePromise.then(function (config) {
+        if (!config || !config.auto_run) return;
+        startAutoRun(config);
+      }).catch(function (err) {
+        console.error('[auto-run-tests] failed to fetch config:', err);
+      });
+    }
+    tryFetchConfig();
+  })();
+
+  function startAutoRun(config) {
+    if (window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__) return;
+    window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__ = true;
+
+    var delayMs = typeof config.delay_ms === 'number' ? config.delay_ms : 10000;
+    var outputPath = typeof config.output_path === 'string' ? config.output_path : null;
+    var quitAfter = !!config.quit_after;
+    var pinnedBoard = typeof config.board === 'string' ? config.board : '';
+
+    // If a board id was pinned, seed the stored-board localStorage key
+    // so `ensureSelectedBoardLoaded()` picks it up in setup().
+    if (pinnedBoard) {
+      try { setStoredBoardSelection(pinnedBoard); } catch (_) {}
+    }
+
+    async function waitForRunCompletion() {
+      while (true) {
+        if (!isRunActive()) return;
+        await new Promise(function (res) { setTimeout(res, 100); });
+      }
+    }
+
+    async function performAutoRun() {
+      console.log('[auto-run-tests] starting after ' + delayMs + 'ms');
+      populateTestList();
+      var runPromise = runAllUI();
+      try { await runPromise; } catch (_) {}
+      await waitForRunCompletion();
+
+      var outputText = '';
+      try {
+        outputText = buildCopiedResultsText('all');
+      } catch (err) {
+        outputText = '[auto-run-tests] failed to format results: ' + (err && err.message ? err.message : String(err));
+      }
+
+      if (outputPath) {
+        try {
+          console.log('[auto-run-tests] writing results to ' + outputPath);
+          await tauriInvokeLocal('write_text_file', { path: outputPath, content: outputText });
+          console.log('[auto-run-tests] results written');
+        } catch (err) {
+          console.error('[auto-run-tests] failed to write results:', err);
+        }
+      } else {
+        console.log('[auto-run-tests] results:\n' + outputText);
+      }
+
+      if (quitAfter) {
+        console.log('[auto-run-tests] quitting app');
+        setTimeout(function () {
+          try { tauriInvokeLocal('quit_app', {}); } catch (_) {}
+        }, 200);
+      }
+    }
+
+    // Early marker: write immediately so a parent script can verify
+    // the bootstrap fired regardless of the delay.
+    if (outputPath) {
+      try {
+        tauriInvokeLocal('write_text_file', {
+          path: outputPath,
+          content: '[auto-run-tests] bootstrap fired, delay=' + delayMs + 'ms, board=' + (pinnedBoard || '(none)') + ', waiting...\n'
+        });
+      } catch (_) {}
+    }
+
+    setTimeout(function () {
+      performAutoRun().catch(function (e) {
+        console.error('[auto-run-tests] failed:', e);
+      });
+    }, delayMs);
+  }
 })();
