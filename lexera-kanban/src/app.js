@@ -10847,6 +10847,7 @@ var LexeraDashboard = (function () {
   // ── Test API (exposed for in-app frontend integration tests) ──────────
   var _testApi = {
     getActiveBoardId: function () { return activeBoardId; },
+    getActiveBoardFilePath: function () { return getActiveBoardFilePath(); },
     getFullBoardData: function () { return cloneBoardData(fullBoardData); },
     getActiveBoardData: function () { return activeBoardData; },
     getAvailableBoards: function () {
@@ -10967,6 +10968,34 @@ var LexeraDashboard = (function () {
     selectBoard: function (boardId) { return selectBoard(boardId); },
     renderColumns: renderColumns,
     saveCurrentBoard: function () { return saveFullBoard(); },
+    saveCurrentBoardForTestFixture: async function () {
+      if (!activeBoardId || !fullBoardData) return false;
+      try { await closeLiveSyncSession(activeBoardId); } catch (_) {}
+      pendingExternalRebaseConflict = null;
+      clearScheduledAutoSave('test-fixture-save');
+      ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
+      if (!fullBoardData.columns) fullBoardData.columns = [];
+      var result = await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      var savedBoardData = resolveSavedBoardData(fullBoardData, result, activeBoardId);
+      if (savedBoardData) {
+        ensureBoardRowsForMutation(savedBoardData, getMutationBoardTitle(activeBoardId, savedBoardData));
+        setFullBoardDataState(savedBoardData);
+        updateActiveBoardDataState(function (nextBoardData) {
+          nextBoardData.fullBoard = savedBoardData;
+          if (result && result.redirectedPath) nextBoardData.filePath = result.redirectedPath;
+          if (result && typeof result.version === 'number') nextBoardData.version = result.version;
+          if (result && result.revision) nextBoardData.revision = result.revision;
+        });
+        setBoardSaveBase(savedBoardData, savedBoardData);
+        commitLocalBoardChange(activeBoardId, savedBoardData, {
+          setLocalState: false,
+          refreshHierarchy: true
+        });
+      }
+      clearBoardDirty();
+      scheduleDashboardRefresh(0);
+      return true;
+    },
     triggerBoardExport: function (initialOptions) { return triggerBoardExport(initialOptions || null); },
     runHeaderCreationAction: function (entityType, actionMode, templateId) {
       return runHeaderCreationAction(entityType, actionMode, templateId);

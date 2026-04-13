@@ -186,21 +186,11 @@ else
   echo "Skipping capture (--no-capture or dir missing)."
 fi
 
-# ── Build kanban (if needed) ──────────────────────────────────────
-echo "Building lexera-kanban (dev profile)..."
-(cd "$KANBAN_DIR/src-tauri" && cargo build) 2>&1 | tail -5 | sed 's/^/[build]  /'
-KANBAN_BINARY="$TARGET_DIR/debug/lexera-kanban"
-if [[ ! -x "$KANBAN_BINARY" ]]; then
-  echo "ERROR: kanban binary not found at $KANBAN_BINARY"
-  cleanup
-  exit 1
-fi
-
-# ── Run beforeDevCommand to sync shared assets ──────────────────
-echo "Syncing shared assets..."
-(cd "$KANBAN_DIR" && node ../lexera-shared/scripts/sync-runtime-assets.mjs src && sh scripts/sync-excalidraw-assets.sh) 2>&1 | sed 's/^/[sync]   /'
-
-# ── Start kanban binary directly with --run-tests ────────────────
+# ── Start kanban via cargo tauri dev with --run-tests ────────────
+# Using `cargo tauri dev` instead of a direct binary because the
+# embedded binary's WKWebView stalls JS when the window is in the
+# background (0% CPU, tests hang). `cargo tauri dev` serves files
+# via a dev server, keeping the event loop active.
 KANBAN_CLI_ARGS=(
   --run-tests
   "--run-tests-delay=$DELAY_MS"
@@ -213,7 +203,7 @@ if [[ -n "$BOARD_ID" ]]; then
 else
   echo "Starting lexera-kanban with --run-tests (delay=${DELAY_MS}ms, output=$OUTPUT_PATH)..."
 fi
-"$KANBAN_BINARY" "${KANBAN_CLI_ARGS[@]}" 2>&1 | sed 's/^/[kanban]  /' &
+(cd "$KANBAN_DIR" && exec cargo tauri dev -- -- "${KANBAN_CLI_ARGS[@]}") 2>&1 | sed 's/^/[kanban]  /' &
 KANBAN_CARGO_PID=$!
 
 echo ""
@@ -228,7 +218,11 @@ echo ""
 wait "$KANBAN_CARGO_PID" 2>/dev/null || true
 
 # Give the OS a beat to finish flushing the file.
-sleep 1
+# The autoRunBootstrap writes results via POST /test-results, then
+# waits 2s before calling quit_app. The kanban process exits, cargo
+# tauri dev detects the exit, and wait returns. But the backend may
+# still be processing the last POST. Give it time.
+sleep 3
 
 echo ""
 echo "─────────────────────────────────────────────────────────────"

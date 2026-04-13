@@ -1,69 +1,43 @@
+## General Task, do not remove
+work on the [TODOs-lexera.md](TODOs-lexera.md) work the the tasks, then use the frontend tests (run-lexera-test.sh) and fix all the problems you encounter, if the performance drops or is low work on the performance
+use run-lexera-tests.sh to run the frontend tests, if you need something tested in the frontend add a test in there!
+clean up the todos into the 
+
 # Lexera Repository Architecture Todo
 
 - [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.
 
-- [x] Dashboard search speed — deferred render to rAF (board paints first, dashboard catches up next frame), early fingerprint check skips expensive tree-building on cache hit, removed array copies in scope filtering, visibility guard for hidden panels, 300ms debounce.
-
-- [x] Targeted refresh for common operations — cross-column card moves now refresh only source+target columns (not all 917 cards), column sorts use column target, row/stack sorts use row/stack targets, title renames use targeted row/stack/column. Added warning when full board re-render triggered on boards >200 cards.
-- [x] Reverted the IntersectionObserver-based deferred card rendering — it was causing MORE visual churn (cards flashed as they loaded in, the observer re-rendered cards that were fine, idle callbacks processed cards the user wasn't looking at). The card render cache and resolved-content deduplication are kept as pure wins.
-- [x] Converted many more `type: 'board'` mutations to targeted refresh:
-  - `updateHiddenItemTag` (card/column/stack/row) → targeted to the respective entity type
-  - `unparkCard` → column target
-  - `setColumnIncludePath` / `disableColumnIncludeMode` → column target
-  - `setColumnHiddenTag` → stack target (hiding a column changes its parent stack layout)
-  - `duplicateColumn` → stack target
-  - `moveColumnToStack` → multi-stack target (source + target stacks)
-  - `moveColumnWithinBoard` / `moveColumnToExistingStack` → multi-stack target (checks for structural changes)
-  - `addStackFromContent` → row target
-  - `addColumnFromContent` / `insertTemplateColumns` / `addColumnToStack` → stack target
-  - `insertTemplateStack` / `addStackToRow` / `duplicateStack` → row target
-  - `handleFileDrop` (embed upload) → column target
-  - Card creation fallback paths (addCardToActiveBoard, insertCardAtIndex, pasteClipboardAsCard, smartPasteAsCard) → column target instead of board
-- [x] **Skip `updateDisplayFromFullBoard()` for card-only mutations** — when only card content/insert/remove targets are used, the display tree doesn't need to be rebuilt. Massive savings for per-card edits.
-- [x] **Cache `getAllColumnsFromBoardData()`** — result is now cached by board reference, invalidated on structural mutations or when `setFullBoardDataState` is called. Eliminates O(n) traversal on every `getFullColumn` / card lookup.
 - [ ] Items still needing full board render: row/stack hidden tags, board frontmatter changes, board settings changes, tag style preset change. These genuinely affect the whole board.
 
-- [x] Test speed — found the real bottleneck: ~610ms of fixed waits per test in setup/teardown, not rendering. Removed `wait(150)` + `wait(180)` + `wait(80)` from teardown and `delay(180)` + `delay(220)` from `persistFixtureBoard`. Combined with the targeted-refresh conversions above, tests should now run in a fraction of the previous time.
-
 ### Dashboard search — remaining optimizations
-- [ ] **Render only visible/unfolded sections** — currently rebuilds all 10+ sections (results, overdue, today, thisWeek, upcoming, todos, tagged, embeds, includes, broken) on every refresh. Only render sections that are unfolded.
 - [ ] **Incremental DOM updates** — `renderDashboard()` does `innerHTML = ''` on every call. Diff and update only changed items.
 - [ ] **Virtual scrolling for result lists** — currently renders 80 result + 60 todo + 40×4 calendar items as DOM nodes. Only render visible viewport items.
 - [ ] **Move search to Web Worker** — the backend search itself is fast, but parsing/grouping/tree-building on the main thread blocks rendering. Move post-processing off-thread.
 - [ ] **Request only scoped data from backend** — currently fetches all boards then filters client-side. Pass active boardId to backend query to reduce response size.
 
-## Large Board Performance (analysis 2026-04-10)
-
-> With ~917 cards, 104 columns, 15 stacks: every single action triggers a full DOM rebuild, full display tree reconstruction, sidebar tree rebuild, undo snapshot (structuredClone ~450KB), draft save to localStorage, and dashboard refresh. No incremental rendering exists.
-
-### Critical hotpath: every mutation triggers ALL of these
-1. `renderColumns()` — full `innerHTML = ''` + rebuild 917 card DOM elements (app.js:7306)
-2. `updateDisplayFromFullBoard()` — O(n²) due to `allCols.indexOf(col)` per column (boardDataStore.js:172)
-3. `refreshBoardHierarchyProjection()` — full sidebar tree rebuild, NO debounce (boardList.js:1066)
-4. `pushUndo()` — `structuredClone()` of entire board (~450KB) before every action (undoRedoSystem.js:82)
-5. `saveLocalBoardDraft()` — serialize full board to localStorage on every mutation (boardDataStore.js:824)
-6. `scheduleDashboardRefresh(80)` — fires 80ms after every mutation (boardDataStore.js:822)
+## Large Board Performance (remaining)
 
 ### Fixes — high impact
 - [ ] **Incremental card rendering** — when only a card changes, update just that card's DOM element instead of rebuilding the entire board. `renderColumns` currently does `innerHTML = ''` for any structural change.
-- [x] **Fix O(n²) in updateDisplayFromFullBoard** — replaced `allCols.indexOf(col)` with `Map`-based O(1) lookup.
-- [x] **Debounce sidebar hierarchy refresh** — added 150ms debounce in `commitLocalBoardChange`. Rapid mutations coalesce.
-- [x] **Debounce undo snapshots for rapid mutations** — `pushUndo(mutationType)` now coalesces same-type mutations within 500ms, reusing the first snapshot.
-- [x] **Debounce draft save** — `saveLocalBoardDraft` now 500ms debounced instead of firing on every mutation.
 
 ### Fixes — medium impact
-- [~] **Lazy card content rendering** — REVERTED. IntersectionObserver-based deferral caused more visual churn than it saved. Kept the cheap win: eliminated duplicate `getIncludeResolvedContent` call per card.
 - [ ] **Virtual scrolling for columns** — with 104 columns, most are off-screen. Only render columns in/near the viewport.
-- [ ] **Batch multiple mutations before refresh** — when doing multi-card operations, collect mutations and refresh once at the end instead of per-card.
-- [x] **Cache rendered card HTML** — added `_cardRenderCache` (Map, max 2000 entries) keyed by cardId+content, skips `renderCardContent` on cache hit. Cleared on board switch.
-- [x] **Increase dashboard refresh debounce** — changed from 80ms/120ms to 300ms across all mutation paths.
-- [ ] **Make dashboard refresh conditional** — only run dashboard search refresh and file-inventory refresh when a mutation can affect dashboard results, temporal groups, or file references.
-
 ### Fixes — lower priority
 - [ ] **Delta-based undo** — instead of `structuredClone` of the full board, store only the diff (changed cards/columns). Would reduce undo memory and CPU by 90%+ for single-card edits.
-- [ ] **Targeted sidebar updates** — when only a card changes, update just that card's sidebar tree node instead of rebuilding the entire hierarchy.
-- [x] **Gate heavy mutation diagnostics behind debug mode** — `summarizeBoardHierarchy`, `boardCardSummary`, and verbose save logging now gated behind `window.__lexeraDebugMutations`.
 - [ ] **Web Worker for heavy operations** — move markdown rendering, undo diffing, and board serialization off the main thread.
+
+## Automated Frontend Test Runner (`run-lexera-tests.sh`)
+
+- [ ] **Fix auto-run test stall at test 10** — Tests stall at `no duplicate card IDs after move` with 0% CPU in both `cargo tauri dev` and direct binary modes. The stall happens after `setup:done` during the test body's `moveCard()` call. First run after a clean start works (78 passed, 51 failed / 129), but subsequent runs stall. `withGlobalTauri` fixed the instance selection (129 tests found vs 5), but the moveCard stall remains. Needs Safari Web Inspector to diagnose whether the JS event loop is blocked or a promise is unresolved.
+
+## Backend Stability
+
+- [ ] **Loro CRDT panic in `movable_list_state.rs:1056`** (upstream bug, mitigated)
+  The panic `called Option::unwrap() on a None value` inside Loro 1.10.8's `movable_list_state.rs:1056` happens during rapid card moves on boards with CRDT sync. The second `PoisonError` in `loro.rs:262` is Loro's own internal mutex getting poisoned during panic unwind — likely in a Drop impl that tries to commit a transaction.
+  - **Our code IS safe**: `apply_board()` in `bridge.rs:669` already wraps all Loro operations in `catch_unwind`. The caller in `live_sync.rs:283` catches the error and rebuilds the `CrdtStore` from the current board data. The CRDT session recovers after one failed operation.
+  - **The console messages are scary but not fatal**: The `PoisonError` is caught and logged. The session rebuilds. Subsequent operations work fine.
+  - **Root cause**: Loro's `MovableList::mov()` internally assumes an element exists at the source position, but concurrent state from the `reorder_list_by_id` function (which scans and moves elements to match target order) can leave the list in a state where the element was already consumed. This is a Loro bug — we're on the latest version (1.10.8).
+  - **Next step**: File an upstream issue on the `loro-dev/loro` GitHub repo with a minimal reproduction. Alternatively, add pre-move validation in `reorder_list_by_id` that checks `list.len()` hasn't changed mid-reorder.
 
 ## Frontend Test Additions
 

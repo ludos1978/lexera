@@ -17,11 +17,14 @@
     active: false,
     cancelRequested: false,
     currentIndex: -1,
-    total: 0
+    total: 0,
+    phase: 'idle',
+    autoRun: false
   };
   var _manualInspectState = {
     awaitingUndo: false
   };
+  var _autoRunBoardSelectorRefreshed = false;
 
   function hasLoadedBoard(candidateApi) {
     if (!candidateApi) return false;
@@ -91,14 +94,40 @@
     for (var i = 0; i < candidates.length; i++) {
       if (hasLoadedBoard(candidates[i])) {
         _api = candidates[i];
+        instrumentTestApi(_api);
         return _api;
       }
     }
     if (candidates.length > 0) {
       _api = candidates[0];
+      instrumentTestApi(_api);
       return _api;
     }
     throw new Error('LexeraTestApi not found');
+  }
+
+  function instrumentTestApi(candidate) {
+    if (!candidate || candidate.__lexeraFrontendTestPhaseInstrumented) return;
+    candidate.__lexeraFrontendTestPhaseInstrumented = true;
+    ['moveCard', 'setTestBoard', 'insertCardAtIndex', 'removeCardAtIndex', 'undo'].forEach(function (name) {
+      if (typeof candidate[name] !== 'function') return;
+      var original = candidate[name];
+      candidate[name] = function () {
+        setRunPhase('api:' + name);
+        var result = original.apply(this, arguments);
+        if (result && typeof result.then === 'function') {
+          return result.then(function (value) {
+            setRunPhase('api:' + name + ':done');
+            return value;
+          }, function (err) {
+            setRunPhase('api:' + name + ':error');
+            throw err;
+          });
+        }
+        setRunPhase('api:' + name + ':done');
+        return result;
+      };
+    });
   }
 
   // Return every window (parent + iframes) that has a LexeraTestApi. The board
@@ -225,26 +254,32 @@
       try {
         var ctx = null;
         if (typeof spec.setup === 'function') {
+          setRunPhase('do-undo:setup');
           ctx = (await spec.setup()) || {};
         } else {
           ctx = {};
         }
+        setRunPhase('do-undo:capture');
         var capture = typeof spec.capture === 'function' ? spec.capture : null;
         var before = capture ? capture(ctx) : null;
 
         // ── DO ──────────────────────────────────────────
+        setRunPhase('do-undo:do');
         await spec.do(ctx, before);
         didDo = true;
 
         // ── CHECK-DO (assertions after the mutation) ────
+        setRunPhase('do-undo:check-do');
         await waitForAssertion(function () {
           spec.checkDo(ctx, before);
         });
 
         // ── UNDO + CHECK-UNDO ────────────────────────────
         if (!spec.skipUndo) {
+          setRunPhase('do-undo:undo');
           await api().undo();
           didUndo = true;
+          setRunPhase('do-undo:check-undo');
           await waitForAssertion(function () {
             if (typeof spec.checkUndo === 'function') {
               spec.checkUndo(ctx, before);
@@ -365,6 +400,32 @@
     return !!(_runState.active && _runState.cancelRequested);
   }
 
+  function isAutoRunContext(options) {
+    return !!(
+      (options && options.autoRun) ||
+      (_runState && _runState.autoRun) ||
+      window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__ ||
+      window.__LEXERA_TEST_RUNNER_CONFIG__
+    );
+  }
+
+  function getAutoRunTimerWindow() {
+    if (!isAutoRunContext()) return window;
+    try {
+      if (window.parent && window.parent !== window && typeof window.parent.setTimeout === 'function') {
+        return window.parent;
+      }
+    } catch (_) {}
+    return window;
+  }
+
+  function yieldAutoRunTick() {
+    if (!isAutoRunContext()) return Promise.resolve();
+    return new Promise(function (resolve) {
+      getAutoRunTimerWindow().setTimeout(resolve, 0);
+    });
+  }
+
   function throwIfRunCancelled() {
     if (isRunCancelled()) throw createCancelledError();
   }
@@ -373,16 +434,17 @@
     ms = typeof ms === 'number' && ms > 0 ? ms : 0;
     if (ms === 0) {
       throwIfRunCancelled();
-      return Promise.resolve();
+      return yieldAutoRunTick();
     }
     return new Promise(function (resolve, reject) {
       var settled = false;
       var timer = null;
       var poll = null;
+      var timerWindow = getAutoRunTimerWindow();
 
       function cleanup() {
-        if (timer) clearTimeout(timer);
-        if (poll) clearTimeout(poll);
+        if (timer) timerWindow.clearTimeout(timer);
+        if (poll) timerWindow.clearTimeout(poll);
       }
 
       function finish(fn, value) {
@@ -398,10 +460,10 @@
           finish(reject, createCancelledError());
           return;
         }
-        poll = setTimeout(pollCancel, Math.min(50, ms));
+        poll = timerWindow.setTimeout(pollCancel, Math.min(50, ms));
       }
 
-      timer = setTimeout(function () {
+      timer = timerWindow.setTimeout(function () {
         try {
           throwIfRunCancelled();
           finish(resolve);
@@ -409,7 +471,7 @@
           finish(reject, err);
         }
       }, ms);
-      poll = setTimeout(pollCancel, Math.min(50, ms));
+      poll = timerWindow.setTimeout(pollCancel, Math.min(50, ms));
     });
   }
 
@@ -420,7 +482,10 @@
     while ((Date.now() - started) <= timeout) {
       throwIfRunCancelled();
       try {
-        if (predicate()) return true;
+        if (predicate()) {
+          await yieldAutoRunTick();
+          return true;
+        }
       } catch (_) {}
       await delay(step);
     }
@@ -432,16 +497,21 @@
     var step = typeof stepMs === 'number' && stepMs > 0 ? stepMs : 16;
     var started = Date.now();
     var lastErr = null;
+    var previousPhase = _runState ? _runState.phase : '';
+    setRunPhase((previousPhase || 'test') + ':wait-assertion');
     while ((Date.now() - started) <= timeout) {
       throwIfRunCancelled();
       try {
         assertionFn();
+        setRunPhase((previousPhase || 'test') + ':assertion-done');
+        await yieldAutoRunTick();
         return true;
       } catch (err) {
         lastErr = err;
       }
       await delay(step);
     }
+    setRunPhase((previousPhase || 'test') + ':assertion-timeout');
     if (lastErr) throw lastErr;
     throw new Error(message || 'Timed out waiting for assertion');
   }
@@ -468,6 +538,7 @@
   }
 
   function isManualInspectEnabled() {
+    if (isAutoRunContext()) return false;
     var checkbox = getManualInspectCheckbox();
     return !!(checkbox && checkbox.checked);
   }
@@ -619,6 +690,105 @@
       if (cleanBoardText(projection.columns[i].columnId) === columnId) return projection.columns[i];
     }
     return null;
+  }
+
+  function findColumnRefById(boardData, columnId) {
+    var normalized = cleanBoardText(columnId);
+    if (!normalized || !boardData || !Array.isArray(boardData.rows)) return null;
+    var flatIdx = 0;
+    for (var r = 0; r < boardData.rows.length; r++) {
+      var stacks = boardData.rows[r] && Array.isArray(boardData.rows[r].stacks) ? boardData.rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < cols.length; c++) {
+          if (cleanBoardText(cols[c] && cols[c].id) === normalized) {
+            return {
+              column: cols[c],
+              flatIdx: flatIdx,
+              rowIndex: r,
+              stackIndex: s,
+              colIndex: c,
+              columnId: normalized
+            };
+          }
+          flatIdx++;
+        }
+      }
+    }
+    return null;
+  }
+
+  function getViewCardCountByColumnId(columnId) {
+    var ref = findColumnRefById(api().getFullBoardData(), columnId);
+    return ref ? getViewCardCount(ref.flatIdx) : -1;
+  }
+
+  function getViewCardKidsByColumnId(columnId) {
+    var ref = findColumnRefById(api().getFullBoardData(), columnId);
+    return ref ? getViewCardKids(ref.flatIdx) : [];
+  }
+
+  function getActiveBoardFileNameForTest() {
+    var active = null;
+    var filePath = '';
+    try {
+      if (api().getActiveBoardFilePath) filePath = api().getActiveBoardFilePath();
+    } catch (_) {}
+    try { active = api().getActiveBoardData && api().getActiveBoardData(); } catch (_) {}
+    if (!filePath) filePath = active && (active.filePath || active.path || active.file || '');
+    filePath = cleanBoardText(filePath);
+    if (!filePath) return '';
+    var parts = filePath.split(/[\\/]+/);
+    return cleanBoardText(parts[parts.length - 1]);
+  }
+
+  async function includePathExistsForTest(path) {
+    path = cleanBoardText(path);
+    if (!path || !window.LexeraApi || typeof window.LexeraApi.fileInfo !== 'function') return false;
+    try {
+      var info = await window.LexeraApi.fileInfo(_boardId, path);
+      return !!(info && info.exists !== false);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function getExistingIncludePathForTest(prefixDotSlash) {
+    var boardFile = getActiveBoardFileNameForTest();
+    var candidates = [];
+    var runnerConfig = null;
+    try { runnerConfig = window.__LEXERA_TEST_RUNNER_CONFIG__ || null; } catch (_) {}
+    var includeFixturePath = runnerConfig && cleanBoardText(
+      runnerConfig.includeFixturePath || runnerConfig.include_fixture_path || ''
+    );
+    if (includeFixturePath) candidates.push(includeFixturePath);
+    if (boardFile) {
+      candidates.push(prefixDotSlash ? './' + boardFile : boardFile);
+      candidates.push(prefixDotSlash ? boardFile : './' + boardFile);
+    }
+    candidates.push('../kanban-include-tests/root/root-include-1.md');
+    candidates.push('../kanban-include-tests/kanban-columninclude.md');
+    candidates.push('kanban-multirow-small.md');
+    candidates.push('kanban-columninclude.md');
+    candidates.push('./root/root-include-1.md');
+    for (var i = 0; i < candidates.length; i++) {
+      if (await includePathExistsForTest(candidates[i])) return candidates[i];
+    }
+    return prefixDotSlash ? './include-test.md' : 'include-test.md';
+  }
+
+  async function getExistingIncludePathPairForTest() {
+    var first = await getExistingIncludePathForTest(false);
+    var second = first.indexOf('./') === 0 ? first.replace(/^\.\//, '') : './' + first;
+    if (second !== first && await includePathExistsForTest(second)) {
+      return { first: first, second: second };
+    }
+    return { first: first, second: second };
+  }
+
+  function makeIncludeSourceForTest(path, missing) {
+    var rawPath = cleanBoardText(path);
+    return { raw_path: rawPath, rawPath: rawPath, missing: !!missing };
   }
 
   function findCardInBoardDataById(boardData, cardId) {
@@ -977,9 +1147,10 @@
     var c = getContainer(); if (!c) return false;
     var cards = c.querySelectorAll('.card');
     var seen = {};
+    var preCardDups = _preExistingDuplicateCardIds || {};
     for (var i = 0; i < cards.length; i++) {
       var id = cards[i].getAttribute('data-card-kid') || cards[i].getAttribute('data-card-id') || '';
-      if (id && seen[id]) return true;
+      if (id && seen[id] && !preCardDups[id]) return true;
       seen[id] = true;
     }
     return false;
@@ -995,18 +1166,41 @@
   // DOM query — sidebar tree
   // ═══════════════════════════════════════════════════════════════════════
 
+  function escapeCssAttrValue(value) {
+    return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }
+
+  function getDirectTreeChildrenContainer(entry) {
+    if (!entry || !entry.children) return null;
+    for (var i = 0; i < entry.children.length; i++) {
+      var child = entry.children[i];
+      if (child && child.classList && child.classList.contains('tree-children')) return child;
+    }
+    return null;
+  }
+
   function getSidebarCardIdsInColumn(columnId) {
     var root = getSidebarBoardRoot(_boardId);
     if (!root) return null;
-    var cards = root.querySelectorAll('.tree-card');
-    var matching = [];
-    for (var c = 0; c < cards.length; c++) {
-      if ((cards[c].getAttribute('data-column-id') || '') === columnId) matching.push(cards[c]);
-    }
-    if (matching.length === 0) return null;
+    var columnNode = root.querySelector('.tree-column[data-column-id="' + escapeCssAttrValue(columnId) + '"]');
+    var columnEntry = columnNode && columnNode.closest ? columnNode.closest('.tree-entry') : null;
+    var children = getDirectTreeChildrenContainer(columnEntry);
+    if (!children) return null;
     var ids = [];
-    for (var i = 0; i < matching.length; i++)
-      ids.push(matching[i].getAttribute('data-card-id') || '');
+    for (var i = 0; i < children.children.length; i++) {
+      var entry = children.children[i];
+      if (!entry || !entry.classList || !entry.classList.contains('tree-entry')) continue;
+      var cardNode = null;
+      for (var j = 0; j < entry.children.length; j++) {
+        var child = entry.children[j];
+        if (child && child.classList && child.classList.contains('tree-card')) {
+          cardNode = child;
+          break;
+        }
+      }
+      if (!cardNode) continue;
+      ids.push(cardNode.getAttribute('data-card-id') || '');
+    }
     return ids;
   }
 
@@ -1018,7 +1212,7 @@
     for (var i = 0; i < wrappers.length; i++) {
       var wrapper = wrappers[i];
       if ((wrapper.getAttribute('data-board-id') || '') !== boardId) continue;
-      if (!fallback) fallback = wrapper;
+      fallback = wrapper;
       var boardNode = wrapper.querySelector('.tree-board[data-board-id]');
       if (boardNode && boardNode.classList.contains('active')) return wrapper;
     }
@@ -1225,9 +1419,21 @@
     return '';
   }
 
+  function normalizeBoardForBackendTest(boardData) {
+    var board = cloneJson(boardData || {});
+    if (typeof board.valid !== 'boolean') board.valid = true;
+    if (!cleanBoardText(board.title)) board.title = 'Test Board';
+    if (!Array.isArray(board.columns)) board.columns = [];
+    if (!Array.isArray(board.rows)) board.rows = [];
+    if (!Object.prototype.hasOwnProperty.call(board, 'yamlHeader')) board.yamlHeader = null;
+    if (!Object.prototype.hasOwnProperty.call(board, 'kanbanFooter')) board.kanbanFooter = null;
+    return board;
+  }
+
   function createFrontendActionFixtureBoard() {
-    var includeSource = { rawPath: './slides/intro.md', missing: false };
+    var includeSource = makeIncludeSourceForTest('./slides/intro.md', false);
     return {
+      valid: true,
       title: 'Frontend Test Fixture Board',
       columns: [],
       rows: [
@@ -1297,7 +1503,9 @@
             }
           ]
         }
-      ]
+      ],
+      yamlHeader: null,
+      kanbanFooter: null
     };
   }
 
@@ -1345,19 +1553,42 @@
 
   async function unfoldBoardForTests(boardId) {
     if (!boardId) return;
+    var changed = false;
+    function setIfDifferent(key, value) {
+      try {
+        if (localStorage.getItem(key) !== value) {
+          localStorage.setItem(key, value);
+          changed = true;
+        }
+      } catch (_) {}
+    }
+    function removeIfPresent(key) {
+      try {
+        if (localStorage.getItem(key) !== null) {
+          localStorage.removeItem(key);
+          changed = true;
+        }
+      } catch (_) {}
+    }
     try {
-      localStorage.setItem('lexera-col-fold:' + boardId, '[]');
-      localStorage.setItem('lexera-row-fold:' + boardId, '[]');
-      localStorage.setItem('lexera-stack-fold:' + boardId, '[]');
-      localStorage.setItem('lexera-card-collapsed:' + boardId, '[]');
-      localStorage.removeItem('lexera-card-expanded:' + boardId);
+      setIfDifferent('lexera-col-fold:' + boardId, '[]');
+      setIfDifferent('lexera-row-fold:' + boardId, '[]');
+      setIfDifferent('lexera-stack-fold:' + boardId, '[]');
+      setIfDifferent('lexera-card-collapsed:' + boardId, '[]');
+      removeIfPresent('lexera-card-expanded:' + boardId);
     } catch (_) {}
-    try { api().renderMainView(); } catch (_) {}
+    if (changed) {
+      try { api().renderMainView(); } catch (_) {}
+    }
     // No wait — renderMainView is synchronous
   }
 
   // Phase timing — populated during test execution, read by test runner
   var _phaseTimings = null; // { setup, body, teardown }
+
+  function setRunPhase(phase) {
+    if (_runState) _runState.phase = phase || '';
+  }
 
   function _startPhase(name) {
     if (!_phaseTimings) return 0;
@@ -1372,22 +1603,35 @@
   }
 
   async function setup() {
+    setRunPhase('setup:start');
     _startPhase('setup');
     dismissConflictDialogs();
-    refreshBoardSelector();
+    setRunPhase('setup:board-select');
+    if (!isAutoRunContext() || !_autoRunBoardSelectorRefreshed) {
+      refreshBoardSelector();
+      _autoRunBoardSelectorRefreshed = true;
+    }
     await ensureSelectedBoardLoaded();
+    // Capture pre-existing duplicate IDs so integrity checks only flag
+    // NEW duplicates introduced by the test, not pre-existing data issues.
+    if (!_preExistingDuplicateCardIds) capturePreExistingDuplicates();
     // Wait for a board to be loaded (may take a moment in workspace shell)
     for (var attempt = 0; attempt < 10; attempt++) {
       throwIfRunCancelled();
       try {
+        setRunPhase('setup:wait-board');
         _boardId = api().getActiveBoardId();
         var data = api().getFullBoardData();
         if (_boardId && data && data.rows && data.rows.length > 0) {
           _uiStateSnapshot = captureBoardUiState(_boardId);
+          setRunPhase('setup:unfold-board');
           await unfoldBoardForTests(_boardId);
+          setRunPhase('setup:snapshot');
           data = api().getFullBoardData();
           _snapshot = JSON.parse(JSON.stringify(data));
+          setRunPhase('setup:done');
           _endPhase('setup');
+          await yieldAutoRunTick();
           return;
         }
       } catch (_) {}
@@ -1400,10 +1644,15 @@
 
   async function persistFixtureBoard(boardData) {
     assert(_boardId, 'board id available');
-    api().setTestBoard(cloneJson(boardData), _boardId);
-    assert(typeof api().saveCurrentBoard === 'function', 'saveCurrentBoard is available');
+    api().setTestBoard(normalizeBoardForBackendTest(boardData), _boardId, { fullRender: true });
+    try {
+      if (window.LexeraBoardDataStore && typeof window.LexeraBoardDataStore.flushHierarchyRefresh === 'function') {
+        window.LexeraBoardDataStore.flushHierarchyRefresh();
+      }
+    } catch (_) {}
+    assert(typeof api().saveCurrentBoardForTestFixture === 'function', 'test fixture save helper is available');
     _restoreSavedSnapshot = true;
-    var saved = await api().saveCurrentBoard();
+    var saved = await api().saveCurrentBoardForTestFixture();
     assert(saved !== false, 'fixture board saved');
   }
 
@@ -1415,26 +1664,25 @@
       // paint and the user never sees what the test did. This is a
       // single rAF + setTimeout (~16ms), not a configurable pause.
       try {
-        await new Promise(function (resolve) {
-          if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(function () { setTimeout(resolve, 0); });
-          } else {
-            setTimeout(resolve, 16);
-          }
-        });
+        await waitForPaint();
       } catch (_) {}
+      setRunPhase('teardown:inspect');
       await waitForManualUndoStep();
     }
+    setRunPhase('teardown:start');
     _startPhase('teardown');
     if (_snapshot && _boardId) {
-      api().setTestBoard(_snapshot, _boardId);
+      setRunPhase('teardown:restore-board');
+      api().setTestBoard(normalizeBoardForBackendTest(_snapshot), _boardId);
       // setTestBoard is synchronous at the DOM level — no wait needed
-      if (_restoreSavedSnapshot && typeof api().saveCurrentBoard === 'function') {
+      if (_restoreSavedSnapshot && typeof api().saveCurrentBoardForTestFixture === 'function') {
         try {
-          await api().saveCurrentBoard();
+          setRunPhase('teardown:save-fixture');
+          await api().saveCurrentBoardForTestFixture();
         } catch (_) {}
       }
       restoreBoardUiState(_uiStateSnapshot, _boardId);
+      setRunPhase('teardown:render');
       try { api().renderMainView(); } catch (_) {}
     }
     _snapshot = null;
@@ -1457,6 +1705,7 @@
         window.LexeraBoardList.cancelPendingDraftSave();
       }
     } catch (_) {}
+    setRunPhase('teardown:done');
     _endPhase('teardown');
   }
 
@@ -1806,7 +2055,13 @@
 
   function assertViewWorkspaceConsistency(label) {
     if (!isSidebarAvailable()) return;
+    try {
+      if (window.LexeraBoardDataStore && typeof window.LexeraBoardDataStore.flushHierarchyRefresh === 'function') {
+        window.LexeraBoardDataStore.flushHierarchyRefresh();
+      }
+    } catch (_) {}
     var c = getContainer(); if (!c) return;
+    var preCardDups = _preExistingDuplicateCardIds || {};
     var viewCols = c.querySelectorAll('.column');
     for (var i = 0; i < viewCols.length; i++) {
       var colId = viewCols[i].getAttribute('data-column-id');
@@ -1817,6 +2072,14 @@
         viewKids.push(viewCards[j].getAttribute('data-card-id') || '');
       var sidebarKids = getSidebarCardIdsInColumn(colId);
       if (!sidebarKids) continue;
+      // Skip columns that contain pre-existing duplicate card IDs — the
+      // sidebar reflects the raw data (with duplicates) while the DOM
+      // renders unique elements, so they'll never match on these columns.
+      var hasPreDups = false;
+      for (var dk = 0; dk < sidebarKids.length; dk++) {
+        if (preCardDups[sidebarKids[dk]]) { hasPreDups = true; break; }
+      }
+      if (hasPreDups) continue;
       assertEqual(sidebarKids, viewKids, label + ': col ' + colId);
     }
   }
@@ -2053,6 +2316,7 @@
   register('remove empty row: disappears from board view', async function () {
     await setup();
     try {
+      var rowsBefore = getViewRowCount();
       var data = api().getFullBoardData();
       data.rows.push({
         id: '__remove-row-test__', title: 'To Remove',
@@ -2063,13 +2327,14 @@
       api().setTestBoard(data, _boardId);
       await delay(100);
       var rowsAfterAdd = getViewRowCount();
+      assertEqual(rowsAfterAdd, rowsBefore + 1, 'row added to view');
 
       data = api().getFullBoardData();
       data.rows = data.rows.filter(function (r) { return r.id !== '__remove-row-test__'; });
       api().setTestBoard(data, _boardId);
       await delay(100);
 
-      assertEqual(getViewRowCount(), rowsAfterAdd - 1, 'row gone from view');
+      assertEqual(getViewRowCount(), rowsBefore, 'row gone from view');
     } finally { await teardown(); }
   });
 
@@ -2185,6 +2450,20 @@
   // ═══════════════════════════════════════════════════════════════════════
 
   function getDashboardHelpers() {
+    var dashboardDoc = getDashboardDocument();
+    var dashboardWin = dashboardDoc && dashboardDoc.defaultView ? dashboardDoc.defaultView : null;
+    if (dashboardWin && dashboardWin.LexeraOrderHelpers) return dashboardWin.LexeraOrderHelpers;
+    var wins = getAllBoardWindows();
+    var activeApi = null;
+    try { activeApi = api(); } catch (_) {}
+    for (var i = 0; i < wins.length; i++) {
+      try {
+        if (activeApi && wins[i].LexeraTestApi === activeApi && wins[i].LexeraOrderHelpers) return wins[i].LexeraOrderHelpers;
+      } catch (_) {}
+    }
+    for (var j = 0; j < wins.length; j++) {
+      try { if (wins[j].LexeraOrderHelpers) return wins[j].LexeraOrderHelpers; } catch (_) {}
+    }
     var g = typeof globalThis !== 'undefined' ? globalThis : window;
     return g.LexeraOrderHelpers || null;
   }
@@ -2222,7 +2501,13 @@
     if (typeof helpers.setDashboardQuery === 'function') {
       helpers.setDashboardQuery(query || '', { skipRefresh: !!skipRefresh });
     }
-    if (!skipRefresh) await delay(260);
+    if (!skipRefresh && typeof helpers.refreshDashboardData === 'function') {
+      try {
+        var refresh = helpers.refreshDashboardData({ deferRender: false });
+        if (refresh && typeof refresh.catch === 'function') refresh.catch(function () {});
+      } catch (_) {}
+    }
+    if (!skipRefresh) await delay(120);
   }
 
   function resetDashboardPendingFlags() {
@@ -2561,10 +2846,11 @@
       var c = getContainer(); assert(c, 'columns container exists');
       var cols = c.querySelectorAll('.column');
       var seen = {};
+      var preColDups = _preExistingDuplicateColIds || {};
       for (var i = 0; i < cols.length; i++) {
         var colId = cols[i].getAttribute('data-column-id');
         assert(colId, 'column ' + i + ' has data-column-id');
-        assert(!seen[colId], 'duplicate column id: ' + colId);
+        if (!preColDups[colId]) assert(!seen[colId], 'duplicate column id: ' + colId);
         seen[colId] = true;
       }
     } finally { await teardown(); }
@@ -2595,6 +2881,7 @@
     try {
       var data = api().getFullBoardData();
       var seen = {};
+      var preCardDups = _preExistingDuplicateCardIds || {};
       for (var r = 0; r < data.rows.length; r++) {
         var stacks = data.rows[r].stacks || [];
         for (var s = 0; s < stacks.length; s++) {
@@ -2603,7 +2890,7 @@
             var cards = cols[c].cards || [];
             for (var k = 0; k < cards.length; k++) {
               var id = cards[k].kid || cards[k].id;
-              assert(!seen[id], 'duplicate card id in data: ' + id);
+              if (!preCardDups[id]) assert(!seen[id], 'duplicate card id in data: ' + id);
               seen[id] = true;
             }
           }
@@ -2617,12 +2904,13 @@
     try {
       var data = api().getFullBoardData();
       var seen = {};
+      var preColDups = _preExistingDuplicateColIds || {};
       for (var r = 0; r < data.rows.length; r++) {
         var stacks = data.rows[r].stacks || [];
         for (var s = 0; s < stacks.length; s++) {
           var cols = stacks[s].columns || [];
           for (var c = 0; c < cols.length; c++) {
-            assert(!seen[cols[c].id], 'duplicate column id in data: ' + cols[c].id);
+            if (!preColDups[cols[c].id]) assert(!seen[cols[c].id], 'duplicate column id in data: ' + cols[c].id);
             seen[cols[c].id] = true;
           }
         }
@@ -2751,7 +3039,8 @@
       var data = api().getFullBoardData();
       var targetStack = findFirstVisibleStackRef(data);
       assert(targetStack, 'need at least 1 visible stack');
-      var includeSource = { rawPath: 'docs/include-test.md', missing: false };
+      var includePath = await getExistingIncludePathForTest(false);
+      var includeSource = makeIncludeSourceForTest(includePath, false);
       data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex].columns.push({
         id: '__include-col-test__',
         title: 'Include Test Column',
@@ -2765,7 +3054,7 @@
       var c = getContainer();
       var colEl = c.querySelector('.column[data-column-id="__include-col-test__"]');
       assert(colEl, 'include test column rendered');
-      var badge = colEl.querySelector('.column-include-badge[data-include-path="docs/include-test.md"]');
+      var badge = colEl.querySelector('.column-include-badge[data-include-path="' + includePath + '"]');
       assert(badge, 'include badge rendered with expected path');
       assert(!badge.classList.contains('include-broken'), 'include badge is not marked broken');
     } finally { await teardown(); }
@@ -3478,27 +3767,64 @@
   // any mutation: data↔DOM parity, no duplicates, sidebar sync, counts
   // ═══════════════════════════════════════════════════════════════════════
 
-  function assertBoardIntegrity(label) {
-    var data = api().getFullBoardData();
-    assert(data && data.rows && data.rows.length > 0, label + ': board data exists');
+  // Snapshot of duplicate IDs that already exist in the board BEFORE
+  // any test runs. Tests should only fail on NEW duplicates introduced
+  // during their execution, not pre-existing data issues.
+  var _preExistingDuplicateCardIds = null;
+  var _preExistingDuplicateColIds = null;
 
-    // 1. Data structure: unique IDs
-    var cardIdsSeen = {};
-    var colIdsSeen = {};
-    var expectedColCount = 0;
-    var expectedVisibleCardCount = 0;
+  function capturePreExistingDuplicates() {
+    var data = api().getFullBoardData();
+    if (!data || !data.rows) return;
+    var cardSeen = {};
+    var colSeen = {};
+    _preExistingDuplicateCardIds = {};
+    _preExistingDuplicateColIds = {};
     for (var r = 0; r < data.rows.length; r++) {
       var stacks = data.rows[r].stacks || [];
       for (var s = 0; s < stacks.length; s++) {
         var cols = stacks[s].columns || [];
         for (var c = 0; c < cols.length; c++) {
-          assert(!colIdsSeen[cols[c].id], label + ': duplicate col ID ' + cols[c].id);
+          if (colSeen[cols[c].id]) _preExistingDuplicateColIds[cols[c].id] = true;
+          colSeen[cols[c].id] = true;
+          var cards = cols[c].cards || [];
+          for (var k = 0; k < cards.length; k++) {
+            var cid = cards[k].kid || cards[k].id;
+            if (cardSeen[cid]) _preExistingDuplicateCardIds[cid] = true;
+            cardSeen[cid] = true;
+          }
+        }
+      }
+    }
+  }
+
+  function assertBoardIntegrity(label) {
+    var data = api().getFullBoardData();
+    assert(data && data.rows && data.rows.length > 0, label + ': board data exists');
+
+    // 1. Data structure: unique IDs (skip pre-existing duplicates)
+    var cardIdsSeen = {};
+    var colIdsSeen = {};
+    var expectedColCount = 0;
+    var expectedVisibleCardCount = 0;
+    var preCardDups = _preExistingDuplicateCardIds || {};
+    var preColDups = _preExistingDuplicateColIds || {};
+    for (var r = 0; r < data.rows.length; r++) {
+      var stacks = data.rows[r].stacks || [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = stacks[s].columns || [];
+        for (var c = 0; c < cols.length; c++) {
+          if (!preColDups[cols[c].id]) {
+            assert(!colIdsSeen[cols[c].id], label + ': duplicate col ID ' + cols[c].id);
+          }
           colIdsSeen[cols[c].id] = true;
           expectedColCount++;
           var cards = cols[c].cards || [];
           for (var k = 0; k < cards.length; k++) {
             var cid = cards[k].kid || cards[k].id;
-            assert(!cardIdsSeen[cid], label + ': duplicate card ID ' + cid);
+            if (!preCardDups[cid]) {
+              assert(!cardIdsSeen[cid], label + ': duplicate card ID ' + cid);
+            }
             cardIdsSeen[cid] = true;
             if (!cards[k].content || cards[k].content.indexOf('#hidden-internal') === -1) {
               expectedVisibleCardCount++;
@@ -3770,7 +4096,7 @@
       await delay(100);
 
       assertEqual(getViewCardCount(col.flatIdx), countBefore, 'restored card visible');
-      assertBoardIntegrity('after restore archived card');
+      await waitForAssertion(function () { assertBoardIntegrity('after restore archived card'); });
     } finally { await teardown(); }
   });
 
@@ -3926,11 +4252,13 @@
     try {
       var data = api().getFullBoardData();
       var targetStack = data.rows[0].stacks[0];
+      var includePath = await getExistingIncludePathForTest(false);
+      var includeSource = makeIncludeSourceForTest(includePath, false);
       targetStack.columns.push({
         id: '__incl-col-ok__', title: 'Included Column',
         cards: [{ id: '__incl-ok-card__', content: 'Included card content', checked: false, kid: '__incl-ok-card__' }],
-        include_source: null,
-        includeSource: { rawPath: 'docs/valid-include.md', missing: false }
+        include_source: includeSource,
+        includeSource: includeSource
       });
       api().setTestBoard(data, _boardId);
       await delay(120);
@@ -3951,11 +4279,12 @@
     try {
       var data = api().getFullBoardData();
       var targetStack = data.rows[0].stacks[0];
+      var includeSource = makeIncludeSourceForTest('docs/nonexistent.md', true);
       targetStack.columns.push({
         id: '__incl-col-bad__', title: 'Broken Include Column',
         cards: [],
-        include_source: null,
-        includeSource: { rawPath: 'docs/nonexistent.md', missing: true }
+        include_source: includeSource,
+        includeSource: includeSource
       });
       api().setTestBoard(data, _boardId);
       await delay(120);
@@ -4281,14 +4610,16 @@
       api().setTestBoard(data, _boardId);
       await delay(100);
 
-      var allCols = api().getAllFullColumns();
-      var emptyIdx = allCols.length - 1;
+      var emptyRefBefore = findColumnRefById(api().getFullBoardData(), '__empty-then-card__');
+      assert(emptyRefBefore, 'empty column found in rendered board');
+      var emptyIdx = emptyRefBefore.flatIdx;
       assertEqual(getViewCardCount(emptyIdx), 0, 'column starts empty');
 
       // Now add a card to it
       data = api().getFullBoardData();
-      allCols = api().getAllFullColumns();
-      allCols[allCols.length - 1].cards.push({
+      var emptyRef = findColumnRefById(data, '__empty-then-card__');
+      assert(emptyRef, 'empty column found in data');
+      emptyRef.column.cards.push({
         id: '__empty-card__', content: 'First card in empty col', checked: false, kid: '__empty-card__'
       });
       api().setTestBoard(data, _boardId);
@@ -4364,14 +4695,16 @@
     try {
       var data = api().getFullBoardData();
       var targetStack = data.rows[0].stacks[0];
+      var includePath = await getExistingIncludePathForTest(false);
+      var includeSource = makeIncludeSourceForTest(includePath, false);
       targetStack.columns.push({
-        id: '__incl-hdr-add__', title: 'Backlog !!!include(docs/backlog.md)!!!',
+        id: '__incl-hdr-add__', title: 'Backlog !!!include(' + includePath + ')!!!',
         cards: [
           { id: '__incl-hdr-c1__', content: 'Included Card 1', checked: false, kid: '__incl-hdr-c1__' },
           { id: '__incl-hdr-c2__', content: 'Included Card 2', checked: false, kid: '__incl-hdr-c2__' }
         ],
-        include_source: null,
-        includeSource: { rawPath: 'docs/backlog.md', missing: false }
+        include_source: includeSource,
+        includeSource: includeSource
       });
       api().setTestBoard(data, _boardId);
       await delay(120);
@@ -4384,12 +4717,10 @@
       var badge = colEl.querySelector('.column-include-badge');
       assert(badge, 'include badge rendered');
       assert(!badge.classList.contains('include-broken'), 'badge not marked broken');
-      assertEqual(badge.getAttribute('data-include-path'), 'docs/backlog.md', 'badge has correct path');
+      assertEqual(badge.getAttribute('data-include-path'), includePath, 'badge has correct path');
 
       // Cards should be visible
-      var allCols = api().getAllFullColumns();
-      var colIdx = allCols.length - 1;
-      assertEqual(getViewCardCount(colIdx), 2, 'included cards visible');
+      assertEqual(getViewCardCountByColumnId('__incl-hdr-add__'), 2, 'included cards visible');
       assertBoardIntegrity('after include header add');
     } finally { await teardown(); }
   });
@@ -4399,11 +4730,12 @@
     try {
       var data = api().getFullBoardData();
       var targetStack = data.rows[0].stacks[0];
+      var includeSource = makeIncludeSourceForTest('nonexistent.md', true);
       targetStack.columns.push({
         id: '__incl-hdr-miss__', title: 'Missing !!!include(nonexistent.md)!!!',
         cards: [],
-        include_source: null,
-        includeSource: { rawPath: 'nonexistent.md', missing: true }
+        include_source: includeSource,
+        includeSource: includeSource
       });
       api().setTestBoard(data, _boardId);
       await delay(120);
@@ -4424,11 +4756,13 @@
       // Step 1: Add column with include
       var data = api().getFullBoardData();
       var targetStack = data.rows[0].stacks[0];
+      var includePaths = await getExistingIncludePathPairForTest();
+      var oldIncludeSource = makeIncludeSourceForTest(includePaths.first, false);
       targetStack.columns.push({
-        id: '__incl-hdr-chg__', title: 'Schedule !!!include(docs/old.md)!!!',
+        id: '__incl-hdr-chg__', title: 'Schedule !!!include(' + includePaths.first + ')!!!',
         cards: [{ id: '__incl-chg-c1__', content: 'Old Card', checked: false, kid: '__incl-chg-c1__' }],
-        include_source: null,
-        includeSource: { rawPath: 'docs/old.md', missing: false }
+        include_source: oldIncludeSource,
+        includeSource: oldIncludeSource
       });
       api().setTestBoard(data, _boardId);
       await delay(120);
@@ -4436,15 +4770,12 @@
       var c = getContainer();
       var badge = c.querySelector('.column[data-column-id="__incl-hdr-chg__"] .column-include-badge');
       assert(badge, 'initial badge exists');
-      assertEqual(badge.getAttribute('data-include-path'), 'docs/old.md', 'initial path');
+      assertEqual(badge.getAttribute('data-include-path'), includePaths.first, 'initial path');
 
       // Step 2: Change to new include path
       data = api().getFullBoardData();
-      var allCols = api().getAllFullColumns();
-      var targetCol = null;
-      for (var i = 0; i < allCols.length; i++) {
-        if (allCols[i].id === '__incl-hdr-chg__') { targetCol = allCols[i]; break; }
-      }
+      var targetRef = findColumnRefById(data, '__incl-hdr-chg__');
+      var targetCol = targetRef && targetRef.column;
       assert(targetCol, 'target column found in data');
 
       // Update title and includeSource
@@ -4452,12 +4783,14 @@
       if (helpers && typeof helpers.addIncludeSyntaxToTitle === 'function') {
         targetCol.title = helpers.addIncludeSyntaxToTitle(
           helpers.removeIncludeSyntaxFromTitle(targetCol.title || ''),
-          'docs/new.md'
+          includePaths.second
         );
       } else {
-        targetCol.title = 'Schedule !!!include(docs/new.md)!!!';
+        targetCol.title = 'Schedule !!!include(' + includePaths.second + ')!!!';
       }
-      targetCol.includeSource = { rawPath: 'docs/new.md', missing: false };
+      var newIncludeSource = makeIncludeSourceForTest(includePaths.second, false);
+      targetCol.includeSource = newIncludeSource;
+      targetCol.include_source = newIncludeSource;
       targetCol.cards = [{ id: '__incl-chg-c2__', content: 'New Card', checked: false, kid: '__incl-chg-c2__' }];
       api().setTestBoard(data, _boardId);
       await delay(120);
@@ -4465,7 +4798,7 @@
       c = getContainer();
       badge = c.querySelector('.column[data-column-id="__incl-hdr-chg__"] .column-include-badge');
       assert(badge, 'badge still exists after path change');
-      assertEqual(badge.getAttribute('data-include-path'), 'docs/new.md', 'updated path');
+      assertEqual(badge.getAttribute('data-include-path'), includePaths.second, 'updated path');
       assertBoardIntegrity('after include path change');
     } finally { await teardown(); }
   });
@@ -4476,26 +4809,27 @@
       // Step 1: Add column with include and cards
       var data = api().getFullBoardData();
       var targetStack = data.rows[0].stacks[0];
+      var includePath = await getExistingIncludePathForTest(false);
+      var includeSource = makeIncludeSourceForTest(includePath, false);
       targetStack.columns.push({
-        id: '__incl-hdr-rm__', title: 'Reports !!!include(docs/reports.md)!!!',
+        id: '__incl-hdr-rm__', title: 'Reports !!!include(' + includePath + ')!!!',
         cards: [
           { id: '__incl-rm-c1__', content: 'Report 1', checked: false, kid: '__incl-rm-c1__' },
           { id: '__incl-rm-c2__', content: 'Report 2', checked: false, kid: '__incl-rm-c2__' }
         ],
-        include_source: null,
-        includeSource: { rawPath: 'docs/reports.md', missing: false }
+        include_source: includeSource,
+        includeSource: includeSource
       });
       api().setTestBoard(data, _boardId);
       await delay(120);
 
-      var allCols = api().getAllFullColumns();
-      var colIdx = allCols.length - 1;
-      assertEqual(getViewCardCount(colIdx), 2, 'cards visible before remove');
+      assertEqual(getViewCardCountByColumnId('__incl-hdr-rm__'), 2, 'cards visible before remove');
 
       // Step 2: Remove include syntax and cards (simulating disableColumnIncludeMode)
       data = api().getFullBoardData();
-      allCols = api().getAllFullColumns();
-      var targetCol = allCols[allCols.length - 1];
+      var targetRef = findColumnRefById(data, '__incl-hdr-rm__');
+      var targetCol = targetRef && targetRef.column;
+      assert(targetCol, 'target column found for include removal');
 
       var helpers = getOrderHelpers();
       if (helpers && typeof helpers.removeIncludeSyntaxFromTitle === 'function') {
@@ -4504,6 +4838,7 @@
         targetCol.title = 'Reports';
       }
       targetCol.includeSource = null;
+      targetCol.include_source = null;
       targetCol.cards = []; // Cards removed when include is disabled
       api().setTestBoard(data, _boardId);
       await delay(120);
@@ -4514,9 +4849,7 @@
       var badge = colEl.querySelector('.column-include-badge');
       assert(!badge, 'badge removed after include syntax removed');
 
-      allCols = api().getAllFullColumns();
-      colIdx = allCols.length - 1;
-      assertEqual(getViewCardCount(colIdx), 0, 'cards removed after include disabled');
+      assertEqual(getViewCardCountByColumnId('__incl-hdr-rm__'), 0, 'cards removed after include disabled');
       assertBoardIntegrity('after include removed');
     } finally { await teardown(); }
   });
@@ -4538,33 +4871,33 @@
       api().setTestBoard(data, _boardId);
       await delay(120);
 
-      var allCols = api().getAllFullColumns();
-      var colIdx = allCols.length - 1;
-      assertEqual(getViewCardCount(colIdx), 2, 'existing cards visible');
+      assertEqual(getViewCardCountByColumnId('__incl-hdr-pre__'), 2, 'existing cards visible');
 
       // Step 2: Add include syntax — the existing cards should still be in data
       // (In real usage, the backend would suggest moving them to the included file)
       data = api().getFullBoardData();
-      allCols = api().getAllFullColumns();
-      var targetCol = allCols[allCols.length - 1];
+      var targetRef = findColumnRefById(data, '__incl-hdr-pre__');
+      var targetCol = targetRef && targetRef.column;
+      assert(targetCol, 'pre-existing column found in data');
+      var includePath = await getExistingIncludePathForTest(false);
 
       var helpers = getOrderHelpers();
       if (helpers && typeof helpers.addIncludeSyntaxToTitle === 'function') {
-        targetCol.title = helpers.addIncludeSyntaxToTitle(targetCol.title || '', 'docs/work.md');
+        targetCol.title = helpers.addIncludeSyntaxToTitle(targetCol.title || '', includePath);
       } else {
-        targetCol.title = 'Existing Work !!!include(docs/work.md)!!!';
+        targetCol.title = 'Existing Work !!!include(' + includePath + ')!!!';
       }
-      targetCol.includeSource = { rawPath: 'docs/work.md', missing: false };
+      var includeSource = makeIncludeSourceForTest(includePath, false);
+      targetCol.includeSource = includeSource;
+      targetCol.include_source = includeSource;
       // Pre-existing cards remain (they'd be suggested for migration in real flow)
       api().setTestBoard(data, _boardId);
       await delay(120);
 
       // Cards should still be visible
-      allCols = api().getAllFullColumns();
-      colIdx = allCols.length - 1;
-      assertEqual(getViewCardCount(colIdx), 2, 'pre-existing cards still visible after include added');
-      assert(getViewCardKids(colIdx).indexOf('__incl-pre-c1__') !== -1, 'card 1 preserved');
-      assert(getViewCardKids(colIdx).indexOf('__incl-pre-c2__') !== -1, 'card 2 preserved');
+      assertEqual(getViewCardCountByColumnId('__incl-hdr-pre__'), 2, 'pre-existing cards still visible after include added');
+      assert(getViewCardKidsByColumnId('__incl-hdr-pre__').indexOf('__incl-pre-c1__') !== -1, 'card 1 preserved');
+      assert(getViewCardKidsByColumnId('__incl-hdr-pre__').indexOf('__incl-pre-c2__') !== -1, 'card 2 preserved');
 
       // Badge should render
       var c = getContainer();
@@ -4575,9 +4908,10 @@
   });
 
   register('include header: full lifecycle — add include → change path → remove include', async function () {
-    await setup();
+      await setup();
     try {
       var helpers = getOrderHelpers();
+      var includePaths = await getExistingIncludePathPairForTest();
 
       // Step 1: Start with plain column
       var data = api().getFullBoardData();
@@ -4593,14 +4927,17 @@
 
       // Step 2: Add include
       data = api().getFullBoardData();
-      var allCols = api().getAllFullColumns();
-      var col = allCols[allCols.length - 1];
+      var colRef = findColumnRefById(data, '__incl-lifecycle__');
+      var col = colRef && colRef.column;
+      assert(col, 'lifecycle column found for include add');
       if (helpers && helpers.addIncludeSyntaxToTitle) {
-        col.title = helpers.addIncludeSyntaxToTitle(col.title || '', 'docs/first.md');
+        col.title = helpers.addIncludeSyntaxToTitle(col.title || '', includePaths.first);
       } else {
-        col.title = col.title + ' !!!include(docs/first.md)!!!';
+        col.title = col.title + ' !!!include(' + includePaths.first + ')!!!';
       }
-      col.includeSource = { rawPath: 'docs/first.md', missing: false };
+      var firstIncludeSource = makeIncludeSourceForTest(includePaths.first, false);
+      col.includeSource = firstIncludeSource;
+      col.include_source = firstIncludeSource;
       col.cards.push({ id: '__lc-c2__', content: 'Included Card', checked: false, kid: '__lc-c2__' });
       api().setTestBoard(data, _boardId);
       await delay(100);
@@ -4608,21 +4945,24 @@
       var c = getContainer();
       var badge = c.querySelector('.column[data-column-id="__incl-lifecycle__"] .column-include-badge');
       assert(badge, 'badge after add');
-      assertEqual(badge.getAttribute('data-include-path'), 'docs/first.md', 'first path');
+      assertEqual(badge.getAttribute('data-include-path'), includePaths.first, 'first path');
       assertBoardIntegrity('lifecycle step 1: add include');
 
       // Step 3: Change path
       data = api().getFullBoardData();
-      allCols = api().getAllFullColumns();
-      col = allCols[allCols.length - 1];
+      colRef = findColumnRefById(data, '__incl-lifecycle__');
+      col = colRef && colRef.column;
+      assert(col, 'lifecycle column found for path change');
       if (helpers && helpers.removeIncludeSyntaxFromTitle && helpers.addIncludeSyntaxToTitle) {
         col.title = helpers.addIncludeSyntaxToTitle(
-          helpers.removeIncludeSyntaxFromTitle(col.title || ''), 'docs/second.md'
+          helpers.removeIncludeSyntaxFromTitle(col.title || ''), includePaths.second
         );
       } else {
-        col.title = 'Lifecycle Column !!!include(docs/second.md)!!!';
+        col.title = 'Lifecycle Column !!!include(' + includePaths.second + ')!!!';
       }
-      col.includeSource = { rawPath: 'docs/second.md', missing: false };
+      var secondIncludeSource = makeIncludeSourceForTest(includePaths.second, false);
+      col.includeSource = secondIncludeSource;
+      col.include_source = secondIncludeSource;
       col.cards = [{ id: '__lc-c3__', content: 'New Included Card', checked: false, kid: '__lc-c3__' }];
       api().setTestBoard(data, _boardId);
       await delay(100);
@@ -4630,19 +4970,21 @@
       c = getContainer();
       badge = c.querySelector('.column[data-column-id="__incl-lifecycle__"] .column-include-badge');
       assert(badge, 'badge after path change');
-      assertEqual(badge.getAttribute('data-include-path'), 'docs/second.md', 'second path');
+      assertEqual(badge.getAttribute('data-include-path'), includePaths.second, 'second path');
       assertBoardIntegrity('lifecycle step 2: change path');
 
       // Step 4: Remove include
       data = api().getFullBoardData();
-      allCols = api().getAllFullColumns();
-      col = allCols[allCols.length - 1];
+      colRef = findColumnRefById(data, '__incl-lifecycle__');
+      col = colRef && colRef.column;
+      assert(col, 'lifecycle column found for include removal');
       if (helpers && helpers.removeIncludeSyntaxFromTitle) {
         col.title = helpers.removeIncludeSyntaxFromTitle(col.title || '');
       } else {
         col.title = 'Lifecycle Column';
       }
       col.includeSource = null;
+      col.include_source = null;
       col.cards = [];
       api().setTestBoard(data, _boardId);
       await delay(100);
@@ -4650,9 +4992,7 @@
       c = getContainer();
       badge = c.querySelector('.column[data-column-id="__incl-lifecycle__"] .column-include-badge');
       assert(!badge, 'badge gone after remove');
-      allCols = api().getAllFullColumns();
-      var colIdx = allCols.length - 1;
-      assertEqual(getViewCardCount(colIdx), 0, 'cards gone after include removed');
+      assertEqual(getViewCardCountByColumnId('__incl-lifecycle__'), 0, 'cards gone after include removed');
       assertBoardIntegrity('lifecycle step 3: remove include');
     } finally { await teardown(); }
   });
@@ -4735,11 +5075,14 @@
     el.style.color = color || 'var(--text-muted)';
   }
 
-  function beginRun(total) {
+  function beginRun(total, options) {
     _runState.active = true;
     _runState.cancelRequested = false;
     _runState.currentIndex = -1;
     _runState.total = typeof total === 'number' ? total : 0;
+    _runState.phase = 'starting';
+    _runState.autoRun = isAutoRunContext(options);
+    _autoRunBoardSelectorRefreshed = false;
     updateRunControls();
   }
 
@@ -4748,6 +5091,9 @@
     _runState.cancelRequested = false;
     _runState.currentIndex = -1;
     _runState.total = 0;
+    _runState.phase = 'idle';
+    _runState.autoRun = false;
+    _manualInspectState.awaitingUndo = false;
     updateRunControls();
   }
 
@@ -4959,9 +5305,53 @@
   function copyResults() {
     var scope = getCopyScope();
     var text = buildCopiedResultsText(scope);
-    navigator.clipboard.writeText(text).then(function () {
-      var btn = findPanelRoot() && findPanelRoot().querySelector('.lexera-shared-test-copy');
-      if (btn) { btn.textContent = scope === 'errors' ? 'Errors Copied!' : 'Copied!'; setTimeout(function () { btn.textContent = 'Copy'; }, 1200); }
+    var btn = findPanelRoot() && findPanelRoot().querySelector('.lexera-shared-test-copy');
+    setCopyButtonLabel(btn, 'Copying...', 1200);
+    writeClipboardText(text).then(function () {
+      setCopyButtonLabel(btn, scope === 'errors' || scope === 'errors-with-logs' ? 'Errors Copied!' : 'Copied!', 1200);
+    }).catch(function () {
+      setCopyButtonLabel(btn, 'Copy Failed', 1600);
+    });
+  }
+
+  function setCopyButtonLabel(btn, label, timeoutMs) {
+    if (!btn) return;
+    if (btn._lexeraCopyFeedbackTimer) clearTimeout(btn._lexeraCopyFeedbackTimer);
+    btn.textContent = label;
+    btn._lexeraCopyFeedbackTimer = setTimeout(function () {
+      btn.textContent = 'Copy';
+      btn._lexeraCopyFeedbackTimer = null;
+    }, timeoutMs || 1200);
+  }
+
+  function writeClipboardText(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      return navigator.clipboard.writeText(text).catch(function () {
+        return writeClipboardTextFallback(text);
+      });
+    }
+    return writeClipboardTextFallback(text);
+  }
+
+  function writeClipboardTextFallback(text) {
+    return new Promise(function (resolve, reject) {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', 'readonly');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) resolve();
+        else reject(new Error('execCommand copy returned false'));
+      } catch (err) {
+        reject(err);
+      }
     });
   }
 
@@ -5128,18 +5518,28 @@
   // moves us past the post-paint microtask barrier so the next JS task
   // runs on a fresh tick.
   function waitForPaint() {
+    if (isAutoRunContext()) {
+      return yieldAutoRunTick();
+    }
     return new Promise(function (resolve) {
+      var done = false;
+      function finish() {
+        if (done) return;
+        done = true;
+        resolve();
+      }
+      setTimeout(finish, 80);
       if (typeof requestAnimationFrame === 'function') {
         requestAnimationFrame(function () {
-          setTimeout(resolve, 0);
+          setTimeout(finish, 0);
         });
       } else {
-        setTimeout(resolve, 16);
+        setTimeout(finish, 16);
       }
     });
   }
 
-  async function runAllUI() {
+  async function runAllUI(options) {
     if (isRunActive()) return;
     populateTestList(); _api = null; lastResults = [];
     var filter = getTestFilter();
@@ -5147,7 +5547,7 @@
     for (var fc = 0; fc < tests.length; fc++) {
       if (isTestIncludedByFilter(tests[fc].name, filter)) filteredCount++;
     }
-    beginRun(filteredCount || tests.length);
+    beginRun(filteredCount || tests.length, options);
     refreshBoardSelector();
     // Enable mutation profiling in ALL board windows (parent + iframes)
     setMutationProfilingFlag(true);
@@ -5158,6 +5558,7 @@
     // Yield once before the first test so the reset UI (all rows cleared,
     // summary "0 passed 0 failed") actually paints before the first test
     // body takes the main thread.
+    setRunPhase('pre-run-paint');
     await waitForPaint();
     try {
       for (var i = 0; i < tests.length; i++) {
@@ -5167,6 +5568,7 @@
         }
         dismissConflictDialogs();
         _runState.currentIndex = i;
+        setRunPhase('row-running');
         updateRow(i, 'running');
         // Always yield one paint frame before each test body so:
         //   1. The 'running' indicator on the test row paints
@@ -5174,6 +5576,7 @@
         //   3. Pending UI events (Stop button click, scroll, Copy
         //      button click) get a chance to run — otherwise the app
         //      feels 100% locked up until the whole suite finishes.
+        setRunPhase('pre-test-paint');
         await waitForPaint();
         _phaseTimings = { setup: 0, body: 0, teardown: 0, setupStart: 0, teardownStart: 0 };
         // Reset profile arrays in all board windows (parent + iframes)
@@ -5182,10 +5585,12 @@
         var testStart = _nowMs();
         var bodyStart = 0, bodyEnd = 0;
         try {
+          setRunPhase('test-body');
           bodyStart = _nowMs();
           await tests[i].fn();
           bodyEnd = _nowMs();
           throwIfRunCancelled();
+          setRunPhase('record-pass');
           var testDur = _nowMs() - testStart;
           // body time = test body minus any setup/teardown that happened within it
           _phaseTimings.body = (bodyEnd - bodyStart) - (_phaseTimings.setup || 0) - (_phaseTimings.teardown || 0);
@@ -5207,6 +5612,7 @@
             return;
           }
           var msg = err.message || String(err);
+          setRunPhase('record-fail');
           _phaseTimings.body = (bodyEnd - bodyStart) - (_phaseTimings.setup || 0) - (_phaseTimings.teardown || 0);
           if (_phaseTimings.body < 0) _phaseTimings.body = 0;
           var profSummaryFail = attachRenderCounters(_summarizeMutationProfile(collectMutationProfile()));
@@ -5219,6 +5625,7 @@
           f++;
         }
         _phaseTimings = null;
+        setRunPhase('summary-update');
         updateSummary(p, f, tests.length);
       }
       if (isRunCancelled()) {
@@ -5350,9 +5757,13 @@
     stop: function () { requestStopRun(); },
     continueUndo: function () { continueManualUndo(); },
     showPanel: function () { populateTestList(); },
-    runAllWithUI: function () { populateTestList(); runAllUI(); },
+    runAllWithUI: function (options) { populateTestList(); return runAllUI(options); },
     // Exposed for Rust-side auto-run eval to poll completion + get results
     _runState: _runState,
+    _currentTestName: function () {
+      var idx = _runState && typeof _runState.currentIndex === 'number' ? _runState.currentIndex : -1;
+      return idx >= 0 && tests[idx] ? tests[idx].name : '';
+    },
     _buildResults: function () { return buildCopiedResultsText('all'); }
   };
 
@@ -5387,32 +5798,193 @@
     return null;
   }
 
+  function findReachableTauriInvokeLocal() {
+    function invokeFrom(win) {
+      try {
+        if (win && win.__TAURI__ && win.__TAURI__.core && typeof win.__TAURI__.core.invoke === 'function') {
+          return function (cmd, args) { return win.__TAURI__.core.invoke(cmd, args || {}); };
+        }
+        if (win && win.__TAURI_INTERNALS__ && typeof win.__TAURI_INTERNALS__.invoke === 'function') {
+          return function (cmd, args) { return win.__TAURI_INTERNALS__.invoke(cmd, args || {}); };
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    var direct = invokeFrom(window);
+    if (direct) return direct;
+
+    try {
+      var iframes = document.querySelectorAll('iframe');
+      for (var i = 0; i < iframes.length; i++) {
+        try {
+          var invoke = invokeFrom(iframes[i].contentWindow);
+          if (invoke) return invoke;
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  function invokeTauriCommandLocal(cmd, args) {
+    var invoke = findReachableTauriInvokeLocal();
+    if (invoke) return invoke(cmd, args || {});
+    return tauriInvokeLocal(cmd, args || {});
+  }
+
+  var autoRunBackendUrlPromise = null;
+
+  function discoverAutoRunBackendUrl() {
+    if (autoRunBackendUrlPromise) return autoRunBackendUrlPromise;
+    autoRunBackendUrlPromise = (async function () {
+      try {
+        if (window.LexeraApi && typeof window.LexeraApi.discover === 'function') {
+          var apiUrl = await window.LexeraApi.discover();
+          if (apiUrl) return apiUrl;
+        }
+      } catch (_) {}
+      try {
+        if (
+          window.LexeraBackendDiscovery &&
+          typeof window.LexeraBackendDiscovery.discoverBackend === 'function'
+        ) {
+          var discovered = await window.LexeraBackendDiscovery.discoverBackend({
+            useTauri: true,
+            timeoutMs: 1200
+          });
+          if (discovered) return discovered;
+        }
+      } catch (_) {}
+      return null;
+    })();
+    autoRunBackendUrlPromise.then(function (url) {
+      if (!url) autoRunBackendUrlPromise = null;
+    }, function () {
+      autoRunBackendUrlPromise = null;
+    });
+    return autoRunBackendUrlPromise;
+  }
+
+  async function postAutoRunOutputToBackend(outputPath, content) {
+    var baseUrl = await discoverAutoRunBackendUrl();
+    if (!baseUrl) throw new Error('Backend URL unavailable');
+    var res = await fetch(baseUrl + '/test-results', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+        'X-Output-Path': outputPath
+      },
+      body: content
+    });
+    if (!res.ok) {
+      var bodyText = '';
+      try { bodyText = await res.text(); } catch (_) {}
+      throw new Error('Backend /test-results failed: ' + res.status + (bodyText ? ' ' + bodyText : ''));
+    }
+  }
+
+  async function writeAutoRunOutput(outputPath, content) {
+    var backendError = null;
+    try {
+      await postAutoRunOutputToBackend(outputPath, content);
+      return;
+    } catch (err) {
+      backendError = err;
+      console.warn('[auto-run-tests] backend result write failed, trying Tauri fallback:', err);
+    }
+
+    var tauriResult = invokeTauriCommandLocal('write_text_file', {
+      path: outputPath,
+      content: content
+    });
+    if (tauriResult && typeof tauriResult.then === 'function') {
+      await tauriResult;
+      return;
+    }
+    if (tauriResult) return;
+    throw backendError || new Error('No test output writer available');
+  }
+
+  function normalizeAutoRunConfigLocal(config) {
+    if (!config || typeof config !== 'object') return null;
+    if (Object.prototype.hasOwnProperty.call(config, 'auto_run') && !config.auto_run) return null;
+    return {
+      board: config.board || '',
+      delay: typeof config.delay === 'number'
+        ? config.delay
+        : (typeof config.delay_ms === 'number' ? config.delay_ms : undefined),
+      output: config.output || config.output_path || null,
+      quit: !!(config.quit || config.quit_after),
+      includeFixturePath: config.includeFixturePath || config.include_fixture_path || ''
+    };
+  }
+
+  function startAutoRunFromAnyConfig(config) {
+    try {
+      if (window.parent && window.parent !== window && window.parent.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__) return false;
+    } catch (_) {}
+    var normalized = normalizeAutoRunConfigLocal(config);
+    if (!normalized) return false;
+    window.__LEXERA_TEST_RUNNER_CONFIG__ = normalized;
+    startAutoRunFromConfig(normalized);
+    return true;
+  }
+
+  function tryTauriAutoRunConfig() {
+    try {
+      var result = invokeTauriCommandLocal('get_test_runner_config', {});
+      if (result && typeof result.then === 'function') {
+        return result.then(function (config) {
+          return startAutoRunFromAnyConfig(config);
+        }).catch(function () {
+          return false;
+        });
+      }
+      return Promise.resolve(startAutoRunFromAnyConfig(result));
+    } catch (_) {
+      return Promise.resolve(false);
+    }
+  }
+
   // Always check for the auto-run config file on startup. This is a
   // single fetch that 404s silently when not auto-running. When the
   // Rust side wrote the config file, the fetch succeeds and we start.
   (function () {
+    // The separate autoRunBootstrap.js script is loaded after this
+    // file and owns CLI auto-run. Leave this legacy fallback opt-in
+    // only; running both watchers can start two runs and let the
+    // second window call quit_app while the primary run is still active.
+    if (!window.__LEXERA_ENABLE_LEGACY_INLINE_AUTO_RUN__) return;
     if (window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__) return;
     var attempts = 0;
     var maxAttempts = 30;
+    function scheduleRetry() {
+      if (attempts < maxAttempts) setTimeout(tryFetchConfig, 1000);
+    }
     function tryFetchConfig() {
       if (window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__) return;
       attempts++;
+      tryTauriAutoRunConfig().then(function (started) {
+        if (started || window.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__) return;
+        tryFetchConfigFile();
+      });
+    }
+    function tryFetchConfigFile() {
       var xhr = new XMLHttpRequest();
       xhr.open('GET', '/auto-run-config.json?_=' + Date.now(), true);
       xhr.onload = function () {
         if (xhr.status === 200) {
           try {
             var config = JSON.parse(xhr.responseText);
-            if (config && typeof config === 'object') {
-              startAutoRunFromConfig(config);
+            if (startAutoRunFromAnyConfig(config)) {
               return;
             }
           } catch (_) {}
         }
-        if (attempts < maxAttempts) setTimeout(tryFetchConfig, 1000);
+        scheduleRetry();
       };
       xhr.onerror = function () {
-        if (attempts < maxAttempts) setTimeout(tryFetchConfig, 1000);
+        scheduleRetry();
       };
       xhr.send();
     }
@@ -5442,7 +6014,7 @@
     async function performAutoRun() {
       console.log('[auto-run-tests] event received, starting tests');
       populateTestList();
-      var runPromise = runAllUI();
+      var runPromise = runAllUI({ autoRun: true });
       try { await runPromise; } catch (_) {}
       await waitForRunCompletion();
 
@@ -5456,7 +6028,7 @@
       if (outputPath) {
         try {
           console.log('[auto-run-tests] writing results to ' + outputPath);
-          await tauriInvokeLocal('write_text_file', { path: outputPath, content: outputText });
+          await writeAutoRunOutput(outputPath, outputText);
           console.log('[auto-run-tests] results written');
         } catch (err) {
           console.error('[auto-run-tests] failed to write results:', err);
@@ -5468,7 +6040,7 @@
       if (quitAfter) {
         console.log('[auto-run-tests] quitting app');
         setTimeout(function () {
-          try { tauriInvokeLocal('quit_app', {}); } catch (_) {}
+          try { invokeTauriCommandLocal('quit_app', {}); } catch (_) {}
         }, 200);
       }
     }

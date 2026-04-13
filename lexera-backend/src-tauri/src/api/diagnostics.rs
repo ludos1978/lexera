@@ -1,8 +1,16 @@
-use axum::{extract::State, response::Json};
+use axum::{
+    body::Bytes,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    response::Json,
+};
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::state::AppState;
+
+const TEST_RESULTS_OUTPUT_HEADER: &str = "x-output-path";
+const DEFAULT_TEST_RESULTS_PATH: &str = "logs/frontend-tests.log";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +29,49 @@ pub struct DiskDiagnostics {
     pub write_count: u64,
     pub last_write_time: u64,
     pub skipped_write_count: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestResultsWriteResponse {
+    pub path: String,
+    pub bytes: usize,
+}
+
+pub async fn write_test_results(
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<TestResultsWriteResponse>, (StatusCode, String)> {
+    if !cfg!(debug_assertions) {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "Frontend test-results endpoint is only available in debug builds".to_string(),
+        ));
+    }
+
+    let output_path = resolve_test_results_path(&headers)?;
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            tokio::fs::create_dir_all(parent).await.map_err(|err| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to create test-results directory: {}", err),
+                )
+            })?;
+        }
+    }
+
+    tokio::fs::write(&output_path, &body).await.map_err(|err| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to write test results: {}", err),
+        )
+    })?;
+
+    Ok(Json(TestResultsWriteResponse {
+        path: output_path.display().to_string(),
+        bytes: body.len(),
+    }))
 }
 
 pub async fn disk_diagnostics(State(state): State<AppState>) -> Json<DiskDiagnostics> {
@@ -132,4 +183,30 @@ pub async fn disk_diagnostics(State(state): State<AppState>) -> Json<DiskDiagnos
         last_write_time,
         skipped_write_count,
     })
+}
+
+fn resolve_test_results_path(headers: &HeaderMap) -> Result<PathBuf, (StatusCode, String)> {
+    match headers.get(TEST_RESULTS_OUTPUT_HEADER) {
+        Some(value) => {
+            let raw = value.to_str().map_err(|err| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Invalid X-Output-Path header: {}", err),
+                )
+            })?;
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                Ok(default_test_results_path())
+            } else {
+                Ok(PathBuf::from(trimmed))
+            }
+        }
+        None => Ok(default_test_results_path()),
+    }
+}
+
+fn default_test_results_path() -> PathBuf {
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(DEFAULT_TEST_RESULTS_PATH)
 }

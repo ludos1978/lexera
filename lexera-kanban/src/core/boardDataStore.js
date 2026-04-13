@@ -907,7 +907,28 @@ var LexeraBoardDataStore = (function () {
     if (typeof options.afterRefresh === 'function') {
       options.afterRefresh();
     }
-    dep('scheduleDashboardRefresh')(300);
+    // Only schedule a dashboard refresh when the mutation could affect
+    // dashboard results (tags, temporal markers, card counts, embeds).
+    // Skip for pure reorder operations (same cards, different position)
+    // and sidebar-only refreshes. This saves ~300ms of debounced
+    // re-fetching on every drag-drop reorder on large boards.
+    var needsDashboard = false;
+    for (var di = 0; di < targets.length; di++) {
+      var dt = targets[di].type;
+      // Card data changes always affect dashboard
+      if (dt === 'card-content' || dt === 'card-insert' || dt === 'card-remove' || dt === 'card') {
+        needsDashboard = true;
+        break;
+      }
+      // Structural add/remove changes card counts and groupings
+      if (dt === 'row-insert' || dt === 'row-remove' || dt === 'board' || dt === 'main-view') {
+        needsDashboard = true;
+        break;
+      }
+    }
+    if (needsDashboard || options.forceDashboardRefresh) {
+      dep('scheduleDashboardRefresh')(300);
+    }
     _mark('afterDashboardSchedule');
     markBoardDirty();
     scheduleDraftSave(activeBoardId);

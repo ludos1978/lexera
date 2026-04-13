@@ -75,6 +75,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   GET  /events                              -> SSE stream of board changes
 ///   GET  /status                              -> health check (+ incoming config)
 ///   GET  /diagnostics/disk                    -> disk usage and write-loop diagnostics
+///   POST /test-results                        -> write local frontend test runner output
 ///   GET  /templates                           -> list available templates
 ///   GET  /templates/:id                       -> full template content + extra files
 ///   POST /templates/:id/copy                  -> copy template files with variable substitution
@@ -298,6 +299,10 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
     Router::new()
         .route("/status", get(events::status))
         .route("/diagnostics/disk", get(diagnostics::disk_diagnostics))
+        .route(
+            "/test-results",
+            axum::routing::post(diagnostics::write_test_results),
+        )
         .route(
             "/open-connection-window",
             axum::routing::post(events::open_connection_window),

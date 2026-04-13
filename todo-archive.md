@@ -1,5 +1,36 @@
 # Lexera Kanban — Completed Items Archive
 
+## Archived During Backlog Cleanup — 2026-04-13 (second batch)
+
+### Auto-run test infrastructure
+- [x] Add `withGlobalTauri` to Tauri config — makes `__TAURI__` available in dev-server mode, fixing IPC bridge.
+- [x] Batch multiple mutations before refresh — already done for all sort operations.
+
+## Archived During Backlog Cleanup — 2026-04-13
+
+### Performance optimizations (completed)
+- [x] Dashboard search speed — deferred render to rAF, early fingerprint check, removed array copies, visibility guard, 300ms debounce.
+- [x] Targeted refresh for common operations — cross-column card moves refresh only source+target columns, column sorts use column target, row/stack sorts use row/stack targets, title renames use targeted refresh.
+- [x] Reverted IntersectionObserver-based deferred card rendering — caused more churn than it saved. Kept card render cache and resolved-content deduplication.
+- [x] Converted many `type: 'board'` mutations to targeted refresh: `updateHiddenItemTag`, `unparkCard`, `setColumnIncludePath`, `disableColumnIncludeMode`, `setColumnHiddenTag`, `duplicateColumn`, `moveColumnToStack`, `moveColumnWithinBoard`, `moveColumnToExistingStack`, `addStackFromContent`, `addColumnFromContent`, `insertTemplateColumns`, `addColumnToStack`, `insertTemplateStack`, `addStackToRow`, `duplicateStack`, `handleFileDrop`, card creation fallback paths.
+- [x] Skip `updateDisplayFromFullBoard()` for card-only mutations.
+- [x] Cache `getAllColumnsFromBoardData()` — Map-based O(1) lookup, invalidated on structural mutations.
+- [x] Test speed — removed ~610ms of fixed waits per test in setup/teardown.
+- [x] Fix O(n²) in updateDisplayFromFullBoard — replaced `indexOf` with Map.
+- [x] Debounce sidebar hierarchy refresh — 150ms debounce in `commitLocalBoardChange`.
+- [x] Debounce undo snapshots for rapid mutations — coalesces same-type within 500ms.
+- [x] Debounce draft save — 500ms debounced.
+- [x] Cache rendered card HTML — `_cardRenderCache` (Map, max 2000 entries).
+- [x] Increase dashboard refresh debounce — 300ms across all mutation paths.
+- [x] Make dashboard refresh conditional — skip for pure reorder operations (column + sidebar targets only).
+- [x] Gate heavy mutation diagnostics behind debug mode.
+- [~] Render only visible/unfolded dashboard sections — MOSTLY DONE via fingerprint-based change detection per section.
+- [~] Lazy card content rendering — REVERTED. Kept duplicate `getIncludeResolvedContent` elimination.
+- [~] Targeted sidebar updates — PARTIALLY DONE. `refreshHierarchy` skipped for card-only mutations, `renderBoardList()` only on sidebar targets.
+
+### Auto-run test infrastructure (completed)
+- [x] Fix auto-run result delivery: use backend `POST /test-results` endpoint instead of Tauri IPC. Endpoint in `diagnostics.rs`, frontend uses `fetch()` from `autoRunBootstrap.js`.
+
 ## Archived During Backlog Cleanup — 2026-04-10
 
 ### Completed items moved out of the active backlog

@@ -23,6 +23,7 @@ struct TestRunnerConfig {
     output_path: Option<String>,
     quit_after: bool,
     board: Option<String>,
+    include_fixture_path: Option<String>,
 }
 
 static TEST_RUNNER_CONFIG: std::sync::OnceLock<TestRunnerConfig> = std::sync::OnceLock::new();
@@ -279,6 +280,18 @@ fn main() {
     let auto_run_board: Option<String> = args
         .iter()
         .find_map(|a| a.strip_prefix("--run-tests-board=").map(|v| v.to_string()));
+    let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let include_fixture_path = repo_root
+        .join("tests")
+        .join("kanban-include-tests")
+        .join("root")
+        .join("root-include-1.md")
+        .to_string_lossy()
+        .to_string();
 
     // Publish the parsed config so the frontend can pull it via
     // `get_test_runner_config`. Once set, `.get()` is lock-free.
@@ -288,6 +301,7 @@ fn main() {
         output_path: auto_run_output_path.clone(),
         quit_after: quit_after_tests,
         board: auto_run_board.clone(),
+        include_fixture_path: Some(include_fixture_path.clone()),
     });
 
     // Diagnostic: when auto-run is requested, write a "kanban started"
@@ -330,7 +344,8 @@ fn main() {
                     "board": auto_run_board,
                     "output": auto_run_output_path,
                     "quit": quit_after_tests,
-                    "delay": auto_run_delay_ms
+                    "delay": auto_run_delay_ms,
+                    "includeFixturePath": include_fixture_path
                 });
                 let _ = std::fs::write(&config_path, config_json.to_string());
 
