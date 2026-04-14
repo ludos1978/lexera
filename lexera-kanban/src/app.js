@@ -7555,14 +7555,18 @@ var LexeraDashboard = (function () {
       colEl.classList.add('wip-exceeded');
     }
 
-    // Check if column has include source
+    // Check if column has include source. Backend-normalized test data may
+    // carry the snake_case form while live frontend mutations use camelCase.
     var fullCol = getFullColumn(col.index);
     var includeIndicator = '';
-    if (fullCol && fullCol.includeSource) {
-      var includeMissing = fullCol.includeSource.missing;
+    var includeSource = (fullCol && (fullCol.includeSource || fullCol.include_source)) ||
+      (col && (col.includeSource || col.include_source));
+    if (includeSource) {
+      var includeMissing = includeSource.missing;
+      var includeRawPath = includeSource.rawPath || includeSource.raw_path || includeSource.path || '';
       includeIndicator =
-        '<button class="column-include-badge' + (includeMissing ? ' include-broken' : '') + '" type="button" data-include-path="' + escapeAttr(fullCol.includeSource.rawPath || '') + '"' +
-        ' title="' + (includeMissing ? 'Missing include: ' : 'Open include: ') + escapeAttr(fullCol.includeSource.rawPath || '') + '">' +
+        '<button class="column-include-badge' + (includeMissing ? ' include-broken' : '') + '" type="button" data-include-path="' + escapeAttr(includeRawPath) + '"' +
+        ' title="' + (includeMissing ? 'Missing include: ' : 'Open include: ') + escapeAttr(includeRawPath) + '">' +
         (includeMissing ? '&#9888;' : '&#128279;') + '</button>';
     }
 

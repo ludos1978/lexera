@@ -15,6 +15,7 @@
 #    ./run-lexera-tests.sh --delay=5000    Override boot delay (ms)
 #    ./run-lexera-tests.sh --output=path   Override log path
 #    ./run-lexera-tests.sh --board=<id>    Pin a specific board for tests
+#    ./run-lexera-tests.sh --filter=text   Run tests whose names contain text
 #    ./run-lexera-tests.sh --no-capture    Skip starting capture app
 #    ./run-lexera-tests.sh --kill          Just kill running instances
 # ─────────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ BACKEND_READY_PORTS=(13080 8083 1431 12080 14080 11080 15080)
 DELAY_MS=10000
 OUTPUT_PATH="$SCRIPT_DIR/logs/frontend-tests.log"
 BOARD_ID=""
+TEST_FILTER=""
 START_CAPTURE=1
 KILL_ONLY=0
 
@@ -43,6 +45,7 @@ for arg in "$@"; do
     --delay=*) DELAY_MS="${arg#--delay=}" ;;
     --output=*) OUTPUT_PATH="${arg#--output=}" ;;
     --board=*) BOARD_ID="${arg#--board=}" ;;
+    --filter=*) TEST_FILTER="${arg#--filter=}" ;;
     -h|--help)
       sed -n '2,22p' "$0"
       exit 0
@@ -199,7 +202,12 @@ KANBAN_CLI_ARGS=(
 )
 if [[ -n "$BOARD_ID" ]]; then
   KANBAN_CLI_ARGS+=("--run-tests-board=$BOARD_ID")
-  echo "Starting lexera-kanban with --run-tests (board=$BOARD_ID, delay=${DELAY_MS}ms, output=$OUTPUT_PATH)..."
+fi
+if [[ -n "$TEST_FILTER" ]]; then
+  KANBAN_CLI_ARGS+=("--run-tests-filter=$TEST_FILTER")
+fi
+if [[ -n "$BOARD_ID" || -n "$TEST_FILTER" ]]; then
+  echo "Starting lexera-kanban with --run-tests (board=${BOARD_ID:-active}, filter=${TEST_FILTER:-none}, delay=${DELAY_MS}ms, output=$OUTPUT_PATH)..."
 else
   echo "Starting lexera-kanban with --run-tests (delay=${DELAY_MS}ms, output=$OUTPUT_PATH)..."
 fi

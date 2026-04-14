@@ -13,7 +13,7 @@
 
   function normalizeAutoRunConfig(config) {
     if (!config || typeof config !== 'object') return null;
-    if (Object.prototype.hasOwnProperty.call(config, 'auto_run') && !config.auto_run) return null;
+    if (config.auto_run !== true && config.autoRun !== true) return null;
     return {
       board: config.board || '',
       delay: typeof config.delay === 'number'
@@ -21,7 +21,8 @@
         : (typeof config.delay_ms === 'number' ? config.delay_ms : undefined),
       output: config.output || config.output_path || null,
       quit: !!(config.quit || config.quit_after),
-      includeFixturePath: config.includeFixturePath || config.include_fixture_path || ''
+      includeFixturePath: config.includeFixturePath || config.include_fixture_path || '',
+      filter: config.filter || config.test_filter || ''
     };
   }
 
@@ -214,6 +215,7 @@
     var outputPath = config.output || null;
     var quitAfter = !!config.quit;
     var pinnedBoard = config.board || '';
+    var testFilter = config.filter || '';
     var delayMs = typeof config.delay === 'number' ? config.delay : 10000;
     window.__LEXERA_TEST_RUNNER_CONFIG__ = config;
 
@@ -238,10 +240,26 @@
       } catch (_) {}
     }
 
+    if (testFilter) {
+      try {
+        var filterInput = document.querySelector('.lexera-shared-test-filter');
+        if (filterInput) filterInput.value = testFilter;
+      } catch (_) {}
+      try {
+        var filterIframes = document.querySelectorAll('iframe');
+        for (var f = 0; f < filterIframes.length; f++) {
+          try {
+            var frameInput = filterIframes[f].contentDocument && filterIframes[f].contentDocument.querySelector('.lexera-shared-test-filter');
+            if (frameInput) frameInput.value = testFilter;
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
     // Write early marker
     if (outputPath) {
       try {
-        writeTestOutput(outputPath, '[auto-run] bootstrap fired, delay=' + delayMs + 'ms, board=' + (pinnedBoard || '(none)') + '\n').catch(function (err) {
+        writeTestOutput(outputPath, '[auto-run] bootstrap fired, delay=' + delayMs + 'ms, board=' + (pinnedBoard || '(none)') + ', filter=' + (testFilter || '(none)') + '\n').catch(function (err) {
           console.error('[auto-run] failed to write bootstrap marker:', err);
         });
       } catch (_) {}
@@ -249,7 +267,7 @@
 
     // Wait for the configured delay, then start tests
     setTimeout(function () {
-      performAutoRun(outputPath, quitAfter).catch(function (e) {
+      performAutoRun(outputPath, quitAfter, testFilter).catch(function (e) {
         console.error('[auto-run] failed:', e);
         if (outputPath) {
           try {
@@ -286,7 +304,7 @@
     return best;
   }
 
-  async function performAutoRun(outputPath, quitAfter) {
+  async function performAutoRun(outputPath, quitAfter, testFilter) {
     // Wait up to 30s for LexeraFrontendTests to become available
     // (board iframe may still be loading)
     var LFT = null;
@@ -307,7 +325,7 @@
     }
 
     console.log('[auto-run] starting tests');
-    LFT.runAllWithUI({ autoRun: true });
+    LFT.runAllWithUI({ autoRun: true, filter: testFilter || '' });
 
     // Wait for the run to become active (runAllWithUI is async —
     // _runState.active starts false and flips to true once beginRun

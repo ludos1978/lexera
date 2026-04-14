@@ -352,15 +352,15 @@
           '<div class="test-panel-action-group test-panel-action-group-run">' +
             '<select class="test-panel-board-select lexera-shared-test-board-select" title="Board to test"></select>' +
             '<input class="test-panel-filter lexera-shared-test-filter" type="text" placeholder="Filter tests\u2026" title="Filter by test name (substring match)" />' +
-            '<span class="test-panel-control-cluster test-panel-run-controls">' +
+            '<span class="test-panel-control-cluster test-panel-run-controls" aria-label="Run controls">' +
               '<button class="test-panel-btn lexera-shared-test-run-all" type="button">Run All</button>' +
               '<button class="test-panel-btn test-panel-btn-stop lexera-shared-test-stop" type="button">Stop Run</button>' +
             '</span>' +
             '<span class="test-panel-control-cluster test-panel-restore-controls">' +
-              '<label class="test-panel-restore-toggle" title="Pause before the test restores its snapshot so you can inspect the live result. This is not app undo.">' +
-                '<input class="lexera-shared-test-manual-inspect" type="checkbox"> Pause before restore' +
+              '<label class="test-panel-restore-toggle" title="Pause after each test mutation, before the harness restores the snapshot. This is not app undo or Ctrl+Z.">' +
+                '<input class="lexera-shared-test-manual-inspect" type="checkbox"> Pause after Do' +
               '</label>' +
-              '<button class="test-panel-btn lexera-shared-test-continue-undo" type="button" title="Restore the test snapshot and continue. This is not Ctrl+Z." disabled>Restore &amp; Continue</button>' +
+              '<button class="test-panel-btn lexera-shared-test-continue-undo" type="button" title="Restore the test snapshot and continue. This is not Ctrl+Z." disabled>Restore Snapshot</button>' +
             '</span>' +
           '</div>' +
           '<div class="test-panel-action-group test-panel-action-group-copy">' +
@@ -370,6 +370,7 @@
               '<option value="errors-with-logs">Errors + FE/BE Logs</option>' +
             '</select>' +
             '<button class="test-panel-btn lexera-shared-test-copy" type="button">Copy</button>' +
+            '<span class="test-panel-copy-feedback lexera-shared-test-copy-feedback" aria-live="polite"></span>' +
           '</div>' +
         '</div>' +
       '</div>' +

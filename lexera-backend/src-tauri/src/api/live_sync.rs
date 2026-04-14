@@ -114,8 +114,8 @@ fn board_identity_stats(a: &KanbanBoard, b: &KanbanBoard) -> (usize, usize, usiz
     (a_ids.len(), b_ids.len(), overlap)
 }
 
-fn encode_vv(store: &CrdtStore) -> Vec<u8> {
-    store.oplog_vv().encode()
+fn encode_vv(store: &CrdtStore) -> Result<Vec<u8>, String> {
+    store.oplog_vv_result().map(|vv| vv.encode()).map_err(|e| e.to_string())
 }
 
 fn session_peer_id(session_id: &Uuid) -> u64 {
@@ -208,7 +208,18 @@ pub fn open_session(
         normalized.board_settings.clone(),
         normalized.generation_meta.clone(),
     );
-    let vv = encode_vv(&crdt);
+    let vv = match encode_vv(&crdt) {
+        Ok(vv) => vv,
+        Err(error) => {
+            log::error!(
+                target: "lexera.live_sync",
+                "[open_session] FAILED to read CRDT version vector after session open; rebuilding session CRDT: {}",
+                error
+            );
+            crdt = CrdtStore::from_board(&current_board).map_err(|e| e.to_string())?;
+            encode_vv(&crdt)?
+        }
+    };
 
     let mut registry = LIVE_SESSIONS
         .lock()
@@ -261,8 +272,32 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
         .get_mut(session_id)
         .ok_or_else(|| format!("Live sync session not found: {}", session_id))?;
 
-    let before_vv = session.crdt.oplog_vv();
     let current_board = session.current_board.clone();
+    let before_vv = match session.crdt.oplog_vv_result() {
+        Ok(vv) => vv,
+        Err(error) => {
+            log::error!(
+                target: "lexera.live_sync",
+                "[apply_board] FAILED to read CRDT version vector session={} error={}; rebuilding session CRDT",
+                &session_id[..8],
+                error
+            );
+            session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
+                format!(
+                    "Failed to rebuild session CRDT after version-vector failure (session={}): {}",
+                    &session_id[..8],
+                    rebuild_error
+                )
+            })?;
+            session.crdt.oplog_vv_result().map_err(|vv_error| {
+                format!(
+                    "Failed to read rebuilt session CRDT version vector (session={}): {}",
+                    &session_id[..8],
+                    vv_error
+                )
+            })?
+        }
+    };
     let incoming = normalize_board(board, &session.board_dir);
     let incoming_ids = card_id_map(&incoming);
     let current_ids = card_id_map(&current_board);
@@ -331,6 +366,32 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
     restore_card_ids(&mut next_board, &[&incoming_ids, &current_ids]);
     let (next_count, _, overlap_after) = board_identity_stats(&next_board, &incoming);
 
+    let updates = match session.crdt.export_updates_since(&before_vv) {
+        Ok(updates) => updates,
+        Err(error) => {
+            log::error!(
+                target: "lexera.live_sync",
+                "[apply_board] FAILED to export updates session={} error={}; rebuilding from materialized board",
+                &session_id[..8],
+                error
+            );
+            session.crdt = CrdtStore::from_board(&next_board).map_err(|rebuild_error| {
+                format!(
+                    "Failed to rebuild session CRDT after export failure (session={}): {}",
+                    &session_id[..8],
+                    rebuild_error
+                )
+            })?;
+            let vv = encode_vv(&session.crdt)?;
+            session.current_board = next_board.clone();
+            return Ok(LiveSessionResult {
+                board: next_board,
+                vv,
+                changed: true,
+                updates: Vec::new(),
+            });
+        }
+    };
     log::info!(
         target: "lexera.live_sync",
         "[apply_board] session={} ids_after=({}, {}, overlap_with_incoming={}) crdt_output={} updates_len={}",
@@ -339,16 +400,28 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
         incoming_count,
         overlap_after,
         board_card_summary(&next_board),
-        session.crdt.export_updates_since(&before_vv).as_ref().map(|u| u.len()).unwrap_or(0)
+        updates.len()
     );
-
+    let vv = match encode_vv(&session.crdt) {
+        Ok(vv) => vv,
+        Err(error) => {
+            log::error!(
+                target: "lexera.live_sync",
+                "[apply_board] FAILED to encode version vector session={} error={}; rebuilding from materialized board",
+                &session_id[..8],
+                error
+            );
+            session.crdt = CrdtStore::from_board(&next_board).map_err(|rebuild_error| {
+                format!(
+                    "Failed to rebuild session CRDT after version-vector encode failure (session={}): {}",
+                    &session_id[..8],
+                    rebuild_error
+                )
+            })?;
+            encode_vv(&session.crdt)?
+        }
+    };
     session.current_board = next_board.clone();
-
-    let updates = session
-        .crdt
-        .export_updates_since(&before_vv)
-        .map_err(|e| e.to_string())?;
-    let vv = encode_vv(&session.crdt);
 
     Ok(LiveSessionResult {
         board: next_board,
@@ -369,7 +442,25 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
 
     let current_board = session.current_board.clone();
     let current_ids = card_id_map(&current_board);
-    let before_vv = encode_vv(&session.crdt);
+    let before_vv = match encode_vv(&session.crdt) {
+        Ok(vv) => vv,
+        Err(error) => {
+            log::error!(
+                target: "lexera.live_sync",
+                "[import_updates] FAILED to read CRDT version vector session={} error={}; rebuilding session CRDT",
+                &session_id[..8],
+                error
+            );
+            session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
+                format!(
+                    "Failed to rebuild session CRDT after import version-vector failure (session={}): {}",
+                    &session_id[..8],
+                    rebuild_error
+                )
+            })?;
+            encode_vv(&session.crdt)?
+        }
+    };
 
     log::info!(
         target: "lexera.live_sync",
@@ -430,7 +521,25 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
     let mut next_board = normalize_board(next_snapshot, &session.board_dir);
     restore_card_ids(&mut next_board, &[&current_ids]);
 
-    let vv = encode_vv(&session.crdt);
+    let vv = match encode_vv(&session.crdt) {
+        Ok(vv) => vv,
+        Err(error) => {
+            log::error!(
+                target: "lexera.live_sync",
+                "[import_updates] FAILED to encode version vector session={} error={}; rebuilding from materialized board",
+                &session_id[..8],
+                error
+            );
+            session.crdt = CrdtStore::from_board(&next_board).map_err(|rebuild_error| {
+                format!(
+                    "Failed to rebuild session CRDT after import version-vector encode failure (session={}): {}",
+                    &session_id[..8],
+                    rebuild_error
+                )
+            })?;
+            encode_vv(&session.crdt)?
+        }
+    };
     let changed = vv != before_vv;
     let (current_count, next_count, overlap_after) =
         board_identity_stats(&current_board, &next_board);

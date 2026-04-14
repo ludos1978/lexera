@@ -10,6 +10,7 @@ clean up the todos into the
 - [ ] Items still needing full board render: row/stack hidden tags, board frontmatter changes, board settings changes, tag style preset change. These genuinely affect the whole board.
 
 ### Dashboard search — remaining optimizations
+
 - [ ] **Incremental DOM updates** — `renderDashboard()` does `innerHTML = ''` on every call. Diff and update only changed items.
 - [ ] **Virtual scrolling for result lists** — currently renders 80 result + 60 todo + 40×4 calendar items as DOM nodes. Only render visible viewport items.
 - [ ] **Move search to Web Worker** — the backend search itself is fast, but parsing/grouping/tree-building on the main thread blocks rendering. Move post-processing off-thread.
@@ -28,16 +29,14 @@ clean up the todos into the
 
 ## Automated Frontend Test Runner (`run-lexera-tests.sh`)
 
-- [ ] **Fix auto-run test stall at test 10** — Tests stall at `no duplicate card IDs after move` with 0% CPU in both `cargo tauri dev` and direct binary modes. The stall happens after `setup:done` during the test body's `moveCard()` call. First run after a clean start works (78 passed, 51 failed / 129), but subsequent runs stall. `withGlobalTauri` fixed the instance selection (129 tests found vs 5), but the moveCard stall remains. Needs Safari Web Inspector to diagnose whether the JS event loop is blocked or a promise is unresolved.
+**Current status: 127 passed, 2 failed / 129 tests in ~4s**
+
+- [ ] **Fix include badge test** — `include: column include badge renders immediately after setTestBoard` depends on backend include resolution timing. The fixture board has `include_source` set but the badge isn't rendered because the backend hasn't resolved the include path.
+- [ ] **Fix marp export content test** — `marp export: copy includes expected content` has time-tag content mismatch (temporal tags resolve to different dates depending on when the test runs).
 
 ## Backend Stability
 
-- [ ] **Loro CRDT panic in `movable_list_state.rs:1056`** (upstream bug, mitigated)
-  The panic `called Option::unwrap() on a None value` inside Loro 1.10.8's `movable_list_state.rs:1056` happens during rapid card moves on boards with CRDT sync. The second `PoisonError` in `loro.rs:262` is Loro's own internal mutex getting poisoned during panic unwind — likely in a Drop impl that tries to commit a transaction.
-  - **Our code IS safe**: `apply_board()` in `bridge.rs:669` already wraps all Loro operations in `catch_unwind`. The caller in `live_sync.rs:283` catches the error and rebuilds the `CrdtStore` from the current board data. The CRDT session recovers after one failed operation.
-  - **The console messages are scary but not fatal**: The `PoisonError` is caught and logged. The session rebuilds. Subsequent operations work fine.
-  - **Root cause**: Loro's `MovableList::mov()` internally assumes an element exists at the source position, but concurrent state from the `reorder_list_by_id` function (which scans and moves elements to match target order) can leave the list in a state where the element was already consumed. This is a Loro bug — we're on the latest version (1.10.8).
-  - **Next step**: File an upstream issue on the `loro-dev/loro` GitHub repo with a minimal reproduction. Alternatively, add pre-move validation in `reorder_list_by_id` that checks `list.len()` hasn't changed mid-reorder.
+- [ ] **File upstream Loro issue** — Loro 1.10.8 has a `MovableList::mov()` panic when the element at the source position was already consumed. Our code is safe (`catch_unwind` + session rebuild), and pre-move validation was added in `reorder_list_by_id`. File an issue on `loro-dev/loro` when a minimal reproduction is available.
 
 ## Frontend Test Additions
 
@@ -368,6 +367,20 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Add regression tests — one per surface verifying node tree output and interaction dispatch.
 
 ## JS Simplification
+
+### Structure review findings
+- [ ] Fix the dead early `BoardList.init()` block in `lexera-kanban/src/app.js` — `BoardList` is assigned later, so the early `if (BoardList)` block sees `undefined`; merge it with the real later init around the BoardList section.
+- [ ] Fix `KeyboardNav` initialization order in `lexera-kanban/src/app.js` — `KeyboardNav` is assigned after the only observed `KeyboardNav.init()` call, so the module may never initialize.
+- [ ] Keep `app.js` as a composition root only: move compatibility wrappers, feature delegates, and fallback implementations back into their owning modules or explicit bridge modules.
+- [ ] Simplify the large `OrderHelpers` dependency/proxy/fallback block in `app.js`; make `LexeraOrderHelpers` expose the needed API directly and remove the app-level proxy fallback once coverage is in place.
+- [ ] Remove canvas fallback helpers from `app.js` after `canvasMode.js` / `canvasMath.js` / canvas feature modules own the behavior directly.
+- [ ] Replace the many `getXApi()` helpers in `app.js` with a single module lookup or explicit dependency object through `LexeraRuntime`.
+- [ ] Collapse long `LexeraEmbedMenu` delegation stubs in `app.js` into the embed menu module boundary, or expose one narrow embed-menu facade instead of many pass-through globals.
+- [ ] Collapse TagColors / TagSystem pass-through wrappers in `app.js` into the tag modules so app bootstrap does not mirror their APIs.
+- [ ] Standardize frontend dependency injection on `lexera-kanban/src/core/moduleRuntime.js`; remove repeated local `_deps`, `_dep`, `_callDep`, and `window.Lexera*` lookup patterns from feature modules as they are touched.
+- [ ] Split `lexera-kanban/src/test/frontendTests.js` into smaller suites and shared fixtures so frontend test behavior is easier to reason about and slow/failing groups can be isolated.
+- [ ] Split `lexera-kanban/src/app.css` further by feature area and reduce repeated button/icon selector groups with shared component classes or `:is()` groups where that keeps the CSS clearer.
+- [ ] Render repeated dashboard group skeleton markup in `lexera-kanban/src/index.html` from a data-driven helper or template instead of maintaining repeated static blocks.
 
 ### Break up app.js
 - [ ] Extract state initialization (~580 lines) — 48 state variables + `_rt.defineState()` calls.

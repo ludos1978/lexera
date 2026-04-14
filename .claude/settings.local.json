@@ -274,7 +274,10 @@
       "Bash(./run-lexera-tests.sh --board=630a7420c558 --delay=10000 --no-capture)",
       "Bash(osascript -e 'tell application \"System Events\" to tell process \"lexera-kanban\" to set frontmost to true')",
       "Bash(cargo search:*)",
-      "Bash(./run-lexera-tests.sh --kill)"
+      "Bash(./run-lexera-tests.sh --kill)",
+      "Bash(./run-lexera-tests.sh --board=630a7420c558 --delay=10000 --no-capture --filter=integrity)",
+      "Bash(break)",
+      "Bash(./run-lexera-tests.sh --board=630a7420c558 --delay=10000 --no-capture --filter=\"tag edit\")"
     ],
     "deny": [],
     "ask": []

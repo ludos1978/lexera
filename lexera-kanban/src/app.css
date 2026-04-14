@@ -6615,6 +6615,9 @@ select.dialog-input option,
 .test-panel-action-group-run {
   flex: 1 1 360px;
 }
+.test-panel-run-controls {
+  flex-wrap: nowrap;
+}
 .test-panel-control-cluster {
   display: inline-flex;
   align-items: center;
@@ -6630,6 +6633,11 @@ select.dialog-input option,
   flex: 0 1 auto;
   margin-left: auto;
   justify-content: flex-end;
+}
+.test-panel-copy-feedback {
+  color: var(--success, #2f8f46);
+  font-size: var(--font-size-sm);
+  min-width: 0;
 }
 .test-panel-btn {
   background: var(--btn-bg);
@@ -6649,6 +6657,9 @@ select.dialog-input option,
 .test-panel-btn:active:not(:disabled) {
   background: var(--btn-bg-active, var(--btn-bg-hover));
   transform: translateY(1px);
+}
+.test-panel-btn.is-copy-feedback {
+  border-color: var(--success, var(--accent, var(--text-primary)));
 }
 .test-panel-btn:focus-visible {
   outline: 2px solid var(--accent, var(--text-primary));

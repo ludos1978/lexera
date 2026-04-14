@@ -137,6 +137,8 @@ var LexeraBoardDataStore = (function () {
       index: flatIdx,
       id: fullCol.id,
       title: fullCol.title,
+      includeSource: fullCol.includeSource || fullCol.include_source || null,
+      include_source: fullCol.include_source || fullCol.includeSource || null,
       cards: (fullCol.cards || []).filter(function (card) {
         return !dep('is_archived_or_deleted')(card && card.content ? card.content : '');
       }).map(function (card) {
@@ -193,6 +195,8 @@ var LexeraBoardDataStore = (function () {
                   index: flatIdx,
                   id: col.id,
                   title: col.title,
+                  includeSource: col.includeSource || col.include_source || null,
+                  include_source: col.include_source || col.includeSource || null,
                   cards: visibleCards,
                   params: col.params || {}
                 };

@@ -23,6 +23,7 @@ struct TestRunnerConfig {
     output_path: Option<String>,
     quit_after: bool,
     board: Option<String>,
+    filter: Option<String>,
     include_fixture_path: Option<String>,
 }
 
@@ -266,6 +267,9 @@ fn main() {
     //                            before the first test runs. Without
     //                            this, auto-run depends on whatever
     //                            board localStorage happens to have.
+    //   --run-tests-filter=TEXT  Run only tests whose names contain
+    //                            TEXT. Used for focused frontend
+    //                            regression passes.
     let args: Vec<String> = std::env::args().collect();
     let auto_run_tests = args.iter().any(|a| a == "--run-tests");
     let auto_run_delay_ms: u64 = args
@@ -280,6 +284,9 @@ fn main() {
     let auto_run_board: Option<String> = args
         .iter()
         .find_map(|a| a.strip_prefix("--run-tests-board=").map(|v| v.to_string()));
+    let auto_run_filter: Option<String> = args
+        .iter()
+        .find_map(|a| a.strip_prefix("--run-tests-filter=").map(|v| v.to_string()));
     let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
@@ -301,6 +308,7 @@ fn main() {
         output_path: auto_run_output_path.clone(),
         quit_after: quit_after_tests,
         board: auto_run_board.clone(),
+        filter: auto_run_filter.clone(),
         include_fixture_path: Some(include_fixture_path.clone()),
     });
 
@@ -312,8 +320,8 @@ fn main() {
     if auto_run_tests {
         if let Some(ref path) = auto_run_output_path {
             let marker = format!(
-                "[kanban-startup] binary started, auto_run={}, delay_ms={}, board={:?}, quit_after={}\n",
-                auto_run_tests, auto_run_delay_ms, auto_run_board, quit_after_tests
+                "[kanban-startup] binary started, auto_run={}, delay_ms={}, board={:?}, filter={:?}, quit_after={}\n",
+                auto_run_tests, auto_run_delay_ms, auto_run_board, auto_run_filter, quit_after_tests
             );
             if let Some(parent) = std::path::Path::new(path).parent() {
                 let _ = std::fs::create_dir_all(parent);
@@ -333,18 +341,20 @@ fn main() {
             // so the frontend can detect auto-run from location.search
             // synchronously at IIFE time, then fetch() the config file
             // for the details (board, output path, quit flag).
+            let config_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .join("src")
+                .join("auto-run-config.json");
             if auto_run_tests {
                 // Write config file for fetch()
-                let config_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .parent()
-                    .unwrap_or_else(|| std::path::Path::new("."))
-                    .join("src")
-                    .join("auto-run-config.json");
                 let config_json = serde_json::json!({
+                    "auto_run": true,
                     "board": auto_run_board,
                     "output": auto_run_output_path,
                     "quit": quit_after_tests,
                     "delay": auto_run_delay_ms,
+                    "filter": auto_run_filter,
                     "includeFixturePath": include_fixture_path
                 });
                 let _ = std::fs::write(&config_path, config_json.to_string());
@@ -352,6 +362,8 @@ fn main() {
                 // The frontend polls for `auto-run-config.json` via
                 // XHR on startup (every 1s for 30 attempts). When it
                 // finds the file, it reads the config and starts.
+            } else {
+                let _ = std::fs::remove_file(&config_path);
             }
             Ok(())
         })

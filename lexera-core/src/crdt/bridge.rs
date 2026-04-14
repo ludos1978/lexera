@@ -130,11 +130,12 @@ fn reorder_list_by_id(
     target_ids: &[String],
     id_key: &str,
 ) -> io::Result<()> {
-    let list_len = list.len();
     let mut write_pos = 0;
 
     for target_id in target_ids {
-        if write_pos >= list_len {
+        // Re-read length after each iteration — mov() can change it
+        let current_len = list.len();
+        if write_pos >= current_len {
             break;
         }
         // Check if correct element is already at write_pos
@@ -146,13 +147,16 @@ fn reorder_list_by_id(
             continue;
         }
         // Find target_id in remaining positions
-        let found = ((write_pos + 1)..list_len).find(|&i| {
+        let found = ((write_pos + 1)..current_len).find(|&i| {
             get_map_at(list, i)
                 .map(|m| get_string(&m, id_key) == *target_id)
                 .unwrap_or(false)
         });
         if let Some(from) = found {
-            list.mov(from, write_pos).map_err(loro_err)?;
+            // Validate position is still valid before calling mov
+            if from < list.len() && write_pos < list.len() {
+                list.mov(from, write_pos).map_err(loro_err)?;
+            }
             write_pos += 1;
         }
         // If not found in CRDT, skip — will be added by caller
@@ -1840,10 +1844,14 @@ impl CrdtStore {
             format_hint: BoardFormat::Legacy,
         };
         // Use current CRDT state as base for settings diff
-        let base = self.to_board();
+        let Ok(base) = self.to_board_result() else {
+            return;
+        };
         // Write into CRDT; ignore errors since this is a best-effort setter
-        let _ = self.sync_metadata(&board_for_meta, &base);
-        self.doc.commit();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = self.sync_metadata(&board_for_meta, &base);
+            self.doc.commit();
+        }));
     }
 
     pub fn set_peer_id(&self, peer_id: u64) -> io::Result<()> {
@@ -1875,6 +1883,16 @@ impl CrdtStore {
     /// Return the current operation-log version vector.
     pub fn oplog_vv(&self) -> loro::VersionVector {
         self.doc.oplog_vv()
+    }
+
+    /// Return the current operation-log version vector, converting Loro panics
+    /// into an io::Error so live-sync callers can rebuild the CRDT session.
+    pub fn oplog_vv_result(&self) -> io::Result<loro::VersionVector> {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.doc.oplog_vv()));
+        match result {
+            Ok(vv) => Ok(vv),
+            Err(payload) => Err(crdt_panic_err("oplog_vv", payload)),
+        }
     }
 
     /// Export CRDT updates since a given version vector.

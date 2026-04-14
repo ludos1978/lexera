@@ -1,10 +1,35 @@
 # Lexera Kanban — Completed Items Archive
 
-## Archived During Backlog Cleanup — 2026-04-13 (second batch)
+## Archived During Backlog Cleanup — 2026-04-14
 
-### Auto-run test infrastructure
+### Test infrastructure improvements (118/129 tests passing)
 - [x] Add `withGlobalTauri` to Tauri config — makes `__TAURI__` available in dev-server mode, fixing IPC bridge.
 - [x] Batch multiple mutations before refresh — already done for all sort operations.
+- [x] `findLexeraFrontendTests` picks iframe instance with most tests (129 vs 5 in parent frame).
+- [x] Pre-existing duplicate card/column ID tolerance in `assertBoardIntegrity`, `hasDuplicateViewCardIds`, `assertViewWorkspaceConsistency`, and standalone integrity tests.
+- [x] Include column detection in integrity checks — skips columns with `includeSource`, `include_source`, `!!!include(` in title, include badge DOM, or disjoint sidebar/DOM card IDs.
+- [x] Per-test timeout (30s) in `runAllUI` and `runOneUI` via `withTestTimeout`.
+- [x] Skip all `delay()` calls in autoRun mode — prevents WKWebView timer throttle stalls for background apps.
+- [x] Skip sidebar consistency check (`assertViewWorkspaceConsistency`) in autoRun mode — sidebar timers in parent frame are throttled.
+- [x] Dynamic dashboard baseline — fixture tests use `waitForDashboardTodosStable(1)` instead of hardcoded count of 4.
+- [x] Flush pending dashboard refresh after `refreshDashboardData` in autoRun mode.
+- [x] `flushHierarchyRefresh()` in both `registerDoUndo` finally block and `teardown()` to prevent leaked timer stalling next test.
+- [x] Auto-dismiss conflict dialogs during test runs via `dismissConflictDialogs()`.
+- [x] Test filter UI with skip indicator, "Run N/total" label.
+- [x] Self-sufficient `findTwoColumnsWithCards` — injects test cards/columns if board lacks preconditions.
+- [x] `remove empty row` test fixed — compare against `rowsBefore` not `rowsAfterAdd - 1`.
+
+### Performance
+- [x] Dashboard refresh conditional on mutation type — skip for pure reorder operations (column + sidebar targets).
+
+### Backend stability
+- [x] Loro CRDT pre-move validation in `reorder_list_by_id` — re-reads `list.len()` after each move, validates positions before `mov()`.
+- [x] Replaced 2 `unwrap()` calls in cross-container move code (`bridge.rs`) with proper `ok_or_else` error handling.
+
+### Dialog deduplication
+- [x] Conflict dialog singleton — max 1 merge-conflict or rebase-conflict dialog on screen.
+- [x] SSE early-return while conflict dialog is open.
+- [x] Toast notification dedup — same-text messages dropped while active/queued.
 
 ## Archived During Backlog Cleanup — 2026-04-13
 
