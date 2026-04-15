@@ -2876,7 +2876,7 @@ body.window-resizing .columns-container {
   display: flex;
   align-items: center;
   gap: var(--btn-gap);
-  padding: var(--app-space-2) var(--app-space-2) var(--app-space-1);
+  padding: var(--app-space-2) var(--app-space-2) var(--app-space-1) var(--app-space-1);
   cursor: grab;
   user-select: none;
   background: transparent;
@@ -3410,7 +3410,7 @@ body.window-resizing .columns-container {
   position: sticky;
   top: 0;
   z-index: 6;
-  padding: var(--layout-column-header-pad-y) var(--layout-column-header-pad-x);
+  padding: var(--layout-column-header-pad-y) var(--layout-column-header-pad-x) var(--layout-column-header-pad-y) var(--app-space-3);
   font-size: var(--font-size-md);
   color: var(--title-column-color);
   border-bottom: 1px solid var(--surface-header-border);

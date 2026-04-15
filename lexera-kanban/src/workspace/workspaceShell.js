@@ -4282,6 +4282,9 @@
   function pruneMissingBoards() {
     var changed = false;
     var boardsAvailable = Object.keys(state.boardsById).length;
+    // Don't prune when we have no board data — that means the backend
+    // hasn't responded yet, not that all boards were deleted.
+    if (boardsAvailable === 0) return false;
     visitTree(state.dockTree, function (node) {
       if (node.type !== 'tabs') return;
       for (var i = node.tabs.length - 1; i >= 0; i--) {
@@ -4294,8 +4297,10 @@
         }
       }
     });
-    state.dockTree = withNormalizedLeaves(state.dockTree, true);
-    ensureActiveLeaf();
+    if (changed) {
+      state.dockTree = withNormalizedLeaves(state.dockTree, true);
+      ensureActiveLeaf();
+    }
     return changed;
   }
 

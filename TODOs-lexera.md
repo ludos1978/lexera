@@ -5,6 +5,17 @@ clean up the todos into the
 
 - [ ] i cant open the log viewer anymore by clicking the header! this must be implement the same for all side and foldable panels! why is it not working anymore!!!
 
+- [ ] and implement them as specified! 
+  make a new "controls setting" view for this that allows changing how scrolling and zooming works for both view modes independently (kanban, canvas)
+  the options we add for now are, for kanban and canvas mode has it's own group of settings. Both share these listed settings below, the user can add zero or more options to each setting! also allow keyboard options!
+  - move the view (default as told before)
+  - zoom the view
+  - edit a field
+
+- [ ] in the workspace clicking the workspace twice currently goes into the workspace. this should only happen when the user clicks on the right arrow (in the view or in the keyboard) also add this option to the control settings!
+
+- [ ] in the workspace view 
+
 # Lexera Repository Architecture Todo
 
 - [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.

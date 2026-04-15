@@ -24,6 +24,25 @@
 - User can collapse/expand Rows, Stacks, Columns and Cards (click column header)
 - State persists across re-renders (stored in `window.collapsedColumns`, `window.collapsedTasks`)
 
+### View Navigation
+
+#### Kanban Mode
+- **Moving the view**:
+  - Scrolling (touchpad, mousewheel, etc.) moves the board view
+  - Right mouse drag or Alt+left mouse drag pans the view
+- **Zooming**:
+  - Alt+scroll (touchpad, mousewheel, etc.) zooms the view
+  - Plain scroll MUST NOT zoom — it always scrolls
+  - Ctrl/Cmd+scroll MUST NOT zoom — let the browser/OS handle it
+
+#### Canvas Mode
+- **Moving the view**:
+  - Right mouse drag or Alt+left mouse drag pans the viewport
+  - Plain scroll MUST NOT scroll — it zooms instead
+- **Zooming**:
+  - Scrolling (touchpad, mousewheel, etc.) zooms the canvas viewport
+  - Zoom is anchored to the cursor position
+
 ### Scroll Position
 - User scrolls board horizontally/vertically
 - Scroll position preserved during updates

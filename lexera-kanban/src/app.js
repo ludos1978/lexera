@@ -6619,20 +6619,18 @@ var LexeraDashboard = (function () {
   document.addEventListener('wheel', function (e) {
     if (!(e.ctrlKey || e.metaKey)) return;
     if (!activeBoardData) return;
+    // Zoom via scroll only works in canvas view mode
+    if (!isCanvasBoardLayout()) return;
     var target = e.target;
     if (!target || typeof target.closest !== 'function') return;
     if (!target.closest('#board-header, #columns-container')) return;
     if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return;
     e.preventDefault();
-    if (isCanvasBoardLayout()) {
-      var container = getElColumnsContainer();
-      var rect = container ? container.getBoundingClientRect() : null;
-      var ox = rect ? (e.clientX - rect.left) : undefined;
-      var oy = rect ? (e.clientY - rect.top) : undefined;
-      nudgeCanvasZoom(getCanvasZoomStep(e.deltaY < 0 ? 0.1 : -0.1), ox, oy);
-    } else {
-      nudgeUiScale(getUiZoomStep(e.deltaY < 0 ? 0.05 : -0.05));
-    }
+    var container = getElColumnsContainer();
+    var rect = container ? container.getBoundingClientRect() : null;
+    var ox = rect ? (e.clientX - rect.left) : undefined;
+    var oy = rect ? (e.clientY - rect.top) : undefined;
+    nudgeCanvasZoom(getCanvasZoomStep(e.deltaY < 0 ? 0.1 : -0.1), ox, oy);
   }, { passive: false });
 
   document.addEventListener('wheel', function (e) {
