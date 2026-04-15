@@ -8108,6 +8108,9 @@ select.export-input {
 
 .mgmt-panel-body {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow-y: auto;
   padding: 0 14px 14px;
 }
