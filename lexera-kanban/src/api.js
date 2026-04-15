@@ -254,12 +254,30 @@ var LexeraApi = (function () {
       }
       throw error;
     }
+    var bodyText;
     try {
-      var bodyText = await res.text();
-      if (!bodyText || !bodyText.trim()) return null;
+      bodyText = await res.text();
+    } catch (bodyError) {
+      // Body read failed — likely stale connection after sleep/wake
+      if (canRecoverAndRetry(retryState)) {
+        return retryWithBackendRecovery(
+          'api.request',
+          path,
+          method + ' ' + path + ' body read failed (status ' + res.status + ')',
+          retryState,
+          function (nextRetryState) {
+            return request(path, options, nextRetryState);
+          }
+        );
+      }
+      logApiIssue('error', 'api.request', method + ' ' + path + ' body read failed', bodyError);
+      throw bodyError;
+    }
+    if (!bodyText || !bodyText.trim()) return null;
+    try {
       return JSON.parse(bodyText);
-    } catch (error) {
-      var preview = typeof bodyText === 'string' ? summarizeResponsePreview(bodyText) : '<unavailable>';
+    } catch (parseError) {
+      var preview = summarizeResponsePreview(bodyText);
       if (canRecoverAndRetry(retryState)) {
         return retryWithBackendRecovery(
           'api.request',
@@ -271,8 +289,8 @@ var LexeraApi = (function () {
           }
         );
       }
-      logApiIssue('error', 'api.request', method + ' ' + path + ' returned invalid JSON (preview: ' + preview + ')', error);
-      throw error;
+      logApiIssue('error', 'api.request', method + ' ' + path + ' returned invalid JSON (preview: ' + preview + ')', parseError);
+      throw parseError;
     }
   }
 
