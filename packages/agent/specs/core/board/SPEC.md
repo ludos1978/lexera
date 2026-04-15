@@ -24,24 +24,64 @@
 - User can collapse/expand Rows, Stacks, Columns and Cards (click column header)
 - State persists across re-renders (stored in `window.collapsedColumns`, `window.collapsedTasks`)
 
-### View Navigation
+### View Navigation & Controls Settings
 
-#### Kanban Mode
-- **Moving the view**:
-  - Scrolling (touchpad, mousewheel, etc.) moves the board view
-  - Right mouse drag or Alt+left mouse drag pans the view
-- **Zooming**:
-  - Alt+scroll (touchpad, mousewheel, etc.) zooms the view
-  - Plain scroll MUST NOT zoom — it always scrolls
-  - Ctrl/Cmd+scroll MUST NOT zoom — let the browser/OS handle it
+User-configurable input bindings for board interaction. Each view mode (kanban, canvas) has its own set of bindings. Each action can have zero or more bindings. Settings are persisted per-user via localStorage.
 
-#### Canvas Mode
-- **Moving the view**:
-  - Right mouse drag or Alt+left mouse drag pans the viewport
-  - Plain scroll MUST NOT scroll — it zooms instead
-- **Zooming**:
-  - Scrolling (touchpad, mousewheel, etc.) zooms the canvas viewport
-  - Zoom is anchored to the cursor position
+#### Actions
+
+| Action | Description |
+|--------|-------------|
+| **Move view** | Pan/scroll the board viewport |
+| **Zoom view** | Zoom in/out on the board |
+| **Edit field** | Enter edit mode on the focused element |
+
+#### Binding Types
+
+| Type | Format | Example |
+|------|--------|---------|
+| `scroll` | Scroll wheel/touchpad, optional modifier | `scroll`, `alt+scroll` |
+| `drag` | Mouse button drag, optional modifier | `right-drag`, `alt+left-drag` |
+| `dblclick` | Double-click | `dblclick` |
+| `key` | Keyboard key, optional modifiers | `Enter`, `F2`, `ctrl+e` |
+
+#### Default Bindings
+
+**Kanban Mode:**
+- Move view: `scroll`, `right-drag`, `alt+left-drag`
+- Zoom view: `alt+scroll`
+- Edit field: `dblclick`, `Enter`
+
+**Canvas Mode:**
+- Move view: `right-drag`, `alt+left-drag`
+- Zoom view: `scroll`
+- Edit field: `dblclick`, `Enter`
+
+#### Data Model (persisted as JSON in localStorage)
+
+```json
+{
+  "kanban": {
+    "move":  [{ "type": "scroll" }, { "type": "drag", "button": 2 }, { "type": "drag", "button": 0, "alt": true }],
+    "zoom":  [{ "type": "scroll", "alt": true }],
+    "edit":  [{ "type": "dblclick" }, { "type": "key", "key": "Enter" }]
+  },
+  "canvas": {
+    "move":  [{ "type": "drag", "button": 2 }, { "type": "drag", "button": 0, "alt": true }],
+    "zoom":  [{ "type": "scroll" }],
+    "edit":  [{ "type": "dblclick" }, { "type": "key", "key": "Enter" }]
+  }
+}
+```
+
+#### Controls Settings UI
+
+Located in the Frontend Settings panel under a "Controls" section. Shows kanban and canvas groups side by side. Each binding is a removable chip. A [+] button records a new binding (user presses key, scrolls, or clicks to capture).
+
+#### Constraints
+- Ctrl/Cmd+scroll is reserved for browser zoom — never intercept it
+- Bindings that conflict show a warning but are allowed (user's choice)
+- Reset to Defaults button restores the default bindings above
 
 ### Scroll Position
 - User scrolls board horizontally/vertically

@@ -86,8 +86,22 @@
     if (!target || typeof target.closest !== 'function') return false;
     if (!target.closest('#columns-container')) return false;
     if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return false;
-    if (button === 1) return true;
-    if (button === 0 && altKey) return true;
+
+    // Use controls settings if available
+    var CS = typeof LexeraControlsSettings !== 'undefined' ? LexeraControlsSettings : null;
+    if (CS) {
+      var isCanvas = !!(target.closest('.layout-canvas'));
+      var mode = isCanvas ? 'canvas' : 'kanban';
+      var fakeEvent = { button: button, altKey: altKey, shiftKey: false };
+      if (CS.matchesDrag(fakeEvent, mode, 'move')) return true;
+    } else {
+      // Fallback: hardcoded defaults
+      if (button === 1) return true;
+      if (button === 2) return true;
+      if (button === 0 && altKey) return true;
+    }
+
+    // Left-click on empty canvas background still pans
     if (button !== 0) return false;
     if (!target.closest('.board-row-content, .canvas-scene')) return false;
     if (target.closest('.board-stack, .column, .card, .board-row-header, button, input, textarea, select, a, [contenteditable="true"], .cm-editor, .cm-scroller, .monaco-editor')) {

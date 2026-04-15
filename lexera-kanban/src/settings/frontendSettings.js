@@ -288,6 +288,165 @@
         });
       })(tagScopes[tgi]);
     }
+
+    // ── Controls settings ──
+    bindControlsSettings(panel);
+  }
+
+  function renderControlsChips(panel) {
+    var CS = typeof LexeraControlsSettings !== 'undefined' ? LexeraControlsSettings : null;
+    if (!CS) return;
+    var groups = panel.querySelectorAll('[data-controls-mode]');
+    for (var gi = 0; gi < groups.length; gi++) {
+      var mode = groups[gi].getAttribute('data-controls-mode');
+      var actions = groups[gi].querySelectorAll('[data-controls-action]');
+      for (var ai = 0; ai < actions.length; ai++) {
+        var action = actions[ai].getAttribute('data-controls-action');
+        var container = actions[ai].querySelector('.controls-settings-chips');
+        if (!container) continue;
+        container.innerHTML = '';
+        var bindings = CS.getBindings(mode, action);
+        for (var bi = 0; bi < bindings.length; bi++) {
+          (function (idx) {
+            var chip = document.createElement('span');
+            chip.className = 'controls-chip';
+            chip.textContent = CS.bindingLabel(bindings[idx]);
+            var removeBtn = document.createElement('button');
+            removeBtn.className = 'controls-chip-remove';
+            removeBtn.type = 'button';
+            removeBtn.textContent = '\u00d7';
+            removeBtn.title = 'Remove binding';
+            removeBtn.addEventListener('click', function () {
+              CS.removeBinding(mode, action, idx);
+              renderControlsChips(panel);
+            });
+            chip.appendChild(removeBtn);
+            container.appendChild(chip);
+          })(bi);
+        }
+      }
+    }
+  }
+
+  function bindControlsSettings(panel) {
+    var CS = typeof LexeraControlsSettings !== 'undefined' ? LexeraControlsSettings : null;
+    if (!CS) return;
+
+    // Delegate add-binding button clicks
+    var controlsSection = panel.querySelector('[data-frontend-settings-section="controls"]');
+    if (!controlsSection) return;
+
+    controlsSection.addEventListener('click', function (e) {
+      // Reset button
+      var resetBtn = e.target.closest('[data-controls-reset]');
+      if (resetBtn) {
+        CS.resetToDefaults();
+        renderControlsChips(panel);
+        return;
+      }
+
+      // Add binding button
+      var addBtn = e.target.closest('[data-controls-add]');
+      if (!addBtn) return;
+      var actionEl = addBtn.closest('[data-controls-action]');
+      var groupEl = addBtn.closest('[data-controls-mode]');
+      if (!actionEl || !groupEl) return;
+      var mode = groupEl.getAttribute('data-controls-mode');
+      var action = actionEl.getAttribute('data-controls-action');
+
+      // Start capture mode — show a prompt overlay
+      startBindingCapture(panel, mode, action);
+    });
+
+    renderControlsChips(panel);
+  }
+
+  function startBindingCapture(panel, mode, action) {
+    var CS = typeof LexeraControlsSettings !== 'undefined' ? LexeraControlsSettings : null;
+    if (!CS) return;
+
+    // Create capture overlay
+    var overlay = document.createElement('div');
+    overlay.className = 'controls-capture-overlay';
+    overlay.innerHTML =
+      '<div class="controls-capture-prompt">' +
+        '<div class="controls-capture-title">Recording binding for <b>' +
+          mode + ' / ' + action + '</b></div>' +
+        '<div class="controls-capture-hint">Press a key, scroll, double-click, or drag to record.</div>' +
+        '<button class="controls-capture-cancel mgmt-btn mgmt-btn-small" type="button">Cancel</button>' +
+      '</div>';
+    panel.appendChild(overlay);
+
+    var done = false;
+    function finish(binding) {
+      if (done) return;
+      done = true;
+      cleanup();
+      if (binding) {
+        CS.addBinding(mode, action, binding);
+        renderControlsChips(panel);
+      }
+    }
+    function cancel() { finish(null); }
+
+    overlay.querySelector('.controls-capture-cancel').addEventListener('click', cancel);
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) cancel();
+    });
+
+    // Capture keydown
+    function onKey(e) {
+      if (e.key === 'Escape') { cancel(); return; }
+      e.preventDefault();
+      e.stopPropagation();
+      var binding = { type: 'key', key: e.key };
+      if (e.ctrlKey) binding.ctrl = true;
+      if (e.altKey) binding.alt = true;
+      if (e.shiftKey) binding.shift = true;
+      if (e.metaKey) binding.meta = true;
+      // Don't capture bare modifiers
+      if (['Control', 'Alt', 'Shift', 'Meta'].indexOf(e.key) !== -1) return;
+      finish(binding);
+    }
+
+    // Capture wheel
+    function onWheel(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.ctrlKey || e.metaKey) return; // reserved for browser zoom
+      var binding = { type: 'scroll' };
+      if (e.altKey) binding.alt = true;
+      if (e.shiftKey) binding.shift = true;
+      finish(binding);
+    }
+
+    // Capture mouse drag (mousedown on overlay)
+    function onMouseDown(e) {
+      if (e.target.closest('.controls-capture-cancel')) return;
+      if (e.target === overlay || e.target.closest('.controls-capture-prompt')) {
+        e.preventDefault();
+        var binding = { type: 'drag', button: e.button };
+        if (e.altKey) binding.alt = true;
+        if (e.shiftKey) binding.shift = true;
+        finish(binding);
+      }
+    }
+
+    // Capture dblclick
+    function onDblClick(e) {
+      e.preventDefault();
+      finish({ type: 'dblclick' });
+    }
+
+    document.addEventListener('keydown', onKey, true);
+    overlay.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    overlay.addEventListener('mousedown', onMouseDown, true);
+    overlay.addEventListener('dblclick', onDblClick, true);
+
+    function cleanup() {
+      document.removeEventListener('keydown', onKey, true);
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }
   }
 
   function init(options, panel) {

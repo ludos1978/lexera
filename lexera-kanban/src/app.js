@@ -6616,57 +6616,71 @@ var LexeraDashboard = (function () {
     return getScrollBehaviorApi().canStartCanvasPointerPan(target, button, altKey);
   }
 
+  // ── Unified wheel handler: uses LexeraControlsSettings for bindings ──
   document.addEventListener('wheel', function (e) {
-    if (!(e.ctrlKey || e.metaKey)) return;
-    if (!activeBoardData) return;
-    // Zoom via scroll only works in canvas view mode
-    if (!isCanvasBoardLayout()) return;
-    var target = e.target;
-    if (!target || typeof target.closest !== 'function') return;
-    if (!target.closest('#board-header, #columns-container')) return;
-    if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return;
-    e.preventDefault();
-    var container = getElColumnsContainer();
-    var rect = container ? container.getBoundingClientRect() : null;
-    var ox = rect ? (e.clientX - rect.left) : undefined;
-    var oy = rect ? (e.clientY - rect.top) : undefined;
-    nudgeCanvasZoom(getCanvasZoomStep(e.deltaY < 0 ? 0.1 : -0.1), ox, oy);
-  }, { passive: false });
-
-  document.addEventListener('wheel', function (e) {
+    // Never intercept ctrl/meta+scroll — reserved for browser zoom
     if (e.ctrlKey || e.metaKey) return;
     if (!activeBoardData) return;
     var container = getElColumnsContainer();
     if (!container) return;
     var target = e.target;
     if (!target || typeof target.closest !== 'function') return;
-    if (!target.closest('#columns-container')) return;
+    if (!target.closest('#board-header, #columns-container')) return;
     if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return;
     if (targetClosest(target, 'input, textarea, select, [contenteditable="true"], .cm-editor, .cm-scroller, .monaco-editor')) {
       return;
     }
-    var multiplier = getBoardScrollSpeedMultiplier();
-    var deltaX = normalizeWheelDeltaToPixels(e.deltaX, e.deltaMode);
-    var deltaY = normalizeWheelDeltaToPixels(e.deltaY, e.deltaMode);
-    if (e.shiftKey && !deltaX && deltaY) {
-      deltaX = deltaY;
-      deltaY = 0;
+
+    var isCanvas = isCanvasBoardLayout();
+    var mode = isCanvas ? 'canvas' : 'kanban';
+    var CS = typeof LexeraControlsSettings !== 'undefined' ? LexeraControlsSettings : null;
+
+    // Determine action: zoom or move
+    var isZoom = false;
+    var isMove = false;
+    if (CS) {
+      isZoom = CS.matchesScroll(e, mode, 'zoom');
+      isMove = !isZoom && CS.matchesScroll(e, mode, 'move');
+    } else {
+      // Fallback defaults when controlsSettings not loaded
+      if (isCanvas) {
+        isZoom = !e.altKey; // canvas: plain scroll = zoom
+        isMove = false;
+      } else {
+        isZoom = e.altKey; // kanban: alt+scroll = zoom
+        isMove = !e.altKey; // kanban: plain scroll = move
+      }
     }
-    if (isCanvasBoardLayout()) {
-      if (!shouldHandleBoardViewportWheelEvent(target, container, deltaX, deltaY)) return;
-      if (!deltaX && !deltaY) return;
+
+    if (isZoom) {
+      if (!shouldHandleBoardViewportWheelEvent(target, container, e.deltaX, e.deltaY)) return;
       e.preventDefault();
       var rect = container.getBoundingClientRect();
       var ox = e.clientX - rect.left;
       var oy = e.clientY - rect.top;
-      nudgeCanvasZoom(getCanvasZoomStep(deltaY < 0 ? 0.1 : -0.1), ox, oy);
+      if (isCanvas) {
+        nudgeCanvasZoom(getCanvasZoomStep(e.deltaY < 0 ? 0.1 : -0.1), ox, oy);
+      } else {
+        nudgeUiScale(getUiZoomStep(e.deltaY < 0 ? 0.05 : -0.05));
+      }
       return;
     }
-    if (multiplier === 1) return;
-    if (!shouldHandleBoardViewportWheelEvent(target, container, deltaX, deltaY)) return;
-    e.preventDefault();
-    container.scrollLeft += deltaX * multiplier;
-    container.scrollTop += deltaY * multiplier;
+
+    if (isMove) {
+      var multiplier = getBoardScrollSpeedMultiplier();
+      var deltaX = normalizeWheelDeltaToPixels(e.deltaX, e.deltaMode);
+      var deltaY = normalizeWheelDeltaToPixels(e.deltaY, e.deltaMode);
+      if (e.shiftKey && !deltaX && deltaY) {
+        deltaX = deltaY;
+        deltaY = 0;
+      }
+      if (multiplier === 1 && !isCanvas) return; // native scroll handles it
+      if (!shouldHandleBoardViewportWheelEvent(target, container, deltaX, deltaY)) return;
+      e.preventDefault();
+      container.scrollLeft += deltaX * multiplier;
+      container.scrollTop += deltaY * multiplier;
+      return;
+    }
   }, { passive: false });
 
   // --- Canvas pan: delegated to LexeraCanvasPan module ---
