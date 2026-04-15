@@ -44,6 +44,7 @@ All tests pass. Two tests (include badge rendering, marp export time tags) are s
 
 ## Backend Stability
 
+- [ ] **Stale h2c connections after macOS sleep/wake** — After macOS sleep, the h2c (HTTP/2 cleartext) TCP connection between frontend and backend goes stale. Requests on the dead connection fail with body-read errors or invalid JSON. The frontend retry mechanism handles it (clears cached session, re-discovers backend, retries once), but the user sees a brief hiccup. Fix options: (1) TCP keepalive on the backend so the OS detects dead connections, (2) connection health checks before reuse on the frontend, (3) switch from persistent h2c to short-lived HTTP/1.1 connections. See `server.rs:serve_with_h2c` and `api.js:retryWithBackendRecovery`.
 - [ ] **File upstream Loro issue** — Loro 1.10.8 has a `MovableList::mov()` panic when the element at the source position was already consumed. Our code is safe (`catch_unwind` + session rebuild), and pre-move validation was added in `reorder_list_by_id`. File an issue on `loro-dev/loro` when a minimal reproduction is available.
 
 ## Frontend Test Additions
