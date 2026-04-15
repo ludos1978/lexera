@@ -2101,9 +2101,8 @@ var LexeraOrderHelpers = (function () {
       if (_dashboardCacheHit(cacheKey, fp)) return;
     }
 
-    targetEl.innerHTML = '';
-
     if (!treeNodes || treeNodes.length === 0) {
+      targetEl.innerHTML = '';
       setDashboardGroupEmptyState(targetEl, true);
       var empty = document.createElement('div');
       empty.className = 'dashboard-empty';
@@ -2113,9 +2112,14 @@ var LexeraOrderHelpers = (function () {
     }
     setDashboardGroupEmptyState(targetEl, false);
     var TreeView = _dep('TreeView');
-    TreeView.render(targetEl, treeNodes, {
-      escapeHtml: _dep('escapeHtml')
-    });
+    var treeOpts = { escapeHtml: _dep('escapeHtml') };
+    // Try incremental patch first — preserves expand/collapse state
+    if (TreeView.patch && TreeView.patch(targetEl, treeNodes, treeOpts)) {
+      return;
+    }
+    // Full render fallback (first render or no existing tree entries)
+    targetEl.innerHTML = '';
+    TreeView.render(targetEl, treeNodes, treeOpts);
     bindDashboardTreeInteractions(targetEl);
   }
 

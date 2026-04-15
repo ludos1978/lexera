@@ -287,8 +287,143 @@ var TreeView = (function () {
     }
   }
 
+  // --- Incremental patch ---
+
+  /**
+   * Build a map of data-tree-id → DOM entry element for direct children of a container.
+   */
+  function indexEntries(container) {
+    var map = {};
+    for (var i = 0; i < container.children.length; i++) {
+      var entry = container.children[i];
+      if (!entry.classList || !entry.classList.contains('tree-entry')) continue;
+      var nodeEl = entry.querySelector(':scope > .tree-node[data-tree-id]');
+      if (nodeEl) {
+        map[nodeEl.getAttribute('data-tree-id')] = entry;
+      }
+    }
+    return map;
+  }
+
+  /**
+   * Update an existing tree-node's label and count in-place.
+   */
+  function updateNodeContent(nodeEl, node, esc) {
+    var labelEl = nodeEl.querySelector(':scope > .tree-label');
+    if (labelEl) {
+      var newLabel = esc(node.label);
+      if (labelEl.innerHTML !== newLabel) labelEl.innerHTML = newLabel;
+    }
+    var countEl = nodeEl.querySelector(':scope > .tree-meta > .tree-count');
+    if (countEl) {
+      var countText = node.count != null ? esc(String(node.count)) : '';
+      if (countEl.textContent !== countText) countEl.textContent = countText;
+      countEl.classList.toggle('hidden', node.count == null);
+    }
+    // Update data-* attributes
+    if (node.attrs) {
+      var keys = Object.keys(node.attrs);
+      for (var k = 0; k < keys.length; k++) {
+        var v = node.attrs[keys[k]];
+        if (v != null) nodeEl.setAttribute(keys[k], v);
+        else nodeEl.removeAttribute(keys[k]);
+      }
+    }
+  }
+
+  /**
+   * Patch children of a container incrementally by matching data-tree-id.
+   * Nodes without an id are always rebuilt. Groups with matching ids are
+   * updated in-place (label, count, attributes) and their children are
+   * recursively patched. Expand/collapse state is preserved.
+   */
+  function patchChildren(container, newNodes, parentLastFlags, options, nodePadLeft, depth) {
+    var esc = options.escapeHtml || function (s) { return s; };
+    var existingMap = indexEntries(container);
+    var usedIds = {};
+    // Build ordered list of new entries
+    var newEntries = [];
+    for (var i = 0; i < newNodes.length; i++) {
+      var node = newNodes[i];
+      var isLast = i === newNodes.length - 1;
+      var nodeId = node.id || null;
+      var existing = nodeId ? existingMap[nodeId] : null;
+
+      if (existing && nodeId) {
+        usedIds[nodeId] = true;
+        // Update the existing entry in-place
+        var nodeEl = existing.querySelector(':scope > .tree-node[data-tree-id]');
+        if (nodeEl) {
+          updateNodeContent(nodeEl, node, esc);
+        }
+        // Recursively patch children if this is a group node
+        if (Array.isArray(node.children)) {
+          var childrenEl = existing.querySelector(':scope > .tree-children');
+          if (childrenEl) {
+            var childIndent = parentLastFlags.concat([isLast]);
+            patchChildren(childrenEl, node.children, childIndent, options, nodePadLeft, depth + 1);
+          }
+        }
+        newEntries.push(existing);
+      } else {
+        // New node — render fresh
+        var freshEntry = renderNode(node, parentLastFlags, isLast, options, nodePadLeft, depth);
+        newEntries.push(freshEntry);
+      }
+    }
+    // Remove entries not in new data
+    for (var id in existingMap) {
+      if (!usedIds[id]) {
+        var stale = existingMap[id];
+        if (stale.parentNode === container) container.removeChild(stale);
+      }
+    }
+    // Also remove non-entry children that aren't in the new set (e.g. empty messages)
+    var nonEntryChildren = [];
+    for (var c = container.children.length - 1; c >= 0; c--) {
+      var ch = container.children[c];
+      if (!ch.classList || !ch.classList.contains('tree-entry')) {
+        nonEntryChildren.push(ch);
+      }
+    }
+    for (var r = 0; r < nonEntryChildren.length; r++) {
+      container.removeChild(nonEntryChildren[r]);
+    }
+    // Reorder: ensure DOM order matches newEntries order
+    for (var j = 0; j < newEntries.length; j++) {
+      var expected = newEntries[j];
+      var current = container.children[j];
+      if (current !== expected) {
+        container.insertBefore(expected, current || null);
+      }
+    }
+  }
+
+  /**
+   * Incrementally update a tree container. Reuses existing DOM nodes for
+   * groups with matching data-tree-id, preserving expand/collapse state.
+   * Falls back to full render if the container has no existing tree nodes.
+   *
+   * @param {HTMLElement} container - Target element with existing tree
+   * @param {Array} nodes - New tree node data
+   * @param {Object} [options] - Same as render() options
+   * @returns {boolean} true if patch was applied, false if full render is needed
+   */
+  function patch(container, nodes, options) {
+    options = options || {};
+    // Only patch if container already has tree entries
+    var hasEntries = container.querySelector(':scope > .tree-entry') !== null;
+    if (!hasEntries) return false;
+
+    container.classList.add('tree-view');
+    var nodePadLeft = computeNodePadLeft();
+    patchChildren(container, nodes, [], options, nodePadLeft, 1);
+    return true;
+  }
+
   return {
     render: render,
+    patch: patch,
     toggleNode: toggleNode,
     setDescendantsExpanded: setDescendantsExpanded,
     getNodeChildrenContainer: getNodeChildrenContainer,

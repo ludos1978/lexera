@@ -2,6 +2,7 @@
 management.js
 management.css
 themes.js
+backendDiscovery.js
 
 # Copied from lexera-kanban by beforeDevCommand/beforeBuildCommand
 loggingSystem.js

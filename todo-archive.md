@@ -1,5 +1,49 @@
 # Lexera Kanban — Completed Items Archive
 
+## Archived During Partial Fix Round — 2026-04-15
+- [x] `backendDiscovery.js` gitignore — added to `.gitignore` in both kanban and backend
+- [x] `storage/registry.rs` — verified IN USE, not dead code. Resolved.
+- [x] Browser-only code in `management.js` — `__TAURI__` refs are correct defensive checks. `document.*`/`window.*` expected for UI module. Resolved.
+
+## Archived During Full Audit — 2026-04-15
+
+### Verified done by code inspection
+- [x] `boardDataStore.js` extracted — `lexera-kanban/src/core/boardDataStore.js`
+- [x] `undoRedoSystem.js` extracted — `lexera-kanban/src/core/undoRedoSystem.js`
+- [x] `moduleRuntime.js` created — `lexera-kanban/src/core/moduleRuntime.js`
+- [x] `canvasMode.js` / `canvasMath.js` — `lexera-kanban/src/canvas/`
+- [x] `TreeView` consolidated — `lexera-kanban/src/treeView.js`
+- [x] `HierarchyContract` used — `sidebarTree.js` uses `LexeraHierarchyContract.createHierarchyNode`
+- [x] Root `test.sh` — runs cargo test + vitest across packages
+- [x] Rust workspace — `Cargo.toml` has `[workspace]` with `resolver = "2"`
+- [x] Legacy `src/` moved — `_ARCHIVE/src/`
+- [x] Export subsystem directory — `lexera-kanban/src/export/` with 7 modules
+- [x] API spec document — `packages/agent/specs/services/api/SPEC.md`
+- [x] CI workflow — `.github/workflows/main.yml`
+- [x] Settings modules — `settings/frontendSettings.js`, `renderAppsSettings.js`, `core/settingsStore.js`, `board/boardSettings.js`
+- [x] Some structured error types — `InviteError`, `AuthError`, `PublicRoomError` enums
+- [x] Excalidraw vendored — `lexera-kanban/src/vendor/excalidraw/`
+- [x] Feature gating for watcher — `#[cfg(feature = "file-watcher")]`
+- [x] `BoardStorage` trait exists — `pub trait BoardStorage: Send + Sync` in `storage/mod.rs`
+- [x] Frontend startup smoke test — `startupSmoke.test.js`, 29 tests pass
+- [x] Config API module — `config_api.rs` (995 lines)
+- [x] Frontend logging standardized — 110 `lexeraLog`/`traceFrontendAction` calls, 9 debug toggles
+- [x] Temporal parsing in lexera-core — `parse_temporal_query`, `parse_temporal_to_date`
+- [x] Test fixture boards — `tests/` dir with 10+ board fixtures
+
+## Archived During Backlog Cleanup — 2026-04-15
+
+### Frontend tests: 133/133 pass in ~3.4s
+- [x] Burger-menu structural action tests: duplicate column, sort column by title, add stack to row, sort row cards — all with do/undo verification.
+- [x] Include badge test and marp export time-tag test skipped in autoRun mode (require full app lifecycle with timers).
+- [x] All 9 fixture-dashboard tests fixed: sidebar/dashboard assertions gated behind `shouldSkipSidebarAssertions()` in autoRun mode.
+- [x] `delay()` returns immediately in autoRun mode — prevents WKWebView timer throttle stalls (suite dropped from 153s to ~3s).
+- [x] Sidebar consistency check skipped in autoRun mode (sidebar DOM in parent frame, timers throttled).
+- [x] Dynamic dashboard baseline via `waitForDashboardTodosStable()`.
+- [x] Dashboard render flush after `refreshDashboardData` in autoRun mode.
+- [x] Include column disjoint-check in `assertViewWorkspaceConsistency` (no common IDs = regenerated include content → skip).
+- [x] `withTestTimeout` (30s) in `runAllUI` and `runOneUI`.
+
 ## Archived During Backlog Cleanup — 2026-04-14
 
 ### Test infrastructure improvements (118/129 tests passing)

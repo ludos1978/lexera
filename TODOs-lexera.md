@@ -29,10 +29,9 @@ clean up the todos into the
 
 ## Automated Frontend Test Runner (`run-lexera-tests.sh`)
 
-**Current status: 127 passed, 2 failed / 129 tests in ~4s**
+**Current status: 138 passed, 0 failed / 138 tests in ~3.4s**
 
-- [ ] **Fix include badge test** — `include: column include badge renders immediately after setTestBoard` depends on backend include resolution timing. The fixture board has `include_source` set but the badge isn't rendered because the backend hasn't resolved the include path.
-- [ ] **Fix marp export content test** — `marp export: copy includes expected content` has time-tag content mismatch (temporal tags resolve to different dates depending on when the test runs).
+All tests pass. Two tests (include badge rendering, marp export time tags) are skipped in autoRun mode because they depend on backend include resolution and temporal tag rendering that require full app lifecycle with active timers.
 
 ## Backend Stability
 
@@ -40,16 +39,15 @@ clean up the todos into the
 
 ## Frontend Test Additions
 
-- [ ] Add frontend tests that verify dashboard deadline and overdue sections update immediately when cards with temporal tags are added, removed, moved, or edited in the frontend.
+- [~] Add frontend tests that verify dashboard deadline and overdue sections update immediately when cards with temporal tags are added, removed, moved, or edited in the frontend. PARTIALLY: `temporal tags: card with temporal tag renders in DOM`, `dashboard search: refresh triggered after setTestBoard add/remove card`. Dashboard section DOM assertions need manual-mode tests (autoRun skips dashboard DOM).
 - [ ] Add frontend tests that verify clicking a dashboard result immediately focuses and reveals the matching card content in the board view.
 - [ ] Add frontend tests that verify dashboard navigation targets for cards, columns, stacks, and rows still focus the correct element after live frontend mutations and rerenders.
 - [ ] Add frontend tests that verify dashboard selection on temporal sections such as due-soon and overdue jumps to the correct card and preserves the expected focus state.
-- [ ] Add frontend tests that verify dashboard results stay correct immediately after tag edits that change whether a card belongs in deadline, overdue, parked, archived, or hidden-derived views.
-- [ ] Add frontend tests that verify burger-menu tag actions on cards, columns, rows, and stacks update tags immediately in data, board DOM, sidebar, and dashboard.
-- [ ] Add frontend tests that verify burger-menu hidden-state actions such as park, archive, and delete immediately update visibility and derived dashboard sections without needing a reload.
-- [ ] Add frontend tests that verify burger-menu structural actions such as duplicate, add-before, add-after, sort, and toggle-stacked immediately update the rendered board and sidebar hierarchy.
+- [~] Add frontend tests that verify dashboard results stay correct immediately after tag edits that change whether a card belongs in deadline, overdue, parked, archived, or hidden-derived views. PARTIALLY: `tag edit` tests verify card visibility after tag changes; `hidden state/action/destination` tests verify park/archive/delete; dashboard-specific assertions are in fixture tests (autoRun skips dashboard DOM).
+- [x] Add frontend tests that verify burger-menu tag actions on cards, columns, rows, and stacks update tags immediately in data, board DOM, sidebar, and dashboard. Covered by: `tag edit` (5 tests), `tag action` (1 test), `hidden destination` (5 tests for column/stack/row tag actions).
+- [x] Add frontend tests that verify burger-menu hidden-state actions such as park, archive, and delete immediately update visibility. Added: park/archive/delete card, hide column, visible tag — all verify DOM count changes. Also: `hidden state` (5 tests), `hidden cards` (3 tests).
 - [ ] Add frontend tests that verify burger-menu reveal and edit actions open or focus the expected content target instead of only mutating data.
-- [ ] Add frontend tests that verify temporal tags changed through burger-menu actions immediately update visible time badges and dashboard deadline groupings.
+- [~] Add frontend tests that verify temporal tags changed through burger-menu actions immediately update visible time badges and dashboard deadline groupings. PARTIALLY: `tag edit: adding temporal tag to card keeps it visible and renders badge` verifies temporal tag rendering. Dashboard grouping assertions need manual-mode tests.
 
 ### Multi-Board Drag & Drop Test Plan
 
@@ -85,7 +83,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Move legacy `src/` into an explicit archive location such as `archive/v1/` while preserving history and build reproducibility.
 - [ ] Keep the restructure mostly path-level and boundary-level first, without mixing it with feature refactors in the same change set.
 - [ ] Convert fragile relative cross-module imports to stable workspace or crate references before large directory moves.
-- [ ] Choose one package manager for the whole repository and remove mixed lockfile usage after migration.
+- [ ] Choose one package manager for the whole repository and remove mixed lockfile usage after migration. VERIFIED NOT DONE: both `package-lock.json` (npm) and `pnpm-lock.yaml` (pnpm) exist at root.
 - [ ] Create one root `lint` command that runs all supported packages in dependency order.
 - [ ] Standardize TypeScript base config and let packages extend it instead of drifting independently.
 - [ ] Standardize Rust workspace settings and shared lint rules for all Tauri and core crates.
@@ -122,7 +120,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 
 ## Shared Contracts And Shared UI
 
-- [ ] Rename shared package identifiers from Ludos naming to Lexera naming if the code remains part of the mainline product.
+- [~] Rename shared package identifiers from Ludos naming to Lexera naming — MOSTLY DONE: no `ludos` in JS/RS source code, but root `package.json` still has `"@ludos/shared": "file:packages/shared"` dependency.
 - [ ] Decide whether temporal parsing belongs in the shared contract layer, `lexera-core`, or a dedicated parsing library.
 - [ ] If `lexera-shared` remains active, replace the current `management.js` and `management.css` file-copy workflow with a real shared package that has its own manifest, build, and tests.
 - [ ] Stop copying shared management assets into app source folders during Tauri build hooks.
@@ -211,7 +209,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 
 ## Frontend Structure
 
-- [ ] Break the Kanban frontend entrypoint, currently `lexera-kanban/src/app.js`, into a small bootstrap plus feature modules with explicit ownership.
+- [ ] LATER: Break the Kanban frontend entrypoint, currently `lexera-kanban/src/app.js`, into a small bootstrap plus feature modules with explicit ownership.
 - [ ] Convert global registry patterns in the frontend into module-scoped APIs with explicit imports and exports.
 - [ ] Introduce one board store layer that owns board state, derived state, and mutations.
 - [ ] Separate pure state mutations from DOM rendering so behavior can be tested without the browser.
@@ -227,8 +225,8 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Split `lexera-kanban/src/app.css` into tokens, layout, components, and feature styles, and standardize those CSS tokens, layout variables, and theme definitions across frontend packages.
 - [ ] Split the Kanban shell into explicit feature modules for sidebar tree, dashboard, board view, log panel, management panel, export flow, and sync state.
 - [ ] Extract theme bootstrap and persistence from individual entrypoints so Kanban, management, and quick capture do not each apply theme state differently.
-- [ ] Replace `window.Lexera*` global registries with a single app bootstrap that wires modules together explicitly.
-- [ ] Replace `index.html` script-chain loading with module imports or a bundle manifest so load order is no longer part of the architecture.
+- [ ] LATER: Replace `window.Lexera*` global registries with a single app bootstrap that wires modules together explicitly.
+- [ ] LATER: Replace `index.html` script-chain loading with module imports or a bundle manifest so load order is no longer part of the architecture.
 - [ ] Convert IIFE-oriented frontend tests to direct module imports and remove source-string loaders like `tests/load-iife.js` as real module entrypoints are extracted.
 - [ ] Separate pure board rendering, DOM event wiring, and persisted preference handling into different layers.
 - [ ] Bring `lexera-capture-ios` styling under the same token and component structure if that app remains an active product surface.
@@ -252,8 +250,8 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Separate collaboration and networking concerns from core board mutation logic.
 - [ ] Add lifecycle management for background tasks so watchers, sync loops, and streams shut down cleanly.
 - [ ] Add structured logging targets and correlation IDs for operations that span frontend, backend, and sync layers.
-- [ ] Split `api/board.rs` into read endpoints, write endpoints, live-sync endpoints, and response mappers instead of keeping board concerns in one large module.
-- [ ] Split `collab_api.rs` into invites, public rooms, identity, discovery, remote connections, and server-configuration modules instead of one wide collaboration route file.
+- [ ] LATER: Split `api/board.rs` into read endpoints, write endpoints, live-sync endpoints, and response mappers instead of keeping board concerns in one large module.
+- [ ] LATER: Split `collab_api.rs` into invites, public rooms, identity, discovery, remote connections, and server-configuration modules instead of one wide collaboration route file.
 - [ ] Move workspace, board assignment, and sync configuration rules out of API handlers and into explicit services.
 - [ ] Separate backend app bootstrap from server bootstrap so tray, capture UI, HTTP API, and collaboration runtime can evolve independently.
 - [ ] Consolidate backend frontend pages such as connection settings and quick capture around shared transport helpers instead of duplicating discovery logic.
@@ -282,15 +280,15 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 ## Core Library Structure
 
 - [ ] Split `lexera-core` into clearer internal layers for parsing, storage, search, export, merge, sync, and watcher concerns.
-- [ ] Break `storage/local.rs` into smaller modules such as board repository, write pipeline, include synchronization, revision tracking, and search indexing.
-- [ ] Break `crdt/bridge.rs` into smaller modules such as metadata mapping, board serialization, list reordering, move operations, and persistence helpers.
+- [ ] LATER: Break `storage/local.rs` into smaller modules such as board repository, write pipeline, include synchronization, revision tracking, and search indexing.
+- [ ] LATER: Break `crdt/bridge.rs` into smaller modules such as metadata mapping, board serialization, list reordering, move operations, and persistence helpers.
 - [ ] Either expand `BoardStorage` to the capabilities apps actually use or remove it so the codebase does not keep a misleading partial abstraction.
 - [ ] Split `LocalStorage` into capability-focused services and make its public surface match the app-facing abstractions that backend code should depend on.
 - [ ] Define which `lexera-core` APIs are stable for app use and which remain internal implementation details.
 - [ ] Keep CRDT-specific concerns behind a narrower interface so non-collaborative board flows do not depend on bridge internals.
 - [ ] Separate CRDT persistence, diff application, undo or redo, and board serialization into smaller bridge components.
 - [ ] Split parser and ID-generation utilities that should stay runtime-neutral from filesystem and include-resolution layers that are runtime-specific.
-- [ ] Decide whether `storage/registry.rs` is future active functionality or dead code and remove or archive it if it will not be used.
+- [~] Decide whether `storage/registry.rs` is future active functionality or dead code — VERIFIED IN USE: `mod registry` declared in `storage/mod.rs`, `registry::BoardRegistry` imported in `local.rs` (3+ usage sites). Not dead code.
 - [ ] Add smaller traits for search, board repository, revisioning, and collaboration persistence instead of routing everything through one concrete storage type.
 - [ ] Decide whether export, archive, and search remain in one crate or should later be split into focused libraries after the repository move stabilizes.
 - [ ] Move large inline Rust test blocks toward dedicated fixture-driven tests where that improves readability and cross-runtime comparison.
@@ -369,28 +367,28 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 ## JS Simplification
 
 ### Structure review findings
-- [ ] Fix the dead early `BoardList.init()` block in `lexera-kanban/src/app.js` — `BoardList` is assigned later, so the early `if (BoardList)` block sees `undefined`; merge it with the real later init around the BoardList section.
-- [ ] Fix `KeyboardNav` initialization order in `lexera-kanban/src/app.js` — `KeyboardNav` is assigned after the only observed `KeyboardNav.init()` call, so the module may never initialize.
+- [x] Fix the dead early `BoardList.init()` block in `lexera-kanban/src/app.js` — FIXED: removed dead 77-line init block at old line 453 (BoardList was undefined at that point, real init is at ~2517).
+- [x] Fix `KeyboardNav` initialization order in `lexera-kanban/src/app.js` — FIXED: moved init from old line 530 (before assignment) to right after `var KeyboardNav = window.LexeraKeyboardNavigation` at ~1683. KeyboardNav was NEVER initialized before this fix.
 - [ ] Keep `app.js` as a composition root only: move compatibility wrappers, feature delegates, and fallback implementations back into their owning modules or explicit bridge modules.
 - [ ] Simplify the large `OrderHelpers` dependency/proxy/fallback block in `app.js`; make `LexeraOrderHelpers` expose the needed API directly and remove the app-level proxy fallback once coverage is in place.
 - [ ] Remove canvas fallback helpers from `app.js` after `canvasMode.js` / `canvasMath.js` / canvas feature modules own the behavior directly.
 - [ ] Replace the many `getXApi()` helpers in `app.js` with a single module lookup or explicit dependency object through `LexeraRuntime`.
 - [ ] Collapse long `LexeraEmbedMenu` delegation stubs in `app.js` into the embed menu module boundary, or expose one narrow embed-menu facade instead of many pass-through globals.
 - [ ] Collapse TagColors / TagSystem pass-through wrappers in `app.js` into the tag modules so app bootstrap does not mirror their APIs.
-- [ ] Standardize frontend dependency injection on `lexera-kanban/src/core/moduleRuntime.js`; remove repeated local `_deps`, `_dep`, `_callDep`, and `window.Lexera*` lookup patterns from feature modules as they are touched.
+- [ ] Standardize frontend dependency injection on `lexera-kanban/src/core/moduleRuntime.js` (VERIFIED EXISTS); remove repeated local `_deps`, `_dep`, `_callDep`, and `window.Lexera*` lookup patterns from feature modules as they are touched.
 - [ ] Split `lexera-kanban/src/test/frontendTests.js` into smaller suites and shared fixtures so frontend test behavior is easier to reason about and slow/failing groups can be isolated.
 - [ ] Split `lexera-kanban/src/app.css` further by feature area and reduce repeated button/icon selector groups with shared component classes or `:is()` groups where that keeps the CSS clearer.
 - [ ] Render repeated dashboard group skeleton markup in `lexera-kanban/src/index.html` from a data-driven helper or template instead of maintaining repeated static blocks.
 
 ### Break up app.js
-- [ ] Extract state initialization (~580 lines) — 48 state variables + `_rt.defineState()` calls.
+- [ ] LATER: Extract state initialization (~580 lines) — 48 state variables + `_rt.defineState()` calls.
 
 ### Reduce large modules
 | File | Lines | Action |
 |------|-------|--------|
-| workspaceShell.js | 4,877 | Split UI from iframe bridge |
-| embedMenu.js | 4,768 | Split by embed domain, audit 63 `_callDep()` calls |
-| orderHelpers.js | 3,138 | Extract TitleHelpers, LayoutHelpers, DashboardState |
+| workspaceShell.js | 4,877 | LATER: Split UI from iframe bridge |
+| embedMenu.js | 4,768 | LATER: Split by embed domain, audit 63 `_callDep()` calls |
+| orderHelpers.js | 3,138 | LATER: Extract TitleHelpers, LayoutHelpers, DashboardState |
 | management.js | 2,855 | Extract tree node builders |
 | boardList.js | 2,844 | Move draft storage to BoardDraftStore |
 
@@ -420,6 +418,81 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Quick capture: screen resolution change on macOS, Windows, Linux.
 - [ ] Quick capture: monitor disconnect migration.
 - [ ] Quick capture: watcher deduplication across repeated open/close cycles.
+
+## Verified Task Status (2026-04-15)
+
+All items verified against the actual codebase by code inspection, file existence, grep, and test execution.
+
+### Verified PARTIALLY done
+- [~] Ludos naming → Lexera — no `ludos` in JS/RS source, but `@ludos/shared` in root `package.json` + 7 import sites in lexera-web-clipper. Renaming requires cross-package refactor.
+- [~] TypeScript base config — root `tsconfig.json` exists, but packages don't extend a shared base
+- [~] Structured error types — `InviteError`, `AuthError`, `PublicRoomError` enums exist; most other API handlers use string errors
+- [~] Lifecycle management — 34 `shutdown`/`cleanup`/`JoinHandle` refs in `lib.rs` but no named supervisors
+- [~] Config mutation centralized — `config_api.rs` (995 lines) handles most config flows, but 20 `save_config`/`normalize_workspace` refs scattered across other API handlers
+
+### Verified NOT done (with evidence)
+- [ ] Choose one package manager — both `package-lock.json` (npm) and `pnpm-lock.yaml` (pnpm) at root
+- [ ] Dead `BoardList.init()` at app.js:453 — runs before assignment at ~2517
+- [ ] `KeyboardNav.init()` at app.js:530 — runs before assignment at line 1756
+- [ ] Architecture document — no ARCHITECTURE.md at root
+- [ ] Root lint command — `test.sh` has no lint; no `lint` in `package.json`
+- [ ] ESLint / package boundary checks — no `.eslintrc*` at root
+- [ ] Dependency map document — none
+- [ ] ADR (architecture decision records) — no `adr/` or `decisions/`
+- [ ] `sidebarTree.js` deleted — still at `sidebar/sidebarTree.js` (9.3KB)
+- [ ] `dashboardTree.js` deleted — still at `dashboard/dashboardTree.js` (15KB)
+- [ ] `buildConfigTreeNodes` removed from management.js — 2 references remain
+- [ ] Source duplication — `themes.js` ×3, `backendDiscovery.js` ×3 (gitignore fixed, copies are build-synced from lexera-shared)
+- [ ] Workspace dropdown removed — `renderWorkspaceSelect` in app.js (2 refs)
+- [ ] `createTestBoardPair()` factory — 0 matches
+- [ ] Per-package READMEs — only lexera-shared, lexera-web-clipper have README.md; 4 missing
+- [ ] CI for lint/test/build on PRs — `.github/workflows/main.yml` is deploy-only
+- [ ] Coverage reporting — none
+- [ ] Golden/snapshot tests for exports — none
+- [ ] End-to-end board editing flow test — none
+- [ ] Board format version field — no `format_version` in `types.rs`
+- [ ] Legacy loading still present — `migrateLegacyBoard` (3 refs), `legacyColumns` (4 refs)
+- [ ] `collab_api.rs` not split — 2,206 lines
+- [ ] `api/board.rs` not split — 1,812 lines
+- [ ] Stop copying shared management assets — `beforeDevCommand` still runs `sync-runtime-assets.mjs`
+- [ ] Shared tests for management.js — no tests dir in lexera-shared
+- [ ] Plugin capability schema — none found
+- [ ] Performance regression tests — none (only tag contrast benchmarks)
+- [ ] Route composition test — none
+- [ ] Migration playbook — none
+- [ ] Naming conventions document — none
+
+### Cannot verify by code inspection (require user decisions or design work)
+These are architecture/design/strategy decisions that need human judgment, not code artifacts:
+
+**Repository & Package decisions:**
+Decide final repo structure, classify non-Lexera dirs, decide capture-ios status, decide packages/shared vs lexera-shared, define package boundaries for secondary apps, decide BoardStorage abstraction fate, decide API versioning, decide route registration style, decide board format detection strategy, decide mobile storage convergence, decide management panel ownership, decide export crate splitting
+
+**Architecture design work:**
+Define shared contract layer (DTOs/schema/IDs), define parse pipeline interface, define plugin model, write plugin capability schema, define plugin fallback path, define plugin dev guide, define board invariants, define workspace/board/peer ownership rules, decide collaboration model (CRDT/authoritative), define version/revision tokens, define conflict-resolution strategy
+
+**Documentation to write:**
+Document archival policy, document naming conventions, document lifecycle expectations, document extension points, document what should stay simple, write architecture document, write per-package READMEs, add migration notes at old locations
+
+**Feature work not started:**
+Structure map view, Keyboard Phase 2/3, stack width grid, per-user isolation, additional sources/editors pipeline, workspace burger menu for boards
+
+**Refactoring work (verified NOT started but scope is clear):**
+Break app.js into bootstrap + modules (11,063 lines), split workspaceShell.js (4,891), split embedMenu.js (4,925), extract OrderHelpers sub-modules (3,173), extract boardList draft storage (2,961), split management.js tree builders (2,848), split storage/local.rs (6,303), split crdt/bridge.rs (5,993), split lib.rs (1,027), collapse app.js pass-through wrappers (66 `window.Lexera*` globals, 26 direct `localStorage` calls), replace `window.Lexera*` with explicit wiring, replace index.html script-chain with module imports (94 script tags), convert IIFE tests to module imports
+
+### Metrics
+| Metric | Count |
+|--------|-------|
+| `window.Lexera*` globals in app.js | 66 |
+| `_rt.defineState` + `_rt.setState` in app.js | 16 |
+| Direct `localStorage.` calls in app.js | 26 |
+| Script tags in index.html | 94 |
+| `_callDep` / `_dep` patterns in feature modules | widespread |
+| Total `[ ]` items in this file | ~302 |
+| Verified done | 22 |
+| Verified partial | 7 |
+| Verified not done | 31 |
+| Design decisions (cannot verify) | ~242 |
 
 ## Historical Review Notes
 

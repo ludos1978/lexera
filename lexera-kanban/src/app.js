@@ -450,110 +450,13 @@ var LexeraDashboard = (function () {
     getCachedWorkspaceSettings: function () { return _cachedWorkspaceSettings; },
     getLocalStorage: function () { return typeof localStorage !== 'undefined' ? localStorage : null; }
   });
-  if (BoardList) BoardList.init({
-    TreeView: TreeView,
-    SidebarSync: SidebarSync,
-    LexeraApi: LexeraApi,
-    get activeBoardId() { return activeBoardId; },
-    get activeBoardData() { return activeBoardData; },
-    get fullBoardData() { return fullBoardData; },
-    get liveSyncState() { return liveSyncState; },
-    get boards() { return boards; },
-    get remoteBoards() { return remoteBoards; },
-    get workspaces() { return workspaces; },
-    get activeWorkspaceId() { return activeWorkspaceId; },
-    get viewWorkspaceId() { return viewWorkspaceId; },
-    get workspaceViewMode() { return workspaceViewMode; },
-    get embeddedMode() { return embeddedMode; },
-    get ALL_WORKSPACES_ID() { return ALL_WORKSPACES_ID; },
-    get boardPresenceCache() { return boardPresenceCache; },
-    get _lastLoadedRevision() { return BoardDataStore.getLastLoadedRevision(); },
-    get _saveInFlight() { return BoardDataStore.getSaveInFlight(); },
-    get workspaceShellEnabled() { return workspaceShellEnabled; },
-    get WorkspaceShell() { return WorkspaceShell; },
-    get hasTauri() { return hasTauri; },
-    setFullBoardData: function (v) { setFullBoardDataState(v); },
-    setActiveBoardId: function (v) { setActiveBoardIdState(v); },
-    setActiveBoardData: function (v) { setActiveBoardDataState(v); },
-    updateActiveBoardData: function (updater) { return updateActiveBoardDataState(updater); },
-    setBoards: function (v) { setBoardsState(v); },
-    setActiveWorkspaceIdState: function (v, opts) { setActiveWorkspaceIdState(v, opts); },
-    setViewWorkspaceIdState: function (v) { setViewWorkspaceIdState(v); },
-    setWorkspaceViewModeState: function (v) { setWorkspaceViewModeState(v); },
-    commitLocalBoardChange: function (boardId, boardData, opts) { return commitLocalBoardChange(boardId, boardData, opts); },
-    setLastLoadedGeneration: function (v) { BoardDataStore.setLastLoadedGeneration(v); },
-    setLastLoadedRevision: function (v) { BoardDataStore.setLastLoadedRevision(v); },
-    setPendingExternalRebaseConflict: function (v) { pendingExternalRebaseConflict = v; },
-    getSidebarTreeApi: function () { return getSidebarTreeApi(); },
-    getHierarchyControllerApi: function () { return getHierarchyControllerApi(); },
-    stripLayoutTags: function (t) { return stripLayoutTags(t); },
-    getDisplayOrderedColumnEntries: function (cols, opts) { return getDisplayOrderedColumnEntries(cols, opts); },
-    getOrderedItems: function (items, key, fn) { return getOrderedItems(items, key, fn); },
-    getAllColumnsFromBoardData: function (bd) { return getAllColumnsFromBoardData(bd); },
-    isRemoteBoardId: function (id) { return isRemoteBoardId(id); },
-    hasTag: function (text, tag) { return hasTag(text, tag); },
-    stripStackTag: function (title) { return stripStackTag(title); },
-    ensureBoardRowsForMutation: function (bd, t) { ensureBoardRowsForMutation(bd, t); },
-    getMutationBoardTitle: function (id, bd) { return getMutationBoardTitle(id, bd); },
-    normalizeLegacyColumnsToRows: function (cols, fallbackTitle) { return normalizeLegacyColumnsToRows(cols, fallbackTitle); },
-    isBoardDirty: function () { return isBoardDirty(); },
-    clearBoardDirty: function () { clearBoardDirty(); },
-    markBoardDirty: function () { markBoardDirty(); },
-    updateDisplayFromFullBoard: function () { updateDisplayFromFullBoard(); },
-    renderMainView: function () { renderMainView(); },
-    applyBoardSettings: function () { applyBoardSettings(); },
-    renderColumns: function () { renderColumns(); },
-    refreshTargetedElements: function (targets) { refreshTargetedElements(targets); },
-    refreshHeaderFileControls: function () { refreshHeaderFileControls(); },
-    scheduleDashboardRefresh: function (ms) { scheduleDashboardRefresh(ms); },
-    showNotification: function (msg) { showNotification(msg); },
-    showConfirmDialog: function (msg) { return showConfirmDialog(msg); },
-    showExternalRebaseConflictDialog: function (r) { showExternalRebaseConflictDialog(r); },
-    cleanupBoardBeforeSidebarClose: function (id) { return cleanupBoardBeforeSidebarClose(id); },
-    getDisplayNameFromPath: function (p) { return getDisplayNameFromPath(p); },
-    escapeHtml: function (s) { return escapeHtml(s); },
-    getCreationEntityDragIconSvg: function (t) { return getCreationEntityDragIconSvg(t); },
-    targetClosest: function (t, s) { return targetClosest(t, s); },
-    exitSearchMode: function () { exitSearchMode(); },
-    selectBoard: function (id) { selectBoard(id); },
-    showNativeMenu: function (items, x, y) { return showNativeMenu(items, x, y); },
-    tauriInvoke: function (cmd, args) { return tauriInvoke(cmd, args); },
-    openConnectionWindow: function () { openConnectionWindow(); },
-    showInFinder: function (p) { showInFinder(p); },
-    poll: function () { poll(); },
-    applyVisualTheme: function (id) { applyVisualTheme(id); },
-    getSharedPanelRoots: function (kind) { return getSharedPanelRoots(kind); },
-    showSidebarHierarchyMenu: function (el) { showSidebarHierarchyMenu(el); },
-    buildHierarchyFocusTargetFromTreeNode: function (node, bid) { return buildHierarchyFocusTargetFromTreeNode(node, bid); },
-    navigateToHierarchyTarget: function (target) { return navigateToHierarchyTarget(target); }
-  });
-  if (KeyboardNav) KeyboardNav.init({
-    getElColumnsContainer: function() { return getElColumnsContainer(); },
-    getActiveBoardData: function() { return activeBoardData; },
-    getActiveBoardColumns: function() { return activeBoardData ? activeBoardData.columns : []; },
-    getIsEditing: function() { return isEditing; },
-    getSearchMode: function() { return searchMode; },
-    getMgmtPanelOpen: function() { return ManagementWiring ? ManagementWiring.getMgmtPanelOpen() : false; },
-    getCurrentArrowKeyFocusScrollMode: function() { return currentArrowKeyFocusScrollMode; },
-    moveCard: function(sci, scj, tci, tcj) { return moveCard(sci, scj, tci, tcj); },
-    openCardEditor: function(el, ci, cj, mode) { openCardEditor(el, ci, cj, mode); },
-    duplicateCard: function(ci, cj) { duplicateCard(ci, cj); },
-    deleteCard: function(ci, cj) { deleteCard(ci, cj); },
-    tagCard: function(ci, cj, tag) { tagCard(ci, cj, tag); },
-    revealCardContent: function(ci, cj) { revealCardContent(ci, cj); },
-    insertCardAtIndex: function(ci, cj) { insertCardAtIndex(ci, cj); },
-    copyElementAsMarkdown: function(type, opts) { copyElementAsMarkdown(type, opts); },
-    isOverlayEditorEnabled: function() { return isOverlayEditorEnabled(); },
-    showCardContextMenu: function(x, y, ci, cj) { showCardContextMenu(x, y, ci, cj); },
-    setAddCardColumn: function(idx) { addCardColumn = idx; },
-    renderColumns: function() { renderColumns(); },
-    closeManagementPanel: function() { closeManagementPanel(); },
-    syncSidebarToView: function() { syncSidebarToView(); },
-    reorderRows: function(s, t, b) { return reorderRows(s, t, b); },
-    moveStack: function(fr, fs, tr, ts, b) { return moveStack(fr, fs, tr, ts, b); },
-    moveColumnWithinBoard: function(fr, fs, fc, tr, ts, tc, b) { return moveColumnWithinBoard(fr, fs, fc, tr, ts, tc, b); },
-    getFullBoardData: function() { return fullBoardData; }
-  });
+  // BoardList.init() is at line ~2517 where `var BoardList = window.LexeraBoardList`
+  // is assigned. The early init block that was here was dead code (BoardList was
+  // undefined at this point). Removed 2026-04-15.
+
+  // KeyboardNav.init() moved to after `var KeyboardNav = window.LexeraKeyboardNavigation`
+  // at line ~1683. The early init here was dead code (KeyboardNav was undefined).
+  // Fixed 2026-04-15.
   var currentTagVisibilityMode = 'allexcludinglayout';
   var currentArrowKeyFocusScrollMode = 'nearest';
   var currentHtmlCommentRenderMode = 'hidden';
@@ -853,6 +756,20 @@ var LexeraDashboard = (function () {
       logFrontendIssue('error', 'event.storage', 'Error in storage event handler', err);
     }
   });
+
+  // Suppress layout transitions during window resize for instant visual response.
+  // The body.window-resizing class disables .board-stack width/flex transitions.
+  (function () {
+    var resizeTimer = 0;
+    window.addEventListener('resize', function () {
+      if (!resizeTimer) document.body.classList.add('window-resizing');
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () {
+        resizeTimer = 0;
+        document.body.classList.remove('window-resizing');
+      }, 200);
+    });
+  })();
 
   // --- Appearance --- (delegated to LexeraAppearance module)
   var Appearance = window.LexeraAppearance;
@@ -1754,6 +1671,33 @@ var LexeraDashboard = (function () {
 
   // --- Keyboard Navigation --- (delegated to LexeraKeyboardNavigation module)
   var KeyboardNav = window.LexeraKeyboardNavigation;
+  if (KeyboardNav) KeyboardNav.init({
+    getElColumnsContainer: function() { return getElColumnsContainer(); },
+    getActiveBoardData: function() { return activeBoardData; },
+    getActiveBoardColumns: function() { return activeBoardData ? activeBoardData.columns : []; },
+    getIsEditing: function() { return isEditing; },
+    getSearchMode: function() { return searchMode; },
+    getMgmtPanelOpen: function() { return ManagementWiring ? ManagementWiring.getMgmtPanelOpen() : false; },
+    getCurrentArrowKeyFocusScrollMode: function() { return currentArrowKeyFocusScrollMode; },
+    moveCard: function(sci, scj, tci, tcj) { return moveCard(sci, scj, tci, tcj); },
+    openCardEditor: function(el, ci, cj, mode) { openCardEditor(el, ci, cj, mode); },
+    duplicateCard: function(ci, cj) { duplicateCard(ci, cj); },
+    deleteCard: function(ci, cj) { deleteCard(ci, cj); },
+    tagCard: function(ci, cj, tag) { tagCard(ci, cj, tag); },
+    revealCardContent: function(ci, cj) { revealCardContent(ci, cj); },
+    insertCardAtIndex: function(ci, cj) { insertCardAtIndex(ci, cj); },
+    copyElementAsMarkdown: function(type, opts) { copyElementAsMarkdown(type, opts); },
+    isOverlayEditorEnabled: function() { return isOverlayEditorEnabled(); },
+    showCardContextMenu: function(x, y, ci, cj) { showCardContextMenu(x, y, ci, cj); },
+    setAddCardColumn: function(idx) { addCardColumn = idx; },
+    renderColumns: function() { renderColumns(); },
+    closeManagementPanel: function() { closeManagementPanel(); },
+    syncSidebarToView: function() { syncSidebarToView(); },
+    reorderRows: function(s, t, b) { return reorderRows(s, t, b); },
+    moveStack: function(fr, fs, tr, ts, b) { return moveStack(fr, fs, tr, ts, b); },
+    moveColumnWithinBoard: function(fr, fs, fc, tr, ts, tc, b) { return moveColumnWithinBoard(fr, fs, fc, tr, ts, tc, b); },
+    getFullBoardData: function() { return fullBoardData; }
+  });
 
   function handleKeyNavigation(e) {
     if (KeyboardNav) KeyboardNav.handleKeyNavigation(e);
@@ -10967,6 +10911,11 @@ var LexeraDashboard = (function () {
     addColumn: function (atIndex) { return addColumn(atIndex); },
     addColumnRelativeToDisplayPosition: function (r, s, c, b) { return addColumnRelativeToDisplayPosition(r, s, c, b); },
     insertCardAtIndex: function (colIdx, atCardIdx) { return insertCardAtIndex(colIdx, atCardIdx); },
+    addStackToRow: function (rowIdx, atStackIdx) { return addStackToRow(rowIdx, atStackIdx); },
+    duplicateColumn: function (colIdx) { return duplicateColumn(colIdx); },
+    duplicateStack: function (rowIdx, stackIdx) { return duplicateStack(rowIdx, stackIdx); },
+    sortColumnCards: function (colIdx, mode) { return sortColumnCards(colIdx, mode); },
+    sortRowCards: function (rowIdx, mode) { return sortRowCards(rowIdx, mode); },
     addCardToActiveBoard: addCardToActiveBoard,
     loadBoard: loadBoard,
     selectBoard: function (boardId) { return selectBoard(boardId); },

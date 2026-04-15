@@ -585,6 +585,38 @@
   opacity: 0.8;
 }
 
+/* Burger menu button in board tabs (replaces × close) */
+.ws-view-tab-menu,
+.ws-view-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.62;
+}
+
+.ws-view-tab:hover .ws-view-tab-menu,
+.ws-view-tab-menu:hover,
+.ws-view-menu:hover {
+  opacity: 1;
+  background: var(--hover-bg, rgba(128,128,128,0.15));
+}
+
+/* Header-level burger menu pushes right like close button */
+.ws-view-menu:not(.ws-view-fold ~ .ws-view-menu) {
+  margin-left: auto;
+  align-self: center;
+}
+
 /* Hidden tab (overflowed into dropdown) */
 .ws-view-tab.is-tab-overflowed {
   display: none;
@@ -980,6 +1012,7 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-drop-overlay {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  contain: layout style;
 }
 
 /* Split view dividers — match dock-divider style (thin centered line) */
@@ -1111,6 +1144,9 @@ body.workspace-shell-tab-dragging .ws-view-tab {
   min-height: 0;
   min-width: 0;
   background: var(--bg-primary);
+  /* Layout containment: tell the browser that resizing this container
+     does not affect siblings or ancestors — enables faster relayout */
+  contain: strict;
 }
 
 .workspace-shell-drop-overlay {
@@ -1181,6 +1217,8 @@ body.workspace-shell-tab-dragging .workspace-shell-drop-overlay {
   height: 100%;
   display: none;
   background: var(--bg-primary);
+  /* Each view (iframe/panel) is a self-contained layout boundary */
+  contain: layout style;
 }
 
 .workspace-shell-view.is-active {

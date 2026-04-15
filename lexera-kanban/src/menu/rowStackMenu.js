@@ -993,6 +993,8 @@ var LexeraRowStackMenu = (function () {
     deps.pushUndo();
     row.title = nextTitle;
     // Hiding a row removes it from view — board-level structural change
+    // (per-row targeting unsafe because display indices shift when a row
+    // becomes hidden in updateDisplayFromFullBoard).
     await deps.persistBoardMutation({ targets: [{ type: 'board' }, { type: 'sidebar' }] });
   }
 

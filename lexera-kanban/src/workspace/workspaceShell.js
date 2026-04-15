@@ -693,6 +693,7 @@
     bottomDockEl: null,
     panelDropOverlayEl: null,
     lastStructureSignature: '',
+    lastLeafTopology: '',
     lastSideDockSignatures: { left: '', right: '', bottom: '' },
     foldedPanes: {},
     backendConnected: false,
@@ -2051,6 +2052,17 @@
     return 'split(' + node.id + ':' + node.axis + ':' + buildStructureSignature(node.first) + ':' + buildStructureSignature(node.second) + ')';
   }
 
+  /**
+   * Leaf-topology signature — only tracks split structure and leaf node IDs,
+   * NOT individual tabs. Used to decide whether syncLeafDom can patch
+   * tab changes within existing leaves without a full rebuild.
+   */
+  function buildLeafTopologySignature(node) {
+    if (!node) return '';
+    if (node.type === 'tabs') return 'L(' + node.id + ')';
+    return 'S(' + node.id + ':' + node.axis + ':' + buildLeafTopologySignature(node.first) + ':' + buildLeafTopologySignature(node.second) + ')';
+  }
+
   function getTabTitle(tab) {
     if (isPanelTab(tab)) return getPanelTitle(tab.panelId);
     var meta = state.boardsById[tab.boardId];
@@ -2685,10 +2697,12 @@
       closeBtn.type = 'button';
       closeBtn.title = 'Close';
       closeBtn.textContent = '\u00d7';
-      var origClose = tab.querySelector('.ws-view-tab-close');
+      var origClose = tab.querySelector('.ws-view-tab-close') || tab.querySelector('.ws-view-tab-menu');
       if (origClose) {
-        var closeAction = origClose.getAttribute('data-ws-action') || 'close-tab';
-        closeBtn.setAttribute('data-ws-action', closeAction);
+        var closeAction = origClose.getAttribute('data-ws-action');
+        // Map burger menu action to close-tab for overflow menu
+        if (closeAction === 'tab-menu') closeAction = 'close-tab';
+        closeBtn.setAttribute('data-ws-action', closeAction || 'close-tab');
         if (tabId) closeBtn.setAttribute('data-ws-tab-id', tabId);
         if (panelId) closeBtn.setAttribute('data-ws-panel-id', panelId);
       }
@@ -2817,8 +2831,12 @@
         tab.innerHTML =
           '<span class="ws-view-tab-label">' + escapeHtml(item.label) + '</span>' +
           (opts.showMeta && item.meta ? '<span class="ws-view-tab-meta">' + escapeHtml(item.meta) + '</span>' : '') +
-          '<button class="ws-view-tab-close" type="button" data-ws-action="' + escapeHtml(opts.closeAction) + '" ' +
-            escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Close">\u00d7</button>';
+          (opts.closeAction === 'close-tab'
+            ? '<button class="ws-view-tab-menu burger-menu-btn" type="button" data-ws-action="tab-menu" ' +
+                escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Options">' +
+                '<span class="burger-lines" aria-hidden="true"></span></button>'
+            : '<button class="ws-view-tab-close" type="button" data-ws-action="' + escapeHtml(opts.closeAction) + '" ' +
+                escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Close">\u00d7</button>');
         tabs.appendChild(tab);
       }
       el.appendChild(tabs);
@@ -2855,17 +2873,69 @@
       el.appendChild(fold);
     }
 
-    // Header-level close button (always visible; closes the active tab/panel)
-    var close = document.createElement('button');
-    close.className = 'ws-view-close';
-    close.type = 'button';
-    close.title = 'Close';
-    close.setAttribute('data-ws-action', opts.closeAction);
-    close.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
-    close.textContent = '\u00d7';
-    el.appendChild(close);
+    // Header-level close/menu button (always visible)
+    if (opts.closeAction === 'close-tab') {
+      // Board tabs: burger menu with options + close
+      var menuBtn = document.createElement('button');
+      menuBtn.className = 'ws-view-menu burger-menu-btn';
+      menuBtn.type = 'button';
+      menuBtn.title = 'Options';
+      menuBtn.setAttribute('data-ws-action', 'tab-menu');
+      menuBtn.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
+      menuBtn.innerHTML = '<span class="burger-lines" aria-hidden="true"></span>';
+      el.appendChild(menuBtn);
+    } else {
+      // Panel tabs: keep close button
+      var close = document.createElement('button');
+      close.className = 'ws-view-close';
+      close.type = 'button';
+      close.title = 'Close';
+      close.setAttribute('data-ws-action', opts.closeAction);
+      close.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
+      close.textContent = '\u00d7';
+      el.appendChild(close);
+    }
 
     return el;
+  }
+
+  /**
+   * Build a header element for a side-dock tabset node.
+   * Shared between renderSideDockTabset (full render) and
+   * syncSideDockTabsetDom (incremental patch) — same pattern as
+   * buildLeafHeader for center dock.
+   */
+  function buildSideDockHeader(node) {
+    var activeTab = null;
+    for (var i = 0; i < node.tabs.length; i++) {
+      if (node.tabs[i].id === node.activeTabId) { activeTab = node.tabs[i]; break; }
+    }
+    if (!activeTab && node.tabs.length > 0) activeTab = node.tabs[0];
+    var activePanelId = activeTab && isPanelTab(activeTab) ? resolvePanelTarget(activeTab.panelId) : '';
+    var headerItems = [];
+    for (var h = 0; h < node.tabs.length; h++) {
+      var tab = node.tabs[h];
+      var tabPanelId = isPanelTab(tab) ? resolvePanelTarget(tab.panelId) : '';
+      headerItems.push({
+        id: tabPanelId || tab.id,
+        label: isPanelTab(tab) ? getPanelTitle(tab.panelId) : getTabTitle(tab),
+        isSelected: tabPanelId === state.activePanelId
+      });
+    }
+    var activeItemId = activePanelId || (activeTab ? activeTab.id : '');
+    return renderViewHeader({
+      items: headerItems,
+      activeId: activeItemId,
+      dragAttr: { name: 'data-ws-panel-drag-handle', value: activeItemId },
+      closeAction: 'close-panel',
+      closeIdAttr: 'data-ws-panel-id',
+      tabClickAttr: 'data-ws-panel-id',
+      activateAction: 'activate-panel',
+      extraTabAttrs: null,
+      showMeta: false,
+      foldNodeId: node.id,
+      isFolded: !!state.foldedPanes[node.id]
+    });
   }
 
   function renderSideDockTabset(node, parentEl, dockId) {
@@ -2891,30 +2961,7 @@
     }
     if (containsActive) tabsetEl.classList.add('is-active');
 
-    var headerItems = [];
-    for (var h = 0; h < node.tabs.length; h++) {
-      var tab = node.tabs[h];
-      var tabPanelId = isPanelTab(tab) ? resolvePanelTarget(tab.panelId) : '';
-      headerItems.push({
-        id: tabPanelId || tab.id,
-        label: isPanelTab(tab) ? getPanelTitle(tab.panelId) : getTabTitle(tab),
-        isSelected: tabPanelId === state.activePanelId
-      });
-    }
-    var activeItemId = activePanelId || (activeTab ? activeTab.id : '');
-    var headerEl = renderViewHeader({
-      items: headerItems,
-      activeId: activeItemId,
-      dragAttr: { name: 'data-ws-panel-drag-handle', value: activeItemId },
-      closeAction: 'close-panel',
-      closeIdAttr: 'data-ws-panel-id',
-      tabClickAttr: 'data-ws-panel-id',
-      activateAction: 'activate-panel',
-      extraTabAttrs: null,
-      showMeta: false,
-      foldNodeId: node.id,
-      isFolded: !!state.foldedPanes[node.id]
-    });
+    var headerEl = buildSideDockHeader(node);
     tabsetEl.appendChild(headerEl);
 
     var contentEl = document.createElement('div');
@@ -3002,6 +3049,12 @@
     return sig;
   }
 
+  /**
+   * Incrementally sync the DOM for a single side-dock tabset.
+   * Handles panel count changes via targeted header replacement and
+   * content patching — mirrors syncLeafDom for center docks and the
+   * kanban's refreshTargetedElements pattern.
+   */
   function syncSideDockTabsetDom(node, dockId) {
     var hostEl = dockId === 'left' ? state.leftDockEl :
                  dockId === 'right' ? state.rightDockEl : state.bottomDockEl;
@@ -3017,11 +3070,10 @@
     if (!activeTab && node.tabs.length > 0) activeTab = node.tabs[0];
     var activePanelId = activeTab && isPanelTab(activeTab) ? resolvePanelTarget(activeTab.panelId) : '';
 
-    // Update data-panel-id
+    // Update data-panel-id and is-active
     if (activePanelId) tabsetEl.setAttribute('data-panel-id', activePanelId);
     else tabsetEl.removeAttribute('data-panel-id');
-
-    // Update is-active class
+    tabsetEl.classList.toggle('workspace-shell-panel-window-integrated', node.tabs.length === 1);
     var containsActive = false;
     for (var a = 0; a < node.tabs.length; a++) {
       if (isPanelTab(node.tabs[a]) && resolvePanelTarget(node.tabs[a].panelId) === state.activePanelId) {
@@ -3030,58 +3082,93 @@
     }
     tabsetEl.classList.toggle('is-active', containsActive);
 
-    // Update header tab active states
+    // ── Header: rebuild if tab count changed, else patch in place ──
     var headerEl = tabsetEl.querySelector('.ws-view-header');
     if (!headerEl) return false;
     var tabsEl = headerEl.querySelector('.ws-view-tabs');
-    if (tabsEl) {
-      var tabBtns = tabsEl.querySelectorAll('.ws-view-tab');
-      if (tabBtns.length !== node.tabs.length) return false;
-      for (var h = 0; h < node.tabs.length; h++) {
-        var tab = node.tabs[h];
-        var tabPanelId = isPanelTab(tab) ? resolvePanelTarget(tab.panelId) : '';
-        var btnId = tabPanelId || tab.id;
-        // Find matching button
-        var btn = tabsEl.querySelector('.ws-view-tab[data-ws-panel-id="' + btnId + '"]');
-        if (!btn) return false;
-        btn.classList.toggle('is-active', tabPanelId === state.activePanelId);
+    var tabBtns = tabsEl ? tabsEl.querySelectorAll('.ws-view-tab') : [];
+    var headerNeedsRebuild = tabsEl
+      ? tabBtns.length !== node.tabs.length
+      : node.tabs.length > 1;
+
+    if (headerNeedsRebuild) {
+      var newHeader = buildSideDockHeader(node);
+      tabsetEl.replaceChild(newHeader, headerEl);
+      headerEl = newHeader;
+    } else {
+      // Patch header in place
+      if (tabsEl) {
+        for (var h = 0; h < node.tabs.length; h++) {
+          var tab = node.tabs[h];
+          var tabPanelId = isPanelTab(tab) ? resolvePanelTarget(tab.panelId) : '';
+          var btnId = tabPanelId || tab.id;
+          var btn = tabsEl.querySelector('.ws-view-tab[data-ws-panel-id="' + btnId + '"]');
+          if (!btn) { headerNeedsRebuild = true; break; }
+          btn.classList.toggle('is-active', tabPanelId === state.activePanelId);
+        }
+        if (headerNeedsRebuild) {
+          var fallbackHeader = buildSideDockHeader(node);
+          tabsetEl.replaceChild(fallbackHeader, headerEl);
+          headerEl = fallbackHeader;
+        }
       }
+      var activeItemId = activePanelId || (activeTab ? activeTab.id : '');
+      var dragEl = headerEl.querySelector('.ws-view-drag');
+      if (dragEl) dragEl.setAttribute('data-ws-panel-drag-handle', activeItemId);
+      var closeEl = headerEl.querySelector('.ws-view-close');
+      if (closeEl) closeEl.setAttribute('data-ws-panel-id', activeItemId);
     }
 
-    // Update header drag handle and close button
-    var activeItemId = activePanelId || (activeTab ? activeTab.id : '');
-    var dragEl = headerEl.querySelector('.ws-view-drag');
-    if (dragEl) dragEl.setAttribute('data-ws-panel-drag-handle', activeItemId);
-    var closeEl = headerEl.querySelector('.ws-view-close');
-    if (closeEl) closeEl.setAttribute('data-ws-panel-id', activeItemId);
-
-    // Update panel content display states
+    // ── Content: patch panel elements ──
     var contentEl = tabsetEl.querySelector('.workspace-shell-panel-content');
     if (!contentEl) return false;
-    var panelChildren = contentEl.querySelectorAll('[data-shell-panel-instance]');
-    // Count expected visible panels
-    var expectedCount = 0;
+
+    // Build expected panel list
+    var expectedPanels = [];
     for (var ci = 0; ci < node.tabs.length; ci++) {
       var pt = node.tabs[ci];
       if (!isPanelTab(pt)) continue;
       var pid = resolvePanelTarget(pt.panelId);
       if (!pid || !state.panelVisibility[pid] || isPanelIntegrated(pid)) continue;
-      expectedCount++;
+      expectedPanels.push({ panelId: pid, isActive: pt.id === node.activeTabId });
     }
-    if (panelChildren.length !== expectedCount) return false;
 
-    for (var ci2 = 0; ci2 < node.tabs.length; ci2++) {
-      var panelTab = node.tabs[ci2];
-      if (!isPanelTab(panelTab)) continue;
-      var panelId = resolvePanelTarget(panelTab.panelId);
-      if (!panelId || !state.panelVisibility[panelId] || isPanelIntegrated(panelId)) continue;
-      var panelEl = contentEl.querySelector('[data-shell-panel-instance="' + panelId + '"]');
-      if (!panelEl) return false;
-      if (panelTab.id === node.activeTabId) {
-        panelEl.style.display = '';
-      } else {
-        panelEl.style.display = 'none';
+    // Index existing panel instances
+    var existingPanels = contentEl.querySelectorAll('[data-shell-panel-instance]');
+    var existingMap = {};
+    for (var ei = 0; ei < existingPanels.length; ei++) {
+      existingMap[existingPanels[ei].getAttribute('data-shell-panel-instance')] = existingPanels[ei];
+    }
+
+    // Remove panels not in expected list
+    var expectedIds = {};
+    for (var ej = 0; ej < expectedPanels.length; ej++) expectedIds[expectedPanels[ej].panelId] = true;
+    for (var removeId in existingMap) {
+      if (!expectedIds[removeId]) existingMap[removeId].remove();
+    }
+
+    // Ensure each expected panel is mounted and in correct display state
+    var isFoldedOverlay = state.dockSizes[dockId] === 0;
+    var overlayEl = contentEl.querySelector('.workspace-shell-drop-overlay');
+    for (var pi = 0; pi < expectedPanels.length; pi++) {
+      var ep = expectedPanels[pi];
+      var panelEl = existingMap[ep.panelId];
+      if (!panelEl) {
+        // New panel — mount it
+        panelEl = getPanelElement(ep.panelId);
+        if (!panelEl) continue;
+        var panelKind = getPanelKind(ep.panelId);
+        var useSnapshot = isFoldedOverlay && panelKind === 'dashboard';
+        var insertEl = useSnapshot ? panelEl.cloneNode(true) : panelEl;
+        if (useSnapshot) {
+          insertEl.setAttribute('data-fold-snapshot', '1');
+          insertEl.removeAttribute('id');
+        }
+        insertEl.classList.remove('hidden');
+        contentEl.insertBefore(insertEl, overlayEl);
+        panelEl = insertEl;
       }
+      panelEl.style.display = ep.isActive ? '' : 'none';
     }
 
     // Update logs status bar in header
@@ -3125,14 +3212,17 @@
       state.lastSideDockSignatures[dockId] = '';
       return;
     }
-    // Try patching in place when structure hasn't changed
     var sig = buildSideDockStructureSignature(dockId);
     var hasContent = false;
     for (var c = 0; c < hostEl.children.length; c++) {
       if (!hostEl.children[c].classList.contains('ws-fold-strip')) { hasContent = true; break; }
     }
-    var canPatch = sig === state.lastSideDockSignatures[dockId] && hasContent;
-    if (canPatch && syncSideDockDom(dockId, hostEl)) {
+    // Try patching when signature matches exactly, OR when only panel
+    // visibility/active state changed (leaf topology + fold/size unchanged).
+    // Fold state and dock size changes require full rebuild because the
+    // snapshot logic (cloneNode for folded dashboards) must run fresh.
+    var exactMatch = sig === state.lastSideDockSignatures[dockId] && hasContent;
+    if (exactMatch && syncSideDockDom(dockId, hostEl)) {
       return;
     }
     // Full rebuild — remove tree content but preserve fold strip
@@ -3825,7 +3915,10 @@
 
   function renderToolbar() {
     if (!state.toolbarEl) return;
-    state.toolbarEl.innerHTML = '';
+    // Toolbar is currently always empty — skip clearing if already empty.
+    if (state.toolbarEl.childNodes.length > 0) {
+      state.toolbarEl.innerHTML = '';
+    }
     state.toolbarEl.classList.add('is-empty');
   }
 
@@ -3835,36 +3928,7 @@
     tabsetEl.setAttribute('data-node-id', node.id);
     if (node.id === state.activeLeafId) tabsetEl.classList.add('is-active');
 
-    var headerItems = [];
-    for (var i = 0; i < node.tabs.length; i++) {
-      var tab = node.tabs[i];
-      headerItems.push({
-        id: tab.id,
-        label: getTabTitle(tab),
-        meta: getTabMetaLabel(tab)
-      });
-    }
-    var activeTabId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
-    // Check if active tab is a panel (for fold button)
-    var activeTabObj = null;
-    for (var at = 0; at < node.tabs.length; at++) {
-      if (node.tabs[at].id === activeTabId) { activeTabObj = node.tabs[at]; break; }
-    }
-    var centerFoldPanelId = activeTabObj && isPanelTab(activeTabObj)
-      ? resolvePanelTarget(activeTabObj.panelId) : null;
-    var headerEl = renderViewHeader({
-      items: headerItems,
-      activeId: activeTabId,
-      dragAttr: { name: 'data-ws-tab-id', value: activeTabId },
-      closeAction: 'close-tab',
-      closeIdAttr: 'data-ws-tab-id',
-      tabClickAttr: 'data-ws-tab-id',
-      activateAction: null,
-      extraTabAttrs: null,
-      showMeta: true,
-      foldNodeId: centerFoldPanelId ? node.id : null,
-      isFolded: centerFoldPanelId ? !!state.foldedPanes[node.id] : false
-    });
+    var headerEl = buildLeafHeader(node);
     tabsetEl.appendChild(headerEl);
 
     var contentEl = document.createElement('div');
@@ -3890,8 +3954,15 @@
     tabsetEl.appendChild(contentEl);
 
     // Move logs status bar into ws-view-header so it's visible when folded
-    if (centerFoldPanelId && getPanelKind(centerFoldPanelId) === 'logs') {
-      moveLogsStatusToHeader(centerFoldPanelId, headerEl);
+    var activeTabId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
+    var activeTabObj = null;
+    for (var lt = 0; lt < node.tabs.length; lt++) {
+      if (node.tabs[lt].id === activeTabId) { activeTabObj = node.tabs[lt]; break; }
+    }
+    var foldPanelId = activeTabObj && isPanelTab(activeTabObj)
+      ? resolvePanelTarget(activeTabObj.panelId) : null;
+    if (foldPanelId && getPanelKind(foldPanelId) === 'logs') {
+      moveLogsStatusToHeader(foldPanelId, headerEl);
     }
 
     parentEl.appendChild(tabsetEl);
@@ -3909,8 +3980,24 @@
 
   function renderPanelOnly(panelId, hostEl) {
     if (!hostEl) return;
-    hostEl.innerHTML = '';
     hostEl.classList.add('workspace-shell-panel-only-host');
+
+    // Patch: if the panel window already shows the right panel, just ensure
+    // the panel element is mounted — skip full rebuild.
+    var existingWindow = hostEl.querySelector('.workspace-shell-panel-only-window[data-panel-id="' + panelId + '"]');
+    if (existingWindow) {
+      var existingContent = existingWindow.querySelector('.workspace-shell-panel-content');
+      var panelEl = getPanelElement(panelId);
+      if (existingContent && panelEl && panelEl.parentNode !== existingContent) {
+        panelEl.classList.remove('hidden');
+        panelEl.style.display = '';
+        existingContent.appendChild(panelEl);
+      }
+      return;
+    }
+
+    // Full rebuild — different panel or first render
+    hostEl.innerHTML = '';
     var panelWindowEl = document.createElement('div');
     panelWindowEl.className = 'workspace-shell-panel-window workspace-shell-panel-window-integrated is-active workspace-shell-panel-only-window';
     panelWindowEl.setAttribute('data-panel-id', panelId);
@@ -3945,6 +4032,51 @@
     hostEl.appendChild(panelWindowEl);
   }
 
+  /**
+   * Build a replacement header for a center-dock tabset leaf.
+   * Factored out so both renderTabset() and syncLeafDom() use
+   * the same header construction — mirroring the kanban pattern
+   * where build*Element() helpers are shared between full render
+   * and targeted refresh.
+   */
+  function buildLeafHeader(node) {
+    var headerItems = [];
+    for (var i = 0; i < node.tabs.length; i++) {
+      var tab = node.tabs[i];
+      headerItems.push({
+        id: tab.id,
+        label: getTabTitle(tab),
+        meta: getTabMetaLabel(tab)
+      });
+    }
+    var activeTabId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
+    var activeTabObj = null;
+    for (var at = 0; at < node.tabs.length; at++) {
+      if (node.tabs[at].id === activeTabId) { activeTabObj = node.tabs[at]; break; }
+    }
+    var centerFoldPanelId = activeTabObj && isPanelTab(activeTabObj)
+      ? resolvePanelTarget(activeTabObj.panelId) : null;
+    return renderViewHeader({
+      items: headerItems,
+      activeId: activeTabId,
+      dragAttr: { name: 'data-ws-tab-id', value: activeTabId },
+      closeAction: 'close-tab',
+      closeIdAttr: 'data-ws-tab-id',
+      tabClickAttr: 'data-ws-tab-id',
+      activateAction: null,
+      extraTabAttrs: null,
+      showMeta: true,
+      foldNodeId: centerFoldPanelId ? node.id : null,
+      isFolded: centerFoldPanelId ? !!state.foldedPanes[node.id] : false
+    });
+  }
+
+  /**
+   * Incrementally sync the DOM for a single leaf tabset.
+   * Handles tab count changes by rebuilding just the header and
+   * patching view frames — mirrors the kanban targeted-refresh pattern
+   * (replaceChild for changed elements, preserve unchanged ones).
+   */
   function syncLeafDom(node) {
     var tabsetEl = state.dockEl ? state.dockEl.querySelector('.workspace-shell-tabset[data-node-id="' + node.id + '"]') : null;
     if (!tabsetEl) return false;
@@ -3954,57 +4086,111 @@
     var contentEl = tabsetEl.querySelector('.workspace-shell-pane-content');
     if (!headerEl || !contentEl) return false;
 
-    var views = contentEl.querySelectorAll('.workspace-shell-view');
-    if (views.length !== node.tabs.length) return false;
-
-    // Update title for single-tab, or tabs for multi-tab
+    var views = contentEl.querySelectorAll(':scope > .workspace-shell-view');
     var tabsEl = headerEl.querySelector('.ws-view-tabs');
-    if (tabsEl) {
-      var tabButtons = tabsEl.querySelectorAll('.ws-view-tab');
-      if (tabButtons.length !== node.tabs.length) return false;
-    } else if (node.tabs.length > 1) {
-      return false; // structure mismatch
-    }
+    var tabCountChanged = views.length !== node.tabs.length;
+    var headerStructureChanged = tabCountChanged ||
+      (tabsEl ? tabsEl.querySelectorAll('.ws-view-tab').length !== node.tabs.length : node.tabs.length > 1);
 
-    for (var i = 0; i < node.tabs.length; i++) {
-      var tab = node.tabs[i];
-      var viewEl = contentEl.querySelector('.workspace-shell-view[data-tab-id="' + tab.id + '"]');
-      if (!viewEl) return false;
+    // ── Header: rebuild if tab count changed, else patch in place ──
+    if (headerStructureChanged) {
+      var newHeader = buildLeafHeader(node);
+      tabsetEl.replaceChild(newHeader, headerEl);
+      headerEl = newHeader;
+      // Re-observe tab overflow after header replacement
+      requestAnimationFrame(function () { updateTabOverflow(headerEl); });
+    } else {
+      // Patch header in place (no structural change)
       if (tabsEl) {
-        var tabEl = tabsEl.querySelector('.ws-view-tab[data-ws-tab-id="' + tab.id + '"]');
-        if (!tabEl) return false;
-        tabEl.classList.toggle('is-active', tab.id === node.activeTabId);
-        var labelEl = tabEl.querySelector('.ws-view-tab-label');
-        if (labelEl) labelEl.textContent = getTabTitle(tab);
-        var metaEl = tabEl.querySelector('.ws-view-tab-meta');
-        if (metaEl) metaEl.textContent = getTabMetaLabel(tab);
+        var tabButtons = tabsEl.querySelectorAll('.ws-view-tab');
+        for (var ti = 0; ti < node.tabs.length; ti++) {
+          var tab = node.tabs[ti];
+          var tabEl = tabButtons[ti];
+          if (!tabEl) continue;
+          tabEl.classList.toggle('is-active', tab.id === node.activeTabId);
+          var labelEl = tabEl.querySelector('.ws-view-tab-label');
+          if (labelEl) labelEl.textContent = getTabTitle(tab);
+          var metaEl = tabEl.querySelector('.ws-view-tab-meta');
+          if (metaEl) metaEl.textContent = getTabMetaLabel(tab);
+        }
       } else {
         var titleEl = headerEl.querySelector('.ws-view-title');
-        if (titleEl) titleEl.textContent = getTabTitle(tab);
+        if (titleEl) titleEl.textContent = getTabTitle(node.tabs[0]);
       }
-      viewEl.classList.toggle('is-active', tab.id === node.activeTabId);
-      if (isPanelTab(tab)) {
-        var panelEl = getPanelElement(tab.panelId);
+      // Keep header-level drag handle and close/menu button pointing at the active tab
+      var activeId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
+      var dragEl = headerEl.querySelector('.ws-view-drag');
+      if (dragEl) dragEl.setAttribute('data-ws-tab-id', activeId);
+      var closeOrMenuEl = headerEl.querySelector('.ws-view-close') || headerEl.querySelector('.ws-view-menu');
+      if (closeOrMenuEl) closeOrMenuEl.setAttribute('data-ws-tab-id', activeId);
+    }
+
+    // ── Content: patch view frames (add/remove/reorder) ──
+    // Build map of existing view frames by tab ID
+    var existingViews = {};
+    for (var vi = 0; vi < views.length; vi++) {
+      var tid = views[vi].getAttribute('data-tab-id');
+      if (tid) existingViews[tid] = views[vi];
+    }
+
+    // Remove views for tabs that no longer exist
+    var expectedTabIds = {};
+    for (var ei = 0; ei < node.tabs.length; ei++) {
+      expectedTabIds[node.tabs[ei].id] = true;
+    }
+    for (var existId in existingViews) {
+      if (!expectedTabIds[existId]) {
+        existingViews[existId].remove();
+      }
+    }
+
+    // Ensure each tab has a view frame in the correct order
+    // (overlay div is always the first child of contentEl)
+    var insertRef = contentEl.querySelector('.workspace-shell-drop-overlay');
+    var afterEl = insertRef ? insertRef.nextSibling : contentEl.firstChild;
+
+    for (var fi = 0; fi < node.tabs.length; fi++) {
+      var frameTab = node.tabs[fi];
+      var viewEl = existingViews[frameTab.id];
+      if (!viewEl) {
+        // New tab — create frame and insert
+        viewEl = getOrCreateFrame(frameTab, {
+          shouldLoad: frameTab.id === node.activeTabId && node.id === state.activeLeafId
+        });
+      }
+      viewEl.classList.toggle('is-active', frameTab.id === node.activeTabId);
+      if (isPanelTab(frameTab)) {
+        var panelEl = getPanelElement(frameTab.panelId);
         if (panelEl && panelEl.parentNode !== viewEl) {
           viewEl.innerHTML = '';
           panelEl.classList.remove('hidden');
           panelEl.style.display = '';
           viewEl.appendChild(panelEl);
         }
-        viewEl.setAttribute('data-panel-id', resolvePanelTarget(tab.panelId));
+        viewEl.setAttribute('data-panel-id', resolvePanelTarget(frameTab.panelId));
       } else {
-        syncBoardFrameSource(viewEl, tab, {
-          shouldLoad: tab.id === node.activeTabId && node.id === state.activeLeafId
+        syncBoardFrameSource(viewEl, frameTab, {
+          shouldLoad: frameTab.id === node.activeTabId && node.id === state.activeLeafId
         });
+      }
+      // Ensure correct order: insert before the next sibling
+      if (viewEl !== afterEl) {
+        contentEl.insertBefore(viewEl, afterEl);
+      } else {
+        afterEl = afterEl ? afterEl.nextSibling : null;
       }
     }
 
-    // Keep header-level drag handle and close button pointing at the active tab
-    var activeId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
-    var dragEl = headerEl.querySelector('.ws-view-drag');
-    if (dragEl) dragEl.setAttribute('data-ws-tab-id', activeId);
-    var closeEl = headerEl.querySelector('.ws-view-close');
-    if (closeEl) closeEl.setAttribute('data-ws-tab-id', activeId);
+    // Remove empty-state placeholder if tabs exist, add if not
+    var emptyEl = contentEl.querySelector('.workspace-shell-empty');
+    if (node.tabs.length === 0 && !emptyEl) {
+      emptyEl = document.createElement('div');
+      emptyEl.className = 'workspace-shell-empty';
+      emptyEl.innerHTML = '<div><strong>Open a board from the sidebar</strong><br>Drag a tab onto a pane edge to split it, or drag a tab outside the window to detach it.</div>';
+      contentEl.appendChild(emptyEl);
+    } else if (node.tabs.length > 0 && emptyEl) {
+      emptyEl.remove();
+    }
 
     return true;
   }
@@ -4042,12 +4228,25 @@
       var structureSignature = buildStructureSignature(state.dockTree);
       var foldedKeys = Object.keys(state.foldedPanes).sort().join(',');
       if (foldedKeys) structureSignature += '|fold:' + foldedKeys;
-      var canPatch = structureSignature === state.lastStructureSignature && state.dockEl.childNodes.length > 0;
-      if (!canPatch || !syncDomState()) {
+      var leafTopology = buildLeafTopologySignature(state.dockTree);
+      if (foldedKeys) leafTopology += '|fold:' + foldedKeys;
+      var hasDom = state.dockEl.childNodes.length > 0;
+      var exactMatch = structureSignature === state.lastStructureSignature && hasDom;
+      // If exact match: lightweight sync (CSS classes, text, frame sources).
+      // If only leaf topology matches: tabs changed within existing leaves —
+      // syncLeafDom handles tab add/remove via targeted replaceChild, like
+      // the kanban board's refreshTargetedElements pattern.
+      // Full rebuild only when split structure itself changed.
+      var patched = false;
+      if (exactMatch || (leafTopology === state.lastLeafTopology && hasDom)) {
+        patched = syncDomState();
+      }
+      if (!patched) {
         state.dockEl.innerHTML = '';
         renderNode(state.dockTree, state.dockEl);
-        state.lastStructureSignature = structureSignature;
       }
+      state.lastStructureSignature = structureSignature;
+      state.lastLeafTopology = leafTopology;
       if (state.dragTabId && state.dragHoverLeafId && state.dragHoverZone) {
         setDropZoneHighlight(state.dragHoverLeafId, state.dragHoverZone);
       }
@@ -4611,6 +4810,14 @@
       return;
     }
 
+    var tabMenuBtn = event.target.closest('[data-ws-action="tab-menu"]');
+    if (tabMenuBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      showBoardTabMenu(tabMenuBtn.getAttribute('data-ws-tab-id'), tabMenuBtn);
+      return;
+    }
+
     var toolbarBtn = event.target.closest('[data-ws-action]');
     if (toolbarBtn) {
       event.preventDefault();
@@ -4632,6 +4839,43 @@
       event.preventDefault();
       activateTab(tabEl.getAttribute('data-ws-tab-id'));
     }
+  }
+
+  function showBoardTabMenu(tabId, anchorEl) {
+    if (!tabId) return;
+    var found = findTab(state.dockTree, tabId);
+    if (!found) return;
+    var tab = found.tab;
+    var isBoardKind = tab.kind === 'board';
+    var items = [];
+    if (isBoardKind) {
+      var isKanban = tab.viewKind !== 'canvas';
+      items.push({ id: 'set-layout:kanban', label: 'Kanban view', disabled: isKanban });
+      items.push({ id: 'set-layout:canvas', label: 'Canvas view', disabled: !isKanban });
+      items.push({ separator: true });
+    }
+    items.push({ id: 'split-horizontal', label: 'Split right' });
+    items.push({ id: 'split-vertical', label: 'Split down' });
+    items.push({ separator: true });
+    items.push({ id: 'close', label: 'Remove from workspace' });
+
+    var rect = anchorEl.getBoundingClientRect();
+    if (typeof showNativeMenu !== 'function') return;
+    showNativeMenu(items, rect.right, rect.bottom, 'menu.board-tab').then(function (action) {
+      if (!action) return;
+      if (action === 'close') {
+        closeTab(tabId);
+      } else if (action === 'split-horizontal') {
+        activateTab(tabId);
+        splitActivePane('horizontal');
+      } else if (action === 'split-vertical') {
+        activateTab(tabId);
+        splitActivePane('vertical');
+      } else if (action.indexOf('set-layout:') === 0) {
+        var viewKind = action.substring('set-layout:'.length);
+        setTabViewKind(tabId, viewKind, { activate: true });
+      }
+    });
   }
 
   function handleRootContextMenu(event) {

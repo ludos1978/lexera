@@ -2844,6 +2844,12 @@ li.tag-line-styled {
   flex: 0 0 var(--stack-width-override, var(--board-stack-width, var(--board-column-width, 350px)));
   transition: min-width 0.15s, width 0.15s, flex 0.15s;
   border: 1px solid var(--surface-stack-border);
+}
+
+/* Disable layout transitions during window resize for instant response */
+body.window-resizing .board-stack,
+body.window-resizing .search-container {
+  transition: none !important;
   border-radius: var(--surface-stack-radius);
   background: var(--surface-stack-bg);
   box-shadow: var(--surface-stack-shadow);
