@@ -14,11 +14,7 @@ clean up the todos into the
 
 - [ ] in the workspace clicking the workspace twice currently goes into the workspace. this should only happen when the user clicks on the right arrow (in the view or in the keyboard) also add this option to the control settings!
 
-- [ ] in the workspace view 
-
-# Lexera Repository Architecture Todo
-
-- [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.
+- [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option
 
 - [ ] Items still needing full board render: row/stack hidden tags, board frontmatter changes, board settings changes, tag style preset change. These genuinely affect the whole board.
 
