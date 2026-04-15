@@ -576,7 +576,13 @@ var ManagementUI = (function () {
     initialized = true;
     renderShellForMount(mountObj);
     setupEventDelegationForMount(mountObj);
-    loadAllForMounts();
+    loadAllForMounts().catch(function () {
+      if (mc && mc.classList) mc.classList.remove('view-loading');
+    });
+    // Safety fallback: remove loading indicator after 8 seconds max
+    setTimeout(function () {
+      if (mc && mc.classList) mc.classList.remove('view-loading');
+    }, 8000);
   }
 
   function unmountInstance(id) {
@@ -658,14 +664,30 @@ var ManagementUI = (function () {
     var needsLogs = anyMountShowingTopTab('logs');
 
     if (needsNetwork) await loadIdentity();
-    var initialLoads = [];
-    if (needsNetwork) { initialLoads.push(loadServerInfo()); initialLoads.push(loadNetworkInterfaces()); }
-    if (needsWorkspaces || needsBoards || needsWsConfig) initialLoads.push(loadWorkspaces());
-    if (needsLogs) initialLoads.push(loadLogs());
-    await Promise.all(initialLoads);
-    if (needsBoards || needsWsConfig) await loadMyBoards();
-    if (needsNetwork) { await loadConnections(); await loadDiscoveredPeers(); }
-    if (needsWsConfig) { await loadGlobalSync(); renderConfigPanel(); }
+    // Load all data in parallel instead of sequentially.
+    // Render the config panel as soon as workspace data arrives, then
+    // re-render after all loads complete so boards are included too.
+    var allLoads = [];
+    if (needsNetwork) { allLoads.push(loadServerInfo()); allLoads.push(loadNetworkInterfaces()); }
+    if (needsWorkspaces || needsBoards || needsWsConfig) {
+      allLoads.push(loadWorkspaces().then(function () {
+        try { if (needsWsConfig) renderConfigPanel(); } catch (e) { /* render on final pass */ }
+      }));
+    }
+    if (needsBoards || needsWsConfig) allLoads.push(loadMyBoards());
+    if (needsWsConfig) allLoads.push(loadGlobalSync());
+    if (needsLogs) allLoads.push(loadLogs());
+    if (needsNetwork) { allLoads.push(loadConnections()); allLoads.push(loadDiscoveredPeers()); }
+    await Promise.all(allLoads);
+    if (needsWsConfig) renderConfigPanel();
+    // Remove loading indicator from all mounted containers
+    var ids = Object.keys(mounts);
+    for (var i = 0; i < ids.length; i++) {
+      var m = mounts[ids[i]];
+      if (m && m.container && m.container.classList) {
+        m.container.classList.remove('view-loading');
+      }
+    }
   }
 
   // ── Shell HTML ──

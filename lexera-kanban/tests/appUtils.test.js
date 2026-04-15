@@ -899,14 +899,14 @@ describe('syncConnectionStatusButton', () => {
     };
     const dot = { classList: createClassList() };
 
-    U.syncConnectionStatusButton(button, dot, true);
+    U.syncConnectionStatusButton(button, dot, 'ready');
 
     expect(button.classList.contains('connected')).toBe(true);
     expect(button.classList.contains('disconnected')).toBe(false);
-    expect(button.attributes['data-connection-state']).toBe('connected');
-    expect(button.attributes['aria-label']).toContain('connected');
-    expect(button.title).toContain('connected');
-    expect(label.textContent).toBe('Connected');
+    expect(button.attributes['data-connection-state']).toBe('ready');
+    expect(button.attributes['aria-label']).toContain('ready');
+    expect(button.title).toContain('ready');
+    expect(label.textContent).toBe('Ready');
     expect(dot.classList.contains('connected')).toBe(true);
     expect(dot.classList.contains('disconnected')).toBe(false);
   });
@@ -924,14 +924,14 @@ describe('syncConnectionStatusButton', () => {
     };
     const dot = { classList: createClassList() };
 
-    U.syncConnectionStatusButton(button, dot, false);
+    U.syncConnectionStatusButton(button, dot, 'none');
 
     expect(button.classList.contains('connected')).toBe(false);
     expect(button.classList.contains('disconnected')).toBe(true);
-    expect(button.attributes['data-connection-state']).toBe('disconnected');
-    expect(button.attributes['aria-label']).toContain('disconnected');
-    expect(button.title).toContain('disconnected');
-    expect(label.textContent).toBe('Disconnected');
+    expect(button.attributes['data-connection-state']).toBe('none');
+    expect(button.attributes['aria-label']).toContain('No connection');
+    expect(button.title).toContain('No connection');
+    expect(label.textContent).toBe('No Connection');
     expect(dot.classList.contains('connected')).toBe(false);
     expect(dot.classList.contains('disconnected')).toBe(true);
   });

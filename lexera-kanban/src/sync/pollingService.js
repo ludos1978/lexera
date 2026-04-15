@@ -355,7 +355,9 @@ var LexeraPollingService = (function () {
   }
 
   function syncConnectionStatusButton(buttonEl, dotEl, state) {
-    // state: 'none' | 'busy' | 'ready'
+    // Normalize legacy boolean callers
+    if (state === true) state = 'ready';
+    if (state === false || state == null) state = 'none';
     var titles = {
       none: 'No connection to backend',
       busy: 'Backend busy\u2026',

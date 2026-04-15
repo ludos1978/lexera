@@ -2064,12 +2064,14 @@
   }
 
   function getTabTitle(tab) {
+    if (!tab) return 'Untitled';
     if (isPanelTab(tab)) return getPanelTitle(tab.panelId);
     var meta = state.boardsById[tab.boardId];
     return getBoardMetaLabel(meta || { id: tab.boardId || 'Untitled' });
   }
 
   function getTabMetaLabel(tab) {
+    if (!tab) return '';
     if (isPanelTab(tab)) {
       var panelKind = getPanelKind(tab.panelId);
       if (panelKind === 'hierarchy') return 'Workspace';

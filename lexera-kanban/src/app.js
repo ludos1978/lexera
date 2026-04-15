@@ -1450,10 +1450,7 @@ var LexeraDashboard = (function () {
     setupWorkspaceShell();
 
     // Init panels that may already exist after workspace shell restore.
-    // Panels show a loading spinner until backend data arrives.
-    setTimeout(function () {
-      if (ManagementWiring) ManagementWiring.initDelayedPanels();
-    }, 200);
+    if (ManagementWiring) ManagementWiring.initDelayedPanels();
 
     // Initialize HiddenItemsDropdown module
     if (window.HiddenItemsDropdown) {

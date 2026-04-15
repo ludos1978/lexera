@@ -3,6 +3,8 @@ work on the [TODOs-lexera.md](TODOs-lexera.md) work the the tasks, then use the 
 use run-lexera-tests.sh to run the frontend tests, if you need something tested in the frontend add a test in there!
 clean up the todos into the 
 
+- [ ] i cant open the log viewer anymore by clicking the header! this must be implement the same for all side and foldable panels! why is it not working anymore!!!
+
 # Lexera Repository Architecture Todo
 
 - [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.
