@@ -340,7 +340,9 @@ textarea {
 .connection-dot.connected {
   background: var(--success);
 }
-
+.connection-dot.busy {
+  background: var(--warning, #e8a317);
+}
 .connection-dot.disconnected {
   background: var(--error);
 }
@@ -365,6 +367,16 @@ textarea {
 .connection-status-btn.disconnected:hover {
   background: color-mix(in srgb, var(--error) 20%, transparent);
   border-color: color-mix(in srgb, var(--error) 52%, var(--border));
+}
+
+.connection-status-btn.busy {
+  background: color-mix(in srgb, var(--warning, #e8a317) 16%, transparent);
+  border-color: color-mix(in srgb, var(--warning, #e8a317) 52%, var(--border));
+  color: inherit;
+}
+.connection-status-btn.busy:hover {
+  background: color-mix(in srgb, var(--warning, #e8a317) 22%, transparent);
+  border-color: color-mix(in srgb, var(--warning, #e8a317) 62%, var(--border));
 }
 
 /* ── Wire existing button families to shared .btn base (tokens.css) ── */
@@ -2846,10 +2858,15 @@ li.tag-line-styled {
   border: 1px solid var(--surface-stack-border);
 }
 
-/* Disable layout transitions during window resize for instant response */
+/* Disable layout transitions and contain layout during window resize */
 body.window-resizing .board-stack,
 body.window-resizing .search-container {
   transition: none !important;
+}
+body.window-resizing .columns-container {
+  /* During resize, skip card content reflow — scrollable containers
+     don't need children to relayout for the container to resize */
+  content-visibility: auto;
   border-radius: var(--surface-stack-radius);
   background: var(--surface-stack-bg);
   box-shadow: var(--surface-stack-shadow);
@@ -6516,6 +6533,12 @@ select.dialog-input option,
   color: var(--success);
 }
 
+.log-panel-status-btn.connection-status-btn.busy {
+  background: color-mix(in srgb, var(--warning, #e8a317) 10%, var(--btn-bg));
+  border-color: color-mix(in srgb, var(--warning, #e8a317) 32%, var(--border));
+  color: var(--warning, #e8a317);
+}
+
 .log-panel-status-btn.connection-status-btn.disconnected {
   background: color-mix(in srgb, var(--error) 10%, var(--btn-bg));
   border-color: color-mix(in srgb, var(--error) 32%, var(--border));
@@ -9100,6 +9123,12 @@ select.export-input {
   background: color-mix(in srgb, var(--success) 12%, var(--btn-bg));
   border-color: color-mix(in srgb, var(--success) 46%, var(--border));
   color: color-mix(in srgb, var(--success) 62%, var(--text-primary));
+}
+
+:root[data-visual-theme="sleek"] body:not(.embedded-mode) .connection-status-btn.busy {
+  background: color-mix(in srgb, var(--warning, #e8a317) 10%, var(--btn-bg));
+  border-color: color-mix(in srgb, var(--warning, #e8a317) 38%, var(--border));
+  color: color-mix(in srgb, var(--warning, #e8a317) 52%, var(--text-primary));
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .connection-status-btn.disconnected {

@@ -2676,12 +2676,21 @@ var LexeraBoardList = (function () {
     var boardListEl = getElBoardList();
     if (!boardListEl) return;
     var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
-    if (rt) rt.setViewLoading(boardListEl, false);
 
     var workspaceViewId = getWorkspaceViewId();
     var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var boards = _dep('boards');
     var remoteBoards = _dep('remoteBoards');
+
+    // Keep loading indicator until we actually have board data.
+    // Return early so setViewEmpty at the end doesn't strip the spinner.
+    var hasData = (Array.isArray(boards) && boards.length > 0) ||
+                  (Array.isArray(remoteBoards) && remoteBoards.length > 0);
+    if (!hasData) {
+      if (rt) rt.setViewLoading(boardListEl, true);
+      return;
+    }
+    if (rt) rt.setViewLoading(boardListEl, false);
     var activeBoardId = _dep('activeBoardId');
 
     // Skip expensive DOM rebuild if nothing changed since last render

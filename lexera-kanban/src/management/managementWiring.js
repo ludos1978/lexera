@@ -199,20 +199,33 @@ var LexeraManagementWiring = (function () {
       mgmtInitialized = false;
       return;
     }
-    if (_rt) _rt.setViewLoading(managementContainer, false);
+    // Don't remove view-loading here — ManagementUI.loadAllForMounts() removes
+    // it after data actually loads from the backend.
     applyPendingManagementTab(_dep('workspaceShellEnabled') ? 'backendSettings' : 'combinedManagement', managementContainer);
   }
 
   function initFilesPanelMount(container) {
     if (!container) return;
     var ManagementUI = typeof window !== 'undefined' ? window.ManagementUI : undefined;
-    ManagementUI.mount('files', {
-      container: container,
-      ui: getManagementUiPreset('files'),
-      api: mgmtApiAdapter,
-      callbacks: mgmtCallbacks,
-    });
-    if (_rt) _rt.setViewLoading(container, false);
+    if (!ManagementUI || typeof ManagementUI.mount !== 'function') {
+      // ManagementUI not loaded yet — retry shortly
+      setTimeout(function () { initFilesPanelMount(container); }, 300);
+      return;
+    }
+    try {
+      ManagementUI.mount('files', {
+        container: container,
+        ui: getManagementUiPreset('files'),
+        api: mgmtApiAdapter,
+        callbacks: mgmtCallbacks,
+      });
+    } catch (err) {
+      if (typeof logFrontendIssue === 'function') {
+        logFrontendIssue('error', 'mgmt.files', 'Files panel mount failed', err);
+      }
+      // Remove loading state so user sees the error state, not infinite spinner
+      if (_rt) _rt.setViewLoading(container, false);
+    }
     filesMountInitialized = true;
     applyPendingManagementTab('files', container);
   }

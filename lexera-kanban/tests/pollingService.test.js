@@ -26,6 +26,7 @@ function buildDeps(overrides = {}) {
     _lastLoadedGeneration: 1,
     LexeraApi: {
       checkStatus: vi.fn().mockResolvedValue(true),
+      discover: vi.fn().mockResolvedValue('http://127.0.0.1:3456'),
       request: vi.fn().mockResolvedValue({ workspaces: [], default_workspace: null }),
       getBoards: vi.fn().mockResolvedValue({
         boards: [{ id: 'board-1', title: 'Board 1', generation: 2 }],
@@ -114,6 +115,7 @@ describe('LexeraPollingService', () => {
       activeWorkspaceId: 'ws-1',
       LexeraApi: {
         checkStatus: vi.fn().mockResolvedValue(true),
+      discover: vi.fn().mockResolvedValue('http://127.0.0.1:3456'),
         request: vi.fn().mockResolvedValue({
           workspaces: [{ id: 'ws-1', name: 'Workspace 1' }],
           default_workspace: 'ws-1',
@@ -172,6 +174,7 @@ describe('LexeraPollingService', () => {
       embeddedPreferredBoardId: 'board-1',
       LexeraApi: {
         checkStatus: vi.fn().mockResolvedValue(true),
+      discover: vi.fn().mockResolvedValue('http://127.0.0.1:3456'),
         request: vi.fn(),
         getBoards: vi.fn(),
         getRemoteBoards: vi.fn(),

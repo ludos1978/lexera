@@ -1012,7 +1012,6 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-drop-overlay {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  contain: layout style;
 }
 
 /* Split view dividers — match dock-divider style (thin centered line) */
@@ -1144,9 +1143,6 @@ body.workspace-shell-tab-dragging .ws-view-tab {
   min-height: 0;
   min-width: 0;
   background: var(--bg-primary);
-  /* Layout containment: tell the browser that resizing this container
-     does not affect siblings or ancestors — enables faster relayout */
-  contain: strict;
 }
 
 .workspace-shell-drop-overlay {
@@ -1217,8 +1213,6 @@ body.workspace-shell-tab-dragging .workspace-shell-drop-overlay {
   height: 100%;
   display: none;
   background: var(--bg-primary);
-  /* Each view (iframe/panel) is a self-contained layout boundary */
-  contain: layout style;
 }
 
 .workspace-shell-view.is-active {

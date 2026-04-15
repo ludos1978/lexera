@@ -2138,7 +2138,9 @@
       break;
     }
     if (state.deferredBoardLoadQueue.length > 0) {
-      state.deferredBoardLoadTimer = setTimeout(pumpDeferredBoardFrameLoads, 700);
+      // Background tabs load 150ms apart (was 700ms) — fast enough to
+      // feel responsive but staggered so the active boards get priority.
+      state.deferredBoardLoadTimer = setTimeout(pumpDeferredBoardFrameLoads, 150);
     }
   }
 
@@ -2146,7 +2148,8 @@
     clearDeferredBoardFrameLoads();
     state.deferredBoardLoadQueue = buildDeferredBoardFrameQueue();
     if (state.deferredBoardLoadQueue.length === 0) return;
-    state.deferredBoardLoadTimer = setTimeout(pumpDeferredBoardFrameLoads, 350);
+    // Start loading non-active panes after initial poll completes (~200ms)
+    state.deferredBoardLoadTimer = setTimeout(pumpDeferredBoardFrameLoads, 200);
   }
 
   function getOrCreateFrame(tab, options) {
@@ -3944,10 +3947,14 @@
       contentEl.appendChild(emptyEl);
     } else {
       for (var j = 0; j < node.tabs.length; j++) {
+        // Load the active leaf's active tab immediately; other visible
+        // panes are loaded via the deferred queue so the parent window's
+        // initial poll (board list, workspaces) completes first.
+        var isActiveInLeaf = node.tabs[j].id === node.activeTabId;
         var frame = getOrCreateFrame(node.tabs[j], {
-          shouldLoad: node.tabs[j].id === node.activeTabId && node.id === state.activeLeafId
+          shouldLoad: isActiveInLeaf && node.id === state.activeLeafId
         });
-        frame.classList.toggle('is-active', node.tabs[j].id === node.activeTabId);
+        frame.classList.toggle('is-active', isActiveInLeaf);
         contentEl.appendChild(frame);
       }
     }
@@ -4152,13 +4159,14 @@
     for (var fi = 0; fi < node.tabs.length; fi++) {
       var frameTab = node.tabs[fi];
       var viewEl = existingViews[frameTab.id];
+      var isActiveInLeaf = frameTab.id === node.activeTabId;
       if (!viewEl) {
-        // New tab — create frame and insert
+        // New tab — create frame and insert; load active tab immediately
         viewEl = getOrCreateFrame(frameTab, {
-          shouldLoad: frameTab.id === node.activeTabId && node.id === state.activeLeafId
+          shouldLoad: isActiveInLeaf
         });
       }
-      viewEl.classList.toggle('is-active', frameTab.id === node.activeTabId);
+      viewEl.classList.toggle('is-active', isActiveInLeaf);
       if (isPanelTab(frameTab)) {
         var panelEl = getPanelElement(frameTab.panelId);
         if (panelEl && panelEl.parentNode !== viewEl) {
@@ -4170,7 +4178,7 @@
         viewEl.setAttribute('data-panel-id', resolvePanelTarget(frameTab.panelId));
       } else {
         syncBoardFrameSource(viewEl, frameTab, {
-          shouldLoad: frameTab.id === node.activeTabId && node.id === state.activeLeafId
+          shouldLoad: isActiveInLeaf
         });
       }
       // Ensure correct order: insert before the next sibling
@@ -4847,17 +4855,31 @@
     if (!found) return;
     var tab = found.tab;
     var isBoardKind = tab.kind === 'board';
+    var boardMeta = isBoardKind && tab.boardId ? state.boardsById[tab.boardId] : null;
+    var boardFilePath = boardMeta ? boardMeta.filePath || '' : '';
     var items = [];
+
     if (isBoardKind) {
       var isKanban = tab.viewKind !== 'canvas';
       items.push({ id: 'set-layout:kanban', label: 'Kanban view', disabled: isKanban });
       items.push({ id: 'set-layout:canvas', label: 'Canvas view', disabled: !isKanban });
       items.push({ separator: true });
     }
-    items.push({ id: 'split-horizontal', label: 'Split right' });
-    items.push({ id: 'split-vertical', label: 'Split down' });
+
+    // Board actions (same as right-click on board in sidebar)
+    if (isBoardKind) {
+      items.push({ id: 'detach', label: 'Open in Detached Window' });
+      if (boardFilePath) {
+        items.push({ id: 'reveal', label: 'Reveal in Finder' });
+      }
+      items.push({ separator: true });
+    }
+
+    // Workspace layout actions
+    items.push({ id: 'split-horizontal', label: 'Split Right' });
+    items.push({ id: 'split-vertical', label: 'Split Down' });
     items.push({ separator: true });
-    items.push({ id: 'close', label: 'Remove from workspace' });
+    items.push({ id: 'close', label: 'Remove from Workspace' });
 
     var rect = anchorEl.getBoundingClientRect();
     if (typeof showNativeMenu !== 'function') return;
@@ -4865,6 +4887,10 @@
       if (!action) return;
       if (action === 'close') {
         closeTab(tabId);
+      } else if (action === 'detach') {
+        detachTab(tabId);
+      } else if (action === 'reveal' && boardFilePath) {
+        if (typeof showInFinder === 'function') showInFinder(boardFilePath);
       } else if (action === 'split-horizontal') {
         activateTab(tabId);
         splitActivePane('horizontal');

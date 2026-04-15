@@ -31,9 +31,6 @@ var LexeraPollingService = (function () {
   }
 
   // --- Change-detection fingerprints ---
-  // Light fingerprint: serialize id+title (or id+name) of each item.
-  // Much cheaper than full deep-equal but catches additions, removals,
-  // renames, and reorders — which are the cases that matter for UI.
   var _lastWorkspacesFingerprint = '';
   var _lastBoardsFingerprint = '';
   var _lastRemoteBoardsFingerprint = '';
@@ -115,12 +112,12 @@ var LexeraPollingService = (function () {
 
   async function poll() {
     try {
-      var ok = await _deps.LexeraApi.checkStatus();
-      setConnected(ok);
-      if (!ok) return;
+      var url = await _deps.LexeraApi.discover();
+      if (!url) { setConnected('none'); return; }
+      setConnected('busy');
     } catch (err) {
       _callDep('logFrontendIssue', 'warn', 'poll.status', 'Failed to check backend status', err);
-      setConnected(false);
+      setConnected('none');
       return;
     }
 
@@ -226,6 +223,7 @@ var LexeraPollingService = (function () {
             }
           }
         }
+        setConnected('ready');
         _callDep('refreshHeaderFileControls');
         finalizePollUi(120);
         return;
@@ -329,19 +327,25 @@ var LexeraPollingService = (function () {
           }
         }
       }
+      setConnected('ready');
       finalizePollUi(120);
     } catch (err) {
       _callDep('logFrontendIssue', 'warn', 'poll.refresh', 'Failed to refresh board list or active board state', err);
-      // keep previous state
+      setConnected('busy');
       finalizePollUi(250);
     }
   }
 
   function setConnected(state) {
-    if (state && !_dep('connected')) _callDep('loadTemplatesOnce');
-    _callDep('setConnectedState', state);
+    // state: 'none' | 'busy' | 'ready' (or legacy boolean true/false)
+    // Normalize legacy boolean callers
+    if (state === true) state = 'ready';
+    if (state === false) state = 'none';
+    var isConnected = state !== 'none';
+    if (isConnected && !_dep('connected')) _callDep('loadTemplatesOnce');
+    _callDep('setConnectedState', isConnected);
     if (typeof window.setLogBackendConnectionState === 'function') {
-      window.setLogBackendConnectionState(state);
+      window.setLogBackendConnectionState(isConnected);
     }
     syncConnectionStatusButton(
       _callDep('getElConnectionStatusBtn'),
@@ -351,22 +355,33 @@ var LexeraPollingService = (function () {
   }
 
   function syncConnectionStatusButton(buttonEl, dotEl, state) {
-    var isConnected = !!state;
-    var title = isConnected
-      ? 'Backend connected. Open backend settings'
-      : 'Backend disconnected. Open backend settings';
+    // state: 'none' | 'busy' | 'ready'
+    var titles = {
+      none: 'No connection to backend',
+      busy: 'Backend busy\u2026',
+      ready: 'Backend ready'
+    };
+    var labels = {
+      none: 'No Connection',
+      busy: 'Busy\u2026',
+      ready: 'Ready'
+    };
+    var title = (titles[state] || titles.none) + '. Open backend settings';
+    var label = labels[state] || labels.none;
     if (buttonEl) {
-      buttonEl.classList.toggle('connected', isConnected);
-      buttonEl.classList.toggle('disconnected', !isConnected);
-      buttonEl.setAttribute('data-connection-state', isConnected ? 'connected' : 'disconnected');
+      buttonEl.classList.toggle('connected', state === 'ready');
+      buttonEl.classList.toggle('busy', state === 'busy');
+      buttonEl.classList.toggle('disconnected', state === 'none');
+      buttonEl.setAttribute('data-connection-state', state || 'none');
       buttonEl.title = title;
       buttonEl.setAttribute('aria-label', title);
       var labelEl = buttonEl.querySelector('.connection-status-label');
-      if (labelEl) labelEl.textContent = isConnected ? 'Connected' : 'Disconnected';
+      if (labelEl) labelEl.textContent = label;
     }
     if (dotEl) {
-      dotEl.classList.toggle('connected', isConnected);
-      dotEl.classList.toggle('disconnected', !isConnected);
+      dotEl.classList.toggle('connected', state === 'ready');
+      dotEl.classList.toggle('busy', state === 'busy');
+      dotEl.classList.toggle('disconnected', state === 'none');
     }
   }
 
