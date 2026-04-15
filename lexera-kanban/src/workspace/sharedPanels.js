@@ -276,6 +276,11 @@
               '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
               '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
             '</div>' +
+            '<div class="controls-settings-action" data-controls-action="enter">' +
+              '<span class="controls-settings-action-label">Enter / Drill In</span>' +
+              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
+              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
+            '</div>' +
           '</div>' +
           '<div class="controls-settings-group" data-controls-mode="canvas">' +
             '<div class="controls-settings-mode-label">Canvas Mode</div>' +
@@ -291,6 +296,11 @@
             '</div>' +
             '<div class="controls-settings-action" data-controls-action="edit">' +
               '<span class="controls-settings-action-label">Edit Field</span>' +
+              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
+              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
+            '</div>' +
+            '<div class="controls-settings-action" data-controls-action="enter">' +
+              '<span class="controls-settings-action-label">Enter / Drill In</span>' +
               '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
               '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
             '</div>' +

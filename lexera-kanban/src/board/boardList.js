@@ -1634,11 +1634,8 @@ var LexeraBoardList = (function () {
     entry.appendChild(childContainer);
 
     (function (wsId) {
-      wsHeader.addEventListener('dblclick', function (e) {
-        if (e.target.closest('.workspace-section-focus')) return;
-        e.stopPropagation();
-        focusWorkspaceView(wsId);
-      });
+      // dblclick on workspace header no longer drills into the workspace.
+      // Use the focus arrow button or keyboard right-arrow instead.
       wsHeader.addEventListener('click', function (e) {
         if (e.target.closest('.workspace-section-focus')) {
           e.preventDefault();

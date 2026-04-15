@@ -34,6 +34,9 @@ var LexeraControlsSettings = (function () {
       edit: [
         { type: 'dblclick' },
         { type: 'key', key: 'Enter' }
+      ],
+      enter: [
+        { type: 'key', key: 'ArrowRight' }
       ]
     },
     canvas: {
@@ -47,11 +50,14 @@ var LexeraControlsSettings = (function () {
       edit: [
         { type: 'dblclick' },
         { type: 'key', key: 'Enter' }
+      ],
+      enter: [
+        { type: 'key', key: 'ArrowRight' }
       ]
     }
   };
 
-  var ACTIONS = ['move', 'zoom', 'edit'];
+  var ACTIONS = ['move', 'zoom', 'edit', 'enter'];
   var MODES = ['kanban', 'canvas'];
 
   // ── State ──
