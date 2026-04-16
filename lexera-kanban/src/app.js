@@ -7716,7 +7716,7 @@ var LexeraDashboard = (function () {
       }
     }
     var _renderStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    var _rcTrace = window.__lexeraProfileMutations ? {} : null;
+    var _rcTrace = (typeof window !== 'undefined' && window.__lexeraProfileMutations) ? {} : null;
     function _rcMark(name) {
       if (_rcTrace) _rcTrace[name] = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _renderStart;
     }
@@ -9001,7 +9001,7 @@ var LexeraDashboard = (function () {
 
   async function moveCard(sourceOrFromColIdx, fromCardIdxOrTarget, toColIdx, toInsertIdx) {
     var _mcStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    var _mcTrace = window.__lexeraProfileMutations ? {} : null;
+    var _mcTrace = (typeof window !== 'undefined' && window.__lexeraProfileMutations) ? {} : null;
     function _mcMark(name) {
       if (_mcTrace) _mcTrace[name] = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _mcStart;
     }
@@ -10831,7 +10831,7 @@ var LexeraDashboard = (function () {
     },
     setTestBoard: function (boardData, boardId, options) {
       var _stbStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      var _stbTrace = window.__lexeraProfileMutations ? {} : null;
+      var _stbTrace = (typeof window !== 'undefined' && window.__lexeraProfileMutations) ? {} : null;
       function _stbMark(name) {
         if (_stbTrace) _stbTrace[name] = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - _stbStart;
       }

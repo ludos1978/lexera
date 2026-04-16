@@ -2,9 +2,9 @@
 
 kanban-plugin: board
 
-generation: 37
-contentHash: a3f573dc3c911b26364c3daa65ea23b264aaa59c7e4415f973115f3c0a1e1676
-resolvedHash: 3e3bac154742e947b7033546e2d28db119d075f915f37eb7131bbd008310fdbd
+generation: 67
+contentHash: 7954859c4f4f785fb6b48fb3c669d663bd076e608402c03852a6516efc21baea
+resolvedHash: 844346b22f21374c734f03aec3b87c719845055617edafd3d1939124d08d5d6e
 writerId: 650370f1-daa1-4cae-bbac-07ecc4259e2d
 ---
 
@@ -13,7 +13,7 @@ writerId: 650370f1-daa1-4cae-bbac-07ecc4259e2d
 ## Default
 
 ### #backend #frontend #database #api #security #performance #ux #ui
-- [ ] #red #hidden-internal-deleted
+- [ ] #red #hidden-internal-deleted #hidden-internal-deleted
 - [ ] #orange #hidden-internal-deleted
 - [ ] # heise online - IT-News, Nachrichten und Hintergründe | heise online #hidden-internal-deleted
   

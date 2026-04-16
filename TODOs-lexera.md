@@ -5,17 +5,17 @@ clean up the todos into the
 
 - [ ] i cant open the log viewer anymore by clicking the header! this must be implement the same for all side and foldable panels! why is it not working anymore!!!
 
-- [ ] make a new "controls setting" view that allows changing how scrolling and zooming works for both view modes independently (kanban, canvas)
-  the options we add for now are, for kanban and canvas mode has it's own group of settings. Both share these listed settings below, the user can add zero or more options to each setting! also allow keyboard options!
-  - move the view (default as told before)
-  - zoom the view
-  - edit a field
+- [ ] running the frontend tests adds a lot of boards in the workspace view! verify the workspace view system which manages the added boards (it should likely be a ordered dictionary for each workspace, there should never be a board twice in a workspace). add a test that verifies that the boards are correctly shown! make sure this is covered in all tests that modify the workspace or boards. 
 
-- [ ] in the workspace clicking the workspace twice currently goes into the workspace. this should only happen when the user clicks on the right arrow (in the view or in the keyboard) also add this option to the control settings!
+- [x] make a new "controls setting" view that allows changing how scrolling and zooming works for both view modes independently (kanban, canvas) — DONE: Controls section in Frontend Settings panel with per-mode bindings for move/zoom/edit/enter actions, configurable via chip UI with capture overlay
 
-- [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option
+- [x] in the workspace clicking the workspace twice currently goes into the workspace. this should only happen when the user clicks on the right arrow (in the view or in the keyboard) also add this option to the control settings! — DONE: removed dblclick drill-in, added "enter" action to controls settings (default: ArrowRight)
+
+- [x] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option — DONE: burger menu with Kanban/Canvas view, Detach, Reveal in Finder, Split, Remove from Workspace
 
 - [ ] Items still needing full board render: row/stack hidden tags, board frontmatter changes, board settings changes, tag style preset change. These genuinely affect the whole board.
+
+- [ ] if dragging elements from the view to the workspace it should only be possible to drop it onto the right elements. cards onto columns or between other cards. columns only into stacks or between other columsn. stacks only onto rows or between other stacks. rows only into boards and beween other boards. (between also means before, between and after!)
 
 ### Dashboard search — remaining optimizations
 

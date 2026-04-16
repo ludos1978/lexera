@@ -58,8 +58,15 @@
   display: none;
   container-type: inline-size;
   container-name: mgmt-tab-content;
+  min-height: 0;
 }
 .mgmt-top-tab-content.active { display: block; }
+.mgmt-top-tab-content[data-mgmt-top-panel="workspace-config"].active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  height: 100%;
+}
 
 /* Sections */
 .mgmt-section {
@@ -533,8 +540,10 @@
 /* Config panel (two-panel layout) */
 .mgmt-config-layout {
   display: flex;
+  flex: 1 1 auto;
+  height: 100%;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 .mgmt-config-tree {
   width: 220px;
@@ -549,6 +558,8 @@
   flex: 1;
   padding: 12px;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
 }
 @container mgmt-tab-content (max-width: 400px) {
   .mgmt-config-layout {

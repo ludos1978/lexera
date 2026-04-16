@@ -442,52 +442,8 @@ var LexeraDragDropHandlers = (function () {
       }
     }
 
-    var isTreeOnlyCardDrag = ptrDrag && ptrDrag.type === 'tree-card';
-    if (!isTreeOnlyCardDrag) {
-      var sidebarStackNode = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-stack[data-tree-drag="tree-stack"]'), mx, my);
-      if (sidebarStackNode) {
-        var stackBoardId = sidebarStackNode.getAttribute('data-board-id');
-        var stackRowIdx = parseInt(sidebarStackNode.getAttribute('data-row-index'), 10);
-        var stackIdx = parseInt(sidebarStackNode.getAttribute('data-stack-index'), 10);
-        var stackTarget = buildSidebarCardTarget(stackBoardId, stackRowIdx, stackIdx, Number.POSITIVE_INFINITY, sidebarStackNode);
-        if (stackTarget) return stackTarget;
-      }
-
-      var sidebarRowNode = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-row[data-tree-drag="tree-row"]'), mx, my);
-      if (sidebarRowNode) {
-        var rowBoardId = sidebarRowNode.getAttribute('data-board-id');
-        var rowIdx = parseInt(sidebarRowNode.getAttribute('data-row-index'), 10);
-        var rowDataSet = _deps.getBoardHierarchyRows(rowBoardId) || [];
-        var rowData = rowDataSet[rowIdx];
-        if (rowData && rowData.stacks) {
-          for (var rs = 0; rs < rowData.stacks.length; rs++) {
-            if (rowData.stacks[rs] && rowData.stacks[rs].columns && rowData.stacks[rs].columns.length > 0) {
-              var rowTarget = buildSidebarCardTarget(rowBoardId, rowIdx, rs, 0, sidebarRowNode);
-              if (rowTarget) return rowTarget;
-              break;
-            }
-          }
-          return {
-            kind: 'sidebar',
-            boardId: rowBoardId,
-            rowIndex: rowIdx,
-            rowId: String(sidebarRowNode.getAttribute('data-row-id') || '').trim() || null,
-            indexMode: rowBoardId === activeBoardId ? 'display' : 'full',
-            insertIdx: 0,
-            insertMode: 'full',
-            sidebarNode: sidebarRowNode,
-            container: null
-          };
-        }
-      }
-
-      var sidebarBoardNode = findNodeAtPoint(getElBoardList().querySelectorAll('.board-item[data-board-id]'), mx, my);
-      if (sidebarBoardNode) {
-        var boardNodeId = sidebarBoardNode.getAttribute('data-board-id');
-        var boardTarget = getFirstSidebarCardTargetForBoard(boardNodeId, sidebarBoardNode);
-        if (boardTarget) return boardTarget;
-      }
-    }
+    // Cards can only be dropped onto columns or between other cards.
+    // Sidebar stacks, rows, and boards are NOT valid card drop targets.
 
     var targetContainer = findColumnCardsContainerAt(mx, my);
     if (targetContainer) {
@@ -509,44 +465,8 @@ var LexeraDragDropHandlers = (function () {
       }
     }
 
-    var targetStackEl = findBoardStackAt(mx, my);
-    if (targetStackEl) {
-      var stackRowIdx = parseInt(targetStackEl.getAttribute('data-row-index'), 10);
-      var stackIdx = parseInt(targetStackEl.getAttribute('data-stack-index'), 10);
-      if (!isNaN(stackRowIdx) && !isNaN(stackIdx)) {
-        return {
-          kind: 'main',
-          boardId: activeBoardId,
-          rowIndex: stackRowIdx,
-          stackIndex: stackIdx,
-          rowId: String(targetStackEl.getAttribute('data-row-id') || '').trim() || null,
-          stackId: String(targetStackEl.getAttribute('data-stack-id') || '').trim() || null,
-          indexMode: 'display',
-          insertIdx: 0,
-          insertMode: 'full',
-          sidebarNode: null,
-          container: null
-        };
-      }
-    }
-
-    var targetRowEl = findNodeAtPoint(getElColumnsContainer().querySelectorAll('.board-row'), mx, my);
-    if (targetRowEl) {
-      var mainRowIdx = parseInt(targetRowEl.getAttribute('data-row-index'), 10);
-      if (!isNaN(mainRowIdx)) {
-        return {
-          kind: 'main',
-          boardId: activeBoardId,
-          rowIndex: mainRowIdx,
-          rowId: String(targetRowEl.getAttribute('data-row-id') || '').trim() || null,
-          indexMode: 'display',
-          insertIdx: 0,
-          insertMode: 'full',
-          sidebarNode: null,
-          container: null
-        };
-      }
-    }
+    // Main board stacks and rows are NOT valid card drop targets.
+    // Cards can only land on column-cards containers (columns) or between cards.
 
     return null;
   }
@@ -596,21 +516,6 @@ var LexeraDragDropHandlers = (function () {
     if (target.kind === 'sidebar') {
       if (target.sidebarNode) target.sidebarNode.classList.add('drop-target');
       return true;
-    }
-
-    if (target.kind === 'main') {
-      if (typeof target.stackIndex === 'number') {
-        var stackSelector = '.board-stack[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"]';
-        var stackTarget = getElColumnsContainer().querySelector(stackSelector);
-        if (stackTarget) stackTarget.classList.add('column-drop-target');
-        return true;
-      }
-      if (typeof target.rowIndex === 'number') {
-        var rowSelector = '.board-row[data-row-index="' + target.rowIndex + '"]';
-        var rowTarget = getElColumnsContainer().querySelector(rowSelector);
-        if (rowTarget) rowTarget.classList.add('drop-target');
-        return true;
-      }
     }
 
     if (target.container) {
@@ -1117,9 +1022,8 @@ var LexeraDragDropHandlers = (function () {
         stackRowBodyTarget.node.classList.add('drop-target');
         return true;
       }
-      var stackRowBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
-      var stackRowTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
-      return !!(stackRowBoardHit || stackRowTreeHit);
+      // Stacks can only drop onto rows or between other stacks — not between rows.
+      return false;
     } else if (type === 'tree-column' || type === 'column') {
       var boardColumnHit = updateColumnPtrDropTarget(mx, my);
       var treeColHit = ptrFindStrictHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
@@ -1139,14 +1043,8 @@ var LexeraDragDropHandlers = (function () {
         _deps.highlightDropZoneIndicator(type, mx, my);
         return true;
       }
-      var columnRowBodyTarget = resolveRowBodyDropTarget(mx, my);
-      if (columnRowBodyTarget && columnRowBodyTarget.node) {
-        columnRowBodyTarget.node.classList.add('drop-target');
-        return true;
-      }
-      var columnRowBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
-      var columnRowTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
-      return !!(columnRowBoardHit || columnRowTreeHit);
+      // Columns can only drop onto stacks or between other columns — not onto rows.
+      return false;
     } else if (type === 'tree-card') {
       clearCardDropIndicators();
       clearSidebarDropHighlights();
@@ -1232,11 +1130,8 @@ var LexeraDragDropHandlers = (function () {
   // --- Ptr Column Drop Target ---
 
   function updateColumnPtrDropTarget(mx, my) {
-    var zone = findStackDropZoneAt(mx, my);
-    if (zone) {
-      zone.classList.add('active');
-      return true;
-    }
+    // Columns can only drop onto stacks or between other columns.
+    // Stack drop zones (between stacks) are NOT valid — columns don't create new stacks.
     var column = findDraggableColumnAt(mx, my);
     if (column) {
       var colRect = getCachedRect(column);
@@ -1608,30 +1503,7 @@ var LexeraDragDropHandlers = (function () {
       return true;
     }
 
-    var rowTarget = getRowDropTarget(mx, my);
-    if (rowTarget && rowTarget.boardId && rowTarget.rowIndex >= 0) {
-      _deps.moveStackAcrossBoards(
-        {
-          boardId: srcBoardId,
-          rowIndex: srcRowIdx,
-          stackIndex: srcStackIdx,
-          rowId: source.rowId || null,
-          stackId: source.stackId || null,
-          indexMode: srcIndexMode
-        },
-        {
-          kind: 'new-row',
-          boardId: rowTarget.boardId,
-          rowIndex: rowTarget.rowIndex,
-          rowId: rowTarget.rowId || null,
-          before: rowTarget.before,
-          indexMode: rowTarget.indexMode
-        }
-      ).catch(function (err) {
-        _deps.lexeraLog('error', '[moveStackAcrossBoards] Drop to new row failed: ' + err);
-      });
-      return true;
-    }
+    // Stacks can only drop onto rows or between other stacks — not between rows.
     return false;
   }
 
@@ -1856,25 +1728,8 @@ var LexeraDragDropHandlers = (function () {
       });
     }
 
-    var zone = findStackDropZoneAt(mx, my);
-    if (zone) {
-      var targetRowIdx = parseInt(zone.getAttribute('data-row-index'), 10);
-      var insertIdx = parseInt(zone.getAttribute('data-insert-index'), 10);
-      var zoneTarget = {
-        kind: 'new-stack',
-        boardId: activeBoardId,
-        rowIndex: targetRowIdx,
-        rowId: String(zone.getAttribute('data-row-id') || '').trim() || null,
-        insertAtStackIdx: insertIdx,
-        indexMode: 'display'
-      };
-      if (isSameActiveBoardDisplayTarget(zoneTarget)) {
-        _deps.moveColumnToNewStack(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, insertIdx);
-      } else {
-        moveAcross(zoneTarget);
-      }
-      return;
-    }
+    // Stack drop zones (between stacks) are NOT valid for column drops.
+    // Columns can only go onto stacks or between other columns.
     var column = findDraggableColumnAt(mx, my);
     if (column) {
       var colRect = getCachedRect(column);
@@ -1978,30 +1833,7 @@ var LexeraDragDropHandlers = (function () {
       }
       return;
     }
-
-    var rowBodyTarget = resolveRowBodyDropTarget(mx, my);
-    if (rowBodyTarget && rowBodyTarget.boardId) {
-      moveAcross({
-        kind: 'row',
-        boardId: rowBodyTarget.boardId,
-        rowIndex: rowBodyTarget.rowIndex,
-        rowId: rowBodyTarget.rowId || null,
-        indexMode: rowBodyTarget.indexMode
-      });
-      return;
-    }
-
-    var rowTarget = getRowDropTarget(mx, my);
-    if (rowTarget && rowTarget.boardId && rowTarget.rowIndex >= 0) {
-      moveAcross({
-        kind: 'new-row',
-        boardId: rowTarget.boardId,
-        rowIndex: rowTarget.rowIndex,
-        rowId: rowTarget.rowId || null,
-        before: rowTarget.before,
-        indexMode: rowTarget.indexMode
-      });
-    }
+    // Columns can only drop onto stacks or between columns — not onto rows.
   }
 
   // --- Ptr Drag Cleanup ---
@@ -2040,9 +1872,8 @@ var LexeraDragDropHandlers = (function () {
         // Insert drop zones on first hover for a new drag type
         if (payload.type !== _externalDragType) {
           _externalDragType = payload.type;
-          if (payload.type === 'column' || payload.type === 'tree-column') {
-            _deps.insertStackDropZones();
-          }
+          // Stack drop zones are NOT inserted for column drag — columns can only
+          // drop onto existing stacks or between other columns, not create new stacks.
           _deps.insertDropZoneIndicators(payload.type);
           cacheDropTargetGeometry();
         }

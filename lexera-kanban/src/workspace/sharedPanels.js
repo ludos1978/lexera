@@ -186,6 +186,57 @@
             '</select>' +
           '</div>' +
         '</div>' +
+        // Controls (placed early so users find it without scrolling)
+        '<div class="mgmt-section" data-frontend-settings-section="controls">' +
+          '<div class="mgmt-section-title">Controls</div>' +
+          '<div class="controls-settings-group" data-controls-mode="kanban">' +
+            '<div class="controls-settings-mode-label">Kanban Mode</div>' +
+            '<div class="controls-settings-action" data-controls-action="move">' +
+              '<span class="controls-settings-action-label">Move View</span>' +
+              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
+              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
+            '</div>' +
+            '<div class="controls-settings-action" data-controls-action="zoom">' +
+              '<span class="controls-settings-action-label">Zoom View</span>' +
+              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
+              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
+            '</div>' +
+            '<div class="controls-settings-action" data-controls-action="edit">' +
+              '<span class="controls-settings-action-label">Edit Field</span>' +
+              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
+              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
+            '</div>' +
+            '<div class="controls-settings-action" data-controls-action="enter">' +
+              '<span class="controls-settings-action-label">Enter / Drill In</span>' +
+              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
+              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="controls-settings-group" data-controls-mode="canvas">' +
+            '<div class="controls-settings-mode-label">Canvas Mode</div>' +
+            '<div class="controls-settings-action" data-controls-action="move">' +
+              '<span class="controls-settings-action-label">Move View</span>' +
+              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
+              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
+            '</div>' +
+            '<div class="controls-settings-action" data-controls-action="zoom">' +
+              '<span class="controls-settings-action-label">Zoom View</span>' +
+              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
+              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
+            '</div>' +
+            '<div class="controls-settings-action" data-controls-action="edit">' +
+              '<span class="controls-settings-action-label">Edit Field</span>' +
+              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
+              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
+            '</div>' +
+            '<div class="controls-settings-action" data-controls-action="enter">' +
+              '<span class="controls-settings-action-label">Enter / Drill In</span>' +
+              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
+              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
+            '</div>' +
+          '</div>' +
+          '<button class="controls-settings-reset mgmt-btn mgmt-btn-small" type="button" data-controls-reset="true">Reset to Defaults</button>' +
+        '</div>' +
         // Display Defaults
         '<div class="mgmt-section" data-frontend-settings-section="display">' +
           '<div class="mgmt-section-title">Display</div>' +
@@ -255,57 +306,6 @@
             '<input class="lexera-shared-frontend-settings-sidebar-menus" type="checkbox">' +
             '<span>Burger menus</span>' +
           '</label>' +
-        '</div>' +
-        // Controls
-        '<div class="mgmt-section" data-frontend-settings-section="controls">' +
-          '<div class="mgmt-section-title">Controls</div>' +
-          '<div class="controls-settings-group" data-controls-mode="kanban">' +
-            '<div class="controls-settings-mode-label">Kanban Mode</div>' +
-            '<div class="controls-settings-action" data-controls-action="move">' +
-              '<span class="controls-settings-action-label">Move View</span>' +
-              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
-              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
-            '</div>' +
-            '<div class="controls-settings-action" data-controls-action="zoom">' +
-              '<span class="controls-settings-action-label">Zoom View</span>' +
-              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
-              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
-            '</div>' +
-            '<div class="controls-settings-action" data-controls-action="edit">' +
-              '<span class="controls-settings-action-label">Edit Field</span>' +
-              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
-              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
-            '</div>' +
-            '<div class="controls-settings-action" data-controls-action="enter">' +
-              '<span class="controls-settings-action-label">Enter / Drill In</span>' +
-              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
-              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="controls-settings-group" data-controls-mode="canvas">' +
-            '<div class="controls-settings-mode-label">Canvas Mode</div>' +
-            '<div class="controls-settings-action" data-controls-action="move">' +
-              '<span class="controls-settings-action-label">Move View</span>' +
-              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
-              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
-            '</div>' +
-            '<div class="controls-settings-action" data-controls-action="zoom">' +
-              '<span class="controls-settings-action-label">Zoom View</span>' +
-              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
-              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
-            '</div>' +
-            '<div class="controls-settings-action" data-controls-action="edit">' +
-              '<span class="controls-settings-action-label">Edit Field</span>' +
-              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
-              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
-            '</div>' +
-            '<div class="controls-settings-action" data-controls-action="enter">' +
-              '<span class="controls-settings-action-label">Enter / Drill In</span>' +
-              '<div class="controls-settings-chips lexera-shared-controls-chips"></div>' +
-              '<button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>' +
-            '</div>' +
-          '</div>' +
-          '<button class="controls-settings-reset mgmt-btn mgmt-btn-small" type="button" data-controls-reset="true">Reset to Defaults</button>' +
         '</div>' +
       '</div>';
     return root;

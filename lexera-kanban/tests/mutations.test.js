@@ -1999,8 +1999,9 @@ describe('Card move scenarios', () => {
     var colA2 = M.getState().fullBoardData.rows[0].stacks[0].columns[1];
     expect(colA1.cards.map(function (c) { return c.id; })).toEqual(['card-2']);
     expect(colA2.cards.map(function (c) { return c.id; })).toEqual(['card-1', 'card-3']);
-    // UI: board + sidebar refresh via persistBoardMutation
-    expect(M.getLastPersistTargets()).toContain('board');
+    // UI: targeted card-remove + card-insert + sidebar refresh via persistBoardMutation
+    expect(M.getLastPersistTargets()).toContain('card-remove');
+    expect(M.getLastPersistTargets()).toContain('card-insert');
     expect(M.getLastPersistTargets()).toContain('sidebar');
     expect(M.getLastCommitBoardIds()).toBeNull();
   });
@@ -2020,8 +2021,9 @@ describe('Card move scenarios', () => {
     var colA2 = M.getState().fullBoardData.rows[0].stacks[0].columns[1];
     expect(colA1.cards.map(function (c) { return c.id; })).toEqual(['card-1']);
     expect(colA2.cards.map(function (c) { return c.id; })).toEqual(['card-3', 'card-2']);
-    // UI: board + sidebar refresh via persistBoardMutation
-    expect(M.getLastPersistTargets()).toContain('board');
+    // UI: targeted card-remove + card-insert + sidebar refresh via persistBoardMutation
+    expect(M.getLastPersistTargets()).toContain('card-remove');
+    expect(M.getLastPersistTargets()).toContain('card-insert');
     expect(M.getLastPersistTargets()).toContain('sidebar');
     expect(M.getLastCommitBoardIds()).toBeNull();
   });
@@ -2041,8 +2043,9 @@ describe('Card move scenarios', () => {
     var colA2 = M.getState().fullBoardData.rows[0].stacks[0].columns[1];
     expect(colA1.cards.map(function (c) { return c.id; })).toEqual(['card-3', 'card-1', 'card-2']);
     expect(colA2.cards.length).toBe(0);
-    // UI: board + sidebar refresh via persistBoardMutation
-    expect(M.getLastPersistTargets()).toContain('board');
+    // UI: targeted card-remove + card-insert + sidebar refresh via persistBoardMutation
+    expect(M.getLastPersistTargets()).toContain('card-remove');
+    expect(M.getLastPersistTargets()).toContain('card-insert');
     expect(M.getLastPersistTargets()).toContain('sidebar');
     expect(M.getLastCommitBoardIds()).toBeNull();
   });
@@ -2125,8 +2128,9 @@ describe('Card move scenarios', () => {
     var colA2 = M.getState().fullBoardData.rows[0].stacks[0].columns[1];
     expect(colA1.cards.map(function (c) { return c.id; })).toEqual(['card-2']);
     expect(colA2.cards.map(function (c) { return c.id; })).toEqual(['card-1', 'card-3']);
-    // UI: persistBoardMutation with board + sidebar
-    expect(M.getLastPersistTargets()).toContain('board');
+    // UI: targeted card-remove + card-insert + sidebar refresh via persistBoardMutation
+    expect(M.getLastPersistTargets()).toContain('card-remove');
+    expect(M.getLastPersistTargets()).toContain('card-insert');
     expect(M.getLastPersistTargets()).toContain('sidebar');
     expect(M.getLastCommitBoardIds()).toBeNull();
   });
@@ -2231,8 +2235,9 @@ describe('Card move scenarios', () => {
     var dstCol = M.getState().fullBoardData.rows[2].stacks[0].columns[0];
     expect(dstCol.cards.map(function (c) { return c.id; })).toEqual(['card-f', 'card-g', 'card-a']);
 
-    // UI: board + sidebar refresh (same-board cross-column)
-    expect(M.getLastPersistTargets()).toContain('board');
+    // UI: targeted card-remove + card-insert + sidebar refresh (same-board cross-column)
+    expect(M.getLastPersistTargets()).toContain('card-remove');
+    expect(M.getLastPersistTargets()).toContain('card-insert');
     expect(M.getLastPersistTargets()).toContain('sidebar');
     expect(M.getLastCommitBoardIds()).toBeNull();
   });
