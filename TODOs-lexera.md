@@ -13,7 +13,7 @@ clean up the todos into the
 
 - [x] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option — DONE: burger menu with Kanban/Canvas view, Detach, Reveal in Finder, Split, Remove from Workspace
 
-- [ ] reordering or moving elements (cards, columns, stacks, rows) doesnt work within the workspace view. add a test to the frontend tests if that isnt already verified!
+- [ ] reordering or moving elements (cards, columns, stacks, rows) doesnt work within the workspace view. add a test to the frontend tests if that check this feature if it isnt already checked!
 
 - [ ] create a group of tests within the frontend tests. suggest some titles the tests should have.
 
