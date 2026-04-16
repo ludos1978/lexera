@@ -8304,6 +8304,9 @@ var LexeraDashboard = (function () {
 
 
   async function moveColumnWithinBoard(fromRowIdx, fromStackIdx, fromColIdx, toRowIdx, toStackIdx, toColIdx, insertBefore) {
+    var delegated = _delegateMutationToOwningFrame(activeBoardId, 'moveColumnWithinBoard',
+      [fromRowIdx, fromStackIdx, fromColIdx, toRowIdx, toStackIdx, toColIdx, insertBefore]);
+    if (delegated) return delegated.result;
     if (!fullBoardData) return;
     var fromRow = findFullDataRow(fromRowIdx);
     var toRow = findFullDataRow(toRowIdx);
@@ -8343,6 +8346,9 @@ var LexeraDashboard = (function () {
   }
 
   async function moveColumnToExistingStack(fromRowIdx, fromStackIdx, fromColIdx, toRowIdx, toStackIdx) {
+    var delegated = _delegateMutationToOwningFrame(activeBoardId, 'moveColumnToExistingStack',
+      [fromRowIdx, fromStackIdx, fromColIdx, toRowIdx, toStackIdx]);
+    if (delegated) return delegated.result;
     if (!fullBoardData) return;
     var fromRow = findFullDataRow(fromRowIdx);
     var toRow = findFullDataRow(toRowIdx);
@@ -8434,8 +8440,45 @@ var LexeraDashboard = (function () {
   initDndMutations();
 
   function _dnd(m) { if (!DndMutations || typeof DndMutations[m] !== 'function') return undefined; var a = Array.prototype.slice.call(arguments, 1); return DndMutations[m].apply(DndMutations, a); }
-  function reorderRows(s, t, b) { return _dnd('reorderRows', s, t, b); }
-  function moveStack(fr, fs, tr, ts, b) { return _dnd('moveStack', fr, fs, tr, ts, b); }
+
+  // ── Workspace-shell mutation delegation ──────────────────────────────
+  // The parent workspace shell window holds NO `fullBoardData` of its
+  // own — every loaded board lives inside its iframe. When the user
+  // drags an element in the workspace VIEW (the parent's sidebar tree),
+  // the mutation function runs in the parent context where
+  // `fullBoardData === null`. Without delegation, the mutation would
+  // either be applied to a freshly-loaded detached copy (lost on next
+  // render, with `save.auto.skip / active board is not ready` warnings)
+  // or bail out silently (reorderRows etc. early-return on null fbd).
+  //
+  // Fix: when this window has no `fullBoardData` AND the parent shell
+  // has an iframe owning the affected board, forward the call to that
+  // iframe's matching `LexeraDashboard` API. The mutation then runs
+  // against the iframe's live `fullBoardData` and goes through its
+  // normal save pipeline. Returns null (and logs nothing) when no
+  // delegation is needed.
+  function _delegateMutationToOwningFrame(boardId, methodName, args) {
+    if (fullBoardData) return null; // we own the data — run locally
+    if (!boardId) return null;
+    var ws = (typeof window !== 'undefined' && window.LexeraWorkspaceShell) ? window.LexeraWorkspaceShell : null;
+    if (!ws || typeof ws.getFrameWindowForBoard !== 'function') return null;
+    var frameWin = ws.getFrameWindowForBoard(boardId);
+    if (!frameWin || frameWin === window) return null;
+    var iframeApi = frameWin.LexeraDashboard;
+    if (!iframeApi || typeof iframeApi[methodName] !== 'function') return null;
+    return { result: iframeApi[methodName].apply(iframeApi, args) };
+  }
+
+  function reorderRows(s, t, b) {
+    var delegated = _delegateMutationToOwningFrame(activeBoardId, 'reorderRows', [s, t, b]);
+    if (delegated) return delegated.result;
+    return _dnd('reorderRows', s, t, b);
+  }
+  function moveStack(fr, fs, tr, ts, b) {
+    var delegated = _delegateMutationToOwningFrame(activeBoardId, 'moveStack', [fr, fs, tr, ts, b]);
+    if (delegated) return delegated.result;
+    return _dnd('moveStack', fr, fs, tr, ts, b);
+  }
   function findFullDataRow(i) { return _dnd('findFullDataRow', i); }
   function findFullDataStack(r, s) { return _dnd('findFullDataStack', r, s); }
   function findFullDataRowIndex(i) { return _dnd('findFullDataRowIndex', i); }
@@ -9030,6 +9073,17 @@ var LexeraDashboard = (function () {
       }
 
       if (!source || !target || !source.boardId || !target.boardId) return;
+
+      // Workspace-shell delegation: if this window has no `fullBoardData`
+      // (parent shell context — boards live in iframes), forward the
+      // entire move to the iframe owning the source board. That iframe's
+      // moveCard runs against its live state and persists normally; for
+      // cross-board moves it goes through commitBoardMutations which
+      // saves both boards via the API. Without this, the parent would
+      // mutate a detached copy and log "save.auto.skip / active board is
+      // not ready".
+      var sourceDelegated = _delegateMutationToOwningFrame(source.boardId, 'moveCard', [source, target]);
+      if (sourceDelegated) return sourceDelegated.result;
 
       var sourceBoardData = await loadBoardDataForMutation(source.boardId);
       if (!sourceBoardData) return;
@@ -11028,8 +11082,21 @@ var LexeraDashboard = (function () {
     poll: poll,
     showElementContextMenu: showElementContextMenu,
     getFullBoardData: function () { return fullBoardData; },
+    getActiveBoardId: function () { return activeBoardId; },
     openDashboardSearch: openDashboardSearch,
-    openEditForHierarchyTarget: openEditForHierarchyTarget
+    openEditForHierarchyTarget: openEditForHierarchyTarget,
+    // Mutation entrypoints exposed so the parent workspace shell can
+    // delegate workspace-view drags into the iframe whose `fullBoardData`
+    // is the live source of truth for the affected board. See
+    // delegateMutationToOwningFrame() — without this, mutations
+    // triggered from the parent's sidebar tree would land on a detached
+    // copy and be lost (with a "save.auto.skip / active board is not
+    // ready" warning).
+    moveCard: function (source, target) { return moveCard(source, target); },
+    reorderRows: function (s, t, b) { return reorderRows(s, t, b); },
+    moveStack: function (fr, fs, tr, ts, b) { return moveStack(fr, fs, tr, ts, b); },
+    moveColumnWithinBoard: function (fr, fs, fc, tr, ts, tc, b) { return moveColumnWithinBoard(fr, fs, fc, tr, ts, tc, b); },
+    moveColumnToExistingStack: function (fr, fs, fc, tr, ts) { return moveColumnToExistingStack(fr, fs, fc, tr, ts); }
   };
 })();
 if (typeof window !== 'undefined') window.LexeraDashboard = LexeraDashboard;

@@ -1613,6 +1613,21 @@ textarea {
 .tree-children { display: none; position: relative; }
 .tree-children.expanded { display: block; }
 
+.workspace-section-boards.expanded {
+  box-sizing: border-box;
+  padding-left: var(--tree-indent-step);
+}
+
+.workspace-section-boards.expanded::before {
+  content: '';
+  position: absolute;
+  left: var(--tree-indent-guide-center);
+  top: 0;
+  bottom: 0;
+  border-left: var(--tree-line-width) solid var(--tree-guide);
+  pointer-events: none;
+}
+
 .tree-children.tree-stack-drop-zone {
   position: relative;
 }
@@ -8771,6 +8786,15 @@ select.export-input {
   margin-left: 0;
   padding-left: 0;
   border-left: none;
+}
+
+:root[data-visual-theme="sleek"] .workspace-section-boards.expanded {
+  padding-left: var(--tree-indent-step);
+}
+
+:root[data-visual-theme="sleek"] .workspace-section-boards.expanded::before {
+  left: var(--tree-indent-guide-center);
+  border-left-color: var(--text-muted);
 }
 
 :root[data-visual-theme="sleek"] :is(

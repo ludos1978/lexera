@@ -578,6 +578,48 @@
     return found;
   }
 
+  /** Find any tab (any view kind) showing the given boardId. Used by the
+   *  parent shell's mutation-delegation path: if the user reorders an
+   *  element in the workspace view (sidebar tree) for a board that's open
+   *  in some iframe, we need to route the mutation INTO that iframe so
+   *  it lands on the iframe's live `fullBoardData` and goes through its
+   *  save pipeline. The viewKind doesn't matter for delegation purposes
+   *  — both kanban and canvas iframes own the same board state.
+   */
+  function findAnyLeafContainingBoard(node, boardId) {
+    var found = null;
+    visitTree(node, function (candidate) {
+      if (found || candidate.type !== 'tabs') return;
+      for (var i = 0; i < candidate.tabs.length; i++) {
+        var tab = candidate.tabs[i];
+        if (!isBoardTab(tab)) continue;
+        if (tab.boardId === boardId) {
+          found = { tab: tab, leaf: candidate };
+          return;
+        }
+      }
+    });
+    return found;
+  }
+
+  /** Return the iframe contentWindow currently rendering boardId, or null
+   *  if no iframe owns it. The parent shell uses this to delegate
+   *  mutation calls (moveCard / reorderRows / moveStack /
+   *  moveColumnWithinBoard / moveColumnToExistingStack) to the iframe
+   *  whose `fullBoardData` IS the live source of truth for that board.
+   *  Without this, mutations triggered from the parent's workspace tree
+   *  would mutate a freshly-loaded detached copy and be silently lost
+   *  (the symptom: "save.auto.skip — active board is not ready").
+   */
+  function getFrameWindowForBoard(boardId) {
+    if (!boardId) return null;
+    var found = findAnyLeafContainingBoard(state.dockTree, boardId);
+    if (!found || !found.tab) return null;
+    var frame = state.frameCache[found.tab.id];
+    if (!frame || !frame.contentWindow) return null;
+    return frame.contentWindow;
+  }
+
   function findLeafContainingPanel(node, panelId) {
     var normalizedPanelId = resolvePanelTarget(panelId);
     if (!normalizedPanelId) return null;
@@ -5163,6 +5205,7 @@
     restoreDock: restoreDock,
     collapseDock: collapseDock,
     getActiveBoardColumnsContainer: getActiveBoardColumnsContainer,
+    getFrameWindowForBoard: getFrameWindowForBoard,
     _test_resolveCycleTabTarget: resolveCycleTabTarget
   };
 })();
