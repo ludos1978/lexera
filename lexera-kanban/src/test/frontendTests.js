@@ -1842,6 +1842,24 @@
     _endPhase('teardown');
   }
 
+  /** Look up a card's raw index inside an unfiltered `cards` array by its
+   *  stable kid/id. Tests use this when they have a reference to a VISIBLE
+   *  card (from the filtered `srcCol.cards`) but need to mutate the RAW
+   *  `data.rows[...].columns[x].cards` array — the raw array may include
+   *  hidden cards at lower indices, so `cards[0]` in the raw array is not
+   *  necessarily the same card as `cards[0]` in the visible slice.
+   *  Returns -1 if the card is not found.
+   */
+  function findRawCardIndexByKid(rawCards, kid) {
+    if (!Array.isArray(rawCards) || !kid) return -1;
+    for (var i = 0; i < rawCards.length; i++) {
+      var c = rawCards[i];
+      if (!c) continue;
+      if ((c.kid && c.kid === kid) || (c.id && c.id === kid)) return i;
+    }
+    return -1;
+  }
+
   /** Find first two columns with at least 1 card each. Returns {srcCol, dstCol}.
    *  Self-sufficient: if there aren't enough cards/columns, injects
    *  temporary test data so the test can always run regardless of the
@@ -1859,6 +1877,8 @@
     assert(data && data.rows && data.rows.length > 0, 'board has at least one row');
 
     // ── Phase 1: Try to find two existing columns with visible cards ──
+    // srcCol is required to have >= 2 visible cards so tests that reorder
+    // or sort within a column have enough inputs. dstCol only needs >= 1.
     setRunPhase('find-two-cols:scan-existing');
     var flatIdx = 0;
     var srcCol = null, dstCol = null;
@@ -1874,9 +1894,9 @@
             return !isHiddenForRender(card && card.content);
           });
           if (!colHidden && visibleCards.length > 0) {
-            if (!srcCol) {
+            if (!srcCol && visibleCards.length >= 2) {
               srcCol = { flatIdx: flatIdx, col: cols[c], row: r, stack: s, localCol: c, cards: visibleCards };
-            } else if (!dstCol) {
+            } else if (srcCol && !dstCol) {
               dstCol = { flatIdx: flatIdx, col: cols[c], row: r, stack: s, localCol: c, cards: visibleCards };
               _findTwoColsRecursion = 0;
               setRunPhase('find-two-cols:done');
@@ -1927,17 +1947,23 @@
       return findTwoColumnsWithCards(); // recurse — now has enough
     }
 
-    // Add test cards to the first two visible columns that need them
+    // Add test cards to the first two visible columns so each has >= 2
+    // visible cards. Some tests (`same-column reorder`, `cross-column
+    // source stability`, `structural sort column`, `integrity board
+    // valid after same-column reorder`) require 2+ cards in srcCol;
+    // ensure that here so callers don't race on board state.
     setRunPhase('find-two-cols:inject-cards');
     var filled = 0;
     for (var vc = 0; vc < visibleCols.length && filled < 2; vc++) {
       var vcCards = (visibleCols[vc].col.cards || []).filter(function (card) {
         return !isHiddenForRender(card && card.content);
       });
-      if (vcCards.length === 0) {
+      var needed = 2 - vcCards.length;
+      for (var ci = 0; ci < needed; ci++) {
+        var newCardId = _ts + 'card_' + vc + '_' + ci;
         visibleCols[vc].col.cards.push({
-          id: _ts + 'card_' + vc, content: 'Test Card ' + vc,
-          checked: false, kid: _ts + 'card_' + vc
+          id: newCardId, content: 'Test Card ' + vc + '.' + ci,
+          checked: false, kid: newCardId
         });
       }
       filled++;
@@ -2108,7 +2134,10 @@
       assert(countBefore >= 1, 'need at least 1 card');
       var removedKid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
       var data = api().getFullBoardData();
-      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.splice(0, 1);
+      var rawCards = data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards;
+      var removeIdx = findRawCardIndexByKid(rawCards, removedKid);
+      assert(removeIdx >= 0, 'removed card found in raw data');
+      rawCards.splice(removeIdx, 1);
       api().setTestBoard(data, _boardId);
       await waitForAssertion(function () {
         assertEqual(getViewCardCount(info.srcCol.flatIdx), countBefore - 1, 'card count -1');
@@ -4275,10 +4304,14 @@
       var totalBefore = getTotalViewCards();
       var archivedKid = col.cards[0].kid || col.cards[0].id;
 
-      // Archive the first card by adding #hidden-internal-archived tag
+      // Archive the first VISIBLE card by adding #hidden-internal-archived tag.
+      // Look it up by kid in the raw array — cards[0] in the raw array may be
+      // an already-hidden card, not the first visible one.
       var data = api().getFullBoardData();
-      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
-      card.content = (card.content || '') + ' #hidden-internal-archived';
+      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, archivedKid);
+      assert(cardIdx >= 0, 'archived card found in raw data');
+      rawCards[cardIdx].content = (rawCards[cardIdx].content || '') + ' #hidden-internal-archived';
       api().setTestBoard(data, _boardId);
       await delay(100);
 
@@ -4302,8 +4335,10 @@
       var trashedKid = col.cards[0].kid || col.cards[0].id;
 
       var data = api().getFullBoardData();
-      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
-      card.content = (card.content || '') + ' #hidden-internal-deleted';
+      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, trashedKid);
+      assert(cardIdx >= 0, 'trashed card found in raw data');
+      rawCards[cardIdx].content = (rawCards[cardIdx].content || '') + ' #hidden-internal-deleted';
       api().setTestBoard(data, _boardId);
       await delay(100);
 
@@ -4322,8 +4357,10 @@
       var parkedKid = col.cards[0].kid || col.cards[0].id;
 
       var data = api().getFullBoardData();
-      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
-      card.content = (card.content || '') + ' #hidden-internal-parked';
+      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, parkedKid);
+      assert(cardIdx >= 0, 'parked card found in raw data');
+      rawCards[cardIdx].content = (rawCards[cardIdx].content || '') + ' #hidden-internal-parked';
       api().setTestBoard(data, _boardId);
       await delay(100);
 
@@ -4339,20 +4376,25 @@
       var info = findTwoColumnsWithCards();
       var col = info.srcCol;
       var countBefore = getViewCardCount(col.flatIdx);
+      var targetKid = col.cards[0].kid || col.cards[0].id;
 
-      // Archive a card
+      // Archive a card (look up by kid in the raw array)
       var data = api().getFullBoardData();
-      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
-      var originalContent = card.content || '';
-      card.content = originalContent + ' #hidden-internal-archived';
+      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, targetKid);
+      assert(cardIdx >= 0, 'target card found in raw data');
+      var originalContent = rawCards[cardIdx].content || '';
+      rawCards[cardIdx].content = originalContent + ' #hidden-internal-archived';
       api().setTestBoard(data, _boardId);
       await delay(100);
       assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'archived card gone');
 
-      // Restore it by removing the tag
+      // Restore it by removing the tag (re-fetch data since getFullBoardData clones)
       data = api().getFullBoardData();
-      card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
-      card.content = originalContent;
+      rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      cardIdx = findRawCardIndexByKid(rawCards, targetKid);
+      assert(cardIdx >= 0, 'archived card still found in raw data');
+      rawCards[cardIdx].content = originalContent;
       api().setTestBoard(data, _boardId);
       await delay(100);
 
@@ -4699,8 +4741,10 @@
       var kid = col.cards[0].kid || col.cards[0].id;
 
       var data = api().getFullBoardData();
-      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
-      card.content = (card.content || '') + ' #hidden-internal-archived';
+      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, kid);
+      assert(cardIdx >= 0, 'target card found in raw data');
+      rawCards[cardIdx].content = (rawCards[cardIdx].content || '') + ' #hidden-internal-archived';
       api().setTestBoard(data, _boardId);
       await delay(100);
 
@@ -4716,19 +4760,25 @@
       var info = findTwoColumnsWithCards();
       var col = info.srcCol;
       var countBefore = getViewCardCount(col.flatIdx);
+      var kid = col.cards[0].kid || col.cards[0].id;
 
-      // Archive it
+      // Archive it (look up by kid — raw cards[0] may be an already-hidden card)
       var data = api().getFullBoardData();
-      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
-      var original = card.content || '';
-      card.content = original + ' #hidden-internal-archived';
+      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, kid);
+      assert(cardIdx >= 0, 'target card found in raw data');
+      var original = rawCards[cardIdx].content || '';
+      rawCards[cardIdx].content = original + ' #hidden-internal-archived';
       api().setTestBoard(data, _boardId);
       await delay(100);
       assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'card archived');
 
-      // Remove tag to restore
+      // Remove tag to restore (re-fetch since getFullBoardData clones)
       data = api().getFullBoardData();
-      data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0].content = original;
+      rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      cardIdx = findRawCardIndexByKid(rawCards, kid);
+      assert(cardIdx >= 0, 'archived card still found in raw data');
+      rawCards[cardIdx].content = original;
       api().setTestBoard(data, _boardId);
       await delay(100);
       assertEqual(getViewCardCount(col.flatIdx), countBefore, 'card restored to view');
@@ -4744,19 +4794,23 @@
       var countBefore = getViewCardCount(col.flatIdx);
       var kid = col.cards[0].kid || col.cards[0].id;
 
-      // Park it
+      // Park it (look up by kid — raw cards[0] may be an already-hidden card)
       var data = api().getFullBoardData();
-      var card = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0];
-      var original = card.content || '';
-      card.content = original + ' #hidden-internal-parked';
+      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, kid);
+      assert(cardIdx >= 0, 'target card found in raw data');
+      var original = rawCards[cardIdx].content || '';
+      rawCards[cardIdx].content = original + ' #hidden-internal-parked';
       api().setTestBoard(data, _boardId);
       await delay(100);
       assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'card parked');
 
-      // Switch to deleted
+      // Switch to deleted (re-fetch since getFullBoardData clones)
       data = api().getFullBoardData();
-      data.rows[col.row].stacks[col.stack].columns[col.localCol].cards[0].content =
-        original + ' #hidden-internal-deleted';
+      rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      cardIdx = findRawCardIndexByKid(rawCards, kid);
+      assert(cardIdx >= 0, 'parked card still found in raw data');
+      rawCards[cardIdx].content = original + ' #hidden-internal-deleted';
       api().setTestBoard(data, _boardId);
       await delay(100);
       assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'card still hidden after tag change');
@@ -4852,6 +4906,280 @@
 
       assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
       assertBoardIntegrity('after workspace→workspace move');
+    } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // WORKSPACE VIEW STRUCTURAL REORDER TESTS — covers reordering of
+  // rows, stacks, and columns through the same backing API the sidebar
+  // tree (workspace view) drag/drop uses. The DOM drag handlers in the
+  // workspace tree (`data-tree-drag="tree-row|tree-stack|tree-column"`)
+  // ultimately call these functions via display indices.
+  //
+  // Each test seeds a known multi-row / multi-stack / multi-column
+  // fixture so display indices are predictable, then exercises the
+  // move and asserts both the data structure and the rendered DOM
+  // reflect the new order.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Build a deterministic multi-row / multi-stack fixture used by the
+   *  workspace-view reorder tests. Two rows, each with two stacks,
+   *  each with two columns, each column with one card. The IDs are
+   *  prefixed with `__wsv__` so test assertions can look entities up
+   *  by ID after reorders shuffle indices around.
+   */
+  function buildWorkspaceReorderFixture() {
+    function col(rid, sid, cid) {
+      return {
+        id: '__wsv__c-' + rid + '-' + sid + '-' + cid,
+        title: 'C-' + rid + '-' + sid + '-' + cid,
+        cards: [{
+          id: '__wsv__card-' + rid + '-' + sid + '-' + cid,
+          kid: '__wsv__card-' + rid + '-' + sid + '-' + cid,
+          content: 'card ' + rid + '/' + sid + '/' + cid,
+          checked: false
+        }],
+        include_source: null
+      };
+    }
+    function stack(rid, sid) {
+      return {
+        id: '__wsv__s-' + rid + '-' + sid,
+        title: 'S-' + rid + '-' + sid,
+        columns: [col(rid, sid, 0), col(rid, sid, 1)]
+      };
+    }
+    function row(rid) {
+      return {
+        id: '__wsv__r-' + rid,
+        title: 'R-' + rid,
+        stacks: [stack(rid, 0), stack(rid, 1)]
+      };
+    }
+    return { title: 'Workspace Reorder Fixture', rows: [row(0), row(1)] };
+  }
+
+  /** Return the IDs of all rows in fullBoardData, in document order.
+   *  Tests use this to assert relative ordering after a reorder.
+   */
+  function getAllRowIdsFromData() {
+    var data = api().getFullBoardData();
+    var rows = (data && data.rows) || [];
+    var ids = [];
+    for (var i = 0; i < rows.length; i++) ids.push(rows[i] && rows[i].id);
+    return ids;
+  }
+
+  /** Return the IDs of all stacks within a row, in document order. */
+  function getStackIdsInRow(rowId) {
+    var data = api().getFullBoardData();
+    var rows = (data && data.rows) || [];
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i] && rows[i].id === rowId) {
+        var stacks = rows[i].stacks || [];
+        var ids = [];
+        for (var s = 0; s < stacks.length; s++) ids.push(stacks[s] && stacks[s].id);
+        return ids;
+      }
+    }
+    return [];
+  }
+
+  /** Return the IDs of all columns within a stack, in document order. */
+  function getColumnIdsInStack(rowId, stackId) {
+    var data = api().getFullBoardData();
+    var rows = (data && data.rows) || [];
+    for (var r = 0; r < rows.length; r++) {
+      if (!rows[r] || rows[r].id !== rowId) continue;
+      var stacks = rows[r].stacks || [];
+      for (var s = 0; s < stacks.length; s++) {
+        if (stacks[s] && stacks[s].id === stackId) {
+          var cols = stacks[s].columns || [];
+          var ids = [];
+          for (var c = 0; c < cols.length; c++) ids.push(cols[c] && cols[c].id);
+          return ids;
+        }
+      }
+    }
+    return [];
+  }
+
+  /** Locate the row/stack containing a column ID; returns
+   *  { rowId, stackId, rowIndex, stackIndex, colIndex } or null.
+   */
+  function findColumnLocation(columnId) {
+    var data = api().getFullBoardData();
+    var rows = (data && data.rows) || [];
+    for (var r = 0; r < rows.length; r++) {
+      var stacks = (rows[r] && rows[r].stacks) || [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = (stacks[s] && stacks[s].columns) || [];
+        for (var c = 0; c < cols.length; c++) {
+          if (cols[c] && cols[c].id === columnId) {
+            return {
+              rowId: rows[r].id, stackId: stacks[s].id,
+              rowIndex: r, stackIndex: s, colIndex: c
+            };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  register('workspace view: reorder row — moving row 0 after row 1 swaps row order', async function () {
+    await setup();
+    try {
+      var fixture = buildWorkspaceReorderFixture();
+      api().setTestBoard(fixture, _boardId, { fullRender: true });
+      await delay(100);
+
+      var idsBefore = getAllRowIdsFromData();
+      assertEqual(idsBefore.length, 2, 'fixture has 2 rows');
+      assertEqual(idsBefore[0], '__wsv__r-0', 'row 0 starts first');
+      assertEqual(idsBefore[1], '__wsv__r-1', 'row 1 starts second');
+
+      // Move display row 0 to AFTER display row 1.
+      // Signature: reorderRows(srcDisplayIdx, targetDisplayIdx, insertBefore)
+      await api().reorderRows(0, 1, false);
+      await delay(100);
+
+      var idsAfter = getAllRowIdsFromData();
+      assertEqual(idsAfter[0], '__wsv__r-1', 'row 1 is now first after reorder');
+      assertEqual(idsAfter[1], '__wsv__r-0', 'row 0 is now second after reorder');
+      assertEqual(getViewRowCount(), 2, 'DOM still shows 2 rows');
+      assertBoardIntegrity('after workspace view row reorder');
+    } finally { await teardown(); }
+  });
+
+  register('workspace view: move stack — stack from row 0 moves into row 1', async function () {
+    await setup();
+    try {
+      var fixture = buildWorkspaceReorderFixture();
+      api().setTestBoard(fixture, _boardId, { fullRender: true });
+      await delay(100);
+
+      var movedStackId = '__wsv__s-0-0';
+      var stacksRow0Before = getStackIdsInRow('__wsv__r-0');
+      var stacksRow1Before = getStackIdsInRow('__wsv__r-1');
+      assertEqual(stacksRow0Before.length, 2, 'row 0 has 2 stacks');
+      assertEqual(stacksRow1Before.length, 2, 'row 1 has 2 stacks');
+      assert(stacksRow0Before.indexOf(movedStackId) !== -1, 'stack to move starts in row 0');
+
+      // Move the first stack of row 0 to BEFORE the first stack of row 1.
+      // Signature: moveStack(srcRow, srcStack, targetRow, targetStack, insertBefore)
+      await api().moveStack(0, 0, 1, 0, true);
+      await delay(100);
+
+      var stacksRow0After = getStackIdsInRow('__wsv__r-0');
+      var stacksRow1After = getStackIdsInRow('__wsv__r-1');
+      assert(stacksRow0After.indexOf(movedStackId) === -1, 'stack no longer in source row');
+      assert(stacksRow1After.indexOf(movedStackId) !== -1, 'stack now in target row');
+      assertEqual(stacksRow1After[0], movedStackId, 'moved stack is first in target row');
+      assertEqual(stacksRow1After.length, 3, 'target row gained a stack');
+      assertEqual(stacksRow0After.length, 1, 'source row lost a stack');
+      assertBoardIntegrity('after workspace view stack move');
+    } finally { await teardown(); }
+  });
+
+  register('workspace view: reorder column within stack — column 0 moves after column 1', async function () {
+    await setup();
+    try {
+      var fixture = buildWorkspaceReorderFixture();
+      api().setTestBoard(fixture, _boardId, { fullRender: true });
+      await delay(100);
+
+      var rowId = '__wsv__r-0', stackId = '__wsv__s-0-0';
+      var colsBefore = getColumnIdsInStack(rowId, stackId);
+      assertEqual(colsBefore.length, 2, 'stack starts with 2 columns');
+      assertEqual(colsBefore[0], '__wsv__c-0-0-0', 'column 0 starts first');
+      assertEqual(colsBefore[1], '__wsv__c-0-0-1', 'column 1 starts second');
+
+      // Move column 0 to AFTER column 1 within the same stack.
+      // Signature: moveColumnWithinBoard(srcRow, srcStack, srcCol, tgtRow, tgtStack, tgtCol, insertBefore)
+      await api().moveColumnWithinBoard(0, 0, 0, 0, 0, 1, false);
+      await delay(100);
+
+      var colsAfter = getColumnIdsInStack(rowId, stackId);
+      assertEqual(colsAfter.length, 2, 'stack still has 2 columns');
+      assertEqual(colsAfter[0], '__wsv__c-0-0-1', 'former column 1 is now first');
+      assertEqual(colsAfter[1], '__wsv__c-0-0-0', 'former column 0 is now second');
+      assertBoardIntegrity('after workspace view column reorder within stack');
+    } finally { await teardown(); }
+  });
+
+  register('workspace view: move column to different stack — column moves between stacks', async function () {
+    await setup();
+    try {
+      var fixture = buildWorkspaceReorderFixture();
+      api().setTestBoard(fixture, _boardId, { fullRender: true });
+      await delay(100);
+
+      var movedColumnId = '__wsv__c-0-0-0';
+      var srcStackId = '__wsv__s-0-0', dstStackId = '__wsv__s-0-1';
+      var srcStackBefore = getColumnIdsInStack('__wsv__r-0', srcStackId);
+      var dstStackBefore = getColumnIdsInStack('__wsv__r-0', dstStackId);
+      assertEqual(srcStackBefore.length, 2, 'source stack starts with 2 columns');
+      assertEqual(dstStackBefore.length, 2, 'destination stack starts with 2 columns');
+
+      // Move the first column of stack 0 into stack 1.
+      // Signature: moveColumnToExistingStack(srcRow, srcStack, srcCol, tgtRow, tgtStack)
+      await api().moveColumnToExistingStack(0, 0, 0, 0, 1);
+      await delay(100);
+
+      var srcStackAfter = getColumnIdsInStack('__wsv__r-0', srcStackId);
+      var dstStackAfter = getColumnIdsInStack('__wsv__r-0', dstStackId);
+      assert(srcStackAfter.indexOf(movedColumnId) === -1, 'column no longer in source stack');
+      assert(dstStackAfter.indexOf(movedColumnId) !== -1, 'column now in destination stack');
+      assertEqual(srcStackAfter.length, 1, 'source stack lost a column');
+      assertEqual(dstStackAfter.length, 3, 'destination stack gained a column');
+      assertBoardIntegrity('after workspace view column move across stacks');
+    } finally { await teardown(); }
+  });
+
+  register('workspace view: card move within column — same-column reorder via workspace coordinates', async function () {
+    await setup();
+    try {
+      var fixture = buildWorkspaceReorderFixture();
+      // Add a second card to the first column so we can reorder within it.
+      fixture.rows[0].stacks[0].columns[0].cards.push({
+        id: '__wsv__card-extra', kid: '__wsv__card-extra',
+        content: 'extra card', checked: false
+      });
+      api().setTestBoard(fixture, _boardId, { fullRender: true });
+      await delay(100);
+
+      var loc = findColumnLocation('__wsv__c-0-0-0');
+      assert(loc, 'fixture column found');
+      var firstKid = '__wsv__card-0-0-0';
+      var extraKid = '__wsv__card-extra';
+
+      // Move the second card (the "extra" card we added) to the front of
+      // its column, using workspace-style descriptors (rowIndex/stackIndex/
+      // colIndex/columnId) — the same shape the sidebar tree drag/drop uses.
+      await api().moveCard(
+        { boardId: _boardId, rowIndex: loc.rowIndex, stackIndex: loc.stackIndex, colIndex: loc.colIndex, columnId: '__wsv__c-0-0-0', cardIndex: 1, cardId: extraKid, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, rowIndex: loc.rowIndex, stackIndex: loc.stackIndex, colIndex: loc.colIndex, columnId: '__wsv__c-0-0-0', insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(100);
+
+      var data = api().getFullBoardData();
+      var afterCol = null;
+      var rows = (data && data.rows) || [];
+      for (var r = 0; r < rows.length && !afterCol; r++) {
+        var stacks = (rows[r] && rows[r].stacks) || [];
+        for (var s = 0; s < stacks.length && !afterCol; s++) {
+          var cols = (stacks[s] && stacks[s].columns) || [];
+          for (var c = 0; c < cols.length && !afterCol; c++) {
+            if (cols[c] && cols[c].id === '__wsv__c-0-0-0') afterCol = cols[c];
+          }
+        }
+      }
+      assert(afterCol, 'column still exists after card move');
+      var kids = (afterCol.cards || []).map(function (card) { return card.kid || card.id; });
+      assertEqual(kids[0], extraKid, 'extra card moved to front');
+      assertEqual(kids[1], firstKid, 'original first card pushed to second position');
+      assertBoardIntegrity('after workspace view same-column card reorder');
     } finally { await teardown(); }
   });
 
@@ -5373,10 +5701,13 @@
       var info = findTwoColumnsWithCards();
       var totalBefore = getTotalViewCards();
       var colCardsBefore = getViewCardCount(info.srcCol.flatIdx);
+      var kid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
 
       var data = api().getFullBoardData();
-      var card = data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards[0];
-      card.content = (card.content || '') + ' #hidden-internal-parked';
+      var rawCards = data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, kid);
+      assert(cardIdx >= 0, 'target card found in raw data');
+      rawCards[cardIdx].content = (rawCards[cardIdx].content || '') + ' #hidden-internal-parked';
       api().setTestBoard(data, _boardId);
 
       assertEqual(getTotalViewCards(), totalBefore - 1, 'total visible -1 after park');
@@ -5389,10 +5720,13 @@
     try {
       var info = findTwoColumnsWithCards();
       var totalBefore = getTotalViewCards();
+      var kid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
 
       var data = api().getFullBoardData();
-      var card = data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards[0];
-      card.content = (card.content || '') + ' #hidden-internal-archived';
+      var rawCards = data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, kid);
+      assert(cardIdx >= 0, 'target card found in raw data');
+      rawCards[cardIdx].content = (rawCards[cardIdx].content || '') + ' #hidden-internal-archived';
       api().setTestBoard(data, _boardId);
 
       assertEqual(getTotalViewCards(), totalBefore - 1, 'total visible -1 after archive');
@@ -5404,10 +5738,13 @@
     try {
       var info = findTwoColumnsWithCards();
       var totalBefore = getTotalViewCards();
+      var kid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
 
       var data = api().getFullBoardData();
-      var card = data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards[0];
-      card.content = (card.content || '') + ' #hidden-internal-deleted';
+      var rawCards = data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, kid);
+      assert(cardIdx >= 0, 'target card found in raw data');
+      rawCards[cardIdx].content = (rawCards[cardIdx].content || '') + ' #hidden-internal-deleted';
       api().setTestBoard(data, _boardId);
 
       assertEqual(getTotalViewCards(), totalBefore - 1, 'total visible -1 after delete');

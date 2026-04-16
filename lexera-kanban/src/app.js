@@ -10879,6 +10879,17 @@ var LexeraDashboard = (function () {
         setLocalState: false,
         refreshHierarchy: true
       });
+      // Tests expect setTestBoard to produce a fully-consistent state
+      // (board view AND sidebar tree) by the time it returns. The real
+      // mutation path debounces the hierarchy refresh by 150ms, which is
+      // longer than the test's `delay(100)` — so without flushing, the
+      // sidebar tree still reflects the PRE-mutation state when the
+      // assertion runs. Flush synchronously for test determinism.
+      try {
+        if (BoardDataStore && typeof BoardDataStore.flushHierarchyRefresh === 'function') {
+          BoardDataStore.flushHierarchyRefresh();
+        }
+      } catch (_) {}
       _stbMark('afterCommit');
       if (_stbHasTargets && !_stbForceFull) {
         // Fast path: caller told us exactly what to refresh. No diff,
@@ -10910,6 +10921,14 @@ var LexeraDashboard = (function () {
       }
     },
     moveCard: moveCard,
+    // Structural reorder/move operations exposed for workspace-view
+    // tests. These are the same functions production code calls when
+    // the user drags a row/stack/column in the sidebar tree (which
+    // mirrors the workspace hierarchy). Indices are display indices.
+    reorderRows: function (srcIdx, targetIdx, before) { return reorderRows(srcIdx, targetIdx, before); },
+    moveStack: function (srcRow, srcStack, targetRow, targetStack, before) { return moveStack(srcRow, srcStack, targetRow, targetStack, before); },
+    moveColumnWithinBoard: function (srcRow, srcStack, srcCol, targetRow, targetStack, targetCol, before) { return moveColumnWithinBoard(srcRow, srcStack, srcCol, targetRow, targetStack, targetCol, before); },
+    moveColumnToExistingStack: function (srcRow, srcStack, srcCol, targetRow, targetStack) { return moveColumnToExistingStack(srcRow, srcStack, srcCol, targetRow, targetStack); },
     // Full board-operation surface for the do/undo test pattern.
     // Tests call these exactly the way production code does, so the
     // test exercises the real refresh/undo path — no snapshot restore.

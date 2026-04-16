@@ -13,6 +13,10 @@ clean up the todos into the
 
 - [x] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option — DONE: burger menu with Kanban/Canvas view, Detach, Reveal in Finder, Split, Remove from Workspace
 
+- [ ] reordering or moving elements (cards, columns, stacks, rows) doesnt work within the workspace view. add a test to the frontend tests if that isnt already verified!
+
+- [ ] create a group of tests within the frontend tests. suggest some titles the tests should have.
+
 - [ ] Items still needing full board render: row/stack hidden tags, board frontmatter changes, board settings changes, tag style preset change. These genuinely affect the whole board.
 
 - [ ] if dragging elements from the view to the workspace it should only be possible to drop it onto the right elements. cards onto columns or between other cards. columns only into stacks or between other columsn. stacks only onto rows or between other stacks. rows only into boards and beween other boards. (between also means before, between and after!)
@@ -37,9 +41,17 @@ clean up the todos into the
 
 ## Automated Frontend Test Runner (`run-lexera-tests.sh`)
 
-**Current status: 138 passed, 0 failed / 138 tests in ~3.4s**
+**Current status: 137 passed, 1 failed / 138 tests in ~62s (down from 21 failures)**
 
-All tests pass. Two tests (include badge rendering, marp export time tags) are skipped in autoRun mode because they depend on backend include resolution and temporal tag rendering that require full app lifecycle with active timers.
+### Frontend test failures — categorized by root cause
+
+- [x] **Bug #1: tests mutate the wrong card when hidden cards exist at low indices** — FIXED. `findTwoColumnsWithCards` returns `srcCol.cards` as the filtered-visible array and `srcCol.col` as the raw column. Tests grabbed `col.cards[0].kid` (visible) but mutated `data.rows[...].columns[...].cards[0]` (raw[0], which may be a hidden card). **Fix:** added `findRawCardIndexByKid(rawCards, kid)` helper; updated 11 tests to look up the card by stable kid/id in the raw array before mutating. **Tests affected:** `remove card`, `hidden state: archiving/trashing/parking/restoring`, `tag edit: adding/removing #hidden-internal-archived`, `tag edit: parked to deleted`, `hidden action: parking/archiving/deleting via setTestBoard`.
+
+- [x] **Bug #2 (sidebar hierarchy debounced 150ms vs test wait 100ms)** — FIXED. `setTestBoard` schedules a hierarchy refresh through `scheduleHierarchyRefresh` which has a 150ms setTimeout; tests use `delay(100)` then assert sidebar state, so they raced. **Fix:** `setTestBoard` now calls `BoardDataStore.flushHierarchyRefresh()` synchronously after `commitLocalBoardChange`, so tests observe a fully-consistent board view + sidebar by the time setTestBoard returns. **Tests fixed:** all `hidden destination:*`, `header create:*`, `include: column include badge`, `include header:*`, `marp export:*`, `tag edit: adding #hidden-internal-archived`, `tag edit: adding temporal tag`, `chain:*`, `include: card with include syntax`, `embed: valid image embed`, `workspace move:*`.
+
+- [x] **Bug #3 (`findTwoColumnsWithCards` doesn't guarantee ≥2 visible cards per column)** — FIXED. Phase 1 returned as soon as it found 2 columns with ≥1 visible card, but tests like `same-column reorder`, `cross-column source stability`, `structural: sort column cards`, and `integrity: board valid after same-column reorder` need ≥2 cards. Phase 2 (injection) only injected if a column had 0 cards. **Fix:** Phase 1 now requires srcCol to have ≥2 visible cards; Phase 2 injects enough cards to reach 2 (instead of just 1 when empty).
+
+- [ ] **Remaining: `integrity: board valid after cross-column card move`** (1 failure). `DOM visible card count matches data: expected 6, got 4`. After moveCard's targeted `card-remove + card-insert` DOM surgery, DOM is missing 2 cards that exist in the data. Pre-existing bug — same test was failing before all my fixes (though with a different error about card ID mismatches). Likely a stale flat-index issue in the targeted refresh path when source and destination columns are in the same stack.
 
 ## Backend Stability
 
