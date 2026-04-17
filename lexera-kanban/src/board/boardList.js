@@ -1365,6 +1365,7 @@ var LexeraBoardList = (function () {
   function bindMirroredWorkspaceView(rootEl) {
     if (!rootEl || rootEl.__lexeraWorkspaceMirrorBound) return;
     rootEl.__lexeraWorkspaceMirrorBound = true;
+    ensureGlobalWsMenuGuard();
 
     rootEl.addEventListener('click', function (e) {
       var menuBtn = e.target.closest('.lexera-shared-workspace-menu');
@@ -1383,6 +1384,23 @@ var LexeraBoardList = (function () {
         focusWorkspaceView(localWorkspaceHeader.getAttribute('data-workspace-id'));
         return;
       }
+      // Board burger menu — handle locally in the mirror (avoid re-dispatching
+      // a canonical click, which would trigger unrelated focus/board-select
+      // side effects like ws-shell.boardChange).
+      var wsMenuBtn = e.target.closest('.board-item-ws-menu');
+      if (wsMenuBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        var mirrorRow = wsMenuBtn.closest('.board-item[data-board-id]');
+        var mirrorWrap = wsMenuBtn.closest('.board-item-wrapper');
+        if (!mirrorRow || !mirrorWrap) return;
+        var mirrorBoardId = mirrorRow.getAttribute('data-board-id') || '';
+        var mirrorWsId = mirrorWrap.getAttribute('data-workspace-id') || '';
+        if (!mirrorBoardId) return;
+        var rect = wsMenuBtn.getBoundingClientRect();
+        showBoardActionsMenuFor(mirrorBoardId, mirrorWsId, rect.right, rect.bottom);
+        return;
+      }
       var canonicalTarget = findCanonicalHierarchyTarget(e.target);
       if (!canonicalTarget) return;
       e.preventDefault();
@@ -1391,6 +1409,22 @@ var LexeraBoardList = (function () {
     });
 
     rootEl.addEventListener('contextmenu', function (e) {
+      // Board row right-click — handle locally with the same menu as the burger.
+      var mirrorRightRow = e.target.closest('.board-item[data-board-id]');
+      if (mirrorRightRow && !mirrorRightRow.classList.contains('remote-board') &&
+          !e.target.closest('.board-item-toggle') &&
+          !e.target.closest('.tree-grip') &&
+          !e.target.closest('.tree-toggle')) {
+        var mirrorRightWrap = mirrorRightRow.closest('.board-item-wrapper');
+        var rightBoardId = mirrorRightRow.getAttribute('data-board-id') || '';
+        var rightWsId = mirrorRightWrap ? (mirrorRightWrap.getAttribute('data-workspace-id') || '') : '';
+        if (rightBoardId) {
+          e.preventDefault();
+          e.stopPropagation();
+          showBoardActionsMenuFor(rightBoardId, rightWsId, e.clientX, e.clientY);
+          return;
+        }
+      }
       var canonicalTarget = findCanonicalHierarchyTarget(e.target);
       if (!canonicalTarget) return;
       e.preventDefault();
@@ -1534,6 +1568,62 @@ var LexeraBoardList = (function () {
   }
 
   // ─── Remove board ─────────────────────────────────────────────────
+
+  // Rule: pressing the .board-item-ws-menu burger never initiates a drag and
+  // never activates the enclosing dock tabset. Must run at the document
+  // capture phase so it fires before the workspace-shell root's pointerdown
+  // listener (which would otherwise call notifyActiveBoardChanged()).
+  var _globalWsMenuGuardBound = false;
+  function ensureGlobalWsMenuGuard() {
+    if (_globalWsMenuGuardBound || typeof document === 'undefined') return;
+    _globalWsMenuGuardBound = true;
+    function swallow(e) {
+      var t = e.target;
+      if (t && typeof t.closest === 'function' && t.closest('.board-item-ws-menu')) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }
+    document.addEventListener('mousedown', swallow, true);
+    document.addEventListener('pointerdown', swallow, true);
+    document.addEventListener('dragstart', swallow, true);
+  }
+
+  function showBoardActionsMenuFor(boardId, wsId, x, y) {
+    if (!boardId) return;
+    var boards = _dep('boards') || [];
+    var boardMeta = null;
+    for (var i = 0; i < boards.length; i++) {
+      if (String(boards[i].id) === String(boardId)) { boardMeta = boards[i]; break; }
+    }
+    var boardFilePath = boardMeta ? (boardMeta.filePath || '') : '';
+    var canRemoveFromWs = !!(wsId && wsId !== '__unassigned__');
+    var items = [
+      { id: 'open-tab', label: 'Open / Focus Tab' },
+      { id: 'detach', label: 'Open in Detached Window' },
+      { separator: true },
+      { id: 'backend-settings', label: 'Backend Settings' },
+      { separator: true },
+      { id: 'reveal', label: 'Reveal in Finder' }
+    ];
+    if (canRemoveFromWs) {
+      items.push({ separator: true });
+      items.push({ id: 'remove-from-ws', label: 'Remove board from workspace' });
+    }
+    _callDep('showNativeMenu', items, x, y).then(async function (action) {
+      if (action === 'open-tab') {
+        _callDep('selectBoard', boardId);
+      } else if (action === 'detach') {
+        if (_dep('hasTauri')) _callDep('tauriInvoke', 'open_new_window', { boardId: boardId, profile: 'detachedBoard' });
+      } else if (action === 'backend-settings') {
+        _callDep('openConnectionWindow');
+      } else if (action === 'reveal' && boardFilePath) {
+        _callDep('showInFinder', boardFilePath);
+      } else if (action === 'remove-from-ws' && canRemoveFromWs) {
+        await removeBoardFromWorkspace(boardId, wsId);
+      }
+    });
+  }
 
   async function removeBoardFromWorkspace(boardId, wsId) {
     if (!boardId || !wsId || wsId === '__unassigned__') return false;
@@ -2586,43 +2676,14 @@ var LexeraBoardList = (function () {
 
       var boardRow = wrapperEl.querySelector('.board-item');
 
-      // Stop mousedown on the burger from reaching the sidebar pointer-drag
-      // system so a click doesn't briefly register as a drag attempt.
-      boardRow.addEventListener('mousedown', function (e) {
-        if (e.target.closest('.board-item-ws-menu')) {
-          e.stopPropagation();
-          e.preventDefault();
-        }
-      }, true);
+      // Rule: clicking the .board-item-ws-menu burger never initiates a drag
+      // and never activates the enclosing dock tabset — enforced once at the
+      // document capture phase so it runs before any ancestor handler.
+      ensureGlobalWsMenuGuard();
 
       function showBoardActionsMenu(x, y) {
         var wsId = wrapperEl.getAttribute('data-workspace-id') || '';
-        var canRemoveFromWs = !!(wsId && wsId !== '__unassigned__');
-        var items = [
-          { id: 'open-tab', label: 'Open / Focus Tab' },
-          { id: 'detach', label: 'Open in Detached Window' },
-          { separator: true },
-          { id: 'backend-settings', label: 'Backend Settings' },
-          { separator: true },
-          { id: 'reveal', label: 'Reveal in Finder' }
-        ];
-        if (canRemoveFromWs) {
-          items.push({ separator: true });
-          items.push({ id: 'remove-from-ws', label: 'Remove board from workspace' });
-        }
-        _callDep('showNativeMenu', items, x, y).then(async function (action) {
-          if (action === 'open-tab') {
-            _callDep('selectBoard', boardId);
-          } else if (action === 'detach') {
-            if (_dep('hasTauri')) _callDep('tauriInvoke', 'open_new_window', { boardId: boardId, profile: 'detachedBoard' });
-          } else if (action === 'backend-settings') {
-            _callDep('openConnectionWindow');
-          } else if (action === 'reveal' && boardFilePath) {
-            _callDep('showInFinder', boardFilePath);
-          } else if (action === 'remove-from-ws' && canRemoveFromWs) {
-            await removeBoardFromWorkspace(boardId, wsId);
-          }
-        });
+        showBoardActionsMenuFor(boardId, wsId, x, y);
       }
 
       boardRow.addEventListener('click', async function (e) {
