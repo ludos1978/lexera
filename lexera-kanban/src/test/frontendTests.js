@@ -1737,6 +1737,20 @@
     _phaseTimings[name] = end - (_phaseTimings[name + 'Start'] || end);
   }
 
+  var _boardListCountAtSetup = -1;
+
+  function _countBoardListItems() {
+    var el = null;
+    try { el = document.getElementById('board-list'); } catch (_) {}
+    if (!el) {
+      try {
+        if (window.parent && window.parent !== window) el = window.parent.document.getElementById('board-list');
+      } catch (_) {}
+    }
+    if (!el) return -1;
+    return el.querySelectorAll('.board-item[data-board-id]').length;
+  }
+
   async function setup() {
     setRunPhase('setup:start');
     _startPhase('setup');
@@ -1750,6 +1764,7 @@
     // Capture pre-existing duplicate IDs so integrity checks only flag
     // NEW duplicates introduced by the test, not pre-existing data issues.
     if (!_preExistingDuplicateCardIds) capturePreExistingDuplicates();
+    _boardListCountAtSetup = _countBoardListItems();
     // Wait for a board to be loaded (may take a moment in workspace shell)
     for (var attempt = 0; attempt < 10; attempt++) {
       throwIfRunCancelled();
@@ -1838,6 +1853,18 @@
         window.LexeraBoardList.cancelPendingDraftSave();
       }
     } catch (_) {}
+    // Verify no duplicate boards appeared in the workspace view during
+    // this test and that no boards were added (count should be stable).
+    setRunPhase('teardown:workspace-check');
+    assertWorkspaceViewIntegrity('teardown');
+    if (_boardListCountAtSetup > 0) {
+      var afterCount = _countBoardListItems();
+      if (afterCount > _boardListCountAtSetup) {
+        throw new Error('Board list grew during test: was ' + _boardListCountAtSetup + ', now ' + afterCount +
+          '. A test added boards to the workspace view.');
+      }
+    }
+    _boardListCountAtSetup = -1;
     setRunPhase('teardown:done');
     _endPhase('teardown');
   }
@@ -2091,17 +2118,11 @@
       var info = findTwoColumnsWithCards();
       var src = info.srcCol, dst = info.dstCol;
       var movedKid = src.cards[0].kid || src.cards[0].id;
-      var srcCountBefore = getViewCardCount(src.flatIdx);
-      var dstCountBefore = getViewCardCount(dst.flatIdx);
+      var snap = TestVerify.snapshot([src, dst]);
 
-      await api().moveCard(
-        { boardId: _boardId, rowIndex: src.row, stackIndex: src.stack, colIndex: src.localCol, columnId: src.col.id, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, rowIndex: dst.row, stackIndex: dst.stack, colIndex: dst.localCol, columnId: dst.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCardWorkspace(src, dst);
       await waitForAssertion(function () {
-        assertEqual(getViewCardCount(src.flatIdx), srcCountBefore - 1, 'source lost 1');
-        assertEqual(getViewCardCount(dst.flatIdx), dstCountBefore + 1, 'target gained 1');
-        assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+        TestVerify.cardMoved(snap, src.flatIdx, dst.flatIdx, movedKid, 'workspace→workspace');
       });
     } finally { await teardown(); }
   });
@@ -2288,8 +2309,11 @@
     await setup();
     try {
       var info = findTwoColumnsWithCards();
-      await TestVerify.moveCard(info.srcCol, info.dstCol);
-      await TestVerify.moveCardWorkspace(info.srcCol, info.dstCol);
+      // Mixed coordinates: view-style source (flatColIndex), workspace-style target (rowIndex/stackIndex/colIndex)
+      await api().moveCard(
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, rowIndex: info.dstCol.row, stackIndex: info.dstCol.stack, colIndex: info.dstCol.localCol, columnId: info.dstCol.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
       await waitForAssertion(function () { assertViewWorkspaceConsistency('view-to-workspace'); });
     } finally { await teardown(); }
   });
@@ -2298,7 +2322,11 @@
     await setup();
     try {
       var info = findTwoColumnsWithCards();
-      await TestVerify.moveCardWorkspace(info.dstCol, info.srcCol);
+      // Mixed coordinates: workspace-style source, view-style target
+      await api().moveCard(
+        { boardId: _boardId, rowIndex: info.dstCol.row, stackIndex: info.dstCol.stack, colIndex: info.dstCol.localCol, columnId: info.dstCol.col.id, cardIndex: 0, cardId: info.dstCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
       await waitForAssertion(function () { assertViewWorkspaceConsistency('workspace-to-view'); });
     } finally { await teardown(); }
   });
@@ -2369,13 +2397,9 @@
       for (var i = 1; i < src.cards.length; i++)
         originalOrder.push(src.cards[i].kid || src.cards[i].id);
 
-      await api().moveCard(
-        { boardId: _boardId, flatColIndex: src.flatIdx, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: dst.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCard(src, dst);
       await waitForAssertion(function () {
-        var remaining = getViewCardKids(src.flatIdx);
-        assertEqual(remaining, originalOrder, 'remaining source cards keep original order');
+        assertEqual(getViewCardKids(src.flatIdx), originalOrder, 'remaining source cards keep original order');
       });
     } finally { await teardown(); }
   });
@@ -2602,12 +2626,9 @@
     try {
       var colsBefore = getViewColumnCount();
       var info = findTwoColumnsWithCards();
-      await api().moveCard(
-        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCard(info.srcCol, info.dstCol);
       await delay(100);
-      assertEqual(getViewColumnCount(), colsBefore, 'column count unchanged after move');
+      TestVerify.columnCountUnchanged(colsBefore, 'after card move');
     } finally { await teardown(); }
   });
 
@@ -2616,12 +2637,9 @@
     try {
       var rowsBefore = getViewRowCount();
       var info = findTwoColumnsWithCards();
-      await api().moveCard(
-        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCard(info.srcCol, info.dstCol);
       await delay(100);
-      assertEqual(getViewRowCount(), rowsBefore, 'row count unchanged after move');
+      TestVerify.rowCountUnchanged(rowsBefore, 'after card move');
     } finally { await teardown(); }
   });
 
@@ -3628,7 +3646,7 @@
   register('header create: row action adds row to data, board DOM, sidebar, and keeps dashboard counts in sync', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
       await setDashboardStateForTest('', 'active', false);
       var _baselineTodos = await waitForDashboardTodosStable(1);
       resetDashboardPendingFlags();
@@ -3663,7 +3681,7 @@
   register('header create: stack action adds stack to data, board DOM, sidebar, and keeps dashboard counts in sync', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
       await setDashboardStateForTest('', 'active', false);
       var _baselineTodos = await waitForDashboardTodosStable(1);
       resetDashboardPendingFlags();
@@ -3698,7 +3716,7 @@
   register('header create: column action adds column to data, board DOM, sidebar, and keeps dashboard counts in sync', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
       await setDashboardStateForTest('', 'active', false);
       var _baselineTodos = await waitForDashboardTodosStable(1);
       resetDashboardPendingFlags();
@@ -3732,7 +3750,7 @@
   register('header create: card action adds card to data, board DOM, sidebar, and dashboard search results', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
       var _baselineTodos = await waitForDashboardTodosStable(1);
       await setDashboardStateForTest('Header Search Card', 'active', false);
       await waitForDashboardCardCount('dashboard-results-list', 0, 'fixture should still have no matching dashboard results before creation');
@@ -3775,7 +3793,7 @@
   register('hidden destination: incoming card updates header bucket, board visibility, and dashboard todos', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
       await setDashboardStateForTest('', 'active', false);
       var _baselineTodos = await waitForDashboardTodosStable(1);
       var totalBefore = getTotalViewCards();
@@ -3799,7 +3817,7 @@
   register('hidden destination: parked card updates header bucket, board visibility, and dashboard todos', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
       await setDashboardStateForTest('', 'active', false);
       var _baselineTodos = await waitForDashboardTodosStable(1);
       var totalBefore = getTotalViewCards();
@@ -3823,7 +3841,7 @@
   register('hidden destination: archived column updates header bucket, board visibility, sidebar, and dashboard todos', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
       await setDashboardStateForTest('', 'active', false);
       var _baselineTodos = await waitForDashboardTodosStable(1);
       var totalColsBefore = getViewColumnCount();
@@ -3850,7 +3868,7 @@
   register('hidden destination: parked stack updates header bucket, board visibility, sidebar, and dashboard todos', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
       await setDashboardStateForTest('', 'active', false);
       var _baselineTodos = await waitForDashboardTodosStable(1);
       var stacksBefore = getViewStackCount();
@@ -3877,7 +3895,7 @@
   register('hidden destination: trashed row updates header bucket, board visibility, sidebar, and dashboard todos', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
       await setDashboardStateForTest('', 'active', false);
       var _baselineTodos = await waitForDashboardTodosStable(1);
       var rowsBefore = getViewRowCount();
@@ -3908,7 +3926,7 @@
   register('marp export: board preset enables presentation settings and full-board selection', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
       var ui = await openExportModal({ preset: 'marp-presentation' });
       var options = ui.collectOptions();
       assertEqual(options.format, 'presentation', 'export format is presentation');
@@ -3926,7 +3944,7 @@
   register('marp export: row, stack, and column export actions preselect the expected scopes and columns', async function () {
     await setup();
     try {
-      await persistFixtureBoard(createFrontendActionFixtureBoard());
+      api().setTestBoard(normalizeBoardForBackendTest(createFrontendActionFixtureBoard()), _boardId, { fullRender: true });
 
       await api().dispatchAction('row', 'export-row', { rowIdx: 0, rowId: 'ft-row-1' });
       await delay(220);
@@ -4076,13 +4094,21 @@
    *  unavailable or the board list hasn't rendered yet.
    */
   function assertWorkspaceViewIntegrity(label) {
+    // In workspace-shell autoRun mode the sidebar lives in the PARENT window.
+    // Try the current document first, fall back to parent.
     var doc = (typeof document !== 'undefined') ? document : null;
-    if (!doc) return;
-    var boardListEl = doc.getElementById('board-list');
+    var boardListEl = doc ? doc.getElementById('board-list') : null;
+    var targetWin = window;
+    if (!boardListEl) {
+      try {
+        if (window.parent && window.parent !== window && window.parent.document) {
+          boardListEl = window.parent.document.getElementById('board-list');
+          if (boardListEl) targetWin = window.parent;
+        }
+      } catch (_) {}
+    }
     if (!boardListEl) return;
-    // Need LexeraBoardList to read the current boards/workspaces snapshot the
-    // sidebar was rendered from. If it's not available we can't cross-check.
-    var BL = (typeof window !== 'undefined') ? window.LexeraBoardList : null;
+    var BL = targetWin.LexeraBoardList || null;
 
     // 1. No duplicate workspace section ids
     var wsHeaders = boardListEl.querySelectorAll('.tree-entry-workspace');
@@ -4125,13 +4151,12 @@
     // 4. Cross-check against source data if available: every rendered board id
     //    must exist in the current `boards` (or remoteBoards) array.
     if (BL && typeof BL.getBoardWorkspaceIds === 'function') {
-      var boardsArr = (typeof window !== 'undefined' && window.LexeraRuntime &&
-        typeof window.LexeraRuntime.getState === 'function')
-          ? (window.LexeraRuntime.getState('boards') || [])
+      var rt = targetWin.LexeraRuntime;
+      var boardsArr = (rt && typeof rt.getState === 'function')
+          ? (rt.getState('boards') || [])
           : [];
-      var remoteArr = (typeof window !== 'undefined' && window.LexeraRuntime &&
-        typeof window.LexeraRuntime.getState === 'function')
-          ? (window.LexeraRuntime.getState('remoteBoards') || [])
+      var remoteArr = (rt && typeof rt.getState === 'function')
+          ? (rt.getState('remoteBoards') || [])
           : [];
       var knownIds = {};
       for (var bi = 0; bi < boardsArr.length; bi++) if (boardsArr[bi] && boardsArr[bi].id) knownIds[boardsArr[bi].id] = true;
@@ -5083,17 +5108,12 @@
     try {
       var info = findTwoColumnsWithCards();
       var movedKid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
-      var srcCountBefore = getViewCardCount(info.srcCol.flatIdx);
-      var dstCountBefore = getViewCardCount(info.dstCol.flatIdx);
+      var snap = TestVerify.snapshot([info.srcCol, info.dstCol]);
 
-      await api().moveCard(
-        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCard(info.srcCol, info.dstCol);
       await delay(100);
 
-      assertEqual(getViewCardCount(info.srcCol.flatIdx), srcCountBefore - 1, 'source -1');
-      assertEqual(getViewCardCount(info.dstCol.flatIdx), dstCountBefore + 1, 'target +1');
+      TestVerify.cardMoved(snap, info.srcCol.flatIdx, info.dstCol.flatIdx, movedKid, 'view→view');
       assertEqual(getViewCardKids(info.dstCol.flatIdx)[0], movedKid, 'card is first in target');
       assertBoardIntegrity('after view→view move');
     } finally { await teardown(); }
@@ -5103,16 +5123,12 @@
     await setup();
     try {
       var info = findTwoColumnsWithCards();
-      var src = info.srcCol, dst = info.dstCol;
-      var movedKid = src.cards[0].kid || src.cards[0].id;
+      var movedKid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
 
-      await api().moveCard(
-        { boardId: _boardId, rowIndex: src.row, stackIndex: src.stack, colIndex: src.localCol, columnId: src.col.id, cardIndex: 0, cardId: src.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, rowIndex: dst.row, stackIndex: dst.stack, colIndex: dst.localCol, columnId: dst.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCardWorkspace(info.srcCol, info.dstCol);
       await delay(100);
 
-      assert(getViewCardKids(dst.flatIdx).indexOf(movedKid) !== -1, 'card in target');
+      assert(getViewCardKids(info.dstCol.flatIdx).indexOf(movedKid) !== -1, 'card in target');
       assertBoardIntegrity('after workspace→workspace move');
     } finally { await teardown(); }
   });

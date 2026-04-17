@@ -379,6 +379,11 @@ textarea {
   background: color-mix(in srgb, var(--warning, #e8a317) 22%, transparent);
   border-color: color-mix(in srgb, var(--warning, #e8a317) 62%, var(--border));
 }
+.connection-status-btn[data-connection-state="testing"] {
+  background: color-mix(in srgb, var(--info, #3b82f6) 16%, transparent);
+  border-color: color-mix(in srgb, var(--info, #3b82f6) 52%, var(--border));
+  color: inherit;
+}
 
 /* ── Wire existing button families to shared .btn base (tokens.css) ── */
 /* :where() keeps specificity at 0 so existing class rules always win. */

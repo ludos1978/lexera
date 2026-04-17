@@ -361,12 +361,14 @@ var LexeraPollingService = (function () {
     var titles = {
       none: 'No connection to backend',
       busy: 'Backend busy\u2026',
-      ready: 'Backend ready'
+      ready: 'Backend ready',
+      testing: 'Preparing tests\u2026'
     };
     var labels = {
       none: 'No Connection',
       busy: 'Busy\u2026',
-      ready: 'Ready'
+      ready: 'Ready',
+      testing: 'Testing\u2026'
     };
     var title = (titles[state] || titles.none) + '. Open backend settings';
     var label = labels[state] || labels.none;

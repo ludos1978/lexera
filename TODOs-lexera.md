@@ -17,9 +17,7 @@ Keep this file structured and clean:
 - [ ] Check the tests for duplicates and refactor opportunities. Especially the checks that run after each change. Make a verification library (`TestVerify`) that simplifies testing while staying close to the user experience. STARTED: `TestVerify` namespace with `afterMutation`, `moveCard`, `snapshot`, `cardMoved`, `makeCard`, `getColumnFromData`, etc. exists in frontendTests.js. Needs wider adoption across all 155 tests.
 - [ ] Create formal test groups. Suggested groups defined but not yet implemented as `describe()` blocks. See [todo-archive.md](todo-archive.md) for the full list.
 
-### Workspace View
-
-- [ ] Drag constraints: cards onto columns or between cards only. Columns into stacks or between columns. Stacks onto rows or between stacks. Rows into boards or between rows. (Before, between, and after.)
+- [x] the workspaces adds boards sometimes multiple times! especially in the frontend tests this happens a lot! — FIXED: `_buildDesiredEntries` deduplicates via seen-hash. `assertWorkspaceViewIntegrity` now checks parent window in autoRun mode. Every test teardown asserts no duplicate boards and that board-list count didn't grow.
 
 ### Board Rendering
 
@@ -34,9 +32,7 @@ Keep this file structured and clean:
 
 ### Large Board Performance
 
-- [ ] **Incremental card rendering** (high) — when only a card changes, update just that card's DOM element instead of rebuilding the entire board. `renderColumns` currently does `innerHTML = ''` for any structural change.
 - [ ] **Virtual scrolling for columns** (medium) — with 104 columns, most are off-screen. Only render columns in/near the viewport.
-- [ ] **Delta-based undo** (low) — instead of `structuredClone` of the full board, store only the diff (changed cards/columns). Would reduce undo memory and CPU by 90%+ for single-card edits.
 - [ ] **Web Worker for heavy operations** (low) — move markdown rendering, undo diffing, and board serialization off the main thread.
 
 ### Backend Stability
@@ -293,7 +289,6 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Keep CRDT-specific concerns behind a narrower interface so non-collaborative board flows do not depend on bridge internals.
 - [ ] Separate CRDT persistence, diff application, undo or redo, and board serialization into smaller bridge components.
 - [ ] Split parser and ID-generation utilities that should stay runtime-neutral from filesystem and include-resolution layers that are runtime-specific.
-- [~] Decide whether `storage/registry.rs` is future active functionality or dead code — VERIFIED IN USE: `mod registry` declared in `storage/mod.rs`, `registry::BoardRegistry` imported in `local.rs` (3+ usage sites). Not dead code.
 - [ ] Add smaller traits for search, board repository, revisioning, and collaboration persistence instead of routing everything through one concrete storage type.
 - [ ] Decide whether export, archive, and search remain in one crate or should later be split into focused libraries after the repository move stabilizes.
 - [ ] Move large inline Rust test blocks toward dedicated fixture-driven tests where that improves readability and cross-runtime comparison.
@@ -372,8 +367,6 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 ## JS Simplification
 
 ### Structure review findings
-- [x] Fix the dead early `BoardList.init()` block in `lexera-kanban/src/app.js` — FIXED: removed dead 77-line init block at old line 453 (BoardList was undefined at that point, real init is at ~2517).
-- [x] Fix `KeyboardNav` initialization order in `lexera-kanban/src/app.js` — FIXED: moved init from old line 530 (before assignment) to right after `var KeyboardNav = window.LexeraKeyboardNavigation` at ~1683. KeyboardNav was NEVER initialized before this fix.
 - [ ] Keep `app.js` as a composition root only: move compatibility wrappers, feature delegates, and fallback implementations back into their owning modules or explicit bridge modules.
 - [ ] Simplify the large `OrderHelpers` dependency/proxy/fallback block in `app.js`; make `LexeraOrderHelpers` expose the needed API directly and remove the app-level proxy fallback once coverage is in place.
 - [ ] Remove canvas fallback helpers from `app.js` after `canvasMode.js` / `canvasMath.js` / canvas feature modules own the behavior directly.
@@ -437,11 +430,9 @@ All items verified against the actual codebase by code inspection, file existenc
 
 ### Verified NOT done (with evidence)
 - [ ] Choose one package manager — both `package-lock.json` (npm) and `pnpm-lock.yaml` (pnpm) at root
-- [ ] Dead `BoardList.init()` at app.js:453 — runs before assignment at ~2517
-- [ ] `KeyboardNav.init()` at app.js:530 — runs before assignment at line 1756
 - [ ] Architecture document — no ARCHITECTURE.md at root
 - [ ] Root lint command — `test.sh` has no lint; no `lint` in `package.json`
-- [ ] ESLint / package boundary checks — no `.eslintrc*` at root
+- [ ] Package boundary checks — root `eslint.config.mjs` exists, but no boundary/import restriction rules found
 - [ ] Dependency map document — none
 - [ ] ADR (architecture decision records) — no `adr/` or `decisions/`
 - [ ] `sidebarTree.js` deleted — still at `sidebar/sidebarTree.js` (9.3KB)

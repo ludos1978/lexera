@@ -265,40 +265,59 @@
       } catch (_) {}
     }
 
-    // Poll for backend connectivity + board loaded instead of a fixed delay.
-    // delayMs is the maximum wait — tests start as soon as the app is ready.
-    var readyDeadline = Date.now() + delayMs;
+    // Single readiness poll that checks BOTH board-loaded AND
+    // LexeraFrontendTests availability before starting. This eliminates
+    // the separate 30s wait inside performAutoRun and the stacked delays.
+    var readyStart = Date.now();
+    var readyDeadline = readyStart + delayMs;
+    var lastStatus = '';
 
-    function isAppReady() {
-      // Check for a loaded board in any reachable window (parent or iframe).
-      // A board is loaded when LexeraTestApi (or the app's test API) reports
-      // an active board id and fullBoardData with rows.
-      function checkWindow(win) {
-        try {
-          if (!win) return false;
-          var api = win.LexeraTestApi || (win.LexeraFrontendTests && typeof win.LexeraFrontendTests._getApi === 'function' ? win.LexeraFrontendTests._getApi() : null);
-          if (api && typeof api.getActiveBoardId === 'function' && typeof api.getFullBoardData === 'function') {
-            var bid = api.getActiveBoardId();
-            var data = api.getFullBoardData();
-            if (bid && data && data.rows && data.rows.length > 0) return true;
-          }
-          // Fallback: check runtime state directly
-          var rt = win.LexeraRuntime;
-          if (rt && typeof rt.getState === 'function') {
-            var boards = rt.getState('boards');
-            if (Array.isArray(boards) && boards.length > 0) return true;
-          }
-        } catch (_) {}
-        return false;
-      }
-      if (checkWindow(window)) return true;
+    function checkBoardReady(win) {
       try {
-        var iframes = document.querySelectorAll('iframe');
-        for (var i = 0; i < iframes.length; i++) {
-          try { if (checkWindow(iframes[i].contentWindow)) return true; } catch (_) {}
+        if (!win) return false;
+        var api = win.LexeraTestApi || (win.LexeraFrontendTests && typeof win.LexeraFrontendTests._getApi === 'function' ? win.LexeraFrontendTests._getApi() : null);
+        if (api && typeof api.getActiveBoardId === 'function' && typeof api.getFullBoardData === 'function') {
+          var bid = api.getActiveBoardId();
+          var data = api.getFullBoardData();
+          if (!bid || !data || !data.rows || data.rows.length === 0) return false;
+          // Data is loaded — also verify the DOM has rendered at least one column.
+          // Without this, tests can start before renderColumns() finishes the
+          // initial paint and assertions on DOM counts fail.
+          var doc = win.document;
+          if (doc) {
+            var container = doc.getElementById('columns-container') || doc.querySelector('.columns-container');
+            if (container && container.querySelectorAll('.column').length > 0) return true;
+          }
+          return false;
+        }
+        var rt = win.LexeraRuntime;
+        if (rt && typeof rt.getState === 'function') {
+          var boards = rt.getState('boards');
+          if (Array.isArray(boards) && boards.length > 0) return true;
         }
       } catch (_) {}
       return false;
+    }
+
+    function isFullyReady() {
+      var boardReady = false;
+      var testsReady = false;
+      if (checkBoardReady(window)) boardReady = true;
+      try {
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+          try {
+            if (!boardReady && checkBoardReady(iframes[i].contentWindow)) boardReady = true;
+          } catch (_) {}
+        }
+      } catch (_) {}
+      testsReady = !!findLexeraFrontendTests();
+      var status = (boardReady ? 'board' : '-') + '/' + (testsReady ? 'tests' : '-');
+      if (status !== lastStatus) {
+        console.log('[auto-run] readiness: ' + status + ' (' + (Date.now() - readyStart) + 'ms)');
+        lastStatus = status;
+      }
+      return boardReady && testsReady;
     }
 
     function launchTests() {
@@ -314,21 +333,55 @@
       });
     }
 
+    function setTestingStatus() {
+      try {
+        function trySetInWindow(win) {
+          try {
+            if (!win) return;
+            var ps = win.LexeraPollingService;
+            if (ps && typeof ps.setConnected === 'function') { ps.setConnected('testing'); return; }
+            var iframes = win.document ? win.document.querySelectorAll('iframe') : [];
+            for (var i = 0; i < iframes.length; i++) {
+              try {
+                var ips = iframes[i].contentWindow && iframes[i].contentWindow.LexeraPollingService;
+                if (ips && typeof ips.setConnected === 'function') { ips.setConnected('testing'); return; }
+              } catch (_) {}
+            }
+          } catch (_) {}
+        }
+        trySetInWindow(window);
+      } catch (_) {}
+    }
+
+    var testingStatusSet = false;
+    var readyConfirmedAt = 0;
     function pollReady() {
-      if (isAppReady()) {
-        console.log('[auto-run] app ready, starting tests (' + (Date.now() - (readyDeadline - delayMs)) + 'ms elapsed)');
-        launchTests();
+      if (!testingStatusSet) { setTestingStatus(); testingStatusSet = true; }
+      if (isFullyReady()) {
+        if (!readyConfirmedAt) {
+          readyConfirmedAt = Date.now();
+          console.log('[auto-run] readiness detected, settling (' + (readyConfirmedAt - readyStart) + 'ms)');
+        }
+        // Wait 500ms after first readiness detection so the initial
+        // board render (which may have hundreds of columns) can finish.
+        if (Date.now() - readyConfirmedAt >= 500) {
+          console.log('[auto-run] fully ready, starting tests (' + (Date.now() - readyStart) + 'ms)');
+          launchTests();
+          return;
+        }
+        setTimeout(pollReady, 100);
         return;
       }
+      readyConfirmedAt = 0;
       if (Date.now() >= readyDeadline) {
         console.warn('[auto-run] max wait (' + delayMs + 'ms) reached, starting tests anyway');
         launchTests();
         return;
       }
-      setTimeout(pollReady, 300);
+      setTimeout(pollReady, 250);
     }
 
-    setTimeout(pollReady, 500);
+    pollReady();
   }
 
   function findLexeraFrontendTests() {
@@ -356,18 +409,21 @@
   }
 
   async function performAutoRun(outputPath, quitAfter, testFilter) {
-    // Wait up to 30s for LexeraFrontendTests to become available
-    // (board iframe may still be loading)
-    var LFT = null;
-    var waitStart = Date.now();
-    while (Date.now() - waitStart < 30000) {
-      LFT = findLexeraFrontendTests();
-      if (LFT && typeof LFT.runAllWithUI === 'function') break;
-      LFT = null;
-      await new Promise(function (res) { setTimeout(res, 500); });
+    // The readiness poll already confirmed LexeraFrontendTests exists.
+    // Re-resolve it here in case the iframe reference changed.
+    var LFT = findLexeraFrontendTests();
+    if (!LFT || typeof LFT.runAllWithUI !== 'function') {
+      // Brief retry — iframe may have reloaded between readiness check and here
+      var waitStart = Date.now();
+      while (Date.now() - waitStart < 5000) {
+        LFT = findLexeraFrontendTests();
+        if (LFT && typeof LFT.runAllWithUI === 'function') break;
+        LFT = null;
+        await new Promise(function (res) { setTimeout(res, 300); });
+      }
     }
     if (!LFT || typeof LFT.runAllWithUI !== 'function') {
-      var msg = '[auto-run] LexeraFrontendTests not available after 30s at ' + new Date().toISOString();
+      var msg = '[auto-run] LexeraFrontendTests not available at ' + new Date().toISOString();
       console.error(msg);
       if (outputPath) {
         try { await writeTestOutput(outputPath, msg); } catch (err) { console.error('[auto-run] write failed:', err); }
@@ -459,6 +515,7 @@
     }
   }
 
-  // Start polling 2s after load
-  setTimeout(tryFetchConfig, 2000);
+  // Start checking for config immediately — Tauri command is available
+  // as soon as the webview loads. The old 2s delay was unnecessary.
+  setTimeout(tryFetchConfig, 200);
 })();

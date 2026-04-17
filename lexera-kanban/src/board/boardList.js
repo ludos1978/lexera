@@ -2605,6 +2605,25 @@ var LexeraBoardList = (function () {
       ? boards
       : boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(workspaceViewId) >= 0; });
     var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; }) || filteredBoards;
+
+    // Detect upstream duplicates in the boards array so we can trace
+    // the source instead of silently deduplicating.
+    if (orderedBoards.length > 0) {
+      var _dupCheck = {};
+      var _dupCount = 0;
+      for (var _di = 0; _di < orderedBoards.length; _di++) {
+        var _did = orderedBoards[_di] && orderedBoards[_di].id;
+        if (_did && _dupCheck[_did]) _dupCount++;
+        if (_did) _dupCheck[_did] = true;
+      }
+      if (_dupCount > 0) {
+        logFrontendIssue('warn', 'boardList.buildEntries', 'Upstream boards array contains ' + _dupCount + ' duplicate ID(s) out of ' + orderedBoards.length + ' entries. Deduplicating.', {
+          ids: orderedBoards.map(function (b) { return b && b.id; }),
+          stack: new Error().stack
+        });
+      }
+    }
+
     var expandedIds = getSidebarExpandedBoards();
     var entries = [];
 
@@ -2818,21 +2837,60 @@ var LexeraBoardList = (function () {
         } else {
           node = _createWsHeaderEl(entry);
         }
-        // Reconcile boards inside the workspace's .tree-children container
+        // Reconcile boards inside the workspace's .tree-children container.
+        // Build a LOCAL key→node map from wsChildContainer so nested board
+        // nodes are found and reused. The global existingByKey only indexes
+        // top-level boardListEl children, so workspace-nested boards were
+        // never matched and got re-created on every re-render.
         var wsChildContainer = node.querySelector('.tree-children');
         if (wsChildContainer) {
           if (entry.expanded) { wsChildContainer.classList.add('expanded'); } else { wsChildContainer.classList.remove('expanded'); }
           var wsBoards = entry.boards || [];
-          // Remove stale children
+          var wsExistingByKey = {};
+          // Build lookup AND remove duplicates + stale nodes in one pass.
+          // Keep the FIRST node for each key that matches a desired entry;
+          // remove everything else (stale keys AND duplicate keys).
+          var wsDesiredKeys = {};
+          for (var wdi = 0; wdi < wsBoards.length; wdi++) wsDesiredKeys[wsBoards[wdi].key] = true;
           for (var wri = wsChildContainer.children.length - 1; wri >= 0; wri--) {
             var wck = _nodeKey(wsChildContainer.children[wri]);
-            var found = false;
-            for (var wfi = 0; wfi < wsBoards.length; wfi++) { if (wsBoards[wfi].key === wck) { found = true; break; } }
-            if (!found) wsChildContainer.removeChild(wsChildContainer.children[wri]);
+            if (!wck || !wsDesiredKeys[wck] || wsExistingByKey[wck]) {
+              wsChildContainer.removeChild(wsChildContainer.children[wri]);
+            } else {
+              wsExistingByKey[wck] = wsChildContainer.children[wri];
+            }
           }
           if (entry.expanded) {
             for (var wbi = 0; wbi < wsBoards.length; wbi++) {
-              _reconcileBoardEntry(wsBoards[wbi], wbi, wsChildContainer, globalBoardIdx++);
+              var wbEntry = wsBoards[wbi];
+              var wbBoard = wbEntry.board;
+              var wbIsExpanded = expandedIds.indexOf(wbBoard.id) !== -1;
+              var wbIsActive = wbBoard.id === activeBoardId;
+              var wbRows = getBoardHierarchyRows(wbBoard.id) || [];
+              var wbTotalCards = wbRows.length > 0
+                ? countCardsInRows(wbRows)
+                : wbBoard.columns.reduce(function (sum, c) { return sum + (c.cardCount || 0); }, 0);
+              wbEntry.index = globalBoardIdx;
+              var wbExisting = wsExistingByKey[wbEntry.key];
+              var wbNode;
+              if (wbExisting) {
+                var wbItem = wbExisting.querySelector('.board-item');
+                if (wbItem) _updateBoardItemContent(wbItem, wbBoard, globalBoardIdx, wbIsExpanded, wbIsActive, wbRows, wbTotalCards, true, SidebarSync);
+                var wbTreeEl = wbExisting.querySelector('.board-item-tree');
+                if (wbTreeEl) {
+                  if (wbIsExpanded) { wbTreeEl.classList.add('expanded'); } else { wbTreeEl.classList.remove('expanded'); }
+                  if (wbRows.length > 0) { _renderBoardTree(wbTreeEl, wbBoard.id, wbRows, tv); } else { wbTreeEl.innerHTML = ''; }
+                }
+                wbNode = wbExisting;
+              } else {
+                wbNode = _createBoardWrapperEl(wbBoard, globalBoardIdx, wbIsExpanded, wbIsActive, wbRows, wbTotalCards, true, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell);
+              }
+              if (wbNode) {
+                wbNode.setAttribute('data-list-key', wbEntry.key);
+                var wbAtPos = wsChildContainer.children[wbi];
+                if (wbAtPos !== wbNode) wsChildContainer.insertBefore(wbNode, wbAtPos || null);
+              }
+              globalBoardIdx++;
             }
           } else {
             wsChildContainer.innerHTML = '';
