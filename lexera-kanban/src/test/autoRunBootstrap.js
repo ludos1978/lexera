@@ -300,18 +300,16 @@
     }
 
     function isFullyReady() {
-      var boardReady = false;
-      var testsReady = false;
-      if (checkBoardReady(window)) boardReady = true;
-      try {
-        var iframes = document.querySelectorAll('iframe');
-        for (var i = 0; i < iframes.length; i++) {
-          try {
-            if (!boardReady && checkBoardReady(iframes[i].contentWindow)) boardReady = true;
-          } catch (_) {}
-        }
-      } catch (_) {}
-      testsReady = !!findLexeraFrontendTests();
+      var boardReady = checkBoardReady(window);
+      if (!boardReady) {
+        try {
+          var iframes = document.querySelectorAll('iframe');
+          for (var i = 0; i < iframes.length && !boardReady; i++) {
+            try { boardReady = checkBoardReady(iframes[i].contentWindow); } catch (_) {}
+          }
+        } catch (_) {}
+      }
+      var testsReady = !!findLexeraFrontendTests();
       var status = (boardReady ? 'board' : '-') + '/' + (testsReady ? 'tests' : '-');
       if (status !== lastStatus) {
         console.log('[auto-run] readiness: ' + status + ' (' + (Date.now() - readyStart) + 'ms)');
@@ -335,21 +333,15 @@
 
     function setTestingStatus() {
       try {
-        function trySetInWindow(win) {
+        var ps = window.LexeraPollingService;
+        if (ps && typeof ps.setConnected === 'function') { ps.setConnected('testing'); return; }
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
           try {
-            if (!win) return;
-            var ps = win.LexeraPollingService;
-            if (ps && typeof ps.setConnected === 'function') { ps.setConnected('testing'); return; }
-            var iframes = win.document ? win.document.querySelectorAll('iframe') : [];
-            for (var i = 0; i < iframes.length; i++) {
-              try {
-                var ips = iframes[i].contentWindow && iframes[i].contentWindow.LexeraPollingService;
-                if (ips && typeof ips.setConnected === 'function') { ips.setConnected('testing'); return; }
-              } catch (_) {}
-            }
+            var ips = iframes[i].contentWindow && iframes[i].contentWindow.LexeraPollingService;
+            if (ips && typeof ips.setConnected === 'function') { ips.setConnected('testing'); return; }
           } catch (_) {}
         }
-        trySetInWindow(window);
       } catch (_) {}
     }
 

@@ -9244,7 +9244,7 @@ var LexeraDashboard = (function () {
               // But we already spliced — so reconstruct by walking the
               // source card's old siblings. Cheaper: just re-derive from
               // the current DOM directly below via stable card id.
-              _srcVisibleIdx = 0; // placeholder; we'll bail via fallback
+              _srcVisibleIdx = -1;
             }
 
             // Target card VISIBLE index AFTER the move: the card now

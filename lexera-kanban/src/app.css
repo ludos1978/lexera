@@ -1900,6 +1900,20 @@ textarea {
   opacity: 1;
 }
 
+/* Workspace-child board row: burger menu always available, replacing the
+   old × button. Override the data-sidebar-tree-menus gate that hides
+   .tree-menu-btn in the board-list — inherits opacity + hover from the
+   shared .tree-menu-btn rules above. */
+:root .board-list .board-item .board-item-ws-menu.tree-menu-btn {
+  display: inline-flex !important;
+  user-select: none;
+  -webkit-user-drag: none;
+  touch-action: manipulation;
+}
+.board-list .board-item .board-item-ws-menu.tree-menu-btn.hidden {
+  display: none !important;
+}
+
 .board-list .tree-grip.entity-drag-icon {
   opacity: 0;
   border-color: transparent;

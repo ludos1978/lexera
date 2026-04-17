@@ -2693,6 +2693,7 @@
   }
 
   async function setDashboardStateForTest(query, scope, skipRefresh) {
+    if (_runState && _runState.autoRun) return;
     var helpers = getDashboardHelpers();
     if (!helpers) return;
     if (typeof helpers.setDashboardScope === 'function' && scope) helpers.setDashboardScope(scope);
@@ -4152,12 +4153,9 @@
     //    must exist in the current `boards` (or remoteBoards) array.
     if (BL && typeof BL.getBoardWorkspaceIds === 'function') {
       var rt = targetWin.LexeraRuntime;
-      var boardsArr = (rt && typeof rt.getState === 'function')
-          ? (rt.getState('boards') || [])
-          : [];
-      var remoteArr = (rt && typeof rt.getState === 'function')
-          ? (rt.getState('remoteBoards') || [])
-          : [];
+      var hasState = rt && typeof rt.getState === 'function';
+      var boardsArr = hasState ? (rt.getState('boards') || []) : [];
+      var remoteArr = hasState ? (rt.getState('remoteBoards') || []) : [];
       var knownIds = {};
       for (var bi = 0; bi < boardsArr.length; bi++) if (boardsArr[bi] && boardsArr[bi].id) knownIds[boardsArr[bi].id] = true;
       for (var ri = 0; ri < remoteArr.length; ri++) if (remoteArr[ri] && remoteArr[ri].id) knownIds[remoteArr[ri].id] = true;

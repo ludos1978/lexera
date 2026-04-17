@@ -1309,6 +1309,9 @@ var LexeraBoardList = (function () {
     if (sourceTarget.closest('.board-item-remove') && boardRow) {
       return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-remove');
     }
+    if (sourceTarget.closest('.board-item-ws-menu') && boardRow) {
+      return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-ws-menu');
+    }
     if (sourceTarget.closest('.board-item-toggle') && boardRow) {
       return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-toggle');
     }
@@ -1532,6 +1535,37 @@ var LexeraBoardList = (function () {
 
   // ─── Remove board ─────────────────────────────────────────────────
 
+  async function removeBoardFromWorkspace(boardId, wsId) {
+    if (!boardId || !wsId || wsId === '__unassigned__') return false;
+    var boards = _dep('boards') || [];
+    var board = null;
+    for (var i = 0; i < boards.length; i++) {
+      if (String(boards[i].id) === String(boardId)) { board = boards[i]; break; }
+    }
+    if (!board) return false;
+    var current = getBoardWorkspaceIds(board).slice();
+    var next = current.filter(function (id) { return String(id) !== String(wsId); });
+    if (next.length === current.length) return false;
+
+    var LexeraApi = _dep('LexeraApi');
+    try {
+      await LexeraApi.request('/config/boards/' + encodeURIComponent(boardId) + '/workspaces', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_ids: next })
+      });
+    } catch (err) {
+      lexeraLog('error', '[sidebar.remove-from-ws] Backend error: ' + (err && err.message ? err.message : err));
+      _callDep('showNotification', 'Failed to remove board from workspace');
+      _callDep('poll');
+      return false;
+    }
+    board.workspace_ids = next;
+    renderBoardList();
+    _callDep('poll');
+    return true;
+  }
+
   async function removeBoardFromSidebar(boardId, boardName) {
     var cleanupOk = await _callDep('cleanupBoardBeforeSidebarClose', boardId);
     if (!cleanupOk) return false;
@@ -1711,11 +1745,14 @@ var LexeraBoardList = (function () {
   }
 
   /** Create a board wrapper element with all sub-elements and event listeners. */
-  function _createBoardWrapperEl(board, boardIndex, isExpanded, isActive, rows, totalCards, isWorkspaceChild, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell) {
+  function _createBoardWrapperEl(board, boardIndex, isExpanded, isActive, rows, totalCards, isWorkspaceChild, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell, workspaceChildWsId) {
     var wrapper = document.createElement('div');
     wrapper.className = 'board-item-wrapper tree-view-host tree-view-host-compact' + (isWorkspaceChild ? ' board-item-wrapper-workspace-child' : '');
     wrapper.setAttribute('data-board-id', board.id);
     if (isWorkspaceChild) wrapper.setAttribute('data-workspace-child', 'true');
+    if (workspaceChildWsId && workspaceChildWsId !== '__unassigned__') {
+      wrapper.setAttribute('data-workspace-id', workspaceChildWsId);
+    }
 
     var el = document.createElement('div');
     el.className = 'board-item tree-node tree-board' + (isActive ? ' active' : '');
@@ -1725,7 +1762,7 @@ var LexeraBoardList = (function () {
     el.setAttribute('data-tree-structural-role', 'group');
     el.setAttribute('data-tree-node-role', rows.length > 0 ? 'branch' : 'leaf');
 
-    _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, isWorkspaceChild, SidebarSync);
+    _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, isWorkspaceChild, SidebarSync, workspaceChildWsId);
 
     // Tree sub-list
     var tree = document.createElement('div');
@@ -1747,7 +1784,7 @@ var LexeraBoardList = (function () {
   }
 
   /** Update the board-item row content (title, count, presence, active, expand state). */
-  function _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, isWorkspaceChild, SidebarSync) {
+  function _updateBoardItemContent(el, board, boardIndex, isExpanded, isActive, rows, totalCards, isWorkspaceChild, SidebarSync, workspaceChildWsId) {
     var boardName = board.title || _callDep('getDisplayNameFromPath', board.filePath || '') || 'Untitled';
     var hasContent = rows.length > 0;
     var displayTitle = _callDep('escapeHtml', boardName);
@@ -1757,7 +1794,11 @@ var LexeraBoardList = (function () {
       (presenceCount > 0 ? (' title="' + presenceCount + ' user(s) online"') : '') + '>' +
       (presenceCount > 0 ? presenceCount : '') +
       '</span>';
-    var removeButton = '<span class="tree-meta-action board-item-remove' + ((SidebarSync && SidebarSync.isHierarchyLocked()) ? ' hidden' : '') + '" title="Remove board">\u00D7</span>';
+    var showWsBurger = !!(workspaceChildWsId && workspaceChildWsId !== '__unassigned__');
+    var locked = SidebarSync && SidebarSync.isHierarchyLocked();
+    var actionButton = showWsBurger
+      ? '<button class="tree-meta-action tree-menu-btn burger-menu-btn board-item-ws-menu' + (locked ? ' hidden' : '') + '" type="button" draggable="false" title="Workspace actions" aria-label="Workspace actions" aria-haspopup="menu"><span class="burger-lines" aria-hidden="true"></span></button>'
+      : '<span class="tree-meta-action board-item-remove' + (locked ? ' hidden' : '') + '" title="Remove board">\u00D7</span>';
     var boardGrip = '<span class="tree-grip entity-drag-icon entity-drag-icon-board" title="Drag to reorder">' +
       _callDep('getCreationEntityDragIconSvg', 'board') +
       '</span>';
@@ -1773,6 +1814,11 @@ var LexeraBoardList = (function () {
         wrapper.setAttribute('data-workspace-child', 'true');
       } else {
         wrapper.removeAttribute('data-workspace-child');
+      }
+      if (showWsBurger) {
+        wrapper.setAttribute('data-workspace-id', workspaceChildWsId);
+      } else {
+        wrapper.removeAttribute('data-workspace-id');
       }
     }
 
@@ -1790,7 +1836,7 @@ var LexeraBoardList = (function () {
       '<span class="tree-meta board-item-meta">' +
         presenceBadge +
         '<span class="tree-count board-item-count">' + totalCards + '</span>' +
-        removeButton +
+        actionButton +
         boardGrip +
       '</span>';
   }
@@ -2539,9 +2585,58 @@ var LexeraBoardList = (function () {
       }
 
       var boardRow = wrapperEl.querySelector('.board-item');
+
+      // Stop mousedown on the burger from reaching the sidebar pointer-drag
+      // system so a click doesn't briefly register as a drag attempt.
+      boardRow.addEventListener('mousedown', function (e) {
+        if (e.target.closest('.board-item-ws-menu')) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      }, true);
+
+      function showBoardActionsMenu(x, y) {
+        var wsId = wrapperEl.getAttribute('data-workspace-id') || '';
+        var canRemoveFromWs = !!(wsId && wsId !== '__unassigned__');
+        var items = [
+          { id: 'open-tab', label: 'Open / Focus Tab' },
+          { id: 'detach', label: 'Open in Detached Window' },
+          { separator: true },
+          { id: 'backend-settings', label: 'Backend Settings' },
+          { separator: true },
+          { id: 'reveal', label: 'Reveal in Finder' }
+        ];
+        if (canRemoveFromWs) {
+          items.push({ separator: true });
+          items.push({ id: 'remove-from-ws', label: 'Remove board from workspace' });
+        }
+        _callDep('showNativeMenu', items, x, y).then(async function (action) {
+          if (action === 'open-tab') {
+            _callDep('selectBoard', boardId);
+          } else if (action === 'detach') {
+            if (_dep('hasTauri')) _callDep('tauriInvoke', 'open_new_window', { boardId: boardId, profile: 'detachedBoard' });
+          } else if (action === 'backend-settings') {
+            _callDep('openConnectionWindow');
+          } else if (action === 'reveal' && boardFilePath) {
+            _callDep('showInFinder', boardFilePath);
+          } else if (action === 'remove-from-ws' && canRemoveFromWs) {
+            await removeBoardFromWorkspace(boardId, wsId);
+          }
+        });
+      }
+
       boardRow.addEventListener('click', async function (e) {
         // Toggle click is handled by the delegation handler above — skip here
         if (e.target.closest('.board-item-toggle')) return;
+        // Workspace burger menu click — open the per-workspace actions menu
+        var wsMenuBtn = e.target.closest('.board-item-ws-menu');
+        if (wsMenuBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          var rect = wsMenuBtn.getBoundingClientRect();
+          showBoardActionsMenu(rect.right, rect.bottom);
+          return;
+        }
         // Remove button click — handle inline via delegation
         if (_callDep('targetClosest', e.target, '.board-item-remove')) {
           e.preventDefault();
@@ -2557,30 +2652,13 @@ var LexeraBoardList = (function () {
       boardRow.addEventListener('contextmenu', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        var items = [
-          { id: 'open-tab', label: 'Open / Focus Tab' },
-          { id: 'detach', label: 'Open in Detached Window' },
-          { separator: true },
-          { id: 'backend-settings', label: 'Backend Settings' },
-          { separator: true },
-          { id: 'reveal', label: 'Reveal in Finder' }
-        ];
-        _callDep('showNativeMenu', items, e.clientX, e.clientY).then(async function (action) {
-          if (action === 'open-tab') {
-            _callDep('selectBoard', boardId);
-          } else if (action === 'detach') {
-            if (_dep('hasTauri')) _callDep('tauriInvoke', 'open_new_window', { boardId: boardId, profile: 'detachedBoard' });
-          } else if (action === 'backend-settings') {
-            _callDep('openConnectionWindow');
-          } else if (action === 'reveal' && boardFilePath) {
-            _callDep('showInFinder', boardFilePath);
-          }
-        });
+        showBoardActionsMenu(e.clientX, e.clientY);
       });
       boardRow.addEventListener('dblclick', function (e) {
         if (!e.target.closest('.board-item-title') ||
             e.target.closest('.board-item-toggle') ||
             e.target.closest('.board-item-remove') ||
+            e.target.closest('.board-item-ws-menu') ||
             e.target.closest('.tree-grip')) {
           return;
         }
@@ -2660,7 +2738,7 @@ var LexeraBoardList = (function () {
         var wsExpanded = expandedIds.indexOf('ws:' + ws.id) !== -1;
         var wsBoardEntries = [];
         for (var wbi = 0; wbi < wsBoards.length; wbi++) {
-          wsBoardEntries.push({ key: 'board:' + ws.id + ':' + wsBoards[wbi].id, type: 'board', board: wsBoards[wbi], index: 0, workspaceChild: true });
+          wsBoardEntries.push({ key: 'board:' + ws.id + ':' + wsBoards[wbi].id, type: 'board', board: wsBoards[wbi], index: 0, workspaceChild: true, workspaceId: ws.id });
         }
         entries.push({ key: 'ws:' + ws.id, type: 'ws_header', ws: ws, count: wsBoards.length, expanded: wsExpanded, unassigned: false, boards: wsBoardEntries });
       }
@@ -2682,13 +2760,16 @@ var LexeraBoardList = (function () {
     } else {
       // Simple flat list or single-workspace view. Dedupe by id so duplicate
       // entries in the upstream `boards` array never produce duplicate sidebar rows.
+      // In single-workspace view (workspaceViewId set), carry the workspaceId so the
+      // per-board action renders as the "Remove from workspace" burger instead of ×.
       var flatSeen = {};
+      var flatWsId = isAllView ? '' : String(workspaceViewId || '');
       for (var si = 0; si < orderedBoards.length; si++) {
         var fb = orderedBoards[si];
         if (!fb || !fb.id) continue;
         if (flatSeen[fb.id]) continue;
         flatSeen[fb.id] = true;
-        entries.push({ key: 'board:' + fb.id, type: 'board', board: fb, index: entries.length });
+        entries.push({ key: 'board:' + fb.id, type: 'board', board: fb, index: entries.length, workspaceId: flatWsId });
       }
     }
 
@@ -2781,22 +2862,26 @@ var LexeraBoardList = (function () {
       }
     }
 
-    // Helper: reconcile a single board entry into a target container
-    function _reconcileBoardEntry(bEntry, bIdx, targetEl, boardIdx) {
+    // Helper: reconcile a single board entry into a target container.
+    // Optional localKeyMap overrides the global existingByKey — used by
+    // workspace-section reconciliation where nested board nodes live in
+    // a different container than the top-level boardListEl.
+    function _reconcileBoardEntry(bEntry, bIdx, targetEl, boardIdx, localKeyMap) {
       var board = bEntry.board;
       var isExpanded = expandedIds.indexOf(board.id) !== -1;
       var isActive = board.id === activeBoardId;
       var rows = getBoardHierarchyRows(board.id) || [];
       var totalCards = rows.length > 0
         ? countCardsInRows(rows)
-        : board.columns.reduce(function (sum, c) { return sum + c.cardCount; }, 0);
+        : board.columns.reduce(function (sum, c) { return sum + (c.cardCount || 0); }, 0);
       bEntry.index = boardIdx;
-      var existingBoard = existingByKey[bEntry.key];
+      var existingBoard = (localKeyMap || existingByKey)[bEntry.key];
       var boardNode;
+      var wsChildWorkspaceId = bEntry.workspaceId || '';
       if (existingBoard) {
         var boardItem = existingBoard.querySelector('.board-item');
         if (boardItem) {
-          _updateBoardItemContent(boardItem, board, boardIdx, isExpanded, isActive, rows, totalCards, !!bEntry.workspaceChild, SidebarSync);
+          _updateBoardItemContent(boardItem, board, boardIdx, isExpanded, isActive, rows, totalCards, !!bEntry.workspaceChild, SidebarSync, wsChildWorkspaceId);
         }
         var treeEl = existingBoard.querySelector('.board-item-tree');
         if (treeEl) {
@@ -2809,7 +2894,7 @@ var LexeraBoardList = (function () {
         }
         boardNode = existingBoard;
       } else {
-        boardNode = _createBoardWrapperEl(board, boardIdx, isExpanded, isActive, rows, totalCards, !!bEntry.workspaceChild, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell);
+        boardNode = _createBoardWrapperEl(board, boardIdx, isExpanded, isActive, rows, totalCards, !!bEntry.workspaceChild, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell, wsChildWorkspaceId);
       }
       if (boardNode) {
         boardNode.setAttribute('data-list-key', bEntry.key);
@@ -2862,35 +2947,7 @@ var LexeraBoardList = (function () {
           }
           if (entry.expanded) {
             for (var wbi = 0; wbi < wsBoards.length; wbi++) {
-              var wbEntry = wsBoards[wbi];
-              var wbBoard = wbEntry.board;
-              var wbIsExpanded = expandedIds.indexOf(wbBoard.id) !== -1;
-              var wbIsActive = wbBoard.id === activeBoardId;
-              var wbRows = getBoardHierarchyRows(wbBoard.id) || [];
-              var wbTotalCards = wbRows.length > 0
-                ? countCardsInRows(wbRows)
-                : wbBoard.columns.reduce(function (sum, c) { return sum + (c.cardCount || 0); }, 0);
-              wbEntry.index = globalBoardIdx;
-              var wbExisting = wsExistingByKey[wbEntry.key];
-              var wbNode;
-              if (wbExisting) {
-                var wbItem = wbExisting.querySelector('.board-item');
-                if (wbItem) _updateBoardItemContent(wbItem, wbBoard, globalBoardIdx, wbIsExpanded, wbIsActive, wbRows, wbTotalCards, true, SidebarSync);
-                var wbTreeEl = wbExisting.querySelector('.board-item-tree');
-                if (wbTreeEl) {
-                  if (wbIsExpanded) { wbTreeEl.classList.add('expanded'); } else { wbTreeEl.classList.remove('expanded'); }
-                  if (wbRows.length > 0) { _renderBoardTree(wbTreeEl, wbBoard.id, wbRows, tv); } else { wbTreeEl.innerHTML = ''; }
-                }
-                wbNode = wbExisting;
-              } else {
-                wbNode = _createBoardWrapperEl(wbBoard, globalBoardIdx, wbIsExpanded, wbIsActive, wbRows, wbTotalCards, true, tv, SidebarSync, workspaceShellEnabled, WorkspaceShell);
-              }
-              if (wbNode) {
-                wbNode.setAttribute('data-list-key', wbEntry.key);
-                var wbAtPos = wsChildContainer.children[wbi];
-                if (wbAtPos !== wbNode) wsChildContainer.insertBefore(wbNode, wbAtPos || null);
-              }
-              globalBoardIdx++;
+              _reconcileBoardEntry(wsBoards[wbi], wbi, wsChildContainer, globalBoardIdx++, wsExistingByKey);
             }
           } else {
             wsChildContainer.innerHTML = '';

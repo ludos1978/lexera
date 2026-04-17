@@ -12,6 +12,10 @@ Keep this file structured and clean:
 
 ## Open Tasks
 
+### Unsorted (leave this header here!)
+
+- [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.
+
 ### Testing & Quality
 
 - [ ] Check the tests for duplicates and refactor opportunities. Especially the checks that run after each change. Make a verification library (`TestVerify`) that simplifies testing while staying close to the user experience. STARTED: `TestVerify` namespace with `afterMutation`, `moveCard`, `snapshot`, `cardMoved`, `makeCard`, `getColumnFromData`, etc. exists in frontendTests.js. Needs wider adoption across all 155 tests.

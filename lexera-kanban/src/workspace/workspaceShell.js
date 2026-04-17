@@ -2878,12 +2878,8 @@
         tab.innerHTML =
           '<span class="ws-view-tab-label">' + escapeHtml(item.label) + '</span>' +
           (opts.showMeta && item.meta ? '<span class="ws-view-tab-meta">' + escapeHtml(item.meta) + '</span>' : '') +
-          (opts.closeAction === 'close-tab'
-            ? '<button class="ws-view-tab-menu burger-menu-btn" type="button" data-ws-action="tab-menu" ' +
-                escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Options">' +
-                '<span class="burger-lines" aria-hidden="true"></span></button>'
-            : '<button class="ws-view-tab-close" type="button" data-ws-action="' + escapeHtml(opts.closeAction) + '" ' +
-                escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Close">\u00d7</button>');
+          '<button class="ws-view-tab-close" type="button" data-ws-action="' + escapeHtml(opts.closeAction) + '" ' +
+            escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Close">\u00d7</button>';
         tabs.appendChild(tab);
       }
       el.appendChild(tabs);
@@ -2920,28 +2916,15 @@
       el.appendChild(fold);
     }
 
-    // Header-level close/menu button (always visible)
-    if (opts.closeAction === 'close-tab') {
-      // Board tabs: burger menu with options + close
-      var menuBtn = document.createElement('button');
-      menuBtn.className = 'ws-view-menu burger-menu-btn';
-      menuBtn.type = 'button';
-      menuBtn.title = 'Options';
-      menuBtn.setAttribute('data-ws-action', 'tab-menu');
-      menuBtn.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
-      menuBtn.innerHTML = '<span class="burger-lines" aria-hidden="true"></span>';
-      el.appendChild(menuBtn);
-    } else {
-      // Panel tabs: keep close button
-      var close = document.createElement('button');
-      close.className = 'ws-view-close';
-      close.type = 'button';
-      close.title = 'Close';
-      close.setAttribute('data-ws-action', opts.closeAction);
-      close.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
-      close.textContent = '\u00d7';
-      el.appendChild(close);
-    }
+    // Header-level close button (always visible)
+    var close = document.createElement('button');
+    close.className = 'ws-view-close';
+    close.type = 'button';
+    close.title = 'Close';
+    close.setAttribute('data-ws-action', opts.closeAction);
+    close.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
+    close.textContent = '\u00d7';
+    el.appendChild(close);
 
     return el;
   }
