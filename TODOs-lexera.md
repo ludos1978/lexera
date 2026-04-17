@@ -1,76 +1,58 @@
-## General Task, do not remove
-work on the [TODOs-lexera.md](TODOs-lexera.md) work the the tasks, then use the frontend tests (run-lexera-test.sh) and fix all the problems you encounter, if the performance drops or is low work on the performance
-use run-lexera-tests.sh to run the frontend tests, if you need something tested in the frontend add a test in there!
-clean up the todos into the 
+## Workflow
 
-- [ ] i cant open the log viewer anymore by clicking the header! this must be implement the same for all side and foldable panels! why is it not working anymore!!!
+Work on the tasks below. For each: fix, add tests, verify with `run-lexera-tests.sh`. Move completed items to [todo-archive.md](todo-archive.md). Check general architecture and improve it. If performance drops, prioritize performance work.
 
-- [ ] running the frontend tests adds a lot of boards in the workspace view! verify the workspace view system which manages the added boards (it should likely be a ordered dictionary for each workspace, there should never be a board twice in a workspace). add a test that verifies that the boards are correctly shown! make sure this is covered in all tests that modify the workspace or boards. 
+Keep this file structured and clean:
+- Only open and in-progress items live here. Completed items go to [todo-archive.md](todo-archive.md).
+- Group tasks under the appropriate `###` section. Don't add tasks as loose items outside a section.
+- One task per line. Keep descriptions concise — details belong in code comments or commit messages.
+- Update the test status line below after each test run.
 
-- [x] make a new "controls setting" view that allows changing how scrolling and zooming works for both view modes independently (kanban, canvas) — DONE: Controls section in Frontend Settings panel with per-mode bindings for move/zoom/edit/enter actions, configurable via chip UI with capture overlay
+**Test status: 155 passed, 0 failed / 155 tests in ~209s**
 
-- [x] in the workspace clicking the workspace twice currently goes into the workspace. this should only happen when the user clicks on the right arrow (in the view or in the keyboard) also add this option to the control settings! — DONE: removed dblclick drill-in, added "enter" action to controls settings (default: ArrowRight)
+## Open Tasks
 
-- [x] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option — DONE: burger menu with Kanban/Canvas view, Detach, Reveal in Finder, Split, Remove from Workspace
+### Testing & Quality
 
-- [ ] the "tree-children workspace-section-boards" (expanded) shoud be indented, likely with a line at the left to keep the style! 
+- [ ] Check the tests for duplicates and refactor opportunities. Especially the checks that run after each change. Make a verification library (`TestVerify`) that simplifies testing while staying close to the user experience. STARTED: `TestVerify` namespace with `afterMutation`, `moveCard`, `snapshot`, `cardMoved`, `makeCard`, `getColumnFromData`, etc. exists in frontendTests.js. Needs wider adoption across all 155 tests.
+- [ ] Create formal test groups. Suggested groups defined but not yet implemented as `describe()` blocks. See [todo-archive.md](todo-archive.md) for the full list.
 
-- [ ] reordering or moving elements (cards, columns, stacks, rows) doesnt work within the workspace view. add a test to the frontend tests if that check this feature if it isnt already checked!
+### Workspace View
 
-- [ ] create a group of tests within the frontend tests. suggest some titles the tests should have.
+- [ ] Drag constraints: cards onto columns or between cards only. Columns into stacks or between columns. Stacks onto rows or between stacks. Rows into boards or between rows. (Before, between, and after.)
+
+### Board Rendering
 
 - [ ] Items still needing full board render: row/stack hidden tags, board frontmatter changes, board settings changes, tag style preset change. These genuinely affect the whole board.
 
-- [ ] if dragging elements from the view to the workspace it should only be possible to drop it onto the right elements. cards onto columns or between other cards. columns only into stacks or between other columsn. stacks only onto rows or between other stacks. rows only into boards and beween other boards. (between also means before, between and after!)
-
-### Dashboard search — remaining optimizations
+### Dashboard
 
 - [ ] **Incremental DOM updates** — `renderDashboard()` does `innerHTML = ''` on every call. Diff and update only changed items.
-- [ ] **Virtual scrolling for result lists** — currently renders 80 result + 60 todo + 40×4 calendar items as DOM nodes. Only render visible viewport items.
+- [ ] **Virtual scrolling for result lists** — currently renders 80 result + 60 todo + 40x4 calendar items as DOM nodes. Only render visible viewport items.
 - [ ] **Move search to Web Worker** — the backend search itself is fast, but parsing/grouping/tree-building on the main thread blocks rendering. Move post-processing off-thread.
 - [ ] **Request only scoped data from backend** — currently fetches all boards then filters client-side. Pass active boardId to backend query to reduce response size.
 
-## Large Board Performance (remaining)
+### Large Board Performance
 
-### Fixes — high impact
-- [ ] **Incremental card rendering** — when only a card changes, update just that card's DOM element instead of rebuilding the entire board. `renderColumns` currently does `innerHTML = ''` for any structural change.
+- [ ] **Incremental card rendering** (high) — when only a card changes, update just that card's DOM element instead of rebuilding the entire board. `renderColumns` currently does `innerHTML = ''` for any structural change.
+- [ ] **Virtual scrolling for columns** (medium) — with 104 columns, most are off-screen. Only render columns in/near the viewport.
+- [ ] **Delta-based undo** (low) — instead of `structuredClone` of the full board, store only the diff (changed cards/columns). Would reduce undo memory and CPU by 90%+ for single-card edits.
+- [ ] **Web Worker for heavy operations** (low) — move markdown rendering, undo diffing, and board serialization off the main thread.
 
-### Fixes — medium impact
-- [ ] **Virtual scrolling for columns** — with 104 columns, most are off-screen. Only render columns in/near the viewport.
-### Fixes — lower priority
-- [ ] **Delta-based undo** — instead of `structuredClone` of the full board, store only the diff (changed cards/columns). Would reduce undo memory and CPU by 90%+ for single-card edits.
-- [ ] **Web Worker for heavy operations** — move markdown rendering, undo diffing, and board serialization off the main thread.
-
-## Automated Frontend Test Runner (`run-lexera-tests.sh`)
-
-**Current status: 137 passed, 1 failed / 138 tests in ~62s (down from 21 failures)**
-
-### Frontend test failures — categorized by root cause
-
-- [x] **Bug #1: tests mutate the wrong card when hidden cards exist at low indices** — FIXED. `findTwoColumnsWithCards` returns `srcCol.cards` as the filtered-visible array and `srcCol.col` as the raw column. Tests grabbed `col.cards[0].kid` (visible) but mutated `data.rows[...].columns[...].cards[0]` (raw[0], which may be a hidden card). **Fix:** added `findRawCardIndexByKid(rawCards, kid)` helper; updated 11 tests to look up the card by stable kid/id in the raw array before mutating. **Tests affected:** `remove card`, `hidden state: archiving/trashing/parking/restoring`, `tag edit: adding/removing #hidden-internal-archived`, `tag edit: parked to deleted`, `hidden action: parking/archiving/deleting via setTestBoard`.
-
-- [x] **Bug #2 (sidebar hierarchy debounced 150ms vs test wait 100ms)** — FIXED. `setTestBoard` schedules a hierarchy refresh through `scheduleHierarchyRefresh` which has a 150ms setTimeout; tests use `delay(100)` then assert sidebar state, so they raced. **Fix:** `setTestBoard` now calls `BoardDataStore.flushHierarchyRefresh()` synchronously after `commitLocalBoardChange`, so tests observe a fully-consistent board view + sidebar by the time setTestBoard returns. **Tests fixed:** all `hidden destination:*`, `header create:*`, `include: column include badge`, `include header:*`, `marp export:*`, `tag edit: adding #hidden-internal-archived`, `tag edit: adding temporal tag`, `chain:*`, `include: card with include syntax`, `embed: valid image embed`, `workspace move:*`.
-
-- [x] **Bug #3 (`findTwoColumnsWithCards` doesn't guarantee ≥2 visible cards per column)** — FIXED. Phase 1 returned as soon as it found 2 columns with ≥1 visible card, but tests like `same-column reorder`, `cross-column source stability`, `structural: sort column cards`, and `integrity: board valid after same-column reorder` need ≥2 cards. Phase 2 (injection) only injected if a column had 0 cards. **Fix:** Phase 1 now requires srcCol to have ≥2 visible cards; Phase 2 injects enough cards to reach 2 (instead of just 1 when empty).
-
-- [ ] **Remaining: `integrity: board valid after cross-column card move`** (1 failure). `DOM visible card count matches data: expected 6, got 4`. After moveCard's targeted `card-remove + card-insert` DOM surgery, DOM is missing 2 cards that exist in the data. Pre-existing bug — same test was failing before all my fixes (though with a different error about card ID mismatches). Likely a stale flat-index issue in the targeted refresh path when source and destination columns are in the same stack.
-
-## Backend Stability
+### Backend Stability
 
 - [ ] **Stale h2c connections after macOS sleep/wake** — After macOS sleep, the h2c (HTTP/2 cleartext) TCP connection between frontend and backend goes stale. Requests on the dead connection fail with body-read errors or invalid JSON. The frontend retry mechanism handles it (clears cached session, re-discovers backend, retries once), but the user sees a brief hiccup. Fix options: (1) TCP keepalive on the backend so the OS detects dead connections, (2) connection health checks before reuse on the frontend, (3) switch from persistent h2c to short-lived HTTP/1.1 connections. See `server.rs:serve_with_h2c` and `api.js:retryWithBackendRecovery`.
 - [ ] **File upstream Loro issue** — Loro 1.10.8 has a `MovableList::mov()` panic when the element at the source position was already consumed. Our code is safe (`catch_unwind` + session rebuild), and pre-move validation was added in `reorder_list_by_id`. File an issue on `loro-dev/loro` when a minimal reproduction is available.
 
-## Frontend Test Additions
+### Frontend Test Additions
 
-- [~] Add frontend tests that verify dashboard deadline and overdue sections update immediately when cards with temporal tags are added, removed, moved, or edited in the frontend. PARTIALLY: `temporal tags: card with temporal tag renders in DOM`, `dashboard search: refresh triggered after setTestBoard add/remove card`. Dashboard section DOM assertions need manual-mode tests (autoRun skips dashboard DOM).
-- [ ] Add frontend tests that verify clicking a dashboard result immediately focuses and reveals the matching card content in the board view.
-- [ ] Add frontend tests that verify dashboard navigation targets for cards, columns, stacks, and rows still focus the correct element after live frontend mutations and rerenders.
-- [ ] Add frontend tests that verify dashboard selection on temporal sections such as due-soon and overdue jumps to the correct card and preserves the expected focus state.
-- [~] Add frontend tests that verify dashboard results stay correct immediately after tag edits that change whether a card belongs in deadline, overdue, parked, archived, or hidden-derived views. PARTIALLY: `tag edit` tests verify card visibility after tag changes; `hidden state/action/destination` tests verify park/archive/delete; dashboard-specific assertions are in fixture tests (autoRun skips dashboard DOM).
-- [x] Add frontend tests that verify burger-menu tag actions on cards, columns, rows, and stacks update tags immediately in data, board DOM, sidebar, and dashboard. Covered by: `tag edit` (5 tests), `tag action` (1 test), `hidden destination` (5 tests for column/stack/row tag actions).
-- [x] Add frontend tests that verify burger-menu hidden-state actions such as park, archive, and delete immediately update visibility. Added: park/archive/delete card, hide column, visible tag — all verify DOM count changes. Also: `hidden state` (5 tests), `hidden cards` (3 tests).
-- [ ] Add frontend tests that verify burger-menu reveal and edit actions open or focus the expected content target instead of only mutating data.
-- [~] Add frontend tests that verify temporal tags changed through burger-menu actions immediately update visible time badges and dashboard deadline groupings. PARTIALLY: `tag edit: adding temporal tag to card keeps it visible and renders badge` verifies temporal tag rendering. Dashboard grouping assertions need manual-mode tests.
+- [~] Dashboard deadline/overdue sections update after temporal tag mutations. PARTIAL: basic rendering and search-refresh tests exist; dashboard-section DOM assertions need manual-mode tests (autoRun skips dashboard DOM).
+- [ ] Clicking a dashboard result focuses and reveals the matching card in the board view.
+- [ ] Dashboard navigation targets still focus the correct element after live mutations and rerenders.
+- [ ] Dashboard selection on temporal sections (due-soon, overdue) jumps to correct card with expected focus state.
+- [~] Dashboard results stay correct after tag edits that change visibility (deadline, overdue, parked, archived, hidden). PARTIAL: tag-edit and hidden-state tests cover data; dashboard-specific DOM assertions need manual-mode tests.
+- [ ] Burger-menu reveal and edit actions open or focus the expected content target (not just data mutation).
+- [~] Temporal tags via burger-menu update visible time badges and dashboard groupings. PARTIAL: badge rendering verified; grouping assertions need manual-mode tests.
 
 ### Multi-Board Drag & Drop Test Plan
 

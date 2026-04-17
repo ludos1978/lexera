@@ -265,8 +265,43 @@
       } catch (_) {}
     }
 
-    // Wait for the configured delay, then start tests
-    setTimeout(function () {
+    // Poll for backend connectivity + board loaded instead of a fixed delay.
+    // delayMs is the maximum wait — tests start as soon as the app is ready.
+    var readyDeadline = Date.now() + delayMs;
+
+    function isAppReady() {
+      // Check for a loaded board in any reachable window (parent or iframe).
+      // A board is loaded when LexeraTestApi (or the app's test API) reports
+      // an active board id and fullBoardData with rows.
+      function checkWindow(win) {
+        try {
+          if (!win) return false;
+          var api = win.LexeraTestApi || (win.LexeraFrontendTests && typeof win.LexeraFrontendTests._getApi === 'function' ? win.LexeraFrontendTests._getApi() : null);
+          if (api && typeof api.getActiveBoardId === 'function' && typeof api.getFullBoardData === 'function') {
+            var bid = api.getActiveBoardId();
+            var data = api.getFullBoardData();
+            if (bid && data && data.rows && data.rows.length > 0) return true;
+          }
+          // Fallback: check runtime state directly
+          var rt = win.LexeraRuntime;
+          if (rt && typeof rt.getState === 'function') {
+            var boards = rt.getState('boards');
+            if (Array.isArray(boards) && boards.length > 0) return true;
+          }
+        } catch (_) {}
+        return false;
+      }
+      if (checkWindow(window)) return true;
+      try {
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+          try { if (checkWindow(iframes[i].contentWindow)) return true; } catch (_) {}
+        }
+      } catch (_) {}
+      return false;
+    }
+
+    function launchTests() {
       performAutoRun(outputPath, quitAfter, testFilter).catch(function (e) {
         console.error('[auto-run] failed:', e);
         if (outputPath) {
@@ -277,7 +312,23 @@
           } catch (_) {}
         }
       });
-    }, delayMs);
+    }
+
+    function pollReady() {
+      if (isAppReady()) {
+        console.log('[auto-run] app ready, starting tests (' + (Date.now() - (readyDeadline - delayMs)) + 'ms elapsed)');
+        launchTests();
+        return;
+      }
+      if (Date.now() >= readyDeadline) {
+        console.warn('[auto-run] max wait (' + delayMs + 'ms) reached, starting tests anyway');
+        launchTests();
+        return;
+      }
+      setTimeout(pollReady, 300);
+    }
+
+    setTimeout(pollReady, 500);
   }
 
   function findLexeraFrontendTests() {

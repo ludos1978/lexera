@@ -9042,6 +9042,22 @@ var LexeraDashboard = (function () {
     return fullIdx;
   }
 
+  function resolveFlatColIndexFromRef(boardData, columnObj) {
+    if (!boardData || !boardData.rows || !columnObj) return -1;
+    var flat = 0;
+    for (var r = 0; r < boardData.rows.length; r++) {
+      var stacks = (boardData.rows[r] && boardData.rows[r].stacks) || [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = (stacks[s] && stacks[s].columns) || [];
+        for (var c = 0; c < cols.length; c++) {
+          if (cols[c] === columnObj) return flat;
+          flat++;
+        }
+      }
+    }
+    return -1;
+  }
+
   async function moveCard(sourceOrFromColIdx, fromCardIdxOrTarget, toColIdx, toInsertIdx) {
     var _mcStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
     var _mcTrace = (typeof window !== 'undefined' && window.__lexeraProfileMutations) ? {} : null;
@@ -9150,10 +9166,21 @@ var LexeraDashboard = (function () {
         sourceBoardData === targetBoardData;
 
       if (isSameBoardActive) {
+        // Resolve flat column indices from the column references when
+        // workspace-style descriptors (rowIndex/stackIndex/colIndex) were
+        // used instead of flatColIndex. Without this, targeted DOM refresh
+        // targets an undefined column and silently skips the update.
+        var srcFlatColIdx = typeof source.flatColIndex === 'number'
+          ? source.flatColIndex
+          : resolveFlatColIndexFromRef(sourceBoardData, sourceRef.column);
+        var dstFlatColIdx = typeof target.flatColIndex === 'number'
+          ? target.flatColIndex
+          : resolveFlatColIndexFromRef(targetBoardData, targetRef.column);
+
         if (sourceRef.column === targetRef.column) {
           // Same-column reorder: rebuild just that column
           await persistBoardMutation({ targets: [
-            { type: 'column', colIndex: source.flatColIndex },
+            { type: 'column', colIndex: srcFlatColIdx },
             { type: 'sidebar' }
           ] });
         } else {

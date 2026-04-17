@@ -1251,11 +1251,11 @@
   function getViewCardCount(flatColIndex) {
     var c = getContainer(); if (!c) return -1;
     var el = c.querySelector('.column-cards[data-col-index="' + flatColIndex + '"]');
-    return el ? el.querySelectorAll('.card').length : -1;
+    return el ? el.querySelectorAll('.card, .vs-placeholder').length : -1;
   }
 
   function getTotalViewCards() {
-    var c = getContainer(); return c ? c.querySelectorAll('.card').length : -1;
+    var c = getContainer(); return c ? c.querySelectorAll('.card, .vs-placeholder').length : -1;
   }
 
   function getViewColumnCount() {
@@ -2190,10 +2190,7 @@
     try {
       var info = findTwoColumnsWithCards();
       var movedKid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
-      await api().moveCard(
-        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCard(info.srcCol, info.dstCol);
       await waitForAssertion(function () {
         assert(!hasDuplicateViewCardIds(), 'no duplicate IDs');
         assert(getViewCardKids(info.dstCol.flatIdx).indexOf(movedKid) !== -1, 'moved card in target');
@@ -2207,12 +2204,9 @@
       var totalBefore = getTotalViewCards();
       var info = findTwoColumnsWithCards();
       var movedKid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
-      await api().moveCard(
-        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCard(info.srcCol, info.dstCol);
       await waitForAssertion(function () {
-        assertEqual(getTotalViewCards(), totalBefore, 'total constant');
+        TestVerify.totalCardsUnchanged(totalBefore, 'after move');
         assert(getViewCardKids(info.dstCol.flatIdx).indexOf(movedKid) !== -1, 'moved card in target');
       });
     } finally { await teardown(); }
@@ -2285,10 +2279,7 @@
     await setup();
     try {
       var info = findTwoColumnsWithCards();
-      await api().moveCard(
-        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCard(info.srcCol, info.dstCol);
       await waitForAssertion(function () { assertViewWorkspaceConsistency('cross-column'); });
     } finally { await teardown(); }
   });
@@ -2297,10 +2288,8 @@
     await setup();
     try {
       var info = findTwoColumnsWithCards();
-      await api().moveCard(
-        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, rowIndex: info.dstCol.row, stackIndex: info.dstCol.stack, colIndex: info.dstCol.localCol, columnId: info.dstCol.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCard(info.srcCol, info.dstCol);
+      await TestVerify.moveCardWorkspace(info.srcCol, info.dstCol);
       await waitForAssertion(function () { assertViewWorkspaceConsistency('view-to-workspace'); });
     } finally { await teardown(); }
   });
@@ -2309,10 +2298,7 @@
     await setup();
     try {
       var info = findTwoColumnsWithCards();
-      await api().moveCard(
-        { boardId: _boardId, rowIndex: info.dstCol.row, stackIndex: info.dstCol.stack, colIndex: info.dstCol.localCol, columnId: info.dstCol.col.id, cardIndex: 0, cardId: info.dstCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
+      await TestVerify.moveCardWorkspace(info.dstCol, info.srcCol);
       await waitForAssertion(function () { assertViewWorkspaceConsistency('workspace-to-view'); });
     } finally { await teardown(); }
   });
@@ -2322,9 +2308,7 @@
     try {
       var info = findTwoColumnsWithCards();
       var data = api().getFullBoardData();
-      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.push({
-        id: '__test-cons-add__', content: 'Consistency Test', checked: false, kid: '__test-cons-add__'
-      });
+      TestVerify.addCardToColumn(data, info.srcCol, TestVerify.makeCard('__test-cons-add__', 'Consistency Test'));
       api().setTestBoard(data, _boardId);
       await waitForAssertion(function () { assertViewWorkspaceConsistency('add-card'); });
     } finally { await teardown(); }
@@ -2546,10 +2530,9 @@
       var col = info.srcCol;
       assert(col.cards.length >= 1, 'need at least 1 card');
       var data = api().getFullBoardData();
-      data.rows[col.row].stacks[col.stack].columns[col.localCol].cards.splice(0, 1);
+      TestVerify.getColumnFromData(data, col).cards.splice(0, 1);
       api().setTestBoard(data, _boardId);
-      await delay(150);
-      assertViewWorkspaceConsistency('remove-card');
+      await TestVerify.afterMutation('remove-card', { delay: 150 });
     } finally { await teardown(); }
   });
 
@@ -4082,6 +4065,89 @@
     }
   }
 
+  /** Verify the workspace view (sidebar board list) shows each board at most
+   *  once per workspace section, no duplicate workspace sections, and that
+   *  every rendered board exists in the current `boards` array with matching
+   *  workspace assignment. This catches the class of bug where upstream data
+   *  (duplicate board entry, or duplicate id in `workspace_ids`) would make
+   *  the sidebar render the same board multiple times inside one workspace.
+   *
+   *  Safe to call from any test context: returns silently if the sidebar is
+   *  unavailable or the board list hasn't rendered yet.
+   */
+  function assertWorkspaceViewIntegrity(label) {
+    var doc = (typeof document !== 'undefined') ? document : null;
+    if (!doc) return;
+    var boardListEl = doc.getElementById('board-list');
+    if (!boardListEl) return;
+    // Need LexeraBoardList to read the current boards/workspaces snapshot the
+    // sidebar was rendered from. If it's not available we can't cross-check.
+    var BL = (typeof window !== 'undefined') ? window.LexeraBoardList : null;
+
+    // 1. No duplicate workspace section ids
+    var wsHeaders = boardListEl.querySelectorAll('.tree-entry-workspace');
+    var wsIdsSeen = {};
+    for (var i = 0; i < wsHeaders.length; i++) {
+      var wid = wsHeaders[i].getAttribute('data-workspace-id');
+      if (!wid) continue;
+      assert(!wsIdsSeen[wid], label + ': workspace view duplicate section for workspace ' + wid);
+      wsIdsSeen[wid] = true;
+    }
+
+    // 2. Inside every workspace section, each board.id appears at most once.
+    //    Only inspect expanded sections: collapsed .tree-children is emptied
+    //    by the reconciler (see renderBoardList) so there are no rows to check.
+    for (var w = 0; w < wsHeaders.length; w++) {
+      var childContainer = wsHeaders[w].querySelector('.tree-children.workspace-section-boards.expanded');
+      if (!childContainer) continue;
+      var boardNodes = childContainer.querySelectorAll(':scope > .tree-entry > .board-item[data-board-id], :scope > .board-item[data-board-id]');
+      var boardIdsSeen = {};
+      var wsLabel = wsHeaders[w].getAttribute('data-workspace-id') || '<unknown>';
+      for (var b = 0; b < boardNodes.length; b++) {
+        var bid = boardNodes[b].getAttribute('data-board-id');
+        if (!bid) continue;
+        assert(!boardIdsSeen[bid],
+          label + ': workspace view duplicate board "' + bid + '" inside workspace "' + wsLabel + '"');
+        boardIdsSeen[bid] = true;
+      }
+    }
+
+    // 3. Top-level (flat / single-workspace view) board rows: no duplicate id.
+    var topBoardNodes = boardListEl.querySelectorAll(':scope > .tree-entry > .board-item[data-board-id], :scope > .board-item[data-board-id]');
+    var topSeen = {};
+    for (var t = 0; t < topBoardNodes.length; t++) {
+      var tid = topBoardNodes[t].getAttribute('data-board-id');
+      if (!tid) continue;
+      assert(!topSeen[tid], label + ': workspace view duplicate top-level board "' + tid + '"');
+      topSeen[tid] = true;
+    }
+
+    // 4. Cross-check against source data if available: every rendered board id
+    //    must exist in the current `boards` (or remoteBoards) array.
+    if (BL && typeof BL.getBoardWorkspaceIds === 'function') {
+      var boardsArr = (typeof window !== 'undefined' && window.LexeraRuntime &&
+        typeof window.LexeraRuntime.getState === 'function')
+          ? (window.LexeraRuntime.getState('boards') || [])
+          : [];
+      var remoteArr = (typeof window !== 'undefined' && window.LexeraRuntime &&
+        typeof window.LexeraRuntime.getState === 'function')
+          ? (window.LexeraRuntime.getState('remoteBoards') || [])
+          : [];
+      var knownIds = {};
+      for (var bi = 0; bi < boardsArr.length; bi++) if (boardsArr[bi] && boardsArr[bi].id) knownIds[boardsArr[bi].id] = true;
+      for (var ri = 0; ri < remoteArr.length; ri++) if (remoteArr[ri] && remoteArr[ri].id) knownIds[remoteArr[ri].id] = true;
+      // Every rendered board-item (top-level or inside a workspace section) must
+      // correspond to a known board/remote board.
+      var allRendered = boardListEl.querySelectorAll('.board-item[data-board-id]');
+      for (var a = 0; a < allRendered.length; a++) {
+        var arid = allRendered[a].getAttribute('data-board-id');
+        if (!arid) continue;
+        assert(knownIds[arid],
+          label + ': workspace view rendered board "' + arid + '" is not in boards/remoteBoards data');
+      }
+    }
+  }
+
   function assertBoardIntegrity(label) {
     var data = api().getFullBoardData();
     assert(data && data.rows && data.rows.length > 0, label + ': board data exists');
@@ -4148,6 +4214,11 @@
     // 5. Sidebar consistency (if available)
     assertViewWorkspaceConsistency(label);
 
+    // 5b. Workspace view (sidebar board list) integrity — no duplicate boards
+    //     per workspace, no duplicate workspace sections, all rendered boards
+    //     exist in the source data.
+    assertWorkspaceViewIntegrity(label);
+
     // 6. Every DOM column has a valid data-column-id
     var container = getContainer();
     if (container) {
@@ -4161,6 +4232,155 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  // TestVerify — verification library for frontend tests
+  //
+  // Groups the repeated assertion patterns into a single namespace so
+  // tests read as "do X, then verify Y" instead of inlining 5-10 lines
+  // of assertion boilerplate after every mutation.
+  //
+  // Usage:
+  //   await TestVerify.afterMutation('label');        // delay + integrity + workspace consistency
+  //   var snap = TestVerify.snapshot(cols);            // capture counts/kids before mutation
+  //   TestVerify.cardMoved(snap, src, dst, cardId);   // assert card moved correctly
+  //   TestVerify.cardCountChanged(colIdx, before, delta, label);
+  //   TestVerify.hiddenCard(colIdx, countBefore, label); // card invisible after tag
+  // ═══════════════════════════════════════════════════════════════════════
+
+  var TestVerify = {
+    afterMutation: async function (label, options) {
+      options = options || {};
+      var ms = typeof options.delay === 'number' ? options.delay : 100;
+      await delay(ms);
+      assertBoardIntegrity(label);
+      if (options.skipWorkspaceConsistency !== true) {
+        assertViewWorkspaceConsistency(label);
+      }
+    },
+
+    snapshot: function (colInfos) {
+      if (!Array.isArray(colInfos)) colInfos = [colInfos];
+      var snap = {};
+      for (var i = 0; i < colInfos.length; i++) {
+        var ci = colInfos[i];
+        var key = ci.flatIdx !== undefined ? ci.flatIdx : i;
+        snap[key] = {
+          flatIdx: ci.flatIdx,
+          count: getViewCardCount(ci.flatIdx),
+          kids: getViewCardKids(ci.flatIdx),
+          localCol: ci.localCol,
+          row: ci.row,
+          stack: ci.stack
+        };
+      }
+      return snap;
+    },
+
+    cardCountChanged: function (flatIdx, beforeCount, delta, label) {
+      assertEqual(getViewCardCount(flatIdx), beforeCount + delta, label);
+    },
+
+    cardMoved: function (snap, srcFlatIdx, dstFlatIdx, cardId, label) {
+      label = label || 'card moved';
+      assertEqual(getViewCardCount(srcFlatIdx), snap[srcFlatIdx].count - 1, label + ': src -1');
+      assertEqual(getViewCardCount(dstFlatIdx), snap[dstFlatIdx].count + 1, label + ': dst +1');
+      var dstKids = getViewCardKids(dstFlatIdx);
+      assert(dstKids.indexOf(cardId) !== -1, label + ': card present in target');
+    },
+
+    moveCard: async function (src, dst, options) {
+      options = options || {};
+      return api().moveCard(
+        {
+          boardId: _boardId,
+          flatColIndex: src.flatIdx,
+          cardIndex: options.srcCardIndex || 0,
+          cardId: options.cardId || (src.cards[options.srcCardIndex || 0] || {}).id,
+          cardIndexMode: 'visible',
+          indexMode: 'display'
+        },
+        {
+          boardId: _boardId,
+          flatColIndex: dst.flatIdx,
+          insertIdx: options.dstInsertIdx || 0,
+          insertMode: 'visible',
+          indexMode: 'display'
+        }
+      );
+    },
+
+    moveCardWorkspace: async function (src, dst, options) {
+      options = options || {};
+      return api().moveCard(
+        {
+          boardId: _boardId,
+          rowIndex: src.row, stackIndex: src.stack, colIndex: src.localCol,
+          columnId: src.col ? src.col.id : undefined,
+          cardIndex: options.srcCardIndex || 0,
+          cardId: options.cardId || (src.cards[options.srcCardIndex || 0] || {}).id,
+          cardIndexMode: 'visible',
+          indexMode: 'display'
+        },
+        {
+          boardId: _boardId,
+          rowIndex: dst.row, stackIndex: dst.stack, colIndex: dst.localCol,
+          columnId: dst.col ? dst.col.id : undefined,
+          insertIdx: options.dstInsertIdx || 0,
+          insertMode: 'visible',
+          indexMode: 'display'
+        }
+      );
+    },
+
+    addCardToColumn: function (data, colInfo, card) {
+      var col = data.rows[colInfo.row].stacks[colInfo.stack].columns[colInfo.localCol];
+      col.cards.push(card);
+      return col;
+    },
+
+    getColumnFromData: function (data, colInfo) {
+      return data.rows[colInfo.row].stacks[colInfo.stack].columns[colInfo.localCol];
+    },
+
+    makeCard: function (id, content, options) {
+      options = options || {};
+      return {
+        id: id,
+        kid: options.kid || id,
+        content: content || id,
+        checked: !!options.checked
+      };
+    },
+
+    hiddenCardNotVisible: function (colFlatIdx, countBefore, label) {
+      assertEqual(getViewCardCount(colFlatIdx), countBefore, label + ': hidden card not visible');
+    },
+
+    hiddenCardRemoved: function (colFlatIdx, countBefore, label) {
+      assertEqual(getViewCardCount(colFlatIdx), countBefore - 1, label + ': hidden card removed from view');
+    },
+
+    totalCardsUnchanged: function (totalBefore, label) {
+      assertEqual(getTotalViewCards(), totalBefore, label + ': total cards unchanged');
+    },
+
+    columnCountUnchanged: function (countBefore, label) {
+      assertEqual(getViewColumnCount(), countBefore, label + ': column count unchanged');
+    },
+
+    rowCountUnchanged: function (countBefore, label) {
+      assertEqual(getViewRowCount(), countBefore, label + ': row count unchanged');
+    },
+
+    columnAdded: function (countBefore, label) {
+      assertEqual(getViewColumnCount(), countBefore + 1, label + ': column added');
+    },
+
+    rowAdded: function (countBefore, label) {
+      assertEqual(getViewRowCount(), countBefore + 1, label + ': row added');
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
   // COMPREHENSIVE INTEGRITY TESTS — each action + full verification
   // ═══════════════════════════════════════════════════════════════════════
 
@@ -4168,12 +4388,8 @@
     await setup();
     try {
       var info = findTwoColumnsWithCards();
-      await api().moveCard(
-        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
-      await delay(100);
-      assertBoardIntegrity('after cross-column move');
+      await TestVerify.moveCard(info.srcCol, info.dstCol);
+      await TestVerify.afterMutation('after cross-column move');
     } finally { await teardown(); }
   });
 
@@ -4184,12 +4400,8 @@
       var col = info.srcCol;
       if (col.cards.length < 2) throw new Error('Need >=2 cards');
       var lastCard = col.cards[col.cards.length - 1];
-      await api().moveCard(
-        { boardId: _boardId, flatColIndex: col.flatIdx, cardIndex: col.cards.length - 1, cardId: lastCard.id, cardIndexMode: 'visible', indexMode: 'display' },
-        { boardId: _boardId, flatColIndex: col.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
-      );
-      await delay(100);
-      assertBoardIntegrity('after same-column reorder');
+      await TestVerify.moveCard(col, col, { srcCardIndex: col.cards.length - 1, cardId: lastCard.id });
+      await TestVerify.afterMutation('after same-column reorder');
     } finally { await teardown(); }
   });
 
@@ -4198,8 +4410,7 @@
     try {
       var info = findTwoColumnsWithCards();
       await api().addCardToActiveBoard(info.srcCol.flatIdx, 'Integrity Test Card __integ__');
-      await delay(150);
-      assertBoardIntegrity('after addCard API');
+      await TestVerify.afterMutation('after addCard API', { delay: 150 });
     } finally { await teardown(); }
   });
 
@@ -4208,10 +4419,9 @@
     try {
       var info = findTwoColumnsWithCards();
       var data = api().getFullBoardData();
-      data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.splice(0, 1);
+      TestVerify.getColumnFromData(data, info.srcCol).cards.splice(0, 1);
       api().setTestBoard(data, _boardId);
-      await delay(100);
-      assertBoardIntegrity('after remove card');
+      await TestVerify.afterMutation('after remove card');
     } finally { await teardown(); }
   });
 
@@ -4222,8 +4432,7 @@
       var lastStack = data.rows[0].stacks[data.rows[0].stacks.length - 1];
       lastStack.columns.push({ id: '__integ-col__', title: 'Integrity Col', cards: [], include_source: null });
       api().setTestBoard(data, _boardId);
-      await delay(100);
-      assertBoardIntegrity('after add column');
+      await TestVerify.afterMutation('after add column');
     } finally { await teardown(); }
   });
 
@@ -4235,14 +4444,13 @@
         id: '__integ-row__', title: 'Integrity Row',
         stacks: [{ id: '__integ-stack__', title: 'IS',
           columns: [{ id: '__integ-rcol__', title: 'IC', cards: [
-            { id: '__integ-card1__', content: 'Card 1', checked: false, kid: '__integ-card1__' },
-            { id: '__integ-card2__', content: 'Card 2', checked: false, kid: '__integ-card2__' }
+            TestVerify.makeCard('__integ-card1__', 'Card 1'),
+            TestVerify.makeCard('__integ-card2__', 'Card 2')
           ], include_source: null }]
         }]
       });
       api().setTestBoard(data, _boardId);
-      await delay(100);
-      assertBoardIntegrity('after add row with cards');
+      await TestVerify.afterMutation('after add row with cards');
     } finally { await teardown(); }
   });
 
@@ -4335,14 +4543,14 @@
       var trashedKid = col.cards[0].kid || col.cards[0].id;
 
       var data = api().getFullBoardData();
-      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      var rawCards = TestVerify.getColumnFromData(data, col).cards;
       var cardIdx = findRawCardIndexByKid(rawCards, trashedKid);
       assert(cardIdx >= 0, 'trashed card found in raw data');
       rawCards[cardIdx].content = (rawCards[cardIdx].content || '') + ' #hidden-internal-deleted';
       api().setTestBoard(data, _boardId);
       await delay(100);
 
-      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'trashed card gone');
+      TestVerify.hiddenCardRemoved(col.flatIdx, countBefore, 'trashed card');
       assert(getViewCardKids(col.flatIdx).indexOf(trashedKid) === -1, 'trashed card not in DOM');
       assertBoardIntegrity('after trash card');
     } finally { await teardown(); }
@@ -4357,14 +4565,14 @@
       var parkedKid = col.cards[0].kid || col.cards[0].id;
 
       var data = api().getFullBoardData();
-      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      var rawCards = TestVerify.getColumnFromData(data, col).cards;
       var cardIdx = findRawCardIndexByKid(rawCards, parkedKid);
       assert(cardIdx >= 0, 'parked card found in raw data');
       rawCards[cardIdx].content = (rawCards[cardIdx].content || '') + ' #hidden-internal-parked';
       api().setTestBoard(data, _boardId);
       await delay(100);
 
-      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'parked card gone');
+      TestVerify.hiddenCardRemoved(col.flatIdx, countBefore, 'parked card');
       assert(getViewCardKids(col.flatIdx).indexOf(parkedKid) === -1, 'parked card not in DOM');
       assertBoardIntegrity('after park card');
     } finally { await teardown(); }
@@ -4910,6 +5118,110 @@
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // WORKSPACE VIEW BOARD-LIST INTEGRITY — the sidebar board list must show
+  // each board at most once per workspace, even when upstream data contains
+  // duplicates. Uses the exposed pure `_buildDesiredEntries` builder so the
+  // tests don't depend on the live runtime state (no setup/teardown).
+  // ═══════════════════════════════════════════════════════════════════════
+
+  register('workspace view: duplicate board in boards array renders once per workspace', async function () {
+    var BL = window.LexeraBoardList;
+    assert(BL && typeof BL._buildDesiredEntries === 'function', 'LexeraBoardList._buildDesiredEntries exposed');
+    var ws = [{ id: 'ws-A', name: 'Alpha' }];
+    var board = { id: 'b1', title: 'Board 1', columns: [], workspace_ids: ['ws-A'] };
+    // Same board listed twice (simulates a bad upstream catalog snapshot).
+    var boards = [board, board];
+    var entries = BL._buildDesiredEntries(boards, [], ws, null /* all workspaces */, null);
+    var wsHeader = null;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].type === 'ws_header' && entries[i].ws.id === 'ws-A') { wsHeader = entries[i]; break; }
+    }
+    assert(wsHeader, 'workspace ws-A rendered as section header');
+    assertEqual(wsHeader.boards.length, 1, 'only one board entry inside workspace ws-A');
+    assertEqual(wsHeader.count, 1, 'workspace count reflects deduped boards');
+    assertEqual(wsHeader.boards[0].board.id, 'b1', 'the deduped entry is b1');
+  });
+
+  register('workspace view: duplicate workspace id in workspace_ids renders once', async function () {
+    var BL = window.LexeraBoardList;
+    assert(BL && typeof BL._buildDesiredEntries === 'function', 'LexeraBoardList._buildDesiredEntries exposed');
+    var ws = [{ id: 'ws-A', name: 'Alpha' }];
+    // Pathological: the board claims ws-A twice. Must still render once.
+    var boards = [{ id: 'b1', title: 'Board 1', columns: [], workspace_ids: ['ws-A', 'ws-A'] }];
+    var entries = BL._buildDesiredEntries(boards, [], ws, null, null);
+    var wsHeader = null;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].type === 'ws_header' && entries[i].ws.id === 'ws-A') { wsHeader = entries[i]; break; }
+    }
+    assert(wsHeader, 'workspace ws-A rendered');
+    assertEqual(wsHeader.boards.length, 1, 'board appears once despite duplicate workspace_ids');
+  });
+
+  register('workspace view: board in two workspaces appears once in each', async function () {
+    var BL = window.LexeraBoardList;
+    var ws = [{ id: 'ws-A', name: 'Alpha' }, { id: 'ws-B', name: 'Beta' }];
+    var boards = [{ id: 'b1', title: 'Board 1', columns: [], workspace_ids: ['ws-A', 'ws-B'] }];
+    var entries = BL._buildDesiredEntries(boards, [], ws, null, null);
+    var countA = 0, countB = 0;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].type !== 'ws_header') continue;
+      for (var j = 0; j < entries[i].boards.length; j++) {
+        if (entries[i].boards[j].board.id !== 'b1') continue;
+        if (entries[i].ws.id === 'ws-A') countA++;
+        else if (entries[i].ws.id === 'ws-B') countB++;
+      }
+    }
+    assertEqual(countA, 1, 'b1 appears once in ws-A');
+    assertEqual(countB, 1, 'b1 appears once in ws-B');
+  });
+
+  register('workspace view: unassigned bucket dedupes duplicate boards', async function () {
+    var BL = window.LexeraBoardList;
+    // Workspaces exist but board belongs to none → goes into Unassigned.
+    var ws = [{ id: 'ws-A', name: 'Alpha' }];
+    var board = { id: 'orphan', title: 'Orphan', columns: [], workspace_ids: [] };
+    var boards = [board, board]; // duplicate entry
+    var entries = BL._buildDesiredEntries(boards, [], ws, null, null);
+    var unassigned = null;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].type === 'ws_header' && entries[i].unassigned) { unassigned = entries[i]; break; }
+    }
+    assert(unassigned, 'unassigned section rendered');
+    assertEqual(unassigned.boards.length, 1, 'unassigned section dedupes duplicate board');
+  });
+
+  register('workspace view: flat view (no workspaces) dedupes duplicate boards', async function () {
+    var BL = window.LexeraBoardList;
+    var board = { id: 'b1', title: 'Board 1', columns: [], workspace_ids: [] };
+    var boards = [board, board];
+    // No workspaces → flat-list branch.
+    var entries = BL._buildDesiredEntries(boards, [], [], null, null);
+    var seen = 0;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].type === 'board' && entries[i].board.id === 'b1') seen++;
+    }
+    assertEqual(seen, 1, 'flat view dedupes duplicate board');
+  });
+
+  register('workspace view: remote boards dedupe by id', async function () {
+    var BL = window.LexeraBoardList;
+    var remote = { id: 'r1', title: 'Remote 1' };
+    var entries = BL._buildDesiredEntries([], [remote, remote], [], null, null);
+    var seen = 0;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].type === 'remote_board' && entries[i].rb.id === 'r1') seen++;
+    }
+    assertEqual(seen, 1, 'remote boards deduped by id');
+  });
+
+  register('workspace view: rendered sidebar has no duplicate board entries', async function () {
+    // Runtime-side check: after the normal app boot the sidebar renders the
+    // real boards/workspaces data. The integrity check must pass with no
+    // duplicates even though nothing in this test mutates state.
+    assertWorkspaceViewIntegrity('workspace view: initial sidebar');
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // WORKSPACE VIEW STRUCTURAL REORDER TESTS — covers reordering of
   // rows, stacks, and columns through the same backing API the sidebar
   // tree (workspace view) drag/drop uses. The DOM drag handlers in the
@@ -5180,6 +5492,56 @@
       assertEqual(kids[0], extraKid, 'extra card moved to front');
       assertEqual(kids[1], firstKid, 'original first card pushed to second position');
       assertBoardIntegrity('after workspace view same-column card reorder');
+    } finally { await teardown(); }
+  });
+
+  register('workspace view: sidebar hierarchy reflects row reorder in realtime', async function () {
+    await setup();
+    try {
+      var fixture = buildWorkspaceReorderFixture();
+      api().setTestBoard(fixture, _boardId, { fullRender: true });
+      await delay(100);
+
+      var dataBefore = api().getFullBoardData();
+      assert(dataBefore && dataBefore.rows && dataBefore.rows.length >= 2, 'fixture has 2+ rows');
+      var row0Id = dataBefore.rows[0].id;
+      var row1Id = dataBefore.rows[1].id;
+
+      // Verify sidebar shows correct initial order
+      assertViewWorkspaceConsistency('before row reorder');
+
+      // Reorder: move row 0 after row 1
+      await api().reorderRows(0, 1, false);
+      await delay(150);
+
+      // Data should now have row1 first, row0 second
+      var dataAfter = api().getFullBoardData();
+      assertEqual(dataAfter.rows[0].id, row1Id, 'data: row 1 now first');
+      assertEqual(dataAfter.rows[1].id, row0Id, 'data: row 0 now second');
+
+      // DOM + sidebar should match the new order
+      assertBoardIntegrity('after row reorder realtime');
+    } finally { await teardown(); }
+  });
+
+  register('workspace view: sidebar hierarchy reflects cross-column card move in realtime', async function () {
+    await setup();
+    try {
+      var info = findTwoColumnsWithCards();
+      var movedKid = info.srcCol.cards[0].kid || info.srcCol.cards[0].id;
+      var srcCountBefore = getViewCardCount(info.srcCol.flatIdx);
+      var dstCountBefore = getViewCardCount(info.dstCol.flatIdx);
+
+      await api().moveCard(
+        { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
+        { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+      );
+      await delay(150);
+
+      assertEqual(getViewCardCount(info.srcCol.flatIdx), srcCountBefore - 1, 'src column -1 card');
+      assertEqual(getViewCardCount(info.dstCol.flatIdx), dstCountBefore + 1, 'dst column +1 card');
+      assertBoardIntegrity('after cross-column move realtime');
+      assertViewWorkspaceConsistency('after cross-column move realtime sidebar');
     } finally { await teardown(); }
   });
 

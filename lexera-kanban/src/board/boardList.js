@@ -2608,20 +2608,35 @@ var LexeraBoardList = (function () {
     var expandedIds = getSidebarExpandedBoards();
     var entries = [];
 
-    // In "All Workspaces" view, show workspace section headers with boards nested inside
+    // In "All Workspaces" view, show workspace section headers with boards nested inside.
+    // Each workspace is an ordered dictionary of boards keyed by board.id: insertion
+    // order follows `orderedBoards`, and a board never appears twice in the same
+    // workspace even if upstream data lists it more than once (duplicate entry in
+    // `boards`, or duplicate id in `board.workspace_ids`).
     if (isAllView && workspaces.length > 0) {
-      var wsBoardMap = {};
+      var wsBoardOrder = {};
+      var wsBoardSeen = {};
       var assignedBoardIds = {};
-      for (var wi = 0; wi < workspaces.length; wi++) wsBoardMap[workspaces[wi].id] = [];
+      for (var wi = 0; wi < workspaces.length; wi++) {
+        wsBoardOrder[workspaces[wi].id] = [];
+        wsBoardSeen[workspaces[wi].id] = {};
+      }
       for (var bi = 0; bi < orderedBoards.length; bi++) {
-        var bws = getBoardWorkspaceIds(orderedBoards[bi]);
+        var board = orderedBoards[bi];
+        if (!board || !board.id) continue;
+        var bws = getBoardWorkspaceIds(board);
         for (var bwi = 0; bwi < bws.length; bwi++) {
-          if (wsBoardMap[bws[bwi]]) { wsBoardMap[bws[bwi]].push(orderedBoards[bi]); assignedBoardIds[orderedBoards[bi].id] = true; }
+          var wsId = bws[bwi];
+          if (!wsBoardOrder[wsId]) continue;
+          if (wsBoardSeen[wsId][board.id]) continue;
+          wsBoardSeen[wsId][board.id] = true;
+          wsBoardOrder[wsId].push(board);
+          assignedBoardIds[board.id] = true;
         }
       }
       for (var wgi = 0; wgi < workspaces.length; wgi++) {
         var ws = workspaces[wgi];
-        var wsBoards = wsBoardMap[ws.id] || [];
+        var wsBoards = wsBoardOrder[ws.id] || [];
         if (wsBoards.length === 0) continue;
         var wsExpanded = expandedIds.indexOf('ws:' + ws.id) !== -1;
         var wsBoardEntries = [];
@@ -2630,28 +2645,44 @@ var LexeraBoardList = (function () {
         }
         entries.push({ key: 'ws:' + ws.id, type: 'ws_header', ws: ws, count: wsBoards.length, expanded: wsExpanded, unassigned: false, boards: wsBoardEntries });
       }
-      // Unassigned
+      // Unassigned: boards with no valid workspace assignment. Dedup by id since
+      // orderedBoards itself may contain duplicates under pathological upstream data.
       var unassignedBoards = [];
+      var unassignedSeen = {};
       for (var ubi = 0; ubi < orderedBoards.length; ubi++) {
-        if (!assignedBoardIds[orderedBoards[ubi].id]) {
-          unassignedBoards.push({ key: 'board:' + orderedBoards[ubi].id, type: 'board', board: orderedBoards[ubi], index: 0, workspaceChild: true });
-        }
+        var ub = orderedBoards[ubi];
+        if (!ub || !ub.id) continue;
+        if (assignedBoardIds[ub.id]) continue;
+        if (unassignedSeen[ub.id]) continue;
+        unassignedSeen[ub.id] = true;
+        unassignedBoards.push({ key: 'board:' + ub.id, type: 'board', board: ub, index: 0, workspaceChild: true });
       }
       if (unassignedBoards.length > 0) {
         entries.push({ key: 'ws:__unassigned__', type: 'ws_header', ws: { id: '__unassigned__', name: 'Unassigned' }, count: unassignedBoards.length, expanded: true, unassigned: true, boards: unassignedBoards });
       }
     } else {
-      // Simple flat list or single-workspace view
+      // Simple flat list or single-workspace view. Dedupe by id so duplicate
+      // entries in the upstream `boards` array never produce duplicate sidebar rows.
+      var flatSeen = {};
       for (var si = 0; si < orderedBoards.length; si++) {
-        entries.push({ key: 'board:' + orderedBoards[si].id, type: 'board', board: orderedBoards[si], index: entries.length });
+        var fb = orderedBoards[si];
+        if (!fb || !fb.id) continue;
+        if (flatSeen[fb.id]) continue;
+        flatSeen[fb.id] = true;
+        entries.push({ key: 'board:' + fb.id, type: 'board', board: fb, index: entries.length });
       }
     }
 
-    // Remote boards
+    // Remote boards. Dedupe by id for the same reason as above.
     if (remoteBoards.length > 0) {
       entries.push({ key: '__remote_divider__', type: 'remote_divider' });
+      var remoteSeen = {};
       for (var ri = 0; ri < remoteBoards.length; ri++) {
-        entries.push({ key: 'remote:' + remoteBoards[ri].id, type: 'remote_board', rb: remoteBoards[ri] });
+        var rb = remoteBoards[ri];
+        if (!rb || !rb.id) continue;
+        if (remoteSeen[rb.id]) continue;
+        remoteSeen[rb.id] = true;
+        entries.push({ key: 'remote:' + rb.id, type: 'remote_board', rb: rb });
       }
     }
 
@@ -2961,7 +2992,8 @@ var LexeraBoardList = (function () {
     getBoardWorkspaceIds: getBoardWorkspaceIds,
     removeBoardFromSidebar: removeBoardFromSidebar,
     renderBoardList: renderBoardList,
-    invalidateBoardListFingerprint: invalidateBoardListFingerprint
+    invalidateBoardListFingerprint: invalidateBoardListFingerprint,
+    _buildDesiredEntries: _buildDesiredEntries
   };
 })();
 window.LexeraBoardList = LexeraBoardList;
