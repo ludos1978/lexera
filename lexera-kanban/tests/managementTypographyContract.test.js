@@ -9,7 +9,8 @@ const managementCss = readFileSync(resolve(__dirname, '..', '..', 'lexera-shared
 describe('management typography contract', () => {
   it('defines a single management font-size token', () => {
     expect(managementCss).toContain('--mgmt-font-size: var(--font-size-base, 13px);');
-    expect(managementCss).toContain('--font-color-unified: var(--font-color-mode, #000000);');
+    // Warm-paper ink fallback matches app.css baseline (v2 design token).
+    expect(managementCss).toContain('--font-color-unified: var(--font-color-mode, var(--ink, #1a1816));');
     expect(managementCss).toContain('--app-control-font-size: var(--mgmt-font-size);');
     expect(managementCss).toContain('--hierarchy-font-size: var(--font-size-base, 13px);');
     expect(managementCss).toContain('--hierarchy-font-weight: 400;');

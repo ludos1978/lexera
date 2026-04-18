@@ -14,6 +14,8 @@ Keep this file structured and clean:
 
 ### Unsorted (leave this header here!)
 
+- [ ] add stack, column and card must only show in the parent element if there is no sibling already in there! solve it with css!
+
 - [ ] when i drag-move a card it sometimes disappears instead of showing up in the new locaiton!
 
 - [ ] when i drag-move a card downwards in the column it's not put into the highlighted position, but one above!

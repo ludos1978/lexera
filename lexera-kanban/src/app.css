@@ -107,9 +107,9 @@
   --scrollbar-thumb: #c4bda9;
   --scrollbar-thumb-hover: #a9a298;
   --scrollbar-track: transparent;
-  --header-height: 44px;
-  --app-bottom-inset: 22px;
-  --sidebar-width: 272px;
+  --header-height: 28px;     /* matches v2 TopBar height */
+  --app-bottom-inset: 18px;  /* matches v2 StatusBar height */
+  --sidebar-width: 200px;    /* matches v2 Sidebar width (194) + rounding */
   --ui-scale: 1;
   --space-1: var(--app-space-1);
   --space-2: var(--app-space-2);
@@ -137,18 +137,21 @@
   --icon-svg-size: var(--app-icon-svg-size);
   --fold-icon-size: var(--app-fold-icon-size);
   --btn-gap: var(--space-2);
-  --layout-row-rail-width: calc(36px * var(--ui-scale));
-  --layout-stack-min-width: calc(228px * var(--ui-scale));
-  --layout-row-header-pad-y: var(--space-3);
-  --layout-row-header-pad-x: var(--space-2);
-  --layout-stack-header-pad-y: calc(4px * var(--ui-scale));
-  --layout-stack-header-pad-x: var(--space-3);
-  --layout-column-header-pad-y: var(--space-2);
-  --layout-column-header-pad-x: var(--space-3);
-  --board-row-gap: calc(8px * var(--ui-scale));
-  --board-stack-gap: calc(8px * var(--ui-scale));
-  --board-column-gap: calc(5px * var(--ui-scale));
-  --board-inner-padding: calc(6px * var(--ui-scale));
+  /* v2 layout paddings — matched to lexera-board.jsx inline styles.
+     Row rail 34 px (was 36), row content 5 px, stack 3 px, column 3 px,
+     row/stack gaps 5/3 px. Everything UI-scales. */
+  --layout-row-rail-width: calc(34px * var(--ui-scale));
+  --layout-stack-min-width: calc(200px * var(--ui-scale));
+  --layout-row-header-pad-y: calc(6px * var(--ui-scale));
+  --layout-row-header-pad-x: calc(4px * var(--ui-scale));
+  --layout-stack-header-pad-y: calc(3px * var(--ui-scale));
+  --layout-stack-header-pad-x: calc(7px * var(--ui-scale));
+  --layout-column-header-pad-y: calc(3px * var(--ui-scale));
+  --layout-column-header-pad-x: calc(6px * var(--ui-scale));
+  --board-row-gap: calc(5px * var(--ui-scale));
+  --board-stack-gap: calc(3px * var(--ui-scale));
+  --board-column-gap: calc(3px * var(--ui-scale));
+  --board-inner-padding: calc(3px * var(--ui-scale));
   --board-layout-rows: 1;
   --board-bg: var(--bg-primary);
   --board-color: transparent;
@@ -176,9 +179,9 @@
   --surface-footer-bg: var(--bg-secondary);
   --card-radius: 2px;
   --card-shadow: none;
-  --card-gap: 3px;
-  --card-list-padding: 3px;
-  --card-content-padding: 4px 8px 6px;
+  --card-gap: 2px;              /* matches lexera-board.jsx marginBottom: 2 */
+  --card-list-padding: 3px;     /* matches column body padding: 3 */
+  --card-content-padding: 0 8px 5px 20px;  /* matches design's body padding */
   --row-content-bg: transparent;
   --stack-content-bg: transparent;
   --title-row-color: var(--text-primary);
@@ -236,11 +239,11 @@
   --tree-toggle-col: var(--tree-indent-step);
   --tree-toggle-fg: var(--hierarchy-meta-color);
   --tree-toggle-fg-hover: var(--hierarchy-text-color);
-  --hierarchy-row-min-height: calc(18px * var(--ui-scale, 1));
-  --hierarchy-row-pad-y: 2px;
-  --hierarchy-row-pad-x: 6px;
-  --hierarchy-row-gap: 3px;
-  --hierarchy-row-radius: 3px;
+  --hierarchy-row-min-height: calc(16px * var(--ui-scale, 1));
+  --hierarchy-row-pad-y: 1px;
+  --hierarchy-row-pad-x: 8px;
+  --hierarchy-row-gap: 2px;
+  --hierarchy-row-radius: 2px;
 }
 
 /* Application shell typography contract:
@@ -275,6 +278,7 @@
 body {
   font-family: var(--font-ui);
   font-size: var(--font-size-base);
+  line-height: 1.4;  /* v2 compact line-height (design uses 1.35–1.45) */
   color: var(--text-primary);
   background: var(--bg-primary);
   overflow: hidden;
@@ -839,9 +843,9 @@ textarea {
 }
 
 .sidebar-btn {
-  min-width: 22px;
-  height: 20px;
-  padding: 0 5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
   font-size: var(--app-control-font-size);
   font-weight: var(--app-control-font-weight);
 }
@@ -2100,14 +2104,15 @@ body.embedded-mode .columns-container {
 }
 
 .board-header {
-  padding: calc(5px * var(--ui-scale)) calc(12px * var(--ui-scale));
-  font-size: var(--font-size-base);
+  padding: calc(2px * var(--ui-scale)) calc(5px * var(--ui-scale));
+  font-size: var(--font-size-s);
   color: var(--text-primary);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-2);
   background: var(--bg-secondary);
+  min-height: 28px;
 }
 
 .board-header-zone {
@@ -2212,9 +2217,9 @@ body.embedded-mode .columns-container {
 
 /* .board-action-btn inherits .btn base from tokens.css */
 .board-action-btn {
-  gap: calc(4px * var(--ui-scale));
-  min-height: var(--btn-square-size);
-  padding: 0 calc(7px * var(--ui-scale));
+  gap: calc(3px * var(--ui-scale));
+  min-height: calc(18px * var(--ui-scale));
+  padding: 1px calc(5px * var(--ui-scale));
   font-size: var(--app-control-font-size);
   font-weight: var(--app-control-font-weight);
   color: var(--app-font-color);
@@ -2629,8 +2634,8 @@ body.show-special-characters .card-content .ws-nl {
   overflow: visible;
   position: relative;
   align-items: flex-start;
-  padding: calc(var(--board-inner-padding) - 1px);
-  min-height: min(60px, 100%);
+  padding: var(--board-row-gap);
+  min-height: min(40px, 100%);
   flex: 1;
   min-width: 0;
   background: var(--row-content-bg);
@@ -2641,7 +2646,7 @@ body.show-special-characters .card-content .ws-nl {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  min-height: 28px;
+  min-height: 20px;
   padding: var(--space-1) var(--space-2);
   border-top: 1px solid var(--surface-header-border);
   background: var(--surface-footer-bg);
@@ -2965,12 +2970,12 @@ body.window-resizing .columns-container {
   display: flex;
   align-items: center;
   gap: var(--btn-gap);
-  padding: var(--app-space-2) var(--app-space-2) var(--app-space-1) var(--app-space-1);
+  padding: var(--layout-stack-header-pad-y) var(--layout-stack-header-pad-x);
   cursor: grab;
   user-select: none;
   background: transparent;
   border-radius: 0;
-  border-bottom: 2px solid var(--surface-header-border);
+  border-bottom: 1px solid var(--surface-header-border);
   flex-shrink: 0;
 }
 /* Tag-colored underline on stack header */
@@ -3049,7 +3054,7 @@ body.window-resizing .columns-container {
   display: flex;
   flex-direction: column;
   gap: var(--board-column-gap);
-  padding: calc(var(--board-column-gap) + 1px);
+  padding: var(--board-inner-padding);
   flex: 1;
   min-width: 0;
   background: var(--stack-content-bg);
@@ -3060,7 +3065,7 @@ body.window-resizing .columns-container {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  min-height: 28px;
+  min-height: 20px;
   padding: var(--space-1) var(--space-2);
   border-top: 1px solid var(--surface-header-border);
   background: var(--surface-footer-bg);
@@ -3076,7 +3081,7 @@ body.window-resizing .columns-container {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  min-height: 34px;
+  min-height: 22px;
 }
 
 .board-level-empty-stacks {
@@ -3176,7 +3181,7 @@ body.window-resizing .columns-container {
 .columns-container.new-format .board-row {
   flex: 0 0 auto;
   align-self: flex-start;
-  min-height: min(120px, 100%);
+  min-height: min(60px, 100%);
   height: var(--board-row-height, auto);
   width: auto;
   min-width: 100%;
@@ -3217,7 +3222,7 @@ body.window-resizing .columns-container {
 .columns-container.new-format .board-row:not(.folded):nth-of-type(n+2),
 .columns-container.new-format .board-row:not(.folded):only-child {
   flex: 0 0 auto;
-  min-height: min(120px, 100%);
+  min-height: min(60px, 100%);
   min-width: 100%;
 }
 
@@ -3509,8 +3514,8 @@ body.window-resizing .columns-container {
   position: sticky;
   top: 0;
   z-index: 6;
-  padding: var(--layout-column-header-pad-y) var(--layout-column-header-pad-x) var(--layout-column-header-pad-y) var(--app-space-3);
-  font-size: var(--font-size-md);
+  padding: var(--layout-column-header-pad-y) var(--layout-column-header-pad-x);
+  font-size: var(--font-size-s);
   color: var(--title-column-color);
   border-bottom: 1px solid var(--surface-header-border);
   cursor: grab;
@@ -3791,7 +3796,7 @@ u {
 .card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-left: 3px solid transparent;
+  border-left: var(--spine-card-width) solid transparent;
   border-radius: var(--card-radius);
   padding: 0;
   margin-bottom: var(--card-gap);
@@ -3813,10 +3818,10 @@ u {
   display: flex;
   align-items: center;
   gap: var(--btn-gap);
-  padding: var(--space-2) var(--space-1) var(--space-1) var(--space-4);
+  padding: 3px 6px 2px 8px;  /* matches lexera-board.jsx Card header */
   flex-shrink: 0;
-  min-height: 22px;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+  min-height: 18px;
+  border-bottom: none;
 }
 
 .card-drag-handle {
@@ -8748,7 +8753,7 @@ body .sidebar {
 body .sidebar-header {
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
-  padding: 6px 10px;
+  padding: 6px 8px 4px;
 }
 body .sidebar-header-title-text {
   font-family: var(--font-mono);

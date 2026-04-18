@@ -90,16 +90,20 @@
   --font-size-m:    calc(12px * var(--ui-scale));
   --font-size-md:   calc(13px * var(--ui-scale));
   --font-size-l:    calc(14px * var(--ui-scale));
-  --font-size-sm:   var(--font-size-s);   /* legacy alias */
-  --font-size-base: var(--font-size-md);  /* legacy alias */
+  /* Legacy --font-size-base is the app's body baseline. v2 design uses
+     12 px body widely (LX.size.m) — dropping from 13 to 12 visibly tightens
+     the whole app without breaking the token contract. */
+  --font-size-sm:   var(--font-size-s);
+  --font-size-base: var(--font-size-m);
   /* Font stacks defined in app.css :root so the v2 baseline wins there. */
 
   /* ── Application Spacing ────────────────────────────────────── */
-  --app-space-1: calc(2px  * var(--ui-scale));  /* tight gaps, dividers */
-  --app-space-2: calc(4px  * var(--ui-scale));  /* button gaps, inline spacing */
-  --app-space-3: calc(8px  * var(--ui-scale));  /* section padding, card padding */
-  --app-space-4: calc(12px  * var(--ui-scale));  /* section padding, card padding */
-  --app-space-5: calc(16px  * var(--ui-scale));  /* section padding, card padding */
+  /* v2 dense scale — aligned with lexera-board.jsx inline paddings. */
+  --app-space-1: calc(2px  * var(--ui-scale));  /* hairline gaps */
+  --app-space-2: calc(3px  * var(--ui-scale));  /* button gaps, card gap */
+  --app-space-3: calc(5px  * var(--ui-scale));  /* row/stack content padding */
+  --app-space-4: calc(8px  * var(--ui-scale));  /* section/card body padding */
+  --app-space-5: calc(12px * var(--ui-scale));  /* dialog padding */
 
   /* ── Control Sizes ──────────────────────────────────────────── */
   --control-height-sm: calc(22px * var(--ui-scale));  /* compact buttons, icon buttons */
