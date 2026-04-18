@@ -16,7 +16,7 @@
   min-height: 1em;
   cursor: text;
   color: var(--vscode-foreground);
-  caret-color: var(--vscode-editorCursor-foreground, var(--vscode-foreground, #000));
+  caret-color: var(--vscode-editorCursor-foreground, var(--vscode-foreground, var(--ink, #000)));
 }
 
 .card-description-wysiwyg .ProseMirror-focused,
@@ -27,7 +27,7 @@
 }
 
 .card-description-wysiwyg .ProseMirror:focus {
-  caret-color: var(--vscode-editorCursor-foreground, var(--vscode-foreground, #000));
+  caret-color: var(--vscode-editorCursor-foreground, var(--vscode-foreground, var(--ink, #000)));
 }
 
 .card-description-wysiwyg .ProseMirror * {
@@ -213,7 +213,7 @@
   gap: 6px;
   position: relative;
   border: 1px solid var(--vscode-panel-border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   padding: 8px;
 }
 
@@ -271,7 +271,7 @@
   position: relative;
   margin: 10px 3px;
   padding: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   outline: 1px dashed color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
   overflow: visible;
@@ -432,7 +432,7 @@
   gap: 6px;
   position: relative;
   border: 1px solid var(--vscode-panel-border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   padding: 8px;
 }
 
@@ -550,7 +550,7 @@
   background: var(--bg-tertiary);
   color: var(--text-primary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
 }
 
 .card-overlay-wysiwyg .image-path-overlay-container,

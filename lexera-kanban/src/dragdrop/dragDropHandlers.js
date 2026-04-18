@@ -544,6 +544,24 @@ var LexeraDragDropHandlers = (function () {
       return true;
     }
 
+    // findCardInsertIndex queries `.card:not(.dragging)`, so its insertIdx
+    // counts in the without-source space. moveCard's resolveInsertCardIndex
+    // counts in the with-source space (column data still contains the
+    // source card). For same-column drops, slots past the source slip one
+    // position too high — re-add the source slot so the math agrees.
+    if (
+      target.kind === 'main' &&
+      typeof target.insertIdx === 'number' &&
+      typeof source.cardIndex === 'number' &&
+      source.boardId === target.boardId &&
+      typeof source.flatColIndex === 'number' &&
+      typeof target.flatColIndex === 'number' &&
+      source.flatColIndex === target.flatColIndex &&
+      target.insertIdx > source.cardIndex
+    ) {
+      target.insertIdx += 1;
+    }
+
     _deps.moveCard(source, target).catch(function (err) {
       _deps.logFrontendIssue('error', 'moveCard', 'Drop failed', err);
     });

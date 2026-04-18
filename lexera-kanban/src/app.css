@@ -49,6 +49,7 @@
   --card-bg: #ffffff;
   --card-border: #e6e1d6;
   --card-checked: #efece2;
+  --highlight: #fbe89b;  /* search-match highlight (matches LX.light.highlight) */
   --font-ui: 'Inter', 'Söhne', 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-board: 'Inter', 'Söhne', 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -94,6 +95,14 @@
   --section-label-weight:    600;
   --section-label-tracking:  0.4px;
   --section-label-transform: uppercase;
+
+  /* v2 layout model: stack = fixed px width (board default, overridable
+     per stack via #w tag or inline --stack-width-override). Column =
+     fraction of stack (existing #w2/#w3 tag scheme resolves to a flex
+     ratio inside the stack). Stacks never scroll horizontally; row
+     max-height (via --board-row-height) makes the whole row scroll
+     vertically as one unit — all stacks in the row scroll together. */
+  --stack-width-default: 350px;
 
   --scrollbar-thumb: #c4bda9;
   --scrollbar-thumb-hover: #a9a298;
@@ -146,9 +155,10 @@
   --board-color-light: rgba(255, 255, 255, 0.03);
   --board-color-dark: color-mix(in srgb, var(--shadow-ink) 18%, transparent);
   --board-row-height: auto;
-  --btn-bg: #e0e0e0;
-  --btn-bg-hover: #d0d0d0;
-  --btn-fg: #333333;
+  --btn-bg: var(--bg-tertiary);
+  --btn-bg-hover: var(--bg-hover);
+  --btn-fg: var(--text-primary);
+  --warning: #c5892b;
   --surface-row-bg: color-mix(in srgb, var(--shadow-ink) 12%, transparent);
   --surface-row-border: rgba(255, 255, 255, 0.04);
   --surface-row-radius: var(--radius-lg);
@@ -182,7 +192,7 @@
   --icon-btn-fg: var(--btn-fg);
   --icon-btn-fg-hover: var(--text-primary);
   --input-bg: #ffffff;
-  --input-border: #c4c4c4;
+  --input-border: var(--border);
   --select-bg: var(--input-bg);
   --select-bg-hover: var(--bg-hover);
   --select-border: var(--input-border);
@@ -2648,7 +2658,7 @@ body.show-special-characters .card-content .ws-nl {
 .board-stack.tag-styled,
 .column.tag-styled,
 .card.tag-styled {
-  box-shadow: inset 0 0 0 1px var(--tag-accent-soft, rgba(0, 0, 0, 0));
+  box-shadow: inset 0 0 0 1px var(--tag-accent-soft, transparent);
   opacity: var(--tag-effect-opacity, 1);
   filter: var(--tag-effect-filter, none);
 }
@@ -2721,7 +2731,7 @@ body.show-special-characters .card-content .ws-nl {
 .card.tag-styled > .card-header {
   border-color: var(--tag-accent-muted, var(--surface-header-border));
   background: var(--tag-surface-header-bg, var(--surface-header-bg));
-  box-shadow: inset 2px 0 0 var(--tag-accent-soft, rgba(0, 0, 0, 0));
+  box-shadow: inset 2px 0 0 var(--tag-accent-soft, transparent);
 }
 /* Stack header: tag accent shows as colored underline, no box background */
 .board-stack.tag-styled > .board-stack-header {
@@ -2737,8 +2747,8 @@ body.show-special-characters .card-content .ws-nl {
 .card.tag-styled > .card-content {
   background: var(--tag-surface-content-bg, transparent);
   box-shadow:
-    inset 0 1px 0 var(--tag-accent-soft-strong, rgba(0, 0, 0, 0)),
-    inset 0 -1px 0 var(--tag-accent-soft-strong, rgba(0, 0, 0, 0));
+    inset 0 1px 0 var(--tag-accent-soft-strong, transparent),
+    inset 0 -1px 0 var(--tag-accent-soft-strong, transparent);
 }
 
 .board-row.tag-styled > .board-row-footer,
@@ -2747,7 +2757,7 @@ body.show-special-characters .card-content .ws-nl {
 .card.tag-styled > .card-footer {
   border-top-color: var(--tag-accent-soft-strong, var(--border));
   background: var(--tag-surface-footer-bg, var(--surface-footer-bg));
-  box-shadow: inset 2px 0 0 var(--tag-accent-soft, rgba(0, 0, 0, 0));
+  box-shadow: inset 2px 0 0 var(--tag-accent-soft, transparent);
 }
 
 .board-row.tag-styled .board-row-title,
@@ -2843,7 +2853,7 @@ h3.tag-line-styled,
 li.tag-line-styled,
 hr.tag-line-styled {
   background: var(--tag-surface-bg, transparent);
-  box-shadow: inset 0 0 0 1px var(--tag-accent-soft, rgba(0, 0, 0, 0));
+  box-shadow: inset 0 0 0 1px var(--tag-accent-soft, transparent);
   border-radius: 3px;
 }
 
@@ -2889,8 +2899,8 @@ li.tag-line-styled {
 .tag-line-styled.tag-style-pattern-stripes-h {
   background-image: none;
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--tag-accent-soft-strong, rgba(0, 0, 0, 0)) 88%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--tag-accent-soft-strong, rgba(0, 0, 0, 0)) 88%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--tag-accent-soft-strong, transparent) 88%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--tag-accent-soft-strong, transparent) 88%, transparent);
 }
 
 /* Folded row: full-width horizontal bar */
@@ -2931,7 +2941,8 @@ li.tag-line-styled {
   flex-direction: column;
   gap: 0;
   min-width: var(--layout-stack-min-width);
-  flex: 0 0 var(--stack-width-override, var(--board-stack-width, var(--board-column-width, 350px)));
+  flex: 0 0 var(--stack-width-override, var(--board-stack-width, var(--board-column-width, var(--stack-width-default))));
+  overflow-x: clip;
   transition: min-width 0.15s, width 0.15s, flex 0.15s;
   border: 1px solid var(--surface-stack-border);
 }
@@ -3171,6 +3182,16 @@ body.window-resizing .columns-container {
   min-width: 100%;
   max-width: none;
   overflow: visible;
+}
+
+/* v2 layout model: when a row has an explicit height set (via #h or
+   --board-row-height override), the WHOLE row scrolls vertically as a
+   single unit — all its stacks scroll together. Implemented by putting
+   the scroll on the row content wrapper, not on individual stacks. */
+.columns-container.new-format .board-row[style*="--board-row-height"] .board-row-content,
+.columns-container.new-format .board-row:not([style*="--board-row-height: auto"]) .board-row-content {
+  overflow-y: auto;
+  overflow-x: visible;
 }
 
 /*
@@ -3659,8 +3680,8 @@ abbr {
 
 mark {
   padding: 0 2px;
-  border-radius: 3px;
-  background: rgba(255, 211, 61, 0.35);
+  border-radius: var(--radius-sm);
+  background: var(--highlight);
   color: inherit;
 }
 
@@ -4276,9 +4297,9 @@ ins.critic.critic-sub {
   font-size: var(--font-size-sm);
   white-space: nowrap;
   cursor: help;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  color: #5ca9df;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
 }
 
 .column-title .kanban-temporal-date,
@@ -4287,17 +4308,17 @@ ins.critic.critic-sub {
 .card-title-display .kanban-temporal-week,
 .card .kanban-temporal-date,
 .card .kanban-temporal-week {
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  color: #5ca9df;
+  border-color: var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
 }
 
 .column-title .kanban-temporal-weekday,
 .card-title-display .kanban-temporal-weekday,
 .card .kanban-temporal-weekday {
-  border-color: rgba(155, 126, 212, 0.35);
-  background: rgba(155, 126, 212, 0.1);
-  color: #b89af2;
+  border-color: var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
 }
 
 .column-title .kanban-temporal-time,
@@ -4309,9 +4330,9 @@ ins.critic.critic-sub {
 .card .kanban-temporal-time,
 .card .kanban-temporal-timeSlot,
 .card .kanban-temporal-minuteSlot {
-  border-color: rgba(78, 201, 176, 0.35);
-  background: rgba(78, 201, 176, 0.1);
-  color: #7adcc6;
+  border-color: var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
 }
 
 .card .html-comment {
@@ -5378,7 +5399,7 @@ select.dialog-input option,
 }
 .notification-error { border-left-color: var(--error); }
 .notification-success { border-left-color: var(--success); }
-.notification-warn { border-left-color: #e6a817; }
+.notification-warn { border-left-color: var(--warning); }
 .notification-info { border-left-color: var(--accent); }
 .notification-msg { flex: 1; }
 .notification-action {
@@ -5816,7 +5837,7 @@ select.dialog-input option,
   border: 1px solid var(--border);
   border-radius: 3px;
   overflow: hidden;
-  background: #f3efe6;
+  background: var(--bg-hover);
 }
 
 .special-file-editor-frame {
@@ -5824,7 +5845,7 @@ select.dialog-input option,
   width: 100%;
   height: min(72vh, 820px);
   border: 0;
-  background: #f3efe6;
+  background: var(--bg-hover);
 }
 
 .plaintext-editor-dialog {
@@ -5946,7 +5967,7 @@ select.dialog-input option,
 }
 
 .tag-color-picker-input-invalid {
-  border-color: #e05252;
+  border-color: var(--error);
   background: rgba(224, 82, 82, 0.08);
 }
 
@@ -6460,8 +6481,8 @@ select.dialog-input option,
 }
 
 .log-panel-header.log-panel-has-error {
-  background: #b00020;
-  border-bottom-color: #900018;
+  background: var(--error);
+  border-bottom-color: var(--error);
   cursor: pointer;
 }
 .log-panel-header.log-panel-has-error .log-panel-title,
@@ -7244,7 +7265,7 @@ select.dialog-input option,
 }
 
 .log-info .log-level { color: var(--accent); }
-.log-warn .log-level { color: #e0a030; }
+.log-warn .log-level { color: var(--warning); }
 .log-warn { background: rgba(224, 160, 48, 0.06); }
 .log-error .log-level { color: var(--error); }
 .log-error { background: rgba(211, 47, 47, 0.06); }
@@ -7325,11 +7346,11 @@ select.dialog-input option,
   opacity: 0.3;
 }
 .presence-dot.online {
-  background: #4caf50;
+  background: var(--success);
   opacity: 1;
 }
 .board-presence-badge {
-  background: #4caf50;
+  background: var(--success);
   color: #fff;
   border-radius: 3px;
   padding: 0 5px;
@@ -7394,10 +7415,10 @@ select.dialog-input option,
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #b84f4f;
+  background: var(--error);
   flex-shrink: 0;
 }
-.collab-status-dot.ok { background: #4ec9b0; }
+.collab-status-dot.ok { background: var(--success); }
 
 @media (max-width: 980px) {
   :root { --sidebar-width: 240px; }
@@ -8321,12 +8342,12 @@ select.export-input {
 
 .file-search-badge.badge-video {
   background: rgba(200, 150, 50, 0.2);
-  color: #d4a843;
+  color: var(--warning);
 }
 
 .file-search-badge.badge-audio {
   background: rgba(180, 100, 200, 0.2);
-  color: #c080d4;
+  color: var(--warning);
 }
 
 .file-search-badge.badge-unknown {

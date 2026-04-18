@@ -9,6 +9,18 @@
   var _Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   var TAG_COLORS = {
+    // Lexera v2 design preset tag kinds (LX.tags from the design bundle).
+    // bg values used as the tag's resolved color — muted, warm, tag-only
+    // color in the v2 "near-monochrome default" approach.
+    '#planning': '#f3e4ca',
+    '#lecture':  '#d6e6ea',
+    '#task':     '#f3d9c4',
+    '#reading':  '#e2dcee',
+    '#exercise': '#dbe8dc',
+    '#exam':     '#f0d4d1',
+    '#misc':     '#e6e0ce',
+    '#week':     '#ebe4cc',
+    '#archive':  '#d8d2bf',
     '#comment': '#d4883c',
     '#note': '#c9b84e',
     '#urgent': '#e05252',
