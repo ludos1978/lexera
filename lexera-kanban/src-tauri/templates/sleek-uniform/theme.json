@@ -1,0 +1,7 @@
+{
+  "id": "sleek-uniform",
+  "baseId": "sleek",
+  "name": "Sleek Uniform",
+  "description": "Sleek layout with unified typography. Edit theme.css in this folder to customize.",
+  "cssFile": "theme.css"
+}

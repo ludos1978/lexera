@@ -306,7 +306,7 @@ var LexeraAppearance = (function () {
   // ─── Boot-time apply ──────────────────────────────────────────────────
 
   function applyInitialSettings() {
-    var visualTheme = Settings ? Settings.get('visualTheme') : (localStorage.getItem('lexera-visual-theme') || 'sleek-uniform');
+    var visualTheme = Settings ? Settings.get('visualTheme') : (localStorage.getItem('lexera-visual-theme') || 'classic');
     var themeId = Settings ? Settings.get('theme') : (localStorage.getItem('lexera-theme') || 'lexera');
     var uiScaleRaw = Settings ? Settings.get('uiScale') : (localStorage.getItem('lexera-ui-scale') || '0.95');
     applyVisualTheme(visualTheme);

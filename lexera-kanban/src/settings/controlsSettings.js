@@ -21,6 +21,8 @@ var LexeraControlsSettings = (function () {
 
   // ── Default bindings ──
 
+  var LEFT_DRAG = [{ type: 'drag', button: 0 }];
+
   var DEFAULTS = {
     kanban: {
       move: [
@@ -37,7 +39,11 @@ var LexeraControlsSettings = (function () {
       ],
       enter: [
         { type: 'key', key: 'ArrowRight' }
-      ]
+      ],
+      'drag-card': LEFT_DRAG.slice(),
+      'drag-column': LEFT_DRAG.slice(),
+      'drag-stack': LEFT_DRAG.slice(),
+      'drag-row': LEFT_DRAG.slice()
     },
     canvas: {
       move: [
@@ -53,11 +59,15 @@ var LexeraControlsSettings = (function () {
       ],
       enter: [
         { type: 'key', key: 'ArrowRight' }
-      ]
+      ],
+      'drag-card': LEFT_DRAG.slice(),
+      'drag-column': LEFT_DRAG.slice(),
+      'drag-stack': LEFT_DRAG.slice(),
+      'drag-row': LEFT_DRAG.slice()
     }
   };
 
-  var ACTIONS = ['move', 'zoom', 'edit', 'enter'];
+  var ACTIONS = ['move', 'zoom', 'edit', 'enter', 'drag-card', 'drag-column', 'drag-stack', 'drag-row'];
   var MODES = ['kanban', 'canvas'];
 
   // ── State ──
@@ -99,7 +109,15 @@ var LexeraControlsSettings = (function () {
       var src = (data && data[mode]) || {};
       for (var ai = 0; ai < ACTIONS.length; ai++) {
         var action = ACTIONS[ai];
-        result[mode][action] = Array.isArray(src[action]) ? src[action].slice() : [];
+        if (Object.prototype.hasOwnProperty.call(src, action)) {
+          // User has a saved value for this action (possibly empty = intentionally disabled).
+          result[mode][action] = Array.isArray(src[action]) ? src[action].slice() : [];
+        } else {
+          // Action is new since the last save — seed with defaults so existing
+          // installs pick up bindings for gestures added in later versions.
+          var defaultList = DEFAULTS[mode] && DEFAULTS[mode][action];
+          result[mode][action] = Array.isArray(defaultList) ? defaultList.slice() : [];
+        }
       }
     }
     return result;

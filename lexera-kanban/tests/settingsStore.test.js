@@ -39,7 +39,7 @@ describe('SettingsStore', () => {
 
   describe('get/set', () => {
     it('returns default for unset string setting', () => {
-      expect(Settings.get('visualTheme')).toBe('sleek');
+      expect(Settings.get('visualTheme')).toBe('classic');
     });
 
     it('returns default for unset number setting', () => {

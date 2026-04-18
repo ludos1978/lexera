@@ -20,6 +20,18 @@ var LexeraKeyboardNavigation = (function () {
     return !!(_deps && typeof _deps[name] === 'function');
   }
 
+  function currentControlsMode() {
+    if (hasDep('isCanvasBoardLayout') && _deps.isCanvasBoardLayout()) return 'canvas';
+    return 'kanban';
+  }
+
+  function matchesEditKey(event) {
+    var CS = typeof LexeraControlsSettings !== 'undefined' ? LexeraControlsSettings : null;
+    if (CS) return CS.matchesKey(event, currentControlsMode(), 'edit');
+    // Fallback: default binding is Enter with no modifiers
+    return event.key === 'Enter' && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+  }
+
   function parseOptionalIndex(value) {
     if (value == null || value === '') return null;
     var parsed = parseInt(value, 10);
@@ -253,7 +265,7 @@ var LexeraKeyboardNavigation = (function () {
     } else if ((key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight') && !(e.ctrlKey && e.altKey)) {
       e.preventDefault();
       navigateCards(key);
-    } else if (key === 'Enter' && focusedCardEl) {
+    } else if (focusedCardEl && matchesEditKey(e)) {
       e.preventDefault();
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);

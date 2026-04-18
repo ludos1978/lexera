@@ -307,22 +307,33 @@
         container.innerHTML = '';
         var bindings = CS.getBindings(mode, action);
         for (var bi = 0; bi < bindings.length; bi++) {
-          (function (idx) {
+          (function (idx, curMode, curAction, curContainer, curBinding) {
             var chip = document.createElement('span');
             chip.className = 'controls-chip';
-            chip.textContent = CS.bindingLabel(bindings[idx]);
+            chip.textContent = CS.bindingLabel(curBinding);
             var removeBtn = document.createElement('button');
             removeBtn.className = 'controls-chip-remove';
             removeBtn.type = 'button';
             removeBtn.textContent = '\u00d7';
             removeBtn.title = 'Remove binding';
-            removeBtn.addEventListener('click', function () {
-              CS.removeBinding(mode, action, idx);
+            removeBtn.addEventListener('click', function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              var currentList = CS.getBindings(curMode, curAction);
+              var removeAt = idx;
+              var key = CS.bindingKey(curBinding);
+              if (!currentList[removeAt] || CS.bindingKey(currentList[removeAt]) !== key) {
+                removeAt = -1;
+                for (var k = 0; k < currentList.length; k++) {
+                  if (CS.bindingKey(currentList[k]) === key) { removeAt = k; break; }
+                }
+              }
+              if (removeAt >= 0) CS.removeBinding(curMode, curAction, removeAt);
               renderControlsChips(panel);
             });
             chip.appendChild(removeBtn);
-            container.appendChild(chip);
-          })(bi);
+            curContainer.appendChild(chip);
+          })(bi, mode, action, container, bindings[bi]);
         }
       }
     }

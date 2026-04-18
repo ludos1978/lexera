@@ -32,7 +32,8 @@ describe('hierarchy style contract', () => {
 
   it('uses one quiet typography and accent-line state model across hierarchy surfaces', () => {
     expect(appCss).toContain('--app-shell-font-size: var(--font-size-base);');
-    expect(appCss).toContain('--font-color-unified: var(--font-color-mode, #000000);');
+    // v2 "warm paper" ink (#1a1816) used as the mode-unset fallback instead of pure black.
+    expect(appCss).toContain('--font-color-unified: var(--font-color-mode, #1a1816);');
     // --app-shell-font-color removed — text colors use --text-primary and --text-muted directly
     expect(appCss).toContain('--app-control-font-size: var(--font-size-base);');
     expect(appCss).toContain('--app-control-font-weight: 400;');

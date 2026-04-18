@@ -16,7 +16,7 @@
 }
 
 .workspace-shell {
-  --font-color-unified: var(--font-color-mode, #000000);
+  --font-color-unified: var(--font-color-mode, #1a1816);
   --workspace-row-min-height: var(--hierarchy-row-min-height, calc(18px * var(--ui-scale, 1)));
   --workspace-row-pad-y: var(--hierarchy-row-pad-y, 2px);
   --workspace-row-pad-x: var(--hierarchy-row-pad-x, 6px);

@@ -1,7 +1,11 @@
 /**
  * Visual Theme — controls board surface, separators, and the active board skin.
  *
- * Built-in styles remain `classic` and `sleek-uniform`. Additional user themes
+ * Only one true built-in: `classic` (the default — bare app.css
+ * baseline, the Lexera v2 warm-paper design lives here). Every other
+ * theme — including the bundled `sleek-uniform` starter — is loaded
+ * from the user themes directory (seeded on first launch by
+ * src-tauri/templates/) so users can edit them freely.
  * can be added at runtime by creating a folder inside the Lexera themes
  * directory with a `theme.json` manifest and optional `theme.css`.
  */
@@ -16,23 +20,16 @@
   var BUILTIN_VISUAL_THEMES = [
     {
       id: 'classic',
-      name: 'Classic',
-      description: 'Balanced Lexera layout',
-      source: 'builtin'
-    },
-    {
-      id: 'sleek-uniform',
-      baseId: 'sleek',
-      name: 'Sleek Uniform',
-      description: 'Sleek layout copy for unified typography',
+      name: 'No style',
+      description: 'Lexera baseline (warm paper) — no theme override applied',
       source: 'builtin'
     }
   ];
 
   var VISUAL_THEMES = [];
   var VISUAL_THEME_LABELS = {};
-  var currentThemeId = 'sleek-uniform';
-  var currentRequestedThemeId = 'sleek-uniform';
+  var currentThemeId = 'classic';
+  var currentRequestedThemeId = 'classic';
   var visualThemesDirectory = '';
   var themeRegistryReady = false;
   var userThemeCssCache = {};
@@ -56,14 +53,15 @@
 
   function resolveRequestedVisualThemeId(value) {
     var source = String(value || '').trim().toLowerCase();
-    if (!source || source === 'default' || source === 'legacy') return 'sleek-uniform';
-    if (source === 'classic') return 'classic';
+    if (!source || source === 'default' || source === 'legacy') return 'classic';
+    if (source === 'classic' || source === 'no-style' || source === 'nostyle' || source === 'none' ||
+        source === 'paper' || source === 'paper-v2' || source === 'warm-paper' || source === 'lexera-v2') return 'classic';
     if (source === 'sleek' || source === 'minimal' || source === 'modern') return 'sleek-uniform';
     if (source === 'sleek-uniform' || source === 'sleekuniform' || source === 'uniform') return 'sleek-uniform';
     if (source === 'bordered' || source === 'boxed' || source === 'outline') return 'classic';
     if (source === 'gap' || source === 'gap-highlight' || source === 'gaphighlight') return 'sleek-uniform';
     if (source === 'lines' || source === 'line' || source === 'line-separator') return 'sleek-uniform';
-    return sanitizeThemeId(source) || 'sleek-uniform';
+    return sanitizeThemeId(source) || 'classic';
   }
 
   function normalizeThemeManifest(raw, fallbackSource) {
@@ -92,12 +90,12 @@
 
   function normalizeLexeraVisualThemeId(value) {
     var requested = resolveRequestedVisualThemeId(value);
-    return findThemeById(requested) ? requested : 'sleek-uniform';
+    return findThemeById(requested) ? requested : 'classic';
   }
 
   function findLexeraVisualTheme(id) {
     var requested = resolveRequestedVisualThemeId(id);
-    return findThemeById(requested) || findThemeById('sleek-uniform') || VISUAL_THEMES[0] || BUILTIN_VISUAL_THEMES[0];
+    return findThemeById(requested) || findThemeById('classic') || VISUAL_THEMES[0] || BUILTIN_VISUAL_THEMES[0];
   }
 
   function rebuildVisualThemeLabels() {
@@ -261,12 +259,12 @@
     } catch (err) {
       /* ignore localStorage errors */
     }
-    return 'sleek-uniform';
+    return 'classic';
   }
 
   function persistVisualThemeSelection(requestedId, appliedTheme, options) {
     if (options && options.skipPersist) return;
-    var resolved = appliedTheme && appliedTheme.id ? appliedTheme.id : 'sleek-uniform';
+    var resolved = appliedTheme && appliedTheme.id ? appliedTheme.id : 'classic';
     var valueToStore = requestedId === resolved ? requestedId : resolved;
 
     if (requestedId !== resolved && !themeRegistryReady) {
@@ -333,7 +331,7 @@
 
   function applyLexeraVisualTheme(themeId, options) {
     var requestedId = resolveRequestedVisualThemeId(themeId);
-    var theme = findThemeById(requestedId) || findThemeById('sleek-uniform') || VISUAL_THEMES[0] || BUILTIN_VISUAL_THEMES[0];
+    var theme = findThemeById(requestedId) || findThemeById('classic') || VISUAL_THEMES[0] || BUILTIN_VISUAL_THEMES[0];
     var docs = collectAccessibleDocuments();
 
     currentRequestedThemeId = requestedId;
@@ -415,7 +413,7 @@
   try {
     applyLexeraVisualTheme(readStoredVisualThemeId());
   } catch (err) {
-    applyLexeraVisualTheme('sleek-uniform');
+    applyLexeraVisualTheme('classic');
   }
 
   refreshLexeraVisualThemes();

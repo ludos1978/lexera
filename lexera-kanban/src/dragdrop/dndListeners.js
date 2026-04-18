@@ -62,7 +62,6 @@ var LexeraDndListeners = (function () {
   function _bindBoardListMousedown() {
     _on(getElBoardList(), 'mousedown', function (e) {
       try {
-      if (e.button !== 0) return;
       var DDH = getDragDropHandlers();
       var ptrDrag = DDH ? DDH.getPtrDrag() : null;
       var cardDrag = DDH ? DDH.getCardDrag() : null;
@@ -71,9 +70,25 @@ var LexeraDndListeners = (function () {
       var grip = e.target.closest('.tree-grip');
       if (!grip) return;
 
+      var CS = typeof LexeraControlsSettings !== 'undefined' ? LexeraControlsSettings : null;
+      var mode = (typeof _deps.isCanvasBoardLayout === 'function' && _deps.isCanvasBoardLayout()) ? 'canvas' : 'kanban';
+      function sidebarMatchesDrag(action) {
+        if (!CS) return e.button === 0;
+        return CS.matchesDrag(e, mode, action);
+      }
+
       var treeNode = grip.closest('.tree-node[data-tree-drag]');
       if (treeNode) {
         var dragType = treeNode.getAttribute('data-tree-drag');
+        var TREE_DRAG_ACTION = {
+          'tree-card': 'drag-card',
+          'tree-column': 'drag-column',
+          'tree-stack': 'drag-stack',
+          'tree-row': 'drag-row'
+        };
+        var boundAction = TREE_DRAG_ACTION[dragType];
+        if (boundAction && !sidebarMatchesDrag(boundAction)) return;
+        if (!boundAction && e.button !== 0) return; // board drag: left-only (not configurable)
         var ownerBoardId = treeNode.getAttribute('data-board-id');
         if (!ownerBoardId) {
           var ownerWrapper = treeNode.closest('.board-item-wrapper');
@@ -127,6 +142,7 @@ var LexeraDndListeners = (function () {
 
       var boardItem = grip.closest('.board-item[data-board-index][data-board-id]');
       if (boardItem) {
+        if (e.button !== 0) return;
         var boardIndex = parseInt(boardItem.getAttribute('data-board-index'), 10);
         var boardId = String(boardItem.getAttribute('data-board-id') || '').trim();
         if (isNaN(boardIndex)) return;
@@ -238,14 +254,19 @@ var LexeraDndListeners = (function () {
         if (_linkClickTimer) { clearTimeout(_linkClickTimer); _linkClickTimer = null; }
         if (e.target.closest('button, input, textarea, select, .card-menu-btn, .card-checkbox, .card-collapse-toggle, .column-fold-btn, .stack-fold-btn, .row-fold-btn')) return;
 
-        // Card content → edit
+        // Card content → edit (only when settings bind dblclick to 'edit')
         var cardEl = e.target.closest('.card');
         if (cardEl && !cardEl.classList.contains('editing')) {
-          var colIndex = parseInt(cardEl.getAttribute('data-col-index'), 10);
-          var cardIndex = parseInt(cardEl.getAttribute('data-card-index'), 10);
-          if (!isNaN(colIndex) && !isNaN(cardIndex)) {
-            e.stopPropagation();
-            _deps.openCardEditor(cardEl, colIndex, cardIndex, _deps.isOverlayEditorEnabled() ? 'overlay' : 'inline');
+          var CS = typeof LexeraControlsSettings !== 'undefined' ? LexeraControlsSettings : null;
+          var mode = (typeof _deps.isCanvasBoardLayout === 'function' && _deps.isCanvasBoardLayout()) ? 'canvas' : 'kanban';
+          var dblclickOpensEditor = CS ? CS.matchesDblclick(mode, 'edit') : true;
+          if (dblclickOpensEditor) {
+            var colIndex = parseInt(cardEl.getAttribute('data-col-index'), 10);
+            var cardIndex = parseInt(cardEl.getAttribute('data-card-index'), 10);
+            if (!isNaN(colIndex) && !isNaN(cardIndex)) {
+              e.stopPropagation();
+              _deps.openCardEditor(cardEl, colIndex, cardIndex, _deps.isOverlayEditorEnabled() ? 'overlay' : 'inline');
+            }
           }
           return;
         }
@@ -290,7 +311,6 @@ var LexeraDndListeners = (function () {
   function _bindColumnsContainerMousedown() {
     _on(getElColumnsContainer(), 'mousedown', function (e) {
       try {
-      if (e.button !== 0) return;
       var DDH = getDragDropHandlers();
       var ptrDrag = DDH ? DDH.getPtrDrag() : null;
       var cardDrag = DDH ? DDH.getCardDrag() : null;
@@ -301,16 +321,84 @@ var LexeraDndListeners = (function () {
       }
 
       var activeBoardId = getActiveBoardId();
+      var CS = typeof LexeraControlsSettings !== 'undefined' ? LexeraControlsSettings : null;
+      var mode = (typeof _deps.isCanvasBoardLayout === 'function' && _deps.isCanvasBoardLayout()) ? 'canvas' : 'kanban';
+      function matchesDragAction(action) {
+        if (!CS) return e.button === 0;
+        return CS.matchesDrag(e, mode, action);
+      }
 
-      var rowHeader = e.target.closest('.board-row-header');
-      if (rowHeader) {
-        var rowEl = rowHeader.closest('.board-row');
-        var rowIdx = parseInt(rowEl.getAttribute('data-row-index'), 10);
-        var newPtrDrag = { type: 'board-row', source: { type: 'board-row', boardId: activeBoardId, rowIndex: rowIdx, rowId: String(rowEl.getAttribute('data-row-id') || '').trim() || null, indexMode: 'display' }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: rowEl };
-        var rowStartTop = _deps.toTopFramePoint(window, e.clientX, e.clientY);
-        if (rowStartTop) {
-          newPtrDrag.startTopX = rowStartTop.x;
-          newPtrDrag.startTopY = rowStartTop.y;
+      // Determine the innermost target element; the binding for that element
+      // type decides whether this mousedown starts a drag. If the binding
+      // doesn't match, we leave the event alone (no stopPropagation) so the
+      // dispatcher can try view-pan bindings.
+      var cardEl = e.target.closest('.card');
+      if (cardEl) {
+        if (!matchesDragAction('drag-card')) return;
+        var colEl = cardEl.closest('.column');
+        var stackEl = colEl ? colEl.closest('.board-stack') : null;
+        var flatColIndex = colEl ? parseInt(colEl.getAttribute('data-col-index'), 10) : -1;
+        var colLocalIndex = colEl ? parseInt(colEl.getAttribute('data-col-local-index'), 10) : -1;
+        var rowIdx = stackEl ? parseInt(stackEl.getAttribute('data-row-index'), 10) : -1;
+        var stackIdx = stackEl ? parseInt(stackEl.getAttribute('data-stack-index'), 10) : -1;
+        var visibleCards = colEl ? colEl.querySelectorAll('.column-cards > .card:not(.hidden-card)') : [];
+        var cardIdx = Array.prototype.indexOf.call(visibleCards, cardEl);
+
+        DDH.setCardDrag({
+          el: cardEl,
+          boardId: activeBoardId,
+          flatColIndex: flatColIndex,
+          colIndex: colLocalIndex,
+          rowIndex: rowIdx,
+          stackIndex: stackIdx,
+          cardIndex: cardIdx,
+          rowId: stackEl ? (String(stackEl.getAttribute('data-row-id') || '').trim() || null) : null,
+          stackId: stackEl ? (String(stackEl.getAttribute('data-stack-id') || '').trim() || null) : null,
+          columnId: colEl ? (String(colEl.getAttribute('data-column-id') || '').trim() || null) : null,
+          cardId: String(cardEl.getAttribute('data-card-id') || '').trim() || null,
+          startX: e.clientX,
+          startY: e.clientY,
+          started: false,
+          ghost: null
+        });
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      var columnEl = e.target.closest('.column');
+      if (columnEl) {
+        if (!matchesDragAction('drag-column')) return;
+        var stackElForCol = columnEl.closest('.board-stack');
+        var rowIdx = stackElForCol ? parseInt(stackElForCol.getAttribute('data-row-index'), 10) : -1;
+        var stackIdx = stackElForCol ? parseInt(stackElForCol.getAttribute('data-stack-index'), 10) : -1;
+        var columns = stackElForCol ? stackElForCol.querySelectorAll('.board-stack-content > .column') : [];
+        var colIdx = Array.prototype.indexOf.call(columns, columnEl);
+        var newPtrDrag = {
+          type: 'column',
+          source: {
+            type: 'column',
+            boardId: activeBoardId,
+            rowIndex: rowIdx,
+            stackIndex: stackIdx,
+            colIndex: colIdx,
+            rowId: String(columnEl.getAttribute('data-row-id') || '').trim() || null,
+            stackId: String(columnEl.getAttribute('data-stack-id') || '').trim() || null,
+            columnId: String(columnEl.getAttribute('data-column-id') || '').trim() || null,
+            indexMode: 'display'
+          },
+          startX: e.clientX,
+          startY: e.clientY,
+          startTopX: null,
+          startTopY: null,
+          started: false,
+          ghost: null,
+          el: columnEl
+        };
+        var colStartTop = _deps.toTopFramePoint(window, e.clientX, e.clientY);
+        if (colStartTop) {
+          newPtrDrag.startTopX = colStartTop.x;
+          newPtrDrag.startTopY = colStartTop.y;
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
@@ -319,9 +407,9 @@ var LexeraDndListeners = (function () {
         return;
       }
 
-      var stackHeader = e.target.closest('.board-stack-header');
-      if (stackHeader) {
-        var stackEl = stackHeader.closest('.board-stack');
+      var stackEl = e.target.closest('.board-stack');
+      if (stackEl) {
+        if (!matchesDragAction('drag-stack')) return;
         var rowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
         var stackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
         var stackRect = stackEl.getBoundingClientRect();
@@ -360,39 +448,15 @@ var LexeraDndListeners = (function () {
         return;
       }
 
-      var columnHeader = e.target.closest('.column-header');
-      if (columnHeader) {
-        var colEl = columnHeader.closest('.column');
-        var stackEl = colEl.closest('.board-stack');
-        var rowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
-        var stackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
-        var columns = stackEl.querySelectorAll('.board-stack-content > .column');
-        var colIdx = Array.prototype.indexOf.call(columns, colEl);
-        var newPtrDrag = {
-          type: 'column',
-          source: {
-            type: 'column',
-            boardId: activeBoardId,
-            rowIndex: rowIdx,
-            stackIndex: stackIdx,
-            colIndex: colIdx,
-            rowId: String(colEl.getAttribute('data-row-id') || '').trim() || null,
-            stackId: String(colEl.getAttribute('data-stack-id') || '').trim() || null,
-            columnId: String(colEl.getAttribute('data-column-id') || '').trim() || null,
-            indexMode: 'display'
-          },
-          startX: e.clientX,
-          startY: e.clientY,
-          startTopX: null,
-          startTopY: null,
-          started: false,
-          ghost: null,
-          el: colEl
-        };
-        var colStartTop = _deps.toTopFramePoint(window, e.clientX, e.clientY);
-        if (colStartTop) {
-          newPtrDrag.startTopX = colStartTop.x;
-          newPtrDrag.startTopY = colStartTop.y;
+      var rowEl = e.target.closest('.board-row');
+      if (rowEl) {
+        if (!matchesDragAction('drag-row')) return;
+        var rowIdx = parseInt(rowEl.getAttribute('data-row-index'), 10);
+        var newPtrDrag = { type: 'board-row', source: { type: 'board-row', boardId: activeBoardId, rowIndex: rowIdx, rowId: String(rowEl.getAttribute('data-row-id') || '').trim() || null, indexMode: 'display' }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: rowEl };
+        var rowStartTop = _deps.toTopFramePoint(window, e.clientX, e.clientY);
+        if (rowStartTop) {
+          newPtrDrag.startTopX = rowStartTop.x;
+          newPtrDrag.startTopY = rowStartTop.y;
         }
         DDH.setPtrDrag(newPtrDrag);
         _deps.startCrossViewBridge('ptr');
@@ -401,9 +465,10 @@ var LexeraDndListeners = (function () {
         return;
       }
 
-      // Card drag: initiated from the card drag handle or the card header row
+      // Legacy card-grip fallback (for DOM nodes outside a .card but inside a grip).
       var cardGrip = e.target.closest('.card-drag-handle, .drag-grip');
       if (cardGrip) {
+        if (!matchesDragAction('drag-card')) return;
         var cardEl = cardGrip.closest('.card');
         if (cardEl) {
           var colEl = cardEl.closest('.column');

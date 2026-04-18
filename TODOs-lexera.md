@@ -16,6 +16,24 @@ Keep this file structured and clean:
 
 - [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.
 
+### Lexera v2 design rollout (handoff bundle from claude.ai/design)
+
+Bundle lives at `/tmp/lexera-design-v2/lexera-v2/` (palette + typography + JSX prototypes + chat transcript).
+
+- [x] **Phase 1 · Tokens as default** — swapped `:root` palette to LX.light warm-paper (`--bg-primary #f6f4ef`, `--bg-secondary #fbfaf6`, `--border #d4cdbd`, `--accent #3d3a32`, `--text-muted #7a746a`, etc.), preferred Inter + JetBrains Mono via `--font-ui` / `--font-board` / `--font-mono`, aligned `--font-color-unified` fallback in [app.css:40-71](lexera-kanban/src/app.css#L40-L71) and [workspaceShell.css:19](lexera-kanban/src/workspace/workspaceShell.css#L19). Style-contract test updated.
+- [ ] **Phase 2 structural changes** (each its own round — confirm scope first):
+  - [ ] Row title on vertical left rail (writing-mode: vertical-rl, rotate 180°); folded row = single horizontal line.
+  - [ ] Stack = fixed px width, Column = `frac` of stack via `ColRow`; siblings tile to sum ≤ 1. Stacks never scroll horizontally; row `maxHeight` scrolls whole row as one unit.
+  - [ ] Pane dropdown replacing tab bar — top-left of pane lists all boards in that pane.
+  - [ ] Per-board header row: filename · ☰ frontmatter burger · drawers (new / incoming / parked / archived / trashed with counts) · ⚙ layout · export indicator · save state · scale · ⊟ ⊡ × split/close.
+  - [x] Burger `☰` on every Row / Stack / Column / Card header (metadata + actions). ALREADY IN CODE: `.row-menu-btn`, `.stack-menu-btn`, `.column-menu-btn` ([app.js:7536, 7991, 8169](lexera-kanban/src/app.js)), `.card-menu-btn` ([app.js:7308](lexera-kanban/src/app.js#L7308)) — all using `burger-menu-btn` class.
+  - [x] Empty-state add affordances: "+ row", "+ stack", "+ column", "+ card" only when container is empty. ALREADY IN CODE: `buildRowElement`/`buildStackElement`/`renderNewFormatBoard` only emit the placeholder when the level is empty ([app.js:8040, 8214, 8272](lexera-kanban/src/app.js#L8040)); column has-cards class hides `.column-footer` via CSS ([app.css:4894](lexera-kanban/src/app.css#L4894)).
+  - [x] Card fold behavior: folded = first content line inline with fold button; opened = full content below. ALREADY IN CODE: `.card.collapsed .card-content { display: none }` hides body when folded ([app.css:3880](lexera-kanban/src/app.css#L3880)); `.card:not(.collapsed) .card-title-display { display: none }` hides header title when expanded ([app.css:3807](lexera-kanban/src/app.css#L3807)) so the rendered markdown below is the only copy of the title.
+  - [x] Drop numeric counts from Row / Stack / Column headers — DONE: removed `.board-row-count` and `.board-stack-count` from headers; `.column-count` now renders only when a WIP limit is defined (shows `N/M` as functional signal). Unused `stackColCount` / `totalCards` computations stripped.
+  - [ ] Unfolded workspace sidebar: full Workspace > Board > Row > Stack > Column > Card tree with drag between sidebar and view.
+  - [x] Compact dashboard variant: single vertical list, one line per result, day-bucket grouped. ALREADY IN CODE: `#sidebar-dashboard` stacks 9 sections vertically (results, pinned, overdue, upcoming, open-tasks, tagged, file-embeds, broken-elements, included-files) with `.tree-children`/`.tree-node` single-line rows ([index.html:36-85](lexera-kanban/src/index.html#L36-L85)). Large-grid variant from the design bundle never existed in the app.
+  - [ ] Tag manager screen: full-pane list + inline color/property editor with light/dark swatches and usage counts.
+
 ### Testing & Quality
 
 - [ ] Check the tests for duplicates and refactor opportunities. Especially the checks that run after each change. Make a verification library (`TestVerify`) that simplifies testing while staying close to the user experience. STARTED: `TestVerify` namespace with `afterMutation`, `moveCard`, `snapshot`, `cardMoved`, `makeCard`, `getColumnFromData`, etc. exists in frontendTests.js. Needs wider adoption across all 155 tests.

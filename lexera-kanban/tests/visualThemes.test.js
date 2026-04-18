@@ -127,30 +127,48 @@ function loadVisualThemeWindow(options = {}) {
 }
 
 describe('visualThemes', () => {
-  it('migrates removed built-in aliases to sleek-uniform', async () => {
+  it('falls back to classic when a legacy stored alias resolves to a theme not yet discovered', async () => {
+    // 'lines' is a legacy alias the resolver maps to 'sleek-uniform'. Sleek
+    // is no longer in BUILTIN_VISUAL_THEMES — it ships as a user-editable
+    // template seeded from src-tauri/templates/. With no discovery stub
+    // installed, only `classic` is registered, so the fallback wins.
     const { window, documentElement, localStorage } = loadVisualThemeWindow({
       initialStorage: { 'lexera-visual-theme': 'lines' }
     });
 
     await flushPromises();
 
-    expect(window.getLexeraCurrentVisualThemeId()).toBe('sleek-uniform');
-    expect(documentElement.getAttribute('data-visual-theme')).toBe('sleek');
-    expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('sleek-uniform');
-    expect(documentElement.getAttribute('data-visual-theme-lineage')).toBe('sleek-uniform');
-    expect(localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
-    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['classic', 'sleek-uniform']);
+    expect(window.getLexeraCurrentVisualThemeId()).toBe('classic');
+    expect(documentElement.getAttribute('data-visual-theme')).toBe('classic');
+    expect(documentElement.getAttribute('data-visual-theme-variant')).toBe('classic');
+    expect(documentElement.getAttribute('data-visual-theme-lineage')).toBe('classic');
+    expect(localStorage.getItem('lexera-visual-theme')).toBe('classic');
+    expect(window.LEXERA_VISUAL_THEMES.map(theme => theme.id)).toEqual(['classic']);
   });
 
   it('discovers user themes from the config directory and loads their css inline', async () => {
     const themeCss = ':root[data-visual-theme-lineage~="midnight-grid"] { --board-font-size: 99px; }';
+    const sleekCss = ':root[data-visual-theme="sleek"] { --header-height: 48px; }';
     const { window, documentElement, headChildren, localStorage } = loadVisualThemeWindow({
       initialStorage: { 'lexera-visual-theme': 'midnight-grid' },
       discovery(command, args) {
         if (command === 'discover_visual_themes') {
+          // sleek-uniform is now a seeded user theme too — bundled by
+          // src-tauri/templates/ and copied to the user themes dir on
+          // first launch. Discovery returns it alongside any custom
+          // themes the user has added.
           return Promise.resolve({
             rootPath: '/config/lexera/themes',
             themes: [
+              {
+                id: 'sleek-uniform',
+                baseId: 'sleek',
+                name: 'Sleek Uniform',
+                description: 'Seeded template',
+                cssPath: '/config/lexera/themes/sleek-uniform/theme.css',
+                rootPath: '/config/lexera/themes/sleek-uniform',
+                source: 'user'
+              },
               {
                 id: 'midnight-grid',
                 name: 'Midnight Grid',
@@ -164,8 +182,8 @@ describe('visualThemes', () => {
           });
         }
         if (command === 'read_text_file') {
-          expect(args.path).toBe('/config/lexera/themes/midnight-grid/theme.css');
-          return Promise.resolve(themeCss);
+          if (args.path === '/config/lexera/themes/sleek-uniform/theme.css') return Promise.resolve(sleekCss);
+          if (args.path === '/config/lexera/themes/midnight-grid/theme.css') return Promise.resolve(themeCss);
         }
         return Promise.reject(new Error('Unexpected command: ' + command));
       }

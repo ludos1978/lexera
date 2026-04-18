@@ -341,13 +341,13 @@
     });
     BoardSettingRegistry.register({
       id: 'visualTheme', label: 'Visual Theme', category: 'display',
-      settingsKey: null, actionPrefix: 'set-visual-theme', defaultValue: 'sleek-uniform',
+      settingsKey: null, actionPrefix: 'set-visual-theme', defaultValue: 'classic',
       getCurrentValue: function () {
-        return (typeof d.getLexeraCurrentVisualThemeId === 'function' && d.getLexeraCurrentVisualThemeId()) || 'sleek-uniform';
+        return (typeof d.getLexeraCurrentVisualThemeId === 'function' && d.getLexeraCurrentVisualThemeId()) || 'classic';
       },
       handler: function (raw) {
         var applied = d.applyVisualTheme(raw);
-        var label = (applied && applied.name) || d.VISUAL_THEME_LABELS[String(raw || '').trim()] || String(raw || 'sleek-uniform');
+        var label = (applied && applied.name) || d.VISUAL_THEME_LABELS[String(raw || '').trim()] || String(raw || 'classic');
         d.showNotification('Visual theme: ' + label);
       },
       options: function () {

@@ -25,8 +25,8 @@ var LexeraStateKeyRegistry = {
   'lexera-visual-theme': {
     type: 'string',
     category: 'preference',
-    default: 'sleek-uniform',
-    description: 'Active visual theme ID (e.g. "sleek-uniform", "sleek")',
+    default: 'classic',
+    description: 'Active visual theme ID (e.g. "classic", "sleek-uniform")',
     files: ['app.js', 'appearance/appearance.js', 'visualThemes.js'],
     settingsStore: true
   },

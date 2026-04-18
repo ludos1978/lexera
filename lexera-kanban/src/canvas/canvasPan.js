@@ -1,11 +1,9 @@
 /**
- * Canvas Pan — middle-mouse or alt+left-mouse drag panning for canvas boards.
+ * Canvas Pan — drag-pan logic for canvas boards.
  *
- * Manages:
- *   - Middle-mouse drag pan
- *   - Alt+left-mouse drag pan
- *   - Prevent default middle-click auto-scroll in canvas mode
- *   - Suppress programmatic scrolling in canvas mode
+ * Registers a `canvas.move` drag handler with LexeraControlsDispatcher.
+ * The dispatcher owns the event wiring and the (mode, action) match;
+ * this module only owns the pan state and the apply-pan side effect.
  *
  * Dependencies injected via init().
  */
@@ -13,11 +11,10 @@ var LexeraCanvasPan = (function () {
   'use strict';
 
   var _deps = {};
+  var _registered = false;
+  var _panState = null;
+  var _scrollSuppressionAttached = false;
 
-  // --- State ---
-  var _canvasPan = null;
-
-  // --- Dependency accessors ---
   function getActiveBoardData() { return _deps.getActiveBoardData(); }
   function isCanvasBoardLayout() { return _deps.isCanvasBoardLayout(); }
   function canStartCanvasPointerPan(target, button, altKey) { return _deps.canStartCanvasPointerPan(target, button, altKey); }
@@ -26,48 +23,35 @@ var LexeraCanvasPan = (function () {
   function getCanvasPanY() { return _deps.getCanvasPanY(); }
   function applyCanvasPan(panX, panY) { _deps.applyCanvasPan(panX, panY); }
 
-  // --- Event handlers ---
-
-  function handleMouseDown(e) {
-    if (!getActiveBoardData() || !isCanvasBoardLayout()) return;
-    var target = e.target;
-    if (!canStartCanvasPointerPan(target, e.button, !!e.altKey)) return;
-    var container = getElColumnsContainer();
-    if (!container) return;
-    e.preventDefault();
-    _canvasPan = {
-      container: container,
-      startX: e.clientX,
-      startY: e.clientY,
-      startPanX: getCanvasPanX(),
-      startPanY: getCanvasPanY()
-    };
-    container.classList.add('canvas-panning');
-    container.style.cursor = 'grabbing';
-  }
-
-  function handleMouseMove(e) {
-    if (!_canvasPan) return;
-    var dx = e.clientX - _canvasPan.startX;
-    var dy = e.clientY - _canvasPan.startY;
-    applyCanvasPan(_canvasPan.startPanX + dx, _canvasPan.startPanY + dy);
-  }
-
-  function handleMouseUp(e) {
-    if (!_canvasPan) return;
-    _canvasPan.container.classList.remove('canvas-panning');
-    _canvasPan.container.style.cursor = '';
-    _canvasPan = null;
-  }
-
-  function handleAuxClick(e) {
-    if (e.button === 1 && getActiveBoardData() && isCanvasBoardLayout()) {
-      var target = e.target;
-      if (target && typeof target.closest === 'function' && target.closest('#columns-container')) {
-        e.preventDefault();
+  var dragHandler = {
+    canStart: function (ctx) {
+      if (!getActiveBoardData() || !isCanvasBoardLayout()) return false;
+      return canStartCanvasPointerPan(ctx.target, ctx.event.button, !!ctx.event.altKey);
+    },
+    start: function (ctx) {
+      _panState = {
+        container: ctx.container,
+        startPanX: getCanvasPanX(),
+        startPanY: getCanvasPanY()
+      };
+      if (ctx.container) {
+        ctx.container.classList.add('canvas-panning');
+        ctx.container.style.cursor = 'grabbing';
       }
+    },
+    move: function (_ctx, dx, dy) {
+      if (!_panState) return;
+      applyCanvasPan(_panState.startPanX + dx, _panState.startPanY + dy);
+    },
+    end: function () {
+      if (!_panState) return;
+      if (_panState.container) {
+        _panState.container.classList.remove('canvas-panning');
+        _panState.container.style.cursor = '';
+      }
+      _panState = null;
     }
-  }
+  };
 
   function handleScroll() {
     if (!isCanvasBoardLayout()) return;
@@ -79,50 +63,48 @@ var LexeraCanvasPan = (function () {
     }
   }
 
-  // --- Lifecycle ---
-
-  var _attached = false;
-
-  function attach() {
-    if (_attached) return;
-    _attached = true;
-    document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('auxclick', handleAuxClick);
+  function attachScrollSuppression() {
+    if (_scrollSuppressionAttached) return;
+    _scrollSuppressionAttached = true;
     document.addEventListener('scroll', handleScroll, true);
   }
 
-  function detach() {
-    if (!_attached) return;
-    _attached = false;
-    cancelPan();
-    document.removeEventListener('mousedown', handleMouseDown);
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-    document.removeEventListener('auxclick', handleAuxClick);
+  function detachScrollSuppression() {
+    if (!_scrollSuppressionAttached) return;
+    _scrollSuppressionAttached = false;
     document.removeEventListener('scroll', handleScroll, true);
   }
 
+  function registerHandler() {
+    if (_registered) return;
+    if (!window.LexeraControlsDispatcher) return;
+    window.LexeraControlsDispatcher.register('canvas', 'move', { drag: dragHandler });
+    _registered = true;
+  }
+
   function isPanning() {
-    return _canvasPan !== null;
+    return _panState !== null;
   }
 
   function cancelPan() {
-    if (!_canvasPan) return;
-    _canvasPan.container.classList.remove('canvas-panning');
-    _canvasPan.container.style.cursor = '';
-    _canvasPan = null;
+    if (!_panState) return;
+    dragHandler.end();
+    if (window.LexeraControlsDispatcher) window.LexeraControlsDispatcher.cancelDrag();
   }
 
   function init(deps) {
-    detach();
     if (typeof window !== 'undefined' && window.LexeraRuntime) {
       window.LexeraRuntime.mergeDeps(_deps, deps);
     } else {
       _deps = deps || {};
     }
-    attach();
+    registerHandler();
+    attachScrollSuppression();
+  }
+
+  function detach() {
+    cancelPan();
+    detachScrollSuppression();
   }
 
   return {

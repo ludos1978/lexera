@@ -1671,6 +1671,7 @@ var LexeraDashboard = (function () {
   if (KeyboardNav) KeyboardNav.init({
     getElColumnsContainer: function() { return getElColumnsContainer(); },
     getActiveBoardData: function() { return activeBoardData; },
+    isCanvasBoardLayout: function() { return isCanvasBoardLayout(); },
     getActiveBoardColumns: function() { return activeBoardData ? activeBoardData.columns : []; },
     getIsEditing: function() { return isEditing; },
     getSearchMode: function() { return searchMode; },
@@ -5733,7 +5734,7 @@ var LexeraDashboard = (function () {
       getVisualThemes: function () { return Array.isArray(VISUAL_THEMES) ? VISUAL_THEMES : []; },
       getCurrentVisualThemeId: function () {
         return (typeof getLexeraCurrentVisualThemeId === 'function' && getLexeraCurrentVisualThemeId()) ||
-          (Settings ? Settings.get('visualTheme') : localStorage.getItem('lexera-visual-theme')) || 'sleek-uniform';
+          (Settings ? Settings.get('visualTheme') : localStorage.getItem('lexera-visual-theme')) || 'classic';
       },
       applyVisualTheme: function (id) { applyVisualTheme(id); },
       // UI scale
@@ -6616,72 +6617,110 @@ var LexeraDashboard = (function () {
     return getScrollBehaviorApi().canStartCanvasPointerPan(target, button, altKey);
   }
 
-  // ── Unified wheel handler: uses LexeraControlsSettings for bindings ──
-  document.addEventListener('wheel', function (e) {
-    // Never intercept ctrl/meta+scroll — reserved for browser zoom
-    if (e.ctrlKey || e.metaKey) return;
-    if (!activeBoardData) return;
-    var container = getElColumnsContainer();
-    if (!container) return;
-    var target = e.target;
-    if (!target || typeof target.closest !== 'function') return;
-    if (!target.closest('#board-header, #columns-container')) return;
-    if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return;
-    if (targetClosest(target, 'input, textarea, select, [contenteditable="true"], .cm-editor, .cm-scroller, .monaco-editor')) {
-      return;
-    }
+  // --- Input bindings: owned by LexeraControlsDispatcher ---
+  // Wheel (zoom/move) and pointer drag (pan) handlers are registered below.
+  // Canvas drag-pan is registered by LexeraCanvasPan itself.
+  (function registerControlsHandlers() {
+    var Dispatcher = window.LexeraControlsDispatcher;
+    if (!Dispatcher) return;
 
-    var isCanvas = isCanvasBoardLayout();
-    var mode = isCanvas ? 'canvas' : 'kanban';
-    var CS = typeof LexeraControlsSettings !== 'undefined' ? LexeraControlsSettings : null;
-
-    // Determine action: zoom or move
-    var isZoom = false;
-    var isMove = false;
-    if (CS) {
-      isZoom = CS.matchesScroll(e, mode, 'zoom');
-      isMove = !isZoom && CS.matchesScroll(e, mode, 'move');
-    } else {
-      // Fallback defaults when controlsSettings not loaded
-      if (isCanvas) {
-        isZoom = !e.altKey; // canvas: plain scroll = zoom
-        isMove = false;
-      } else {
-        isZoom = e.altKey; // kanban: alt+scroll = zoom
-        isMove = !e.altKey; // kanban: plain scroll = move
-      }
-    }
-
-    if (isZoom) {
-      if (!shouldHandleBoardViewportWheelEvent(target, container, e.deltaX, e.deltaY)) return;
+    function scrollZoomCanvas(ctx) {
+      var e = ctx.event;
+      var container = ctx.container;
+      if (!container) return false;
+      if (!shouldHandleBoardViewportWheelEvent(e.target, container, e.deltaX, e.deltaY)) return false;
       e.preventDefault();
       var rect = container.getBoundingClientRect();
       var ox = e.clientX - rect.left;
       var oy = e.clientY - rect.top;
-      if (isCanvas) {
-        nudgeCanvasZoom(getCanvasZoomStep(e.deltaY < 0 ? 0.1 : -0.1), ox, oy);
-      } else {
-        nudgeUiScale(getUiZoomStep(e.deltaY < 0 ? 0.05 : -0.05));
-      }
-      return;
+      nudgeCanvasZoom(getCanvasZoomStep(e.deltaY < 0 ? 0.1 : -0.1), ox, oy);
+      return true;
     }
 
-    if (isMove) {
-      var multiplier = getBoardScrollSpeedMultiplier();
-      var deltaX = normalizeWheelDeltaToPixels(e.deltaX, e.deltaMode);
-      var deltaY = normalizeWheelDeltaToPixels(e.deltaY, e.deltaMode);
-      if (e.shiftKey && !deltaX && deltaY) {
-        deltaX = deltaY;
-        deltaY = 0;
-      }
-      if (multiplier === 1 && !isCanvas) return; // native scroll handles it
-      if (!shouldHandleBoardViewportWheelEvent(target, container, deltaX, deltaY)) return;
+    function scrollZoomKanban(ctx) {
+      var e = ctx.event;
+      var container = ctx.container;
+      if (!container) return false;
+      if (!shouldHandleBoardViewportWheelEvent(e.target, container, e.deltaX, e.deltaY)) return false;
       e.preventDefault();
-      container.scrollLeft += deltaX * multiplier;
-      container.scrollTop += deltaY * multiplier;
-      return;
+      nudgeUiScale(getUiZoomStep(e.deltaY < 0 ? 0.05 : -0.05));
+      return true;
     }
-  }, { passive: false });
+
+    function scrollMoveContainer(ctx, deltaX, deltaY) {
+      var e = ctx.event;
+      var container = ctx.container;
+      if (!container) return false;
+      var multiplier = getBoardScrollSpeedMultiplier();
+      var dx = normalizeWheelDeltaToPixels(deltaX, e.deltaMode);
+      var dy = normalizeWheelDeltaToPixels(deltaY, e.deltaMode);
+      if (e.shiftKey && !dx && dy) { dx = dy; dy = 0; }
+      if (multiplier === 1 && ctx.mode !== 'canvas') return false; // native scroll handles it
+      if (!shouldHandleBoardViewportWheelEvent(e.target, container, dx, dy)) return false;
+      e.preventDefault();
+      container.scrollLeft += dx * multiplier;
+      container.scrollTop += dy * multiplier;
+      return true;
+    }
+
+    function scrollMoveCanvas(ctx, deltaX, deltaY) {
+      var e = ctx.event;
+      var container = ctx.container;
+      if (!container) return false;
+      if (!shouldHandleBoardViewportWheelEvent(e.target, container, e.deltaX, e.deltaY)) return false;
+      e.preventDefault();
+      var multiplier = getBoardScrollSpeedMultiplier();
+      var dx = normalizeWheelDeltaToPixels(deltaX, e.deltaMode);
+      var dy = normalizeWheelDeltaToPixels(deltaY, e.deltaMode);
+      if (e.shiftKey && !dx && dy) { dx = dy; dy = 0; }
+      var canvasOps = getCanvasOpsApi();
+      canvasOps.applyCanvasPan(canvasOps.getCanvasPanX() - dx * multiplier, canvasOps.getCanvasPanY() - dy * multiplier);
+      return true;
+    }
+
+    Dispatcher.register('kanban', 'zoom', { scroll: scrollZoomKanban });
+    Dispatcher.register('kanban', 'move', {
+      scroll: scrollMoveContainer,
+      drag: {
+        canStart: function (ctx) {
+          // The dispatcher already confirmed the binding matched; just guard
+          // against drags starting on interactive UI (buttons etc).
+          var target = ctx.target;
+          if (!target || !target.closest) return false;
+          if (target.closest('button, a, .card-menu-btn, .card-checkbox, .card-collapse-toggle, .column-fold-btn, .stack-fold-btn, .row-fold-btn')) {
+            return false;
+          }
+          return true;
+        },
+        start: function (ctx) {
+          ctx._startScrollLeft = ctx.container ? ctx.container.scrollLeft : 0;
+          ctx._startScrollTop = ctx.container ? ctx.container.scrollTop : 0;
+          if (ctx.container) {
+            ctx.container.classList.add('kanban-panning');
+            ctx.container.style.cursor = 'grabbing';
+          }
+        },
+        move: function (ctx, dx, dy) {
+          if (!ctx.container) return;
+          ctx.container.scrollLeft = ctx._startScrollLeft - dx;
+          ctx.container.scrollTop = ctx._startScrollTop - dy;
+        },
+        end: function (ctx) {
+          if (!ctx.container) return;
+          ctx.container.classList.remove('kanban-panning');
+          ctx.container.style.cursor = '';
+        }
+      }
+    });
+    Dispatcher.register('canvas', 'zoom', { scroll: scrollZoomCanvas });
+    Dispatcher.register('canvas', 'move', { scroll: scrollMoveCanvas });
+
+    Dispatcher.init({
+      getActiveBoardData: function () { return activeBoardData; },
+      isCanvasBoardLayout: function () { return isCanvasBoardLayout(); },
+      getElColumnsContainer: function () { return getElColumnsContainer(); }
+    });
+  })();
 
   // --- Canvas pan: delegated to LexeraCanvasPan module ---
 
@@ -7531,7 +7570,7 @@ var LexeraDashboard = (function () {
       buildCreationEntityDragIconHtml('column', ['title="Drag to move column"']) +
       '<span class="column-title" title="' + escapeAttr(displayTitle.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + renderTitleInline(displayTitle, activeBoardId, { allowIncludeDirectives: true }) + '</span>' +
       includeIndicator +
-      '<span class="column-count">' + col.cards.length + (colLayout.wipLimit > 0 ? '/' + colLayout.wipLimit : '') + '</span>' +
+      (colLayout.wipLimit > 0 ? '<span class="column-count">' + col.cards.length + '/' + colLayout.wipLimit + '</span>' : '') +
       '<span class="column-header-actions">' +
         '<button class="column-menu-btn burger-menu-btn" title="Column options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
       '</span>';
@@ -7981,13 +8020,11 @@ var LexeraDashboard = (function () {
     var _stackHeaderStart = _colBuildAccum ? _nowHP() : 0;
     var stackHeader = document.createElement('div');
     stackHeader.className = 'board-stack-header';
-    var stackColCount = stackColumnEntries.length;
     var stackDisplayTitle = stripLayoutTags(stack.title || '');
     stackHeader.innerHTML =
       (isCanvasLayout ? '' : '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>') +
       buildCreationEntityDragIconHtml('stack', ['title="Drag to move stack"']) +
       '<span class="board-stack-title" title="' + escapeAttr((stackDisplayTitle || '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + (stackDisplayTitle ? renderTitleInline(stackDisplayTitle, activeBoardId, {}) : '&nbsp;') + '</span>' +
-      '<span class="board-stack-count">' + stackColCount + '</span>' +
       '<span class="stack-header-actions">' +
         '<button class="stack-menu-btn burger-menu-btn" title="Stack options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
         (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '') +
@@ -8154,19 +8191,10 @@ var LexeraDashboard = (function () {
     rowHeader.className = 'board-row-header';
     var rowTitle = typeof row.title === 'string' ? row.title : '';
     var rowDisplayTitle = stripLayoutTags(rowTitle);
-    var totalCards = 0;
-    for (var si = 0; si < rowStacks.length; si++) {
-      var cardCols = Array.isArray(rowStacks[si].columns) ? rowStacks[si].columns : [];
-      for (var ci = 0; ci < cardCols.length; ci++) {
-        var cards = Array.isArray(cardCols[ci].cards) ? cardCols[ci].cards : [];
-        totalCards += cards.length;
-      }
-    }
     rowHeader.innerHTML =
       '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
       buildCreationEntityDragIconHtml('row', ['title="Drag to move row"']) +
       '<span class="board-row-title" title="' + escapeAttr(rowDisplayTitle.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + renderTitleInline(rowDisplayTitle, activeBoardId, {}) + '</span>' +
-      '<span class="board-row-count">' + totalCards + '</span>' +
       '<span class="row-header-actions">' +
         '<button class="row-menu-btn burger-menu-btn" title="Row options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
       '</span>';

@@ -301,6 +301,82 @@ fn visual_themes_path() -> std::path::PathBuf {
         .join("themes")
 }
 
+/// Copy bundled visual theme templates into the user's themes directory
+/// the first time each one is encountered. Once a `<id>/` folder exists
+/// in the user dir, it is left alone so user edits are never overwritten.
+fn seed_builtin_visual_themes(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let resource_root = match app.path().resource_dir() {
+        Ok(dir) => dir.join("templates"),
+        Err(_) => return,
+    };
+    if !resource_root.is_dir() {
+        return;
+    }
+    let user_root = visual_themes_path();
+    if let Err(err) = std::fs::create_dir_all(&user_root) {
+        log::warn!(
+            "seed_builtin_visual_themes: cannot create user themes dir '{}': {}",
+            user_root.to_string_lossy(),
+            err
+        );
+        return;
+    }
+    let entries = match std::fs::read_dir(&resource_root) {
+        Ok(it) => it,
+        Err(err) => {
+            log::warn!(
+                "seed_builtin_visual_themes: cannot read bundled templates '{}': {}",
+                resource_root.to_string_lossy(),
+                err
+            );
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        let src_dir = entry.path();
+        if !src_dir.is_dir() {
+            continue;
+        }
+        let folder_name = match src_dir.file_name().and_then(|n| n.to_str()) {
+            Some(name) => name.to_string(),
+            None => continue,
+        };
+        let dst_dir = user_root.join(&folder_name);
+        if dst_dir.exists() {
+            // User has the template (possibly edited) — never overwrite.
+            continue;
+        }
+        if let Err(err) = std::fs::create_dir_all(&dst_dir) {
+            log::warn!(
+                "seed_builtin_visual_themes: cannot create '{}': {}",
+                dst_dir.to_string_lossy(),
+                err
+            );
+            continue;
+        }
+        let inner = match std::fs::read_dir(&src_dir) {
+            Ok(it) => it,
+            Err(_) => continue,
+        };
+        for file in inner.flatten() {
+            let from = file.path();
+            if !from.is_file() {
+                continue;
+            }
+            let to = dst_dir.join(file.file_name());
+            if let Err(err) = std::fs::copy(&from, &to) {
+                log::warn!(
+                    "seed_builtin_visual_themes: copy '{}' → '{}' failed: {}",
+                    from.to_string_lossy(),
+                    to.to_string_lossy(),
+                    err
+                );
+            }
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct VisualThemeManifestFile {
@@ -371,7 +447,9 @@ fn prettify_theme_name(id: &str) -> String {
 }
 
 #[tauri::command]
-pub fn discover_visual_themes() -> Result<VisualThemeDiscovery, String> {
+pub fn discover_visual_themes(app: tauri::AppHandle) -> Result<VisualThemeDiscovery, String> {
+    seed_builtin_visual_themes(&app);
+
     let root = visual_themes_path();
     std::fs::create_dir_all(&root)
         .map_err(|e| format!("Failed to create visual themes directory '{}': {}", root.to_string_lossy(), e))?;
