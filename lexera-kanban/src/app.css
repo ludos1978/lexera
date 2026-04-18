@@ -8550,6 +8550,570 @@ select.export-input {
   color: var(--text-primary);
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Lexera v2 visual layer
+ *
+ * Translates the design-bundle primitives (lexera-board.jsx) from inline
+ * React styles into real CSS that applies to the app's existing DOM
+ * (rows, stacks, columns, cards, their headers, tag chips, badges).
+ *
+ * Hard rules from the design:
+ *   · Every container: 1px hairline border, 2–3px radius, surface/panel
+ *     background based on hierarchy level.
+ *   · Left accent "spine" on each container (ink-tone when untagged,
+ *     tag-tone when tagged — handled by the existing tag-styled layer).
+ *   · Column/stack headers use JetBrains Mono; stack headers are small
+ *     uppercase with letter-spacing.
+ *   · Tags, counts, file badges, meta labels use JetBrains Mono.
+ *   · Empty-state "+ row / + stack / + column / + card" affordances
+ *     render as dashed hairlines in mono type.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* Card — surface white, hairline border, 2px radius, tight padding. */
+body .card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+/* Column chrome — panel bg, hairline border, 2px radius, ink-tone spine. */
+body .column {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: 2px solid #a9a298;
+  border-radius: 2px;
+}
+body .column-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  color: #4a463f;
+  padding: 3px 6px;
+}
+body .column-footer {
+  background: transparent;
+  border-top: 1px solid var(--border);
+  padding: 3px 4px;
+}
+
+/* Stack chrome — bg canvas, hairline border, 3px ink spine. */
+body .board-stack {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-left: 3px solid #a9a298;
+  border-radius: 3px;
+}
+body .board-stack-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: #4a463f;
+  padding: 3px 7px;
+}
+body .board-stack.folded .board-stack-header {
+  border-bottom: none;
+}
+
+/* Row chrome — ink spine on the leading edge, hairline between rows.
+   Row title-on-vertical-left-rail is a separate (Phase 2) structural
+   change; we keep the current top-title layout but paint the spine. */
+body .board-row {
+  background: var(--bg-primary);
+  border-left: 4px solid #7a746a;
+  border-bottom: 1px solid var(--border);
+}
+body .board-row-header {
+  background: var(--bg-secondary);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: var(--text-primary);
+  padding: 4px 10px;
+}
+
+/* Metadata typography — mono for tags, counts, badges, file/presence
+   meta, tree meta glyphs. This is the two-font contrast that
+   distinguishes the v2 look. */
+body .tag,
+body .column-count,
+body .card-progress-badge,
+body .card-due-badge,
+body .tree-count,
+body .tree-meta,
+body .board-item-count,
+body .workspace-section-count,
+body .column-include-badge,
+body .board-item-remote-icon,
+body .file-badge,
+body .tree-meta-action {
+  font-family: var(--font-mono);
+  letter-spacing: 0.1px;
+}
+
+/* Dashed hairline empty-state affordances ("+ row / + stack / +
+   column / + card") — mono type, centered. */
+body .add-card-btn,
+body .board-level-empty .creation-source-btn,
+body .board-level-empty button {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2px;
+  border: 1px dashed var(--border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Shell chrome (sidebar, header bar, status, log panel) ─────────
+   All surfaces: panel bg, 1px hairline border, 2px radius, no shadow.
+   All metadata (section titles, counts, footers, status) uses mono. */
+
+/* Sidebar surface + 1px hairline, override the darkened rgba top strip. */
+body .sidebar {
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+}
+body .sidebar-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 10px;
+}
+body .sidebar-header-title-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Workspace section header / dashboard group header — tiny mono caps. */
+body .workspace-section-name,
+body .dashboard-group-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Sidebar board entry — active state uses a 2px ink spine on the
+   leading edge (matches the design sidebar), not a colored background. */
+body .board-item {
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+}
+body .board-item.active {
+  background: var(--bg-tertiary);
+  border-left-color: var(--accent);
+  color: var(--text-primary);
+}
+body .board-item:hover:not(.active) {
+  background: var(--bg-hover);
+}
+
+/* Sidebar footer (dashboard divider, + board, sync status) — mono xs. */
+body .sidebar-dashboard-divider,
+body .dashboard-filter-row,
+body .dashboard-scope-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* App header bar (board header / workspace shell header) */
+body .header,
+body .board-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+}
+
+/* Buttons — hairline 1px border, 2px radius, no shadow, no VS Code blue. */
+body .sidebar-btn,
+body .board-action-btn,
+body .btn-icon {
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+body .sidebar-btn:hover,
+body .board-action-btn:hover,
+body .btn-icon:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+body .sidebar-btn.active,
+body .sidebar-btn:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+/* Log panel chrome */
+body .log-panel {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  box-shadow: none;
+}
+body .log-panel-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+body .log-entry {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* Management panels */
+body .mgmt-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  box-shadow: none;
+}
+body .mgmt-panel-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Native menus / dropdowns follow the same rules. */
+body .menu,
+body .dropdown-menu,
+body .context-menu {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+/* Inputs — hairline. */
+body input[type="text"],
+body input[type="search"],
+body textarea,
+body select {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-primary);
+  box-shadow: none;
+}
+body input:focus-visible,
+body textarea:focus-visible,
+body select:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* Kill decorative shadows on fixed chrome (floating menus + modals keep
+   a single warm shadow, handled below). */
+body .column,
+body .board-stack,
+body .card,
+body .sidebar,
+body .dashboard-group,
+body .workspace-section-header,
+body .workspace-shell,
+body .workspace-shell-tabset,
+body .workspace-shell-panel-window {
+  box-shadow: none;
+}
+
+/* ── Tag chips — v2 style: 2px radius, mono 10px, tight 1px 5px. */
+body .tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  padding: 2px 5px;
+  border-radius: 2px;
+  line-height: 1;
+}
+
+/* ── Workspace shell: tabsets, tabs, panel windows, gutters. */
+body .workspace-shell {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+}
+body .workspace-shell-tabset,
+body .workspace-shell-panel-window {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+body .ws-view-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  min-height: 28px;
+}
+body .ws-view-tab {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 1px 7px;
+}
+body .ws-view-tab.is-active,
+body .ws-view-tab.is-selected {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+body .ws-view-tab-close,
+body .ws-view-close,
+body .ws-view-drag,
+body .ws-view-fold,
+body .ws-tab-overflow-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+body .ws-view-tab-close:hover,
+body .ws-view-close:hover,
+body .ws-view-drag:hover,
+body .ws-view-fold:hover,
+body .ws-tab-overflow-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+/* ── Floating surfaces (menus, dropdowns, modals, context menus, popovers).
+   Hairline border + single warm shadow, mono UPPERCASE headers. */
+body .context-menu,
+body .dropdown-menu,
+body .menu,
+body .embed-menu,
+body .modal,
+body .dialog,
+body .popover,
+body .tag-palette,
+body .ws-tab-overflow-menu {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 10px 30px rgba(40, 32, 16, 0.14),
+              0 2px 6px rgba(40, 32, 16, 0.08);
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+}
+body .context-menu-header,
+body .dropdown-menu-header,
+body .menu-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 5px 9px;
+}
+body .context-menu-item,
+body .dropdown-menu-item,
+body .menu-item {
+  padding: 3px 9px 3px 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.55;
+  cursor: default;
+}
+body .context-menu-item:hover,
+body .dropdown-menu-item:hover,
+body .menu-item:hover,
+body .context-menu-item.active,
+body .dropdown-menu-item.active,
+body .menu-item.active {
+  background: var(--bg-secondary);
+}
+body .menu-shortcut,
+body .menu-hint,
+body .context-menu-shortcut {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+body .menu-divider,
+body .context-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
+}
+
+/* ── Dialogs / modals — form structure. */
+body .dialog-header,
+body .modal-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 6px 10px;
+}
+body .dialog-body,
+body .modal-body { padding: 10px; }
+body .dialog-footer,
+body .modal-footer {
+  border-top: 1px solid var(--border);
+  padding: 6px 10px;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ── Buttons across the app — consistent hairline 2px radius. */
+body .btn,
+body button.btn-primary,
+body button.btn-secondary,
+body .file-search-open,
+body .dashboard-search-btn {
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  padding: 2px 8px;
+  box-shadow: none;
+}
+body .btn:hover,
+body button.btn-primary:hover,
+body button.btn-secondary:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+body .btn-primary {
+  background: var(--accent);
+  color: var(--bg-tertiary);
+  border-color: var(--accent);
+}
+body .btn-primary:hover {
+  background: var(--accent-hover);
+  color: var(--bg-tertiary);
+}
+
+/* ── Search results / command palette / file search. */
+body .search-results,
+body .file-search-dialog,
+body .command-palette {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  box-shadow: none;
+  font-family: var(--font-ui);
+}
+body .search-result-item,
+body .file-search-result-item,
+body .command-palette-item {
+  padding: 3px 8px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+body .search-result-item:hover,
+body .file-search-result-item:hover,
+body .command-palette-item:hover,
+body .search-result-item.active,
+body .file-search-result-item.active,
+body .command-palette-item.active {
+  background: var(--bg-secondary);
+}
+
+/* ── Settings / management UI chrome — keep mono uppercase headers. */
+body .settings-panel,
+body .mgmt-config-layout,
+body .mgmt-config-tree,
+body .mgmt-config-inspector {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+}
+body .settings-section-header,
+body .mgmt-section-header {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Status / connection indicators. */
+body .connection-status-btn,
+body .status-msg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  box-shadow: none;
+}
+
+/* ── Scrollbars — thin, muted, matches the warm palette. */
+body,
+body * {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+body ::-webkit-scrollbar { width: 8px; height: 8px; }
+body ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+body ::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 2px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+body ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+/* ── Form controls — universal hairline. */
+body button,
+body select {
+  font-family: var(--font-ui);
+}
+body button:focus-visible,
+body [role="button"]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* ── Utility: must be last to win by source order at (0,1,0) ─────── */
 .hidden,
 [hidden] { display: none !important; }
