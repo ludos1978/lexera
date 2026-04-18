@@ -82,13 +82,17 @@
 }
 
 :root {
-  /* ── Typography ─────────────────────────────────────────────── */
-  --font-size-xs:   calc(11px * var(--ui-scale));
-  --font-size-sm:   calc(12px * var(--ui-scale));
-  --font-size-base: calc(13px * var(--ui-scale));
-  --font-size-md:   var(--font-size-base);
-  --font-ui:    'Poppins', 'Segoe UI', system-ui, sans-serif;
-  --font-board: var(--font-ui);  /* kanban/canvas content — overridable per theme or per board via fontFamily setting */
+  /* ── Typography — v2 scale: 10 / 11 / 12 / 13 / 14 px (UI-scaled).
+     Names match the LX.size scale from the design bundle.
+     Legacy aliases (-sm, -base) kept so pre-v2 rules still resolve. */
+  --font-size-xs:   calc(10px * var(--ui-scale));
+  --font-size-s:    calc(11px * var(--ui-scale));
+  --font-size-m:    calc(12px * var(--ui-scale));
+  --font-size-md:   calc(13px * var(--ui-scale));
+  --font-size-l:    calc(14px * var(--ui-scale));
+  --font-size-sm:   var(--font-size-s);   /* legacy alias */
+  --font-size-base: var(--font-size-md);  /* legacy alias */
+  /* Font stacks defined in app.css :root so the v2 baseline wins there. */
 
   /* ── Application Spacing ────────────────────────────────────── */
   --app-space-1: calc(2px  * var(--ui-scale));  /* tight gaps, dividers */

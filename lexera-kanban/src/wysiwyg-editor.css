@@ -35,11 +35,12 @@
 }
 
 .card-description-wysiwyg .ProseMirror ::selection {
-  background: var(--vscode-editor-selectionBackground, rgba(0, 120, 215, 0.3));
+  background: var(--vscode-editor-selectionBackground, color-mix(in srgb, var(--accent) 18%, transparent));
 }
 
 .card-description-wysiwyg .ProseMirror .ProseMirror-selectednode {
-  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .card-description-wysiwyg .ProseMirror h1,

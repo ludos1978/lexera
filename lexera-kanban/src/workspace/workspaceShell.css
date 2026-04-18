@@ -81,7 +81,7 @@
 .workspace-shell-toolbar-badge {
   padding: 2px 8px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 2px;
   background: var(--bg-primary);
   color: inherit;
   font-size: inherit;
@@ -410,7 +410,7 @@
   z-index: 50;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
 }
 
@@ -428,7 +428,7 @@
   z-index: 51;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-modal);
 }
 .workspace-shell-panel-dock.is-folded.is-fold-hover > .workspace-shell-tabset,
 .workspace-shell-panel-dock.is-folded.is-fold-pinned > .workspace-shell-tabset {
@@ -661,7 +661,7 @@
   border: 1px solid var(--menu-border, var(--border));
   border-radius: var(--radius-lg);
   background: var(--menu-bg, var(--bg-secondary));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-modal);
 }
 
 .ws-tab-overflow-menu.is-open {
@@ -833,8 +833,8 @@
   background: var(--bg);
   border: 1px solid var(--border);
   border-top: 0;
-  border-radius: 0 0 6px 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  border-radius: 0 0 3px 3px;
+  box-shadow: var(--shadow-drag);
   z-index: 100;
   overflow: auto;
 }
@@ -870,8 +870,8 @@
   background: var(--bg);
   border: 1px solid var(--border);
   border-left: 0;
-  border-radius: 0 6px 6px 0;
-  box-shadow: 4px 0 12px rgba(0,0,0,0.25);
+  border-radius: 0 3px 3px 0;
+  box-shadow: var(--shadow-drag);
   z-index: 100;
   overflow: auto;
 }
@@ -1197,7 +1197,7 @@ body.workspace-shell-tab-dragging .workspace-shell-drop-overlay {
   left: 28%;
   right: 28%;
   bottom: 28%;
-  border-radius: 10px;
+  border-radius: 3px;
 }
 
 .workspace-shell-drop-zone.is-active {
@@ -1248,11 +1248,11 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspa
   height: 30px;
   padding: 0 10px;
   border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--border));
-  border-radius: 6px;
+  border-radius: 3px;
   background: color-mix(in srgb, var(--bg-primary) 92%, var(--accent) 8%);
   color: inherit;
   font-size: inherit;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-modal);
   pointer-events: none;
   transform: translate(-50%, -50%);
 }
