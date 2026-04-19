@@ -4,33 +4,59 @@
  * 3-phase pipeline:
  *   Phase 1 (Extract):   REST API call to backend based on export format
  *   Phase 2 (Transform): Content transforms via REST + local embed transforms
- *   Phase 3 (Output):    Copy / save file / preview via Tauri commands
+ *   Phase 3 (Output):    Copy / save file via Tauri commands
  */
 
-function exportInvokeTauri(command, args) {
-    if (window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.invokeTauri === 'function') {
-        return window.LexeraBackendDiscovery.invokeTauri(command, args);
-    }
+// Resolve the Tauri IPC bridge — the kanban UI runs inside a workspace-shell iframe,
+// and Tauri 2 does NOT inject __TAURI_INTERNALS__ into sub-frames. So we walk up
+// to the parent (same-origin) when the current window is bare.
+// Mirrors src/menu/embedMenu.js:resolveTauriInternals().
+function resolveExportTauriIpc() {
     if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
-        return window.__TAURI_INTERNALS__.invoke(command, args || {});
+        return window.__TAURI_INTERNALS__;
     }
     if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
-        return window.__TAURI__.core.invoke(command, args || {});
+        return window.__TAURI__.core;
+    }
+    try {
+        if (window.parent && window.parent !== window) {
+            if (window.parent.__TAURI_INTERNALS__ && typeof window.parent.__TAURI_INTERNALS__.invoke === 'function') {
+                return window.parent.__TAURI_INTERNALS__;
+            }
+            if (window.parent.__TAURI__ && window.parent.__TAURI__.core && typeof window.parent.__TAURI__.core.invoke === 'function') {
+                return window.parent.__TAURI__.core;
+            }
+        }
+    } catch (e) { /* cross-origin — ignore */ }
+    return null;
+}
+
+function exportInvokeTauri(command, args) {
+    var ipc = resolveExportTauriIpc();
+    if (ipc) {
+        return args === undefined ? ipc.invoke(command) : ipc.invoke(command, args);
+    }
+    if (window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.invokeTauri === 'function') {
+        return args === undefined
+            ? window.LexeraBackendDiscovery.invokeTauri(command)
+            : window.LexeraBackendDiscovery.invokeTauri(command, args);
     }
     var available = {
+        hasIpc: !!ipc,
         hasBackendDiscovery: !!(window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.invokeTauri === 'function'),
         hasInternals: !!(window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function'),
+        hasParentInternals: (function () { try { return !!(window.parent && window.parent.__TAURI_INTERNALS__); } catch (e) { return false; } })(),
         hasGlobalCore: !!(window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function'),
     };
     return Promise.reject(new Error('Tauri invoke unavailable for ' + command + ' (state: ' + JSON.stringify(available) + ')'));
 }
 
 function exportCanUseTauri() {
+    if (resolveExportTauriIpc()) return true;
     if (window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.canUseTauriInvoke === 'function') {
         return window.LexeraBackendDiscovery.canUseTauriInvoke();
     }
-    if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') return true;
-    return !!(window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function');
+    return false;
 }
 
 const EXPORT_LINK_PATTERN = /(!\[[^\]]*\]\([^)]+\)(?:\{[^}]+\})?)|((?<!!)\[[^\]]*\]\([^)]+\))|(<(?:img|video|audio)[^>]+src=["'][^"']+["'][^>]*>)|(\[\[[^\]]+\]\])/g;
@@ -73,43 +99,98 @@ class ExportService {
         try {
             lexeraLog('info', '[ExportService] Starting export ' + options.format + ' ' + options.mode);
 
+            if (ExportService._wasAborted(options)) return { success: false, aborted: true, message: 'Export cancelled' };
             const extracted = await ExportService._extract(options);
             if (!extracted) {
                 return { success: false, message: 'Phase 1 (Extract) returned no content' };
             }
 
+            if (ExportService._wasAborted(options)) return { success: false, aborted: true, message: 'Export cancelled' };
             const transformed = await ExportService._transform(extracted, options);
+
+            if (ExportService._wasAborted(options)) return { success: false, aborted: true, message: 'Export cancelled' };
             return await ExportService._output(transformed, options);
         } catch (err) {
+            if (err && (err.name === 'AbortError' || (err.message && err.message.indexOf('abort') >= 0))) {
+                lexeraLog('warn', '[ExportService] Export aborted by user');
+                return { success: false, aborted: true, message: 'Export cancelled' };
+            }
             lexeraLog('error', '[ExportService] Export failed: ' + (err.message || String(err)));
             return { success: false, message: err.message || String(err) };
         }
     }
 
+    static _wasAborted(options) {
+        return !!(options && options.signal && options.signal.aborted);
+    }
+
+    // Marp status / discovery / watches — delegated to the Marp export plugin
+    // (plugins/exports/marpExport.js). Public API preserved for existing callers.
+
+    static _getMarpPlugin() {
+        var reg = (typeof window !== 'undefined' && window.LexeraPluginRegistry) ? window.LexeraPluginRegistry : null;
+        return reg ? reg.getById('export', 'marp') : null;
+    }
+
+    static _getPandocPlugin() {
+        var reg = (typeof window !== 'undefined' && window.LexeraPluginRegistry) ? window.LexeraPluginRegistry : null;
+        return reg ? reg.getById('export', 'pandoc') : null;
+    }
+
     static async checkMarpStatus() {
+        const plugin = ExportService._getMarpPlugin();
+        if (plugin && plugin.checkStatus) return plugin.checkStatus();
+        // Fallback: direct invoke if the plugin is not loaded (tests etc.)
         const result = await exportInvokeTauri('check_marp_available');
         return { available: result.available, version: result.version || null };
     }
 
     static async checkPandocStatus() {
+        const plugin = ExportService._getPandocPlugin();
+        if (plugin && plugin.checkStatus) return plugin.checkStatus();
         const result = await exportInvokeTauri('check_pandoc_available');
         return { available: result.available, version: result.version || null };
     }
 
     static async getMarpThemes(dirs) {
+        const plugin = ExportService._getMarpPlugin();
+        if (plugin && plugin.getThemes) return plugin.getThemes(dirs);
         return await exportInvokeTauri('discover_marp_themes', { dirs: dirs || [] });
     }
 
     static async getMarpClasses(dirs) {
+        const plugin = ExportService._getMarpPlugin();
+        if (plugin && plugin.getClasses) return plugin.getClasses(dirs);
         return await exportInvokeTauri('discover_marp_classes', { dirs: dirs || [] });
     }
 
     static async stopAllWatches() {
+        const plugin = ExportService._getMarpPlugin();
+        if (plugin && plugin.stopAllWatches) return plugin.stopAllWatches();
         return await exportInvokeTauri('marp_stop_all_watches');
     }
 
     static async openExportFolder(path) {
         await exportInvokeTauri('open_export_folder', { path });
+    }
+
+    // Cached absolute path of packages/marp-engine/engine/engine.js
+    // Resolved via the Marp export plugin (which owns the cache); falls back to
+    // a direct Tauri invoke if the plugin is not available.
+    static async getMarpEnginePath() {
+        const plugin = ExportService._getMarpPlugin();
+        if (plugin && plugin.getEnginePath) return plugin.getEnginePath();
+        if (ExportService._marpEnginePathCache !== undefined) {
+            return ExportService._marpEnginePathCache;
+        }
+        try {
+            const result = await exportInvokeTauri('get_marp_engine_path');
+            ExportService._marpEnginePathCache = result || null;
+        } catch (err) {
+            lexeraLog('warn', '[ExportService] get_marp_engine_path failed: ' + (err && err.message ? err.message : String(err)));
+            ExportService._marpEnginePathCache = null;
+        }
+        return ExportService._marpEnginePathCache;
     }
 
     // ── Phase 1: Extract ────────────────────────────────────────────────
@@ -167,6 +248,7 @@ class ExportService {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
+            signal: options && options.signal,
         });
 
         if (!res.ok) {
@@ -209,6 +291,7 @@ class ExportService {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
+                signal: options && options.signal,
             });
 
             if (!res.ok) {
@@ -227,9 +310,145 @@ class ExportService {
         if (!options || options.format !== 'presentation' || (options.mode || 'copy') === 'copy') {
             return content;
         }
+        let transformed = content;
+        transformed = ExportService.applyTableWidthTransform(transformed);
+        transformed = ExportService.applyImageFigureTransform(transformed);
+        transformed = ExportService.applyListSplitSafetyNet(transformed);
         const embedMode = ExportService.resolveEmbedExportMode(options);
-        if (!embedMode) return content;
-        return ExportService.transformEmbedsForExport(content, embedMode);
+        if (embedMode) {
+            transformed = ExportService.transformEmbedsForExport(transformed, embedMode);
+        }
+        return transformed;
+    }
+
+    // Pre-render markdown tables with alignment markers (:---: etc) to HTML so Marp
+    // preserves proportional widths. Tables without alignment markers remain as markdown.
+    // Ported from _ARCHIVE/src/services/export/ExportService.ts:applyTableWidthTransform.
+    static applyTableWidthTransform(content) {
+        if (!content || content.indexOf('|') < 0) return content;
+        if (!window.LexeraMarkdownRenderer || !window.LexeraMarkdownRenderer.isReady()) {
+            lexeraLog('warn', '[ExportService] markdown-it not loaded; skipping table-widths transform');
+            return content;
+        }
+        if (typeof window.markdownit !== 'function' || !window.markdownitTableWidths) {
+            return content;
+        }
+
+        const md = window.markdownit({ html: true });
+        md.use(window.markdownitTableWidths);
+
+        const lines = content.split('\n');
+        const result = [];
+        let i = 0;
+        while (i < lines.length) {
+            if (lines[i].indexOf('|') < 0 || i + 1 >= lines.length) {
+                result.push(lines[i]);
+                i++;
+                continue;
+            }
+            const sepLine = lines[i + 1];
+            if (!sepLine || !/^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(sepLine)) {
+                result.push(lines[i]);
+                i++;
+                continue;
+            }
+            let cols = sepLine.split('|');
+            if (cols.length > 0 && cols[0].trim() === '') cols.shift();
+            if (cols.length > 0 && cols[cols.length - 1].trim() === '') cols.pop();
+            const hasAlignment = cols.some(function (c) {
+                const t = c.trim();
+                return t.charAt(0) === ':' || t.charAt(t.length - 1) === ':';
+            });
+            if (!hasAlignment) {
+                result.push(lines[i]);
+                i++;
+                continue;
+            }
+            const tableLines = [lines[i], lines[i + 1]];
+            let j = i + 2;
+            while (j < lines.length && lines[j].indexOf('|') >= 0 && lines[j].trim() !== '') {
+                tableLines.push(lines[j]);
+                j++;
+            }
+            try {
+                const html = md.render(tableLines.join('\n'));
+                result.push(html.replace(/\s+$/, ''));
+            } catch (err) {
+                lexeraLog('warn', '[ExportService] table-widths render failed: ' + (err.message || String(err)));
+                for (let k = 0; k < tableLines.length; k++) result.push(tableLines[k]);
+            }
+            i = j;
+        }
+        return result.join('\n');
+    }
+
+    // Wrap images with a title attribute in <figure>/<figcaption>. Marp's default renderer
+    // drops the title text; markdown-it-image-figures preserves it.
+    static applyImageFigureTransform(content) {
+        if (!content) return content;
+        if (!window.markdownit || !window.markdownItImageFigures) return content;
+
+        // Image with title: ![alt](url "title") — URL has no whitespace; title in quotes.
+        const blockPattern = /(^|\n)[ \t]*(!\[[^\]]*\]\([^"\s)]+\s+"[^"]*"\))[ \t]*(\n|$)/g;
+        if (!blockPattern.test(content)) return content;
+        blockPattern.lastIndex = 0;
+
+        const md = window.markdownit({ html: true });
+        md.use(window.markdownItImageFigures, { figcaption: 'title' });
+
+        return content.replace(blockPattern, function (match, pre, imgMarkdown, post) {
+            try {
+                const html = md.render(imgMarkdown).replace(/\s+$/, '');
+                return pre + html + post;
+            } catch (err) {
+                lexeraLog('warn', '[ExportService] image-figures render failed: ' + (err.message || String(err)));
+                return match;
+            }
+        });
+    }
+
+    // Safety-net: ensure list items separated by blank lines get a <!-- --> breaker
+    // even if the backend Rust list-split transform didn't run.
+    // Only adds breakers where not already present.
+    static applyListSplitSafetyNet(content) {
+        if (!content) return content;
+        const lines = content.split('\n');
+        const out = [];
+        let inList = false;
+        let listIndent = 0;
+        let blankBuffer = [];
+
+        for (let k = 0; k < lines.length; k++) {
+            const line = lines[k];
+            const isBlank = line.trim() === '';
+            const itemMatch = line.match(/^([ \t]*)(?:[-*+]|\d+[.)]) /);
+            const isListItem = !!itemMatch;
+
+            if (isBlank) {
+                blankBuffer.push(line);
+                continue;
+            }
+
+            if (isListItem && inList && blankBuffer.length > 0 && itemMatch[1].length <= listIndent) {
+                const alreadyBroken = out.length > 0 && /<!--\s*-->/.test(out[out.length - 1]);
+                for (let b = 0; b < blankBuffer.length; b++) out.push(blankBuffer[b]);
+                if (!alreadyBroken) out.push('<!-- -->');
+            } else {
+                for (let b = 0; b < blankBuffer.length; b++) out.push(blankBuffer[b]);
+            }
+            blankBuffer = [];
+            out.push(line);
+
+            if (isListItem) {
+                inList = true;
+                listIndent = itemMatch[1].length;
+            } else {
+                const lineIndent = (line.match(/^([ \t]*)/) || ['', ''])[1].length;
+                if (!inList || lineIndent <= listIndent) inList = false;
+            }
+        }
+        for (let b = 0; b < blankBuffer.length; b++) out.push(blankBuffer[b]);
+        return out.join('\n');
     }
 
     static resolveEmbedExportMode(options) {
@@ -253,47 +472,34 @@ class ExportService {
 
         const createdFiles = [];
 
+        const throwIfAborted = () => {
+            if (ExportService._wasAborted(options)) {
+                const err = new Error('Export cancelled');
+                err.name = 'AbortError';
+                throw err;
+            }
+        };
+
         try {
             const mdPath = ExportService.generateExportPath(
                 options.targetFolder,
                 options.exportFolderName,
                 '.md'
             );
+            throwIfAborted();
             const prepared = await ExportService.prepareContentForOutput(content, options, mdPath);
             const finalContent = prepared && typeof prepared.content === 'string' ? prepared.content : content;
             if (prepared && Array.isArray(prepared.createdFiles)) {
                 Array.prototype.push.apply(createdFiles, prepared.createdFiles);
             }
 
+            throwIfAborted();
             lexeraLog('info', '[ExportService] Phase 3: writing markdown to ' + mdPath);
             await exportInvokeTauri('write_export_file', { path: mdPath, content: finalContent });
             createdFiles.push(mdPath);
 
-            if (mode === 'preview') {
-                lexeraLog('info', '[ExportService] Phase 3: starting Marp preview');
-                const watchResult = await exportInvokeTauri('marp_watch', {
-                    opts: {
-                        inputPath: mdPath,
-                        format: 'html',
-                        outputPath: '',
-                        theme: options.marpTheme || null,
-                        themeDirs: null,
-                        enginePath: null,
-                        browser: ExportService.normalizeMarpBrowser(options.marpBrowser),
-                        pptxEditable: null,
-                        additionalArgs: null,
-                        handout: null,
-                        handoutLayout: null,
-                        handoutSlidesPerPage: null,
-                        handoutDirection: null,
-                    },
-                });
-                return {
-                    success: watchResult.success,
-                    exportedPath: mdPath,
-                    message: watchResult.message || 'Preview started',
-                };
-            }
+            throwIfAborted();
+            const enginePath = options.marpEnginePath || await ExportService.getMarpEnginePath();
 
             if (options.runMarp && options.format === 'presentation' && options.marpFormat !== 'markdown') {
                 const marpOutputPath = ExportService.generateExportPath(
@@ -302,13 +508,13 @@ class ExportService {
                     '.' + options.marpFormat
                 );
 
-                lexeraLog('info', '[ExportService] Phase 3: running Marp export to ' + marpOutputPath);
+                lexeraLog('info', '[ExportService] Phase 3: running Marp export to ' + marpOutputPath + ' (engine=' + (enginePath || 'default') + ')');
                 const marpResult = await exportInvokeTauri('marp_export', {
                     opts: {
                         inputPath: mdPath,
                         format: options.marpFormat,
                         outputPath: marpOutputPath,
-                        enginePath: null,
+                        enginePath: enginePath,
                         theme: options.marpTheme || null,
                         themeDirs: null,
                         browser: ExportService.normalizeMarpBrowser(options.marpBrowser),
@@ -335,6 +541,7 @@ class ExportService {
                     '.' + options.pandocFormat
                 );
 
+                throwIfAborted();
                 lexeraLog('info', '[ExportService] Phase 3: running Pandoc export to ' + pandocOutputPath);
                 const pandocResult = await exportInvokeTauri('pandoc_export', {
                     opts: {
@@ -393,6 +600,18 @@ class ExportService {
             nextContent = renderedEmbeds.content;
             if (renderedEmbeds.createdFiles.length > 0) {
                 createdFiles = createdFiles.concat(renderedEmbeds.createdFiles);
+            }
+        }
+
+        if (ExportService.shouldPreprocessDiagramsForExport(options)) {
+            const diagramResult = await ExportService.preprocessDiagramsForExport(
+                nextContent,
+                exportDir,
+                fileBasename
+            );
+            nextContent = diagramResult.content;
+            if (diagramResult.createdFiles.length > 0) {
+                createdFiles = createdFiles.concat(diagramResult.createdFiles);
             }
         }
 
@@ -470,6 +689,72 @@ class ExportService {
         return parsed > 0 ? parsed : 1;
     }
 
+    static shouldPreprocessDiagramsForExport(options) {
+        if (!options || (options.mode || 'copy') === 'copy') return false;
+        const format = String(options.format || '').trim().toLowerCase();
+        return format === 'presentation' || format === 'document';
+    }
+
+    // Pre-render ```plantuml fenced code blocks to SVG files and replace with image references.
+    // Ported from _ARCHIVE/src/services/export/DiagramPreprocessor.ts (plantuml path only;
+    // mermaid and file-based diagrams are handled separately by renderFileEmbedsForExport).
+    static async preprocessDiagramsForExport(content, exportDir, fileBasename) {
+        if (!content || !exportCanUseTauri()) return { content, createdFiles: [] };
+        const fencePattern = /```\s*plantuml\s*\n([\s\S]*?)```/g;
+        if (!fencePattern.test(content)) return { content, createdFiles: [] };
+        fencePattern.lastIndex = 0;
+
+        const blocks = [];
+        let match;
+        let counter = 0;
+        while ((match = fencePattern.exec(content)) !== null) {
+            counter += 1;
+            blocks.push({
+                fullMatch: match[0],
+                code: match[1],
+                id: 'plantuml-' + counter,
+                start: match.index,
+            });
+        }
+
+        const createdFiles = [];
+        const replacements = [];
+        for (let i = 0; i < blocks.length; i++) {
+            const block = blocks[i];
+            const fileName = fileBasename + '-' + block.id + '.svg';
+            const targetPath = ExportService.joinPath(exportDir, fileName);
+            let wrapped = block.code.trim();
+            if (!/@startuml/i.test(wrapped)) {
+                wrapped = '@startuml\n' + wrapped + '\n@enduml';
+            }
+            try {
+                const result = await exportInvokeTauri('render_plantuml_code', {
+                    opts: {
+                        code: wrapped,
+                        targetPath: targetPath,
+                    },
+                });
+                if (result && result.success) {
+                    replacements.push({
+                        original: block.fullMatch,
+                        replacement: '![' + block.id + '](' + fileName + ')',
+                    });
+                    createdFiles.push(targetPath);
+                } else {
+                    lexeraLog('warn', '[ExportService.diagram] PlantUML render failed for ' + block.id + ': ' + ((result && result.error) || 'unknown'));
+                }
+            } catch (err) {
+                lexeraLog('warn', '[ExportService.diagram] PlantUML invoke failed for ' + block.id + ': ' + (err && err.message ? err.message : String(err)));
+            }
+        }
+
+        let nextContent = content;
+        for (let j = 0; j < replacements.length; j++) {
+            nextContent = nextContent.replace(replacements[j].original, replacements[j].replacement);
+        }
+        return { content: nextContent, createdFiles: createdFiles };
+    }
+
     static async renderFileEmbedsForExport(content, sourceFilePath, exportDir, fileBasename) {
         const registry = ExportService.getFileFormatRegistry();
         if (!registry || !exportCanUseTauri()) {
@@ -543,18 +828,40 @@ class ExportService {
         const renderedTargets = {};
         const jobList = Object.keys(jobs).map(function (key) { return jobs[key]; });
 
+        // Prefer the plugin's renderFile() method if available — this lets each
+        // fileFormat plugin own its render dispatch path. Falls back to a
+        // direct `render_embedded_file` invoke when the plugin doesn't expose
+        // renderFile (tests / older plugins).
+        function dispatchRender(job) {
+            var plugin = registry && typeof registry.getById === 'function'
+                ? registry.getById(job.pluginId)
+                : null;
+            var renderFn = plugin && typeof plugin.renderFile === 'function'
+                ? plugin.renderFile
+                : null;
+            if (renderFn) {
+                return renderFn({
+                    sourcePath: job.sourcePath,
+                    targetPath: job.targetPath,
+                    pageNumber: job.pageNumber,
+                    outputFormat: job.outputFormat,
+                });
+            }
+            return exportInvokeTauri('render_embedded_file', {
+                opts: {
+                    pluginId: job.pluginId,
+                    sourcePath: job.sourcePath,
+                    targetPath: job.targetPath,
+                    pageNumber: job.pageNumber,
+                    outputFormat: job.outputFormat,
+                },
+            });
+        }
+
         for (let i = 0; i < jobList.length; i++) {
             const job = jobList[i];
             try {
-                const result = await exportInvokeTauri('render_embedded_file', {
-                    opts: {
-                        pluginId: job.pluginId,
-                        sourcePath: job.sourcePath,
-                        targetPath: job.targetPath,
-                        pageNumber: job.pageNumber,
-                        outputFormat: job.outputFormat,
-                    },
-                });
+                const result = await dispatchRender(job);
                 if (result && result.success) {
                     renderedTargets[job.key] = job.relativeTarget;
                     createdFiles.push(job.targetPath);

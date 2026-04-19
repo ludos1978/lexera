@@ -44,6 +44,16 @@ var LexeraInlineRenderer = (function () {
     var peekFileInfoSync = typeof deps.peekFileInfoSync === 'function' ? deps.peekFileInfoSync : null;
     var requestFileInfo = typeof deps.requestFileInfo === 'function' ? deps.requestFileInfo : null;
 
+    // Ported from _ARCHIVE/src/html/markdown-it-enhanced-strikethrough-browser.js.
+    // Produces <span class="strikethrough-container" data-strike-id="...">
+    // <del class="strikethrough-content">...</del></span> so the UI can attach
+    // a delete button to struck-through text (styling is in app.css).
+    function wrapEnhancedStrikethrough(_, content) {
+      var id = 'strike-' + Math.random().toString(36).slice(2, 11);
+      return '<span class="strikethrough-container" data-strike-id="' + id +
+        '"><del class="strikethrough-content">' + content + '</del></span>';
+    }
+
     function renderTitleInline(text, boardId, options) {
       boardId = boardId || getActiveBoardId() || '';
       options = options || {};
@@ -113,7 +123,7 @@ var LexeraInlineRenderer = (function () {
       });
       safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-      safe = safe.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+      safe = safe.replace(/~~([^~]+)~~/g, wrapEnhancedStrikethrough);
       safe = safe.replace(/==([^=]+)==/g, '<mark>$1</mark>');
       safe = safe.replace(/\+\+([^+]+)\+\+/g, '<ins>$1</ins>');
       safe = safe.replace(/(^|[^\w])_([^_\n]+)_/g, function (_, pre, value) {
@@ -322,7 +332,7 @@ var LexeraInlineRenderer = (function () {
 
       safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-      safe = safe.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+      safe = safe.replace(/~~([^~]+)~~/g, wrapEnhancedStrikethrough);
       safe = safe.replace(/==([^=]+)==/g, '<mark>$1</mark>');
       safe = safe.replace(/\+\+([^+]+)\+\+/g, '<ins>$1</ins>');
       safe = safe.replace(/(^|[^\w])_([^_\n]+)_/g, function (_, pre, value) {

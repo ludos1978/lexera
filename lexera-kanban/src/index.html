@@ -386,9 +386,9 @@
       <div class="export-dialog-footer">
         <div id="export-status" class="export-status-msg"></div>
         <div class="export-dialog-actions">
+          <button id="export-btn-cancel" class="export-action-btn" type="button">Cancel</button>
           <button id="export-btn-copy" class="export-action-btn" type="button">Copy</button>
           <button id="export-btn-save" class="export-action-btn export-action-primary" type="button">Export</button>
-          <button id="export-btn-preview" class="export-action-btn export-action-primary" type="button" hidden>Preview</button>
         </div>
       </div>
     </div>
@@ -424,6 +424,33 @@
   <script src="vendor/office/xlsx.full.min.js"></script>
   <script src="vendor/office/pptx-to-html.min.js"></script>
 
+  <!-- markdown-it core + plugins (ported from v1 export system) -->
+  <script src="vendor/markdown-it/markdown-it.min.js"></script>
+  <script src="vendor/markdown-it/markdown-it-emoji.min.js"></script>
+  <script src="vendor/markdown-it/markdown-it-footnote.min.js"></script>
+  <script src="vendor/markdown-it/markdown-it-multicolumn-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-mark-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-sub-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-sup-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-ins-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-strikethrough-alt-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-underline-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-abbr-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-container-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-image-figures-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-image-attrs-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-table-widths-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-list-split-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-wiki-links-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-tag-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-task-checkbox-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-date-person-tag-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-temporal-tag-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-enhanced-strikethrough-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-speaker-note-browser.js"></script>
+  <script src="vendor/markdown-it/markdown-it-html-comment-browser.js"></script>
+  <script src="render/markdownRenderer.js"></script>
+
   <script src="core/moduleRuntime.js"></script>
   <script src="core/settingsStore.js"></script>
   <script src="core/viewStateStore.js"></script>
@@ -434,12 +461,32 @@
   <script src="backendDiscovery.js"></script>
   <script src="api.js"></script>
   <script src="templates.js"></script>
+  <script src="plugins/pluginRegistry.js"></script>
+  <script src="plugins/pluginLoader.js"></script>
+  <script src="plugins/pluginConfig.js"></script>
+  <script src="plugins/formats/fileFormatHelpers.js"></script>
+  <script src="plugins/formats/drawio.js"></script>
+  <script src="plugins/formats/excalidraw.js"></script>
+  <script src="plugins/formats/xlsx.js"></script>
+  <script src="plugins/formats/csv.js"></script>
+  <script src="plugins/formats/tsv.js"></script>
+  <script src="plugins/formats/pdf.js"></script>
+  <script src="plugins/formats/pptx.js"></script>
+  <script src="plugins/formats/document.js"></script>
+  <script src="plugins/formats/epub.js"></script>
+  <script src="plugins/formats/plaintext.js"></script>
   <script src="plugins/fileFormatRegistry.js"></script>
   <script src="titleHelpers.js"></script>
   <script src="tagSystem.js"></script>
   <script src="export/exportTreeBuilder.js"></script>
   <script src="export/exportTreeUI.js"></script>
   <script src="export/exportService.js"></script>
+  <script src="plugins/exports/tauriInvoke.js"></script>
+  <script src="plugins/exports/marpExport.js"></script>
+  <script src="plugins/exports/pandocExport.js"></script>
+  <script src="plugins/exports/filterExport.js"></script>
+  <script src="plugins/markdown/markdownPluginManifest.js"></script>
+  <script src="plugins/embed/embedPlugin.js"></script>
   <script src="export/exportUiPreferences.js"></script>
   <script src="export/exportToolStatus.js"></script>
   <script src="export/archiveFormatting.js"></script>
@@ -448,6 +495,8 @@
   <script src="themes.js"></script>
   <script src="visualThemes.js"></script>
   <script src="diagramRegistry.js"></script>
+  <script src="plugins/diagrams/mermaid.js"></script>
+  <script src="plugins/diagrams/plantuml.js"></script>
   <script src="contentEnhancerRegistry.js"></script>
   <script src="actionRegistry.js"></script>
   <script src="keybindingRegistry.js"></script>

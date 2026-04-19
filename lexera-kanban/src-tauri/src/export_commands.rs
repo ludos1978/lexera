@@ -1638,6 +1638,52 @@ fn find_pandoc() -> Option<(PathBuf, String)> {
 // Commands
 // ---------------------------------------------------------------------------
 
+/// Resolve the path to the custom Marp engine (packages/marp-engine/engine/engine.js).
+/// The engine registers all markdown-it plugins Lexera uses (mark, ins, sub, sup,
+/// underline, strikethrough-alt, abbr, multicolumn, anchor, toc-done-right,
+/// mermaid-it, checkboxes, deflist, include, media) so Marp output matches the V1 app.
+///
+/// Search order: binary dir, current dir, and a few ancestors of each — covers
+/// `cargo tauri dev` (runs from lexera-kanban/src-tauri/) and built-app locations.
+#[tauri::command]
+pub fn get_marp_engine_path() -> Result<Option<String>, String> {
+    let relative = Path::new("packages").join("marp-engine").join("engine").join("engine.js");
+
+    let mut seeds: Vec<PathBuf> = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        seeds.push(cwd);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            seeds.push(parent.to_path_buf());
+        }
+    }
+
+    for seed in &seeds {
+        let mut current = Some(seed.as_path());
+        for _ in 0..8 {
+            let Some(dir) = current else { break };
+            let candidate = dir.join(&relative);
+            if candidate.is_file() {
+                let node_modules = candidate
+                    .parent()
+                    .map(|p| p.join("node_modules"))
+                    .filter(|p| p.is_dir());
+                if node_modules.is_none() {
+                    log::warn!(
+                        "[export] Found Marp engine at {} but node_modules missing — run build-marp-engine.sh",
+                        candidate.display()
+                    );
+                    return Ok(None);
+                }
+                return Ok(Some(candidate.to_string_lossy().to_string()));
+            }
+            current = dir.parent();
+        }
+    }
+    Ok(None)
+}
+
 #[tauri::command]
 pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<RenderEmbeddedFileResult, String> {
     let source_path = PathBuf::from(&opts.source_path);
@@ -2054,6 +2100,554 @@ pub async fn check_embedded_renderer_statuses() -> Vec<EmbeddedRendererStatus> {
         .collect()
 }
 
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TestRenderAppsRequest {
+    #[serde(default)]
+    pub drawio: Option<String>,
+    #[serde(default)]
+    pub marp: Option<String>,
+    #[serde(default)]
+    pub pandoc: Option<String>,
+    #[serde(default)]
+    pub soffice: Option<String>,
+    #[serde(default)]
+    pub pdftoppm: Option<String>,
+    #[serde(default)]
+    pub mutool: Option<String>,
+    #[serde(default)]
+    pub functional: Option<bool>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderAppTestResult {
+    pub ok: bool,
+    pub path: Option<String>,
+    pub version: Option<String>,
+    pub source: String,
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub functional: Option<FunctionalResult>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FunctionalResult {
+    pub ok: bool,
+    pub details: Option<String>,
+    pub error: Option<String>,
+    pub duration_ms: u64,
+}
+
+fn normalize_user_path(raw: Option<String>) -> Option<String> {
+    raw.and_then(|s| {
+        let trimmed = s.trim();
+        if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+    })
+}
+
+fn test_tool_with_auto(
+    user_path: Option<String>,
+    auto_finder: fn() -> Option<PathBuf>,
+    version_args: &[&str],
+) -> RenderAppTestResult {
+    if let Some(user) = normalize_user_path(user_path) {
+        let path_buf = PathBuf::from(&user);
+        return match read_command_version(&path_buf, version_args) {
+            Some(version) => RenderAppTestResult {
+                ok: true,
+                path: Some(user),
+                version: Some(version),
+                source: "user".to_string(),
+                error: None,
+                functional: None,
+            },
+            None => RenderAppTestResult {
+                ok: false,
+                path: Some(user),
+                version: None,
+                source: "user".to_string(),
+                error: Some("Configured path failed to execute".to_string()),
+                functional: None,
+            },
+        };
+    }
+    match auto_finder() {
+        Some(path_buf) => match read_command_version(&path_buf, version_args) {
+            Some(version) => RenderAppTestResult {
+                ok: true,
+                path: Some(path_buf.to_string_lossy().to_string()),
+                version: Some(version),
+                source: "auto".to_string(),
+                error: None,
+                functional: None,
+            },
+            None => RenderAppTestResult {
+                ok: false,
+                path: Some(path_buf.to_string_lossy().to_string()),
+                version: None,
+                source: "auto".to_string(),
+                error: Some("Detected executable failed to run".to_string()),
+                functional: None,
+            },
+        },
+        None => RenderAppTestResult {
+            ok: false,
+            path: None,
+            version: None,
+            source: "missing".to_string(),
+            error: Some("Not found on system".to_string()),
+            functional: None,
+        },
+    }
+}
+
+fn test_marp(user_path: Option<String>) -> RenderAppTestResult {
+    if let Some(user) = normalize_user_path(user_path) {
+        let path_buf = PathBuf::from(&user);
+        return match read_command_version(&path_buf, &["--version"]) {
+            Some(version) => RenderAppTestResult {
+                ok: true,
+                path: Some(user),
+                version: Some(version),
+                source: "user".to_string(),
+                error: None,
+                functional: None,
+            },
+            None => RenderAppTestResult {
+                ok: false,
+                path: Some(user),
+                version: None,
+                source: "user".to_string(),
+                error: Some("Configured path failed to execute".to_string()),
+                functional: None,
+            },
+        };
+    }
+    if let Ok(output) = Command::new("npx")
+        .args(["--yes", "@marp-team/marp-cli", "--version"])
+        .output()
+    {
+        if output.status.success() {
+            let version = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            return RenderAppTestResult {
+                ok: true,
+                path: Some("npx @marp-team/marp-cli".to_string()),
+                version,
+                source: "auto".to_string(),
+                error: None,
+                functional: None,
+            };
+        }
+    }
+    if let Ok(output) = Command::new("marp").arg("--version").output() {
+        if output.status.success() {
+            let version = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            return RenderAppTestResult {
+                ok: true,
+                path: Some("marp".to_string()),
+                version,
+                source: "auto".to_string(),
+                error: None,
+                functional: None,
+            };
+        }
+    }
+    RenderAppTestResult {
+        ok: false,
+        path: None,
+        version: None,
+        source: "missing".to_string(),
+        error: Some("Not found on system".to_string()),
+        functional: None,
+    }
+}
+
+fn test_pandoc(user_path: Option<String>) -> RenderAppTestResult {
+    if let Some(user) = normalize_user_path(user_path) {
+        let path_buf = PathBuf::from(&user);
+        return match read_command_version(&path_buf, &["--version"]) {
+            Some(version) => RenderAppTestResult {
+                ok: true,
+                path: Some(user),
+                version: Some(version),
+                source: "user".to_string(),
+                error: None,
+                functional: None,
+            },
+            None => RenderAppTestResult {
+                ok: false,
+                path: Some(user),
+                version: None,
+                source: "user".to_string(),
+                error: Some("Configured path failed to execute".to_string()),
+                functional: None,
+            },
+        };
+    }
+    match find_pandoc() {
+        Some((path_buf, version)) => RenderAppTestResult {
+            ok: true,
+            path: Some(path_buf.to_string_lossy().to_string()),
+            version: Some(version),
+            source: "auto".to_string(),
+            error: None,
+            functional: None,
+        },
+        None => RenderAppTestResult {
+            ok: false,
+            path: None,
+            version: None,
+            source: "missing".to_string(),
+            error: Some("Not found on system".to_string()),
+            functional: None,
+        },
+    }
+}
+
+// ── Functional tests (minimal end-to-end render probes) ─────────────
+
+const FUNCTIONAL_TEST_TIMEOUT_MS: u64 = 60_000;
+
+/// Build a minimal, spec-valid one-page PDF at runtime so functional tests
+/// for pdftoppm / mutool have a real input without bundling a fixture file.
+fn build_minimal_pdf() -> Vec<u8> {
+    let mut buf = Vec::new();
+    let mut offsets: Vec<usize> = Vec::new();
+    buf.extend_from_slice(b"%PDF-1.4\n");
+    offsets.push(buf.len());
+    buf.extend_from_slice(b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+    offsets.push(buf.len());
+    buf.extend_from_slice(b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+    offsets.push(buf.len());
+    buf.extend_from_slice(b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 72] /Contents 4 0 R >>\nendobj\n");
+    offsets.push(buf.len());
+    let stream: &[u8] = b"q Q";
+    let obj4_head = format!("4 0 obj\n<< /Length {} >>\nstream\n", stream.len());
+    buf.extend_from_slice(obj4_head.as_bytes());
+    buf.extend_from_slice(stream);
+    buf.extend_from_slice(b"\nendstream\nendobj\n");
+    let xref_offset = buf.len();
+    buf.extend_from_slice(b"xref\n0 5\n");
+    buf.extend_from_slice(b"0000000000 65535 f \n");
+    for off in &offsets {
+        buf.extend_from_slice(format!("{:010} 00000 n \n", off).as_bytes());
+    }
+    buf.extend_from_slice(b"trailer\n<< /Size 5 /Root 1 0 R >>\n");
+    buf.extend_from_slice(format!("startxref\n{}\n%%EOF\n", xref_offset).as_bytes());
+    buf
+}
+
+fn functional_test_drawio(path: &Path) -> Result<String, String> {
+    let dir = create_temp_render_dir("rt-drawio")?;
+    let src = dir.join("in.drawio");
+    let dst = dir.join("out.svg");
+    fs::write(
+        &src,
+        r#"<mxfile><diagram id="x" name="Page"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>"#,
+    )
+    .map_err(|e| format!("write fixture: {}", e))?;
+    let args = vec![
+        "--export".to_string(),
+        "--format".to_string(),
+        "svg".to_string(),
+        "--output".to_string(),
+        dst.to_string_lossy().to_string(),
+        src.to_string_lossy().to_string(),
+    ];
+    let run_result = run_command_capture_with_timeout(
+        path,
+        &args,
+        None,
+        Duration::from_millis(FUNCTIONAL_TEST_TIMEOUT_MS),
+    );
+    let output_result = if run_result.is_ok() {
+        if !dst.exists() {
+            Err("drawio did not create SVG output".to_string())
+        } else {
+            match fs::read_to_string(&dst) {
+                Ok(content) if content.contains("<svg") => {
+                    Ok(format!("Rendered .drawio → SVG ({} bytes)", content.len()))
+                }
+                Ok(_) => Err("drawio output missing <svg> markup".to_string()),
+                Err(e) => Err(format!("read output: {}", e)),
+            }
+        }
+    } else {
+        run_result.map(|_| String::new())
+    };
+    let _ = fs::remove_dir_all(&dir);
+    output_result
+}
+
+fn functional_test_marp(source: &str, path_str: &str) -> Result<String, String> {
+    let dir = create_temp_render_dir("rt-marp")?;
+    let src = dir.join("in.md");
+    let dst = dir.join("out.html");
+    fs::write(&src, "---\nmarp: true\n---\n\n# Test\n\nBody\n")
+        .map_err(|e| format!("write fixture: {}", e))?;
+    let use_npx = source == "auto" && path_str.starts_with("npx");
+    let (command, args) = if use_npx {
+        (
+            PathBuf::from("npx"),
+            vec![
+                "--yes".to_string(),
+                "@marp-team/marp-cli".to_string(),
+                src.to_string_lossy().to_string(),
+                "-o".to_string(),
+                dst.to_string_lossy().to_string(),
+            ],
+        )
+    } else {
+        (
+            PathBuf::from(path_str),
+            vec![
+                src.to_string_lossy().to_string(),
+                "-o".to_string(),
+                dst.to_string_lossy().to_string(),
+            ],
+        )
+    };
+    let run_result = run_command_capture_with_timeout(
+        &command,
+        &args,
+        None,
+        Duration::from_millis(FUNCTIONAL_TEST_TIMEOUT_MS),
+    );
+    let output_result = if run_result.is_ok() {
+        if !dst.exists() {
+            Err("marp did not create HTML output".to_string())
+        } else {
+            let size = fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
+            Ok(format!("Rendered Markdown → HTML ({} bytes)", size))
+        }
+    } else {
+        run_result.map(|_| String::new())
+    };
+    let _ = fs::remove_dir_all(&dir);
+    output_result
+}
+
+fn functional_test_pandoc(path: &Path) -> Result<String, String> {
+    let dir = create_temp_render_dir("rt-pandoc")?;
+    let src = dir.join("in.md");
+    fs::write(&src, "# Hello\n\nBody paragraph.\n")
+        .map_err(|e| format!("write fixture: {}", e))?;
+    let args = [
+        "-f",
+        "markdown",
+        "-t",
+        "html",
+        &src.to_string_lossy().to_string(),
+    ];
+    let output = run_command_output_with_timeout(
+        path,
+        &args,
+        None,
+        Duration::from_millis(FUNCTIONAL_TEST_TIMEOUT_MS),
+    );
+    let _ = fs::remove_dir_all(&dir);
+    let output = output?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    let html = String::from_utf8_lossy(&output.stdout).to_string();
+    if !html.contains("<h1") {
+        return Err("pandoc output missing <h1>".to_string());
+    }
+    Ok(format!("Converted Markdown → HTML ({} bytes)", html.len()))
+}
+
+fn functional_test_soffice(path: &Path) -> Result<String, String> {
+    let dir = create_temp_render_dir("rt-soffice")?;
+    let src = dir.join("in.txt");
+    fs::write(&src, "Hello from Lexera render test.\n")
+        .map_err(|e| format!("write fixture: {}", e))?;
+    let args = vec![
+        "--headless".to_string(),
+        "--convert-to".to_string(),
+        "pdf".to_string(),
+        "--outdir".to_string(),
+        dir.to_string_lossy().to_string(),
+        src.to_string_lossy().to_string(),
+    ];
+    let run_result = run_command_capture_with_timeout(
+        path,
+        &args,
+        None,
+        Duration::from_millis(FUNCTIONAL_TEST_TIMEOUT_MS),
+    );
+    let output_result = if run_result.is_ok() {
+        let expected = dir.join("in.pdf");
+        if expected.exists() {
+            let size = fs::metadata(&expected).map(|m| m.len()).unwrap_or(0);
+            Ok(format!("Converted TXT → PDF ({} bytes)", size))
+        } else {
+            Err("soffice did not create PDF output".to_string())
+        }
+    } else {
+        run_result.map(|_| String::new())
+    };
+    let _ = fs::remove_dir_all(&dir);
+    output_result
+}
+
+fn functional_test_pdftoppm(path: &Path) -> Result<String, String> {
+    let dir = create_temp_render_dir("rt-pdftoppm")?;
+    let src = dir.join("in.pdf");
+    fs::write(&src, build_minimal_pdf()).map_err(|e| format!("write fixture: {}", e))?;
+    let prefix = dir.join("page");
+    let args = vec![
+        "-png".to_string(),
+        "-r".to_string(),
+        "72".to_string(),
+        "-f".to_string(),
+        "1".to_string(),
+        "-l".to_string(),
+        "1".to_string(),
+        src.to_string_lossy().to_string(),
+        prefix.to_string_lossy().to_string(),
+    ];
+    let run_result = run_command_capture_with_timeout(
+        path,
+        &args,
+        None,
+        Duration::from_millis(FUNCTIONAL_TEST_TIMEOUT_MS),
+    );
+    let output_result = if run_result.is_ok() {
+        let candidates = [dir.join("page-1.png"), dir.join("page-01.png")];
+        match candidates.iter().find(|p| p.exists()) {
+            Some(found) => {
+                let size = fs::metadata(found).map(|m| m.len()).unwrap_or(0);
+                Ok(format!("Rendered PDF → PNG ({} bytes)", size))
+            }
+            None => Err("pdftoppm did not create PNG output".to_string()),
+        }
+    } else {
+        run_result.map(|_| String::new())
+    };
+    let _ = fs::remove_dir_all(&dir);
+    output_result
+}
+
+fn functional_test_mutool(path: &Path) -> Result<String, String> {
+    let dir = create_temp_render_dir("rt-mutool")?;
+    let src = dir.join("in.pdf");
+    fs::write(&src, build_minimal_pdf()).map_err(|e| format!("write fixture: {}", e))?;
+    let dst = dir.join("out.png");
+    let args = vec![
+        "draw".to_string(),
+        "-o".to_string(),
+        dst.to_string_lossy().to_string(),
+        src.to_string_lossy().to_string(),
+        "1".to_string(),
+    ];
+    let run_result = run_command_capture_with_timeout(
+        path,
+        &args,
+        None,
+        Duration::from_millis(FUNCTIONAL_TEST_TIMEOUT_MS),
+    );
+    let output_result = if run_result.is_ok() {
+        if dst.exists() {
+            let size = fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
+            Ok(format!("Rendered PDF → PNG ({} bytes)", size))
+        } else {
+            Err("mutool did not create PNG output".to_string())
+        }
+    } else {
+        run_result.map(|_| String::new())
+    };
+    let _ = fs::remove_dir_all(&dir);
+    output_result
+}
+
+fn attach_functional_result(tool: &str, result: &mut RenderAppTestResult) {
+    if !result.ok {
+        return;
+    }
+    let path_str = match result.path.clone() {
+        Some(s) => s,
+        None => return,
+    };
+    let start = Instant::now();
+    let outcome = match tool {
+        "drawio" => functional_test_drawio(&PathBuf::from(&path_str)),
+        "marp" => functional_test_marp(&result.source, &path_str),
+        "pandoc" => functional_test_pandoc(&PathBuf::from(&path_str)),
+        "soffice" => functional_test_soffice(&PathBuf::from(&path_str)),
+        "pdftoppm" => functional_test_pdftoppm(&PathBuf::from(&path_str)),
+        "mutool" => functional_test_mutool(&PathBuf::from(&path_str)),
+        _ => return,
+    };
+    let duration_ms = start.elapsed().as_millis() as u64;
+    result.functional = Some(match outcome {
+        Ok(details) => FunctionalResult {
+            ok: true,
+            details: Some(details),
+            error: None,
+            duration_ms,
+        },
+        Err(error) => FunctionalResult {
+            ok: false,
+            details: None,
+            error: Some(error),
+            duration_ms,
+        },
+    });
+}
+
+/// Probe each configured render app path (or auto-detect when blank) and return
+/// per-tool availability for the Render Applications settings panel. When
+/// `functional` is set in the request, each available tool also runs a minimal
+/// end-to-end conversion so the result reflects real render capability.
+#[tauri::command]
+pub async fn test_render_apps(
+    request: Option<TestRenderAppsRequest>,
+) -> HashMap<String, RenderAppTestResult> {
+    let req = request.unwrap_or_default();
+    let run_functional = req.functional.unwrap_or(false);
+    let mut out: HashMap<String, RenderAppTestResult> = HashMap::new();
+    let mut entries: Vec<(&'static str, RenderAppTestResult)> = vec![
+        (
+            "drawio",
+            test_tool_with_auto(req.drawio, find_drawio_cli, &["--version"]),
+        ),
+        ("marp", test_marp(req.marp)),
+        ("pandoc", test_pandoc(req.pandoc)),
+        (
+            "soffice",
+            test_tool_with_auto(req.soffice, find_soffice_cli, &["--version"]),
+        ),
+        (
+            "pdftoppm",
+            test_tool_with_auto(req.pdftoppm, find_pdftoppm_cli, &["-v"]),
+        ),
+        (
+            "mutool",
+            test_tool_with_auto(req.mutool, find_mutool_cli, &["-v"]),
+        ),
+    ];
+    if run_functional {
+        for (tool, ref mut result) in entries.iter_mut() {
+            attach_functional_result(tool, result);
+        }
+    }
+    for (tool, result) in entries {
+        out.insert(tool.to_string(), result);
+    }
+    out
+}
+
 /// Discover Marp themes from configured and common directories.
 #[tauri::command]
 pub async fn discover_marp_themes(dirs: Vec<String>) -> Vec<ThemeInfo> {
@@ -2251,7 +2845,8 @@ pub async fn copy_export_assets(items: Vec<ExportAssetCopyItem>) -> Result<Vec<E
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_delimited_text_separator, normalize_plantuml_source, parse_delimited_rows, render_csv_text_to_svg,
+        build_minimal_pdf, detect_delimited_text_separator, normalize_plantuml_source,
+        parse_delimited_rows, render_csv_text_to_svg,
     };
 
     #[test]
@@ -2292,5 +2887,25 @@ mod tests {
         let source = "@startuml\nAlice -> Bob: hello\n@enduml";
         let normalized = normalize_plantuml_source(source);
         assert_eq!(normalized, "@startuml\nAlice -> Bob: hello\n@enduml\n");
+    }
+
+    #[test]
+    fn minimal_pdf_has_valid_header_and_xref() {
+        let pdf = build_minimal_pdf();
+        assert!(pdf.starts_with(b"%PDF-1.4"));
+        assert!(pdf.ends_with(b"%%EOF\n"));
+        // Check that xref offsets point at actual object headers so broken
+        // byte-counting in build_minimal_pdf would surface here.
+        let text = std::str::from_utf8(&pdf).expect("pdf is ascii");
+        let xref_idx = text.find("xref\n").expect("xref section present");
+        let startxref_idx = text.find("startxref\n").expect("startxref present");
+        let after = &text[startxref_idx + "startxref\n".len()..];
+        let offset_str = after.lines().next().expect("startxref offset line");
+        let offset: usize = offset_str.trim().parse().expect("offset is number");
+        assert_eq!(offset, xref_idx, "startxref must point at xref header");
+        for n in 1..=4 {
+            let marker = format!("{} 0 obj", n);
+            assert!(text.contains(&marker), "object {} missing", n);
+        }
     }
 }

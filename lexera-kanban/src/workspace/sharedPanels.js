@@ -365,18 +365,26 @@
           '<div class="mgmt-settings-grid render-apps-grid">' +
             '<label for="render-app-drawio">Draw.io</label>' +
             '<input class="mgmt-field-input lexera-shared-render-apps-drawio" id="render-app-drawio" type="text" placeholder="Auto-detect">' +
+            '<span class="render-apps-indicator lexera-shared-render-apps-indicator-drawio" aria-live="polite"></span>' +
             '<label for="render-app-marp">Marp CLI</label>' +
             '<input class="mgmt-field-input lexera-shared-render-apps-marp" id="render-app-marp" type="text" placeholder="Auto-detect (npx or marp)">' +
+            '<span class="render-apps-indicator lexera-shared-render-apps-indicator-marp" aria-live="polite"></span>' +
             '<label for="render-app-pandoc">Pandoc</label>' +
             '<input class="mgmt-field-input lexera-shared-render-apps-pandoc" id="render-app-pandoc" type="text" placeholder="Auto-detect">' +
+            '<span class="render-apps-indicator lexera-shared-render-apps-indicator-pandoc" aria-live="polite"></span>' +
             '<label for="render-app-soffice">LibreOffice</label>' +
             '<input class="mgmt-field-input lexera-shared-render-apps-soffice" id="render-app-soffice" type="text" placeholder="Auto-detect">' +
+            '<span class="render-apps-indicator lexera-shared-render-apps-indicator-soffice" aria-live="polite"></span>' +
             '<label for="render-app-pdftoppm">pdftoppm</label>' +
             '<input class="mgmt-field-input lexera-shared-render-apps-pdftoppm" id="render-app-pdftoppm" type="text" placeholder="Auto-detect">' +
+            '<span class="render-apps-indicator lexera-shared-render-apps-indicator-pdftoppm" aria-live="polite"></span>' +
             '<label for="render-app-mutool">mutool</label>' +
             '<input class="mgmt-field-input lexera-shared-render-apps-mutool" id="render-app-mutool" type="text" placeholder="Auto-detect">' +
+            '<span class="render-apps-indicator lexera-shared-render-apps-indicator-mutool" aria-live="polite"></span>' +
           '</div>' +
           '<div class="mgmt-settings-actions">' +
+            '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-test" type="button" title="Run --version on each tool">Test Version</button>' +
+            '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-test-run" type="button" title="Run a minimal end-to-end render with each tool (slower)">Test Run</button>' +
             '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-reload" type="button">Reload</button>' +
             '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary lexera-shared-render-apps-save" type="button">Save</button>' +
           '</div>' +

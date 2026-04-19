@@ -854,4 +854,57 @@ kanban-plugin: board
 
         close_session(&session.session_id).unwrap();
     }
+
+    #[test]
+    fn test_poisoned_registry_is_recovered_by_public_api() {
+        // Force a poison by panicking while holding the registry lock.
+        // Before the recovery fix this left every subsequent public API
+        // call returning "Live sync session registry is unavailable".
+        // After the fix, lock_registry() reclaims the guard via
+        // PoisonError::into_inner() and calls continue to succeed.
+        //
+        // Suppress the panic hook only for the intentional panic below so
+        // test output stays clean. The previous hook is restored
+        // immediately after so any real panic in later assertions still
+        // prints normally.
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let panic_result = std::thread::spawn(|| {
+            let _guard = LIVE_SESSIONS.lock().expect("lock acquired to poison");
+            panic!("intentional poison for test_poisoned_registry_is_recovered_by_public_api");
+        })
+        .join();
+        std::panic::set_hook(previous_hook);
+        assert!(panic_result.is_err(), "poisoning thread must have panicked");
+        assert!(
+            LIVE_SESSIONS.is_poisoned(),
+            "registry mutex must be poisoned before recovery assertions"
+        );
+
+        // The three public entry points we exercise here all route
+        // through lock_registry(), which is the whole point of the fix.
+        // import_updates shares the same call pattern but needs valid
+        // CRDT bytes to reach past its decode step, so we leave that one
+        // covered by the shared lock_registry() path rather than wiring
+        // up a second CRDT just to hit the same mutex.
+        let board = make_new_format_board(vec![(
+            "R1",
+            vec![("S1", vec![("C1", vec![("alpha", false)])])],
+        )]);
+        let board_dir = PathBuf::from(".");
+        let session = open_session("poison-open", board.clone(), board_dir, None)
+            .expect("open_session recovers from poisoned registry");
+
+        let applied = apply_board(&session.session_id, board.clone())
+            .expect("apply_board recovers from poisoned registry");
+        assert_eq!(
+            applied.board.rows[0].stacks[0].columns[0].cards.len(),
+            1,
+            "apply_board still mutates session state after recovery"
+        );
+
+        let closed = close_session(&session.session_id)
+            .expect("close_session recovers from poisoned registry");
+        assert!(closed, "session removed from registry after recovery");
+    }
 }

@@ -1410,6 +1410,63 @@ var LexeraDashboard = (function () {
 
     window.__LEXERA_FRONTEND_BUILD = FRONTEND_BUILD_STAMP;
 
+    // Plugin system: apply the user's disabled list and report counts.
+    // Built-in plugins (file formats, diagrams, exports, enhancers, menu
+    // contributors) self-register via their own IIFE at script load time;
+    // loadBuiltins here is the single spot that honors the `pluginsDisabled`
+    // setting and surfaces a startup summary.
+    if (window.LexeraPluginRegistry && window.LexeraPluginLoader) {
+      var disabledPlugins = [];
+      try {
+        var raw = Settings ? Settings.get('pluginsDisabled') : null;
+        if (Array.isArray(raw)) {
+          disabledPlugins = raw;
+        } else if (typeof raw === 'string' && raw.trim() !== '') {
+          disabledPlugins = raw.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        }
+      } catch (_) { /* settings unavailable — proceed with empty list */ }
+      window.LexeraPluginLoader.loadBuiltins(window.LexeraPluginRegistry, { disabled: disabledPlugins });
+
+      // Install per-plugin config schemas and fire onConfigChange with initial values.
+      if (window.LexeraPluginConfig && typeof window.LexeraPluginConfig.installFromRegistry === 'function') {
+        try {
+          var installedConfigs = window.LexeraPluginConfig.installFromRegistry(window.LexeraPluginRegistry);
+          if (installedConfigs && installedConfigs.length > 0) {
+            traceFrontendAction('info', 'plugin.config',
+              'Installed config schemas for ' + installedConfigs.length + ' plugin(s)',
+              { plugins: installedConfigs }
+            );
+          }
+        } catch (err) {
+          traceFrontendAction('warn', 'plugin.config', 'installFromRegistry failed', err);
+        }
+      }
+
+      // Activate every enabled plugin that implements activate(ctx).
+      // ctx surfaces a logger + settings handle so plugins don't need to
+      // reach into globals at call time.
+      try {
+        window.LexeraPluginRegistry.activate({
+          logger: {
+            info: function (msg, detail) { traceFrontendAction('info', 'plugin.lifecycle', msg, detail); },
+            warn: function (msg, detail) { traceFrontendAction('warn', 'plugin.lifecycle', msg, detail); },
+            error: function (msg, detail) { traceFrontendAction('error', 'plugin.lifecycle', msg, detail); }
+          },
+          settings: Settings || null
+        });
+      } catch (err) {
+        traceFrontendAction('warn', 'plugin.lifecycle', 'registry.activate failed', err);
+      }
+
+      var pluginStats = window.LexeraPluginRegistry.stats();
+      traceFrontendAction('info', 'plugin.boot',
+        pluginStats.total + ' plugins registered across ' +
+        Object.keys(pluginStats.byKind).filter(function (k) { return pluginStats.byKind[k] > 0; }).length +
+        ' kinds' + (pluginStats.disabled > 0 ? ' (' + pluginStats.disabled + ' disabled)' : ''),
+        pluginStats
+      );
+    }
+
     // Startup health check — discover modules and report status
     if (_rt && typeof _rt.discoverModules === 'function') {
       _rt.discoverModules();
@@ -3792,13 +3849,45 @@ var LexeraDashboard = (function () {
     return getExportToolStatus().handleEmbeddedRendererMenuAction(action);
   }
 
+  async function resolveBoardFilePathForExport(boardId) {
+    // 1) Already on the active board's live snapshot?
+    if (fullBoardData && fullBoardData.filePath) return fullBoardData.filePath;
+    // 2) getActiveBoardFilePath() (covers activeBoardData and local meta)
+    var p = getActiveBoardFilePath();
+    if (p) return p;
+    // 3) boardMeta by id (covers non-active boards)
+    var meta = findBoardMeta(boardId);
+    if (meta && meta.filePath) return meta.filePath;
+    // 4) Last resort: live fetch from backend. `/boards` returns BoardInfo[]
+    //    with filePath. We do this so the Export dialog's default target
+    //    folder is reliable even when no prior poll/load populated state.
+    try {
+      var data = await LexeraApi.getBoards();
+      var list = (data && data.boards) || [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i] && list[i].id === boardId && list[i].filePath) {
+          return list[i].filePath;
+        }
+      }
+    } catch (err) {
+      logFrontendIssue('warn', 'export.path-fetch',
+        'Failed to fetch board list while resolving filePath', err);
+    }
+    return '';
+  }
+
   async function triggerBoardExport(initialOptions) {
     if (!window.ExportUI) return;
     if (!window._exportUI) window._exportUI = new ExportUI();
-    var boardFilePath = getActiveBoardFilePath();
+    var resolvedFilePath = await resolveBoardFilePathForExport(activeBoardId);
+    var selectionDesc = (initialOptions && initialOptions.selection)
+        ? JSON.stringify(initialOptions.selection) : '(full board)';
+    logFrontendIssue('info', 'export.trigger',
+        'Opening export dialog (boardId=' + activeBoardId + ', filePath=' + (resolvedFilePath || '(empty)')
+        + ', selection=' + selectionDesc + ')', null);
     var boardDataForExport = fullBoardData
-        ? Object.assign({}, fullBoardData, { filePath: fullBoardData.filePath || boardFilePath || '' })
-        : (boardFilePath ? { filePath: boardFilePath } : null);
+        ? Object.assign({}, fullBoardData, { filePath: resolvedFilePath })
+        : { filePath: resolvedFilePath };
     await window._exportUI.init(activeBoardId, boardDataForExport, initialOptions || null);
     window._exportUI.show();
   }

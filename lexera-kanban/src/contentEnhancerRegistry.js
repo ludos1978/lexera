@@ -1,9 +1,13 @@
 (function () {
-  var enhancers = [];
+  var KIND = 'contentEnhancer';
 
   // ── Lazy-loading infrastructure ────────────────────────────────────
   var lazyObserver = null;
-  var LAZY_ROOT_MARGIN = '200px'; // start loading 200px before element enters viewport
+  var LAZY_ROOT_MARGIN = '200px';
+
+  function getRegistry() {
+    return typeof LexeraPluginRegistry !== 'undefined' ? LexeraPluginRegistry : null;
+  }
 
   function getLazyObserver() {
     if (lazyObserver) return lazyObserver;
@@ -19,23 +23,12 @@
           el.removeAttribute('data-lazy-pending');
           pendingEnhance();
         }
-        // Also handle lazy images inside this element
         swapLazyImages(el);
       }
     }, { rootMargin: LAZY_ROOT_MARGIN });
     return lazyObserver;
   }
 
-  // ── Lazy media handling ────────────────────────────────────────────
-  // <img>, <video>, and <audio> elements with `data-lazy-src` stay
-  // empty (no network fetch) until they enter the viewport. Without
-  // this, every card with a video/audio tag would fire a network
-  // request for the media URL on every render — including broken
-  // references that generate 404s logged to the console.
-  //
-  // The image pattern uses a 1x1 gif placeholder for `src`; video and
-  // audio don't need any placeholder since empty src is valid HTML
-  // and doesn't load anything.
   var imageObserver = null;
 
   function _activateLazyMedia(el) {
@@ -46,12 +39,7 @@
     if (tag === 'img') {
       el.src = lazySrc;
     } else if (tag === 'video' || tag === 'audio') {
-      // For video/audio, setting .src triggers a metadata load based on
-      // the `preload` attribute already on the element.
       el.src = lazySrc;
-      // If the element is already in the DOM, `load()` re-reads the
-      // new src according to the preload attribute. Otherwise setting
-      // src is enough.
       try { if (typeof el.load === 'function') el.load(); } catch (_) {}
     } else {
       el.src = lazySrc;
@@ -77,7 +65,6 @@
     if (!root) return;
     var observer = getImageObserver();
     if (!observer) return;
-    // Cover img, video, and audio with a single observer.
     var els = root.querySelectorAll('img[data-lazy-src], video[data-lazy-src], audio[data-lazy-src]');
     for (var i = 0; i < els.length; i++) {
       observer.observe(els[i]);
@@ -86,31 +73,46 @@
 
   function swapLazyImages(el) {
     if (!el) return;
-    // Activate any lazy media within the element that just became visible.
     var els = el.querySelectorAll ? el.querySelectorAll('img[data-lazy-src], video[data-lazy-src], audio[data-lazy-src]') : [];
     for (var i = 0; i < els.length; i++) _activateLazyMedia(els[i]);
   }
 
-  // ── Registry ───────────────────────────────────────────────────────
+  // ── Registry facade ──────────────────────────────────────────────
+  // Enhancers registered here are stored in LexeraPluginRegistry under kind='contentEnhancer'.
+  // The legacy object shape (id, priority, selector, lazy, enhance) is preserved via
+  // in-place augmentation with kind + metadata so registry identity is kept.
 
   var ContentEnhancerRegistry = {
     register: function (enhancer) {
-      if (!enhancer || !enhancer.id) return;
-      // Replace existing with same id
-      for (var i = 0; i < enhancers.length; i++) {
-        if (enhancers[i].id === enhancer.id) {
-          enhancers[i] = enhancer;
-          return;
-        }
+      var reg = getRegistry();
+      if (!reg || !enhancer || !enhancer.id) return;
+      enhancer.kind = KIND;
+      if (!enhancer.metadata) {
+        enhancer.metadata = {
+          id: enhancer.id,
+          name: enhancer.name || enhancer.id,
+          version: enhancer.version || '1.0.0',
+          priority: typeof enhancer.priority === 'number' ? enhancer.priority : 0
+        };
       }
-      enhancers.push(enhancer);
+      reg.register(enhancer);
     },
+
     remove: function (id) {
-      enhancers = enhancers.filter(function (e) { return e.id !== id; });
+      var reg = getRegistry();
+      if (!reg) return;
+      reg.unregister(KIND, id);
     },
+
     getAll: function () {
-      return enhancers.slice().sort(function (a, b) { return (a.priority || 0) - (b.priority || 0); });
+      var reg = getRegistry();
+      if (!reg) return [];
+      // Ascending priority (lower first) matches the original contract.
+      return reg.getByKind(KIND).slice().sort(function (a, b) {
+        return (a.priority || 0) - (b.priority || 0);
+      });
     },
+
     enhance: function (root, context) {
       if (!root) return;
       var observer = getLazyObserver();
@@ -122,7 +124,6 @@
           for (var j = 0; j < elements.length; j++) {
             var el = elements[j];
             if (enhancer.lazy && observer) {
-              // Defer enhancement until element enters viewport
               el.setAttribute('data-lazy-pending', enhancer.id);
               el.__lazyEnhance = (function (enhanceFn, element, ctx) {
                 return function () { enhanceFn(element, ctx); };
@@ -136,9 +137,9 @@
           enhancer.enhance(root, context);
         }
       }
-      // Observe any lazy images in the rendered content
       observeLazyImages(root);
     },
+
     observeLazyImages: observeLazyImages
   };
 

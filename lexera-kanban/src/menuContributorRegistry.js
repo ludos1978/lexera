@@ -1,22 +1,41 @@
 (function () {
-  var contributors = [];
+  var KIND = 'menuContributor';
+  var autoIdCounter = 0;
+
+  function getRegistry() {
+    return typeof LexeraPluginRegistry !== 'undefined' ? LexeraPluginRegistry : null;
+  }
 
   var MenuContributorRegistry = {
     register: function (contributor) {
-      contributors.push(contributor);
-      contributors.sort(function (a, b) { return a.priority - b.priority; });
+      var reg = getRegistry();
+      if (!reg || !contributor) return;
+      if (!contributor.id) contributor.id = 'menu-contrib-' + (++autoIdCounter);
+      contributor.kind = KIND;
+      if (!contributor.metadata) {
+        contributor.metadata = {
+          id: contributor.id,
+          name: contributor.name || contributor.id,
+          version: contributor.version || '1.0.0',
+          priority: typeof contributor.priority === 'number' ? contributor.priority : 0
+        };
+      }
+      reg.register(contributor);
     },
 
     getForScope: function (scope) {
-      return contributors.filter(function (c) {
-        return c.scopes.indexOf(scope) !== -1;
-      });
+      var reg = getRegistry();
+      if (!reg) return [];
+      // Ascending priority (lower first) — matches original contract.
+      return reg.getByKind(KIND)
+        .filter(function (c) { return Array.isArray(c.scopes) && c.scopes.indexOf(scope) !== -1; })
+        .sort(function (a, b) { return (a.priority || 0) - (b.priority || 0); });
     },
 
     remove: function (id) {
-      for (var i = contributors.length - 1; i >= 0; i--) {
-        if (contributors[i].id === id) contributors.splice(i, 1);
-      }
+      var reg = getRegistry();
+      if (!reg) return;
+      reg.unregister(KIND, id);
     },
 
     buildMenu: function (scope, context) {

@@ -20,24 +20,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcDir = resolve(__dirname, '..', 'src');
 
 /**
- * @param {string} filename      File inside src/, e.g. 'templates.js'
- * @param {string} globalName    The global variable the IIFE assigns, e.g. 'LexeraTemplates'
- * @param {object} [globals={}]  Extra globals to inject (e.g. { lexeraLog: vi.fn() })
- * @returns {any}                The value of the requested global after execution
+ * @param {string|string[]} filename    File inside src/ (or array of files, concatenated in order)
+ * @param {string}          globalName  The global variable the IIFE assigns, e.g. 'LexeraTemplates'
+ * @param {object}          [globals={}]  Extra globals to inject (e.g. { lexeraLog: vi.fn() })
+ * @returns {any}                       The value of the requested global after execution
  */
 export function loadIIFE(filename, globalName, globals = {}) {
-  const filePath = resolve(srcDir, filename);
-  const source = readFileSync(filePath, 'utf-8');
+  const files = Array.isArray(filename) ? filename : [filename];
+  const sources = files.map((f) => readFileSync(resolve(srcDir, f), 'utf-8'));
+  const combined = sources.join('\n');
 
   // Build a sandbox with the mocked globals
   const sandbox = { ...globals };
 
-  // The IIFE assigns to `const LexeraTemplates = (function(){ ... })();`
-  // We need to execute this so the const assignment happens.
+  // The IIFE assigns to `var LexeraTemplates = (function(){ ... })();`
+  // We need to execute this so the assignment happens.
   // Strategy: wrap source in a function body that has access to the globals,
   // then return the assigned global name.
   const wrappedSource = `
-    ${source}
+    ${combined}
     return ${globalName};
   `;
 

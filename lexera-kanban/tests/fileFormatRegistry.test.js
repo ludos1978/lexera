@@ -5,10 +5,28 @@ let Registry;
 
 beforeAll(() => {
   const mockWindow = {};
-  Registry = loadIIFE('plugins/fileFormatRegistry.js', 'LexeraFileFormatRegistry', {
-    window: mockWindow,
-    URL,
-  });
+  Registry = loadIIFE(
+    [
+      'plugins/pluginRegistry.js',
+      'plugins/formats/fileFormatHelpers.js',
+      'plugins/formats/drawio.js',
+      'plugins/formats/excalidraw.js',
+      'plugins/formats/xlsx.js',
+      'plugins/formats/csv.js',
+      'plugins/formats/tsv.js',
+      'plugins/formats/pdf.js',
+      'plugins/formats/pptx.js',
+      'plugins/formats/document.js',
+      'plugins/formats/epub.js',
+      'plugins/formats/plaintext.js',
+      'plugins/fileFormatRegistry.js',
+    ],
+    'LexeraFileFormatRegistry',
+    {
+      window: mockWindow,
+      URL,
+    }
+  );
 });
 
 describe('LexeraFileFormatRegistry', () => {

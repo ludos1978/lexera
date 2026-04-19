@@ -1,36 +1,44 @@
 (function () {
-  var plugins = [];
+  var KIND = 'diagram';
   var queue = [];
   var idCounter = 0;
   var processing = false;
 
+  function getRegistry() {
+    return typeof LexeraPluginRegistry !== 'undefined' ? LexeraPluginRegistry : null;
+  }
+
   var DiagramRegistry = {
     register: function (plugin) {
-      if (!plugin || !plugin.id || !plugin.languages || !plugin.render) {
-        return;
+      var reg = getRegistry();
+      if (!reg) return;
+      if (!plugin || !plugin.id || !plugin.languages || !plugin.render) return;
+      // Augment the legacy plugin with v2 manifest fields in place so identity is preserved
+      // for stateful plugins that mutate themselves (e.g. mermaid _ready, _loading).
+      plugin.kind = KIND;
+      if (!plugin.metadata) {
+        plugin.metadata = { id: plugin.id, name: plugin.id, version: '1.0.0' };
       }
-      plugins.push(plugin);
+      reg.register(plugin);
     },
 
     getById: function (id) {
-      for (var i = 0; i < plugins.length; i++) {
-        if (plugins[i].id === id) return plugins[i];
-      }
-      return null;
+      var reg = getRegistry();
+      if (!reg) return null;
+      return reg.getById(KIND, id);
     },
 
     findByLanguage: function (lang) {
-      for (var i = 0; i < plugins.length; i++) {
-        var languages = plugins[i].languages;
-        for (var j = 0; j < languages.length; j++) {
-          if (languages[j] === lang) return plugins[i];
-        }
-      }
-      return null;
+      var reg = getRegistry();
+      if (!reg) return null;
+      return reg.findBy(KIND, function (p) {
+        return Array.isArray(p.languages) && p.languages.indexOf(lang) !== -1;
+      });
     },
 
     getAll: function () {
-      return plugins.slice();
+      var reg = getRegistry();
+      return reg ? reg.getByKind(KIND).slice() : [];
     },
 
     nextId: function (prefix) {

@@ -421,6 +421,7 @@ fn main() {
             export_commands::check_marp_available,
             export_commands::check_pandoc_available,
             export_commands::check_embedded_renderer_statuses,
+            export_commands::test_render_apps,
             export_commands::discover_marp_themes,
             export_commands::discover_marp_classes,
             export_commands::open_export_folder,
@@ -429,6 +430,7 @@ fn main() {
             export_commands::copy_export_assets,
             export_commands::render_embedded_file,
             export_commands::render_plantuml_code,
+            export_commands::get_marp_engine_path,
         ])
         .on_window_event(|window, event| {
             match event {

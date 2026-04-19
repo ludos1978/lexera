@@ -18,10 +18,26 @@ const mockWindow = {
 const mockLexeraLog = vi.fn();
 
 beforeAll(() => {
-  Registry = loadIIFE('plugins/fileFormatRegistry.js', 'LexeraFileFormatRegistry', {
-    window: mockWindow,
-    URL,
-  });
+  Registry = loadIIFE(
+    [
+      'plugins/pluginRegistry.js',
+      'plugins/exports/tauriInvoke.js',
+      'plugins/formats/fileFormatHelpers.js',
+      'plugins/formats/drawio.js',
+      'plugins/formats/excalidraw.js',
+      'plugins/formats/xlsx.js',
+      'plugins/formats/csv.js',
+      'plugins/formats/tsv.js',
+      'plugins/formats/pdf.js',
+      'plugins/formats/pptx.js',
+      'plugins/formats/document.js',
+      'plugins/formats/epub.js',
+      'plugins/formats/plaintext.js',
+      'plugins/fileFormatRegistry.js',
+    ],
+    'LexeraFileFormatRegistry',
+    { window: mockWindow, URL }
+  );
   mockWindow.LexeraFileFormatRegistry = Registry;
   ES = loadIIFE('export/exportService.js', 'ExportService', {
     window: mockWindow,
@@ -573,44 +589,6 @@ describe('_output', () => {
     expect(mockInvoke.mock.calls[1][0]).toBe('pandoc_export');
     expect(result.success).toBe(true);
     expect(result.exportedPath).toBe('/out/doc/doc.docx');
-  });
-
-  it('starts Marp watch in preview mode', async () => {
-    mockInvoke
-      .mockResolvedValueOnce(undefined) // write_export_file
-      .mockResolvedValueOnce({          // marp_watch
-        success: true,
-        message: 'Watching',
-      });
-
-    const result = await ES._output('# Slides', {
-      mode: 'preview',
-      format: 'presentation',
-      targetFolder: '/out',
-      exportFolderName: 'pres',
-    });
-
-    expect(mockInvoke).toHaveBeenCalledTimes(2);
-    expect(mockInvoke.mock.calls[1][0]).toBe('marp_watch');
-    expect(mockInvoke.mock.calls[1][1].opts.browser).toBe('chrome');
-    expect(result.success).toBe(true);
-    expect(result.exportedPath).toBe('/out/pres/pres.md');
-  });
-
-  it('passes the selected Marp browser into preview launches', async () => {
-    mockInvoke
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce({ success: true, message: 'Watching' });
-
-    await ES._output('# Slides', {
-      mode: 'preview',
-      format: 'presentation',
-      targetFolder: '/out',
-      exportFolderName: 'pres',
-      marpBrowser: 'firefox',
-    });
-
-    expect(mockInvoke.mock.calls[1][1].opts.browser).toBe('firefox');
   });
 
   it('rewrites relative links before writing the markdown file', async () => {

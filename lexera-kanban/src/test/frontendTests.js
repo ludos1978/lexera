@@ -909,30 +909,34 @@
     return { first: first, second: second };
   }
 
-  // Probe a list of image-fixture candidates (relative to the active board)
-  // and return the first one the backend confirms exists. Mirrors
-  // getExistingIncludePathForTest so embed tests can reference a real
-  // image instead of a fabricated path that the file-info cache will
-  // eventually resolve as missing (which bakes `embed-broken` into the
-  // container on re-render).
-  async function getExistingImagePathForTest() {
-    var runnerConfig = null;
-    try { runnerConfig = window.__LEXERA_TEST_RUNNER_CONFIG__ || null; } catch (_) {}
-    var fixturePath = runnerConfig && cleanBoardText(
-      runnerConfig.imageFixturePath || runnerConfig.image_fixture_path || ''
-    );
-    var candidates = [];
-    if (fixturePath) candidates.push(fixturePath);
-    candidates.push('../kanban-image-tests/root/blue.png');
-    candidates.push('../kanban-image-tests/root/image-512x512.png');
-    candidates.push('root/blue.png');
-    candidates.push('root/image-512x512.png');
-    candidates.push('blue.png');
-    candidates.push('image-512x512.png');
-    for (var i = 0; i < candidates.length; i++) {
-      if (await includePathExistsForTest(candidates[i])) return candidates[i];
+  // Produce a File containing a valid 1×1 PNG. Embed tests upload this
+  // through the real media API so they reference a file that actually
+  // exists on disk — a made-up path eventually resolves to
+  // `embed-broken` via the async file-info cache.
+  function makeTinyPngFile(filename) {
+    var b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    var bin = atob(b64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], filename, { type: 'image/png' });
+  }
+
+  // Upload a real tiny PNG into the active board's media folder and
+  // return the relative path suitable for markdown embedding. Works for
+  // any active board regardless of location in the test tree. Memoized
+  // per session so repeated test runs don't balloon the media folder.
+  var _testImageFixturePathCache = null;
+  async function ensureTestImagePathForTest() {
+    if (_testImageFixturePathCache) return _testImageFixturePathCache;
+    if (!window.LexeraApi || typeof window.LexeraApi.uploadMedia !== 'function') return null;
+    var file = makeTinyPngFile('__lexera-test-fixture__.png');
+    try {
+      var result = await window.LexeraApi.uploadMedia(_boardId, file);
+      _testImageFixturePathCache = result && result.path ? result.path : null;
+    } catch (_) {
+      _testImageFixturePathCache = null;
     }
-    return null;
+    return _testImageFixturePathCache;
   }
 
   function makeIncludeSourceForTest(path, missing) {
@@ -5100,8 +5104,8 @@
   register('embed: card with valid image embed does not show broken state', async function () {
     await setup();
     try {
-      var imagePath = await getExistingImagePathForTest();
-      assert(imagePath, 'real image fixture resolvable from active board (kanban-image-tests/root/*.png expected)');
+      var imagePath = await ensureTestImagePathForTest();
+      assert(imagePath, 'uploaded real image fixture (via media API) resolved to a board-relative path');
       // Prime the file-info cache so the renderer knows the file exists
       // before any render path consults peekFileInfoSync; otherwise the
       // async probe can mark the container broken on a later re-render.

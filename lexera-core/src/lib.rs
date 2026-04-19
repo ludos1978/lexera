@@ -11,6 +11,7 @@ pub mod media;
 pub mod merge;
 pub mod panic_util;
 pub mod parser;
+pub mod plugins;
 pub mod search;
 pub mod storage;
 pub mod sync;

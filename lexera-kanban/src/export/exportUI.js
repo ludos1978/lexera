@@ -274,6 +274,8 @@ class ExportUI {
         this.eventsBound = false;
         this.suppressPresetReset = false;
         this._userEditedTargetFolder = false;
+        this._inFlight = false;
+        this._abortController = null;
     }
 
     // ── Public API ──────────────────────────────────────────────────────
@@ -288,8 +290,15 @@ class ExportUI {
         this.boardData = boardData;
         this.boardName = this._deriveBoardName(boardData);
         this.initialOptions = initialOptions || null;
+        // Per-dialog-open: allow the default target folder to re-apply even if
+        // the user edited it in a previous session with this cached instance.
+        this._userEditedTargetFolder = false;
 
-        lexeraLog('info', '[kanban.export.init] boardId=' + boardId);
+        var derivedFilePath = this._deriveSourceFilePath(boardData);
+        var derivedFolder = this._deriveBoardFolder(boardData);
+        lexeraLog('info', '[kanban.export.init] boardId=' + boardId
+            + ' filePath=' + (derivedFilePath || '(empty)')
+            + ' boardFolder=' + (derivedFolder || '(empty)'));
 
         // Build tree from board data
         this.tree = ExportTreeBuilder.buildExportTree(boardData);
@@ -423,7 +432,7 @@ class ExportUI {
 
     /**
      * Execute the export with the given mode.
-     * @param {'save'|'copy'|'preview'} mode
+     * @param {'save'|'copy'} mode
      */
     async executeExport(mode) {
         var options = this.collectOptions();
@@ -433,22 +442,33 @@ class ExportUI {
 
         // Validate selection
         if (!options.selectionScopes || options.selectionScopes.length === 0) {
-            this._setStatus('No content selected. Use the selector to pick a board, row, stack, or column.');
+            this._setStatus('No content selected. Use the selector to pick a board, row, stack, or column.', 'warn');
             return;
         }
 
-        // Validate target folder for save/preview
+        // Validate target folder for save
         if (mode !== 'copy' && !options.targetFolder) {
-            this._setStatus('Please set a target folder.');
+            this._setStatus('Please set a target folder.', 'warn');
             return;
         }
 
-        this._setStatus('Exporting...');
+        // Install an AbortController so the Cancel button can interrupt long
+        // fetches / pipelines mid-export.
+        this._abortController = (typeof AbortController === 'function') ? new AbortController() : null;
+        if (this._abortController) options.signal = this._abortController.signal;
+        this._inFlight = true;
+
+        this._setStatus('Exporting… (click Cancel to abort)', 'info');
         this._disableButtons(true);
+        this._setCancelMode('abort');
 
         try {
             var result = await ExportService.export(options);
 
+            if (result.aborted) {
+                this._setStatus('Export cancelled.', 'warn');
+                return;
+            }
             if (result.success) {
                 var statusMessage = result.message || 'Export completed';
                 if (mode === 'copy' && result.content) {
@@ -461,15 +481,57 @@ class ExportUI {
                     var autoExportStatus = this._updateAutoExportStateAfterExport(options, result);
                     if (autoExportStatus) statusMessage += ' ' + autoExportStatus;
                 }
-                this._setStatus(statusMessage);
+                this._setStatus(statusMessage, 'info');
             } else {
-                this._setStatus('Export failed: ' + (result.message || 'Unknown error'));
+                this._setStatus('Export failed: ' + (result.message || 'Unknown error') + ' — see Logs panel for details', 'error');
             }
         } catch (err) {
-            lexeraLog('error', '[kanban.export.execute] ' + (err.message || String(err)));
-            this._setStatus('Export error: ' + (err.message || String(err)));
+            if (err && err.name === 'AbortError') {
+                this._setStatus('Export cancelled.', 'warn');
+            } else {
+                var msg = (err && err.message) ? err.message : String(err);
+                lexeraLog('error', '[kanban.export.execute] ' + msg);
+                this._setStatus('Export error: ' + msg + ' — see Logs panel for details', 'error');
+            }
         } finally {
+            this._inFlight = false;
+            this._abortController = null;
             this._disableButtons(false);
+            this._setCancelMode('close');
+        }
+    }
+
+    // Cancel button has two states: "close" (no export in flight → closes the dialog)
+    // and "abort" (export in flight → aborts the in-flight operation).
+    _setCancelMode(mode) {
+        var btn = document.getElementById('export-btn-cancel');
+        if (!btn) return;
+        if (mode === 'abort') {
+            btn.textContent = 'Cancel';
+            btn.dataset.mode = 'abort';
+            btn.classList.add('export-action-cancel-active');
+        } else {
+            btn.textContent = 'Cancel';
+            btn.dataset.mode = 'close';
+            btn.classList.remove('export-action-cancel-active');
+        }
+    }
+
+    _handleCancelClick() {
+        var btn = document.getElementById('export-btn-cancel');
+        var mode = btn && btn.dataset.mode ? btn.dataset.mode : 'close';
+        if (mode === 'abort' && this._inFlight) {
+            lexeraLog('warn', '[kanban.export.cancel] user aborted export');
+            this._setStatus('Cancelling… cleaning up partial output', 'warn');
+            if (this._abortController) {
+                try { this._abortController.abort(); } catch (e) {}
+            }
+            // Ask the backend to stop any running Marp watches spawned by this export.
+            if (ExportService && typeof ExportService.stopAllWatches === 'function') {
+                ExportService.stopAllWatches().catch(function () {});
+            }
+        } else {
+            this.hide();
         }
     }
 
@@ -494,12 +556,6 @@ class ExportUI {
         var transformSection = document.getElementById('export-transform-section');
         if (transformSection) {
             transformSection.hidden = format !== 'presentation';
-        }
-
-        // Update preview button visibility (only for presentation format)
-        var previewBtn = document.getElementById('export-btn-preview');
-        if (previewBtn) {
-            previewBtn.hidden = !(format === 'presentation' && this.marpAvailable);
         }
 
         this.updateExportFolderName();
@@ -584,6 +640,12 @@ class ExportUI {
                 if (boardFolder) {
                     var sep = boardFolder.indexOf('\\') >= 0 ? '\\' : '/';
                     targetInput.value = boardFolder + sep + '_Export';
+                    lexeraLog('info', '[kanban.export.folder] default set: ' + targetInput.value);
+                } else if (!targetInput.value) {
+                    // Fallback: board file path was not provided. Leave a visible hint
+                    // so the user knows they need to pick a folder, and log the gap.
+                    lexeraLog('warn', '[kanban.export.folder] boardData has no filePath — default target folder not set. boardData keys=' +
+                        Object.keys(this.boardData || {}).join(','));
                 }
             }
         }
@@ -778,9 +840,9 @@ class ExportUI {
             copyBtn.addEventListener('click', function () { self.executeExport('copy'); });
         }
 
-        var previewBtn = document.getElementById('export-btn-preview');
-        if (previewBtn) {
-            previewBtn.addEventListener('click', function () { self.executeExport('preview'); });
+        var cancelBtn = document.getElementById('export-btn-cancel');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function () { self._handleCancelClick(); });
         }
 
         // Track manual edits to target folder input
@@ -1028,7 +1090,15 @@ class ExportUI {
         var selection = this.initialOptions && this.initialOptions.selection
             ? this.initialOptions.selection
             : { scope: 'board' };
-        var nodeId = ExportTreeBuilder.resolveNodeIdForSelection(this.tree, selection) || 'root';
+        var resolved = ExportTreeBuilder.resolveNodeIdForSelection(this.tree, selection);
+        var nodeId = resolved || 'root';
+        lexeraLog('info', '[kanban.export.selection] requested=' + JSON.stringify(selection)
+            + ' resolved=' + (resolved || '(none, defaulted to root)'));
+        if (selection && selection.scope && selection.scope !== 'board' && !resolved) {
+            lexeraLog('warn', '[kanban.export.selection] Could not resolve ' + selection.scope
+                + ' to a tree node — menu passed indexes that do not match the export tree.'
+                + ' selection=' + JSON.stringify(selection));
+        }
         this.treeUI.setOnlySelection(nodeId);
     }
 
@@ -1227,45 +1297,74 @@ class ExportUI {
     /**
      * Browse for a target folder using the browse_folder Tauri command.
      */
-    async _browseTargetFolder() {
+    // Resolve the Tauri IPC bridge. The kanban UI runs in a workspace-shell
+    // iframe; Tauri 2 does not inject __TAURI_INTERNALS__ into sub-frames, so
+    // we fall back to window.parent.
+    _resolveTauriIpc() {
+        if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+            return window.__TAURI_INTERNALS__;
+        }
+        if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+            return window.__TAURI__.core;
+        }
         try {
-            var invokeFn = null;
-            if (window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.invokeTauri === 'function'
-                && window.LexeraBackendDiscovery.canUseTauriInvoke && window.LexeraBackendDiscovery.canUseTauriInvoke()) {
-                invokeFn = window.LexeraBackendDiscovery.invokeTauri;
-            } else if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
-                invokeFn = function (cmd, args) { return window.__TAURI_INTERNALS__.invoke(cmd, args || {}); };
-            } else if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
-                invokeFn = function (cmd, args) { return window.__TAURI__.core.invoke(cmd, args || {}); };
+            if (window.parent && window.parent !== window) {
+                if (window.parent.__TAURI_INTERNALS__ && typeof window.parent.__TAURI_INTERNALS__.invoke === 'function') {
+                    return window.parent.__TAURI_INTERNALS__;
+                }
+                if (window.parent.__TAURI__ && window.parent.__TAURI__.core && typeof window.parent.__TAURI__.core.invoke === 'function') {
+                    return window.parent.__TAURI__.core;
+                }
             }
+        } catch (e) { /* cross-origin — ignore */ }
+        return null;
+    }
 
-            if (!invokeFn) {
-                var state = {
-                    hasBackendDiscovery: !!(window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.invokeTauri === 'function'),
+    async _browseTargetFolder() {
+        lexeraLog('info', '[kanban.export.browse] click handler entered');
+        this._setStatus('Opening folder picker…');
+
+        var ipc = this._resolveTauriIpc();
+        if (!ipc) {
+            var state;
+            try {
+                state = {
                     hasInternals: !!(window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function'),
                     hasGlobalCore: !!(window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function'),
+                    hasParentInternals: !!(window.parent && window.parent !== window && window.parent.__TAURI_INTERNALS__),
+                    hasParentGlobalCore: !!(window.parent && window.parent !== window && window.parent.__TAURI__ && window.parent.__TAURI__.core),
                 };
-                lexeraLog('warn', '[kanban.export.browse] Tauri invoke not available: ' + JSON.stringify(state));
-                this._setStatus('Browse unavailable (Tauri not ready): ' + JSON.stringify(state));
-                return;
+            } catch (e) {
+                state = { crossOrigin: true };
             }
+            lexeraLog('error', '[kanban.export.browse] Tauri IPC unavailable: ' + JSON.stringify(state));
+            this._setStatus('Browse unavailable — Tauri IPC not reachable ' + JSON.stringify(state));
+            return;
+        }
 
-            var currentValue = this._val('export-target-folder') || '';
-            var fallbackPath = currentValue || this._deriveBoardFolder(this.boardData) || null;
-            var selected = await invokeFn('browse_folder', {
+        var currentValue = this._val('export-target-folder') || '';
+        var fallbackPath = currentValue || this._deriveBoardFolder(this.boardData) || null;
+        try {
+            lexeraLog('info', '[kanban.export.browse] invoking browse_folder defaultPath=' + (fallbackPath || '(none)'));
+            var selected = await ipc.invoke('browse_folder', {
                 title: 'Select export target folder',
                 defaultPath: fallbackPath,
             });
+            lexeraLog('info', '[kanban.export.browse] result=' + (selected || '(cancelled)'));
             if (selected) {
                 var input = document.getElementById('export-target-folder');
                 if (input) {
                     input.value = selected;
                     this._userEditedTargetFolder = true;
                 }
+                this._setStatus('Target folder set: ' + selected);
+            } else {
+                this._setStatus('Browse cancelled');
             }
         } catch (err) {
-            lexeraLog('warn', '[kanban.export.browse] ' + (err.message || String(err)));
-            this._setStatus('Browse failed: ' + (err.message || String(err)));
+            var msg = (err && err.message) ? err.message : String(err);
+            lexeraLog('error', '[kanban.export.browse] invoke threw: ' + msg);
+            this._setStatus('Browse failed: ' + msg);
         }
     }
 
@@ -1296,12 +1395,24 @@ class ExportUI {
     }
 
     /**
-     * Display a status message in the modal.
+     * Display a status message in the modal, colour it by level, and mirror
+     * warnings/errors to the Logs panel so long messages aren't truncated by
+     * the narrow status strip.
      * @param {string} msg
+     * @param {'info'|'warn'|'error'} [level]
      */
-    _setStatus(msg) {
+    _setStatus(msg, level) {
         var el = document.getElementById('export-status');
-        if (el) el.textContent = msg;
+        if (el) {
+            el.textContent = msg;
+            el.classList.remove('status-warn', 'status-error');
+            if (level === 'warn') el.classList.add('status-warn');
+            else if (level === 'error') el.classList.add('status-error');
+        }
+        var logLevel = (level === 'warn' || level === 'error') ? level : 'info';
+        if (typeof lexeraLog === 'function') {
+            lexeraLog(logLevel, '[kanban.export.status] ' + msg);
+        }
     }
 
     /**
@@ -1309,7 +1420,7 @@ class ExportUI {
      * @param {boolean} disabled
      */
     _disableButtons(disabled) {
-        var ids = ['export-btn-save', 'export-btn-copy', 'export-btn-preview'];
+        var ids = ['export-btn-save', 'export-btn-copy'];
         for (var i = 0; i < ids.length; i++) {
             var btn = document.getElementById(ids[i]);
             if (btn) btn.disabled = disabled;

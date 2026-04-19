@@ -7214,9 +7214,29 @@ select.dialog-input option,
   line-height: 1.45;
 }
 
-.render-apps-grid {
-  grid-template-columns: 100px 1fr;
+.mgmt-settings-grid.render-apps-grid {
+  grid-template-columns: 100px 1fr 24px;
   gap: 6px 8px;
+}
+
+.render-apps-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+  font-weight: bold;
+}
+
+.render-apps-indicator.is-ok {
+  color: var(--success, #2e8540);
+}
+
+.render-apps-indicator.is-bad {
+  color: var(--danger, #c62828);
 }
 
 .log-entry {
@@ -7768,7 +7788,7 @@ select.dialog-input option,
 
 .export-dialog-footer {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
@@ -7785,9 +7805,22 @@ select.dialog-input option,
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: 6em;
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.export-status-msg.status-warn {
+  color: var(--warning, #b58900);
+}
+
+.export-status-msg.status-error {
+  color: var(--danger, #dc322f);
 }
 
 /* Sections */
