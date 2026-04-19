@@ -5,11 +5,28 @@ use lexera_core::parser;
 use lexera_core::types::{IncludeSource, KanbanBoard};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, MutexGuard};
 use uuid::Uuid;
 
 static LIVE_SESSIONS: LazyLock<Mutex<LiveSessionRegistry>> =
     LazyLock::new(|| Mutex::new(LiveSessionRegistry::default()));
+
+// The registry holds self-contained session state (CRDT + board snapshot +
+// dir). A panic inside the lock poisons the mutex but leaves no
+// cross-session invariants we need to uphold, so recovering the inner guard
+// is safe and keeps the backend usable for subsequent requests.
+fn lock_registry() -> MutexGuard<'static, LiveSessionRegistry> {
+    match LIVE_SESSIONS.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            log::warn!(
+                target: "lexera.live_sync",
+                "Live sync session registry mutex was poisoned; recovering guard"
+            );
+            poisoned.into_inner()
+        }
+    }
+}
 
 #[derive(Default)]
 struct LiveSessionRegistry {
@@ -221,9 +238,7 @@ pub fn open_session(
         }
     };
 
-    let mut registry = LIVE_SESSIONS
-        .lock()
-        .map_err(|_| "Live sync session registry is unavailable".to_string())?;
+    let mut registry = lock_registry();
     registry.sessions.insert(
         session_id.clone(),
         LiveSession {
@@ -241,9 +256,7 @@ pub fn open_session(
 }
 
 pub fn close_session(session_id: &str) -> Result<bool, String> {
-    let mut registry = LIVE_SESSIONS
-        .lock()
-        .map_err(|_| "Live sync session registry is unavailable".to_string())?;
+    let mut registry = lock_registry();
     Ok(registry.sessions.remove(session_id).is_some())
 }
 
@@ -264,9 +277,7 @@ fn board_card_summary(board: &KanbanBoard) -> String {
 }
 
 pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionResult, String> {
-    let mut registry = LIVE_SESSIONS
-        .lock()
-        .map_err(|_| "Live sync session registry is unavailable".to_string())?;
+    let mut registry = lock_registry();
     let session = registry
         .sessions
         .get_mut(session_id)
@@ -432,9 +443,7 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
 }
 
 pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResult, String> {
-    let mut registry = LIVE_SESSIONS
-        .lock()
-        .map_err(|_| "Live sync session registry is unavailable".to_string())?;
+    let mut registry = lock_registry();
     let session = registry
         .sessions
         .get_mut(session_id)

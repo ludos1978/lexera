@@ -66,10 +66,30 @@ var LexeraBoardHeader = (function () {
     var hasBoardFile = !!(activeBoardId && boardFilePath);
     var html = '';
     var fileTitle = boardFileName || 'Untitled';
+    // Drawer pill builder: icon (accent-tinted per kind) + label + trailing
+    // caret ▾, matching lexera-shell.jsx DrawerBtn verbatim.
+    function drawerPill(opts) {
+      var kind = opts.kind || 'neutral';
+      var cls = 'board-action-btn drawer-pill drawer-pill-' + kind;
+      if (opts.extraClass) cls += ' ' + opts.extraClass;
+      if (opts.count > 0) cls += ' has-items';
+      return '<button class="' + cls + '" id="' + opts.id + '"' +
+        (opts.title ? ' title="' + _callDep('escapeAttr', opts.title) + '"' : '') + '>' +
+        '<span class="drawer-pill-icon" aria-hidden="true">' + (opts.icon || '') + '</span>' +
+        '<span class="drawer-pill-label">' + _callDep('escapeHtml', opts.label) + '</span>' +
+        (opts.count > 0 ? '<span class="drawer-pill-count">' + opts.count + '</span>' : '') +
+        '<span class="drawer-pill-caret" aria-hidden="true">\u25BE</span>' +
+        '</button>';
+    }
+
     html += '<div class="board-header-zone board-header-zone-left">';
+    html += '<span class="board-header-pane-dot ' + (activeBoardId ? 'is-active' : '') + '" aria-hidden="true"></span>';
     html += '<div class="board-header-file-group">';
     html += '<button id="btn-pane-file-title" class="board-header-file-title' + (hasBoardFile ? ' has-board' : '') + '" title="' +
-      _callDep('escapeAttr', hasBoardFile ? boardFilePath : fileTitle) + '">' + _callDep('escapeHtml', fileTitle) + '</button>';
+      _callDep('escapeAttr', hasBoardFile ? boardFilePath : fileTitle) + '">' +
+      '<span class="file-title-caret" aria-hidden="true">\u25BE</span>' +
+      '<span class="file-title-text">' + _callDep('escapeHtml', fileTitle) + '</span>' +
+      '</button>';
     html += '<button class="burger-menu-btn board-menu-btn" id="btn-file-header-menu" title="File header settings">' + BURGER_MENU_ICON_HTML + '</button>';
     html += '<span id="sync-status-indicator" class="sync-status-indicator ' + (connected ? 'connected' : 'disconnected') + '" title="' + (connected ? 'Connected' : 'Disconnected') + '"></span>';
     html += '</div>';
@@ -77,23 +97,33 @@ var LexeraBoardHeader = (function () {
 
     html += '<div class="board-header-zone board-header-zone-middle">';
     html += '<div class="board-header-actions board-header-actions-middle">';
-    html += '<button class="board-action-btn" id="btn-create-new" title="Create new row, stack, column or card">New</button>';
+    html += drawerPill({ id: 'btn-create-new', icon: '+', label: 'new', kind: 'neutral',
+      title: 'Create new row, stack, column or card' });
     html += '<span class="board-header-separator" aria-hidden="true"></span>';
-    html += '<button class="board-action-btn header-drop-target' + (incomingCount > 0 ? ' has-items' : '') + '" id="btn-incoming" title="Incoming — drop cards here to mark as incoming">Incoming' + (incomingCount > 0 ? ' (' + incomingCount + ')' : '') + '</button>';
-    html += '<button class="board-action-btn header-drop-target' + (parkedCount > 0 ? ' has-items' : '') + '" id="btn-parked" title="Show parked items — drop cards here to park">Park' + (parkedCount > 0 ? ' (' + parkedCount + ')' : '') + '</button>';
+    html += drawerPill({ id: 'btn-incoming', icon: '\u2193', label: 'incoming', kind: 'incoming',
+      count: incomingCount, extraClass: 'header-drop-target',
+      title: 'Incoming — drop cards here to mark as incoming' });
+    html += drawerPill({ id: 'btn-parked', icon: '\u25D0', label: 'parked', kind: 'parked',
+      count: parkedCount, extraClass: 'header-drop-target',
+      title: 'Show parked items — drop cards here to park' });
     html += '<span class="board-header-separator" aria-hidden="true"></span>';
-    html += '<button class="board-action-btn header-drop-target' + (archivedCount > 0 ? ' has-items' : '') + '" id="btn-archived" title="Show archived items — drop cards here to archive">Archive' + (archivedCount > 0 ? ' (' + archivedCount + ')' : '') + '</button>';
-    html += '<button class="board-action-btn header-drop-target danger' + (deletedCount > 0 ? ' has-items' : '') + '" id="btn-trash" title="Show deleted items — drop cards here to delete">Trash' + (deletedCount > 0 ? ' (' + deletedCount + ')' : '') + '</button>';
+    html += drawerPill({ id: 'btn-archived', icon: '\u25A6', label: 'archived', kind: 'neutral',
+      count: archivedCount, extraClass: 'header-drop-target',
+      title: 'Show archived items — drop cards here to archive' });
+    html += drawerPill({ id: 'btn-trash', icon: '\u2715', label: 'trashed', kind: 'trashed',
+      count: deletedCount, extraClass: 'header-drop-target danger',
+      title: 'Show deleted items — drop cards here to delete' });
     html += '</div>';
     html += '</div>';
 
     html += '<div class="board-header-zone board-header-zone-right">';
     html += '<div class="board-header-actions board-header-actions-right">';
-    // Pin Headers button removed — column headers are always sticky at top
-    // Undo/redo: keyboard only (Cmd/Ctrl+Z/Y), stats & processes: bottom bar tabs
-    html += '<button class="board-action-btn" id="btn-save-tracking" title="Save now and inspect change tracking">Changes</button>';
-    html += '<button class="board-action-btn" id="btn-theme-zoom" title="Open frontend settings">Settings</button>';
-    html += '<button class="board-action-btn" id="btn-export" title="Export or pack board">Export / Pack</button>';
+    html += drawerPill({ id: 'btn-save-tracking', icon: '\u25CF', label: 'changes', kind: 'neutral',
+      title: 'Save now and inspect change tracking' });
+    html += drawerPill({ id: 'btn-theme-zoom', icon: '\u2699', label: 'settings', kind: 'neutral',
+      title: 'Open frontend settings' });
+    html += drawerPill({ id: 'btn-export', icon: '\u2197', label: 'export', kind: 'neutral',
+      title: 'Export or pack board' });
     html += '<button class="burger-menu-btn board-menu-btn" id="btn-board-menu" title="Extended board settings">' + BURGER_MENU_ICON_HTML + '</button>';
     html += '</div>';
     html += '</div>';

@@ -7,6 +7,32 @@
  *   Phase 3 (Output):    Copy / save file / preview via Tauri commands
  */
 
+function exportInvokeTauri(command, args) {
+    if (window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.invokeTauri === 'function') {
+        return window.LexeraBackendDiscovery.invokeTauri(command, args);
+    }
+    if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+        return window.__TAURI_INTERNALS__.invoke(command, args || {});
+    }
+    if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+        return window.__TAURI__.core.invoke(command, args || {});
+    }
+    var available = {
+        hasBackendDiscovery: !!(window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.invokeTauri === 'function'),
+        hasInternals: !!(window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function'),
+        hasGlobalCore: !!(window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function'),
+    };
+    return Promise.reject(new Error('Tauri invoke unavailable for ' + command + ' (state: ' + JSON.stringify(available) + ')'));
+}
+
+function exportCanUseTauri() {
+    if (window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.canUseTauriInvoke === 'function') {
+        return window.LexeraBackendDiscovery.canUseTauriInvoke();
+    }
+    if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') return true;
+    return !!(window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function');
+}
+
 const EXPORT_LINK_PATTERN = /(!\[[^\]]*\]\([^)]+\)(?:\{[^}]+\})?)|((?<!!)\[[^\]]*\]\([^)]+\))|(<(?:img|video|audio)[^>]+src=["'][^"']+["'][^>]*>)|(\[\[[^\]]+\]\])/g;
 const EXPORT_FENCE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 const EXPORT_INLINE_CODE_PATTERN = /`[^`]+`/g;
@@ -61,29 +87,29 @@ class ExportService {
     }
 
     static async checkMarpStatus() {
-        const result = await window.__TAURI__.core.invoke('check_marp_available');
+        const result = await exportInvokeTauri('check_marp_available');
         return { available: result.available, version: result.version || null };
     }
 
     static async checkPandocStatus() {
-        const result = await window.__TAURI__.core.invoke('check_pandoc_available');
+        const result = await exportInvokeTauri('check_pandoc_available');
         return { available: result.available, version: result.version || null };
     }
 
     static async getMarpThemes(dirs) {
-        return await window.__TAURI__.core.invoke('discover_marp_themes', { dirs: dirs || [] });
+        return await exportInvokeTauri('discover_marp_themes', { dirs: dirs || [] });
     }
 
     static async getMarpClasses(dirs) {
-        return await window.__TAURI__.core.invoke('discover_marp_classes', { dirs: dirs || [] });
+        return await exportInvokeTauri('discover_marp_classes', { dirs: dirs || [] });
     }
 
     static async stopAllWatches() {
-        return await window.__TAURI__.core.invoke('marp_stop_all_watches');
+        return await exportInvokeTauri('marp_stop_all_watches');
     }
 
     static async openExportFolder(path) {
-        await window.__TAURI__.core.invoke('open_export_folder', { path });
+        await exportInvokeTauri('open_export_folder', { path });
     }
 
     // ── Phase 1: Extract ────────────────────────────────────────────────
@@ -240,12 +266,12 @@ class ExportService {
             }
 
             lexeraLog('info', '[ExportService] Phase 3: writing markdown to ' + mdPath);
-            await window.__TAURI__.core.invoke('write_export_file', { path: mdPath, content: finalContent });
+            await exportInvokeTauri('write_export_file', { path: mdPath, content: finalContent });
             createdFiles.push(mdPath);
 
             if (mode === 'preview') {
                 lexeraLog('info', '[ExportService] Phase 3: starting Marp preview');
-                const watchResult = await window.__TAURI__.core.invoke('marp_watch', {
+                const watchResult = await exportInvokeTauri('marp_watch', {
                     opts: {
                         inputPath: mdPath,
                         format: 'html',
@@ -277,7 +303,7 @@ class ExportService {
                 );
 
                 lexeraLog('info', '[ExportService] Phase 3: running Marp export to ' + marpOutputPath);
-                const marpResult = await window.__TAURI__.core.invoke('marp_export', {
+                const marpResult = await exportInvokeTauri('marp_export', {
                     opts: {
                         inputPath: mdPath,
                         format: options.marpFormat,
@@ -310,7 +336,7 @@ class ExportService {
                 );
 
                 lexeraLog('info', '[ExportService] Phase 3: running Pandoc export to ' + pandocOutputPath);
-                const pandocResult = await window.__TAURI__.core.invoke('pandoc_export', {
+                const pandocResult = await exportInvokeTauri('pandoc_export', {
                     opts: {
                         inputPath: mdPath,
                         outputPath: pandocOutputPath,
@@ -331,7 +357,7 @@ class ExportService {
             if (createdFiles.length > 0) {
                 lexeraLog('warn', '[ExportService] Cleaning up partial output: ' + createdFiles.join(', '));
                 try {
-                    await window.__TAURI__.core.invoke('remove_export_files', { paths: createdFiles });
+                    await exportInvokeTauri('remove_export_files', { paths: createdFiles });
                 } catch (cleanupErr) {
                     lexeraLog('error', '[ExportService] Cleanup failed: ' + (cleanupErr.message || String(cleanupErr)));
                 }
@@ -373,7 +399,7 @@ class ExportService {
         if (options.packAssets && (linkHandlingMode === 'pack-linked' || linkHandlingMode === 'pack-all')) {
             const plan = ExportService.prepareAssetPackingPlan(nextContent, sourceFilePath, exportDir, fileBasename, linkHandlingMode, options.packOptions, packedFolderPrefix);
             if (plan.items.length > 0) {
-                const results = await window.__TAURI__.core.invoke('copy_export_assets', { items: plan.items });
+                const results = await exportInvokeTauri('copy_export_assets', { items: plan.items });
                 const packed = ExportService.applyPackedAssetResults(nextContent, plan, results);
                 nextContent = packed.content;
                 createdFiles = createdFiles.concat(packed.createdFiles);
@@ -446,7 +472,7 @@ class ExportService {
 
     static async renderFileEmbedsForExport(content, sourceFilePath, exportDir, fileBasename) {
         const registry = ExportService.getFileFormatRegistry();
-        if (!registry || !window.__TAURI__ || !window.__TAURI__.core || typeof window.__TAURI__.core.invoke !== 'function') {
+        if (!registry || !exportCanUseTauri()) {
             return { content, createdFiles: [] };
         }
 
@@ -520,7 +546,7 @@ class ExportService {
         for (let i = 0; i < jobList.length; i++) {
             const job = jobList[i];
             try {
-                const result = await window.__TAURI__.core.invoke('render_embedded_file', {
+                const result = await exportInvokeTauri('render_embedded_file', {
                     opts: {
                         pluginId: job.pluginId,
                         sourcePath: job.sourcePath,

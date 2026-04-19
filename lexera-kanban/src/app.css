@@ -143,7 +143,7 @@
   --layout-row-rail-width: calc(34px * var(--ui-scale));
   --layout-stack-min-width: calc(200px * var(--ui-scale));
   --layout-row-header-pad-y: calc(6px * var(--ui-scale));
-  --layout-row-header-pad-x: calc(4px * var(--ui-scale));
+  --layout-row-header-pad-x: 0px;  /* matches design's rail: padding '6px 0' */
   --layout-stack-header-pad-y: calc(3px * var(--ui-scale));
   --layout-stack-header-pad-x: calc(7px * var(--ui-scale));
   --layout-column-header-pad-y: calc(3px * var(--ui-scale));
@@ -965,16 +965,16 @@ textarea {
 }
 
 .dashboard-search-input {
-  min-height: var(--btn-square-size);
+  min-height: calc(18px * var(--ui-scale));
   border: 1px solid var(--input-border);
   background: var(--input-bg);
   color: inherit;
   border-radius: var(--radius-sm);
   font-family: inherit;
-  font-size: inherit;
+  font-size: var(--font-size-s);
   flex: 1;
   min-width: 0;
-  padding: 0 var(--space-3);
+  padding: 1px var(--space-2);
 }
 
 .dashboard-search-input:focus {
@@ -2870,13 +2870,13 @@ h1.tag-line-styled,
 h2.tag-line-styled,
 h3.tag-line-styled,
 hr.tag-line-styled {
-  margin: 4px 0;
-  padding: 6px 8px;
+  margin: 2px 0;
+  padding: 3px var(--space-3);
 }
 
 li.tag-line-styled {
-  margin: 2px 0;
-  padding: 4px 8px;
+  margin: 1px 0;
+  padding: 2px var(--space-3);
 }
 
 .tag-line-styled[data-tag-border-position="left"] {
@@ -3541,18 +3541,20 @@ body.window-resizing .columns-container {
 }
 
 .plantuml-placeholder {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-secondary);
 }
 
 .plantuml-title {
-  padding: 7px 10px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
 }
 
 .plantuml-placeholder .code-block {
@@ -3611,11 +3613,11 @@ body.window-resizing .columns-container {
 }
 
 .md-container {
-  margin: 8px 0;
-  padding: 10px 12px;
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
 }
 
 .md-container-note {
@@ -3629,8 +3631,8 @@ body.window-resizing .columns-container {
 }
 
 .md-container-highlight {
-  border-color: rgba(255, 211, 61, 0.38);
-  background: rgba(255, 211, 61, 0.1);
+  border-color: color-mix(in srgb, var(--highlight) 80%, transparent);
+  background: color-mix(in srgb, var(--highlight) 40%, transparent);
 }
 
 .md-container-mark-red {
@@ -5378,24 +5380,24 @@ select.dialog-input option,
 /* Notification toast */
 .notification {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: 14px;
+  right: 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
-  border-radius: 3px;
-  padding: 10px 16px;
-
+  border-left: var(--spine-card-width) solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-s);
   color: var(--text-primary);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--shadow-ink) 22%, transparent);
+  box-shadow: var(--shadow-floating);
   z-index: 200;
   opacity: 0;
   transform: translateY(10px);
   transition: opacity 0.3s, transform 0.3s;
   display: flex;
   align-items: center;
-  gap: 8px;
-  max-width: 400px;
+  gap: var(--space-3);
+  max-width: 360px;
 }
 
 .notification.visible {
@@ -6106,11 +6108,12 @@ select.dialog-input option,
 .board-stats-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 5px 12px;
-  background: var(--bg-secondary, #f5f5f5);
-  border-bottom: 1px solid var(--border, #ddd);
-  font-size: var(--font-size-sm);
+  gap: var(--space-3);
+  padding: 3px var(--space-3);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   flex-wrap: wrap;
 }
@@ -6131,26 +6134,28 @@ select.dialog-input option,
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 1px 6px;
-  background: var(--bg-primary, #fff);
-  border: 1px solid var(--border, #ddd);
-  border-radius: var(--radius-sm, 4px);
-  font-size: var(--font-size-md);
+  padding: 1px 5px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   white-space: nowrap;
 }
 
 .board-stats-tag-count {
-  color: var(--accent, #4a9eff);
+  color: var(--accent);
 }
 
 .board-tag-filter-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--bg-secondary, #f5f5f5);
-  border-bottom: 1px solid var(--border, #ddd);
-  font-size: var(--font-size-sm);
+  gap: var(--space-2);
+  padding: 3px var(--space-3);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   flex-wrap: wrap;
 }
 
@@ -6162,19 +6167,20 @@ select.dialog-input option,
 .board-tag-filter-chip {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 3px;
-  border: 1px solid var(--border, #ccc);
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #333);
-  font-size: var(--font-size-sm);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .board-tag-filter-chip:hover {
-  background: var(--accent-light, #e8f0fe);
-  border-color: var(--accent, #5c9cd4);
+  background: var(--bg-hover);
+  border-color: var(--accent);
 }
 
 .board-tag-filter-clear {
@@ -7720,52 +7726,65 @@ select.dialog-input option,
 .export-dialog {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 3px;
-  width: 600px;
+  border-radius: var(--radius-lg);
+  width: 540px;
   max-width: 90vw;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: var(--shadow-modal);
 }
 
 .export-dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--section-label-size);
+  font-weight: var(--section-label-weight);
+  letter-spacing: var(--section-label-tracking);
+  text-transform: var(--section-label-transform);
+  color: var(--text-muted);
 }
 
 .export-dialog-title {
-  font-size: 15px;
-  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--section-label-size);
+  font-weight: var(--section-label-weight);
+  letter-spacing: var(--section-label-tracking);
+  text-transform: var(--section-label-transform);
+  color: var(--text-muted);
 }
 
 .export-dialog-body {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: var(--space-4);
 }
 
 .export-dialog-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border);
 }
 
 .export-dialog-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .export-status-msg {
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7773,8 +7792,8 @@ select.dialog-input option,
 
 /* Sections */
 .export-section {
-  margin-bottom: 14px;
-  padding-bottom: 10px;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border);
 }
 
@@ -7784,20 +7803,24 @@ select.dialog-input option,
 }
 
 .export-section-title {
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--section-label-size);
+  font-weight: var(--section-label-weight);
+  letter-spacing: var(--section-label-tracking);
+  text-transform: var(--section-label-transform);
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
 }
 
 /* Fields */
 .export-field {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .export-field-row {
   display: flex;
-  gap: 12px;
-  margin-bottom: 10px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .export-field-half {
@@ -8704,7 +8727,8 @@ body .board-row-header {
   font-weight: 600;
   letter-spacing: -0.1px;
   color: var(--text-primary);
-  padding: 4px 10px;
+  /* Padding is owned by the rail/collapsed rules in the main block
+     (see --layout-row-header-pad-y/x). Don't override it here. */
 }
 
 /* Metadata typography — mono for tags, counts, badges, file/presence
@@ -9569,6 +9593,227 @@ select,
 .search-result-title,
 .command-palette-item-label {
   font-family: var(--font-ui);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * v2 PaneTab — board-header equivalent to lexera-shell.jsx PaneTab
+ *
+ * Maps the design's bordered-pill filename badge + drawer buttons +
+ * right-side control cluster onto the existing board-header DOM:
+ *   filename pill         -> .board-header-file-title
+ *   burger (frontmatter)  -> .board-header-file-group > .burger-menu-btn
+ *   drawers (new/incoming/park/archive/trash) -> .board-action-btn
+ *   right-side pills (settings/export/save)   -> .board-action-btn
+ *   board-level burger    -> .board-header-zone-right > .burger-menu-btn
+ *
+ * Every value here is pulled verbatim from the lexera-shell.jsx inline
+ * styles — mono xs + surface bg + 1px hairline + 2px radius.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+body .board-header {
+  min-height: 28px;
+  padding: 0 var(--space-3);   /* matches design '0 5px' */
+  gap: var(--space-3);          /* matches design 'gap: 5' */
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-s);
+  color: var(--ink2);
+}
+body .board-header-zone {
+  gap: var(--space-3);
+}
+body .board-header-actions {
+  gap: var(--space-2);
+}
+/* Filename "badge" — bordered surface pill matching the design's
+   filename box: padding '1px 6px 1px 4px', hairline border, surface bg. */
+body .board-header-file-title {
+  padding: 1px 6px 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-s);
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 18px;
+  max-width: min(52vw, 520px);
+}
+body .board-header-file-title.has-board:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+body .board-header-file-title:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+/* Drawer + control pills (New / Incoming / Park / Archive / Trash /
+   Changes / Settings / Export) — design's DrawerBtn: mono xs, surface
+   bg, 1px line, 2px radius, tight padding. */
+body .board-action-btn {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.1px;
+  color: var(--ink2);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-3);
+  min-height: 18px;
+  gap: calc(3px * var(--ui-scale));
+  white-space: nowrap;
+}
+body .board-action-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+body .board-action-btn.has-items {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+body .board-action-btn.danger {
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 45%, transparent);
+}
+
+/* Vertical separator ticks between drawer groups — design's Sep is
+   1 px × 12 px, line2 color. */
+body .board-header-separator {
+  display: inline-block;
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+  margin: 0 var(--space-2);
+  flex-shrink: 0;
+}
+
+/* Burger buttons in the board-header (file-header-menu, board-menu)
+   — 18×18 transparent-by-default, hairline on hover; matches the
+   design's right-side icon buttons. */
+body .board-header-file-group > .burger-menu-btn,
+body .board-header-zone-right > .burger-menu-btn,
+body .board-header-actions-right > .burger-menu-btn {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+}
+body .board-header-file-group > .burger-menu-btn:hover,
+body .board-header-zone-right > .burger-menu-btn:hover,
+body .board-header-actions-right > .burger-menu-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+/* Sync status indicator dot — small square glyph, matches the design's
+   4 × 4 active dot on the far left of the PaneTab. */
+body .sync-status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink4);
+  flex-shrink: 0;
+}
+body .sync-status-indicator.connected {
+  background: var(--success);
+}
+body .sync-status-indicator.disconnected {
+  background: var(--error);
+}
+
+/* Pane active dot — 4×4 rounded square, ink when pane is the focused
+   board, ink4 otherwise. Matches lexera-shell.jsx's active dot. */
+body .board-header-pane-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ink4);
+  margin-left: 3px;
+  flex-shrink: 0;
+}
+body .board-header-pane-dot.is-active {
+  background: var(--ink);
+}
+
+/* Filename pill inner parts — caret ▾ + title text. */
+body .board-header-file-title .file-title-caret {
+  color: var(--ink4);
+  font-size: 9px;
+  line-height: 1;
+}
+body .board-header-file-title .file-title-text {
+  color: var(--ink);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Drawer pill inner parts (icon + label + count + caret) — matches
+   lexera-shell.jsx DrawerBtn: icon 10px accent-tinted per kind, label
+   sans inherit, trailing caret 8px ink4. */
+body .board-action-btn.drawer-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  text-transform: lowercase;
+}
+body .drawer-pill-icon {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink4);
+  flex-shrink: 0;
+}
+body .drawer-pill-pill-neutral .drawer-pill-icon,
+body .drawer-pill-neutral .drawer-pill-icon {
+  color: var(--ink4);
+}
+body .drawer-pill-incoming .drawer-pill-icon { color: #6a8a4a; }
+body .drawer-pill-parked   .drawer-pill-icon { color: #7a6a4a; }
+body .drawer-pill-trashed  .drawer-pill-icon { color: #a5554a; }
+
+body .drawer-pill-label {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-xs);
+  color: inherit;
+}
+body .drawer-pill-count {
+  margin-left: 2px;
+  padding: 0 3px;
+  border: 1px solid var(--border);
+  border-radius: 1px;
+  background: var(--bg-secondary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  min-width: 12px;
+  text-align: center;
+  line-height: 1.3;
+}
+body .drawer-pill-caret {
+  color: var(--ink4);
+  font-size: 8px;
+  line-height: 1;
+  margin-left: 1px;
+}
+body .board-action-btn.drawer-pill.has-items .drawer-pill-icon {
+  color: var(--accent);
 }
 
 /* ── Utility: must be last to win by source order at (0,1,0) ─────── */

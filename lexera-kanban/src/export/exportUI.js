@@ -1229,24 +1229,43 @@ class ExportUI {
      */
     async _browseTargetFolder() {
         try {
-            if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
-                var currentValue = this._val('export-target-folder') || '';
-                var selected = await window.__TAURI__.core.invoke('browse_folder', {
-                    title: 'Select export target folder',
-                    defaultPath: currentValue || null,
-                });
-                if (selected) {
-                    var input = document.getElementById('export-target-folder');
-                    if (input) {
-                        input.value = selected;
-                        this._userEditedTargetFolder = true;
-                    }
+            var invokeFn = null;
+            if (window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.invokeTauri === 'function'
+                && window.LexeraBackendDiscovery.canUseTauriInvoke && window.LexeraBackendDiscovery.canUseTauriInvoke()) {
+                invokeFn = window.LexeraBackendDiscovery.invokeTauri;
+            } else if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+                invokeFn = function (cmd, args) { return window.__TAURI_INTERNALS__.invoke(cmd, args || {}); };
+            } else if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+                invokeFn = function (cmd, args) { return window.__TAURI__.core.invoke(cmd, args || {}); };
+            }
+
+            if (!invokeFn) {
+                var state = {
+                    hasBackendDiscovery: !!(window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.invokeTauri === 'function'),
+                    hasInternals: !!(window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function'),
+                    hasGlobalCore: !!(window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function'),
+                };
+                lexeraLog('warn', '[kanban.export.browse] Tauri invoke not available: ' + JSON.stringify(state));
+                this._setStatus('Browse unavailable (Tauri not ready): ' + JSON.stringify(state));
+                return;
+            }
+
+            var currentValue = this._val('export-target-folder') || '';
+            var fallbackPath = currentValue || this._deriveBoardFolder(this.boardData) || null;
+            var selected = await invokeFn('browse_folder', {
+                title: 'Select export target folder',
+                defaultPath: fallbackPath,
+            });
+            if (selected) {
+                var input = document.getElementById('export-target-folder');
+                if (input) {
+                    input.value = selected;
+                    this._userEditedTargetFolder = true;
                 }
-            } else {
-                lexeraLog('warn', '[kanban.export.browse] Tauri invoke not available');
             }
         } catch (err) {
             lexeraLog('warn', '[kanban.export.browse] ' + (err.message || String(err)));
+            this._setStatus('Browse failed: ' + (err.message || String(err)));
         }
     }
 

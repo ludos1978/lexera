@@ -909,6 +909,32 @@
     return { first: first, second: second };
   }
 
+  // Probe a list of image-fixture candidates (relative to the active board)
+  // and return the first one the backend confirms exists. Mirrors
+  // getExistingIncludePathForTest so embed tests can reference a real
+  // image instead of a fabricated path that the file-info cache will
+  // eventually resolve as missing (which bakes `embed-broken` into the
+  // container on re-render).
+  async function getExistingImagePathForTest() {
+    var runnerConfig = null;
+    try { runnerConfig = window.__LEXERA_TEST_RUNNER_CONFIG__ || null; } catch (_) {}
+    var fixturePath = runnerConfig && cleanBoardText(
+      runnerConfig.imageFixturePath || runnerConfig.image_fixture_path || ''
+    );
+    var candidates = [];
+    if (fixturePath) candidates.push(fixturePath);
+    candidates.push('../kanban-image-tests/root/blue.png');
+    candidates.push('../kanban-image-tests/root/image-512x512.png');
+    candidates.push('root/blue.png');
+    candidates.push('root/image-512x512.png');
+    candidates.push('blue.png');
+    candidates.push('image-512x512.png');
+    for (var i = 0; i < candidates.length; i++) {
+      if (await includePathExistsForTest(candidates[i])) return candidates[i];
+    }
+    return null;
+  }
+
   function makeIncludeSourceForTest(path, missing) {
     var rawPath = cleanBoardText(path);
     return { raw_path: rawPath, rawPath: rawPath, missing: !!missing };
@@ -3288,9 +3314,13 @@
       assert(targetStack, 'need at least 1 visible stack');
       var includePath = await getExistingIncludePathForTest(false);
       var includeSource = makeIncludeSourceForTest(includePath, false);
+      // Backend normalize_board derives include_source from the column
+      // title via syntax::extract_include_path; a plain title gets its
+      // include_source wiped on the server roundtrip. Encode the path in
+      // the title so the server keeps the binding.
       data.rows[targetStack.rowIndex].stacks[targetStack.stackIndex].columns.push({
         id: '__include-col-test__',
-        title: 'Include Test Column',
+        title: 'Include Test !!!include(' + includePath + ')!!!',
         cards: [],
         include_source: includeSource,
         includeSource: includeSource
@@ -3788,6 +3818,234 @@
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // HEADER DRAG SOURCES — top-row "+ new" dropdown template list
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // The "+ new" button (btn-create-new) in the board header opens a
+  // drag-source dropdown (HiddenItemsDropdown.showHeaderSourceDropdown with
+  // mode='new'). That dropdown lists every template that can be added as a
+  // draggable source, grouped by entity type (row/stack/column/card). The
+  // Draw.io and Excalidraw entries are built-in card sources that must
+  // create an empty diagram file — a minimal mxfile for Draw.io (root with
+  // only the two mandatory empty mxCell entries) and a minimal excalidraw
+  // JSON with an empty elements array.
+
+  function getHeaderCreateNewButton() {
+    var doc = getBoardDocument();
+    return doc ? doc.getElementById('btn-create-new') : null;
+  }
+
+  async function openHeaderSourceNewDropdown() {
+    var apiWin = getApiWindow();
+    assert(apiWin && apiWin.HiddenItemsDropdown, 'HiddenItemsDropdown is available in the board window');
+    var btn = getHeaderCreateNewButton();
+    assert(btn, 'btn-create-new is present in the board header');
+    apiWin.HiddenItemsDropdown.showHeaderSourceDropdown('new', btn);
+    var panel = null;
+    await waitForCondition(function () {
+      var doc = getBoardDocument();
+      panel = doc ? doc.querySelector('.header-source-dropdown') : null;
+      if (!panel) return false;
+      // buildHeaderSourceDescriptors resolves asynchronously (template load +
+      // optional clipboard read); only consider the dropdown ready once the
+      // list section has at least one rendered entry.
+      return !!panel.querySelector('.header-source-dropdown-item, .hidden-items-dropdown-empty');
+    }, 3000, 20, 'header-source "new" dropdown never rendered its items');
+    return panel;
+  }
+
+  function closeHeaderSourceNewDropdown() {
+    var apiWin = getApiWindow();
+    if (apiWin && apiWin.HiddenItemsDropdown) apiWin.HiddenItemsDropdown.closeHeaderSourceDropdown();
+  }
+
+  function getHeaderSourceDropdownItems(panel) {
+    var nodes = panel.querySelectorAll('.header-source-dropdown-item');
+    var items = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      var titleEl = node.querySelector('.hidden-item-title');
+      var subtitleEl = node.querySelector('.hidden-item-loc');
+      var iconEl = node.querySelector('.entity-drag-icon');
+      var entityType = '';
+      if (iconEl) {
+        var cls = iconEl.getAttribute('class') || '';
+        var match = cls.match(/entity-drag-icon-(board|row|stack|column|card)/);
+        if (match) entityType = match[1];
+      }
+      items.push({
+        title: titleEl ? titleEl.textContent : '',
+        subtitle: subtitleEl ? subtitleEl.textContent : '',
+        entityType: entityType,
+        hasDragGrip: !!node.querySelector('[data-source-grip]')
+      });
+    }
+    return items;
+  }
+
+  register('header drag source: draw.io built-in template spec produces an empty diagram', async function () {
+    await setup();
+    try {
+      var apiWin = getApiWindow();
+      assert(apiWin && apiWin.LexeraRowStackMenu, 'LexeraRowStackMenu exposed in the board window');
+      assert(typeof apiWin.LexeraRowStackMenu.getBuiltInDiagramTemplateSpec === 'function',
+        'getBuiltInDiagramTemplateSpec is exposed');
+
+      var spec = apiWin.LexeraRowStackMenu.getBuiltInDiagramTemplateSpec('__builtin__:diagram:drawio');
+      assert(spec, 'draw.io built-in spec resolves');
+      assertEqual(spec.displayName, 'Draw.io', 'draw.io spec uses the expected display name');
+      assertEqual(spec.extension, '.drawio', 'draw.io spec uses the .drawio extension');
+      assertEqual(spec.mimeType, 'application/vnd.jgraph.mxfile', 'draw.io spec uses the mxfile mime type');
+      assert(typeof spec.content === 'string' && spec.content.length > 0, 'draw.io spec has content');
+
+      // Parse the mxfile and confirm there are no user cells — empty board.
+      var parser = new (apiWin.DOMParser || DOMParser)();
+      var doc = parser.parseFromString(spec.content, 'application/xml');
+      assert(!doc.querySelector('parsererror'), 'draw.io template content is valid XML');
+      assert(doc.querySelector('mxfile'), 'mxfile root element present');
+      assert(doc.querySelector('diagram'), 'diagram element present');
+      assert(doc.querySelector('mxGraphModel > root'), 'mxGraphModel/root present');
+      var cells = doc.querySelectorAll('mxGraphModel > root > mxCell');
+      assertEqual(cells.length, 2, 'empty draw.io board has exactly the 2 mandatory mxCell entries (id 0 and id 1)');
+      // The two required cells represent the drawing surface itself, not shapes.
+      assertEqual(cells[0].getAttribute('id'), '0', 'first mxCell has id="0"');
+      assertEqual(cells[1].getAttribute('id'), '1', 'second mxCell has id="1"');
+      assertEqual(cells[1].getAttribute('parent'), '0', 'second mxCell is parented to id="0"');
+      // No user shapes/edges exist in an empty board.
+      for (var i = 0; i < cells.length; i++) {
+        assertEqual(cells[i].getAttribute('vertex'), null, 'no vertex cells in empty board');
+        assertEqual(cells[i].getAttribute('edge'), null, 'no edge cells in empty board');
+      }
+    } finally {
+      await teardown();
+    }
+  });
+
+  register('header drag source: excalidraw built-in template spec produces an empty diagram', async function () {
+    await setup();
+    try {
+      var apiWin = getApiWindow();
+      assert(apiWin && apiWin.LexeraRowStackMenu, 'LexeraRowStackMenu exposed in the board window');
+      assert(typeof apiWin.LexeraRowStackMenu.getBuiltInDiagramTemplateSpec === 'function',
+        'getBuiltInDiagramTemplateSpec is exposed');
+
+      var spec = apiWin.LexeraRowStackMenu.getBuiltInDiagramTemplateSpec('__builtin__:diagram:excalidraw');
+      assert(spec, 'excalidraw built-in spec resolves');
+      assertEqual(spec.displayName, 'Excalidraw', 'excalidraw spec uses the expected display name');
+      assertEqual(spec.extension, '.excalidraw', 'excalidraw spec uses the .excalidraw extension');
+      assertEqual(spec.mimeType, 'application/json', 'excalidraw spec uses the application/json mime type');
+      assert(typeof spec.content === 'string' && spec.content.length > 0, 'excalidraw spec has content');
+
+      var data = JSON.parse(spec.content);
+      assertEqual(data.type, 'excalidraw', 'excalidraw content declares type=excalidraw');
+      assert(typeof data.version === 'number' && data.version >= 2, 'excalidraw content declares a version >= 2');
+      assert(Array.isArray(data.elements), 'excalidraw content has an elements array');
+      assertEqual(data.elements.length, 0, 'empty excalidraw board has no elements');
+      assert(data.appState && typeof data.appState === 'object', 'excalidraw content has an appState object');
+      assert(data.files && typeof data.files === 'object', 'excalidraw content has a files object');
+      assertEqual(Object.keys(data.files).length, 0, 'empty excalidraw board has no embedded files');
+    } finally {
+      await teardown();
+    }
+  });
+
+  register('header drag source: "+ new" dropdown lists draw.io and excalidraw as draggable card sources', async function () {
+    await setup();
+    try {
+      var panel = await openHeaderSourceNewDropdown();
+      try {
+        var items = getHeaderSourceDropdownItems(panel);
+        assert(items.length > 0, 'header source "new" dropdown rendered items');
+
+        function findByTitleAndEntity(needle, entityType) {
+          for (var i = 0; i < items.length; i++) {
+            if (items[i].entityType !== entityType) continue;
+            if (items[i].title.toLowerCase().indexOf(needle.toLowerCase()) !== -1) return items[i];
+          }
+          return null;
+        }
+
+        var drawio = findByTitleAndEntity('draw.io', 'card');
+        assert(drawio, 'Draw.io entry is listed as a card drag source');
+        assert(drawio.hasDragGrip, 'Draw.io entry exposes a drag grip so it can be dragged onto the board');
+
+        var excalidraw = findByTitleAndEntity('excalidraw', 'card');
+        assert(excalidraw, 'Excalidraw entry is listed as a card drag source');
+        assert(excalidraw.hasDragGrip, 'Excalidraw entry exposes a drag grip so it can be dragged onto the board');
+
+        // Empty entries must be present for every entity type so the user
+        // can always drag an empty row/stack/column/card onto the board.
+        var expectedEmpty = [
+          { entityType: 'row', label: 'Empty Row' },
+          { entityType: 'stack', label: 'Empty Stack' },
+          { entityType: 'column', label: 'Empty Column' },
+          { entityType: 'card', label: 'Empty Card' }
+        ];
+        for (var e = 0; e < expectedEmpty.length; e++) {
+          var entry = findByTitleAndEntity(expectedEmpty[e].label, expectedEmpty[e].entityType);
+          assert(entry, 'empty drag source listed for ' + expectedEmpty[e].entityType);
+          assert(entry.hasDragGrip, 'empty ' + expectedEmpty[e].entityType + ' entry has a drag grip');
+        }
+
+        // The dropdown's "new" mode groups entries by entity type; verify
+        // that each entity section is rendered (row, stack, column, card).
+        var groupHeaders = panel.querySelectorAll('.header-source-group-header');
+        var groupLabels = {};
+        for (var g = 0; g < groupHeaders.length; g++) {
+          groupLabels[groupHeaders[g].textContent.trim().toLowerCase()] = true;
+        }
+        assert(groupLabels['row'], 'Row group header rendered');
+        assert(groupLabels['stack'], 'Stack group header rendered');
+        assert(groupLabels['column'], 'Column group header rendered');
+        assert(groupLabels['card'], 'Card group header rendered');
+      } finally {
+        closeHeaderSourceNewDropdown();
+      }
+    } finally {
+      closeHeaderSourceNewDropdown();
+      await teardown();
+    }
+  });
+
+  register('header drag source: "+ new" dropdown lists every user template under its entity-type group', async function () {
+    await setup();
+    try {
+      var apiWin = getApiWindow();
+      assert(apiWin && apiWin.LexeraTemplates, 'LexeraTemplates exposed in the board window');
+      // Force a fresh fetch so the dropdown list matches the backend's current
+      // template inventory rather than a cache populated before this test.
+      await apiWin.LexeraTemplates.loadTemplates();
+
+      var panel = await openHeaderSourceNewDropdown();
+      try {
+        var items = getHeaderSourceDropdownItems(panel);
+        var entityTypes = ['row', 'stack', 'column', 'card'];
+        for (var t = 0; t < entityTypes.length; t++) {
+          var et = entityTypes[t];
+          var templatesForType = apiWin.LexeraTemplates.getTemplatesForType(et) || [];
+          for (var i = 0; i < templatesForType.length; i++) {
+            var tpl = templatesForType[i];
+            var expectedTitle = tpl.name || tpl.id || '';
+            if (!expectedTitle) continue;
+            var found = null;
+            for (var j = 0; j < items.length; j++) {
+              if (items[j].entityType !== et) continue;
+              if (items[j].title === expectedTitle) { found = items[j]; break; }
+            }
+            assert(found, 'template "' + expectedTitle + '" listed as a ' + et + ' drag source');
+            assert(found.hasDragGrip, 'template "' + expectedTitle + '" (' + et + ') exposes a drag grip');
+          }
+        }
+      } finally {
+        closeHeaderSourceNewDropdown();
+      }
+    } finally {
+      closeHeaderSourceNewDropdown();
+      await teardown();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // HIDDEN DESTINATION SURFACES
   // ═══════════════════════════════════════════════════════════════════════
 
@@ -4004,6 +4262,11 @@
       closeExportModal();
 
       options.mode = 'copy';
+      // Preset defaults to tagVisibility 'none' which instructs the
+      // backend to strip every hashtag from the exported markdown. This
+      // test is asserting that temporal tags survive the export, so
+      // override to 'all' for the assertions below.
+      options.tagVisibility = 'all';
       var result = await exportService.export(options);
       var markdown = String(result && result.content || '');
       assert(markdown.indexOf('Alpha Column') !== -1, 'export includes first column title');
@@ -4837,12 +5100,19 @@
   register('embed: card with valid image embed does not show broken state', async function () {
     await setup();
     try {
+      var imagePath = await getExistingImagePathForTest();
+      assert(imagePath, 'real image fixture resolvable from active board (kanban-image-tests/root/*.png expected)');
+      // Prime the file-info cache so the renderer knows the file exists
+      // before any render path consults peekFileInfoSync; otherwise the
+      // async probe can mark the container broken on a later re-render.
+      await window.LexeraApi.fileInfo(_boardId, imagePath);
+
       var info = findTwoColumnsWithCards();
       var col = info.srcCol;
       var data = api().getFullBoardData();
       data.rows[col.row].stacks[col.stack].columns[col.localCol].cards.push({
         id: '__embed-ok-test__', kid: '__embed-ok-test__', checked: false,
-        content: 'Embed OK\n![Photo](assets/photo.jpg)'
+        content: 'Embed OK\n![Photo](' + imagePath + ')'
       });
       api().setTestBoard(data, _boardId);
       await delay(120);
@@ -4850,8 +5120,9 @@
       var c = getContainer();
       var cardEl = c.querySelector('.card[data-card-kid="__embed-ok-test__"]');
       assert(cardEl, 'embed card rendered');
-      var brokenEmbed = cardEl.querySelector('.embed-container.embed-broken');
-      assert(!brokenEmbed, 'no broken embed state for valid image syntax');
+      var embed = cardEl.querySelector('.embed-container[data-file-path="' + imagePath + '"]');
+      assert(embed, 'embed container rendered for valid image path');
+      assert(!embed.classList.contains('embed-broken'), 'embed container not marked broken for existing file');
       assertBoardIntegrity('after embed card added');
     } finally { await teardown(); }
   });

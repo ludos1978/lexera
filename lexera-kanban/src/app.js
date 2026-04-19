@@ -3795,7 +3795,11 @@ var LexeraDashboard = (function () {
   async function triggerBoardExport(initialOptions) {
     if (!window.ExportUI) return;
     if (!window._exportUI) window._exportUI = new ExportUI();
-    await window._exportUI.init(activeBoardId, fullBoardData, initialOptions || null);
+    var boardFilePath = getActiveBoardFilePath();
+    var boardDataForExport = fullBoardData
+        ? Object.assign({}, fullBoardData, { filePath: fullBoardData.filePath || boardFilePath || '' })
+        : (boardFilePath ? { filePath: boardFilePath } : null);
+    await window._exportUI.init(activeBoardId, boardDataForExport, initialOptions || null);
     window._exportUI.show();
   }
 

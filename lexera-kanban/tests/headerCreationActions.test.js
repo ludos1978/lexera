@@ -181,4 +181,57 @@ describe('header creation actions', () => {
     );
     expect(deps.showNotification).not.toHaveBeenCalledWith('Built-in diagram templates are card-only');
   });
+
+  // ── Built-in draw.io and excalidraw drag sources must create empty boards ──
+  // The top-row "+ new" dropdown exposes both built-ins as draggable card
+  // sources. Dragging them has to drop a brand-new *empty* diagram file into
+  // the board: a minimal mxfile for draw.io (two mandatory structural
+  // mxCells, no shapes) and a minimal excalidraw JSON with an empty
+  // elements array.
+
+  it('exposes an empty draw.io diagram for the built-in drag source', () => {
+    const RowStackMenu = createMenu();
+    RowStackMenu.init(createBaseDeps());
+    const spec = RowStackMenu.getBuiltInDiagramTemplateSpec('__builtin__:diagram:drawio');
+    expect(spec).toBeTruthy();
+    expect(spec.displayName).toBe('Draw.io');
+    expect(spec.extension).toBe('.drawio');
+    expect(spec.mimeType).toBe('application/vnd.jgraph.mxfile');
+
+    // Use regex parsing so the test works in every vitest env (no DOMParser
+    // on the server). An empty draw.io board has exactly two structural
+    // mxCell entries inside <root> and zero shape/edge cells.
+    expect(spec.content).toMatch(/<mxfile\b/);
+    expect(spec.content).toMatch(/<diagram\b/);
+    const rootMatch = spec.content.match(/<root\b[^>]*>([\s\S]*?)<\/root>/);
+    expect(rootMatch).not.toBeNull();
+    const rootBody = rootMatch[1];
+    const cellMatches = rootBody.match(/<mxCell\b[^>]*\/?>/g) || [];
+    expect(cellMatches).toHaveLength(2);
+    expect(rootBody).toMatch(/<mxCell[^>]*\bid="0"[^>]*\/?>/);
+    expect(rootBody).toMatch(/<mxCell[^>]*\bid="1"[^>]*\bparent="0"[^>]*\/?>/);
+    // No shape or edge cells in a blank board.
+    expect(rootBody).not.toMatch(/\bvertex="1"/);
+    expect(rootBody).not.toMatch(/\bedge="1"/);
+  });
+
+  it('exposes an empty excalidraw diagram for the built-in drag source', () => {
+    const RowStackMenu = createMenu();
+    RowStackMenu.init(createBaseDeps());
+    const spec = RowStackMenu.getBuiltInDiagramTemplateSpec('__builtin__:diagram:excalidraw');
+    expect(spec).toBeTruthy();
+    expect(spec.displayName).toBe('Excalidraw');
+    expect(spec.extension).toBe('.excalidraw');
+    expect(spec.mimeType).toBe('application/json');
+
+    const data = JSON.parse(spec.content);
+    expect(data.type).toBe('excalidraw');
+    expect(typeof data.version).toBe('number');
+    expect(data.version).toBeGreaterThanOrEqual(2);
+    expect(Array.isArray(data.elements)).toBe(true);
+    expect(data.elements).toHaveLength(0);
+    expect(data.appState && typeof data.appState).toBe('object');
+    expect(data.files && typeof data.files).toBe('object');
+    expect(Object.keys(data.files)).toHaveLength(0);
+  });
 });
