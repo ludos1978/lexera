@@ -433,6 +433,7 @@ fn main() {
             export_commands::render_plantuml_code,
             export_commands::get_marp_engine_path,
             export_commands::get_file_mtime_ms,
+            export_commands::read_file_as_data_uri,
         ])
         .on_window_event(|window, event| {
             match event {

@@ -1703,6 +1703,121 @@ pub fn get_marp_engine_path() -> Result<Option<String>, String> {
     Ok(None)
 }
 
+/// Read `path` as a base64 data URI for inline embedding in exported markdown
+/// or HTML. When `max_bytes` is set and the file exceeds it, the command
+/// returns `{ dataUri: None, skipped: true, size_bytes }` so the caller can log
+/// a skip entry without ever loading the oversize file. MIME type is derived
+/// from the file extension; unknown extensions fall back to
+/// `application/octet-stream`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadFileAsDataUriResult {
+    pub data_uri: Option<String>,
+    pub mime_type: String,
+    pub size_bytes: u64,
+    pub skipped: bool,
+    pub skipped_reason: Option<String>,
+}
+
+fn mime_for_extension(ext: &str) -> &'static str {
+    match ext.to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "avif" => "image/avif",
+        "heic" | "heif" => "image/heic",
+        "mp4" | "m4v" => "video/mp4",
+        "mov" => "video/quicktime",
+        "webm" => "video/webm",
+        "mkv" => "video/x-matroska",
+        "mp3" => "audio/mpeg",
+        "m4a" | "aac" => "audio/aac",
+        "ogg" => "audio/ogg",
+        "wav" => "audio/wav",
+        "flac" => "audio/flac",
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
+    }
+}
+
+// Minimal base64 encoder — avoids adding a new crate dependency for one
+// feature. Matches RFC 4648 standard alphabet with padding.
+fn base64_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut i = 0;
+    while i + 3 <= bytes.len() {
+        let n = ((bytes[i] as u32) << 16) | ((bytes[i + 1] as u32) << 8) | (bytes[i + 2] as u32);
+        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
+        out.push(ALPHABET[(n & 0x3F) as usize] as char);
+        i += 3;
+    }
+    let rem = bytes.len() - i;
+    if rem == 1 {
+        let n = (bytes[i] as u32) << 16;
+        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
+        out.push('=');
+        out.push('=');
+    } else if rem == 2 {
+        let n = ((bytes[i] as u32) << 16) | ((bytes[i + 1] as u32) << 8);
+        out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
+        out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
+        out.push('=');
+    }
+    out
+}
+
+#[tauri::command]
+pub fn read_file_as_data_uri(
+    path: String,
+    max_bytes: Option<u64>,
+) -> Result<ReadFileAsDataUriResult, String> {
+    let p = PathBuf::from(&path);
+    let meta = fs::metadata(&p)
+        .map_err(|e| format!("Failed to stat {}: {}", p.display(), e))?;
+    let size_bytes = meta.len();
+    let ext = p
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let mime = mime_for_extension(&ext).to_string();
+
+    if let Some(limit) = max_bytes {
+        if size_bytes > limit {
+            return Ok(ReadFileAsDataUriResult {
+                data_uri: None,
+                mime_type: mime,
+                size_bytes,
+                skipped: true,
+                skipped_reason: Some(format!(
+                    "file size {} bytes exceeds limit {} bytes",
+                    size_bytes, limit
+                )),
+            });
+        }
+    }
+
+    let bytes = fs::read(&p).map_err(|e| format!("Failed to read {}: {}", p.display(), e))?;
+    let encoded = base64_encode(&bytes);
+    let data_uri = format!("data:{};base64,{}", mime, encoded);
+    Ok(ReadFileAsDataUriResult {
+        data_uri: Some(data_uri),
+        mime_type: mime,
+        size_bytes,
+        skipped: false,
+        skipped_reason: None,
+    })
+}
+
 /// Return the modification time of `path` as milliseconds since the Unix epoch.
 /// `Ok(None)` when the file is absent; `Err` when metadata cannot be read. The
 /// frontend uses this to build deterministic cache filenames that share the same
@@ -2948,6 +3063,51 @@ mod tests {
         let tgt = dir.join("rendered.png");
         fs::write(&tgt, b"data").expect("write tgt");
         assert!(!is_cache_fresh(&src, &tgt));
+    }
+
+    #[test]
+    fn base64_encodes_with_correct_padding() {
+        // Test vectors from RFC 4648: three samples covering 0/1/2 byte padding.
+        assert_eq!(super::base64_encode(b"foo"), "Zm9v"); // multiple of 3 → no pad
+        assert_eq!(super::base64_encode(b"fo"), "Zm8="); // 2 bytes → one pad
+        assert_eq!(super::base64_encode(b"f"), "Zg=="); // 1 byte → two pad
+        assert_eq!(super::base64_encode(b""), ""); // empty → empty
+    }
+
+    #[test]
+    fn mime_for_extension_maps_common_formats() {
+        assert_eq!(super::mime_for_extension("png"), "image/png");
+        assert_eq!(super::mime_for_extension("JPG"), "image/jpeg");
+        assert_eq!(super::mime_for_extension("mp4"), "video/mp4");
+        assert_eq!(super::mime_for_extension("mp3"), "audio/mpeg");
+        assert_eq!(super::mime_for_extension("unknown-ext"), "application/octet-stream");
+    }
+
+    #[test]
+    fn read_file_as_data_uri_returns_data_uri_for_small_file() {
+        let dir = temp_dir_for("data-uri");
+        let file = dir.join("tiny.png");
+        fs::write(&file, b"foo").expect("write tiny");
+        let result = super::read_file_as_data_uri(file.to_string_lossy().to_string(), Some(1024))
+            .expect("read succeeds");
+        assert!(!result.skipped);
+        assert_eq!(result.mime_type, "image/png");
+        assert_eq!(result.size_bytes, 3);
+        assert_eq!(result.data_uri.as_deref(), Some("data:image/png;base64,Zm9v"));
+    }
+
+    #[test]
+    fn read_file_as_data_uri_skips_when_over_limit() {
+        let dir = temp_dir_for("data-uri-oversize");
+        let file = dir.join("big.mp4");
+        fs::write(&file, vec![0u8; 2048]).expect("write big");
+        let result = super::read_file_as_data_uri(file.to_string_lossy().to_string(), Some(1024))
+            .expect("stat succeeds");
+        assert!(result.skipped);
+        assert_eq!(result.mime_type, "video/mp4");
+        assert_eq!(result.size_bytes, 2048);
+        assert!(result.data_uri.is_none());
+        assert!(result.skipped_reason.is_some());
     }
 
 

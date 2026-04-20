@@ -352,6 +352,7 @@ pub async fn file_info(
     Json(serde_json::json!({
         "exists": metadata.exists,
         "path": params.path,
+        "resolvedPath": fp.to_string_lossy().to_string(),
         "filename": metadata.filename,
         "extension": metadata.extension,
         "size": metadata.size,
@@ -704,6 +705,7 @@ mod tests {
         assert_eq!(json["exists"], true);
         assert_eq!(json["size"], 5);
         assert_eq!(json["filename"], "data.txt");
+        assert!(json["resolvedPath"].as_str().unwrap().ends_with("data.txt"));
     }
 
     #[tokio::test]

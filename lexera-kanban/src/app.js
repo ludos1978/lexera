@@ -6055,7 +6055,12 @@ var LexeraDashboard = (function () {
   /**
    * Show a toast notification.
    * @param {string} message — text to display
-   * @param {object} [opts] — optional: { variant: 'error'|'success'|'warn'|'info', duration: ms, action: { label, callback }, dedupe: boolean }
+   * @param {object} [opts] — optional:
+   *   { variant: 'error'|'success'|'warn'|'info',
+   *     duration: ms,
+   *     action: { label, callback },     // single action (legacy)
+   *     actions: [{ label, callback }],  // multiple actions (preferred)
+   *     dedupe: boolean }
    *
    * Dedupe: by default, if the same message is currently showing OR
    * already queued, the new call is dropped. This prevents 10 stacked
@@ -6089,17 +6094,28 @@ var LexeraDashboard = (function () {
     msgSpan.className = 'notification-msg';
     msgSpan.textContent = item.message;
     el.appendChild(msgSpan);
-    if (item.opts.action && item.opts.action.label) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'notification-action';
-      btn.textContent = item.opts.action.label;
-      btn.addEventListener('click', function () {
-        if (typeof item.opts.action.callback === 'function') item.opts.action.callback();
-        el.classList.remove('visible');
-        setTimeout(function () { el.remove(); _drainNotificationQueue(); }, 200);
-      });
-      el.appendChild(btn);
+    // Support both legacy single `action` and the new `actions` array so
+    // export toasts can offer Open + Reveal + View-report in one popup.
+    var actionList = Array.isArray(item.opts.actions)
+        ? item.opts.actions
+        : (item.opts.action ? [item.opts.action] : []);
+    for (var ai = 0; ai < actionList.length; ai++) {
+      (function (action) {
+        if (!action || !action.label) return;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'notification-action';
+        btn.textContent = action.label;
+        btn.addEventListener('click', function () {
+          if (typeof action.callback === 'function') {
+            try { action.callback(); } catch (e) { /* noop */ }
+          }
+          if (action.dismissOnClick === false) return;
+          el.classList.remove('visible');
+          setTimeout(function () { el.remove(); _drainNotificationQueue(); }, 200);
+        });
+        el.appendChild(btn);
+      })(actionList[ai]);
     }
     document.body.appendChild(el);
     el.offsetHeight; // force reflow

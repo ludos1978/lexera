@@ -41,6 +41,9 @@ function createFallbackExportUiPreferenceHelpers(storage) {
         excludeEnabled: 'lexera-export-exclude-enabled',
         excludeTags: 'lexera-export-exclude-tags',
         stripIncludes: 'lexera-export-strip-includes',
+        includeHandling: 'lexera-export-include-handling',
+        embedMedia: 'lexera-export-embed-media',
+        mergeIncludesMaxDepth: 'lexera-export-merge-includes-max-depth',
         autoExportOnSave: 'lexera-export-auto-export-on-save',
         linkHandlingMode: 'lexera-export-link-handling-mode',
         packTypeMode: 'lexera-export-pack-type-mode',
@@ -112,6 +115,21 @@ function createFallbackExportUiPreferenceHelpers(storage) {
         return 'rewrite-relative';
     }
 
+    function normalizeIncludeHandling(value) {
+        var normalized = String(value == null ? '' : value).trim().toLowerCase();
+        if (normalized === 'strip' || normalized === 'merge' || normalized === 'keep') return normalized;
+        if (normalized === 'true') return 'strip';
+        if (normalized === 'false') return 'keep';
+        return 'keep';
+    }
+
+    function normalizeMergeIncludesMaxDepth(value) {
+        var parsed = parseInt(String(value == null ? '' : value).trim(), 10);
+        if (!isFinite(parsed) || parsed < 1) return 10;
+        if (parsed > 50) return 50;
+        return parsed;
+    }
+
     function normalizePackTypeMode(value) {
         return String(value || '').trim().toLowerCase() === 'custom' ? 'custom' : 'all';
     }
@@ -164,6 +182,8 @@ function createFallbackExportUiPreferenceHelpers(storage) {
             next.format = 'presentation';
             next.tagVisibility = 'none';
             next.stripIncludes = false;
+            next.includeHandling = 'keep';
+            next.embedMedia = false;
             next.autoExportOnSave = true;
             next.runMarp = true;
             next.marpFormat = 'html';
@@ -179,6 +199,8 @@ function createFallbackExportUiPreferenceHelpers(storage) {
             next.format = 'presentation';
             next.tagVisibility = 'none';
             next.stripIncludes = false;
+            next.includeHandling = 'keep';
+            next.embedMedia = false;
             next.autoExportOnSave = true;
             next.runMarp = true;
             next.marpFormat = 'pdf';
@@ -195,6 +217,8 @@ function createFallbackExportUiPreferenceHelpers(storage) {
             next.format = 'keep';
             next.tagVisibility = 'all';
             next.stripIncludes = false;
+            next.includeHandling = 'merge';
+            next.embedMedia = true;
             next.autoExportOnSave = false;
             next.runMarp = false;
             next.marpWatch = false;
@@ -240,6 +264,8 @@ function createFallbackExportUiPreferenceHelpers(storage) {
         normalizeEmbedHandling: normalizeEmbedHandling,
         normalizeMarpBrowser: normalizeMarpBrowser,
         normalizeLinkHandlingMode: normalizeLinkHandlingMode,
+        normalizeIncludeHandling: normalizeIncludeHandling,
+        normalizeMergeIncludesMaxDepth: normalizeMergeIncludesMaxDepth,
         normalizePackTypeMode: normalizePackTypeMode,
         normalizePackCustomExtensions: normalizePackCustomExtensions,
         normalizeBooleanPreference: normalizeBooleanPreference,
@@ -273,6 +299,8 @@ var normalizeKeepRemoveMode = ExportUiPreferenceHelpers.normalizeKeepRemoveMode;
 var normalizeEmbedHandling = ExportUiPreferenceHelpers.normalizeEmbedHandling;
 var normalizeMarpBrowser = ExportUiPreferenceHelpers.normalizeMarpBrowser;
 var normalizeLinkHandlingMode = ExportUiPreferenceHelpers.normalizeLinkHandlingMode;
+var normalizeIncludeHandling = ExportUiPreferenceHelpers.normalizeIncludeHandling;
+var normalizeMergeIncludesMaxDepth = ExportUiPreferenceHelpers.normalizeMergeIncludesMaxDepth;
 var normalizePackTypeMode = ExportUiPreferenceHelpers.normalizePackTypeMode;
 var normalizePackCustomExtensions = ExportUiPreferenceHelpers.normalizePackCustomExtensions;
 var normalizeBooleanPreference = ExportUiPreferenceHelpers.normalizeBooleanPreference;
@@ -377,6 +405,7 @@ class ExportUI {
         this.onFormatChange();
         this.onMarpFormatChange();
         this._updateLinkHandlingVisibility();
+        this._updateIncludeHandlingVisibility();
 
         // Generate initial export folder name
         this.updateExportFolderName();
@@ -428,7 +457,13 @@ class ExportUI {
             excludeEnabled: excludeEnabled,
             excludeTagsInput: excludeTagsRaw,
             excludeTags: excludeTags,
-            stripIncludes: this._checked('export-strip-includes'),
+            includeHandling: normalizeIncludeHandling(this._val('export-include-handling')),
+            embedMedia: this._checked('export-embed-media'),
+            mergeIncludesMaxDepth: normalizeMergeIncludesMaxDepth(this._val('export-merge-includes-max-depth')),
+            // Back-compat: some backend/Tauri paths still expect a boolean
+            // stripIncludes. Derive it from the dropdown so existing wiring
+            // keeps working until all call sites read includeHandling.
+            stripIncludes: normalizeIncludeHandling(this._val('export-include-handling')) === 'strip',
             autoExportOnSave: this._checked('export-auto-export-on-save'),
             selectionScopes: selection ? selection.scopes : [],
             columnIndexes: columnIndexes,
@@ -554,10 +589,17 @@ class ExportUI {
                 }
                 this._setStatus(statusMessage, 'info');
                 if (mode === 'save' && result.exportedPath) {
-                    this._notifyExportDone(result.exportedPath);
+                    this._notifyExportDone(result.exportedPath, result, options);
                 }
             } else {
                 this._setStatus('Export failed: ' + (result.message || 'Unknown error') + ' — see Logs panel for details', 'error');
+                ExportUI._dispatchProcessEvent('completed', {
+                    boardId: options.boardId || this.boardId,
+                    boardName: this.boardName || options.boardId || '',
+                    outputPath: result && result.exportedPath ? result.exportedPath : '',
+                    success: false,
+                    message: result && result.message ? result.message : 'Unknown error',
+                });
             }
         } catch (err) {
             if (err && err.name === 'AbortError') {
@@ -595,27 +637,47 @@ class ExportUI {
     // action button that reveals the output file in Finder / Explorer.
     // Falls back to a plain status line when window.showNotification isn't
     // available (tests, embedded contexts).
-    _notifyExportDone(exportedPath) {
-        if (!exportedPath || typeof window.showNotification !== 'function') return;
+    _notifyExportDone(exportedPath, result, options) {
+        if (!exportedPath) return;
         var self = this;
         var fileName = String(exportedPath).split(/[/\\]/).pop() || exportedPath;
         var isHtml = /\.html?$/i.test(exportedPath);
-        var primaryLabel = isHtml ? 'Open in browser' : 'Reveal in Finder';
-        window.showNotification('Exported: ' + fileName, {
-            variant: 'success',
-            duration: 8000,
-            action: {
-                label: primaryLabel,
-                callback: function () {
-                    // For HTML use open_with_default_app (launches browser); for
-                    // everything else reveal the file in Finder/Explorer so the
-                    // user can inspect the whole export folder.
-                    var cmd = isHtml ? 'open_with_default_app' : 'show_in_folder';
-                    self._invokeTauriCommand(cmd, { path: exportedPath }).catch(function (err) {
-                        exportLexeraLog('warn', '[kanban.export.notify] ' + cmd + ' failed: ' + (err && err.message ? err.message : String(err)));
-                    });
-                },
-            },
+        var readmePath = (result && result.readmePath) || '';
+        var reportEntries = (result && result.reportEntries) || null;
+
+        // Phase 3B: toast now carries up to three actions (Open / Reveal /
+        // Report) and a `lexera-export-process-changed` event is fired so
+        // the floating processes button can surface the same entry in its
+        // recent list.
+        function safeInvoke(cmd, path) {
+            self._invokeTauriCommand(cmd, { path: path }).catch(function (err) {
+                exportLexeraLog('warn', '[kanban.export.notify] ' + cmd + ' failed: ' + (err && err.message ? err.message : String(err)));
+            });
+        }
+        var actions = [];
+        if (isHtml) {
+            actions.push({ label: 'Open', callback: function () { safeInvoke('open_with_default_app', exportedPath); } });
+        } else {
+            actions.push({ label: 'Open', callback: function () { safeInvoke('open_with_default_app', exportedPath); } });
+        }
+        actions.push({ label: 'Reveal', callback: function () { safeInvoke('show_in_folder', exportedPath); } });
+        if (readmePath) {
+            actions.push({ label: 'Report', callback: function () { safeInvoke('open_with_default_app', readmePath); } });
+        }
+        if (typeof window.showNotification === 'function') {
+            window.showNotification('Exported: ' + fileName, {
+                variant: 'success',
+                duration: 10000,
+                actions: actions,
+            });
+        }
+        ExportUI._dispatchProcessEvent('completed', {
+            boardId: (options && options.boardId) || this.boardId,
+            boardName: this.boardName || (options && options.boardId) || '',
+            outputPath: exportedPath,
+            readmePath: readmePath,
+            reportEntries: reportEntries,
+            success: true,
         });
     }
 
@@ -709,6 +771,15 @@ class ExportUI {
         var customField = document.getElementById('export-pack-custom-extensions-field');
         if (optionsWrap) optionsWrap.hidden = mode !== 'pack-linked';
         if (customField) customField.hidden = !(mode === 'pack-linked' && typeMode === 'custom');
+    }
+
+    // The merge-max-depth numeric field is only meaningful when the user
+    // picked "Merge includes"; hide it otherwise so the Output group stays
+    // uncluttered for the common cases (keep / strip).
+    _updateIncludeHandlingVisibility() {
+        var mode = normalizeIncludeHandling(this._val('export-include-handling'));
+        var depthField = document.getElementById('export-merge-depth-field');
+        if (depthField) depthField.hidden = mode !== 'merge';
     }
 
     updateExportFolderName() {
@@ -826,9 +897,9 @@ class ExportUI {
         btn.className = 'export-configure-plugins';
         btn.textContent = 'Configure plugins\u2026';
         btn.addEventListener('click', function () {
-            if (typeof window !== 'undefined' && window.lexeraApp
-                && typeof window.lexeraApp.openManagementPanel === 'function') {
-                window.lexeraApp.openManagementPanel({ section: 'renderApps' });
+            var wiring = (typeof window !== 'undefined') ? window.LexeraManagementWiring : null;
+            if (wiring && typeof wiring.openManagementPanel === 'function') {
+                wiring.openManagementPanel({ section: 'renderApps' });
             }
         });
         el.appendChild(btn);
@@ -895,13 +966,19 @@ class ExportUI {
         this._bindStoredSelect('export-pandoc-page-breaks', 'pandocPageBreaks', normalizeDocumentPageBreakPreference);
         this._bindStoredSelect('export-link-handling-mode', 'linkHandlingMode', normalizeLinkHandlingMode);
         this._bindStoredSelect('export-pack-type-mode', 'packTypeMode', normalizePackTypeMode);
+        this._bindStoredSelect('export-include-handling', 'includeHandling', normalizeIncludeHandling);
         this._bindStoredInput('export-exclude-tags', 'excludeTags');
         this._bindStoredInput('export-pack-custom-extensions', 'packCustomExtensions');
         this._bindStoredInput('export-pack-file-size-limit', 'packFileSizeLimit', normalizePackFileSizeLimit);
+        this._bindStoredInput('export-merge-includes-max-depth', 'mergeIncludesMaxDepth', normalizeMergeIncludesMaxDepth);
+        var includeHandlingSelect = document.getElementById('export-include-handling');
+        if (includeHandlingSelect) {
+            includeHandlingSelect.addEventListener('change', function () { self._updateIncludeHandlingVisibility(); });
+        }
         this._bindStoredCheckbox('export-exclude-enabled', 'excludeEnabled', true, function (checked) {
             self._setExcludeControlsEnabled(checked);
         });
-        this._bindStoredCheckbox('export-strip-includes', 'stripIncludes', false);
+        this._bindStoredCheckbox('export-embed-media', 'embedMedia', false);
         this._bindStoredCheckbox('export-auto-export-on-save', 'autoExportOnSave', false, function (checked) {
             if (!checked) ExportUI.clearActiveAutoExport(self.boardId);
         });
@@ -911,7 +988,9 @@ class ExportUI {
             'export-exclude-enabled',
             'export-exclude-tags',
             'export-auto-export-on-save',
-            'export-strip-includes',
+            'export-include-handling',
+            'export-embed-media',
+            'export-merge-includes-max-depth',
             'export-marp-enabled',
             'export-marp-format',
             'export-marp-theme',
@@ -1045,9 +1124,26 @@ class ExportUI {
         var excludeTagsValue = activeAutoSettings && typeof activeAutoSettings.excludeTagsInput === 'string'
             ? activeAutoSettings.excludeTagsInput
             : getStoredExportUiPreference('excludeTags', '');
-        var stripIncludes = activeAutoSettings && typeof activeAutoSettings.stripIncludes === 'boolean'
-            ? !!activeAutoSettings.stripIncludes
-            : normalizeBooleanPreference(getStoredExportUiPreference('stripIncludes', false), false);
+        // Phase 3: prefer the new includeHandling dropdown; fall back to
+        // stripIncludes when only legacy prefs exist (migration).
+        var includeHandling;
+        if (activeAutoSettings && typeof activeAutoSettings.includeHandling === 'string') {
+            includeHandling = normalizeIncludeHandling(activeAutoSettings.includeHandling);
+        } else if (activeAutoSettings && typeof activeAutoSettings.stripIncludes === 'boolean') {
+            includeHandling = activeAutoSettings.stripIncludes ? 'strip' : 'keep';
+        } else {
+            var storedInclude = getStoredExportUiPreference('includeHandling', null);
+            if (storedInclude) {
+                includeHandling = normalizeIncludeHandling(storedInclude);
+            } else {
+                includeHandling = normalizeBooleanPreference(
+                    getStoredExportUiPreference('stripIncludes', false), false
+                ) ? 'strip' : 'keep';
+            }
+        }
+        var embedMedia = activeAutoSettings && typeof activeAutoSettings.embedMedia === 'boolean'
+            ? !!activeAutoSettings.embedMedia
+            : normalizeBooleanPreference(getStoredExportUiPreference('embedMedia', false), false);
         var autoExportOnSave = activeAutoSettings && typeof activeAutoSettings.autoExportOnSave === 'boolean'
             ? !!activeAutoSettings.autoExportOnSave
             : normalizeBooleanPreference(getStoredExportUiPreference('autoExportOnSave', false), false);
@@ -1073,7 +1169,13 @@ class ExportUI {
         this._setValue('export-link-handling-mode', normalizeLinkHandlingMode(linkHandlingMode));
         this._setChecked('export-exclude-enabled', excludeEnabled);
         this._setValue('export-exclude-tags', excludeEnabled ? normalizeExcludeTagsInput(excludeTagsValue) : (excludeTagsValue || ''));
-        this._setChecked('export-strip-includes', stripIncludes);
+        this._setValue('export-include-handling', includeHandling);
+        this._setChecked('export-embed-media', embedMedia);
+        this._setValue('export-merge-includes-max-depth', String(normalizeMergeIncludesMaxDepth(
+            activeAutoSettings && activeAutoSettings.mergeIncludesMaxDepth != null
+                ? activeAutoSettings.mergeIncludesMaxDepth
+                : getStoredExportUiPreference('mergeIncludesMaxDepth', 10)
+        )));
         this._setChecked('export-auto-export-on-save', autoExportOnSave);
         this._setValue('export-pack-type-mode', normalizePackTypeMode(
             packOptions && packOptions.typeMode
@@ -1091,6 +1193,7 @@ class ExportUI {
         )));
         this._setExcludeControlsEnabled(excludeEnabled);
         this._updateLinkHandlingVisibility();
+        this._updateIncludeHandlingVisibility();
     }
 
     _applyInitialOptions() {
@@ -1120,8 +1223,19 @@ class ExportUI {
             this._setValue('export-exclude-tags', this.initialOptions.excludeTags.join(', '));
             shouldResetPreset = true;
         }
-        if (typeof this.initialOptions.stripIncludes === 'boolean') {
-            this._setChecked('export-strip-includes', this.initialOptions.stripIncludes);
+        if (typeof this.initialOptions.includeHandling === 'string') {
+            this._setValue('export-include-handling', normalizeIncludeHandling(this.initialOptions.includeHandling));
+            shouldResetPreset = true;
+        } else if (typeof this.initialOptions.stripIncludes === 'boolean') {
+            this._setValue('export-include-handling', this.initialOptions.stripIncludes ? 'strip' : 'keep');
+            shouldResetPreset = true;
+        }
+        if (typeof this.initialOptions.embedMedia === 'boolean') {
+            this._setChecked('export-embed-media', this.initialOptions.embedMedia);
+            shouldResetPreset = true;
+        }
+        if (this.initialOptions.mergeIncludesMaxDepth != null) {
+            this._setValue('export-merge-includes-max-depth', String(normalizeMergeIncludesMaxDepth(this.initialOptions.mergeIncludesMaxDepth)));
             shouldResetPreset = true;
         }
         if (typeof this.initialOptions.autoExportOnSave === 'boolean') {
@@ -1208,6 +1322,7 @@ class ExportUI {
             this._resetPresetToCustom();
         }
         this._updateLinkHandlingVisibility();
+        this._updateIncludeHandlingVisibility();
     }
 
     _applyInitialSelection() {
@@ -1291,7 +1406,12 @@ class ExportUI {
                 var nextOptions = applyExportPresetToOptions(this.collectOptions(), normalizedPreset);
                 this._setValue('export-format', normalizeExportDialogFormat(nextOptions.format));
                 this._setValue('export-tag-visibility', nextOptions.tagVisibility || 'all');
-                this._setChecked('export-strip-includes', !!nextOptions.stripIncludes);
+                if (typeof nextOptions.includeHandling === 'string') {
+                    this._setValue('export-include-handling', normalizeIncludeHandling(nextOptions.includeHandling));
+                } else {
+                    this._setValue('export-include-handling', nextOptions.stripIncludes ? 'strip' : 'keep');
+                }
+                this._setChecked('export-embed-media', !!nextOptions.embedMedia);
                 this._setChecked('export-auto-export-on-save', !!nextOptions.autoExportOnSave);
                 this._setChecked('export-marp-enabled', !!nextOptions.runMarp);
                 if (nextOptions.marpFormat) this._setValue('export-marp-format', nextOptions.marpFormat);
@@ -1316,6 +1436,7 @@ class ExportUI {
             this.onFormatChange();
             this.onMarpFormatChange();
             this._updateLinkHandlingVisibility();
+        this._updateIncludeHandlingVisibility();
             this.updateExportFolderName();
             if (shouldPersist) this._persistCurrentPreferences();
         } finally {
@@ -1343,7 +1464,9 @@ class ExportUI {
         setStoredExportUiPreference('pandocPageBreaks', normalizeDocumentPageBreakPreference(this._val('export-pandoc-page-breaks')));
         setStoredExportUiPreference('excludeEnabled', this._checked('export-exclude-enabled') ? 'true' : 'false');
         setStoredExportUiPreference('excludeTags', this._val('export-exclude-tags') || '');
-        setStoredExportUiPreference('stripIncludes', this._checked('export-strip-includes') ? 'true' : 'false');
+        setStoredExportUiPreference('includeHandling', normalizeIncludeHandling(this._val('export-include-handling')));
+        setStoredExportUiPreference('embedMedia', this._checked('export-embed-media') ? 'true' : 'false');
+        setStoredExportUiPreference('mergeIncludesMaxDepth', normalizeMergeIncludesMaxDepth(this._val('export-merge-includes-max-depth')));
         setStoredExportUiPreference('autoExportOnSave', this._checked('export-auto-export-on-save') ? 'true' : 'false');
         setStoredExportUiPreference('linkHandlingMode', normalizeLinkHandlingMode(this._val('export-link-handling-mode')));
         setStoredExportUiPreference('packTypeMode', normalizePackTypeMode(this._val('export-pack-type-mode')));
@@ -1589,6 +1712,11 @@ class ExportUI {
         cloned.autoExportOnSave = true;
         ACTIVE_EXPORT_AUTO_SETTINGS = cloned;
         ACTIVE_EXPORT_AUTO_PENDING = false;
+        ExportUI._dispatchProcessEvent('active-start', {
+            boardId: cloned.boardId,
+            boardName: cloned.boardId,
+            outputPath: cloned.exportPath || '',
+        });
     }
 
     static getActiveAutoExportSettings(boardId) {
@@ -1600,9 +1728,20 @@ class ExportUI {
     static clearActiveAutoExport(boardId) {
         if (!ACTIVE_EXPORT_AUTO_SETTINGS) return false;
         if (boardId && ACTIVE_EXPORT_AUTO_SETTINGS.boardId !== boardId) return false;
+        var stoppedBoardId = ACTIVE_EXPORT_AUTO_SETTINGS.boardId;
         ACTIVE_EXPORT_AUTO_SETTINGS = null;
         ACTIVE_EXPORT_AUTO_PENDING = false;
+        ExportUI._dispatchProcessEvent('active-stop', { boardId: stoppedBoardId });
         return true;
+    }
+
+    static _dispatchProcessEvent(kind, detail) {
+        if (typeof window === 'undefined' || !window || typeof window.dispatchEvent !== 'function') return;
+        try {
+            window.dispatchEvent(new CustomEvent('lexera-export-process-changed', {
+                detail: Object.assign({ kind: kind }, detail || {}),
+            }));
+        } catch (e) { /* older browsers / jsdom — ignore */ }
     }
 
     static async handleBoardSaved(boardId) {

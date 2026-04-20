@@ -218,7 +218,6 @@
           </div>
           <div class="export-checkboxes">
             <label class="export-checkbox"><input type="checkbox" id="export-auto-export-on-save"> Auto-export on save</label>
-            <label class="export-checkbox"><input type="checkbox" id="export-strip-includes"> Merge includes into main file</label>
           </div>
         </div>
 
@@ -385,6 +384,23 @@
               <input id="export-pack-file-size-limit" class="export-input" type="number" min="1" max="1000" step="1" value="100">
             </div>
           </div>
+          <div class="export-field">
+            <label class="export-label" for="export-include-handling">Include handling</label>
+            <select id="export-include-handling" class="export-input">
+              <option value="keep" selected>Keep as-is</option>
+              <option value="strip">Strip includes</option>
+              <option value="merge">Merge includes</option>
+            </select>
+          </div>
+          <div id="export-merge-depth-field" class="export-field" hidden>
+            <label class="export-label" for="export-merge-includes-max-depth">Merge max depth</label>
+            <input id="export-merge-includes-max-depth" class="export-input" type="number" min="1" max="50" step="1" value="10">
+            <div class="export-field-help">Safety cap for recursive include expansion (default 10).</div>
+          </div>
+          <div id="export-embed-media-field" class="export-checkboxes">
+            <label class="export-checkbox"><input type="checkbox" id="export-embed-media"> Embed media into output file</label>
+            <div class="export-field-help">Images / video / audio become base64 data URIs. Off by default.</div>
+          </div>
         </div>
 
       </div>
@@ -498,6 +514,7 @@
   <script src="export/exportToolStatus.js"></script>
   <script src="export/archiveFormatting.js"></script>
   <script src="export/exportUI.js"></script>
+  <script src="export/exportProcesses.js"></script>
   <script src="wysiwyg-editor.js"></script>
   <script src="themes.js"></script>
   <script src="visualThemes.js"></script>

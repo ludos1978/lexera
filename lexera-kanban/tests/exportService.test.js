@@ -517,7 +517,7 @@ describe('_output', () => {
       path: '/tmp/out/my-board/my-board.md',
       content: '# Content',
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       success: true,
       exportedPath: '/tmp/out/my-board/my-board.md',
       message: 'Markdown file saved',

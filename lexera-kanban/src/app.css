@@ -5425,6 +5425,109 @@ select.dialog-input option,
 }
 .notification-action:hover { background: var(--bg-primary); }
 
+/* ── Export processes button (Phase 3B) ─────────────────────────────── */
+.lexera-export-processes {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 210;
+  display: none;
+  font-size: var(--font-size-s);
+  color: var(--text-primary);
+}
+.lexera-export-processes.is-visible { display: block; }
+.lexera-export-processes-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  box-shadow: var(--shadow-floating);
+}
+.lexera-export-processes.is-active .lexera-export-processes-btn {
+  border-color: var(--accent);
+}
+.lexera-export-processes-icon { font-weight: bold; }
+.lexera-export-processes.is-active .lexera-export-processes-icon {
+  animation: lexera-export-processes-spin 1.5s linear infinite;
+  display: inline-block;
+}
+@keyframes lexera-export-processes-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.lexera-export-processes-count {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 4px;
+  text-align: center;
+  background: var(--accent);
+  color: var(--bg-primary);
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 14px;
+}
+.lexera-export-processes-count[hidden] { display: none !important; }
+.lexera-export-processes-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 320px;
+  max-width: 420px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-floating);
+  padding: var(--space-3);
+}
+.lexera-export-processes-popover[hidden] { display: none; }
+.lexera-export-processes-section { margin-bottom: var(--space-3); }
+.lexera-export-processes-section:last-child { margin-bottom: 0; }
+.lexera-export-processes-section-title {
+  font-weight: bold;
+  margin-bottom: var(--space-2);
+  opacity: 0.8;
+  font-size: var(--font-size-s);
+}
+.lexera-export-processes-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.lexera-export-processes-item:first-child { border-top: none; }
+.lexera-export-processes-item-main { flex: 1; min-width: 0; }
+.lexera-export-processes-item-label { font-weight: 500; }
+.lexera-export-processes-item-meta { opacity: 0.7; font-size: var(--font-size-xs); }
+.lexera-export-processes-item-path {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
+  word-break: break-all;
+}
+.lexera-export-processes-item-actions { display: flex; flex-direction: column; gap: 4px; }
+.lexera-export-processes-item-actions button {
+  padding: 2px 8px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+}
+.lexera-export-processes-item-actions button:hover { background: var(--bg-primary); }
+.lexera-export-processes-item-report { margin-top: 4px; font-size: var(--font-size-xs); }
+.lexera-export-processes-item-report summary { cursor: pointer; opacity: 0.8; }
+.lexera-export-processes-item-report ul { margin: 4px 0 0 16px; padding: 0; }
+.lexera-export-processes-item.is-failed .lexera-export-processes-item-label { color: var(--error); }
+.lexera-export-processes-empty { opacity: 0.7; padding: 8px 4px; }
+
 /* Card editing */
 .card.editing-overlay { border-color: var(--accent); }
 .card.editing .card-content {

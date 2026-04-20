@@ -585,6 +585,8 @@ class ExportService {
             if (prepared && Array.isArray(prepared.createdFiles)) {
                 Array.prototype.push.apply(createdFiles, prepared.createdFiles);
             }
+            const preparedReportEntries = prepared && prepared.reportEntries ? prepared.reportEntries : null;
+            const preparedReadmePath = prepared && prepared.readmePath ? prepared.readmePath : null;
 
             throwIfAborted();
             exportLexeraLog('info', '[ExportService] Phase 3: writing markdown to ' + mdPath);
@@ -626,6 +628,8 @@ class ExportService {
                         success: watchResult.success,
                         exportedPath: mdPath,
                         message: watchResult.message || 'Marp watch started — browser preview should open shortly',
+                        reportEntries: preparedReportEntries,
+                        readmePath: preparedReadmePath,
                     };
                 }
 
@@ -662,6 +666,8 @@ class ExportService {
                         success: marpResult.success,
                         exportedPath: marpResult.outputPath,
                         message: marpResult.message || 'Marp export completed',
+                        reportEntries: preparedReportEntries,
+                        readmePath: preparedReadmePath,
                     };
                 } catch (marpErr) {
                     const marpMsg = (marpErr && marpErr.message) ? marpErr.message : String(marpErr);
@@ -698,6 +704,8 @@ class ExportService {
                         success: pandocResult.success,
                         exportedPath: pandocResult.outputPath,
                         message: pandocResult.message || 'Pandoc export completed',
+                        reportEntries: preparedReportEntries,
+                        readmePath: preparedReadmePath,
                     };
                 } catch (pandocErr) {
                     const pandocMsg = (pandocErr && pandocErr.message) ? pandocErr.message : String(pandocErr);
@@ -710,7 +718,13 @@ class ExportService {
                 }
             }
 
-            return { success: true, exportedPath: mdPath, message: 'Markdown file saved' };
+            return {
+                success: true,
+                exportedPath: mdPath,
+                message: 'Markdown file saved',
+                reportEntries: preparedReportEntries,
+                readmePath: preparedReadmePath,
+            };
         } catch (err) {
             if (createdFiles.length > 0) {
                 exportLexeraLog('warn', '[ExportService] Cleaning up partial output: ' + createdFiles.join(', '));
@@ -771,6 +785,38 @@ class ExportService {
             }
         }
 
+        // Phase 3: include-handling dropdown. Backend already strips directives
+        // when stripIncludes=true (it stays false for 'merge' and 'keep').
+        // For 'merge' we expand the directive contents here, inlining nested
+        // markdown files. The report collects skipped/embedded entries for
+        // both Readme.txt and the processes popup.
+        const reportEntries = { skipped: [], embedded: [] };
+        const includeHandling = ExportService.normalizeIncludeHandling(options.includeHandling);
+        if (includeHandling === 'merge') {
+            const depthCap = ExportService.normalizeMergeIncludesMaxDepth(options.mergeIncludesMaxDepth);
+            const mergeResult = await ExportService.mergeIncludesInline(nextContent, sourceFilePath, depthCap, reportEntries);
+            nextContent = mergeResult.content;
+        }
+
+        // Embed media as data URIs, opt-in via the checkbox in the Output
+        // section. Runs BEFORE packing so inlined files aren't also copied.
+        // Per-format gating inside the helper keeps the checkbox a no-op for
+        // PDF/PPTX/DOCX/ODT/EPUB where the target format embeds natively.
+        if (options.embedMedia && ExportService.shouldEmbedMediaForFormat(options)) {
+            const sizeLimitBytes = ExportService.normalizePackFileSizeLimit(
+                options.packOptions && options.packOptions.fileSizeLimitMB
+            ) * 1024 * 1024;
+            const outputFormatLabel = ExportService.describeOutputFormat(options);
+            const embedResult = await ExportService.embedMediaAsDataUris(
+                nextContent,
+                sourceFilePath,
+                sizeLimitBytes,
+                outputFormatLabel,
+                reportEntries
+            );
+            nextContent = embedResult.content;
+        }
+
         if (options.packAssets && linkHandlingMode === 'pack-linked') {
             const plan = ExportService.prepareAssetPackingPlan(nextContent, sourceFilePath, exportDir, fileBasename, linkHandlingMode, options.packOptions, packedFolderPrefix);
             if (plan.items.length > 0) {
@@ -783,10 +829,42 @@ class ExportService {
 
         nextContent = ExportService.rewriteLinksForExport(nextContent, sourceFilePath, mdPath, packedFolderPrefix);
 
+        // Write the Readme.txt last so it captures every skip/warning collected
+        // during this run. The file is only written when there's at least one
+        // entry; otherwise we skip the write entirely.
+        const readmePath = await ExportService.writeExportReadme(exportDir, reportEntries);
+        if (readmePath) createdFiles.push(readmePath);
+
         return {
             content: nextContent,
             createdFiles,
+            reportEntries,
+            readmePath,
         };
+    }
+
+    static shouldEmbedMediaForFormat(options) {
+        if (!options) return false;
+        const format = String(options.format || '').trim().toLowerCase();
+        if (format === 'keep' || format === 'kanban') return true;
+        if (format === 'presentation') {
+            const marpFormat = String(options.marpFormat || '').trim().toLowerCase();
+            // Marp PDF/PPTX bake media in already; HTML and markdown flow
+            // through our data-URI rewrite so the user gets self-contained
+            // output without Marp-specific flags.
+            return marpFormat === 'html' || marpFormat === 'markdown' || marpFormat === 'md' || marpFormat === '';
+        }
+        // document (pandoc) formats embed natively — don't pre-rewrite.
+        return false;
+    }
+
+    static describeOutputFormat(options) {
+        const format = String(options && options.format || '').trim().toLowerCase();
+        if (format === 'presentation') {
+            const marpFormat = String(options && options.marpFormat || 'html').trim().toLowerCase();
+            return 'marp-' + (marpFormat || 'html');
+        }
+        return format || 'markdown';
     }
 
     static shouldRenderFileEmbedsForExport(options) {
@@ -849,6 +927,7 @@ class ExportService {
         if (!boardDir || ExportService.normalizePathKey(sourceDir) !== ExportService.normalizePathKey(boardDir)) {
             const sourceDirBase = ExportService.basename(sourceDir);
             if (!sourceDirBase) return '';
+            if (/-Media$/i.test(sourceDirBase)) return sourceDir + '/' + cacheFolderName;
             return sourceDir + '/' + sourceDirBase + '-Media/' + cacheFolderName;
         }
         const boardBase = ExportService.basenameWithoutExtension(boardFilePath);
@@ -1192,6 +1271,295 @@ class ExportService {
             content: ExportService.restoreCodeBlocks(output, protectedCode.blocks),
             createdFiles: createdFiles,
         };
+    }
+
+    // ── Phase 3: include-merging, media-embedding, skip report ──────────
+
+    // Expand `!!!include(path)!!!` directives recursively, inlining the
+    // referenced markdown. Include directives live in card-header content
+    // (AGENT-claude.md §Tag Scoping) — we scan the full output content and
+    // replace each match with the resolved file body. Depth is capped
+    // because nested inclusion is possible in principle; visited-set
+    // guards against cycles.
+    static async mergeIncludesInline(content, sourceFilePath, maxDepth, reportEntries) {
+        if (!exportCanUseTauri() || !content) return { content: content || '' };
+        const depthCap = maxDepth > 0 ? maxDepth : 10;
+        const visited = Object.create(null);
+        const entries = reportEntries || { skipped: [], embedded: [] };
+        if (!entries.skipped) entries.skipped = [];
+        return { content: await ExportService._expandIncludes(content, sourceFilePath, depthCap, 0, visited, entries) };
+    }
+
+    static async _expandIncludes(content, baseFilePath, depthCap, depth, visited, report) {
+        if (!content || depth >= depthCap) return content;
+        const pattern = /!!!include\(([^)]+)\)!!!/g;
+        let cursor = 0;
+        let out = '';
+        let match;
+        const baseDir = ExportService.dirnamePath(baseFilePath);
+        while ((match = pattern.exec(content)) !== null) {
+            out += content.slice(cursor, match.index);
+            const rawPath = String(match[1] || '').trim();
+            const resolved = ExportService.isAbsolutePath(rawPath)
+                ? ExportService.normalizePath(rawPath)
+                : ExportService.resolvePath(baseDir, rawPath);
+            const key = ExportService.normalizePathKey(resolved);
+            if (visited[key]) {
+                report.skipped.push({
+                    path: resolved,
+                    category: 'include',
+                    mimeType: 'text/markdown',
+                    sizeBytes: 0,
+                    reason: 'cycle detected — include already expanded in this chain',
+                });
+                out += match[0];
+                cursor = match.index + match[0].length;
+                continue;
+            }
+            let fileContent = null;
+            try {
+                fileContent = await exportInvokeTauri('read_text_file', { path: resolved });
+            } catch (err) {
+                report.skipped.push({
+                    path: resolved,
+                    category: 'include',
+                    mimeType: 'text/markdown',
+                    sizeBytes: 0,
+                    reason: 'read failed: ' + (err && err.message ? err.message : String(err)),
+                });
+                out += match[0];
+                cursor = match.index + match[0].length;
+                continue;
+            }
+            if (typeof fileContent !== 'string') {
+                report.skipped.push({
+                    path: resolved,
+                    category: 'include',
+                    mimeType: 'text/markdown',
+                    sizeBytes: 0,
+                    reason: 'include file returned non-string content',
+                });
+                out += match[0];
+                cursor = match.index + match[0].length;
+                continue;
+            }
+            visited[key] = true;
+            const expanded = await ExportService._expandIncludes(fileContent, resolved, depthCap, depth + 1, visited, report);
+            delete visited[key];
+            out += expanded;
+            cursor = match.index + match[0].length;
+        }
+        out += content.slice(cursor);
+        return out;
+    }
+
+    // Rewrite `![alt](path)` image/video/audio references to base64 data URIs
+    // when `embedMedia` is on and the target format benefits from inlining
+    // (see shouldEmbedMediaForFormat). Per-file size cap reuses the packing
+    // limit so there's one ceiling across the two features. Oversize files
+    // keep their original link and are logged as skips; video/audio that
+    // *do* embed are logged as "embedded" entries so the report can warn
+    // about output-file inflation.
+    static async embedMediaAsDataUris(content, sourceFilePath, sizeLimitBytes, outputFormatLabel, reportEntries) {
+        if (!exportCanUseTauri() || !content) return { content: content || '' };
+        const entries = reportEntries || { skipped: [], embedded: [] };
+        if (!entries.skipped) entries.skipped = [];
+        if (!entries.embedded) entries.embedded = [];
+
+        const protectedCode = ExportService.protectCodeBlocks(content);
+        const imagePattern = /!\[([^\]]*)\]\(([^)\s"]+)(?:\s+"([^"]*)")?\)(\{[^}]+\})?/g;
+        const baseDir = ExportService.dirnamePath(sourceFilePath);
+        const jobs = [];
+        const matches = [];
+        const jobIndex = Object.create(null);
+        let match;
+
+        while ((match = imagePattern.exec(protectedCode.content)) !== null) {
+            const raw = match[0];
+            const rawSrc = match[2] || '';
+            if (!rawSrc || ExportService.isUrl(rawSrc) || rawSrc.indexOf('data:') === 0) continue;
+            const pathMeta = ExportService.parseLinkPath(rawSrc);
+            const filePath = pathMeta.pathPart || '';
+            if (!filePath) continue;
+            const absolute = ExportService.isAbsolutePath(filePath)
+                ? ExportService.normalizePath(filePath)
+                : ExportService.resolvePath(baseDir, filePath);
+            const category = ExportService.embedCategoryForPath(absolute);
+            if (!category) continue;
+            const jobKey = ExportService.normalizePathKey(absolute);
+            if (!(jobKey in jobIndex)) {
+                jobIndex[jobKey] = jobs.length;
+                jobs.push({ key: jobKey, absolute: absolute, category: category });
+            }
+            matches.push({ index: match.index, raw: raw, alt: match[1] || '', title: match[3] || '', attrs: match[4] || '', jobKey: jobKey });
+        }
+
+        if (!jobs.length) {
+            return { content: ExportService.restoreCodeBlocks(protectedCode.content, protectedCode.blocks) };
+        }
+
+        // Fan-out: each file is read in parallel. `read_file_as_data_uri`
+        // enforces `max_bytes` server-side so oversize files never land in
+        // the frontend heap.
+        const results = await Promise.all(jobs.map(function (job) {
+            return exportInvokeTauri('read_file_as_data_uri', { path: job.absolute, maxBytes: sizeLimitBytes })
+                .then(function (r) { return { job: job, result: r, error: null }; })
+                .catch(function (err) { return { job: job, result: null, error: err }; });
+        }));
+        const dataUriByKey = Object.create(null);
+        for (const entry of results) {
+            const job = entry.job;
+            if (entry.error) {
+                entries.skipped.push({
+                    path: job.absolute,
+                    category: job.category,
+                    mimeType: 'unknown',
+                    sizeBytes: 0,
+                    reason: 'read_file_as_data_uri failed: ' + (entry.error && entry.error.message ? entry.error.message : String(entry.error)),
+                });
+                continue;
+            }
+            const r = entry.result || {};
+            if (r.skipped || !r.dataUri) {
+                entries.skipped.push({
+                    path: job.absolute,
+                    category: job.category,
+                    mimeType: r.mimeType || 'unknown',
+                    sizeBytes: r.sizeBytes || 0,
+                    reason: r.skippedReason || 'oversize',
+                    sizeLimitBytes: sizeLimitBytes,
+                });
+                continue;
+            }
+            dataUriByKey[job.key] = r.dataUri;
+            // Video/audio embedded → size inflates ~33%. Log so the report
+            // flags this for the user; images don't need a warning.
+            if (job.category === 'video' || job.category === 'audio') {
+                entries.embedded.push({
+                    path: job.absolute,
+                    category: job.category,
+                    mimeType: r.mimeType || '',
+                    sizeBytes: r.sizeBytes || 0,
+                    outputFormat: outputFormatLabel || 'output',
+                });
+            }
+        }
+
+        // Rewrite matches in order; keep original link when the job was
+        // skipped so the file-reference fallback still works.
+        let cursor = 0;
+        let output = '';
+        for (const m of matches) {
+            output += protectedCode.content.slice(cursor, m.index);
+            const dataUri = dataUriByKey[m.jobKey];
+            if (dataUri) {
+                output += '![' + m.alt + '](' + dataUri + (m.title ? ' "' + m.title + '"' : '') + ')' + (m.attrs || '');
+            } else {
+                output += m.raw;
+            }
+            cursor = m.index + m.raw.length;
+        }
+        output += protectedCode.content.slice(cursor);
+        return { content: ExportService.restoreCodeBlocks(output, protectedCode.blocks) };
+    }
+
+    static embedCategoryForPath(filePath) {
+        const ext = ExportService.getFileExtension(filePath).toLowerCase();
+        if (!ext) return '';
+        if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico', '.avif', '.heic', '.heif'].indexOf(ext) >= 0) return 'image';
+        if (['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'].indexOf(ext) >= 0) return 'video';
+        if (['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'].indexOf(ext) >= 0) return 'audio';
+        return '';
+    }
+
+    // Write the export skip/warning report to `{exportDir}/Readme.txt`.
+    // The file is only created when at least one entry exists. Entries are
+    // grouped by category (image/video/audio/include) so users can spot
+    // missing or oversize files at a glance.
+    static async writeExportReadme(exportDir, reportEntries) {
+        if (!exportCanUseTauri() || !exportDir || !reportEntries) return null;
+        const skipped = Array.isArray(reportEntries.skipped) ? reportEntries.skipped : [];
+        const embedded = Array.isArray(reportEntries.embedded) ? reportEntries.embedded : [];
+        if (!skipped.length && !embedded.length) return null;
+
+        const lines = [];
+        lines.push('# Export report');
+        lines.push('');
+        const now = new Date();
+        const stamp = now.getFullYear() + '-'
+            + String(now.getMonth() + 1).padStart(2, '0') + '-'
+            + String(now.getDate()).padStart(2, '0') + ' '
+            + String(now.getHours()).padStart(2, '0') + ':'
+            + String(now.getMinutes()).padStart(2, '0');
+        lines.push('Generated: ' + stamp);
+        lines.push('');
+
+        function groupByCategory(list) {
+            const by = Object.create(null);
+            for (const item of list) {
+                const cat = item.category || 'other';
+                if (!by[cat]) by[cat] = [];
+                by[cat].push(item);
+            }
+            return by;
+        }
+
+        function categoryHeading(cat) {
+            if (cat === 'image') return 'Images';
+            if (cat === 'video') return 'Videos';
+            if (cat === 'audio') return 'Audio';
+            if (cat === 'include') return 'Includes';
+            return 'Other';
+        }
+
+        function formatBytes(n) {
+            if (!n || n < 1024) return (n || 0) + ' B';
+            if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+            if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+            return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        }
+
+        if (skipped.length) {
+            lines.push('## Skipped (kept original link)');
+            lines.push('');
+            const by = groupByCategory(skipped);
+            const cats = Object.keys(by).sort();
+            for (const cat of cats) {
+                lines.push('### ' + categoryHeading(cat));
+                for (const item of by[cat]) {
+                    const size = formatBytes(item.sizeBytes || 0);
+                    const limit = item.sizeLimitBytes ? formatBytes(item.sizeLimitBytes) : '';
+                    const tail = limit ? (size + ' > ' + limit) : (item.reason || size);
+                    lines.push(item.path + '  — ' + tail);
+                }
+                lines.push('');
+            }
+        }
+
+        if (embedded.length) {
+            lines.push('## Embedded media (inflated output size)');
+            lines.push('');
+            const by = groupByCategory(embedded);
+            const cats = Object.keys(by).sort();
+            for (const cat of cats) {
+                lines.push('### ' + categoryHeading(cat));
+                for (const item of by[cat]) {
+                    const size = formatBytes(item.sizeBytes || 0);
+                    const inflated = formatBytes(Math.round((item.sizeBytes || 0) * 1.33));
+                    lines.push(item.path + '  — ' + size + ' embedded in ' + (item.outputFormat || 'output') + ' (~' + inflated + ' as base64)');
+                }
+                lines.push('');
+            }
+        }
+
+        const readmePath = ExportService.joinPath(exportDir, 'Readme.txt');
+        try {
+            await exportInvokeTauri('write_export_file', { path: readmePath, content: lines.join('\n') });
+        } catch (err) {
+            exportLexeraLog('warn', '[ExportService] Failed to write export Readme.txt: ' + (err && err.message ? err.message : String(err)));
+            return null;
+        }
+        return readmePath;
     }
 
     static prepareAssetPackingPlan(content, sourceFilePath, exportDir, fileBasename, linkHandlingMode, packOptions, skipPathPrefix) {
@@ -1579,6 +1947,21 @@ class ExportService {
         const normalized = String(value || '').trim().toLowerCase();
         if (normalized === 'edge' || normalized === 'firefox' || normalized === 'auto') return normalized;
         return 'chrome';
+    }
+
+    static normalizeIncludeHandling(value) {
+        const normalized = String(value == null ? '' : value).trim().toLowerCase();
+        if (normalized === 'strip' || normalized === 'merge' || normalized === 'keep') return normalized;
+        if (normalized === 'true') return 'strip';
+        if (normalized === 'false') return 'keep';
+        return 'keep';
+    }
+
+    static normalizeMergeIncludesMaxDepth(value) {
+        const parsed = parseInt(String(value == null ? '' : value).trim(), 10);
+        if (!isFinite(parsed) || parsed < 1) return 10;
+        if (parsed > 50) return 50;
+        return parsed;
     }
 
     // Phase 2 contract: two modes only. Legacy values migrate transparently

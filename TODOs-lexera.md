@@ -14,7 +14,12 @@ Keep this file structured and clean:
 
 ### Unsorted (leave this header here!)
 
-- [ ] Q1: a folder is created for the export, the main file is placed in this directory, a _Rendered folder is created where the media files are placed (if pack linked files is selected). othervise the paths are linking directly to the cache files.
+- [x] if we can add the mergeIncludes depth cap to the plugin settings put it there
+after the user exported the board, it might 
+- eighter be an active export: the automatically-updating must be shown in the active processes. this is displayed in a button in the top right of the board view. it must show that it's an active process and it can be stopped there (stop re-exporting the changes the user does on saving it).
+- alternatively be an file that is only exported once (pdf) : a popup in the top right corner should show that it created a new output file show the path and allow the user to open the file, open the file explorer at the file position. this dialogue goes away within 10 seconds, but the process button allows seeing it again.
+
+- [x] Q1: a folder is created for the export, the main file is placed in this directory, a _Rendered folder is created where the media files are placed (if pack linked files is selected). othervise the paths are linking directly to the cache files.
 Q2: for packed files the path should allways be relative. for files that are linking the original or the cached files we usually also use relative mode. 
 
 we might modify the export "Link & asset handling" settings:

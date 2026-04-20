@@ -79,6 +79,15 @@ describe('buildDiagramCacheDir / buildDiagramCacheFileName', () => {
     expect(dir).toBe('/assets/assets-Media/excalidraw-cache');
   });
 
+  it('reuses an existing media directory for source-local cache files', () => {
+    const dir = ES.buildDiagramCacheDir(
+      '/src/board.md',
+      '/src/board-Media/diagram.excalidraw',
+      'excalidraw-cache'
+    );
+    expect(dir).toBe('/src/board-Media/excalidraw-cache');
+  });
+
   it('embeds mtime and extension in the cache filename', () => {
     const name = ES.buildDiagramCacheFileName('/src/d.drawio', 1_700_000_000_000, 'svg', '');
     expect(name).toMatch(/^d-[A-Za-z0-9]{8}-1700000000000\.svg$/);
