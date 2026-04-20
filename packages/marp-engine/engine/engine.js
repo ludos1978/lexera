@@ -42,16 +42,40 @@ const yamlStrippingIncludePlugin = (md, options = {}) => {
           resolvedPath = path.resolve(currentDir, includePath);
         }
 
-        // Check for circular includes
-        if (processedIncludes.has(resolvedPath)) {
-          console.warn(`[Engine] Circular include detected: ${resolvedPath}`);
-          return match; // Return original to avoid infinite loop
+        // Fallback: if the absolute path doesn't exist (common when a board
+        // was authored in another repo and later copied/renamed, leaving
+        // hard-coded paths that no longer match), try progressively shorter
+        // trailing segments of the include path joined onto currentDir. The
+        // first match wins. E.g. includePath=/OLD/tests/kanban/foo.md
+        // + currentDir=/NEW/tests/kanban  →  /NEW/tests/kanban/foo.md via
+        // the trailing "foo.md" fallback.
+        if (!fs.existsSync(resolvedPath) && path.isAbsolute(includePath)) {
+          const segments = includePath.split(path.sep).filter(Boolean);
+          for (let s = segments.length; s >= 1; s--) {
+            const suffix = segments.slice(segments.length - s).join(path.sep);
+            const candidate = path.resolve(currentDir, suffix);
+            if (fs.existsSync(candidate)) {
+              console.warn(`[Engine] Include path rescued: ${includePath} → ${candidate}`);
+              resolvedPath = candidate;
+              break;
+            }
+          }
         }
 
-        // Check if file exists
+        // Check for circular includes. Replace with a comment so the next
+        // plugin (markdown-it-include) doesn't re-trigger the include.
+        if (processedIncludes.has(resolvedPath)) {
+          console.warn(`[Engine] Circular include detected: ${resolvedPath}`);
+          return `<!-- lexera-include-circular: ${resolvedPath.replace(/-->/g, '--&gt;')} -->`;
+        }
+
+        // Check if file exists. If not, replace the include syntax with an
+        // HTML comment so markdown-it-include (registered later in the
+        // plugin chain) never sees it — otherwise it throws a hard error
+        // that aborts the whole Marp render.
         if (!fs.existsSync(resolvedPath)) {
           console.warn(`[Engine] Include file not found: ${resolvedPath}`);
-          return match; // Return original, markdown-it-include will handle the error
+          return `<!-- lexera-include-missing: ${resolvedPath.replace(/-->/g, '--&gt;')} -->`;
         }
 
         processedIncludes.add(resolvedPath);
@@ -74,7 +98,10 @@ const yamlStrippingIncludePlugin = (md, options = {}) => {
           return fileContent;
         } catch (err) {
           console.error(`[Engine] Error reading include file ${resolvedPath}:`, err);
-          return match; // Return original on error
+          // Replace with a comment so markdown-it-include can't re-throw.
+          const safePath = resolvedPath.replace(/-->/g, '--&gt;');
+          const safeErr = String(err && err.message ? err.message : err).replace(/-->/g, '--&gt;');
+          return `<!-- lexera-include-error: ${safePath} (${safeErr}) -->`;
         }
       });
     };

@@ -6955,6 +6955,61 @@ select.dialog-input option,
   padding: 1px 10px 3px 30px;
   word-break: break-word;
 }
+.test-category {
+  border-bottom: 1px solid var(--border);
+}
+.test-category-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-secondary, transparent);
+  user-select: none;
+}
+.test-category-header:hover {
+  background: var(--bg-hover);
+}
+.test-category-caret {
+  display: inline-block;
+  width: 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 120ms ease;
+}
+.test-category.collapsed .test-category-caret {
+  transform: rotate(-90deg);
+}
+.test-category.collapsed .test-category-body {
+  display: none;
+}
+.test-category-name {
+  flex: 1 1 auto;
+  text-transform: capitalize;
+}
+.test-category-count {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.test-category-count.has-pass {
+  color: var(--success);
+}
+.test-category-count.has-fail {
+  color: var(--error);
+}
+.test-category-run,
+.test-category-clear {
+  padding: 1px 6px;
+  font-size: var(--font-size-xs);
+}
+.test-category-body {
+  display: block;
+  padding: 2px 0;
+}
 
 .shell-settings-panel {
   display: flex;

@@ -355,7 +355,7 @@
     var root = createPanelRoot('shell-settings-panel render-apps-settings-panel lexera-shared-panel lexera-shared-panel-render-apps', 'renderApps', instanceId);
     root.innerHTML =
       '<div class="shell-settings-header">' +
-        '<span class="shell-settings-title">Render Applications</span>' +
+        '<span class="shell-settings-title">Plugin Settings</span>' +
       '</div>' +
       '<div class="shell-settings-body">' +
         '<div class="mgmt-section">' +
@@ -382,6 +382,21 @@
             '<input class="mgmt-field-input lexera-shared-render-apps-mutool" id="render-app-mutool" type="text" placeholder="Auto-detect">' +
             '<span class="render-apps-indicator lexera-shared-render-apps-indicator-mutool" aria-live="polite"></span>' +
           '</div>' +
+        '</div>' +
+        '<div class="mgmt-section">' +
+          '<div class="mgmt-section-title">Marp Plugin</div>' +
+          '<p class="render-apps-description">Override the bundled Marp engine with a custom <code>engine.js</code>, ' +
+            'and/or point Marp at a folder of custom theme CSS files.</p>' +
+          '<div class="mgmt-settings-grid render-apps-grid">' +
+            '<label for="render-app-marp-engine-path">Custom engine.js</label>' +
+            '<input class="mgmt-field-input lexera-shared-render-apps-marpEnginePath" id="render-app-marp-engine-path" type="text" placeholder="Leave empty to use bundled engine.js">' +
+            '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-marpEnginePath-browse" type="button" title="Browse for a JS file">Browse\u2026</button>' +
+            '<label for="render-app-marp-templates-path">Templates folder</label>' +
+            '<input class="mgmt-field-input lexera-shared-render-apps-marpTemplatesPath" id="render-app-marp-templates-path" type="text" placeholder="Directory containing .css theme templates">' +
+            '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-marpTemplatesPath-browse" type="button" title="Browse for a folder">Browse\u2026</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="mgmt-section">' +
           '<div class="mgmt-settings-actions">' +
             '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-test" type="button" title="Run --version on each tool">Test Version</button>' +
             '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-test-run" type="button" title="Run a minimal end-to-end render with each tool (slower)">Test Run</button>' +
@@ -450,10 +465,15 @@
         '<div class="test-panel-actions">' +
           '<div class="test-panel-action-group test-panel-action-group-run">' +
             '<select class="test-panel-board-select lexera-shared-test-board-select" title="Board to test"></select>' +
-            '<input class="test-panel-filter lexera-shared-test-filter" type="text" placeholder="Filter tests\u2026" title="Filter by test name (substring match)" />' +
+            '<input class="test-panel-filter lexera-shared-test-filter" type="search" placeholder="Search tests or categories\u2026" title="Search by test name or category (substring match)" />' +
+            '<span class="test-panel-control-cluster" aria-label="Category controls">' +
+              '<button class="test-panel-btn lexera-shared-test-expand-all" type="button" title="Expand all categories">Expand All</button>' +
+              '<button class="test-panel-btn lexera-shared-test-collapse-all" type="button" title="Collapse all categories">Collapse All</button>' +
+            '</span>' +
             '<span class="test-panel-control-cluster test-panel-run-controls" aria-label="Run controls">' +
               '<button class="test-panel-btn lexera-shared-test-run-all" type="button">Run All</button>' +
               '<button class="test-panel-btn test-panel-btn-stop lexera-shared-test-stop" type="button">Stop Run</button>' +
+              '<button class="test-panel-btn lexera-shared-test-clear-results" type="button" title="Clear all result indicators, durations, and errors">Clear Results</button>' +
             '</span>' +
             '<span class="test-panel-control-cluster test-panel-restore-controls">' +
               '<label class="test-panel-restore-toggle" title="Pause after each test mutation, before the harness restores the snapshot. This is not app undo or Ctrl+Z.">' +

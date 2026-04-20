@@ -431,7 +431,39 @@ var HiddenItemsDropdown = (function () {
     return normalized;
   }
 
+  // Reach the Tauri IPC bridge. The dropdown can render inside a
+  // workspace-shell iframe whose window has no __TAURI__ globals, so walk
+  // up to window.parent. Same fallback used by renderAppsSettings.
+  function resolveTauriInvoke() {
+    if (typeof window === 'undefined') return null;
+    function candidate(w) {
+      if (!w) return null;
+      if (w.__TAURI_INTERNALS__ && typeof w.__TAURI_INTERNALS__.invoke === 'function') return w.__TAURI_INTERNALS__;
+      if (w.__TAURI__ && w.__TAURI__.core && typeof w.__TAURI__.core.invoke === 'function') return w.__TAURI__.core;
+      return null;
+    }
+    var ipc = candidate(window);
+    if (!ipc) {
+      try { if (window.parent && window.parent !== window) ipc = candidate(window.parent); } catch (e) {}
+    }
+    return ipc;
+  }
+
+  // Read the system clipboard as text. Prefers the Tauri `read_clipboard_text`
+  // command (clipboard-rs under the hood) because `navigator.clipboard.readText`
+  // in Tauri's WKWebView triggers a "paste" permission prompt — bad UX during
+  // a drag-drop that the user already committed to. Falls back to the browser
+  // API for non-Tauri contexts (tests, non-desktop builds).
   async function readClipboardCreationText() {
+    var ipc = resolveTauriInvoke();
+    if (ipc) {
+      try {
+        var text = await ipc.invoke('read_clipboard_text', {});
+        return String(text || '');
+      } catch (err) {
+        _deps.logFrontendIssue('warn', 'header.source.clipboard', 'Tauri clipboard read failed, falling back', err);
+      }
+    }
     if (!navigator.clipboard || !navigator.clipboard.readText) return '';
     try {
       return String(await navigator.clipboard.readText() || '');
@@ -641,8 +673,9 @@ var HiddenItemsDropdown = (function () {
       var file = _deps.createBuiltInNamedFile(bytes, fileName, 'image/png');
       var LexeraApi = window.LexeraApi;
       var uploadResult = await LexeraApi.uploadMedia(activeBoardId, file);
-      if (!uploadResult || !uploadResult.filename) throw new Error('Incoming image upload failed');
-      parts.push('![' + fileName + '](' + uploadResult.filename + ')');
+      var embedTarget = getUploadedMediaEmbedTarget(uploadResult);
+      if (!embedTarget) throw new Error('Incoming image upload failed');
+      parts.push('![' + fileName + '](' + embedTarget + ')');
     }
     return parts.join('\n\n').trim();
   }
@@ -725,7 +758,17 @@ var HiddenItemsDropdown = (function () {
     }
 
     if (descriptor.mode === 'clipboard') {
-      var clipboardText = typeof descriptor.text === 'string' ? descriptor.text : await readClipboardCreationText();
+      // Cached descriptor.text can be an empty string when the clipboard
+      // was empty (or read was denied) at dropdown-build time. Always re-read
+      // at drop time so the content is fresh — the cached value is only used
+      // for the dropdown's subtitle preview.
+      var clipboardText = await readClipboardCreationText();
+      if (!clipboardText || !clipboardText.trim()) {
+        // Clipboard truly empty: the user already committed by dropping, so
+        // create an empty entity instead of aborting with a notification.
+        await _deps.handleCreationAction(entityType, 'empty', context);
+        return true;
+      }
       return insertHeaderSourceText(entityType, clipboardText, context);
     }
 

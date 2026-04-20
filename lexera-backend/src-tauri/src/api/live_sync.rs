@@ -171,12 +171,10 @@ pub fn open_session(
                     board_identity_stats(&normalized, &snapshot_board);
                 log::info!(
                     target: "lexera.live_sync",
-                    "[open_session] normalized_vs_snapshot cards=({}, {}) overlap={} normalized={} snapshot={}",
+                    "[open_session] normalized_vs_snapshot cards=({}, {}) overlap={}",
                     normalized_count,
                     snapshot_count,
-                    overlap,
-                    board_card_summary(&normalized),
-                    board_card_summary(&snapshot_board)
+                    overlap
                 );
                 let visible_equal = boards_match_visible_content(&normalized, &snapshot_board);
                 log::info!(
@@ -317,13 +315,11 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
 
     log::info!(
         target: "lexera.live_sync",
-        "[apply_board] session={} ids_before=({}, {}, overlap={}) incoming={} current={}",
+        "[apply_board] session={} ids_before=({}, {}, overlap={})",
         &session_id[..8],
         incoming_count,
         current_count,
-        overlap_before,
-        board_card_summary(&incoming),
-        board_card_summary(&current_board)
+        overlap_before
     );
 
     if let Err(e) = session.crdt.apply_board(&incoming, &current_board) {
@@ -405,12 +401,11 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
     };
     log::info!(
         target: "lexera.live_sync",
-        "[apply_board] session={} ids_after=({}, {}, overlap_with_incoming={}) crdt_output={} updates_len={}",
+        "[apply_board] session={} ids_after=({}, {}, overlap_with_incoming={}) updates_len={}",
         &session_id[..8],
         next_count,
         incoming_count,
         overlap_after,
-        board_card_summary(&next_board),
         updates.len()
     );
     let vv = match encode_vv(&session.crdt) {
@@ -473,10 +468,9 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
 
     log::info!(
         target: "lexera.live_sync",
-        "[import_updates] session={} bytes={} before={}",
+        "[import_updates] session={} bytes={}",
         &session_id[..8],
-        bytes.len(),
-        board_card_summary(&current_board)
+        bytes.len()
     );
 
     if let Err(error) = session.crdt.import_updates(bytes) {
@@ -555,13 +549,12 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
 
     log::info!(
         target: "lexera.live_sync",
-        "[import_updates] session={} changed={} ids_after=({}, {}, overlap={}) after={}",
+        "[import_updates] session={} changed={} ids_after=({}, {}, overlap={})",
         &session_id[..8],
         changed,
         current_count,
         next_count,
-        overlap_after,
-        board_card_summary(&next_board)
+        overlap_after
     );
 
     session.current_board = next_board.clone();

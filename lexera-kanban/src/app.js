@@ -3882,12 +3882,20 @@ var LexeraDashboard = (function () {
     var resolvedFilePath = await resolveBoardFilePathForExport(activeBoardId);
     var selectionDesc = (initialOptions && initialOptions.selection)
         ? JSON.stringify(initialOptions.selection) : '(full board)';
+    // IMPORTANT: Build the export tree from activeBoardData (what the DOM
+    // renders) rather than fullBoardData. The burger menu's rowIdx/stackIdx
+    // reference the *rendered* (active) board; using fullBoardData here made
+    // indexes misalign when rows/stacks were filtered out of the active view.
+    // Fall back to fullBoardData if activeBoardData isn't populated yet.
+    var treeSource = activeBoardData || fullBoardData || null;
+    var boardDataForExport = treeSource
+        ? Object.assign({}, treeSource, { filePath: resolvedFilePath })
+        : { filePath: resolvedFilePath };
     logFrontendIssue('info', 'export.trigger',
         'Opening export dialog (boardId=' + activeBoardId + ', filePath=' + (resolvedFilePath || '(empty)')
-        + ', selection=' + selectionDesc + ')', null);
-    var boardDataForExport = fullBoardData
-        ? Object.assign({}, fullBoardData, { filePath: resolvedFilePath })
-        : { filePath: resolvedFilePath };
+        + ', selection=' + selectionDesc
+        + ', treeSource=' + (activeBoardData ? 'activeBoardData' : (fullBoardData ? 'fullBoardData' : '(none)'))
+        + ')', null);
     await window._exportUI.init(activeBoardId, boardDataForExport, initialOptions || null);
     window._exportUI.show();
   }

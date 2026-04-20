@@ -606,6 +606,18 @@ pub fn write_keybindings(content: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to write keybindings: {}", e))
 }
 
+/// Read the system clipboard as plain text.
+///
+/// Uses `clipboard-rs` directly rather than `navigator.clipboard.readText()`
+/// so Tauri's WKWebView doesn't pop up a "paste" permission prompt when the
+/// frontend needs the clipboard contents (e.g. during a "card from clipboard"
+/// drag-drop). Returns "" when the clipboard has no text.
+#[tauri::command]
+pub fn read_clipboard_text() -> Result<String, String> {
+    let ctx = CrsContext::new().map_err(|e| format!("Failed to access clipboard: {}", e))?;
+    Ok(ctx.get_text().unwrap_or_default())
+}
+
 #[tauri::command]
 pub fn read_clipboard_image() -> Result<serde_json::Value, String> {
     let ctx = CrsContext::new().map_err(|e| format!("Failed to access clipboard: {}", e))?;

@@ -323,3 +323,7 @@ var LexeraPluginRegistry = (function () {
   api.VALID_KINDS = VALID_KINDS.slice();
   return api;
 })();
+
+if (typeof window !== 'undefined') {
+  window.LexeraPluginRegistry = LexeraPluginRegistry;
+}

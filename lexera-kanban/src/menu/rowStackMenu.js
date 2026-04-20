@@ -810,18 +810,26 @@ var LexeraRowStackMenu = (function () {
     }
     var spec = getBuiltInDiagramTemplateSpec(templateId);
     if (!spec) return null;
-    var suggestedName = spec.fallbackBase + spec.extension;
-    var requestedName = window.prompt('New ' + spec.displayName + ' file name', suggestedName);
-    if (requestedName === null) return null;
-    var fileName = sanitizeBuiltInDiagramFileName(requestedName, spec.extension, spec.fallbackBase);
+    // Auto-generate a unique name (timestamped). We used to prompt via
+    // window.prompt(), but during a drag's pointerup cycle Tauri's WKWebView
+    // would return null silently, making the drop look broken. Users can
+    // rename the file afterwards via the card's embed menu.
+    var uniqueBase = spec.fallbackBase + '-' + Date.now();
+    var fileName = sanitizeBuiltInDiagramFileName(uniqueBase, spec.extension, spec.fallbackBase);
     try {
       var file = createBuiltInNamedFile(spec.content, fileName, spec.mimeType);
       var result = await LexeraApi.uploadMedia(deps.getActiveBoardId(), file);
-      if (!result || !result.filename) {
+      // Backend returns { path: "{boardStem}-Media/filename", filename: "filename" }.
+      // The renderer resolves embeds relative to the board file, so it needs the
+      // path that includes the media folder prefix — a bare filename would point
+      // next to the board file (wrong folder) and the renderer would fall back
+      // to the placeholder text.
+      var embedTarget = (result && (result.path || result.filename)) || '';
+      if (!embedTarget) {
         deps.showNotification('Failed to create ' + spec.displayName + ' file');
         return null;
       }
-      return '![' + fileName + '](' + result.filename + ')';
+      return '![' + fileName + '](' + embedTarget + ')';
     } catch (err) {
       deps.logFrontendIssue('error', 'template.builtin.diagram', 'Failed to create built-in ' + spec.displayName + ' template file', err);
       deps.showNotification('Failed to create ' + spec.displayName + ' file');

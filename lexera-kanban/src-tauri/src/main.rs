@@ -408,6 +408,7 @@ fn main() {
             commands::read_keybindings,
             commands::write_keybindings,
             commands::read_clipboard_image,
+            commands::read_clipboard_text,
             commands::show_context_menu,
             commands::toggle_devtools,
             commands::set_menu_check_state,

@@ -127,7 +127,14 @@ describe('header creation actions', () => {
   it('routes built-in file templates through the generic content insertion path for every entity type', async () => {
     const api = {
       request: vi.fn(() => Promise.resolve()),
-      uploadMedia: vi.fn(async (_boardId, file) => ({ filename: 'media/' + file.name }))
+      // Matches the real backend response: `path` is the board-relative URL
+      // that the renderer resolves (`{boardStem}-Media/<filename>`), and
+      // `filename` is just the basename. The template flow must embed `path`
+      // so the renderer can actually locate the uploaded file.
+      uploadMedia: vi.fn(async (_boardId, file) => ({
+        path: 'board-Media/' + file.name,
+        filename: file.name
+      }))
     };
     const prompt = vi.fn(() => 'diagram.excalidraw');
     const RowStackMenu = createMenu({ api, prompt });
@@ -159,15 +166,21 @@ describe('header creation actions', () => {
     await RowStackMenu.handleCreationAction('column', 'template:__builtin__:diagram:excalidraw', { rowIdx: 0, stackIdx: 0, atColIdx: 1 });
     await RowStackMenu.handleCreationAction('card', 'template:__builtin__:diagram:excalidraw', { rowIndex: 0, stackIndex: 0, insertIdx: 0, insertMode: 'full', indexMode: 'display' });
 
-    const embed = '![diagram.excalidraw](media/diagram.excalidraw)';
-    expect(prompt).toHaveBeenCalledTimes(4);
+    // Built-in diagram templates auto-generate a timestamped filename so the
+    // drop works without blocking on window.prompt (Tauri's WKWebView returns
+    // null from prompt() during pointerup, which silently dropped the flow).
+    expect(prompt).not.toHaveBeenCalled();
     expect(api.uploadMedia).toHaveBeenCalledTimes(4);
     expect(fullBoardData.rows).toHaveLength(2);
-    expect(fullBoardData.rows[1].stacks[0].columns[0].cards[0].content).toBe(embed);
+    // The embed URL must be the `path` from uploadMedia (board-Media/<name>),
+    // not the bare filename — otherwise the renderer can't locate the file
+    // and falls back to the "preview is rendered through…" placeholder.
+    const embedPattern = /^!\[diagram-\d+\.excalidraw\]\(board-Media\/diagram-\d+\.excalidraw\)$/;
+    expect(fullBoardData.rows[1].stacks[0].columns[0].cards[0].content).toMatch(embedPattern);
     expect(fullBoardData.rows[0].stacks).toHaveLength(2);
-    expect(fullBoardData.rows[0].stacks[1].columns[0].cards[0].content).toBe(embed);
+    expect(fullBoardData.rows[0].stacks[1].columns[0].cards[0].content).toMatch(embedPattern);
     expect(fullBoardData.rows[0].stacks[0].columns).toHaveLength(2);
-    expect(fullBoardData.rows[0].stacks[0].columns[1].cards[0].content).toBe(embed);
+    expect(fullBoardData.rows[0].stacks[0].columns[1].cards[0].content).toMatch(embedPattern);
     expect(deps.addCardToActiveBoard).toHaveBeenCalledWith(
       expect.objectContaining({
         rowIndex: 0,
@@ -177,9 +190,58 @@ describe('header creation actions', () => {
         insertMode: 'full',
         indexMode: 'display'
       }),
-      embed
+      expect.stringMatching(embedPattern)
     );
     expect(deps.showNotification).not.toHaveBeenCalledWith('Built-in diagram templates are card-only');
+  });
+
+  it('embeds the media-folder path (not just filename) so the renderer can locate the uploaded file', async () => {
+    // Regression: the built-in diagram flow used to embed `result.filename`
+    // directly. The backend stores files under `{boardStem}-Media/` and
+    // returns `{ path: "<stem>-Media/<name>", filename: "<name>" }`; without
+    // the folder prefix the renderer can't find the file and the card shows
+    // the "preview is rendered through the integrated export worker" stub.
+    const api = {
+      request: vi.fn(() => Promise.resolve()),
+      uploadMedia: vi.fn(async (_boardId, file) => ({
+        path: 'myboard-Media/' + file.name,
+        filename: file.name
+      }))
+    };
+    const RowStackMenu = createMenu({ api });
+    const deps = createBaseDeps();
+    RowStackMenu.init(deps);
+
+    await RowStackMenu.handleCreationAction(
+      'card',
+      'template:__builtin__:diagram:drawio',
+      { rowIndex: 0, stackIndex: 0, insertIdx: 0, insertMode: 'full', indexMode: 'display' }
+    );
+
+    expect(api.uploadMedia).toHaveBeenCalledTimes(1);
+    const callArg = deps.addCardToActiveBoard.mock.calls[0][1];
+    expect(callArg).toMatch(/^!\[diagram-\d+\.drawio\]\(myboard-Media\/diagram-\d+\.drawio\)$/);
+    // Must not fall back to the bare filename when `path` is provided.
+    expect(callArg).not.toMatch(/\]\(diagram-\d+\.drawio\)$/);
+  });
+
+  it('falls back to filename when uploadMedia omits path', async () => {
+    const api = {
+      request: vi.fn(() => Promise.resolve()),
+      uploadMedia: vi.fn(async (_boardId, file) => ({ filename: file.name }))
+    };
+    const RowStackMenu = createMenu({ api });
+    const deps = createBaseDeps();
+    RowStackMenu.init(deps);
+
+    await RowStackMenu.handleCreationAction(
+      'card',
+      'template:__builtin__:diagram:excalidraw',
+      { rowIndex: 0, stackIndex: 0, insertIdx: 0, insertMode: 'full', indexMode: 'display' }
+    );
+
+    const callArg = deps.addCardToActiveBoard.mock.calls[0][1];
+    expect(callArg).toMatch(/^!\[diagram-\d+\.excalidraw\]\(diagram-\d+\.excalidraw\)$/);
   });
 
   // ── Built-in draw.io and excalidraw drag sources must create empty boards ──

@@ -101,3 +101,72 @@ describe('LexeraFileFormatHelpers.buildExportConfig', () => {
     expect('cacheFolderName' in cfg).toBe(false);
   });
 });
+
+describe('LexeraFileFormatHelpers.makeRenderFile', () => {
+  // makeRenderFile returns a closure that looks up window.LexeraExportTauriInvoke
+  // at call time. Tests build a fake window per-scenario so we can exercise
+  // both the happy path and the missing-invoker rejection.
+  function loadWithWindow(fakeWindow) {
+    return loadIIFE('plugins/formats/fileFormatHelpers.js', 'LexeraFileFormatHelpers', {
+      window: fakeWindow || {}
+    });
+  }
+
+  it('returns a function that carries the given pluginId through to the invoker', async () => {
+    const calls = [];
+    const invoke = (cmd, args) => { calls.push({ cmd, args }); return Promise.resolve({ success: true }); };
+    const H = loadWithWindow({ LexeraExportTauriInvoke: { invoke } });
+    const renderFile = H.makeRenderFile('xlsx');
+    expect(typeof renderFile).toBe('function');
+    await renderFile({ sourcePath: '/a.xlsx', targetPath: '/b.png', pageNumber: 2, outputFormat: 'png' });
+    expect(calls.length).toBe(1);
+    expect(calls[0].cmd).toBe('render_embedded_file');
+    expect(calls[0].args.opts.pluginId).toBe('xlsx');
+  });
+
+  it('rejects when sourcePath is missing', async () => {
+    const invoke = vi.fn().mockResolvedValue({ success: true });
+    const H = loadWithWindow({ LexeraExportTauriInvoke: { invoke } });
+    const renderFile = H.makeRenderFile('drawio');
+    await expect(renderFile({ targetPath: '/out.png' })).rejects.toThrow(/sourcePath and targetPath required/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('rejects when targetPath is missing', async () => {
+    const invoke = vi.fn().mockResolvedValue({ success: true });
+    const H = loadWithWindow({ LexeraExportTauriInvoke: { invoke } });
+    const renderFile = H.makeRenderFile('drawio');
+    await expect(renderFile({ sourcePath: '/a.drawio' })).rejects.toThrow(/sourcePath and targetPath required/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('normalizes pageNumber (undefined → 1, negative → 1, string → number, good → preserved)', async () => {
+    const calls = [];
+    const invoke = (cmd, args) => { calls.push(args); return Promise.resolve({ success: true }); };
+    const H = loadWithWindow({ LexeraExportTauriInvoke: { invoke } });
+    const renderFile = H.makeRenderFile('xlsx');
+    const baseOpts = { sourcePath: '/a.xlsx', targetPath: '/b.png' };
+    await renderFile(Object.assign({}, baseOpts));                         // undefined → 1
+    await renderFile(Object.assign({}, baseOpts, { pageNumber: -3 }));     // negative → 1
+    await renderFile(Object.assign({}, baseOpts, { pageNumber: '5' }));    // string → 5
+    await renderFile(Object.assign({}, baseOpts, { pageNumber: 7 }));      // preserved
+    expect(calls.map(c => c.opts.pageNumber)).toEqual([1, 1, 5, 7]);
+  });
+
+  it('defaults outputFormat to png when omitted', async () => {
+    const calls = [];
+    const invoke = (cmd, args) => { calls.push(args); return Promise.resolve({ success: true }); };
+    const H = loadWithWindow({ LexeraExportTauriInvoke: { invoke } });
+    const renderFile = H.makeRenderFile('drawio');
+    await renderFile({ sourcePath: '/a.drawio', targetPath: '/b' });
+    expect(calls[0].opts.outputFormat).toBe('png');
+  });
+
+  it('rejects when LexeraExportTauriInvoke is unavailable on both window and top-level', async () => {
+    // Empty sandbox window → no invoker found
+    const H = loadWithWindow({});
+    const renderFile = H.makeRenderFile('drawio');
+    await expect(renderFile({ sourcePath: '/a', targetPath: '/b' }))
+      .rejects.toThrow(/LexeraExportTauriInvoke unavailable/);
+  });
+});

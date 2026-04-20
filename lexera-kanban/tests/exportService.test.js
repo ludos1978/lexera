@@ -802,27 +802,34 @@ describe('_output', () => {
     ]);
   });
 
-  it('cleans up files on failure during save', async () => {
-    mockInvoke
-      .mockResolvedValueOnce(undefined) // write_export_file succeeds
-      .mockRejectedValueOnce(new Error('Marp crashed')); // marp_export fails
+  it('preserves the written markdown when Marp fails (partial-success, no cleanup)', async () => {
+    // Contract change (after user feedback): when Marp CLI fails we keep
+    // the markdown file so the user can inspect missing includes, fix paths,
+    // and re-run Marp manually. The pipeline returns { success:false,
+    // exportedPath:<md path> } with an explanatory message.
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'write_export_file') return Promise.resolve(undefined);
+      if (cmd === 'get_marp_engine_path') return Promise.resolve(null);
+      if (cmd === 'marp_export') return Promise.reject(new Error('Marp crashed'));
+      return Promise.resolve({ success: true });
+    });
 
-    // cleanup invoke
-    mockInvoke.mockResolvedValueOnce(undefined); // remove_export_files
-
-    await expect(ES._output('# Slides', {
+    const result = await ES._output('# Slides', {
       mode: 'save',
       format: 'presentation',
       runMarp: true,
       marpFormat: 'pdf',
       targetFolder: '/out',
       exportFolderName: 'board',
-    })).rejects.toThrow('Marp crashed');
+    });
 
-    // Verify cleanup was attempted
+    expect(result.success).toBe(false);
+    expect(result.exportedPath).toBe('/out/board/board.md');
+    expect(result.message).toContain('Marp export failed');
+    expect(result.message).toContain('/out/board/board.md');
+    // The outer cleanup block must NOT have fired — keep the .md.
     const cleanupCall = mockInvoke.mock.calls.find(c => c[0] === 'remove_export_files');
-    expect(cleanupCall).toBeTruthy();
-    expect(cleanupCall[1].paths).toContain('/out/board/board.md');
+    expect(cleanupCall).toBeUndefined();
   });
 });
 

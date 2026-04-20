@@ -126,6 +126,7 @@
       // Store the real card's data attributes on the sentinel so it can
       // be identified if needed.
       sentinel.setAttribute('data-vs-card-id', card.getAttribute('data-card-id') || '');
+      sentinel.setAttribute('data-vs-card-kid', card.getAttribute('data-card-kid') || '');
       sentinel.setAttribute('data-vs-col-index', card.getAttribute('data-col-index') || '');
       sentinel.setAttribute('data-vs-card-index', card.getAttribute('data-card-index') || '');
 

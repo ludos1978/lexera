@@ -75,8 +75,11 @@
                 try {
                     entry.apply(md, ctx);
                 } catch (err) {
-                    if (root.console && root.console.error) {
-                        root.console.error('[markdown plugin] ' + entry.metadata.id + ' failed:', err);
+                    // Always route to the in-app Log panel via lexeraLog — the
+                    // user only watches that view, not DevTools console.
+                    if (typeof root.lexeraLog === 'function') {
+                        root.lexeraLog('error', '[markdown plugin] ' + entry.metadata.id
+                            + ' failed: ' + (err && err.message ? err.message : String(err)));
                     }
                 }
             }

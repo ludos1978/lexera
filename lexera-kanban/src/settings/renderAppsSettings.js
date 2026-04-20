@@ -13,7 +13,11 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var FIELD_KEYS = ['drawio', 'marp', 'pandoc', 'soffice', 'pdftoppm', 'mutool'];
+  // Tool-path keys get a Test Version / Test Run indicator next to them;
+  // marp engine + templates are user-supplied paths with no runtime probe.
+  var TOOL_KEYS = ['drawio', 'marp', 'pandoc', 'soffice', 'pdftoppm', 'mutool'];
+  var MARP_PLUGIN_KEYS = ['marpEnginePath', 'marpTemplatesPath'];
+  var FIELD_KEYS = TOOL_KEYS.concat(MARP_PLUGIN_KEYS);
   var initializedPanels = [];
 
   function findPanels() {
@@ -34,17 +38,54 @@
     return panel.querySelector('.lexera-shared-render-apps-' + cls);
   }
 
+  // Thin adapter that exposes get/put on top of LexeraApi.request — the
+  // global LexeraApi (api.js) exposes only request(). Mirrors the adapter
+  // pattern in src/management/managementWiring.js. Resolves the host's
+  // LexeraApi from either the current window or the parent (iframe case).
+  function resolveLexeraApi() {
+    if (typeof window === 'undefined') return null;
+    if (window.LexeraApi && typeof window.LexeraApi.request === 'function') return window.LexeraApi;
+    try {
+      if (window.parent && window.parent !== window
+          && window.parent.LexeraApi && typeof window.parent.LexeraApi.request === 'function') {
+        return window.parent.LexeraApi;
+      }
+    } catch (e) { /* cross-origin — ignore */ }
+    return null;
+  }
   function getApi() {
-    return window.LexeraApi || null;
+    var api = resolveLexeraApi();
+    if (!api) return null;
+    return {
+      get: function (path) { return api.request(path); },
+      put: function (path, body) {
+        return api.request(path, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      },
+    };
   }
 
+  // Resolve the Tauri IPC bridge across iframes. The panel may render
+  // inside a workspace-shell iframe whose window has no __TAURI__ globals;
+  // walk up to window.parent when available. Mirrors the same fallback
+  // used by src/export/exportService.js:resolveExportTauriIpc.
   function getTauriInvoke() {
     if (typeof window === 'undefined') return null;
-    var tauri = window.__TAURI__;
-    if (tauri && tauri.core && typeof tauri.core.invoke === 'function') {
-      return function (cmd, args) { return tauri.core.invoke(cmd, args || {}); };
+    function candidate(w) {
+      if (!w) return null;
+      if (w.__TAURI_INTERNALS__ && typeof w.__TAURI_INTERNALS__.invoke === 'function') return w.__TAURI_INTERNALS__;
+      if (w.__TAURI__ && w.__TAURI__.core && typeof w.__TAURI__.core.invoke === 'function') return w.__TAURI__.core;
+      return null;
     }
-    return null;
+    var ipc = candidate(window);
+    if (!ipc) {
+      try { if (window.parent && window.parent !== window) ipc = candidate(window.parent); } catch (e) {}
+    }
+    if (!ipc) return null;
+    return function (cmd, args) { return ipc.invoke(cmd, args || {}); };
   }
 
   function setIndicator(panel, key, state, tooltip) {
@@ -68,8 +109,10 @@
   }
 
   function clearIndicators(panel) {
-    for (var k = 0; k < FIELD_KEYS.length; k++) {
-      setIndicator(panel, FIELD_KEYS[k], 'none', '');
+    // Only tool keys have indicators; marp-plugin paths are user inputs
+    // without a runtime probe.
+    for (var k = 0; k < TOOL_KEYS.length; k++) {
+      setIndicator(panel, TOOL_KEYS[k], 'none', '');
     }
   }
 
@@ -102,6 +145,33 @@
     return 'ok';
   }
 
+  // Forward to the in-app Logger View (window.logFrontendIssue lives in
+  // src/logging/loggingSystem.js). Guarded so unit tests / non-Tauri hosts
+  // where the logger hasn't loaded don't explode.
+  function logToLoggerView(level, target, context, error) {
+    if (typeof window !== 'undefined' && typeof window.logFrontendIssue === 'function') {
+      window.logFrontendIssue(level, target, context, error);
+    }
+  }
+
+  function composeFailureMessage(toolKey, result, functional) {
+    var detail = '';
+    if (functional && result && result.functional && result.functional.error) {
+      detail = result.functional.error;
+    } else if (result && result.error) {
+      detail = result.error;
+    }
+    var headline = functional ? 'Test run failed' : 'Test version failed';
+    if (functional && result && result.functional && typeof result.functional.durationMs === 'number') {
+      headline += ' after ' + result.functional.durationMs + 'ms';
+    }
+    var msg = toolKey + ': ' + headline;
+    if (detail) msg += ' — ' + detail;
+    else msg += ' (no error detail)';
+    if (result && result.path) msg += ' [path=' + result.path + ']';
+    return msg;
+  }
+
   function render(data, panel) {
     var panels = resolvePanels(panel);
     if (!panels.length) return false;
@@ -127,29 +197,32 @@
     }
     var values = collectValues(panel);
     values.functional = !!functional;
-    for (var k = 0; k < FIELD_KEYS.length; k++) {
-      setIndicator(panel, FIELD_KEYS[k], 'pending', functional ? 'Running test\u2026' : 'Testing version\u2026');
+    for (var k = 0; k < TOOL_KEYS.length; k++) {
+      setIndicator(panel, TOOL_KEYS[k], 'pending', functional ? 'Running test\u2026' : 'Testing version\u2026');
     }
     showStatus(panel,
       functional ? 'Running test conversions\u2026 (this can take a while)' : 'Testing versions\u2026',
       false);
+    var logTarget = functional ? 'render-apps.test-run' : 'render-apps.test-version';
     try {
       var results = await invoke('test_render_apps', { request: values });
       var okCount = 0;
-      for (var i = 0; i < FIELD_KEYS.length; i++) {
-        var key = FIELD_KEYS[i];
+      for (var i = 0; i < TOOL_KEYS.length; i++) {
+        var key = TOOL_KEYS[i];
         var r = results && results[key];
         var state = deriveIndicatorState(r, functional);
         setIndicator(panel, key, state, formatTooltip(r));
         if (state === 'ok') okCount++;
+        else logToLoggerView('error', logTarget, composeFailureMessage(key, r, functional), null);
       }
       showStatus(panel,
-        okCount + '/' + FIELD_KEYS.length + (functional ? ' tools rendered successfully' : ' tools available'),
-        okCount < FIELD_KEYS.length);
+        okCount + '/' + TOOL_KEYS.length + (functional ? ' tools rendered successfully' : ' tools available'),
+        okCount < TOOL_KEYS.length);
     } catch (err) {
-      for (var j = 0; j < FIELD_KEYS.length; j++) {
-        setIndicator(panel, FIELD_KEYS[j], 'none', '');
+      for (var j = 0; j < TOOL_KEYS.length; j++) {
+        setIndicator(panel, TOOL_KEYS[j], 'none', '');
       }
+      logToLoggerView('error', logTarget, 'test_render_apps invocation failed', err);
       showStatus(panel, 'Test failed: ' + (err.message || String(err)), true);
     }
   }
@@ -226,14 +299,52 @@
         testBackend(panel, true);
       });
     }
-    for (var k = 0; k < FIELD_KEYS.length; k++) {
-      var input = q(panel, FIELD_KEYS[k]);
+    for (var k = 0; k < TOOL_KEYS.length; k++) {
+      var input = q(panel, TOOL_KEYS[k]);
       if (input) {
         input.addEventListener('input', (function (key) {
           return function () { setIndicator(panel, key, 'none', ''); };
-        })(FIELD_KEYS[k]));
+        })(TOOL_KEYS[k]));
       }
     }
+
+    // Browse buttons for Marp engine.js + templates folder — the two keys
+    // that are plain user-supplied paths. Engine = file picker, templates
+    // = folder picker. Falls back silently when not running inside Tauri.
+    function wireBrowseButton(key, mode) {
+      var btn = q(panel, key + '-browse');
+      var input = q(panel, key);
+      if (!btn || !input) return;
+      btn.addEventListener('click', async function () {
+        var invoke = getTauriInvoke();
+        if (!invoke) {
+          showStatus(panel, 'Browse unavailable outside Tauri', true);
+          return;
+        }
+        try {
+          if (mode === 'file') {
+            var files = await invoke('browse_files', {
+              title: 'Select Marp engine.js',
+              extensions: ['js', 'cjs', 'mjs'],
+              multiple: false,
+              defaultPath: input.value || null,
+            });
+            var picked = Array.isArray(files) && files.length > 0 ? files[0] : null;
+            if (picked) { input.value = picked; showStatus(panel, 'Engine set — click Save to persist.', false); }
+          } else {
+            var folder = await invoke('browse_folder', {
+              title: 'Select Marp templates folder',
+              defaultPath: input.value || null,
+            });
+            if (folder) { input.value = folder; showStatus(panel, 'Templates folder set — click Save to persist.', false); }
+          }
+        } catch (err) {
+          showStatus(panel, 'Browse failed: ' + (err.message || String(err)), true);
+        }
+      });
+    }
+    wireBrowseButton('marpEnginePath', 'file');
+    wireBrowseButton('marpTemplatesPath', 'folder');
   }
 
   function init(panel) {

@@ -123,6 +123,9 @@ fn selected_board_for_export(
     column_indexes: &[usize],
 ) -> Option<KanbanBoard> {
     if column_ids.is_empty() && column_indexes.is_empty() {
+        log::info!(
+            "[export.select] no filter → returning whole board (column_ids=0, column_indexes=0)"
+        );
         return None;
     }
 
@@ -131,13 +134,75 @@ fn selected_board_for_export(
     let mut flat_index = 0usize;
     let mut next_board = board.clone();
 
+    // Snapshot the board's own column IDs so we can tell the user when
+    // the frontend-supplied ids don't match anything in the stored board.
+    let mut board_ids: Vec<String> = Vec::new();
+    let mut board_titles: Vec<String> = Vec::new();
+    for row in &next_board.rows {
+        for stack in &row.stacks {
+            for col in &stack.columns {
+                board_ids.push(col.id.clone());
+                board_titles.push(col.title.clone());
+            }
+        }
+    }
+    if next_board.rows.is_empty() {
+        for col in &next_board.columns {
+            board_ids.push(col.id.clone());
+            board_titles.push(col.title.clone());
+        }
+    }
+    // Detect duplicate IDs in the stored board. Duplicate `col.id` values
+    // would cause a single frontend-selected ID to retain multiple
+    // columns — and is the primary suspect when retained > ids_in.
+    use std::collections::HashMap;
+    let mut id_counts: HashMap<&str, usize> = HashMap::new();
+    for id in &board_ids {
+        *id_counts.entry(id.as_str()).or_insert(0) += 1;
+    }
+    let dup_ids: Vec<(&&str, &usize)> = id_counts.iter().filter(|(_, c)| **c > 1).collect();
+    if !dup_ids.is_empty() {
+        log::warn!(
+            "[export.select] board has duplicate column IDs (this breaks id-based filtering): {:?}",
+            dup_ids
+        );
+    }
+    let mut retained = 0usize;
+    let mut retained_details: Vec<(String, String, usize, bool, bool)> = Vec::new();
+
+    // Selection semantics:
+    //   both present → AND  (intersection — robust against duplicate IDs)
+    //   only ids     → id match
+    //   only indexes → index match
+    // The frontend always emits both lists from the same tree selection;
+    // intersecting them means a duplicate col.id won't pull in sibling
+    // columns with the same id at a different flat position.
+    let have_ids = !selected_ids.is_empty();
+    let have_indexes = !selected_indexes.is_empty();
+    let include_fn = |col_id: &str, idx: usize| -> (bool, bool, bool) {
+        let by_id = selected_ids.contains(col_id);
+        let by_idx = selected_indexes.contains(&idx);
+        let include = if have_ids && have_indexes {
+            by_id && by_idx
+        } else if have_ids {
+            by_id
+        } else {
+            by_idx
+        };
+        (include, by_id, by_idx)
+    };
+
     if !next_board.rows.is_empty() {
         for row in &mut next_board.rows {
             for stack in &mut row.stacks {
                 stack.columns.retain(|column| {
-                    let include = selected_ids.contains(column.id.as_str())
-                        || selected_indexes.contains(&flat_index);
+                    let idx = flat_index;
+                    let (include, by_id, by_idx) = include_fn(column.id.as_str(), idx);
                     flat_index += 1;
+                    if include {
+                        retained += 1;
+                        retained_details.push((column.id.clone(), column.title.clone(), idx, by_id, by_idx));
+                    }
                     include
                 });
             }
@@ -147,14 +212,82 @@ fn selected_board_for_export(
         next_board.columns.clear();
     } else {
         next_board.columns.retain(|column| {
-            let include =
-                selected_ids.contains(column.id.as_str()) || selected_indexes.contains(&flat_index);
+            let idx = flat_index;
+            let (include, by_id, by_idx) = include_fn(column.id.as_str(), idx);
             flat_index += 1;
+            if include {
+                retained += 1;
+                retained_details.push((column.id.clone(), column.title.clone(), idx, by_id, by_idx));
+            }
             include
         });
     }
 
+    // Surface mismatch diagnostics — the #1 reason "filter failed" in
+    // practice is that the frontend-captured column IDs diverge from the
+    // IDs the storage layer returns (e.g. after CRDT reconciliation).
+    let mismatched: Vec<&str> = column_ids
+        .iter()
+        .map(|s| s.as_str())
+        .filter(|id| !board_ids.iter().any(|b| b == id))
+        .collect();
+    log::info!(
+        "[export.select] ids_in={} idx_in={} retained={} board_cols={} mismatched_ids={:?}",
+        column_ids.len(),
+        column_indexes.len(),
+        retained,
+        board_ids.len(),
+        mismatched
+    );
+    // Per-column breakdown: tells us which columns were kept, via which
+    // matcher (by id / by index / both), and their title. When retained >
+    // ids_in this shows exactly where the extras come from.
+    let by_id_count = retained_details.iter().filter(|d| d.3).count();
+    let by_idx_count = retained_details.iter().filter(|d| d.4).count();
+    let by_both_count = retained_details.iter().filter(|d| d.3 && d.4).count();
+    log::info!(
+        "[export.select] retention breakdown: by_id={} by_idx={} by_both={} (sum-both={})",
+        by_id_count,
+        by_idx_count,
+        by_both_count,
+        by_id_count + by_idx_count - by_both_count
+    );
+    // One-line summary: exactly which columns (by title) ended up in the
+    // export, in flat order. Lets the user confirm visually.
+    let kept_titles: Vec<&str> = retained_details.iter().map(|(_id, t, _i, _b, _x)| t.as_str()).collect();
+    log::info!("[export.select] SUMMARY {} columns kept: {:?}", kept_titles.len(), kept_titles);
+    for (id, title, idx, by_id, by_idx) in &retained_details {
+        log::info!(
+            "[export.select] KEEPING col idx={} id={} by_id={} by_idx={} title={:?}",
+            idx,
+            id,
+            by_id,
+            by_idx,
+            title
+        );
+    }
+
     Some(next_board)
+}
+
+/// Collect column titles in flat order — used by export handlers to echo
+/// back which columns were actually included, so the frontend can show it.
+fn collect_column_titles(board: &KanbanBoard) -> Vec<String> {
+    let mut out = Vec::new();
+    if !board.rows.is_empty() {
+        for row in &board.rows {
+            for stack in &row.stacks {
+                for col in &stack.columns {
+                    out.push(col.title.clone());
+                }
+            }
+        }
+    } else {
+        for col in &board.columns {
+            out.push(col.title.clone());
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -225,9 +358,13 @@ async fn export_presentation(
         selected_board_for_export(&filtered_board, &body.column_ids, &body.column_indexes)
             .unwrap_or_else(|| filtered_board.clone());
 
+    let kept_columns = collect_column_titles(&export_board);
     let markdown = presentation::from_board(&export_board, &options);
 
-    Ok(Json(serde_json::json!({ "markdown": markdown })))
+    Ok(Json(serde_json::json!({
+        "markdown": markdown,
+        "keptColumns": kept_columns,
+    })))
 }
 
 /// POST /boards/{board_id}/export/document
@@ -268,9 +405,13 @@ async fn export_document(
         selected_board_for_export(&filtered_board, &body.column_ids, &body.column_indexes)
             .unwrap_or_else(|| filtered_board.clone());
 
+    let kept_columns = collect_column_titles(&export_board);
     let markdown = presentation::to_document(&export_board, body.page_breaks, &options);
 
-    Ok(Json(serde_json::json!({ "markdown": markdown })))
+    Ok(Json(serde_json::json!({
+        "markdown": markdown,
+        "keptColumns": kept_columns,
+    })))
 }
 
 /// POST /boards/{board_id}/export/filter
@@ -306,6 +447,7 @@ async fn export_filter(
         selected_board_for_export(&filtered_board, &body.column_ids, &body.column_indexes)
             .unwrap_or_else(|| filtered_board.clone());
 
+    let kept_columns = collect_column_titles(&export_board);
     let mut markdown = generate_markdown(&export_board);
 
     // Apply tag visibility filtering on the markdown
@@ -318,7 +460,10 @@ async fn export_filter(
         markdown = filter_excluded_from_markdown(&markdown, &exclude_tags);
     }
 
-    Ok(Json(serde_json::json!({ "markdown": markdown })))
+    Ok(Json(serde_json::json!({
+        "markdown": markdown,
+        "keptColumns": kept_columns,
+    })))
 }
 
 /// POST /export/transform
@@ -593,6 +738,73 @@ mod tests {
         assert_eq!(selected.rows[1].stacks.len(), 1);
         assert_eq!(selected.rows[1].stacks[0].columns.len(), 1);
         assert_eq!(selected.rows[1].stacks[0].columns[0].id, "col-4");
+    }
+
+    fn duplicate_id_board() -> KanbanBoard {
+        // Board where "col-dup" appears 3 times at flat indexes 0, 1, 3
+        // (mimics the CRDT-reconciliation bug we saw in the huge-test
+        // kanban where the same col.id was attached to multiple nodes).
+        KanbanBoard {
+            valid: true,
+            title: "Dup".to_string(),
+            columns: Vec::new(),
+            rows: vec![KanbanRow {
+                id: "row-1".to_string(),
+                title: "R".to_string(),
+                stacks: vec![KanbanStack {
+                    id: "stack-1".to_string(),
+                    title: "S".to_string(),
+                    columns: vec![
+                        sample_column("col-dup", "A0"),
+                        sample_column("col-dup", "A1"),
+                        sample_column("col-other", "B"),
+                        sample_column("col-dup", "A2"),
+                    ],
+                    params: HashMap::new(),
+                }],
+                params: HashMap::new(),
+            }],
+            yaml_header: None,
+            kanban_footer: None,
+            board_settings: None,
+            generation_meta: None,
+            format_hint: BoardFormat::New,
+        }
+    }
+
+    #[test]
+    fn selected_board_for_export_intersects_ids_and_indexes_when_both_provided() {
+        // With BOTH id and index lists supplied (the normal frontend
+        // payload), the filter must AND them together — not OR. This is
+        // the duplicate-id safety net: one selected id can legitimately
+        // correspond to N columns in the stored board, but only the
+        // specific index slot the user clicked is kept.
+        let board = duplicate_id_board();
+        let selected = selected_board_for_export(&board, &["col-dup".to_string()], &[1])
+            .expect("selection should produce subset board");
+        assert_eq!(selected.rows.len(), 1);
+        assert_eq!(selected.rows[0].stacks[0].columns.len(), 1);
+        // Only the col-dup at flat index 1 (title "A1") should remain.
+        assert_eq!(selected.rows[0].stacks[0].columns[0].title, "A1");
+    }
+
+    #[test]
+    fn selected_board_for_export_id_only_still_retains_all_duplicates() {
+        // Documents the fallback behaviour — when the caller supplies ids
+        // alone, we can't disambiguate duplicates and retain them all.
+        let board = duplicate_id_board();
+        let selected = selected_board_for_export(&board, &["col-dup".to_string()], &[])
+            .expect("selection should produce subset board");
+        assert_eq!(selected.rows[0].stacks[0].columns.len(), 3);
+    }
+
+    #[test]
+    fn selected_board_for_export_index_only_picks_exact_slot() {
+        let board = duplicate_id_board();
+        let selected = selected_board_for_export(&board, &[], &[2])
+            .expect("selection should produce subset board");
+        assert_eq!(selected.rows[0].stacks[0].columns.len(), 1);
+        assert_eq!(selected.rows[0].stacks[0].columns[0].title, "B");
     }
 
     #[test]

@@ -9,6 +9,24 @@
  *   window.LexeraApi          — REST API client
  */
 
+// Log bridge — the kanban UI runs inside a workspace-shell iframe. The
+// iframe has its own lexeraLog() + frontendLogEntries array, so messages
+// logged here never reach the shell's Log panel (which is what the user
+// actually watches). Route every call to the parent window's lexeraLog
+// when one exists, and also the local one so standalone (non-iframe) runs
+// keep working.
+function exportLexeraLog(level, message) {
+    try {
+        if (typeof lexeraLog === 'function') lexeraLog(level, message);
+    } catch (e) { /* local logger not ready yet */ }
+    try {
+        if (window.parent && window.parent !== window
+            && typeof window.parent.lexeraLog === 'function') {
+            window.parent.lexeraLog(level, message);
+        }
+    } catch (e) { /* cross-origin — ignore */ }
+}
+
 function createFallbackExportUiPreferenceHelpers(storage) {
     var storageKeys = {
         preset: 'lexera-export-preset',
@@ -252,7 +270,17 @@ var normalizeExcludeTagsInput = ExportUiPreferenceHelpers.normalizeExcludeTagsIn
 var applyExportPresetToOptions = ExportUiPreferenceHelpers.applyExportPresetToOptions;
 
 function cloneExportAutoOptions(options) {
-    return options ? structuredClone(options) : null;
+    if (!options) return null;
+    // Strip the per-execution AbortSignal before cloning — AbortSignal is not
+    // structured-cloneable in WKWebView and would throw "The object can not be
+    // cloned." when this runs after a successful save.
+    var signal = options.signal;
+    if (signal !== undefined) delete options.signal;
+    try {
+        return structuredClone(options);
+    } finally {
+        if (signal !== undefined) options.signal = signal;
+    }
 }
 
 var getStoredExportUiPreference = ExportUiPreferenceHelpers.getStoredExportUiPreference;
@@ -296,7 +324,7 @@ class ExportUI {
 
         var derivedFilePath = this._deriveSourceFilePath(boardData);
         var derivedFolder = this._deriveBoardFolder(boardData);
-        lexeraLog('info', '[kanban.export.init] boardId=' + boardId
+        exportLexeraLog('info', '[kanban.export.init] boardId=' + boardId
             + ' filePath=' + (derivedFilePath || '(empty)')
             + ' boardFolder=' + (derivedFolder || '(empty)'));
 
@@ -313,6 +341,18 @@ class ExportUI {
         // Wire up event listeners
         this._bindEvents();
         this._restoreStoredPreferences();
+
+        // When the restored preset is a non-custom one (e.g.
+        // marp-presentation), re-apply it so the preset's opinionated
+        // values (runMarp=true, marpFormat=html, marpWatch=true,
+        // autoExportOnSave=true, …) take effect even when initialOptions
+        // didn't include a `preset` field. Without this, fields like
+        // "Watch / Preview" aren't persisted individually and revert to
+        // their HTML defaults on dialog re-open.
+        var restoredPreset = normalizeExportPreset(this._val('export-preset'));
+        if (restoredPreset !== 'custom') {
+            this._applyPresetSelection(restoredPreset, { persist: false });
+        }
 
         this._applyInitialOptions();
         this._applyInitialSelection();
@@ -361,6 +401,11 @@ class ExportUI {
             : ExportTreeBuilder.getSelection(this.tree);
         var columnIndexes = selection ? selection.columnIndexes : [];
         var columnIds = selection ? selection.columnIds : [];
+        exportLexeraLog('info', '[kanban.export.collect] selection: isFullBoard=' + !!(selection && selection.isFullBoard)
+            + ' hasSelection=' + !!(selection && selection.hasSelection)
+            + ' columnIds=' + JSON.stringify(columnIds)
+            + ' columnIndexes=' + JSON.stringify(columnIndexes)
+            + ' scopes=' + (selection && selection.scopes ? selection.scopes.map(function (s) { return s.scope + '(' + s.nodeId + ')'; }).join(',') : '(none)'));
 
         var options = {
             boardId: this.boardId,
@@ -384,6 +429,9 @@ class ExportUI {
             options.marpFormat = this._val('export-marp-format');
             options.marpTheme = this._val('export-marp-theme') || null;
             options.marpBrowser = normalizeMarpBrowser(this._val('export-marp-browser'));
+            // marpEnginePath + themeDirs are now sourced per-export by
+            // ExportService from /config/render-apps (see Plugin Settings).
+            // The dialog no longer exposes a custom-engine field.
             options.marpWatch = this._checked('export-marp-watch');
             options.marpPptxEditable = this._checked('export-marp-pptx-editable');
             options.marpHandout = this._checked('export-marp-handout');
@@ -438,7 +486,11 @@ class ExportUI {
         var options = this.collectOptions();
         options.mode = mode;
 
-        lexeraLog('info', '[kanban.export.execute] mode=' + mode);
+        exportLexeraLog('info', '[kanban.export.execute] mode=' + mode
+            + ' ids.count=' + (options.columnIds ? options.columnIds.length : 0)
+            + ' idx.count=' + (options.columnIndexes ? options.columnIndexes.length : 0)
+            + ' isFullBoard-ish=' + (!!options.selectionScopes && options.selectionScopes.length === 1 && options.selectionScopes[0].scope === 'board')
+            + ' scopes=' + (options.selectionScopes ? options.selectionScopes.map(function (s) { return s.scope; }).join(',') : ''));
 
         // Validate selection
         if (!options.selectionScopes || options.selectionScopes.length === 0) {
@@ -458,7 +510,11 @@ class ExportUI {
         if (this._abortController) options.signal = this._abortController.signal;
         this._inFlight = true;
 
-        this._setStatus('Exporting… (click Cancel to abort)', 'info');
+        var selSummary = (options.selectionScopes && options.selectionScopes.length > 0)
+            ? options.selectionScopes.map(function (s) { return s.scope + (s.nodeId ? '=' + s.nodeId : ''); }).join(', ')
+            : 'none';
+        this._setStatus('Exporting ' + (options.columnIds ? options.columnIds.length : 0) + ' columns ('
+            + selSummary + ') — click Cancel to abort', 'info');
         this._disableButtons(true);
         this._setCancelMode('abort');
 
@@ -477,11 +533,21 @@ class ExportUI {
                 } else if (result.exportedPath) {
                     statusMessage = 'Exported: ' + result.exportedPath;
                 }
+                // Append the backend's kept-columns echo so the user can
+                // visually verify the scope ("9 stack columns" vs the
+                // whole board) without opening the file or the log panel.
+                if (Array.isArray(options._lastKeptColumns)) {
+                    var kept = options._lastKeptColumns;
+                    statusMessage += '\nExported ' + kept.length + ' column(s): ' + kept.join(' · ');
+                }
                 if (mode === 'save') {
                     var autoExportStatus = this._updateAutoExportStateAfterExport(options, result);
                     if (autoExportStatus) statusMessage += ' ' + autoExportStatus;
                 }
                 this._setStatus(statusMessage, 'info');
+                if (mode === 'save' && result.exportedPath) {
+                    this._notifyExportDone(result.exportedPath);
+                }
             } else {
                 this._setStatus('Export failed: ' + (result.message || 'Unknown error') + ' — see Logs panel for details', 'error');
             }
@@ -490,7 +556,7 @@ class ExportUI {
                 this._setStatus('Export cancelled.', 'warn');
             } else {
                 var msg = (err && err.message) ? err.message : String(err);
-                lexeraLog('error', '[kanban.export.execute] ' + msg);
+                exportLexeraLog('error', '[kanban.export.execute] ' + msg);
                 this._setStatus('Export error: ' + msg + ' — see Logs panel for details', 'error');
             }
         } finally {
@@ -517,11 +583,48 @@ class ExportUI {
         }
     }
 
+    // Toast-style notification after a successful save-mode export with an
+    // action button that reveals the output file in Finder / Explorer.
+    // Falls back to a plain status line when window.showNotification isn't
+    // available (tests, embedded contexts).
+    _notifyExportDone(exportedPath) {
+        if (!exportedPath || typeof window.showNotification !== 'function') return;
+        var self = this;
+        var fileName = String(exportedPath).split(/[/\\]/).pop() || exportedPath;
+        var isHtml = /\.html?$/i.test(exportedPath);
+        var primaryLabel = isHtml ? 'Open in browser' : 'Reveal in Finder';
+        window.showNotification('Exported: ' + fileName, {
+            variant: 'success',
+            duration: 8000,
+            action: {
+                label: primaryLabel,
+                callback: function () {
+                    // For HTML use open_with_default_app (launches browser); for
+                    // everything else reveal the file in Finder/Explorer so the
+                    // user can inspect the whole export folder.
+                    var cmd = isHtml ? 'open_with_default_app' : 'show_in_folder';
+                    self._invokeTauriCommand(cmd, { path: exportedPath }).catch(function (err) {
+                        exportLexeraLog('warn', '[kanban.export.notify] ' + cmd + ' failed: ' + (err && err.message ? err.message : String(err)));
+                    });
+                },
+            },
+        });
+    }
+
+    // Shared Tauri invoke helper for the dialog's own side-actions (browse,
+    // reveal-in-finder, open-in-browser). Mirrors the parent-window fallback
+    // in exportService.js so iframe-embedded runs still reach the backend.
+    async _invokeTauriCommand(command, args) {
+        var ipc = this._resolveTauriIpc();
+        if (!ipc) throw new Error('Tauri IPC unavailable');
+        return args === undefined ? ipc.invoke(command) : ipc.invoke(command, args);
+    }
+
     _handleCancelClick() {
         var btn = document.getElementById('export-btn-cancel');
         var mode = btn && btn.dataset.mode ? btn.dataset.mode : 'close';
         if (mode === 'abort' && this._inFlight) {
-            lexeraLog('warn', '[kanban.export.cancel] user aborted export');
+            exportLexeraLog('warn', '[kanban.export.cancel] user aborted export');
             this._setStatus('Cancelling… cleaning up partial output', 'warn');
             if (this._abortController) {
                 try { this._abortController.abort(); } catch (e) {}
@@ -640,11 +743,11 @@ class ExportUI {
                 if (boardFolder) {
                     var sep = boardFolder.indexOf('\\') >= 0 ? '\\' : '/';
                     targetInput.value = boardFolder + sep + '_Export';
-                    lexeraLog('info', '[kanban.export.folder] default set: ' + targetInput.value);
+                    exportLexeraLog('info', '[kanban.export.folder] default set: ' + targetInput.value);
                 } else if (!targetInput.value) {
                     // Fallback: board file path was not provided. Leave a visible hint
                     // so the user knows they need to pick a folder, and log the gap.
-                    lexeraLog('warn', '[kanban.export.folder] boardData has no filePath — default target folder not set. boardData keys=' +
+                    exportLexeraLog('warn', '[kanban.export.folder] boardData has no filePath — default target folder not set. boardData keys=' +
                         Object.keys(this.boardData || {}).join(','));
                 }
             }
@@ -665,9 +768,9 @@ class ExportUI {
                     ? 'Marp CLI available' + (marpStatus.version ? ' (v' + marpStatus.version + ')' : '')
                     : 'Marp CLI not found';
             }
-            lexeraLog('info', '[kanban.export.tools] Marp available=' + this.marpAvailable);
+            exportLexeraLog('info', '[kanban.export.tools] Marp available=' + this.marpAvailable);
         } catch (err) {
-            lexeraLog('warn', '[kanban.export.tools] Marp check failed: ' + (err.message || String(err)));
+            exportLexeraLog('warn', '[kanban.export.tools] Marp check failed: ' + (err.message || String(err)));
             this.marpAvailable = false;
         }
 
@@ -682,9 +785,9 @@ class ExportUI {
                     ? 'Pandoc available' + (pandocStatus.version ? ' (v' + pandocStatus.version + ')' : '')
                     : 'Pandoc not found';
             }
-            lexeraLog('info', '[kanban.export.tools] Pandoc available=' + this.pandocAvailable);
+            exportLexeraLog('info', '[kanban.export.tools] Pandoc available=' + this.pandocAvailable);
         } catch (err) {
-            lexeraLog('warn', '[kanban.export.tools] Pandoc check failed: ' + (err.message || String(err)));
+            exportLexeraLog('warn', '[kanban.export.tools] Pandoc check failed: ' + (err.message || String(err)));
             this.pandocAvailable = false;
         }
 
@@ -694,7 +797,7 @@ class ExportUI {
                 this.marpThemes = await ExportService.getMarpThemes([]);
                 this._populateMarpThemes();
             } catch (err) {
-                lexeraLog('warn', '[kanban.export.tools] Theme discovery failed: ' + (err.message || String(err)));
+                exportLexeraLog('warn', '[kanban.export.tools] Theme discovery failed: ' + (err.message || String(err)));
                 this.marpThemes = [];
             }
         }
@@ -1092,12 +1195,16 @@ class ExportUI {
             : { scope: 'board' };
         var resolved = ExportTreeBuilder.resolveNodeIdForSelection(this.tree, selection);
         var nodeId = resolved || 'root';
-        lexeraLog('info', '[kanban.export.selection] requested=' + JSON.stringify(selection)
+        exportLexeraLog('info', '[kanban.export.selection] requested=' + JSON.stringify(selection)
             + ' resolved=' + (resolved || '(none, defaulted to root)'));
         if (selection && selection.scope && selection.scope !== 'board' && !resolved) {
-            lexeraLog('warn', '[kanban.export.selection] Could not resolve ' + selection.scope
+            exportLexeraLog('warn', '[kanban.export.selection] Could not resolve ' + selection.scope
                 + ' to a tree node — menu passed indexes that do not match the export tree.'
                 + ' selection=' + JSON.stringify(selection));
+            this._setStatus('Could not pre-select ' + selection.scope
+                + ' (' + JSON.stringify(selection) + '); defaulted to full board.', 'warn');
+        } else if (selection && selection.scope && selection.scope !== 'board') {
+            this._setStatus('Pre-selected ' + selection.scope + ': ' + nodeId, 'info');
         }
         this.treeUI.setOnlySelection(nodeId);
     }
@@ -1321,7 +1428,7 @@ class ExportUI {
     }
 
     async _browseTargetFolder() {
-        lexeraLog('info', '[kanban.export.browse] click handler entered');
+        exportLexeraLog('info', '[kanban.export.browse] click handler entered');
         this._setStatus('Opening folder picker…');
 
         var ipc = this._resolveTauriIpc();
@@ -1337,7 +1444,7 @@ class ExportUI {
             } catch (e) {
                 state = { crossOrigin: true };
             }
-            lexeraLog('error', '[kanban.export.browse] Tauri IPC unavailable: ' + JSON.stringify(state));
+            exportLexeraLog('error', '[kanban.export.browse] Tauri IPC unavailable: ' + JSON.stringify(state));
             this._setStatus('Browse unavailable — Tauri IPC not reachable ' + JSON.stringify(state));
             return;
         }
@@ -1345,12 +1452,12 @@ class ExportUI {
         var currentValue = this._val('export-target-folder') || '';
         var fallbackPath = currentValue || this._deriveBoardFolder(this.boardData) || null;
         try {
-            lexeraLog('info', '[kanban.export.browse] invoking browse_folder defaultPath=' + (fallbackPath || '(none)'));
+            exportLexeraLog('info', '[kanban.export.browse] invoking browse_folder defaultPath=' + (fallbackPath || '(none)'));
             var selected = await ipc.invoke('browse_folder', {
                 title: 'Select export target folder',
                 defaultPath: fallbackPath,
             });
-            lexeraLog('info', '[kanban.export.browse] result=' + (selected || '(cancelled)'));
+            exportLexeraLog('info', '[kanban.export.browse] result=' + (selected || '(cancelled)'));
             if (selected) {
                 var input = document.getElementById('export-target-folder');
                 if (input) {
@@ -1363,7 +1470,7 @@ class ExportUI {
             }
         } catch (err) {
             var msg = (err && err.message) ? err.message : String(err);
-            lexeraLog('error', '[kanban.export.browse] invoke threw: ' + msg);
+            exportLexeraLog('error', '[kanban.export.browse] invoke threw: ' + msg);
             this._setStatus('Browse failed: ' + msg);
         }
     }
@@ -1390,7 +1497,7 @@ class ExportUI {
                 document.body.removeChild(ta);
             }
         } catch (err) {
-            lexeraLog('warn', '[kanban.export.clipboard] Write failed: ' + (err.message || String(err)));
+            exportLexeraLog('warn', '[kanban.export.clipboard] Write failed: ' + (err.message || String(err)));
         }
     }
 
@@ -1411,7 +1518,7 @@ class ExportUI {
         }
         var logLevel = (level === 'warn' || level === 'error') ? level : 'info';
         if (typeof lexeraLog === 'function') {
-            lexeraLog(logLevel, '[kanban.export.status] ' + msg);
+            exportLexeraLog(logLevel, '[kanban.export.status] ' + msg);
         }
     }
 
@@ -1498,7 +1605,7 @@ class ExportUI {
             }
             return result;
         }).catch(function (err) {
-            lexeraLog('error', '[kanban.export.auto] ' + (err.message || String(err)));
+            exportLexeraLog('error', '[kanban.export.auto] ' + (err.message || String(err)));
             if (typeof window.showNotification === 'function') {
                 window.showNotification('Auto-export failed: ' + (err.message || String(err)));
             }

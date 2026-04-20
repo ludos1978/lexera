@@ -7,6 +7,22 @@
  *   Phase 3 (Output):    Copy / save file via Tauri commands
  */
 
+// Log bridge — same cross-iframe issue as the Tauri IPC below: the kanban
+// UI runs inside a workspace-shell iframe whose lexeraLog() writes to the
+// iframe's own frontendLogEntries, but the user watches the shell's Log
+// panel. Mirror every call to window.parent.lexeraLog when one exists.
+function exportLexeraLog(level, message) {
+    try {
+        if (typeof lexeraLog === 'function') lexeraLog(level, message);
+    } catch (e) { /* local logger not ready yet */ }
+    try {
+        if (window.parent && window.parent !== window
+            && typeof window.parent.lexeraLog === 'function') {
+            window.parent.lexeraLog(level, message);
+        }
+    } catch (e) { /* cross-origin — ignore */ }
+}
+
 // Resolve the Tauri IPC bridge — the kanban UI runs inside a workspace-shell iframe,
 // and Tauri 2 does NOT inject __TAURI_INTERNALS__ into sub-frames. So we walk up
 // to the parent (same-origin) when the current window is bare.
@@ -97,7 +113,7 @@ class ExportService {
 
     static async export(options) {
         try {
-            lexeraLog('info', '[ExportService] Starting export ' + options.format + ' ' + options.mode);
+            exportLexeraLog('info', '[ExportService] Starting export ' + options.format + ' ' + options.mode);
 
             if (ExportService._wasAborted(options)) return { success: false, aborted: true, message: 'Export cancelled' };
             const extracted = await ExportService._extract(options);
@@ -112,10 +128,10 @@ class ExportService {
             return await ExportService._output(transformed, options);
         } catch (err) {
             if (err && (err.name === 'AbortError' || (err.message && err.message.indexOf('abort') >= 0))) {
-                lexeraLog('warn', '[ExportService] Export aborted by user');
+                exportLexeraLog('warn', '[ExportService] Export aborted by user');
                 return { success: false, aborted: true, message: 'Export cancelled' };
             }
-            lexeraLog('error', '[ExportService] Export failed: ' + (err.message || String(err)));
+            exportLexeraLog('error', '[ExportService] Export failed: ' + (err.message || String(err)));
             return { success: false, message: err.message || String(err) };
         }
     }
@@ -174,20 +190,86 @@ class ExportService {
         await exportInvokeTauri('open_export_folder', { path });
     }
 
-    // Cached absolute path of packages/marp-engine/engine/engine.js
-    // Resolved via the Marp export plugin (which owns the cache); falls back to
-    // a direct Tauri invoke if the plugin is not available.
+    // Directory of custom Marp theme CSS files configured in Plugin
+    // Settings. Passed to Marp CLI as `--theme-set <dir>` via the
+    // themeDirs option so every export picks up the user's templates.
+    static async getMarpTemplateDirs() {
+        const cfg = await ExportService.getRenderAppsConfig();
+        if (cfg && typeof cfg.marpTemplatesPath === 'string' && cfg.marpTemplatesPath.trim()) {
+            return [cfg.marpTemplatesPath.trim()];
+        }
+        return null;
+    }
+
+    // Snapshot of the render-apps config (/config/render-apps) — used for
+    // marpEnginePath / marpTemplatesPath overrides. Cached per session so
+    // each export doesn't re-fetch; callers can clear via _renderAppsConfigCache = undefined.
+    //
+    // LexeraApi exposes request() (see api.js) — no .get/.put adapters —
+    // so we call request() directly. Also handles the iframe case where
+    // LexeraApi only lives on window.parent.
+    static _resolveLexeraApi() {
+        if (typeof window === 'undefined') return null;
+        function isUsable(api) {
+            return !!(api && (typeof api.request === 'function' || typeof api.get === 'function'));
+        }
+        if (isUsable(window.LexeraApi)) return window.LexeraApi;
+        try {
+            if (window.parent && window.parent !== window && isUsable(window.parent.LexeraApi)) {
+                return window.parent.LexeraApi;
+            }
+        } catch (e) { /* cross-origin */ }
+        return null;
+    }
+
+    static async getRenderAppsConfig() {
+        if (ExportService._renderAppsConfigCache !== undefined) {
+            return ExportService._renderAppsConfigCache;
+        }
+        try {
+            const api = ExportService._resolveLexeraApi();
+            // Tests may stub window.LexeraApi.get() directly — honor that
+            // shape too so they don't have to mock request().
+            if (api && typeof api.get === 'function') {
+                ExportService._renderAppsConfigCache = await api.get('/config/render-apps');
+            } else if (api && typeof api.request === 'function') {
+                ExportService._renderAppsConfigCache = await api.request('/config/render-apps');
+            } else {
+                ExportService._renderAppsConfigCache = null;
+            }
+        } catch (err) {
+            exportLexeraLog('warn', '[ExportService] /config/render-apps fetch failed: ' + (err && err.message ? err.message : String(err)));
+            ExportService._renderAppsConfigCache = null;
+        }
+        return ExportService._renderAppsConfigCache;
+    }
+
+    // Cached absolute path of packages/marp-engine/engine/engine.js.
+    // Resolution order:
+    //   1. User-set marpEnginePath in /config/render-apps (Plugin Settings panel)
+    //   2. Marp export plugin's own getEnginePath (which wraps get_marp_engine_path)
+    //   3. Direct Tauri invoke to get_marp_engine_path
+    // Caller can still override via options.marpEnginePath per-export.
     static async getMarpEnginePath() {
-        const plugin = ExportService._getMarpPlugin();
-        if (plugin && plugin.getEnginePath) return plugin.getEnginePath();
         if (ExportService._marpEnginePathCache !== undefined) {
+            return ExportService._marpEnginePathCache;
+        }
+        const cfg = await ExportService.getRenderAppsConfig();
+        if (cfg && typeof cfg.marpEnginePath === 'string' && cfg.marpEnginePath.trim()) {
+            ExportService._marpEnginePathCache = cfg.marpEnginePath.trim();
+            return ExportService._marpEnginePathCache;
+        }
+
+        const plugin = ExportService._getMarpPlugin();
+        if (plugin && plugin.getEnginePath) {
+            ExportService._marpEnginePathCache = await plugin.getEnginePath();
             return ExportService._marpEnginePathCache;
         }
         try {
             const result = await exportInvokeTauri('get_marp_engine_path');
             ExportService._marpEnginePathCache = result || null;
         } catch (err) {
-            lexeraLog('warn', '[ExportService] get_marp_engine_path failed: ' + (err && err.message ? err.message : String(err)));
+            exportLexeraLog('warn', '[ExportService] get_marp_engine_path failed: ' + (err && err.message ? err.message : String(err)));
             ExportService._marpEnginePathCache = null;
         }
         return ExportService._marpEnginePathCache;
@@ -242,7 +324,9 @@ class ExportService {
             };
         }
 
-        lexeraLog('info', '[ExportService] Phase 1: POST ' + endpoint);
+        exportLexeraLog('info', '[ExportService] Phase 1: POST ' + endpoint
+            + ' (filter: ids=' + (body.columnIds ? body.columnIds.length : 0)
+            + ', idx=' + (body.columnIndexes ? body.columnIndexes.length : 0) + ')');
 
         const res = await fetch(endpoint, {
             method: 'POST',
@@ -257,7 +341,16 @@ class ExportService {
         }
 
         const data = await res.json();
-        return data.markdown || '';
+        const md = data.markdown || data.content || '';
+        const slideCount = (md.match(/^---\s*$/gm) || []).length + (md ? 1 : 0);
+        // keptColumns echoes the column TITLES the backend actually included
+        // after selection + duplicate-id-safe intersection. Surfacing it to
+        // the caller (and logs) lets the user visually confirm the export
+        // scope — e.g. 9 stack columns vs. 94 whole-board columns.
+        const kept = Array.isArray(data.keptColumns) ? data.keptColumns : null;
+        exportLexeraLog('info', '[ExportService] Phase 1: response ' + md.length + ' chars, ~' + slideCount + ' slides, kept=' + (kept ? JSON.stringify(kept) : 'n/a'));
+        options._lastKeptColumns = kept;
+        return md;
     }
 
     // ── Phase 2: Transform ──────────────────────────────────────────────
@@ -285,7 +378,7 @@ class ExportService {
                 format: 'presentation',
             };
 
-            lexeraLog('info', '[ExportService] Phase 2: POST ' + endpoint);
+            exportLexeraLog('info', '[ExportService] Phase 2: POST ' + endpoint);
 
             const res = await fetch(endpoint, {
                 method: 'POST',
@@ -327,7 +420,7 @@ class ExportService {
     static applyTableWidthTransform(content) {
         if (!content || content.indexOf('|') < 0) return content;
         if (!window.LexeraMarkdownRenderer || !window.LexeraMarkdownRenderer.isReady()) {
-            lexeraLog('warn', '[ExportService] markdown-it not loaded; skipping table-widths transform');
+            exportLexeraLog('warn', '[ExportService] markdown-it not loaded; skipping table-widths transform');
             return content;
         }
         if (typeof window.markdownit !== 'function' || !window.markdownitTableWidths) {
@@ -374,7 +467,7 @@ class ExportService {
                 const html = md.render(tableLines.join('\n'));
                 result.push(html.replace(/\s+$/, ''));
             } catch (err) {
-                lexeraLog('warn', '[ExportService] table-widths render failed: ' + (err.message || String(err)));
+                exportLexeraLog('warn', '[ExportService] table-widths render failed: ' + (err.message || String(err)));
                 for (let k = 0; k < tableLines.length; k++) result.push(tableLines[k]);
             }
             i = j;
@@ -401,7 +494,7 @@ class ExportService {
                 const html = md.render(imgMarkdown).replace(/\s+$/, '');
                 return pre + html + post;
             } catch (err) {
-                lexeraLog('warn', '[ExportService] image-figures render failed: ' + (err.message || String(err)));
+                exportLexeraLog('warn', '[ExportService] image-figures render failed: ' + (err.message || String(err)));
                 return match;
             }
         });
@@ -466,7 +559,7 @@ class ExportService {
         const mode = options.mode || 'copy';
 
         if (mode === 'copy') {
-            lexeraLog('info', '[ExportService] Phase 3: copy (' + content.length + ' chars)');
+            exportLexeraLog('info', '[ExportService] Phase 3: copy (' + content.length + ' chars)');
             return { success: true, content, message: 'Content ready for clipboard' };
         }
 
@@ -494,44 +587,91 @@ class ExportService {
             }
 
             throwIfAborted();
-            lexeraLog('info', '[ExportService] Phase 3: writing markdown to ' + mdPath);
+            exportLexeraLog('info', '[ExportService] Phase 3: writing markdown to ' + mdPath);
             await exportInvokeTauri('write_export_file', { path: mdPath, content: finalContent });
             createdFiles.push(mdPath);
 
             throwIfAborted();
             const enginePath = options.marpEnginePath || await ExportService.getMarpEnginePath();
+            // Pull the user-configured Marp templates folder (Plugin Settings)
+            // so every Marp CLI call gets `--theme-set <dir>` when set.
+            const themeDirs = options.themeDirs || await ExportService.getMarpTemplateDirs();
 
             if (options.runMarp && options.format === 'presentation' && options.marpFormat !== 'markdown') {
+                // If the user ticked "Watch / Preview" alongside html output,
+                // launch Marp in watch mode (long-running) instead of a one-shot
+                // export. Marp serves the HTML, we open the browser, and the
+                // watcher rebuilds on edits.
+                const wantsWatch = !!options.marpWatch && options.marpFormat === 'html';
+                if (wantsWatch) {
+                    exportLexeraLog('info', '[ExportService] Phase 3: starting Marp watch (engine=' + (enginePath || 'default') + ')');
+                    const watchResult = await exportInvokeTauri('marp_watch', {
+                        opts: {
+                            inputPath: mdPath,
+                            format: 'html',
+                            outputPath: '',
+                            theme: options.marpTheme || null,
+                            themeDirs: themeDirs,
+                            enginePath: enginePath,
+                            browser: ExportService.normalizeMarpBrowser(options.marpBrowser),
+                            pptxEditable: null,
+                            additionalArgs: null,
+                            handout: null,
+                            handoutLayout: null,
+                            handoutSlidesPerPage: null,
+                            handoutDirection: null,
+                        },
+                    });
+                    return {
+                        success: watchResult.success,
+                        exportedPath: mdPath,
+                        message: watchResult.message || 'Marp watch started — browser preview should open shortly',
+                    };
+                }
+
                 const marpOutputPath = ExportService.generateExportPath(
                     options.targetFolder,
                     options.exportFolderName,
                     '.' + options.marpFormat
                 );
 
-                lexeraLog('info', '[ExportService] Phase 3: running Marp export to ' + marpOutputPath + ' (engine=' + (enginePath || 'default') + ')');
-                const marpResult = await exportInvokeTauri('marp_export', {
-                    opts: {
-                        inputPath: mdPath,
-                        format: options.marpFormat,
-                        outputPath: marpOutputPath,
-                        enginePath: enginePath,
-                        theme: options.marpTheme || null,
-                        themeDirs: null,
-                        browser: ExportService.normalizeMarpBrowser(options.marpBrowser),
-                        pptxEditable: options.marpPptxEditable || false,
-                        additionalArgs: null,
-                        handout: options.marpHandout || false,
-                        handoutLayout: options.marpHandoutLayout || null,
-                        handoutSlidesPerPage: options.marpHandoutSlidesPerPage || null,
-                        handoutDirection: options.marpHandoutDirection || null,
-                    },
-                });
-
-                return {
-                    success: marpResult.success,
-                    exportedPath: marpResult.outputPath,
-                    message: marpResult.message || 'Marp export completed',
-                };
+                exportLexeraLog('info', '[ExportService] Phase 3: running Marp export to ' + marpOutputPath + ' (engine=' + (enginePath || 'default') + ')');
+                // Wrap the Marp call in its own try. When Marp fails we want
+                // the user to keep the preprocessed markdown (for re-running
+                // manually / inspecting missing includes) rather than losing
+                // it to the outer cleanup block.
+                try {
+                    const marpResult = await exportInvokeTauri('marp_export', {
+                        opts: {
+                            inputPath: mdPath,
+                            format: options.marpFormat,
+                            outputPath: marpOutputPath,
+                            enginePath: enginePath,
+                            theme: options.marpTheme || null,
+                            themeDirs: themeDirs,
+                            browser: ExportService.normalizeMarpBrowser(options.marpBrowser),
+                            pptxEditable: options.marpPptxEditable || false,
+                            additionalArgs: null,
+                            handout: options.marpHandout || false,
+                            handoutLayout: options.marpHandoutLayout || null,
+                            handoutSlidesPerPage: options.marpHandoutSlidesPerPage || null,
+                            handoutDirection: options.marpHandoutDirection || null,
+                        },
+                    });
+                    return {
+                        success: marpResult.success,
+                        exportedPath: marpResult.outputPath,
+                        message: marpResult.message || 'Marp export completed',
+                    };
+                } catch (marpErr) {
+                    const marpMsg = (marpErr && marpErr.message) ? marpErr.message : String(marpErr);
+                    exportLexeraLog('error', '[ExportService] Marp export failed (markdown preserved at ' + mdPath + '): ' + marpMsg);
+                    return {
+                        success: false,
+                        exportedPath: mdPath,
+                        message: 'Marp export failed — markdown was saved at ' + mdPath + '. ' + marpMsg,
+                    };
+                }
             }
 
             if (options.runPandoc && options.format === 'document') {
@@ -542,31 +682,42 @@ class ExportService {
                 );
 
                 throwIfAborted();
-                lexeraLog('info', '[ExportService] Phase 3: running Pandoc export to ' + pandocOutputPath);
-                const pandocResult = await exportInvokeTauri('pandoc_export', {
-                    opts: {
-                        inputPath: mdPath,
-                        outputPath: pandocOutputPath,
-                        format: options.pandocFormat,
-                        additionalArgs: null,
-                    },
-                });
-
-                return {
-                    success: pandocResult.success,
-                    exportedPath: pandocResult.outputPath,
-                    message: pandocResult.message || 'Pandoc export completed',
-                };
+                exportLexeraLog('info', '[ExportService] Phase 3: running Pandoc export to ' + pandocOutputPath);
+                // Same partial-success treatment as Marp: preserve the
+                // markdown when Pandoc fails so the user can re-run manually.
+                try {
+                    const pandocResult = await exportInvokeTauri('pandoc_export', {
+                        opts: {
+                            inputPath: mdPath,
+                            outputPath: pandocOutputPath,
+                            format: options.pandocFormat,
+                            additionalArgs: null,
+                        },
+                    });
+                    return {
+                        success: pandocResult.success,
+                        exportedPath: pandocResult.outputPath,
+                        message: pandocResult.message || 'Pandoc export completed',
+                    };
+                } catch (pandocErr) {
+                    const pandocMsg = (pandocErr && pandocErr.message) ? pandocErr.message : String(pandocErr);
+                    exportLexeraLog('error', '[ExportService] Pandoc export failed (markdown preserved at ' + mdPath + '): ' + pandocMsg);
+                    return {
+                        success: false,
+                        exportedPath: mdPath,
+                        message: 'Pandoc export failed — markdown was saved at ' + mdPath + '. ' + pandocMsg,
+                    };
+                }
             }
 
             return { success: true, exportedPath: mdPath, message: 'Markdown file saved' };
         } catch (err) {
             if (createdFiles.length > 0) {
-                lexeraLog('warn', '[ExportService] Cleaning up partial output: ' + createdFiles.join(', '));
+                exportLexeraLog('warn', '[ExportService] Cleaning up partial output: ' + createdFiles.join(', '));
                 try {
                     await exportInvokeTauri('remove_export_files', { paths: createdFiles });
                 } catch (cleanupErr) {
-                    lexeraLog('error', '[ExportService] Cleanup failed: ' + (cleanupErr.message || String(cleanupErr)));
+                    exportLexeraLog('error', '[ExportService] Cleanup failed: ' + (cleanupErr.message || String(cleanupErr)));
                 }
             }
             throw err;
@@ -717,34 +868,39 @@ class ExportService {
             });
         }
 
-        const createdFiles = [];
-        const replacements = [];
-        for (let i = 0; i < blocks.length; i++) {
-            const block = blocks[i];
+        // Render all plantuml blocks in parallel — each targets a distinct
+        // SVG file so there's no contention, and this is where large boards
+        // spend most of their export time.
+        const renderJobs = blocks.map(function (block) {
             const fileName = fileBasename + '-' + block.id + '.svg';
             const targetPath = ExportService.joinPath(exportDir, fileName);
             let wrapped = block.code.trim();
-            if (!/@startuml/i.test(wrapped)) {
-                wrapped = '@startuml\n' + wrapped + '\n@enduml';
+            if (!/@startuml/i.test(wrapped)) wrapped = '@startuml\n' + wrapped + '\n@enduml';
+            return exportInvokeTauri('render_plantuml_code', {
+                opts: { code: wrapped, targetPath: targetPath },
+            }).then(function (result) {
+                return { block: block, fileName: fileName, targetPath: targetPath, result: result, error: null };
+            }).catch(function (err) {
+                return { block: block, fileName: fileName, targetPath: targetPath, result: null, error: err };
+            });
+        });
+        const outcomes = await Promise.all(renderJobs);
+
+        const createdFiles = [];
+        const replacements = [];
+        for (const o of outcomes) {
+            if (o.error) {
+                exportLexeraLog('warn', '[ExportService.diagram] PlantUML invoke failed for ' + o.block.id + ': ' + (o.error && o.error.message ? o.error.message : String(o.error)));
+                continue;
             }
-            try {
-                const result = await exportInvokeTauri('render_plantuml_code', {
-                    opts: {
-                        code: wrapped,
-                        targetPath: targetPath,
-                    },
+            if (o.result && o.result.success) {
+                replacements.push({
+                    original: o.block.fullMatch,
+                    replacement: '![' + o.block.id + '](' + o.fileName + ')',
                 });
-                if (result && result.success) {
-                    replacements.push({
-                        original: block.fullMatch,
-                        replacement: '![' + block.id + '](' + fileName + ')',
-                    });
-                    createdFiles.push(targetPath);
-                } else {
-                    lexeraLog('warn', '[ExportService.diagram] PlantUML render failed for ' + block.id + ': ' + ((result && result.error) || 'unknown'));
-                }
-            } catch (err) {
-                lexeraLog('warn', '[ExportService.diagram] PlantUML invoke failed for ' + block.id + ': ' + (err && err.message ? err.message : String(err)));
+                createdFiles.push(o.targetPath);
+            } else {
+                exportLexeraLog('warn', '[ExportService.diagram] PlantUML render failed for ' + o.block.id + ': ' + ((o.result && o.result.error) || 'unknown'));
             }
         }
 
@@ -858,18 +1014,26 @@ class ExportService {
             });
         }
 
-        for (let i = 0; i < jobList.length; i++) {
-            const job = jobList[i];
-            try {
-                const result = await dispatchRender(job);
-                if (result && result.success) {
-                    renderedTargets[job.key] = job.relativeTarget;
-                    createdFiles.push(job.targetPath);
-                } else {
-                    lexeraLog('warn', '[ExportService] Rendered embed export skipped for ' + job.sourcePath + ': ' + ((result && result.error) || 'unknown renderer failure'));
-                }
-            } catch (err) {
-                lexeraLog('warn', '[ExportService] Rendered embed export failed for ' + job.sourcePath + ': ' + (err && err.message ? err.message : String(err)));
+        // Fan-out: each job writes a distinct target file so concurrency is
+        // safe, and the backend tolerates parallel Tauri invokes. This cuts
+        // export wall-time dramatically for boards with many embeds.
+        const jobResults = await Promise.all(jobList.map(function (job) {
+            return Promise.resolve()
+                .then(function () { return dispatchRender(job); })
+                .then(function (result) { return { job: job, result: result, error: null }; })
+                .catch(function (err) { return { job: job, result: null, error: err }; });
+        }));
+        for (const entry of jobResults) {
+            const job = entry.job;
+            if (entry.error) {
+                exportLexeraLog('warn', '[ExportService] Rendered embed export failed for ' + job.sourcePath + ': ' + (entry.error && entry.error.message ? entry.error.message : String(entry.error)));
+                continue;
+            }
+            if (entry.result && entry.result.success) {
+                renderedTargets[job.key] = job.relativeTarget;
+                createdFiles.push(job.targetPath);
+            } else {
+                exportLexeraLog('warn', '[ExportService] Rendered embed export skipped for ' + job.sourcePath + ': ' + ((entry.result && entry.result.error) || 'unknown renderer failure'));
             }
         }
 

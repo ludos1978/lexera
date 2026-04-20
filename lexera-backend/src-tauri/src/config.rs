@@ -130,6 +130,14 @@ pub struct RenderAppsConfig {
     pub pdftoppm: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mutool: Option<String>,
+    /// Custom Marp engine.js path. When set, overrides the bundled
+    /// packages/marp-engine/engine/engine.js used by Marp CLI exports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marp_engine_path: Option<String>,
+    /// Directory passed to Marp CLI via `--theme-set` so custom theme
+    /// CSS files (templates) are discovered for every export.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marp_templates_path: Option<String>,
 }
 
 fn default_port() -> u16 {
@@ -813,6 +821,8 @@ mod tests {
                 soffice: None,
                 pdftoppm: None,
                 mutool: None,
+                marp_engine_path: None,
+                marp_templates_path: None,
             }),
             bookmark_sync: None,
             calendar_sync: None,

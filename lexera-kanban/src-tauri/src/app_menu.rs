@@ -98,7 +98,7 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&MenuItemBuilder::with_id("view-panel-logs", "Logs").build(app)?)
         .item(&MenuItemBuilder::with_id("view-panel-backend-settings", "Backend Settings").build(app)?)
         .item(&MenuItemBuilder::with_id("view-panel-frontend-settings", "Frontend Settings").build(app)?)
-        .item(&MenuItemBuilder::with_id("view-panel-render-apps", "Render Applications").build(app)?)
+        .item(&MenuItemBuilder::with_id("view-panel-render-apps", "Plugin Settings").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("view-panel-frontend-tests", "Frontend Tests").build(app)?)
         .build()?;

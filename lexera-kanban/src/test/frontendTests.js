@@ -238,7 +238,51 @@
     return profileSummary;
   }
 
-  function register(name, fn) { tests.push({ name: name, fn: fn }); }
+  // ──────────────────────────────────────────────────────────────────
+  // Test categories
+  // ──────────────────────────────────────────────────────────────────
+  // Every test belongs to one or more categories. The primary category
+  // is derived from the test name prefix before `:` ("consistency:
+  // view matches…" → "consistency"). Additional cross-cutting categories
+  // are auto-derived from keywords in the name so that e.g. a consistency
+  // test about moving cards also shows up under "moves". Tests can also
+  // pass an explicit categories list to opt into more groups.
+  function deriveCategories(name, extras) {
+    var cats = [];
+    function add(c) {
+      if (!c) return;
+      c = String(c).trim();
+      if (!c) return;
+      if (cats.indexOf(c) === -1) cats.push(c);
+    }
+    var colon = name.indexOf(':');
+    add(colon > 0 ? name.slice(0, colon).trim() : 'general');
+    var lower = String(name).toLowerCase();
+    if (/\b(move|moves|moved|moving|reorder)\b/.test(lower)) add('moves');
+    if (/\b(add|adds|added|adding|insert|inserts|inserted|inserting)\b/.test(lower)) add('add');
+    if (/\b(remove|removes|removed|removing|delete|deletes|deleted|deleting)\b/.test(lower)) add('remove');
+    if (/\bundo\b|restore|restores|restored|restoring/.test(lower)) add('undo');
+    if (/\b(integrity|valid|parity|consistency)\b/.test(lower)) add('integrity');
+    if (/\bdashboard\b/.test(lower)) add('dashboard');
+    if (/\b(render|renders|rendered|rendering|renders|appears|appear)\b/.test(lower)) add('rendering');
+    if (/\bcard\b|\bcards\b/.test(lower)) add('cards');
+    if (/\bcolumn\b|\bcolumns\b/.test(lower)) add('columns');
+    if (/\brow\b|\brows\b/.test(lower)) add('rows');
+    if (/\bstack\b|\bstacks\b/.test(lower)) add('stacks');
+    if (/\b(hidden|archived|parked|trashed|archiving|parking|deleting)\b/.test(lower)) add('hidden-state');
+    if (/\btags?\b/.test(lower)) add('tags');
+    if (/\binclude\b|\bembed\b/.test(lower)) add('include-embed');
+    if (/\bexport\b|\bmarp\b/.test(lower)) add('export');
+    if (/\bworkspace\b/.test(lower)) add('workspace');
+    if (/\bsidebar\b|hierarchy/.test(lower)) add('sidebar');
+    if (/\bfocus\b|scroll/.test(lower)) add('focus');
+    if (Array.isArray(extras)) for (var i = 0; i < extras.length; i++) add(extras[i]);
+    return cats;
+  }
+
+  function register(name, fn, categories) {
+    tests.push({ name: name, fn: fn, categories: deriveCategories(name, categories) });
+  }
 
   // ─────────────────────────────────────────────────────────────────────
   // registerDoUndo(name, spec)
@@ -281,6 +325,11 @@
   //              When true, skip the undo + checkUndo phase entirely.
   //              Use only for read-only tests that don't mutate.
   function registerDoUndo(name, spec) {
+    // registerDoUndo tests inherently exercise the undo path; always
+    // add "undo" as a cross-cutting category so they show up in the
+    // Undo bucket even if the name doesn't mention it.
+    var doUndoExtras = (spec && Array.isArray(spec.categories)) ? spec.categories.slice() : [];
+    if (!(spec && spec.skipUndo)) doUndoExtras.push('undo');
     register(name, async function () {
       await setup();
       var didDo = false;
@@ -347,7 +396,7 @@
           }
         } catch (_) {}
       }
-    });
+    }, doUndoExtras);
   }
 
   // Deep-equal helper for checkUndo's default: compares two values
@@ -1259,10 +1308,21 @@
     var c = getContainer(); if (!c) return [];
     var el = c.querySelector('.column-cards[data-col-index="' + flatColIndex + '"]');
     if (!el) return [];
-    var cards = el.querySelectorAll('.card');
+    // Include .vs-placeholder so virtualised cards still contribute their
+    // stable kid to the list — otherwise scroll/virtualisation state would
+    // change what this function returns between captures.
+    var items = el.querySelectorAll('.card, .vs-placeholder');
     var ids = [];
-    for (var i = 0; i < cards.length; i++)
-      ids.push(cards[i].getAttribute('data-card-kid') || cards[i].getAttribute('data-card-id') || '');
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      ids.push(
+        it.getAttribute('data-card-kid') ||
+        it.getAttribute('data-vs-card-kid') ||
+        it.getAttribute('data-card-id') ||
+        it.getAttribute('data-vs-card-id') ||
+        ''
+      );
+    }
     return ids;
   }
 
@@ -2297,10 +2357,14 @@
         (colTitle && colTitle.indexOf('!!!include(') !== -1) ||
         hasIncludeBadge;
       if (isIncCol) continue;
-      var viewCards = viewCols[i].querySelectorAll('.column-cards .card');
+      var viewCards = viewCols[i].querySelectorAll('.column-cards .card, .column-cards .vs-placeholder');
       var viewKids = [];
       for (var j = 0; j < viewCards.length; j++)
-        viewKids.push(viewCards[j].getAttribute('data-card-id') || '');
+        viewKids.push(
+          viewCards[j].getAttribute('data-card-id') ||
+          viewCards[j].getAttribute('data-vs-card-id') ||
+          ''
+        );
       var sidebarKids = getSidebarCardIdsInColumn(colId);
       if (!sidebarKids) continue;
       // Skip columns where sidebar and DOM cards are entirely disjoint
@@ -6754,6 +6818,10 @@
   // ═══════════════════════════════════════════════════════════════════════
 
   var lastResults = [];
+  // Indices of tests that have completed (pass or fail) since the
+  // last clear. Run All and per-category Run skip tests already in
+  // here so a second run only picks up whatever is left.
+  var _completedTestIndices = Object.create(null);
   var _panelInit = false;
 
   function findPanelRoot() {
@@ -6802,6 +6870,7 @@
     if (!root) return;
     var runBtn = root.querySelector('.lexera-shared-test-run-all');
     var stopBtn = root.querySelector('.lexera-shared-test-stop');
+    var clearBtn = root.querySelector('.lexera-shared-test-clear-results');
     var boardSelect = root.querySelector('.lexera-shared-test-board-select');
     var manualInspect = root.querySelector('.lexera-shared-test-manual-inspect');
     var continueUndoBtn = root.querySelector('.lexera-shared-test-continue-undo');
@@ -6813,6 +6882,11 @@
       stopBtn.disabled = !running;
       stopBtn.textContent = _runState.cancelRequested ? 'Stopping…' : 'Stop Run';
     }
+    if (clearBtn) clearBtn.disabled = running;
+    var catRunBtns = root.querySelectorAll('.test-category-run');
+    for (var cb = 0; cb < catRunBtns.length; cb++) catRunBtns[cb].disabled = running;
+    var catClearBtns = root.querySelectorAll('.test-category-clear');
+    for (var cc = 0; cc < catClearBtns.length; cc++) catClearBtns[cc].disabled = running;
     if (manualInspect) {
       manualInspect.disabled = running && !awaitingUndo;
     }
@@ -7054,6 +7128,110 @@
     });
   }
 
+  // Build an ordered list of categories with member test indices.
+  // Order: by first-appearance of category in test registration order.
+  function buildCategoryGroups() {
+    var order = [];
+    var groups = {};
+    for (var i = 0; i < tests.length; i++) {
+      var cats = tests[i].categories || [];
+      for (var c = 0; c < cats.length; c++) {
+        var key = cats[c];
+        if (!groups[key]) {
+          groups[key] = [];
+          order.push(key);
+        }
+        groups[key].push(i);
+      }
+    }
+    return order.map(function (k) { return { name: k, testIndices: groups[k] }; });
+  }
+
+  // Render the count badge on a single category header. Three modes:
+  //   - Filter active: show `visible/total` (reflects search hits)
+  //   - Any pass/fail results:
+  //       • zero failures → green `passed/total`
+  //       • any failures  → red `passed/total · N failed`
+  //   - Otherwise: just `total`
+  function renderCategoryCount(catEl) {
+    var countEl = catEl.querySelector('.test-category-count');
+    if (!countEl) return;
+    var rows = catEl.querySelectorAll('.test-row');
+    var total = rows.length;
+    var passed = 0, failed = 0, visible = 0;
+    for (var r = 0; r < rows.length; r++) {
+      var ind = rows[r].querySelector('.test-indicator');
+      if (ind) {
+        if (ind.classList.contains('pass')) passed++;
+        else if (ind.classList.contains('fail')) failed++;
+      }
+      if (rows[r].style.display !== 'none') visible++;
+    }
+    var filter = (getTestFilter() || '').trim().toLowerCase();
+    countEl.classList.remove('has-pass', 'has-fail');
+    if (filter) {
+      countEl.textContent = visible + '/' + total;
+    } else if (passed > 0 || failed > 0) {
+      var label = passed + '/' + total;
+      if (failed > 0) label += ' \u00B7 ' + failed + ' failed';
+      countEl.textContent = label;
+      if (failed > 0) countEl.classList.add('has-fail');
+      else countEl.classList.add('has-pass');
+    } else {
+      countEl.textContent = total + '';
+    }
+  }
+
+  function refreshCategoryCountsForTest(testIdx) {
+    var root = findPanelRoot(); if (!root) return;
+    var rows = root.querySelectorAll('.test-row[data-test-idx="' + testIdx + '"]');
+    for (var k = 0; k < rows.length; k++) {
+      var catEl = rows[k].closest && rows[k].closest('.test-category');
+      if (catEl) renderCategoryCount(catEl);
+    }
+  }
+
+  function refreshAllCategoryCounts() {
+    var root = findPanelRoot(); if (!root) return;
+    var cats = root.querySelectorAll('.test-category');
+    for (var c = 0; c < cats.length; c++) renderCategoryCount(cats[c]);
+  }
+
+  function applyRowFilter(listEl, filterText) {
+    var filter = (filterText || '').trim().toLowerCase();
+    var cats = listEl.querySelectorAll('.test-category');
+    for (var c = 0; c < cats.length; c++) {
+      var catEl = cats[c];
+      var catName = (catEl.getAttribute('data-category') || '').toLowerCase();
+      // A non-empty filter matches the category itself when the
+      // category name contains the filter — in that case every test
+      // inside stays visible. Otherwise we match against test names.
+      var categoryNameMatches = !!filter && catName.indexOf(filter) !== -1;
+      var rows = catEl.querySelectorAll('.test-row');
+      var errs = catEl.querySelectorAll('.test-error');
+      var visibleCount = 0;
+      for (var r = 0; r < rows.length; r++) {
+        var idx = parseInt(rows[r].getAttribute('data-test-idx'), 10);
+        var t = tests[idx];
+        var show = !!t && (!filter || categoryNameMatches || isTestIncludedByFilter(t.name, filter));
+        rows[r].style.display = show ? '' : 'none';
+        if (errs[r]) errs[r].style.display = show ? '' : 'none';
+        if (show) visibleCount++;
+      }
+      renderCategoryCount(catEl);
+      // Hide categories with no visible tests while filtering
+      catEl.style.display = (filter && visibleCount === 0) ? 'none' : '';
+      // When filtering, auto-expand categories with matches so the
+      // user can see what hit. When the filter is cleared, re-fold
+      // everything back to the default collapsed state.
+      if (filter && visibleCount > 0) {
+        catEl.classList.remove('collapsed');
+      } else if (!filter) {
+        catEl.classList.add('collapsed');
+      }
+    }
+  }
+
   function populateTestList() {
     var root = findPanelRoot();
     if (!root || _panelInit) return;
@@ -7064,27 +7242,85 @@
     var summaryEl = root.querySelector('.lexera-shared-test-summary');
     if (summaryEl) summaryEl.textContent = tests.length + ' tests';
 
-    for (var i = 0; i < tests.length; i++) {
-      var row = document.createElement('div'); row.className = 'test-row';
-      var ind = document.createElement('span'); ind.className = 'test-indicator';
-      // Body is a vertical stack: test name on top, duration on the
-      // line below. This keeps longer duration breakdowns readable
-      // without truncating the test name or pushing it onto two lines
-      // because of flex-squeezing.
-      var body = document.createElement('div'); body.className = 'test-row-body';
-      var lbl = document.createElement('div'); lbl.className = 'test-row-label';
-      lbl.textContent = tests[i].name;
-      var dur = document.createElement('div'); dur.className = 'test-duration';
-      body.appendChild(lbl);
-      body.appendChild(dur);
-      (function (idx) { row.onclick = function () { if (!isRunActive()) runOneUI(idx); }; })(i);
-      row.appendChild(ind); row.appendChild(body); listEl.appendChild(row);
-      var err = document.createElement('div'); err.className = 'test-error'; err.style.display = 'none';
-      listEl.appendChild(err);
+    var groups = buildCategoryGroups();
+    for (var g = 0; g < groups.length; g++) {
+      var group = groups[g];
+      var catEl = document.createElement('div');
+      catEl.className = 'test-category collapsed';
+      catEl.setAttribute('data-category', group.name);
+
+      var header = document.createElement('div');
+      header.className = 'test-category-header';
+      var caret = document.createElement('span');
+      caret.className = 'test-category-caret';
+      caret.textContent = '\u25BE'; // ▾
+      var nameEl = document.createElement('span');
+      nameEl.className = 'test-category-name';
+      nameEl.textContent = group.name;
+      var countEl = document.createElement('span');
+      countEl.className = 'test-category-count';
+      countEl.textContent = group.testIndices.length + '';
+      var runCatBtn = document.createElement('button');
+      runCatBtn.type = 'button';
+      runCatBtn.className = 'test-panel-btn test-category-run';
+      runCatBtn.textContent = 'Run';
+      runCatBtn.title = 'Run remaining tests in "' + group.name + '" (skips tests with existing results)';
+      var clearCatBtn = document.createElement('button');
+      clearCatBtn.type = 'button';
+      clearCatBtn.className = 'test-panel-btn test-category-clear';
+      clearCatBtn.textContent = 'Clear';
+      clearCatBtn.title = 'Clear results for tests in "' + group.name + '"';
+      (function (indices) {
+        runCatBtn.onclick = function (ev) {
+          ev.stopPropagation(); // don't toggle collapsed state
+          if (isRunActive()) return;
+          runCategoryUI(indices);
+        };
+        clearCatBtn.onclick = function (ev) {
+          ev.stopPropagation();
+          if (isRunActive()) return;
+          clearCategoryResults(indices);
+        };
+      })(group.testIndices.slice());
+      header.appendChild(caret);
+      header.appendChild(nameEl);
+      header.appendChild(countEl);
+      header.appendChild(runCatBtn);
+      header.appendChild(clearCatBtn);
+      header.onclick = (function (el) {
+        return function () {
+          el.classList.toggle('collapsed');
+        };
+      })(catEl);
+      catEl.appendChild(header);
+
+      var body = document.createElement('div');
+      body.className = 'test-category-body';
+      for (var gi = 0; gi < group.testIndices.length; gi++) {
+        var testIdx = group.testIndices[gi];
+        var row = document.createElement('div');
+        row.className = 'test-row';
+        row.setAttribute('data-test-idx', String(testIdx));
+        var ind = document.createElement('span'); ind.className = 'test-indicator';
+        var rowBody = document.createElement('div'); rowBody.className = 'test-row-body';
+        var lbl = document.createElement('div'); lbl.className = 'test-row-label';
+        lbl.textContent = tests[testIdx].name;
+        var dur = document.createElement('div'); dur.className = 'test-duration';
+        rowBody.appendChild(lbl);
+        rowBody.appendChild(dur);
+        (function (idx) { row.onclick = function () { if (!isRunActive()) runOneUI(idx); }; })(testIdx);
+        row.appendChild(ind); row.appendChild(rowBody);
+        body.appendChild(row);
+        var err = document.createElement('div'); err.className = 'test-error'; err.style.display = 'none';
+        body.appendChild(err);
+      }
+      catEl.appendChild(body);
+      listEl.appendChild(catEl);
     }
+
+    var filterInput = root.querySelector('.lexera-shared-test-filter');
     var runBtn = root.querySelector('.lexera-shared-test-run-all');
     if (runBtn) runBtn.onclick = function () { runAllUI(); };
-    // Update run button label to indicate filtered mode
     function updateRunBtnLabel() {
       if (!runBtn) return;
       var filter = getTestFilter();
@@ -7098,15 +7334,20 @@
         runBtn.textContent = 'Run All';
       }
     }
-    if (filterInput) {
-      var origOninput = filterInput.oninput;
-      filterInput.oninput = function () {
-        if (origOninput) origOninput.call(this);
-        updateRunBtnLabel();
-      };
-    }
     var stopBtn = root.querySelector('.lexera-shared-test-stop');
     if (stopBtn) stopBtn.onclick = function () { requestStopRun(); };
+    var clearBtn = root.querySelector('.lexera-shared-test-clear-results');
+    if (clearBtn) clearBtn.onclick = function () { clearResults(); };
+    var expandAllBtn = root.querySelector('.lexera-shared-test-expand-all');
+    if (expandAllBtn) expandAllBtn.onclick = function () {
+      var cats = listEl.querySelectorAll('.test-category');
+      for (var ec = 0; ec < cats.length; ec++) cats[ec].classList.remove('collapsed');
+    };
+    var collapseAllBtn = root.querySelector('.lexera-shared-test-collapse-all');
+    if (collapseAllBtn) collapseAllBtn.onclick = function () {
+      var cats = listEl.querySelectorAll('.test-category');
+      for (var cc = 0; cc < cats.length; cc++) cats[cc].classList.add('collapsed');
+    };
     var continueUndoBtn = root.querySelector('.lexera-shared-test-continue-undo');
     if (continueUndoBtn) continueUndoBtn.onclick = function () { continueManualUndo(); };
     var manualInspect = root.querySelector('.lexera-shared-test-manual-inspect');
@@ -7120,17 +7361,9 @@
     }
     var copyBtn = root.querySelector('.lexera-shared-test-copy');
     if (copyBtn) copyBtn.onclick = function () { copyResults(); };
-    var filterInput = root.querySelector('.lexera-shared-test-filter');
     if (filterInput) {
       filterInput.oninput = function () {
-        var filter = filterInput.value.trim().toLowerCase();
-        var rows = listEl.querySelectorAll('.test-row');
-        var errs = listEl.querySelectorAll('.test-error');
-        for (var fi = 0; fi < rows.length && fi < tests.length; fi++) {
-          var show = isTestIncludedByFilter(tests[fi].name, filter);
-          rows[fi].style.display = show ? '' : 'none';
-          if (errs[fi]) errs[fi].style.display = show ? '' : 'none';
-        }
+        applyRowFilter(listEl, filterInput.value);
         updateRunBtnLabel();
       };
     }
@@ -7146,47 +7379,100 @@
 
   function updateRow(index, status, error, durationMs, phases) {
     var root = findPanelRoot(); if (!root) return;
-    var rows = root.querySelectorAll('.test-row');
-    var errs = root.querySelectorAll('.test-error');
-    if (index >= rows.length) return;
-    var ind = rows[index].querySelector('.test-indicator');
-    ind.className = 'test-indicator' + (status === 'pass' ? ' pass' : status === 'fail' ? ' fail' : status === 'running' ? ' running' : status === 'skip' ? ' skip' : '');
-    ind.textContent = status === 'pass' ? '\u2713' : status === 'fail' ? '\u2717' : status === 'running' ? '\u2026' : status === 'skip' ? '\u2013' : '';
-    var dur = rows[index].querySelector('.test-duration');
-    if (dur) {
-      if (status === 'skip') {
-        dur.textContent = 'skipped';
-        dur.style.color = 'var(--text-muted)';
-        dur.title = '';
-      } else if (status === 'reset' || status === 'running') {
-        dur.textContent = status === 'running' ? '…' : '';
-        dur.style.color = 'var(--text-muted)';
-        dur.title = '';
-      } else if (typeof durationMs === 'number') {
-        // Show phase breakdown directly in the label when available
-        var label = formatDurationMs(durationMs);
-        if (phases && (phases.setup || phases.body || phases.teardown)) {
-          label += ' (s:' + formatDurationMs(phases.setup || 0)
-            + ' b:' + formatDurationMs(phases.body || 0)
-            + ' t:' + formatDurationMs(phases.teardown || 0) + ')';
-          dur.title = 'setup: ' + formatDurationMs(phases.setup || 0)
-            + '\nbody: ' + formatDurationMs(phases.body || 0)
-            + '\nteardown: ' + formatDurationMs(phases.teardown || 0)
-            + '\ntotal: ' + formatDurationMs(durationMs);
-        } else {
+    // A test may appear in multiple categories; update every row that
+    // references this test index, and the .test-error that follows
+    // each such row in the DOM.
+    var rows = root.querySelectorAll('.test-row[data-test-idx="' + index + '"]');
+    if (!rows || rows.length === 0) return;
+    for (var k = 0; k < rows.length; k++) {
+      var row = rows[k];
+      var ind = row.querySelector('.test-indicator');
+      if (ind) {
+        ind.className = 'test-indicator' + (status === 'pass' ? ' pass' : status === 'fail' ? ' fail' : status === 'running' ? ' running' : status === 'skip' ? ' skip' : '');
+        ind.textContent = status === 'pass' ? '\u2713' : status === 'fail' ? '\u2717' : status === 'running' ? '\u2026' : status === 'skip' ? '\u2013' : '';
+      }
+      var dur = row.querySelector('.test-duration');
+      if (dur) {
+        if (status === 'skip') {
+          dur.textContent = 'skipped';
+          dur.style.color = 'var(--text-muted)';
           dur.title = '';
+        } else if (status === 'reset' || status === 'running') {
+          dur.textContent = status === 'running' ? '…' : '';
+          dur.style.color = 'var(--text-muted)';
+          dur.title = '';
+        } else if (typeof durationMs === 'number') {
+          var label = formatDurationMs(durationMs);
+          if (phases && (phases.setup || phases.body || phases.teardown)) {
+            label += ' (s:' + formatDurationMs(phases.setup || 0)
+              + ' b:' + formatDurationMs(phases.body || 0)
+              + ' t:' + formatDurationMs(phases.teardown || 0) + ')';
+            dur.title = 'setup: ' + formatDurationMs(phases.setup || 0)
+              + '\nbody: ' + formatDurationMs(phases.body || 0)
+              + '\nteardown: ' + formatDurationMs(phases.teardown || 0)
+              + '\ntotal: ' + formatDurationMs(durationMs);
+          } else {
+            dur.title = '';
+          }
+          dur.textContent = label;
+          if (durationMs > 1000) dur.style.color = 'var(--error)';
+          else if (durationMs > 500) dur.style.color = 'var(--warning, #e6a700)';
+          else dur.style.color = 'var(--text-muted)';
         }
-        dur.textContent = label;
-        // Color slow tests: >1s red, >500ms yellow
-        if (durationMs > 1000) dur.style.color = 'var(--error)';
-        else if (durationMs > 500) dur.style.color = 'var(--warning, #e6a700)';
-        else dur.style.color = 'var(--text-muted)';
+      }
+      // The .test-error div is the next sibling of the row (see populateTestList).
+      var err = row.nextElementSibling;
+      if (err && err.classList && err.classList.contains('test-error')) {
+        err.textContent = (status === 'fail' && error) ? error : '';
+        err.style.display = (status === 'fail' && error) ? 'block' : 'none';
       }
     }
-    if (errs[index]) {
-      errs[index].textContent = (status === 'fail' && error) ? error : '';
-      errs[index].style.display = (status === 'fail' && error) ? 'block' : 'none';
+    refreshCategoryCountsForTest(index);
+  }
+
+  function clearResults() {
+    var root = findPanelRoot(); if (!root) return;
+    if (isRunActive()) return; // don't clear mid-run
+    var rows = root.querySelectorAll('.test-row');
+    for (var i = 0; i < rows.length; i++) {
+      var ind = rows[i].querySelector('.test-indicator');
+      if (ind) { ind.className = 'test-indicator'; ind.textContent = ''; }
+      var dur = rows[i].querySelector('.test-duration');
+      if (dur) { dur.textContent = ''; dur.style.color = 'var(--text-muted)'; dur.title = ''; }
+      var err = rows[i].nextElementSibling;
+      if (err && err.classList && err.classList.contains('test-error')) {
+        err.textContent = '';
+        err.style.display = 'none';
+      }
     }
+    lastResults = [];
+    _completedTestIndices = Object.create(null);
+    refreshAllCategoryCounts();
+    setSummaryText(tests.length + ' tests', 'var(--text-muted)');
+  }
+
+  // Clear results for a specific subset of tests (e.g. one category).
+  // Because a test can appear in multiple categories, clearing removes
+  // that test's state wherever it's shown — renderCategoryCount picks
+  // up the new pass/fail counts on every affected category.
+  function clearCategoryResults(indices) {
+    if (isRunActive()) return;
+    if (!Array.isArray(indices) || indices.length === 0) return;
+    var removedNames = Object.create(null);
+    for (var i = 0; i < indices.length; i++) {
+      var idx = indices[i];
+      if (typeof idx !== 'number' || idx < 0 || idx >= tests.length) continue;
+      delete _completedTestIndices[idx];
+      removedNames[tests[idx].name] = true;
+      updateRow(idx, 'reset'); // also refreshes counts for all affected categories
+    }
+    lastResults = lastResults.filter(function (r) { return !removedNames[r.name]; });
+    var p = 0, f = 0;
+    for (var lr = 0; lr < lastResults.length; lr++) {
+      if (lastResults[lr].passed) p++; else f++;
+    }
+    if (p + f > 0) updateSummary(p, f, tests.length);
+    else setSummaryText(tests.length + ' tests', 'var(--text-muted)');
   }
 
   function updateSummary(p, f, t) {
@@ -7241,7 +7527,7 @@
 
   async function runAllUI(options) {
     if (isRunActive()) return;
-    populateTestList(); resetApiCache(); lastResults = [];
+    populateTestList(); resetApiCache();
     var optionFilter = options && options.filter ? String(options.filter).trim().toLowerCase() : '';
     if (optionFilter) {
       try {
@@ -7251,18 +7537,42 @@
       } catch (_) {}
     }
     var filter = optionFilter || getTestFilter();
-    var filteredCount = 0;
-    for (var fc = 0; fc < tests.length; fc++) {
-      if (isTestIncludedByFilter(tests[fc].name, filter)) filteredCount++;
+    // Optional index-set restriction: when provided, only tests whose
+    // index is in the set will run. Used by the per-category "Run"
+    // button to scope a run to one category's tests.
+    var indexSet = (options && options.indexSet) || null;
+    function isIncluded(i) {
+      if (indexSet && !indexSet[i]) return false;
+      if (filter && !isTestIncludedByFilter(tests[i].name, filter)) return false;
+      return true;
     }
-    beginRun(filteredCount || tests.length, options);
+    var filteredCount = 0;
+    var toRunCount = 0;
+    for (var fc = 0; fc < tests.length; fc++) {
+      if (!isIncluded(fc)) continue;
+      filteredCount++;
+      if (!_completedTestIndices[fc]) toRunCount++;
+    }
+    beginRun(toRunCount || filteredCount || tests.length, options);
     refreshBoardSelector();
     // Enable mutation profiling in ALL board windows (parent + iframes)
     setMutationProfilingFlag(true);
+    // Seed pass/fail counters from prior results so cumulative summary
+    // reflects everything done since the last clear, not just this run.
     var p = 0, f = 0;
+    for (var lr = 0; lr < lastResults.length; lr++) {
+      if (lastResults[lr].passed) p++; else f++;
+    }
     var totalStart = _nowMs();
-    for (var j = 0; j < tests.length; j++) updateRow(j, filter && !isTestIncludedByFilter(tests[j].name, filter) ? 'skip' : 'reset');
-    updateSummary(0, 0, filteredCount || tests.length);
+    // Reset rows for tests that are included but haven't run yet.
+    // Tests already completed keep their pass/fail indicator so the
+    // user sees prior results persist across partial re-runs.
+    for (var j = 0; j < tests.length; j++) {
+      if (!isIncluded(j)) { updateRow(j, 'skip'); continue; }
+      if (_completedTestIndices[j]) continue; // leave prior state
+      updateRow(j, 'reset');
+    }
+    updateSummary(p, f, filteredCount || tests.length);
     // Yield once before the first test so the reset UI (all rows cleared,
     // summary "0 passed 0 failed") actually paints before the first test
     // body takes the main thread.
@@ -7271,8 +7581,11 @@
     try {
       for (var i = 0; i < tests.length; i++) {
         throwIfRunCancelled();
-        if (filter && !isTestIncludedByFilter(tests[i].name, filter)) {
+        if (!isIncluded(i)) {
           continue; // skip filtered-out tests
+        }
+        if (_completedTestIndices[i]) {
+          continue; // already has pass/fail state; Clear to re-run
         }
         dismissConflictDialogs();
         _runState.currentIndex = i;
@@ -7310,6 +7623,7 @@
             setupMs: _phaseTimings.setup, bodyMs: _phaseTimings.body, teardownMs: _phaseTimings.teardown,
             mutationProfile: profSummary
           });
+          _completedTestIndices[i] = true;
           p++;
         } catch (err) {
           bodyEnd = _nowMs();
@@ -7330,6 +7644,7 @@
             setupMs: _phaseTimings.setup, bodyMs: _phaseTimings.body, teardownMs: _phaseTimings.teardown,
             mutationProfile: profSummaryFail
           });
+          _completedTestIndices[i] = true;
           f++;
         }
         _phaseTimings = null;
@@ -7352,6 +7667,18 @@
     } finally {
       endRun();
     }
+  }
+
+  // Run only a specific subset of tests, identified by their indices
+  // in the `tests` array. Each test still runs once even if it appears
+  // in multiple categories (the indices are passed in, so dedup is the
+  // caller's job — the per-category button passes that category's
+  // indices which are already unique).
+  function runCategoryUI(indices) {
+    if (isRunActive()) return;
+    var indexSet = Object.create(null);
+    for (var i = 0; i < indices.length; i++) indexSet[indices[i]] = true;
+    return runAllUI({ indexSet: indexSet });
   }
 
   async function runOneUI(index) {
@@ -7380,6 +7707,7 @@
         mutationProfile: profSummary
       };
       if (ex >= 0) lastResults[ex] = e; else lastResults.push(e);
+      _completedTestIndices[index] = true;
       updateSummary(1, 0, 1);
     } catch (err) {
       bodyEnd = _nowMs();
@@ -7401,6 +7729,7 @@
         mutationProfile: profSummaryFail
       };
       if (ex2 >= 0) lastResults[ex2] = e2; else lastResults.push(e2);
+      _completedTestIndices[index] = true;
       updateSummary(0, 1, 1);
     } finally {
       _phaseTimings = null;
@@ -7462,6 +7791,29 @@
       return t.fn();
     },
     list: function () { return tests.map(function (t) { return t.name; }); },
+    listWithCategories: function () {
+      return tests.map(function (t) { return { name: t.name, categories: (t.categories || []).slice() }; });
+    },
+    categories: function () {
+      return buildCategoryGroups().map(function (g) {
+        return { name: g.name, count: g.testIndices.length };
+      });
+    },
+    clearResults: function () { clearResults(); },
+    runCategory: function (name) {
+      var groups = buildCategoryGroups();
+      for (var gi = 0; gi < groups.length; gi++) {
+        if (groups[gi].name === name) return runCategoryUI(groups[gi].testIndices);
+      }
+      console.error('Category not found: ' + name);
+    },
+    clearCategory: function (name) {
+      var groups = buildCategoryGroups();
+      for (var gi = 0; gi < groups.length; gi++) {
+        if (groups[gi].name === name) return clearCategoryResults(groups[gi].testIndices);
+      }
+      console.error('Category not found: ' + name);
+    },
     stop: function () { requestStopRun(); },
     continueUndo: function () { continueManualUndo(); },
     showPanel: function () { populateTestList(); },

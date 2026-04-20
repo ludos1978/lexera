@@ -613,6 +613,10 @@ pub struct UpdateRenderAppsRequest {
     pub pdftoppm: Option<String>,
     #[serde(default)]
     pub mutool: Option<String>,
+    #[serde(default)]
+    pub marp_engine_path: Option<String>,
+    #[serde(default)]
+    pub marp_templates_path: Option<String>,
 }
 
 /// GET /config/render-apps — returns configured render application paths.
@@ -629,6 +633,8 @@ pub async fn get_render_apps(State(state): State<AppState>) -> Json<serde_json::
         "soffice": ra.soffice,
         "pdftoppm": ra.pdftoppm,
         "mutool": ra.mutool,
+        "marpEnginePath": ra.marp_engine_path,
+        "marpTemplatesPath": ra.marp_templates_path,
     }))
 }
 
@@ -644,6 +650,8 @@ pub async fn set_render_apps(
         soffice: normalize_optional_text(body.soffice),
         pdftoppm: normalize_optional_text(body.pdftoppm),
         mutool: normalize_optional_text(body.mutool),
+        marp_engine_path: normalize_optional_text(body.marp_engine_path),
+        marp_templates_path: normalize_optional_text(body.marp_templates_path),
     };
 
     let has_any = ra.drawio.is_some()
@@ -651,7 +659,9 @@ pub async fn set_render_apps(
         || ra.pandoc.is_some()
         || ra.soffice.is_some()
         || ra.pdftoppm.is_some()
-        || ra.mutool.is_some();
+        || ra.mutool.is_some()
+        || ra.marp_engine_path.is_some()
+        || ra.marp_templates_path.is_some();
     let ra_val = if has_any { Some(ra.clone()) } else { None };
     state
         .config_service
@@ -668,6 +678,8 @@ pub async fn set_render_apps(
         "soffice": ra.soffice,
         "pdftoppm": ra.pdftoppm,
         "mutool": ra.mutool,
+        "marpEnginePath": ra.marp_engine_path,
+        "marpTemplatesPath": ra.marp_templates_path,
     })))
 }
 
