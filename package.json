@@ -13,6 +13,7 @@
   "dependencies": {
     "@excalidraw/excalidraw": "^0.17.6",
     "@ludos/shared": "file:packages/shared",
+    "playwright": "^1.49.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   }

@@ -768,22 +768,28 @@ var LexeraRowStackMenu = (function () {
 
   function getBuiltInDiagramTemplateSpec(templateId) {
     if (templateId === '__builtin__:diagram:drawio') {
+      // Mirrors the fixture used by functional_test_drawio in
+      // src-tauri/src/export_commands.rs — a minimal one-shape diagram that
+      // the draw.io CLI is known to be able to export. (An empty <root> makes
+      // the CLI fail with "Export failed" and leaves the card stuck on the
+      // "Draw.io preview is rendered..." placeholder.)
       return {
         displayName: 'Draw.io',
         extension: '.drawio',
         mimeType: 'application/vnd.jgraph.mxfile',
         fallbackBase: 'diagram',
         content:
-          '<mxfile host="app.diagrams.net">\n' +
-          '  <diagram id="diagram-1" name="Page-1">\n' +
-          '    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100">\n' +
-          '      <root><mxCell id="0"/><mxCell id="1" parent="0"/></root>\n' +
-          '    </mxGraphModel>\n' +
-          '  </diagram>\n' +
-          '</mxfile>\n'
+          '<mxfile><diagram id="x" name="Page"><mxGraphModel><root>' +
+          '<mxCell id="0"/><mxCell id="1" parent="0"/>' +
+          '<mxCell id="2" value="T" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">' +
+          '<mxGeometry x="20" y="20" width="80" height="40" as="geometry"/>' +
+          '</mxCell></root></mxGraphModel></diagram></mxfile>\n'
       };
     }
     if (templateId === '__builtin__:diagram:excalidraw') {
+      // Must include at least one element so the worker produces a non-empty
+      // SVG; an empty `elements` array renders nothing and the card falls
+      // back to the placeholder text.
       return {
         displayName: 'Excalidraw',
         extension: '.excalidraw',
@@ -794,7 +800,38 @@ var LexeraRowStackMenu = (function () {
           '  "type": "excalidraw",\n' +
           '  "version": 2,\n' +
           '  "source": "https://lexera.local",\n' +
-          '  "elements": [],\n' +
+          '  "elements": [\n' +
+          '    {\n' +
+          '      "id": "box-1",\n' +
+          '      "type": "rectangle",\n' +
+          '      "x": 80, "y": 60, "width": 180, "height": 80,\n' +
+          '      "angle": 0,\n' +
+          '      "strokeColor": "#1e1e1e", "backgroundColor": "transparent",\n' +
+          '      "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",\n' +
+          '      "roughness": 0, "opacity": 100,\n' +
+          '      "groupIds": [], "roundness": null,\n' +
+          '      "seed": 1, "version": 1, "versionNonce": 1,\n' +
+          '      "isDeleted": false, "boundElements": null,\n' +
+          '      "updated": 1, "link": null, "locked": false\n' +
+          '    },\n' +
+          '    {\n' +
+          '      "id": "text-1",\n' +
+          '      "type": "text",\n' +
+          '      "x": 110, "y": 88, "width": 120, "height": 24,\n' +
+          '      "angle": 0,\n' +
+          '      "strokeColor": "#1e1e1e", "backgroundColor": "transparent",\n' +
+          '      "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",\n' +
+          '      "roughness": 0, "opacity": 100,\n' +
+          '      "groupIds": [], "roundness": null,\n' +
+          '      "seed": 2, "version": 1, "versionNonce": 2,\n' +
+          '      "isDeleted": false, "boundElements": null,\n' +
+          '      "updated": 1, "link": null, "locked": false,\n' +
+          '      "text": "Diagram", "fontSize": 20, "fontFamily": 1,\n' +
+          '      "textAlign": "center", "verticalAlign": "middle",\n' +
+          '      "containerId": null, "originalText": "Diagram",\n' +
+          '      "lineHeight": 1.2, "baseline": 18\n' +
+          '    }\n' +
+          '  ],\n' +
           '  "appState": { "viewBackgroundColor": "#ffffff", "gridSize": null },\n' +
           '  "files": {}\n' +
           '}\n'

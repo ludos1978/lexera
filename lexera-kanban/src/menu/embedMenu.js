@@ -1151,6 +1151,13 @@ var LexeraEmbedMenu = (function () {
 
   async function requestRenderedSpecialPreviewAsset(boardId, filePath, absoluteSourcePath, cachePath, config, renderOptions) {
     if (!hasTauri || !absoluteSourcePath || !cachePath || !config || config.supportsRuntimeRender === false) {
+      var reason = !hasTauri ? 'Tauri runtime not available'
+        : !absoluteSourcePath ? 'Could not resolve absolute source path'
+        : !cachePath ? 'Could not build cache path'
+        : !config ? 'No render config'
+        : 'Plugin does not support runtime render';
+      setSpecialPreviewError(boardId, filePath, reason);
+      logFrontendIssue('warn', 'embed.preview.render', reason + ' (' + (config && config.pluginId || '?') + ')', { filePath: filePath });
       return false;
     }
     var force = !!(renderOptions && renderOptions.force);
@@ -1170,7 +1177,10 @@ var LexeraEmbedMenu = (function () {
     }).then(function (result) {
       delete pendingSpecialPreviewRenderCache[renderKey];
       if (!result || !result.success) {
-        setSpecialPreviewError(boardId, filePath, result && result.error ? result.error : 'Renderer unavailable.');
+        var errMsg = result && result.error ? result.error : 'Renderer unavailable.';
+        setSpecialPreviewError(boardId, filePath, errMsg);
+        logFrontendIssue('warn', 'embed.preview.render',
+          config.pluginId + ' render failed for ' + absoluteSourcePath + ': ' + errMsg);
         return false;
       }
       setSpecialPreviewError(boardId, filePath, '');
@@ -1209,7 +1219,9 @@ var LexeraEmbedMenu = (function () {
     var fileRef = parseLocalFileReference(filePath);
     var sourceInfo = await requestFileInfo(boardId, fileRef.path);
     if (!sourceInfo || !sourceInfo.exists) {
-      logFrontendIssue('warn', 'embed.preview.resolve', 'Source file does not exist: ' + fileRef.path);
+      var missingMsg = 'Source file not found: ' + fileRef.path;
+      setSpecialPreviewError(boardId, filePath, missingMsg);
+      logFrontendIssue('warn', 'embed.preview.resolve', missingMsg);
       return null;
     }
 
@@ -1220,7 +1232,9 @@ var LexeraEmbedMenu = (function () {
       mtimeMs = sourceInfo.lastModified * 1000;
     }
     if (!(mtimeMs > 0)) {
-      logFrontendIssue('warn', 'embed.preview.resolve', 'Source file has no valid mtime: ' + fileRef.path);
+      var mtimeMsg = 'Source file has no valid mtime: ' + fileRef.path;
+      setSpecialPreviewError(boardId, filePath, mtimeMsg);
+      logFrontendIssue('warn', 'embed.preview.resolve', mtimeMsg);
       return null;
     }
 
@@ -1229,7 +1243,9 @@ var LexeraEmbedMenu = (function () {
       absoluteSourcePath = await resolveBoardPath(boardId, fileRef.path, 'absolute');
     }
     if (!isAbsoluteFilePath(absoluteSourcePath)) {
-      logFrontendIssue('warn', 'embed.preview.resolve', 'Could not resolve absolute path for: ' + fileRef.path);
+      var pathMsg = 'Could not resolve absolute path for: ' + fileRef.path;
+      setSpecialPreviewError(boardId, filePath, pathMsg);
+      logFrontendIssue('warn', 'embed.preview.resolve', pathMsg);
       return null;
     }
 

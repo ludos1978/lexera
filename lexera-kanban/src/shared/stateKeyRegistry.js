@@ -323,7 +323,25 @@ var LexeraStateKeyRegistry = {
     type: 'string',
     category: 'preference',
     default: '',
-    description: 'Active log source filter for the logging panel',
+    description: 'Active log source filter for the logging panel (legacy; superseded by lexera-log-categories)',
+    files: ['logging/loggingSystem.js'],
+    settingsStore: true
+  },
+
+  'lexera-log-categories': {
+    type: 'string',
+    category: 'preference',
+    default: '',
+    description: 'Comma-separated list of active log-source categories (absent = all, empty = none)',
+    files: ['logging/loggingSystem.js'],
+    settingsStore: true
+  },
+
+  'lexera-log-levels': {
+    type: 'string',
+    category: 'preference',
+    default: '',
+    description: 'Comma-separated list of active log levels (absent = all, empty = none)',
     files: ['logging/loggingSystem.js'],
     settingsStore: true
   },

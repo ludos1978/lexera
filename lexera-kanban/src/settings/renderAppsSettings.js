@@ -20,6 +20,88 @@
   var FIELD_KEYS = TOOL_KEYS.concat(MARP_PLUGIN_KEYS);
   var initializedPanels = [];
 
+  // Shared cache: populated by ensureDiscovery() or the first panel open.
+  // Export view reads from this instead of spawning its own CLI probes, so
+  // the export dialog opens without blocking on marp/pandoc/--version or
+  // theme-directory scans. Null entries in toolStatus mean "not yet checked".
+  var cachedState = { toolStatus: { marp: null, pandoc: null }, themes: null };
+  var discoveryPromise = null;
+  var discoveryListeners = [];
+
+  function notifyDiscovery() {
+    for (var i = 0; i < discoveryListeners.length; i++) {
+      try { discoveryListeners[i](cachedState); } catch (e) { /* ignore listener errors */ }
+    }
+  }
+
+  function runDiscovery() {
+    var invoke = getTauriInvoke();
+    if (!invoke) {
+      cachedState.toolStatus.marp = { available: false, version: null };
+      cachedState.toolStatus.pandoc = { available: false, version: null };
+      cachedState.themes = [];
+      return Promise.resolve(cachedState);
+    }
+    function safe(cmd, args) {
+      return invoke(cmd, args || {}).catch(function () { return null; });
+    }
+    // Pull the user-configured Marp templates folder from the render-apps
+    // config so discover_marp_themes scans it alongside the built-in dirs.
+    var api = getApi();
+    var configPromise = (api && typeof api.get === 'function')
+      ? api.get('/config/render-apps').catch(function () { return null; })
+      : Promise.resolve(null);
+    return configPromise.then(function (cfg) {
+      var dirs = [];
+      if (cfg && typeof cfg.marpTemplatesPath === 'string' && cfg.marpTemplatesPath.trim()) {
+        dirs.push(cfg.marpTemplatesPath.trim());
+      }
+      return Promise.all([
+        safe('check_marp_available'),
+        safe('check_pandoc_available'),
+        safe('discover_marp_themes', { dirs: dirs }),
+      ]);
+    }).then(function (results) {
+      var marp = results[0];
+      var pandoc = results[1];
+      var themes = results[2];
+      cachedState.toolStatus.marp = {
+        available: !!(marp && marp.available),
+        version: (marp && marp.version) || null,
+      };
+      cachedState.toolStatus.pandoc = {
+        available: !!(pandoc && pandoc.available),
+        version: (pandoc && pandoc.version) || null,
+      };
+      cachedState.themes = Array.isArray(themes) ? themes : [];
+      notifyDiscovery();
+      return cachedState;
+    });
+  }
+
+  function ensureDiscovery() {
+    if (discoveryPromise) return discoveryPromise;
+    discoveryPromise = runDiscovery();
+    return discoveryPromise;
+  }
+
+  function refreshDiscovery() {
+    discoveryPromise = runDiscovery();
+    return discoveryPromise;
+  }
+
+  function getCachedStatus() { return cachedState.toolStatus; }
+  function getCachedThemes() { return cachedState.themes; }
+
+  function onDiscoveryChange(fn) {
+    if (typeof fn !== 'function') return function () {};
+    discoveryListeners.push(fn);
+    return function () {
+      var idx = discoveryListeners.indexOf(fn);
+      if (idx >= 0) discoveryListeners.splice(idx, 1);
+    };
+  }
+
   function findPanels() {
     var panels = [];
     var shared = document.querySelectorAll('.lexera-shared-panel-render-apps');
@@ -269,9 +351,84 @@
     try {
       await api.put('/config/render-apps', values);
       showStatus(panel, 'Saved', false);
+      // Templates folder may have changed — re-discover so the export
+      // dropdown and the themes list in this panel reflect the new path.
+      refreshDiscovery().then(function () { renderThemesList(panel); });
     } catch (err) {
       showStatus(panel, 'Failed to save: ' + (err.message || String(err)), true);
     }
+  }
+
+  function renderThemesList(panel) {
+    var list = q(panel, 'themes');
+    if (!list) return;
+    var themes = cachedState.themes;
+    if (!Array.isArray(themes)) {
+      list.textContent = 'Themes not discovered yet.';
+      return;
+    }
+    if (!themes.length) {
+      list.textContent = 'No Marp themes found in the templates folder.';
+      return;
+    }
+    list.innerHTML = '';
+    var heading = document.createElement('div');
+    heading.className = 'render-apps-themes-heading';
+    heading.textContent = 'Found themes (' + themes.length + ')';
+    list.appendChild(heading);
+    var ul = document.createElement('ul');
+    ul.className = 'render-apps-themes-list';
+    for (var i = 0; i < themes.length; i++) {
+      var theme = themes[i] || {};
+      var li = document.createElement('li');
+      var name = document.createElement('span');
+      name.className = 'render-apps-theme-name';
+      name.textContent = theme.name || '(unnamed)';
+      li.appendChild(name);
+      if (theme.builtin) {
+        var tag = document.createElement('span');
+        tag.className = 'render-apps-theme-tag';
+        tag.textContent = 'built-in';
+        li.appendChild(tag);
+      } else if (theme.path) {
+        var path = document.createElement('span');
+        path.className = 'render-apps-theme-path';
+        path.textContent = theme.path;
+        path.title = theme.path;
+        li.appendChild(path);
+      }
+      ul.appendChild(li);
+    }
+    list.appendChild(ul);
+  }
+
+  function renderToolStatus(panel) {
+    var statusBox = q(panel, 'tool-status');
+    if (!statusBox) return;
+    statusBox.innerHTML = '';
+    function row(label, info) {
+      var div = document.createElement('div');
+      div.className = 'render-apps-tool-status-row';
+      var name = document.createElement('span');
+      name.className = 'render-apps-tool-status-name';
+      name.textContent = label;
+      div.appendChild(name);
+      var state = document.createElement('span');
+      if (!info) {
+        state.className = 'render-apps-tool-status-value is-pending';
+        state.textContent = 'not checked';
+      } else if (info.available) {
+        state.className = 'render-apps-tool-status-value is-ok';
+        state.textContent = 'available' + (info.version ? ' (v' + info.version + ')' : '');
+      } else {
+        state.className = 'render-apps-tool-status-value is-bad';
+        state.textContent = 'not found';
+      }
+      div.appendChild(state);
+      statusBox.appendChild(div);
+    }
+    row('Marp CLI', cachedState.toolStatus.marp);
+    row('Pandoc', cachedState.toolStatus.pandoc);
   }
 
   function bindPanel(panel) {
@@ -357,6 +514,24 @@
         initializedPanels.push(root);
         bindPanel(root);
         loadFromBackend(root);
+        (function (p) {
+          renderToolStatus(p);
+          renderThemesList(p);
+          onDiscoveryChange(function () {
+            renderToolStatus(p);
+            renderThemesList(p);
+          });
+          ensureDiscovery();
+          var refreshBtn = q(p, 'themes-refresh');
+          if (refreshBtn) {
+            refreshBtn.addEventListener('click', function () {
+              refreshBtn.disabled = true;
+              refreshDiscovery().then(function () {
+                refreshBtn.disabled = false;
+              });
+            });
+          }
+        })(root);
       }
     }
     return true;
@@ -370,6 +545,11 @@
       for (var i = 0; i < panels.length; i++) {
         loadFromBackend(panels[i]);
       }
-    }
+    },
+    ensureDiscovery: ensureDiscovery,
+    refreshDiscovery: refreshDiscovery,
+    getCachedStatus: getCachedStatus,
+    getCachedThemes: getCachedThemes,
+    onDiscoveryChange: onDiscoveryChange,
   };
 }));

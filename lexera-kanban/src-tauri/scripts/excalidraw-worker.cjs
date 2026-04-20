@@ -21,7 +21,16 @@ const KNOWN_BROWSER_PATHS = {
 };
 
 function resolveFromRepo(specifier, repoRoot) {
-  return require.resolve(specifier, { paths: [repoRoot] });
+  // React 18+ omits UMD subpaths from package.json `exports`, so
+  // require.resolve('react/umd/...') throws even though the file is on disk.
+  // Fall back to a direct lookup under <repoRoot>/node_modules/<specifier>.
+  try {
+    return require.resolve(specifier, { paths: [repoRoot] });
+  } catch (err) {
+    const directPath = path.join(repoRoot, 'node_modules', specifier);
+    if (fs.existsSync(directPath)) return directPath;
+    throw err;
+  }
 }
 
 function getBrowserExecutable() {

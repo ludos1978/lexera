@@ -88,19 +88,23 @@
 
   function createLogsPanelElement(instanceId) {
     var root = createPanelRoot('log-panel lexera-shared-panel lexera-shared-panel-logs', 'logs', instanceId);
-    root.setAttribute('data-log-filter', 'all');
     root.innerHTML =
       '<div class="log-panel-header">' +
         '<div class="log-panel-header-main">' +
           '<span class="log-panel-title">Logs</span>' +
-          '<div class="log-panel-tabs">' +
-            '<button class="log-panel-tab lexera-shared-log-tab-backend active" type="button">Backend</button>' +
-            '<button class="log-panel-tab lexera-shared-log-tab-frontend" type="button">Frontend</button>' +
+          '<div class="log-panel-source-dropdown">' +
+            '<button class="log-panel-tab lexera-shared-log-source-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Filter log sources">' +
+              '<span class="lexera-shared-log-source-label">Sources</span>' +
+              '<span class="log-panel-source-caret" aria-hidden="true">&#9662;</span>' +
+            '</button>' +
+            '<div class="log-panel-source-menu lexera-shared-log-source-menu hidden" role="menu"></div>' +
           '</div>' +
-          '<div class="log-panel-filter-tabs">' +
-            '<button class="log-panel-tab log-panel-filter-tab lexera-shared-log-filter-all active" type="button" data-log-filter-value="all">All</button>' +
-            '<button class="log-panel-tab log-panel-filter-tab lexera-shared-log-filter-warnings" type="button" data-log-filter-value="warnings">Warnings+</button>' +
-            '<button class="log-panel-tab log-panel-filter-tab lexera-shared-log-filter-errors" type="button" data-log-filter-value="errors">Errors</button>' +
+          '<div class="log-panel-source-dropdown">' +
+            '<button class="log-panel-tab lexera-shared-log-level-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Filter log levels">' +
+              '<span class="lexera-shared-log-level-label">Levels</span>' +
+              '<span class="log-panel-source-caret" aria-hidden="true">&#9662;</span>' +
+            '</button>' +
+            '<div class="log-panel-source-menu lexera-shared-log-level-menu hidden" role="menu"></div>' +
           '</div>' +
         '</div>' +
         '<div class="log-panel-actions">' +
@@ -118,8 +122,8 @@
       '</div>' +
       '<div class="log-panel-body">' +
         '<div class="log-panel-main view-loading">' +
-          '<div class="log-entries lexera-shared-log-entries-backend"></div>' +
-          '<div class="log-entries lexera-shared-log-entries-frontend hidden"></div>' +
+          '<div class="log-entries lexera-shared-log-entries"></div>' +
+          '<div class="log-entries lexera-shared-log-entries-stats hidden"></div>' +
         '</div>' +
       '</div>';
     return root;
@@ -395,8 +399,16 @@
             '<input class="mgmt-field-input lexera-shared-render-apps-marpTemplatesPath" id="render-app-marp-templates-path" type="text" placeholder="Directory containing .css theme templates">' +
             '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-marpTemplatesPath-browse" type="button" title="Browse for a folder">Browse\u2026</button>' +
           '</div>' +
+          '<div class="render-apps-themes-section">' +
+            '<div class="render-apps-themes-header">' +
+              '<span class="render-apps-themes-label">Discovered themes</span>' +
+              '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-themes-refresh" type="button" title="Re-scan the templates folder">Refresh</button>' +
+            '</div>' +
+            '<div class="render-apps-themes lexera-shared-render-apps-themes"></div>' +
+          '</div>' +
         '</div>' +
         '<div class="mgmt-section">' +
+          '<div class="render-apps-tool-status lexera-shared-render-apps-tool-status"></div>' +
           '<div class="mgmt-settings-actions">' +
             '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-test" type="button" title="Run --version on each tool">Test Version</button>' +
             '<button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-test-run" type="button" title="Run a minimal end-to-end render with each tool (slower)">Test Run</button>' +

@@ -2386,6 +2386,10 @@ body.show-special-characters .card-content .ws-nl {
   flex: 1;
   display: flex;
   overflow: scroll;
+  /* Disable browser scroll anchoring. Targeted card/column swaps would
+     otherwise trigger auto-adjustment of scrollLeft that drifts the view
+     horizontally after finishing a card edit. */
+  overflow-anchor: none;
   scrollbar-gutter: stable both-edges;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
@@ -6562,22 +6566,68 @@ select.dialog-input option,
   color: var(--text-primary);
 }
 
-.log-panel-filter-tabs {
-  display: flex;
+/* Log source/level dropdowns — replace the per-source tab buttons */
+.log-panel-source-dropdown {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 12px;
-  padding-left: 12px;
-  border-left: 1px solid var(--border);
 }
 
-/* Log filter: hide entries that don't match the active filter */
-.log-panel[data-log-filter="errors"] .log-entry:not(.log-error) {
+.log-panel-source-dropdown > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.log-panel-source-caret {
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.log-panel-source-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 2px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.log-panel-source-menu.hidden {
   display: none;
 }
-.log-panel[data-log-filter="warnings"] .log-entry.log-info,
-.log-panel[data-log-filter="warnings"] .log-entry.log-debug,
-.log-panel[data-log-filter="warnings"] .log-entry.log-trace {
+
+.log-panel-source-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  user-select: none;
+}
+
+.log-panel-source-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.log-panel-source-menu-checkbox {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* JS adds .log-entry-filtered to entries whose source or level is currently off */
+.log-entry.log-entry-filtered {
   display: none;
 }
 
@@ -7292,6 +7342,104 @@ select.dialog-input option,
 
 .render-apps-indicator.is-bad {
   color: var(--danger, #c62828);
+}
+
+.render-apps-themes-section {
+  margin-top: 10px;
+}
+
+.render-apps-themes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.render-apps-themes-label {
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.render-apps-themes {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  padding: 8px 10px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.render-apps-themes-heading {
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.render-apps-themes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.render-apps-themes-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.render-apps-theme-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.render-apps-theme-tag {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.render-apps-theme-path {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.render-apps-tool-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+  font-size: var(--font-size-sm);
+}
+
+.render-apps-tool-status-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.render-apps-tool-status-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.render-apps-tool-status-value.is-ok { color: var(--success, #2e8540); }
+.render-apps-tool-status-value.is-bad { color: var(--danger, #c62828); }
+.render-apps-tool-status-value.is-pending { color: var(--text-muted); }
+
+.export-configure-plugins {
+  margin-left: 8px;
+  font-size: var(--font-size-xs);
 }
 
 .log-entry {

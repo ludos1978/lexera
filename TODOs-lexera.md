@@ -14,6 +14,17 @@ Keep this file structured and clean:
 
 ### Unsorted (leave this header here!)
 
+- [ ] Q1: a folder is created for the export, the main file is placed in this directory, a _Rendered folder is created where the media files are placed (if pack linked files is selected). othervise the paths are linking directly to the cache files.
+Q2: for packed files the path should allways be relative. for files that are linking the original or the cached files we usually also use relative mode. 
+
+we might modify the export "Link & asset handling" settings:
+- "rewrite relative links": 
+- "pack linked" files opens a dropdown where the user can select to pack all file types or define a list of file extensions which should be packed. also a file size limit can be defined for all file types. files are allways linked relatively.
+- "pack all files" : is removed, as its now covered by the "pack linked"
+- "dont modify links" is removed.
+
+we also move the merge includes into main file down to the output section. it will embed all media into the main file if it's possible (other markdown files) and convert it to the appropriate export format. 
+
 - [ ] add stack, column and card must only show in the parent element if there is no sibling already in there! solve it with css!
 
 - [ ] when i drag-move a card it sometimes disappears instead of showing up in the new locaiton!

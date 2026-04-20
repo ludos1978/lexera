@@ -160,6 +160,25 @@ fn ensure_parent_dir(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Returns true when an existing target cache file is still valid for the given
+/// source — i.e. target's mtime is greater than or equal to source's mtime.
+/// Any missing file, missing mtime, or older target reports false so the caller
+/// re-renders. The caller must additionally honour a `force` flag.
+fn is_cache_fresh(source_path: &Path, target_path: &Path) -> bool {
+    if !target_path.is_file() || !source_path.is_file() {
+        return false;
+    }
+    let source_mtime = match fs::metadata(source_path).and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    let target_mtime = match fs::metadata(target_path).and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    target_mtime >= source_mtime
+}
+
 fn run_command_capture(command: &Path, args: &[String], cwd: Option<&Path>) -> Result<(), String> {
     let mut cmd = Command::new(command);
     cmd.args(args);
@@ -1684,6 +1703,25 @@ pub fn get_marp_engine_path() -> Result<Option<String>, String> {
     Ok(None)
 }
 
+/// Return the modification time of `path` as milliseconds since the Unix epoch.
+/// `Ok(None)` when the file is absent; `Err` when metadata cannot be read. The
+/// frontend uses this to build deterministic cache filenames that share the same
+/// location as the preview cache (see `embedMenu.js:buildDiagramCacheFileName`).
+#[tauri::command]
+pub fn get_file_mtime_ms(path: String) -> Result<Option<u64>, String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Ok(None);
+    }
+    let meta = fs::metadata(&p).map_err(|e| format!("Failed to read metadata for {}: {}", p.display(), e))?;
+    let modified = meta.modified().map_err(|e| format!("No mtime for {}: {}", p.display(), e))?;
+    let ms = modified
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    Ok(Some(ms))
+}
+
 #[tauri::command]
 pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<RenderEmbeddedFileResult, String> {
     let source_path = PathBuf::from(&opts.source_path);
@@ -1705,17 +1743,16 @@ pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<Ren
     }
 
     let force = opts.force.unwrap_or(false);
+    if !force && is_cache_fresh(&source_path, &target_path) {
+        return Ok(RenderEmbeddedFileResult {
+            success: true,
+            output_path: opts.target_path,
+            format: output_format,
+            error: None,
+        });
+    }
     if target_path.is_file() {
-        if force {
-            let _ = fs::remove_file(&target_path);
-        } else {
-            return Ok(RenderEmbeddedFileResult {
-                success: true,
-                output_path: opts.target_path,
-                format: output_format,
-                error: None,
-            });
-        }
+        let _ = fs::remove_file(&target_path);
     }
 
     let render_result = if let Some(renderer) = find_embedded_renderer(&opts.plugin_id) {
@@ -2351,9 +2388,11 @@ fn functional_test_drawio(path: &Path) -> Result<String, String> {
     let dir = create_temp_render_dir("rt-drawio")?;
     let src = dir.join("in.drawio");
     let dst = dir.join("out.svg");
+    // draw.io CLI silently fails on a diagram with no shapes ("Export failed",
+    // no output written), so the fixture must include at least one mxCell.
     fs::write(
         &src,
-        r#"<mxfile><diagram id="x" name="Page"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>"#,
+        r#"<mxfile><diagram id="x" name="Page"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="2" value="T" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="80" height="40" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>"#,
     )
     .map_err(|e| format!("write fixture: {}", e))?;
     let args = vec![
@@ -2845,9 +2884,72 @@ pub async fn copy_export_assets(items: Vec<ExportAssetCopyItem>) -> Result<Vec<E
 #[cfg(test)]
 mod tests {
     use super::{
-        build_minimal_pdf, detect_delimited_text_separator, normalize_plantuml_source,
-        parse_delimited_rows, render_csv_text_to_svg,
+        build_minimal_pdf, detect_delimited_text_separator, is_cache_fresh,
+        normalize_plantuml_source, parse_delimited_rows, render_csv_text_to_svg,
     };
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    /// Build a unique temp dir under std::env::temp_dir() for a given test name.
+    fn temp_dir_for(tag: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("lexera-cache-fresh-{}-{}-{}", tag, std::process::id(), stamp));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    /// Set mtime by writing and then touching via filetime-free method:
+    /// repeated writes produce monotonically increasing mtimes on every platform
+    /// we ship on, so we stagger with a short sleep where needed.
+    fn write_then_stamp(path: &std::path::Path, content: &[u8], wait_ms: u64) {
+        if wait_ms > 0 {
+            std::thread::sleep(Duration::from_millis(wait_ms));
+        }
+        fs::write(path, content).expect("write file");
+    }
+
+    #[test]
+    fn cache_fresh_when_target_newer_than_source() {
+        let dir = temp_dir_for("newer");
+        let src = dir.join("source.excalidraw");
+        let tgt = dir.join("rendered.svg");
+        write_then_stamp(&src, b"{}", 0);
+        write_then_stamp(&tgt, b"<svg/>", 20);
+        assert!(is_cache_fresh(&src, &tgt), "target newer than source should be fresh");
+    }
+
+    #[test]
+    fn cache_stale_when_source_modified_after_target() {
+        let dir = temp_dir_for("older");
+        let src = dir.join("source.excalidraw");
+        let tgt = dir.join("rendered.svg");
+        write_then_stamp(&tgt, b"<svg/>", 0);
+        write_then_stamp(&src, b"{}", 20);
+        assert!(!is_cache_fresh(&src, &tgt), "source newer than target should be stale");
+    }
+
+    #[test]
+    fn cache_stale_when_target_missing() {
+        let dir = temp_dir_for("missing-target");
+        let src = dir.join("source.drawio");
+        let tgt = dir.join("rendered.png");
+        fs::write(&src, b"<xml/>").expect("write src");
+        assert!(!is_cache_fresh(&src, &tgt));
+    }
+
+    #[test]
+    fn cache_stale_when_source_missing() {
+        let dir = temp_dir_for("missing-source");
+        let src = dir.join("source.drawio");
+        let tgt = dir.join("rendered.png");
+        fs::write(&tgt, b"data").expect("write tgt");
+        assert!(!is_cache_fresh(&src, &tgt));
+    }
+
 
     #[test]
     fn detects_semicolon_delimiter_for_semicolon_csv() {

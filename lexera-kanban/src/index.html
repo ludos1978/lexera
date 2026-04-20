@@ -108,18 +108,23 @@
   </div>
 
   <!-- Bottom Panel -->
-  <div id="log-panel" class="log-panel hidden" data-log-filter="all">
+  <div id="log-panel" class="log-panel hidden">
     <div class="log-panel-header">
       <div class="log-panel-header-main">
         <span class="log-panel-title">Logs</span>
-        <div class="log-panel-tabs">
-          <button id="log-tab-backend" class="log-panel-tab active" type="button">Backend</button>
-          <button id="log-tab-frontend" class="log-panel-tab" type="button">Frontend</button>
+        <div class="log-panel-source-dropdown">
+          <button id="log-source-btn" class="log-panel-tab" type="button" aria-haspopup="true" aria-expanded="false" title="Filter log sources">
+            <span id="log-source-label">Sources</span>
+            <span class="log-panel-source-caret" aria-hidden="true">&#9662;</span>
+          </button>
+          <div id="log-source-menu" class="log-panel-source-menu hidden" role="menu"></div>
         </div>
-        <div class="log-panel-filter-tabs">
-          <button id="log-filter-all" class="log-panel-tab log-panel-filter-tab active" type="button" data-log-filter-value="all">All</button>
-          <button id="log-filter-warnings" class="log-panel-tab log-panel-filter-tab" type="button" data-log-filter-value="warnings">Warnings+</button>
-          <button id="log-filter-errors" class="log-panel-tab log-panel-filter-tab" type="button" data-log-filter-value="errors">Errors</button>
+        <div class="log-panel-source-dropdown">
+          <button id="log-level-btn" class="log-panel-tab" type="button" aria-haspopup="true" aria-expanded="false" title="Filter log levels">
+            <span id="log-level-label">Levels</span>
+            <span class="log-panel-source-caret" aria-hidden="true">&#9662;</span>
+          </button>
+          <div id="log-level-menu" class="log-panel-source-menu hidden" role="menu"></div>
         </div>
       </div>
       <div class="log-panel-actions">
@@ -137,8 +142,8 @@
     </div>
     <div class="log-panel-body">
       <div class="log-panel-main view-loading">
-        <div id="log-entries-backend" class="log-entries"></div>
-        <div id="log-entries-frontend" class="log-entries hidden"></div>
+        <div id="log-entries" class="log-entries"></div>
+        <div id="log-entries-stats" class="log-entries hidden"></div>
       </div>
     </div>
   </div>

@@ -746,7 +746,8 @@ class ExportService {
                 nextContent,
                 sourceFilePath,
                 exportDir,
-                fileBasename
+                fileBasename,
+                linkHandlingMode
             );
             nextContent = renderedEmbeds.content;
             if (renderedEmbeds.createdFiles.length > 0) {
@@ -812,6 +813,65 @@ class ExportService {
         const ext = renderConfig && renderConfig.outputExtension ? renderConfig.outputExtension : 'png';
         const fileName = stem + '-' + hash + suffix + '.' + ext;
         return ExportService.toForwardSlashes(fileBasename + '-Media/rendered/' + fileName);
+    }
+
+    // ── Shared preview/export cache helpers ─────────────────────────────
+    // Mirror the embedMenu.js cache-path scheme so preview-cache and
+    // export-render write to the SAME file: modifications invalidate by
+    // changing the mtime portion of the filename, and the render backend
+    // reuses a target whose mtime is >= source.
+    static encodeUtf8Base64(value) {
+        try {
+            return btoa(encodeURIComponent(String(value || '')).replace(/%([0-9A-F]{2})/g, function (_, hex) {
+                return String.fromCharCode(parseInt(hex, 16));
+            }));
+        } catch (e) {
+            return '';
+        }
+    }
+
+    static buildDiagramCachePrefix(sourcePath) {
+        const basename = ExportService.basenameWithoutExtension(sourcePath);
+        const pathHash = ExportService.encodeUtf8Base64(String(sourcePath || '')).replace(/[/+=]/g, '').slice(0, 8);
+        return basename + '-' + pathHash + '-';
+    }
+
+    static buildDiagramCacheFileName(sourcePath, mtimeMs, extension, suffix) {
+        return ExportService.buildDiagramCachePrefix(sourcePath) + Math.floor(mtimeMs || 0) + (suffix || '') + '.' + extension;
+    }
+
+    static buildDiagramCacheDir(boardFilePath, sourcePath, cacheFolderName) {
+        const sourceDir = ExportService.dirnamePath(sourcePath);
+        if (!sourceDir) return '';
+        const boardDir = ExportService.dirnamePath(boardFilePath);
+        if (!boardDir || ExportService.normalizePathKey(sourceDir) !== ExportService.normalizePathKey(boardDir)) {
+            const sourceDirBase = ExportService.basename(sourceDir);
+            if (!sourceDirBase) return '';
+            return sourceDir + '/' + sourceDirBase + '-Media/' + cacheFolderName;
+        }
+        const boardBase = ExportService.basenameWithoutExtension(boardFilePath);
+        if (!boardBase) return '';
+        return boardDir + '/' + boardBase + '-Media/' + cacheFolderName;
+    }
+
+    static async fetchSourceMtimeMs(absoluteSourcePath) {
+        if (!exportCanUseTauri()) return 0;
+        try {
+            const ms = await exportInvokeTauri('get_file_mtime_ms', { path: absoluteSourcePath });
+            return typeof ms === 'number' && isFinite(ms) ? ms : 0;
+        } catch (err) {
+            exportLexeraLog('warn', '[ExportService] get_file_mtime_ms failed for ' + absoluteSourcePath + ': ' + (err && err.message ? err.message : String(err)));
+            return 0;
+        }
+    }
+
+    // Packing applies to rendered embeds in the same mode-driven way as
+    // other assets: if the user picked pack-linked or pack-all we copy the
+    // shared cache file into the export's -Media folder; otherwise links
+    // point at the cache file directly via a relative path.
+    static shouldCopyRenderedEmbedToPack(linkHandlingMode) {
+        const mode = ExportService.normalizeLinkHandlingMode(linkHandlingMode);
+        return mode === 'pack-linked' || mode === 'pack-all';
     }
 
     static sanitizeRenderedEmbedStem(value) {
@@ -911,17 +971,19 @@ class ExportService {
         return { content: nextContent, createdFiles: createdFiles };
     }
 
-    static async renderFileEmbedsForExport(content, sourceFilePath, exportDir, fileBasename) {
+    static async renderFileEmbedsForExport(content, sourceFilePath, exportDir, fileBasename, linkHandlingMode) {
         const registry = ExportService.getFileFormatRegistry();
         if (!registry || !exportCanUseTauri()) {
             return { content, createdFiles: [] };
         }
 
+        const packCopies = ExportService.shouldCopyRenderedEmbedToPack(linkHandlingMode);
         const protectedCode = ExportService.protectCodeBlocks(content);
         const sourceDir = ExportService.dirnamePath(sourceFilePath);
         const imagePattern = /!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g;
         const matches = [];
         const jobs = {};
+        const mtimeCache = {};
         let match;
 
         while ((match = imagePattern.exec(protectedCode.content)) !== null) {
@@ -936,7 +998,7 @@ class ExportService {
             }
 
             const plugin = ExportService.getRenderableFileFormatPlugin(filePath);
-            if (!plugin || !registry.getExportRenderConfig) {
+            if (!plugin || !registry.getExportRenderConfig || !registry.getPreviewRenderConfig) {
                 continue;
             }
 
@@ -946,21 +1008,56 @@ class ExportService {
             if (!renderConfig || renderConfig.supportsRuntimeRender === false) {
                 continue;
             }
+            // The export render inherits the preview cache folder so a single
+            // render call serves both preview and export. Filename includes
+            // extension + mtime so PNG/SVG variants coexist and stale content
+            // cannot be reused across source modifications.
+            const previewConfig = registry.getPreviewRenderConfig(filePath, { pageNumber: pageNumber });
+            if (!previewConfig || !previewConfig.cacheFolderName) {
+                continue;
+            }
 
             const absoluteSourcePath = ExportService.isAbsolutePath(filePath)
                 ? ExportService.normalizePath(filePath)
                 : ExportService.resolvePath(sourceDir, filePath);
-            const relativeTarget = ExportService.buildRenderedEmbedTargetRelativePath(fileBasename, absoluteSourcePath, plugin, renderConfig);
-            const absoluteTarget = ExportService.joinPath(exportDir, relativeTarget);
-            const jobKey = plugin.id + '::' + ExportService.normalizePathKey(absoluteSourcePath) + '::' + String(renderConfig.outputFormat || '') + '::' + String(pageNumber || 1);
+            const sourceKey = ExportService.normalizePathKey(absoluteSourcePath);
+            let mtimeMs = mtimeCache[sourceKey];
+            if (mtimeMs === undefined) {
+                mtimeMs = await ExportService.fetchSourceMtimeMs(absoluteSourcePath);
+                mtimeCache[sourceKey] = mtimeMs;
+            }
+            const cacheDir = ExportService.buildDiagramCacheDir(sourceFilePath, absoluteSourcePath, previewConfig.cacheFolderName);
+            if (!cacheDir) {
+                continue;
+            }
+            const cacheFileName = ExportService.buildDiagramCacheFileName(
+                absoluteSourcePath,
+                mtimeMs,
+                renderConfig.outputExtension,
+                renderConfig.suffix
+            );
+            const absoluteCacheTarget = ExportService.joinPath(cacheDir, cacheFileName);
+            const jobKey = plugin.id + '::' + sourceKey + '::' + String(renderConfig.outputFormat || '') + '::' + String(pageNumber || 1);
+
+            // In pack mode the rendered cache file is copied into
+            // {exportBase}-Media/rendered/; otherwise the link points at the
+            // cache file directly via relative path.
+            const packRelativeTarget = packCopies
+                ? ExportService.toForwardSlashes(fileBasename + '-Media/rendered/' + cacheFileName)
+                : '';
+            const packAbsoluteTarget = packCopies
+                ? ExportService.joinPath(exportDir, packRelativeTarget)
+                : '';
 
             if (!jobs[jobKey]) {
                 jobs[jobKey] = {
                     key: jobKey,
                     pluginId: plugin.id,
                     sourcePath: absoluteSourcePath,
-                    targetPath: absoluteTarget,
-                    relativeTarget: relativeTarget,
+                    targetPath: absoluteCacheTarget,
+                    cacheAbsolute: absoluteCacheTarget,
+                    packAbsolute: packAbsoluteTarget,
+                    packRelative: packRelativeTarget,
                     pageNumber: pageNumber,
                     outputFormat: renderConfig.outputFormat || renderConfig.outputExtension || 'png',
                 };
@@ -1023,6 +1120,7 @@ class ExportService {
                 .then(function (result) { return { job: job, result: result, error: null }; })
                 .catch(function (err) { return { job: job, result: null, error: err }; });
         }));
+        const successfulJobs = [];
         for (const entry of jobResults) {
             const job = entry.job;
             if (entry.error) {
@@ -1030,10 +1128,44 @@ class ExportService {
                 continue;
             }
             if (entry.result && entry.result.success) {
-                renderedTargets[job.key] = job.relativeTarget;
-                createdFiles.push(job.targetPath);
+                successfulJobs.push(job);
+                createdFiles.push(job.cacheAbsolute);
             } else {
                 exportLexeraLog('warn', '[ExportService] Rendered embed export skipped for ' + job.sourcePath + ': ' + ((entry.result && entry.result.error) || 'unknown renderer failure'));
+            }
+        }
+
+        // Pack mode: copy each rendered cache file into the export's
+        // -Media/rendered folder. Reference mode: link directly to the
+        // cache via a relative path from exportDir.
+        if (packCopies && successfulJobs.length) {
+            const copyItems = successfulJobs.map(function (job) {
+                return { sourcePath: job.cacheAbsolute, targetPath: job.packAbsolute };
+            });
+            try {
+                const copyResults = await exportInvokeTauri('copy_export_assets', { items: copyItems });
+                const rows = Array.isArray(copyResults) ? copyResults : [];
+                const copyMap = {};
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i] || {};
+                    if (row.success) {
+                        copyMap[ExportService.normalizePathKey(row.sourcePath)] = true;
+                        createdFiles.push(row.targetPath);
+                    } else {
+                        exportLexeraLog('warn', '[ExportService] Rendered embed pack copy failed for ' + (row.sourcePath || '') + ': ' + (row.error || 'unknown'));
+                    }
+                }
+                for (const job of successfulJobs) {
+                    if (copyMap[ExportService.normalizePathKey(job.cacheAbsolute)]) {
+                        renderedTargets[job.key] = job.packRelative;
+                    }
+                }
+            } catch (err) {
+                exportLexeraLog('warn', '[ExportService] copy_export_assets invoke failed: ' + (err && err.message ? err.message : String(err)));
+            }
+        } else {
+            for (const job of successfulJobs) {
+                renderedTargets[job.key] = ExportService.relativePath(exportDir, job.cacheAbsolute);
             }
         }
 

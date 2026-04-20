@@ -432,6 +432,7 @@ fn main() {
             export_commands::render_embedded_file,
             export_commands::render_plantuml_code,
             export_commands::get_marp_engine_path,
+            export_commands::get_file_mtime_ms,
         ])
         .on_window_event(|window, event| {
             match event {

@@ -5059,6 +5059,85 @@ var LexeraDashboard = (function () {
   }
 
   /**
+   * Freeze the pixel dimensions of a swapped element and its layout ancestors
+   * (column, stack, row) so that removing-and-reinserting content cannot
+   * trigger a layout shift that moves the .columns-container scrollLeft/Top.
+   *
+   * The browser's scroll anchoring, combined with flex re-layout during the
+   * brief moment between replaceChild and the next paint, can bounce the
+   * horizontal scroll position. Pinning ancestor widths/heights before the
+   * swap and applying the old card's dimensions to the new node suppresses
+   * that. The release function clears the inline styles on the next frame
+   * so natural resizing (e.g. taller content) resumes.
+   *
+   * Always call the returned release() on the next animation frame.
+   *
+   * @param {Element} oldEl
+   * @returns {{ applyToNew: Function, release: Function }}
+   */
+  function pinSwapLayout(oldEl) {
+    if (!oldEl || !oldEl.getBoundingClientRect) {
+      return { applyToNew: function () {}, release: function () {} };
+    }
+    var oldRect = oldEl.getBoundingClientRect();
+    var ancestorSelectors = ['.column', '.board-stack', '.board-row'];
+    var snapshots = [];
+    var node = oldEl.parentElement;
+    while (node && node !== document.body) {
+      for (var i = 0; i < ancestorSelectors.length; i++) {
+        if (node.matches && node.matches(ancestorSelectors[i])) {
+          var rect = node.getBoundingClientRect();
+          snapshots.push({
+            el: node,
+            width: node.style.width,
+            height: node.style.height,
+            minWidth: node.style.minWidth,
+            minHeight: node.style.minHeight
+          });
+          node.style.width = rect.width + 'px';
+          node.style.minWidth = rect.width + 'px';
+          node.style.height = rect.height + 'px';
+          node.style.minHeight = rect.height + 'px';
+          break;
+        }
+      }
+      node = node.parentElement;
+    }
+    var pinnedNew = null;
+    return {
+      applyToNew: function (newEl) {
+        if (!newEl) return;
+        pinnedNew = {
+          el: newEl,
+          width: newEl.style.width,
+          height: newEl.style.height,
+          minWidth: newEl.style.minWidth,
+          minHeight: newEl.style.minHeight
+        };
+        newEl.style.width = oldRect.width + 'px';
+        newEl.style.minWidth = oldRect.width + 'px';
+        newEl.style.height = oldRect.height + 'px';
+        newEl.style.minHeight = oldRect.height + 'px';
+      },
+      release: function () {
+        for (var j = 0; j < snapshots.length; j++) {
+          var s = snapshots[j];
+          s.el.style.width = s.width;
+          s.el.style.height = s.height;
+          s.el.style.minWidth = s.minWidth;
+          s.el.style.minHeight = s.minHeight;
+        }
+        if (pinnedNew) {
+          pinnedNew.el.style.width = pinnedNew.width;
+          pinnedNew.el.style.height = pinnedNew.height;
+          pinnedNew.el.style.minWidth = pinnedNew.minWidth;
+          pinnedNew.el.style.minHeight = pinnedNew.minHeight;
+        }
+      }
+    };
+  }
+
+  /**
    * Resolve the current fold-state arrays needed by the build*Element functions.
    * Avoids duplicating these lookups across multiple target handlers.
    */
@@ -5134,6 +5213,16 @@ var LexeraDashboard = (function () {
     var needsSidebar = false;
     var needsStructuralVs = false;
 
+    // Snapshot the board scroll position before any swap. Targeted DOM
+    // replacements can trigger transient flex reflow and browser scroll
+    // anchoring, which bounces scrollLeft/scrollTop (the user sees the
+    // view drift horizontally after card edits). We force the saved
+    // position back after the swap and again on the next animation frame
+    // once any async enhancement (diagrams, VS remeasure) has settled.
+    var _scrollContainer = getElColumnsContainer();
+    var _savedScrollLeft = _scrollContainer ? _scrollContainer.scrollLeft : 0;
+    var _savedScrollTop = _scrollContainer ? _scrollContainer.scrollTop : 0;
+
     for (var t = 0; t < targets.length; t++) {
       var target = targets[t];
       switch (target.type) {
@@ -5147,12 +5236,15 @@ var LexeraDashboard = (function () {
           if (!card) break;
           var oldCardEl = findVisibleCardElement(target.colIndex, target.cardIndex);
           if (!oldCardEl) break;
+          var cardPin = pinSwapLayout(oldCardEl);
           var newCardEl = buildCardElement(card, target.colIndex, target.cardIndex, fs.collapsedCards);
           if (oldCardEl.classList.contains('editing')) newCardEl.classList.add('editing');
           if (oldCardEl.classList.contains('editing-inline')) newCardEl.classList.add('editing-inline');
           if (oldCardEl.classList.contains('editing-overlay')) newCardEl.classList.add('editing-overlay');
+          cardPin.applyToNew(newCardEl);
           oldCardEl.parentNode.replaceChild(newCardEl, oldCardEl);
           enhanceRenderedElement(newCardEl, { colIndex: target.colIndex });
+          requestAnimationFrame(function () { cardPin.release(); });
           break;
         }
 
@@ -5215,8 +5307,10 @@ var LexeraDashboard = (function () {
           if (!ccCardEl) break;
           var contentEl = ccCardEl.querySelector('.card-content');
           if (contentEl) {
+            var ccPin = pinSwapLayout(ccCardEl);
             contentEl.innerHTML = renderCardContent(ccCard.content, activeBoardId, target.colIndex, {});
             enhanceRenderedElement(contentEl, { colIndex: target.colIndex });
+            requestAnimationFrame(function () { ccPin.release(); });
           }
           break;
         }
@@ -5231,12 +5325,15 @@ var LexeraDashboard = (function () {
           var rIdx = parseInt(oldColumn.getAttribute('data-row-index'), 10);
           var sIdx = parseInt(oldColumn.getAttribute('data-stack-index'), 10);
           var cLocalIdx = parseInt(oldColumn.getAttribute('data-col-local-index'), 10);
+          var colPin = pinSwapLayout(oldColumn);
           var newColEl = buildColumnElement(colData, fs.foldedCols, fs.collapsedCards,
             isFinite(rIdx) ? rIdx : undefined, isFinite(sIdx) ? sIdx : undefined,
             isFinite(cLocalIdx) ? cLocalIdx : undefined, target.colIndex);
           if (isCanvasBoardLayout()) applyCanvasColumnLayout(newColEl, colData);
+          colPin.applyToNew(newColEl);
           oldColumn.parentNode.replaceChild(newColEl, oldColumn);
           enhanceRenderedElement(newColEl, { colIndex: target.colIndex });
+          requestAnimationFrame(function () { colPin.release(); });
           needsStructuralVs = true;
           break;
         }
@@ -5249,15 +5346,13 @@ var LexeraDashboard = (function () {
             '.board-stack[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"]'
           );
           if (!oldStackEl) break;
+          var stackPin = pinSwapLayout(oldStackEl);
           var newStackEl = buildStackElement(stackData, target.rowIndex, target.stackIndex,
             fs.foldedCols, fs.foldedStacks, fs.collapsedCards);
-          if (isCanvasBoardLayout()) {
-            // Canvas stacks go inside the scene element
-            oldStackEl.parentNode.replaceChild(newStackEl, oldStackEl);
-          } else {
-            oldStackEl.parentNode.replaceChild(newStackEl, oldStackEl);
-          }
+          stackPin.applyToNew(newStackEl);
+          oldStackEl.parentNode.replaceChild(newStackEl, oldStackEl);
           enhanceRenderedElement(newStackEl, { structural: true });
+          requestAnimationFrame(function () { stackPin.release(); });
           needsStructuralVs = true;
           break;
         }
@@ -5269,10 +5364,13 @@ var LexeraDashboard = (function () {
             '.board-row[data-row-index="' + target.rowIndex + '"]'
           );
           if (!oldRowEl) break;
+          var rowPin = pinSwapLayout(oldRowEl);
           var newRowEl = buildRowElement(rowData, target.rowIndex,
             fs.foldedCols, fs.foldedRows, fs.foldedStacks, fs.collapsedCards);
+          rowPin.applyToNew(newRowEl);
           oldRowEl.parentNode.replaceChild(newRowEl, oldRowEl);
           enhanceRenderedElement(newRowEl, { structural: true });
+          requestAnimationFrame(function () { rowPin.release(); });
           needsStructuralVs = true;
           break;
         }
@@ -5317,6 +5415,18 @@ var LexeraDashboard = (function () {
       } else {
         syncRenderedRowWidths();
       }
+    }
+
+    // Restore board scroll position. Done synchronously right after the
+    // swap and again on rAF to counter browser scroll anchoring that can
+    // fire between paint frames.
+    if (_scrollContainer) {
+      if (_scrollContainer.scrollLeft !== _savedScrollLeft) _scrollContainer.scrollLeft = _savedScrollLeft;
+      if (_scrollContainer.scrollTop !== _savedScrollTop) _scrollContainer.scrollTop = _savedScrollTop;
+      requestAnimationFrame(function () {
+        if (_scrollContainer.scrollLeft !== _savedScrollLeft) _scrollContainer.scrollLeft = _savedScrollLeft;
+        if (_scrollContainer.scrollTop !== _savedScrollTop) _scrollContainer.scrollTop = _savedScrollTop;
+      });
     }
   }
 
@@ -10873,6 +10983,16 @@ var LexeraDashboard = (function () {
         getWhitespaceTokenList: function (value) { return getWhitespaceTokenList(value); },
         setWhitespaceTokenList: function (tokens) { return setWhitespaceTokenList(tokens); }
       });
+    }
+
+    // Warm the Plugin Settings discovery cache so marp/pandoc status and
+    // marp themes are ready before the user opens the export dialog. The
+    // checks run in parallel, out-of-band; if the user opens export
+    // before this completes, exportUI.checkToolAvailability handles the
+    // pending state and re-renders when discovery finishes.
+    if (window.LexeraRenderAppsSettings
+        && typeof window.LexeraRenderAppsSettings.ensureDiscovery === 'function') {
+      window.LexeraRenderAppsSettings.ensureDiscovery();
     }
 
     // ── Menu Contributor Registrations (delegated to ContextMenuBuilders) ──

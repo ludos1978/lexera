@@ -1,13 +1,47 @@
 /**
- * Lexera Log — Status bar + dedicated frontend/backend log views.
+ * Lexera Log — Unified log stream with per-source category filter.
  */
 var frontendLogEntries = [];
 var backendLogEntries = [];
 var LOG_MAX = 1000;
+
+// Registry of log source categories. Add a new entry to surface a new filter in the dropdown.
+// Each category: { id, label, match(entry) } where entry has .source tagged ('frontend' | 'backend').
+var LOG_CATEGORIES = [
+  { id: 'frontend', label: 'Frontend', match: function (e) { return e && e.source === 'frontend'; } },
+  { id: 'backend',  label: 'Backend',  match: function (e) { return e && e.source === 'backend'; } }
+];
+
+// Registry of log levels. Entries whose level doesn't map to any id fall into 'debug'.
+var LOG_LEVELS = [
+  { id: 'error', label: 'Errors',   match: function (e) { return e && e.level === 'error'; } },
+  { id: 'warn',  label: 'Warnings', match: function (e) { return e && e.level === 'warn'; } },
+  { id: 'info',  label: 'Info',     match: function (e) { return e && e.level === 'info'; } },
+  { id: 'debug', label: 'Debug',    match: function (e) { return e && (e.level === 'debug' || e.level === 'trace' || !e.level); } }
+];
+
 var _LogSettings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
-var storedLogSource = _LogSettings ? _LogSettings.get('logSource') : (function () { try { return localStorage.getItem('lexera-log-source'); } catch (_) { return null; } })();
-var activeLogSource = storedLogSource === 'backend' ? 'backend' : 'frontend';
-var activeLogFilter = 'all'; // 'all' | 'warnings' | 'errors'
+// Default = all-on. Stored '' = none. Stored list = exactly those on. Bypass the settings store
+// on load because it collapses missing vs empty-string into the same default.
+function _loadStoredSet(storageKey, registry) {
+  var raw = null;
+  try { raw = localStorage.getItem(storageKey); } catch (_) { raw = null; }
+  var set = {};
+  if (raw === null) {
+    for (var i = 0; i < registry.length; i++) set[registry[i].id] = true;
+    return set;
+  }
+  if (raw) {
+    raw.split(',').forEach(function (id) {
+      id = (id || '').trim();
+      if (id && registry.some(function (c) { return c.id === id; })) set[id] = true;
+    });
+  }
+  return set;
+}
+var activeLogCategories = _loadStoredSet('lexera-log-categories', LOG_CATEGORIES);
+var activeLogLevels = _loadStoredSet('lexera-log-levels', LOG_LEVELS);
+var activeLogSource = 'logs'; // 'logs' | 'stats' — controls which body pane is visible (kept for external callers)
 var backendLogLoaded = false;
 var backendLogEventSource = null;
 var backendLogConnectPending = false;
@@ -18,14 +52,16 @@ var lastStatusLevel = '';
 var FRONTEND_BUILD_STAMP = '20260305-1528-remote-join-persistence';
 
 var elStatusMsg = null;
-var elLogEntriesBackend = null;
-var elLogEntriesFrontend = null;
+var elLogEntries = null;
 var elLogPanel = null;
 var elLogSettingsPane = null;
 var elLogSettingsContainer = null;
-var elLogTabBackend = null;
-var elLogTabFrontend = null;
-var elLogTabStats = null;
+var elLogSourceBtn = null;
+var elLogSourceLabel = null;
+var elLogSourceMenu = null;
+var elLogLevelBtn = null;
+var elLogLevelLabel = null;
+var elLogLevelMenu = null;
 var elLogRefreshBtn = null;
 var elLogCopyBtn = null;
 var elLogClearBtn = null;
@@ -49,8 +85,7 @@ function queryPrimaryLogRoot(selector) {
 }
 
 function getElStatusMsg() { return elStatusMsg || (elStatusMsg = document.getElementById('status-msg') || queryPrimaryLogRoot('.status-msg')); }
-function getElLogEntriesBackend() { return elLogEntriesBackend || (elLogEntriesBackend = document.getElementById('log-entries-backend') || queryPrimaryLogRoot('.lexera-shared-log-entries-backend')); }
-function getElLogEntriesFrontend() { return elLogEntriesFrontend || (elLogEntriesFrontend = document.getElementById('log-entries-frontend') || queryPrimaryLogRoot('.lexera-shared-log-entries-frontend')); }
+function getElLogEntries() { return elLogEntries || (elLogEntries = document.getElementById('log-entries') || queryPrimaryLogRoot('.lexera-shared-log-entries')); }
 function getElLogEntriesStats() { return queryPrimaryLogRoot('.lexera-shared-log-entries-stats') || document.getElementById('log-entries-stats'); }
 function getElLogPanel() { return elLogPanel || (elLogPanel = document.getElementById('log-panel') || getPrimaryLogRoot()); }
 function getElLogSettingsPane() {
@@ -71,9 +106,12 @@ function getElLogSettingsContainer() {
     : document.getElementById('mgmt-panel-body');
   return elLogSettingsContainer;
 }
-function getElLogTabBackend() { return elLogTabBackend || (elLogTabBackend = document.getElementById('log-tab-backend') || queryPrimaryLogRoot('.lexera-shared-log-tab-backend')); }
-function getElLogTabFrontend() { return elLogTabFrontend || (elLogTabFrontend = document.getElementById('log-tab-frontend') || queryPrimaryLogRoot('.lexera-shared-log-tab-frontend')); }
-function getElLogTabStats() { return elLogTabStats || (elLogTabStats = document.getElementById('log-tab-stats') || queryPrimaryLogRoot('.lexera-shared-log-tab-stats')); }
+function getElLogSourceBtn() { return elLogSourceBtn || (elLogSourceBtn = document.getElementById('log-source-btn') || queryPrimaryLogRoot('.lexera-shared-log-source-btn')); }
+function getElLogSourceLabel() { return elLogSourceLabel || (elLogSourceLabel = document.getElementById('log-source-label') || queryPrimaryLogRoot('.lexera-shared-log-source-label')); }
+function getElLogSourceMenu() { return elLogSourceMenu || (elLogSourceMenu = document.getElementById('log-source-menu') || queryPrimaryLogRoot('.lexera-shared-log-source-menu')); }
+function getElLogLevelBtn() { return elLogLevelBtn || (elLogLevelBtn = document.getElementById('log-level-btn') || queryPrimaryLogRoot('.lexera-shared-log-level-btn')); }
+function getElLogLevelLabel() { return elLogLevelLabel || (elLogLevelLabel = document.getElementById('log-level-label') || queryPrimaryLogRoot('.lexera-shared-log-level-label')); }
+function getElLogLevelMenu() { return elLogLevelMenu || (elLogLevelMenu = document.getElementById('log-level-menu') || queryPrimaryLogRoot('.lexera-shared-log-level-menu')); }
 function getElLogRefreshBtn() { return elLogRefreshBtn || (elLogRefreshBtn = document.getElementById('log-refresh-btn') || queryPrimaryLogRoot('.lexera-shared-log-refresh')); }
 function getElLogCopyBtn() { return elLogCopyBtn || (elLogCopyBtn = document.getElementById('log-copy-btn') || queryPrimaryLogRoot('.lexera-shared-log-copy')); }
 function getElLogClearBtn() { return elLogClearBtn || (elLogClearBtn = document.getElementById('log-clear-btn') || queryPrimaryLogRoot('.lexera-shared-log-clear')); }
@@ -148,19 +186,17 @@ function getMirroredLogViews() {
   return roots.map(function (root) {
     return {
       root: root,
-      backendTab: root.querySelector('.lexera-shared-log-tab-backend'),
-      frontendTab: root.querySelector('.lexera-shared-log-tab-frontend'),
-      statsTab: root.querySelector('.lexera-shared-log-tab-stats'),
+      sourceBtn: root.querySelector('.lexera-shared-log-source-btn'),
+      sourceLabel: root.querySelector('.lexera-shared-log-source-label'),
+      sourceMenu: root.querySelector('.lexera-shared-log-source-menu'),
+      levelBtn: root.querySelector('.lexera-shared-log-level-btn'),
+      levelLabel: root.querySelector('.lexera-shared-log-level-label'),
+      levelMenu: root.querySelector('.lexera-shared-log-level-menu'),
       refreshBtn: root.querySelector('.lexera-shared-log-refresh'),
       copyBtn: root.querySelector('.lexera-shared-log-copy'),
       clearBtn: root.querySelector('.lexera-shared-log-clear'),
-      filterAllBtn: root.querySelector('.lexera-shared-log-filter-all'),
-      filterWarningsBtn: root.querySelector('.lexera-shared-log-filter-warnings'),
-      filterErrorsBtn: root.querySelector('.lexera-shared-log-filter-errors'),
       titleEl: root.querySelector('.log-panel-title'),
-      tabsEl: root.querySelector('.log-panel-tabs'),
-      backendEntries: root.querySelector('.lexera-shared-log-entries-backend'),
-      frontendEntries: root.querySelector('.lexera-shared-log-entries-frontend'),
+      entries: root.querySelector('.lexera-shared-log-entries'),
       statsEntries: root.querySelector('.lexera-shared-log-entries-stats')
     };
   }).filter(function (view) { return !!view.root; });
@@ -184,67 +220,49 @@ function bindMirroredLogView(view) {
   if (view.clearBtn) {
     view.clearBtn.addEventListener('click', function (e) {
       e.stopPropagation();
-      replaceLogEntries(activeLogSource, []);
+      clearActiveLogEntries();
     });
   }
-  if (view.backendTab) {
-    view.backendTab.addEventListener('click', function (e) {
+  if (view.sourceBtn) {
+    view.sourceBtn.addEventListener('click', function (e) {
       e.stopPropagation();
-      setActiveLogSource('backend');
+      toggleLogFilterMenu(view.sourceMenu, view.sourceBtn);
     });
   }
-  if (view.frontendTab) {
-    view.frontendTab.addEventListener('click', function (e) {
+  if (view.sourceMenu) renderLogFilterMenu(view.sourceMenu, 'source');
+  if (view.levelBtn) {
+    view.levelBtn.addEventListener('click', function (e) {
       e.stopPropagation();
-      setActiveLogSource('frontend');
+      toggleLogFilterMenu(view.levelMenu, view.levelBtn);
     });
   }
-  if (view.statsTab) {
-    view.statsTab.addEventListener('click', function (e) {
-      e.stopPropagation();
-      setActiveLogSource('stats');
-    });
-  }
-  var filterBtns = [view.filterAllBtn, view.filterWarningsBtn, view.filterErrorsBtn];
-  filterBtns.forEach(function (btn) {
-    if (!btn) return;
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var value = btn.getAttribute('data-log-filter-value') || 'all';
-      setActiveLogFilter(value);
-    });
-  });
+  if (view.levelMenu) renderLogFilterMenu(view.levelMenu, 'level');
 }
 
 function syncMirroredLogViews() {
-  var backendHtml = getElLogEntriesBackend() ? getElLogEntriesBackend().innerHTML : '';
-  var frontendHtml = getElLogEntriesFrontend() ? getElLogEntriesFrontend().innerHTML : '';
+  var canonicalEntries = getElLogEntries();
+  var entriesHtml = canonicalEntries ? canonicalEntries.innerHTML : '';
   var statsPanel = getElLogEntriesStats();
   var statsHtml = statsPanel ? statsPanel.innerHTML : '';
   var primaryRoot = getPrimaryLogRoot();
-  var canonicalTabs = primaryRoot ? primaryRoot.querySelector('.log-panel-tabs') : null;
   var titleEl = primaryRoot ? primaryRoot.querySelector('.log-panel-title') : null;
   var titleText = titleEl ? titleEl.textContent : 'Logs';
+  var sourceLabelText = 'Sources';
+  var levelLabelText = 'Levels';
   var mirroredViews = getMirroredLogViews();
   for (var i = 0; i < mirroredViews.length; i++) {
     var view = mirroredViews[i];
     bindMirroredLogView(view);
-    if (view.backendEntries) view.backendEntries.innerHTML = backendHtml;
-    if (view.frontendEntries) view.frontendEntries.innerHTML = frontendHtml;
+    if (view.entries) view.entries.innerHTML = entriesHtml;
     if (view.statsEntries) view.statsEntries.innerHTML = statsHtml;
-    if (view.backendTab) view.backendTab.classList.toggle('active', activeLogSource === 'backend');
-    if (view.frontendTab) view.frontendTab.classList.toggle('active', activeLogSource === 'frontend');
-    if (view.statsTab) view.statsTab.classList.toggle('active', activeLogSource === 'stats');
-    if (view.backendEntries) view.backendEntries.classList.toggle('hidden', activeLogSource !== 'backend');
-    if (view.frontendEntries) view.frontendEntries.classList.toggle('hidden', activeLogSource !== 'frontend');
+    if (view.entries) view.entries.classList.toggle('hidden', activeLogSource === 'stats');
     if (view.statsEntries) view.statsEntries.classList.toggle('hidden', activeLogSource !== 'stats');
-    if (view.refreshBtn) view.refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
+    if (view.refreshBtn) view.refreshBtn.style.display = activeLogSource === 'stats' ? 'none' : '';
     if (view.titleEl) view.titleEl.textContent = titleText;
-    if (view.tabsEl) view.tabsEl.style.display = canonicalTabs ? canonicalTabs.style.display : '';
-    view.root.setAttribute('data-log-filter', activeLogFilter);
-    if (view.filterAllBtn) view.filterAllBtn.classList.toggle('active', activeLogFilter === 'all');
-    if (view.filterWarningsBtn) view.filterWarningsBtn.classList.toggle('active', activeLogFilter === 'warnings');
-    if (view.filterErrorsBtn) view.filterErrorsBtn.classList.toggle('active', activeLogFilter === 'errors');
+    if (view.sourceLabel) view.sourceLabel.textContent = sourceLabelText;
+    if (view.sourceMenu) syncLogFilterMenuState(view.sourceMenu, 'source');
+    if (view.levelLabel) view.levelLabel.textContent = levelLabelText;
+    if (view.levelMenu) syncLogFilterMenuState(view.levelMenu, 'level');
   }
   syncAllLogStatusMessages();
   syncAllConnectionStatusButtons();
@@ -256,8 +274,16 @@ window.addEventListener('lexera-shared-panel-created', function (event) {
 });
 
 window.addEventListener('storage', function (event) {
-  if (!event || event.key !== 'lexera-log-source') return;
-  setActiveLogSource(event.newValue === 'backend' ? 'backend' : (event.newValue === 'stats' ? 'stats' : 'frontend'));
+  if (!event) return;
+  if (event.key === 'lexera-log-categories') {
+    activeLogCategories = _loadStoredSet('lexera-log-categories', LOG_CATEGORIES);
+    applyLogEntryFilters();
+    syncMirroredLogViews();
+  } else if (event.key === 'lexera-log-levels') {
+    activeLogLevels = _loadStoredSet('lexera-log-levels', LOG_LEVELS);
+    applyLogEntryFilters();
+    syncMirroredLogViews();
+  }
 });
 
 var elBoardList = null;
@@ -375,12 +401,8 @@ function getLogEntries(source) {
 
 function getLogEntriesSnapshot(source, options) {
   var entries;
-  if (source === 'all') {
-    entries = backendLogEntries.map(function (entry) {
-      return Object.assign({ source: 'backend' }, entry);
-    }).concat(frontendLogEntries.map(function (entry) {
-      return Object.assign({ source: 'frontend' }, entry);
-    }));
+  if (source === 'all' || source == null) {
+    entries = mergeLogEntries();
   } else {
     entries = getLogEntries(source).map(function (entry) {
       return Object.assign({ source: source === 'backend' ? 'backend' : 'frontend' }, entry);
@@ -392,12 +414,52 @@ function getLogEntriesSnapshot(source, options) {
   return entries.slice();
 }
 
+function mergeLogEntries() {
+  var merged = backendLogEntries.map(function (entry) {
+    return Object.assign({ source: 'backend' }, entry);
+  }).concat(frontendLogEntries.map(function (entry) {
+    return Object.assign({ source: 'frontend' }, entry);
+  }));
+  merged.sort(function (a, b) {
+    return (a.timestampMs || 0) - (b.timestampMs || 0);
+  });
+  return merged;
+}
+
 function escapeLogHtml(value) {
   return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function getLogContainer(source) {
-  return source === 'backend' ? getElLogEntriesBackend() : getElLogEntriesFrontend();
+function getLogContainer() {
+  return getElLogEntries();
+}
+
+function registryIdFor(registry, entry) {
+  for (var i = 0; i < registry.length; i++) {
+    if (registry[i].match(entry)) return registry[i].id;
+  }
+  return '';
+}
+
+function entryCategoryId(entry) { return registryIdFor(LOG_CATEGORIES, entry); }
+function entryLevelId(entry)    { return registryIdFor(LOG_LEVELS, entry); }
+
+function entryAllowed(entry) {
+  var catId = entryCategoryId(entry);
+  var lvlId = entryLevelId(entry);
+  return !!activeLogCategories[catId] && !!activeLogLevels[lvlId];
+}
+
+function persistActiveSet(storageKey, settingsName, registry, activeSet) {
+  var ids = [];
+  for (var i = 0; i < registry.length; i++) {
+    if (activeSet[registry[i].id]) ids.push(registry[i].id);
+  }
+  var value = ids.join(',');
+  if (_LogSettings) {
+    try { _LogSettings.set(settingsName, value); } catch (_) {}
+  }
+  try { localStorage.setItem(storageKey, value); } catch (_) {}
 }
 
 function formatLogTimestamp(entry) {
@@ -449,6 +511,13 @@ function clearLogPanelErrorIndicator() {
 function renderLogEntry(source, entry) {
   var el = document.createElement('div');
   el.className = 'log-entry log-' + entry.level;
+  el.setAttribute('data-source', source);
+  var tagged = Object.assign({ source: source }, entry);
+  var catId = entryCategoryId(tagged);
+  var lvlId = entryLevelId(tagged);
+  if (catId) el.setAttribute('data-category', catId);
+  if (lvlId) el.setAttribute('data-level', lvlId);
+  if (!entryAllowed(tagged)) el.classList.add('log-entry-filtered');
   el.innerHTML =
     '<span class="log-time">' + escapeLogHtml(formatLogTimestamp(entry)) + '</span>' +
     '<span class="log-level">' + escapeLogHtml(String(entry.level || '').toUpperCase()) + '</span>' +
@@ -459,11 +528,24 @@ function renderLogEntry(source, entry) {
 }
 
 function syncLogCount() {
-  var entries = getLogEntries(activeLogSource);
+  var total = backendLogEntries.length + frontendLogEntries.length;
   var titles = document.querySelectorAll('.log-panel-title');
-  var label = activeLogSource === 'backend' ? 'Backend' : activeLogSource === 'stats' ? 'Stats' : 'Frontend';
-  var text = 'Logs \u00B7 ' + label + ' (' + entries.length + ')';
+  var text = activeLogSource === 'stats' ? 'Logs \u00B7 Stats' : 'Logs (' + total + ')';
   for (var i = 0; i < titles.length; i++) titles[i].textContent = text;
+}
+
+function applyLogEntryFilters() {
+  var panels = document.querySelectorAll('.log-panel');
+  for (var i = 0; i < panels.length; i++) {
+    var entries = panels[i].querySelectorAll('.log-entry');
+    for (var j = 0; j < entries.length; j++) {
+      var el = entries[j];
+      var catId = el.getAttribute('data-category') || '';
+      var lvlId = el.getAttribute('data-level') || '';
+      var show = !!activeLogCategories[catId] && !!activeLogLevels[lvlId];
+      el.classList.toggle('log-entry-filtered', !show);
+    }
+  }
 }
 
 function clearLogPanelLoading() {
@@ -510,23 +592,33 @@ function appendLogEntry(source, entry) {
     }
   }
 
-  var panel = getLogContainer(source);
+  var panel = getLogContainer();
   if (panel) {
-    while (panel.childNodes.length >= LOG_MAX) {
+    var combinedMax = LOG_MAX * 2;
+    while (panel.childNodes.length >= combinedMax) {
       panel.removeChild(panel.firstChild);
     }
     panel.appendChild(renderLogEntry(source, entry));
     panel.scrollTop = panel.scrollHeight;
   }
-  if (source === activeLogSource) syncLogCount();
+  syncLogCount();
   syncMirroredLogViews();
   updateFoldedLogStatusBadges();
 }
 
 function updateLastLogEntryRepeat(source, entry) {
-  var panel = getLogContainer(source);
+  var panel = getLogContainer();
   if (!panel) return;
-  var lastEl = panel.lastElementChild;
+  // Scan backwards for the last entry from this source to update its repeat badge.
+  var children = panel.childNodes;
+  var lastEl = null;
+  for (var i = children.length - 1; i >= 0; i--) {
+    var node = children[i];
+    if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-source') === source) {
+      lastEl = node;
+      break;
+    }
+  }
   if (!lastEl) return;
   var badge = lastEl.querySelector('.log-repeat-count');
   if (!badge) {
@@ -543,35 +635,40 @@ function replaceLogEntries(source, entries) {
   var target = getLogEntries(source);
   target.length = 0;
   Array.prototype.push.apply(target, nextEntries);
-
-  var panel = getLogContainer(source);
-  if (panel) {
-    panel.innerHTML = '';
-    for (var i = 0; i < nextEntries.length; i++) {
-      panel.appendChild(renderLogEntry(source, nextEntries[i]));
-    }
-    panel.scrollTop = panel.scrollHeight;
-  }
-  if (source === activeLogSource) syncLogCount();
+  rerenderUnifiedLogEntries();
+  syncLogCount();
   syncMirroredLogViews();
   updateFoldedLogStatusBadges();
 }
 
-function entryMatchesLogFilter(entry) {
-  if (activeLogFilter === 'all') return true;
-  var level = String(entry.level || '').toLowerCase();
-  if (activeLogFilter === 'errors') return level === 'error';
-  if (activeLogFilter === 'warnings') return level === 'error' || level === 'warn';
-  return true;
+function rerenderUnifiedLogEntries() {
+  var panel = getLogContainer();
+  if (!panel) return;
+  var merged = mergeLogEntries();
+  panel.innerHTML = '';
+  for (var i = 0; i < merged.length; i++) {
+    panel.appendChild(renderLogEntry(merged[i].source, merged[i]));
+  }
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function clearActiveLogEntries() {
+  frontendLogEntries.length = 0;
+  backendLogEntries.length = 0;
+  var panel = getLogContainer();
+  if (panel) panel.innerHTML = '';
+  syncLogCount();
+  syncMirroredLogViews();
+  updateFoldedLogStatusBadges();
 }
 
 function copyActiveLogsToClipboard(copyBtn) {
-  var entries = getLogEntries(activeLogSource).filter(entryMatchesLogFilter);
-  var text = entries.map(function (entry) {
+  var merged = mergeLogEntries().filter(entryAllowed);
+  var text = merged.map(function (entry) {
     var ts = formatLogTimestamp(entry);
     var level = String(entry.level || '').toUpperCase();
-    var target = entry.target || activeLogSource;
-    return ts + ' ' + level + ' [' + target + '] ' + (entry.message || '');
+    var target = entry.target || entry.source || '';
+    return ts + ' [' + (entry.source || '') + '] ' + level + ' [' + target + '] ' + (entry.message || '');
   }).join('\n');
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(function () {
@@ -582,54 +679,117 @@ function copyActiveLogsToClipboard(copyBtn) {
   }
 }
 
-function setActiveLogFilter(filter) {
-  if (filter !== 'warnings' && filter !== 'errors') filter = 'all';
-  activeLogFilter = filter;
-  // Update all log panels (canonical + mirrored)
-  var allPanels = document.querySelectorAll('.log-panel');
-  for (var i = 0; i < allPanels.length; i++) {
-    allPanels[i].setAttribute('data-log-filter', filter);
-    var tabs = allPanels[i].querySelectorAll('.log-panel-filter-tab');
-    for (var j = 0; j < tabs.length; j++) {
-      tabs[j].classList.toggle('active', tabs[j].getAttribute('data-log-filter-value') === filter);
-    }
-  }
-  // Sync mirrored views
-  syncMirroredLogViews();
-}
-
 function setActiveLogSource(source) {
-  if (source !== 'frontend' && source !== 'stats') source = 'backend';
-  activeLogSource = source;
-  if (_LogSettings) _LogSettings.set('logSource', activeLogSource);
-  else try { localStorage.setItem('lexera-log-source', activeLogSource); } catch (_) {}
+  // External callers use this to switch between the logs stream and the board-stats pane.
+  // Source filtering now lives in the categories dropdown; frontend/backend/logs map to 'logs'.
+  activeLogSource = source === 'stats' ? 'stats' : 'logs';
 
-  var backendBtn = getElLogTabBackend();
-  var frontendBtn = getElLogTabFrontend();
-  var backendPanel = getLogContainer('backend');
-  var frontendPanel = getLogContainer('frontend');
+  var entriesPanel = getElLogEntries();
   var statsPanel = getElLogEntriesStats();
   var refreshBtn = getElLogRefreshBtn();
 
-  var statsBtn = getElLogTabStats();
-  if (backendBtn) backendBtn.classList.toggle('active', activeLogSource === 'backend');
-  if (frontendBtn) frontendBtn.classList.toggle('active', activeLogSource === 'frontend');
-  if (statsBtn) statsBtn.classList.toggle('active', activeLogSource === 'stats');
-  if (backendPanel) backendPanel.classList.toggle('hidden', activeLogSource !== 'backend');
-  if (frontendPanel) frontendPanel.classList.toggle('hidden', activeLogSource !== 'frontend');
+  if (entriesPanel) entriesPanel.classList.toggle('hidden', activeLogSource === 'stats');
   if (statsPanel) statsPanel.classList.toggle('hidden', activeLogSource !== 'stats');
-  if (refreshBtn) refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
+  if (refreshBtn) refreshBtn.style.display = activeLogSource === 'stats' ? 'none' : '';
   syncLogCount();
   syncMirroredLogViews();
-  // Lazy connect: open backend log stream only when backend tab is active
-  if (activeLogSource === 'backend' && !backendLogEventSource && !backendLogConnectPending) {
+  if (activeLogSource === 'logs' && !backendLogEventSource && !backendLogConnectPending) {
     connectBackendLogStreamIfReady();
   }
-  // Disconnect when leaving backend tab to free a connection slot
-  if (activeLogSource !== 'backend' && backendLogEventSource) {
-    closeBackendLogStream();
+}
+
+function _getFilterConfig(facet) {
+  if (facet === 'level') {
+    return {
+      registry: LOG_LEVELS,
+      active: activeLogLevels,
+      storageKey: 'lexera-log-levels',
+      settingsKey: 'logLevels',
+      attr: 'data-log-level'
+    };
+  }
+  return {
+    registry: LOG_CATEGORIES,
+    active: activeLogCategories,
+    storageKey: 'lexera-log-categories',
+    settingsKey: 'logCategories',
+    attr: 'data-log-category'
+  };
+}
+
+function toggleLogFilterValue(facet, id) {
+  var cfg = _getFilterConfig(facet);
+  if (!cfg.registry.some(function (c) { return c.id === id; })) return;
+  if (cfg.active[id]) delete cfg.active[id];
+  else cfg.active[id] = true;
+  persistActiveSet(cfg.storageKey, cfg.settingsKey, cfg.registry, cfg.active);
+  applyLogEntryFilters();
+  syncLogCount();
+  syncMirroredLogViews();
+}
+
+function renderLogFilterMenu(menuEl, facet) {
+  if (!menuEl || menuEl.__lexeraLogMenuRendered) return;
+  menuEl.__lexeraLogMenuRendered = true;
+  menuEl.setAttribute('data-log-facet', facet);
+  var cfg = _getFilterConfig(facet);
+  menuEl.innerHTML = '';
+  for (var i = 0; i < cfg.registry.length; i++) {
+    var cat = cfg.registry[i];
+    var item = document.createElement('label');
+    item.className = 'log-panel-source-menu-item';
+    item.setAttribute(cfg.attr, cat.id);
+    item.innerHTML =
+      '<input type="checkbox" class="log-panel-source-menu-checkbox" ' + cfg.attr + '="' + escapeLogHtml(cat.id) + '">' +
+      '<span class="log-panel-source-menu-label">' + escapeLogHtml(cat.label) + '</span>';
+    var input = item.querySelector('input');
+    (function (facetId, id) {
+      input.addEventListener('change', function () { toggleLogFilterValue(facetId, id); });
+      item.addEventListener('click', function (e) {
+        if (e.target && e.target.tagName === 'INPUT') return;
+        e.preventDefault();
+        toggleLogFilterValue(facetId, id);
+      });
+    })(facet, cat.id);
+    menuEl.appendChild(item);
+  }
+  syncLogFilterMenuState(menuEl, facet);
+}
+
+function syncLogFilterMenuState(menuEl, facet) {
+  if (!menuEl) return;
+  facet = facet || menuEl.getAttribute('data-log-facet') || 'source';
+  var cfg = _getFilterConfig(facet);
+  if (!menuEl.__lexeraLogMenuRendered) renderLogFilterMenu(menuEl, facet);
+  var inputs = menuEl.querySelectorAll('input[' + cfg.attr + ']');
+  for (var i = 0; i < inputs.length; i++) {
+    var id = inputs[i].getAttribute(cfg.attr);
+    inputs[i].checked = !!cfg.active[id];
   }
 }
+
+function toggleLogFilterMenu(menuEl, btnEl) {
+  if (!menuEl) return;
+  var hidden = menuEl.classList.contains('hidden');
+  closeAllLogFilterMenus();
+  menuEl.classList.toggle('hidden', !hidden);
+  if (btnEl) btnEl.setAttribute('aria-expanded', hidden ? 'true' : 'false');
+  if (hidden) syncLogFilterMenuState(menuEl);
+}
+
+function closeAllLogFilterMenus() {
+  var menus = document.querySelectorAll('.log-panel-source-menu');
+  for (var i = 0; i < menus.length; i++) menus[i].classList.add('hidden');
+  var btns = document.querySelectorAll('.log-panel-source-dropdown > button');
+  for (var j = 0; j < btns.length; j++) btns[j].setAttribute('aria-expanded', 'false');
+}
+
+document.addEventListener('click', function (event) {
+  var target = event.target;
+  if (!target || !target.closest) return;
+  if (target.closest('.log-panel-source-dropdown')) return;
+  closeAllLogFilterMenus();
+});
 
 function isLogPanelVisible() {
   var panel = getElLogPanel();
@@ -1085,14 +1245,13 @@ window.addEventListener('resize', updateAppBottomInset);
 
 // Log panel + status bar UI
 document.addEventListener('DOMContentLoaded', function () {
-  var panel = getElLogPanel();
   var refreshBtn = getElLogRefreshBtn();
   var clearBtn = getElLogClearBtn();
-  var backendTab = getElLogTabBackend();
-  var frontendTab = getElLogTabFrontend();
+  var sourceBtn = getElLogSourceBtn();
+  var sourceMenu = getElLogSourceMenu();
+  var levelBtn = getElLogLevelBtn();
+  var levelMenu = getElLogLevelMenu();
   updateAppBottomInset();
-
-  // Status bar tab handlers are set up in init() where toggleBoardStatsBar is accessible
 
   // Clicking the log panel header dismisses the error indicator
   var headers = document.querySelectorAll('.log-panel-header');
@@ -1112,33 +1271,19 @@ document.addEventListener('DOMContentLoaded', function () {
   });
   if (clearBtn) clearBtn.addEventListener('click', function (e) {
     e.stopPropagation();
-    replaceLogEntries(activeLogSource, []);
-  });
-  if (backendTab) backendTab.addEventListener('click', function (e) {
-    e.stopPropagation();
-    setActiveLogSource('backend');
-  });
-  if (frontendTab) frontendTab.addEventListener('click', function (e) {
-    e.stopPropagation();
-    setActiveLogSource('frontend');
-  });
-  var statsTab = getElLogTabStats();
-  if (statsTab) statsTab.addEventListener('click', function (e) {
-    e.stopPropagation();
-    setActiveLogSource('stats');
+    clearActiveLogEntries();
   });
 
-  // Log filter buttons (canonical panel)
-  var filterBtns = document.querySelectorAll('#log-panel .log-panel-filter-tab');
-  for (var fi = 0; fi < filterBtns.length; fi++) {
-    (function (btn) {
-      btn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        var value = btn.getAttribute('data-log-filter-value') || 'all';
-        setActiveLogFilter(value);
-      });
-    })(filterBtns[fi]);
-  }
+  if (sourceMenu) renderLogFilterMenu(sourceMenu, 'source');
+  if (sourceBtn) sourceBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    toggleLogFilterMenu(sourceMenu, sourceBtn);
+  });
+  if (levelMenu) renderLogFilterMenu(levelMenu, 'level');
+  if (levelBtn) levelBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    toggleLogFilterMenu(levelMenu, levelBtn);
+  });
 
   // Drain early errors captured before logging system loaded, then
   // disable the early catcher so it doesn't double-fire alongside addEventListener.
@@ -1151,15 +1296,12 @@ document.addEventListener('DOMContentLoaded', function () {
   window.onerror = null;
   window.onunhandledrejection = null;
 
-  replaceLogEntries('frontend', frontendLogEntries);
-  replaceLogEntries('backend', backendLogEntries);
+  rerenderUnifiedLogEntries();
+  applyLogEntryFilters();
   setActiveLogSource(activeLogSource);
   syncAllLogStatusMessages();
   syncAllConnectionStatusButtons();
-  // Backend log stream is now lazy — only opened when the backend log tab
-  // is visible, to avoid consuming one of the browser's 6 connections/origin.
-  // connectBackendLogStreamIfReady() will be called from setActiveLogSource()
-  // or setLogPanelVisibility() when the backend tab is selected.
+  connectBackendLogStreamIfReady();
 });
 
 /**

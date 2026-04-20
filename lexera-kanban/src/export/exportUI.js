@@ -357,8 +357,9 @@ class ExportUI {
         this._applyInitialOptions();
         this._applyInitialSelection();
 
-        // Check tool availability and populate themes
-        await this.checkToolAvailability();
+        // Populate tool availability + themes from the Plugin Settings
+        // cache. Sync read — no CLI spawns on dialog open.
+        this.checkToolAvailability();
 
         // Set initial format state
         this.onFormatChange();
@@ -756,51 +757,81 @@ class ExportUI {
 
     // ── Tool Availability ───────────────────────────────────────────────
 
-    async checkToolAvailability() {
-        // Check Marp
-        try {
-            var marpStatus = await ExportService.checkMarpStatus();
-            this.marpAvailable = marpStatus.available;
-            this.marpVersion = marpStatus.version;
-            var marpStatusEl = document.getElementById('export-marp-status');
-            if (marpStatusEl) {
-                marpStatusEl.textContent = marpStatus.available
-                    ? 'Marp CLI available' + (marpStatus.version ? ' (v' + marpStatus.version + ')' : '')
-                    : 'Marp CLI not found';
-            }
-            exportLexeraLog('info', '[kanban.export.tools] Marp available=' + this.marpAvailable);
-        } catch (err) {
-            exportLexeraLog('warn', '[kanban.export.tools] Marp check failed: ' + (err.message || String(err)));
-            this.marpAvailable = false;
+    // Reads tool availability + themes from the Plugin Settings cache
+    // (src/settings/renderAppsSettings.js). The cache is populated once at
+    // app startup (see app.js:warmRenderAppsCache) and refreshed when the
+    // user saves Plugin Settings, so this function never blocks on CLI
+    // spawns or filesystem scans — the export dialog opens immediately.
+    // If the cache is not yet populated (e.g. a fresh install where the
+    // user hasn't opened Plugin Settings), the status lines show
+    // "Not checked" and the user can click "Configure plugins…" to open
+    // the settings panel and run the checks there.
+    checkToolAvailability() {
+        var self = this;
+        var settings = (typeof window !== 'undefined') ? window.LexeraRenderAppsSettings : null;
+        var status = (settings && settings.getCachedStatus && settings.getCachedStatus()) || {};
+        var themes = (settings && settings.getCachedThemes && settings.getCachedThemes()) || null;
+
+        function applyStatus() {
+            var marpInfo = status.marp || null;
+            var pandocInfo = status.pandoc || null;
+            self.marpAvailable = !!(marpInfo && marpInfo.available);
+            self.marpVersion = marpInfo ? marpInfo.version : null;
+            self.pandocAvailable = !!(pandocInfo && pandocInfo.available);
+            self.pandocVersion = pandocInfo ? pandocInfo.version : null;
+            self.marpThemes = Array.isArray(themes) ? themes : [];
+            self._renderToolStatusLine('export-marp-status', 'Marp CLI', marpInfo);
+            self._renderToolStatusLine('export-pandoc-status', 'Pandoc', pandocInfo);
+            self._populateMarpThemes();
+            exportLexeraLog('info',
+                '[kanban.export.tools] cache-read marpAvailable=' + self.marpAvailable
+                + ' pandocAvailable=' + self.pandocAvailable
+                + ' themes=' + self.marpThemes.length);
         }
 
-        // Check Pandoc
-        try {
-            var pandocStatus = await ExportService.checkPandocStatus();
-            this.pandocAvailable = pandocStatus.available;
-            this.pandocVersion = pandocStatus.version;
-            var pandocStatusEl = document.getElementById('export-pandoc-status');
-            if (pandocStatusEl) {
-                pandocStatusEl.textContent = pandocStatus.available
-                    ? 'Pandoc available' + (pandocStatus.version ? ' (v' + pandocStatus.version + ')' : '')
-                    : 'Pandoc not found';
-            }
-            exportLexeraLog('info', '[kanban.export.tools] Pandoc available=' + this.pandocAvailable);
-        } catch (err) {
-            exportLexeraLog('warn', '[kanban.export.tools] Pandoc check failed: ' + (err.message || String(err)));
-            this.pandocAvailable = false;
-        }
+        applyStatus();
 
-        // Discover Marp themes
-        if (this.marpAvailable) {
-            try {
-                this.marpThemes = await ExportService.getMarpThemes([]);
-                this._populateMarpThemes();
-            } catch (err) {
-                exportLexeraLog('warn', '[kanban.export.tools] Theme discovery failed: ' + (err.message || String(err)));
-                this.marpThemes = [];
-            }
+        // If the cache was empty, kick off discovery in the background and
+        // re-render once it finishes. The dialog is already usable — this
+        // just upgrades the "Not checked" labels to real values without
+        // blocking the open.
+        if (settings && typeof settings.ensureDiscovery === 'function'
+            && (!status.marp || !status.pandoc || !Array.isArray(themes))) {
+            settings.ensureDiscovery().then(function () {
+                status = settings.getCachedStatus() || {};
+                themes = settings.getCachedThemes() || [];
+                applyStatus();
+            }).catch(function (err) {
+                exportLexeraLog('warn', '[kanban.export.tools] background discovery failed: '
+                    + (err && err.message ? err.message : String(err)));
+            });
         }
+    }
+
+    _renderToolStatusLine(elId, label, info) {
+        var el = document.getElementById(elId);
+        if (!el) return;
+        el.innerHTML = '';
+        var text = document.createElement('span');
+        if (!info) {
+            text.textContent = label + ': not checked';
+        } else if (info.available) {
+            text.textContent = label + ' available' + (info.version ? ' (v' + info.version + ')' : '');
+        } else {
+            text.textContent = label + ' not found';
+        }
+        el.appendChild(text);
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'export-configure-plugins';
+        btn.textContent = 'Configure plugins\u2026';
+        btn.addEventListener('click', function () {
+            if (typeof window !== 'undefined' && window.lexeraApp
+                && typeof window.lexeraApp.openManagementPanel === 'function') {
+                window.lexeraApp.openManagementPanel({ section: 'renderApps' });
+            }
+        });
+        el.appendChild(btn);
     }
 
     // ── Private Helpers ─────────────────────────────────────────────────

@@ -72,6 +72,8 @@ var LexeraSettings = (function () {
 
     // --- Logging ---
     logSource:            { key: 'lexera-log-source',             type: 'string',  default: '' },
+    logCategories:        { key: 'lexera-log-categories',         type: 'string',  default: '' },
+    logLevels:            { key: 'lexera-log-levels',             type: 'string',  default: '' },
 
     // --- Custom URLs ---
     mermaidUrl:           { key: 'lexera-mermaid-url',            type: 'string',  default: '' }

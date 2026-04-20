@@ -658,23 +658,34 @@ describe('_output', () => {
     ]);
   });
 
-  it('renders supported file embeds into export-compatible assets before writing markdown', async () => {
-    const absoluteSource = '/src/workspace/assets/budget.xlsx';
-    const targetRelative = ES.buildRenderedEmbedTargetRelativePath(
-      'board',
-      absoluteSource,
-      Registry.findByFilePath(absoluteSource),
-      Registry.getExportRenderConfig(absoluteSource, { pageNumber: 2 })
-    );
+  // Helper: compute the expected shared cache path for a rendered embed.
+  // The export pipeline now targets the same file the preview cache uses, so
+  // tests recompute the expected path via the public ES helpers.
+  function expectedCacheTarget(boardFile, sourceAbs, mtimeMs, cacheFolder, extension, suffix) {
+    const cacheDir = ES.buildDiagramCacheDir(boardFile, sourceAbs, cacheFolder);
+    const fileName = ES.buildDiagramCacheFileName(sourceAbs, mtimeMs, extension, suffix);
+    return cacheDir + '/' + fileName;
+  }
 
-    mockInvoke
-      .mockResolvedValueOnce({
-        success: true,
-        outputPath: '/out/board/' + targetRelative,
-        format: 'png',
-        error: null,
-      })
-      .mockResolvedValueOnce(undefined);
+  it('renders xlsx embeds into the shared preview cache and links to it relatively', async () => {
+    const absoluteSource = '/src/workspace/assets/budget.xlsx';
+    const mtimeMs = 1_700_000_000_000;
+    const cacheAbsolute = expectedCacheTarget(
+      '/src/workspace/board.md',
+      absoluteSource,
+      mtimeMs,
+      'xlsx-cache',
+      'png',
+      '-s2'
+    );
+    const expectedRelativeLink = ES.relativePath('/out/board', cacheAbsolute);
+
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === 'get_file_mtime_ms') return Promise.resolve(mtimeMs);
+      if (cmd === 'render_embedded_file') return Promise.resolve({ success: true, outputPath: args.opts.targetPath, format: 'png', error: null });
+      if (cmd === 'write_export_file') return Promise.resolve(undefined);
+      return Promise.resolve({ success: true });
+    });
 
     await ES._output('![Budget](assets/budget.xlsx){sheet=2}', {
       mode: 'save',
@@ -685,44 +696,41 @@ describe('_output', () => {
       linkHandlingMode: 'rewrite-only',
     });
 
-    expect(mockInvoke.mock.calls[0]).toEqual([
-      'render_embedded_file',
-      {
-        opts: {
-          pluginId: 'xlsx',
-          sourcePath: absoluteSource,
-          targetPath: '/out/board/' + targetRelative,
-          pageNumber: 2,
-          outputFormat: 'png',
-        },
-      },
-    ]);
-    expect(mockInvoke.mock.calls[1]).toEqual([
-      'write_export_file',
-      {
-        path: '/out/board/board.md',
-        content: '![Budget](' + targetRelative + '){sheet=2}',
-      },
-    ]);
+    const renderCall = mockInvoke.mock.calls.find((c) => c[0] === 'render_embedded_file');
+    expect(renderCall).toBeDefined();
+    expect(renderCall[1].opts.pluginId).toBe('xlsx');
+    expect(renderCall[1].opts.sourcePath).toBe(absoluteSource);
+    expect(renderCall[1].opts.targetPath).toBe(cacheAbsolute);
+    expect(renderCall[1].opts.pageNumber).toBe(2);
+    expect(renderCall[1].opts.outputFormat).toBe('png');
+
+    const writeCall = mockInvoke.mock.calls.find((c) => c[0] === 'write_export_file');
+    expect(writeCall).toBeDefined();
+    expect(writeCall[1]).toEqual({
+      path: '/out/board/board.md',
+      content: '![Budget](' + expectedRelativeLink + '){sheet=2}',
+    });
   });
 
-  it('renders raw excalidraw embeds into svg assets before writing markdown', async () => {
+  it('renders excalidraw embeds into the shared preview cache and links to it relatively', async () => {
     const absoluteSource = '/src/workspace/assets/sketch.excalidraw.json';
-    const targetRelative = ES.buildRenderedEmbedTargetRelativePath(
-      'board',
+    const mtimeMs = 1_700_000_000_000;
+    const cacheAbsolute = expectedCacheTarget(
+      '/src/workspace/board.md',
       absoluteSource,
-      Registry.findByFilePath(absoluteSource),
-      Registry.getExportRenderConfig(absoluteSource, { pageNumber: 1 })
+      mtimeMs,
+      'excalidraw-cache',
+      'svg',
+      ''
     );
+    const expectedRelativeLink = ES.relativePath('/out/board', cacheAbsolute);
 
-    mockInvoke
-      .mockResolvedValueOnce({
-        success: true,
-        outputPath: '/out/board/' + targetRelative,
-        format: 'svg',
-        error: null,
-      })
-      .mockResolvedValueOnce(undefined);
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === 'get_file_mtime_ms') return Promise.resolve(mtimeMs);
+      if (cmd === 'render_embedded_file') return Promise.resolve({ success: true, outputPath: args.opts.targetPath, format: 'svg', error: null });
+      if (cmd === 'write_export_file') return Promise.resolve(undefined);
+      return Promise.resolve({ success: true });
+    });
 
     await ES._output('![Sketch](assets/sketch.excalidraw.json)', {
       mode: 'save',
@@ -733,44 +741,38 @@ describe('_output', () => {
       linkHandlingMode: 'rewrite-only',
     });
 
-    expect(mockInvoke.mock.calls[0]).toEqual([
-      'render_embedded_file',
-      {
-        opts: {
-          pluginId: 'excalidraw',
-          sourcePath: absoluteSource,
-          targetPath: '/out/board/' + targetRelative,
-          pageNumber: 1,
-          outputFormat: 'svg',
-        },
-      },
-    ]);
-    expect(mockInvoke.mock.calls[1]).toEqual([
-      'write_export_file',
-      {
-        path: '/out/board/board.md',
-        content: '![Sketch](' + targetRelative + ')',
-      },
-    ]);
+    const renderCall = mockInvoke.mock.calls.find((c) => c[0] === 'render_embedded_file');
+    expect(renderCall).toBeDefined();
+    expect(renderCall[1].opts.pluginId).toBe('excalidraw');
+    expect(renderCall[1].opts.targetPath).toBe(cacheAbsolute);
+
+    const writeCall = mockInvoke.mock.calls.find((c) => c[0] === 'write_export_file');
+    expect(writeCall).toBeDefined();
+    expect(writeCall[1]).toEqual({
+      path: '/out/board/board.md',
+      content: '![Sketch](' + expectedRelativeLink + ')',
+    });
   });
 
-  it('renders csv embeds into svg table assets before writing markdown', async () => {
+  it('renders csv embeds into the shared preview cache and links to it relatively', async () => {
     const absoluteSource = '/src/workspace/assets/tasks.csv';
-    const targetRelative = ES.buildRenderedEmbedTargetRelativePath(
-      'board',
+    const mtimeMs = 1_700_000_000_000;
+    const cacheAbsolute = expectedCacheTarget(
+      '/src/workspace/board.md',
       absoluteSource,
-      Registry.findByFilePath(absoluteSource),
-      Registry.getExportRenderConfig(absoluteSource, { pageNumber: 2 })
+      mtimeMs,
+      'csv-cache',
+      'svg',
+      '-p2'
     );
+    const expectedRelativeLink = ES.relativePath('/out/board', cacheAbsolute);
 
-    mockInvoke
-      .mockResolvedValueOnce({
-        success: true,
-        outputPath: '/out/board/' + targetRelative,
-        format: 'svg',
-        error: null,
-      })
-      .mockResolvedValueOnce(undefined);
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === 'get_file_mtime_ms') return Promise.resolve(mtimeMs);
+      if (cmd === 'render_embedded_file') return Promise.resolve({ success: true, outputPath: args.opts.targetPath, format: 'svg', error: null });
+      if (cmd === 'write_export_file') return Promise.resolve(undefined);
+      return Promise.resolve({ success: true });
+    });
 
     await ES._output('![Tasks](assets/tasks.csv){page=2}', {
       mode: 'save',
@@ -781,25 +783,17 @@ describe('_output', () => {
       linkHandlingMode: 'rewrite-only',
     });
 
-    expect(mockInvoke.mock.calls[0]).toEqual([
-      'render_embedded_file',
-      {
-        opts: {
-          pluginId: 'csv',
-          sourcePath: absoluteSource,
-          targetPath: '/out/board/' + targetRelative,
-          pageNumber: 2,
-          outputFormat: 'svg',
-        },
-      },
-    ]);
-    expect(mockInvoke.mock.calls[1]).toEqual([
-      'write_export_file',
-      {
-        path: '/out/board/board.md',
-        content: '![Tasks](' + targetRelative + '){page=2}',
-      },
-    ]);
+    const renderCall = mockInvoke.mock.calls.find((c) => c[0] === 'render_embedded_file');
+    expect(renderCall).toBeDefined();
+    expect(renderCall[1].opts.pluginId).toBe('csv');
+    expect(renderCall[1].opts.targetPath).toBe(cacheAbsolute);
+
+    const writeCall = mockInvoke.mock.calls.find((c) => c[0] === 'write_export_file');
+    expect(writeCall).toBeDefined();
+    expect(writeCall[1]).toEqual({
+      path: '/out/board/board.md',
+      content: '![Tasks](' + expectedRelativeLink + '){page=2}',
+    });
   });
 
   it('preserves the written markdown when Marp fails (partial-success, no cleanup)', async () => {
