@@ -1271,8 +1271,12 @@ var LexeraEmbedMenu = (function () {
   }
 
   async function renderCachedSpecialPreview(containerEl, boardId, filePath, previewKind, options) {
+    logFrontendIssue('info', 'embed.preview.entry', 'renderCachedSpecialPreview called kind=' + previewKind + ' path=' + filePath);
     var asset = await resolveCachedSpecialPreviewAsset(boardId, filePath, previewKind, options);
-    if (!asset) return false;
+    if (!asset) {
+      logFrontendIssue('warn', 'embed.preview.entry', 'resolveCachedSpecialPreviewAsset returned null for ' + filePath);
+      return false;
+    }
 
     if (options && options.modal) {
       containerEl.innerHTML = '<div class="file-preview-media"><img class="file-preview-image" src="' + escapeAttr(asset.url) + '" alt="' + escapeAttr(asset.alt) + '"></div>';
