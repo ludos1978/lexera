@@ -45,7 +45,7 @@ fn is_allowed_app_origin(origin_str: &str) -> bool {
     false
 }
 
-fn build_app(state: AppState) -> Router {
+pub(crate) fn build_app(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _| {
             let origin_str = match std::str::from_utf8(origin.as_bytes()) {

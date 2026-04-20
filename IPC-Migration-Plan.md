@@ -211,10 +211,11 @@ Responsibilities:
 
 Descriptor file:
 
-- Path per OS:
-  - macOS: `~/Library/Application Support/Lexera/ipc.json`
-  - Windows: `%APPDATA%\Lexera\ipc.json`
-  - Linux: `$XDG_CONFIG_HOME/lexera/ipc.json` (falls back to `~/.config/lexera/ipc.json`)
+- Lives next to the existing `sync.json` and `identity.json` in the same `lexera` config directory resolved through `dirs::config_dir()` (the helper the backend already uses). Concrete paths:
+  - macOS: `~/Library/Preferences/lexera/ipc.json`
+  - Windows: `%APPDATA%\lexera\ipc.json`
+  - Linux: `~/.config/lexera/ipc.json` (or `$XDG_CONFIG_HOME/lexera/ipc.json` if set)
+- Filename constant lives in `lexera-local-ipc` as `descriptor::DESCRIPTOR_FILENAME = "ipc.json"` (single source of truth, reused by both ends rather than duplicated into the backend's `config.rs`).
 - Write is atomic: write a sibling temp file in the same directory, `fsync`, then `rename` over the target.
 - Mode `0600` on Unix. On Windows, ACL restricts to the current user.
 - Contents: `{ "protocol": "lexera-local-ipc/v1", "endpoint": "<path>", "pid": <u32>, "secret": "<base64 32 bytes>", "started_at": "<rfc3339>" }`.
@@ -319,7 +320,7 @@ Rendering is the most important validation area for this migration.
 
 - Draw.io and Excalidraw can keep using the existing Kanban Rust render commands, but the resulting previews must be addressed through `lexera-asset`.
 - `requestFileInfo`, `convert-path`, media manifests, file preview reads, and cache freshness checks move through IPC.
-- The known `-Media` cache nesting bug should be fixed as part of this work: if a source file already lives under a `-Media` directory, cache output must reuse that media directory instead of nesting another one.
+- The `-Media` cache nesting bug cited in earlier drafts is already fixed in `lexera-kanban/src/export/exportService.js` `buildDiagramCacheDir()` (~L930): when `sourceDirBase` ends in `-Media` the cache folder is reused rather than nested. No additional change needed in Phase 4.
 - Mermaid assets are bundled inside `lexera-kanban` and loaded through `lexera-asset`. Desktop rendering does not depend on a CDN. Serving Mermaid from the backend was considered and rejected because the extra IPC hop per render yields no benefit when only the kanban frontend consumes it.
 - Preview code should not assemble backend URLs manually. It should use `LexeraApi.fileUrl()`, `LexeraApi.mediaUrl()`, or an explicit asset helper.
 
@@ -426,10 +427,12 @@ Exit criteria:
 
 ## Open Decisions
 
-These need user input before the corresponding phase begins. They are decisions, not tasks, so they are tracked here rather than in the phase list.
+All originally-open decisions are now resolved.
 
-- **Descriptor directory reuse.** Does Lexera already have a per-user config directory on each OS? If yes, reuse it and drop the fallback paths above. If no, the per-OS paths listed in Backend IPC Server become the new convention.
-- **Mermaid delivery.** Bundle Mermaid assets inside `lexera-kanban` (smaller hop, larger bundle) or serve them from backend via `lexera-asset` (single source of truth, one extra IPC hop per render). Default recommendation: bundle in kanban.
-- **Post-Phase-7 `http` override on desktop.** Remove entirely (cleanest), or keep as a supported mode so power users can point desktop Kanban at a remote backend? Keeping it adds a permanently supported code path.
-- **`/collab/me` in local mode.** Return a sentinel local identity so shared UI code does not branch, or skip the call entirely in IPC mode. Sentinel is less invasive.
-- **Backend absence UX.** Confirmed behavior is "wait state, no on-demand launch". Reconfirm before Phase 5 that Kanban must not launch the backend.
+### Resolved
+
+- **Descriptor directory** — reuse the existing `dirs::config_dir()/lexera/` directory (same parent as `sync.json` and `identity.json`). No new convention introduced.
+- **`/collab/me` in local mode** — return a sentinel local identity with the token field set to `null`. Response keeps `{id, name, email, token}` shape so shared UI code does not branch.
+- **Post-Phase-7 `http` override on desktop** — removed. A future remote-backend-from-desktop product mode, if ever requested, ships as a separate feature rather than by preserving migration scaffolding.
+- **Mermaid delivery** — bundled inside `lexera-kanban` and loaded via `lexera-asset`. Backend-served Mermaid was rejected: no second consumer, extra IPC hop per render.
+- **Backend absence UX** — confirmed: wait state, no on-demand launch. Kanban does not own backend lifecycle.

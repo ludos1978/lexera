@@ -7,6 +7,11 @@ mod config_service;
 pub mod connection_window;
 pub mod discovery;
 pub mod export_api;
+mod ipc_asset;
+mod ipc_dispatch;
+mod ipc_server;
+mod ipc_stream;
+mod ipc_sync;
 mod log_bridge;
 mod server;
 pub mod state;
@@ -974,6 +979,9 @@ pub fn run() {
             // ── Restore persisted connections ───────────────────────────────
             restore_persisted_connections(&config, &app_state, &local_user.id, &local_user.name);
 
+            // Clone the state for the IPC server before `spawn_http_server` moves `app_state`.
+            let app_state_for_ipc = app_state.clone();
+
             // ── HTTP server & discovery ─────────────────────────────────────
             spawn_http_server(
                 app_state,
@@ -986,6 +994,9 @@ pub fn run() {
                 &local_user.name,
                 &event_tx,
             );
+
+            // ── Local IPC server (Phase 2: ApiRequest dispatched via router) ──
+            ipc_server::spawn(app_state_for_ipc, shutdown_rx.clone());
 
             // ── Clipboard watcher ──────────────────────────────────────────
             let clipboard_history: capture::ClipboardHistory =

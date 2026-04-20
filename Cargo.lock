@@ -2842,6 +2842,7 @@ dependencies = [
  "hyper-util",
  "if-addrs",
  "lexera-core",
+ "lexera-local-ipc",
  "log",
  "percent-encoding",
  "reqwest 0.12.28",
@@ -2911,6 +2912,7 @@ dependencies = [
  "clipboard-rs",
  "dirs",
  "lexera-core",
+ "lexera-local-ipc",
  "libc",
  "log",
  "rfd",
@@ -2918,6 +2920,28 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "lexera-local-ipc"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "dirs",
+ "libc",
+ "log",
+ "postcard",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

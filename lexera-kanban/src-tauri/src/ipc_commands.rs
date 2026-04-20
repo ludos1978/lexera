@@ -1,0 +1,105 @@
+//! Tauri commands for talking to `lexera-backend` over local IPC.
+//!
+//! Phase 3 ships two commands:
+//!
+//! - `backend_ipc_status` — non-blocking health check: reads the descriptor
+//!   and reports `connected` / `waiting` / `unavailable`.
+//! - `backend_ipc_request` — request/response against the backend's Axum
+//!   router via IPC. Bodies are UTF-8 strings in this phase; binary paths
+//!   (asset URLs, uploads) land in Phase 4.
+
+use crate::ipc_client::{status, BackendStatus, SharedIpcClient};
+use crate::ipc_streams::{self, SharedStreamRegistry, StreamMessageOut, StreamTopicArg};
+use lexera_local_ipc::frame::ApiRequest;
+use serde::{Deserialize, Serialize};
+use tauri::ipc::Channel;
+use uuid::Uuid;
+
+#[derive(Debug, Deserialize)]
+pub struct IpcRequestArg {
+    pub method: String,
+    pub uri: String,
+    #[serde(default)]
+    pub headers: Vec<(String, String)>,
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IpcResponseOut {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: String,
+}
+
+#[tauri::command]
+pub fn backend_ipc_status() -> BackendStatus {
+    status()
+}
+
+#[tauri::command]
+pub async fn backend_ipc_stream_open(
+    registry: tauri::State<'_, SharedStreamRegistry>,
+    topic: StreamTopicArg,
+    channel: Channel<StreamMessageOut>,
+) -> Result<String, String> {
+    let id = ipc_streams::open(&registry, topic, channel).await?;
+    Ok(id.to_string())
+}
+
+#[tauri::command]
+pub async fn backend_ipc_stream_close(
+    registry: tauri::State<'_, SharedStreamRegistry>,
+    correlation_id: String,
+) -> Result<(), String> {
+    let uuid = Uuid::parse_str(&correlation_id).map_err(|e| e.to_string())?;
+    ipc_streams::close(&registry, uuid).await;
+    Ok(())
+}
+
+/// Send a UTF-8 payload into an active bidirectional stream (currently only
+/// `Sync` uses this). Returns an error if the subscription is closed.
+#[tauri::command]
+pub async fn backend_ipc_stream_send(
+    registry: tauri::State<'_, SharedStreamRegistry>,
+    correlation_id: String,
+    payload: String,
+) -> Result<(), String> {
+    let uuid = Uuid::parse_str(&correlation_id).map_err(|e| e.to_string())?;
+    ipc_streams::send(&registry, uuid, payload.into_bytes()).await
+}
+
+#[tauri::command]
+pub async fn backend_ipc_request(
+    client: tauri::State<'_, SharedIpcClient>,
+    arg: IpcRequestArg,
+) -> Result<IpcResponseOut, String> {
+    let body_bytes = arg.body.map(|s| s.into_bytes()).unwrap_or_default();
+    let req = ApiRequest {
+        method: arg.method,
+        uri: arg.uri,
+        headers: arg
+            .headers
+            .into_iter()
+            .map(|(k, v)| (k, v.into_bytes()))
+            .collect(),
+        body: body_bytes,
+    };
+
+    let resp = client.request(req).await.map_err(|e| e.to_string())?;
+
+    // Lossy UTF-8 conversion: for the JSON / text routes this phase exercises
+    // the body is always UTF-8. Binary routes use the asset protocol (Phase 4).
+    let body = String::from_utf8_lossy(&resp.body).into_owned();
+    let headers = resp
+        .headers
+        .into_iter()
+        .map(|(k, v)| (k, String::from_utf8_lossy(&v).into_owned()))
+        .collect();
+
+    Ok(IpcResponseOut {
+        status: resp.status,
+        headers,
+        body,
+    })
+}

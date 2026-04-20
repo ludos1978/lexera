@@ -8,6 +8,120 @@ var LexeraApi = (function () {
   let bearerTokenPromise = null;
   let recentApiLogAt = Object.create(null);
 
+  // Transport selection. Resolves once at module init and does not silently
+  // switch mid-session. `window.LEXERA_TRANSPORT` (set by the Tauri shell or
+  // a dev tool) may force `http` for triage.
+  //   'local-ipc' → Tauri IPC via backend_ipc_request command
+  //   'http'       → loopback HTTP fetch against the discovered backend
+  let transportMode = null;
+
+  function resolveTauriCore() {
+    if (typeof window === 'undefined') return null;
+    if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+      return window.__TAURI_INTERNALS__;
+    }
+    if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+      return window.__TAURI__.core;
+    }
+    try {
+      if (window.parent && window.parent !== window) {
+        if (window.parent.__TAURI_INTERNALS__ && typeof window.parent.__TAURI_INTERNALS__.invoke === 'function') {
+          return window.parent.__TAURI_INTERNALS__;
+        }
+        if (window.parent.__TAURI__ && window.parent.__TAURI__.core && typeof window.parent.__TAURI__.core.invoke === 'function') {
+          return window.parent.__TAURI__.core;
+        }
+      }
+    } catch (e) { /* cross-origin — ignore */ }
+    return null;
+  }
+
+  function getTransportMode() {
+    if (transportMode) return transportMode;
+    var override = (typeof window !== 'undefined' && window.LEXERA_TRANSPORT) || null;
+    if (override === 'http' || override === 'local-ipc') {
+      transportMode = override;
+    } else {
+      // `auto`: IPC inside a Tauri webview, HTTP elsewhere (browser/dev).
+      transportMode = resolveTauriCore() ? 'local-ipc' : 'http';
+    }
+    return transportMode;
+  }
+
+  function headerListFromInit(headersInit) {
+    if (!headersInit) return [];
+    var list = [];
+    if (typeof headersInit.forEach === 'function') {
+      headersInit.forEach(function (value, key) { list.push([String(key), String(value)]); });
+    } else if (Array.isArray(headersInit)) {
+      for (var i = 0; i < headersInit.length; i++) list.push([String(headersInit[i][0]), String(headersInit[i][1])]);
+    } else if (typeof headersInit === 'object') {
+      for (var k in headersInit) {
+        if (Object.prototype.hasOwnProperty.call(headersInit, k)) list.push([k, String(headersInit[k])]);
+      }
+    }
+    return list;
+  }
+
+  function bodyToStringForIpc(body) {
+    if (body == null) return null;
+    if (typeof body === 'string') return body;
+    if (body instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(body));
+    if (ArrayBuffer.isView(body)) return new TextDecoder().decode(body);
+    // URLSearchParams, FormData, Blob are out of scope for Phase 3 JSON paths.
+    return String(body);
+  }
+
+  // Minimal Response-shaped object returned by `ipcFetch`. Covers the surface
+  // `api.js` actually uses: `ok`, `status`, `statusText`, `text()`, `json()`,
+  // and header lookups via a Headers-like helper on `.headers`.
+  function makeIpcResponse(result) {
+    var bodyText = typeof result.body === 'string' ? result.body : String(result.body || '');
+    var status = result.status;
+    var statusText = result.headers
+      .filter(function (h) { return h[0].toLowerCase() === 'x-status-text'; })
+      .map(function (h) { return h[1]; })[0] || '';
+    var headersMap = Object.create(null);
+    for (var i = 0; i < result.headers.length; i++) {
+      var k = String(result.headers[i][0]).toLowerCase();
+      headersMap[k] = result.headers[i][1];
+    }
+    return {
+      ok: status >= 200 && status < 300,
+      status: status,
+      statusText: statusText,
+      headers: {
+        get: function (name) { return headersMap[String(name).toLowerCase()] || null; }
+      },
+      text: function () { return Promise.resolve(bodyText); },
+      json: function () {
+        try { return Promise.resolve(JSON.parse(bodyText)); }
+        catch (e) { return Promise.reject(e); }
+      }
+    };
+  }
+
+  async function ipcFetch(path, fetchOptions) {
+    var core = resolveTauriCore();
+    if (!core) throw new Error('IPC transport selected but Tauri core unavailable');
+    var method = (fetchOptions && fetchOptions.method) || 'GET';
+    var arg = {
+      method: String(method).toUpperCase(),
+      uri: path,
+      headers: headerListFromInit(fetchOptions && fetchOptions.headers),
+      body: bodyToStringForIpc(fetchOptions && fetchOptions.body)
+    };
+    var result = await core.invoke('backend_ipc_request', { arg: arg });
+    return makeIpcResponse(result);
+  }
+
+  async function transportFetch(url, path, fetchOptions) {
+    if (getTransportMode() === 'local-ipc') {
+      return ipcFetch(path, fetchOptions);
+    }
+    return fetch(url + path, fetchOptions);
+  }
+
   function requireBackendDiscoveryMethod(name) {
     var discovery = window.LexeraBackendDiscovery;
     if (!discovery || typeof discovery[name] !== 'function') {
@@ -51,6 +165,13 @@ var LexeraApi = (function () {
   }
 
   async function discover() {
+    // In IPC mode the backend URL is irrelevant; return a sentinel that
+    // `transportFetch` ignores. `fileUrl`/`mediaUrl` still fall back to HTTP
+    // URLs in Phase 3; the asset protocol replaces them in Phase 4.
+    if (getTransportMode() === 'local-ipc') {
+      if (!baseUrl) baseUrl = 'ipc://local';
+      return baseUrl;
+    }
     if (baseUrl) return baseUrl;
     try {
       var discovered = await requireBackendDiscoveryMethod('discoverBackend')({
@@ -192,7 +313,7 @@ var LexeraApi = (function () {
     changeInFlight(+1);
     let res;
     try {
-      res = await fetch(url + path, fetchOptions);
+      res = await transportFetch(url, path, fetchOptions);
     } catch (error) {
       clearTimeout(timeoutId);
       changeInFlight(-1);
@@ -329,7 +450,7 @@ var LexeraApi = (function () {
     changeInFlight(+1);
     let res;
     try {
-      res = await fetch(url + path, { headers, signal: controller.signal });
+      res = await transportFetch(url, path, { headers: headers, signal: controller.signal });
     } catch (error) {
       clearTimeout(timeoutId);
       changeInFlight(-1);
@@ -437,11 +558,25 @@ var LexeraApi = (function () {
     }
   }
 
+  // URL shape: `lexera-asset://localhost/?b=<id>&k=m|f&v=<value>`.
+  // Mirrors `asset_protocol::parse_asset_url` in lexera-kanban/src-tauri.
+  function buildAssetUrl(boardId, kind, value) {
+    return 'lexera-asset://localhost/?b=' + encodeURIComponent(boardId)
+      + '&k=' + kind
+      + '&v=' + encodeURIComponent(value);
+  }
+
   function mediaUrl(boardId, filename) {
+    if (getTransportMode() === 'local-ipc') {
+      return buildAssetUrl(boardId, 'm', filename);
+    }
     return appendAuthTokenQuery((baseUrl || '') + '/boards/' + boardId + '/media/' + encodeURIComponent(filename));
   }
 
   function fileUrl(boardId, path) {
+    if (getTransportMode() === 'local-ipc') {
+      return buildAssetUrl(boardId, 'f', path);
+    }
     return appendAuthTokenQuery((baseUrl || '') + '/boards/' + boardId + '/file?path=' + encodeURIComponent(path));
   }
 
@@ -583,7 +718,67 @@ var LexeraApi = (function () {
     }
   }
 
+  // Open a backend IPC stream and return an EventSource-shaped handle
+  // ({ close() }). Over IPC the backend's resync hint is embedded in the
+  // payload JSON ({type:"Resync",lagged:N}), so `onEvent` receives a single
+  // stream of parsed objects — matching what the HTTP adapter already
+  // re-emits for `resync` events.
+  function openIpcStream(topic, targetTag, onPayload) {
+    var core = resolveTauriCore();
+    if (!core) return null;
+    var channel = null;
+    try {
+      channel = new core.Channel();
+    } catch (e) {
+      logApiIssue('error', targetTag, 'Tauri Channel unavailable', e);
+      return null;
+    }
+    var closed = false;
+    var correlationId = null;
+    channel.onmessage = function (msg) {
+      if (closed) return;
+      if (msg && msg.end !== undefined && msg.end !== null) {
+        // Terminal frame. `msg.end` is null=clean or a string=error.
+        if (typeof msg.end === 'string') {
+          logApiIssue('warn', targetTag + '.end', 'stream ended with error', msg.end, {
+            dedupeKey: targetTag + '.end',
+            dedupeWindowMs: 3000
+          });
+        }
+        return;
+      }
+      if (!msg || typeof msg.payload !== 'string') return;
+      try {
+        onPayload(JSON.parse(msg.payload));
+      } catch (e) {
+        logApiIssue('warn', targetTag, 'Failed to parse stream payload', e, {
+          dedupeKey: targetTag + '.parse',
+          dedupeWindowMs: 3000
+        });
+      }
+    };
+    core.invoke('backend_ipc_stream_open', { topic: topic, channel: channel })
+      .then(function (id) { correlationId = id; })
+      .catch(function (e) {
+        logApiIssue('error', targetTag, 'backend_ipc_stream_open failed', e);
+        closed = true;
+      });
+    return {
+      close: function () {
+        if (closed) return;
+        closed = true;
+        if (correlationId) {
+          core.invoke('backend_ipc_stream_close', { correlationId: correlationId })
+            .catch(function () { /* swallow — best-effort */ });
+        }
+      }
+    };
+  }
+
   function connectSSE(onEvent) {
+    if (getTransportMode() === 'local-ipc') {
+      return openIpcStream({ kind: 'events' }, 'api.sse', onEvent);
+    }
     if (!baseUrl) return null;
     var es = new EventSource(appendAuthTokenQuery(baseUrl + '/events'));
     es.onmessage = function (msg) {
@@ -637,6 +832,9 @@ var LexeraApi = (function () {
   }
 
   function connectLogStream(onEntry) {
+    if (getTransportMode() === 'local-ipc') {
+      return openIpcStream({ kind: 'logs' }, 'api.logs.stream', onEntry);
+    }
     if (!baseUrl) return null;
     var es = new EventSource(baseUrl + '/logs/stream');
     es.onmessage = function (msg) {
@@ -790,8 +988,129 @@ var LexeraApi = (function () {
     };
   }
 
+  // ── IPC sync branch (Phase 5b) ─────────────────────────────────────
+  // Mirrors `openSyncSocket` but over a Tauri IPC bidirectional stream.
+  // Shares the connectSync/sendSync/disconnectSync state vars; only the
+  // transport and reconnect logic differ.
+  var syncIpcCorrelationId = null;
+  var syncIpcReconnectTimer = null;
+  var syncIpcReconnectAttempt = 0;
+
+  function clearSyncIpcReconnectTimer() {
+    if (syncIpcReconnectTimer) {
+      clearTimeout(syncIpcReconnectTimer);
+      syncIpcReconnectTimer = null;
+    }
+  }
+
+  function openSyncIpc() {
+    var core = resolveTauriCore();
+    if (!core || !syncBoardId || !syncUserId) return;
+    var boardId = syncBoardId;
+    var channel;
+    try {
+      channel = new core.Channel();
+    } catch (e) {
+      logApiIssue('error', 'sync.ipc', 'Tauri Channel unavailable', e);
+      return;
+    }
+    channel.onmessage = function (msg) {
+      if (msg && msg.end !== undefined && msg.end !== null) {
+        syncIpcCorrelationId = null;
+        if (syncOnPresence && syncShouldReconnect && syncBoardId === boardId) {
+          syncOnPresence([]);
+        }
+        if (typeof msg.end === 'string') {
+          logApiIssue('warn', 'sync.ipc.end', 'sync stream ended: ' + msg.end, undefined, {
+            dedupeKey: 'sync.ipc.end|' + boardId,
+            dedupeWindowMs: 3000
+          });
+        }
+        if (syncShouldReconnect && syncBoardId === boardId) {
+          scheduleSyncIpcReconnect();
+        }
+        return;
+      }
+      if (!msg || typeof msg.payload !== 'string') return;
+      var parsed;
+      try { parsed = JSON.parse(msg.payload); }
+      catch (e) {
+        logApiIssue('warn', 'sync.ipc.parse', 'Failed to parse sync payload', e, {
+          dedupeKey: 'sync.ipc.parse|' + boardId,
+          dedupeWindowMs: 3000
+        });
+        return;
+      }
+      if (parsed.type === 'ServerHello') {
+        var reconnectHello = syncHasConnectedOnce;
+        syncHasConnectedOnce = true;
+        syncIpcReconnectAttempt = 0;
+        if (syncOnUpdate) {
+          syncOnUpdate({
+            type: 'hello',
+            reconnect: reconnectHello,
+            updates: parsed.updates || '',
+            vv: parsed.vv || ''
+          });
+        }
+      } else if (parsed.type === 'ServerUpdate') {
+        if (syncOnUpdate) syncOnUpdate({ type: 'update', updates: parsed.updates || '' });
+      } else if (parsed.type === 'ServerPresence') {
+        if (syncOnPresence) syncOnPresence(parsed.online_users || []);
+      } else if (parsed.type === 'ServerEditingPresence') {
+        if (syncOnEditingPresence) syncOnEditingPresence(parsed);
+      } else if (parsed.type === 'ServerError') {
+        logApiIssue('warn', 'sync.ipc.server-error', 'Server error: ' + parsed.message);
+        syncShouldReconnect = false;
+        disconnectSync();
+      }
+    };
+
+    core.invoke('backend_ipc_stream_open', {
+      topic: { kind: 'sync', boardId: boardId },
+      channel: channel
+    }).then(function (id) {
+      syncIpcCorrelationId = id;
+      var vv = '';
+      if (typeof syncHelloVvProvider === 'function') {
+        try { vv = syncHelloVvProvider() || ''; }
+        catch (e) {
+          logApiIssue('warn', 'sync.ipc.hello', 'getHelloVv threw for board ' + boardId, e, {
+            dedupeKey: 'sync.ipc.hello|' + boardId,
+            dedupeWindowMs: 3000
+          });
+          vv = '';
+        }
+      }
+      var hello = JSON.stringify({ type: 'ClientHello', user_id: syncUserId, vv: vv });
+      return core.invoke('backend_ipc_stream_send', {
+        correlationId: id,
+        payload: hello
+      });
+    }).catch(function (e) {
+      logApiIssue('error', 'sync.ipc.open', 'backend_ipc_stream_open/send failed for board ' + boardId, e);
+      syncIpcCorrelationId = null;
+      if (syncShouldReconnect && syncBoardId === boardId) {
+        scheduleSyncIpcReconnect();
+      }
+    });
+  }
+
+  function scheduleSyncIpcReconnect() {
+    if (!syncShouldReconnect || syncIpcReconnectTimer || !syncBoardId || !syncUserId) return;
+    var delay = Math.min(1000 * Math.pow(2, syncIpcReconnectAttempt), 30000);
+    delay += Math.random() * 0.3 * delay;
+    syncIpcReconnectAttempt++;
+    syncIpcReconnectTimer = setTimeout(function () {
+      syncIpcReconnectTimer = null;
+      if (!syncShouldReconnect || syncIpcCorrelationId || !syncBoardId || !syncUserId) return;
+      openSyncIpc();
+    }, delay);
+  }
+
   /**
-   * Connect to the WebSocket sync endpoint for a board.
+   * Connect to the sync transport (WebSocket in HTTP mode, IPC bidirectional
+   * stream in local-ipc mode) for a board.
    * @param {string} boardId - The board ID to sync.
    * @param {string} userId - The local user ID.
    * @param {function} onUpdate - Called with no args when a ServerUpdate arrives.
@@ -799,7 +1118,6 @@ var LexeraApi = (function () {
    */
   function connectSync(boardId, userId, onUpdate, onPresence, options) {
     disconnectSync();
-    if (!baseUrl) return;
     syncBoardId = boardId;
     syncUserId = userId;
     syncOnUpdate = onUpdate;
@@ -812,37 +1130,73 @@ var LexeraApi = (function () {
       : null;
     syncShouldReconnect = true;
     syncHasConnectedOnce = false;
+    if (getTransportMode() === 'local-ipc') {
+      openSyncIpc();
+      return;
+    }
+    if (!baseUrl) return;
     openSyncSocket();
   }
 
+  function sendIpcStreamJson(payload) {
+    var core = resolveTauriCore();
+    if (!core || !syncIpcCorrelationId) return false;
+    core.invoke('backend_ipc_stream_send', {
+      correlationId: syncIpcCorrelationId,
+      payload: payload
+    }).catch(function (e) {
+      logApiIssue('warn', 'sync.ipc.send', 'stream_send failed', e, {
+        dedupeKey: 'sync.ipc.send.fail',
+        dedupeWindowMs: 3000
+      });
+    });
+    return true;
+  }
+
   function sendSyncUpdate(updates) {
-    if (!updates || !syncWs || syncWs.readyState !== WebSocket.OPEN) return false;
-    syncWs.send(JSON.stringify({
-      type: 'ClientUpdate',
-      updates: updates,
-    }));
+    if (!updates) return false;
+    var payload = JSON.stringify({ type: 'ClientUpdate', updates: updates });
+    if (getTransportMode() === 'local-ipc') {
+      return sendIpcStreamJson(payload);
+    }
+    if (!syncWs || syncWs.readyState !== WebSocket.OPEN) return false;
+    syncWs.send(payload);
     return true;
   }
 
   function sendEditingPresence(cardKid, userName, cursorPos, isTyping) {
-    if (!syncWs || syncWs.readyState !== WebSocket.OPEN) return false;
-    syncWs.send(JSON.stringify({
+    var payload = JSON.stringify({
       type: 'ClientEditingPresence',
       card_kid: cardKid || null,
       user_name: userName || '',
       cursor_pos: typeof cursorPos === 'number' ? cursorPos : null,
       is_typing: !!isTyping,
-    }));
+    });
+    if (getTransportMode() === 'local-ipc') {
+      return sendIpcStreamJson(payload);
+    }
+    if (!syncWs || syncWs.readyState !== WebSocket.OPEN) return false;
+    syncWs.send(payload);
     return true;
   }
 
   function disconnectSync() {
     syncShouldReconnect = false;
     syncReconnectAttempt = 0;
+    syncIpcReconnectAttempt = 0;
     clearSyncReconnectTimer();
+    clearSyncIpcReconnectTimer();
     if (syncWs) {
       syncWs.close();
       syncWs = null;
+    }
+    if (syncIpcCorrelationId) {
+      var core = resolveTauriCore();
+      if (core) {
+        core.invoke('backend_ipc_stream_close', { correlationId: syncIpcCorrelationId })
+          .catch(function () { /* best-effort */ });
+      }
+      syncIpcCorrelationId = null;
     }
     syncBoardId = null;
     syncUserId = null;
@@ -854,6 +1208,9 @@ var LexeraApi = (function () {
   }
 
   function isSyncConnected() {
+    if (getTransportMode() === 'local-ipc') {
+      return syncIpcCorrelationId !== null;
+    }
     return syncWs !== null && (syncWs.readyState === WebSocket.OPEN || syncWs.readyState === WebSocket.CONNECTING);
   }
 
@@ -1038,6 +1395,12 @@ var LexeraApi = (function () {
     getConnections, connectRemote, disconnectRemote, getDiscoveredPeers,
     getTheme, setTheme,
     getInFlightCount: getInFlightCount,
+    getTransportMode: getTransportMode,
+    backendIpcStatus: function () {
+      var core = resolveTauriCore();
+      if (!core) return Promise.resolve({ state: 'unavailable', reason: 'Tauri core unavailable' });
+      return core.invoke('backend_ipc_status');
+    },
     _setTestBaseUrl: function(url) { baseUrl = url || null; },
     _setTestToken: function(t) { bearerToken = t; bearerTokenPromise = null; },
     _resetTestState: function() {

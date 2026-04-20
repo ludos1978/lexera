@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 lexera-core = { path = "../../lexera-core" }
+lexera-local-ipc = { path = "../../lexera-local-ipc" }
 tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
 axum = { version = "0.8", features = ["multipart", "ws"] }
 tokio = { version = "1", features = ["full"] }
@@ -30,11 +31,11 @@ rfd = "0.15"
 tower-service = "0.3"
 hyper = { version = "1", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio", "http1", "http2", "server-auto"] }
+http-body-util = "0.1"
+http = "1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
-http-body-util = "0.1"
-http = "1"
 tempfile = "3"
 
 [features]

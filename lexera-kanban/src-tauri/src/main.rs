@@ -1,8 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app_menu;
+mod asset_protocol;
 mod commands;
 mod export_commands;
+mod ipc_client;
+mod ipc_commands;
+mod ipc_streams;
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -331,6 +335,15 @@ fn main() {
     }
 
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol(
+            asset_protocol::SCHEME,
+            |_app, request, responder| {
+                tauri::async_runtime::spawn(async move {
+                    let response = asset_protocol::handle(request).await;
+                    responder.respond(response);
+                });
+            },
+        )
         .setup(move |app| {
             let menu = app_menu::create_app_menu(app)?;
             app.set_menu(menu)?;
@@ -391,9 +404,16 @@ fn main() {
             }
         })
         .manage(export_commands::MarpWatchState::new())
+        .manage::<ipc_client::SharedIpcClient>(std::sync::Arc::new(ipc_client::IpcClientState::new()))
+        .manage::<ipc_streams::SharedStreamRegistry>(std::sync::Arc::new(ipc_streams::StreamRegistry::new()))
         .invoke_handler(tauri::generate_handler![
             open_new_window,
             get_test_runner_config,
+            ipc_commands::backend_ipc_status,
+            ipc_commands::backend_ipc_request,
+            ipc_commands::backend_ipc_stream_open,
+            ipc_commands::backend_ipc_stream_close,
+            ipc_commands::backend_ipc_stream_send,
             commands::get_backend_url,
             commands::open_in_system,
             commands::open_url,
