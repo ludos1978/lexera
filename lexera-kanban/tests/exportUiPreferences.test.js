@@ -54,8 +54,13 @@ describe('export UI preference helpers', () => {
     expect(U.normalizeEmbedHandling('other')).toBe('url');
     expect(U.normalizeMarpBrowser('firefox')).toBe('firefox');
     expect(U.normalizeMarpBrowser('other')).toBe('chrome');
-    expect(U.normalizeLinkHandlingMode('dont-modify')).toBe('no-modify');
-    expect(U.normalizeLinkHandlingMode('other')).toBe('rewrite-only');
+    // Phase 2: two-mode scheme with legacy migration.
+    expect(U.normalizeLinkHandlingMode('dont-modify')).toBe('rewrite-relative');
+    expect(U.normalizeLinkHandlingMode('no-modify')).toBe('rewrite-relative');
+    expect(U.normalizeLinkHandlingMode('rewrite-only')).toBe('rewrite-relative');
+    expect(U.normalizeLinkHandlingMode('pack-all')).toBe('pack-linked');
+    expect(U.normalizeLinkHandlingMode('pack-linked')).toBe('pack-linked');
+    expect(U.normalizeLinkHandlingMode('other')).toBe('rewrite-relative');
     expect(U.normalizeBooleanPreference('true', false)).toBe(true);
     expect(U.normalizeBooleanPreference('', true)).toBe(true);
     expect(U.normalizePackFileSizeLimit('250')).toBe(250);
@@ -77,7 +82,7 @@ describe('export UI preference helpers', () => {
       marpBrowser: 'chrome',
       marpWatch: true,
       marpPptxEditable: false,
-      linkHandlingMode: 'rewrite-only',
+      linkHandlingMode: 'rewrite-relative',
       packAssets: false,
       runPandoc: false,
     });
@@ -94,7 +99,7 @@ describe('export UI preference helpers', () => {
       marpWatch: false,
       marpPptxEditable: false,
       speakerNoteMode: 'keep',
-      linkHandlingMode: 'rewrite-only',
+      linkHandlingMode: 'rewrite-relative',
       packAssets: false,
       runPandoc: false,
     });
@@ -107,16 +112,13 @@ describe('export UI preference helpers', () => {
       autoExportOnSave: false,
       runMarp: false,
       marpWatch: false,
-      linkHandlingMode: 'pack-all',
+      linkHandlingMode: 'pack-linked',
       packAssets: true,
       runPandoc: false,
     });
     expect(U.applyExportPresetToOptions({}, 'share-content').packOptions).toEqual({
-      includeFiles: true,
-      includeImages: true,
-      includeVideos: true,
-      includeOtherMedia: true,
-      includeDocuments: true,
+      typeMode: 'all',
+      extensions: [],
       fileSizeLimitMB: 100,
     });
   });

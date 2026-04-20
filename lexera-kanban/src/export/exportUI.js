@@ -43,11 +43,8 @@ function createFallbackExportUiPreferenceHelpers(storage) {
         stripIncludes: 'lexera-export-strip-includes',
         autoExportOnSave: 'lexera-export-auto-export-on-save',
         linkHandlingMode: 'lexera-export-link-handling-mode',
-        packFiles: 'lexera-export-pack-files',
-        packImages: 'lexera-export-pack-images',
-        packVideos: 'lexera-export-pack-videos',
-        packOtherMedia: 'lexera-export-pack-other-media',
-        packDocuments: 'lexera-export-pack-documents',
+        packTypeMode: 'lexera-export-pack-type-mode',
+        packCustomExtensions: 'lexera-export-pack-custom-extensions',
         packFileSizeLimit: 'lexera-export-pack-file-size-limit',
     };
     var legacyStorageKeys = {
@@ -59,11 +56,6 @@ function createFallbackExportUiPreferenceHelpers(storage) {
         embedHandling: 'kanban-embed-handling',
         excludeTags: 'kanban-export-exclude-tags',
         linkHandlingMode: 'kanban-link-handling-mode',
-        packFiles: 'kanban-pack-files',
-        packImages: 'kanban-pack-images',
-        packVideos: 'kanban-pack-videos',
-        packOtherMedia: 'kanban-pack-other-media',
-        packDocuments: 'kanban-pack-documents',
         packFileSizeLimit: 'kanban-file-size-limit',
     };
 
@@ -116,9 +108,28 @@ function createFallbackExportUiPreferenceHelpers(storage) {
 
     function normalizeLinkHandlingMode(value) {
         var normalized = String(value || '').trim().toLowerCase();
-        if (normalized === 'pack-linked' || normalized === 'pack-all') return normalized;
-        if (normalized === 'dont-modify' || normalized === 'no-modify') return 'no-modify';
-        return 'rewrite-only';
+        if (normalized === 'pack-linked' || normalized === 'pack-all') return 'pack-linked';
+        return 'rewrite-relative';
+    }
+
+    function normalizePackTypeMode(value) {
+        return String(value || '').trim().toLowerCase() === 'custom' ? 'custom' : 'all';
+    }
+
+    function normalizePackCustomExtensions(value) {
+        var raw = String(value == null ? '' : value);
+        var parts = raw.split(/[,\s;]+/);
+        var seen = Object.create(null);
+        var out = [];
+        for (var i = 0; i < parts.length; i++) {
+            var t = parts[i].trim().toLowerCase();
+            if (!t) continue;
+            if (t.charAt(0) !== '.') t = '.' + t;
+            if (seen[t]) continue;
+            seen[t] = true;
+            out.push(t);
+        }
+        return out;
     }
 
     function normalizeBooleanPreference(value, fallback) {
@@ -161,7 +172,7 @@ function createFallbackExportUiPreferenceHelpers(storage) {
             next.marpPptxEditable = false;
             next.marpHandout = false;
             next.runPandoc = false;
-            next.linkHandlingMode = 'rewrite-only';
+            next.linkHandlingMode = 'rewrite-relative';
             next.packAssets = false;
             next.packOptions = null;
         } else if (normalizedPreset === 'marp-pdf') {
@@ -177,7 +188,7 @@ function createFallbackExportUiPreferenceHelpers(storage) {
             next.marpHandout = false;
             next.speakerNoteMode = 'keep';
             next.runPandoc = false;
-            next.linkHandlingMode = 'rewrite-only';
+            next.linkHandlingMode = 'rewrite-relative';
             next.packAssets = false;
             next.packOptions = null;
         } else if (normalizedPreset === 'share-content') {
@@ -188,14 +199,11 @@ function createFallbackExportUiPreferenceHelpers(storage) {
             next.runMarp = false;
             next.marpWatch = false;
             next.runPandoc = false;
-            next.linkHandlingMode = 'pack-all';
+            next.linkHandlingMode = 'pack-linked';
             next.packAssets = true;
             next.packOptions = {
-                includeFiles: true,
-                includeImages: true,
-                includeVideos: true,
-                includeOtherMedia: true,
-                includeDocuments: true,
+                typeMode: 'all',
+                extensions: [],
                 fileSizeLimitMB: 100,
             };
         }
@@ -232,6 +240,8 @@ function createFallbackExportUiPreferenceHelpers(storage) {
         normalizeEmbedHandling: normalizeEmbedHandling,
         normalizeMarpBrowser: normalizeMarpBrowser,
         normalizeLinkHandlingMode: normalizeLinkHandlingMode,
+        normalizePackTypeMode: normalizePackTypeMode,
+        normalizePackCustomExtensions: normalizePackCustomExtensions,
         normalizeBooleanPreference: normalizeBooleanPreference,
         normalizePackFileSizeLimit: normalizePackFileSizeLimit,
         defaultExcludeTagsInput: defaultExcludeTagsInput,
@@ -263,6 +273,8 @@ var normalizeKeepRemoveMode = ExportUiPreferenceHelpers.normalizeKeepRemoveMode;
 var normalizeEmbedHandling = ExportUiPreferenceHelpers.normalizeEmbedHandling;
 var normalizeMarpBrowser = ExportUiPreferenceHelpers.normalizeMarpBrowser;
 var normalizeLinkHandlingMode = ExportUiPreferenceHelpers.normalizeLinkHandlingMode;
+var normalizePackTypeMode = ExportUiPreferenceHelpers.normalizePackTypeMode;
+var normalizePackCustomExtensions = ExportUiPreferenceHelpers.normalizePackCustomExtensions;
 var normalizeBooleanPreference = ExportUiPreferenceHelpers.normalizeBooleanPreference;
 var normalizePackFileSizeLimit = ExportUiPreferenceHelpers.normalizePackFileSizeLimit;
 var defaultExcludeTagsInput = ExportUiPreferenceHelpers.defaultExcludeTagsInput;
@@ -458,18 +470,13 @@ class ExportUI {
         options.exportFolderName = this._val('export-folder-name');
         options.targetFolder = this._val('export-target-folder');
         options.linkHandlingMode = normalizeLinkHandlingMode(this._val('export-link-handling-mode'));
-        options.packAssets = options.linkHandlingMode === 'pack-linked' || options.linkHandlingMode === 'pack-all';
+        options.packAssets = options.linkHandlingMode === 'pack-linked';
         if (options.packAssets) {
             options.packOptions = {
+                typeMode: normalizePackTypeMode(this._val('export-pack-type-mode')),
+                extensions: normalizePackCustomExtensions(this._val('export-pack-custom-extensions')),
                 fileSizeLimitMB: normalizePackFileSizeLimit(this._val('export-pack-file-size-limit'))
             };
-            if (options.linkHandlingMode === 'pack-all') {
-                options.packOptions.includeFiles = this._checked('export-pack-files');
-                options.packOptions.includeImages = this._checked('export-pack-images');
-                options.packOptions.includeVideos = this._checked('export-pack-videos');
-                options.packOptions.includeOtherMedia = this._checked('export-pack-other-media');
-                options.packOptions.includeDocuments = this._checked('export-pack-documents');
-            }
         } else {
             options.packOptions = null;
         }
@@ -697,18 +704,11 @@ class ExportUI {
 
     _updateLinkHandlingVisibility() {
         var mode = normalizeLinkHandlingMode(this._val('export-link-handling-mode'));
+        var typeMode = normalizePackTypeMode(this._val('export-pack-type-mode'));
         var optionsWrap = document.getElementById('export-link-handling-options');
-        var packTypes = document.getElementById('export-link-pack-types');
-        var fileSize = document.getElementById('export-link-pack-size');
-        if (optionsWrap) {
-            optionsWrap.hidden = !(mode === 'pack-linked' || mode === 'pack-all');
-        }
-        if (packTypes) {
-            packTypes.hidden = mode !== 'pack-all';
-        }
-        if (fileSize) {
-            fileSize.hidden = !(mode === 'pack-linked' || mode === 'pack-all');
-        }
+        var customField = document.getElementById('export-pack-custom-extensions-field');
+        if (optionsWrap) optionsWrap.hidden = mode !== 'pack-linked';
+        if (customField) customField.hidden = !(mode === 'pack-linked' && typeMode === 'custom');
     }
 
     updateExportFolderName() {
@@ -879,6 +879,10 @@ class ExportUI {
         if (linkHandlingSelect) {
             linkHandlingSelect.addEventListener('change', function () { self._updateLinkHandlingVisibility(); });
         }
+        var packTypeModeSelect = document.getElementById('export-pack-type-mode');
+        if (packTypeModeSelect) {
+            packTypeModeSelect.addEventListener('change', function () { self._updateLinkHandlingVisibility(); });
+        }
 
         this._bindStoredSelect('export-preset', 'preset', normalizeExportPreset);
         this._bindStoredSelect('export-marp-theme', 'marpTheme');
@@ -890,7 +894,9 @@ class ExportUI {
         this._bindStoredSelect('export-pandoc-format', 'pandocFormat', normalizePandocExportFormat);
         this._bindStoredSelect('export-pandoc-page-breaks', 'pandocPageBreaks', normalizeDocumentPageBreakPreference);
         this._bindStoredSelect('export-link-handling-mode', 'linkHandlingMode', normalizeLinkHandlingMode);
+        this._bindStoredSelect('export-pack-type-mode', 'packTypeMode', normalizePackTypeMode);
         this._bindStoredInput('export-exclude-tags', 'excludeTags');
+        this._bindStoredInput('export-pack-custom-extensions', 'packCustomExtensions');
         this._bindStoredInput('export-pack-file-size-limit', 'packFileSizeLimit', normalizePackFileSizeLimit);
         this._bindStoredCheckbox('export-exclude-enabled', 'excludeEnabled', true, function (checked) {
             self._setExcludeControlsEnabled(checked);
@@ -899,11 +905,6 @@ class ExportUI {
         this._bindStoredCheckbox('export-auto-export-on-save', 'autoExportOnSave', false, function (checked) {
             if (!checked) ExportUI.clearActiveAutoExport(self.boardId);
         });
-        this._bindStoredCheckbox('export-pack-files', 'packFiles', true);
-        this._bindStoredCheckbox('export-pack-images', 'packImages', true);
-        this._bindStoredCheckbox('export-pack-videos', 'packVideos', true);
-        this._bindStoredCheckbox('export-pack-other-media', 'packOtherMedia', true);
-        this._bindStoredCheckbox('export-pack-documents', 'packDocuments', true);
         this._bindPresetResetListeners([
             'export-format',
             'export-tag-visibility',
@@ -928,11 +929,8 @@ class ExportUI {
             'export-pandoc-format',
             'export-pandoc-page-breaks',
             'export-link-handling-mode',
-            'export-pack-files',
-            'export-pack-images',
-            'export-pack-videos',
-            'export-pack-other-media',
-            'export-pack-documents',
+            'export-pack-type-mode',
+            'export-pack-custom-extensions',
             'export-pack-file-size-limit',
         ]);
 
@@ -1061,7 +1059,7 @@ class ExportUI {
             : getStoredExportUiPreference('embedHandling', 'url');
         var linkHandlingMode = activeAutoSettings && activeAutoSettings.linkHandlingMode
             ? activeAutoSettings.linkHandlingMode
-            : getStoredExportUiPreference('linkHandlingMode', 'rewrite-only');
+            : getStoredExportUiPreference('linkHandlingMode', 'rewrite-relative');
         var packOptions = activeAutoSettings && activeAutoSettings.packOptions ? activeAutoSettings.packOptions : null;
 
         this._setValue('export-preset', preset);
@@ -1077,21 +1075,15 @@ class ExportUI {
         this._setValue('export-exclude-tags', excludeEnabled ? normalizeExcludeTagsInput(excludeTagsValue) : (excludeTagsValue || ''));
         this._setChecked('export-strip-includes', stripIncludes);
         this._setChecked('export-auto-export-on-save', autoExportOnSave);
-        this._setChecked('export-pack-files', packOptions && typeof packOptions.includeFiles === 'boolean'
-            ? packOptions.includeFiles
-            : normalizeBooleanPreference(getStoredExportUiPreference('packFiles', true), true));
-        this._setChecked('export-pack-images', packOptions && typeof packOptions.includeImages === 'boolean'
-            ? packOptions.includeImages
-            : normalizeBooleanPreference(getStoredExportUiPreference('packImages', true), true));
-        this._setChecked('export-pack-videos', packOptions && typeof packOptions.includeVideos === 'boolean'
-            ? packOptions.includeVideos
-            : normalizeBooleanPreference(getStoredExportUiPreference('packVideos', true), true));
-        this._setChecked('export-pack-other-media', packOptions && typeof packOptions.includeOtherMedia === 'boolean'
-            ? packOptions.includeOtherMedia
-            : normalizeBooleanPreference(getStoredExportUiPreference('packOtherMedia', true), true));
-        this._setChecked('export-pack-documents', packOptions && typeof packOptions.includeDocuments === 'boolean'
-            ? packOptions.includeDocuments
-            : normalizeBooleanPreference(getStoredExportUiPreference('packDocuments', true), true));
+        this._setValue('export-pack-type-mode', normalizePackTypeMode(
+            packOptions && packOptions.typeMode
+                ? packOptions.typeMode
+                : getStoredExportUiPreference('packTypeMode', 'all')
+        ));
+        this._setValue('export-pack-custom-extensions',
+            packOptions && Array.isArray(packOptions.extensions) && packOptions.extensions.length
+                ? packOptions.extensions.join(', ')
+                : String(getStoredExportUiPreference('packCustomExtensions', '') || ''));
         this._setValue('export-pack-file-size-limit', String(normalizePackFileSizeLimit(
             packOptions && packOptions.fileSizeLimitMB != null
                 ? packOptions.fileSizeLimitMB
@@ -1205,11 +1197,10 @@ class ExportUI {
             shouldResetPreset = true;
         }
         if (this.initialOptions.packOptions) {
-            if (typeof this.initialOptions.packOptions.includeFiles === 'boolean') this._setChecked('export-pack-files', this.initialOptions.packOptions.includeFiles);
-            if (typeof this.initialOptions.packOptions.includeImages === 'boolean') this._setChecked('export-pack-images', this.initialOptions.packOptions.includeImages);
-            if (typeof this.initialOptions.packOptions.includeVideos === 'boolean') this._setChecked('export-pack-videos', this.initialOptions.packOptions.includeVideos);
-            if (typeof this.initialOptions.packOptions.includeOtherMedia === 'boolean') this._setChecked('export-pack-other-media', this.initialOptions.packOptions.includeOtherMedia);
-            if (typeof this.initialOptions.packOptions.includeDocuments === 'boolean') this._setChecked('export-pack-documents', this.initialOptions.packOptions.includeDocuments);
+            if (this.initialOptions.packOptions.typeMode) this._setValue('export-pack-type-mode', normalizePackTypeMode(this.initialOptions.packOptions.typeMode));
+            if (Array.isArray(this.initialOptions.packOptions.extensions)) {
+                this._setValue('export-pack-custom-extensions', this.initialOptions.packOptions.extensions.join(', '));
+            }
             if (this.initialOptions.packOptions.fileSizeLimitMB != null) this._setValue('export-pack-file-size-limit', String(normalizePackFileSizeLimit(this.initialOptions.packOptions.fileSizeLimitMB)));
             shouldResetPreset = true;
         }
@@ -1312,11 +1303,10 @@ class ExportUI {
                 if (typeof nextOptions.runPandoc === 'boolean') this._setChecked('export-pandoc-enabled', nextOptions.runPandoc);
                 if (nextOptions.linkHandlingMode) this._setValue('export-link-handling-mode', normalizeLinkHandlingMode(nextOptions.linkHandlingMode));
                 if (nextOptions.packOptions) {
-                    this._setChecked('export-pack-files', !!nextOptions.packOptions.includeFiles);
-                    this._setChecked('export-pack-images', !!nextOptions.packOptions.includeImages);
-                    this._setChecked('export-pack-videos', !!nextOptions.packOptions.includeVideos);
-                    this._setChecked('export-pack-other-media', !!nextOptions.packOptions.includeOtherMedia);
-                    this._setChecked('export-pack-documents', !!nextOptions.packOptions.includeDocuments);
+                    if (nextOptions.packOptions.typeMode) this._setValue('export-pack-type-mode', normalizePackTypeMode(nextOptions.packOptions.typeMode));
+                    if (Array.isArray(nextOptions.packOptions.extensions)) {
+                        this._setValue('export-pack-custom-extensions', nextOptions.packOptions.extensions.join(', '));
+                    }
                     if (nextOptions.packOptions.fileSizeLimitMB != null) {
                         this._setValue('export-pack-file-size-limit', String(normalizePackFileSizeLimit(nextOptions.packOptions.fileSizeLimitMB)));
                     }
@@ -1356,11 +1346,8 @@ class ExportUI {
         setStoredExportUiPreference('stripIncludes', this._checked('export-strip-includes') ? 'true' : 'false');
         setStoredExportUiPreference('autoExportOnSave', this._checked('export-auto-export-on-save') ? 'true' : 'false');
         setStoredExportUiPreference('linkHandlingMode', normalizeLinkHandlingMode(this._val('export-link-handling-mode')));
-        setStoredExportUiPreference('packFiles', this._checked('export-pack-files') ? 'true' : 'false');
-        setStoredExportUiPreference('packImages', this._checked('export-pack-images') ? 'true' : 'false');
-        setStoredExportUiPreference('packVideos', this._checked('export-pack-videos') ? 'true' : 'false');
-        setStoredExportUiPreference('packOtherMedia', this._checked('export-pack-other-media') ? 'true' : 'false');
-        setStoredExportUiPreference('packDocuments', this._checked('export-pack-documents') ? 'true' : 'false');
+        setStoredExportUiPreference('packTypeMode', normalizePackTypeMode(this._val('export-pack-type-mode')));
+        setStoredExportUiPreference('packCustomExtensions', String(this._val('export-pack-custom-extensions') || ''));
         setStoredExportUiPreference('packFileSizeLimit', normalizePackFileSizeLimit(this._val('export-pack-file-size-limit')));
     }
 

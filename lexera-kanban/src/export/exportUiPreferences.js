@@ -14,11 +14,8 @@ var LexeraExportUiPreferences = (function () {
     stripIncludes: 'lexera-export-strip-includes',
     autoExportOnSave: 'lexera-export-auto-export-on-save',
     linkHandlingMode: 'lexera-export-link-handling-mode',
-    packFiles: 'lexera-export-pack-files',
-    packImages: 'lexera-export-pack-images',
-    packVideos: 'lexera-export-pack-videos',
-    packOtherMedia: 'lexera-export-pack-other-media',
-    packDocuments: 'lexera-export-pack-documents',
+    packTypeMode: 'lexera-export-pack-type-mode',
+    packCustomExtensions: 'lexera-export-pack-custom-extensions',
     packFileSizeLimit: 'lexera-export-pack-file-size-limit',
   };
 
@@ -31,11 +28,6 @@ var LexeraExportUiPreferences = (function () {
     embedHandling: 'kanban-embed-handling',
     excludeTags: 'kanban-export-exclude-tags',
     linkHandlingMode: 'kanban-link-handling-mode',
-    packFiles: 'kanban-pack-files',
-    packImages: 'kanban-pack-images',
-    packVideos: 'kanban-pack-videos',
-    packOtherMedia: 'kanban-pack-other-media',
-    packDocuments: 'kanban-pack-documents',
     packFileSizeLimit: 'kanban-file-size-limit',
   };
 
@@ -88,11 +80,37 @@ var LexeraExportUiPreferences = (function () {
     return 'chrome';
   }
 
+  // Two-mode scheme (Phase 2). Legacy values migrate transparently so stored
+  // prefs and older API callers keep working:
+  //   pack-all / pack-linked → pack-linked (pack-all collapses in, type filter
+  //                             is now governed by packTypeMode)
+  //   rewrite-only / no-modify / dont-modify / anything else → rewrite-relative
   function normalizeLinkHandlingMode(value) {
     var normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'pack-linked' || normalized === 'pack-all') return normalized;
-    if (normalized === 'dont-modify' || normalized === 'no-modify') return 'no-modify';
-    return 'rewrite-only';
+    if (normalized === 'pack-linked' || normalized === 'pack-all') return 'pack-linked';
+    return 'rewrite-relative';
+  }
+
+  function normalizePackTypeMode(value) {
+    return String(value || '').trim().toLowerCase() === 'custom' ? 'custom' : 'all';
+  }
+
+  // Accepts "png, .mp4,JPG" → [".png", ".mp4", ".jpg"]. Leading dot optional,
+  // matching is case-insensitive, empty entries dropped.
+  function normalizePackCustomExtensions(value) {
+    var raw = String(value == null ? '' : value);
+    var parts = raw.split(/[,\s;]+/);
+    var seen = Object.create(null);
+    var out = [];
+    for (var i = 0; i < parts.length; i++) {
+      var t = parts[i].trim().toLowerCase();
+      if (!t) continue;
+      if (t.charAt(0) !== '.') t = '.' + t;
+      if (seen[t]) continue;
+      seen[t] = true;
+      out.push(t);
+    }
+    return out;
   }
 
   function normalizeBooleanPreference(value, fallback) {
@@ -135,7 +153,7 @@ var LexeraExportUiPreferences = (function () {
       next.marpPptxEditable = false;
       next.marpHandout = false;
       next.runPandoc = false;
-      next.linkHandlingMode = 'rewrite-only';
+      next.linkHandlingMode = 'rewrite-relative';
       next.packAssets = false;
       next.packOptions = null;
     } else if (normalizedPreset === 'marp-pdf') {
@@ -151,7 +169,7 @@ var LexeraExportUiPreferences = (function () {
       next.marpHandout = false;
       next.speakerNoteMode = 'keep';
       next.runPandoc = false;
-      next.linkHandlingMode = 'rewrite-only';
+      next.linkHandlingMode = 'rewrite-relative';
       next.packAssets = false;
       next.packOptions = null;
     } else if (normalizedPreset === 'share-content') {
@@ -162,14 +180,11 @@ var LexeraExportUiPreferences = (function () {
       next.runMarp = false;
       next.marpWatch = false;
       next.runPandoc = false;
-      next.linkHandlingMode = 'pack-all';
+      next.linkHandlingMode = 'pack-linked';
       next.packAssets = true;
       next.packOptions = {
-        includeFiles: true,
-        includeImages: true,
-        includeVideos: true,
-        includeOtherMedia: true,
-        includeDocuments: true,
+        typeMode: 'all',
+        extensions: [],
         fileSizeLimitMB: 100,
       };
     }
@@ -207,6 +222,8 @@ var LexeraExportUiPreferences = (function () {
       normalizeEmbedHandling: normalizeEmbedHandling,
       normalizeMarpBrowser: normalizeMarpBrowser,
       normalizeLinkHandlingMode: normalizeLinkHandlingMode,
+      normalizePackTypeMode: normalizePackTypeMode,
+      normalizePackCustomExtensions: normalizePackCustomExtensions,
       normalizeBooleanPreference: normalizeBooleanPreference,
       normalizePackFileSizeLimit: normalizePackFileSizeLimit,
       defaultExcludeTagsInput: defaultExcludeTagsInput,
@@ -229,6 +246,8 @@ var LexeraExportUiPreferences = (function () {
     normalizeEmbedHandling: normalizeEmbedHandling,
     normalizeMarpBrowser: normalizeMarpBrowser,
     normalizeLinkHandlingMode: normalizeLinkHandlingMode,
+    normalizePackTypeMode: normalizePackTypeMode,
+    normalizePackCustomExtensions: normalizePackCustomExtensions,
     normalizeBooleanPreference: normalizeBooleanPreference,
     normalizePackFileSizeLimit: normalizePackFileSizeLimit,
     defaultExcludeTagsInput: defaultExcludeTagsInput,

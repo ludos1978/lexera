@@ -181,16 +181,16 @@ describe('renderFileEmbedsForExport — drawio reference mode', () => {
   });
 });
 
-// ── Pack mode copies the rendered cache file into -Media/rendered/ ───────
+// ── Pack mode copies the rendered cache file into _Rendered/ ────────────
 
 describe('renderFileEmbedsForExport — pack-linked copy mode', () => {
-  it('copies the rendered cache into -Media/rendered/ and emits a relative link to the copy', async () => {
+  it('copies the rendered cache into _Rendered/ and emits a relative link to the copy', async () => {
     const absoluteSource = '/src/workspace/assets/sketch.excalidraw';
     const mtimeMs = 1_700_000_000_000;
     const cacheDir = ES.buildDiagramCacheDir('/src/workspace/board.md', absoluteSource, 'excalidraw-cache');
     const cacheFile = ES.buildDiagramCacheFileName(absoluteSource, mtimeMs, 'svg', '');
     const cacheAbsolute = cacheDir + '/' + cacheFile;
-    const expectedPackRelative = 'board-Media/rendered/' + cacheFile;
+    const expectedPackRelative = '_Rendered/' + cacheFile;
     const expectedPackAbsolute = '/out/board/' + expectedPackRelative;
 
     mockInvoke.mockImplementation((cmd, args) => {
@@ -214,7 +214,7 @@ describe('renderFileEmbedsForExport — pack-linked copy mode', () => {
       sourceFilePath: '/src/workspace/board.md',
       linkHandlingMode: 'pack-linked',
       packAssets: true,
-      packOptions: { includeFiles: true, includeImages: true, includeDocuments: true, includeVideos: true, includeOtherMedia: true, fileSizeLimitMB: 100 },
+      packOptions: { typeMode: 'all', extensions: [], fileSizeLimitMB: 100 },
     });
 
     const writeCall = mockInvoke.mock.calls.find((c) => c[0] === 'write_export_file');
@@ -240,7 +240,7 @@ describe('renderFileEmbedsForExport — pack-linked copy mode', () => {
       sourceFilePath: '/src/workspace/board.md',
       linkHandlingMode: 'pack-linked',
       packAssets: true,
-      packOptions: { includeFiles: true, includeImages: true, includeDocuments: true, includeVideos: true, includeOtherMedia: true, fileSizeLimitMB: 100 },
+      packOptions: { typeMode: 'all', extensions: [], fileSizeLimitMB: 100 },
     });
 
     const writeCall = mockInvoke.mock.calls.find((c) => c[0] === 'write_export_file');

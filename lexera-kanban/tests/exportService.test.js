@@ -609,12 +609,12 @@ describe('_output', () => {
     });
   });
 
-  it('packs selected linked assets before writing the markdown file', async () => {
+  it('packs custom-extension-filtered assets into _Rendered/ before writing the markdown file', async () => {
     mockInvoke
       .mockResolvedValueOnce([
         {
           sourcePath: '/src/workspace/assets/pic.png',
-          targetPath: '/out/board/board-Media/pic.png',
+          targetPath: '/out/board/_Rendered/pic.png',
           success: true,
           error: null,
         },
@@ -627,14 +627,11 @@ describe('_output', () => {
       targetFolder: '/out',
       exportFolderName: 'board',
       sourceFilePath: '/src/workspace/board.md',
-      linkHandlingMode: 'pack-all',
+      linkHandlingMode: 'pack-linked',
       packAssets: true,
       packOptions: {
-        includeFiles: false,
-        includeImages: true,
-        includeVideos: false,
-        includeOtherMedia: false,
-        includeDocuments: false,
+        typeMode: 'custom',
+        extensions: ['.png'],
         fileSizeLimitMB: 100,
       },
     });
@@ -644,7 +641,7 @@ describe('_output', () => {
       items: [
         {
           sourcePath: '/src/workspace/assets/pic.png',
-          targetPath: '/out/board/board-Media/pic.png',
+          targetPath: '/out/board/_Rendered/pic.png',
           maxBytes: 104857600,
         },
       ],
@@ -653,7 +650,7 @@ describe('_output', () => {
       'write_export_file',
       {
         path: '/out/board/board.md',
-        content: '![Asset](board-Media/pic.png)',
+        content: '![Asset](_Rendered/pic.png)',
       },
     ]);
   });

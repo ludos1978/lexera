@@ -364,21 +364,23 @@
           <div class="export-field">
             <label class="export-label" for="export-link-handling-mode">Link &amp; asset handling</label>
             <select id="export-link-handling-mode" class="export-input">
-              <option value="rewrite-only" selected>Rewrite relative links</option>
+              <option value="rewrite-relative" selected>Rewrite relative links</option>
               <option value="pack-linked">Pack linked files</option>
-              <option value="pack-all">Pack all files (by type)</option>
-              <option value="no-modify">Don't modify links</option>
             </select>
           </div>
           <div id="export-link-handling-options" class="export-link-handling-options" hidden>
-            <div id="export-link-pack-types" class="export-checkboxes" hidden>
-              <label class="export-checkbox"><input type="checkbox" id="export-pack-files"> Files</label>
-              <label class="export-checkbox"><input type="checkbox" id="export-pack-images"> Images</label>
-              <label class="export-checkbox"><input type="checkbox" id="export-pack-videos"> Videos</label>
-              <label class="export-checkbox"><input type="checkbox" id="export-pack-other-media"> Other media</label>
-              <label class="export-checkbox"><input type="checkbox" id="export-pack-documents"> Documents</label>
+            <div class="export-field">
+              <label class="export-label" for="export-pack-type-mode">Types to pack</label>
+              <select id="export-pack-type-mode" class="export-input">
+                <option value="all" selected>All file types</option>
+                <option value="custom">Custom extensions</option>
+              </select>
             </div>
-            <div id="export-link-pack-size" class="export-field export-link-pack-size" hidden>
+            <div id="export-pack-custom-extensions-field" class="export-field" hidden>
+              <label class="export-label" for="export-pack-custom-extensions">Extensions (comma-separated)</label>
+              <input id="export-pack-custom-extensions" class="export-input" type="text" placeholder=".png, .mp4, .pdf">
+            </div>
+            <div class="export-field">
               <label class="export-label" for="export-pack-file-size-limit">File size limit (MB)</label>
               <input id="export-pack-file-size-limit" class="export-input" type="number" min="1" max="1000" step="1" value="100">
             </div>

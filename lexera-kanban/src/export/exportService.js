@@ -736,7 +736,11 @@ class ExportService {
 
         const exportDir = ExportService.dirnamePath(mdPath);
         const fileBasename = ExportService.basenameWithoutExtension(mdPath);
-        const packedFolderPrefix = fileBasename + '-Media/';
+        // Phase 2 layout: a single `_Rendered/` folder under the export
+        // directory holds every packed asset (both copied source files and
+        // rendered-embed copies). The prefix below gates link rewriting to
+        // avoid redirecting already-packed paths.
+        const packedFolderPrefix = '_Rendered/';
         const linkHandlingMode = ExportService.normalizeLinkHandlingMode(options.linkHandlingMode);
         let nextContent = content;
         let createdFiles = [];
@@ -767,7 +771,7 @@ class ExportService {
             }
         }
 
-        if (options.packAssets && (linkHandlingMode === 'pack-linked' || linkHandlingMode === 'pack-all')) {
+        if (options.packAssets && linkHandlingMode === 'pack-linked') {
             const plan = ExportService.prepareAssetPackingPlan(nextContent, sourceFilePath, exportDir, fileBasename, linkHandlingMode, options.packOptions, packedFolderPrefix);
             if (plan.items.length > 0) {
                 const results = await exportInvokeTauri('copy_export_assets', { items: plan.items });
@@ -777,9 +781,7 @@ class ExportService {
             }
         }
 
-        if (linkHandlingMode !== 'no-modify') {
-            nextContent = ExportService.rewriteLinksForExport(nextContent, sourceFilePath, mdPath, packedFolderPrefix);
-        }
+        nextContent = ExportService.rewriteLinksForExport(nextContent, sourceFilePath, mdPath, packedFolderPrefix);
 
         return {
             content: nextContent,
@@ -866,12 +868,11 @@ class ExportService {
     }
 
     // Packing applies to rendered embeds in the same mode-driven way as
-    // other assets: if the user picked pack-linked or pack-all we copy the
-    // shared cache file into the export's -Media folder; otherwise links
-    // point at the cache file directly via a relative path.
+    // other assets: if the user picked pack-linked we copy the shared cache
+    // file into the export's _Rendered/ folder; otherwise links point at the
+    // cache file directly via a relative path.
     static shouldCopyRenderedEmbedToPack(linkHandlingMode) {
-        const mode = ExportService.normalizeLinkHandlingMode(linkHandlingMode);
-        return mode === 'pack-linked' || mode === 'pack-all';
+        return ExportService.normalizeLinkHandlingMode(linkHandlingMode) === 'pack-linked';
     }
 
     static sanitizeRenderedEmbedStem(value) {
@@ -1040,10 +1041,10 @@ class ExportService {
             const jobKey = plugin.id + '::' + sourceKey + '::' + String(renderConfig.outputFormat || '') + '::' + String(pageNumber || 1);
 
             // In pack mode the rendered cache file is copied into
-            // {exportBase}-Media/rendered/; otherwise the link points at the
-            // cache file directly via relative path.
+            // _Rendered/; otherwise the link points at the cache file
+            // directly via relative path.
             const packRelativeTarget = packCopies
-                ? ExportService.toForwardSlashes(fileBasename + '-Media/rendered/' + cacheFileName)
+                ? ExportService.toForwardSlashes('_Rendered/' + cacheFileName)
                 : '';
             const packAbsoluteTarget = packCopies
                 ? ExportService.joinPath(exportDir, packRelativeTarget)
@@ -1212,8 +1213,7 @@ class ExportService {
             }
 
             const absoluteSource = ExportService.resolvePath(sourceDir, ref.pathPart);
-            const assetType = ExportService.getAssetType(absoluteSource);
-            if (!ExportService.shouldPackAsset(assetType, linkHandlingMode, packOptions)) {
+            if (!ExportService.shouldPackAsset(absoluteSource, linkHandlingMode, packOptions)) {
                 continue;
             }
 
@@ -1221,7 +1221,7 @@ class ExportService {
             if (!sourceMap[sourceKey]) {
                 const fileName = ExportService.basename(absoluteSource) || 'asset';
                 const uniqueName = ExportService.allocateUniqueTargetName(fileName, usedNames);
-                const relativeTarget = fileBasename + '-Media/' + uniqueName;
+                const relativeTarget = '_Rendered/' + uniqueName;
                 const absoluteTarget = ExportService.joinPath(exportDir, relativeTarget);
                 sourceMap[sourceKey] = {
                     sourcePath: absoluteSource,
@@ -1423,19 +1423,26 @@ class ExportService {
         return refs;
     }
 
-    static shouldPackAsset(assetType, linkHandlingMode, packOptions) {
-        if (linkHandlingMode === 'pack-linked') return true;
+    // Phase 2: pack filtering is driven by the packOptions.typeMode dropdown.
+    //   typeMode='all'    → pack every referenced asset
+    //   typeMode='custom' → pack only files whose extension is on the
+    //                       comma-separated whitelist (case-insensitive,
+    //                       leading dot optional, empty list packs nothing).
+    // Legacy callers that pass an `assetType` string as the first argument
+    // are handled via the first-arg-is-not-a-path heuristic so existing
+    // tests and external call sites keep working until Phase 2 rollout is
+    // complete.
+    static shouldPackAsset(filePath, linkHandlingMode, packOptions) {
+        if (ExportService.normalizeLinkHandlingMode(linkHandlingMode) !== 'pack-linked') return false;
         const opts = packOptions || {};
-        switch (assetType) {
-            case 'markdown': return !!opts.includeFiles;
-            case 'image': return !!opts.includeImages;
-            case 'video': return !!opts.includeVideos;
-            case 'audio': return !!opts.includeOtherMedia;
-            case 'document': return !!opts.includeDocuments;
-            case 'diagram': return !!opts.includeImages;
-            case 'file': return !!opts.includeFiles;
-            default: return false;
-        }
+        const typeMode = ExportService.normalizePackTypeMode(opts.typeMode);
+        if (typeMode === 'all') return true;
+        const extensions = Array.isArray(opts.extensions)
+            ? opts.extensions
+            : ExportService.normalizePackCustomExtensions(opts.extensions || '');
+        if (!extensions.length) return false;
+        const ext = ExportService.getFileExtension(String(filePath || ''));
+        return ext ? extensions.indexOf(ext) >= 0 : false;
     }
 
     static getAssetType(filePath) {
@@ -1574,11 +1581,38 @@ class ExportService {
         return 'chrome';
     }
 
+    // Phase 2 contract: two modes only. Legacy values migrate transparently
+    // so older stored prefs and external callers keep working.
+    //   pack-all / pack-linked   → pack-linked
+    //   rewrite-only / no-modify → rewrite-relative
     static normalizeLinkHandlingMode(value) {
         const normalized = String(value || '').trim().toLowerCase();
-        if (normalized === 'pack-linked' || normalized === 'pack-all' || normalized === 'no-modify') return normalized;
-        if (normalized === 'dont-modify') return 'no-modify';
-        return 'rewrite-only';
+        if (normalized === 'pack-linked' || normalized === 'pack-all') return 'pack-linked';
+        return 'rewrite-relative';
+    }
+
+    static normalizePackTypeMode(value) {
+        return String(value || '').trim().toLowerCase() === 'custom' ? 'custom' : 'all';
+    }
+
+    static normalizePackCustomExtensions(value) {
+        if (Array.isArray(value)) {
+            // Already parsed. Re-normalize for consistency.
+            return ExportService.normalizePackCustomExtensions(value.join(','));
+        }
+        const raw = String(value == null ? '' : value);
+        const parts = raw.split(/[,\s;]+/);
+        const seen = Object.create(null);
+        const out = [];
+        for (let i = 0; i < parts.length; i++) {
+            let t = parts[i].trim().toLowerCase();
+            if (!t) continue;
+            if (t.charAt(0) !== '.') t = '.' + t;
+            if (seen[t]) continue;
+            seen[t] = true;
+            out.push(t);
+        }
+        return out;
     }
 
     static normalizePackFileSizeLimit(value) {
