@@ -1319,16 +1319,6 @@
       '<div class="workspace-shell-drop-zone" data-zone="center" data-ws-drop-zone="center" data-ws-drop-leaf="' + escaped + '"></div>';
   }
 
-  function moveLogsStatusToHeader(panelId, headerEl) {
-    var logsPanel = getPanelElement(panelId);
-    if (!logsPanel) return;
-    var statusEl = logsPanel.querySelector('.log-panel-status');
-    if (!statusEl) return;
-    var foldBtn = headerEl.querySelector('.ws-view-fold');
-    if (foldBtn) headerEl.insertBefore(statusEl, foldBtn);
-    else headerEl.appendChild(statusEl);
-  }
-
   function renderSplitLayout(node, parentEl, childRenderer) {
     var splitEl = document.createElement('div');
     splitEl.className = 'workspace-shell-split workspace-shell-node axis-' + node.axis;
@@ -3029,11 +3019,6 @@
     }
     tabsetEl.appendChild(contentEl);
 
-    // Move logs status bar into ws-view-header so it's visible when folded
-    if (activePanelId && getPanelKind(activePanelId) === 'logs') {
-      moveLogsStatusToHeader(activePanelId, headerEl);
-    }
-
     var overlayEl = document.createElement('div');
     overlayEl.className = 'workspace-shell-drop-overlay';
     overlayEl.innerHTML = buildDropOverlayHtml(node.id);
@@ -3201,11 +3186,6 @@
         panelEl = insertEl;
       }
       panelEl.style.display = ep.isActive ? '' : 'none';
-    }
-
-    // Update logs status bar in header
-    if (activePanelId && getPanelKind(activePanelId) === 'logs') {
-      moveLogsStatusToHeader(activePanelId, headerEl);
     }
 
     return true;
@@ -3997,12 +3977,6 @@
     for (var lt = 0; lt < node.tabs.length; lt++) {
       if (node.tabs[lt].id === activeTabId) { activeTabObj = node.tabs[lt]; break; }
     }
-    var foldPanelId = activeTabObj && isPanelTab(activeTabObj)
-      ? resolvePanelTarget(activeTabObj.panelId) : null;
-    if (foldPanelId && getPanelKind(foldPanelId) === 'logs') {
-      moveLogsStatusToHeader(foldPanelId, headerEl);
-    }
-
     parentEl.appendChild(tabsetEl);
   }
 

@@ -97,6 +97,7 @@
               '<span class="lexera-shared-log-source-label">Sources</span>' +
               '<span class="log-panel-source-caret" aria-hidden="true">&#9662;</span>' +
             '</button>' +
+            '<button class="log-panel-filter-clear lexera-shared-log-source-clear hidden" type="button" title="Show all sources" aria-label="Show all sources">&times;</button>' +
             '<div class="log-panel-source-menu lexera-shared-log-source-menu hidden" role="menu"></div>' +
           '</div>' +
           '<div class="log-panel-source-dropdown">' +
@@ -104,9 +105,13 @@
               '<span class="lexera-shared-log-level-label">Levels</span>' +
               '<span class="log-panel-source-caret" aria-hidden="true">&#9662;</span>' +
             '</button>' +
+            '<button class="log-panel-filter-clear lexera-shared-log-level-clear hidden" type="button" title="Show all levels" aria-label="Show all levels">&times;</button>' +
             '<div class="log-panel-source-menu lexera-shared-log-level-menu hidden" role="menu"></div>' +
           '</div>' +
-          '<input class="log-panel-search lexera-shared-log-search" type="text" placeholder="Filter..." aria-label="Filter log entries by text" autocomplete="off" spellcheck="false" />' +
+          '<div class="log-panel-search-wrap">' +
+            '<input class="log-panel-search lexera-shared-log-search" type="text" placeholder="Filter..." aria-label="Filter log entries by text" autocomplete="off" spellcheck="false" />' +
+            '<button class="log-panel-filter-clear log-panel-search-clear lexera-shared-log-search-clear hidden" type="button" title="Clear search filter" aria-label="Clear search filter">&times;</button>' +
+          '</div>' +
         '</div>' +
         '<div class="log-panel-actions">' +
           '<button class="log-panel-status-btn connection-status-btn disconnected" type="button" title="Backend disconnected" aria-label="Backend disconnected">' +

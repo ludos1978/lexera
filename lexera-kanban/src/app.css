@@ -6716,7 +6716,7 @@ select.dialog-input option,
   background: var(--bg-primary);
   border: 1px solid var(--border);
   color: var(--text-primary);
-  padding: 2px 6px;
+  padding: 2px 22px 2px 6px;
   border-radius: 3px;
   font-size: var(--font-size-sm);
   min-width: 160px;
@@ -6725,6 +6725,50 @@ select.dialog-input option,
 
 .log-panel-search:focus {
   border-color: var(--accent, var(--text-primary));
+}
+
+.log-panel-search-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.log-panel-filter-clear {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary, var(--text-primary));
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  border-radius: 3px;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.log-panel-filter-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+.log-panel-filter-clear.hidden {
+  display: inline-flex !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.log-panel-search-clear {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 0;
 }
 
 .log-panel-source-menu-item {
@@ -6774,6 +6818,13 @@ select.dialog-input option,
   gap: 6px;
   margin-left: auto;
   min-width: 0;
+}
+
+/* Hide the status bar inside the unfolded log panel; the fold-strip moves
+   this element into `.ws-fold-strip` and re-enables display via its own rule. */
+.log-panel > .log-panel-status,
+.lexera-shared-panel-logs > .log-panel-status {
+  display: none;
 }
 
 .log-panel-status .status-msg {

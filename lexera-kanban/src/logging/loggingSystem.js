@@ -193,10 +193,13 @@ function getMirroredLogViews() {
       sourceBtn: root.querySelector('.lexera-shared-log-source-btn'),
       sourceLabel: root.querySelector('.lexera-shared-log-source-label'),
       sourceMenu: root.querySelector('.lexera-shared-log-source-menu'),
+      sourceClear: root.querySelector('.lexera-shared-log-source-clear'),
       levelBtn: root.querySelector('.lexera-shared-log-level-btn'),
       levelLabel: root.querySelector('.lexera-shared-log-level-label'),
       levelMenu: root.querySelector('.lexera-shared-log-level-menu'),
+      levelClear: root.querySelector('.lexera-shared-log-level-clear'),
       searchInput: root.querySelector('.lexera-shared-log-search'),
+      searchClear: root.querySelector('.lexera-shared-log-search-clear'),
       refreshBtn: root.querySelector('.lexera-shared-log-refresh'),
       copyBtn: root.querySelector('.lexera-shared-log-copy'),
       clearBtn: root.querySelector('.lexera-shared-log-clear'),
@@ -235,6 +238,12 @@ function bindMirroredLogView(view) {
     });
   }
   if (view.sourceMenu) renderLogFilterMenu(view.sourceMenu, 'source');
+  if (view.sourceClear) {
+    view.sourceClear.addEventListener('click', function (e) {
+      e.stopPropagation();
+      clearLogFilter('source');
+    });
+  }
   if (view.levelBtn) {
     view.levelBtn.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -242,11 +251,27 @@ function bindMirroredLogView(view) {
     });
   }
   if (view.levelMenu) renderLogFilterMenu(view.levelMenu, 'level');
+  if (view.levelClear) {
+    view.levelClear.addEventListener('click', function (e) {
+      e.stopPropagation();
+      clearLogFilter('level');
+    });
+  }
   if (view.searchInput) {
     view.searchInput.value = activeLogSearch;
     view.searchInput.addEventListener('input', function (e) {
       e.stopPropagation();
       setLogSearchFilter(e.target.value);
+    });
+  }
+  if (view.searchClear) {
+    view.searchClear.addEventListener('click', function (e) {
+      e.stopPropagation();
+      setLogSearchFilter('');
+      if (view.searchInput) {
+        view.searchInput.value = '';
+        view.searchInput.focus();
+      }
     });
   }
 }
@@ -277,6 +302,7 @@ function syncMirroredLogViews() {
     if (view.levelMenu) syncLogFilterMenuState(view.levelMenu, 'level');
     if (view.searchInput && view.searchInput.value !== activeLogSearch) view.searchInput.value = activeLogSearch;
   }
+  syncAllLogFilterClears();
   syncAllLogStatusMessages();
   syncAllConnectionStatusButtons();
 }
@@ -291,14 +317,17 @@ window.addEventListener('storage', function (event) {
   if (event.key === 'lexera-log-categories') {
     activeLogCategories = _loadStoredSet('lexera-log-categories', LOG_CATEGORIES);
     applyLogEntryFilters();
+    syncAllLogFilterClears();
     syncMirroredLogViews();
   } else if (event.key === 'lexera-log-levels') {
     activeLogLevels = _loadStoredSet('lexera-log-levels', LOG_LEVELS);
     applyLogEntryFilters();
+    syncAllLogFilterClears();
     syncMirroredLogViews();
   } else if (event.key === 'lexera-log-search') {
     activeLogSearch = event.newValue || '';
     applyLogEntryFilters();
+    syncAllLogFilterClears();
     syncMirroredLogViews();
   }
 });
@@ -757,7 +786,40 @@ function toggleLogFilterValue(facet, id) {
   applyLogEntryFilters();
   syncLogCount();
   syncAllLogFilterMenus();
+  syncAllLogFilterClears();
   syncMirroredLogViews();
+}
+
+function clearLogFilter(facet) {
+  var cfg = _getFilterConfig(facet);
+  // Reset to show-all (every registry id active).
+  for (var i = 0; i < cfg.registry.length; i++) cfg.active[cfg.registry[i].id] = true;
+  persistActiveSet(cfg.storageKey, cfg.settingsKey, cfg.registry, cfg.active);
+  applyLogEntryFilters();
+  syncLogCount();
+  syncAllLogFilterMenus();
+  syncAllLogFilterClears();
+  syncMirroredLogViews();
+}
+
+function isLogFilterAtDefault(facet) {
+  var cfg = _getFilterConfig(facet);
+  for (var i = 0; i < cfg.registry.length; i++) {
+    if (!cfg.active[cfg.registry[i].id]) return false;
+  }
+  return true;
+}
+
+function syncAllLogFilterClears() {
+  var sourceDefault = isLogFilterAtDefault('source');
+  var levelDefault = isLogFilterAtDefault('level');
+  var searchEmpty = !activeLogSearch;
+  var srcClears = document.querySelectorAll('#log-source-clear, .lexera-shared-log-source-clear');
+  for (var i = 0; i < srcClears.length; i++) srcClears[i].classList.toggle('hidden', sourceDefault);
+  var lvlClears = document.querySelectorAll('#log-level-clear, .lexera-shared-log-level-clear');
+  for (var j = 0; j < lvlClears.length; j++) lvlClears[j].classList.toggle('hidden', levelDefault);
+  var searchClears = document.querySelectorAll('#log-search-clear, .lexera-shared-log-search-clear');
+  for (var k = 0; k < searchClears.length; k++) searchClears[k].classList.toggle('hidden', searchEmpty);
 }
 
 function setLogSearchFilter(value) {
@@ -767,6 +829,7 @@ function setLogSearchFilter(value) {
   try { localStorage.setItem('lexera-log-search', activeLogSearch); } catch (_) {}
   applyLogEntryFilters();
   syncLogCount();
+  syncAllLogFilterClears();
   syncMirroredLogViews();
 }
 
@@ -1329,10 +1392,20 @@ document.addEventListener('DOMContentLoaded', function () {
     e.stopPropagation();
     toggleLogFilterMenu(sourceMenu, sourceBtn);
   });
+  var sourceClearBtn = document.getElementById('log-source-clear');
+  if (sourceClearBtn) sourceClearBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    clearLogFilter('source');
+  });
   if (levelMenu) renderLogFilterMenu(levelMenu, 'level');
   if (levelBtn) levelBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     toggleLogFilterMenu(levelMenu, levelBtn);
+  });
+  var levelClearBtn = document.getElementById('log-level-clear');
+  if (levelClearBtn) levelClearBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    clearLogFilter('level');
   });
 
   var searchInput = getElLogSearchInput();
@@ -1343,6 +1416,16 @@ document.addEventListener('DOMContentLoaded', function () {
       setLogSearchFilter(e.target.value);
     });
   }
+  var searchClearBtn = document.getElementById('log-search-clear');
+  if (searchClearBtn) searchClearBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setLogSearchFilter('');
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.focus();
+    }
+  });
+  syncAllLogFilterClears();
 
   // Drain early errors captured before logging system loaded, then
   // disable the early catcher so it doesn't double-fire alongside addEventListener.

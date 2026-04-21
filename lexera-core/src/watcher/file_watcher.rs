@@ -14,7 +14,7 @@ use tokio::sync::broadcast;
 use super::types::BoardChangeEvent;
 use crate::include::resolver::IncludeMap;
 
-const DEBOUNCE_DURATION: Duration = Duration::from_millis(500);
+const DEBOUNCE_DURATION: Duration = Duration::from_millis(300);
 
 /// Path-to-board mapping for the watcher to resolve events.
 #[derive(Debug, Default)]
@@ -349,8 +349,21 @@ fn handle_debounced_event(
                 return;
             }
         };
-        if let Some(board_id) = mapping.media_dirs.get(&parent) {
-            let board_id = board_id.clone();
+        let parent_match = mapping.media_dirs.get(&parent).cloned();
+        let known_dirs: Vec<PathBuf> = mapping.media_dirs.keys().cloned().collect();
+        if parent_match.is_none() {
+            log::info!(
+                "[lexera.watcher.media] no match for {:?} parent={:?} known media dirs={:?}",
+                canonical,
+                parent,
+                known_dirs
+            );
+        }
+        if let Some(board_id) = parent_match {
+            log::info!(
+                "[lexera.watcher.media] match: {:?} -> board {}",
+                canonical, board_id
+            );
             drop(mapping);
             // Emit the board-relative path (`{boardStem}-Media/{filename}`)
             // so the frontend can match it against the `data-file-path`

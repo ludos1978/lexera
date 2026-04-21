@@ -117,6 +117,7 @@
             <span id="log-source-label">Sources</span>
             <span class="log-panel-source-caret" aria-hidden="true">&#9662;</span>
           </button>
+          <button id="log-source-clear" class="log-panel-filter-clear hidden" type="button" title="Show all sources" aria-label="Show all sources">&times;</button>
           <div id="log-source-menu" class="log-panel-source-menu hidden" role="menu"></div>
         </div>
         <div class="log-panel-source-dropdown">
@@ -124,9 +125,13 @@
             <span id="log-level-label">Levels</span>
             <span class="log-panel-source-caret" aria-hidden="true">&#9662;</span>
           </button>
+          <button id="log-level-clear" class="log-panel-filter-clear hidden" type="button" title="Show all levels" aria-label="Show all levels">&times;</button>
           <div id="log-level-menu" class="log-panel-source-menu hidden" role="menu"></div>
         </div>
-        <input id="log-search-input" class="log-panel-search" type="text" placeholder="Filter..." aria-label="Filter log entries by text" autocomplete="off" spellcheck="false" />
+        <div class="log-panel-search-wrap">
+          <input id="log-search-input" class="log-panel-search" type="text" placeholder="Filter..." aria-label="Filter log entries by text" autocomplete="off" spellcheck="false" />
+          <button id="log-search-clear" class="log-panel-filter-clear log-panel-search-clear hidden" type="button" title="Clear search filter" aria-label="Clear search filter">&times;</button>
+        </div>
       </div>
       <div class="log-panel-actions">
         <button id="btn-connection-status" class="log-panel-status-btn connection-status-btn disconnected" type="button" title="Backend disconnected" aria-label="Backend disconnected">
