@@ -7,6 +7,12 @@ mod config_service;
 pub mod connection_window;
 pub mod discovery;
 pub mod export_api;
+mod ipc_asset;
+mod ipc_dispatch;
+mod ipc_server;
+mod ipc_stream;
+mod ipc_sync;
+mod local_api;
 mod log_bridge;
 mod server;
 pub mod state;
@@ -817,6 +823,10 @@ pub fn run() {
             connection_window::open_connection_window_cmd,
             config::get_backend_url,
             config::browse_files,
+            local_api::backend_local_api,
+            local_api::backend_local_subscribe_events,
+            local_api::backend_local_subscribe_logs,
+            local_api::backend_local_unsubscribe,
         ])
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
@@ -970,9 +980,15 @@ pub fn run() {
             };
 
             app.manage(app_state.clone());
+            app.manage::<local_api::SharedLocalStreamRegistry>(
+                std::sync::Arc::new(local_api::LocalStreamRegistry::new()),
+            );
 
             // ── Restore persisted connections ───────────────────────────────
             restore_persisted_connections(&config, &app_state, &local_user.id, &local_user.name);
+
+            // Clone the state for the IPC server before `spawn_http_server` moves `app_state`.
+            let app_state_for_ipc = app_state.clone();
 
             // ── HTTP server & discovery ─────────────────────────────────────
             spawn_http_server(
@@ -986,6 +1002,9 @@ pub fn run() {
                 &local_user.name,
                 &event_tx,
             );
+
+            // ── Local IPC server (Phase 2: ApiRequest dispatched via router) ──
+            ipc_server::spawn(app_state_for_ipc, shutdown_rx.clone());
 
             // ── Clipboard watcher ──────────────────────────────────────────
             let clipboard_history: capture::ClipboardHistory =

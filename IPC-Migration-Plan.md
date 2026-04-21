@@ -211,10 +211,11 @@ Responsibilities:
 
 Descriptor file:
 
-- Path per OS:
-  - macOS: `~/Library/Application Support/Lexera/ipc.json`
-  - Windows: `%APPDATA%\Lexera\ipc.json`
-  - Linux: `$XDG_CONFIG_HOME/lexera/ipc.json` (falls back to `~/.config/lexera/ipc.json`)
+- Lives next to the existing `sync.json` and `identity.json` in the same `lexera` config directory resolved through `dirs::config_dir()` (the helper the backend already uses). Concrete paths:
+  - macOS: `~/Library/Preferences/lexera/ipc.json`
+  - Windows: `%APPDATA%\lexera\ipc.json`
+  - Linux: `~/.config/lexera/ipc.json` (or `$XDG_CONFIG_HOME/lexera/ipc.json` if set)
+- Filename constant lives in `lexera-local-ipc` as `descriptor::DESCRIPTOR_FILENAME = "ipc.json"` (single source of truth, reused by both ends rather than duplicated into the backend's `config.rs`).
 - Write is atomic: write a sibling temp file in the same directory, `fsync`, then `rename` over the target.
 - Mode `0600` on Unix. On Windows, ACL restricts to the current user.
 - Contents: `{ "protocol": "lexera-local-ipc/v1", "endpoint": "<path>", "pid": <u32>, "secret": "<base64 32 bytes>", "started_at": "<rfc3339>" }`.
@@ -319,7 +320,7 @@ Rendering is the most important validation area for this migration.
 
 - Draw.io and Excalidraw can keep using the existing Kanban Rust render commands, but the resulting previews must be addressed through `lexera-asset`.
 - `requestFileInfo`, `convert-path`, media manifests, file preview reads, and cache freshness checks move through IPC.
-- The known `-Media` cache nesting bug should be fixed as part of this work: if a source file already lives under a `-Media` directory, cache output must reuse that media directory instead of nesting another one.
+- The `-Media` cache nesting bug cited in earlier drafts is already fixed in `lexera-kanban/src/export/exportService.js` `buildDiagramCacheDir()` (~L930): when `sourceDirBase` ends in `-Media` the cache folder is reused rather than nested. No additional change needed in Phase 4.
 - Mermaid assets are bundled inside `lexera-kanban` and loaded through `lexera-asset`. Desktop rendering does not depend on a CDN. Serving Mermaid from the backend was considered and rejected because the extra IPC hop per render yields no benefit when only the kanban frontend consumes it.
 - Preview code should not assemble backend URLs manually. It should use `LexeraApi.fileUrl()`, `LexeraApi.mediaUrl()`, or an explicit asset helper.
 
@@ -426,10 +427,38 @@ Exit criteria:
 
 ## Open Decisions
 
-These need user input before the corresponding phase begins. They are decisions, not tasks, so they are tracked here rather than in the phase list.
+All originally-open decisions are now resolved.
 
-- **Descriptor directory reuse.** Does Lexera already have a per-user config directory on each OS? If yes, reuse it and drop the fallback paths above. If no, the per-OS paths listed in Backend IPC Server become the new convention.
-- **Mermaid delivery.** Bundle Mermaid assets inside `lexera-kanban` (smaller hop, larger bundle) or serve them from backend via `lexera-asset` (single source of truth, one extra IPC hop per render). Default recommendation: bundle in kanban.
-- **Post-Phase-7 `http` override on desktop.** Remove entirely (cleanest), or keep as a supported mode so power users can point desktop Kanban at a remote backend? Keeping it adds a permanently supported code path.
-- **`/collab/me` in local mode.** Return a sentinel local identity so shared UI code does not branch, or skip the call entirely in IPC mode. Sentinel is less invasive.
-- **Backend absence UX.** Confirmed behavior is "wait state, no on-demand launch". Reconfirm before Phase 5 that Kanban must not launch the backend.
+### Resolved
+
+- **Descriptor directory** — reuse the existing `dirs::config_dir()/lexera/` directory (same parent as `sync.json` and `identity.json`). No new convention introduced.
+- **`/collab/me` in local mode** — return a sentinel local identity with the token field set to `null`. Response keeps `{id, name, email, token}` shape so shared UI code does not branch.
+- **Post-Phase-7 `http` override on desktop** — removed. A future remote-backend-from-desktop product mode, if ever requested, ships as a separate feature rather than by preserving migration scaffolding.
+- **Mermaid delivery** — bundled inside `lexera-kanban` and loaded via `lexera-asset`. Backend-served Mermaid was rejected: no second consumer, extra IPC hop per render.
+- **Backend absence UX** — confirmed: wait state, no on-demand launch. Kanban does not own backend lifecycle.
+
+## Post-Implementation Gaps
+
+A plan-vs-code audit after Phase 7 surfaced 11 deviations between plan and implementation. Phase 7.5 closed or scaffolded 10 of them. The table is the current ground truth; detailed fix notes follow.
+
+| # | Gap | Status | Notes |
+|---|---|---|---|
+| 1 | `backend_ipc_upload` streaming | ✅ closed | `UploadStart` / `UploadChunk` / `UploadEnd` frames; `backend_ipc_upload` Tauri command; `api.js uploadMedia` serializes FormData via `new Response(form).arrayBuffer()` and routes through IPC. |
+| 2 | `backend_asset_url` command | ✅ closed | Command restored in `ipc_commands.rs` calling `asset_protocol::build_url(board_id, kind, value)`. Sync inline construction in `api.js` stays for hot render paths; the command is the opacity-sensitive / test entry point. |
+| 3 | Windows peer-cred + ACL | ✅ code shipped | `windows_security.rs`: `restrict_file_to_current_user` via `SetFileSecurityW("D:P(A;;GA;;;OW)")`; named pipe created with owner-only `SECURITY_ATTRIBUTES`; accept calls `verify_pipe_peer_same_user` via `GetNamedPipeClientProcessId` + `EqualSid`. Needs Windows-host verification run — cannot compile-test on Darwin. |
+| 4 | Backend-status event + watcher | ✅ closed | `backend_status::spawn` starts a `notify::RecommendedWatcher` on the descriptor's parent dir; emits `backend-status` Tauri events on state transitions only (with 50 ms debounce for atomic-rename bursts). `BackendStatus::Reconnecting { attempt }` added. |
+| 5 | Events + logs auto-reconnect | ✅ closed | Factored `makeIpcStreamReconnecter` helper (1 s → 30 s backoff, ±30 % jitter). `openIpcStream` delegates to it, so events + logs reconnect on backend restart without HTTP fallback — matching the sync path's behavior. |
+| 6 | Mermaid vendoring | ✅ closed | Mermaid `11.14.0` vendored at `lexera-kanban/src/vendor/mermaid/` (3.0 MB `mermaid.min.js` + MIT `LICENSE` + `VERSION`). Plugin default URL in `src/plugins/diagrams/mermaid.js` flipped to `./vendor/mermaid/mermaid.min.js`. `cdn.jsdelivr.net` removed from CSP `script-src`. Refresh script at `lexera-shared/scripts/sync-mermaid-vendor.mjs`. `THIRD_PARTY_LICENSES.md` gained a "Vendored Runtime Assets" section. |
+| 7 | Tauri capabilities scoping | ✅ scaffolded | `capabilities/lexera-ipc-bridge.json` added with `windows: ["main"]`. Full restriction requires replacing the `default.json` wildcard with explicit per-window permission lists — a larger Tauri-v2 permission rework deferred. |
+| 8 | Webview-abort → `Cancel` propagation | ✅ closed (upload) | `ClientFrame::Cancel` now drops the matching in-flight upload buffer in `ipc_server`. Asset-fetch cancel on webview abort remains best-effort (Tauri's `UriSchemeResponder` does not surface a cancel signal; future Tauri versions may). |
+| 9 | Parity test coverage breadth | ✅ closed | `ipc_dispatch.rs` now covers `/status`, `/boards`, `/config/theme`, unknown-route 404, header round-trip. Asset suite adds `head_includes_weak_etag_and_cache_headers`. 11 dispatch tests + 15 asset tests total. |
+| 10 | Frontend IPC unit tests | ✅ closed | `tests/ipcTransport.test.js` — 11 passing tests covering transport-mode selection (with/without Tauri), `LEXERA_TRANSPORT=http` override rejection on desktop, `fileUrl`/`mediaUrl` URL shape, request dispatch through `backend_ipc_request`, JSON body round-trip, non-2xx error surfacing, `backendIpcStatus`. |
+| 11 | End-to-end verification | ✅ procedure documented | `IPC-Smoke-Test.md` at repo root: 15-item per-platform checklist covering the descriptor, network-tab observation, upload/range/seek, backend restart reconnect, management window, and backend-survives-Kanban-quit. Manual run still required per OS. |
+
+### Residual work
+
+- **Gap #3 Windows verification** — spin up a Windows host, `cargo test -p lexera-local-ipc`, exercise the smoke checklist rows 3 and 10. If `SetFileSecurityW` fails, investigate the SDDL or fall back to `icacls` invocation.
+- **Gap #6 Mermaid** — before downloading, confirm the pin (version), the license compliance path (`THIRD_PARTY_LICENSES.md` update), and the sync script (`lexera-shared/scripts/sync-*.mjs`).
+- **Gap #7 full enforcement** — rewrite `default.json` to drop the `"*"` window wildcard and distribute permissions per-window capability. Requires a Tauri-v2 permission audit.
+- **Gap #8 asset fetch cancel** — when Tauri exposes a cancel signal on `UriSchemeResponder`, wrap `fetch_asset` in a `tokio::select!` against that signal and send `ClientFrame::Cancel` on drop.
+- **Gap #11 manual run** — execute the smoke test on macOS (primary), Linux, and Windows at least once; record results in the release notes.

@@ -421,7 +421,7 @@ pub(crate) fn err_forbidden(msg: impl Into<String>) -> (StatusCode, Json<ErrorRe
 /// Resolve a file path relative to the board's directory, or as absolute if it starts with /.
 /// For absolute paths, verifies the resolved path is within the board directory.
 /// Returns the canonicalized path on success, or a NOT_FOUND/FORBIDDEN error response.
-fn resolve_board_file(
+pub(crate) fn resolve_board_file(
     state: &AppState,
     board_id: &str,
     file_path: &str,

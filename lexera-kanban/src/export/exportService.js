@@ -278,21 +278,14 @@ class ExportService {
     // ── Phase 1: Extract ────────────────────────────────────────────────
 
     static async _extract(options) {
-        const baseUrl = window.LexeraApi.baseUrl;
-        if (!baseUrl) {
-            await window.LexeraApi.discover();
-        }
-        const url = window.LexeraApi.baseUrl || (await window.LexeraApi.discover());
-        if (!url) throw new Error('Backend not available');
-
         const boardId = options.boardId;
         if (!boardId) throw new Error('No boardId specified');
 
-        let endpoint;
+        let path;
         let body;
 
         if (options.format === 'presentation') {
-            endpoint = url + '/boards/' + boardId + '/export/presentation';
+            path = '/boards/' + boardId + '/export/presentation';
             body = {
                 tagVisibility: options.tagVisibility || 'all',
                 excludeTags: options.excludeTags || [],
@@ -305,7 +298,7 @@ class ExportService {
                 columnIndexes: options.columnIndexes || [],
             };
         } else if (options.format === 'document') {
-            endpoint = url + '/boards/' + boardId + '/export/document';
+            path = '/boards/' + boardId + '/export/document';
             body = {
                 tagVisibility: options.tagVisibility || 'all',
                 excludeTags: options.excludeTags || [],
@@ -315,7 +308,7 @@ class ExportService {
                 columnIndexes: options.columnIndexes || [],
             };
         } else {
-            endpoint = url + '/boards/' + boardId + '/export/filter';
+            path = '/boards/' + boardId + '/export/filter';
             body = {
                 tagVisibility: options.tagVisibility || 'all',
                 excludeTags: options.excludeTags || [],
@@ -324,23 +317,24 @@ class ExportService {
             };
         }
 
-        exportLexeraLog('info', '[ExportService] Phase 1: POST ' + endpoint
+        exportLexeraLog('info', '[ExportService] Phase 1: POST ' + path
             + ' (filter: ids=' + (body.columnIds ? body.columnIds.length : 0)
             + ', idx=' + (body.columnIndexes ? body.columnIndexes.length : 0) + ')');
 
-        const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: options && options.signal,
-        });
-
-        if (!res.ok) {
-            const text = await res.text().catch(() => res.statusText);
-            throw new Error('Extract failed (' + res.status + '): ' + text);
+        // Dispatch through LexeraApi.request so the transport layer (HTTP or
+        // IPC) is selected uniformly. `LexeraApi.request` throws on non-2xx
+        // with the status/body, matching the earlier `!res.ok` branch.
+        let data;
+        try {
+            data = await window.LexeraApi.request(path, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                signal: options && options.signal,
+            });
+        } catch (e) {
+            throw new Error('Extract failed: ' + (e && e.message ? e.message : String(e)));
         }
-
-        const data = await res.json();
         const md = data.markdown || data.content || '';
         const slideCount = (md.match(/^---\s*$/gm) || []).length + (md ? 1 : 0);
         // keptColumns echoes the column TITLES the backend actually included
@@ -366,10 +360,6 @@ class ExportService {
         let transformed = content;
 
         if (needsRestTransform) {
-            const url = window.LexeraApi.baseUrl || (await window.LexeraApi.discover());
-            if (!url) throw new Error('Backend not available');
-
-            const endpoint = url + '/export/transform';
             const body = {
                 content,
                 speakerNoteMode,
@@ -378,21 +368,19 @@ class ExportService {
                 format: 'presentation',
             };
 
-            exportLexeraLog('info', '[ExportService] Phase 2: POST ' + endpoint);
+            exportLexeraLog('info', '[ExportService] Phase 2: POST /export/transform');
 
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-                signal: options && options.signal,
-            });
-
-            if (!res.ok) {
-                const text = await res.text().catch(() => res.statusText);
-                throw new Error('Transform failed (' + res.status + '): ' + text);
+            let data;
+            try {
+                data = await window.LexeraApi.request('/export/transform', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                    signal: options && options.signal,
+                });
+            } catch (e) {
+                throw new Error('Transform failed: ' + (e && e.message ? e.message : String(e)));
             }
-
-            const data = await res.json();
             transformed = data.content || content;
         }
 

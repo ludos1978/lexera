@@ -1,0 +1,6 @@
+{
+  "identifier": "lexera-ipc-bridge",
+  "description": "Scope the Lexera IPC bridge commands to the main Kanban window. Gap #7 in IPC-Migration-Plan.md. Secondary webviews (excalidraw overlay, external embeds) do not need — and should not have — direct access to the backend IPC surface.",
+  "windows": ["main"],
+  "permissions": []
+}

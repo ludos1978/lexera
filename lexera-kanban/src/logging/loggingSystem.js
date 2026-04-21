@@ -725,7 +725,16 @@ function toggleLogFilterValue(facet, id) {
   persistActiveSet(cfg.storageKey, cfg.settingsKey, cfg.registry, cfg.active);
   applyLogEntryFilters();
   syncLogCount();
+  syncAllLogFilterMenus();
   syncMirroredLogViews();
+}
+
+function syncAllLogFilterMenus() {
+  var menus = document.querySelectorAll('.log-panel-source-menu');
+  for (var i = 0; i < menus.length; i++) {
+    var facet = menus[i].getAttribute('data-log-facet');
+    if (facet) syncLogFilterMenuState(menus[i], facet);
+  }
 }
 
 function renderLogFilterMenu(menuEl, facet) {
