@@ -503,8 +503,7 @@ textarea {
 .embed-menu-btn,
 .wiki-menu-btn,
 .tree-menu-btn,
-.burger-menu-btn,
-.board-item-remove {
+.burger-menu-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -540,8 +539,7 @@ textarea {
 .embed-menu-btn:hover,
 .wiki-menu-btn:hover,
 .tree-menu-btn:hover,
-.burger-menu-btn:hover,
-.board-item-remove:hover {
+.burger-menu-btn:hover {
   color: var(--icon-btn-fg-hover, var(--text-primary));
   border-color: var(--icon-btn-border-hover, var(--text-primary));
   background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
@@ -564,8 +562,7 @@ textarea {
 .embed-menu-btn:focus-visible,
 .wiki-menu-btn:focus-visible,
 .tree-menu-btn:focus-visible,
-.burger-menu-btn:focus-visible,
-.board-item-remove:focus-visible {
+.burger-menu-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -586,8 +583,7 @@ textarea {
 .embed-menu-btn:active,
 .wiki-menu-btn:active,
 .tree-menu-btn:active,
-.burger-menu-btn:active,
-.board-item-remove:active {
+.burger-menu-btn:active {
   transform: translateY(1px);
 }
 
@@ -608,7 +604,6 @@ textarea {
 .wiki-menu-btn svg,
 .tree-menu-btn svg,
 .burger-menu-btn svg,
-.board-item-remove svg,
 .dashboard-item-remove svg {
   display: block;
   width: var(--icon-svg-size);
@@ -1541,22 +1536,6 @@ textarea {
   margin: 0 1px;
 }
 
-.board-item-remove {
-  min-width: var(--hierarchy-btn-size);
-  width: var(--hierarchy-btn-size);
-  height: var(--hierarchy-btn-size);
-  color: var(--error);
-  margin-left: 0;
-  visibility: hidden;
-}
-.board-item:hover .board-item-remove,
-.board-item-remove:focus-visible { visibility: visible; }
-.board-item-remove:hover {
-  color: var(--error);
-  border-color: var(--error);
-  background: rgba(244, 71, 71, 0.14);
-}
-
 /* Remote boards section divider — uses tree-node-aligned padding/margin */
 .sidebar-section-divider {
   display: flex;
@@ -1902,11 +1881,6 @@ textarea {
   display: none;
 }
 
-
-.board-item-remove.hidden {
-  visibility: hidden;
-  pointer-events: none;
-}
 
 /* Spacers for absent grip/presence/action elements: `display: none` so they
  * don't waste horizontal space. The workspace sidebar's visibility toggle

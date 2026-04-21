@@ -1306,9 +1306,6 @@ var LexeraBoardList = (function () {
     if (workspaceHeader) {
       return boardList.querySelector('.workspace-section-header[data-workspace-id="' + workspaceHeader.getAttribute('data-workspace-id') + '"]');
     }
-    if (sourceTarget.closest('.board-item-remove') && boardRow) {
-      return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-remove');
-    }
     if (sourceTarget.closest('.board-item-ws-menu') && boardRow) {
       return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-ws-menu');
     }
@@ -1829,7 +1826,6 @@ var LexeraBoardList = (function () {
       '<span class="tree-meta board-item-meta">' +
         '<span class="tree-meta-presence board-presence-badge hidden" aria-hidden="true"></span>' +
         '<span class="tree-count board-item-count">' + (rb.card_count || 0) + '</span>' +
-        '<span class="tree-meta-action board-item-remove hidden" aria-hidden="true"></span>' +
         '<span class="tree-grip tree-grip-spacer" aria-hidden="true"></span>' +
       '</span>';
   }
@@ -1884,11 +1880,11 @@ var LexeraBoardList = (function () {
       (presenceCount > 0 ? (' title="' + presenceCount + ' user(s) online"') : '') + '>' +
       (presenceCount > 0 ? presenceCount : '') +
       '</span>';
-    var showWsBurger = !!(workspaceChildWsId && workspaceChildWsId !== '__unassigned__');
     var locked = SidebarSync && SidebarSync.isHierarchyLocked();
-    var actionButton = showWsBurger
-      ? '<button class="tree-meta-action tree-menu-btn burger-menu-btn board-item-ws-menu' + (locked ? ' hidden' : '') + '" type="button" draggable="false" title="Workspace actions" aria-label="Workspace actions" aria-haspopup="menu"><span class="burger-lines" aria-hidden="true"></span></button>'
-      : '<span class="tree-meta-action board-item-remove' + (locked ? ' hidden' : '') + '" title="Remove board">\u00D7</span>';
+    // Every board row shows the burger menu regardless of workspace membership.
+    // The × remove-board button has been removed entirely — board deletion is
+    // available through the burger menu / context menu instead.
+    var actionButton = '<button class="tree-meta-action tree-menu-btn burger-menu-btn board-item-ws-menu' + (locked ? ' hidden' : '') + '" type="button" draggable="false" title="Board actions" aria-label="Board actions" aria-haspopup="menu"><span class="burger-lines" aria-hidden="true"></span></button>';
     var boardGrip = '<span class="tree-grip entity-drag-icon entity-drag-icon-board" title="Drag to reorder">' +
       _callDep('getCreationEntityDragIconSvg', 'board') +
       '</span>';
@@ -1905,7 +1901,10 @@ var LexeraBoardList = (function () {
       } else {
         wrapper.removeAttribute('data-workspace-child');
       }
-      if (showWsBurger) {
+      // Expose workspace id for the burger menu handler. Unassigned boards
+      // leave it empty — showBoardActionsMenuFor handles that (it just omits
+      // the "Remove from workspace" item when wsId is empty or __unassigned__).
+      if (workspaceChildWsId && workspaceChildWsId !== '__unassigned__') {
         wrapper.setAttribute('data-workspace-id', workspaceChildWsId);
       } else {
         wrapper.removeAttribute('data-workspace-id');
@@ -2698,14 +2697,6 @@ var LexeraBoardList = (function () {
           showBoardActionsMenu(rect.right, rect.bottom);
           return;
         }
-        // Remove button click — handle inline via delegation
-        if (_callDep('targetClosest', e.target, '.board-item-remove')) {
-          e.preventDefault();
-          e.stopPropagation();
-          var boardName = boardRow.querySelector('.board-item-title').textContent;
-          await removeBoardFromSidebar(boardId, boardName);
-          return;
-        }
         _callDep('exitSearchMode');
         _callDep('selectBoard', boardId);
       });
@@ -2718,7 +2709,6 @@ var LexeraBoardList = (function () {
       boardRow.addEventListener('dblclick', function (e) {
         if (!e.target.closest('.board-item-title') ||
             e.target.closest('.board-item-toggle') ||
-            e.target.closest('.board-item-remove') ||
             e.target.closest('.board-item-ws-menu') ||
             e.target.closest('.tree-grip')) {
           return;
