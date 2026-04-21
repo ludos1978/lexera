@@ -26,6 +26,8 @@
     canRenderFile: function (path) {
       return this.matches(String(path || '').toLowerCase());
     },
-    renderFile: H.makeRenderFile('tsv')
+    renderFile: H.makeRenderFile('tsv'),
+    emit: H.makeSpecialPreviewEmit(),
+    enhance: H.makeSpecialPreviewEnhance('table')
   });
 })();

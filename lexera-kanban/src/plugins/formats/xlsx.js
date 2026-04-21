@@ -18,6 +18,8 @@
     canRenderFile: function (path) {
       return this.matches(String(path || '').toLowerCase());
     },
-    renderFile: H.makeRenderFile('xlsx')
+    renderFile: H.makeRenderFile('xlsx'),
+    emit: H.makeSpecialPreviewEmit(),
+    enhance: H.makeSpecialPreviewEnhance('spreadsheet')
   });
 })();

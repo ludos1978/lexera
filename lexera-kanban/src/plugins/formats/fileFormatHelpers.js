@@ -59,11 +59,111 @@ var LexeraFileFormatHelpers = (function () {
     };
   }
 
+  // Shared emit function for all "rendered-special" preview plugins.
+  // Called by `inlineRenderer` during markdown → HTML generation (sync)
+  // to produce the inner HTML that lives inside `.embed-container` before
+  // the enhance phase replaces it with a live preview. Delegates to
+  // `LexeraEmbedMenu.getFileEmbedChipHtml` which already consults the
+  // registry for label/emoji metadata.
+  //
+  // ctx shape (provided by the inlineRenderer dispatcher):
+  //   { filePath, mediaStyleAttr, previewKind }
+  function makeSpecialPreviewEmit() {
+    return function emit(ctx) {
+      ctx = ctx || {};
+      var win = typeof window !== 'undefined' ? window : null;
+      var embedMenu = win && win.LexeraEmbedMenu ? win.LexeraEmbedMenu : null;
+      if (!embedMenu || typeof embedMenu.getFileEmbedChipHtml !== 'function') return '';
+      return embedMenu.getFileEmbedChipHtml(ctx.previewKind || '', ctx.filePath || '', ctx.mediaStyleAttr || '');
+    };
+  }
+
+  // Emit factory for plain-media plugins (image / video / audio). Each
+  // plugin declares its element template via `elementTemplate`; the ctx
+  // brings the resolved `src`, `mediaStyleAttr`, and `alt`/`title`.
+  //
+  // elementKind: 'image' | 'video' | 'audio'
+  function makePlainMediaEmit(elementKind) {
+    return function emit(ctx) {
+      ctx = ctx || {};
+      var escapeAttr = (ctx.helpers && ctx.helpers.escapeAttr) ? ctx.helpers.escapeAttr : defaultEscapeAttr;
+      var src = ctx.src || '';
+      var mediaStyleAttr = ctx.mediaStyleAttr || '';
+      if (elementKind === 'image') {
+        var alt = ctx.alt || '';
+        var titleAttr = ctx.titleText ? ' title="' + escapeAttr(ctx.titleText) + '"' : '';
+        return '<img data-lazy-src="' + src + '" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="' + alt + '"' + titleAttr + mediaStyleAttr + ' onerror="if(this.getAttribute(\'data-lazy-src\')){return}this.parentElement.classList.add(\'embed-broken\')">';
+      }
+      if (elementKind === 'video') {
+        return '<video controls preload="metadata" data-lazy-src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
+      }
+      if (elementKind === 'audio') {
+        return '<audio controls preload="metadata" data-lazy-src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
+      }
+      return '';
+    };
+  }
+
+  function defaultEscapeAttr(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Shared enhance function for all "rendered-special" preview plugins:
+  // creates the <div class="embed-preview"> child inside the provided
+  // container, then delegates to LexeraEmbedMenu.renderCachedSpecialPreview
+  // which owns URL resolution, cache checking, worker invocation, and
+  // onerror logging. Plugins that need custom behaviour (PDF iframe,
+  // markdown fetch+render) skip this factory and implement their own
+  // `enhance`.
+  //
+  // `container` is the `.embed-container` element. `opts` is the shape
+  // passed by LexeraFileFormatRegistry.enhance:
+  //   { boardId, filePath, forceRerender, variant }
+  function makeSpecialPreviewEnhance(previewKind) {
+    return function enhance(container, opts) {
+      opts = opts || {};
+      var win = typeof window !== 'undefined' ? window : null;
+      var embedMenu = win && win.LexeraEmbedMenu ? win.LexeraEmbedMenu : null;
+      var doc = typeof document !== 'undefined' ? document : (win && win.document);
+      if (!embedMenu || !doc || typeof embedMenu.renderCachedSpecialPreview !== 'function') {
+        if (win && typeof win.logFrontendIssue === 'function') {
+          win.logFrontendIssue(
+            'warn',
+            'embed.enhance.dispatch',
+            'Plugin ' + previewKind + '.enhance: LexeraEmbedMenu.renderCachedSpecialPreview unavailable',
+            { filePath: opts.filePath }
+          );
+        }
+        return Promise.resolve(false);
+      }
+      var isModal = opts.variant === 'modal';
+      var previewEl = doc.createElement('div');
+      previewEl.className = 'embed-preview embed-preview-' + previewKind +
+        (isModal ? ' embed-preview-modal file-preview-frame' : '');
+      container.appendChild(previewEl);
+      var previewPage = (typeof container.getAttribute === 'function')
+        ? (container.getAttribute('data-preview-page') || '') : '';
+      return embedMenu.renderCachedSpecialPreview(previewEl, opts.boardId, opts.filePath, previewKind, {
+        pageNumber: previewPage,
+        forceRerender: !!opts.forceRerender,
+        modal: isModal
+      });
+    };
+  }
+
   return {
     normalizePageNumber: normalizePageNumber,
     pageSuffix: pageSuffix,
     buildPreviewConfig: buildPreviewConfig,
     buildExportConfig: buildExportConfig,
-    makeRenderFile: makeRenderFile
+    makeRenderFile: makeRenderFile,
+    makeSpecialPreviewEnhance: makeSpecialPreviewEnhance,
+    makeSpecialPreviewEmit: makeSpecialPreviewEmit,
+    makePlainMediaEmit: makePlainMediaEmit
   };
 })();

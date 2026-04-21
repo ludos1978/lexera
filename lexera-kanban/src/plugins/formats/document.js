@@ -18,6 +18,8 @@
     canRenderFile: function (path) {
       return this.matches(String(path || '').toLowerCase());
     },
-    renderFile: H.makeRenderFile('document')
+    renderFile: H.makeRenderFile('document'),
+    emit: H.makeSpecialPreviewEmit(),
+    enhance: H.makeSpecialPreviewEnhance('document')
   });
 })();

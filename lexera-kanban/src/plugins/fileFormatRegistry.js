@@ -51,6 +51,20 @@ var LexeraFileFormatRegistry = (function () {
     if (typeof plugin.renderFile === 'function') {
       projected.renderFile = plugin.renderFile.bind(plugin);
     }
+    // Plugin-owned DOM enhance — called by LexeraEmbedMenu.enhanceSingleEmbedContainer
+    // as the single runtime dispatcher. Plugins that don't declare this
+    // method leave the projected value undefined, which the dispatcher
+    // treats as "no runtime rendering for this type".
+    if (typeof plugin.enhance === 'function') {
+      projected.enhance = plugin.enhance.bind(plugin);
+    }
+    // Plugin-owned HTML emission — called by the inlineRenderer during
+    // markdown → HTML generation (sync) to produce the inner HTML of the
+    // `.embed-container` placeholder. Plugins that don't declare this leave
+    // the dispatch path to fall back to the generic file-link template.
+    if (typeof plugin.emit === 'function') {
+      projected.emit = plugin.emit.bind(plugin);
+    }
     return projected;
   }
 
@@ -203,6 +217,82 @@ var LexeraFileFormatRegistry = (function () {
     return projectPlugin(manifest);
   }
 
+  // Single runtime dispatcher. Called by LexeraEmbedMenu.enhanceSingleEmbedContainer
+  // (which is itself called by card-render, SSE MediaChanged, modal-open,
+  // and Retry-Render). Looks up the plugin matching the container's
+  // `data-file-path` and delegates to its `enhance` method.
+  //
+  // Returns:
+  //   Promise<true>  — plugin rendered successfully (or acknowledged)
+  //   Promise<false> — plugin ran but reported failure
+  //   Promise<null>  — no plugin matched this file type (caller may fall
+  //                    back to a non-plugin code path, e.g. text preview)
+  function enhance(container, opts) {
+    opts = opts || {};
+    var filePath = opts.filePath ||
+      (container && typeof container.getAttribute === 'function'
+        ? container.getAttribute('data-file-path')
+        : '') || '';
+    if (!filePath) return Promise.resolve(null);
+    var plugin = findByFilePath(filePath);
+    if (!plugin || typeof plugin.enhance !== 'function') return Promise.resolve(null);
+    var normalizedOpts = {
+      boardId: opts.boardId || (container && typeof container.getAttribute === 'function'
+        ? container.getAttribute('data-board-id') : '') || '',
+      filePath: filePath,
+      variant: opts.variant ||
+        (container && typeof container.getAttribute === 'function'
+          ? container.getAttribute('data-variant') : '') || '',
+      forceRerender: !!opts.forceRerender,
+      previewKind: plugin.preview && plugin.preview.kind
+    };
+    try {
+      var result = plugin.enhance(container, normalizedOpts);
+      return Promise.resolve(result);
+    } catch (err) {
+      if (typeof window !== 'undefined' && typeof window.logFrontendIssue === 'function') {
+        window.logFrontendIssue(
+          'error',
+          'embed.enhance.dispatch',
+          'Plugin ' + (plugin.id || '?') + '.enhance threw: ' + (err && err.message ? err.message : String(err)),
+          err
+        );
+      }
+      return Promise.resolve(false);
+    }
+  }
+
+  // Single emission dispatcher. Called by the inlineRenderer during
+  // markdown → HTML for every `![alt](path)` token. Returns the inner HTML
+  // the caller should place inside `.embed-container`, or null if no plugin
+  // matches (caller falls back to the generic file-link template).
+  //
+  // ctx shape (provided by inlineRenderer):
+  //   { filePath, boardId, alt, titleText, src, mediaStyleAttr, helpers }
+  function emitPlaceholder(filePath, ctx) {
+    if (!filePath) return null;
+    var plugin = findByFilePath(filePath);
+    if (!plugin || typeof plugin.emit !== 'function') return null;
+    var normalizedCtx = Object.assign({}, ctx || {}, {
+      filePath: filePath,
+      previewKind: plugin.preview && plugin.preview.kind
+    });
+    try {
+      var html = plugin.emit(normalizedCtx);
+      return typeof html === 'string' ? html : null;
+    } catch (err) {
+      if (typeof window !== 'undefined' && typeof window.logFrontendIssue === 'function') {
+        window.logFrontendIssue(
+          'error',
+          'embed.emit.dispatch',
+          'Plugin ' + (plugin.id || '?') + '.emit threw: ' + (err && err.message ? err.message : String(err)),
+          err
+        );
+      }
+      return null;
+    }
+  }
+
   return {
     register: register,
     getAll: getAll,
@@ -218,7 +308,9 @@ var LexeraFileFormatRegistry = (function () {
     getAssetType: getAssetType,
     getEditorKind: getEditorKind,
     supportsExportReplacement: supportsExportReplacement,
-    normalizeFilePathForDetection: normalizeFilePathForDetection
+    normalizeFilePathForDetection: normalizeFilePathForDetection,
+    enhance: enhance,
+    emitPlaceholder: emitPlaceholder
   };
 })();
 

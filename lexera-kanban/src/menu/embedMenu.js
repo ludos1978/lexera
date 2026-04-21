@@ -1295,15 +1295,17 @@ var LexeraEmbedMenu = (function () {
     } else {
       containerEl.innerHTML = '<img class="file-preview-image" src="' + escapeAttr(asset.url) + '" alt="' + escapeAttr(asset.alt) + '" style="margin:0 auto;max-height:420px;">';
     }
-    var imgEl = containerEl.querySelector('img.file-preview-image');
-    if (imgEl) {
-      imgEl.addEventListener('error', function () {
-        logFrontendIssue(
-          'warn',
-          'embed.preview.image',
-          'Preview image failed to load: board=' + boardId + ' file=' + filePath + ' cachePath=' + (asset && asset.path) + ' src=' + (asset && asset.url)
-        );
-      }, { once: true });
+    if (typeof containerEl.querySelector === 'function') {
+      var imgEl = containerEl.querySelector('img.file-preview-image');
+      if (imgEl && typeof imgEl.addEventListener === 'function') {
+        imgEl.addEventListener('error', function () {
+          logFrontendIssue(
+            'warn',
+            'embed.preview.image',
+            'Preview image failed to load: board=' + boardId + ' file=' + filePath + ' cachePath=' + (asset && asset.path) + ' src=' + (asset && asset.url)
+          );
+        }, { once: true });
+      }
     }
     return true;
   }
@@ -2445,7 +2447,14 @@ var LexeraEmbedMenu = (function () {
     }
     var fileRef = parseLocalFileReference(filePath);
     var previewKind = getEmbedPreviewKind(filePath);
-    logFrontendIssue('info', 'embed.enhance.trace', 'enhance: entry', { boardId: boardId, filePath: filePath, fileRefPath: fileRef && fileRef.path, previewKind: previewKind });
+    // `data-variant` marks where the embed lives: absent/empty for inline card
+    // embeds (max-height sizing), "modal" for the file-preview overlay
+    // (max-width sizing, full iframe). Every runtime render path — card build,
+    // SSE MediaChanged, retry-render — calls this one function, so the
+    // container's variant attribute is the single place to key sizing off.
+    var variant = container.getAttribute('data-variant') || '';
+    var isModalVariant = variant === 'modal';
+    logFrontendIssue('info', 'embed.enhance.trace', 'enhance: entry', { boardId: boardId, filePath: filePath, fileRefPath: fileRef && fileRef.path, previewKind: previewKind, variant: variant });
     if (!previewKind) {
       logFrontendIssue('info', 'embed.enhance.trace', 'enhance: early-return (no previewKind)', { filePath: filePath });
       return;
@@ -2453,54 +2462,59 @@ var LexeraEmbedMenu = (function () {
 
     container.setAttribute('data-embed-enhanced', '1');
     var cacheKey = getEmbedPreviewCacheKey(boardId, filePath);
-    var previewEl = document.createElement(previewKind === 'pdf' ? 'iframe' : 'div');
-    previewEl.className = 'embed-preview embed-preview-' + previewKind;
 
-    if (previewKind === 'pdf') {
-      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: branch=pdf', { filePath: filePath });
-      previewEl.setAttribute('loading', 'lazy');
-      previewEl.setAttribute('title', getDisplayFileNameFromPath(filePath) || 'PDF preview');
-      previewEl.setAttribute(
-        'src',
-        LexeraApi.fileUrl(boardId, fileRef.path) +
-          '#toolbar=0&navpanes=0' +
-          (fileRef.pageNumber ? '&page=' + fileRef.pageNumber : '')
-      );
-      container.appendChild(previewEl);
-      return;
-    }
-
-    if (isRenderedSpecialPreviewKind(previewKind)) {
-      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: branch=rendered-special', { previewKind: previewKind, filePath: filePath });
-      container.appendChild(previewEl);
-      var previewPage = container.getAttribute('data-preview-page') || '';
-      var rendered = await renderCachedSpecialPreview(previewEl, boardId, filePath, previewKind, { pageNumber: previewPage, forceRerender: !!enhanceOpts.forceRerender });
-      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: rendered-special result', { rendered: !!rendered, filePath: filePath });
-      if (!rendered) {
-        // Try browser-based Office doc rendering (docx-preview, SheetJS)
+    // Primary dispatch: delegate to the file-format plugin via the registry.
+    // Each plugin owns its enhance behaviour (drawio/excalidraw/... →
+    // renderCachedSpecialPreview for cached-render types; pdf → iframe).
+    // Registry returns `null` when no plugin matched or no enhance is
+    // declared, in which case we fall through to the text-preview path.
+    var registry = (typeof window !== 'undefined' && window.LexeraFileFormatRegistry) || null;
+    if (registry && typeof registry.enhance === 'function') {
+      var dispatchResult = await registry.enhance(container, {
+        boardId: boardId,
+        filePath: filePath,
+        variant: variant,
+        forceRerender: !!enhanceOpts.forceRerender
+      });
+      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: plugin dispatch result', {
+        filePath: filePath, previewKind: previewKind, variant: variant, result: dispatchResult
+      });
+      if (dispatchResult === true) return;
+      if (dispatchResult === false && isRenderedSpecialPreviewKind(previewKind)) {
+        // Plugin ran but failed. Try browser-based office preview, else
+        // placeholder + clear the enhanced flag so a later pass retries.
+        var previewEl = container.querySelector('.embed-preview') || document.createElement('div');
+        if (!previewEl.parentNode) {
+          previewEl.className = 'embed-preview embed-preview-' + previewKind +
+            (isModalVariant ? ' embed-preview-modal file-preview-frame' : '');
+          container.appendChild(previewEl);
+        }
         var browserRendered = await renderOfficeBrowserPreview(previewEl, boardId, filePath, previewKind);
-        logFrontendIssue('info', 'embed.enhance.trace', 'enhance: browser-office result', { browserRendered: !!browserRendered, filePath: filePath });
+        logFrontendIssue('info', 'embed.enhance.trace', 'enhance: browser-office result', {
+          browserRendered: !!browserRendered, filePath: filePath
+        });
         if (!browserRendered) {
           previewEl.innerHTML = buildFilePreviewPlaceholderHtml(
             previewKind,
             filePath,
             buildSpecialPreviewPlaceholderMessage(previewKind, boardId, filePath)
           );
-          // Clear the enhanced flag so future enhance passes (e.g. virtual
-          // scroll remount, or after a transient backend hiccup) can retry
-          // the render. Without this, a single failure during page load
-          // would leave the card stuck on the placeholder forever, even
-          // after the renderer or backend recovered.
           container.removeAttribute('data-embed-enhanced');
           logFrontendIssue('info', 'embed.enhance.trace', 'enhance: fell back to placeholder; cleared enhanced flag', { filePath: filePath });
         }
+        return;
       }
-      return;
+      // dispatchResult === null → no plugin for this kind; fall through to
+      // the text-fetch path below.
     }
 
     logFrontendIssue('info', 'embed.enhance.trace', 'enhance: branch=text-fetch', { previewKind: previewKind, filePath: filePath });
-    previewEl.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
-    container.appendChild(previewEl);
+    var textPreviewEl = document.createElement('div');
+    textPreviewEl.className = 'embed-preview embed-preview-' + previewKind +
+      (isModalVariant ? ' embed-preview-modal' : '');
+    textPreviewEl.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
+    container.appendChild(textPreviewEl);
+    var previewEl = textPreviewEl;
     try {
       var cached = embedPreviewCache[cacheKey];
       if (!cached) {
@@ -2608,8 +2622,19 @@ var LexeraEmbedMenu = (function () {
         });
       } else if (action === 'retry-render') {
         clearCachedFilePreviewState(boardId, filePath);
-        body.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
-        renderPreviewBody({ forceRerender: true });
+        // Use the single enhance pipeline: reset the container and re-run
+        // enhanceSingleEmbedContainer with forceRerender. Same path as
+        // inline card embeds and SSE MediaChanged — one codepath, same logs.
+        var embed = body.querySelector('.embed-container');
+        if (embed) {
+          embed.removeAttribute('data-embed-enhanced');
+          var existingPreview = embed.querySelector('.embed-preview');
+          if (existingPreview) existingPreview.remove();
+          enhanceSingleEmbedContainer(embed, { forceRerender: true });
+        } else {
+          body.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
+          renderPreviewBody({ forceRerender: true });
+        }
       } else if (action === 'renderer-status') {
         showFileRendererStatusMenu(boardId, filePath, actionBtn);
       } else if (action === 'open-system') {
@@ -2619,35 +2644,39 @@ var LexeraEmbedMenu = (function () {
 
     async function renderPreviewBody(renderOpts) {
       renderOpts = renderOpts || {};
-      if (previewKind === 'pdf') {
-        body.innerHTML =
-          '<iframe class="file-preview-frame" src="' +
-          LexeraApi.fileUrl(boardId, fileRef.path) +
-          '#toolbar=0&navpanes=0' +
-          (fileRef.pageNumber ? '&page=' + fileRef.pageNumber : '') +
-          '"></iframe>';
-        return;
-      }
 
-      if (isRenderedSpecialPreviewKind(previewKind)) {
+      // Rendered-special kinds (drawio, excalidraw, office, epub, csv/tsv/xlsx,
+      // text, pdf) all route through the same enhance pipeline the inline card
+      // embeds use: build an `.embed-container[data-variant="modal"]`
+      // placeholder inside the modal body, set the known data attributes, and
+      // let `enhanceSingleEmbedContainer` dispatch by previewKind. This keeps
+      // retry-render, inline card enhance, and SSE MediaChanged on a single
+      // "resolve URL → inject element → log on failure" code path.
+      if (previewKind === 'pdf' || isRenderedSpecialPreviewKind(previewKind)) {
         var modalPage = options && options.pageNumber ? options.pageNumber : '';
-        var rendered = await renderCachedSpecialPreview(body, boardId, filePath, previewKind, {
-          modal: true,
-          pageNumber: modalPage,
-          forceRerender: !!renderOpts.forceRerender
-        });
-        if (!rendered) {
-          body.innerHTML = buildFilePreviewPlaceholderHtml(
-            previewKind,
-            filePath,
-            buildSpecialPreviewPlaceholderMessage(previewKind, boardId, filePath)
-          );
-        }
+        var previewPageAttr = /^\d+$/.test(String(modalPage || ''))
+          ? ' data-preview-page="' + escapeAttr(String(modalPage)) + '"'
+          : '';
+        body.innerHTML = '<span class="embed-container embed-container-modal"' +
+          ' data-file-path="' + escapeAttr(filePath) + '"' +
+          ' data-board-id="' + escapeAttr(boardId) + '"' +
+          ' data-media-type="' + escapeAttr(mediaCategory || '') + '"' +
+          ' data-variant="modal"' +
+          previewPageAttr +
+          '></span>';
+        var embed = body.querySelector('.embed-container');
+        await enhanceSingleEmbedContainer(embed, { forceRerender: !!renderOpts.forceRerender });
         return;
       }
 
       if (mediaCategory === 'image') {
         body.innerHTML = '<div class="file-preview-media"><img class="file-preview-image" src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '" alt="' + escapeAttr(getDisplayFileNameFromPath(filePath) || filePath) + '"></div>';
+        var imgEl = body.querySelector('img.file-preview-image');
+        if (imgEl) {
+          imgEl.addEventListener('error', function () {
+            logFrontendIssue('warn', 'file.preview.image', 'Modal image failed to load: board=' + boardId + ' file=' + filePath + ' src=' + imgEl.src);
+          }, { once: true });
+        }
         return;
       }
 
@@ -2661,6 +2690,10 @@ var LexeraEmbedMenu = (function () {
         return;
       }
 
+      // Text-based previews (markdown, code, logs, etc.) keep their own
+      // inline path: they don't produce an <img>/<iframe>, they produce
+      // parsed/rendered markdown or <pre> blocks with nested-card renderers.
+      // Not part of the image-rendering pipeline.
       try {
         var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
         if (!response.ok) throw new Error('Failed to load preview');

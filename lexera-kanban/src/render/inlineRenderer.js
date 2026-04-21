@@ -236,24 +236,44 @@ var LexeraInlineRenderer = (function () {
 
         var mediaStyleAttr = getMarkdownMediaStyleAttr(imageAttrs, { allowHeightOnImages: true });
         var previewKind = getEmbedPreviewKind(filePath);
-        var inner = '';
-        if (category === 'image') {
-          var imageTitleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
-          inner = '<img data-lazy-src="' + src + '" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="' + alt + '"' + imageTitleAttr + mediaStyleAttr + ' onerror="if(this.getAttribute(\'data-lazy-src\')){return}this.parentElement.classList.add(\'embed-broken\')">';
-        } else if (category === 'video') {
-          // data-lazy-src defers the network fetch until the element
-          // enters the viewport. contentEnhancerRegistry swaps it into
-          // `src` and calls .load() at that point, which then honors
-          // `preload="metadata"` to fetch just enough to show duration.
-          inner = '<video controls preload="metadata" data-lazy-src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
-        } else if (category === 'audio') {
-          inner = '<audio controls preload="metadata" data-lazy-src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
-        } else if (isRenderedSpecialPreviewKind(previewKind)) {
-          inner = getFileEmbedChipHtml(previewKind, filePath, mediaStyleAttr);
-        } else if (category === 'document') {
-          inner = '<span class="embed-file-link"' + mediaStyleAttr + '>&#128196; ' + escapeHtml(getDisplayFileNameFromPath(filePath)) + '</span>';
-        } else {
-          inner = '<span class="embed-file-link"' + mediaStyleAttr + '>&#128206; ' + escapeHtml(getDisplayFileNameFromPath(filePath)) + '</span>';
+
+        // Single emission dispatch: ask the file-format registry for this
+        // file's inner HTML. Each plugin owns the template for its type
+        // (see `plugins/formats/*.js`, including plain image/video/audio
+        // in `plugins/formats/media.js`). The registry is the single
+        // source of truth in production.
+        //
+        // Fallback: if no registry or no plugin matches (e.g. test harness
+        // that loads inlineRenderer without the plugins, or an unknown
+        // extension), synthesize a category-based chip so we always render
+        // SOMETHING — never an empty `.embed-container`.
+        var inner = null;
+        var registry = (typeof LexeraFileFormatRegistry !== 'undefined') ? LexeraFileFormatRegistry : null;
+        if (registry && typeof registry.emitPlaceholder === 'function') {
+          inner = registry.emitPlaceholder(filePath, {
+            boardId: boardId,
+            alt: alt,
+            titleText: titleText,
+            src: src,
+            mediaStyleAttr: mediaStyleAttr,
+            category: category,
+            helpers: { escapeHtml: escapeHtml, escapeAttr: escapeAttr }
+          });
+        }
+        if (inner == null) {
+          if (category === 'image') {
+            var imageTitleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
+            inner = '<img data-lazy-src="' + src + '" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="' + alt + '"' + imageTitleAttr + mediaStyleAttr + ' onerror="if(this.getAttribute(\'data-lazy-src\')){return}this.parentElement.classList.add(\'embed-broken\')">';
+          } else if (category === 'video') {
+            inner = '<video controls preload="metadata" data-lazy-src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
+          } else if (category === 'audio') {
+            inner = '<audio controls preload="metadata" data-lazy-src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
+          } else if (isRenderedSpecialPreviewKind(previewKind)) {
+            inner = getFileEmbedChipHtml(previewKind, filePath, mediaStyleAttr);
+          } else {
+            var fallbackEmoji = category === 'document' ? '&#128196;' : '&#128206;';
+            inner = '<span class="embed-file-link"' + mediaStyleAttr + '>' + fallbackEmoji + ' ' + escapeHtml(getDisplayFileNameFromPath(filePath)) + '</span>';
+          }
         }
 
         var embedIndex = renderState.embedCounter++;

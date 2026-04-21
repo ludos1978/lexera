@@ -21,6 +21,8 @@
     canRenderFile: function (path) {
       return this.matches(String(path || '').toLowerCase());
     },
-    renderFile: H.makeRenderFile('excalidraw')
+    renderFile: H.makeRenderFile('excalidraw'),
+    emit: H.makeSpecialPreviewEmit(),
+    enhance: H.makeSpecialPreviewEnhance('diagram')
   });
 })();
