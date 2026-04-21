@@ -171,83 +171,26 @@ var InlineCardEditor = (function () {
 
   function closeInlineCardEditor(options) {
     options = options || {};
-    // DIAGNOSTIC: unconditional entry log via multiple channels, visible at
-    // error level so it cannot be filtered out. Remove once drift is solved.
-    try {
-      if (typeof window !== 'undefined') window.__lexeraLastEditClose = { path: 'inline', ts: Date.now(), opts: options };
-      if (typeof logFrontendIssue === 'function') {
-        logFrontendIssue('error', 'card-edit.debug', 'closeInlineCardEditor CALLED save=' + !!options.save);
-      }
-      if (typeof window !== 'undefined' && typeof window.logFrontendIssue === 'function' && typeof logFrontendIssue !== 'function') {
-        window.logFrontendIssue('error', 'card-edit.debug', 'closeInlineCardEditor CALLED save=' + !!options.save);
-      }
-    } catch (_e) {}
     if (!currentInlineCardEditor) return Promise.resolve();
     var editor = currentInlineCardEditor;
     currentInlineCardEditor = null;
     clearScheduledInlineCardTextareaResize();
-    // Snapshot board scroll position BEFORE any DOM mutation. Removing the
-    // 'editing' class and re-rendering the card can each trigger reflow +
-    // browser scroll anchoring that drifts the view. Force scrollLeft/Top
-    // back at every step and on the next two rAF ticks.
-    var _scrollEl = document.querySelector('.columns-container');
-    var _savedLeft = _scrollEl ? _scrollEl.scrollLeft : 0;
-    var _savedTop = _scrollEl ? _scrollEl.scrollTop : 0;
-    var _savedScrollWidth = _scrollEl ? _scrollEl.scrollWidth : 0;
-    function _logScroll(phase) {
-      if (!_scrollEl || !logFrontendIssue) return;
-      logFrontendIssue('warn', 'card-edit.inline-close',
-        'phase=' + phase +
-        ' left=' + _scrollEl.scrollLeft +
-        ' (saved=' + _savedLeft + ')' +
-        ' top=' + _scrollEl.scrollTop +
-        ' (saved=' + _savedTop + ')' +
-        ' scrollWidth=' + _scrollEl.scrollWidth +
-        ' (saved=' + _savedScrollWidth + ')' +
-        ' clientWidth=' + _scrollEl.clientWidth);
-    }
-    function _restoreScroll() {
-      if (!_scrollEl) return;
-      if (_scrollEl.scrollLeft !== _savedLeft) _scrollEl.scrollLeft = _savedLeft;
-      if (_scrollEl.scrollTop !== _savedTop) _scrollEl.scrollTop = _savedTop;
-    }
-    _logScroll('start');
     _deps.setIsEditing(false);
-    // Clear editing presence
     _deps.clearEditingPresenceQueue();
     var LexeraApi = _deps.LexeraApi;
     if (LexeraApi.isSyncConnected()) {
       LexeraApi.sendEditingPresence(null, '', null, false);
     }
-    _logScroll('before-class-remove');
     if (editor.cardEl && editor.cardEl.classList) {
       editor.cardEl.classList.remove('editing');
       editor.cardEl.classList.remove('editing-inline');
       editor.cardEl.classList.remove('editing-overlay');
     }
-    _logScroll('after-class-remove');
-    _restoreScroll();
     if (options.save) {
       _deps.clearPendingCardDraftSync();
-      _logScroll('before-saveCardEdit');
-      return _deps.saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value)
-        .then(function (r) {
-          _logScroll('after-saveCardEdit');
-          _restoreScroll();
-          requestAnimationFrame(function () {
-            _logScroll('rAF-1');
-            _restoreScroll();
-            requestAnimationFrame(function () {
-              _logScroll('rAF-2');
-              _restoreScroll();
-            });
-          });
-          return r;
-        });
+      return _deps.saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
     }
     _deps.renderCardDisplayState(editor.cardEl, editor.originalContent);
-    _logScroll('after-renderCardDisplayState');
-    _restoreScroll();
     return _deps.revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent)
       .catch(function (err) {
         logFrontendIssue('warn', 'live-sync.revert', 'Failed to revert inline editor live-sync draft', err);
@@ -255,18 +198,6 @@ var InlineCardEditor = (function () {
       })
       .then(function () {
         return _deps.flushDeferredBoardRefresh({ refreshSidebar: true });
-      })
-      .then(function () {
-        _logScroll('cancel-after-flush');
-        _restoreScroll();
-        requestAnimationFrame(function () {
-          _logScroll('cancel-rAF-1');
-          _restoreScroll();
-          requestAnimationFrame(function () {
-            _logScroll('cancel-rAF-2');
-            _restoreScroll();
-          });
-        });
       });
   }
 

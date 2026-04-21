@@ -1063,54 +1063,11 @@ var CardEditor = (function () {
 
   async function closeCardEditorOverlay(options) {
     options = options || {};
-    // DIAGNOSTIC: unconditional entry log via multiple channels, visible at
-    // error level so it cannot be filtered out. Remove once drift is solved.
-    try {
-      if (typeof window !== 'undefined') window.__lexeraLastEditClose = { path: 'overlay', ts: Date.now(), opts: options };
-      if (_deps && typeof _deps.logFrontendIssue === 'function') {
-        _deps.logFrontendIssue('error', 'card-edit.debug', 'closeCardEditorOverlay CALLED save=' + !!options.save);
-      }
-      if (_deps && typeof _deps.lexeraLog === 'function') {
-        _deps.lexeraLog('error', 'card-edit.debug closeCardEditorOverlay CALLED save=' + !!options.save);
-      }
-      if (typeof window !== 'undefined' && typeof window.logFrontendIssue === 'function') {
-        window.logFrontendIssue('error', 'card-edit.debug', 'closeCardEditorOverlay CALLED save=' + !!options.save);
-      }
-    } catch (_e) {}
     if (!currentCardEditor) return;
     if (window.EditorAutocomplete) window.EditorAutocomplete.hideDropdown();
-    // Snapshot board scroll position BEFORE any DOM mutation. Removing the
-    // overlay, stripping the 'editing' class, and re-rendering the card can
-    // each trigger a reflow + browser scroll anchoring adjustment. We force
-    // the scroll back to its original position after every step and again
-    // on the next two animation frames to beat async enhancement work.
-    var _scrollEl = document.querySelector('.columns-container');
-    var _savedLeft = _scrollEl ? _scrollEl.scrollLeft : 0;
-    var _savedTop = _scrollEl ? _scrollEl.scrollTop : 0;
-    var _savedScrollWidth = _scrollEl ? _scrollEl.scrollWidth : 0;
-    var _savedClientWidth = _scrollEl ? _scrollEl.clientWidth : 0;
-    function _logScroll(phase) {
-      if (!_scrollEl || !_deps.logFrontendIssue) return;
-      _deps.logFrontendIssue('warn', 'card-edit.overlay-close',
-        'phase=' + phase +
-        ' left=' + _scrollEl.scrollLeft +
-        ' (saved=' + _savedLeft + ')' +
-        ' top=' + _scrollEl.scrollTop +
-        ' (saved=' + _savedTop + ')' +
-        ' scrollWidth=' + _scrollEl.scrollWidth +
-        ' (saved=' + _savedScrollWidth + ')' +
-        ' clientWidth=' + _scrollEl.clientWidth);
-    }
-    function _restoreScroll() {
-      if (!_scrollEl) return;
-      if (_scrollEl.scrollLeft !== _savedLeft) _scrollEl.scrollLeft = _savedLeft;
-      if (_scrollEl.scrollTop !== _savedTop) _scrollEl.scrollTop = _savedTop;
-    }
-    _logScroll('start');
     var editor = currentCardEditor;
     currentCardEditor = null;
     _deps.setIsEditing(false);
-    // Clear editing presence
     _deps.clearEditingPresenceQueue();
     var LexeraApi = _deps.LexeraApi;
     if (LexeraApi.isSyncConnected()) {
@@ -1126,35 +1083,15 @@ var CardEditor = (function () {
     destroyCardEditorWysiwyg(editor);
     window.currentTaskIncludeContext = null;
     window.currentFilePath = '';
-    _logScroll('before-class-remove');
     if (editor.cardEl && editor.cardEl.classList) {
       editor.cardEl.classList.remove('editing');
       editor.cardEl.classList.remove('editing-inline');
       editor.cardEl.classList.remove('editing-overlay');
     }
-    _logScroll('after-class-remove');
-    _restoreScroll();
-    _logScroll('after-class-remove-restored');
     if (editor.overlay && editor.overlay.parentNode) editor.overlay.parentNode.removeChild(editor.overlay);
-    _logScroll('after-overlay-remove');
-    _restoreScroll();
-    _logScroll('after-overlay-remove-restored');
     if (options.save) {
       _deps.clearPendingCardDraftSync();
-      _logScroll('before-saveCardEdit');
       await saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
-      _logScroll('after-saveCardEdit');
-      _restoreScroll();
-      _logScroll('after-saveCardEdit-restored');
-      requestAnimationFrame(function () {
-        _logScroll('rAF-1');
-        _restoreScroll();
-        requestAnimationFrame(function () {
-          _logScroll('rAF-2');
-          _restoreScroll();
-          _logScroll('rAF-2-restored');
-        });
-      });
       return;
     }
     await _deps.revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent).catch(function (err) {
@@ -1162,16 +1099,6 @@ var CardEditor = (function () {
       return false;
     });
     await _deps.flushDeferredBoardRefresh({ refreshSidebar: true });
-    _logScroll('cancel-after-flush');
-    _restoreScroll();
-    requestAnimationFrame(function () {
-      _logScroll('cancel-rAF-1');
-      _restoreScroll();
-      requestAnimationFrame(function () {
-        _logScroll('cancel-rAF-2');
-        _restoreScroll();
-      });
-    });
   }
 
   function insertFormatting(textarea, fmt) {
@@ -1204,7 +1131,19 @@ var CardEditor = (function () {
     textarea.dispatchEvent(new Event('input'));
   }
 
+  // SINGLE common finalization path for every card-modifying editor (inline,
+  // overlay, WYSIWYG, …). Every editor routes here on save. Scroll/layout
+  // preservation lives downstream in refreshTargetedElements (app.js) so it
+  // also covers non-editor card mutations (checkbox toggles, drag-drop).
   async function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) {
+    // DIAGNOSTIC: confirm this common function fires. Remove once solved.
+    try {
+      if (_deps && typeof _deps.logFrontendIssue === 'function') {
+        _deps.logFrontendIssue('error', 'card-edit.save',
+          'saveCardEdit ENTER colIndex=' + colIndex + ' fullIdx=' + fullCardIdx +
+          ' contentLen=' + (newContent ? newContent.length : 0));
+      }
+    } catch (_e) {}
     _deps.setIsEditing(false);
     var fullBoardData = _deps.getFullBoardData();
     var activeBoardId = _deps.getActiveBoardId();

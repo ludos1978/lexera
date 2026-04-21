@@ -697,11 +697,18 @@ class ExportUI {
             exportLexeraLog('warn', '[kanban.export.cancel] user aborted export');
             this._setStatus('Cancelling… cleaning up partial output', 'warn');
             if (this._abortController) {
-                try { this._abortController.abort(); } catch (e) {}
+                try { this._abortController.abort(); }
+                catch (e) {
+                    exportLexeraLog('warn', '[kanban.export.cancel] abortController.abort() threw: '
+                        + (e && e.message ? e.message : String(e)));
+                }
             }
             // Ask the backend to stop any running Marp watches spawned by this export.
             if (ExportService && typeof ExportService.stopAllWatches === 'function') {
-                ExportService.stopAllWatches().catch(function () {});
+                ExportService.stopAllWatches().catch(function (err) {
+                    exportLexeraLog('warn', '[kanban.export.cancel] stopAllWatches failed: '
+                        + (err && err.message ? err.message : String(err)));
+                });
             }
         } else {
             this.hide();

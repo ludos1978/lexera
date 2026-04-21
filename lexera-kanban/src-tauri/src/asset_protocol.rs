@@ -210,6 +210,11 @@ async fn fetch_asset(
                 "range_unsatisfiable" => StatusCode::RANGE_NOT_SATISFIABLE,
                 _ => StatusCode::BAD_GATEWAY,
             };
+            log::warn!(
+                target: "lexera.kanban.asset",
+                "backend rejected asset request (status={} code={}): {}",
+                status.as_u16(), code, message
+            );
             return Ok(error_response(status, &message));
         }
         other => return Err(format!("unexpected head frame: {:?}", other)),

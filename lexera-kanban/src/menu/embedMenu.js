@@ -1252,7 +1252,12 @@ var LexeraEmbedMenu = (function () {
     }
 
     var cacheDir = buildDiagramCacheDir(boardFilePath, absoluteSourcePath, config.cacheFolderName);
-    if (!cacheDir) return null;
+    if (!cacheDir) {
+      var cacheDirMsg = 'Could not build diagram cache directory (boardFilePath=' + boardFilePath + ' absoluteSourcePath=' + absoluteSourcePath + ' cacheFolderName=' + config.cacheFolderName + ')';
+      setSpecialPreviewError(boardId, filePath, cacheDirMsg);
+      logFrontendIssue('warn', 'embed.preview.resolve', cacheDirMsg);
+      return null;
+    }
     var cachePath = cacheDir + '/' + buildDiagramCacheFileName(absoluteSourcePath, mtimeMs, config.extension, config.suffix);
     var forceRerender = !!(options && options.forceRerender);
     var cacheInfo = forceRerender ? null : await requestFileInfo(boardId, cachePath);
@@ -1262,7 +1267,12 @@ var LexeraEmbedMenu = (function () {
       delete fileInfoCache[getFileInfoCacheKey(boardId, cachePath)];
       delete pendingFileInfoCache[getFileInfoCacheKey(boardId, cachePath)];
       cacheInfo = await requestFileInfo(boardId, cachePath);
-      if (!cacheInfo || !cacheInfo.exists) return null;
+      if (!cacheInfo || !cacheInfo.exists) {
+        var postRenderMsg = 'Renderer reported success but cache file is still missing: ' + cachePath;
+        setSpecialPreviewError(boardId, filePath, postRenderMsg);
+        logFrontendIssue('error', 'embed.preview.resolve', postRenderMsg);
+        return null;
+      }
     }
 
     return {
@@ -1284,6 +1294,16 @@ var LexeraEmbedMenu = (function () {
       containerEl.innerHTML = '<div class="file-preview-media"><img class="file-preview-image" src="' + escapeAttr(asset.url) + '" alt="' + escapeAttr(asset.alt) + '"></div>';
     } else {
       containerEl.innerHTML = '<img class="file-preview-image" src="' + escapeAttr(asset.url) + '" alt="' + escapeAttr(asset.alt) + '" style="margin:0 auto;max-height:420px;">';
+    }
+    var imgEl = containerEl.querySelector('img.file-preview-image');
+    if (imgEl) {
+      imgEl.addEventListener('error', function () {
+        logFrontendIssue(
+          'warn',
+          'embed.preview.image',
+          'Preview image failed to load: board=' + boardId + ' file=' + filePath + ' cachePath=' + (asset && asset.path) + ' src=' + (asset && asset.url)
+        );
+      }, { once: true });
     }
     return true;
   }

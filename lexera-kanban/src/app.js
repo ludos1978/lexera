@@ -5123,6 +5123,33 @@ var LexeraDashboard = (function () {
   }
 
   /**
+   * Capture the board viewport scroll position and return a restore function.
+   *
+   * Any time the board DOM is rebuilt or partially swapped, flex re-layout +
+   * browser scroll anchoring can bounce scrollLeft/scrollTop. Callers snapshot
+   * the position BEFORE mutating the DOM and invoke the returned restore:
+   *   - once synchronously after the DOM changes land
+   *   - once more inside a following requestAnimationFrame (the browser may
+   *     clamp/adjust scroll again after layout settles, especially after
+   *     async enhancement like diagram rendering or virtual-scroll remeasure)
+   *
+   * Single source of truth for board scroll preservation — used by both the
+   * full-board re-render path (renderColumns) and the targeted refresh path
+   * (refreshTargetedElements), so card-edit saves, checkbox toggles, and any
+   * other mutation share the same behavior.
+   */
+  function preserveBoardScroll() {
+    var cc = getElColumnsContainer();
+    if (!cc) return function () {};
+    var savedLeft = cc.scrollLeft;
+    var savedTop = cc.scrollTop;
+    return function restore() {
+      if (cc.scrollLeft !== savedLeft) cc.scrollLeft = savedLeft;
+      if (cc.scrollTop !== savedTop) cc.scrollTop = savedTop;
+    };
+  }
+
+  /**
    * Freeze the pixel dimensions of a swapped element and its layout ancestors
    * (column, stack, row) so that removing-and-reinserting content cannot
    * trigger a layout shift that moves the .columns-container scrollLeft/Top.
@@ -5277,15 +5304,7 @@ var LexeraDashboard = (function () {
     var needsSidebar = false;
     var needsStructuralVs = false;
 
-    // Snapshot the board scroll position before any swap. Targeted DOM
-    // replacements can trigger transient flex reflow and browser scroll
-    // anchoring, which bounces scrollLeft/scrollTop (the user sees the
-    // view drift horizontally after card edits). We force the saved
-    // position back after the swap and again on the next animation frame
-    // once any async enhancement (diagrams, VS remeasure) has settled.
-    var _scrollContainer = getElColumnsContainer();
-    var _savedScrollLeft = _scrollContainer ? _scrollContainer.scrollLeft : 0;
-    var _savedScrollTop = _scrollContainer ? _scrollContainer.scrollTop : 0;
+    var restoreBoardScroll = preserveBoardScroll();
 
     for (var t = 0; t < targets.length; t++) {
       var target = targets[t];
@@ -5481,17 +5500,8 @@ var LexeraDashboard = (function () {
       }
     }
 
-    // Restore board scroll position. Done synchronously right after the
-    // swap and again on rAF to counter browser scroll anchoring that can
-    // fire between paint frames.
-    if (_scrollContainer) {
-      if (_scrollContainer.scrollLeft !== _savedScrollLeft) _scrollContainer.scrollLeft = _savedScrollLeft;
-      if (_scrollContainer.scrollTop !== _savedScrollTop) _scrollContainer.scrollTop = _savedScrollTop;
-      requestAnimationFrame(function () {
-        if (_scrollContainer.scrollLeft !== _savedScrollLeft) _scrollContainer.scrollLeft = _savedScrollLeft;
-        if (_scrollContainer.scrollTop !== _savedScrollTop) _scrollContainer.scrollTop = _savedScrollTop;
-      });
-    }
+    restoreBoardScroll();
+    requestAnimationFrame(restoreBoardScroll);
   }
 
   function ensureBoardRowsForMutation(boardData, fallbackTitle) { BoardDataStore.ensureBoardRowsForMutation(boardData, fallbackTitle); }
@@ -8058,10 +8068,9 @@ var LexeraDashboard = (function () {
     // Defensive cleanup: stale drag artifacts can inflate row widths.
     cleanupPtrDrag();
     _rcMark('afterCleanup');
-    // Preserve scroll position before destroying DOM
+    // Preserve scroll position before destroying DOM (see preserveBoardScroll).
     var cc = getElColumnsContainer();
-    var savedScrollTop = cc.scrollTop;
-    var savedScrollLeft = cc.scrollLeft;
+    var restoreBoardScroll = preserveBoardScroll();
 
     // ─────────────────────────────────────────────────────────────────
     // PRESERVE LIVE IFRAMES ACROSS THE REBUILD (by src URL)
@@ -8152,8 +8161,7 @@ var LexeraDashboard = (function () {
     _setupIframePlaceholderClickHandler();
     _rcMark('afterRenderNewFormatBoard');
     // Restore scroll position immediately after DOM rebuild
-    cc.scrollTop = savedScrollTop;
-    cc.scrollLeft = savedScrollLeft;
+    restoreBoardScroll();
     var isCanvas = isCanvasBoardLayout();
     if (!isCanvas) {
       clearLayoutLockStyles();
@@ -8169,8 +8177,7 @@ var LexeraDashboard = (function () {
     requestAnimationFrame(function () {
       var container = getElColumnsContainer();
       // Re-apply scroll position after layout (browser may have clamped it)
-      container.scrollTop = savedScrollTop;
-      container.scrollLeft = savedScrollLeft;
+      restoreBoardScroll();
       if (isCanvas) {
         syncCanvasRowBounds(container);
       } else {

@@ -717,7 +717,15 @@ fn find_spreadsheet_png(dir: &Path, base_name: &str, sheet_number: u32) -> Resul
 }
 
 fn render_drawio_file(source_path: &Path, target_path: &Path, output_format: &str) -> Result<(), String> {
-    let cli = find_drawio_cli().ok_or_else(|| "draw.io CLI not found".to_string())?;
+    let cli = find_drawio_cli().ok_or_else(|| {
+        let msg = "draw.io CLI not found (tried common install locations)".to_string();
+        log::warn!(target: "lexera.kanban.render.drawio", "{}", msg);
+        msg
+    })?;
+    log::info!(
+        target: "lexera.kanban.render.drawio",
+        "using drawio CLI at {}", cli.display()
+    );
     let temp_dir = create_temp_render_dir("drawio")?;
     let rendered_path = temp_dir.join(format!("rendered.{}", output_format));
     let mut args = vec![
@@ -737,9 +745,22 @@ fn render_drawio_file(source_path: &Path, target_path: &Path, output_format: &st
             &args,
             source_path.parent(),
             Duration::from_millis(DRAWIO_RENDER_TIMEOUT_MS),
-        )?;
+        )
+        .map_err(|e| {
+            log::warn!(
+                target: "lexera.kanban.render.drawio",
+                "drawio exited non-zero for src={}: {}",
+                source_path.display(), e
+            );
+            e
+        })?;
         if !rendered_path.is_file() {
-            return Err(format!("draw.io did not create {}", rendered_path.display()));
+            let msg = format!(
+                "draw.io exited 0 but did not create {} (args: {:?})",
+                rendered_path.display(), args
+            );
+            log::warn!(target: "lexera.kanban.render.drawio", "{}", msg);
+            return Err(msg);
         }
         ensure_parent_dir(target_path)?;
         fs::copy(&rendered_path, target_path)
@@ -1284,9 +1305,24 @@ fn render_excalidraw_file(source_path: &Path, target_path: &Path, output_format:
         return Err("Excalidraw rendering currently supports SVG output only".to_string());
     }
 
-    let node = find_node_cli().ok_or_else(|| "Node.js not found for Excalidraw rendering".to_string())?;
+    let node = find_node_cli().ok_or_else(|| {
+        let msg = "Node.js not found for Excalidraw rendering".to_string();
+        log::warn!(target: "lexera.kanban.render.excalidraw", "{}", msg);
+        msg
+    })?;
     let worker = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts").join("excalidraw-worker.cjs");
+    if !worker.is_file() {
+        let msg = format!("Excalidraw worker script missing at {}", worker.display());
+        log::error!(target: "lexera.kanban.render.excalidraw", "{}", msg);
+        return Err(msg);
+    }
     let repo_root = repo_root_dir()?;
+    log::info!(
+        target: "lexera.kanban.render.excalidraw",
+        "node={} worker={} repo_root={} src={} target={}",
+        node.display(), worker.display(), repo_root.display(),
+        source_path.display(), target_path.display()
+    );
     ensure_parent_dir(target_path)?;
 
     let args = vec![
@@ -1295,10 +1331,22 @@ fn render_excalidraw_file(source_path: &Path, target_path: &Path, output_format:
         target_path.to_string_lossy().to_string(),
         repo_root.to_string_lossy().to_string(),
     ];
-    run_command_capture(&node, &args, Some(&repo_root))?;
+    run_command_capture(&node, &args, Some(&repo_root)).map_err(|e| {
+        log::warn!(
+            target: "lexera.kanban.render.excalidraw",
+            "excalidraw worker exited non-zero for src={}: {}",
+            source_path.display(), e
+        );
+        e
+    })?;
 
     if !target_path.is_file() {
-        return Err(format!("Excalidraw worker did not create {}", target_path.display()));
+        let msg = format!(
+            "Excalidraw worker exited 0 but did not create {} (src={})",
+            target_path.display(), source_path.display()
+        );
+        log::warn!(target: "lexera.kanban.render.excalidraw", "{}", msg);
+        return Err(msg);
     }
     Ok(())
 }
@@ -1847,18 +1895,31 @@ pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<Ren
         .clone()
         .unwrap_or_else(|| "png".to_string())
         .to_lowercase();
+    let force = opts.force.unwrap_or(false);
+
+    log::info!(
+        target: "lexera.kanban.render",
+        "render_embedded_file plugin={} src={} target={} fmt={} page={} force={}",
+        opts.plugin_id, source_path.display(), target_path.display(), output_format, page_number, force
+    );
 
     if !source_path.is_file() {
+        let msg = format!("Source file not found: {}", source_path.display());
+        log::warn!(target: "lexera.kanban.render", "{} (plugin={})", msg, opts.plugin_id);
         return Ok(RenderEmbeddedFileResult {
             success: false,
             output_path: opts.target_path,
             format: output_format,
-            error: Some("Source file not found".to_string()),
+            error: Some(msg),
         });
     }
 
-    let force = opts.force.unwrap_or(false);
     if !force && is_cache_fresh(&source_path, &target_path) {
+        log::info!(
+            target: "lexera.kanban.render",
+            "cache hit (plugin={}) target={}",
+            opts.plugin_id, target_path.display()
+        );
         return Ok(RenderEmbeddedFileResult {
             success: true,
             output_path: opts.target_path,
@@ -1867,7 +1928,13 @@ pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<Ren
         });
     }
     if target_path.is_file() {
-        let _ = fs::remove_file(&target_path);
+        if let Err(e) = fs::remove_file(&target_path) {
+            log::warn!(
+                target: "lexera.kanban.render",
+                "failed to remove stale cache {}: {} — continuing with render",
+                target_path.display(), e
+            );
+        }
     }
 
     let render_result = if let Some(renderer) = find_embedded_renderer(&opts.plugin_id) {
@@ -1877,18 +1944,49 @@ pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<Ren
     };
 
     match render_result {
-        Ok(()) => Ok(RenderEmbeddedFileResult {
-            success: true,
-            output_path: opts.target_path,
-            format: output_format,
-            error: None,
-        }),
-        Err(err) => Ok(RenderEmbeddedFileResult {
-            success: false,
-            output_path: opts.target_path,
-            format: output_format,
-            error: Some(err),
-        }),
+        Ok(()) => {
+            if !target_path.is_file() {
+                let msg = format!(
+                    "Renderer reported success but target file is missing: {}",
+                    target_path.display()
+                );
+                log::error!(
+                    target: "lexera.kanban.render",
+                    "{} (plugin={}, src={})",
+                    msg, opts.plugin_id, source_path.display()
+                );
+                return Ok(RenderEmbeddedFileResult {
+                    success: false,
+                    output_path: opts.target_path,
+                    format: output_format,
+                    error: Some(msg),
+                });
+            }
+            log::info!(
+                target: "lexera.kanban.render",
+                "render ok (plugin={}) target={}",
+                opts.plugin_id, target_path.display()
+            );
+            Ok(RenderEmbeddedFileResult {
+                success: true,
+                output_path: opts.target_path,
+                format: output_format,
+                error: None,
+            })
+        }
+        Err(err) => {
+            log::error!(
+                target: "lexera.kanban.render",
+                "render failed (plugin={}) src={} target={}: {}",
+                opts.plugin_id, source_path.display(), target_path.display(), err
+            );
+            Ok(RenderEmbeddedFileResult {
+                success: false,
+                output_path: opts.target_path,
+                format: output_format,
+                error: Some(err),
+            })
+        }
     }
 }
 

@@ -15,6 +15,20 @@
  */
 var ExportToolStatus = (function () {
 
+  // Mirror to parent frame's logger — kanban UI runs in a workspace-shell
+  // iframe; the user watches the shell's Log panel. Same pattern as
+  // exportLexeraLog() in exportService.js.
+  function toolStatusLog(level, message) {
+    try { if (typeof lexeraLog === 'function') lexeraLog(level, message); }
+    catch (e) { /* local logger not ready yet */ }
+    try {
+      if (window.parent && window.parent !== window
+          && typeof window.parent.lexeraLog === 'function') {
+        window.parent.lexeraLog(level, message);
+      }
+    } catch (e) { /* cross-origin — ignore */ }
+  }
+
   // ── Injected dependencies ──────────────────────────────────────────
 
   var _deps = {};
@@ -166,12 +180,14 @@ var ExportToolStatus = (function () {
       cache.rows = [];
       cache.error = 'tauri-unavailable';
       cache.checkedAt = Date.now();
+      toolStatusLog('warn', '[ExportToolStatus] embedded-renderer check skipped: Tauri unavailable');
       return Promise.resolve(cache);
     }
     var invoke = deps.tauriInvoke;
     if (typeof invoke !== 'function') {
       cache.error = 'no-invoke';
       cache.checkedAt = Date.now();
+      toolStatusLog('error', '[ExportToolStatus] embedded-renderer check skipped: deps.tauriInvoke missing despite hasTauri=true');
       return Promise.resolve(cache);
     }
     cache.pending = invoke('check_embedded_renderer_statuses', {})
@@ -187,6 +203,7 @@ var ExportToolStatus = (function () {
         cache.error = err ? (err.message || String(err)) : 'unknown-error';
         cache.checkedAt = Date.now();
         cache.pending = null;
+        toolStatusLog('warn', '[ExportToolStatus] check_embedded_renderer_statuses failed: ' + cache.error);
         return cache;
       });
     return cache.pending;
@@ -194,7 +211,10 @@ var ExportToolStatus = (function () {
 
   function refreshExportToolStatus(toolName, force) {
     var cache = exportToolStatusCache[toolName];
-    if (!cache) return Promise.resolve({ available: false, version: null, checkedAt: 0, pending: null, error: 'unknown-tool' });
+    if (!cache) {
+      toolStatusLog('warn', '[ExportToolStatus] refreshExportToolStatus called for unknown tool: ' + toolName);
+      return Promise.resolve({ available: false, version: null, checkedAt: 0, pending: null, error: 'unknown-tool' });
+    }
     var maxAgeMs = 30000;
     if (!force && cache.checkedAt > 0 && (Date.now() - cache.checkedAt) < maxAgeMs && !cache.pending) {
       return Promise.resolve(cache);
@@ -205,6 +225,8 @@ var ExportToolStatus = (function () {
       cache.available = false;
       cache.version = null;
       cache.checkedAt = Date.now();
+      toolStatusLog('warn', '[ExportToolStatus] ' + toolName + ' status check unavailable: '
+        + (toolName !== 'pandoc' ? 'only pandoc is supported' : 'ExportService.checkPandocStatus missing'));
       return Promise.resolve(cache);
     }
     cache.pending = window.ExportService.checkPandocStatus().then(function (status) {
@@ -220,6 +242,7 @@ var ExportToolStatus = (function () {
       cache.error = err ? (err.message || String(err)) : 'unknown-error';
       cache.checkedAt = Date.now();
       cache.pending = null;
+      toolStatusLog('warn', '[ExportToolStatus] checkPandocStatus failed: ' + cache.error);
       return cache;
     });
     return cache.pending;

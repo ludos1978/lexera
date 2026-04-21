@@ -16,6 +16,20 @@
  * surface, this popover is the recall mechanism.
  */
 var LexeraExportProcesses = (function () {
+  // Mirror to parent frame's logger — kanban UI runs in a workspace-shell
+  // iframe; the user watches the shell's Log panel. Same pattern as
+  // exportLexeraLog() in exportService.js.
+  function processesLog(level, message) {
+    try { if (typeof lexeraLog === 'function') lexeraLog(level, message); }
+    catch (e) { /* local logger not ready yet */ }
+    try {
+      if (typeof window !== 'undefined' && window.parent && window.parent !== window
+          && typeof window.parent.lexeraLog === 'function') {
+        window.parent.lexeraLog(level, message);
+      }
+    } catch (e) { /* cross-origin — ignore */ }
+  }
+
   var RECENT_LIMIT = 10;
   var _active = Object.create(null);   // boardId -> { boardName, outputPath, startedAt }
   var _recent = [];                    // newest first, capped at RECENT_LIMIT
@@ -47,13 +61,25 @@ var LexeraExportProcesses = (function () {
   }
 
   function openOutputFile(path) {
-    if (!path) return;
-    invokeTauri('open_with_default_app', { path: path }).catch(function () {});
+    if (!path) {
+      processesLog('warn', '[LexeraExportProcesses] openOutputFile called with empty path');
+      return;
+    }
+    invokeTauri('open_with_default_app', { path: path }).catch(function (err) {
+      processesLog('warn', '[LexeraExportProcesses] open_with_default_app failed for ' + path + ': '
+        + (err && err.message ? err.message : String(err)));
+    });
   }
 
   function revealInFinder(path) {
-    if (!path) return;
-    invokeTauri('show_in_folder', { path: path }).catch(function () {});
+    if (!path) {
+      processesLog('warn', '[LexeraExportProcesses] revealInFinder called with empty path');
+      return;
+    }
+    invokeTauri('show_in_folder', { path: path }).catch(function (err) {
+      processesLog('warn', '[LexeraExportProcesses] show_in_folder failed for ' + path + ': '
+        + (err && err.message ? err.message : String(err)));
+    });
   }
 
   function ensureMounted() {

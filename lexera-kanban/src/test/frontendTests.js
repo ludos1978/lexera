@@ -3951,7 +3951,7 @@
     return items;
   }
 
-  register('header drag source: draw.io built-in template spec produces an empty diagram', async function () {
+  register('header drag source: draw.io built-in template spec produces a minimal valid diagram', async function () {
     await setup();
     try {
       var apiWin = getApiWindow();
@@ -3966,7 +3966,9 @@
       assertEqual(spec.mimeType, 'application/vnd.jgraph.mxfile', 'draw.io spec uses the mxfile mime type');
       assert(typeof spec.content === 'string' && spec.content.length > 0, 'draw.io spec has content');
 
-      // Parse the mxfile and confirm there are no user cells — empty board.
+      // Template must contain at least one vertex cell: the draw.io CLI returns
+      // "Export failed" on an empty <root>, leaving the card stuck on the
+      // "Draw.io preview is rendered..." placeholder.
       var parser = new (apiWin.DOMParser || DOMParser)();
       var doc = parser.parseFromString(spec.content, 'application/xml');
       assert(!doc.querySelector('parsererror'), 'draw.io template content is valid XML');
@@ -3974,22 +3976,18 @@
       assert(doc.querySelector('diagram'), 'diagram element present');
       assert(doc.querySelector('mxGraphModel > root'), 'mxGraphModel/root present');
       var cells = doc.querySelectorAll('mxGraphModel > root > mxCell');
-      assertEqual(cells.length, 2, 'empty draw.io board has exactly the 2 mandatory mxCell entries (id 0 and id 1)');
-      // The two required cells represent the drawing surface itself, not shapes.
+      assert(cells.length >= 2, 'draw.io board has the 2 mandatory mxCell entries (id 0 and id 1)');
       assertEqual(cells[0].getAttribute('id'), '0', 'first mxCell has id="0"');
       assertEqual(cells[1].getAttribute('id'), '1', 'second mxCell has id="1"');
       assertEqual(cells[1].getAttribute('parent'), '0', 'second mxCell is parented to id="0"');
-      // No user shapes/edges exist in an empty board.
-      for (var i = 0; i < cells.length; i++) {
-        assertEqual(cells[i].getAttribute('vertex'), null, 'no vertex cells in empty board');
-        assertEqual(cells[i].getAttribute('edge'), null, 'no edge cells in empty board');
-      }
+      var vertexCells = doc.querySelectorAll('mxGraphModel > root > mxCell[vertex="1"]');
+      assert(vertexCells.length >= 1, 'draw.io template has at least one vertex cell so the CLI can export');
     } finally {
       await teardown();
     }
   });
 
-  register('header drag source: excalidraw built-in template spec produces an empty diagram', async function () {
+  register('header drag source: excalidraw built-in template spec produces a minimal valid diagram', async function () {
     await setup();
     try {
       var apiWin = getApiWindow();
@@ -4008,10 +4006,12 @@
       assertEqual(data.type, 'excalidraw', 'excalidraw content declares type=excalidraw');
       assert(typeof data.version === 'number' && data.version >= 2, 'excalidraw content declares a version >= 2');
       assert(Array.isArray(data.elements), 'excalidraw content has an elements array');
-      assertEqual(data.elements.length, 0, 'empty excalidraw board has no elements');
+      // Template must include at least one element so the worker produces a
+      // non-empty SVG; an empty elements array renders nothing and the card
+      // falls back to the placeholder text.
+      assert(data.elements.length >= 1, 'excalidraw template has at least one element so the worker emits a non-empty SVG');
       assert(data.appState && typeof data.appState === 'object', 'excalidraw content has an appState object');
       assert(data.files && typeof data.files === 'object', 'excalidraw content has a files object');
-      assertEqual(Object.keys(data.files).length, 0, 'empty excalidraw board has no embedded files');
     } finally {
       await teardown();
     }
