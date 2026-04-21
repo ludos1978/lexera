@@ -2956,13 +2956,17 @@ li.tag-line-styled {
   border: 1px solid var(--surface-stack-border);
 }
 
-/* Disable layout transitions and contain layout during window resize */
+/* Disable layout transitions and contain layout during window resize
+   and during any layout divider drag (sidebar, panel-split, dock). */
 body.window-resizing .board-stack,
-body.window-resizing .search-container {
+body.window-resizing .search-container,
+body.is-dragging-layout .board-stack,
+body.is-dragging-layout .search-container {
   transition: none !important;
 }
-body.window-resizing .columns-container {
-  /* During resize, skip card content reflow — scrollable containers
+body.window-resizing .columns-container,
+body.is-dragging-layout .columns-container {
+  /* During resize/drag, skip card content reflow — scrollable containers
      don't need children to relayout for the container to resize */
   content-visibility: auto;
   border-radius: var(--surface-stack-radius);
@@ -6706,6 +6710,21 @@ select.dialog-input option,
 
 .log-panel-source-menu.hidden {
   display: none;
+}
+
+.log-panel-search {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: var(--font-size-sm);
+  min-width: 160px;
+  outline: none;
+}
+
+.log-panel-search:focus {
+  border-color: var(--accent, var(--text-primary));
 }
 
 .log-panel-source-menu-item {

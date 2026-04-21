@@ -25,6 +25,10 @@ struct PathMapping {
     watched_dirs: std::collections::HashSet<PathBuf>,
     /// include file paths currently being watched (canonical paths)
     watched_includes: std::collections::HashSet<PathBuf>,
+    /// canonical media folder path -> board_id, used to attribute file events
+    /// inside `*-Media/` to the originating board so the frontend can refresh
+    /// just the affected embed.
+    media_dirs: HashMap<PathBuf, String>,
 }
 
 /// File watcher that monitors board and include files for changes.
@@ -110,6 +114,61 @@ impl FileWatcher {
         self.ensure_watched(&canonical)?;
         log::info!(
             "[lexera.watcher.include] Watching include file {:?}",
+            canonical
+        );
+        Ok(())
+    }
+
+    /// Start watching a board's media folder (`{board_dir}/{board_stem}-Media/`)
+    /// non-recursively. Direct children (the user's source files like
+    /// `.drawio`/`.excalidraw`/images) emit `MediaChanged` events; cache
+    /// subfolders (e.g. `excalidraw-cache/`) are excluded by the
+    /// non-recursive mode, so render-output writes don't cause feedback.
+    /// Silently no-ops if the media folder doesn't exist yet.
+    pub fn watch_board_media_dir(
+        &mut self,
+        board_id: &str,
+        board_file_path: &Path,
+    ) -> Result<(), notify::Error> {
+        let parent = match board_file_path.parent() {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+        let stem = match board_file_path.file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+        let media_dir = parent.join(format!("{}-Media", stem));
+        if !media_dir.is_dir() {
+            return Ok(());
+        }
+        let canonical = std::fs::canonicalize(&media_dir).unwrap_or(media_dir);
+        match self.path_mapping.write() {
+            Ok(mut mapping) => {
+                if mapping.media_dirs.contains_key(&canonical) {
+                    return Ok(());
+                }
+                mapping
+                    .media_dirs
+                    .insert(canonical.clone(), board_id.to_string());
+                if mapping.watched_dirs.contains(&canonical) {
+                    return Ok(());
+                }
+                mapping.watched_dirs.insert(canonical.clone());
+            }
+            Err(e) => {
+                log::error!(
+                    "[lexera.watcher.board_media] Path mapping lock poisoned: {}",
+                    e
+                );
+                return Err(notify::Error::generic("Path mapping lock poisoned"));
+            }
+        }
+        self._debouncer
+            .watch(&canonical, RecursiveMode::NonRecursive)?;
+        log::info!(
+            "[lexera.watcher.board_media] Watching media dir for board {} at {:?}",
+            board_id,
             canonical
         );
         Ok(())
@@ -267,6 +326,54 @@ fn handle_debounced_event(
                 if let Err(e) = tx.send(change_event) {
                     log::warn!("[lexera.watcher.send] No receivers: {}", e);
                 }
+            }
+            continue;
+        }
+        drop(imap);
+
+        // Check if this file lives directly in a watched media dir.
+        // Non-recursive watches mean cache subfolders (e.g. `excalidraw-cache/`)
+        // never reach this branch — only direct children of `*-Media/` do —
+        // so render-output writes can't trigger a feedback loop.
+        let parent = match canonical.parent() {
+            Some(p) => p.to_path_buf(),
+            None => continue,
+        };
+        let mapping = match path_mapping.read() {
+            Ok(m) => m,
+            Err(e) => {
+                log::error!(
+                    "[lexera.watcher.event] Path mapping lock poisoned: {}",
+                    e
+                );
+                return;
+            }
+        };
+        if let Some(board_id) = mapping.media_dirs.get(&parent) {
+            let board_id = board_id.clone();
+            drop(mapping);
+            // Emit the board-relative path (`{boardStem}-Media/{filename}`)
+            // so the frontend can match it against the `data-file-path`
+            // attribute it stored from the original markdown reference.
+            // Falling back to the canonical path if the relative form
+            // can't be derived is fine — the frontend matches by exact
+            // string and an absolute path simply won't match anything.
+            let relative_path = parent
+                .file_name()
+                .and_then(|media_dir_name| {
+                    canonical.file_name().map(|file_name| {
+                        let mut p = PathBuf::from(media_dir_name);
+                        p.push(file_name);
+                        p
+                    })
+                })
+                .unwrap_or_else(|| canonical.clone());
+            let change_event = BoardChangeEvent::MediaChanged {
+                board_id,
+                path: Some(relative_path),
+            };
+            if let Err(e) = tx.send(change_event) {
+                log::warn!("[lexera.watcher.send] No receivers: {}", e);
             }
         }
     }

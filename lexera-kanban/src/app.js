@@ -1506,6 +1506,43 @@ var LexeraDashboard = (function () {
     setupSidebarWidthResize();
     setupWorkspaceShell();
 
+    // DIAGNOSTIC: install a universal scroll watcher on the board viewport
+    // so any drift caused by card edits (or anything else) surfaces in the
+    // in-app Log panel with a stack trace showing the responsible caller.
+    // Remove once the card-edit scroll-drift issue is resolved.
+    try {
+      (function installBoardScrollDriftWatcher() {
+        if (typeof document === 'undefined' || typeof logFrontendIssue !== 'function') return;
+        function tryInstall() {
+          var el = document.querySelector('.columns-container');
+          if (!el) { setTimeout(tryInstall, 250); return; }
+          if (el.__lexeraDriftWatcherInstalled) return;
+          el.__lexeraDriftWatcherInstalled = true;
+          var lastLeft = el.scrollLeft;
+          var lastTop = el.scrollTop;
+          el.addEventListener('scroll', function () {
+            var newLeft = el.scrollLeft;
+            var newTop = el.scrollTop;
+            var dx = newLeft - lastLeft;
+            var dy = newTop - lastTop;
+            lastLeft = newLeft;
+            lastTop = newTop;
+            var trace = '';
+            try { throw new Error('scroll-drift'); } catch (e) { trace = e.stack || ''; }
+            try {
+              logFrontendIssue('error', 'scroll-drift',
+                'dx=' + dx + ' dy=' + dy +
+                ' left=' + newLeft + ' top=' + newTop +
+                ' scrollWidth=' + el.scrollWidth + ' clientWidth=' + el.clientWidth +
+                ' trace=' + trace.split('\n').slice(1, 8).join(' <- '));
+            } catch (_) {}
+          }, { passive: true });
+          try { logFrontendIssue('error', 'scroll-drift', 'watcher installed'); } catch (_) {}
+        }
+        tryInstall();
+      })();
+    } catch (_) {}
+
     // Init panels that may already exist after workspace shell restore.
     if (ManagementWiring) ManagementWiring.initDelayedPanels();
 
@@ -2340,6 +2377,27 @@ var LexeraDashboard = (function () {
     var includeBoardIds = event.board_ids || event.boardIds || [];
     var writerId = event.writer_id || event.writerId || null;
     if (boardId && boardId !== activeBoardId) return;
+    // External edit to a media file (drawio/excalidraw/image/…) referenced
+    // by this board. Refresh just the affected embed if path is known,
+    // otherwise refresh every visible media embed on the board.
+    if (kind === 'MediaChanged') {
+      var changedPath = event.path || '';
+      if (changedPath && typeof refreshVisibleBoardFileEmbeds === 'function') {
+        refreshVisibleBoardFileEmbeds(activeBoardId, changedPath);
+      } else {
+        var mediaContainers = document.querySelectorAll('.embed-container[data-file-path][data-board-id="' + activeBoardId + '"]');
+        for (var mi = 0; mi < mediaContainers.length; mi++) {
+          var mc = mediaContainers[mi];
+          mc.removeAttribute('data-embed-enhanced');
+          var mp = mc.querySelector('.embed-preview');
+          if (mp) mp.remove();
+          if (typeof enhanceSingleEmbedContainer === 'function') {
+            enhanceSingleEmbedContainer(mc);
+          }
+        }
+      }
+      return;
+    }
     if (kind === 'IncludeFileChanged' && Array.isArray(includeBoardIds) && includeBoardIds.length > 0 && includeBoardIds.indexOf(activeBoardId) === -1) {
       traceFrontendAction('info', 'sse.fileChanged.ignore', 'Ignoring include change for unrelated board', {
         activeBoardId: activeBoardId,
@@ -4998,6 +5056,12 @@ var LexeraDashboard = (function () {
     if (cardAutoSizeObserver || typeof ResizeObserver === 'undefined') return cardAutoSizeObserver;
     cardAutoSizeObserver = new ResizeObserver(function (entries) {
       if (!entries || !entries.length) return;
+      // During a layout-divider drag (sidebar/panel/dock), card size changes
+      // are a transient consequence of the container resize, not real content
+      // changes. Re-measuring per frame chains forced reflows and is the
+      // leading cause of drag jank. Skip while the drag class is set; the
+      // final drag-end triggers a normal render that re-syncs widths.
+      if (document && document.body && document.body.classList.contains('is-dragging-layout')) return;
       for (var i = 0; i < entries.length; i++) {
         var entry = entries[i];
         var cardEl = entry ? entry.target : null;

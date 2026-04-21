@@ -1063,6 +1063,20 @@ var CardEditor = (function () {
 
   async function closeCardEditorOverlay(options) {
     options = options || {};
+    // DIAGNOSTIC: unconditional entry log via multiple channels, visible at
+    // error level so it cannot be filtered out. Remove once drift is solved.
+    try {
+      if (typeof window !== 'undefined') window.__lexeraLastEditClose = { path: 'overlay', ts: Date.now(), opts: options };
+      if (_deps && typeof _deps.logFrontendIssue === 'function') {
+        _deps.logFrontendIssue('error', 'card-edit.debug', 'closeCardEditorOverlay CALLED save=' + !!options.save);
+      }
+      if (_deps && typeof _deps.lexeraLog === 'function') {
+        _deps.lexeraLog('error', 'card-edit.debug closeCardEditorOverlay CALLED save=' + !!options.save);
+      }
+      if (typeof window !== 'undefined' && typeof window.logFrontendIssue === 'function') {
+        window.logFrontendIssue('error', 'card-edit.debug', 'closeCardEditorOverlay CALLED save=' + !!options.save);
+      }
+    } catch (_e) {}
     if (!currentCardEditor) return;
     if (window.EditorAutocomplete) window.EditorAutocomplete.hideDropdown();
     // Snapshot board scroll position BEFORE any DOM mutation. Removing the
@@ -1077,11 +1091,11 @@ var CardEditor = (function () {
     var _savedClientWidth = _scrollEl ? _scrollEl.clientWidth : 0;
     function _logScroll(phase) {
       if (!_scrollEl || !_deps.logFrontendIssue) return;
-      _deps.logFrontendIssue('info', 'card-edit.close',
+      _deps.logFrontendIssue('warn', 'card-edit.overlay-close',
         'phase=' + phase +
-        ' scrollLeft=' + _scrollEl.scrollLeft +
+        ' left=' + _scrollEl.scrollLeft +
         ' (saved=' + _savedLeft + ')' +
-        ' scrollTop=' + _scrollEl.scrollTop +
+        ' top=' + _scrollEl.scrollTop +
         ' (saved=' + _savedTop + ')' +
         ' scrollWidth=' + _scrollEl.scrollWidth +
         ' (saved=' + _savedScrollWidth + ')' +

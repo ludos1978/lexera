@@ -1851,6 +1851,7 @@
       var pointerId = event.pointerId;
       try { dividerEl.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
       dividerEl.classList.add('is-dragging');
+      if (document && document.body) document.body.classList.add('is-dragging-layout');
       var activeDockEl = dockId === 'left' ? state.leftDockEl : dockId === 'right' ? state.rightDockEl : state.bottomDockEl;
       var baseRect = dockId === 'bottom'
         ? (state.bodyEl ? state.bodyEl.getBoundingClientRect() : null)
@@ -1910,6 +1911,7 @@
           pendingMoveEvent = null;
         }
         dividerEl.classList.remove('is-dragging');
+        if (document && document.body) document.body.classList.remove('is-dragging-layout');
         dividerEl.removeEventListener('pointermove', handleMove);
         dividerEl.removeEventListener('pointerup', handleUp);
         dividerEl.removeEventListener('pointercancel', handleUp);
@@ -3898,6 +3900,7 @@
       var frameId = 0;
       try { dividerEl.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
       dividerEl.classList.add('is-dragging');
+      if (document && document.body) document.body.classList.add('is-dragging-layout');
       function applyMove(moveEvent) {
         if (axis === 'vertical') {
           splitNode.ratio = Math.max(0.18, Math.min(0.82, (moveEvent.clientX - rect.left) / Math.max(1, rect.width)));
@@ -3931,6 +3934,7 @@
           pendingMoveEvent = null;
         }
         dividerEl.classList.remove('is-dragging');
+        if (document && document.body) document.body.classList.remove('is-dragging-layout');
         dividerEl.removeEventListener('pointermove', handleMove);
         dividerEl.removeEventListener('pointerup', handleUp);
         dividerEl.removeEventListener('pointercancel', handleUp);

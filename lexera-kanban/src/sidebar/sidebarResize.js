@@ -63,6 +63,9 @@ var LexeraSidebarResize = (function () {
       var pointerId = e.pointerId;
       var finished = false;
       var ctx = {};
+      // Mark layout-drag state so observers, CSS content-visibility and
+      // transitions can suppress expensive work until pointerup.
+      if (document && document.body) document.body.classList.add('is-dragging-layout');
       if (handlers.onStart) {
         var startCtx = handlers.onStart(e);
         if (startCtx && typeof startCtx === 'object') ctx = startCtx;
@@ -88,6 +91,7 @@ var LexeraSidebarResize = (function () {
         } catch (err) {
           // no-op
         }
+        if (document && document.body) document.body.classList.remove('is-dragging-layout');
         if (handlers.onEnd) handlers.onEnd(ev, ctx);
       }
 

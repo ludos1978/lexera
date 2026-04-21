@@ -193,6 +193,15 @@ fn setup_file_watcher(
             if let Err(e) = watcher.watch_board(board_id, path) {
                 log::warn!("[lexera.watcher] Failed to watch board {}: {}", board_id, e);
             }
+            // Also watch the board's `*-Media/` folder so external edits to
+            // referenced media files (drawio, excalidraw, images, …) emit
+            // MediaChanged events and the frontend re-renders the embed.
+            if let Err(e) = watcher.watch_board_media_dir(board_id, path) {
+                log::warn!(
+                    "[lexera.watcher] Failed to watch media dir for board {}: {}",
+                    board_id, e
+                );
+            }
         }
         sync_watcher_include_paths(storage.as_ref(), &mut watcher, "lexera.watcher");
 

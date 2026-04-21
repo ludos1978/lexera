@@ -88,6 +88,7 @@ pub async fn upload_media(
     let _ = state.event_tx.send(
         lexera_core::watcher::types::BoardChangeEvent::MediaChanged {
             board_id: board_id.clone(),
+            path: Some(final_path.clone()),
         },
     );
 

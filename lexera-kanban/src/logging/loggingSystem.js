@@ -41,6 +41,9 @@ function _loadStoredSet(storageKey, registry) {
 }
 var activeLogCategories = _loadStoredSet('lexera-log-categories', LOG_CATEGORIES);
 var activeLogLevels = _loadStoredSet('lexera-log-levels', LOG_LEVELS);
+var activeLogSearch = (function () {
+  try { return localStorage.getItem('lexera-log-search') || ''; } catch (_) { return ''; }
+})();
 var activeLogSource = 'logs'; // 'logs' | 'stats' — controls which body pane is visible (kept for external callers)
 var backendLogLoaded = false;
 var backendLogEventSource = null;
@@ -115,6 +118,7 @@ function getElLogLevelMenu() { return elLogLevelMenu || (elLogLevelMenu = docume
 function getElLogRefreshBtn() { return elLogRefreshBtn || (elLogRefreshBtn = document.getElementById('log-refresh-btn') || queryPrimaryLogRoot('.lexera-shared-log-refresh')); }
 function getElLogCopyBtn() { return elLogCopyBtn || (elLogCopyBtn = document.getElementById('log-copy-btn') || queryPrimaryLogRoot('.lexera-shared-log-copy')); }
 function getElLogClearBtn() { return elLogClearBtn || (elLogClearBtn = document.getElementById('log-clear-btn') || queryPrimaryLogRoot('.lexera-shared-log-clear')); }
+function getElLogSearchInput() { return document.getElementById('log-search-input') || queryPrimaryLogRoot('.lexera-shared-log-search'); }
 
 function getAllLogStatusContainers() {
   return Array.prototype.slice.call(document.querySelectorAll('.log-panel-status'));
@@ -192,6 +196,7 @@ function getMirroredLogViews() {
       levelBtn: root.querySelector('.lexera-shared-log-level-btn'),
       levelLabel: root.querySelector('.lexera-shared-log-level-label'),
       levelMenu: root.querySelector('.lexera-shared-log-level-menu'),
+      searchInput: root.querySelector('.lexera-shared-log-search'),
       refreshBtn: root.querySelector('.lexera-shared-log-refresh'),
       copyBtn: root.querySelector('.lexera-shared-log-copy'),
       clearBtn: root.querySelector('.lexera-shared-log-clear'),
@@ -237,6 +242,13 @@ function bindMirroredLogView(view) {
     });
   }
   if (view.levelMenu) renderLogFilterMenu(view.levelMenu, 'level');
+  if (view.searchInput) {
+    view.searchInput.value = activeLogSearch;
+    view.searchInput.addEventListener('input', function (e) {
+      e.stopPropagation();
+      setLogSearchFilter(e.target.value);
+    });
+  }
 }
 
 function syncMirroredLogViews() {
@@ -263,6 +275,7 @@ function syncMirroredLogViews() {
     if (view.sourceMenu) syncLogFilterMenuState(view.sourceMenu, 'source');
     if (view.levelLabel) view.levelLabel.textContent = levelLabelText;
     if (view.levelMenu) syncLogFilterMenuState(view.levelMenu, 'level');
+    if (view.searchInput && view.searchInput.value !== activeLogSearch) view.searchInput.value = activeLogSearch;
   }
   syncAllLogStatusMessages();
   syncAllConnectionStatusButtons();
@@ -281,6 +294,10 @@ window.addEventListener('storage', function (event) {
     syncMirroredLogViews();
   } else if (event.key === 'lexera-log-levels') {
     activeLogLevels = _loadStoredSet('lexera-log-levels', LOG_LEVELS);
+    applyLogEntryFilters();
+    syncMirroredLogViews();
+  } else if (event.key === 'lexera-log-search') {
+    activeLogSearch = event.newValue || '';
     applyLogEntryFilters();
     syncMirroredLogViews();
   }
@@ -444,10 +461,22 @@ function registryIdFor(registry, entry) {
 function entryCategoryId(entry) { return registryIdFor(LOG_CATEGORIES, entry); }
 function entryLevelId(entry)    { return registryIdFor(LOG_LEVELS, entry); }
 
+function entryMatchesSearch(entry) {
+  if (!activeLogSearch) return true;
+  var needle = activeLogSearch.toLowerCase();
+  var hay = [
+    entry.source || '',
+    entry.target || '',
+    entry.level || '',
+    entry.message || ''
+  ].join(' ').toLowerCase();
+  return hay.indexOf(needle) !== -1;
+}
+
 function entryAllowed(entry) {
   var catId = entryCategoryId(entry);
   var lvlId = entryLevelId(entry);
-  return !!activeLogCategories[catId] && !!activeLogLevels[lvlId];
+  return !!activeLogCategories[catId] && !!activeLogLevels[lvlId] && entryMatchesSearch(entry);
 }
 
 function persistActiveSet(storageKey, settingsName, registry, activeSet) {
@@ -535,6 +564,7 @@ function syncLogCount() {
 }
 
 function applyLogEntryFilters() {
+  var needle = activeLogSearch ? activeLogSearch.toLowerCase() : '';
   var panels = document.querySelectorAll('.log-panel');
   for (var i = 0; i < panels.length; i++) {
     var entries = panels[i].querySelectorAll('.log-entry');
@@ -542,7 +572,8 @@ function applyLogEntryFilters() {
       var el = entries[j];
       var catId = el.getAttribute('data-category') || '';
       var lvlId = el.getAttribute('data-level') || '';
-      var show = !!activeLogCategories[catId] && !!activeLogLevels[lvlId];
+      var matchesSearch = !needle || (el.textContent || '').toLowerCase().indexOf(needle) !== -1;
+      var show = !!activeLogCategories[catId] && !!activeLogLevels[lvlId] && matchesSearch;
       el.classList.toggle('log-entry-filtered', !show);
     }
   }
@@ -726,6 +757,16 @@ function toggleLogFilterValue(facet, id) {
   applyLogEntryFilters();
   syncLogCount();
   syncAllLogFilterMenus();
+  syncMirroredLogViews();
+}
+
+function setLogSearchFilter(value) {
+  var next = String(value == null ? '' : value);
+  if (next === activeLogSearch) return;
+  activeLogSearch = next;
+  try { localStorage.setItem('lexera-log-search', activeLogSearch); } catch (_) {}
+  applyLogEntryFilters();
+  syncLogCount();
   syncMirroredLogViews();
 }
 
@@ -1293,6 +1334,15 @@ document.addEventListener('DOMContentLoaded', function () {
     e.stopPropagation();
     toggleLogFilterMenu(levelMenu, levelBtn);
   });
+
+  var searchInput = getElLogSearchInput();
+  if (searchInput) {
+    searchInput.value = activeLogSearch;
+    searchInput.addEventListener('input', function (e) {
+      e.stopPropagation();
+      setLogSearchFilter(e.target.value);
+    });
+  }
 
   // Drain early errors captured before logging system loaded, then
   // disable the early catcher so it doesn't double-fire alongside addEventListener.

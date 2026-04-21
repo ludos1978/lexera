@@ -106,6 +106,7 @@
             '</button>' +
             '<div class="log-panel-source-menu lexera-shared-log-level-menu hidden" role="menu"></div>' +
           '</div>' +
+          '<input class="log-panel-search lexera-shared-log-search" type="text" placeholder="Filter..." aria-label="Filter log entries by text" autocomplete="off" spellcheck="false" />' +
         '</div>' +
         '<div class="log-panel-actions">' +
           '<button class="log-panel-status-btn connection-status-btn disconnected" type="button" title="Backend disconnected" aria-label="Backend disconnected">' +

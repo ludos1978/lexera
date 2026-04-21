@@ -132,7 +132,6 @@ var LexeraEmbedMenu = (function () {
   var specialPreviewErrorCache = {};
   var activeSpecialFileEditor = null;
   var MAX_INCLUDE_PREVIEW_DEPTH = 2;
-  var FRONTEND_METADATA_RETRY_DELAYS_MS = [120, 360, 900];
 
   function isMarkdownPreviewExtension(ext) {
     return ext === 'md' || ext === 'markdown';
@@ -262,44 +261,6 @@ var LexeraEmbedMenu = (function () {
 
   function getFileInfoCacheKey(boardId, filePath) {
     return String(boardId || '') + '::' + String(filePath || '');
-  }
-
-  function delay(ms) {
-    return new Promise(function (resolve) { setTimeout(resolve, ms); });
-  }
-
-  function shouldRetryFrontendMetadataRequest(err) {
-    if (!err) return true;
-    if (typeof err.status === 'number') {
-      return err.status === 0 || err.status === 408 || err.status === 409 ||
-        err.status === 425 || err.status === 429 || err.status >= 500;
-    }
-    var message = String((err && (err.message || err.name)) || err || '').toLowerCase();
-    if (!message) return true;
-    return message.indexOf('network') !== -1 ||
-      message.indexOf('cancel') !== -1 ||
-      message.indexOf('lost') !== -1 ||
-      message.indexOf('failed to fetch') !== -1 ||
-      message.indexOf('load failed') !== -1 ||
-      message.indexOf('timed out') !== -1 ||
-      message.indexOf('abort') !== -1;
-  }
-
-  async function retryFrontendMetadataRequest(area, description, requestFn) {
-    var attempt = 0;
-    for (;;) {
-      try {
-        return await requestFn();
-      } catch (err) {
-        if (attempt < FRONTEND_METADATA_RETRY_DELAYS_MS.length && shouldRetryFrontendMetadataRequest(err)) {
-          var delayMs = FRONTEND_METADATA_RETRY_DELAYS_MS[attempt++];
-          logFrontendIssue('info', area, description + ' failed; retrying in ' + delayMs + 'ms', err);
-          await delay(delayMs);
-          continue;
-        }
-        throw err;
-      }
-    }
   }
 
   function setSpecialPreviewError(boardId, filePath, errorText) {
@@ -890,11 +851,7 @@ var LexeraEmbedMenu = (function () {
       return Promise.resolve(fileInfoCache[cacheKey]);
     }
     if (pendingFileInfoCache[cacheKey]) return pendingFileInfoCache[cacheKey];
-    pendingFileInfoCache[cacheKey] = retryFrontendMetadataRequest(
-      'file.info',
-      'File info request for board ' + boardId + ' path ' + filePath,
-      function () { return LexeraApi.fileInfo(boardId, filePath); }
-    )
+    pendingFileInfoCache[cacheKey] = LexeraApi.fileInfo(boardId, filePath)
       .then(function (info) {
         fileInfoCache[cacheKey] = info || null;
         delete pendingFileInfoCache[cacheKey];
@@ -1168,40 +1125,11 @@ var LexeraEmbedMenu = (function () {
     if (!boardDir || normalizePathForCompare(sourceDir) !== normalizePathForCompare(boardDir)) {
       var sourceDirBase = getFileNameFromPath(sourceDir);
       if (!sourceDirBase) return '';
-      if (/-Media$/i.test(sourceDirBase)) return sourceDir + '/' + cacheFolderName;
       return sourceDir + '/' + sourceDirBase + '-Media/' + cacheFolderName;
     }
     var boardBase = getPathStem(boardFilePath);
     if (!boardBase) return '';
     return boardDir + '/' + boardBase + '-Media/' + cacheFolderName;
-  }
-
-  function pushUniqueDiagramCacheDir(dirs, dir) {
-    if (!dir) return;
-    var normalized = normalizePathForCompare(dir);
-    for (var i = 0; i < dirs.length; i++) {
-      if (normalizePathForCompare(dirs[i]) === normalized) return;
-    }
-    dirs.push(dir);
-  }
-
-  function buildDiagramCacheDirCandidates(boardFilePath, sourcePath, cacheFolderName) {
-    var dirs = [];
-    var primaryDir = buildDiagramCacheDir(boardFilePath, sourcePath, cacheFolderName);
-    pushUniqueDiagramCacheDir(dirs, primaryDir);
-
-    var sourceDir = getDirNameFromPath(sourcePath);
-    if (!sourceDir) return dirs;
-    var boardDir = getDirNameFromPath(boardFilePath);
-    var sourceDirBase = getFileNameFromPath(sourceDir);
-    if (
-      sourceDirBase &&
-      /-Media$/i.test(sourceDirBase) &&
-      (!boardDir || normalizePathForCompare(sourceDir) !== normalizePathForCompare(boardDir))
-    ) {
-      pushUniqueDiagramCacheDir(dirs, sourceDir + '/' + sourceDirBase + '-Media/' + cacheFolderName);
-    }
-    return dirs;
   }
 
   function getEmbedPreviewPageNumber(previewKind, pageValue) {
@@ -1282,11 +1210,13 @@ var LexeraEmbedMenu = (function () {
       return null;
     }
 
-    var boardFilePath = getBoardFilePathForId(boardId);
-    if (!boardFilePath) {
-      logFrontendIssue('warn', 'embed.preview.resolve', 'No board file path for boardId=' + boardId);
-      return null;
-    }
+    // boardFilePath is only used by buildDiagramCacheDir below, which already
+    // handles an empty board path by falling back to the source file's own
+    // directory. Don't bail here — when the card is rendered before the board
+    // metadata has been registered in the JS state (or when an embed
+    // references a board the JS hasn't loaded yet), the absolute source path
+    // alone is enough to locate the cache folder.
+    var boardFilePath = getBoardFilePathForId(boardId) || '';
 
     var fileRef = parseLocalFileReference(filePath);
     var sourceInfo = await requestFileInfo(boardId, fileRef.path);
@@ -1311,9 +1241,6 @@ var LexeraEmbedMenu = (function () {
     }
 
     var absoluteSourcePath = fileRef.path;
-    if (sourceInfo && sourceInfo.resolvedPath && isAbsoluteFilePath(sourceInfo.resolvedPath)) {
-      absoluteSourcePath = sourceInfo.resolvedPath;
-    }
     if (!isAbsoluteFilePath(absoluteSourcePath)) {
       absoluteSourcePath = await resolveBoardPath(boardId, fileRef.path, 'absolute');
     }
@@ -1324,24 +1251,11 @@ var LexeraEmbedMenu = (function () {
       return null;
     }
 
-    var cacheFileName = buildDiagramCacheFileName(absoluteSourcePath, mtimeMs, config.extension, config.suffix);
-    var cacheDirs = buildDiagramCacheDirCandidates(boardFilePath, absoluteSourcePath, config.cacheFolderName);
-    if (!cacheDirs.length) return null;
-    var cachePath = cacheDirs[0] + '/' + cacheFileName;
+    var cacheDir = buildDiagramCacheDir(boardFilePath, absoluteSourcePath, config.cacheFolderName);
+    if (!cacheDir) return null;
+    var cachePath = cacheDir + '/' + buildDiagramCacheFileName(absoluteSourcePath, mtimeMs, config.extension, config.suffix);
     var forceRerender = !!(options && options.forceRerender);
-    var cacheInfo = null;
-    var selectedCachePath = cachePath;
-    if (!forceRerender) {
-      for (var cacheIndex = 0; cacheIndex < cacheDirs.length; cacheIndex++) {
-        var candidatePath = cacheDirs[cacheIndex] + '/' + cacheFileName;
-        var candidateInfo = await requestFileInfo(boardId, candidatePath);
-        if (candidateInfo && candidateInfo.exists) {
-          cacheInfo = candidateInfo;
-          selectedCachePath = candidatePath;
-          break;
-        }
-      }
-    }
+    var cacheInfo = forceRerender ? null : await requestFileInfo(boardId, cachePath);
     if (!cacheInfo || !cacheInfo.exists) {
       var rendered = await requestRenderedSpecialPreviewAsset(boardId, filePath, absoluteSourcePath, cachePath, config, { force: forceRerender });
       if (!rendered) return null;
@@ -1349,13 +1263,11 @@ var LexeraEmbedMenu = (function () {
       delete pendingFileInfoCache[getFileInfoCacheKey(boardId, cachePath)];
       cacheInfo = await requestFileInfo(boardId, cachePath);
       if (!cacheInfo || !cacheInfo.exists) return null;
-      selectedCachePath = cachePath;
     }
 
-    setSpecialPreviewError(boardId, filePath, '');
     return {
-      path: selectedCachePath,
-      url: LexeraApi.fileUrl(boardId, selectedCachePath) + (forceRerender ? '?t=' + Date.now() : ''),
+      path: cachePath,
+      url: LexeraApi.fileUrl(boardId, cachePath) + (forceRerender ? '?t=' + Date.now() : ''),
       alt: getDisplayFileNameFromPath(filePath) || filePath
     };
   }
@@ -2501,13 +2413,23 @@ var LexeraEmbedMenu = (function () {
 
   async function enhanceSingleEmbedContainer(container, enhanceOpts) {
     enhanceOpts = enhanceOpts || {};
-    if (!container || (!enhanceOpts.forceRerender && container.getAttribute('data-embed-enhanced') === '1')) return;
+    if (!container || (!enhanceOpts.forceRerender && container.getAttribute('data-embed-enhanced') === '1')) {
+      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: early-return (no container or already enhanced)', { hasContainer: !!container, alreadyEnhanced: container && container.getAttribute('data-embed-enhanced') === '1' });
+      return;
+    }
     var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
     var filePath = container.getAttribute('data-file-path') || '';
-    if (!boardId || !filePath) return;
+    if (!boardId || !filePath) {
+      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: early-return (missing boardId or filePath)', { boardId: boardId, filePath: filePath });
+      return;
+    }
     var fileRef = parseLocalFileReference(filePath);
     var previewKind = getEmbedPreviewKind(filePath);
-    if (!previewKind) return;
+    logFrontendIssue('info', 'embed.enhance.trace', 'enhance: entry', { boardId: boardId, filePath: filePath, fileRefPath: fileRef && fileRef.path, previewKind: previewKind });
+    if (!previewKind) {
+      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: early-return (no previewKind)', { filePath: filePath });
+      return;
+    }
 
     container.setAttribute('data-embed-enhanced', '1');
     var cacheKey = getEmbedPreviewCacheKey(boardId, filePath);
@@ -2515,6 +2437,7 @@ var LexeraEmbedMenu = (function () {
     previewEl.className = 'embed-preview embed-preview-' + previewKind;
 
     if (previewKind === 'pdf') {
+      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: branch=pdf', { filePath: filePath });
       previewEl.setAttribute('loading', 'lazy');
       previewEl.setAttribute('title', getDisplayFileNameFromPath(filePath) || 'PDF preview');
       previewEl.setAttribute(
@@ -2528,12 +2451,15 @@ var LexeraEmbedMenu = (function () {
     }
 
     if (isRenderedSpecialPreviewKind(previewKind)) {
+      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: branch=rendered-special', { previewKind: previewKind, filePath: filePath });
       container.appendChild(previewEl);
       var previewPage = container.getAttribute('data-preview-page') || '';
       var rendered = await renderCachedSpecialPreview(previewEl, boardId, filePath, previewKind, { pageNumber: previewPage, forceRerender: !!enhanceOpts.forceRerender });
+      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: rendered-special result', { rendered: !!rendered, filePath: filePath });
       if (!rendered) {
         // Try browser-based Office doc rendering (docx-preview, SheetJS)
         var browserRendered = await renderOfficeBrowserPreview(previewEl, boardId, filePath, previewKind);
+        logFrontendIssue('info', 'embed.enhance.trace', 'enhance: browser-office result', { browserRendered: !!browserRendered, filePath: filePath });
         if (!browserRendered) {
           previewEl.innerHTML = buildFilePreviewPlaceholderHtml(
             previewKind,
@@ -2546,17 +2472,22 @@ var LexeraEmbedMenu = (function () {
           // would leave the card stuck on the placeholder forever, even
           // after the renderer or backend recovered.
           container.removeAttribute('data-embed-enhanced');
+          logFrontendIssue('info', 'embed.enhance.trace', 'enhance: fell back to placeholder; cleared enhanced flag', { filePath: filePath });
         }
       }
       return;
     }
 
+    logFrontendIssue('info', 'embed.enhance.trace', 'enhance: branch=text-fetch', { previewKind: previewKind, filePath: filePath });
     previewEl.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
     container.appendChild(previewEl);
     try {
       var cached = embedPreviewCache[cacheKey];
       if (!cached) {
-        var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
+        var fetchUrl = LexeraApi.fileUrl(boardId, fileRef.path);
+        logFrontendIssue('info', 'embed.enhance.trace', 'enhance: text-fetch start', { url: fetchUrl });
+        var response = await fetch(fetchUrl);
+        logFrontendIssue('info', 'embed.enhance.trace', 'enhance: text-fetch response', { ok: response.ok, status: response.status });
         if (!response.ok) throw new Error('Failed to load file preview');
         var text = await response.text();
         var previewPath = filePath;
@@ -2568,6 +2499,7 @@ var LexeraEmbedMenu = (function () {
       }
       previewEl.innerHTML = cached;
       enhancePreviewElement(previewEl);
+      logFrontendIssue('info', 'embed.enhance.trace', 'enhance: text-fetch done', { innerHtmlLen: (cached || '').length });
     } catch (err) {
       logFrontendIssue(
         'warn',
@@ -2579,44 +2511,21 @@ var LexeraEmbedMenu = (function () {
     }
   }
 
-  function resolveBoardPathFallback(boardId, filePath, toMode) {
-    if (!filePath) return filePath;
-    var boardFilePath = getBoardFilePathForId(boardId);
-    var boardDir = boardFilePath ? getDirNameFromPath(boardFilePath) : '';
-    if (toMode === 'absolute') {
-      if (isAbsoluteFilePath(filePath)) return filePath;
-      if (boardDir && isBoardRelativePath(filePath)) return joinBoardRelativePath(boardDir, filePath);
-      return filePath;
-    }
-    if (toMode === 'relative') {
-      if (isBoardRelativePath(filePath)) return filePath;
-      if (boardDir && isAbsoluteFilePath(filePath)) return computeRelativePath(boardDir, filePath);
-    }
-    return filePath;
-  }
-
   function resolveBoardPath(boardId, filePath, toMode) {
-    return retryFrontendMetadataRequest(
-      'path.resolve',
-      'Path conversion request for board ' + boardId + ' path ' + filePath + ' to ' + toMode,
-      function () {
-        return LexeraApi.request('/boards/' + boardId + '/convert-path', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cardId: '', path: filePath, to: toMode }),
-        });
-      }
-    ).then(function (res) {
-      return res && res.path ? res.path : resolveBoardPathFallback(boardId, filePath, toMode);
+    return LexeraApi.request('/boards/' + boardId + '/convert-path', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cardId: '', path: filePath, to: toMode }),
+    }).then(function (res) {
+      return res && res.path ? res.path : filePath;
     }).catch(function (err) {
-      var fallback = resolveBoardPathFallback(boardId, filePath, toMode);
       logFrontendIssue(
         'warn',
         'path.resolve',
-        'Failed to resolve ' + toMode + ' path for board ' + boardId + ' path ' + filePath + '; using ' + fallback,
+        'Failed to resolve ' + toMode + ' path for board ' + boardId + ' path ' + filePath,
         err
       );
-      return fallback;
+      return filePath;
     });
   }
 

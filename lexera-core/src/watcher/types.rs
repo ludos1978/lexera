@@ -55,8 +55,18 @@ pub enum BoardChangeEvent {
         path: PathBuf,
     },
     /// A media file was added, removed, or changed in a board's media folder.
+    /// `path` is set when the event originates from the file watcher (so the
+    /// frontend can refresh just the affected embed); it's omitted by API
+    /// callers that don't know the specific path (e.g. upload notifications).
     MediaChanged {
         board_id: String,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "serialize_optional_path",
+            deserialize_with = "deserialize_optional_path"
+        )]
+        path: Option<PathBuf>,
     },
     CollabConnectionChanged,
     PeerDiscoveryChanged,
@@ -70,6 +80,23 @@ fn serialize_path<S: serde::Serializer>(path: &Path, s: S) -> Result<S::Ok, S::E
 fn deserialize_path<'de, D: serde::Deserializer<'de>>(d: D) -> Result<PathBuf, D::Error> {
     let s = String::deserialize(d)?;
     Ok(PathBuf::from(s))
+}
+
+fn serialize_optional_path<S: serde::Serializer>(
+    path: &Option<PathBuf>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    match path {
+        Some(p) => s.serialize_str(&p.to_string_lossy()),
+        None => s.serialize_none(),
+    }
+}
+
+fn deserialize_optional_path<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<PathBuf>, D::Error> {
+    let s: Option<String> = Option::deserialize(d)?;
+    Ok(s.map(PathBuf::from))
 }
 
 #[cfg(test)]

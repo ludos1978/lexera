@@ -154,6 +154,7 @@ mod tests {
         event_tx
             .send(BoardChangeEvent::MediaChanged {
                 board_id: "b1".into(),
+                path: None,
             })
             .unwrap();
 

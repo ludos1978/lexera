@@ -954,7 +954,7 @@ async fn run_sync_client(
                             used_full_resync
                         );
                     }
-                    Ok(BoardChangeEvent::MediaChanged { board_id }) => {
+                    Ok(BoardChangeEvent::MediaChanged { board_id, .. }) => {
                         if board_id != local_board_id {
                             continue;
                         }
