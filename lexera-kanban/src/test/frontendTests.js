@@ -4017,6 +4017,118 @@
     }
   });
 
+  register('media change tracking: refreshVisibleBoardFileEmbeds clears enhanced flag and removes stale preview', async function () {
+    // Tests the core function the MediaChanged event handler invokes
+    // when the file watcher reports an external media change. We inject a
+    // synthetic embed-container directly into the DOM (bypassing the
+    // markdown render path), call refreshVisibleBoardFileEmbeds, and
+    // verify the side effects the SSE handler relies on:
+    //   1. data-embed-enhanced="1" is cleared so the next enhance pass
+    //      will retry instead of bailing on the sticky flag.
+    //   2. the existing .embed-preview is removed so a fresh one is built.
+    // Whether the re-enhance ends up rendering an <img> or the placeholder
+    // depends on backend cache state and isn't part of this unit — the
+    // refresh-trigger contract is what we validate here.
+    await setup();
+    try {
+      var apiWin = getApiWindow();
+      assert(apiWin && apiWin.LexeraEmbedMenu, 'LexeraEmbedMenu exposed in the board window');
+      assert(typeof apiWin.LexeraEmbedMenu.refreshVisibleBoardFileEmbeds === 'function',
+        'refreshVisibleBoardFileEmbeds is exposed for the SSE handler');
+
+      // The board and LexeraEmbedMenu run inside an iframe; the test
+      // code lives in the outer window. We must append the synthetic
+      // container to the iframe's document so it's discoverable by the
+      // function's `document.querySelectorAll` call.
+      var apiDoc = (apiWin && apiWin.document) || document;
+      var fakeMediaPath = '__media-refresh-test__/diagram-test.excalidraw';
+      var holder = apiDoc.createElement('div');
+      holder.id = '__media-refresh-test-holder__';
+      holder.style.position = 'absolute';
+      holder.style.left = '-9999px';
+      holder.innerHTML =
+        '<span class="embed-container"' +
+        ' data-file-path="' + fakeMediaPath + '"' +
+        ' data-board-id="' + _boardId + '"' +
+        ' data-media-type="unknown"' +
+        ' data-embed-index="0"' +
+        ' data-embed-enhanced="1">' +
+        '<span class="embed-file-link">test</span>' +
+        '<div class="embed-preview embed-preview-diagram">' +
+        '<div class="stale-marker">STALE</div>' +
+        '</div>' +
+        '</span>';
+      apiDoc.body.appendChild(holder);
+      try {
+        var container = holder.querySelector('.embed-container');
+        assert(container, 'synthetic embed-container is in the DOM');
+        assertEqual(container.getAttribute('data-embed-enhanced'), '1',
+          'starts with data-embed-enhanced=1');
+        assert(container.querySelector('.stale-marker'),
+          'starts with the stale preview marker');
+
+        // Sanity-check the args
+        assert(typeof _boardId === 'string' && _boardId.length > 0,
+          'test setup captured a boardId; got=' + JSON.stringify(_boardId));
+        var matchingContainers = apiDoc.querySelectorAll(
+          '.embed-container[data-file-path="' + fakeMediaPath + '"][data-board-id="' + _boardId + '"]'
+        );
+        assertEqual(matchingContainers.length, 1,
+          'exactly one synthetic container matches selector before refresh');
+
+        // The actual function the SSE MediaChanged handler invokes.
+        apiWin.LexeraEmbedMenu.refreshVisibleBoardFileEmbeds(_boardId, fakeMediaPath);
+
+        // refreshVisibleBoardFileEmbeds is synchronous up to the
+        // enhanceSingleEmbedContainer call: it clears the flag and
+        // removes the existing .embed-preview before kicking enhance.
+        // So immediately after the call, the stale-marker (which lived
+        // inside the original .embed-preview) MUST be gone.
+        var stale = container.querySelector('.stale-marker');
+        if (stale) {
+          // Surface useful diagnostics rather than a bare assertion msg.
+          var diag = {
+            outerHTML: container.outerHTML.slice(0, 400),
+            enhancedAttr: container.getAttribute('data-embed-enhanced'),
+            previewCount: container.querySelectorAll('.embed-preview').length
+          };
+          assert(false, 'stale .embed-preview content NOT removed; diag=' + JSON.stringify(diag));
+        }
+
+        // Negative-path filter: refresh for a different boardId must NOT
+        // touch this container (boardId mismatch).
+        var otherStaleHolder = apiDoc.createElement('div');
+        otherStaleHolder.id = '__media-refresh-test-holder-2__';
+        otherStaleHolder.style.position = 'absolute';
+        otherStaleHolder.style.left = '-9999px';
+        otherStaleHolder.innerHTML =
+          '<span class="embed-container"' +
+          ' data-file-path="' + fakeMediaPath + '"' +
+          ' data-board-id="__other-board__"' +
+          ' data-embed-enhanced="1">' +
+          '<div class="embed-preview"><div class="other-stale-marker">OTHER</div></div>' +
+          '</span>';
+        apiDoc.body.appendChild(otherStaleHolder);
+        try {
+          apiWin.LexeraEmbedMenu.refreshVisibleBoardFileEmbeds(_boardId, fakeMediaPath);
+          // Give it a moment in case anything async would erroneously fire
+          await delay(50);
+          var otherContainer = otherStaleHolder.querySelector('.embed-container');
+          assertEqual(otherContainer.getAttribute('data-embed-enhanced'), '1',
+            'unrelated-board container kept its data-embed-enhanced flag');
+          assert(otherContainer.querySelector('.other-stale-marker'),
+            'unrelated-board container kept its stale preview');
+        } finally {
+          otherStaleHolder.remove();
+        }
+      } finally {
+        holder.remove();
+      }
+    } finally {
+      await teardown();
+    }
+  });
+
   register('header drag source: "+ new" dropdown lists draw.io and excalidraw as draggable card sources', async function () {
     await setup();
     try {
@@ -6779,6 +6891,168 @@
 
       assertEqual(getTotalViewCards(), totalBefore, 'total unchanged after visible tag');
     } finally { await teardown(); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BOARD RENAME
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // The user-facing board rename flow (double-click the file title in the
+  // board header → enter a new name in the prompt) renames the file on
+  // disk, registers a new board pointing to the renamed file, and removes
+  // the old board record. The displayed board name is derived from the
+  // filename in multiple places:
+  //   • board header `.file-title-text` — shows full filename ("name.md")
+  //   • sidebar `.board-item-title-text` — shows display name ("name")
+  //   • workspace shell tab `.ws-view-tab-label` — shows display name
+  //
+  // This test exercises the real rename by mocking `window.prompt` on the
+  // app window, invoking `renameActiveBoardFile`, asserting every display
+  // location updates, and then renaming the file back to its original name.
+  register('board rename: file rename updates name in board header, sidebar, and workspace tab', async function () {
+    var oldPath = api().getActiveBoardFilePath();
+    var activeData = api().getActiveBoardData();
+    assert(oldPath, 'precondition: active board must have a file path');
+    assert(!(activeData && activeData.isRemote), 'precondition: active board must not be remote');
+
+    var apiWin = getApiWindow() || window;
+    assert(typeof apiWin.prompt === 'function', 'app window has a prompt function to mock');
+
+    var oldBoardId = api().getActiveBoardId();
+    var oldFileName = api().getFileNameFromPath(oldPath); // e.g. "board.md"
+    var oldDisplayName = oldFileName.replace(/\.md$/i, ''); // e.g. "board"
+
+    // Use a distinctive temp name so any leftover file after a test failure
+    // is obviously a test artifact the user can recognize and clean up.
+    var tempSuffix = '__lexera_rename_test_' + Date.now();
+    var tempFileName = oldDisplayName + tempSuffix + '.md';
+    var tempDisplayName = oldDisplayName + tempSuffix;
+
+    var originalPrompt = apiWin.prompt;
+    var promptCalls = 0;
+    var nextPromptAnswer = tempFileName;
+    apiWin.prompt = function () { promptCalls++; return nextPromptAnswer; };
+
+    var didRename = false;
+    var newBoardId = null;
+
+    function findSidebarBoardItem(boardId) {
+      var root = getSidebarRoot();
+      if (!root || !boardId) return null;
+      return root.querySelector(
+        '.board-item.tree-board[data-board-id="' + boardId + '"] .board-item-title-text'
+      );
+    }
+
+    function findWorkspaceTabLabels() {
+      var out = [];
+      var docs = getReachableDocuments();
+      for (var d = 0; d < docs.length; d++) {
+        try {
+          var nodes = docs[d].querySelectorAll('.ws-view-tab .ws-view-tab-label');
+          for (var i = 0; i < nodes.length; i++) out.push(nodes[i]);
+        } catch (_) {}
+      }
+      return out;
+    }
+
+    try {
+      // ── DO: rename to temp name ──
+      await api().renameActiveBoardFile();
+      didRename = true;
+      assert(promptCalls >= 1, 'prompt was invoked at least once');
+
+      // Wait for the active board to reflect the new file path.
+      await waitForAssertion(function () {
+        var currentPath = api().getActiveBoardFilePath();
+        assert(currentPath, 'active file path is set after rename');
+        assertEqual(
+          api().getFileNameFromPath(currentPath),
+          tempFileName,
+          'active board file path points to the renamed file'
+        );
+      }, 5000);
+
+      newBoardId = api().getActiveBoardId();
+      assert(newBoardId, 'new board id exists after rename');
+      assert(newBoardId !== oldBoardId, 'rename produced a new board id (old record was removed)');
+
+      // ── Board header — shows the filename with extension ──
+      await waitForAssertion(function () {
+        var boardDoc = getBoardDocument();
+        var headerEl = boardDoc.querySelector('#btn-pane-file-title .file-title-text');
+        assert(headerEl, 'board header file title element exists');
+        assertEqual(
+          cleanBoardText(headerEl.textContent),
+          tempFileName,
+          'board header shows the new filename'
+        );
+      }, 5000);
+
+      // ── Sidebar board list — shows display name without extension ──
+      await waitForAssertion(function () {
+        var staleItem = findSidebarBoardItem(oldBoardId);
+        assert(!staleItem, 'sidebar no longer lists the old board id');
+        var item = findSidebarBoardItem(newBoardId);
+        assert(item, 'sidebar lists the new board id');
+        assertEqual(
+          cleanBoardText(item.textContent),
+          tempDisplayName,
+          'sidebar board item shows the new display name'
+        );
+      }, 5000);
+
+      // ── Workspace shell tab (only in shell mode — skip if absent) ──
+      var tabLabelsAfterRename = findWorkspaceTabLabels();
+      if (tabLabelsAfterRename.length > 0) {
+        await waitForAssertion(function () {
+          var labels = findWorkspaceTabLabels();
+          var matched = false;
+          for (var i = 0; i < labels.length; i++) {
+            var text = cleanBoardText(labels[i].textContent);
+            if (text === tempDisplayName || text === tempFileName) matched = true;
+            assert(
+              text !== oldDisplayName && text !== oldFileName,
+              'no workspace tab still shows the old board name'
+            );
+          }
+          assert(matched, 'a workspace tab label shows the new board name');
+        }, 5000);
+      }
+
+    } finally {
+      // ── Restore: rename back to the original filename ──
+      // Always attempt the rename-back if the file is currently at the
+      // temp name, even if the test body threw. This keeps the board
+      // file on disk stable for subsequent tests.
+      try {
+        if (didRename) {
+          var currentPath = api().getActiveBoardFilePath();
+          if (currentPath && api().getFileNameFromPath(currentPath) === tempFileName) {
+            nextPromptAnswer = oldFileName;
+            await api().renameActiveBoardFile();
+            await waitForAssertion(function () {
+              var p = api().getActiveBoardFilePath();
+              assert(p, 'active file path set after rename-back');
+              assertEqual(
+                api().getFileNameFromPath(p),
+                oldFileName,
+                'file renamed back to the original name'
+              );
+            }, 5000);
+          }
+        }
+      } catch (restoreErr) {
+        // Surface restore failure via the logger so the user sees it
+        // even if the outer test already passed.
+        try {
+          if (apiWin.lexeraLog) apiWin.lexeraLog('error', '[board-rename.test] failed to restore original filename: ' + restoreErr);
+        } catch (_) {}
+        throw restoreErr;
+      } finally {
+        apiWin.prompt = originalPrompt;
+      }
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════════════

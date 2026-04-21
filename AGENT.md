@@ -8,6 +8,8 @@ When solving problems or crashes, allways try to solve them at the source, stron
 
 Read enough informations so you can do you job well! If you dont know enougth to do a job properly, then inform the user or suggest alternatives. Do not break things by not being able to do a job properly!
 
+after implementing a feature, verify that a frontend test (run from the frontend tests) is verifying it properly. run the test and verify the functionality. when implementing a test try to test it as close to the user interaction as possible. what does the user see, what does he use to modify it, what it the visible outcome of the modification.
+
 ---
 
 Version 2 is in the folders:

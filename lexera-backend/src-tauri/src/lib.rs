@@ -297,9 +297,19 @@ fn setup_file_watcher(
                                             revision, generation, writer_id: None, board_id,
                                         }
                                     }
+                                    BoardChangeEvent::MediaChanged { ref board_id, ref path } => {
+                                        log::info!(
+                                            "[lexera.events] Forwarding MediaChanged board={} path={:?}",
+                                            board_id, path
+                                        );
+                                        event
+                                    }
                                     other => other,
                                 };
-                                let _ = event_tx_for_forward.send(event);
+                                let send_result = event_tx_for_forward.send(event);
+                                if let Err(e) = send_result {
+                                    log::warn!("[lexera.events] Forward send failed (no receivers?): {}", e);
+                                }
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                                 log::warn!("[lexera.events] Lagged by {} events", n);

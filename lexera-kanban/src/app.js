@@ -356,6 +356,7 @@ var LexeraDashboard = (function () {
     getCardTitle: function(content) { return getCardTitle(content); },
     stripInternalHiddenTags: function(content) { return stripInternalHiddenTags(content); },
     replaceNthMarkdownEmbed: function(c, i, r) { return replaceNthMarkdownEmbed(c, i, r); },
+    preserveBoardScroll: function() { return preserveBoardScroll(); },
     lexeraLog: function(level, msg) { lexeraLog(level, msg); },
     logFrontendIssue: function(level, tag, msg, err) { logFrontendIssue(level, tag, msg, err); },
     getInlineCardEditor: function() { return InlineCardEditorModule ? InlineCardEditorModule.getCurrentInlineCardEditor() : null; },
@@ -483,6 +484,25 @@ var LexeraDashboard = (function () {
   // as this matches. Avoids clearing on every applyBoardSettings() when the
   // settings haven't actually changed.
   var _cardRenderCacheFingerprint = '';
+  // Title (inline header) render cache — renderTitleInline is called for every
+  // card, column, stack and row title on every full render. These inputs rarely
+  // change between renders, so a fingerprint-scoped memo kills N parses per
+  // pass. Invalidated via the card fingerprint so both caches stay in sync.
+  var _titleRenderCache = new Map();
+  var _TITLE_RENDER_CACHE_MAX = 4000;
+  var _titleRenderCacheFingerprint = '';
+
+  // FNV-1a 32-bit hash — used as the fingerprint for card-content cache keys.
+  // The previous key (length + first 80 chars) collided when two cards
+  // shared the same prefix and length, returning stale HTML for the second.
+  function _fnv1a32(str) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    }
+    return h >>> 0;
+  }
 
   // ── Iframe stripping for card HTML ────────────────────────────────
   // Raw `<iframe>` tags in card markdown (Miro/particify/YouTube embeds)
@@ -2382,6 +2402,7 @@ var LexeraDashboard = (function () {
     // otherwise refresh every visible media embed on the board.
     if (kind === 'MediaChanged') {
       var changedPath = event.path || '';
+      logFrontendIssue('info', 'sse.mediaChanged', 'MediaChanged received board=' + boardId + ' path=' + changedPath);
       if (changedPath && typeof refreshVisibleBoardFileEmbeds === 'function') {
         refreshVisibleBoardFileEmbeds(activeBoardId, changedPath);
       } else {
@@ -5052,6 +5073,21 @@ var LexeraDashboard = (function () {
     cardAutoSizeSyncFrame = requestAnimationFrame(flushCardAutoSizeSync);
   }
 
+  // When the parent workspace shell drags a panel-split or dock divider,
+  // it posts `lexera-layout-drag` to every iframe so we mirror the
+  // `body.is-dragging-layout` class inside the kanban. Without this, the
+  // CSS `content-visibility` trick and observer short-circuit never apply
+  // to boards hosted inside the shell — only to the parent's own body.
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('message', function (event) {
+      var data = event && event.data;
+      if (!data || data.type !== 'lexera-layout-drag') return;
+      if (!document || !document.body) return;
+      if (data.active) document.body.classList.add('is-dragging-layout');
+      else document.body.classList.remove('is-dragging-layout');
+    });
+  }
+
   function ensureCardAutoSizeObserver() {
     if (cardAutoSizeObserver || typeof ResizeObserver === 'undefined') return cardAutoSizeObserver;
     cardAutoSizeObserver = new ResizeObserver(function (entries) {
@@ -7590,7 +7626,7 @@ var LexeraDashboard = (function () {
     var titleDisplay = document.createElement('div');
     titleDisplay.className = 'card-title-display';
     var _cardTitleRaw = getCardTitle(_cardResolvedContent);
-    titleDisplay.innerHTML = renderTitleInline(_cardTitleRaw, activeBoardId);
+    titleDisplay.innerHTML = renderTitleInlineCached(_cardTitleRaw, activeBoardId);
     titleDisplay.title = _cardTitleRaw.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim();
     titleContainer.appendChild(titleDisplay);
     headerRow.appendChild(titleContainer);
@@ -7657,7 +7693,7 @@ var LexeraDashboard = (function () {
     contentBody.className = 'card-content';
     var _resolvedContent = _cardResolvedContent;
     var _hasInclude = _resolvedContent !== card.content;
-    var _cacheKey = _hasInclude ? null : (cardId + ':' + (_resolvedContent || '').length + ':' + (_resolvedContent || '').substring(0, 80));
+    var _cacheKey = _hasInclude ? null : (cardId + ':' + _fnv1a32(_resolvedContent || ''));
     var _cachedHtml = _cacheKey ? _cardRenderCache.get(_cacheKey) : undefined;
     if (_cachedHtml !== undefined) {
       contentBody.innerHTML = _cachedHtml;
@@ -7869,7 +7905,7 @@ var LexeraDashboard = (function () {
     header.innerHTML =
       (isCanvasLayout ? '' : '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>') +
       buildCreationEntityDragIconHtml('column', ['title="Drag to move column"']) +
-      '<span class="column-title" title="' + escapeAttr(displayTitle.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + renderTitleInline(displayTitle, activeBoardId, { allowIncludeDirectives: true }) + '</span>' +
+      '<span class="column-title" title="' + escapeAttr(displayTitle.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + renderTitleInlineCached(displayTitle, activeBoardId, { allowIncludeDirectives: true }) + '</span>' +
       includeIndicator +
       (colLayout.wipLimit > 0 ? '<span class="column-count">' + col.cards.length + '/' + colLayout.wipLimit + '</span>' : '') +
       '<span class="column-header-actions">' +
@@ -8018,6 +8054,10 @@ var LexeraDashboard = (function () {
     if (!container || !activeBoardData) return;
     var columns = activeBoardData.columns || [];
     var cards = container.querySelectorAll('.card');
+    // Preserve board scroll across the whole batch. renderCardDisplayState
+    // also does its own per-call preservation, but capturing once up-front
+    // is the true "before" position and avoids N queued rAF callbacks.
+    var restoreScroll = preserveBoardScroll();
     for (var i = 0; i < cards.length; i++) {
       var cardEl = cards[i];
       var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
@@ -8030,6 +8070,8 @@ var LexeraDashboard = (function () {
       if (!col || cardIndex >= col.cards.length) continue;
       renderCardDisplayState(cardEl, col.cards[cardIndex].content);
     }
+    restoreScroll();
+    requestAnimationFrame(restoreScroll);
   }
 
   function renderColumns() {
@@ -8322,7 +8364,7 @@ var LexeraDashboard = (function () {
     stackHeader.innerHTML =
       (isCanvasLayout ? '' : '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>') +
       buildCreationEntityDragIconHtml('stack', ['title="Drag to move stack"']) +
-      '<span class="board-stack-title" title="' + escapeAttr((stackDisplayTitle || '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + (stackDisplayTitle ? renderTitleInline(stackDisplayTitle, activeBoardId, {}) : '&nbsp;') + '</span>' +
+      '<span class="board-stack-title" title="' + escapeAttr((stackDisplayTitle || '').replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + (stackDisplayTitle ? renderTitleInlineCached(stackDisplayTitle, activeBoardId, {}) : '&nbsp;') + '</span>' +
       '<span class="stack-header-actions">' +
         '<button class="stack-menu-btn burger-menu-btn" title="Stack options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
         (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '') +
@@ -8492,7 +8534,7 @@ var LexeraDashboard = (function () {
     rowHeader.innerHTML =
       '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
       buildCreationEntityDragIconHtml('row', ['title="Drag to move row"']) +
-      '<span class="board-row-title" title="' + escapeAttr(rowDisplayTitle.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + renderTitleInline(rowDisplayTitle, activeBoardId, {}) + '</span>' +
+      '<span class="board-row-title" title="' + escapeAttr(rowDisplayTitle.replace(/#\S+/g, '').replace(/\s+/g, ' ').trim()) + '">' + renderTitleInlineCached(rowDisplayTitle, activeBoardId, {}) + '</span>' +
       '<span class="row-header-actions">' +
         '<button class="row-menu-btn burger-menu-btn" title="Row options" aria-haspopup="menu">' + BURGER_MENU_ICON_HTML + '</button>' +
       '</span>';
@@ -10652,6 +10694,30 @@ var LexeraDashboard = (function () {
     return helpers.renderTitleInline(text, boardId, options);
   }
 
+  // Cached variant used on render hot paths (card/column/stack/row titles).
+  // Falls through to `renderTitleInline` on miss. Keyed by the flag that
+  // actually alters output (`allowIncludeDirectives`) plus the text itself.
+  // Invalidated via the shared card-render fingerprint, so settings/board
+  // switches clear titles alongside card bodies.
+  function renderTitleInlineCached(text, boardId, options) {
+    if (!text) return renderTitleInline(text, boardId, options);
+    if (_cardRenderCacheFingerprint !== _titleRenderCacheFingerprint) {
+      _titleRenderCache.clear();
+      _titleRenderCacheFingerprint = _cardRenderCacheFingerprint;
+    }
+    var flag = (options && options.allowIncludeDirectives) ? 'I|' : 'N|';
+    var key = flag + text;
+    var cached = _titleRenderCache.get(key);
+    if (cached !== undefined) return cached;
+    var html = renderTitleInline(text, boardId, options);
+    if (_titleRenderCache.size >= _TITLE_RENDER_CACHE_MAX) {
+      var firstKey = _titleRenderCache.keys().next().value;
+      _titleRenderCache.delete(firstKey);
+    }
+    _titleRenderCache.set(key, html);
+    return html;
+  }
+
   // --- Util (delegated to LexeraAppUtils module – utils/appUtils.js) ---
 
   var _AppUtils = typeof LexeraAppUtils !== 'undefined' ? LexeraAppUtils : null;
@@ -11222,6 +11288,9 @@ var LexeraDashboard = (function () {
   var _testApi = {
     getActiveBoardId: function () { return activeBoardId; },
     getActiveBoardFilePath: function () { return getActiveBoardFilePath(); },
+    getFileNameFromPath: function (p) { return getFileNameFromPath(p); },
+    getDirNameFromPath: function (p) { return getDirNameFromPath(p); },
+    renameActiveBoardFile: function () { return renameActiveBoardFile(); },
     getFullBoardData: function () { return cloneBoardData(fullBoardData); },
     getActiveBoardData: function () { return activeBoardData; },
     getAvailableBoards: function () {

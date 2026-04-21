@@ -1842,6 +1842,7 @@
       try { dividerEl.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
       dividerEl.classList.add('is-dragging');
       if (document && document.body) document.body.classList.add('is-dragging-layout');
+      broadcastLayoutDragState(true);
       var activeDockEl = dockId === 'left' ? state.leftDockEl : dockId === 'right' ? state.rightDockEl : state.bottomDockEl;
       var baseRect = dockId === 'bottom'
         ? (state.bodyEl ? state.bodyEl.getBoundingClientRect() : null)
@@ -1902,6 +1903,7 @@
         }
         dividerEl.classList.remove('is-dragging');
         if (document && document.body) document.body.classList.remove('is-dragging-layout');
+        broadcastLayoutDragState(false);
         dividerEl.removeEventListener('pointermove', handleMove);
         dividerEl.removeEventListener('pointerup', handleUp);
         dividerEl.removeEventListener('pointercancel', handleUp);
@@ -3881,6 +3883,7 @@
       try { dividerEl.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
       dividerEl.classList.add('is-dragging');
       if (document && document.body) document.body.classList.add('is-dragging-layout');
+      broadcastLayoutDragState(true);
       function applyMove(moveEvent) {
         if (axis === 'vertical') {
           splitNode.ratio = Math.max(0.18, Math.min(0.82, (moveEvent.clientX - rect.left) / Math.max(1, rect.width)));
@@ -3915,6 +3918,7 @@
         }
         dividerEl.classList.remove('is-dragging');
         if (document && document.body) document.body.classList.remove('is-dragging-layout');
+        broadcastLayoutDragState(false);
         dividerEl.removeEventListener('pointermove', handleMove);
         dividerEl.removeEventListener('pointerup', handleUp);
         dividerEl.removeEventListener('pointercancel', handleUp);
@@ -4643,6 +4647,23 @@
       action: action
     }, '*');
     return true;
+  }
+
+  // Notify every embedded kanban frame that a layout-divider drag has started
+  // or ended in the parent shell. Iframes toggle their own `body.is-dragging-layout`
+  // so CSS `content-visibility` and observer short-circuits apply inside them too.
+  function broadcastLayoutDragState(active) {
+    var frameIds = Object.keys(state.frameCache || {});
+    for (var i = 0; i < frameIds.length; i++) {
+      var frame = state.frameCache[frameIds[i]];
+      if (!frame || !frame.contentWindow) continue;
+      try {
+        frame.contentWindow.postMessage({
+          type: 'lexera-layout-drag',
+          active: !!active
+        }, '*');
+      } catch (e) { /* cross-origin or closed frame — ignore */ }
+    }
   }
 
   function normalizeCatalogSnapshot(snapshot) {

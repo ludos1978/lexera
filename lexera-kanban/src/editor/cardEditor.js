@@ -622,8 +622,16 @@ var CardEditor = (function () {
     return lines.join('\n');
   }
 
+  // Re-render a single card from its content without going through
+  // persistBoardMutation. Called from save-no-change, cancel, and settings-
+  // change flows where data didn't change but the DOM needs rebuilding
+  // (remove an inline textarea, reflect a visibility-mode toggle, etc.).
+  // Wraps the replacement in preserveBoardScroll so the board viewport is
+  // kept — same guarantee refreshTargetedElements gives for its swaps.
   function renderCardDisplayState(cardEl, content) {
     if (!cardEl) return;
+    var restoreScroll = typeof _deps.preserveBoardScroll === 'function'
+      ? _deps.preserveBoardScroll() : null;
     var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
     var resolved = _deps.getIncludeResolvedContent(content, colIndex);
     var activeBoardId = _deps.getActiveBoardId();
@@ -634,6 +642,10 @@ var CardEditor = (function () {
       contentEl.innerHTML = _deps.renderCardContent(resolved, activeBoardId, null, { skipFirstLineTagStyle: true });
     }
     _deps.enhanceRenderedElement(cardEl, { colIndex: colIndex });
+    if (restoreScroll) {
+      restoreScroll();
+      requestAnimationFrame(restoreScroll);
+    }
   }
 
   function findVisibleCardElement(colIndex, cardIndex) {
