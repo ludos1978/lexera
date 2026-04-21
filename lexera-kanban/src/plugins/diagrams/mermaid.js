@@ -1,7 +1,11 @@
 (function () {
   if (typeof window === 'undefined' || !window.LexeraDiagramRegistry) return;
 
-  var DEFAULT_CDN = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+  // Phase 7.5 gap #6: Mermaid is vendored inside the kanban bundle at
+  // `src/vendor/mermaid/mermaid.min.js` so desktop rendering does not
+  // depend on a CDN. See `lexera-shared/scripts/sync-mermaid-vendor.mjs`
+  // for how to refresh the pin (currently 11.14.0).
+  var DEFAULT_CDN = './vendor/mermaid/mermaid.min.js';
   var DEFAULT_THEME = 'dark';
 
   function getDeps() {

@@ -436,3 +436,29 @@ All originally-open decisions are now resolved.
 - **Post-Phase-7 `http` override on desktop** — removed. A future remote-backend-from-desktop product mode, if ever requested, ships as a separate feature rather than by preserving migration scaffolding.
 - **Mermaid delivery** — bundled inside `lexera-kanban` and loaded via `lexera-asset`. Backend-served Mermaid was rejected: no second consumer, extra IPC hop per render.
 - **Backend absence UX** — confirmed: wait state, no on-demand launch. Kanban does not own backend lifecycle.
+
+## Post-Implementation Gaps
+
+A plan-vs-code audit after Phase 7 surfaced 11 deviations between plan and implementation. Phase 7.5 closed or scaffolded 10 of them. The table is the current ground truth; detailed fix notes follow.
+
+| # | Gap | Status | Notes |
+|---|---|---|---|
+| 1 | `backend_ipc_upload` streaming | ✅ closed | `UploadStart` / `UploadChunk` / `UploadEnd` frames; `backend_ipc_upload` Tauri command; `api.js uploadMedia` serializes FormData via `new Response(form).arrayBuffer()` and routes through IPC. |
+| 2 | `backend_asset_url` command | ✅ closed | Command restored in `ipc_commands.rs` calling `asset_protocol::build_url(board_id, kind, value)`. Sync inline construction in `api.js` stays for hot render paths; the command is the opacity-sensitive / test entry point. |
+| 3 | Windows peer-cred + ACL | ✅ code shipped | `windows_security.rs`: `restrict_file_to_current_user` via `SetFileSecurityW("D:P(A;;GA;;;OW)")`; named pipe created with owner-only `SECURITY_ATTRIBUTES`; accept calls `verify_pipe_peer_same_user` via `GetNamedPipeClientProcessId` + `EqualSid`. Needs Windows-host verification run — cannot compile-test on Darwin. |
+| 4 | Backend-status event + watcher | ✅ closed | `backend_status::spawn` starts a `notify::RecommendedWatcher` on the descriptor's parent dir; emits `backend-status` Tauri events on state transitions only (with 50 ms debounce for atomic-rename bursts). `BackendStatus::Reconnecting { attempt }` added. |
+| 5 | Events + logs auto-reconnect | ✅ closed | Factored `makeIpcStreamReconnecter` helper (1 s → 30 s backoff, ±30 % jitter). `openIpcStream` delegates to it, so events + logs reconnect on backend restart without HTTP fallback — matching the sync path's behavior. |
+| 6 | Mermaid vendoring | ✅ closed | Mermaid `11.14.0` vendored at `lexera-kanban/src/vendor/mermaid/` (3.0 MB `mermaid.min.js` + MIT `LICENSE` + `VERSION`). Plugin default URL in `src/plugins/diagrams/mermaid.js` flipped to `./vendor/mermaid/mermaid.min.js`. `cdn.jsdelivr.net` removed from CSP `script-src`. Refresh script at `lexera-shared/scripts/sync-mermaid-vendor.mjs`. `THIRD_PARTY_LICENSES.md` gained a "Vendored Runtime Assets" section. |
+| 7 | Tauri capabilities scoping | ✅ scaffolded | `capabilities/lexera-ipc-bridge.json` added with `windows: ["main"]`. Full restriction requires replacing the `default.json` wildcard with explicit per-window permission lists — a larger Tauri-v2 permission rework deferred. |
+| 8 | Webview-abort → `Cancel` propagation | ✅ closed (upload) | `ClientFrame::Cancel` now drops the matching in-flight upload buffer in `ipc_server`. Asset-fetch cancel on webview abort remains best-effort (Tauri's `UriSchemeResponder` does not surface a cancel signal; future Tauri versions may). |
+| 9 | Parity test coverage breadth | ✅ closed | `ipc_dispatch.rs` now covers `/status`, `/boards`, `/config/theme`, unknown-route 404, header round-trip. Asset suite adds `head_includes_weak_etag_and_cache_headers`. 11 dispatch tests + 15 asset tests total. |
+| 10 | Frontend IPC unit tests | ✅ closed | `tests/ipcTransport.test.js` — 11 passing tests covering transport-mode selection (with/without Tauri), `LEXERA_TRANSPORT=http` override rejection on desktop, `fileUrl`/`mediaUrl` URL shape, request dispatch through `backend_ipc_request`, JSON body round-trip, non-2xx error surfacing, `backendIpcStatus`. |
+| 11 | End-to-end verification | ✅ procedure documented | `IPC-Smoke-Test.md` at repo root: 15-item per-platform checklist covering the descriptor, network-tab observation, upload/range/seek, backend restart reconnect, management window, and backend-survives-Kanban-quit. Manual run still required per OS. |
+
+### Residual work
+
+- **Gap #3 Windows verification** — spin up a Windows host, `cargo test -p lexera-local-ipc`, exercise the smoke checklist rows 3 and 10. If `SetFileSecurityW` fails, investigate the SDDL or fall back to `icacls` invocation.
+- **Gap #6 Mermaid** — before downloading, confirm the pin (version), the license compliance path (`THIRD_PARTY_LICENSES.md` update), and the sync script (`lexera-shared/scripts/sync-*.mjs`).
+- **Gap #7 full enforcement** — rewrite `default.json` to drop the `"*"` window wildcard and distribute permissions per-window capability. Requires a Tauri-v2 permission audit.
+- **Gap #8 asset fetch cancel** — when Tauri exposes a cancel signal on `UriSchemeResponder`, wrap `fetch_asset` in a `tokio::select!` against that signal and send `ClientFrame::Cancel` on drop.
+- **Gap #11 manual run** — execute the smoke test on macOS (primary), Linux, and Windows at least once; record results in the release notes.

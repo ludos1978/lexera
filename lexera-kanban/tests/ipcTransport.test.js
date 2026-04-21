@@ -63,6 +63,12 @@ describe('LexeraApi IPC transport (Tauri desktop mode)', () => {
 
   beforeEach(() => {
     mockInvoke.mockReset();
+    // Default: any invoke call returns a harmless 200 shape. Individual
+    // tests override via mockImplementationOnce below when they need to
+    // assert on a specific response.
+    mockInvoke.mockImplementation(() =>
+      Promise.resolve({ status: 200, headers: [], body: '{}' })
+    );
     Api._resetTestState?.();
   });
 
@@ -101,53 +107,75 @@ describe('LexeraApi IPC transport (Tauri desktop mode)', () => {
   });
 
   it('request() dispatches through backend_ipc_request', async () => {
-    mockInvoke.mockResolvedValueOnce({
-      status: 200,
-      headers: [['content-type', 'application/json']],
-      body: JSON.stringify({ status: 'running' }),
+    // Note: `ensureBearerToken` also uses transportFetch, so `/collab/me`
+    // may fire first. Filter for the call we care about.
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === 'backend_ipc_request' && args?.arg?.uri === '/status') {
+        return Promise.resolve({
+          status: 200,
+          headers: [['content-type', 'application/json']],
+          body: JSON.stringify({ status: 'running' }),
+        });
+      }
+      return Promise.resolve({ status: 200, headers: [], body: '{}' });
     });
     const result = await Api.request('/status');
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
-    const [cmd, arg] = mockInvoke.mock.calls[0];
-    expect(cmd).toBe('backend_ipc_request');
-    expect(arg).toHaveProperty('arg');
-    expect(arg.arg.method).toBe('GET');
-    expect(arg.arg.uri).toBe('/status');
+    const statusCall = mockInvoke.mock.calls.find(
+      (c) => c[0] === 'backend_ipc_request' && c[1]?.arg?.uri === '/status'
+    );
+    expect(statusCall).toBeDefined();
+    expect(statusCall[1].arg.method).toBe('GET');
     expect(result).toEqual({ status: 'running' });
   });
 
   it('request() POST carries JSON body through the IPC arg', async () => {
-    mockInvoke.mockResolvedValueOnce({
-      status: 200,
-      headers: [['content-type', 'application/json']],
-      body: '{"ok":true}',
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'backend_ipc_request') {
+        return Promise.resolve({
+          status: 200,
+          headers: [['content-type', 'application/json']],
+          body: '{"ok":true}',
+        });
+      }
+      return Promise.resolve({ status: 200, headers: [], body: '{}' });
     });
     await Api.request('/echo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hello: 'world' }),
     });
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
-    const [, arg] = mockInvoke.mock.calls[0];
-    expect(arg.arg.method).toBe('POST');
-    expect(arg.arg.body).toBe('{"hello":"world"}');
-    // Headers come through as a list of [name,value] pairs.
-    expect(arg.arg.headers).toEqual(
+    const ipcCall = mockInvoke.mock.calls.find(
+      (c) => c[0] === 'backend_ipc_request' && c[1].arg.uri === '/echo'
+    );
+    expect(ipcCall).toBeDefined();
+    expect(ipcCall[1].arg.method).toBe('POST');
+    expect(ipcCall[1].arg.body).toBe('{"hello":"world"}');
+    expect(ipcCall[1].arg.headers).toEqual(
       expect.arrayContaining([['Content-Type', 'application/json']])
     );
   });
 
   it('non-2xx IPC response is surfaced as a thrown Error with status', async () => {
-    mockInvoke.mockResolvedValueOnce({
-      status: 404,
-      headers: [],
-      body: '{"error":"Not found"}',
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === 'backend_ipc_request' && args?.arg?.uri === '/missing') {
+        return Promise.resolve({
+          status: 404,
+          headers: [],
+          body: '{"error":"Not found"}',
+        });
+      }
+      return Promise.resolve({ status: 200, headers: [], body: '{}' });
     });
     await expect(Api.request('/missing')).rejects.toThrowError(/404/);
   });
 
   it('backendIpcStatus invokes the corresponding Tauri command', async () => {
-    mockInvoke.mockResolvedValueOnce({ state: 'connected', pid: 1234, endpoint: '/tmp/ipc.sock' });
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'backend_ipc_status') {
+        return Promise.resolve({ state: 'connected', pid: 1234, endpoint: '/tmp/ipc.sock' });
+      }
+      return Promise.resolve({ status: 200, headers: [], body: '{}' });
+    });
     const status = await Api.backendIpcStatus();
     expect(mockInvoke).toHaveBeenCalledWith('backend_ipc_status');
     expect(status.state).toBe('connected');

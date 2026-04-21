@@ -24,6 +24,18 @@ Font files sourced from [Fontsource](https://fontsource.org/).
 
 ---
 
+## Vendored Runtime Assets
+
+The following third-party bundles are physically checked into the repository so the desktop app does not depend on a CDN at runtime. Each vendored file keeps its upstream `LICENSE` alongside it.
+
+| Asset | Location | Version | License | Copyright |
+|---|---|---|---|---|
+| Mermaid | `lexera-kanban/src/vendor/mermaid/mermaid.min.js` | 11.14.0 | MIT | Copyright (c) 2014 - 2022 Knut Sveidqvist |
+
+Refresh the vendor copies by running `lexera-shared/scripts/sync-mermaid-vendor.mjs`. Update the version in the table when the pin changes.
+
+---
+
 ## NPM Dependencies
 
 ### Runtime Dependencies

@@ -116,7 +116,8 @@ describe('Mermaid plugin — config + lifecycle', () => {
     const fields = DR.getById('mermaid').configSchema;
     const url = fields.find(f => f.key === 'url');
     const theme = fields.find(f => f.key === 'theme');
-    expect(url.default).toBe('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js');
+    // Phase 7.5 gap #6: Mermaid is vendored; no longer a CDN default.
+    expect(url.default).toBe('./vendor/mermaid/mermaid.min.js');
     expect(theme.default).toBe('dark');
   });
 
