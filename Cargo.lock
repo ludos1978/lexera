@@ -2915,6 +2915,7 @@ dependencies = [
  "lexera-local-ipc",
  "libc",
  "log",
+ "notify",
  "rfd",
  "serde",
  "serde_json",

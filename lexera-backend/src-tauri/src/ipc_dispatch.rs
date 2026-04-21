@@ -302,4 +302,57 @@ mod parity_tests {
             .expect("content-type header present");
         assert!(content_type.starts_with(b"application/json"));
     }
+
+    #[tokio::test]
+    async fn boards_list_parity() {
+        // Gap #9: representative parity test for the boards surface. The
+        // route is authed, so both transports return 401 without a token
+        // — the point of the test is that HTTP and IPC match response
+        // byte-for-byte, not that the route is reachable.
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, _board_id) = test_helpers::setup_board(tmp.path());
+
+        let ipc_resp = dispatch_api_request(
+            crate::server::build_app(state.clone()),
+            ApiRequest {
+                method: "GET".into(),
+                uri: "/boards".into(),
+                headers: vec![],
+                body: vec![],
+            },
+        )
+        .await
+        .unwrap();
+
+        let (http_status, http_body) =
+            http_roundtrip(crate::server::build_app(state), "GET", "/boards", &[]).await;
+
+        assert_eq!(ipc_resp.status, http_status);
+        assert_eq!(ipc_resp.body, http_body);
+    }
+
+    #[tokio::test]
+    async fn config_theme_parity() {
+        // Gap #9: covers the config group that the management UI hits.
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_helpers::test_state(tmp.path());
+
+        let ipc_resp = dispatch_api_request(
+            crate::server::build_app(state.clone()),
+            ApiRequest {
+                method: "GET".into(),
+                uri: "/config/theme".into(),
+                headers: vec![],
+                body: vec![],
+            },
+        )
+        .await
+        .unwrap();
+
+        let (http_status, http_body) =
+            http_roundtrip(crate::server::build_app(state), "GET", "/config/theme", &[]).await;
+
+        assert_eq!(ipc_resp.status, http_status);
+        assert_eq!(ipc_resp.body, http_body);
+    }
 }

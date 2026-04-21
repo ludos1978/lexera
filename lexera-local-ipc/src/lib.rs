@@ -18,6 +18,8 @@ pub mod handshake;
 pub mod server;
 pub mod client;
 pub mod transport;
+#[cfg(windows)]
+pub mod windows_security;
 
 pub use descriptor::{Descriptor, descriptor_path};
 pub use error::IpcError;

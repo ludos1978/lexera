@@ -128,6 +128,27 @@ pub enum ClientFrame {
         correlation_id: Uuid,
         payload: Vec<u8>,
     },
+    /// Open a chunked upload. Carries the request metadata; body follows as
+    /// zero or more `UploadChunk` frames terminated by `UploadEnd`. The
+    /// server replies with exactly one `ApiResponse` once the body is
+    /// complete (or an `Error` if dispatch fails).
+    UploadStart {
+        correlation_id: Uuid,
+        method: String,
+        uri: String,
+        headers: Vec<(String, Vec<u8>)>,
+    },
+    /// Body chunk for an active upload. Chunk size target matches the
+    /// asset-streaming window (64-256 KiB).
+    UploadChunk {
+        correlation_id: Uuid,
+        bytes: Vec<u8>,
+    },
+    /// Terminal marker for an upload: signals that no more `UploadChunk`
+    /// frames will follow and the server can dispatch the request.
+    UploadEnd {
+        correlation_id: Uuid,
+    },
 }
 
 /// Frames sent from server to client.

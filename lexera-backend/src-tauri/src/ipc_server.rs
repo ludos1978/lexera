@@ -12,10 +12,24 @@ use crate::ipc_dispatch::{self, DispatchError};
 use crate::ipc_stream;
 use crate::state::AppState;
 use axum::Router;
-use lexera_local_ipc::frame::{read_frame, write_frame, ClientFrame, ServerFrame};
+use lexera_local_ipc::frame::{
+    read_frame, write_frame, ApiRequest, ClientFrame, ServerFrame,
+};
 use lexera_local_ipc::{Descriptor, Server};
 use std::sync::Arc;
 use tokio::sync::watch;
+use uuid::Uuid;
+
+/// Accumulates an in-flight upload's metadata and body chunks. Phase 7.5
+/// gap #1: streaming multipart uploads over IPC. One upload per connection;
+/// simultaneous uploads use parallel connections (same policy as assets).
+struct PendingUpload {
+    correlation_id: Uuid,
+    method: String,
+    uri: String,
+    headers: Vec<(String, Vec<u8>)>,
+    body: Vec<u8>,
+}
 
 /// Spawn the IPC accept loop. Returns immediately.
 ///
@@ -25,7 +39,7 @@ use tokio::sync::watch;
 /// file is removed when the signal fires.
 pub fn spawn(app_state: AppState, shutdown_rx: watch::Receiver<bool>) {
     let router = crate::server::build_app(app_state.clone());
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         match Server::bind_default().await {
             Ok((server, descriptor)) => {
                 log::info!(
@@ -86,6 +100,7 @@ async fn handle_connection(
     router: Router,
     app_state: AppState,
 ) {
+    let mut pending_upload: Option<PendingUpload> = None;
     loop {
         let frame = match read_frame::<_, ClientFrame>(&mut stream).await {
             Ok(Some(f)) => f,
@@ -102,9 +117,17 @@ async fn handle_connection(
                     return;
                 }
             }
-            ClientFrame::Cancel { .. } => {
-                // Phase 2 has no streaming requests to cancel; ignore. Phase 4
-                // will use cancellation for AssetRequest streams.
+            ClientFrame::Cancel { correlation_id } => {
+                // Phase 7.5 gap #8: an in-flight upload is the only
+                // multi-frame client→server operation on this code path
+                // that a top-level `Cancel` can abort. Asset streams and
+                // subscriptions have their own loops that consume Cancel
+                // there. For uploads, drop the buffer and surface no error.
+                if let Some(u) = pending_upload.as_ref() {
+                    if u.correlation_id == correlation_id {
+                        pending_upload = None;
+                    }
+                }
             }
             ClientFrame::Handshake { .. } => {
                 let err = ServerFrame::Error {
@@ -164,31 +187,113 @@ async fn handle_connection(
                 correlation_id,
                 request,
             } => {
-                let server_frame =
-                    match ipc_dispatch::dispatch_api_request(router.clone(), request).await {
-                        Ok(response) => ServerFrame::ApiResponse {
-                            correlation_id,
-                            response,
-                        },
-                        Err(DispatchError::BodyTooLarge { size }) => ServerFrame::Error {
-                            correlation_id: Some(correlation_id),
-                            code: "body_too_large".into(),
-                            message: format!(
-                                "response body {} bytes exceeds MAX_FRAME_BYTES; use AssetRequest",
-                                size
-                            ),
-                        },
-                        Err(e) => ServerFrame::Error {
-                            correlation_id: Some(correlation_id),
-                            code: "dispatch_failed".into(),
-                            message: e.to_string(),
-                        },
-                    };
+                let server_frame = build_api_response(router.clone(), correlation_id, request).await;
                 if let Err(e) = write_frame(&mut stream, &server_frame).await {
                     log::debug!(target: "lexera.ipc", "ApiResponse write failed: {}", e);
                     return;
                 }
             }
+            ClientFrame::UploadStart {
+                correlation_id,
+                method,
+                uri,
+                headers,
+            } => {
+                if pending_upload.is_some() {
+                    let err = ServerFrame::Error {
+                        correlation_id: Some(correlation_id),
+                        code: "upload_in_progress".into(),
+                        message: "another upload is already in flight on this connection".into(),
+                    };
+                    if write_frame(&mut stream, &err).await.is_err() {
+                        return;
+                    }
+                    continue;
+                }
+                pending_upload = Some(PendingUpload {
+                    correlation_id,
+                    method,
+                    uri,
+                    headers,
+                    body: Vec::new(),
+                });
+            }
+            ClientFrame::UploadChunk {
+                correlation_id,
+                bytes,
+            } => {
+                match pending_upload.as_mut() {
+                    Some(u) if u.correlation_id == correlation_id => {
+                        u.body.extend_from_slice(&bytes);
+                    }
+                    _ => {
+                        let err = ServerFrame::Error {
+                            correlation_id: Some(correlation_id),
+                            code: "upload_not_started".into(),
+                            message: "UploadChunk without matching UploadStart".into(),
+                        };
+                        if write_frame(&mut stream, &err).await.is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+            ClientFrame::UploadEnd { correlation_id } => {
+                let upload = match pending_upload.take() {
+                    Some(u) if u.correlation_id == correlation_id => u,
+                    other => {
+                        pending_upload = other;
+                        let err = ServerFrame::Error {
+                            correlation_id: Some(correlation_id),
+                            code: "upload_not_started".into(),
+                            message: "UploadEnd without matching UploadStart".into(),
+                        };
+                        if write_frame(&mut stream, &err).await.is_err() {
+                            return;
+                        }
+                        continue;
+                    }
+                };
+                let request = ApiRequest {
+                    method: upload.method,
+                    uri: upload.uri,
+                    headers: upload.headers,
+                    body: upload.body,
+                };
+                let server_frame =
+                    build_api_response(router.clone(), correlation_id, request).await;
+                if let Err(e) = write_frame(&mut stream, &server_frame).await {
+                    log::debug!(target: "lexera.ipc", "UploadEnd response write failed: {}", e);
+                    return;
+                }
+            }
         }
+    }
+}
+
+/// Shared helper used by both direct `ApiRequest` and `UploadEnd` paths.
+async fn build_api_response(
+    router: Router,
+    correlation_id: Uuid,
+    request: ApiRequest,
+) -> ServerFrame {
+    match ipc_dispatch::dispatch_api_request(router, request).await {
+        Ok(response) => ServerFrame::ApiResponse {
+            correlation_id,
+            response,
+        },
+        Err(DispatchError::BodyTooLarge { size }) => ServerFrame::Error {
+            correlation_id: Some(correlation_id),
+            code: "body_too_large".into(),
+            message: format!(
+                "response body {} bytes exceeds MAX_FRAME_BYTES; use AssetRequest",
+                size
+            ),
+        },
+        Err(e) => ServerFrame::Error {
+            correlation_id: Some(correlation_id),
+            code: "dispatch_failed".into(),
+            message: e.to_string(),
+        },
     }
 }

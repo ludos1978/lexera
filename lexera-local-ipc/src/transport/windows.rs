@@ -11,11 +11,13 @@
 //! authoritative local-user gate.
 
 use crate::error::IpcError;
+use crate::windows_security;
 use std::pin::Pin;
 use std::sync::Mutex;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions};
+use windows_sys::Win32::Foundation::LocalFree;
 
 #[derive(Debug)]
 pub struct Listener {
@@ -29,10 +31,24 @@ impl Listener {
     }
 
     pub async fn bind(endpoint: &str) -> Result<Self, IpcError> {
-        let first = ServerOptions::new()
-            .first_pipe_instance(true)
-            .create(endpoint)
-            .map_err(IpcError::Io)?;
+        // Gap #3: apply an owner-only DACL to the pipe so only the current
+        // user's processes can open it. Combined with the descriptor
+        // secret and peer-SID check on accept, this is the Windows
+        // equivalent of the Unix `0600` + `SO_PEERCRED` story.
+        let (sa, psd) = windows_security::owner_only_security_attributes()?;
+        let first = {
+            let mut opts = ServerOptions::new();
+            opts.first_pipe_instance(true);
+            // SAFETY: `sa` and its owned security descriptor live until
+            // `LocalFree(psd)` below. The created pipe copies the SD into
+            // its own kernel object, so freeing after create is safe.
+            let result = unsafe {
+                opts.security_attributes(&sa as *const _ as *mut _)
+                    .create(endpoint)
+            };
+            unsafe { LocalFree(psd as *mut _) };
+            result.map_err(IpcError::Io)?
+        };
         Ok(Self {
             endpoint: endpoint.to_string(),
             next: Mutex::new(Some(first)),
@@ -48,10 +64,22 @@ impl Listener {
         };
         server.connect().await.map_err(IpcError::Io)?;
 
+        // Gap #3: verify the connecting peer runs as the same user as the
+        // server. Defense in depth on top of the pipe ACL and handshake
+        // secret. A mismatch returns CrossUser; the caller drops the pipe.
+        windows_security::verify_pipe_peer_same_user(&server)?;
+
         // Prepare the next instance before handing the current one off.
-        let next = ServerOptions::new()
-            .create(&self.endpoint)
-            .map_err(IpcError::Io)?;
+        let (sa, psd) = windows_security::owner_only_security_attributes()?;
+        let next = {
+            let mut opts = ServerOptions::new();
+            let result = unsafe {
+                opts.security_attributes(&sa as *const _ as *mut _)
+                    .create(&self.endpoint)
+            };
+            unsafe { LocalFree(psd as *mut _) };
+            result.map_err(IpcError::Io)?
+        };
         *self.next.lock().expect("listener mutex poisoned") = Some(next);
 
         Ok(Stream::Server(server))

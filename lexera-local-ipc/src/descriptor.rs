@@ -141,6 +141,19 @@ fn write_file_restricted(path: &Path, body: &[u8]) -> Result<(), IpcError> {
         .open(path)?;
     file.write_all(body)?;
     file.sync_all()?;
+    drop(file);
+    // Gap #3: restrict the tempfile's DACL to the current user before the
+    // atomic rename. On failure, log and continue — the default inherited
+    // ACL from the parent directory is still restrictive for per-user
+    // config paths, and the secret handshake remains the hard gate.
+    if let Err(e) = crate::windows_security::restrict_file_to_current_user(path) {
+        log::warn!(
+            target: "lexera.ipc.descriptor",
+            "restrict_file_to_current_user({}) failed: {}",
+            path.display(),
+            e
+        );
+    }
     Ok(())
 }
 

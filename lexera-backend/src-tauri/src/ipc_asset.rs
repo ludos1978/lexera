@@ -705,6 +705,66 @@ mod e2e {
     }
 
     #[tokio::test]
+    async fn head_includes_weak_etag_and_cache_headers() {
+        // Gap #9: the HEAD carries ETag, Cache-Control, Accept-Ranges so
+        // the webview can cache cleanly across reloads. Verifying only
+        // presence (not 304 short-circuit — If-None-Match handling is a
+        // follow-up that needs an additional field on AssetRequestPayload).
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = test_helpers::setup_board(tmp.path());
+        let board_path = state.storage.get_board_path(&board_id).unwrap();
+        write_media_fixture(&board_path, "tagged.bin", &[0xABu8; 256]);
+
+        let desc = test_descriptor(&tmp);
+        let server = Server::bind_with_descriptor(&desc).await.unwrap();
+        let handle = drive_handler(server, state).await;
+
+        let frames = client_request(
+            &desc,
+            AssetRequestPayload {
+                board_id,
+                kind: AssetKind::Media {
+                    filename: "tagged.bin".into(),
+                },
+                range: None,
+            },
+        )
+        .await;
+
+        let head = match &frames[0] {
+            ServerFrame::AssetResponseHead { head, .. } => head.clone(),
+            other => panic!("expected head, got {:?}", other),
+        };
+        let etag = head
+            .headers
+            .iter()
+            .find(|(k, _)| k == "etag")
+            .map(|(_, v)| v.clone())
+            .expect("etag header present");
+        assert!(
+            etag.starts_with(b"W/\""),
+            "expected weak etag prefix, got {:?}",
+            String::from_utf8_lossy(&etag)
+        );
+        let accept_ranges = head
+            .headers
+            .iter()
+            .find(|(k, _)| k == "accept-ranges")
+            .map(|(_, v)| v.clone())
+            .expect("accept-ranges header present");
+        assert_eq!(accept_ranges, b"bytes");
+        let cache_control = head
+            .headers
+            .iter()
+            .find(|(k, _)| k == "cache-control")
+            .map(|(_, v)| v.clone())
+            .expect("cache-control header present");
+        assert!(!cache_control.is_empty());
+
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn range_beyond_eof_yields_range_unsatisfiable_error() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id) = test_helpers::setup_board(tmp.path());

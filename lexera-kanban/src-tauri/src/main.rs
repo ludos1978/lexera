@@ -2,6 +2,7 @@
 
 mod app_menu;
 mod asset_protocol;
+mod backend_status;
 mod commands;
 mod export_commands;
 mod ipc_client;
@@ -378,6 +379,12 @@ fn main() {
             } else {
                 let _ = std::fs::remove_file(&config_path);
             }
+
+            // Start the descriptor watcher so the webview learns when the
+            // backend starts/stops/restarts without polling. Matches plan
+            // gap #4.
+            backend_status::spawn(app.handle().clone());
+
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -411,9 +418,11 @@ fn main() {
             get_test_runner_config,
             ipc_commands::backend_ipc_status,
             ipc_commands::backend_ipc_request,
+            ipc_commands::backend_ipc_upload,
             ipc_commands::backend_ipc_stream_open,
             ipc_commands::backend_ipc_stream_close,
             ipc_commands::backend_ipc_stream_send,
+            ipc_commands::backend_asset_url,
             commands::get_backend_url,
             commands::open_in_system,
             commands::open_url,

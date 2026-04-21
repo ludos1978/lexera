@@ -19,15 +19,56 @@ use uuid::Uuid;
 /// `backend_asset_url` command's output.
 pub const SCHEME: &str = "lexera-asset";
 
-/// URL-kind discriminator values used in the `k=` query param. The
-/// frontend builds URLs matching this scheme inline (see `api.js`); Rust
-/// only needs the parse path.
+/// URL-kind discriminator values used in the `k=` query param.
 ///
 /// URL shape: `lexera-asset://localhost/?b=<id>&k=m|f&v=<value>` where
 /// `v` is the filename (Media) or the file path (File). `b` and `v` are
 /// percent-encoded so paths with `&`, `?`, `#`, or spaces round-trip.
-const KIND_MEDIA: &str = "m";
-const KIND_FILE: &str = "f";
+///
+/// The URL is built inline in `api.js` for synchronous callers (e.g.
+/// `<img src=...>`); an explicit `backend_asset_url` command exists for
+/// opacity-sensitive callers and tests.
+pub const KIND_MEDIA: &str = "m";
+pub const KIND_FILE: &str = "f";
+
+/// URL-component encoder: RFC 3986 unreserved set passes through;
+/// everything else becomes `%HH`. Mirror of the encoding in api.js'
+/// `buildAssetUrl` so server-built URLs match frontend-built ones byte
+/// for byte.
+fn urlencode(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for b in input.as_bytes() {
+        let unreserved = matches!(
+            *b,
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~'
+        );
+        if unreserved {
+            out.push(*b as char);
+        } else {
+            out.push('%');
+            out.push_str(&format!("{:02X}", b));
+        }
+    }
+    out
+}
+
+/// Public URL builder used by the `backend_asset_url` command. Returns an
+/// opaque webview-loadable URL for `(board_id, kind, value)`.
+pub fn build_url(board_id: &str, kind: &str, value: &str) -> Result<String, String> {
+    if kind != KIND_MEDIA && kind != KIND_FILE {
+        return Err(format!("unknown kind '{}'; expected 'm' or 'f'", kind));
+    }
+    if board_id.is_empty() || value.is_empty() {
+        return Err("board_id and value must be non-empty".into());
+    }
+    Ok(format!(
+        "{}://localhost/?b={}&k={}&v={}",
+        SCHEME,
+        urlencode(board_id),
+        kind,
+        urlencode(value)
+    ))
+}
 
 /// Minimal URL-component decoder. Bytes after `%` are treated as hex pairs;
 /// malformed escapes are passed through as-is.
