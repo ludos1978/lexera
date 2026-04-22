@@ -4391,7 +4391,7 @@ img[data-lazy-src] {
   opacity: 1;
   background: #fff;
   color: var(--app-menu-fg);
-  border-color: var(--app-menu-border);
+  border-color: var(--border);
 }
 
 .embed-container:hover .embed-menu-btn:hover {
@@ -9876,7 +9876,7 @@ body .column-menu-btn,
 body .card-menu-btn,
 body .burger-menu-btn {
   background: transparent;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   font-family: var(--font-ui);
@@ -10089,7 +10089,7 @@ body .board-header-actions-right > .burger-menu-btn {
   min-width: 18px;
   min-height: 18px;
   padding: 0;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
@@ -10098,8 +10098,9 @@ body .board-header-file-group > .burger-menu-btn:hover,
 body .board-header-zone-right > .burger-menu-btn:hover,
 body .board-header-actions-right > .burger-menu-btn:hover {
   background: transparent;
-  border-width: 2px;
-  border-color: var(--accent);
+  border-width: 1px;
+  border-color: #000;
+  padding: 2px;
   color: var(--text-primary);
 }
 
