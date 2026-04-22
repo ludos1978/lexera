@@ -5536,6 +5536,14 @@ var LexeraDashboard = (function () {
       }
     }
 
+    // Full renderColumns refreshes the header bucket counts (incoming /
+    // parked / archived / trash) as part of enhanceRenderedElement, but
+    // targeted refresh skips that path. Mutations like `tagCard` →
+    // `#hidden-internal-incoming` persist through a `card-remove` target
+    // and the bucket's has-items class / count label would otherwise
+    // stay stale until the next full render. Keep it in sync here.
+    refreshBoardHeaderActionStates();
+
     restoreBoardScroll();
     requestAnimationFrame(restoreBoardScroll);
   }
@@ -8258,6 +8266,12 @@ var LexeraDashboard = (function () {
       syncSidebarToView();
       updateCardEditingIndicators();
       refreshBoardHeaderActionStates();
+      // enhanceRenderedElement → vsActivate + card-auto-size observer
+      // can shrink scrollHeight momentarily (cards measured as collapsed
+      // before content loads; virtual-scroll placeholders re-sized). If
+      // the browser clamped scrollTop during that window, restore again
+      // on the NEXT frame after layout has settled.
+      requestAnimationFrame(restoreBoardScroll);
     });
     if (_rcTrace) {
       _rcMark('afterScheduleRAF');
@@ -11375,19 +11389,33 @@ var LexeraDashboard = (function () {
       var _stbForceFull = !!options.fullRender;
 
       activeBoardId = boardId || '__test__';
+      // Preserve metadata (filePath, revision, isRemote, …) from the
+      // existing activeBoardData when a test hot-swaps the board via
+      // setTestBoard: the snapshot pipeline only carries fullBoard
+      // content, so without this, tests that reuse the real boardId
+      // would strip the file path the user-facing code relies on (e.g.
+      // the board-rename precondition check).
+      var _prevActiveBoardData = activeBoardData;
       setFullBoardDataState(boardData);
       if (fullBoardData) {
         ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
         setBoardSaveBase(fullBoardData, fullBoardData);
       }
       _stbMark('afterSetFullBoard');
-      setActiveBoardDataState({
+      var _nextActive = {
         valid: true,
         title: boardData.title || 'Test Board',
         fullBoard: fullBoardData,
         columns: [],
         rows: []
-      });
+      };
+      if (_prevActiveBoardData) {
+        if (_prevActiveBoardData.filePath) _nextActive.filePath = _prevActiveBoardData.filePath;
+        if (_prevActiveBoardData.revision) _nextActive.revision = _prevActiveBoardData.revision;
+        if (_prevActiveBoardData.isRemote) _nextActive.isRemote = _prevActiveBoardData.isRemote;
+        if (typeof _prevActiveBoardData.version === 'number') _nextActive.version = _prevActiveBoardData.version;
+      }
+      setActiveBoardDataState(_nextActive);
       updateDisplayFromFullBoard();
       _stbMark('afterUpdateDisplay');
       commitLocalBoardChange(activeBoardId, fullBoardData, {

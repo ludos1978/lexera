@@ -245,11 +245,15 @@ var LexeraColumnContextMenu = (function () {
   }
 
   function extractFirstTemporalDateValue(content) {
-    var tokens = deps.collectHeaderTagTokens(content, { includeHash: false, includeAt: true, includeTemporalBang: true });
+    var tokens = deps.collectHeaderTagTokens(content, { includeHash: true, includeAt: true, includeTemporalBang: true });
     for (var i = 0; i < tokens.length; i++) {
-      var type = deps.getTemporalTagType(tokens[i]);
+      var token = tokens[i];
+      var body = token && (token.charAt(0) === '#' || token.charAt(0) === '!' || token.charAt(0) === '@')
+        ? token.slice(1)
+        : token;
+      var type = deps.getTemporalTagType(body);
       if (type === 'date' || type === 'weekday') {
-        var resolved = deps.resolveTemporalTag(tokens[i]);
+        var resolved = deps.resolveTemporalTag(body);
         if (resolved) return resolved;
       }
     }
