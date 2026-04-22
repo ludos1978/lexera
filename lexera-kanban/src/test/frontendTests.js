@@ -2486,7 +2486,7 @@
     try {
       var info = findTwoColumnsWithCards();
       await TestVerify.moveCard(info.srcCol, info.dstCol);
-      await waitForAssertion(function () { assertViewWorkspaceConsistency('cross-column'); });
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('cross-column'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -2499,7 +2499,7 @@
         { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, rowIndex: info.dstCol.row, stackIndex: info.dstCol.stack, colIndex: info.dstCol.localCol, columnId: info.dstCol.col.id, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await waitForAssertion(function () { assertViewWorkspaceConsistency('view-to-workspace'); });
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('view-to-workspace'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -2512,7 +2512,7 @@
         { boardId: _boardId, rowIndex: info.dstCol.row, stackIndex: info.dstCol.stack, colIndex: info.dstCol.localCol, columnId: info.dstCol.col.id, cardIndex: 0, cardId: info.dstCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await waitForAssertion(function () { assertViewWorkspaceConsistency('workspace-to-view'); });
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('workspace-to-view'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -2523,7 +2523,7 @@
       var data = api().getFullBoardData();
       TestVerify.addCardToColumn(data, info.srcCol, TestVerify.makeCard('__test-cons-add__', 'Consistency Test'));
       api().setTestBoard(data, _boardId);
-      await waitForAssertion(function () { assertViewWorkspaceConsistency('add-card'); });
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('add-card'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -2660,14 +2660,16 @@
         }]
       });
       api().setTestBoard(data, _boardId);
-      await delay(100);
-
-      assertEqual(getViewRowCount(), rowsBefore + 1, 'row count +1');
-      assertEqual(getViewColumnCount(), colsBefore + 3, 'column count +3');
-      var c = getContainer();
-      assert(c.querySelector('.column[data-column-id="__multi-c1__"]'), 'col 1 rendered');
-      assert(c.querySelector('.column[data-column-id="__multi-c2__"]'), 'col 2 rendered');
-      assert(c.querySelector('.column[data-column-id="__multi-c3__"]'), 'col 3 rendered');
+      // Poll — on large boards the full render of ~115 columns can
+      // still be settling when the assertion first runs.
+      await waitForAssertion(function () {
+        assertEqual(getViewRowCount(), rowsBefore + 1, 'row count +1');
+        assertEqual(getViewColumnCount(), colsBefore + 3, 'column count +3');
+        var c = getContainer();
+        assert(c.querySelector('.column[data-column-id="__multi-c1__"]'), 'col 1 rendered');
+        assert(c.querySelector('.column[data-column-id="__multi-c2__"]'), 'col 2 rendered');
+        assert(c.querySelector('.column[data-column-id="__multi-c3__"]'), 'col 3 rendered');
+      }, 3000);
     } finally { await teardown(); }
   });
 
@@ -2755,8 +2757,7 @@
         { id: '__cons-card__', content: 'Cons Card', checked: false, kid: '__cons-card__' }
       ], include_source: null });
       api().setTestBoard(data, _boardId);
-      await delay(150);
-      assertViewWorkspaceConsistency('add-column');
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('add-column'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -2773,8 +2774,7 @@
         }]
       });
       api().setTestBoard(data, _boardId);
-      await delay(150);
-      assertViewWorkspaceConsistency('add-row');
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('add-row'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -4843,9 +4843,19 @@
       options = options || {};
       var ms = typeof options.delay === 'number' ? options.delay : 100;
       await delay(ms);
+      // assertBoardIntegrity is data↔DOM in the same window — fails
+      // immediately if still inconsistent. assertViewWorkspaceConsistency
+      // compares the board DOM against the SIDEBAR tree, which on
+      // workspace-shell setups lives in the parent window and is
+      // updated asynchronously via postMessage (lexera-board-mutated).
+      // On large boards (~900 cards, ~100 columns) the parent's
+      // re-render can trail the iframe by several hundred ms, so poll
+      // for consistency instead of asserting once.
       assertBoardIntegrity(label);
       if (options.skipWorkspaceConsistency !== true) {
-        assertViewWorkspaceConsistency(label);
+        await waitForAssertion(function () {
+          assertViewWorkspaceConsistency(label);
+        }, 3000);
       }
     },
 
@@ -6043,7 +6053,10 @@
       var kids = (afterCol.cards || []).map(function (card) { return card.kid || card.id; });
       assertEqual(kids[0], extraKid, 'extra card moved to front');
       assertEqual(kids[1], firstKid, 'original first card pushed to second position');
-      assertBoardIntegrity('after workspace view same-column card reorder');
+      // Poll — large boards let the parent sidebar trail the iframe DOM.
+      await waitForAssertion(function () {
+        assertBoardIntegrity('after workspace view same-column card reorder');
+      }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6059,8 +6072,10 @@
       var row0Id = dataBefore.rows[0].id;
       var row1Id = dataBefore.rows[1].id;
 
-      // Verify sidebar shows correct initial order
-      assertViewWorkspaceConsistency('before row reorder');
+      // Verify sidebar shows correct initial order — on large boards the
+      // parent-window sidebar is updated asynchronously via postMessage,
+      // so poll instead of asserting once.
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('before row reorder'); }, 3000);
 
       // Reorder: move row 0 after row 1
       await api().reorderRows(0, 1, false);
@@ -6093,7 +6108,7 @@
       assertEqual(getViewCardCount(info.srcCol.flatIdx), srcCountBefore - 1, 'src column -1 card');
       assertEqual(getViewCardCount(info.dstCol.flatIdx), dstCountBefore + 1, 'dst column +1 card');
       assertBoardIntegrity('after cross-column move realtime');
-      assertViewWorkspaceConsistency('after cross-column move realtime sidebar');
+      await waitForAssertion(function () { assertViewWorkspaceConsistency('after cross-column move realtime sidebar'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6632,7 +6647,11 @@
       assert(!badge, 'badge removed after include syntax removed');
 
       assertEqual(getViewCardCountByColumnId('__incl-hdr-rm__'), 0, 'cards removed after include disabled');
-      assertBoardIntegrity('after include removed');
+      // Poll — large boards let the parent sidebar tree trail the
+      // iframe DOM when an include column is cleared.
+      await waitForAssertion(function () {
+        assertBoardIntegrity('after include removed');
+      }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6705,7 +6724,7 @@
       });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('lifecycle step 0: plain column');
+      await waitForAssertion(function () { assertBoardIntegrity('lifecycle step 0: plain column'); }, 3000);
 
       // Step 2: Add include
       data = api().getFullBoardData();
@@ -6728,7 +6747,7 @@
       var badge = c.querySelector('.column[data-column-id="__incl-lifecycle__"] .column-include-badge');
       assert(badge, 'badge after add');
       assertEqual(badge.getAttribute('data-include-path'), includePaths.first, 'first path');
-      assertBoardIntegrity('lifecycle step 1: add include');
+      await waitForAssertion(function () { assertBoardIntegrity('lifecycle step 1: add include'); }, 3000);
 
       // Step 3: Change path
       data = api().getFullBoardData();
@@ -6753,7 +6772,7 @@
       badge = c.querySelector('.column[data-column-id="__incl-lifecycle__"] .column-include-badge');
       assert(badge, 'badge after path change');
       assertEqual(badge.getAttribute('data-include-path'), includePaths.second, 'second path');
-      assertBoardIntegrity('lifecycle step 2: change path');
+      await waitForAssertion(function () { assertBoardIntegrity('lifecycle step 2: change path'); }, 3000);
 
       // Step 4: Remove include
       data = api().getFullBoardData();
@@ -6775,7 +6794,7 @@
       badge = c.querySelector('.column[data-column-id="__incl-lifecycle__"] .column-include-badge');
       assert(!badge, 'badge gone after remove');
       assertEqual(getViewCardCountByColumnId('__incl-lifecycle__'), 0, 'cards gone after include removed');
-      assertBoardIntegrity('lifecycle step 3: remove include');
+      await waitForAssertion(function () { assertBoardIntegrity('lifecycle step 3: remove include'); }, 3000);
     } finally { await teardown(); }
   });
 

@@ -699,7 +699,7 @@
         navigator.clipboard.writeText(cardsEl.textContent || '');
       }
     });
-    ActionRegistry.register('column', 'export-column', function (action, ctx) { d.exportColumn(ctx.colIndex); });
+    ActionRegistry.register('column', 'export-column', function (action, ctx) { return d.exportColumn(ctx.colIndex); });
     ActionRegistry.register('column', 'preview-include', function (action, ctx) {
       var col = d.getFullColumn(ctx.colIndex);
       var path = col && col.includeSource && col.includeSource.rawPath ? String(col.includeSource.rawPath) : d.extractIncludePathFromTitle(col && col.title ? col.title : '');
@@ -752,7 +752,11 @@
       }
     });
     ActionRegistry.register('row', 'export-row', function (action, ctx) {
-      d.triggerBoardExport({ selection: { scope: 'row', rowIndex: ctx.rowIdx } });
+      // Return the promise so dispatchAction awaits triggerBoardExport's
+      // init() completing. Without this, callers (tests, keyboard shortcuts
+      // chained to `await dispatchAction(…)`) see the old modal state
+      // because the async init is still running when control returns.
+      return d.triggerBoardExport({ selection: { scope: 'row', rowIndex: ctx.rowIdx } });
     });
     ActionRegistry.register('row', 'marp-*', function (action, ctx) { d.handleEntityMarpMenuAction(action, 'row', { rowIdx: ctx.rowIdx }); });
     ActionRegistry.register('row', 'tag-*', function (action, ctx) { d.handleEntityTagMenuAction(action, 'row', { rowIdx: ctx.rowIdx }); });
@@ -800,7 +804,7 @@
       }
     });
     ActionRegistry.register('stack', 'export-stack', function (action, ctx) {
-      d.triggerBoardExport({ selection: { scope: 'stack', rowIndex: ctx.rowIdx, stackIndex: ctx.stackIdx } });
+      return d.triggerBoardExport({ selection: { scope: 'stack', rowIndex: ctx.rowIdx, stackIndex: ctx.stackIdx } });
     });
     ActionRegistry.register('stack', 'marp-*', function (action, ctx) { d.handleEntityMarpMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
     ActionRegistry.register('stack', 'tag-*', function (action, ctx) { d.handleEntityTagMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
