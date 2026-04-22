@@ -7324,7 +7324,7 @@ var LexeraDashboard = (function () {
         return;
       }
       if (action === 'rename-tag') {
-        var requestedTag = window.prompt('Rename tag', normalizedTag);
+        var requestedTag = await LexeraDialogs.prompt('Rename tag', normalizedTag);
         if (requestedTag == null) return;
         var nextTag = normalizePromptTagToken(requestedTag);
         if (!nextTag) {

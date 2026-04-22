@@ -57,7 +57,7 @@ var LexeraColumnContextMenu = (function () {
   async function enableColumnIncludeMode(colIndex) {
     var col = deps.getFullColumn(colIndex);
     if (!col) return;
-    var requested = window.prompt('Include file path', deps.suggestIncludePathForColumn(col.title || ''));
+    var requested = await LexeraDialogs.prompt('Include file path', deps.suggestIncludePathForColumn(col.title || ''));
     if (requested == null) return;
     await setColumnIncludePath(colIndex, requested);
   }
@@ -72,7 +72,7 @@ var LexeraColumnContextMenu = (function () {
       deps.showNotification('This column is not in include mode');
       return;
     }
-    var requested = window.prompt('Edit include file path', currentPath);
+    var requested = await LexeraDialogs.prompt('Edit include file path', currentPath);
     if (requested == null) return;
     await setColumnIncludePath(colIndex, requested);
   }

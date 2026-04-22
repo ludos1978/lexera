@@ -388,8 +388,8 @@
     });
 
     // Layout preset save/delete actions
-    ActionRegistry.register('board', 'save-layout-preset', function () {
-      var name = window.prompt('Preset name');
+    ActionRegistry.register('board', 'save-layout-preset', async function () {
+      var name = await LexeraDialogs.prompt('Preset name', '');
       if (!name) return;
       name = name.trim();
       if (!name || name === 'normal' || name === 'spacious') {

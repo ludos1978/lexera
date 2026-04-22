@@ -528,8 +528,10 @@ var ManagementUI = (function () {
       } else if (result) {
         onOk();
       }
+    } else if (typeof LexeraDialogs !== 'undefined' && typeof LexeraDialogs.confirm === 'function') {
+      LexeraDialogs.confirm(msg).then(function (ok) { if (ok) onOk(); });
     } else {
-      if (window.confirm(msg)) onOk();
+      throw new Error('ManagementUI.confirm requires callbacks.onConfirm or a loaded LexeraDialogs runtime asset');
     }
   }
 

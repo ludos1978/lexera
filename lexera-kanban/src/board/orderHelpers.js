@@ -955,7 +955,7 @@ var LexeraOrderHelpers = (function () {
     return name;
   }
 
-  function renameActiveBoardFile() {
+  async function renameActiveBoardFile() {
     var boardId = _dep('activeBoardId');
     var oldPath = _callDep('getActiveBoardFilePath');
     if (!boardId || !oldPath) return;
@@ -965,7 +965,7 @@ var LexeraOrderHelpers = (function () {
     }
 
     var oldName = _callDep('getFileNameFromPath', oldPath);
-    var requested = window.prompt('Rename board file', oldName);
+    var requested = await LexeraDialogs.prompt('Rename board file', oldName);
     if (requested == null) return;
 
     var nextName = normalizeMarkdownFileName(requested);

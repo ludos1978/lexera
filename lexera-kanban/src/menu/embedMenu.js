@@ -3705,7 +3705,7 @@ var LexeraEmbedMenu = (function () {
     }
   }
 
-  function handleBoardFileLinkAction(action, container) {
+  async function handleBoardFileLinkAction(action, container) {
     if (!container) {
       closeEmbedMenu();
       return;
@@ -3727,7 +3727,7 @@ var LexeraEmbedMenu = (function () {
       }
       if (action === 'edit-link') {
         if (container.getAttribute('data-link-editable') === '0') return;
-        var nextLinkTarget = promptForEmbedTarget(filePath, 'Update link target');
+        var nextLinkTarget = await promptForEmbedTarget(filePath, 'Update link target');
         if (!nextLinkTarget || nextLinkTarget === filePath) return;
         updateBoardFileLinkTarget(container, nextLinkTarget).then(function (changed) {
           if (changed) showNotification('Link updated');
@@ -3775,7 +3775,7 @@ var LexeraEmbedMenu = (function () {
 
     } else if (action === 'path-manual') {
       closeEmbedMenu();
-      var nextPath = promptForEmbedTarget(filePath, 'Manual path fix');
+      var nextPath = await promptForEmbedTarget(filePath, 'Manual path fix');
       if (!nextPath || nextPath === filePath) return;
       updateBoardFileLinkTarget(container, nextPath);
 
@@ -4063,7 +4063,7 @@ var LexeraEmbedMenu = (function () {
     });
   }
 
-  function handleIncludeAction(action, container) {
+  async function handleIncludeAction(action, container) {
     if (!container) { closeEmbedMenu(); return; }
     var filePath = container.getAttribute('data-file-path') || '';
     var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
@@ -4151,7 +4151,7 @@ var LexeraEmbedMenu = (function () {
 
     } else if (action === 'path-manual') {
       closeEmbedMenu();
-      var nextPath = promptForEmbedTarget(filePath, 'Manual path fix');
+      var nextPath = await promptForEmbedTarget(filePath, 'Manual path fix');
       if (!nextPath || nextPath === filePath) return;
       updateIncludeTarget(container, nextPath);
 
@@ -4232,7 +4232,7 @@ var LexeraEmbedMenu = (function () {
     });
   }
 
-  function handleEmbedAction(action, container, triggerEl) {
+  async function handleEmbedAction(action, container, triggerEl) {
     if (!container) { closeEmbedMenu(); return; }
     if (isIncludeDirectiveContainer(container)) {
       handleIncludeAction(action, container);
@@ -4271,7 +4271,7 @@ var LexeraEmbedMenu = (function () {
 
     } else if (action === 'edit-url') {
       closeEmbedMenu();
-      var nextUrl = promptForEmbedTarget(embedUrl, 'Edit embed URL');
+      var nextUrl = await promptForEmbedTarget(embedUrl, 'Edit embed URL');
       if (!nextUrl || nextUrl === embedUrl) return;
       updateEmbedTarget(container, nextUrl);
 
@@ -4383,7 +4383,7 @@ var LexeraEmbedMenu = (function () {
     } else if (action === 'path-manual') {
       closeEmbedMenu();
       if (!filePath) return;
-      var nextPath = promptForEmbedTarget(filePath, 'Manual path fix');
+      var nextPath = await promptForEmbedTarget(filePath, 'Manual path fix');
       if (!nextPath || nextPath === filePath) return;
       updateEmbedTarget(container, nextPath);
 
@@ -4877,10 +4877,10 @@ var LexeraEmbedMenu = (function () {
     });
   }
 
-  function promptForEmbedTarget(initialValue, titleText) {
+  async function promptForEmbedTarget(initialValue, titleText) {
     var currentValue = String(initialValue || '').trim();
     if (!currentValue) return '';
-    var nextValue = window.prompt(titleText || 'Update embed target', currentValue);
+    var nextValue = await LexeraDialogs.prompt(titleText || 'Update embed target', currentValue);
     if (nextValue == null) return '';
     return String(nextValue).trim();
   }

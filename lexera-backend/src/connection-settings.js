@@ -300,7 +300,7 @@
         console.log('[management]', msg);
       },
       onConfirm: function (msg) {
-        return Promise.resolve(window.confirm(msg));
+        return LexeraDialogs.confirm(msg);
       },
       onServerRestarted: function (bindAddr, port) {
         var host = bindAddr === '0.0.0.0' ? '127.0.0.1' : bindAddr;

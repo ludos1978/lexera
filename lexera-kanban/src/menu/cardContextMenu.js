@@ -637,19 +637,19 @@ var CardContextMenu = (function () {
     return deps.setBoardFrontmatterValue('class', null);
   }
 
-  function promptBoardMarpValue(key) {
+  async function promptBoardMarpValue(key) {
     var descriptor = findBoardMarpFieldDefinition(key);
     var currentValue = deps.normalizeYamlFrontmatterScalar(deps.getBoardMarpFrontmatter()[key]);
     var label = descriptor && descriptor.prompt ? descriptor.prompt : ('Marp ' + key);
-    var requested = window.prompt(label, currentValue || '');
-    if (requested == null) return Promise.resolve(false);
+    var requested = await LexeraDialogs.prompt(label, currentValue || '');
+    if (requested == null) return false;
     var normalizedValue = deps.normalizeYamlFrontmatterScalar(requested);
     return deps.setBoardFrontmatterValue(key, normalizedValue || null);
   }
 
-  function promptBoardMarpClassToggle() {
-    var requested = window.prompt('Marp class name(s) to toggle', '');
-    if (requested == null) return Promise.resolve(false);
+  async function promptBoardMarpClassToggle() {
+    var requested = await LexeraDialogs.prompt('Marp class name(s) to toggle', '');
+    if (requested == null) return false;
     var classNames = deps.getWhitespaceTokenList(requested);
     if (classNames.length === 0) return Promise.resolve(false);
     var chain = Promise.resolve(false);
@@ -743,14 +743,14 @@ var CardContextMenu = (function () {
     });
   }
 
-  function promptEntityMarpDirective(elementType, indices, directiveName, directiveScope) {
+  async function promptEntityMarpDirective(elementType, indices, directiveName, directiveScope) {
     var target = resolveTagTarget(elementType, indices);
-    if (!target) return Promise.resolve(false);
+    if (!target) return false;
     var currentValue = getMarpDirectiveValueFromHeader(splitTagHeaderAndBody(target.text || '').header || '', directiveName, directiveScope);
     var descriptor = findMarpDirectiveDefinition(directiveName);
     var label = descriptor && descriptor.prompt ? descriptor.prompt : ('Marp ' + directiveName);
-    var requested = window.prompt(label + ' (' + directiveScope + ')', currentValue || '');
-    if (requested == null) return Promise.resolve(false);
+    var requested = await LexeraDialogs.prompt(label + ' (' + directiveScope + ')', currentValue || '');
+    if (requested == null) return false;
     var cleanValue = String(requested || '').trim();
     if (!cleanValue) {
       return clearEntityMarpDirective(elementType, indices, directiveName, directiveScope);
@@ -758,9 +758,9 @@ var CardContextMenu = (function () {
     return setEntityMarpDirective(elementType, indices, directiveName, cleanValue, directiveScope);
   }
 
-  function promptEntityMarpClassToggle(elementType, indices, classScope) {
-    var requested = window.prompt('Marp class name(s) to toggle (' + classScope + ')', '');
-    if (requested == null) return Promise.resolve(false);
+  async function promptEntityMarpClassToggle(elementType, indices, classScope) {
+    var requested = await LexeraDialogs.prompt('Marp class name(s) to toggle (' + classScope + ')', '');
+    if (requested == null) return false;
     var tokens = String(requested || '').split(/\s+/);
     var classNames = [];
     var seen = {};
@@ -1012,9 +1012,9 @@ var CardContextMenu = (function () {
     });
   }
 
-  function promptAddTagsToEntity(elementType, indices) {
-    var raw = window.prompt('Add tags (space/comma separated)', '#todo');
-    if (raw == null) return Promise.resolve();
+  async function promptAddTagsToEntity(elementType, indices) {
+    var raw = await LexeraDialogs.prompt('Add tags (space/comma separated)', '#todo');
+    if (raw == null) return;
     var tags = parsePromptTagList(raw);
     if (tags.length === 0) {
       deps.showNotification('No valid tags provided');
@@ -1029,11 +1029,11 @@ var CardContextMenu = (function () {
     });
   }
 
-  function promptRemoveTagsFromEntity(elementType, indices) {
+  async function promptRemoveTagsFromEntity(elementType, indices) {
     var target = resolveTagTarget(elementType, indices);
     var prefill = target ? deps.extractAllTags(target.text || '').join(' ') : '';
-    var raw = window.prompt('Remove tags (space/comma separated)', prefill || '#todo');
-    if (raw == null) return Promise.resolve();
+    var raw = await LexeraDialogs.prompt('Remove tags (space/comma separated)', prefill || '#todo');
+    if (raw == null) return;
     var tags = parsePromptTagList(raw);
     if (tags.length === 0) {
       deps.showNotification('No valid tags provided');

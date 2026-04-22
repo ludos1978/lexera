@@ -113,6 +113,18 @@ if [[ "${1:-}" == "--kill" ]]; then
   exit 0
 fi
 
+# ── Purge WKWebView resource cache so source edits are always picked up ──
+# Tauri's custom asset protocol doesn't emit no-cache headers, so WKWebView
+# holds onto old JS/CSS across runs. We only clear NetworkCache + CacheStorage;
+# LocalStorage / IndexedDB / cookies are left intact so user state persists.
+for app in lexera-kanban lexera-backend; do
+  cache_root="$HOME/Library/Caches/$app/WebKit"
+  if [[ -d "$cache_root" ]]; then
+    rm -rf "$cache_root/NetworkCache" "$cache_root/CacheStorage" 2>/dev/null || true
+    echo "  Cleared WKWebView cache for $app"
+  fi
+done
+
 # Parse forwarded kanban args. Everything starting with `--run-tests`
 # or `--quit-after-tests` is passed through to the kanban binary.
 for arg in "$@"; do
