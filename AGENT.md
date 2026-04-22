@@ -10,6 +10,8 @@ Read enough informations so you can do you job well! If you dont know enougth to
 
 after implementing a feature, verify that a frontend test (run from the frontend tests) is verifying it properly. run the test and verify the functionality. when implementing a test try to test it as close to the user interaction as possible. what does the user see, what does he use to modify it, what it the visible outcome of the modification.
 
+Do not use the "rm" command. Move things you want to delete to the trash!
+
 ---
 
 Version 2 is in the folders:

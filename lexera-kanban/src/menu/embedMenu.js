@@ -1118,6 +1118,25 @@ var LexeraEmbedMenu = (function () {
     return buildDiagramCachePrefix(sourcePath) + Math.floor(mtimeMs) + (suffix || '') + '.' + extension;
   }
 
+  // Build the primary cache directory for a rendered preview.
+  //
+  // Case 1: source lives next to the board file →
+  //   `{boardDir}/{boardStem}-Media/{cacheFolderName}`
+  //
+  // Case 2: source lives in a folder that's already a `-Media` folder (e.g.
+  // `BoardName-Media/diagram.excalidraw`) →
+  //   `{sourceDir}/{cacheFolderName}`
+  //   (do NOT append another `-Media` — that produced the historical
+  //    `BoardName-Media/BoardName-Media-Media/…` doubly-nested layout which
+  //    made caches harder to reason about)
+  //
+  // Case 3: source lives in some other folder →
+  //   `{sourceDir}/{sourceDirBase}-Media/{cacheFolderName}`
+  //
+  // Existing boards with a legacy `-Media-Media` cache folder are still
+  // served from that folder via the legacy-fallback lookup in
+  // resolveCachedSpecialPreviewAsset; only fresh renders land in the clean
+  // layout.
   function buildDiagramCacheDir(boardFilePath, sourcePath, cacheFolderName) {
     var sourceDir = getDirNameFromPath(sourcePath);
     if (!sourceDir) return '';
@@ -1125,11 +1144,32 @@ var LexeraEmbedMenu = (function () {
     if (!boardDir || normalizePathForCompare(sourceDir) !== normalizePathForCompare(boardDir)) {
       var sourceDirBase = getFileNameFromPath(sourceDir);
       if (!sourceDirBase) return '';
+      if (/-Media$/i.test(sourceDirBase)) {
+        return sourceDir + '/' + cacheFolderName;
+      }
       return sourceDir + '/' + sourceDirBase + '-Media/' + cacheFolderName;
     }
     var boardBase = getPathStem(boardFilePath);
     if (!boardBase) return '';
     return boardDir + '/' + boardBase + '-Media/' + cacheFolderName;
+  }
+
+  // Legacy fallback: a previous version of `buildDiagramCacheDir` produced
+  // `{sourceDir}/{sourceDirBase}-Media/{cacheFolderName}` even when sourceDir
+  // was already a `-Media` folder, yielding `…-Media/…-Media-Media/…`.
+  // Boards rendered on that version have their SVG/PNG caches sitting in
+  // the doubly-nested folder. Callers probe the clean layout first; this
+  // helper gives them the legacy path to probe as a second chance before
+  // they trigger a fresh render.
+  function buildLegacyDiagramCacheDir(sourcePath, cacheFolderName) {
+    var sourceDir = getDirNameFromPath(sourcePath);
+    if (!sourceDir) return '';
+    var sourceDirBase = getFileNameFromPath(sourceDir);
+    if (!sourceDirBase) return '';
+    // Only meaningful when sourceDir is a Media folder — otherwise the
+    // legacy and current layouts are identical.
+    if (!/-Media$/i.test(sourceDirBase)) return '';
+    return sourceDir + '/' + sourceDirBase + '-Media/' + cacheFolderName;
   }
 
   function getEmbedPreviewPageNumber(previewKind, pageValue) {
@@ -1241,6 +1281,13 @@ var LexeraEmbedMenu = (function () {
     }
 
     var absoluteSourcePath = fileRef.path;
+    // Prefer file-info's resolvedPath (backend already has the absolute
+    // form) to avoid a round-trip through /convert-path.
+    if (!isAbsoluteFilePath(absoluteSourcePath) &&
+        sourceInfo && typeof sourceInfo.resolvedPath === 'string' &&
+        sourceInfo.resolvedPath && isAbsoluteFilePath(sourceInfo.resolvedPath)) {
+      absoluteSourcePath = sourceInfo.resolvedPath;
+    }
     if (!isAbsoluteFilePath(absoluteSourcePath)) {
       absoluteSourcePath = await resolveBoardPath(boardId, fileRef.path, 'absolute');
     }
@@ -1258,10 +1305,31 @@ var LexeraEmbedMenu = (function () {
       logFrontendIssue('warn', 'embed.preview.resolve', cacheDirMsg);
       return null;
     }
-    var cachePath = cacheDir + '/' + buildDiagramCacheFileName(absoluteSourcePath, mtimeMs, config.extension, config.suffix);
+    var cacheFileName = buildDiagramCacheFileName(absoluteSourcePath, mtimeMs, config.extension, config.suffix);
+    var cachePath = cacheDir + '/' + cacheFileName;
     var forceRerender = !!(options && options.forceRerender);
     var cacheInfo = forceRerender ? null : await requestFileInfo(boardId, cachePath);
     if (!cacheInfo || !cacheInfo.exists) {
+      // Legacy cache fallback: previous versions wrote caches into
+      // `<name>-Media/<name>-Media-Media/<cacheFolderName>`. If the clean
+      // path is missing but the legacy path still has a valid cache file,
+      // reuse it instead of triggering a fresh render.
+      if (!forceRerender) {
+        var legacyDir = buildLegacyDiagramCacheDir(absoluteSourcePath, config.cacheFolderName);
+        if (legacyDir) {
+          var legacyPath = legacyDir + '/' + cacheFileName;
+          var legacyInfo = await requestFileInfo(boardId, legacyPath);
+          if (legacyInfo && legacyInfo.exists) {
+            logFrontendIssue('info', 'embed.preview.resolve',
+              'Using legacy doubly-nested cache: ' + legacyPath);
+            return {
+              path: legacyPath,
+              url: LexeraApi.fileUrl(boardId, legacyPath),
+              alt: getDisplayFileNameFromPath(filePath) || filePath
+            };
+          }
+        }
+      }
       var rendered = await requestRenderedSpecialPreviewAsset(boardId, filePath, absoluteSourcePath, cachePath, config, { force: forceRerender });
       if (!rendered) return null;
       delete fileInfoCache[getFileInfoCacheKey(boardId, cachePath)];
@@ -2553,6 +2621,27 @@ var LexeraEmbedMenu = (function () {
     }).then(function (res) {
       return res && res.path ? res.path : filePath;
     }).catch(function (err) {
+      // Local fallback: when convert-path fails (backend hiccup, WKWebView
+      // request cancellation, rate-limited, etc.) and we're asking for an
+      // absolute resolution, derive it from the board file path + the
+      // relative source. This keeps the preview pipeline working instead
+      // of stranding cards on "Could not resolve absolute path for: …".
+      if (toMode === 'absolute' && !isAbsoluteFilePath(filePath)) {
+        var boardFilePath = getBoardFilePathForId(boardId) || '';
+        var boardDir = getDirNameFromPath(boardFilePath);
+        if (boardDir && PathUtils && typeof PathUtils.joinBoardRelativePath === 'function') {
+          var joined = PathUtils.joinBoardRelativePath(boardDir, filePath);
+          if (joined && isAbsoluteFilePath(joined)) {
+            logFrontendIssue(
+              'info',
+              'path.resolve',
+              'convert-path failed; using ' + joined + ' (derived locally from board file path)',
+              { boardId: boardId, filePath: filePath, error: err && err.message }
+            );
+            return joined;
+          }
+        }
+      }
       logFrontendIssue(
         'warn',
         'path.resolve',

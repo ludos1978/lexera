@@ -187,7 +187,10 @@ var LexeraFileFormatRegistry = (function () {
     return plugin && typeof plugin.editorKind === 'string' ? plugin.editorKind : '';
   }
 
-  // Back-compat: accept legacy-shape plugins (flat, no kind/metadata) and forward to the unified registry.
+  // Back-compat: accept legacy-shape plugins (flat `{ id, label, matches, ... }`,
+  // no `kind`/`metadata` wrapper) and forward them to the unified plugin
+  // registry. Preserves the optional `emit`/`enhance`/`canRenderFile`/
+  // `renderFile` functions so the dispatchers find them after projection.
   function register(plugin) {
     var reg = getRegistry();
     if (!reg) throw new Error('LexeraPluginRegistry not available');
@@ -213,6 +216,10 @@ var LexeraFileFormatRegistry = (function () {
         : [],
       matches: plugin.matches
     };
+    if (typeof plugin.canRenderFile === 'function') manifest.canRenderFile = plugin.canRenderFile;
+    if (typeof plugin.renderFile === 'function') manifest.renderFile = plugin.renderFile;
+    if (typeof plugin.emit === 'function') manifest.emit = plugin.emit;
+    if (typeof plugin.enhance === 'function') manifest.enhance = plugin.enhance;
     reg.register(manifest);
     return projectPlugin(manifest);
   }

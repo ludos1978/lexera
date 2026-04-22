@@ -419,13 +419,23 @@ pub(crate) fn err_forbidden(msg: impl Into<String>) -> (StatusCode, Json<ErrorRe
 }
 
 /// Resolve a file path relative to the board's directory, or as absolute if it starts with /.
-/// For absolute paths, verifies the resolved path is within the board directory.
-/// Returns the canonicalized path on success, or a NOT_FOUND/FORBIDDEN error response.
+///
+/// Access policy: the canonical path must be within one of the allowed roots.
+/// An allowed root is either
+///   (a) the owning board's parent directory, OR
+///   (b) the grandparent directory of ANY registered board
+/// (b) lets a board reference shared media/include folders living as siblings
+/// of the board's folder — a common layout where boards and shared assets live
+/// side-by-side under a workspace root. Attempts to escape beyond any board's
+/// grandparent (e.g. to `/etc/passwd`, another user's home, etc.) are still
+/// rejected with FORBIDDEN and logged under `lexera.api.file`.
 pub(crate) fn resolve_board_file(
     state: &AppState,
     board_id: &str,
     file_path: &str,
 ) -> Result<std::path::PathBuf, (StatusCode, Json<ErrorResponse>)> {
+    use lexera_core::storage::BoardStorage as _;
+
     let board_path = state
         .storage
         .get_board_path(board_id)
@@ -445,20 +455,38 @@ pub(crate) fn resolve_board_file(
         .canonicalize()
         .map_err(|_| err_not_found("File not found"))?;
 
-    // Verify the resolved path is within the board directory to prevent path traversal.
-    let canonical_board_dir = board_dir
-        .canonicalize()
-        .map_err(|_| err_not_found("Board directory not found"))?;
-    if !canonical.starts_with(&canonical_board_dir) {
+    // Build allowed roots: owning board's parent + every registered board's
+    // grandparent. Canonicalize each; skip any that can't be resolved.
+    let mut allowed_roots: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(dir) = board_dir.canonicalize() {
+        allowed_roots.push(dir);
+    }
+    for info in state.storage.list_boards() {
+        if let Some(bpath) = state.storage.get_board_path(&info.id) {
+            if let Some(parent) = bpath.parent() {
+                if let Some(grandparent) = parent.parent() {
+                    if let Ok(canon) = grandparent.canonicalize() {
+                        if !allowed_roots.contains(&canon) {
+                            allowed_roots.push(canon);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let within_allowed = allowed_roots
+        .iter()
+        .any(|root| canonical.starts_with(root));
+    if !within_allowed {
         log::warn!(
             target: "lexera.api.file",
-            "Blocked path traversal attempt: {} resolved to {} (outside {})",
+            "Blocked path traversal attempt: {} resolved to {} (outside every board's grandparent)",
             file_path,
-            canonical.display(),
-            canonical_board_dir.display()
+            canonical.display()
         );
         return Err(err_forbidden(
-            "Access denied: path is outside the board directory",
+            "Access denied: path is outside the workspace",
         ));
     }
 

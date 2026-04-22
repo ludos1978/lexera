@@ -241,12 +241,26 @@
   // ──────────────────────────────────────────────────────────────────
   // Test categories
   // ──────────────────────────────────────────────────────────────────
-  // Every test belongs to one or more categories. The primary category
-  // is derived from the test name prefix before `:` ("consistency:
-  // view matches…" → "consistency"). Additional cross-cutting categories
-  // are auto-derived from keywords in the name so that e.g. a consistency
-  // test about moving cards also shows up under "moves". Tests can also
-  // pass an explicit categories list to opt into more groups.
+  // Every test belongs to one or more categories. Buckets:
+  //   • scope: <kanban|workspace|global> — which view/surface the test exercises.
+  //     Derived from the minor-prefix via SCOPE_BY_MINOR; extras can override
+  //     by passing 'scope: unit' etc. for mixed-scope minor groups. Added
+  //     FIRST so the scope groups lead the category list in the UI.
+  //   • minor prefix — the token before `:` in the test name, e.g.
+  //     'consistency', 'card move', 'temporal resolve'. 'general' if no colon.
+  //   • cross-cutting keyword tags — auto-derived from name keywords so a
+  //     consistency test about a card move also shows up under 'moves' and
+  //     'cards'. Same category system, orthogonal axis.
+  var SCOPE_BY_MINOR = {
+    // workspace view (multi-board shell, sidebar, delegation)
+    'workspace sidebar': 'workspace',
+    'workspace reorder': 'workspace',
+    'workspace shell delegation': 'workspace',
+    // pure JS / spec tests — no live board needed
+    'temporal classify': 'global',
+    'temporal resolve': 'global'
+    // everything else defaults to 'kanban' (the board view)
+  };
   function deriveCategories(name, extras) {
     var cats = [];
     function add(c) {
@@ -256,7 +270,17 @@
       if (cats.indexOf(c) === -1) cats.push(c);
     }
     var colon = name.indexOf(':');
-    add(colon > 0 ? name.slice(0, colon).trim() : 'general');
+    var minor = colon > 0 ? name.slice(0, colon).trim() : 'general';
+    // Resolve scope: default from minor map, extras may override with 'scope: X'.
+    var scope = SCOPE_BY_MINOR[minor] || 'kanban';
+    if (Array.isArray(extras)) {
+      for (var se = 0; se < extras.length; se++) {
+        var m = /^scope:\s*(\w+)\s*$/.exec(String(extras[se]));
+        if (m) scope = m[1];
+      }
+    }
+    add('scope: ' + scope);
+    add(minor);
     var lower = String(name).toLowerCase();
     if (/\b(move|moves|moved|moving|reorder)\b/.test(lower)) add('moves');
     if (/\b(add|adds|added|adding|insert|inserts|inserted|inserting)\b/.test(lower)) add('add');
@@ -276,7 +300,13 @@
     if (/\bworkspace\b/.test(lower)) add('workspace');
     if (/\bsidebar\b|hierarchy/.test(lower)) add('sidebar');
     if (/\bfocus\b|scroll/.test(lower)) add('focus');
-    if (Array.isArray(extras)) for (var i = 0; i < extras.length; i++) add(extras[i]);
+    if (Array.isArray(extras)) {
+      for (var i = 0; i < extras.length; i++) {
+        // Skip scope directives — already consumed above.
+        if (/^scope:\s*\w+\s*$/.test(String(extras[i]))) continue;
+        add(extras[i]);
+      }
+    }
     return cats;
   }
 
@@ -2096,7 +2126,7 @@
   // CARD MOVE TESTS
   // ═══════════════════════════════════════════════════════════════════════
 
-  registerDoUndo('same-column reorder: first card moves to end', {
+  registerDoUndo('card move: same-column reorder first→end', {
     setup: function () {
       var info = findTwoColumnsWithCards();
       var col = info.srcCol;
@@ -2130,7 +2160,7 @@
     }
   });
 
-  registerDoUndo('view→view cross-column: card moves between columns', {
+  registerDoUndo('card move: view→view cross-column', {
     setup: function () {
       var info = findTwoColumnsWithCards();
       return {
@@ -2164,7 +2194,7 @@
     }
   });
 
-  register('workspace→view: sidebar-style source, view target', async function () {
+  register('card move: workspace→view (sidebar source, view target)', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -2183,7 +2213,7 @@
     } finally { await teardown(); }
   });
 
-  register('view→workspace: view source, sidebar-style target', async function () {
+  register('card move: view→workspace (view source, sidebar target)', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -2202,7 +2232,7 @@
     } finally { await teardown(); }
   });
 
-  register('workspace→workspace: sidebar source and target', async function () {
+  register('card move: workspace→workspace (sidebar source and target)', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -2221,7 +2251,7 @@
   // STRUCTURAL TESTS
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('add card: appears in board view', async function () {
+  register('structure add: card appears in board view', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -2237,7 +2267,7 @@
     } finally { await teardown(); }
   });
 
-  register('remove card: disappears from board view', async function () {
+  register('structure remove: card disappears from board view', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -2257,7 +2287,7 @@
     } finally { await teardown(); }
   });
 
-  register('add column: appears in board view', async function () {
+  register('structure add: column appears in board view', async function () {
     await setup();
     try {
       var colsBefore = getViewColumnCount();
@@ -2274,7 +2304,7 @@
     } finally { await teardown(); }
   });
 
-  register('add row: appears in board view', async function () {
+  register('structure add: row appears in board view', async function () {
     await setup();
     try {
       var rowsBefore = getViewRowCount();
@@ -2296,7 +2326,7 @@
   // RENDER INTEGRITY
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('no duplicate card IDs after move', async function () {
+  register('card move: no duplicate card IDs after move', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -2309,7 +2339,7 @@
     } finally { await teardown(); }
   });
 
-  register('total card count constant after move', async function () {
+  register('card move: total card count constant after move', async function () {
     await setup();
     try {
       var totalBefore = getTotalViewCards();
@@ -2440,7 +2470,7 @@
   // CARD MOVE EDGE CASES
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('same-column reorder: last card moves to start', async function () {
+  register('card move: same-column reorder last→start', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -2463,7 +2493,7 @@
     } finally { await teardown(); }
   });
 
-  register('cross-column move: card is first in target column', async function () {
+  register('card move: cross-column card lands first in target', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -2481,7 +2511,7 @@
     } finally { await teardown(); }
   });
 
-  register('cross-column move: source column card order remains stable', async function () {
+  register('card move: cross-column preserves source column order', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -2502,7 +2532,7 @@
   // SETTESTBOARD RERENDER VERIFICATION
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('setTestBoard: rerenders row and column counts to match fullBoardData', async function () {
+  register('structure add: setTestBoard rerenders row and column counts to match fullBoardData', async function () {
     await setup();
     try {
       var data = api().getFullBoardData();
@@ -2528,7 +2558,7 @@
   // ADD EMPTY COLUMN WITH DATA-COLUMN-ID
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('add empty column: renders with expected data-column-id', async function () {
+  register('structure add: empty column renders with expected data-column-id', async function () {
     await setup();
     try {
       var colsBefore = getViewColumnCount();
@@ -2552,7 +2582,7 @@
   // ADD ROW WITH MULTIPLE COLUMNS
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('add row with multiple columns: renders both row and nested columns', async function () {
+  register('structure add: row with multiple columns renders row and nested columns', async function () {
     await setup();
     try {
       var rowsBefore = getViewRowCount();
@@ -2584,7 +2614,7 @@
   // REMOVE COLUMN / REMOVE ROW (with sidebar)
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('remove empty column: disappears from board view and sidebar', async function () {
+  register('structure remove: empty column disappears from board view and sidebar', async function () {
     await setup();
     try {
       var data = api().getFullBoardData();
@@ -2612,7 +2642,7 @@
     } finally { await teardown(); }
   });
 
-  register('remove empty row: disappears from board view', async function () {
+  register('structure remove: empty row disappears from board view', async function () {
     await setup();
     try {
       var rowsBefore = getViewRowCount();
@@ -2868,87 +2898,70 @@
     }, 5000, 75, message || ('Dashboard card presence mismatch for ' + normalized));
   }
 
-  register('dashboard: refresh scheduled after addCard mutation', async function () {
+  // Shared helper for `dashboard: refresh scheduled …` tests.
+  // Captures the refresh signal before a mutation, runs the mutation,
+  // then asserts the dashboard scheduled a refresh/render OR advanced
+  // its refreshSeq. Returns early (explicit skip) when the dashboard
+  // helpers aren't mounted — e.g. in autoRun mode where only the
+  // board iframe runs and the dashboard panel is absent.
+  async function runDashboardRefreshTest(mutateAsync) {
     await setup();
     try {
       var helpers = getDashboardHelpers();
-      if (!helpers || !helpers._getDashboardPendingFlags) return;
+      if (!helpers || !helpers._getDashboardPendingFlags) return; // no dashboard mounted
       helpers._resetDashboardPendingFlags();
+      var before = getDashboardDebugState();
+      await mutateAsync();
+      await delay(200);
+      var after = getDashboardDebugState();
+      assert(
+        didDashboardRefreshTrigger(before, after),
+        'dashboard refresh should be scheduled after mutation (before=' +
+          JSON.stringify(before) + ', after=' + JSON.stringify(after) + ')'
+      );
+    } finally { await teardown(); }
+  }
 
+  register('dashboard: refresh scheduled after addCard mutation', async function () {
+    await runDashboardRefreshTest(async function () {
       var info = findTwoColumnsWithCards();
       var data = api().getFullBoardData();
       data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.push({
         id: '__dash-add__', content: 'Dashboard Test Card', checked: false, kid: '__dash-add__'
       });
       api().setTestBoard(data, _boardId);
-      await delay(200);
-
-      var flags = helpers._getDashboardPendingFlags();
-      assert(flags.refresh || flags.render || true, 'dashboard refresh mechanism exists');
-    } finally { await teardown(); }
+    });
   });
 
   register('dashboard: refresh scheduled after removeCard mutation', async function () {
-    await setup();
-    try {
-      var helpers = getDashboardHelpers();
-      if (!helpers || !helpers._getDashboardPendingFlags) return;
-      helpers._resetDashboardPendingFlags();
-
+    await runDashboardRefreshTest(async function () {
       var info = findTwoColumnsWithCards();
       var data = api().getFullBoardData();
       data.rows[info.srcCol.row].stacks[info.srcCol.stack].columns[info.srcCol.localCol].cards.splice(0, 1);
       api().setTestBoard(data, _boardId);
-      await delay(200);
-
-      var flags = helpers._getDashboardPendingFlags();
-      assert(flags.refresh || flags.render || true, 'dashboard refresh mechanism exists');
-    } finally { await teardown(); }
+    });
   });
 
   register('dashboard: refresh scheduled after moveCard mutation', async function () {
-    await setup();
-    try {
-      var helpers = getDashboardHelpers();
-      if (!helpers || !helpers._getDashboardPendingFlags) return;
-      helpers._resetDashboardPendingFlags();
-
+    await runDashboardRefreshTest(async function () {
       var info = findTwoColumnsWithCards();
       await api().moveCard(
         { boardId: _boardId, flatColIndex: info.srcCol.flatIdx, cardIndex: 0, cardId: info.srcCol.cards[0].id, cardIndexMode: 'visible', indexMode: 'display' },
         { boardId: _boardId, flatColIndex: info.dstCol.flatIdx, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
       );
-      await delay(200);
-
-      var flags = helpers._getDashboardPendingFlags();
-      assert(flags.refresh || flags.render || true, 'dashboard refresh mechanism exists');
-    } finally { await teardown(); }
+    });
   });
 
   register('dashboard: refresh scheduled after addColumn mutation', async function () {
-    await setup();
-    try {
-      var helpers = getDashboardHelpers();
-      if (!helpers || !helpers._getDashboardPendingFlags) return;
-      helpers._resetDashboardPendingFlags();
-
+    await runDashboardRefreshTest(async function () {
       var data = api().getFullBoardData();
       data.rows[0].stacks[0].columns.push({ id: '__dash-col__', title: 'Dash Col', cards: [], include_source: null });
       api().setTestBoard(data, _boardId);
-      await delay(200);
-
-      var flags = helpers._getDashboardPendingFlags();
-      assert(flags.refresh || flags.render || true, 'dashboard refresh mechanism exists');
-    } finally { await teardown(); }
+    });
   });
 
   register('dashboard: refresh scheduled after addRow mutation', async function () {
-    await setup();
-    try {
-      var helpers = getDashboardHelpers();
-      if (!helpers || !helpers._getDashboardPendingFlags) return;
-      helpers._resetDashboardPendingFlags();
-
+    await runDashboardRefreshTest(async function () {
       var data = api().getFullBoardData();
       data.rows.push({
         id: '__dash-row__', title: 'Dash Row',
@@ -2957,18 +2970,14 @@
         }]
       });
       api().setTestBoard(data, _boardId);
-      await delay(200);
-
-      var flags = helpers._getDashboardPendingFlags();
-      assert(flags.refresh || flags.render || true, 'dashboard refresh mechanism exists');
-    } finally { await teardown(); }
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════
   // TEMPORAL / TIME TAG TESTS
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('temporal tags: #today resolves to current date', async function () {
+  register('temporal resolve: #today → current date', async function () {
     await setup();
     try {
       var result = api().describeTemporalTag('today');
@@ -2982,7 +2991,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: #tomorrow resolves to next day', async function () {
+  register('temporal resolve: #tomorrow → next day', async function () {
     await setup();
     try {
       var result = api().describeTemporalTag('tomorrow');
@@ -2997,7 +3006,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: #yesterday resolves to previous day', async function () {
+  register('temporal resolve: #yesterday → previous day', async function () {
     await setup();
     try {
       var result = api().describeTemporalTag('yesterday');
@@ -3012,7 +3021,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: #week tags classify correctly', async function () {
+  register('temporal classify: #week tags classify correctly', async function () {
     await setup();
     try {
       var cases = ['w42', 'kw42', '2025.w42', '2025-kw42'];
@@ -3023,7 +3032,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: date(...) tags classify and resolve correctly', async function () {
+  register('temporal resolve: date(...) classifies and resolves correctly', async function () {
     await setup();
     try {
       var result = api().describeTemporalTag('date(2025-12-25)');
@@ -3033,7 +3042,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: weekday tags classify correctly', async function () {
+  register('temporal classify: weekday tags classify correctly', async function () {
     await setup();
     try {
       var days = ['mon', 'monday', 'tue', 'tuesday', 'wed', 'wednesday',
@@ -3045,7 +3054,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: time tags classify correctly', async function () {
+  register('temporal classify: time tags classify correctly', async function () {
     await setup();
     try {
       var times = ['9am', '2:30pm', '14:00', '8pm'];
@@ -3056,7 +3065,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: time slot tags classify correctly', async function () {
+  register('temporal classify: time slot tags classify correctly', async function () {
     await setup();
     try {
       var slots = ['2pm-4pm', '9:30am-11am', '14:00-16:00'];
@@ -3067,7 +3076,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: non-temporal tags return empty type', async function () {
+  register('temporal classify: non-temporal tags return empty type', async function () {
     await setup();
     try {
       var nonTemporal = ['important', 'blocked', 'review', 'hello', 'feature-request'];
@@ -3078,7 +3087,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: prefixed tags (! and @) still classify correctly', async function () {
+  register('temporal classify: prefixed tags (! and @) still classify correctly', async function () {
     await setup();
     try {
       var type1 = api().getTemporalTagType('!today');
@@ -3090,7 +3099,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: days+N and days-N resolve correctly', async function () {
+  register('temporal resolve: days+N and days-N resolve correctly', async function () {
     await setup();
     try {
       var result3 = api().describeTemporalTag('days+3');
@@ -3114,7 +3123,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: card with temporal tag renders in DOM', async function () {
+  register('temporal classify: card with temporal tag renders in DOM', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -3325,7 +3334,7 @@
   // ADD CARD VIA API
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('addCard API: card appears with correct content', async function () {
+  register('structure add: addCard API card appears with correct content', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -3348,7 +3357,7 @@
   // CARD CONTENT & TITLE
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('card content: card title renders in DOM', async function () {
+  register('structure: card title renders in DOM', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -3504,7 +3513,7 @@
   // REMOVE COLUMN / REMOVE ROW
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('remove column: disappears from board view', async function () {
+  register('structure remove: column disappears from board view', async function () {
     await setup();
     try {
       var data = api().getFullBoardData();
@@ -3528,7 +3537,7 @@
     } finally { await teardown(); }
   });
 
-  register('remove row: disappears from board view', async function () {
+  register('structure remove: row disappears from board view', async function () {
     await setup();
     try {
       var data = api().getFullBoardData();
@@ -3550,7 +3559,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: explicit date format tags are recognized as date type', async function () {
+  register('temporal classify: explicit date format tags recognized as date type', async function () {
     await setup();
     try {
       var formats = ['2025-04-08', '2025.04.08', '2025/04/08'];
@@ -3561,7 +3570,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: minute slot tag is recognized as minuteSlot type', async function () {
+  register('temporal classify: minute slot tag recognized as minuteSlot type', async function () {
     await setup();
     try {
       var type = api().getTemporalTagType(':15-:45');
@@ -3569,7 +3578,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: date(...) with various dates resolves correctly', async function () {
+  register('temporal resolve: date(...) with various dates resolves correctly', async function () {
     await setup();
     try {
       var result1 = api().describeTemporalTag('date(2024-01-01)');
@@ -3584,7 +3593,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: weekday resolution is always in the future', async function () {
+  register('temporal resolve: weekday resolution is always in the future', async function () {
     await setup();
     try {
       var days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -3601,7 +3610,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: days+0 equals today', async function () {
+  register('temporal resolve: days+0 equals today', async function () {
     await setup();
     try {
       var resultDays = api().describeTemporalTag('days+0');
@@ -3612,7 +3621,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: days+1 equals tomorrow', async function () {
+  register('temporal resolve: days+1 equals tomorrow', async function () {
     await setup();
     try {
       var resultDays = api().describeTemporalTag('days+1');
@@ -3623,7 +3632,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: days-1 equals yesterday', async function () {
+  register('temporal resolve: days-1 equals yesterday', async function () {
     await setup();
     try {
       var resultDays = api().describeTemporalTag('days-1');
@@ -3634,7 +3643,7 @@
     } finally { await teardown(); }
   });
 
-  register('temporal tags: week number tags resolve to week label', async function () {
+  register('temporal resolve: week number tags resolve to week label', async function () {
     await setup();
     try {
       var result1 = api().describeTemporalTag('w1');
@@ -3709,7 +3718,7 @@
     }
   });
 
-  register('dashboard search: scope active filters to current board', async function () {
+  register('dashboard search: refresh triggered under active scope after board mutation', async function () {
     await setup();
     try {
       var helpers = getDashboardHelpers();
@@ -3985,7 +3994,7 @@
     } finally {
       await teardown();
     }
-  });
+  }, ['scope: global']);
 
   register('header drag source: excalidraw built-in template spec produces a minimal valid diagram', async function () {
     await setup();
@@ -4015,9 +4024,9 @@
     } finally {
       await teardown();
     }
-  });
+  }, ['scope: global']);
 
-  register('media change tracking: refreshVisibleBoardFileEmbeds clears enhanced flag and removes stale preview', async function () {
+  register('embed: refreshVisibleBoardFileEmbeds clears enhanced flag and removes stale preview', async function () {
     // Tests the core function the MediaChanged event handler invokes
     // when the file watcher reports an external media change. We inject a
     // synthetic embed-container directly into the DOM (bypassing the
@@ -5244,9 +5253,8 @@
       var colEl = c.querySelector('.column[data-column-id="__incl-col-ok__"]');
       assert(colEl, 'include column rendered');
       var badge = colEl.querySelector('.column-include-badge');
-      if (badge) {
-        assert(!badge.classList.contains('include-broken'), 'include badge not broken for valid path');
-      }
+      assert(badge, 'include badge rendered for valid path');
+      assert(!badge.classList.contains('include-broken'), 'include badge not broken for valid path');
       assertBoardIntegrity('after include column added');
     } finally { await teardown(); }
   });
@@ -5270,9 +5278,8 @@
       var colEl = c.querySelector('.column[data-column-id="__incl-col-bad__"]');
       assert(colEl, 'broken include column rendered');
       var badge = colEl.querySelector('.column-include-badge');
-      if (badge) {
-        assert(badge.classList.contains('include-broken'), 'include badge marked broken for missing path');
-      }
+      assert(badge, 'include badge rendered for broken path');
+      assert(badge.classList.contains('include-broken'), 'include badge marked broken for missing path');
       assertBoardIntegrity('after broken include column added');
     } finally { await teardown(); }
   });
@@ -5412,61 +5419,10 @@
 
   // ═══════════════════════════════════════════════════════════════════════
   // TAG EDITS — changing tags updates card visibility and board state
+  // Archive-add/archive-remove are covered by the `hidden state:` group
+  // above (same mechanism, same tag); tests here cover transitions and
+  // content-level tag mutations (temporal, checked) not covered there.
   // ═══════════════════════════════════════════════════════════════════════
-
-  register('tag edit: adding #hidden-internal-archived removes card from view', async function () {
-    await setup();
-    try {
-      var info = findTwoColumnsWithCards();
-      var col = info.srcCol;
-      var countBefore = getViewCardCount(col.flatIdx);
-      var kid = col.cards[0].kid || col.cards[0].id;
-
-      var data = api().getFullBoardData();
-      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
-      var cardIdx = findRawCardIndexByKid(rawCards, kid);
-      assert(cardIdx >= 0, 'target card found in raw data');
-      rawCards[cardIdx].content = (rawCards[cardIdx].content || '') + ' #hidden-internal-archived';
-      api().setTestBoard(data, _boardId);
-      await delay(100);
-
-      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'card removed from view');
-      assert(getViewCardKids(col.flatIdx).indexOf(kid) === -1, 'card ID gone from DOM');
-      assertBoardIntegrity('after tag edit: archive');
-    } finally { await teardown(); }
-  });
-
-  register('tag edit: removing #hidden-internal-archived restores card to view', async function () {
-    await setup();
-    try {
-      var info = findTwoColumnsWithCards();
-      var col = info.srcCol;
-      var countBefore = getViewCardCount(col.flatIdx);
-      var kid = col.cards[0].kid || col.cards[0].id;
-
-      // Archive it (look up by kid — raw cards[0] may be an already-hidden card)
-      var data = api().getFullBoardData();
-      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
-      var cardIdx = findRawCardIndexByKid(rawCards, kid);
-      assert(cardIdx >= 0, 'target card found in raw data');
-      var original = rawCards[cardIdx].content || '';
-      rawCards[cardIdx].content = original + ' #hidden-internal-archived';
-      api().setTestBoard(data, _boardId);
-      await delay(100);
-      assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'card archived');
-
-      // Remove tag to restore (re-fetch since getFullBoardData clones)
-      data = api().getFullBoardData();
-      rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
-      cardIdx = findRawCardIndexByKid(rawCards, kid);
-      assert(cardIdx >= 0, 'archived card still found in raw data');
-      rawCards[cardIdx].content = original;
-      api().setTestBoard(data, _boardId);
-      await delay(100);
-      assertEqual(getViewCardCount(col.flatIdx), countBefore, 'card restored to view');
-      assertBoardIntegrity('after tag edit: unarchive');
-    } finally { await teardown(); }
-  });
 
   register('tag edit: changing card from parked to deleted keeps it hidden', async function () {
     await setup();
@@ -5501,7 +5457,7 @@
     } finally { await teardown(); }
   });
 
-  register('tag edit: adding temporal tag to card keeps it visible and renders badge', async function () {
+  register('tag edit: adding temporal tag to card renders due badge', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -5520,16 +5476,14 @@
       var c = getContainer();
       var cardEl = c.querySelector('.card[data-card-kid="__tag-temporal__"]');
       assert(cardEl, 'card rendered');
-      // Check for due badge
       var badge = cardEl.querySelector('.card-due-badge');
-      if (badge) {
-        assert(badge.textContent.length > 0, 'due badge has content');
-      }
+      assert(badge, 'due badge rendered for #today');
+      assert(badge.textContent.length > 0, 'due badge has content');
       assertBoardIntegrity('after temporal tag card');
     } finally { await teardown(); }
   });
 
-  register('tag edit: adding checked state preserves card in view', async function () {
+  register('hidden state: toggling checked does not hide the card', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -5552,7 +5506,7 @@
   // WORKSPACE MOVE TESTS — view+workspace coordinate combinations
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('workspace move: view→view + integrity check', async function () {
+  register('card move: view→view with integrity check', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -5568,7 +5522,7 @@
     } finally { await teardown(); }
   });
 
-  register('workspace move: workspace→workspace + integrity check', async function () {
+  register('card move: workspace→workspace with integrity check', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -5589,7 +5543,7 @@
   // tests don't depend on the live runtime state (no setup/teardown).
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('workspace view: duplicate board in boards array renders once per workspace', async function () {
+  register('workspace sidebar: duplicate board in boards array renders once per workspace', async function () {
     var BL = window.LexeraBoardList;
     assert(BL && typeof BL._buildDesiredEntries === 'function', 'LexeraBoardList._buildDesiredEntries exposed');
     var ws = [{ id: 'ws-A', name: 'Alpha' }];
@@ -5607,7 +5561,7 @@
     assertEqual(wsHeader.boards[0].board.id, 'b1', 'the deduped entry is b1');
   });
 
-  register('workspace view: duplicate workspace id in workspace_ids renders once', async function () {
+  register('workspace sidebar: duplicate workspace id in workspace_ids renders once', async function () {
     var BL = window.LexeraBoardList;
     assert(BL && typeof BL._buildDesiredEntries === 'function', 'LexeraBoardList._buildDesiredEntries exposed');
     var ws = [{ id: 'ws-A', name: 'Alpha' }];
@@ -5622,7 +5576,7 @@
     assertEqual(wsHeader.boards.length, 1, 'board appears once despite duplicate workspace_ids');
   });
 
-  register('workspace view: board in two workspaces appears once in each', async function () {
+  register('workspace sidebar: board in two workspaces appears once in each', async function () {
     var BL = window.LexeraBoardList;
     var ws = [{ id: 'ws-A', name: 'Alpha' }, { id: 'ws-B', name: 'Beta' }];
     var boards = [{ id: 'b1', title: 'Board 1', columns: [], workspace_ids: ['ws-A', 'ws-B'] }];
@@ -5640,7 +5594,7 @@
     assertEqual(countB, 1, 'b1 appears once in ws-B');
   });
 
-  register('workspace view: unassigned bucket dedupes duplicate boards', async function () {
+  register('workspace sidebar: unassigned bucket dedupes duplicate boards', async function () {
     var BL = window.LexeraBoardList;
     // Workspaces exist but board belongs to none → goes into Unassigned.
     var ws = [{ id: 'ws-A', name: 'Alpha' }];
@@ -5655,7 +5609,7 @@
     assertEqual(unassigned.boards.length, 1, 'unassigned section dedupes duplicate board');
   });
 
-  register('workspace view: flat view (no workspaces) dedupes duplicate boards', async function () {
+  register('workspace sidebar: flat view (no workspaces) dedupes duplicate boards', async function () {
     var BL = window.LexeraBoardList;
     var board = { id: 'b1', title: 'Board 1', columns: [], workspace_ids: [] };
     var boards = [board, board];
@@ -5668,7 +5622,7 @@
     assertEqual(seen, 1, 'flat view dedupes duplicate board');
   });
 
-  register('workspace view: remote boards dedupe by id', async function () {
+  register('workspace sidebar: remote boards dedupe by id', async function () {
     var BL = window.LexeraBoardList;
     var remote = { id: 'r1', title: 'Remote 1' };
     var entries = BL._buildDesiredEntries([], [remote, remote], [], null, null);
@@ -5679,7 +5633,7 @@
     assertEqual(seen, 1, 'remote boards deduped by id');
   });
 
-  register('workspace view: rendered sidebar has no duplicate board entries', async function () {
+  register('workspace sidebar: rendered sidebar has no duplicate board entries', async function () {
     // Runtime-side check: after the normal app boot the sidebar renders the
     // real boards/workspaces data. The integrity check must pass with no
     // duplicates even though nothing in this test mutates state.
@@ -5804,7 +5758,7 @@
     return null;
   }
 
-  register('workspace view: reorder row — moving row 0 after row 1 swaps row order', async function () {
+  register('workspace reorder: row — moving row 0 after row 1 swaps row order', async function () {
     await setup();
     try {
       var fixture = buildWorkspaceReorderFixture();
@@ -5829,7 +5783,7 @@
     } finally { await teardown(); }
   });
 
-  register('workspace view: move stack — stack from row 0 moves into row 1', async function () {
+  register('workspace reorder: stack — stack from row 0 moves into row 1', async function () {
     await setup();
     try {
       var fixture = buildWorkspaceReorderFixture();
@@ -5859,7 +5813,7 @@
     } finally { await teardown(); }
   });
 
-  register('workspace view: reorder column within stack — column 0 moves after column 1', async function () {
+  register('workspace reorder: column within stack — column 0 moves after column 1', async function () {
     await setup();
     try {
       var fixture = buildWorkspaceReorderFixture();
@@ -5885,7 +5839,7 @@
     } finally { await teardown(); }
   });
 
-  register('workspace view: move column to different stack — column moves between stacks', async function () {
+  register('workspace reorder: column to different stack — column moves between stacks', async function () {
     await setup();
     try {
       var fixture = buildWorkspaceReorderFixture();
@@ -5914,7 +5868,7 @@
     } finally { await teardown(); }
   });
 
-  register('workspace view: card move within column — same-column reorder via workspace coordinates', async function () {
+  register('workspace reorder: card move within column via workspace coordinates', async function () {
     await setup();
     try {
       var fixture = buildWorkspaceReorderFixture();
@@ -5960,7 +5914,7 @@
     } finally { await teardown(); }
   });
 
-  register('workspace view: sidebar hierarchy reflects row reorder in realtime', async function () {
+  register('workspace reorder: sidebar hierarchy reflects row reorder in realtime', async function () {
     await setup();
     try {
       var fixture = buildWorkspaceReorderFixture();
@@ -5989,7 +5943,7 @@
     } finally { await teardown(); }
   });
 
-  register('workspace view: sidebar hierarchy reflects cross-column card move in realtime', async function () {
+  register('workspace reorder: sidebar hierarchy reflects cross-column card move in realtime', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -6052,7 +6006,7 @@
     return matches;
   }
 
-  register('workspace view: card move does not log save.auto.skip warning (regression for "active board is not ready")', async function () {
+  register('workspace reorder: card move does not log save.auto.skip warning (regression for "active board is not ready")', async function () {
     await setup();
     try {
       // Reproduces the user-reported symptom: when the user drags a card
@@ -6197,7 +6151,7 @@
   // We therefore only test the moveCard delegation path here, which
   // accepts an explicit `source.boardId` argument.
 
-  register('workspace shell delegation: moveCard for a non-loaded board forwards to stubbed iframe', async function () {
+  register('workspace shell delegation: stubbed iframe exposes required mutation surface', async function () {
     await setup();
     try {
       var phantomBoardId = '__wsv_phantom__';
@@ -6248,7 +6202,7 @@
     } finally { await teardown(); }
   });
 
-  register('workspace shell delegation: getFrameWindowForBoard returns null when no shell present', async function () {
+  register('workspace shell delegation: moveCard for unknown board is a safe no-op', async function () {
     await setup();
     try {
       // In tests there is no workspaceShell mounted, so the global is
@@ -6724,7 +6678,7 @@
   // BURGER-MENU STRUCTURAL ACTIONS
   // ═══════════════════════════════════════════════════════════════════════
 
-  registerDoUndo('structural: duplicate column preserves cards and adds new column', {
+  registerDoUndo('structural: duplicate column creates a new column and copies cards', {
     setup: function () {
       var info = findTwoColumnsWithCards();
       return { col: info.srcCol };
@@ -6733,7 +6687,7 @@
       return {
         colCount: getViewColumnCount(),
         cardCount: getTotalViewCards(),
-        srcCards: getViewCardKids(ctx.col.flatIdx)
+        srcCards: getViewCardKids(ctx.col.flatIdx).slice()
       };
     },
     do: async function (ctx) {
@@ -6741,7 +6695,12 @@
     },
     checkDo: function (ctx, before) {
       assertEqual(getViewColumnCount(), before.colCount + 1, 'column count +1 after duplicate');
-      assert(getTotalViewCards() >= before.cardCount, 'card count did not decrease');
+      // Duplicate should add (at least) as many cards as the source column held.
+      assert(
+        getTotalViewCards() >= before.cardCount + before.srcCards.length,
+        'total card count grew by >= source column card count after duplicate ' +
+          '(before=' + before.cardCount + ', srcCards=' + before.srcCards.length + ', after=' + getTotalViewCards() + ')'
+      );
     }
   });
 
@@ -6752,7 +6711,7 @@
       return { col: info.srcCol };
     },
     capture: function (ctx) {
-      return { kids: getViewCardKids(ctx.col.flatIdx) };
+      return { kids: getViewCardKids(ctx.col.flatIdx).slice() };
     },
     do: async function (ctx) {
       await api().sortColumnCards(ctx.col.flatIdx, 'title');
@@ -6760,6 +6719,19 @@
     checkDo: function (ctx, before) {
       var afterKids = getViewCardKids(ctx.col.flatIdx);
       assertEqual(afterKids.length, before.kids.length, 'card count unchanged after sort');
+      var expected = before.kids.slice().sort(function (a, b) {
+        return String(a).localeCompare(String(b));
+      });
+      var sameSet = afterKids.slice().sort().join('|') === before.kids.slice().sort().join('|');
+      assert(sameSet, 'sort preserves the same set of card kids');
+      // Sort must have produced a different order OR the input was already sorted.
+      var wasAlreadySorted = before.kids.join('|') === expected.join('|');
+      if (!wasAlreadySorted) {
+        assert(
+          afterKids.join('|') !== before.kids.join('|'),
+          'sort produced a different DOM order when input was not already sorted'
+        );
+      }
     }
   });
 
@@ -6780,7 +6752,7 @@
     }
   });
 
-  registerDoUndo('structural: sort row cards by title reorders cards across columns', {
+  registerDoUndo('structural: sort row cards by title preserves card count', {
     setup: function () {
       var data = api().getFullBoardData();
       assert(data.rows.length > 0, 'board has at least one row');
@@ -6874,11 +6846,7 @@
     } finally { await teardown(); }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // BURGER-MENU TAG ACTIONS
-  // ═══════════════════════════════════════════════════════════════════════
-
-  register('tag action: adding visible tag via setTestBoard keeps card in view', async function () {
+  register('hidden action: adding a non-hidden tag leaves the card visible', async function () {
     await setup();
     try {
       var info = findTwoColumnsWithCards();
@@ -6909,7 +6877,7 @@
   // This test exercises the real rename by mocking `window.prompt` on the
   // app window, invoking `renameActiveBoardFile`, asserting every display
   // location updates, and then renaming the file back to its original name.
-  register('board rename: file rename updates name in board header, sidebar, and workspace tab', async function () {
+  register('structure: board rename updates name in board header, sidebar, and workspace tab', async function () {
     var oldPath = api().getActiveBoardFilePath();
     var activeData = api().getActiveBoardData();
     assert(oldPath, 'precondition: active board must have a file path');
