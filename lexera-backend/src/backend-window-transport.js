@@ -28,6 +28,27 @@
   var core = resolveCore();
   if (!core) return;
 
+  // Tracks every shim EventSource so pagehide/beforeunload can close each
+  // (invoking `backend_local_unsubscribe`) before the webview reloads.
+  // Without this, the Rust task keeps posting to dead JS callback ids and
+  // the fresh JS world logs "[TAURI] Couldn't find callback id …".
+  var _activeShimEventSources = [];
+  var _shimUnloadHookRegistered = false;
+
+  function _registerShimUnloadHook() {
+    if (_shimUnloadHookRegistered) return;
+    _shimUnloadHookRegistered = true;
+    var cleanup = function () {
+      var list = _activeShimEventSources;
+      _activeShimEventSources = [];
+      for (var i = 0; i < list.length; i++) {
+        try { list[i].close(); } catch (e) { /* page is unloading */ }
+      }
+    };
+    window.addEventListener('pagehide', cleanup);
+    window.addEventListener('beforeunload', cleanup);
+  }
+
   function isBackendLikeUrl(url) {
     if (typeof url !== 'string') return false;
     if (url.startsWith('/')) return true;
@@ -190,9 +211,13 @@
             .catch(function () { /* best-effort */ });
           subscriptionId = null;
         }
+        var idx = _activeShimEventSources.indexOf(es);
+        if (idx >= 0) _activeShimEventSources.splice(idx, 1);
       },
       dispatchEvent: function () { return true; }
     };
+    _activeShimEventSources.push(es);
+    _registerShimUnloadHook();
 
     core.invoke(command, { channel: channel })
       .then(function (id) {

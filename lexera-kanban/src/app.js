@@ -5544,7 +5544,11 @@ var LexeraDashboard = (function () {
   function getMutationBoardTitle(boardId, boardData) { return BoardDataStore.getMutationBoardTitle(boardId, boardData); }
   async function loadBoardDataForMutation(boardId) { return BoardDataStore.loadBoardDataForMutation(boardId); }
   function normalizeHierarchyEditTargets(targets) { return BoardDataStore.normalizeHierarchyEditTargets(targets); }
-  async function commitHierarchyTreeEdit(boardId, boardData, options) { return BoardDataStore.commitHierarchyTreeEdit(boardId, boardData, options); }
+  async function commitHierarchyTreeEdit(boardId, boardData, options) {
+    var delegated = _delegateMutationToOwningFrame(boardId, 'commitHierarchyTreeEdit', [boardId, boardData, options]);
+    if (delegated) return delegated.result;
+    return BoardDataStore.commitHierarchyTreeEdit(boardId, boardData, options);
+  }
   async function commitBoardMutations(changedBoards, options) { return BoardDataStore.commitBoardMutations(changedBoards, options); }
 
   // Singleton guard mirroring the external-rebase dialog: at most one
@@ -11553,7 +11557,8 @@ var LexeraDashboard = (function () {
     reorderRows: function (s, t, b) { return reorderRows(s, t, b); },
     moveStack: function (fr, fs, tr, ts, b) { return moveStack(fr, fs, tr, ts, b); },
     moveColumnWithinBoard: function (fr, fs, fc, tr, ts, tc, b) { return moveColumnWithinBoard(fr, fs, fc, tr, ts, tc, b); },
-    moveColumnToExistingStack: function (fr, fs, fc, tr, ts) { return moveColumnToExistingStack(fr, fs, fc, tr, ts); }
+    moveColumnToExistingStack: function (fr, fs, fc, tr, ts) { return moveColumnToExistingStack(fr, fs, fc, tr, ts); },
+    commitHierarchyTreeEdit: function (boardId, boardData, options) { return commitHierarchyTreeEdit(boardId, boardData, options); }
   };
 })();
 if (typeof window !== 'undefined') window.LexeraDashboard = LexeraDashboard;

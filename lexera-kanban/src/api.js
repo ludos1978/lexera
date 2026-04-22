@@ -820,6 +820,31 @@ var LexeraApi = (function () {
     }
   }
 
+  // Tracks every live IPC stream reconnecter so the pagehide/beforeunload
+  // hook can close each one (invoking `backend_ipc_stream_close` on the
+  // Rust side) before the webview reloads. Without this, the Rust pump task
+  // keeps calling `channel.send(...)` into dead JS callback ids and the
+  // fresh JS world logs "[TAURI] Couldn't find callback id …" forever.
+  var _activeIpcStreamHandles = [];
+  var _ipcUnloadHookRegistered = false;
+
+  function _registerIpcUnloadHook() {
+    if (_ipcUnloadHookRegistered) return;
+    if (typeof window === 'undefined') return;
+    _ipcUnloadHookRegistered = true;
+    var cleanup = function () {
+      var handles = _activeIpcStreamHandles;
+      _activeIpcStreamHandles = [];
+      for (var i = 0; i < handles.length; i++) {
+        try { handles[i].close(); } catch (e) { /* page is unloading */ }
+      }
+      // Sync stream uses its own correlation id tracking.
+      try { disconnectSync(); } catch (e) { /* best-effort */ }
+    };
+    window.addEventListener('pagehide', cleanup);
+    window.addEventListener('beforeunload', cleanup);
+  }
+
   // Exponential-backoff helper shared by all IPC stream openers. `factory`
   // returns the raw `{ correlationIdRef, channel }` handle; the caller
   // reopens via `attempt()` until `close()` is invoked. Matches the backoff
@@ -877,7 +902,7 @@ var LexeraApi = (function () {
 
     attempt();
 
-    return {
+    var handle = {
       close: function () {
         if (closed) return;
         closed = true;
@@ -885,8 +910,13 @@ var LexeraApi = (function () {
         if (activeCloseFn) {
           try { activeCloseFn(); } catch (_) { /* best-effort */ }
         }
+        var idx = _activeIpcStreamHandles.indexOf(handle);
+        if (idx >= 0) _activeIpcStreamHandles.splice(idx, 1);
       }
     };
+    _activeIpcStreamHandles.push(handle);
+    _registerIpcUnloadHook();
+    return handle;
   }
 
   // Open a backend IPC stream and return an EventSource-shaped handle
@@ -1190,6 +1220,7 @@ var LexeraApi = (function () {
       logApiIssue('error', 'sync.ipc', 'Tauri Channel unavailable');
       return;
     }
+    _registerIpcUnloadHook();
     var boardId = syncBoardId;
     var channel;
     try {

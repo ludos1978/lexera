@@ -9,6 +9,13 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::State;
+use tokio::sync::Semaphore;
+
+/// Serializes external-renderer invocations (drawio, excalidraw, libreoffice, …)
+/// so a flurry of `MediaChanged` events (or multiple embeds referencing the
+/// same file) cannot pile up 60s subprocess calls and starve the async runtime.
+/// One permit = strictly sequential. Bump if we need parallelism later.
+static RENDER_SEMAPHORE: Semaphore = Semaphore::const_new(1);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1887,8 +1894,6 @@ pub fn get_file_mtime_ms(path: String) -> Result<Option<u64>, String> {
 
 #[tauri::command]
 pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<RenderEmbeddedFileResult, String> {
-    let source_path = PathBuf::from(&opts.source_path);
-    let target_path = PathBuf::from(&opts.target_path);
     let page_number = opts.page_number.unwrap_or(1).max(1);
     let output_format = opts
         .output_format
@@ -1896,98 +1901,119 @@ pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<Ren
         .unwrap_or_else(|| "png".to_string())
         .to_lowercase();
     let force = opts.force.unwrap_or(false);
+    let plugin_id = opts.plugin_id.clone();
+    let source_path_str = opts.source_path.clone();
+    let target_path_str = opts.target_path.clone();
 
     log::info!(
         target: "lexera.kanban.render",
-        "render_embedded_file plugin={} src={} target={} fmt={} page={} force={}",
-        opts.plugin_id, source_path.display(), target_path.display(), output_format, page_number, force
+        "render_embedded_file plugin={} src={} target={} fmt={} page={} force={} (queued)",
+        plugin_id, source_path_str, target_path_str, output_format, page_number, force
     );
 
-    if !source_path.is_file() {
-        let msg = format!("Source file not found: {}", source_path.display());
-        log::warn!(target: "lexera.kanban.render", "{} (plugin={})", msg, opts.plugin_id);
-        return Ok(RenderEmbeddedFileResult {
-            success: false,
-            output_path: opts.target_path,
-            format: output_format,
-            error: Some(msg),
-        });
-    }
+    // Serialize external renderer invocations so one slow subprocess doesn't
+    // cause siblings to pile up behind it.
+    let _permit = RENDER_SEMAPHORE
+        .acquire()
+        .await
+        .map_err(|e| format!("render semaphore closed: {}", e))?;
 
-    if !force && is_cache_fresh(&source_path, &target_path) {
-        log::info!(
-            target: "lexera.kanban.render",
-            "cache hit (plugin={}) target={}",
-            opts.plugin_id, target_path.display()
-        );
-        return Ok(RenderEmbeddedFileResult {
-            success: true,
-            output_path: opts.target_path,
-            format: output_format,
-            error: None,
-        });
-    }
-    if target_path.is_file() {
-        if let Err(e) = fs::remove_file(&target_path) {
-            log::warn!(
-                target: "lexera.kanban.render",
-                "failed to remove stale cache {}: {} — continuing with render",
-                target_path.display(), e
-            );
+    // Move all blocking work (fs probing + subprocess render) off the async
+    // runtime so the Tauri IPC executor threads stay responsive.
+    let join = tokio::task::spawn_blocking(move || {
+        let source_path = PathBuf::from(&source_path_str);
+        let target_path = PathBuf::from(&target_path_str);
+
+        if !source_path.is_file() {
+            let msg = format!("Source file not found: {}", source_path.display());
+            log::warn!(target: "lexera.kanban.render", "{} (plugin={})", msg, plugin_id);
+            return RenderEmbeddedFileResult {
+                success: false,
+                output_path: target_path_str,
+                format: output_format,
+                error: Some(msg),
+            };
         }
-    }
 
-    let render_result = if let Some(renderer) = find_embedded_renderer(&opts.plugin_id) {
-        (renderer.render)(&source_path, &target_path, page_number, &output_format)
-    } else {
-        Err(format!("Unknown embedded file renderer: {}", opts.plugin_id))
-    };
-
-    match render_result {
-        Ok(()) => {
-            if !target_path.is_file() {
-                let msg = format!(
-                    "Renderer reported success but target file is missing: {}",
-                    target_path.display()
-                );
-                log::error!(
-                    target: "lexera.kanban.render",
-                    "{} (plugin={}, src={})",
-                    msg, opts.plugin_id, source_path.display()
-                );
-                return Ok(RenderEmbeddedFileResult {
-                    success: false,
-                    output_path: opts.target_path,
-                    format: output_format,
-                    error: Some(msg),
-                });
-            }
+        if !force && is_cache_fresh(&source_path, &target_path) {
             log::info!(
                 target: "lexera.kanban.render",
-                "render ok (plugin={}) target={}",
-                opts.plugin_id, target_path.display()
+                "cache hit (plugin={}) target={}",
+                plugin_id, target_path.display()
             );
-            Ok(RenderEmbeddedFileResult {
+            return RenderEmbeddedFileResult {
                 success: true,
-                output_path: opts.target_path,
+                output_path: target_path_str,
                 format: output_format,
                 error: None,
-            })
+            };
         }
-        Err(err) => {
-            log::error!(
-                target: "lexera.kanban.render",
-                "render failed (plugin={}) src={} target={}: {}",
-                opts.plugin_id, source_path.display(), target_path.display(), err
-            );
-            Ok(RenderEmbeddedFileResult {
-                success: false,
-                output_path: opts.target_path,
-                format: output_format,
-                error: Some(err),
-            })
+        if target_path.is_file() {
+            if let Err(e) = fs::remove_file(&target_path) {
+                log::warn!(
+                    target: "lexera.kanban.render",
+                    "failed to remove stale cache {}: {} — continuing with render",
+                    target_path.display(), e
+                );
+            }
         }
-    }
+
+        let render_result = if let Some(renderer) = find_embedded_renderer(&plugin_id) {
+            (renderer.render)(&source_path, &target_path, page_number, &output_format)
+        } else {
+            Err(format!("Unknown embedded file renderer: {}", plugin_id))
+        };
+
+        match render_result {
+            Ok(()) => {
+                if !target_path.is_file() {
+                    let msg = format!(
+                        "Renderer reported success but target file is missing: {}",
+                        target_path.display()
+                    );
+                    log::error!(
+                        target: "lexera.kanban.render",
+                        "{} (plugin={}, src={})",
+                        msg, plugin_id, source_path.display()
+                    );
+                    return RenderEmbeddedFileResult {
+                        success: false,
+                        output_path: target_path_str,
+                        format: output_format,
+                        error: Some(msg),
+                    };
+                }
+                log::info!(
+                    target: "lexera.kanban.render",
+                    "render ok (plugin={}) target={}",
+                    plugin_id, target_path.display()
+                );
+                RenderEmbeddedFileResult {
+                    success: true,
+                    output_path: target_path_str,
+                    format: output_format,
+                    error: None,
+                }
+            }
+            Err(err) => {
+                log::error!(
+                    target: "lexera.kanban.render",
+                    "render failed (plugin={}) src={} target={}: {}",
+                    plugin_id, source_path.display(), target_path.display(), err
+                );
+                RenderEmbeddedFileResult {
+                    success: false,
+                    output_path: target_path_str,
+                    format: output_format,
+                    error: Some(err),
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("render task panicked: {}", e))?;
+
+    Ok(join)
 }
 
 #[tauri::command]

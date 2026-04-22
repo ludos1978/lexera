@@ -1020,6 +1020,20 @@ var LexeraBoardDataStore = (function () {
     var activeBoardId = getActiveBoardId();
 
     if (boardId === activeBoardId) {
+      // When this call is delegated from another window (workspace panel in a
+      // parent shell), `boardData` is a fresh copy with the mutation applied
+      // while our local fullBoardData is stale. Adopt the incoming boardData
+      // so persistBoardMutation's updateDisplayFromFullBoard() +
+      // refreshTargetedElements() pipeline renders the new value. In the
+      // single-window case, boardData is the same object reference as
+      // fullBoardData (spec.apply mutated it in place), so the comparison is
+      // a no-op.
+      if (boardData !== getFullBoardData()) {
+        setFullBoardDataState(boardData);
+        updateActiveBoardDataState(function (nextBoardData) {
+          nextBoardData.fullBoard = boardData;
+        });
+      }
       persistBoardMutation({ targets: targets });
       return true;
     }
