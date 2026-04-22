@@ -199,18 +199,15 @@ var LexeraEmbedMenu = (function () {
 
   function buildFilePreviewPlaceholderHtml(kind, filePath, description) {
     var meta = getPreviewKindMeta(kind, filePath);
-    var filename = getDisplayFileNameFromPath(filePath) || filePath;
     return '<div class="embed-diagram-file">' +
       '<div class="embed-diagram-label">' + meta.emoji + ' ' + escapeHtml(meta.label) + '</div>' +
-      '<div class="embed-diagram-path">' + escapeHtml(filename) + '</div>' +
       '<div class="embed-preview-loading" style="padding:8px 0 0;">' + escapeHtml(description || 'Preview is not available in this view yet.') + '</div>' +
     '</div>';
   }
 
   function getFileEmbedChipHtml(kind, filePath, extraStyleAttr) {
     var meta = getPreviewKindMeta(kind, filePath);
-    var filename = getDisplayFileNameFromPath(filePath) || filePath;
-    return '<span class="embed-file-link"' + (extraStyleAttr || '') + '>' + meta.emoji + ' ' + escapeHtml(filename) + '</span>';
+    return '<span class="embed-file-link"' + (extraStyleAttr || '') + '>' + meta.emoji + '</span>';
   }
 
   function getSpecialPreviewPlaceholderText(previewKind, filePath) {
@@ -1541,7 +1538,7 @@ var LexeraEmbedMenu = (function () {
       editableAttr +
       indexAttr + '>' +
       linkHtml +
-      '<button class="embed-menu-btn link-menu-btn" data-action="link-menu" title="' + escapeAttr(buttonTitle) + '" style="' + escapeAttr(buttonStyle) + '">&#8942;</button>' +
+      '<button class="embed-menu-btn link-menu-btn" data-action="link-menu" title="' + escapeAttr(buttonTitle) + '" style="' + escapeAttr(buttonStyle) + '"><span class="burger-lines" aria-hidden="true"></span></button>' +
       '</span>';
   }
 
@@ -1556,7 +1553,7 @@ var LexeraEmbedMenu = (function () {
       : '';
     var actionButton = options.allowActions === false
       ? ''
-      : '<button class="embed-menu-btn include-menu-btn" type="button" title="Include actions">&#8942;</button>';
+      : '<button class="embed-menu-btn include-menu-btn" type="button" title="Include actions"><span class="burger-lines" aria-hidden="true"></span></button>';
     return '<span class="' + wrapperClass + '" data-board-id="' + escapeAttr(boardId || '') + '"' +
       ' data-file-path="' + escapeAttr(filePath || '') + '"' +
       depthAttr +
@@ -1834,7 +1831,7 @@ var LexeraEmbedMenu = (function () {
       '<div class="inline-file-embed-header" style="' + escapeAttr(headerStyle) + '">' +
       '<span class="inline-file-embed-type" style="' + escapeAttr(typeStyle) + '">' + escapeHtml(typeLabel) + '</span>' +
       '<span class="inline-file-embed-label" data-action="open-inline-file" style="' + escapeAttr(labelStyle) + '">' + escapeHtml(label) + '</span>' +
-      '<button class="embed-menu-btn inline-file-menu-btn" data-action="inline-file-menu" title="File options" style="' + escapeAttr(buttonStyle) + '">&#8942;</button>' +
+      '<button class="embed-menu-btn inline-file-menu-btn" data-action="inline-file-menu" title="File options" style="' + escapeAttr(buttonStyle) + '"><span class="burger-lines" aria-hidden="true"></span></button>' +
       '</div>' +
       '<div class="inline-file-embed-body" style="padding:8px"><div class="embed-preview-loading">Loading preview...</div></div>' +
       captionHtml +
@@ -3041,17 +3038,20 @@ var LexeraEmbedMenu = (function () {
       return;
     }
 
-    // Handle burger menu button clicks for embeds/includes
-    if (e.target.classList.contains('embed-menu-btn') || e.target.classList.contains('include-menu-btn')) {
+    // Handle burger menu button clicks for embeds/includes.
+    // The button may contain a child `<span class="burger-lines">`, so resolve
+    // the actual button via closest() rather than checking e.target directly.
+    var menuBtn = e.target.closest('.embed-menu-btn, .include-menu-btn');
+    if (menuBtn) {
       e.preventDefault();
       e.stopPropagation();
-      var container = e.target.closest(
+      var container = menuBtn.closest(
         '.embed-container, .external-embed-container, .inline-file-embed-container, ' +
         '.include-link-container[data-file-path], .include-inline-container[data-file-path]'
       );
       if (!container) return;
-      if (isIncludeDirectiveContainer(container)) showIncludeMenu(container, e.target);
-      else showEmbedMenu(container, e.target);
+      if (isIncludeDirectiveContainer(container)) showIncludeMenu(container, menuBtn);
+      else showEmbedMenu(container, menuBtn);
       return;
     }
 

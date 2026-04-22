@@ -233,7 +233,7 @@ var LexeraCardContentRenderer = (function () {
           var diagId = DiagramRegistry.nextId(diagramPlugin.id);
           var diagCode = codeLines.join('\n');
           html += buildTagStyledLineHtml('div',
-            '<button class="embed-menu-btn diagram-menu-btn" title="Diagram actions" style="opacity:1">&#8942;</button>' +
+            '<button class="embed-menu-btn diagram-menu-btn" title="Diagram actions" style="opacity:1"><span class="burger-lines" aria-hidden="true"></span></button>' +
             diagramPlugin.placeholder(diagId, diagCode),
             lineStyleSource,
             {

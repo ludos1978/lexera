@@ -456,4 +456,115 @@ describe('LexeraBoardList hierarchy inline edit', () => {
     });
     expect(mirrorRoot.querySelector('.board-item-title-text').textContent).toBe('Board C');
   });
+
+  it('renames a plain column via the canonical workspace tree and persists the new title', async () => {
+    const BoardList = loadBoardList();
+    const boardData = createBoardData();
+    const commitHierarchyTreeEdit = vi.fn(async () => true);
+    const pushUndo = vi.fn();
+
+    BoardList.init({
+      get activeBoardId() { return 'board-1'; },
+      getHierarchyControllerApi: () => HierarchyController,
+      getSidebarTreeApi: () => sidebarTreeApi,
+      loadBoardDataForMutation: vi.fn(async () => boardData),
+      commitHierarchyTreeEdit,
+      pushUndo,
+      stripHtmlComments: (text) => String(text || ''),
+      rebuildTitleWithPreservedComments: (nextTitle) => nextTitle,
+      reconstructColumnTitle: (nextTitle) => nextTitle,
+      extractIncludePathFromTitle: () => '',
+      addIncludeSyntaxToTitle: (title) => title,
+      removeIncludeSyntaxFromTitle: (title) => title,
+      stripLayoutTags: (title) => title,
+      showNotification: vi.fn()
+    });
+
+    const treeNode = document.createElement('div');
+    treeNode.className = 'tree-node tree-column';
+    treeNode.setAttribute('data-board-id', 'board-1');
+    treeNode.setAttribute('data-row-id', 'row-1');
+    treeNode.setAttribute('data-stack-id', 'stack-1');
+    treeNode.setAttribute('data-column-id', 'col-1');
+    treeNode.setAttribute('data-row-index', '0');
+    treeNode.setAttribute('data-stack-index', '0');
+    treeNode.setAttribute('data-col-local-index', '0');
+    treeNode.setAttribute('data-col-index', '0');
+    treeNode.innerHTML = '<span class="tree-label">Column A</span>';
+    document.body.appendChild(treeNode);
+
+    const handled = await BoardList.beginHierarchyNodeInlineEdit(treeNode, 'board-1');
+    expect(handled).toBe(true);
+
+    const input = treeNode.querySelector('input');
+    expect(input).toBeTruthy();
+    expect(input.value).toBe('Column A');
+
+    input.value = 'Column Renamed';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    await flushMicrotasks();
+
+    expect(boardData.rows[0].stacks[0].columns[0].title).toBe('Column Renamed');
+    expect(pushUndo).toHaveBeenCalledTimes(1);
+    expect(commitHierarchyTreeEdit).toHaveBeenCalledWith('board-1', boardData, {
+      targets: [{ type: 'column', colIndex: 0 }, { type: 'sidebar' }]
+    });
+    expect(treeNode.querySelector('.tree-label').textContent).toBe('Column Renamed');
+  });
+
+  it('renames a plain column inside a mirrored workspace view on double click', async () => {
+    const BoardList = loadBoardList();
+    const boardData = createBoardData();
+    const commitHierarchyTreeEdit = vi.fn(async () => true);
+    const pushUndo = vi.fn();
+
+    BoardList.init({
+      get activeBoardId() { return 'board-1'; },
+      getHierarchyControllerApi: () => HierarchyController,
+      getSidebarTreeApi: () => sidebarTreeApi,
+      loadBoardDataForMutation: vi.fn(async () => boardData),
+      commitHierarchyTreeEdit,
+      pushUndo,
+      stripHtmlComments: (text) => String(text || ''),
+      rebuildTitleWithPreservedComments: (nextTitle) => nextTitle,
+      reconstructColumnTitle: (nextTitle) => nextTitle,
+      extractIncludePathFromTitle: () => '',
+      addIncludeSyntaxToTitle: (title) => title,
+      removeIncludeSyntaxFromTitle: (title) => title,
+      stripLayoutTags: (title) => title,
+      showNotification: vi.fn()
+    });
+
+    const mirrorRoot = document.createElement('div');
+    mirrorRoot.innerHTML = `
+      <div class="board-item-wrapper" data-board-id="board-1">
+        <div class="tree-node tree-column" data-board-id="board-1" data-row-id="row-1" data-stack-id="stack-1" data-column-id="col-1" data-row-index="0" data-stack-index="0" data-col-local-index="0" data-col-index="0">
+          <span class="tree-label">Column A</span>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(mirrorRoot);
+
+    BoardList.bindMirroredWorkspaceView(mirrorRoot);
+
+    const label = mirrorRoot.querySelector('.tree-label');
+    label.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+
+    await flushMicrotasks();
+
+    const input = mirrorRoot.querySelector('input');
+    expect(input).toBeTruthy();
+    input.value = 'Column Renamed';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    await flushMicrotasks();
+
+    expect(boardData.rows[0].stacks[0].columns[0].title).toBe('Column Renamed');
+    expect(pushUndo).toHaveBeenCalledTimes(1);
+    expect(commitHierarchyTreeEdit).toHaveBeenCalledWith('board-1', boardData, {
+      targets: [{ type: 'column', colIndex: 0 }, { type: 'sidebar' }]
+    });
+    expect(mirrorRoot.querySelector('.tree-label').textContent).toBe('Column Renamed');
+  });
 });

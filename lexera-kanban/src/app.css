@@ -643,8 +643,9 @@ textarea {
 .wiki-menu-btn:focus-visible,
 .tree-menu-btn:focus-visible,
 .burger-menu-btn:focus-visible {
-  border-color: var(--app-menu-border-hover);
-  background: var(--app-menu-bg-hover);
+  border-width: 1px;
+  border-color: #000;
+  padding: 2px;
   color: var(--app-menu-fg-hover);
 }
 
@@ -4382,12 +4383,23 @@ img[data-lazy-src] {
   top: 4px;
   right: 4px;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, border-color 0.15s, background-color 0.15s, box-shadow 0.15s, color 0.15s;
   z-index: 2;
 }
 
 .embed-container:hover .embed-menu-btn {
   opacity: 1;
+  background: #fff;
+  color: var(--app-menu-fg);
+  border-color: var(--app-menu-border);
+}
+
+.embed-container:hover .embed-menu-btn:hover {
+  background: #fff;
+  border-width: 1px;
+  border-color: #000;
+  padding: 2px;
+  color: var(--app-menu-fg-hover);
 }
 
 /* Broken embed state */
@@ -4760,11 +4772,11 @@ img[data-lazy-src] {
   color: var(--text-primary);
 }
 
-.embed-diagram-path {
-  margin-top: 4px;
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  word-break: break-word;
+/* Once the rendered preview is attached to the embed-container, hide the
+   loading chip so diagrams/PDFs/office files show only the rendered preview
+   and the burger menu — same visual treatment as plain image/video embeds. */
+.embed-container:has(.embed-preview) > .embed-file-link {
+  display: none;
 }
 
 /* Embed floating menu */
@@ -9880,8 +9892,10 @@ body .stack-menu-btn:hover,
 body .column-menu-btn:hover,
 body .card-menu-btn:hover,
 body .burger-menu-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--border);
+  background: transparent;
+  border-width: 1px;
+  border-color: #000;
+  padding: 2px;
   color: var(--text-primary);
 }
 
@@ -10083,8 +10097,9 @@ body .board-header-actions-right > .burger-menu-btn {
 body .board-header-file-group > .burger-menu-btn:hover,
 body .board-header-zone-right > .burger-menu-btn:hover,
 body .board-header-actions-right > .burger-menu-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--border);
+  background: transparent;
+  border-width: 2px;
+  border-color: var(--accent);
   color: var(--text-primary);
 }
 

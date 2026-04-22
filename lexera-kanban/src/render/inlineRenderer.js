@@ -193,7 +193,7 @@ var LexeraInlineRenderer = (function () {
                 '<div class="external-embed-message">Checking whether this page can be embedded…</div>' +
               '</div>' +
             '</span>' +
-            '<button class="embed-menu-btn" title="Embed actions" style="opacity:1">&#8942;</button>' +
+            '<button class="embed-menu-btn" title="Embed actions" style="opacity:1"><span class="burger-lines" aria-hidden="true"></span></button>' +
             '</span>';
           if (externalCaptionHtml) {
             return stashRenderedHtmlToken(htmlTokens, '<figure class="media-figure">' + externalEmbedHtml + externalCaptionHtml + '</figure>');
@@ -287,7 +287,7 @@ var LexeraInlineRenderer = (function () {
           ' data-embed-caption="' + escapeAttr(titleText || '') + '"' +
           previewPageAttr + '>' +
           inner +
-          '<button class="embed-menu-btn" title="Embed actions">&#8942;</button>' +
+          '<button class="embed-menu-btn" title="Embed actions"><span class="burger-lines" aria-hidden="true"></span></button>' +
           '</span>';
         if (titleText) {
           return stashRenderedHtmlToken(htmlTokens, '<figure class="media-figure">' +
