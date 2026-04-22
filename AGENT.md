@@ -12,6 +12,8 @@ after implementing a feature, verify that a frontend test (run from the frontend
 
 Do not use the "rm" command. Move things you want to delete to the trash!
 
+Do not change branches or anything else without my explicit request. We typically have mutliple agents running.
+
 ---
 
 Version 2 is in the folders:

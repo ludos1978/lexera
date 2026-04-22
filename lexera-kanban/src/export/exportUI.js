@@ -1333,24 +1333,56 @@ class ExportUI {
     }
 
     _applyInitialSelection() {
-        if (!this.treeUI || !this.tree) return;
+        if (!this.treeUI || !this.tree) {
+            exportLexeraLog('warn', '[kanban.export.selection] Skipped _applyInitialSelection: '
+                + 'treeUI=' + !!this.treeUI + ' tree=' + !!this.tree);
+            return;
+        }
         var selection = this.initialOptions && this.initialOptions.selection
             ? this.initialOptions.selection
             : { scope: 'board' };
         var resolved = ExportTreeBuilder.resolveNodeIdForSelection(this.tree, selection);
         var nodeId = resolved || 'root';
+        // Enumerate the tree's top-level row nodes so the warning path can
+        // report what row IDs actually exist vs what the caller asked for.
+        var treeRowIds = [];
+        if (this.tree && Array.isArray(this.tree.children)) {
+            for (var tri = 0; tri < this.tree.children.length; tri++) {
+                var n = this.tree.children[tri];
+                if (n && n.type === 'row') treeRowIds.push(ExportTreeBuilder.generateNodeId(n));
+            }
+        }
         exportLexeraLog('info', '[kanban.export.selection] requested=' + JSON.stringify(selection)
-            + ' resolved=' + (resolved || '(none, defaulted to root)'));
+            + ' resolved=' + (resolved || '(none, defaulted to root)')
+            + ' treeRowIds=' + JSON.stringify(treeRowIds));
         if (selection && selection.scope && selection.scope !== 'board' && !resolved) {
             exportLexeraLog('warn', '[kanban.export.selection] Could not resolve ' + selection.scope
                 + ' to a tree node — menu passed indexes that do not match the export tree.'
-                + ' selection=' + JSON.stringify(selection));
+                + ' selection=' + JSON.stringify(selection) + ' treeRowIds=' + JSON.stringify(treeRowIds));
             this._setStatus('Could not pre-select ' + selection.scope
                 + ' (' + JSON.stringify(selection) + '); defaulted to full board.', 'warn');
         } else if (selection && selection.scope && selection.scope !== 'board') {
             this._setStatus('Pre-selected ' + selection.scope + ': ' + nodeId, 'info');
         }
         this.treeUI.setOnlySelection(nodeId);
+        // Verify the selection actually landed on the requested node — if
+        // some later code path (preset application, selection-change
+        // callbacks, etc.) clobbers the tree state between setOnlySelection
+        // and the caller's collectOptions, the observable symptom is
+        // "row export selected row scope: expected 'row', got 'board'".
+        // Logging here names the actual selected scopes so the regression
+        // is traceable from the in-app log panel.
+        var postScopes = [];
+        try {
+            var postSel = this.treeUI.getSelection();
+            if (postSel && Array.isArray(postSel.scopes)) {
+                for (var psi = 0; psi < postSel.scopes.length; psi++) {
+                    postScopes.push(postSel.scopes[psi].scope);
+                }
+            }
+        } catch (_) {}
+        exportLexeraLog('info', '[kanban.export.selection] after setOnlySelection('
+            + nodeId + ') scopes=' + JSON.stringify(postScopes));
     }
 
     _bindStoredSelect(id, key, normalizeFn) {

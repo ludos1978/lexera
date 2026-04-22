@@ -129,6 +129,25 @@ var LexeraApi = (function () {
     };
   }
 
+  // Inject Authorization into an IPC header list if we have a token
+  // cached and the caller didn't already set one. Synchronous — must not
+  // call ensureBearerToken(), because the token-bootstrap call itself
+  // routes through ipcFetch and would cause infinite recursion.
+  function attachIpcAuthHeaders(headers) {
+    var list = Array.isArray(headers) ? headers.slice() : [];
+    if (!bearerToken) return list;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && String(list[i][0]).toLowerCase() === 'authorization') return list;
+    }
+    var authed = authHeaders();
+    for (var k in authed) {
+      if (Object.prototype.hasOwnProperty.call(authed, k)) {
+        list.push([String(k).toLowerCase(), String(authed[k])]);
+      }
+    }
+    return list;
+  }
+
   async function ipcFetch(path, fetchOptions) {
     var core = resolveTauriCore();
     if (!core) throw new Error('IPC transport selected but Tauri core unavailable');
@@ -136,7 +155,7 @@ var LexeraApi = (function () {
     var arg = {
       method: String(method).toUpperCase(),
       uri: path,
-      headers: headerListFromInit(fetchOptions && fetchOptions.headers),
+      headers: attachIpcAuthHeaders(headerListFromInit(fetchOptions && fetchOptions.headers)),
       body: bodyToStringForIpc(fetchOptions && fetchOptions.body)
     };
     var result = await core.invoke('backend_ipc_request', { arg: arg });
@@ -725,11 +744,12 @@ var LexeraApi = (function () {
     if (getTransportMode() === 'local-ipc') {
       var core = resolveTauriCore();
       if (!core) throw new Error('IPC transport selected but Tauri core unavailable');
+      await ensureBearerToken();
       var serialized = await formDataToBytes(form);
       var arg = {
         method: 'POST',
         uri: path,
-        headers: [['content-type', serialized.contentType]],
+        headers: attachIpcAuthHeaders([['content-type', serialized.contentType]]),
         body: Array.from(serialized.bytes)
       };
       var result;

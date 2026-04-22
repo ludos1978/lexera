@@ -736,12 +736,20 @@ var HiddenItemsDropdown = (function () {
   }
 
   async function runHeaderSourceDescriptorAction(descriptor, target) {
+    try {
+      _deps.logFrontendIssue('info', 'header.source.action',
+        'runHeaderSourceDescriptorAction ENTER mode=' + (descriptor && descriptor.mode)
+        + ' entityType=' + (descriptor && descriptor.entityType)
+        + ' templateId=' + (descriptor && descriptor.templateId)
+        + ' hasTarget=' + !!(target && target.context));
+    } catch (_) {}
     if (!descriptor || descriptor.disabled) return false;
     var entityType = String(descriptor.entityType || '').trim().toLowerCase();
     if (!entityType) return false;
     var resolvedTarget = target && target.context ? target : null;
     var context = resolvedTarget ? resolvedTarget.context : await _deps.resolveHeaderCreationContext(entityType);
     if (!context) {
+      _deps.logFrontendIssue('warn', 'header.source.action', 'No insertion target; entityType=' + entityType);
       _deps.showNotification('No insertion target available');
       return false;
     }
@@ -861,6 +869,13 @@ var HiddenItemsDropdown = (function () {
         document.removeEventListener('pointermove', onMove);
         document.removeEventListener('pointerup', onUp);
         document.removeEventListener('pointercancel', onCancel);
+        try {
+          _deps.logFrontendIssue('info', 'header.source.drag',
+            'grip pointerup started=' + started
+            + ' mode=' + (descriptor && descriptor.mode)
+            + ' entityType=' + (descriptor && descriptor.entityType)
+            + ' templateId=' + (descriptor && descriptor.templateId));
+        } catch (_) {}
         if (!started) return;
         cleanup();
         runHeaderSourceDescriptorAction(

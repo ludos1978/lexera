@@ -6152,6 +6152,52 @@ var LexeraDashboard = (function () {
    * rapidly. Pass `dedupe: false` to force-queue (e.g. distinct user
    * actions that happen to have identical wording).
    */
+  // Catch-all: log any popup/dialog/toast/notification added to the DOM,
+  // even if it bypasses showNotification(). Matches common patterns
+  // (.notification, .toast, .modal-dialog, .dialog, [role="alert"]).
+  (function installGlobalPopupLogger() {
+    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+    if (window.__lexeraPopupLoggerInstalled) return;
+    window.__lexeraPopupLoggerInstalled = true;
+    var POPUP_SELECTOR = '.notification, .toast, .modal-dialog, .dialog, [role="alert"], [role="alertdialog"]';
+    var TEXT_NEEDLE = /\b(failed|error|warning|unable|couldn['\u2019]t|cannot)\b/i;
+    function logPopupElement(el, reason) {
+      try {
+        var text = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 400);
+        if (!text) return;
+        var cls = el.className || el.tagName;
+        var level = /error|danger|fail/i.test(cls + ' ' + text) ? 'error'
+                  : /warn/i.test(cls + ' ' + text) ? 'warn' : 'info';
+        lexeraLogWithTarget(level, 'popup.dom', '[' + reason + '] ' + cls + ': ' + text);
+      } catch (_) {}
+    }
+    function scan(node) {
+      if (!node || node.nodeType !== 1) return;
+      // 1) Matches a known popup selector
+      if (node.matches && node.matches(POPUP_SELECTOR)) logPopupElement(node, 'selector');
+      if (node.querySelectorAll) {
+        var found = node.querySelectorAll(POPUP_SELECTOR);
+        for (var i = 0; i < found.length; i++) logPopupElement(found[i], 'selector');
+      }
+      // 2) Fallback: any direct child of <body> that is added with visible
+      // error-ish text. Catches popups whose class doesn't match our list.
+      if (node.parentNode === document.body) {
+        var t = (node.textContent || '').trim();
+        if (t && TEXT_NEEDLE.test(t)) logPopupElement(node, 'text');
+      }
+    }
+    function start() {
+      new MutationObserver(function (muts) {
+        for (var i = 0; i < muts.length; i++) {
+          var added = muts[i].addedNodes;
+          for (var j = 0; j < added.length; j++) scan(added[j]);
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+    if (document.body) start();
+    else document.addEventListener('DOMContentLoaded', start, { once: true });
+  })();
+
   function showNotification(message, opts) {
     opts = opts || {};
     try {
