@@ -9,7 +9,9 @@ const assets = [
   'management.js',
   'management.css',
   'themes.js',
-  'backendDiscovery.js'
+  'backendDiscovery.js',
+  'dialogs.js',
+  'dialogs.css'
 ];
 
 const destinations = process.argv.slice(2);

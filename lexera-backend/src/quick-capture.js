@@ -41,6 +41,35 @@
     return Promise.reject(new Error('Tauri invoke unavailable: ' + cmd));
   }
 
+  // Tracks active Tauri event subscriptions so we can unlisten on page
+  // unload (Ctrl+R / inspector reload). Without this, Rust keeps emitting
+  // against dead callback ids and the fresh JS world logs
+  // "[TAURI] Couldn't find callback id …" forever.
+  const _activeTauriListeners = [];
+  let _tauriUnloadHookRegistered = false;
+
+  function _registerTauriUnloadHook() {
+    if (_tauriUnloadHookRegistered) return;
+    _tauriUnloadHookRegistered = true;
+    const cleanup = function () {
+      const snapshot = _activeTauriListeners.splice(0, _activeTauriListeners.length);
+      for (const entry of snapshot) {
+        try {
+          if (entry.eventId != null && window.__TAURI_INTERNALS__) {
+            window.__TAURI_INTERNALS__.invoke('plugin:event|unlisten', {
+              event: entry.eventName,
+              eventId: entry.eventId,
+            });
+          } else if (typeof entry.unlistenFn === 'function') {
+            entry.unlistenFn();
+          }
+        } catch (e) { /* swallow — page is unloading */ }
+      }
+    };
+    window.addEventListener('pagehide', cleanup);
+    window.addEventListener('beforeunload', cleanup);
+  }
+
   function tauriListen(eventName, callback) {
     if (window.__TAURI_INTERNALS__ &&
       typeof window.__TAURI_INTERNALS__.invoke === 'function' &&
@@ -52,10 +81,31 @@
         event: eventName,
         target: { kind: 'Any' },
         handler: handler,
+      }).then(function (eventId) {
+        const entry = { eventName, eventId };
+        _activeTauriListeners.push(entry);
+        _registerTauriUnloadHook();
+        return function unlisten() {
+          const idx = _activeTauriListeners.indexOf(entry);
+          if (idx >= 0) _activeTauriListeners.splice(idx, 1);
+          return window.__TAURI_INTERNALS__.invoke('plugin:event|unlisten', {
+            event: eventName,
+            eventId,
+          });
+        };
       });
     }
     if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
-      return window.__TAURI__.event.listen(eventName, callback);
+      return Promise.resolve(window.__TAURI__.event.listen(eventName, callback)).then(function (unlistenFn) {
+        const entry = { eventName, unlistenFn };
+        _activeTauriListeners.push(entry);
+        _registerTauriUnloadHook();
+        return function unlisten() {
+          const idx = _activeTauriListeners.indexOf(entry);
+          if (idx >= 0) _activeTauriListeners.splice(idx, 1);
+          if (typeof unlistenFn === 'function') return unlistenFn();
+        };
+      });
     }
     return Promise.reject(new Error('Tauri listen unavailable: ' + eventName));
   }

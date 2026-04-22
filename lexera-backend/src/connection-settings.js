@@ -297,7 +297,7 @@
     return {
       openLogStream: openLogStream,
       onNotify: function (msg) {
-        console.info('[management]', msg);
+        console.log('[management]', msg);
       },
       onConfirm: function (msg) {
         return Promise.resolve(window.confirm(msg));

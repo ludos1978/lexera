@@ -1557,7 +1557,7 @@ var LexeraDashboard = (function () {
                 ' trace=' + trace.split('\n').slice(1, 8).join(' <- '));
             } catch (_) {}
           }, { passive: true });
-          try { logFrontendIssue('error', 'scroll-drift', 'watcher installed'); } catch (_) {}
+          try { logFrontendIssue('warn', 'scroll-drift', 'watcher installed'); } catch (_) {}
         }
         tryInstall();
       })();
@@ -5676,36 +5676,10 @@ var LexeraDashboard = (function () {
     });
   }
 
-  // ── Confirm Dialog (replaces broken window.confirm in Tauri 2) ──
+  // ── Confirm Dialog — delegates to shared LexeraDialogs (logs prompt + result) ──
 
   function showConfirmDialog(message) {
-    return new Promise(function (resolve) {
-      var overlay = document.createElement('div');
-      overlay.className = 'dialog-overlay';
-      var dialog = document.createElement('div');
-      dialog.className = 'dialog dialog--narrow';
-      dialog.innerHTML =
-        '<div class="dialog-title">Confirm</div>' +
-        '<div class="dialog-note dialog-note--spacious dialog-note--preline">' + escapeHtml(message) + '</div>' +
-        '<div class="dialog-actions">' +
-        '<button class="btn-small btn-cancel" data-confirm="cancel">Cancel</button>' +
-        '<button class="btn-small btn-primary" data-confirm="ok">OK</button>' +
-        '</div>';
-      overlay.appendChild(dialog);
-      document.body.appendChild(overlay);
-      function close(result) {
-        overlay.remove();
-        resolve(result);
-      }
-      overlay.addEventListener('click', function (e) {
-        if (e.target === overlay) close(false);
-      });
-      dialog.addEventListener('click', function (e) {
-        var btn = e.target.closest('[data-confirm]');
-        if (!btn) return;
-        close(btn.getAttribute('data-confirm') === 'ok');
-      });
-    });
+    return LexeraDialogs.confirm(message);
   }
 
   var _quitAppInProgress = false;
@@ -6180,6 +6154,11 @@ var LexeraDashboard = (function () {
    */
   function showNotification(message, opts) {
     opts = opts || {};
+    try {
+      var variant = opts.variant || 'info';
+      var level = variant === 'error' ? 'error' : (variant === 'warn' ? 'warn' : 'info');
+      lexeraLogWithTarget(level, 'notification.' + variant, String(message));
+    } catch (_) {}
     if (opts.dedupe !== false) {
       if (_notificationActiveMessage === message) return;
       for (var qi = 0; qi < _notificationQueue.length; qi++) {
@@ -9099,7 +9078,7 @@ var LexeraDashboard = (function () {
         throw new Error('Column not available for card creation');
       }
     } catch (err) {
-      alert('Failed to add card: ' + err.message);
+      showNotification('Failed to add card: ' + err.message, { variant: 'error' });
     }
   }
 

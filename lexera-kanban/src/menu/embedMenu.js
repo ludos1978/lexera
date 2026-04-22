@@ -3237,26 +3237,91 @@ var LexeraEmbedMenu = (function () {
     return Promise.reject(new Error('Tauri not available'));
   }
 
+  // Tracks every active Tauri event subscription so we can unlisten on page
+  // unload. Without this, Ctrl+R / inspector reload leaves stale callback ids
+  // registered on the Rust side — Rust keeps emitting (e.g. drag-over) and
+  // the fresh JS world logs "[TAURI] Couldn't find callback id …" forever.
+  var _activeTauriListeners = [];
+  var _tauriUnloadHookRegistered = false;
+
+  function _registerTauriUnloadHook() {
+    if (_tauriUnloadHookRegistered) return;
+    _tauriUnloadHookRegistered = true;
+    var cleanup = function () {
+      var snapshot = _activeTauriListeners;
+      _activeTauriListeners = [];
+      for (var i = 0; i < snapshot.length; i++) {
+        var entry = snapshot[i];
+        try {
+          if (entry.eventId != null && entry.ipc) {
+            entry.ipc.invoke('plugin:event|unlisten', {
+              event: entry.eventName,
+              eventId: entry.eventId,
+            });
+          } else if (typeof entry.unlistenFn === 'function') {
+            entry.unlistenFn();
+          }
+        } catch (e) { /* swallow — page is unloading */ }
+      }
+    };
+    // pagehide covers reloads and navigations in WKWebView/WebView2; beforeunload is a belt-and-braces fallback.
+    window.addEventListener('pagehide', cleanup);
+    window.addEventListener('beforeunload', cleanup);
+  }
+
+  function _trackTauriListener(entry) {
+    _activeTauriListeners.push(entry);
+    _registerTauriUnloadHook();
+  }
+
+  function _removeTauriListener(entry) {
+    var idx = _activeTauriListeners.indexOf(entry);
+    if (idx >= 0) _activeTauriListeners.splice(idx, 1);
+  }
+
+  // Subscribe to a Tauri event. Returns a Promise resolving to an unlisten
+  // function (matching Tauri's own API shape). Callers may discard the
+  // return value safely: the listener is still tracked and auto-unlistened
+  // on page unload so reloads don't accumulate orphan callbacks.
   function tauriListen(eventName, callback) {
     var ipc = resolveTauriInternals();
     if (ipc && typeof ipc.transformCallback === 'function') {
       var handler = ipc.transformCallback(callback, false);
-      ipc.invoke('plugin:event|listen', {
+      return ipc.invoke('plugin:event|listen', {
         event: eventName,
         target: { kind: 'Any' },
         handler: handler,
+      }).then(function (eventId) {
+        var entry = { eventName: eventName, eventId: eventId, ipc: ipc };
+        _trackTauriListener(entry);
+        return function unlisten() {
+          _removeTauriListener(entry);
+          return ipc.invoke('plugin:event|unlisten', {
+            event: eventName,
+            eventId: eventId,
+          });
+        };
       });
-      return;
     }
-    if (window.__TAURI__ && window.__TAURI__.event) {
-      window.__TAURI__.event.listen(eventName, callback);
-      return;
+    var evApi = (window.__TAURI__ && window.__TAURI__.event) || null;
+    if (!evApi) {
+      try {
+        if (window.parent && window.parent !== window && window.parent.__TAURI__ && window.parent.__TAURI__.event) {
+          evApi = window.parent.__TAURI__.event;
+        }
+      } catch (e) { /* cross-origin — ignore */ }
     }
-    try {
-      if (window.parent && window.parent !== window && window.parent.__TAURI__ && window.parent.__TAURI__.event) {
-        window.parent.__TAURI__.event.listen(eventName, callback);
-      }
-    } catch (e) { /* cross-origin — ignore */ }
+    if (evApi && typeof evApi.listen === 'function') {
+      return Promise.resolve(evApi.listen(eventName, callback)).then(function (unlistenFn) {
+        var entry = { eventName: eventName, unlistenFn: unlistenFn };
+        _trackTauriListener(entry);
+        return function unlisten() {
+          _removeTauriListener(entry);
+          if (typeof unlistenFn === 'function') return unlistenFn();
+        };
+      });
+    }
+    return Promise.resolve(function () {});
   }
 
   /**
@@ -3912,29 +3977,27 @@ var LexeraEmbedMenu = (function () {
     window.__lexeraReplaceDocDropActive = true;
     var tauriDragUnlisteners = [];
     if (hasTauri) {
-      var listenFn = (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen) ||
-        (window.parent && window.parent !== window && window.parent.__TAURI__ && window.parent.__TAURI__.event && window.parent.__TAURI__.event.listen);
-      if (listenFn) {
-        listenFn('tauri://drag-over', function (event) {
-          var pos = event.payload && event.payload.position;
-          if (pos && dropZone) {
-            var inside = false;
-            var rect = dropZone.getBoundingClientRect();
-            if (pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom) inside = true;
-            dropZone.classList.toggle('drag-over', inside);
-          }
-        }).then(function (u) { tauriDragUnlisteners.push(u); });
-        listenFn('tauri://drag-leave', function () {
-          if (dropZone) dropZone.classList.remove('drag-over');
-        }).then(function (u) { tauriDragUnlisteners.push(u); });
-        listenFn('tauri://drag-drop', function (event) {
-          if (dropZone) dropZone.classList.remove('drag-over');
-          var paths = event.payload && event.payload.paths;
-          if (paths && paths.length > 0) {
-            closeAndApply(paths[0]);
-          }
-        }).then(function (u) { tauriDragUnlisteners.push(u); });
-      }
+      // Route through tauriListen so stale listeners are cleaned up on
+      // page unload (Ctrl+R / inspector reload) — not just on overlay close.
+      tauriListen('tauri://drag-over', function (event) {
+        var pos = event.payload && event.payload.position;
+        if (pos && dropZone) {
+          var inside = false;
+          var rect = dropZone.getBoundingClientRect();
+          if (pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom) inside = true;
+          dropZone.classList.toggle('drag-over', inside);
+        }
+      }).then(function (u) { tauriDragUnlisteners.push(u); });
+      tauriListen('tauri://drag-leave', function () {
+        if (dropZone) dropZone.classList.remove('drag-over');
+      }).then(function (u) { tauriDragUnlisteners.push(u); });
+      tauriListen('tauri://drag-drop', function (event) {
+        if (dropZone) dropZone.classList.remove('drag-over');
+        var paths = event.payload && event.payload.paths;
+        if (paths && paths.length > 0) {
+          closeAndApply(paths[0]);
+        }
+      }).then(function (u) { tauriDragUnlisteners.push(u); });
     }
 
     // Clean up Tauri listeners when overlay is removed

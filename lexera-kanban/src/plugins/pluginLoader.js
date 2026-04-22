@@ -1,8 +1,8 @@
 var LexeraPluginLoader = (function () {
   function logInfo(msg, detail) {
-    if (typeof console !== 'undefined' && console.info) {
-      if (detail !== undefined) console.info('[PluginLoader] ' + msg, detail);
-      else console.info('[PluginLoader] ' + msg);
+    if (typeof console !== 'undefined' && console.log) {
+      if (detail !== undefined) console.log('[PluginLoader] ' + msg, detail);
+      else console.log('[PluginLoader] ' + msg);
     }
   }
 

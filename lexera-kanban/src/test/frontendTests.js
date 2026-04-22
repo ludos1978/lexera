@@ -251,11 +251,33 @@
   //   • cross-cutting keyword tags — auto-derived from name keywords so a
   //     consistency test about a card move also shows up under 'moves' and
   //     'cards'. Same category system, orthogonal axis.
+  // Full set of test scopes, in the order they render in the UI. Empty
+  // scopes are KEPT (pre-seeded in buildCategoryGroups) so they show as
+  // visible "0 tests" groups — a standing reminder to add coverage for
+  // those surfaces.
+  var SCOPE_ORDER = [
+    'scope: kanban',      // main board view (card/column/row/structure/tags/includes/embeds)
+    'scope: workspace',   // workspace shell, sidebar, multi-board delegation
+    'scope: dashboard',   // dashboard panel: todos, search, filters
+    'scope: export',      // marp / presentation export dialog
+    'scope: editor',      // card editor modal + inline editor
+    'scope: canvas',      // canvas layout mode + drawio/excalidraw overlays
+    'scope: settings',    // frontend / board / controls settings panels
+    'scope: menu',        // context menus (card/column/row/stack burger menus)
+    'scope: logs',        // frontend/backend log panel
+    'scope: calendar',    // calendar panels (week/month)
+    'scope: global'       // pure JS unit tests — no live board needed
+  ];
   var SCOPE_BY_MINOR = {
     // workspace view (multi-board shell, sidebar, delegation)
     'workspace sidebar': 'workspace',
     'workspace reorder': 'workspace',
     'workspace shell delegation': 'workspace',
+    // dashboard panel
+    'dashboard': 'dashboard',
+    'dashboard search': 'dashboard',
+    // export dialog
+    'marp export': 'export',
     // pure JS / spec tests — no live board needed
     'temporal classify': 'global',
     'temporal resolve': 'global'
@@ -4627,31 +4649,48 @@
     var data = api().getFullBoardData();
     assert(data && data.rows && data.rows.length > 0, label + ': board data exists');
 
-    // 1. Data structure: unique IDs (skip pre-existing duplicates)
+    // 1. Data structure: unique IDs (skip pre-existing duplicates).
+    //
+    // Expected counts are computed against the VISIBLE projection: rows,
+    // stacks and columns whose titles carry an archived/deleted/hidden tag
+    // are filtered out by updateDisplayFromFullBoard before renderColumns
+    // runs. Counting them as "expected" here would force every mutation
+    // test on a board that happens to contain one archived column to fail
+    // with "DOM col count expected N, got N-1" even though the mutation is
+    // fine. We still walk the full data to catch duplicate IDs (archived
+    // columns share the same ID namespace).
     var cardIdsSeen = {};
     var colIdsSeen = {};
+    var expectedRowCount = 0;
     var expectedColCount = 0;
     var expectedVisibleCardCount = 0;
     var preCardDups = _preExistingDuplicateCardIds || {};
     var preColDups = _preExistingDuplicateColIds || {};
     for (var r = 0; r < data.rows.length; r++) {
-      var stacks = data.rows[r].stacks || [];
+      var row = data.rows[r];
+      var rowHidden = isHiddenForRender(row && row.title);
+      if (!rowHidden) expectedRowCount++;
+      var stacks = row && row.stacks ? row.stacks : [];
       for (var s = 0; s < stacks.length; s++) {
-        var cols = stacks[s].columns || [];
+        var stack = stacks[s];
+        var stackHidden = rowHidden || isHiddenForRender(stack && stack.title);
+        var cols = stack && stack.columns ? stack.columns : [];
         for (var c = 0; c < cols.length; c++) {
-          if (!preColDups[cols[c].id]) {
-            assert(!colIdsSeen[cols[c].id], label + ': duplicate col ID ' + cols[c].id);
+          var col = cols[c];
+          if (!preColDups[col.id]) {
+            assert(!colIdsSeen[col.id], label + ': duplicate col ID ' + col.id);
           }
-          colIdsSeen[cols[c].id] = true;
-          expectedColCount++;
-          var cards = cols[c].cards || [];
+          colIdsSeen[col.id] = true;
+          var colHidden = stackHidden || isHiddenForRender(col && col.title);
+          if (!colHidden) expectedColCount++;
+          var cards = col.cards || [];
           for (var k = 0; k < cards.length; k++) {
             var cid = cards[k].kid || cards[k].id;
             if (!preCardDups[cid]) {
               assert(!cardIdsSeen[cid], label + ': duplicate card ID ' + cid);
             }
             cardIdsSeen[cid] = true;
-            if (!cards[k].content || cards[k].content.indexOf('#hidden-internal') === -1) {
+            if (!colHidden && (!cards[k].content || cards[k].content.indexOf('#hidden-internal') === -1)) {
               expectedVisibleCardCount++;
             }
           }
@@ -4659,9 +4698,9 @@
       }
     }
 
-    // 2. DOM counts match data
+    // 2. DOM counts match data (visible projection)
     assertEqual(getViewColumnCount(), expectedColCount, label + ': DOM col count matches data');
-    assertEqual(getViewRowCount(), data.rows.length, label + ': DOM row count matches data');
+    assertEqual(getViewRowCount(), expectedRowCount, label + ': DOM row count matches data');
     assertEqual(getTotalViewCards(), expectedVisibleCardCount, label + ': DOM visible card count matches data');
 
     // 3. No duplicate card IDs in DOM
@@ -4670,12 +4709,16 @@
     // 4. Per-column card ID parity (data vs DOM)
     // Skip include columns — their card IDs are regenerated by the
     // backend on every board load, so data and DOM IDs will differ
-    // after any save/reload cycle triggered by SSE events.
+    // after any save/reload cycle triggered by SSE events. Also skip
+    // columns whose title carries an archived/deleted tag: the visible
+    // projection filters them out so they never appear in the DOM, and
+    // DOM-level card-index queries would shift by their exclusion.
     var allCols = api().getAllFullColumns();
     for (var i = 0; i < allCols.length; i++) {
       var isIncludeCol = !!(allCols[i].includeSource || allCols[i].include_source ||
         (allCols[i].title && allCols[i].title.indexOf('!!!include(') !== -1));
       if (isIncludeCol) continue;
+      if (isHiddenForRender(allCols[i].title)) continue;
       var visibleCards = (allCols[i].cards || []).filter(function (card) {
         return !card.content || card.content.indexOf('#hidden-internal') === -1;
       });
@@ -7042,7 +7085,17 @@
           'color: #4ec9b0; font-weight: bold', 'color: inherit', 'color: #888');
       } catch (err) {
         var testDurFail = _nowMs() - testStart;
-        results.push({ name: tests[i].name, passed: false, error: err.message || String(err), durationMs: testDurFail });
+        // Capture the stack when available; without it, WKWebView errors like
+        // "null is not an object (evaluating 'localStorage.getItem')" arrive
+        // without any pointer to the originating call site, which makes them
+        // impossible to triage from the output file alone.
+        results.push({
+          name: tests[i].name,
+          passed: false,
+          error: err.message || String(err),
+          stack: err && err.stack ? String(err.stack) : '',
+          durationMs: testDurFail
+        });
         console.log('%c  FAIL %c ' + tests[i].name + ' %c(' + formatDurationMs(testDurFail) + ')%c: ' + (err.message || err),
           'color: #f44747; font-weight: bold', 'color: #f44747', 'color: #888', 'color: #f44747');
       }
@@ -7202,6 +7255,16 @@
       }
       lines.push('[' + (r.passed ? 'PASS' : 'FAIL') + ']' + durLabel + ' ' + r.name);
       if (!r.passed && r.error) lines.push('       ' + r.error);
+      if (!r.passed && r.stack) {
+        // Emit the stack indented under the error message. Truncated at 1KB
+        // to keep the output file scannable — full stack is still in the
+        // devtools console via the FAIL console.log above.
+        var stackText = r.stack.length > 1000 ? r.stack.slice(0, 1000) + '… (truncated)' : r.stack;
+        var stackLines = stackText.split('\n');
+        for (var sl = 0; sl < stackLines.length; sl++) {
+          if (stackLines[sl]) lines.push('         ' + stackLines[sl]);
+        }
+      }
       // Include mutation profile: show top samples with phase breakdowns
       if (r.mutationProfile && r.mutationProfile.count > 0) {
         var mp = r.mutationProfile;
@@ -7371,10 +7434,19 @@
   }
 
   // Build an ordered list of categories with member test indices.
-  // Order: by first-appearance of category in test registration order.
+  // Order: all `scope: *` buckets first (in SCOPE_ORDER, pre-seeded even
+  // when empty so missing coverage is visible), then everything else by
+  // first-appearance in test registration order.
   function buildCategoryGroups() {
     var order = [];
     var groups = {};
+    // Pre-seed every scope bucket so empty scopes (editor, canvas,
+    // settings, menu, logs, calendar …) render as visible "0" groups —
+    // a standing reminder to add coverage for those views.
+    for (var s = 0; s < SCOPE_ORDER.length; s++) {
+      groups[SCOPE_ORDER[s]] = [];
+      order.push(SCOPE_ORDER[s]);
+    }
     for (var i = 0; i < tests.length; i++) {
       var cats = tests[i].categories || [];
       for (var c = 0; c < cats.length; c++) {

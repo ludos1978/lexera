@@ -1,0 +1,105 @@
+/*
+ * LexeraDialogs — shared confirm/prompt dialog styling.
+ * Falls back to neutral defaults when an app's theme vars aren't defined.
+ * These rules intentionally match the existing `.dialog-*` shapes used
+ * by kanban's app.css so a single markup string renders correctly in
+ * every host. Button styling is scoped to `.dialog-btn` so it doesn't
+ * collide with host-specific `.btn-small` / `.mgmt-btn` conventions.
+ */
+
+.lexera-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--shadow-ink, rgba(0, 0, 0, 1)) 50%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.lexera-dialog-overlay .dialog {
+  background: var(--bg-secondary, #ffffff);
+  border: 1px solid var(--border, #cccccc);
+  border-radius: 3px;
+  padding: 20px;
+  min-width: 360px;
+  max-width: 90vw;
+  box-sizing: border-box;
+  color: var(--text-primary, #000000);
+}
+
+.lexera-dialog-overlay .dialog--narrow {
+  max-width: min(420px, 90vw);
+}
+
+.lexera-dialog-overlay .dialog-title {
+  font-size: 15px;
+  color: var(--text-primary, #000000);
+  margin-bottom: 16px;
+}
+
+.lexera-dialog-overlay .dialog-note {
+  font-size: var(--font-size-sm, 13px);
+  color: var(--text-primary, #000000);
+  margin: 4px 0 12px;
+}
+
+.lexera-dialog-overlay .dialog-note--spacious {
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.lexera-dialog-overlay .dialog-note--preline {
+  white-space: pre-line;
+}
+
+.lexera-dialog-overlay .dialog-field {
+  margin-bottom: 12px;
+}
+
+.lexera-dialog-overlay .dialog-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg-tertiary, var(--bg-primary, #ffffff));
+  border: 1px solid var(--border, #cccccc);
+  border-radius: 2px;
+  color: var(--text-primary, #000000);
+  font: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.lexera-dialog-overlay .dialog-input:focus {
+  border-color: var(--accent, #3b82f6);
+}
+
+.lexera-dialog-overlay .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.lexera-dialog-overlay .dialog-btn {
+  padding: 6px 14px;
+  background: var(--bg-tertiary, var(--bg-primary, #ffffff));
+  border: 1px solid var(--border, #cccccc);
+  border-radius: 2px;
+  color: var(--text-primary, #000000);
+  font: inherit;
+  cursor: pointer;
+}
+
+.lexera-dialog-overlay .dialog-btn:hover {
+  background: var(--bg-hover, var(--bg-secondary, #f0f0f0));
+}
+
+.lexera-dialog-overlay .dialog-btn-primary {
+  background: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+  color: #ffffff;
+}
+
+.lexera-dialog-overlay .dialog-btn-primary:hover {
+  background: var(--accent-hover, var(--accent, #2563eb));
+}

@@ -715,7 +715,7 @@ pub async fn show_context_menu(
         .map(|item| item.id.clone().or(item.label.clone()).unwrap_or_default())
         .collect();
 
-    eprintln!(
+    log::info!(
         "[lexera-kanban.menu] open x={} y={} items={:?}",
         x, y, menu_labels
     );
@@ -765,7 +765,7 @@ pub async fn show_context_menu(
         if let Ok(mut s) = sel.lock() {
             *s = Some(event.id().0.to_string());
         }
-        eprintln!("[lexera-kanban.menu] selected id={}", event.id().0);
+        log::info!("[lexera-kanban.menu] selected id={}", event.id().0);
     });
 
     // popup_menu_at must run on the main thread on macOS
@@ -795,8 +795,8 @@ pub async fn show_context_menu(
     }
 
     match &result {
-        Some(action) => eprintln!("[lexera-kanban.menu] returning selection={}", action),
-        None => eprintln!("[lexera-kanban.menu] closed without selection after wait"),
+        Some(action) => log::info!("[lexera-kanban.menu] returning selection={}", action),
+        None => log::info!("[lexera-kanban.menu] closed without selection after wait"),
     }
 
     Ok(result)

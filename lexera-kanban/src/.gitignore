@@ -3,4 +3,6 @@ management.js
 management.css
 themes.js
 backendDiscovery.js
+dialogs.js
+dialogs.css
 auto-run-config.json

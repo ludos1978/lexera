@@ -506,7 +506,9 @@ var LexeraTemplates = (function () {
         }
         var validation = validateVariables(variables, vals);
         if (!validation.valid) {
-          alert('Please fill in required fields: ' + validation.missing.join(', '));
+          if (typeof window.showNotification === 'function') {
+            window.showNotification('Please fill in required fields: ' + validation.missing.join(', '), { variant: 'error' });
+          }
           return;
         }
         cleanup(vals);

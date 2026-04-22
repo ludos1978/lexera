@@ -841,12 +841,17 @@ var LexeraRowStackMenu = (function () {
   }
 
   async function buildBuiltInDiagramTemplateEmbedMarkdown(templateId) {
+    deps.logFrontendIssue('info', 'template.builtin.diagram', 'ENTER buildBuiltInDiagramTemplateEmbedMarkdown v3 templateId=' + templateId);
     if (!deps.getActiveBoardId()) {
+      deps.logFrontendIssue('warn', 'template.builtin.diagram', 'No active board selected');
       deps.showNotification('No active board selected');
       return null;
     }
     var spec = getBuiltInDiagramTemplateSpec(templateId);
-    if (!spec) return null;
+    if (!spec) {
+      deps.logFrontendIssue('warn', 'template.builtin.diagram', 'No spec for templateId=' + templateId);
+      return null;
+    }
     // Auto-generate a unique name (timestamped). We used to prompt via
     // window.prompt(), but during a drag's pointerup cycle Tauri's WKWebView
     // would return null silently, making the drop look broken. Users can
@@ -863,6 +868,10 @@ var LexeraRowStackMenu = (function () {
       // to the placeholder text.
       var embedTarget = (result && (result.path || result.filename)) || '';
       if (!embedTarget) {
+        var shape;
+        try { shape = JSON.stringify(result); } catch (_) { shape = String(result); }
+        deps.logFrontendIssue('error', 'template.builtin.diagram',
+          'Failed to create built-in ' + spec.displayName + ' template file: upload returned no path (response=' + shape + ')');
         deps.showNotification('Failed to create ' + spec.displayName + ' file');
         return null;
       }

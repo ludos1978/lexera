@@ -7647,9 +7647,7 @@ select.dialog-input option,
 
 .log-info .log-level { color: var(--accent); }
 .log-warn .log-level { color: var(--warning); }
-.log-warn { background: rgba(224, 160, 48, 0.06); }
 .log-error .log-level { color: var(--error); }
-.log-error { background: rgba(211, 47, 47, 0.06); }
 
 /* ── Collaboration UI ──────────────────────────────────────────────── */
 

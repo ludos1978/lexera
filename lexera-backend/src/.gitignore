@@ -3,6 +3,8 @@ management.js
 management.css
 themes.js
 backendDiscovery.js
+dialogs.js
+dialogs.css
 
 # Copied from lexera-kanban by beforeDevCommand/beforeBuildCommand
 loggingSystem.js
