@@ -139,8 +139,13 @@ describe('header include text editing', () => {
     );
     expect(stack.title).toBe('Planning !!!include(0600-FR-Schedule.md)!!!');
     expect(pushUndo).toHaveBeenCalledTimes(1);
+    // Title-only rename now refreshes just the stack + sidebar rather
+    // than the full board — see renameRowOrStack's targeted refresh.
     expect(persistBoardMutation).toHaveBeenCalledWith({
-      targets: [{ type: 'board' }, { type: 'sidebar' }]
+      targets: [
+        { type: 'stack', rowIndex: 0, stackIndex: 0 },
+        { type: 'sidebar' }
+      ]
     });
   });
 });

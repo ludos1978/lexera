@@ -30,12 +30,20 @@ var LexeraExportTauriInvoke = (function () {
     if (typeof window === 'undefined') {
       return Promise.reject(new Error('window unavailable'));
     }
-    var ipc = resolveIpc();
-    if (ipc) {
-      return args === undefined ? ipc.invoke(command) : ipc.invoke(command, args);
-    }
+    // Priority 1: LexeraBackendDiscovery.invokeTauri — lets a shared
+    // abstraction layer interpose (e.g. route through an embedded
+    // shell's transport). Forward args as-is so the abstraction layer
+    // can define its own contract.
     if (window.LexeraBackendDiscovery && typeof window.LexeraBackendDiscovery.invokeTauri === 'function') {
       return window.LexeraBackendDiscovery.invokeTauri(command, args);
+    }
+    // Priority 2–3: direct Tauri IPC. Both internals and __TAURI__.core
+    // expect an args object — normalize `undefined` to `{}` so callers
+    // can omit args for zero-arg commands without tripping the IPC
+    // contract.
+    var ipc = resolveIpc();
+    if (ipc) {
+      return ipc.invoke(command, args === undefined ? {} : args);
     }
     var available = {
       hasIpc: !!ipc,

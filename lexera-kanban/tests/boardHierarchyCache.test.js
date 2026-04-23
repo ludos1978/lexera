@@ -44,7 +44,9 @@ function loadBoardList(options = {}) {
     path.resolve('src/board/boardList.js'),
     'utf8'
   );
-  const localStorage = options.localStorage || createLocalStorage();
+  const localStorage = Object.prototype.hasOwnProperty.call(options, 'localStorage')
+    ? options.localStorage
+    : createLocalStorage();
   const context = {
     console,
     Date,
@@ -116,6 +118,32 @@ describe('board hierarchy cache refresh', () => {
     expect(context.workspaceId).toBe('ws-1');
     expect(state.activeWorkspaceId).toBe('ws-1');
     expect(state.viewWorkspaceId).toBe('ws-1');
+  });
+
+  it('syncs workspace context without touching storage when localStorage is unavailable', () => {
+    const BoardList = loadBoardList({ localStorage: null });
+    const state = {
+      boards: [{ id: 'board-a', title: 'Board A', workspace_ids: ['ws-2'] }],
+      remoteBoards: [],
+      activeWorkspaceId: 'ws-1',
+      viewWorkspaceId: 'ws-1',
+    };
+
+    BoardList.init({
+      get boards() { return state.boards; },
+      get remoteBoards() { return state.remoteBoards; },
+      get activeWorkspaceId() { return state.activeWorkspaceId; },
+      get viewWorkspaceId() { return state.viewWorkspaceId; },
+      get ALL_WORKSPACES_ID() { return '__all__'; },
+      setActiveWorkspaceIdState(nextWorkspaceId) { state.activeWorkspaceId = nextWorkspaceId; },
+      setViewWorkspaceIdState(nextWorkspaceId) { state.viewWorkspaceId = nextWorkspaceId; },
+    });
+
+    const context = BoardList.syncWorkspaceContextForBoard('board-a', { render: false });
+
+    expect(context.workspaceId).toBe('ws-2');
+    expect(state.activeWorkspaceId).toBe('ws-2');
+    expect(state.viewWorkspaceId).toBe('ws-2');
   });
 
   it('reconciles the active board workspace when board metadata arrives later', () => {

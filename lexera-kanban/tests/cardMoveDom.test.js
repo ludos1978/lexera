@@ -137,21 +137,46 @@ function createBoardRenderer() {
     oldColEl.parentNode.replaceChild(newColEl, oldColEl);
   }
 
+  function getVisibleNodes(cardsEl) {
+    return cardsEl ? cardsEl.querySelectorAll(':scope > .card, :scope > .vs-placeholder') : [];
+  }
+
+  function setVisibleNodeIndex(node, index) {
+    if (!node) return;
+    if (node.classList.contains('vs-placeholder')) {
+      node.setAttribute('data-vs-card-index', String(index));
+      return;
+    }
+    node.setAttribute('data-card-index', String(index));
+  }
+
+  function reindexVisibleNodes(cardsEl) {
+    var nodes = getVisibleNodes(cardsEl);
+    for (var i = 0; i < nodes.length; i++) {
+      setVisibleNodeIndex(nodes[i], i);
+    }
+  }
+
+  function buildPlaceholder(flatColIndex, cardIndex, card) {
+    var el = document.createElement('div');
+    el.className = 'vs-placeholder';
+    el.setAttribute('data-vs-col-index', String(flatColIndex));
+    el.setAttribute('data-vs-card-index', String(cardIndex));
+    el.setAttribute('data-vs-card-id', card && card.id ? card.id : '');
+    return el;
+  }
+
   function removeCard(flatColIndex, cardIndex) {
     var cardsEl = columnsContainer.querySelector('.column-cards[data-col-index="' + flatColIndex + '"]');
     if (!cardsEl) return;
-    var cards = cardsEl.querySelectorAll('.card');
+    var cards = getVisibleNodes(cardsEl);
     if (cardIndex >= 0 && cardIndex < cards.length) {
       cards[cardIndex].remove();
-      // Re-index
-      var remaining = cardsEl.querySelectorAll('.card');
-      for (var i = 0; i < remaining.length; i++) {
-        remaining[i].setAttribute('data-card-index', String(i));
-      }
+      reindexVisibleNodes(cardsEl);
     }
     // Update count badge
     var countEl = cardsEl.closest('.column').querySelector('.column-count');
-    if (countEl) countEl.textContent = String(cardsEl.querySelectorAll('.card').length);
+    if (countEl) countEl.textContent = String(getVisibleNodes(cardsEl).length);
   }
 
   function insertCard(flatColIndex, cardIndex) {
@@ -166,20 +191,16 @@ function createBoardRenderer() {
     var card = visibleCards[cardIndex];
     if (!card) return;
     var newEl = buildCardEl(card, flatColIndex, cardIndex);
-    var existingCards = cardsEl.querySelectorAll('.card');
+    var existingCards = getVisibleNodes(cardsEl);
     if (cardIndex < existingCards.length) {
       cardsEl.insertBefore(newEl, existingCards[cardIndex]);
     } else {
       cardsEl.appendChild(newEl);
     }
-    // Re-index
-    var all = cardsEl.querySelectorAll('.card');
-    for (var i = 0; i < all.length; i++) {
-      all[i].setAttribute('data-card-index', String(i));
-    }
+    reindexVisibleNodes(cardsEl);
     // Update count
     var countEl = cardsEl.closest('.column').querySelector('.column-count');
-    if (countEl) countEl.textContent = String(all.length);
+    if (countEl) countEl.textContent = String(getVisibleNodes(cardsEl).length);
   }
 
   function getColumnByFlatIndex(flatIndex) {
@@ -275,6 +296,20 @@ function createBoardRenderer() {
     getStackCount,
     getColumnCountInStack,
     getContainer: function () { return columnsContainer; },
+    addPlaceholder: function (flatCol, cardIndex, cardId) {
+      var cardsEl = columnsContainer.querySelector('.column-cards[data-col-index="' + flatCol + '"]');
+      var col = getColumnByFlatIndex(flatCol);
+      if (!cardsEl || !col) return null;
+      var visibleCards = col.cards.filter(function (c) {
+        return !c.content || c.content.indexOf('#hidden-internal-deleted') === -1;
+      });
+      var card = visibleCards[cardIndex] || { id: cardId || '' };
+      var placeholder = buildPlaceholder(flatCol, cardIndex, card);
+      var current = cardsEl.querySelector('.card[data-card-index="' + cardIndex + '"]');
+      if (current) current.replaceWith(placeholder);
+      reindexVisibleNodes(cardsEl);
+      return placeholder;
+    },
     // Direct data mutations (simulating what moveCard does to fullBoardData)
     spliceCard: function (srcFlatCol, srcIdx, dstFlatCol, dstIdx) {
       var srcCol = getColumnByFlatIndex(srcFlatCol);
@@ -363,6 +398,23 @@ describe('Card mutations appear immediately in DOM', () => {
     expect(R.getVisibleCardIds(1)).toEqual(['a', 'c']);
     expect(R.getColumnCount(0)).toBe(1);
     expect(R.getColumnCount(1)).toBe(2);
+  });
+
+  it('cross-column move updates counts when the moved source card is virtualised as a placeholder', () => {
+    var board = R.makeBoard([R.makeRow('r1', 'Row', [R.makeStack('s1', 'Stack', [
+      R.makeColumn('c1', 'Source', [R.makeCard('a', 'Alpha'), R.makeCard('b', 'Beta')]),
+      R.makeColumn('c2', 'Target', [R.makeCard('c', 'Charlie')])
+    ])])]);
+    R.setState(board, 'board-1');
+    R.renderBoard();
+    R.addPlaceholder(0, 0, 'a');
+
+    R.spliceCard(0, 0, 1, 0);
+    R.refreshTargetedElements([{ type: 'card-remove', colIndex: 0, cardIndex: 0 }, { type: 'card-insert', colIndex: 1, cardIndex: 0 }]);
+
+    expect(R.getColumnCount(0)).toBe(1);
+    expect(R.getVisibleCardIds(0)).toEqual(['b']);
+    expect(R.getVisibleCardIds(1)).toEqual(['a', 'c']);
   });
 
   it('add card: new card appears at correct position', () => {

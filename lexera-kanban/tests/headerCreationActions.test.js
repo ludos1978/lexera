@@ -36,6 +36,7 @@ function createBaseDeps() {
     traceFrontendAction: vi.fn(),
     showNotification: vi.fn(),
     lexeraLog: vi.fn(),
+    logFrontendIssue: vi.fn(),
     getActiveBoardId: vi.fn(() => 'board-1'),
     addCardToActiveBoard: vi.fn(async () => true),
     addEmptyCardToActiveBoard: vi.fn(async () => true),
@@ -251,7 +252,7 @@ describe('header creation actions', () => {
   // mxCells, no shapes) and a minimal excalidraw JSON with an empty
   // elements array.
 
-  it('exposes an empty draw.io diagram for the built-in drag source', () => {
+  it('exposes a minimal draw.io diagram for the built-in drag source', () => {
     const RowStackMenu = createMenu();
     RowStackMenu.init(createBaseDeps());
     const spec = RowStackMenu.getBuiltInDiagramTemplateSpec('__builtin__:diagram:drawio');
@@ -260,24 +261,26 @@ describe('header creation actions', () => {
     expect(spec.extension).toBe('.drawio');
     expect(spec.mimeType).toBe('application/vnd.jgraph.mxfile');
 
-    // Use regex parsing so the test works in every vitest env (no DOMParser
-    // on the server). An empty draw.io board has exactly two structural
-    // mxCell entries inside <root> and zero shape/edge cells.
+    // Template deliberately contains one starter shape — a fully empty
+    // diagram makes the draw.io CLI fail with "Export failed" and leaves
+    // the card stuck on the placeholder. See getBuiltInDiagramTemplateSpec
+    // in src/menu/rowStackMenu.js for the exact mirrored fixture.
     expect(spec.content).toMatch(/<mxfile\b/);
     expect(spec.content).toMatch(/<diagram\b/);
     const rootMatch = spec.content.match(/<root\b[^>]*>([\s\S]*?)<\/root>/);
     expect(rootMatch).not.toBeNull();
     const rootBody = rootMatch[1];
     const cellMatches = rootBody.match(/<mxCell\b[^>]*\/?>/g) || [];
-    expect(cellMatches).toHaveLength(2);
+    // 2 structural cells (id=0, id=1 parent=0) + 1 starter shape (id=2 vertex=1)
+    expect(cellMatches).toHaveLength(3);
     expect(rootBody).toMatch(/<mxCell[^>]*\bid="0"[^>]*\/?>/);
     expect(rootBody).toMatch(/<mxCell[^>]*\bid="1"[^>]*\bparent="0"[^>]*\/?>/);
-    // No shape or edge cells in a blank board.
-    expect(rootBody).not.toMatch(/\bvertex="1"/);
+    expect(rootBody).toMatch(/\bvertex="1"/);
+    // No edge cells.
     expect(rootBody).not.toMatch(/\bedge="1"/);
   });
 
-  it('exposes an empty excalidraw diagram for the built-in drag source', () => {
+  it('exposes a minimal excalidraw diagram for the built-in drag source', () => {
     const RowStackMenu = createMenu();
     RowStackMenu.init(createBaseDeps());
     const spec = RowStackMenu.getBuiltInDiagramTemplateSpec('__builtin__:diagram:excalidraw');
@@ -291,7 +294,11 @@ describe('header creation actions', () => {
     expect(typeof data.version).toBe('number');
     expect(data.version).toBeGreaterThanOrEqual(2);
     expect(Array.isArray(data.elements)).toBe(true);
-    expect(data.elements).toHaveLength(0);
+    // Template ships with a starter box + label so the Excalidraw worker
+    // renders a non-empty SVG — an empty `elements` array produces
+    // nothing and the card renders as the placeholder text.
+    expect(data.elements.length).toBeGreaterThan(0);
+    expect(data.elements.find(function (el) { return el.type === 'rectangle'; })).toBeTruthy();
     expect(data.appState && typeof data.appState).toBe('object');
     expect(data.files && typeof data.files).toBe('object');
     expect(Object.keys(data.files)).toHaveLength(0);

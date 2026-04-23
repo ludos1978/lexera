@@ -336,6 +336,40 @@
     tests.push({ name: name, fn: fn, categories: deriveCategories(name, categories) });
   }
 
+  function collectSetupFlatColumnIndices(value, out, seen) {
+    if (!value || typeof value !== 'object') return;
+    if (seen.indexOf(value) !== -1) return;
+    seen.push(value);
+    if (typeof value.flatIdx === 'number' && isFinite(value.flatIdx)) out.push(value.flatIdx);
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i++) collectSetupFlatColumnIndices(value[i], out, seen);
+      return;
+    }
+    var keys = Object.keys(value);
+    for (var j = 0; j < keys.length; j++) {
+      collectSetupFlatColumnIndices(value[keys[j]], out, seen);
+    }
+  }
+
+  async function waitForSetupColumnsInDom(ctx) {
+    var flatIdxs = [];
+    collectSetupFlatColumnIndices(ctx, flatIdxs, []);
+    if (flatIdxs.length === 0) {
+      await yieldAutoRunTick();
+      return;
+    }
+    var unique = [];
+    for (var i = 0; i < flatIdxs.length; i++) {
+      if (unique.indexOf(flatIdxs[i]) === -1) unique.push(flatIdxs[i]);
+    }
+    await waitForCondition(function () {
+      for (var j = 0; j < unique.length; j++) {
+        if (getViewCardCount(unique[j]) === -1) return false;
+      }
+      return true;
+    }, 3000, 16, 'Timed out waiting for setup columns to render');
+  }
+
   // ─────────────────────────────────────────────────────────────────────
   // registerDoUndo(name, spec)
   // ─────────────────────────────────────────────────────────────────────
@@ -394,6 +428,8 @@
         } else {
           ctx = {};
         }
+        setRunPhase('do-undo:setup-dom');
+        await waitForSetupColumnsInDom(ctx);
         setRunPhase('do-undo:capture');
         var capture = typeof spec.capture === 'function' ? spec.capture : null;
         var before = capture ? capture(ctx) : null;
@@ -404,10 +440,13 @@
         didDo = true;
 
         // ── CHECK-DO (assertions after the mutation) ────
+        // Match the check-undo timeout below — on large boards the
+        // persist + refresh chain needs time to settle before the DOM
+        // reflects the mutation.
         setRunPhase('do-undo:check-do');
         await waitForAssertion(function () {
           spec.checkDo(ctx, before);
-        });
+        }, 5000);
 
         // ── UNDO + CHECK-UNDO ────────────────────────────
         if (!spec.skipUndo) {
@@ -415,6 +454,11 @@
           await api().undo();
           didUndo = true;
           setRunPhase('do-undo:check-undo');
+          // Long timeout — on large boards (~1000 cards) the undo's
+          // persistBoardMutation + DOM refresh chain, followed by the
+          // parent shell's postMessage-driven sidebar rebuild, can
+          // trail the await by several seconds before the DOM matches
+          // the reverted state.
           await waitForAssertion(function () {
             if (typeof spec.checkUndo === 'function') {
               spec.checkUndo(ctx, before);
@@ -422,7 +466,7 @@
               var after = capture(ctx);
               assertEqualDeep(after, before, 'post-undo state matches pre-do state');
             }
-          });
+          }, 5000);
         }
       } finally {
         // Fail-safe: if the test threw between `do` and `undo`, run
@@ -2717,16 +2761,18 @@
         }]
       });
       api().setTestBoard(data, _boardId);
-      await delay(100);
-      var rowsAfterAdd = getViewRowCount();
-      assertEqual(rowsAfterAdd, rowsBefore + 1, 'row added to view');
+      // Poll instead of fixed delay — on large boards the full render
+      // triggered by a row add/remove can take >100ms to flush the DOM.
+      await waitForAssertion(function () {
+        assertEqual(getViewRowCount(), rowsBefore + 1, 'row added to view');
+      }, 3000);
 
       data = api().getFullBoardData();
       data.rows = data.rows.filter(function (r) { return r.id !== '__remove-row-test__'; });
       api().setTestBoard(data, _boardId);
-      await delay(100);
-
-      assertEqual(getViewRowCount(), rowsBefore, 'row gone from view');
+      await waitForAssertion(function () {
+        assertEqual(getViewRowCount(), rowsBefore, 'row gone from view');
+      }, 3000);
     } finally { await teardown(); }
   });
 
@@ -4843,15 +4889,17 @@
       options = options || {};
       var ms = typeof options.delay === 'number' ? options.delay : 100;
       await delay(ms);
-      // assertBoardIntegrity is data↔DOM in the same window — fails
-      // immediately if still inconsistent. assertViewWorkspaceConsistency
-      // compares the board DOM against the SIDEBAR tree, which on
-      // workspace-shell setups lives in the parent window and is
-      // updated asynchronously via postMessage (lexera-board-mutated).
-      // On large boards (~900 cards, ~100 columns) the parent's
-      // re-render can trail the iframe by several hundred ms, so poll
-      // for consistency instead of asserting once.
-      assertBoardIntegrity(label);
+      // assertBoardIntegrity is DOM↔data in the iframe, AND also
+      // asserts sidebar↔view consistency internally. The sidebar lives
+      // in the parent window on workspace-shell setups and is updated
+      // asynchronously via postMessage (lexera-board-mutated). On large
+      // boards (~900 cards, ~100 columns) the parent's re-render can
+      // trail the iframe by several hundred ms, so poll for the full
+      // integrity check to reach a consistent state rather than
+      // asserting once.
+      await waitForAssertion(function () {
+        assertBoardIntegrity(label);
+      }, 3000);
       if (options.skipWorkspaceConsistency !== true) {
         await waitForAssertion(function () {
           assertViewWorkspaceConsistency(label);
@@ -5074,7 +5122,7 @@
       }
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('after remove column');
+      await waitForAssertion(function () { assertBoardIntegrity('after remove column'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5097,7 +5145,7 @@
       data.rows.pop();
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('after remove row');
+      await waitForAssertion(function () { assertBoardIntegrity('after remove row'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5132,7 +5180,7 @@
       assert(kids.indexOf(archivedKid) === -1, 'archived card not in DOM');
 
       // Board should still be structurally valid
-      assertBoardIntegrity('after archive card');
+      await waitForAssertion(function () { assertBoardIntegrity('after archive card'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5154,7 +5202,7 @@
 
       TestVerify.hiddenCardRemoved(col.flatIdx, countBefore, 'trashed card');
       assert(getViewCardKids(col.flatIdx).indexOf(trashedKid) === -1, 'trashed card not in DOM');
-      assertBoardIntegrity('after trash card');
+      await waitForAssertion(function () { assertBoardIntegrity('after trash card'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5176,7 +5224,7 @@
 
       TestVerify.hiddenCardRemoved(col.flatIdx, countBefore, 'parked card');
       assert(getViewCardKids(col.flatIdx).indexOf(parkedKid) === -1, 'parked card not in DOM');
-      assertBoardIntegrity('after park card');
+      await waitForAssertion(function () { assertBoardIntegrity('after park card'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5235,7 +5283,7 @@
       assert(kids.indexOf('__multi-arch__') === -1, 'archived not in DOM');
       assert(kids.indexOf('__multi-del__') === -1, 'deleted not in DOM');
       assert(kids.indexOf('__multi-park__') === -1, 'parked not in DOM');
-      assertBoardIntegrity('after multiple hidden cards');
+      await waitForAssertion(function () { assertBoardIntegrity('after multiple hidden cards'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5256,7 +5304,7 @@
       });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('chain step 1: add card');
+      await waitForAssertion(function () { assertBoardIntegrity('chain step 1: add card'); }, 3000);
 
       // Step 2: Move the new card to another column
       data = api().getFullBoardData();
@@ -5270,7 +5318,7 @@
       data.rows[dst.row].stacks[dst.stack].columns[dst.localCol].cards.push(chainCard);
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('chain step 2: move card');
+      await waitForAssertion(function () { assertBoardIntegrity('chain step 2: move card'); }, 3000);
 
       // Step 3: Remove the card
       data = api().getFullBoardData();
@@ -5280,7 +5328,7 @@
       });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('chain step 3: remove card');
+      await waitForAssertion(function () { assertBoardIntegrity('chain step 3: remove card'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5297,7 +5345,7 @@
       });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('chain: after add row');
+      await waitForAssertion(function () { assertBoardIntegrity('chain: after add row'); }, 3000);
 
       // Step 2: Add column to the new row
       data = api().getFullBoardData();
@@ -5305,7 +5353,7 @@
       newRow.stacks[0].columns.push({ id: '__chain-col2__', title: 'CC2', cards: [], include_source: null });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('chain: after add column');
+      await waitForAssertion(function () { assertBoardIntegrity('chain: after add column'); }, 3000);
 
       // Step 3: Add cards to both columns
       data = api().getFullBoardData();
@@ -5314,7 +5362,7 @@
       newRow.stacks[0].columns[1].cards.push({ id: '__cc2__', content: 'Card in col2', checked: false, kid: '__cc2__' });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('chain: after add cards');
+      await waitForAssertion(function () { assertBoardIntegrity('chain: after add cards'); }, 3000);
 
       // Step 4: Archive one card
       data = api().getFullBoardData();
@@ -5322,14 +5370,14 @@
       newRow.stacks[0].columns[0].cards[0].content += ' #hidden-internal-archived';
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('chain: after archive card');
+      await waitForAssertion(function () { assertBoardIntegrity('chain: after archive card'); }, 3000);
 
       // Step 5: Remove the entire row
       data = api().getFullBoardData();
       data.rows = data.rows.filter(function (r) { return r.id !== '__chain-row__'; });
       api().setTestBoard(data, _boardId);
       await delay(100);
-      assertBoardIntegrity('chain: after remove row');
+      await waitForAssertion(function () { assertBoardIntegrity('chain: after remove row'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5356,7 +5404,7 @@
       // The include directive should NOT produce a broken embed container
       var brokenEmbed = cardEl.querySelector('.embed-container.embed-broken');
       assert(!brokenEmbed, 'no broken embed in card with include syntax');
-      assertBoardIntegrity('after include card added');
+      await waitForAssertion(function () { assertBoardIntegrity('after include card added'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5382,7 +5430,7 @@
       var badge = colEl.querySelector('.column-include-badge');
       assert(badge, 'include badge rendered for valid path');
       assert(!badge.classList.contains('include-broken'), 'include badge not broken for valid path');
-      assertBoardIntegrity('after include column added');
+      await waitForAssertion(function () { assertBoardIntegrity('after include column added'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5407,7 +5455,7 @@
       var badge = colEl.querySelector('.column-include-badge');
       assert(badge, 'include badge rendered for broken path');
       assert(badge.classList.contains('include-broken'), 'include badge marked broken for missing path');
-      assertBoardIntegrity('after broken include column added');
+      await waitForAssertion(function () { assertBoardIntegrity('after broken include column added'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5437,7 +5485,7 @@
       var embed = cardEl.querySelector('.embed-container[data-file-path="' + imagePath + '"]');
       assert(embed, 'embed container rendered for valid image path');
       assert(!embed.classList.contains('embed-broken'), 'embed container not marked broken for existing file');
-      assertBoardIntegrity('after embed card added');
+      await waitForAssertion(function () { assertBoardIntegrity('after embed card added'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5596,7 +5644,7 @@
       await delay(100);
       assertEqual(getViewCardCount(col.flatIdx), countBefore - 1, 'card still hidden after tag change');
       assert(getViewCardKids(col.flatIdx).indexOf(kid) === -1, 'card still not in DOM');
-      assertBoardIntegrity('after tag edit: park to delete');
+      await waitForAssertion(function () { assertBoardIntegrity('after tag edit: park to delete'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5622,7 +5670,7 @@
       var badge = cardEl.querySelector('.card-due-badge');
       assert(badge, 'due badge rendered for #today');
       assert(badge.textContent.length > 0, 'due badge has content');
-      assertBoardIntegrity('after temporal tag card');
+      await waitForAssertion(function () { assertBoardIntegrity('after temporal tag card'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5641,7 +5689,7 @@
 
       // Checked cards should still be visible (not hidden)
       assertEqual(getViewCardCount(col.flatIdx), countBefore, 'checked card still visible');
-      assertBoardIntegrity('after check card');
+      await waitForAssertion(function () { assertBoardIntegrity('after check card'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5661,7 +5709,7 @@
 
       TestVerify.cardMoved(snap, info.srcCol.flatIdx, info.dstCol.flatIdx, movedKid, 'view→view');
       assertEqual(getViewCardKids(info.dstCol.flatIdx)[0], movedKid, 'card is first in target');
-      assertBoardIntegrity('after view→view move');
+      await waitForAssertion(function () { assertBoardIntegrity('after view→view move'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5675,7 +5723,7 @@
       await delay(100);
 
       assert(getViewCardKids(info.dstCol.flatIdx).indexOf(movedKid) !== -1, 'card in target');
-      assertBoardIntegrity('after workspace→workspace move');
+      await waitForAssertion(function () { assertBoardIntegrity('after workspace→workspace move'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5922,7 +5970,7 @@
       assertEqual(idsAfter[0], '__wsv__r-1', 'row 1 is now first after reorder');
       assertEqual(idsAfter[1], '__wsv__r-0', 'row 0 is now second after reorder');
       assertEqual(getViewRowCount(), 2, 'DOM still shows 2 rows');
-      assertBoardIntegrity('after workspace view row reorder');
+      await waitForAssertion(function () { assertBoardIntegrity('after workspace view row reorder'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5952,7 +6000,7 @@
       assertEqual(stacksRow1After[0], movedStackId, 'moved stack is first in target row');
       assertEqual(stacksRow1After.length, 3, 'target row gained a stack');
       assertEqual(stacksRow0After.length, 1, 'source row lost a stack');
-      assertBoardIntegrity('after workspace view stack move');
+      await waitForAssertion(function () { assertBoardIntegrity('after workspace view stack move'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -5978,7 +6026,7 @@
       assertEqual(colsAfter.length, 2, 'stack still has 2 columns');
       assertEqual(colsAfter[0], '__wsv__c-0-0-1', 'former column 1 is now first');
       assertEqual(colsAfter[1], '__wsv__c-0-0-0', 'former column 0 is now second');
-      assertBoardIntegrity('after workspace view column reorder within stack');
+      await waitForAssertion(function () { assertBoardIntegrity('after workspace view column reorder within stack'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6007,7 +6055,7 @@
       assert(dstStackAfter.indexOf(movedColumnId) !== -1, 'column now in destination stack');
       assertEqual(srcStackAfter.length, 1, 'source stack lost a column');
       assertEqual(dstStackAfter.length, 3, 'destination stack gained a column');
-      assertBoardIntegrity('after workspace view column move across stacks');
+      await waitForAssertion(function () { assertBoardIntegrity('after workspace view column move across stacks'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6087,7 +6135,7 @@
       assertEqual(dataAfter.rows[1].id, row0Id, 'data: row 0 now second');
 
       // DOM + sidebar should match the new order
-      assertBoardIntegrity('after row reorder realtime');
+      await waitForAssertion(function () { assertBoardIntegrity('after row reorder realtime'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6107,7 +6155,7 @@
 
       assertEqual(getViewCardCount(info.srcCol.flatIdx), srcCountBefore - 1, 'src column -1 card');
       assertEqual(getViewCardCount(info.dstCol.flatIdx), dstCountBefore + 1, 'dst column +1 card');
-      assertBoardIntegrity('after cross-column move realtime');
+      await waitForAssertion(function () { assertBoardIntegrity('after cross-column move realtime'); }, 3000);
       await waitForAssertion(function () { assertViewWorkspaceConsistency('after cross-column move realtime sidebar'); }, 3000);
     } finally { await teardown(); }
   });
@@ -6424,7 +6472,7 @@
 
       assertEqual(getViewCardCount(emptyIdx), 1, 'card added to formerly empty column');
       assert(getViewCardKids(emptyIdx).indexOf('__empty-card__') !== -1, 'card visible');
-      assertBoardIntegrity('after card in empty column');
+      await waitForAssertion(function () { assertBoardIntegrity('after card in empty column'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6448,7 +6496,7 @@
       assertEqual(getViewRowCount(), 1, '1 row');
       assertEqual(getViewColumnCount(), 1, '1 column');
       assertEqual(getTotalViewCards(), 1, '1 card');
-      assertBoardIntegrity('minimal board');
+      await waitForAssertion(function () { assertBoardIntegrity('minimal board'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6474,7 +6522,7 @@
       }
       api().setTestBoard(data, _boardId);
       await delay(150);
-      assertBoardIntegrity('bulk board with many rows and columns');
+      await waitForAssertion(function () { assertBoardIntegrity('bulk board with many rows and columns'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6518,7 +6566,7 @@
 
       // Cards should be visible
       assertEqual(getViewCardCountByColumnId('__incl-hdr-add__'), 2, 'included cards visible');
-      assertBoardIntegrity('after include header add');
+      await waitForAssertion(function () { assertBoardIntegrity('after include header add'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6543,7 +6591,7 @@
       var badge = colEl.querySelector('.column-include-badge');
       assert(badge, 'badge rendered');
       assert(badge.classList.contains('include-broken'), 'badge marked broken for missing file');
-      assertBoardIntegrity('after missing include');
+      await waitForAssertion(function () { assertBoardIntegrity('after missing include'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6596,7 +6644,7 @@
       badge = c.querySelector('.column[data-column-id="__incl-hdr-chg__"] .column-include-badge');
       assert(badge, 'badge still exists after path change');
       assertEqual(badge.getAttribute('data-include-path'), includePaths.second, 'updated path');
-      assertBoardIntegrity('after include path change');
+      await waitForAssertion(function () { assertBoardIntegrity('after include path change'); }, 3000);
     } finally { await teardown(); }
   });
 
@@ -6704,7 +6752,7 @@
       var c = getContainer();
       var badge = c.querySelector('.column[data-column-id="__incl-hdr-pre__"] .column-include-badge');
       assert(badge, 'include badge renders with pre-existing cards');
-      assertBoardIntegrity('after include added with pre-existing cards');
+      await waitForAssertion(function () { assertBoardIntegrity('after include added with pre-existing cards'); }, 3000);
     } finally { await teardown(); }
   });
 

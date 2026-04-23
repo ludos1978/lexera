@@ -7,6 +7,26 @@
  *   Phase 3 (Output):    Copy / save file via Tauri commands
  */
 
+// LexeraApi.request throws `<status>: <body>` on non-2xx, bare error
+// message on transport failure, or propagates backend-not-available as
+// "Backend not available". Format these consistently as
+// `<prefix> (<status>): <body>` when we can parse a status, or
+// `<prefix>: <body>` otherwise.
+function formatExportApiError(prefix, err) {
+    var raw = err && err.message ? err.message : String(err);
+    if (err && typeof err.status === 'number') {
+        var text = raw;
+        var colon = raw.indexOf(':');
+        if (colon > 0 && /^\d+$/.test(raw.slice(0, colon).trim())) {
+            text = raw.slice(colon + 1).trim();
+        }
+        return prefix + ' (' + err.status + '): ' + text;
+    }
+    var m = /^(\d{3}):\s*(.*)$/.exec(raw);
+    if (m) return prefix + ' (' + m[1] + '): ' + m[2];
+    return prefix + ': ' + raw;
+}
+
 // Log bridge — same cross-iframe issue as the Tauri IPC below: the kanban
 // UI runs inside a workspace-shell iframe whose lexeraLog() writes to the
 // iframe's own frontendLogEntries, but the user watches the shell's Log
@@ -333,7 +353,7 @@ class ExportService {
                 signal: options && options.signal,
             });
         } catch (e) {
-            throw new Error('Extract failed: ' + (e && e.message ? e.message : String(e)));
+            throw new Error(formatExportApiError('Extract failed', e));
         }
         const md = data.markdown || data.content || '';
         const slideCount = (md.match(/^---\s*$/gm) || []).length + (md ? 1 : 0);
@@ -379,7 +399,7 @@ class ExportService {
                     signal: options && options.signal,
                 });
             } catch (e) {
-                throw new Error('Transform failed: ' + (e && e.message ? e.message : String(e)));
+                throw new Error(formatExportApiError('Transform failed', e));
             }
             transformed = data.content || content;
         }

@@ -644,8 +644,9 @@ textarea {
 .tree-menu-btn:focus-visible,
 .burger-menu-btn:focus-visible {
   border-width: 1px;
-  border-color: #000;
   padding: 2px;
+  border-color: var(--app-menu-border-hover);
+  background: var(--app-menu-bg-hover);
   color: var(--app-menu-fg-hover);
 }
 

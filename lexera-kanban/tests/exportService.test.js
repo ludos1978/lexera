@@ -9,9 +9,42 @@ let Registry;
 const mockInvoke = vi.fn();
 const mockFetch = vi.fn();
 
+// ExportService calls window.LexeraApi.request(path, opts) for transport.
+// Shim it to use the fetch mock so existing test assertions on mockFetch
+// (which verify URL, body, method) continue to work. Mirrors the real
+// api.js request(): rejects with "Backend not available" if baseUrl is
+// unavailable, throws "$status: $text" on non-2xx, otherwise returns
+// the parsed JSON body.
+async function mockLexeraApiRequest(path, opts) {
+  let base = mockWindow.LexeraApi.baseUrl;
+  if (!base && typeof mockWindow.LexeraApi.discover === 'function') {
+    base = await mockWindow.LexeraApi.discover();
+  }
+  if (!base) {
+    throw new Error('Backend not available');
+  }
+  const res = await mockFetch(base + path, opts);
+  if (!res.ok) {
+    let text = '';
+    if (typeof res.text === 'function') {
+      try { text = await res.text(); } catch (_) { text = ''; }
+    }
+    if (!text) text = res.statusText || 'Request failed';
+    const error = new Error(res.status + ': ' + text);
+    error.status = res.status;
+    throw error;
+  }
+  if (typeof res.json === 'function') return await res.json();
+  return null;
+}
+
 const mockWindow = {
   __TAURI__: { core: { invoke: mockInvoke } },
-  LexeraApi: { baseUrl: 'http://localhost:9000', discover: vi.fn() },
+  LexeraApi: {
+    baseUrl: 'http://localhost:9000',
+    discover: vi.fn(),
+    request: mockLexeraApiRequest,
+  },
   ExportService: null, // will be assigned by the source file
 };
 
@@ -873,7 +906,10 @@ describe('export (full pipeline)', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.message).toBe('Network error');
+    // _extract wraps transport errors with the phase prefix so the user
+    // can see WHICH phase failed (matches 'Extract failed (404): Not
+    // Found' format produced for HTTP errors).
+    expect(result.message).toBe('Extract failed: Network error');
   });
 
   it('runs all 3 phases for presentation save with Marp', async () => {

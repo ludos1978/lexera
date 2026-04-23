@@ -207,6 +207,7 @@ function loadMutationHarness() {
     extractFunctionAny('function removeEmptyStacksAndRowsInBoard('),
     extractFunctionAny('function removeEmptyStacksAndRows()'),
     extractFunctionAny('function findVisibleCardIndexById('),
+    extractFunction(findLine('function resolveFlatColIndexFromRef(')),
   ].join('\n\n');
 
   // --- Mutation functions ---
@@ -295,6 +296,11 @@ function loadMutationHarness() {
     function traceFrontendAction() {}
     function lexeraLog() {}
     function lexeraLogWithTarget() {}
+    // Mutation functions extracted from app.js check for cross-frame
+    // delegation (workspace-shell mode) before executing locally. In the
+    // vitest harness there's no parent frame, so always return null to
+    // force the local code path to run.
+    function _delegateMutationToOwningFrame() { return null; }
     function getElColumnsContainer() { return null; }
     function summarizeBoardHierarchy() { return ''; }
     function flushDeferredBoardRefresh() {}

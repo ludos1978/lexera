@@ -461,11 +461,16 @@ var LexeraRowStackMenu = (function () {
         titleEl.textContent = newTitle ? getDisplayTitle(newTitle) : '\u00A0';
         deps.pushUndo();
         target.title = deps.rebuildTitleWithPreservedComments(newTitle, currentTitle);
-        // Title-only change: use targeted refresh instead of full board re-render
+        // Title-only change: use targeted refresh instead of full board re-render.
+        // `type` is the function parameter ("row" | "stack") — using the wrong
+        // identifier here (a former "entityType" name) silently fell through
+        // to a ReferenceError inside the keydown handler, so the mutation
+        // never persisted and the UI stayed on the stale title until the
+        // next full refresh.
         var renameTargets = [{ type: 'sidebar' }];
-        if (entityType === 'row' && typeof rowIdx === 'number') {
+        if (type === 'row' && typeof rowIdx === 'number') {
           renameTargets.unshift({ type: 'row', rowIndex: rowIdx });
-        } else if (entityType === 'stack' && typeof rowIdx === 'number' && typeof stackIdx === 'number') {
+        } else if (type === 'stack' && typeof rowIdx === 'number' && typeof stackIdx === 'number') {
           renameTargets.unshift({ type: 'stack', rowIndex: rowIdx, stackIndex: stackIdx });
         } else {
           renameTargets.unshift({ type: 'board' });

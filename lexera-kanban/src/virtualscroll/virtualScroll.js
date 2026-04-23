@@ -93,6 +93,17 @@
     if (colEl) colEl.classList.remove('virtual-scrolling');
   }
 
+  function vsCreatePlaceholder(card, height) {
+    var sentinel = document.createElement('div');
+    sentinel.className = 'vs-placeholder';
+    sentinel.style.height = height + 'px';
+    sentinel.setAttribute('data-vs-card-id', card.getAttribute('data-card-id') || '');
+    sentinel.setAttribute('data-vs-card-kid', card.getAttribute('data-card-kid') || '');
+    sentinel.setAttribute('data-vs-col-index', card.getAttribute('data-col-index') || '');
+    sentinel.setAttribute('data-vs-card-index', card.getAttribute('data-card-index') || '');
+    return sentinel;
+  }
+
   /**
    * Set up virtual scrolling for a single column-cards container.
    * Assumes the shared observer already exists (call vsEnsureObserver first).
@@ -119,16 +130,7 @@
     for (var j = 0; j < cards.length; j++) {
       var card = cards[j];
       var height = card.offsetHeight;
-      // Create a lightweight sentinel (placeholder) element
-      var sentinel = document.createElement('div');
-      sentinel.className = 'vs-placeholder';
-      sentinel.style.height = height + 'px';
-      // Store the real card's data attributes on the sentinel so it can
-      // be identified if needed.
-      sentinel.setAttribute('data-vs-card-id', card.getAttribute('data-card-id') || '');
-      sentinel.setAttribute('data-vs-card-kid', card.getAttribute('data-card-kid') || '');
-      sentinel.setAttribute('data-vs-col-index', card.getAttribute('data-col-index') || '');
-      sentinel.setAttribute('data-vs-card-index', card.getAttribute('data-card-index') || '');
+      var sentinel = vsCreatePlaceholder(card, height);
 
       state.sentinels.set(sentinel, { cardEl: card, height: height });
 
@@ -243,15 +245,22 @@
       if (cardId) cardIdToSentinel.set(cardId, sentinel);
     });
 
-    // Scan current cards in the container (includes non-virtualised cards)
+    var currentCardIds = Object.create(null);
     var currentCards = container.querySelectorAll(':scope > .card');
     for (var i = 0; i < currentCards.length; i++) {
       var card = currentCards[i];
       var cardId = card.getAttribute('data-card-id') || '';
       if (!cardId) continue;
+      currentCardIds[cardId] = card;
 
       var existingSentinel = cardIdToSentinel.get(cardId);
-      if (!existingSentinel) continue;
+      if (!existingSentinel) {
+        var newHeight = card.offsetHeight;
+        var newSentinel = vsCreatePlaceholder(card, newHeight);
+        state.sentinels.set(newSentinel, { cardEl: card, height: newHeight });
+        if (vsObserver) vsObserver.observe(card);
+        continue;
+      }
 
       var oldInfo = state.sentinels.get(existingSentinel);
       if (!oldInfo) continue;
@@ -260,19 +269,40 @@
       if (oldInfo.cardEl !== card) {
         // Update the sentinel mapping to point to the new card element
         if (vsObserver) {
-          vsObserver.unobserve(oldInfo.cardEl);
+          if (oldInfo.cardEl) vsObserver.unobserve(oldInfo.cardEl);
           vsObserver.observe(card);
         }
-        oldInfo.cardEl = card;
         state.virtualised.delete(oldInfo.cardEl);
+        oldInfo.cardEl = card;
       }
 
       // Update the sentinel height to match the (possibly resized) card
-      var newHeight = card.offsetHeight;
-      if (newHeight !== oldInfo.height) {
-        oldInfo.height = newHeight;
-        existingSentinel.style.height = newHeight + 'px';
+      var measuredHeight = card.offsetHeight;
+      if (measuredHeight !== oldInfo.height) {
+        oldInfo.height = measuredHeight;
+        existingSentinel.style.height = measuredHeight + 'px';
       }
+      existingSentinel.setAttribute('data-vs-card-id', cardId);
+      existingSentinel.setAttribute('data-vs-card-kid', card.getAttribute('data-card-kid') || '');
+      existingSentinel.setAttribute('data-vs-col-index', card.getAttribute('data-col-index') || '');
+      existingSentinel.setAttribute('data-vs-card-index', card.getAttribute('data-card-index') || '');
+    }
+
+    var sentinelsToDelete = [];
+    state.sentinels.forEach(function (info, sentinel) {
+      var trackedCardId = sentinel.getAttribute('data-vs-card-id') || '';
+      if (!trackedCardId) return;
+      if (currentCardIds[trackedCardId]) return;
+      if (sentinel.parentNode === container) return;
+      if (vsObserver) {
+        vsObserver.unobserve(sentinel);
+        if (info.cardEl) vsObserver.unobserve(info.cardEl);
+      }
+      state.virtualised.delete(info.cardEl);
+      sentinelsToDelete.push(sentinel);
+    });
+    for (var j = 0; j < sentinelsToDelete.length; j++) {
+      state.sentinels.delete(sentinelsToDelete[j]);
     }
 
     // Update card count in case cards were added/removed

@@ -5,9 +5,38 @@ const mockInvoke = vi.fn();
 const mockFetch = vi.fn();
 const mockLexeraLog = vi.fn();
 
+// ExportService routes HTTP through window.LexeraApi.request. Shim it
+// so existing mockFetch expectations continue to work (tests inspect
+// fetch call args and mock responses directly). Propagates AbortError
+// unchanged so the export pipeline's abort handling sees it.
+async function mockLexeraApiRequest(path, opts) {
+  let base = mockWindow.LexeraApi.baseUrl;
+  if (!base && typeof mockWindow.LexeraApi.discover === 'function') {
+    base = await mockWindow.LexeraApi.discover();
+  }
+  if (!base) throw new Error('Backend not available');
+  const res = await mockFetch(base + path, opts);
+  if (!res.ok) {
+    let text = '';
+    if (typeof res.text === 'function') {
+      try { text = await res.text(); } catch (_) { text = ''; }
+    }
+    if (!text) text = res.statusText || 'Request failed';
+    const error = new Error(res.status + ': ' + text);
+    error.status = res.status;
+    throw error;
+  }
+  if (typeof res.json === 'function') return await res.json();
+  return null;
+}
+
 const mockWindow = {
   __TAURI__: { core: { invoke: mockInvoke } },
-  LexeraApi: { baseUrl: 'http://localhost:9000', discover: vi.fn() },
+  LexeraApi: {
+    baseUrl: 'http://localhost:9000',
+    discover: vi.fn(),
+    request: mockLexeraApiRequest,
+  },
   LexeraFileFormatRegistry: null,
 };
 

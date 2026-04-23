@@ -334,14 +334,32 @@ var LexeraApi = (function () {
     return !retryState || !retryState.recoveredOnce;
   }
 
-  async function retryWithBackendRecovery(target, path, reason, retryState, retryFn) {
-    if (!canRecoverAndRetry(retryState)) return null;
+  async function retryWithBackendRecovery(target, path, reason, retryState, retryFn, originalError) {
+    if (!canRecoverAndRetry(retryState)) {
+      if (originalError) throw originalError;
+      return null;
+    }
     logApiIssue('warn', target, reason + ' — clearing cached backend session and retrying once', undefined, {
       dedupeKey: target + '.recover|' + path,
       dedupeWindowMs: 3000
     });
+    var previousBaseUrl = baseUrl;
+    var previousToken = bearerToken;
     clearCachedBackendState();
-    return retryFn(buildRetryState(retryState));
+    try {
+      return await retryFn(buildRetryState(retryState));
+    } catch (retryError) {
+      // Retry failed too. Restore the previously-cached backend session
+      // so subsequent requests (next test, next user action) don't hit a
+      // spurious "Backend not available" error just because we nuked
+      // baseUrl before the retry attempt. And surface the original
+      // downstream error (malformed JSON, body read failure) instead of
+      // the incidental retry error, so callers see the real root cause.
+      if (!baseUrl && previousBaseUrl) baseUrl = previousBaseUrl;
+      if (!bearerToken && previousToken) bearerToken = previousToken;
+      if (originalError) throw originalError;
+      throw retryError;
+    }
   }
 
   async function request(path, options, retryState) {
@@ -436,7 +454,18 @@ var LexeraApi = (function () {
     }
     var bodyText;
     try {
-      bodyText = await res.text();
+      if (typeof res.text === 'function') {
+        bodyText = await res.text();
+      } else if (typeof res.json === 'function') {
+        // Fallback for responses that only expose `.json()` (primarily
+        // test mocks — real `fetch` responses always expose both). We
+        // re-serialize so the downstream empty-body / malformed-JSON
+        // detection logic below still works off `bodyText`.
+        var jsonBody = await res.json();
+        bodyText = jsonBody == null ? '' : JSON.stringify(jsonBody);
+      } else {
+        bodyText = '';
+      }
     } catch (bodyError) {
       // Body read failed — likely stale connection after sleep/wake
       if (canRecoverAndRetry(retryState)) {
@@ -447,7 +476,8 @@ var LexeraApi = (function () {
           retryState,
           function (nextRetryState) {
             return request(path, options, nextRetryState);
-          }
+          },
+          bodyError
         );
       }
       logApiIssue('error', 'api.request', method + ' ' + path + ' body read failed', bodyError);
@@ -466,7 +496,8 @@ var LexeraApi = (function () {
           retryState,
           function (nextRetryState) {
             return request(path, options, nextRetryState);
-          }
+          },
+          parseError
         );
       }
       logApiIssue('error', 'api.request', method + ' ' + path + ' returned invalid JSON (preview: ' + preview + ')', parseError);
@@ -543,7 +574,15 @@ var LexeraApi = (function () {
       throw error;
     }
     try {
-      var cachedBodyText = await res.text();
+      var cachedBodyText;
+      if (typeof res.text === 'function') {
+        cachedBodyText = await res.text();
+      } else if (typeof res.json === 'function') {
+        var cachedJson = await res.json();
+        cachedBodyText = cachedJson == null ? '' : JSON.stringify(cachedJson);
+      } else {
+        cachedBodyText = '';
+      }
       if (!cachedBodyText || !cachedBodyText.trim()) return null;
       return JSON.parse(cachedBodyText);
     } catch (error) {
@@ -551,7 +590,7 @@ var LexeraApi = (function () {
       if (canRecoverAndRetry(retryState)) {
         return retryWithBackendRecovery(target, path, 'GET ' + path + ' returned invalid JSON (preview: ' + preview + ')', retryState, function (nextRetryState) {
           return requestCachedJson(path, revision, target, nextRetryState);
-        });
+        }, error);
       }
       logApiIssue('error', target, 'GET ' + path + ' returned invalid JSON (preview: ' + preview + ')', error);
       throw error;

@@ -27,6 +27,45 @@ var LexeraBoardList = (function () {
     return undefined;
   }
 
+  function getSafeLocalStorage() {
+    try {
+      return (typeof localStorage !== 'undefined' && localStorage) ? localStorage : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function readLocalStorageItem(key) {
+    var storage = getSafeLocalStorage();
+    if (!storage || typeof storage.getItem !== 'function') return null;
+    return storage.getItem(key);
+  }
+
+  function writeLocalStorageItem(key, value) {
+    var storage = getSafeLocalStorage();
+    if (!storage || typeof storage.setItem !== 'function') return false;
+    storage.setItem(key, value);
+    return true;
+  }
+
+  function removeLocalStorageItem(key) {
+    var storage = getSafeLocalStorage();
+    if (!storage || typeof storage.removeItem !== 'function') return false;
+    storage.removeItem(key);
+    return true;
+  }
+
+  function getLocalStorageLength() {
+    var storage = getSafeLocalStorage();
+    return storage && typeof storage.length === 'number' ? storage.length : 0;
+  }
+
+  function getLocalStorageKey(index) {
+    var storage = getSafeLocalStorage();
+    if (!storage || typeof storage.key !== 'function') return null;
+    return storage.key(index);
+  }
+
   function patchActiveBoardData(updater) {
     if (typeof updater !== 'function') return _dep('activeBoardData');
     if (typeof _deps.updateActiveBoardData === 'function') {
@@ -151,21 +190,21 @@ var LexeraBoardList = (function () {
 
   function getSidebarExpandedBoards() {
     if (_Settings) return _Settings.get('sidebarExpanded') || [];
-    try { return JSON.parse(localStorage.getItem('lexera-sidebar-expanded') || '[]'); } catch (e) {
+    try { return JSON.parse(readLocalStorageItem('lexera-sidebar-expanded') || '[]'); } catch (e) {
       logFrontendIssue('warn', 'sidebar.state', 'Failed to read expanded sidebar boards', e);
       return [];
     }
   }
   function saveSidebarExpandedBoards(ids) {
     if (_Settings) { _Settings.set('sidebarExpanded', ids); return; }
-    localStorage.setItem('lexera-sidebar-expanded', JSON.stringify(ids));
+    writeLocalStorageItem('lexera-sidebar-expanded', JSON.stringify(ids));
   }
 
   // ─── Sidebar tree state ───────────────────────────────────────────
 
   function getSidebarTreeState(boardId) {
     try {
-      var all = _Settings ? (_Settings.get('sidebarTreeState') || {}) : JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
+      var all = _Settings ? (_Settings.get('sidebarTreeState') || {}) : JSON.parse(readLocalStorageItem('lexera-sidebar-tree-state') || '{}');
       return all[boardId] || { rows: [], stacks: [], columns: [] };
     } catch (e) {
       logFrontendIssue('warn', 'sidebar.tree', 'Failed to read sidebar tree state for board ' + boardId, e);
@@ -175,7 +214,7 @@ var LexeraBoardList = (function () {
 
   function hasSidebarTreeState(boardId) {
     try {
-      var all = _Settings ? (_Settings.get('sidebarTreeState') || {}) : JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
+      var all = _Settings ? (_Settings.get('sidebarTreeState') || {}) : JSON.parse(readLocalStorageItem('lexera-sidebar-tree-state') || '{}');
       return Object.prototype.hasOwnProperty.call(all, boardId);
     } catch (e) {
       logFrontendIssue('warn', 'sidebar.tree', 'Failed to check sidebar tree state for board ' + boardId, e);
@@ -185,10 +224,10 @@ var LexeraBoardList = (function () {
 
   function saveSidebarTreeState(boardId, state) {
     try {
-      var all = _Settings ? (_Settings.get('sidebarTreeState') || {}) : JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
+      var all = _Settings ? (_Settings.get('sidebarTreeState') || {}) : JSON.parse(readLocalStorageItem('lexera-sidebar-tree-state') || '{}');
       all[boardId] = state;
       if (_Settings) { _Settings.set('sidebarTreeState', all); }
-      else { localStorage.setItem('lexera-sidebar-tree-state', JSON.stringify(all)); }
+      else { writeLocalStorageItem('lexera-sidebar-tree-state', JSON.stringify(all)); }
     } catch (e) {
       logFrontendIssue('warn', 'sidebar.tree', 'Failed to persist sidebar tree state for board ' + boardId, e);
     }
@@ -414,7 +453,7 @@ var LexeraBoardList = (function () {
           baseBoard: cloneBoardData(baseBoard)
         };
         if (_Settings) { _Settings.setForBoard('boardDraft', boardId, draftPayload); }
-        else { localStorage.setItem(boardDraftStorageKey(boardId), JSON.stringify(draftPayload)); }
+        else { writeLocalStorageItem(boardDraftStorageKey(boardId), JSON.stringify(draftPayload)); }
       } catch (err) {
         logFrontendIssue('warn', 'board.draft.save', 'Failed to persist local board draft', err);
       }
@@ -432,7 +471,7 @@ var LexeraBoardList = (function () {
         var parsed = _Settings.getForBoard('boardDraft', boardId);
         return parsed && parsed.board ? parsed : null;
       }
-      var raw = localStorage.getItem(boardDraftStorageKey(boardId));
+      var raw = readLocalStorageItem(boardDraftStorageKey(boardId));
       if (!raw) return null;
       var parsed = JSON.parse(raw);
       return parsed && parsed.board ? parsed : null;
@@ -446,7 +485,7 @@ var LexeraBoardList = (function () {
     if (!boardId) return;
     try {
       if (_Settings) { _Settings.removeForBoard('boardDraft', boardId); return; }
-      localStorage.removeItem(boardDraftStorageKey(boardId));
+      removeLocalStorageItem(boardDraftStorageKey(boardId));
     } catch (err) {
       logFrontendIssue('warn', 'board.draft.clear', 'Failed to clear local board draft', err);
     }
@@ -463,8 +502,8 @@ var LexeraBoardList = (function () {
     var PREFIX = 'lexera-board-draft:';
     try {
       var keysToRemove = [];
-      for (var k = 0; k < localStorage.length; k++) {
-        var key = localStorage.key(k);
+      for (var k = 0; k < getLocalStorageLength(); k++) {
+        var key = getLocalStorageKey(k);
         if (key && key.indexOf(PREFIX) === 0) {
           var draftBoardId = key.slice(PREFIX.length);
           if (!idSet[draftBoardId]) keysToRemove.push(key);
@@ -473,7 +512,7 @@ var LexeraBoardList = (function () {
       for (var j = 0; j < keysToRemove.length; j++) {
         var pruneBoardId = keysToRemove[j].slice(PREFIX.length);
         if (_Settings) { _Settings.removeForBoard('boardDraft', pruneBoardId); }
-        else { localStorage.removeItem(keysToRemove[j]); }
+        else { removeLocalStorageItem(keysToRemove[j]); }
         logFrontendIssue('info', 'board.draft.prune', 'Removed orphaned draft for board ' + pruneBoardId);
       }
     } catch (err) {
@@ -1177,7 +1216,7 @@ var LexeraBoardList = (function () {
     }
     _callDep('setActiveWorkspaceIdState', normalizedWorkspaceId, { syncView: true });
     if (_Settings) { _Settings.set('activeWorkspace', normalizedWorkspaceId); }
-    else { localStorage.setItem('lexera-active-workspace', normalizedWorkspaceId); }
+    else { writeLocalStorageItem('lexera-active-workspace', normalizedWorkspaceId); }
   }
 
   function setWorkspaceViewId(workspaceId, options) {
@@ -1221,7 +1260,7 @@ var LexeraBoardList = (function () {
     ) {
       _callDep('setActiveWorkspaceIdState', context.workspaceId, { syncView: !preserveManualView });
       if (_Settings) { _Settings.set('activeWorkspace', context.workspaceId); }
-      else { localStorage.setItem('lexera-active-workspace', context.workspaceId); }
+      else { writeLocalStorageItem('lexera-active-workspace', context.workspaceId); }
     }
     if (typeof _deps.setViewWorkspaceIdState === 'function') {
       _deps.setViewWorkspaceIdState(nextViewWorkspaceId);
@@ -1667,7 +1706,7 @@ var LexeraBoardList = (function () {
       _callDep('setActiveBoardData', null);
       _callDep('setFullBoardData', null);
       if (_Settings) { _Settings.set('lastBoard', ''); }
-      else { localStorage.removeItem('lexera-last-board'); }
+      else { removeLocalStorageItem('lexera-last-board'); }
     }
     renderBoardList();
     _callDep('renderMainView');

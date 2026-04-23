@@ -5304,24 +5304,38 @@ var LexeraDashboard = (function () {
   function refreshTargetedElements(targets) {
     if (!targets || targets.length === 0) return;
 
-    // Check if a full board or main-view render is needed
+    // Check if a full board or main-view render is needed.
+    // Both paths bottom out at renderColumns(), which already emits a
+    // detailed per-call warning (see the full-render tracer there). We
+    // also log HERE so the warning includes the target-shape the caller
+    // asked for — the caller's "why full render?" signal — not just the
+    // stack trace inside renderColumns(). Without this, you only see
+    // "something called renderColumns" without knowing the caller asked
+    // for `{type:'board'}` vs `{type:'main-view'}` vs falling through
+    // from a failed targeted-refresh branch.
     var didFullRender = false;
     for (var i = 0; i < targets.length; i++) {
-      if (targets[i].type === 'main-view') {
-        renderMainView();
-        didFullRender = true;
-        break;
-      }
-      if (targets[i].type === 'board') {
-        var cardCount = activeBoardData && activeBoardData.columns ? activeBoardData.columns.reduce(function (sum, col) { return sum + (col.cards ? col.cards.length : 0); }, 0) : 0;
-        if (cardCount > 200) {
-          traceFrontendAction('warn', 'render.fullBoard', 'Full board re-render triggered on large board (' + cardCount + ' cards). Consider using targeted refresh.', {
-            cardCount: cardCount,
-            targets: targets.map(function (t) { return t.type; }),
-            stack: new Error().stack
-          });
+      var _tt = targets[i].type;
+      if (_tt === 'main-view' || _tt === 'board') {
+        if (typeof logFrontendIssue === 'function') {
+          var _rtStack = '';
+          try { _rtStack = new Error().stack || ''; } catch (_) {}
+          var _rtFrames = _rtStack.split('\n').slice(2, 17).map(function (f) {
+            return '    ' + f.trim();
+          }).join('\n');
+          var _rtCardCount = activeBoardData && activeBoardData.columns
+            ? activeBoardData.columns.reduce(function (sum, col) { return sum + (col.cards ? col.cards.length : 0); }, 0)
+            : 0;
+          logFrontendIssue('warn', 'render.fullBoard',
+            "refreshTargetedElements received {type: '" + _tt + "'} — this triggers a full renderColumns()." +
+            ' Any mutation after initial load should emit a narrower target (card / card-insert / card-remove /' +
+            ' card-content / column / stack / row) so only the affected DOM sub-tree is rebuilt.' +
+            ' Targets passed: [' + targets.map(function (t) { return t.type; }).join(', ') + '].' +
+            ' Board: ' + _rtCardCount + ' cards.' +
+            ' Caller stack:\n' + _rtFrames);
         }
-        renderColumns();
+        if (_tt === 'main-view') renderMainView();
+        else renderColumns();
         didFullRender = true;
         break;
       }
@@ -5376,33 +5390,26 @@ var LexeraDashboard = (function () {
           var cardsContainer = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + target.colIndex + '"]');
           if (!cardsContainer) break;
           var newInsertEl = buildCardElement(insertCard, target.colIndex, target.cardIndex, fs.collapsedCards);
-          var existingCards = cardsContainer.querySelectorAll('.card');
-          if (target.cardIndex < existingCards.length) {
-            cardsContainer.insertBefore(newInsertEl, existingCards[target.cardIndex]);
+          var existingCardNodes = getVisibleCardDomNodes(cardsContainer);
+          if (target.cardIndex < existingCardNodes.length) {
+            cardsContainer.insertBefore(newInsertEl, existingCardNodes[target.cardIndex]);
           } else {
             cardsContainer.appendChild(newInsertEl);
           }
-          // Re-index subsequent cards
-          var allCards = cardsContainer.querySelectorAll('.card');
-          for (var k = target.cardIndex; k < allCards.length; k++) {
-            allCards[k].setAttribute('data-card-index', k.toString());
-          }
+          reindexVisibleCardDomNodes(cardsContainer, target.cardIndex);
           enhanceRenderedElement(newInsertEl, { colIndex: target.colIndex });
           updateColumnCountBadge(target.colIndex);
+          vsRemeasureColumn(target.colIndex);
           break;
         }
 
         case 'card-remove': {
-          var removeEl = findVisibleCardElement(target.colIndex, target.cardIndex);
+          var removeEl = findVisibleCardDomNode(target.colIndex, target.cardIndex);
           if (removeEl) {
             var removeContainer = removeEl.parentNode;
             removeEl.remove();
-            // Re-index remaining cards
             if (removeContainer) {
-              var remaining = removeContainer.querySelectorAll('.card');
-              for (var m = 0; m < remaining.length; m++) {
-                remaining[m].setAttribute('data-card-index', m.toString());
-              }
+              reindexVisibleCardDomNodes(removeContainer, target.cardIndex);
             }
             updateColumnCountBadge(target.colIndex);
             vsRemeasureColumn(target.colIndex);
@@ -7810,6 +7817,37 @@ var LexeraDashboard = (function () {
     return true;
   }
 
+  function getVisibleCardDomNodes(cardsContainer) {
+    if (!cardsContainer || typeof cardsContainer.querySelectorAll !== 'function') return [];
+    return cardsContainer.querySelectorAll(':scope > .card, :scope > .vs-placeholder');
+  }
+
+  function setVisibleCardDomNodeIndex(node, index) {
+    if (!node || typeof node.setAttribute !== 'function') return;
+    var idx = String(index);
+    if (node.classList && node.classList.contains('vs-placeholder')) {
+      node.setAttribute('data-vs-card-index', idx);
+      return;
+    }
+    node.setAttribute('data-card-index', idx);
+  }
+
+  function reindexVisibleCardDomNodes(cardsContainer, startIndex) {
+    if (!cardsContainer) return;
+    var nodes = getVisibleCardDomNodes(cardsContainer);
+    var start = typeof startIndex === 'number' && startIndex >= 0 ? startIndex : 0;
+    for (var i = start; i < nodes.length; i++) {
+      setVisibleCardDomNodeIndex(nodes[i], i);
+    }
+  }
+
+  function findVisibleCardDomNode(colIndex, cardIndex) {
+    var container = getElColumnsContainer();
+    if (!container) return null;
+    return container.querySelector('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]') ||
+      container.querySelector('.vs-placeholder[data-vs-col-index="' + colIndex + '"][data-vs-card-index="' + cardIndex + '"]');
+  }
+
   /**
    * Update the column-count badge text for a given flat column index.
    */
@@ -7820,7 +7858,7 @@ var LexeraDashboard = (function () {
     if (!columnEl) return;
     var countEl = columnEl.querySelector('.column-count');
     if (!countEl) return;
-    var cardCount = colEl.querySelectorAll('.card').length;
+    var cardCount = getVisibleCardDomNodes(colEl).length;
     var col = getFullColumn(colIndex);
     var wipLimit = 0;
     if (col) {
@@ -8118,20 +8156,57 @@ var LexeraDashboard = (function () {
     if (typeof window !== 'undefined') {
       window.__lexeraRenderColumnsCount = (window.__lexeraRenderColumnsCount || 0) + 1;
     }
-    // Full-render tracer: logs a warning with a stack trace the SECOND
-    // time renderColumns is called after a page load. The first call is
-    // the legitimate initial board render; anything after that should
-    // go through targeted refresh. The trace message shows in the log
-    // panel and pinpoints the exact call chain that slipped through.
+    // ─────────────────────────────────────────────────────────────────
+    // FULL-RENDER TRACER
+    // ─────────────────────────────────────────────────────────────────
+    // A full renderColumns() rebuilds every card / column / row from
+    // scratch — cheap on an empty board, a ~1-second hit on a 900-card
+    // one. Anything after the initial page-load render should reach the
+    // DOM via refreshTargetedElements (card-insert / card-remove /
+    // card-content / column / stack / row) instead. When it doesn't,
+    // that's a code smell: either the caller is passing `{type:'board'}`
+    // when it could pass a narrower target, or it's going through the
+    // full-render fallback inside persistBoardMutation.
+    //
+    // This warning logs every non-initial full render to the in-app Log
+    // panel with enough detail to find the culprit:
+    //   • caller stack (top 15 frames, newline-separated)
+    //   • current board stats (cards / cols / rows) so the cost is obvious
+    //   • render counter so stacking is visible across a single session
     if (typeof window !== 'undefined') {
       if (!window.__lexeraRenderColumnsEverCalled) {
         window.__lexeraRenderColumnsEverCalled = true;
-      } else if (typeof traceFrontendAction === 'function') {
+      } else if (typeof logFrontendIssue === 'function') {
         var _rcStack = '';
         try { _rcStack = new Error().stack || ''; } catch (_) {}
-        traceFrontendAction('warn', 'render.fullBoard',
-          'Full renderColumns call after initial load — should have used targeted refresh',
-          { stack: _rcStack.split('\n').slice(0, 10).join(' | ') });
+        // Drop the leading "Error" line and this function's own frame
+        // so the first reported frame is the real caller.
+        var _rcFrames = _rcStack.split('\n').slice(2, 17).map(function (f) {
+          return '    ' + f.trim();
+        }).join('\n');
+        var _rcCardCount = 0;
+        var _rcColCount = 0;
+        var _rcRowCount = 0;
+        try {
+          if (fullBoardData && Array.isArray(fullBoardData.rows)) {
+            _rcRowCount = fullBoardData.rows.length;
+            for (var _rcR = 0; _rcR < _rcRowCount; _rcR++) {
+              var _rcStacks = (fullBoardData.rows[_rcR] && fullBoardData.rows[_rcR].stacks) || [];
+              for (var _rcS = 0; _rcS < _rcStacks.length; _rcS++) {
+                var _rcCols = (_rcStacks[_rcS] && _rcStacks[_rcS].columns) || [];
+                _rcColCount += _rcCols.length;
+                for (var _rcC = 0; _rcC < _rcCols.length; _rcC++) {
+                  _rcCardCount += ((_rcCols[_rcC] && _rcCols[_rcC].cards) || []).length;
+                }
+              }
+            }
+          }
+        } catch (_) {}
+        logFrontendIssue('warn', 'render.fullBoard',
+          'Full renderColumns() call #' + window.__lexeraRenderColumnsCount +
+          ' — every mutation after initial load should go through refreshTargetedElements.' +
+          ' Board: ' + _rcCardCount + ' cards / ' + _rcColCount + ' cols / ' + _rcRowCount + ' rows.' +
+          ' Caller stack:\n' + _rcFrames);
       }
     }
     var _renderStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
