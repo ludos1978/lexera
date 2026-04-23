@@ -733,7 +733,6 @@
     rightDockEl: null,
     bottomDividerEl: null,
     bottomDockEl: null,
-    dragGhostEl: null,
     panelDropOverlayEl: null,
     lastStructureSignature: '',
     lastLeafTopology: '',
@@ -1835,6 +1834,40 @@
     syncDockGridTracks(layoutState);
   }
 
+  // Freeze every visible iframe at its current pixel size for the duration
+  // of a dock-divider drag. The dock grid cells still resize live so the
+  // divider and dock chrome follow the cursor, but the iframe outer boxes
+  // don't change size — their inner documents never reflow per frame.
+  // On release we remove the inline sizes and the iframes snap to the new
+  // dock dimensions in a single reflow.
+  function freezeActiveFrames() {
+    var frameIds = Object.keys(state.frameCache || {});
+    var frozen = [];
+    for (var i = 0; i < frameIds.length; i++) {
+      var frame = state.frameCache[frameIds[i]];
+      if (!frame || !frame.classList || !frame.classList.contains('is-active')) continue;
+      var w = frame.offsetWidth;
+      var h = frame.offsetHeight;
+      if (w <= 0 || h <= 0) continue;
+      frame.style.width = w + 'px';
+      frame.style.height = h + 'px';
+      frame.style.right = 'auto';
+      frame.style.bottom = 'auto';
+      frozen.push(frame);
+    }
+    return frozen;
+  }
+
+  function thawFrames(frozen) {
+    for (var i = 0; i < frozen.length; i++) {
+      var frame = frozen[i];
+      frame.style.width = '';
+      frame.style.height = '';
+      frame.style.right = '';
+      frame.style.bottom = '';
+    }
+  }
+
   function bindDockResizeDivider(dividerEl, dockId) {
     if (!dividerEl) return;
     dividerEl.addEventListener('pointerdown', function (event) {
@@ -1842,39 +1875,40 @@
       var pointerId = event.pointerId;
       try { dividerEl.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
       dividerEl.classList.add('is-dragging');
-      var ghostEl = state.dragGhostEl;
-      var bodyRect = state.bodyEl ? state.bodyEl.getBoundingClientRect() : null;
-      if (!ghostEl || !bodyRect) return;
-      var isVertical = dockId !== 'bottom';
-      var minSize = dockId === 'bottom' ? 48 : 56;
-      var finalSize = state.dockSizes[dockId] || 0;
+      var activeDockEl = dockId === 'left' ? state.leftDockEl : dockId === 'right' ? state.rightDockEl : state.bottomDockEl;
+      var baseRect = dockId === 'bottom'
+        ? (state.bodyEl ? state.bodyEl.getBoundingClientRect() : null)
+        : (state.mainRowEl ? state.mainRowEl.getBoundingClientRect() : null);
+      var frozenFrames = freezeActiveFrames();
       var pendingMoveEvent = null;
       var frameId = 0;
-
-      ghostEl.setAttribute('data-dock-side', dockId);
-      ghostEl.classList.add('is-active');
-
-      function computeSize(moveEvent) {
-        var raw = 0;
-        if (dockId === 'left') raw = moveEvent.clientX - bodyRect.left;
-        else if (dockId === 'right') raw = bodyRect.right - moveEvent.clientX;
-        else raw = bodyRect.bottom - moveEvent.clientY;
-        if (raw < minSize) return 0;
-        return clampPanelSize(dockId, raw);
-      }
-
-      function renderGhost(size) {
-        var sx = 1, sy = 1;
-        if (isVertical) sx = Math.max(0, size / Math.max(1, bodyRect.width));
-        else sy = Math.max(0, size / Math.max(1, bodyRect.height));
-        ghostEl.style.transform = 'scale(' + sx + ', ' + sy + ')';
-      }
-
-      renderGhost(finalSize);
-
+      var lastLayoutState = getDockLayoutState();
       function applyMove(moveEvent) {
-        finalSize = computeSize(moveEvent);
-        renderGhost(finalSize);
+        if (!baseRect) return;
+        var nextSize = 0;
+        if (dockId === 'left') {
+          nextSize = moveEvent.clientX - baseRect.left;
+          if (nextSize < 56) nextSize = 0;
+          else state.dockRestoreSizes.left = clampPanelSize('left', nextSize);
+          state.dockSizes.left = nextSize === 0 ? 0 : clampPanelSize('left', nextSize);
+        } else if (dockId === 'right') {
+          nextSize = baseRect.right - moveEvent.clientX;
+          if (nextSize < 56) nextSize = 0;
+          else state.dockRestoreSizes.right = clampPanelSize('right', nextSize);
+          state.dockSizes.right = nextSize === 0 ? 0 : clampPanelSize('right', nextSize);
+        } else if (dockId === 'bottom') {
+          nextSize = baseRect.bottom - moveEvent.clientY;
+          if (nextSize < 48) nextSize = 0;
+          else state.dockRestoreSizes.bottom = clampPanelSize('bottom', nextSize);
+          state.dockSizes.bottom = nextSize === 0 ? 0 : clampPanelSize('bottom', nextSize);
+        }
+        var nextLayoutState = getDockLayoutState();
+        if (activeDockEl) activeDockEl.classList.toggle('is-compact', nextLayoutState.visible[dockId] && state.dockSizes[dockId] < 200);
+        if (dockLayoutStateChanged(lastLayoutState, nextLayoutState)) {
+          syncDockStructure(nextLayoutState);
+          lastLayoutState = nextLayoutState;
+        }
+        syncDockGridTracks(nextLayoutState);
       }
       function scheduleMove(moveEvent) {
         pendingMoveEvent = moveEvent;
@@ -1901,19 +1935,11 @@
           pendingMoveEvent = null;
         }
         dividerEl.classList.remove('is-dragging');
-        ghostEl.classList.remove('is-active');
-        ghostEl.removeAttribute('data-dock-side');
-        ghostEl.style.transform = '';
         dividerEl.removeEventListener('pointermove', handleMove);
         dividerEl.removeEventListener('pointerup', handleUp);
         dividerEl.removeEventListener('pointercancel', handleUp);
         try { dividerEl.releasePointerCapture(pointerId); } catch (_) { /* ignore */ }
-        if (finalSize === 0) {
-          state.dockSizes[dockId] = 0;
-        } else {
-          state.dockSizes[dockId] = finalSize;
-          state.dockRestoreSizes[dockId] = finalSize;
-        }
+        thawFrames(frozenFrames);
         applyDockLayout();
         persistState();
       }
@@ -5043,10 +5069,6 @@
     state.bottomDockEl.className = 'workspace-shell-panel-dock';
     state.bottomDockEl.setAttribute('data-dock', 'bottom');
     state.bodyEl.appendChild(state.bottomDockEl);
-
-    state.dragGhostEl = document.createElement('div');
-    state.dragGhostEl.className = 'workspace-shell-drag-ghost';
-    state.bodyEl.appendChild(state.dragGhostEl);
 
     state.panelDropOverlayEl = document.createElement('div');
     state.panelDropOverlayEl.className = 'workspace-shell-panel-drop-overlay';

@@ -183,33 +183,6 @@
   background: color-mix(in srgb, var(--accent) 50%, var(--bg-tertiary));
 }
 
-/* Ghost indicator: a translucent rectangle previews the new dock area
-   during divider drag. The real grid-track resize is deferred to
-   pointerup, so no per-frame iframe reflow happens. `transform: scale()`
-   with a side-anchored origin keeps updates on the GPU compositor. */
-.workspace-shell-drag-ghost {
-  display: none;
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 100;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
-  will-change: transform;
-  transform: scale(0);
-}
-.workspace-shell-drag-ghost.is-active {
-  display: block;
-}
-.workspace-shell-drag-ghost[data-dock-side="left"] {
-  transform-origin: 0 0;
-}
-.workspace-shell-drag-ghost[data-dock-side="right"] {
-  transform-origin: 100% 0;
-}
-.workspace-shell-drag-ghost[data-dock-side="bottom"] {
-  transform-origin: 0 100%;
-}
 
 /* ── Fold strip: compact dock when collapsed ── */
 .ws-fold-strip {
