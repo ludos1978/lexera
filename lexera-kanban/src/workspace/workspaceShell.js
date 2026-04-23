@@ -733,6 +733,7 @@
     rightDockEl: null,
     bottomDividerEl: null,
     bottomDockEl: null,
+    dragGhostEl: null,
     panelDropOverlayEl: null,
     lastStructureSignature: '',
     lastLeafTopology: '',
@@ -1841,41 +1842,39 @@
       var pointerId = event.pointerId;
       try { dividerEl.setPointerCapture(pointerId); } catch (_) { /* ignore */ }
       dividerEl.classList.add('is-dragging');
-      if (document && document.body) document.body.classList.add('is-dragging-layout');
-      broadcastLayoutDragState(true);
-      var activeDockEl = dockId === 'left' ? state.leftDockEl : dockId === 'right' ? state.rightDockEl : state.bottomDockEl;
-      var baseRect = dockId === 'bottom'
-        ? (state.bodyEl ? state.bodyEl.getBoundingClientRect() : null)
-        : (state.mainRowEl ? state.mainRowEl.getBoundingClientRect() : null);
+      var ghostEl = state.dragGhostEl;
+      var bodyRect = state.bodyEl ? state.bodyEl.getBoundingClientRect() : null;
+      if (!ghostEl || !bodyRect) return;
+      var isVertical = dockId !== 'bottom';
+      var minSize = dockId === 'bottom' ? 48 : 56;
+      var finalSize = state.dockSizes[dockId] || 0;
       var pendingMoveEvent = null;
       var frameId = 0;
-      var lastLayoutState = getDockLayoutState();
+
+      ghostEl.setAttribute('data-dock-side', dockId);
+      ghostEl.classList.add('is-active');
+
+      function computeSize(moveEvent) {
+        var raw = 0;
+        if (dockId === 'left') raw = moveEvent.clientX - bodyRect.left;
+        else if (dockId === 'right') raw = bodyRect.right - moveEvent.clientX;
+        else raw = bodyRect.bottom - moveEvent.clientY;
+        if (raw < minSize) return 0;
+        return clampPanelSize(dockId, raw);
+      }
+
+      function renderGhost(size) {
+        var sx = 1, sy = 1;
+        if (isVertical) sx = Math.max(0, size / Math.max(1, bodyRect.width));
+        else sy = Math.max(0, size / Math.max(1, bodyRect.height));
+        ghostEl.style.transform = 'scale(' + sx + ', ' + sy + ')';
+      }
+
+      renderGhost(finalSize);
+
       function applyMove(moveEvent) {
-        if (!baseRect) return;
-        var nextSize = 0;
-        if (dockId === 'left') {
-          nextSize = moveEvent.clientX - baseRect.left;
-          if (nextSize < 56) nextSize = 0;
-          else state.dockRestoreSizes.left = clampPanelSize('left', nextSize);
-          state.dockSizes.left = nextSize === 0 ? 0 : clampPanelSize('left', nextSize);
-        } else if (dockId === 'right') {
-          nextSize = baseRect.right - moveEvent.clientX;
-          if (nextSize < 56) nextSize = 0;
-          else state.dockRestoreSizes.right = clampPanelSize('right', nextSize);
-          state.dockSizes.right = nextSize === 0 ? 0 : clampPanelSize('right', nextSize);
-        } else if (dockId === 'bottom') {
-          nextSize = baseRect.bottom - moveEvent.clientY;
-          if (nextSize < 48) nextSize = 0;
-          else state.dockRestoreSizes.bottom = clampPanelSize('bottom', nextSize);
-          state.dockSizes.bottom = nextSize === 0 ? 0 : clampPanelSize('bottom', nextSize);
-        }
-        var nextLayoutState = getDockLayoutState();
-        if (activeDockEl) activeDockEl.classList.toggle('is-compact', nextLayoutState.visible[dockId] && state.dockSizes[dockId] < 200);
-        if (dockLayoutStateChanged(lastLayoutState, nextLayoutState)) {
-          syncDockStructure(nextLayoutState);
-          lastLayoutState = nextLayoutState;
-        }
-        syncDockGridTracks(nextLayoutState);
+        finalSize = computeSize(moveEvent);
+        renderGhost(finalSize);
       }
       function scheduleMove(moveEvent) {
         pendingMoveEvent = moveEvent;
@@ -1902,12 +1901,19 @@
           pendingMoveEvent = null;
         }
         dividerEl.classList.remove('is-dragging');
-        if (document && document.body) document.body.classList.remove('is-dragging-layout');
-        broadcastLayoutDragState(false);
+        ghostEl.classList.remove('is-active');
+        ghostEl.removeAttribute('data-dock-side');
+        ghostEl.style.transform = '';
         dividerEl.removeEventListener('pointermove', handleMove);
         dividerEl.removeEventListener('pointerup', handleUp);
         dividerEl.removeEventListener('pointercancel', handleUp);
         try { dividerEl.releasePointerCapture(pointerId); } catch (_) { /* ignore */ }
+        if (finalSize === 0) {
+          state.dockSizes[dockId] = 0;
+        } else {
+          state.dockSizes[dockId] = finalSize;
+          state.dockRestoreSizes[dockId] = finalSize;
+        }
         applyDockLayout();
         persistState();
       }
@@ -5037,6 +5043,10 @@
     state.bottomDockEl.className = 'workspace-shell-panel-dock';
     state.bottomDockEl.setAttribute('data-dock', 'bottom');
     state.bodyEl.appendChild(state.bottomDockEl);
+
+    state.dragGhostEl = document.createElement('div');
+    state.dragGhostEl.className = 'workspace-shell-drag-ghost';
+    state.bodyEl.appendChild(state.dragGhostEl);
 
     state.panelDropOverlayEl = document.createElement('div');
     state.panelDropOverlayEl.className = 'workspace-shell-panel-drop-overlay';
