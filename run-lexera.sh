@@ -129,7 +129,7 @@ done
 # or `--quit-after-tests` is passed through to the kanban binary.
 for arg in "$@"; do
   case "$arg" in
-    --run-tests|--run-tests=*|--run-tests-delay=*|--run-tests-output=*|--run-tests-board=*|--quit-after-tests)
+    --run-tests|--run-tests=*|--run-tests-delay=*|--run-tests-output=*|--run-tests-board=*|--run-tests-filter=*|--quit-after-tests)
       KANBAN_EXTRA_ARGS+=("$arg")
       ;;
   esac

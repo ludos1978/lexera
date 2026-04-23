@@ -11,6 +11,25 @@
   var attempts = 0;
   var maxAttempts = 30;
 
+  // Best-effort forwarder into the in-app log viewer. Mirrors every
+  // bootstrap message into lexeraLog so auto-run diagnostics show up in
+  // the Log panel, not just the devtools console. No-ops when lexeraLog
+  // isn't mounted yet (very early bootstrap).
+  function bootstrapLog(level, message) {
+    try {
+      if (typeof window.lexeraLog === 'function') { window.lexeraLog(level, message); return; }
+    } catch (_) {}
+    try {
+      var iframes = document.querySelectorAll('iframe');
+      for (var i = 0; i < iframes.length; i++) {
+        try {
+          var w = iframes[i].contentWindow;
+          if (w && typeof w.lexeraLog === 'function') { w.lexeraLog(level, message); return; }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   function normalizeAutoRunConfig(config) {
     if (!config || typeof config !== 'object') return null;
     if (config.auto_run !== true && config.autoRun !== true) return null;
@@ -231,11 +250,13 @@
         }
       } catch (_) {}
     } else {
+      try { localStorage.removeItem('lexera-frontend-tests-board'); } catch (_) {}
       try {
         var configIframes = document.querySelectorAll('iframe');
         for (var c = 0; c < configIframes.length; c++) {
           try { configIframes[c].contentWindow.__LEXERA_AUTO_RUN_TESTS_SCHEDULED__ = true; } catch (_) {}
           try { configIframes[c].contentWindow.__LEXERA_TEST_RUNNER_CONFIG__ = config; } catch (_) {}
+          try { configIframes[c].contentWindow.localStorage.removeItem('lexera-frontend-tests-board'); } catch (_) {}
         }
       } catch (_) {}
     }
@@ -271,6 +292,63 @@
     var readyStart = Date.now();
     var readyDeadline = readyStart + delayMs;
     var lastStatus = '';
+    var readinessObservers = [];
+    var readinessPollScheduled = false;
+    var readinessTaskPolls = 0;
+    var maxReadinessTaskPolls = 120;
+
+    function scheduleReadinessPoll() {
+      if (readinessPollScheduled || window.__LEXERA_AUTO_RUN_TESTS_STARTED__) return;
+      readinessPollScheduled = true;
+      Promise.resolve().then(function () {
+        readinessPollScheduled = false;
+        pollReady();
+      });
+    }
+
+    function disconnectReadinessObservers() {
+      for (var oi = 0; oi < readinessObservers.length; oi++) {
+        try { readinessObservers[oi].disconnect(); } catch (_) {}
+      }
+      readinessObservers = [];
+    }
+
+    function installReadinessObserver(doc) {
+      if (!doc || !doc.body || typeof MutationObserver !== 'function') return;
+      try {
+        if (doc.body.__lexeraAutoRunReadinessObserved) return;
+        doc.body.__lexeraAutoRunReadinessObserved = true;
+        var obs = new MutationObserver(scheduleReadinessPoll);
+        obs.observe(doc.body, { childList: true, subtree: true });
+        readinessObservers.push(obs);
+      } catch (_) {}
+    }
+
+    function installReadinessObservers() {
+      installReadinessObserver(document);
+      try {
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+          try { installReadinessObserver(iframes[i].contentDocument); } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
+    function scheduleReadinessTaskPoll() {
+      if (readinessTaskPolls >= maxReadinessTaskPolls || window.__LEXERA_AUTO_RUN_TESTS_STARTED__) return;
+      readinessTaskPolls++;
+      try {
+        if (typeof MessageChannel === 'function') {
+          var channel = new MessageChannel();
+          channel.port1.onmessage = function () {
+            try { channel.port1.close(); } catch (_) {}
+            try { channel.port2.close(); } catch (_) {}
+            pollReady();
+          };
+          channel.port2.postMessage(0);
+        }
+      } catch (_) {}
+    }
 
     function checkBoardReady(win) {
       try {
@@ -313,6 +391,12 @@
       var status = (boardReady ? 'board' : '-') + '/' + (testsReady ? 'tests' : '-');
       if (status !== lastStatus) {
         console.log('[auto-run] readiness: ' + status + ' (' + (Date.now() - readyStart) + 'ms)');
+        bootstrapLog('info', '[auto-run] readiness: ' + status + ' (' + (Date.now() - readyStart) + 'ms)');
+        if (outputPath) {
+          writeTestOutput(outputPath, '[auto-run] readiness: ' + status + ' (' + (Date.now() - readyStart) + 'ms)\n').catch(function (err) {
+            console.warn('[auto-run] failed to write readiness status:', err);
+          });
+        }
         lastStatus = status;
       }
       return boardReady && testsReady;
@@ -346,33 +430,31 @@
     }
 
     var testingStatusSet = false;
-    var readyConfirmedAt = 0;
     function pollReady() {
       if (!testingStatusSet) { setTestingStatus(); testingStatusSet = true; }
       if (isFullyReady()) {
-        if (!readyConfirmedAt) {
-          readyConfirmedAt = Date.now();
-          console.log('[auto-run] readiness detected, settling (' + (readyConfirmedAt - readyStart) + 'ms)');
-        }
-        // Wait 500ms after first readiness detection so the initial
-        // board render (which may have hundreds of columns) can finish.
-        if (Date.now() - readyConfirmedAt >= 500) {
-          console.log('[auto-run] fully ready, starting tests (' + (Date.now() - readyStart) + 'ms)');
-          launchTests();
-          return;
-        }
-        setTimeout(pollReady, 100);
-        return;
-      }
-      readyConfirmedAt = 0;
-      if (Date.now() >= readyDeadline) {
-        console.warn('[auto-run] max wait (' + delayMs + 'ms) reached, starting tests anyway');
+        window.__LEXERA_AUTO_RUN_TESTS_STARTED__ = true;
+        disconnectReadinessObservers();
+        console.log('[auto-run] fully ready, starting tests (' + (Date.now() - readyStart) + 'ms)');
+        bootstrapLog('info', '[auto-run] fully ready, starting tests (' + (Date.now() - readyStart) + 'ms)');
         launchTests();
         return;
       }
+      // Even if the max-wait deadline fires, the runner's waitForBoardReady
+      // pre-flight (runAllUI / runOneUI) will still block until the board
+      // is loaded before dispatching any test body.
+      if (Date.now() >= readyDeadline) {
+        console.warn('[auto-run] max wait (' + delayMs + 'ms) reached, starting tests anyway');
+        bootstrapLog('warn', '[auto-run] max wait (' + delayMs + 'ms) reached, starting tests anyway');
+        launchTests();
+        return;
+      }
+      installReadinessObservers();
+      scheduleReadinessTaskPoll();
       setTimeout(pollReady, 250);
     }
 
+    installReadinessObservers();
     pollReady();
   }
 
@@ -417,6 +499,7 @@
     if (!LFT || typeof LFT.runAllWithUI !== 'function') {
       var msg = '[auto-run] LexeraFrontendTests not available at ' + new Date().toISOString();
       console.error(msg);
+      bootstrapLog('error', msg);
       if (outputPath) {
         try { await writeTestOutput(outputPath, msg); } catch (err) { console.error('[auto-run] write failed:', err); }
       }
@@ -424,6 +507,7 @@
     }
 
     console.log('[auto-run] starting tests');
+    bootstrapLog('info', '[auto-run] starting tests');
     LFT.runAllWithUI({ autoRun: true, filter: testFilter || '' });
 
     // Wait for the run to become active (runAllWithUI is async —

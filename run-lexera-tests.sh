@@ -112,6 +112,21 @@ wait_for_backend_ready() {
   return 1
 }
 
+bring_kanban_front() {
+  # WKWebView can throttle timers aggressively while the Tauri window is
+  # backgrounded. Full frontend test runs need the window frontmost long
+  # enough for the auto-run readiness poll and progress timers to advance.
+  if ! command -v osascript >/dev/null 2>&1; then return 0; fi
+  local attempt
+  for attempt in $(seq 1 20); do
+    if osascript -e 'tell application "System Events" to set frontmost of first process whose name is "lexera-kanban" to true' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 0
+}
+
 # ── Clean stale build cache if project folder was renamed ────────
 if [[ -d "$TARGET_DIR" ]]; then
   if [[ -f "$PATH_MARKER" ]]; then
@@ -141,6 +156,18 @@ if [[ "$KILL_ONLY" == "1" ]]; then
   echo "Done."
   exit 0
 fi
+
+# ── Purge WKWebView resource cache so frontend test edits are picked up ──
+# Keep this in sync with run-lexera.sh. Tauri's custom asset protocol can let
+# WKWebView reuse stale JS/CSS across runs; stale test/bootstrap JS makes this
+# wrapper hang even when the normal app launcher works.
+for app in lexera-kanban lexera-backend; do
+  cache_root="$HOME/Library/Caches/$app/WebKit"
+  if [[ -d "$cache_root" ]]; then
+    rm -rf "$cache_root/NetworkCache" "$cache_root/CacheStorage" 2>/dev/null || true
+    echo "  Cleared WKWebView cache for $app"
+  fi
+done
 
 # ── Build browser clipper assets ────────────────────────────────
 if [[ -d "$WEB_CLIPPER_DIR" ]]; then
@@ -207,12 +234,13 @@ if [[ -n "$TEST_FILTER" ]]; then
   KANBAN_CLI_ARGS+=("--run-tests-filter=$TEST_FILTER")
 fi
 if [[ -n "$BOARD_ID" || -n "$TEST_FILTER" ]]; then
-  echo "Starting lexera-kanban with --run-tests (board=${BOARD_ID:-active}, filter=${TEST_FILTER:-none}, delay=${DELAY_MS}ms, output=$OUTPUT_PATH)..."
+  echo "Starting lexera-kanban with --run-tests (board=${BOARD_ID:-auto}, filter=${TEST_FILTER:-none}, delay=${DELAY_MS}ms, output=$OUTPUT_PATH)..."
 else
   echo "Starting lexera-kanban with --run-tests (delay=${DELAY_MS}ms, output=$OUTPUT_PATH)..."
 fi
 (cd "$KANBAN_DIR" && exec cargo tauri dev -- -- "${KANBAN_CLI_ARGS[@]}") 2>&1 | sed 's/^/[kanban]  /' &
 KANBAN_CARGO_PID=$!
+bring_kanban_front &
 
 echo ""
 echo "Services running. Waiting for frontend tests to finish..."

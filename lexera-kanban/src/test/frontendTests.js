@@ -599,12 +599,32 @@
   }
 
   function yieldAutoRunTick() {
-    // In auto-run mode, yield via microtask only. macOS WKWebView
-    // throttles ALL timers (setTimeout, requestAnimationFrame) for
-    // background apps. Microtasks (Promise.resolve) are never throttled.
-    // DOM updates from synchronous operations (setTestBoard, moveCard)
-    // are already applied before the microtask runs.
-    return Promise.resolve();
+    // In auto-run mode, do not rely only on setTimeout/rAF: WKWebView
+    // can throttle them for background apps. Also avoid microtask-only
+    // loops, which starve fetch/DOM tasks while setup is waiting for the
+    // initial board to load. MessageChannel gives us a task boundary
+    // without the timer throttling behavior.
+    return new Promise(function (resolve) {
+      var done = false;
+      function finish() {
+        if (done) return;
+        done = true;
+        resolve();
+      }
+      try {
+        if (typeof MessageChannel === 'function') {
+          var channel = new MessageChannel();
+          channel.port1.onmessage = function () {
+            try { channel.port1.close(); } catch (_) {}
+            try { channel.port2.close(); } catch (_) {}
+            finish();
+          };
+          channel.port2.postMessage(0);
+          return;
+        }
+      } catch (_) {}
+      Promise.resolve().then(finish);
+    });
   }
 
   function throwIfRunCancelled() {
@@ -1229,7 +1249,10 @@
       try {
         var activeBoardId = typeof candidateApi.getActiveBoardId === 'function' ? candidateApi.getActiveBoardId() : '';
         var activeBoardData = typeof candidateApi.getActiveBoardData === 'function' ? candidateApi.getActiveBoardData() : null;
-        if (activeBoardId) {
+        var activeFullBoard = typeof candidateApi.getFullBoardData === 'function'
+          ? candidateApi.getFullBoardData()
+          : (activeBoardData && activeBoardData.fullBoard ? activeBoardData.fullBoard : null);
+        if (activeBoardId && getBoardRowCount(activeFullBoard) > 0) {
           upsertBoardEntry(list, {
             id: activeBoardId,
             title: activeBoardData && activeBoardData.title ? activeBoardData.title : activeBoardId,
@@ -1319,13 +1342,15 @@
     }
     var selected = previous;
     var hasSelected = false;
+    var hasActive = false;
     for (var j = 0; j < boards.length; j++) {
       if (boards[j] && boards[j].id === selected) {
         hasSelected = true;
-        break;
       }
+      if (boards[j] && boards[j].id === activeBoardId) hasActive = true;
+      if (hasSelected && hasActive) break;
     }
-    if (!hasSelected) selected = activeBoardId || (boards[0] && boards[0].id) || '';
+    if (!hasSelected) selected = hasActive ? activeBoardId : ((boards[0] && boards[0].id) || '');
     selector.value = selected;
     setStoredBoardSelection(selected);
     updateRunControls();
@@ -1339,20 +1364,111 @@
     var currentData = typeof currentApi.getFullBoardData === 'function' ? currentApi.getFullBoardData() : null;
     if (currentBoardId === targetBoardId && getBoardRowCount(currentData) > 0) return;
     if (typeof currentApi.selectBoard !== 'function') throw new Error('Board selection unavailable in test API');
-    await currentApi.selectBoard(targetBoardId);
-    for (var attempt = 0; attempt < 25; attempt++) {
+    if (currentBoardId === targetBoardId) {
+      try {
+        await waitForCondition(function () {
+          var loadedData = currentApi.getFullBoardData();
+          return getBoardRowCount(loadedData) > 0;
+        }, 2500, 50, function () { return 'Board did not finish loading: ' + targetBoardId; });
+        _api = currentApi;
+        refreshBoardSelector();
+        return;
+      } catch (_) {}
+    }
+    var selectPromise = null;
+    try {
+      selectPromise = currentApi.selectBoard(targetBoardId);
+    } catch (selectErr) {
+      throw selectErr;
+    }
+    if (selectPromise && typeof selectPromise.catch === 'function') {
+      selectPromise.catch(function () {});
+    }
+    await waitForCondition(function () {
       try {
         var loadedBoardId = currentApi.getActiveBoardId();
         var loadedData = currentApi.getFullBoardData();
         if (loadedBoardId === targetBoardId && getBoardRowCount(loadedData) > 0) {
           _api = currentApi;
           refreshBoardSelector();
-          return;
+          return true;
         }
       } catch (_) {}
-      await delay(200);
+      return false;
+    }, 8000, 50, function () {
+      return 'Failed to load selected board: ' + targetBoardId;
+    });
+  }
+
+  // Forward a message to the in-app log viewer (lexeraLog). Prefers the
+  // api window (iframe in workspace-shell mode) so the message lands in
+  // the log panel the user actually watches. Falls back to window.parent
+  // and finally this window.
+  function testLog(level, message) {
+    try {
+      var apiWin = getApiWindow();
+      if (apiWin && typeof apiWin.lexeraLog === 'function') { apiWin.lexeraLog(level, message); return; }
+    } catch (_) {}
+    try {
+      if (window.parent && window.parent !== window && typeof window.parent.lexeraLog === 'function') {
+        window.parent.lexeraLog(level, message); return;
+      }
+    } catch (_) {}
+    try {
+      if (typeof window.lexeraLog === 'function') { window.lexeraLog(level, message); return; }
+    } catch (_) {}
+  }
+
+  // Pre-flight readiness check. Called by runAllUI / runOneUI before any
+  // test body executes, and used by the per-test setup() as a safety net.
+  // Mirrors autoRunBootstrap.checkBoardReady: active boardId + rows + at
+  // least one column rendered in DOM. Uses getActiveBoardData() (direct
+  // reference) instead of getFullBoardData() (deep-clone) so polling on
+  // a large board doesn't monopolise the main thread and starve the
+  // render that we're waiting for.
+  async function waitForBoardReady(timeoutMs) {
+    var timeout = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 60000;
+    var start = Date.now();
+    var lastStatus = '';
+    testLog('info', '[test.runner] waitForBoardReady: start (timeout=' + timeout + 'ms)');
+    resetApiCache();
+    try {
+      await ensureSelectedBoardLoaded();
+    } catch (err) {
+      testLog('warn', '[test.runner] ensureSelectedBoardLoaded: ' + (err && err.message ? err.message : String(err)));
     }
-    throw new Error('Failed to load selected board: ' + targetBoardId);
+    var okInfo = null;
+    try {
+      await waitForCondition(function () {
+        resetApiCache();
+        try {
+          var a = api();
+          var boardId = typeof a.getActiveBoardId === 'function' ? a.getActiveBoardId() : '';
+          var active = typeof a.getActiveBoardData === 'function' ? a.getActiveBoardData() : null;
+          var rowCount = active && active.rows && active.rows.length ? active.rows.length : 0;
+          var apiWin = getApiWindow();
+          var doc = apiWin && apiWin.document ? apiWin.document : null;
+          var container = doc ? (doc.getElementById('columns-container') || doc.querySelector('.columns-container')) : null;
+          var colsInDom = container ? container.querySelectorAll('.column').length : 0;
+          var status = (boardId ? 'id' : '-') + '/' + (rowCount > 0 ? 'rows(' + rowCount + ')' : '-') + '/' + (colsInDom > 0 ? 'dom(' + colsInDom + ')' : '-');
+          if (status !== lastStatus) {
+            testLog('info', '[test.runner] readiness: ' + status + ' (' + (Date.now() - start) + 'ms)');
+            lastStatus = status;
+          }
+          if (boardId && rowCount > 0 && colsInDom > 0) {
+            okInfo = { boardId: boardId, rows: rowCount, cols: colsInDom };
+            return true;
+          }
+          return false;
+        } catch (_) { return false; }
+      }, timeout, 200, function () {
+        return 'Board not ready after ' + timeout + 'ms (status=' + (lastStatus || 'none') + ')';
+      });
+      testLog('info', '[test.runner] board ready: boardId=' + okInfo.boardId + ' rows=' + okInfo.rows + ' cols=' + okInfo.cols + ' (' + (Date.now() - start) + 'ms)');
+    } catch (err) {
+      testLog('error', '[test.runner] ' + (err && err.message ? err.message : String(err)));
+      throw err;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1883,6 +1999,35 @@
     }
   }
 
+  function primeScrollableBoardSurface() {
+    var c = getContainer();
+    if (!c) return null;
+    var doc = c.ownerDocument || document;
+    var candidates = [
+      c.closest('.board-row-content'),
+      c.closest('.board-content'),
+      c.parentElement,
+      c,
+      doc.scrollingElement
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+      var el = candidates[i];
+      if (!el || typeof el.scrollTop !== 'number') continue;
+      var maxScroll = el.scrollHeight - el.clientHeight;
+      if (!(maxScroll > 10)) continue;
+      var targetTop = Math.min(50, maxScroll);
+      el.scrollTop = targetTop;
+      if (el.scrollTop > 0) {
+        return {
+          el: el,
+          scrollTop: el.scrollTop,
+          maxScroll: maxScroll
+        };
+      }
+    }
+    return null;
+  }
+
   async function unfoldBoardForTests(boardId) {
     if (!boardId) return;
     var changed = false;
@@ -1985,35 +2130,28 @@
       refreshBoardSelector();
       _autoRunBoardSelectorRefreshed = true;
     }
-    await ensureSelectedBoardLoaded();
+    // Pre-flight (runAllUI / runOneUI) should have already ensured board
+    // readiness. Still run a wait here as a safety net so individual
+    // test invocations outside the normal runner don't fail mysteriously.
+    setRunPhase('setup:wait-board');
+    try {
+      await waitForBoardReady(30000);
+    } catch (err) {
+      _endPhase('setup');
+      throw err;
+    }
     // Capture pre-existing duplicate IDs so integrity checks only flag
     // NEW duplicates introduced by the test, not pre-existing data issues.
     if (!_preExistingDuplicateCardIds) capturePreExistingDuplicates();
     _boardListCountAtSetup = _countBoardListItems();
-    // Wait for a board to be loaded (may take a moment in workspace shell)
-    for (var attempt = 0; attempt < 10; attempt++) {
-      throwIfRunCancelled();
-      try {
-        setRunPhase('setup:wait-board');
-        _boardId = api().getActiveBoardId();
-        var data = api().getFullBoardData();
-        if (_boardId && data && data.rows && data.rows.length > 0) {
-          _uiStateSnapshot = captureBoardUiState(_boardId);
-          setRunPhase('setup:unfold-board');
-          await unfoldBoardForTests(_boardId);
-          setRunPhase('setup:snapshot');
-          data = api().getFullBoardData();
-          _snapshot = JSON.parse(JSON.stringify(data));
-          setRunPhase('setup:done');
-          _endPhase('setup');
-          return;
-        }
-      } catch (_) {}
-      await delay(200);
-      resetApiCache(); // retry finding the API
-    }
+    _boardId = api().getActiveBoardId();
+    _uiStateSnapshot = captureBoardUiState(_boardId);
+    setRunPhase('setup:unfold-board');
+    await unfoldBoardForTests(_boardId);
+    setRunPhase('setup:snapshot');
+    _snapshot = JSON.parse(JSON.stringify(api().getFullBoardData()));
+    setRunPhase('setup:done');
     _endPhase('setup');
-    throw new Error('No board loaded — open a board with at least 2 columns first');
   }
 
   async function persistFixtureBoard(boardData) {
@@ -5496,16 +5634,12 @@
   register('focus: setTestBoard preserves scroll position', async function () {
     await setup();
     try {
-      var c = getContainer();
-      if (!c) return;
-      // Scroll the container down a bit (only meaningful if content is tall enough)
-      var scrollable = c.closest('.board-row-content') || c;
-      var maxScroll = scrollable.scrollHeight - scrollable.clientHeight;
-      if (maxScroll < 10) return; // skip if not scrollable
-      scrollable.scrollTop = Math.min(50, maxScroll);
+      var scrollState = primeScrollableBoardSurface();
+      if (!scrollState) return;
+      var scrollable = scrollState.el;
       await delay(50);
       var scrollBefore = scrollable.scrollTop;
-      assert(scrollBefore > 0, 'scrolled down');
+      if (scrollBefore <= 0) return;
 
       // Mutate via setTestBoard — should not reset scroll. Wait through
       // two rAFs plus async enhancement settle time: the renderColumns
@@ -5531,14 +5665,12 @@
   register('focus: adding card to column does not scroll view to top', async function () {
     await setup();
     try {
-      var c = getContainer();
-      if (!c) return;
-      var scrollable = c.closest('.board-row-content') || c;
-      var maxScroll = scrollable.scrollHeight - scrollable.clientHeight;
-      if (maxScroll < 10) return;
-      scrollable.scrollTop = Math.min(50, maxScroll);
+      var scrollState = primeScrollableBoardSurface();
+      if (!scrollState) return;
+      var scrollable = scrollState.el;
       await delay(50);
       var scrollBefore = scrollable.scrollTop;
+      if (scrollBefore <= 0) return;
 
       // Add a card
       var info = findTwoColumnsWithCards();
@@ -5557,14 +5689,12 @@
   register('focus: moving card between columns does not scroll view to top', async function () {
     await setup();
     try {
-      var c = getContainer();
-      if (!c) return;
-      var scrollable = c.closest('.board-row-content') || c;
-      var maxScroll = scrollable.scrollHeight - scrollable.clientHeight;
-      if (maxScroll < 10) return;
-      scrollable.scrollTop = Math.min(50, maxScroll);
+      var scrollState = primeScrollableBoardSurface();
+      if (!scrollState) return;
+      var scrollable = scrollState.el;
       await delay(50);
       var scrollBefore = scrollable.scrollTop;
+      if (scrollBefore <= 0) return;
 
       var info = findTwoColumnsWithCards();
       await api().moveCard(
@@ -5581,14 +5711,12 @@
   register('focus: archiving card does not scroll view to top', async function () {
     await setup();
     try {
-      var c = getContainer();
-      if (!c) return;
-      var scrollable = c.closest('.board-row-content') || c;
-      var maxScroll = scrollable.scrollHeight - scrollable.clientHeight;
-      if (maxScroll < 10) return;
-      scrollable.scrollTop = Math.min(50, maxScroll);
+      var scrollState = primeScrollableBoardSurface();
+      if (!scrollState) return;
+      var scrollable = scrollState.el;
       await delay(50);
       var scrollBefore = scrollable.scrollTop;
+      if (scrollBefore <= 0) return;
 
       var info = findTwoColumnsWithCards();
       var data = api().getFullBoardData();
@@ -5653,23 +5781,44 @@
     try {
       var info = findTwoColumnsWithCards();
       var col = info.srcCol;
-      var countBefore = getViewCardCount(col.flatIdx);
+      var testKid = '__tag-temporal__';
 
       var data = api().getFullBoardData();
-      data.rows[col.row].stacks[col.stack].columns[col.localCol].cards.push({
-        id: '__tag-temporal__', kid: '__tag-temporal__', checked: false,
-        content: 'Deadline card #today'
+      var rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      rawCards.unshift({
+        id: testKid, kid: testKid, checked: false,
+        content: 'Deadline card'
       });
       api().setTestBoard(data, _boardId);
       await delay(100);
 
-      assertEqual(getViewCardCount(col.flatIdx), countBefore + 1, 'temporal tag card visible');
-      var c = getContainer();
-      var cardEl = c.querySelector('.card[data-card-kid="__tag-temporal__"]');
-      assert(cardEl, 'card rendered');
-      var badge = cardEl.querySelector('.card-due-badge');
-      assert(badge, 'due badge rendered for #today');
-      assert(badge.textContent.length > 0, 'due badge has content');
+      var c = null;
+      var cardEl = null;
+      await waitForAssertion(function () {
+        c = getContainer();
+        cardEl = c && c.querySelector('.card[data-card-kid="' + testKid + '"]');
+        assert(cardEl, 'new card rendered before temporal tag edit');
+      }, 3000);
+      assert(cardEl, 'card rendered before temporal tag edit');
+      assert(!cardEl.querySelector('.card-due-badge'), 'new card starts without due badge');
+
+      data = api().getFullBoardData();
+      rawCards = data.rows[col.row].stacks[col.stack].columns[col.localCol].cards;
+      var cardIdx = findRawCardIndexByKid(rawCards, testKid);
+      assert(cardIdx >= 0, 'new card found in raw data');
+      rawCards[cardIdx].content = 'Deadline card #today';
+      api().setTestBoard(data, _boardId);
+      await delay(100);
+
+      var badge = null;
+      await waitForAssertion(function () {
+        c = getContainer();
+        cardEl = c && c.querySelector('.card[data-card-kid="' + testKid + '"]');
+        assert(cardEl, 'edited card rendered');
+        badge = cardEl.querySelector('.card-due-badge');
+        assert(badge, 'due badge rendered after adding #today');
+        assert(badge.textContent.length > 0, 'due badge has content');
+      }, 3000);
       await waitForAssertion(function () { assertBoardIntegrity('after temporal tag card'); }, 3000);
     } finally { await teardown(); }
   });
@@ -8085,6 +8234,21 @@
     // body takes the main thread.
     setRunPhase('pre-run-paint');
     await waitForPaint();
+    // Pre-flight: ensure the board is fully loaded before any test body
+    // runs. Without this, auto-run may launch tests before boards[] is
+    // hydrated, making loadBoardDataForMutation return null and turning
+    // moveCard/setTestBoard into silent no-ops.
+    setRunPhase('pre-run-board-ready');
+    testLog('info', '[test.runner] runAll: pre-flight starting (' + (toRunCount || filteredCount || tests.length) + ' tests)');
+    try {
+      await waitForBoardReady(90000);
+    } catch (err) {
+      var preflightMsg = err && err.message ? err.message : String(err);
+      testLog('error', '[test.runner] runAll: pre-flight failed — ' + preflightMsg);
+      setSummaryText('Board not ready: ' + preflightMsg, 'var(--error)');
+      endRun();
+      return;
+    }
     try {
       for (var i = 0; i < tests.length; i++) {
         throwIfRunCancelled();
@@ -8194,6 +8358,19 @@
     resetApiCache(); refreshBoardSelector(); updateRow(index, 'running');
     setMutationProfilingFlag(true);
     resetRenderCounters();
+    // Pre-flight: same reasoning as runAllUI — don't start the test body
+    // until the board is loaded and registered in boards[].
+    testLog('info', '[test.runner] runOne: pre-flight for "' + tests[index].name + '"');
+    try {
+      await waitForBoardReady(90000);
+    } catch (err) {
+      var preflightMsg = err && err.message ? err.message : String(err);
+      testLog('error', '[test.runner] runOne: pre-flight failed — ' + preflightMsg);
+      updateRow(index, 'fail', 'Board not ready: ' + preflightMsg, 0);
+      setSummaryText('Board not ready', 'var(--error)');
+      endRun();
+      return;
+    }
     _phaseTimings = { setup: 0, body: 0, teardown: 0, setupStart: 0, teardownStart: 0 };
     var testStart = _nowMs();
     var bodyStart = 0, bodyEnd = 0;

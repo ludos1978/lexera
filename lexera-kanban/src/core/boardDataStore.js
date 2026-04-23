@@ -1367,6 +1367,7 @@ var LexeraBoardDataStore = (function () {
       if (!dep('getBoardSaveBase')(fullBoardData)) dep('setBoardSaveBase')(fullBoardData, fullBoardData);
       return fullBoardData;
     }
+    if (!dep('findBoardMeta')(boardId)) return null;
     var response = await dep('LexeraApi')().getBoardColumns(boardId);
     var boardData = response && response.fullBoard ? response.fullBoard : { rows: [], columns: [] };
     ensureBoardRowsForMutation(boardData, response && response.title ? response.title : getMutationBoardTitle(boardId, boardData));

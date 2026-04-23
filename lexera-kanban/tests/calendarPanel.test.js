@@ -20,6 +20,7 @@ function loadModules() {
           children: [],
           childNodes: [],
           attributes: {},
+          _queryCache: {},
           setAttribute: function (k, v) { this.attributes[k] = v; },
           getAttribute: function (k) { return this.attributes[k] || null; },
           removeAttribute: function (k) { delete this.attributes[k]; },
@@ -31,16 +32,19 @@ function loadModules() {
             for (var i = 0; i < this.children.length; i++) {
               if (this.children[i].className && this.children[i].className.indexOf(cls) !== -1) return this.children[i];
             }
+            if (this._queryCache && this._queryCache[sel]) return this._queryCache[sel];
             // Also search innerHTML-created elements
             if (this.innerHTML && this.innerHTML.indexOf(cls) !== -1) {
               var div = { tagName: 'DIV', className: cls, innerHTML: '', textContent: '', style: {},
                 children: [], childNodes: [], attributes: {},
+                _queryCache: {},
                 setAttribute: function (k, v) { this.attributes[k] = v; },
                 getAttribute: function (k) { return this.attributes[k] || null; },
                 removeAttribute: function (k) { delete this.attributes[k]; },
                 appendChild: function () {}, querySelector: function () { return null; },
                 querySelectorAll: function () { return []; }
               };
+              if (this._queryCache) this._queryCache[sel] = div;
               return div;
             }
             return null;
@@ -177,5 +181,28 @@ describe('Calendar Panel Integration', function () {
     var weekView = weekRoots[0].querySelector('.lexera-shared-calendar-week-view');
     // The view should have content rendered (innerHTML set by renderWeekTimeline)
     expect(weekView).not.toBeNull();
+    expect(weekView.innerHTML).toContain('Test task for today');
+  });
+
+  it('renderStandaloneCalendarPanels escapes task titles and omits overdue items from the upcoming list', function () {
+    var OH = globalThis.LexeraOrderHelpers;
+    var now = new Date();
+    var todayStr = now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0');
+    var tasks = [
+      { dueDate: todayStr, cardContent: '<b>Unsafe title</b>', boardTitle: 'Board', isOverdue: false },
+      { dueDate: todayStr, cardContent: 'Overdue hidden from upcoming', boardTitle: 'Board', isOverdue: true }
+    ];
+
+    OH.renderStandaloneCalendarPanels(tasks);
+
+    var weekRoot = globalThis.LexeraSharedPanels.getRoots('weekCalendar')[0];
+    var weekView = weekRoot.querySelector('.lexera-shared-calendar-week-view');
+    var taskList = weekRoot.querySelector('.lexera-shared-calendar-task-list');
+    expect(weekView.innerHTML).toContain('&lt;b&gt;Unsafe title&lt;/b&gt;');
+    expect(weekView.innerHTML).not.toContain('<b>Unsafe title</b>');
+    expect(taskList.innerHTML).toContain('&lt;b&gt;Unsafe title&lt;/b&gt;');
+    expect(taskList.innerHTML).not.toContain('Overdue hidden from upcoming');
   });
 });

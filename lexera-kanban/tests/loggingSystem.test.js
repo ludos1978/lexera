@@ -182,4 +182,58 @@ describe('logging folded status badges', () => {
     expect(usersBadge.textContent).toBe('1 user');
     expect(usersBadge.style.display).toBe('');
   });
+
+  it('captures structured frontend actions in the log snapshot with level filtering', () => {
+    const listeners = {};
+    const window = {
+      LexeraRuntime: null,
+      LexeraApi: null,
+      LexeraSharedPanels: null,
+      location: { search: '' },
+      addEventListener(type, fn) {
+        listeners[type] = listeners[type] || [];
+        listeners[type].push(fn);
+      },
+      dispatchEvent(event) {
+        (listeners[event.type] || []).forEach((fn) => fn(event));
+      },
+      document: null
+    };
+    const document = {
+      documentElement: { style: { setProperty() {} } },
+      getElementById() { return null; },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+      createElement(className) { return createNode(className); },
+      addEventListener() {}
+    };
+    window.document = document;
+
+    loadLoggingSystem({
+      window,
+      document,
+      console: { log() {}, warn() {}, error() {}, info() {} },
+      localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
+      location: window.location,
+      CustomEvent: function CustomEvent(type, init) {
+        this.type = type;
+        this.detail = init && init.detail ? init.detail : {};
+      },
+      setTimeout,
+      clearTimeout
+    });
+
+    window.traceFrontendAction('warn', 'settings.save', 'Saved settings', { panel: 'frontend' });
+    window.traceFrontendAction('info', 'calendar.render', 'Rendered calendar');
+
+    const warnEntries = window.LexeraLoggingSystem.getEntriesSnapshot('frontend', { level: 'warn' });
+    expect(warnEntries).toHaveLength(1);
+    expect(warnEntries[0]).toMatchObject({
+      source: 'frontend',
+      level: 'warn',
+      target: 'settings.save'
+    });
+    expect(warnEntries[0].message).toContain('Saved settings');
+    expect(warnEntries[0].message).toContain('frontend');
+  });
 });
