@@ -539,33 +539,6 @@ function setStatusBarEntry(source, entry) {
   syncAllLogStatusMessages();
 }
 
-// ── Error indicator on log panel header ─────────────────────────────
-function showLogPanelErrorIndicator(message) {
-  var headers = document.querySelectorAll('.log-panel-header');
-  for (var i = 0; i < headers.length; i++) {
-    var header = headers[i];
-    header.classList.add('log-panel-has-error');
-    var msgEl = header.querySelector('.log-panel-error-msg');
-    var actionsEl = header.querySelector('.log-panel-actions');
-    if (!msgEl) {
-      msgEl = document.createElement('span');
-      msgEl.className = 'log-panel-error-msg';
-    }
-    if (actionsEl) header.insertBefore(msgEl, actionsEl);
-    else if (msgEl.parentNode !== header) header.appendChild(msgEl);
-    msgEl.textContent = message;
-  }
-}
-
-function clearLogPanelErrorIndicator() {
-  var headers = document.querySelectorAll('.log-panel-header');
-  for (var i = 0; i < headers.length; i++) {
-    headers[i].classList.remove('log-panel-has-error');
-    var msgEl = headers[i].querySelector('.log-panel-error-msg');
-    if (msgEl) msgEl.remove();
-  }
-}
-
 function renderLogEntry(source, entry) {
   var el = document.createElement('div');
   el.className = 'log-entry log-' + entry.level;
@@ -640,17 +613,6 @@ function appendLogEntry(source, entry) {
   if (entries.length > LOG_MAX) entries.shift();
 
   setStatusBarEntry(source, entry);
-
-  if (entry.level === 'error') {
-    showLogPanelErrorIndicator(entry.message || 'Unknown error');
-    var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
-    if (rt) {
-      var logMains = document.querySelectorAll('.log-panel-main');
-      for (var lm = 0; lm < logMains.length; lm++) {
-        rt.setViewError(logMains[lm], true, entry.message || 'Error');
-      }
-    }
-  }
 
   var panel = getLogContainer();
   if (panel) {
@@ -922,16 +884,6 @@ function runInitManagementUI() {
 }
 
 function setLogPanelVisibility(visible) {
-  if (visible) {
-    clearLogPanelErrorIndicator();
-    var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
-    if (rt) {
-      var logMains = document.querySelectorAll('.log-panel-main');
-      for (var lm = 0; lm < logMains.length; lm++) {
-        rt.setViewError(logMains[lm], false);
-      }
-    }
-  }
   var panel = getElLogPanel();
   if (!panel) return;
   var shell = typeof window !== 'undefined' ? window.LexeraWorkspaceShell : null;
@@ -1365,12 +1317,6 @@ document.addEventListener('DOMContentLoaded', function () {
   var levelBtn = getElLogLevelBtn();
   var levelMenu = getElLogLevelMenu();
   updateAppBottomInset();
-
-  // Clicking the log panel header dismisses the error indicator
-  var headers = document.querySelectorAll('.log-panel-header');
-  for (var hi = 0; hi < headers.length; hi++) {
-    headers[hi].addEventListener('click', function () { clearLogPanelErrorIndicator(); });
-  }
 
   if (refreshBtn) refreshBtn.addEventListener('click', function (e) {
     e.stopPropagation();

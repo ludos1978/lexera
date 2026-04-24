@@ -1154,10 +1154,6 @@
   padding: 6px 12px;
 }
 
-:root[data-visual-theme="sleek"] body:not(.embedded-mode) .log-panel-header.log-panel-has-error {
-  background: #b00020;
-}
-
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .log-settings-pane {
   border-right: 1px solid var(--text-muted);
 }

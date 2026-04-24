@@ -15,6 +15,15 @@ body { display: flex; flex-direction: column; height: 100vh; }
   height: 28px;
 }
 .title { font-weight: 600; font-size: 12px; }
+
+.lexera-mv-status-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: #666; margin: 0 4px 0 0; flex: 0 0 auto;
+  vertical-align: middle; transition: background .2s, box-shadow .2s;
+}
+.lexera-mv-status-dot[data-health="green"]  { background: #4caf50; box-shadow: 0 0 4px rgba(76,175,80,.55); }
+.lexera-mv-status-dot[data-health="yellow"] { background: #f5a623; box-shadow: 0 0 4px rgba(245,166,35,.55); }
+.lexera-mv-status-dot[data-health="red"]    { background: #f44336; box-shadow: 0 0 4px rgba(244,67,54,.55); }
 .filters {
   display: flex; gap: 4px;
 }

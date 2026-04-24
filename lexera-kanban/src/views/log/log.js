@@ -130,7 +130,17 @@
       }).catch(function () {});
     } catch (_) {}
     statusEl.textContent = 'connected';
+    // Report health 'green' (we're connected) and update local dot
+    try {
+      window.__TAURI__.core.invoke('multiview_set_health', {
+        label: wv.label, state: 'green'
+      }).catch(function () {});
+      var dot = document.querySelector('.lexera-mv-status-dot');
+      if (dot) dot.setAttribute('data-health', 'green');
+    } catch (_) {}
   } else {
     statusEl.textContent = 'no Tauri context';
+    var dot2 = document.querySelector('.lexera-mv-status-dot');
+    if (dot2) dot2.setAttribute('data-health', 'red');
   }
 })();

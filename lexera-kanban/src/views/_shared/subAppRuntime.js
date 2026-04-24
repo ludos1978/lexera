@@ -193,14 +193,59 @@
       payload: { label: wv.label, at: Date.now() }
     }).catch(function () {});
 
-    // Report health: sub-apps mark themselves healthy once init
-    // completes (they're thin viewers — no backend-sync state to
-    // track). If a sub-app has complex state, it can override
-    // via opts.getHealth() returning 'green'/'yellow'/'red'.
+    // Report health AND inject a visible status dot into the
+    // sub-app's own header so the view shows its own state
+    // (since floating sub-apps don't appear in the shell's tab bar).
+    var currentHealth = 'green';
     function reportSubAppHealth(state) {
-      invoke('multiview_set_health', { label: wv.label, state: state })
+      currentHealth = String(state || 'green');
+      invoke('multiview_set_health', { label: wv.label, state: currentHealth })
         .catch(function () {});
+      updateLocalDot();
     }
+
+    // Inject dot into the first .header / .board-header / .shell-header
+    // element if there isn't one already. Sub-apps with custom headers
+    // can add `<span class="lexera-mv-status-dot"></span>` in their own
+    // HTML and the runtime will populate it.
+    function ensureLocalDot() {
+      var existing = document.querySelector('.lexera-mv-status-dot');
+      if (existing) return existing;
+      var header = document.querySelector('header, .header, .board-header, .shell-header');
+      if (!header) return null;
+      var dot = document.createElement('span');
+      dot.className = 'lexera-mv-status-dot';
+      dot.setAttribute('data-health', 'green');
+      dot.setAttribute('title', 'Connection state: green');
+      // Insert before any close-button ([data-mv-close]) or last child
+      var closeBtn = header.querySelector('[data-mv-close], .close-btn, .header-close');
+      if (closeBtn) {
+        header.insertBefore(dot, closeBtn);
+      } else {
+        header.appendChild(dot);
+      }
+      return dot;
+    }
+    function updateLocalDot() {
+      var dot = ensureLocalDot();
+      if (!dot) return;
+      dot.setAttribute('data-health', currentHealth);
+      dot.setAttribute('title', 'Connection state: ' + currentHealth);
+    }
+
+    // Inject default styling (no-op if a stylesheet already provides it)
+    if (!document.getElementById('lexera-mv-status-dot-styles')) {
+      var style = document.createElement('style');
+      style.id = 'lexera-mv-status-dot-styles';
+      style.textContent =
+        '.lexera-mv-status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#666;margin:0 6px 0 4px;flex:0 0 auto;vertical-align:middle;transition:background .2s,box-shadow .2s;}' +
+        '.lexera-mv-status-dot[data-health="green"]{background:#4caf50;box-shadow:0 0 4px rgba(76,175,80,.55);}' +
+        '.lexera-mv-status-dot[data-health="yellow"]{background:#f5a623;box-shadow:0 0 4px rgba(245,166,35,.55);}' +
+        '.lexera-mv-status-dot[data-health="red"]{background:#f44336;box-shadow:0 0 4px rgba(244,67,54,.55);}' +
+        '.lexera-mv-status-dot[data-health="unknown"]{background:#666;}';
+      document.head.appendChild(style);
+    }
+
     if (typeof opts.getHealth === 'function') {
       setInterval(function () {
         try { reportSubAppHealth(String(opts.getHealth() || 'green')); }

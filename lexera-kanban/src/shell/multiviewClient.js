@@ -962,6 +962,8 @@
           ? (pendingRenders > 0 ? 'yellow' : 'green')
           : 'red';
         reportHealth(state);
+        // healthDot.js renders the dot — when we set health via Rust,
+        // it broadcasts health-changed which healthDot.js picks up.
       } catch (_) {}
     }
 

@@ -6589,39 +6589,6 @@ select.dialog-input option,
   transition: background 0.2s ease;
 }
 
-.log-panel-header.log-panel-has-error {
-  background: var(--error);
-  border-bottom-color: var(--error);
-  cursor: pointer;
-}
-.log-panel-header.log-panel-has-error .log-panel-title,
-.log-panel-header.log-panel-has-error .log-panel-tab,
-.log-panel-header.log-panel-has-error .log-panel-btn {
-  color: #fff;
-  opacity: 0.85;
-}
-.log-panel-header.log-panel-has-error .log-panel-tab.active {
-  opacity: 1;
-  color: #fff;
-}
-.log-panel-error-msg {
-  display: none;
-  font-size: var(--font-size-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex: 0 1 auto;
-  max-width: 40%;
-  margin: 0 8px;
-  pointer-events: none;
-}
-.log-panel-header.log-panel-has-error .log-panel-error-msg {
-  display: inline;
-  color: #fff;
-  opacity: 0.8;
-}
-
 .log-panel-header-main {
   display: flex;
   align-items: center;
