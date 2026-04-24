@@ -98,6 +98,36 @@ pub fn drag_start(
         current_target: None,
     });
     log::info!("[drag] started by {}", payload.source);
+    // Auto-ensure the drag ghost window exists (first-drag cost: a
+    // Tauri window build, ~50-100ms; subsequent drags reuse it).
+    if app.get_webview_window("drag-ghost").is_none() {
+        use tauri::WebviewWindowBuilder;
+        let url_obj = tauri::WebviewUrl::App("views/drag-ghost/index.html".into());
+        let _ = WebviewWindowBuilder::new(&app, "drag-ghost", url_obj)
+            .inner_size(240.0, 48.0)
+            .resizable(false)
+            .decorations(false)
+            .always_on_top(true)
+            .visible(false)
+            .skip_taskbar(true)
+            .focused(false)
+            .build();
+    }
+    // Push the payload's text (if any) into the drag-ghost window
+    // so it shows meaningful content during the drag.
+    if let Some(ghost) = app.get_webview_window("drag-ghost") {
+        let text = payload.payload.get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if !text.is_empty() {
+            let html = format!(
+                "<div style=\"padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;\">{}</div>",
+                html_escape(&text)
+            );
+            let _ = ghost.emit("ghost-content", html);
+        }
+    }
     let _ = app.emit(
         "drag-began",
         DragBeganEvent {
@@ -106,6 +136,11 @@ pub fn drag_start(
         },
     );
     Ok(())
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+        .replace('"', "&quot;").replace('\'', "&#39;")
 }
 
 /// Forward a pointer-move event during drag. Coordinates are in

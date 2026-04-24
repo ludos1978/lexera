@@ -163,6 +163,13 @@
       });
     }
 
+    // Emit a 'sub-app-mounted' broadcast so the shell + other views
+    // can react (e.g., log panel shows when a sub-app connects).
+    invoke('multiview_broadcast', {
+      event: 'sub-app-mounted',
+      payload: { label: wv.label, at: Date.now() }
+    }).catch(function () {});
+
     if (typeof opts.onReady === 'function') opts.onReady(wv);
   }
 

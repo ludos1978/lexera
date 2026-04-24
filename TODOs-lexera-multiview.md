@@ -42,6 +42,18 @@ Work top-down by stage. Each stage has a decision gate; do not start the next st
 - Destroyed via `destroyMultiviewWebview` when tab closes (cleans both observers)
 - URL changes trigger destroy + respawn
 
+### Polish added after initial migration
+- LRU lifecycle: `lifecycleSpawn` called from `ensureMultiviewWebview`; `touch()` called on `activateTab` and on every `focus-changed` event. Soft cap default 8, oldest non-pinned evicted.
+- Eviction cleanup: Rust emits `multiview-destroyed` on any destroy; workspaceShell.js listens for `board-tab-*` labels and clears local state so next activation re-spawns.
+- Placeholder CSS: `.workspace-shell-multiview-placeholder.is-active::before` draws a fading accent-colored inset ring while the webview is loading; fades out when `is-loaded` class is added (two RAFs after spawn resolves).
+- Inspector reload button: each row in the webview table has a `↻` button that destroys + respawns at same URL/geometry (WebviewMeta now includes `url`).
+- beforeunload cleanup: main window unload destroys all spawned board webviews + hides the drag ghost (minimizes orphaned WebContent processes during dev reloads).
+- Drag ghost auto-ensure: `drag_start` builds the ghost window lazily on first drag (~50-100ms one-time cost, reused thereafter). Payload `.text` automatically shown in the ghost.
+- Mutation delegation bridge: `_delegateMutationToOwningFrame` in app.js now routes to the owning board webview via `multiview_emit_to('delegate-mutation', ...)` in multiview mode. Fire-and-forget; Loro CRDT propagates the result. Embedded board calls `window.LexeraDashboard[method](...args)`.
+- `getTabIdForBoard(boardId)` exported on LexeraWorkspaceShell — used by mutation delegation to address webviews by label.
+- `multiview_set_visible(label, visible)` + `watchPlaceholderVisibility`: MutationObserver on is-active/style + offsetParent check hides child webviews when their placeholder is hidden.
+- Duplicate-geometry coalescing in `pushGeom` to cut IPC noise during dock divider drag.
+
 ### Known still-broken (silently degraded)
 - Test infrastructure ([frontendTests.js:45](lexera-kanban/src/test/frontendTests.js#L45)) — queries `iframe` elements; with iframes gone, iframe-content tests early-return or fail (1 known card-move flake)
 - `_delegateMutationToOwningFrame` in app.js (synchronous return value cannot bridge async IPC; in practice the shell window doesn't own boards in multiview, so this rarely fires)

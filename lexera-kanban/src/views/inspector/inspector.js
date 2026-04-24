@@ -59,8 +59,10 @@
   procInfoEl.appendChild(renderRow('Timestamp', new Date().toISOString()));
 
   // Webview list — polling at 1Hz
+  var lastList = [];
   function refreshWebviewList() {
     invoke('multiview_list').then(function (list) {
+      lastList = list;
       webviewCountEl.textContent = '(' + list.length + ')';
       webviewTbody.innerHTML = '';
       list.forEach(function (mv) {
@@ -71,7 +73,10 @@
           '<td>' + Math.round(mv.y) + '</td>' +
           '<td>' + Math.round(mv.width) + '</td>' +
           '<td>' + Math.round(mv.height) + '</td>' +
-          '<td><button class="destroy-btn" data-label="' + escapeHtml(mv.label) + '">×</button></td>';
+          '<td>' +
+            '<button class="destroy-btn" data-label="' + escapeHtml(mv.label) + '" title="Destroy">×</button> ' +
+            '<button class="destroy-btn" data-reload="1" data-label="' + escapeHtml(mv.label) + '" title="Reload (destroy + respawn)">↻</button>' +
+          '</td>';
         webviewTbody.appendChild(tr);
       });
     }).catch(function (err) {
@@ -82,7 +87,24 @@
     var btn = e.target.closest('button.destroy-btn');
     if (!btn) return;
     var label = btn.dataset.label;
-    invoke('multiview_destroy', { label: label }).then(refreshWebviewList);
+    var isReload = btn.dataset.reload === '1';
+    if (isReload) {
+      // Remember url/geom for respawn
+      var prior = lastList.filter(function (w) { return w.label === label; })[0];
+      invoke('multiview_destroy', { label: label }).then(function () {
+        if (prior && prior.url) {
+          return invoke('multiview_spawn', {
+            req: {
+              label: prior.label, url: prior.url,
+              x: prior.x, y: prior.y,
+              width: prior.width, height: prior.height
+            }
+          });
+        }
+      }).then(refreshWebviewList);
+    } else {
+      invoke('multiview_destroy', { label: label }).then(refreshWebviewList);
+    }
   });
   refreshWebviewList();
   setInterval(refreshWebviewList, 1000);

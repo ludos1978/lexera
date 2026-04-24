@@ -395,12 +395,25 @@
   //
   // Configurable via LexeraMultiview.lifecycle.config({...}).
 
-  var lifecycleConfig = {
-    softCap: 8,           // max simultaneously alive non-pinned webviews
-    poolSize: 0,          // pre-warmed empty webviews (0 = disabled)
-    poolUrl: 'multiview-demo.html', // simplest possible page for pre-warming
-    pinnedLabels: ['inspector', 'log-view', 'workspaces', 'dashboard']
-  };
+  // Default lifecycle config, overrideable via URL params:
+  //   ?multiview-cap=12    — soft cap (max non-pinned webviews alive)
+  //   ?multiview-pool=2    — pre-warmed pool size (0 = disabled)
+  var lifecycleConfig = (function () {
+    var defaults = {
+      softCap: 8,
+      poolSize: 0,
+      poolUrl: 'multiview-demo.html',
+      pinnedLabels: ['inspector', 'log-view', 'workspaces', 'dashboard']
+    };
+    try {
+      var params = new URLSearchParams(window.location.search || '');
+      var cap = parseInt(params.get('multiview-cap') || '', 10);
+      var pool = parseInt(params.get('multiview-pool') || '', 10);
+      if (Number.isFinite(cap) && cap > 0) defaults.softCap = cap;
+      if (Number.isFinite(pool) && pool >= 0) defaults.poolSize = pool;
+    } catch (_) {}
+    return defaults;
+  })();
   var freshness = {};       // label -> timestamp of last touch
   var pool = [];            // pre-warmed webview labels
 
@@ -421,6 +434,10 @@
       });
       var victim = evictable[0].label;
       console.log('[lifecycle] evicting LRU webview:', victim);
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        window.lexeraLog('info', '[lifecycle] LRU evicted ' + victim +
+          ' (' + evictable.length + '/' + lifecycleConfig.softCap + ' over cap)');
+      }
       delete freshness[victim];
       return destroy(victim);
     });

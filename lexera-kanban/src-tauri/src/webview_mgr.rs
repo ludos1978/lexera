@@ -35,6 +35,7 @@ pub struct WebviewMeta {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    pub url: String,
 }
 
 #[derive(Deserialize)]
@@ -87,6 +88,7 @@ pub fn spawn_internal(
             y: position.1,
             width: size.0,
             height: size.1,
+            url: url.to_string(),
         },
     );
     log::info!(

@@ -2366,6 +2366,14 @@
         if (typeof window.lexeraLog === 'function') {
           window.lexeraLog('debug', '[multiview] spawned ' + label);
         }
+        // Mark placeholder as loaded so its spawning ring fades out.
+        // Delay one frame so the browser can actually paint the
+        // transition (otherwise the ring never shows).
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            placeholderEl.classList.add('is-loaded');
+          });
+        });
         // After spawn, push the real geometry on next frame
         requestAnimationFrame(pushGeom);
         if (typeof ResizeObserver !== 'undefined' && !multiviewGeometryObservers[tab.id]) {
@@ -2379,6 +2387,22 @@
         console.warn('[ws-shell] multiview spawn failed for', tab.id, err);
         if (typeof window.lexeraLog === 'function') {
           window.lexeraLog('warn', '[multiview] spawn failed for ' + label + ': ' + (err && err.message || err));
+        }
+        // Show error UI in the placeholder + retry button
+        placeholderEl.classList.add('has-error');
+        placeholderEl.classList.remove('is-loaded');
+        placeholderEl.innerHTML =
+          '<div class="mv-error-msg">Failed to load board webview.' +
+          '<br><small>' + String(err && err.message || err).replace(/</g, '&lt;') + '</small>' +
+          '<br><button type="button" data-mv-retry="1">Retry</button></div>';
+        var retryBtn = placeholderEl.querySelector('[data-mv-retry]');
+        if (retryBtn) {
+          retryBtn.addEventListener('click', function () {
+            placeholderEl.classList.remove('has-error');
+            placeholderEl.innerHTML = '';
+            delete multiviewSpawnedTabs[tab.id];
+            ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
+          });
         }
       });
     } else if (multiviewSpawnedTabs[tab.id].url !== url) {
@@ -2427,6 +2451,23 @@
       if (label.indexOf(labelPrefix) !== 0) return;
       var tabId = label.substring(labelPrefix.length);
       cleanupMultiviewLocalState(tabId);
+    });
+  }
+
+  // Best-effort cleanup on main-window unload — destroys all board
+  // child webviews we've spawned. Tauri should cascade cleanup when
+  // the window closes anyway, but an explicit destroy minimizes
+  // orphaned WebContent processes during dev/reload.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', function () {
+      var tabIds = Object.keys(multiviewSpawnedTabs);
+      for (var i = 0; i < tabIds.length; i++) {
+        try { destroyMultiviewWebview(tabIds[i]); } catch (_) {}
+      }
+      // Also tear down ghost + modal windows if present
+      if (window.LexeraMultiview && typeof window.LexeraMultiview.ghostHide === 'function') {
+        try { window.LexeraMultiview.ghostHide(); } catch (_) {}
+      }
     });
   }
 

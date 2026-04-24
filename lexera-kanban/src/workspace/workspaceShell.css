@@ -1230,6 +1230,62 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspa
   border: 0;
 }
 
+/* Multiview placeholder: a plain div that reserves space for the
+   Tauri child webview floating above it. The bg acts as a visible
+   backdrop during webview spawn/load/eviction (so the area doesn't
+   look like an empty hole). */
+.workspace-shell-multiview-placeholder {
+  background: var(--bg-primary, #1e1e1e);
+}
+.workspace-shell-multiview-placeholder.is-active::before {
+  /* Thin inset ring to indicate the active multiview slot — helps
+     users orient when a board's webview is loading. Fades out once
+     the webview has painted over the placeholder. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--accent, #007acc);
+  opacity: 0.4;
+  transition: opacity 0.8s ease-out;
+}
+.workspace-shell-multiview-placeholder.is-active.is-loaded::before {
+  opacity: 0;
+}
+
+/* Error state — shown when a webview spawn fails. The placeholder
+   displays a message the user can click to retry. */
+.workspace-shell-multiview-placeholder.has-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary, #1e1e1e);
+  color: var(--text-muted, #888);
+  font-size: 12px;
+}
+.workspace-shell-multiview-placeholder.has-error::before {
+  display: none;
+}
+.workspace-shell-multiview-placeholder.has-error .mv-error-msg {
+  padding: 12px 16px;
+  background: var(--bg-secondary, #2a2a32);
+  border: 1px solid var(--border, #3a3a42);
+  border-radius: 4px;
+  max-width: 400px;
+  text-align: center;
+}
+.workspace-shell-multiview-placeholder.has-error .mv-error-msg button {
+  margin-top: 8px;
+  padding: 4px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  background: var(--accent, #007acc);
+  color: #fff;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
 .workspace-shell-panel-tab-view {
   overflow: hidden;
 }
