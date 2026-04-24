@@ -60,14 +60,22 @@
 
   // Webview list — polling at 1Hz
   var lastList = [];
+  var lastHealth = {};
   function refreshWebviewList() {
-    invoke('multiview_list').then(function (list) {
+    Promise.all([
+      invoke('multiview_list'),
+      invoke('multiview_list_health').catch(function () { return {}; })
+    ]).then(function (results) {
+      var list = results[0];
+      lastHealth = results[1] || {};
       lastList = list;
       webviewCountEl.textContent = '(' + list.length + ')';
       webviewTbody.innerHTML = '';
       list.forEach(function (mv) {
+        var health = lastHealth[mv.label] || 'unknown';
         var tr = document.createElement('tr');
         tr.innerHTML =
+          '<td><span class="inspector-health-dot" data-health="' + escapeHtml(health) + '" title="' + escapeHtml(health) + '"></span></td>' +
           '<td>' + escapeHtml(mv.label) + '</td>' +
           '<td>' + Math.round(mv.x) + '</td>' +
           '<td>' + Math.round(mv.y) + '</td>' +
@@ -80,7 +88,7 @@
         webviewTbody.appendChild(tr);
       });
     }).catch(function (err) {
-      webviewTbody.innerHTML = '<tr><td colspan="6">' + escapeHtml(String(err)) + '</td></tr>';
+      webviewTbody.innerHTML = '<tr><td colspan="7">' + escapeHtml(String(err)) + '</td></tr>';
     });
   }
   webviewTbody.addEventListener('click', function (e) {

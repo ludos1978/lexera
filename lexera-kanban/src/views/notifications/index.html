@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Notifications</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      background: transparent;
+      width: 100%; height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 12px;
+      overflow: hidden;
+      color: #fff;
+    }
+    #stack {
+      position: absolute;
+      top: 0; right: 0;
+      padding: 8px;
+      display: flex; flex-direction: column; gap: 8px;
+      max-width: 360px;
+      pointer-events: none;
+    }
+    .toast {
+      background: #2a2a32;
+      border: 1px solid #3a3a42;
+      border-radius: 4px;
+      padding: 8px 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      pointer-events: auto;
+      display: flex; align-items: center; gap: 8px;
+      animation: slideIn 0.2s ease-out;
+    }
+    .toast.fadeout { opacity: 0; transition: opacity 0.25s; }
+    .toast.info    { border-left: 3px solid #4a90d9; }
+    .toast.warn    { border-left: 3px solid #f5a623; }
+    .toast.error   { border-left: 3px solid #f44336; }
+    .toast .msg { flex: 1 1 auto; word-break: break-word; }
+    .toast .close {
+      background: transparent; border: 0; color: #aaa; cursor: pointer;
+      font-size: 14px; padding: 0 4px;
+    }
+    .toast .close:hover { color: #fff; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div id="stack"></div>
+  <script>
+    (function () {
+      var stack = document.getElementById('stack');
+      var AUTO_DISMISS_MS = 6000;
+
+      function addToast(payload) {
+        var t = document.createElement('div');
+        t.className = 'toast ' + (payload.variant || 'info');
+        t.innerHTML = '<span class="msg"></span><button class="close" type="button">×</button>';
+        t.querySelector('.msg').textContent = String(payload.message || '');
+        var close = t.querySelector('.close');
+        function dismiss() {
+          t.classList.add('fadeout');
+          setTimeout(function () { t.remove(); }, 250);
+        }
+        close.addEventListener('click', dismiss);
+        stack.appendChild(t);
+        setTimeout(dismiss, payload.ttlMs || AUTO_DISMISS_MS);
+      }
+
+      try {
+        var wv = window.__TAURI__.webview.getCurrentWebview();
+        if (wv && typeof wv.listen === 'function') {
+          wv.listen('notification', function (e) {
+            if (e && e.payload) addToast(e.payload);
+          });
+        }
+      } catch (_) {}
+    })();
+  </script>
+</body>
+</html>

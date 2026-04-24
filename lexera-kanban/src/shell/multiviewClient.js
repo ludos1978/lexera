@@ -121,6 +121,7 @@
     return invoke('drag_ghost_set_content', { html: String(html || '') });
   }
 
+
   // ── Request/response IPC pattern ──────────────────────────────
   //
   // Tauri events are fire-and-forget. For cross-webview features

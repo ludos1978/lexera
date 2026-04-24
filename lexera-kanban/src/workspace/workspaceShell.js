@@ -2302,13 +2302,41 @@
     }
     return dot;
   }
+  // Last-known health per tab so re-renders reapply the state.
+  var lastKnownHealth = {};
+
+  // Reapply known health states to all health dots in the DOM.
+  // Called after render() so freshly-built tab headers get the
+  // right color instead of the default 'unknown'.
+  function reapplyAllHealthDots() {
+    var dots = document.querySelectorAll('.ws-view-tab-health[data-tab-id]');
+    for (var i = 0; i < dots.length; i++) {
+      var id = dots[i].getAttribute('data-tab-id');
+      if (!id) continue;
+      var s = lastKnownHealth[id] || 'unknown';
+      dots[i].setAttribute('data-health', s);
+      dots[i].setAttribute('title', 'Connection state: ' + s);
+    }
+  }
+
   function applyHealthToTab(tabId, healthState) {
-    var placeholderEl = state.frameCache[tabId];
-    if (!placeholderEl || typeof placeholderEl.querySelector !== 'function') return;
-    var dot = ensureHealthDot(placeholderEl);
     var s = healthState || 'unknown';
-    dot.setAttribute('data-health', s);
-    dot.setAttribute('title', 'Connection state: ' + s);
+    lastKnownHealth[tabId] = s;
+    // Update the health dot in the tab header (left of close button)
+    var headerDots = document.querySelectorAll(
+      '.ws-view-tab-health[data-tab-id="' + (tabId || '').replace(/"/g, '') + '"]');
+    for (var i = 0; i < headerDots.length; i++) {
+      headerDots[i].setAttribute('data-health', s);
+      headerDots[i].setAttribute('title', 'Connection state: ' + s);
+    }
+    // Also update the placeholder-corner dot as a secondary indicator
+    var placeholderEl = state.frameCache[tabId];
+    if (placeholderEl && typeof placeholderEl.querySelector === 'function' &&
+        placeholderEl.getAttribute && placeholderEl.getAttribute('data-multiview') === '1') {
+      var dot = ensureHealthDot(placeholderEl);
+      dot.setAttribute('data-health', s);
+      dot.setAttribute('title', 'Connection state: ' + s);
+    }
   }
 
   function multiviewUrlForTab(desiredSrc) {
@@ -2325,26 +2353,47 @@
     }
   }
 
-  // Track placeholder visibility (is-active class) and show/hide
-  // the corresponding child webview accordingly. Without this,
-  // hidden placeholders (display:none) leave their webview at last
-  // known geometry, possibly visible over other webviews.
+  // Track placeholder visibility (is-active class + intersection with
+  // viewport) and show/hide the corresponding child webview. Without
+  // this, hidden placeholders (display:none on ancestor, scrolled
+  // out of view, dock collapsed, etc.) leave their webview at last
+  // known geometry, possibly painting over other content.
   var multiviewVisibilityObservers = {};
   function watchPlaceholderVisibility(tabId, placeholderEl) {
     if (multiviewVisibilityObservers[tabId]) return;
-    if (!window.MutationObserver || !window.LexeraMultiview) return;
+    if (!window.LexeraMultiview) return;
     var label = multiviewLabelForTab(tabId);
+    var lastVisible = null;
     function syncVisible() {
       var visible = placeholderEl.classList.contains('is-active') &&
-        placeholderEl.offsetParent !== null;
+        placeholderEl.offsetParent !== null &&
+        placeholderEl.getBoundingClientRect().width > 0;
+      if (visible === lastVisible) return;
+      lastVisible = visible;
       window.LexeraMultiview.invoke('multiview_set_visible', {
         label: label, visible: visible
       }).catch(function () {});
+      if (visible) pushGeom(); // make sure geometry is fresh on show
     }
-    var mo = new MutationObserver(syncVisible);
-    mo.observe(placeholderEl, { attributes: true, attributeFilter: ['class', 'style'] });
-    multiviewVisibilityObservers[tabId] = mo;
-    // Initial sync
+    var observers = [];
+    if (window.MutationObserver) {
+      var mo = new MutationObserver(syncVisible);
+      mo.observe(placeholderEl, { attributes: true, attributeFilter: ['class', 'style'] });
+      observers.push({ disconnect: function () { mo.disconnect(); } });
+    }
+    if (window.IntersectionObserver) {
+      // Catches ancestor display:none, dock collapse, scroll-out-of-view
+      var io = new IntersectionObserver(syncVisible);
+      io.observe(placeholderEl);
+      observers.push({ disconnect: function () { io.disconnect(); } });
+    }
+    multiviewVisibilityObservers[tabId] = {
+      disconnect: function () {
+        for (var i = 0; i < observers.length; i++) {
+          try { observers[i].disconnect(); } catch (_) {}
+        }
+      }
+    };
     requestAnimationFrame(syncVisible);
   }
 
@@ -2352,25 +2401,18 @@
     if (!window.LexeraMultiview) return;
     var label = multiviewLabelForTab(tab.id);
     var url = multiviewUrlForTab(desiredSrc);
-    // rAF-batched geometry push. Multiple RO / resize events within
-    // a single frame collapse into one IPC. This avoids IPC floods
-    // during drag while keeping the webview's visible geometry
-    // tracking pointer movement at the same frame rate as the
-    // placeholder (no stale frames).
-    var pendingGeom = false;
+    // Immediate geometry push. Tested with rAF batching — but the
+    // resulting 1-2 frame lag was visible during dock divider drag.
+    // Now we push on every callback (RO / resize / spawn-tick); the
+    // setGeometry IPC at Rust side is fast (~1-3ms) and Tauri's
+    // native set_position absorbs duplicates without flicker.
     function pushGeom() {
-      if (pendingGeom) return;
       if (placeholderEl.offsetParent === null) return;
-      pendingGeom = true;
-      requestAnimationFrame(function () {
-        pendingGeom = false;
-        if (placeholderEl.offsetParent === null) return;
-        var r = placeholderEl.getBoundingClientRect();
-        if (r.width <= 0 || r.height <= 0) return;
-        window.LexeraMultiview.setGeometry([{
-          label: label, x: r.left, y: r.top, width: r.width, height: r.height
-        }]).catch(function () {});
-      });
+      var r = placeholderEl.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return;
+      window.LexeraMultiview.setGeometry([{
+        label: label, x: r.left, y: r.top, width: r.width, height: r.height
+      }]).catch(function () {});
     }
     if (!multiviewSpawnedTabs[tab.id]) {
       var r = placeholderEl.getBoundingClientRect();
@@ -2399,8 +2441,13 @@
             placeholderEl.classList.add('is-loaded');
           });
         });
-        // After spawn, push the real geometry on next frame
+        // Multi-step geometry push: spawn-time, next frame, and 50/200ms
+        // later. Catches the case where the placeholder is briefly
+        // mis-sized while the dock layout is still settling — common
+        // during initial render and tab activation cascades.
         requestAnimationFrame(pushGeom);
+        setTimeout(pushGeom, 50);
+        setTimeout(pushGeom, 200);
         if (typeof ResizeObserver !== 'undefined' && !multiviewGeometryObservers[tab.id]) {
           var ro = new ResizeObserver(function () { pushGeom(); });
           ro.observe(placeholderEl);
@@ -3239,6 +3286,8 @@
         tab.innerHTML =
           '<span class="ws-view-tab-label">' + escapeHtml(item.label) + '</span>' +
           (opts.showMeta && item.meta ? '<span class="ws-view-tab-meta">' + escapeHtml(item.meta) + '</span>' : '') +
+          '<span class="ws-view-tab-health" data-tab-id="' + escapeHtml(item.id) +
+            '" data-health="unknown" title="Connection state: unknown"></span>' +
           '<button class="ws-view-tab-close" type="button" data-ws-action="' + escapeHtml(opts.closeAction) + '" ' +
             escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Close">\u00d7</button>';
         tabs.appendChild(tab);
@@ -4651,6 +4700,8 @@
     if (state.hooks && typeof state.hooks.onAfterRender === 'function') {
       state.hooks.onAfterRender();
     }
+    // Re-apply known health dots to freshly-built tab headers.
+    reapplyAllHealthDots();
   }
 
   function pruneMissingBoards() {

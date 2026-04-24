@@ -48,6 +48,14 @@ button.destroy-btn {
 }
 button.destroy-btn:hover { background: #6a3232; }
 
+.inspector-health-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: #666;
+}
+.inspector-health-dot[data-health="green"]  { background: #4caf50; box-shadow: 0 0 4px rgba(76,175,80,0.6); }
+.inspector-health-dot[data-health="yellow"] { background: #f5a623; box-shadow: 0 0 4px rgba(245,166,35,0.6); }
+.inspector-health-dot[data-health="red"]    { background: #f44336; box-shadow: 0 0 4px rgba(244,67,54,0.6); }
+
 .log-tail {
   background: #1d1d23; border: 1px solid #2a2a32; border-radius: 4px;
   padding: 6px 8px; max-height: 250px; overflow-y: auto;
