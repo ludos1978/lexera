@@ -37,8 +37,26 @@ var LexeraDialogs = (function () {
     return { overlay: overlay, dialog: dialog };
   }
 
+  // When multiview is active, HTML overlays are hidden under native
+  // child webviews. Delegate to the modal-as-window helper which
+  // composites above all webviews. Falls back to the HTML overlay
+  // when the multiview helper is unavailable (test, embedded mode).
+  function _multiviewConfirmIfAvailable(message) {
+    if (typeof window !== 'undefined' &&
+        window.LexeraMultiview &&
+        typeof window.LexeraMultiview.confirmModal === 'function') {
+      return window.LexeraMultiview.confirmModal({
+        title: 'Confirm',
+        message: String(message == null ? '' : message)
+      });
+    }
+    return null;
+  }
+
   function confirm(message) {
     _log('info', '[dialog.confirm] ' + message);
+    var multiviewPromise = _multiviewConfirmIfAvailable(message);
+    if (multiviewPromise) return multiviewPromise;
     return new Promise(function (resolve) {
       var m = _mountOverlay(
         '<div class="dialog-title">Confirm</div>' +
@@ -75,11 +93,26 @@ var LexeraDialogs = (function () {
     });
   }
 
+  function _multiviewPromptIfAvailable(message, initial, title) {
+    if (typeof window !== 'undefined' &&
+        window.LexeraMultiview &&
+        typeof window.LexeraMultiview.promptModal === 'function') {
+      return window.LexeraMultiview.promptModal({
+        title: title || 'Input',
+        message: String(message == null ? '' : message),
+        initial: initial == null ? '' : String(initial)
+      });
+    }
+    return null;
+  }
+
   function prompt(message, initialValue, opts) {
     opts = opts || {};
     var initial = initialValue == null ? '' : String(initialValue);
     var title = opts.title || 'Input';
     _log('info', '[dialog.prompt] ' + message + (initial ? ' (initial="' + initial + '")' : ''));
+    var multiviewPromise = _multiviewPromptIfAvailable(message, initial, title);
+    if (multiviewPromise) return multiviewPromise;
 
     return new Promise(function (resolve) {
       var m = _mountOverlay(

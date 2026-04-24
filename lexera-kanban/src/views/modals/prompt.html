@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Prompt</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: var(--bg-primary, #22222a); color: var(--text-primary, #e8e8ec);
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 13px; overflow: hidden;
+    }
+    body { display: flex; flex-direction: column; padding: 16px 20px; box-sizing: border-box; }
+    .title { font-weight: 600; font-size: 14px; margin-bottom: 8px; color: var(--text-primary, #fff); }
+    .message { color: var(--text-primary, #d8d8dc); line-height: 1.4; margin-bottom: 8px; }
+    .input-wrap { margin-bottom: 12px; }
+    input.dialog-input {
+      width: 100%; box-sizing: border-box;
+      padding: 6px 8px; font-size: 13px;
+      background: var(--input-bg, #3c3c3c); color: var(--text-primary, #fff);
+      border: 1px solid var(--input-border, #5a5a5a); border-radius: 3px;
+      font-family: inherit;
+    }
+    input.dialog-input:focus { outline: 1px solid var(--accent, #007acc); border-color: var(--accent, #007acc); }
+    .buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: auto; }
+    button {
+      padding: 6px 14px; font-family: inherit; font-size: 12px;
+      border-radius: 3px; cursor: pointer;
+      border: 1px solid var(--border, #444);
+    }
+    button.primary { background: var(--accent, #007acc); color: #fff; border-color: var(--accent, #007acc); }
+    button.secondary { background: var(--btn-bg, #3a3d41); color: var(--btn-fg, #e0e0e0); }
+    button:hover { filter: brightness(1.1); }
+  </style>
+</head>
+<body>
+  <div class="title" id="title">Input</div>
+  <div class="message" id="message"></div>
+  <div class="input-wrap"><input type="text" class="dialog-input" id="input" autofocus></div>
+  <div class="buttons">
+    <button class="secondary" id="btn-cancel">Cancel</button>
+    <button class="primary" id="btn-ok">OK</button>
+  </div>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var label = params.get('label') || 'prompt';
+      var title = params.get('title') || 'Input';
+      var message = params.get('message') || '';
+      var initial = params.get('initial') || '';
+      var okText = params.get('ok') || 'OK';
+      var cancelText = params.get('cancel') || 'Cancel';
+
+      document.getElementById('title').textContent = title;
+      document.getElementById('message').textContent = message;
+      var input = document.getElementById('input');
+      input.value = initial;
+      var btnOk = document.getElementById('btn-ok');
+      var btnCancel = document.getElementById('btn-cancel');
+      btnOk.textContent = okText;
+      btnCancel.textContent = cancelText;
+
+      function emitResult(value) {
+        var t = window.__TAURI__;
+        if (t && t.event && typeof t.event.emit === 'function') {
+          t.event.emit('modal-result-' + label, { value: value });
+        }
+        if (t && t.core && typeof t.core.invoke === 'function') {
+          t.core.invoke('multiview_close_window', { label: label }).catch(function () {});
+        } else { window.close(); }
+      }
+
+      btnOk.addEventListener('click', function () { emitResult(input.value); });
+      btnCancel.addEventListener('click', function () { emitResult(null); });
+
+      // Theme inheritance
+      try {
+        var wv = window.__TAURI__.webview.getCurrentWebview();
+        if (wv && typeof wv.listen === 'function') {
+          wv.listen('theme-snapshot', function (e) {
+            if (!e || !e.payload || !e.payload.palette) return;
+            var root = document.documentElement;
+            Object.keys(e.payload.palette).forEach(function (k) {
+              root.style.setProperty(k, e.payload.palette[k]);
+            });
+            if (e.payload.color_scheme) root.style.colorScheme = e.payload.color_scheme;
+          });
+          window.__TAURI__.core.invoke('multiview_broadcast', {
+            event: 'theme-request', payload: {}
+          }).catch(function () {});
+        }
+      } catch (_) {}
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); emitResult(null); }
+        if (e.key === 'Enter') { e.preventDefault(); emitResult(input.value); }
+      });
+
+      setTimeout(function () { input.focus(); input.select(); }, 0);
+    })();
+  </script>
+</body>
+</html>

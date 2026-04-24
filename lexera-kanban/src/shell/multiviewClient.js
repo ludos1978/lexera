@@ -679,6 +679,41 @@
     });
   }
 
+  // promptModal: returns Promise<string|null>. null on cancel.
+  function promptModal(opts) {
+    opts = opts || {};
+    var label = 'prompt-modal-' + (++modalCounter);
+    var params = new URLSearchParams();
+    params.set('label', label);
+    if (opts.title) params.set('title', opts.title);
+    if (opts.message) params.set('message', opts.message);
+    if (opts.initial != null) params.set('initial', String(opts.initial));
+    if (opts.okText) params.set('ok', opts.okText);
+    if (opts.cancelText) params.set('cancel', opts.cancelText);
+    var url = 'views/modals/prompt.html?' + params.toString();
+    return new Promise(function (resolve) {
+      var t = tauri();
+      if (!t || !t.event || typeof t.event.listen !== 'function') {
+        resolve(null);
+        return;
+      }
+      var unsubPromise = t.event.listen('modal-result-' + label, function (event) {
+        unsubPromise.then(function (unsub) { try { unsub(); } catch (_) {} });
+        var p = event && event.payload ? event.payload : {};
+        resolve(p.value == null ? null : String(p.value));
+      });
+      invoke('multiview_open_modal_window', {
+        spec: {
+          label: label, url: url,
+          title: opts.title || 'Input',
+          width: opts.width || 420,
+          height: opts.height || 200,
+          center: true
+        }
+      }).catch(function () { resolve(null); });
+    });
+  }
+
   // ── Theme bridging ────────────────────────────────────────────
   //
   // The main kanban applies a palette as CSS custom properties on
@@ -1095,6 +1130,7 @@
     closeDashboard: closeDashboard,
     // Modal-as-window dialogs (Stage 6)
     confirmModal: confirmModal,
+    promptModal: promptModal,
     // Drag ghost window (Stage 7)
     ghostEnsure: ghostEnsure,
     ghostMove: ghostMove,
