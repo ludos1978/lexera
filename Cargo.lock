@@ -2916,6 +2916,7 @@ dependencies = [
  "libc",
  "log",
  "notify",
+ "parking_lot",
  "rfd",
  "serde",
  "serde_json",

@@ -4,10 +4,12 @@ mod app_menu;
 mod asset_protocol;
 mod backend_status;
 mod commands;
+mod drag_coordinator;
 mod export_commands;
 mod ipc_client;
 mod ipc_commands;
 mod ipc_streams;
+mod webview_mgr;
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -413,6 +415,11 @@ fn main() {
         .manage(export_commands::MarpWatchState::new())
         .manage::<ipc_client::SharedIpcClient>(std::sync::Arc::new(ipc_client::IpcClientState::new()))
         .manage::<ipc_streams::SharedStreamRegistry>(std::sync::Arc::new(ipc_streams::StreamRegistry::new()))
+        // Multi-webview migration scaffolding (Stage 2). Registered
+        // and callable from JS but currently UNUSED by the iframe-
+        // based shell. See TODOs-lexera-multiview.md.
+        .manage(webview_mgr::WebviewRegistry::default())
+        .manage(drag_coordinator::DragState::default())
         .invoke_handler(tauri::generate_handler![
             open_new_window,
             get_test_runner_config,
@@ -463,6 +470,16 @@ fn main() {
             export_commands::get_marp_engine_path,
             export_commands::get_file_mtime_ms,
             export_commands::read_file_as_data_uri,
+            // Multi-webview scaffolding (Stage 2 — dormant until views migrate)
+            webview_mgr::multiview_spawn,
+            webview_mgr::multiview_destroy,
+            webview_mgr::multiview_set_geometry,
+            webview_mgr::multiview_list,
+            drag_coordinator::drag_start,
+            drag_coordinator::drag_pointer_move,
+            drag_coordinator::drag_pointer_up,
+            drag_coordinator::drag_cancel,
+            drag_coordinator::drop_ack,
         ])
         .on_window_event(|window, event| {
             match event {
