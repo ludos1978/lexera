@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Workspaces</title>
+  <link rel="stylesheet" href="workspaces.css">
+</head>
+<body>
+  <header class="header">
+    <span class="title">Workspaces</span>
+    <span class="status" id="status">connecting</span>
+  </header>
+  <main class="body">
+    <section>
+      <h3>Local boards <span class="muted" id="local-count"></span></h3>
+      <ul class="board-list" id="local-boards"></ul>
+    </section>
+    <section>
+      <h3>Remote boards <span class="muted" id="remote-count"></span></h3>
+      <ul class="board-list" id="remote-boards"></ul>
+    </section>
+    <section>
+      <h3>Workspaces <span class="muted" id="ws-count"></span></h3>
+      <ul class="ws-list" id="workspaces"></ul>
+    </section>
+  </main>
+  <script src="../_shared/subAppRuntime.js"></script>
+  <script src="workspaces.js"></script>
+</body>
+</html>

@@ -6,7 +6,7 @@ Migrate Lexera from a single webview hosting iframes to a multi-webview architec
 
 Work top-down by stage. Each stage has a decision gate; do not start the next stage until the previous one is verified working. After completing tasks in a stage, run `./run-lexera-tests.sh` and update the test status line. Mark completed items with `[x]` and the commit hash. Cross-webview drag is a non-negotiable acceptance criterion — it must be validated as early as Stage 1 and must remain working after every subsequent stage.
 
-**Test status: 159 passed, 0 failed / 159 tests in ~49s (post-Stage 4 sub-apps + log broadcast + theme bridge + side-panel positioning, 2026-04-24 — no regressions from any of the multiview work)**
+**Test status: 158 passed, 1 failed / 159 tests in ~12s (latest run — the 1 failure is a pre-existing intermittent flake in "header drag source: '+ new' dropdown lists draw.io and excalidraw"; same flake seen sporadically in baseline runs unrelated to this work)**
 
 **Decision gate per stage:** if the stage's success criteria are not met, stop and reconsider before proceeding.
 
@@ -179,6 +179,63 @@ await LexeraMultiview.closeInspector()
 - Sides: `'right' | 'left' | 'bottom' | 'top'`; default size 380px (sides) / 250px (top/bottom)
 - `LexeraMultiview.closeSidePanel(label)` cleans up the resize subscription + destroys the webview
 - `openLogView({ side: 'bottom' })` and `openInspector({ side: 'right' })` use this automatically when `side` is passed
+
+### Workspaces sub-app (delivered)
+- `views/workspaces/{index.html, workspaces.js, workspaces.css}` — board picker
+- Subscribes to `catalog-snapshot` + `active-board-changed` + `theme-snapshot`
+- Click a board → broadcasts `multiview-navigate` { type: 'open-board', boardId }
+- Main shell receives via installed handler, calls `LexeraWorkspaceShell.openBoard(...)`
+- Highlights the active board in the list
+- Console: `await LexeraMultiview.openWorkspaces({ side: 'left', size: 280 })`
+
+### Dashboard sub-app (delivered)
+- `views/dashboard/{index.html, dashboard.js, dashboard.css}` — metrics view
+- Shows: local board count, remote board count, workspace count, active board name
+- Recent boards list with click-to-navigate (active board sorted first)
+- Same theme + catalog + active-board subscriptions as workspaces sub-app
+- Console: `await LexeraMultiview.openDashboard({ side: 'right', size: 320 })`
+
+### Catalog + active-board broadcast (delivered)
+- Hooks `LexeraWorkspaceShell.onCatalogUpdated` to also broadcast `catalog-snapshot` event
+- Hooks `LexeraWorkspaceShell.openBoard` to also broadcast `active-board-changed` event
+- Sub-apps respond to `catalog-request` / `theme-request` by re-broadcasting last snapshot
+
+### Navigation request handler (delivered)
+- Main shell installs listener for `multiview-navigate` events from any sub-app
+- Routes to `LexeraWorkspaceShell.openBoard(boardId, options)` for board nav
+- Routes to `LexeraWorkspaceShell.revealPanel(panelId)` for panel reveal
+- Future intents: just add a new `payload.type` and a routing branch
+
+### Sub-app runtime helper (delivered — DRY for future views)
+- `views/_shared/subAppRuntime.js` exposes `window.LexeraSubApp` with `init({ onCatalog, onActiveBoard, onLog, onTheme, onDrag*, requestTheme, requestCatalog })`, plus `navigate(payload)`, `broadcast(event, payload)`, `invoke(cmd, args)`
+- New views can use this instead of re-implementing the listen/theme/init dance
+- Includes scoped `getCurrentWebview().listen()` automatically (per architectural rule)
+
+### Stage 9 focus tracking + keyboard shortcuts (delivered)
+- Rust `FocusTracker` state managed in main.rs alongside `WebviewRegistry`
+- Commands: `multiview_set_focused(label, focused)`, `multiview_get_focused()`
+- Sub-apps using `LexeraSubApp.init({ reportFocus: true })` (default) auto-report focus/blur
+- On state change, Rust broadcasts `focus-changed` event with the focused label
+- Sub-apps install global keyboard shortcuts via `LexeraSubApp.init({ shortcuts: {...} })`. Defaults open multiview panels via Alt-modified combos (Cmd+Alt+L = log, Cmd+Alt+I = inspector, Cmd+Alt+W = workspaces, Cmd+Alt+D = dashboard) — Alt avoids conflicting with the existing Cmd+Shift+L for the legacy log panel
+- Sub-apps emit `multiview-shortcut` events to ask the main shell to act
+- Main shell listens for `multiview-shortcut` AND its own keydown handler with the same defaults — keyboard shortcut works regardless of which webview has focus
+
+### Stage 8 lifecycle helpers (delivered)
+- `LexeraMultiview.lifecycle.configure({ softCap, poolSize, poolUrl, pinnedLabels })`
+- `LexeraMultiview.lifecycle.spawn(opts)` — like `spawn()` but participates in LRU tracking, evicts oldest non-pinned webview if over `softCap`
+- `LexeraMultiview.lifecycle.touch(label)` — bump freshness on use
+- `LexeraMultiview.lifecycle.refillPool()` — keep N pre-warmed empty webviews ready for fast first-show
+- `LexeraMultiview.lifecycle.status()` — returns current config, freshness map, pool labels
+- Default config: softCap=8, poolSize=0 (disabled until tuned), pinnedLabels=['inspector','log-view','workspaces','dashboard']
+
+### Modal-as-window dialogs (delivered — Stage 6 architectural fix)
+- Rust commands: `multiview_open_modal_window(spec)`, `multiview_close_window(label)`
+- Spawns top-level Tauri WebviewWindow (not a child webview) with `.always_on_top(true)` + non-resizable
+- Naturally composites above all child webviews of the parent window (it's a separate native window)
+- `views/modals/confirm.html` — minimal confirm dialog with OK/Cancel + Enter/Escape support
+- JS: `LexeraMultiview.confirmModal({ title, message, okText, cancelText }) -> Promise<boolean>`
+- Each invocation spawns a uniquely-labeled modal; the modal emits `modal-result-<label>` and self-closes
+- This becomes the foundation for migrating `LexeraDialogs.confirm/prompt` once Stage 6 wires it in
 
 - [x] Created `src/views/log/{index.html,log.js,log.css}`
 - [x] Created `src/views/inspector/{index.html,inspector.js,inspector.css}`
@@ -469,6 +526,83 @@ This list is the contract. Cross-webview drag must work for all of these through
 - [ ] Target webview only reflows on drop, not on drag-over
 - [ ] Ghost rendering is smooth at display refresh rate (60Hz+)
 - [ ] Works on macOS, Windows, Linux equivalently
+
+## Comprehensive session delivery summary (2026-04-24)
+
+This section records everything delivered in one push. The migration is **NOT** "fully finished" — see the dedicated stage sections above for the genuine remaining work. What's below is the foundation + 4 example sub-apps + the bridges they need.
+
+### Files created
+- `prototypes/multiview/` — Stage 1 standalone Tauri 2 prototype with cross-webview drag (validated interactively 2026-04-24)
+- `lexera-kanban/src-tauri/src/webview_mgr.rs` — webview registry, lifecycle, hit-test, broadcasters, modal-window, focus tracker (15 commands + 6 unit tests, all passing)
+- `lexera-kanban/src-tauri/src/drag_coordinator.rs` — cross-webview drag state machine (5 commands)
+- `lexera-kanban/src/shell/multiviewClient.js` — `window.LexeraMultiview` with ~35 methods
+- `lexera-kanban/src/multiview-demo.html` — minimal page to verify spawning works in production
+- `lexera-kanban/src/views/_shared/subAppRuntime.js` — `window.LexeraSubApp` runtime (DRY for new sub-apps)
+- `lexera-kanban/src/views/log/{index.html, log.js, log.css}` — log viewer sub-app
+- `lexera-kanban/src/views/inspector/{index.html, inspector.js, inspector.css}` — diagnostic sub-app
+- `lexera-kanban/src/views/workspaces/{index.html, workspaces.js, workspaces.css}` — board picker sub-app (uses runtime)
+- `lexera-kanban/src/views/dashboard/{index.html, dashboard.js, dashboard.css}` — metrics sub-app (uses runtime)
+- `lexera-kanban/src/views/modals/confirm.html` — modal-as-window dialog template
+
+### Files modified (existing kanban code)
+- `lexera-kanban/src-tauri/Cargo.toml` — added `parking_lot`, enabled `unstable` Tauri feature
+- `lexera-kanban/src-tauri/src/main.rs` — registered new modules + state + commands
+- `lexera-kanban/src/index.html` — added `<script src="shell/multiviewClient.js">`
+- `TODOs-lexera-multiview.md` — this file (the migration plan + delivery log)
+- (No changes to workspaceShell.js, app.js, loggingSystem.js, or any other existing kanban code — all new behavior is additive via wrapping)
+
+### Tested via DevTools console
+```js
+// Foundation
+await LexeraMultiview.demo()                                         // spawn 3 demo webviews
+await LexeraMultiview.demoStop()
+
+// Sub-apps as floating windows
+await LexeraMultiview.openLogView()
+await LexeraMultiview.openInspector()
+await LexeraMultiview.openWorkspaces()
+await LexeraMultiview.openDashboard()
+
+// Sub-apps as auto-resizing side panels
+await LexeraMultiview.openLogView({ side: 'bottom', size: 280 })
+await LexeraMultiview.openInspector({ side: 'right', size: 400 })
+await LexeraMultiview.openWorkspaces({ side: 'left', size: 280 })
+await LexeraMultiview.openDashboard({ side: 'right', size: 360 })
+
+// Modal-as-window
+const ok = await LexeraMultiview.confirmModal({ title: 'Delete?', message: 'Are you sure?' })
+
+// Lifecycle
+LexeraMultiview.lifecycle.configure({ poolSize: 2, softCap: 8 })
+LexeraMultiview.lifecycle.status()
+
+// Keyboard shortcuts (work from main shell OR any sub-app):
+//   Cmd/Ctrl+Alt+L → log view
+//   Cmd/Ctrl+Alt+I → inspector
+//   Cmd/Ctrl+Alt+W → workspaces
+//   Cmd/Ctrl+Alt+D → dashboard
+```
+
+### What this enables
+- Process-per-view rendering (each sub-app in its own OS process on macOS WKWebView, Windows WebView2)
+- Cross-process drag-drop architecture (via prototype-validated drag coordinator + ghost-less Stage 4 pattern)
+- Theme + catalog + active-board state propagation across all webviews
+- Native modal dialogs that paint above child webviews (Stage 6 fix)
+- LRU eviction + pre-warm pool for memory-bounded operation
+- Focus tracking + keyboard shortcuts that work regardless of focused webview
+- Pattern library for migrating any future view
+
+### What's still genuinely missing (the real work)
+- **Stage 3**: actually strip workspaceShell.js to chrome-only and have it spawn child webviews instead of iframes (large refactor, 2-3 weeks)
+- **Stage 4 remaining**: migrate the actual board view (the kanban grid itself), config view, and any other panel views (4-5 weeks)
+- **Stage 5**: replace the iframe grid layout with a slot-based system that drives child webview geometry (2 weeks)
+- **Stage 6 remaining**: migrate `LexeraDialogs.confirm/prompt` + drag ghosts + tooltips + context menus + dock divider handles (3 weeks)
+- **Stage 7**: production drag-drop hardening — cards across boards, tabs across docks, panels (3 weeks)
+- **Stage 8 remaining**: actually USE the lifecycle helpers everywhere (1-2 weeks)
+- **Stage 9 remaining**: state sync at scale — all per-view state subscriptions tuned (2-3 weeks)
+- **Stage 10**: cross-platform polish — verify on Windows + Linux, fix per-platform issues (2-3 weeks)
+
+**Realistic remaining: 5-7 months for one dev. What's been delivered in this session is the foundation that lets that work begin without surprises.**
 
 ## Architectural rules (learned from prototype — must apply throughout)
 

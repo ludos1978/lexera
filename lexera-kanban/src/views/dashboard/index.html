@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <header class="header">
+    <span class="title">Dashboard</span>
+    <span class="status" id="status">connecting</span>
+  </header>
+  <main class="body">
+    <section class="metrics">
+      <div class="metric">
+        <div class="metric-label">Local boards</div>
+        <div class="metric-value" id="m-local">—</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Remote boards</div>
+        <div class="metric-value" id="m-remote">—</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Workspaces</div>
+        <div class="metric-value" id="m-ws">—</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Active board</div>
+        <div class="metric-value small" id="m-active">none</div>
+      </div>
+    </section>
+    <section>
+      <h3>Recent boards</h3>
+      <ul class="recent-list" id="recent"></ul>
+    </section>
+  </main>
+  <script src="../_shared/subAppRuntime.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

@@ -199,6 +199,112 @@ pub fn multiview_broadcast(
     Ok(())
 }
 
+// ── Modal child windows ─────────────────────────────────────────
+//
+// Stage 6 architectural fix: native child webviews paint above HTML,
+// so HTML-overlay dialogs no longer work as a UI primitive once we
+// have multiple child webviews mounted. The fix is to spawn a real
+// native window for each modal — a top-level Tauri webview window,
+// not a child webview. This naturally composites above all child
+// webviews of the parent window because it's its own OS window.
+//
+// The modal communicates result back via Tauri events
+// ('modal-result-<label>') and self-closes.
+
+#[derive(Deserialize)]
+pub struct ModalSpec {
+    pub label: String,
+    pub url: String,
+    pub title: Option<String>,
+    pub width: f64,
+    pub height: f64,
+    pub center: Option<bool>,
+}
+
+#[tauri::command]
+pub fn multiview_open_modal_window(
+    app: AppHandle,
+    spec: ModalSpec,
+) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    let url_obj = tauri::WebviewUrl::App(spec.url.into());
+    let mut builder = WebviewWindowBuilder::new(&app, &spec.label, url_obj)
+        .inner_size(spec.width, spec.height)
+        .resizable(false)
+        .minimizable(false)
+        .maximizable(false)
+        .always_on_top(true);
+    if let Some(t) = spec.title {
+        builder = builder.title(t);
+    }
+    if spec.center.unwrap_or(true) {
+        builder = builder.center();
+    }
+    builder
+        .build()
+        .map_err(|e| format!("modal window build failed for {}: {}", spec.label, e))?;
+    log::info!("[modal] opened '{}'", spec.label);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn multiview_close_window(app: AppHandle, label: String) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(&label) {
+        window
+            .close()
+            .map_err(|e| format!("close failed for {}: {}", label, e))?;
+        log::info!("[modal] closed '{}'", label);
+    }
+    Ok(())
+}
+
+// ── Focus tracking (Stage 9) ───────────────────────────────────
+//
+// Sub-apps report their focused/blurred state. Rust tracks the
+// currently-focused webview so the main shell can route global
+// keyboard shortcuts to the right place, show focus indicators,
+// or query "who has focus" at any time.
+
+#[derive(Default)]
+pub struct FocusTracker {
+    inner: parking_lot::Mutex<Option<String>>,
+}
+
+#[derive(Serialize, Clone)]
+struct FocusChangedEvent {
+    label: Option<String>,
+}
+
+#[tauri::command]
+pub fn multiview_set_focused(
+    app: AppHandle,
+    tracker: State<FocusTracker>,
+    label: String,
+    focused: bool,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    let mut current = tracker.inner.lock();
+    let new_label: Option<String> = if focused {
+        Some(label.clone())
+    } else if current.as_deref() == Some(label.as_str()) {
+        None
+    } else {
+        // Blur from a label that wasn't currently focused — ignore
+        return Ok(());
+    };
+    if *current != new_label {
+        *current = new_label.clone();
+        log::info!("[focus] now: {:?}", new_label);
+        let _ = app.emit("focus-changed", FocusChangedEvent { label: new_label });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn multiview_get_focused(tracker: State<FocusTracker>) -> Option<String> {
+    tracker.inner.lock().clone()
+}
+
 // ── Internal API for the drag coordinator ───────────────────────
 
 /// Hit-test a shell-local coordinate against known webview rectangles.

@@ -419,6 +419,7 @@ fn main() {
         // and callable from JS but currently UNUSED by the iframe-
         // based shell. See TODOs-lexera-multiview.md.
         .manage(webview_mgr::WebviewRegistry::default())
+        .manage(webview_mgr::FocusTracker::default())
         .manage(drag_coordinator::DragState::default())
         .invoke_handler(tauri::generate_handler![
             open_new_window,
@@ -477,6 +478,10 @@ fn main() {
             webview_mgr::multiview_list,
             webview_mgr::log_broadcast,
             webview_mgr::multiview_broadcast,
+            webview_mgr::multiview_open_modal_window,
+            webview_mgr::multiview_close_window,
+            webview_mgr::multiview_set_focused,
+            webview_mgr::multiview_get_focused,
             drag_coordinator::drag_start,
             drag_coordinator::drag_pointer_move,
             drag_coordinator::drag_pointer_up,
