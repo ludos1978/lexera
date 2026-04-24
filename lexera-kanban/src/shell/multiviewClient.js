@@ -1017,11 +1017,18 @@
     // Bridge focus-changed → synthetic 'lexera-pane-activated' message
     // for the workspace shell. When a board webview gains focus, the
     // shell's existing handleWindowMessage handler runs to clear
-    // pending focus targets / mark the pane as activated.
+    // pending focus targets / mark the pane as activated. Also bump
+    // lifecycle freshness so this webview is not the next eviction
+    // candidate.
     t.event.listen('focus-changed', function (event) {
       var p = event && event.payload ? event.payload : {};
       var label = p.label || '';
-      // Only handle our board-tab-* labels
+      // Bump LRU regardless of label so all view types get freshness updates
+      if (window.LexeraMultiview && window.LexeraMultiview.lifecycle &&
+          typeof window.LexeraMultiview.lifecycle.touch === 'function') {
+        try { window.LexeraMultiview.lifecycle.touch(label); } catch (_) {}
+      }
+      // Only synthesize pane-activated for board-tab-* labels
       var prefix = 'board-tab-';
       if (label.indexOf(prefix) !== 0) return;
       var tabId = label.substring(prefix.length);

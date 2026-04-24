@@ -2305,9 +2305,18 @@
     if (!window.LexeraMultiview) return;
     var label = multiviewLabelForTab(tab.id);
     var url = multiviewUrlForTab(desiredSrc);
+    var lastGeomKey = '';
     function pushGeom() {
+      // Skip if placeholder is hidden (zero size or display:none).
+      // Visibility tracking handles show/hide separately.
+      if (placeholderEl.offsetParent === null) return;
       var r = placeholderEl.getBoundingClientRect();
       if (r.width <= 0 || r.height <= 0) return;
+      // Coalesce duplicate updates — common during render cascades.
+      var key = Math.round(r.left) + ',' + Math.round(r.top) + ',' +
+        Math.round(r.width) + ',' + Math.round(r.height);
+      if (key === lastGeomKey) return;
+      lastGeomKey = key;
       window.LexeraMultiview.setGeometry([{
         label: label, x: r.left, y: r.top, width: r.width, height: r.height
       }]).catch(function () {});
@@ -2319,10 +2328,18 @@
       var y = r.height > 0 ? r.top : -10000;
       var w = r.width > 0 ? r.width : 10;
       var h = r.height > 0 ? r.height : 10;
-      window.LexeraMultiview.spawn({
-        label: label, url: url, x: x, y: y, width: w, height: h
-      }).then(function () {
+      // Use lifecycle spawn so this board participates in LRU
+      // tracking. Once active webview count exceeds the soft cap
+      // (default 8), the oldest non-pinned webview is evicted.
+      var lifecycleApi = window.LexeraMultiview.lifecycle;
+      var spawnPromise = lifecycleApi && typeof lifecycleApi.spawn === 'function'
+        ? lifecycleApi.spawn({ label: label, url: url, x: x, y: y, width: w, height: h })
+        : window.LexeraMultiview.spawn({ label: label, url: url, x: x, y: y, width: w, height: h });
+      spawnPromise.then(function () {
         multiviewSpawnedTabs[tab.id] = { url: url };
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('debug', '[multiview] spawned ' + label);
+        }
         // After spawn, push the real geometry on next frame
         requestAnimationFrame(pushGeom);
         if (typeof ResizeObserver !== 'undefined' && !multiviewGeometryObservers[tab.id]) {
@@ -2334,6 +2351,9 @@
         watchPlaceholderVisibility(tab.id, placeholderEl);
       }).catch(function (err) {
         console.warn('[ws-shell] multiview spawn failed for', tab.id, err);
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('warn', '[multiview] spawn failed for ' + label + ': ' + (err && err.message || err));
+        }
       });
     } else if (multiviewSpawnedTabs[tab.id].url !== url) {
       // URL changed — destroy and re-spawn
@@ -2350,6 +2370,15 @@
   function destroyMultiviewWebview(tabId) {
     if (!window.LexeraMultiview) return;
     var label = multiviewLabelForTab(tabId);
+    cleanupMultiviewLocalState(tabId);
+    window.LexeraMultiview.destroy(label).catch(function () {});
+  }
+
+  // Local cleanup (does NOT issue Rust destroy). Used both by
+  // destroyMultiviewWebview (after the Rust destroy is requested) and
+  // by the multiview-destroyed event listener (when something else
+  // destroyed our webview, e.g., LRU eviction).
+  function cleanupMultiviewLocalState(tabId) {
     if (multiviewGeometryObservers[tabId]) {
       try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
       delete multiviewGeometryObservers[tabId];
@@ -2358,8 +2387,21 @@
       try { multiviewVisibilityObservers[tabId].disconnect(); } catch (_) {}
       delete multiviewVisibilityObservers[tabId];
     }
-    window.LexeraMultiview.destroy(label).catch(function () {});
     delete multiviewSpawnedTabs[tabId];
+  }
+
+  // Listen for multiview-destroyed broadcasts from Rust (LRU eviction
+  // or external destroy) and clean up local state for any tab whose
+  // webview was destroyed without our knowledge.
+  if (typeof window !== 'undefined' && window.__TAURI__ && window.__TAURI__.event) {
+    var labelPrefix = 'board-tab-';
+    window.__TAURI__.event.listen('multiview-destroyed', function (event) {
+      var p = event && event.payload ? event.payload : {};
+      var label = p.label || '';
+      if (label.indexOf(labelPrefix) !== 0) return;
+      var tabId = label.substring(labelPrefix.length);
+      cleanupMultiviewLocalState(tabId);
+    });
   }
 
   function getOrCreateFrame(tab, options) {
@@ -2446,6 +2488,14 @@
     if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
     render();
     if (didChange) notifyActiveBoardChanged();
+    // Bump LRU freshness for multiview lifecycle so this webview is
+    // not the next eviction candidate.
+    if (MULTIVIEW_BOARDS && window.LexeraMultiview &&
+        window.LexeraMultiview.lifecycle &&
+        typeof window.LexeraMultiview.lifecycle.touch === 'function') {
+      try { window.LexeraMultiview.lifecycle.touch(multiviewLabelForTab(tabId)); }
+      catch (_) {}
+    }
     return true;
   }
 

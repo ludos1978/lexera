@@ -8949,10 +8949,34 @@ var LexeraDashboard = (function () {
     var ws = (typeof window !== 'undefined' && window.LexeraWorkspaceShell) ? window.LexeraWorkspaceShell : null;
     if (!ws || typeof ws.getFrameWindowForBoard !== 'function') return null;
     var frameWin = ws.getFrameWindowForBoard(boardId);
-    if (!frameWin || frameWin === window) return null;
-    var iframeApi = frameWin.LexeraDashboard;
-    if (!iframeApi || typeof iframeApi[methodName] !== 'function') return null;
-    return { result: iframeApi[methodName].apply(iframeApi, args) };
+    if (frameWin && frameWin !== window) {
+      var iframeApi = frameWin.LexeraDashboard;
+      if (iframeApi && typeof iframeApi[methodName] === 'function') {
+        return { result: iframeApi[methodName].apply(iframeApi, args) };
+      }
+    }
+    // Multiview path: no contentWindow, but a board webview may
+    // exist for this board. Send the mutation via Tauri request/
+    // response IPC. Returns undefined (sync) — board executes via
+    // Loro CRDT and other webviews see the result via sync. Most
+    // mutation callers don't use the return value.
+    if (typeof window !== 'undefined' && window.LexeraMultiview &&
+        typeof window.LexeraMultiview.invoke === 'function') {
+      try {
+        var label = 'board-tab-' + (
+          typeof ws.getTabIdForBoard === 'function' ? ws.getTabIdForBoard(boardId) : ''
+        );
+        if (label.length > 'board-tab-'.length) {
+          window.LexeraMultiview.invoke('multiview_emit_to', {
+            target: label,
+            event: 'delegate-mutation',
+            payload: { method: methodName, args: args }
+          }).catch(function () {});
+          return { result: undefined };
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 
   function reorderRows(s, t, b) {

@@ -107,10 +107,12 @@ pub fn multiview_spawn(app: AppHandle, req: SpawnRequest) -> Result<(), String> 
     spawn_internal(&app, &window, &req.label, &req.url, (req.x, req.y), (req.width, req.height))
 }
 
-/// Destroy a child webview. The geometry registry entry is removed.
-/// State preservation (for re-spawn later) is the caller's responsibility.
+/// Destroy a child webview. The geometry registry entry is removed
+/// and a `multiview-destroyed` event is broadcast so JS state holders
+/// (workspaceShell, lifecycle, etc.) can clean up.
 #[tauri::command]
 pub fn multiview_destroy(app: AppHandle, label: String) -> Result<(), String> {
+    use tauri::Emitter;
     let main_window = app.get_window("main").ok_or("main window not found")?;
     if let Some(webview) = main_window.get_webview(&label) {
         webview
@@ -119,6 +121,7 @@ pub fn multiview_destroy(app: AppHandle, label: String) -> Result<(), String> {
     }
     let registry: State<WebviewRegistry> = app.state();
     registry.inner.write().remove(&label);
+    let _ = app.emit("multiview-destroyed", serde_json::json!({ "label": label }));
     log::info!("[webview_mgr] destroyed '{}'", label);
     Ok(())
 }
