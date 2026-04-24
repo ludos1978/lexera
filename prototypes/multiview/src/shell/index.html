@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multiview Shell</title>
+  <link rel="stylesheet" href="shell.css">
+</head>
+<body>
+  <header class="shell-header">
+    <span class="shell-title">Multiview Prototype</span>
+    <span class="shell-fps" id="fps">— fps</span>
+    <span class="shell-status" id="status">initializing</span>
+  </header>
+  <main class="shell-body" id="shell-body">
+    <div class="slot" data-slot="board-a"></div>
+    <div class="divider" data-divider="a-b"></div>
+    <div class="slot" data-slot="board-b"></div>
+    <div class="divider" data-divider="b-c"></div>
+    <div class="slot" data-slot="board-c"></div>
+  </main>
+  <script src="shell.js"></script>
+</body>
+</html>

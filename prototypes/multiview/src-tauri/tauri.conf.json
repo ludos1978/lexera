@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Multiview Prototype",
+  "version": "0.1.0",
+  "identifier": "com.lexera.multiview-prototype",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "bundle": {
+    "active": false
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Multiview Prototype",
+        "width": 1400,
+        "height": 900,
+        "resizable": true,
+        "minWidth": 800,
+        "minHeight": 500,
+        "transparent": false,
+        "devtools": true,
+        "url": "shell/index.html"
+      }
+    ],
+    "withGlobalTauri": true,
+    "security": {
+      "csp": null
+    }
+  }
+}

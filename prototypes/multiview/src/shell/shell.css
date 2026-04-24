@@ -1,0 +1,80 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #1e1e22;
+  color: #e8e8ec;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.shell-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: #2a2a30;
+  border-bottom: 1px solid #3a3a40;
+  height: 32px;
+}
+.shell-title {
+  font-weight: 600;
+}
+.shell-status {
+  color: #999;
+  font-size: 11px;
+}
+.shell-fps {
+  margin-left: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: #18181c;
+  color: #8c8;
+  min-width: 80px;
+  text-align: center;
+}
+.shell-fps.is-low { color: #d77; }
+.shell-fps.is-mid { color: #dc8; }
+.shell-body {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 1fr 5px 1fr 5px 1fr;
+  position: relative;
+  overflow: hidden;
+}
+.slot {
+  background: #18181c;
+  position: relative;
+}
+.slot::before {
+  content: attr(data-slot) " webview slot (child webview overlays this)";
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  color: #555;
+  font-size: 10px;
+}
+.divider {
+  background: #3a3a40;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+.divider:hover, .divider.is-dragging {
+  background: #555;
+}
+.drop-indicator-overlay {
+  position: absolute;
+  pointer-events: none;
+  inset: 0;
+  z-index: 1000;
+}

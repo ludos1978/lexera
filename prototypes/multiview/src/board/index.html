@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Board</title>
+  <link rel="stylesheet" href="board.css">
+</head>
+<body>
+  <header class="board-header">
+    <span class="board-title" id="board-title">Board</span>
+    <span class="board-fps" id="fps">— fps</span>
+    <span class="board-status" id="status"></span>
+  </header>
+  <main class="columns">
+    <section class="column" data-column-id="todo">
+      <h3 class="col-title">TODO</h3>
+      <div class="col-cards" data-drop-zone="todo"></div>
+    </section>
+    <section class="column" data-column-id="doing">
+      <h3 class="col-title">DOING</h3>
+      <div class="col-cards" data-drop-zone="doing"></div>
+    </section>
+    <section class="column" data-column-id="done">
+      <h3 class="col-title">DONE</h3>
+      <div class="col-cards" data-drop-zone="done"></div>
+    </section>
+  </main>
+  <script src="board.js"></script>
+</body>
+</html>

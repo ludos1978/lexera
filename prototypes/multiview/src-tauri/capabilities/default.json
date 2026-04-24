@@ -1,0 +1,12 @@
+{
+  "identifier": "default",
+  "description": "Default permissions for multiview prototype",
+  "windows": ["main"],
+  "webviews": ["shell", "board-a", "board-b", "board-c", "ghost"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:webview:default",
+    "core:window:default"
+  ]
+}
