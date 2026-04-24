@@ -558,6 +558,32 @@
     return found;
   }
 
+  // Return the tab id for any tab (any view kind) showing this
+  // board, across all trees (center + side docks). Used by the
+  // multiview mutation-delegation bridge in app.js to address the
+  // owning board webview by label.
+  function getTabIdForBoard(boardId) {
+    if (!boardId) return '';
+    var ids = allTreeIds();
+    for (var t = 0; t < ids.length; t++) {
+      var root = getTreeRoot(ids[t]);
+      if (!root) continue;
+      var foundId = '';
+      visitTree(root, function (candidate) {
+        if (foundId || !candidate || candidate.type !== 'tabs') return;
+        for (var i = 0; i < candidate.tabs.length; i++) {
+          var tab = candidate.tabs[i];
+          if (tab && tab.boardId === boardId) {
+            foundId = tab.id;
+            return;
+          }
+        }
+      });
+      if (foundId) return foundId;
+    }
+    return '';
+  }
+
   function findLeafContainingBoard(node, boardId, viewKind) {
     var desiredView = normalizeViewKind(viewKind);
     var found = null;
@@ -5508,6 +5534,7 @@
     collapseDock: collapseDock,
     getActiveBoardColumnsContainer: getActiveBoardColumnsContainer,
     getFrameWindowForBoard: getFrameWindowForBoard,
+    getTabIdForBoard: getTabIdForBoard,
     _test_resolveCycleTabTarget: resolveCycleTabTarget
   };
 })();

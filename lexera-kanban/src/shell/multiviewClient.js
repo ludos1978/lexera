@@ -954,6 +954,27 @@
         }
       } catch (_) {}
     });
+
+    // Mutation delegation from shell-window app.js. Replaces the
+    // old iframe path of `frameWin.LexeraDashboard[method](...args)`.
+    // Fire-and-forget; the result lands in the board's own
+    // fullBoardData and propagates via Loro CRDT sync to other
+    // observers.
+    wv.listen('delegate-mutation', function (event) {
+      var p = (event && event.payload) || {};
+      try {
+        var dash = window.LexeraDashboard;
+        if (dash && typeof dash[p.method] === 'function') {
+          dash[p.method].apply(dash, Array.isArray(p.args) ? p.args : []);
+        }
+      } catch (e) {
+        try {
+          if (typeof window.lexeraLog === 'function') {
+            window.lexeraLog('warn', '[multiview] delegate-mutation failed: ' + (e && e.message || e));
+          }
+        } catch (_) {}
+      }
+    });
   }
 
   // ── Navigation requests ───────────────────────────────────────
