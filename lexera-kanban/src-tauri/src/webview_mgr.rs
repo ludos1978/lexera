@@ -109,8 +109,9 @@ pub fn multiview_spawn(app: AppHandle, req: SpawnRequest) -> Result<(), String> 
     spawn_internal(&app, &window, &req.label, &req.url, (req.x, req.y), (req.width, req.height))
 }
 
-/// Destroy a child webview. The geometry registry entry is removed
-/// and a `multiview-destroyed` event is broadcast so JS state holders
+/// Destroy a child webview. The geometry registry entry is removed,
+/// the subscription registry is cleaned up, and a
+/// `multiview-destroyed` event is broadcast so JS state holders
 /// (workspaceShell, lifecycle, etc.) can clean up.
 #[tauri::command]
 pub fn multiview_destroy(app: AppHandle, label: String) -> Result<(), String> {
@@ -123,6 +124,14 @@ pub fn multiview_destroy(app: AppHandle, label: String) -> Result<(), String> {
     }
     let registry: State<WebviewRegistry> = app.state();
     registry.inner.write().remove(&label);
+    // Clean up subscription registry — remove this label from all
+    // event subscriber lists so future broadcasts don't try to
+    // emit_to a label that no longer exists.
+    let sub_registry: State<SubscriptionRegistry> = app.state();
+    {
+        let mut w = sub_registry.inner.write();
+        for (_, s) in w.iter_mut() { s.remove(&label); }
+    }
     let _ = app.emit("multiview-destroyed", serde_json::json!({ "label": label }));
     log::info!("[webview_mgr] destroyed '{}'", label);
     Ok(())
@@ -190,6 +199,64 @@ pub fn multiview_set_visible(
     Ok(())
 }
 
+// ── Event subscription registry (Stage 9) ──────────────────────
+//
+// Views declare which events they care about via multiview_subscribe.
+// multiview_broadcast then only forwards to subscribers, avoiding the
+// "wake every webview for every event" overhead. Views that haven't
+// subscribed to anything receive nothing (explicit opt-in).
+//
+// Events that have no subscribers fall back to `app.emit()` (global
+// broadcast) so back-compat is preserved for code that hasn't been
+// updated to use the subscription API.
+
+#[derive(Default)]
+pub struct SubscriptionRegistry {
+    // event_name -> set of webview labels subscribed
+    inner: parking_lot::RwLock<std::collections::HashMap<String, std::collections::HashSet<String>>>,
+}
+
+#[tauri::command]
+pub fn multiview_subscribe(
+    app: AppHandle,
+    label: String,
+    events: Vec<String>,
+) -> Result<(), String> {
+    let reg: State<SubscriptionRegistry> = app.state();
+    let mut w = reg.inner.write();
+    for e in events {
+        w.entry(e).or_insert_with(Default::default).insert(label.clone());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn multiview_unsubscribe(
+    app: AppHandle,
+    label: String,
+    events: Option<Vec<String>>,
+) -> Result<(), String> {
+    let reg: State<SubscriptionRegistry> = app.state();
+    let mut w = reg.inner.write();
+    match events {
+        Some(evs) => {
+            for e in evs {
+                if let Some(s) = w.get_mut(&e) { s.remove(&label); }
+            }
+        }
+        None => {
+            // Remove this label from all event subscriber lists
+            for (_, s) in w.iter_mut() { s.remove(&label); }
+        }
+    }
+    Ok(())
+}
+
+fn subscribers_for(reg: &SubscriptionRegistry, event: &str) -> Vec<String> {
+    let r = reg.inner.read();
+    r.get(event).map(|s| s.iter().cloned().collect()).unwrap_or_default()
+}
+
 // ── Cross-webview event broadcasting ────────────────────────────
 //
 // Used by per-view sub-apps to share events that any other view
@@ -216,9 +283,9 @@ pub fn log_broadcast(app: AppHandle, entry: LogEvent) -> Result<(), String> {
     Ok(())
 }
 
-/// Generic event broadcaster for use by per-view sub-apps that
-/// want to share state changes with other views (theme, catalog,
-/// active board, etc). Uses `app.emit()` (broadcast to all).
+/// Generic event broadcaster. If the event has subscribers in the
+/// registry, emits only to those. Otherwise falls back to global
+/// emit (back-compat for code that hasn't opted into subscriptions).
 #[tauri::command]
 pub fn multiview_broadcast(
     app: AppHandle,
@@ -226,7 +293,15 @@ pub fn multiview_broadcast(
     payload: serde_json::Value,
 ) -> Result<(), String> {
     use tauri::Emitter;
-    let _ = app.emit(&event, payload);
+    let reg: State<SubscriptionRegistry> = app.state();
+    let subs = subscribers_for(&reg, &event);
+    if subs.is_empty() {
+        let _ = app.emit(&event, payload);
+    } else {
+        for label in subs {
+            let _ = app.emit_to(label.as_str(), &event, payload.clone());
+        }
+    }
     Ok(())
 }
 
@@ -349,6 +424,70 @@ pub fn multiview_set_focused(
 #[tauri::command]
 pub fn multiview_get_focused(tracker: State<FocusTracker>) -> Option<String> {
     tracker.inner.lock().clone()
+}
+
+// ── Health indicator (per-view connection state) ────────────────
+//
+// Each view reports its current health to Rust:
+//   green  — fully synced, responsive
+//   yellow — syncing / partial / reconnecting
+//   red    — disconnected / failed / not-responding
+//
+// The shell shows a colored dot on each webview's placeholder so
+// users can tell at a glance whether each view is up-to-date.
+
+#[derive(Default)]
+pub struct HealthTracker {
+    inner: parking_lot::RwLock<std::collections::HashMap<String, String>>,
+}
+
+#[derive(Serialize, Clone)]
+struct HealthChangedEvent {
+    label: String,
+    state: String,
+}
+
+#[tauri::command]
+pub fn multiview_set_health(
+    app: AppHandle,
+    label: String,
+    state: String,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    let valid = matches!(state.as_str(), "green" | "yellow" | "red" | "unknown");
+    if !valid {
+        return Err(format!("invalid health state '{}'; expected green/yellow/red/unknown", state));
+    }
+    let tracker: State<HealthTracker> = app.state();
+    let mut changed = false;
+    {
+        let mut w = tracker.inner.write();
+        let prev = w.get(&label).cloned();
+        if prev.as_deref() != Some(state.as_str()) {
+            w.insert(label.clone(), state.clone());
+            changed = true;
+        }
+    }
+    if changed {
+        let _ = app.emit(
+            "health-changed",
+            HealthChangedEvent { label: label.clone(), state: state.clone() },
+        );
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn multiview_get_health(
+    tracker: State<HealthTracker>,
+    label: String,
+) -> Option<String> {
+    tracker.inner.read().get(&label).cloned()
+}
+
+#[tauri::command]
+pub fn multiview_list_health(tracker: State<HealthTracker>) -> std::collections::HashMap<String, String> {
+    tracker.inner.read().clone()
 }
 
 // ── Drag ghost window (Stage 7) ────────────────────────────────

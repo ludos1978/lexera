@@ -1253,6 +1253,37 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspa
   opacity: 0;
 }
 
+/* Health indicator dot — shown in the corner of each active
+   placeholder so the user can tell at a glance whether each view is
+   synced (green), catching up (yellow), or disconnected (red). */
+.workspace-shell-multiview-placeholder .mv-health-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  pointer-events: auto;
+  cursor: default;
+  z-index: 12;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+.workspace-shell-multiview-placeholder .mv-health-dot[data-health="green"] {
+  background: #4caf50;
+  box-shadow: 0 0 4px rgba(76, 175, 80, 0.6);
+}
+.workspace-shell-multiview-placeholder .mv-health-dot[data-health="yellow"] {
+  background: #f5a623;
+  box-shadow: 0 0 4px rgba(245, 166, 35, 0.6);
+}
+.workspace-shell-multiview-placeholder .mv-health-dot[data-health="red"] {
+  background: #f44336;
+  box-shadow: 0 0 4px rgba(244, 67, 54, 0.6);
+}
+.workspace-shell-multiview-placeholder .mv-health-dot[data-health="unknown"] {
+  background: #777;
+}
+
 /* Error state — shown when a webview spawn fails. The placeholder
    displays a message the user can click to retry. */
 .workspace-shell-multiview-placeholder.has-error {

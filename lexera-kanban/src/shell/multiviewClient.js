@@ -942,6 +942,34 @@
     document.addEventListener('pointerdown', function () { reportFocus(true); }, true);
     if (document.hasFocus()) reportFocus(true);
 
+    // Report health to Rust: green when backend-connected + no pending
+    // load, yellow during sync, red on disconnect. Starts as 'unknown'
+    // until we observe state.
+    function reportHealth(state) {
+      invoke('multiview_set_health', { label: wv.label, state: state })
+        .catch(function () {});
+    }
+    reportHealth('yellow'); // assume syncing until proven otherwise
+
+    function refreshHealthFromRuntime() {
+      try {
+        var rt = window.LexeraRuntime;
+        if (!rt || typeof rt.getState !== 'function') return;
+        var connected = !!rt.getState('backendConnected');
+        var pendingRenders = rt.getState('pendingRenderCount') || 0;
+        var state = connected
+          ? (pendingRenders > 0 ? 'yellow' : 'green')
+          : 'red';
+        reportHealth(state);
+      } catch (_) {}
+    }
+
+    // Listen for backend connection changes via the native event
+    window.addEventListener('lexera-backend-connection-state-changed', refreshHealthFromRuntime);
+    // Refresh once on mount and every 3s as a heartbeat (cheap IPC)
+    setTimeout(refreshHealthFromRuntime, 500);
+    setInterval(refreshHealthFromRuntime, 3000);
+
     // Cross-webview request handler: shell asks for context menu
     // items, this board computes via its own LexeraRowStackMenu.
     handleRequest('build-context-menu', function (req) {
@@ -970,6 +998,38 @@
           ar.dispatch(p.scope, p.action, p.context || {});
         }
       } catch (_) {}
+    });
+
+    // Multiview shortcuts forwarded from embedded boards. Lets
+    // Cmd+Alt+L, Cmd+Alt+I, etc. work while focus is inside a board
+    // webview (otherwise each webview captures the keystroke and the
+    // shell never sees it).
+    var MV_SHORTCUTS = {
+      'Ctrl+Alt+L': 'open-log-view',
+      'Meta+Alt+L': 'open-log-view',
+      'Ctrl+Alt+I': 'open-inspector',
+      'Meta+Alt+I': 'open-inspector',
+      'Ctrl+Alt+W': 'open-workspaces',
+      'Meta+Alt+W': 'open-workspaces',
+      'Ctrl+Alt+D': 'open-dashboard',
+      'Meta+Alt+D': 'open-dashboard'
+    };
+    document.addEventListener('keydown', function (event) {
+      var parts = [];
+      if (event.ctrlKey) parts.push('Ctrl');
+      if (event.metaKey) parts.push('Meta');
+      if (event.shiftKey) parts.push('Shift');
+      if (event.altKey) parts.push('Alt');
+      if (event.key && event.key.length === 1) parts.push(event.key.toUpperCase());
+      else if (event.key) parts.push(event.key);
+      var action = MV_SHORTCUTS[parts.join('+')];
+      if (action) {
+        event.preventDefault();
+        invoke('multiview_broadcast', {
+          event: 'multiview-shortcut',
+          payload: { action: action, from: wv.label }
+        }).catch(function () {});
+      }
     });
 
     // Mutation delegation from shell-window app.js. Replaces the

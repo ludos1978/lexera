@@ -2290,6 +2290,27 @@
     return 'board-tab-' + String(tabId);
   }
 
+  // Health dot — one per placeholder. Updated via health-changed event.
+  function ensureHealthDot(placeholderEl) {
+    var dot = placeholderEl.querySelector('.mv-health-dot');
+    if (!dot) {
+      dot = document.createElement('div');
+      dot.className = 'mv-health-dot';
+      dot.setAttribute('data-health', 'unknown');
+      dot.setAttribute('title', 'Connection state: unknown');
+      placeholderEl.appendChild(dot);
+    }
+    return dot;
+  }
+  function applyHealthToTab(tabId, healthState) {
+    var placeholderEl = state.frameCache[tabId];
+    if (!placeholderEl || typeof placeholderEl.querySelector !== 'function') return;
+    var dot = ensureHealthDot(placeholderEl);
+    var s = healthState || 'unknown';
+    dot.setAttribute('data-health', s);
+    dot.setAttribute('title', 'Connection state: ' + s);
+  }
+
   function multiviewUrlForTab(desiredSrc) {
     // Tauri 2 WebviewBuilder::App expects a relative path, not the
     // full asset-protocol URL. Strip off scheme/host so we pass
@@ -2331,21 +2352,25 @@
     if (!window.LexeraMultiview) return;
     var label = multiviewLabelForTab(tab.id);
     var url = multiviewUrlForTab(desiredSrc);
-    var lastGeomKey = '';
+    // rAF-batched geometry push. Multiple RO / resize events within
+    // a single frame collapse into one IPC. This avoids IPC floods
+    // during drag while keeping the webview's visible geometry
+    // tracking pointer movement at the same frame rate as the
+    // placeholder (no stale frames).
+    var pendingGeom = false;
     function pushGeom() {
-      // Skip if placeholder is hidden (zero size or display:none).
-      // Visibility tracking handles show/hide separately.
+      if (pendingGeom) return;
       if (placeholderEl.offsetParent === null) return;
-      var r = placeholderEl.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) return;
-      // Coalesce duplicate updates — common during render cascades.
-      var key = Math.round(r.left) + ',' + Math.round(r.top) + ',' +
-        Math.round(r.width) + ',' + Math.round(r.height);
-      if (key === lastGeomKey) return;
-      lastGeomKey = key;
-      window.LexeraMultiview.setGeometry([{
-        label: label, x: r.left, y: r.top, width: r.width, height: r.height
-      }]).catch(function () {});
+      pendingGeom = true;
+      requestAnimationFrame(function () {
+        pendingGeom = false;
+        if (placeholderEl.offsetParent === null) return;
+        var r = placeholderEl.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) return;
+        window.LexeraMultiview.setGeometry([{
+          label: label, x: r.left, y: r.top, width: r.width, height: r.height
+        }]).catch(function () {});
+      });
     }
     if (!multiviewSpawnedTabs[tab.id]) {
       var r = placeholderEl.getBoundingClientRect();
@@ -2445,12 +2470,42 @@
   // webview was destroyed without our knowledge.
   if (typeof window !== 'undefined' && window.__TAURI__ && window.__TAURI__.event) {
     var labelPrefix = 'board-tab-';
+    // Health dot updates
+    window.__TAURI__.event.listen('health-changed', function (event) {
+      var p = event && event.payload ? event.payload : {};
+      var label = p.label || '';
+      if (label.indexOf(labelPrefix) !== 0) return;
+      var tabId = label.substring(labelPrefix.length);
+      applyHealthToTab(tabId, p.state);
+    });
     window.__TAURI__.event.listen('multiview-destroyed', function (event) {
       var p = event && event.payload ? event.payload : {};
       var label = p.label || '';
       if (label.indexOf(labelPrefix) !== 0) return;
       var tabId = label.substring(labelPrefix.length);
       cleanupMultiviewLocalState(tabId);
+      // Auto-respawn if this tab is the active tab of an active leaf
+      // (meaning the user currently sees its placeholder). Otherwise
+      // lazy-spawn happens on next activateTab as usual.
+      var foundTab = findTabInAllTrees(tabId);
+      if (!foundTab || !foundTab.leaf) return;
+      var isActiveInLeaf = foundTab.leaf.activeTabId === tabId;
+      var isActiveLeaf = state.activeLeafId === foundTab.leaf.id;
+      if (isActiveInLeaf && isActiveLeaf) {
+        var placeholderEl = state.frameCache[tabId];
+        if (placeholderEl && placeholderEl.getAttribute &&
+            placeholderEl.getAttribute('data-multiview') === '1') {
+          var desiredSrc = getEmbeddedUrlForTab(foundTab.tab);
+          if (typeof window.lexeraLog === 'function') {
+            window.lexeraLog('info', '[multiview] auto-respawning ' + label +
+              ' (destroyed while visible)');
+          }
+          // Defer one frame so Rust-side cleanup completes first.
+          requestAnimationFrame(function () {
+            ensureMultiviewWebview(foundTab.tab, placeholderEl, desiredSrc);
+          });
+        }
+      }
     });
   }
 

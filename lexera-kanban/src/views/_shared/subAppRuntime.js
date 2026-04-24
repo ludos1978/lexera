@@ -54,6 +54,29 @@
       return;
     }
 
+    // Build the list of events this view will subscribe to so we can
+    // register interest with Rust's SubscriptionRegistry. Filtering
+    // happens server-side, so views receive only what they need.
+    var declaredEvents = [];
+    if (opts.requestTheme !== false) declaredEvents.push('theme-snapshot');
+    if (typeof opts.onCatalog === 'function') declaredEvents.push('catalog-snapshot');
+    if (typeof opts.onActiveBoard === 'function') declaredEvents.push('active-board-changed');
+    if (typeof opts.onLog === 'function') declaredEvents.push('log-message');
+    if (typeof opts.onDragBegan === 'function') declaredEvents.push('drag-began');
+    if (typeof opts.onDragEnter === 'function') declaredEvents.push('drag-enter');
+    if (typeof opts.onDragOver === 'function') declaredEvents.push('drag-over');
+    if (typeof opts.onDragLeave === 'function') declaredEvents.push('drag-leave');
+    if (typeof opts.onDrop === 'function') declaredEvents.push('drop');
+    if (typeof opts.onDragEnded === 'function') declaredEvents.push('drag-ended');
+    if (opts.onCustom && typeof opts.onCustom === 'object') {
+      Object.keys(opts.onCustom).forEach(function (e) { declaredEvents.push(e); });
+    }
+    if (declaredEvents.length > 0) {
+      invoke('multiview_subscribe', {
+        label: wv.label, events: declaredEvents
+      }).catch(function () {});
+    }
+
     // Theme: always subscribe (cheap), default true
     if (opts.requestTheme !== false) {
       wv.listen('theme-snapshot', function (event) {
@@ -169,6 +192,24 @@
       event: 'sub-app-mounted',
       payload: { label: wv.label, at: Date.now() }
     }).catch(function () {});
+
+    // Report health: sub-apps mark themselves healthy once init
+    // completes (they're thin viewers — no backend-sync state to
+    // track). If a sub-app has complex state, it can override
+    // via opts.getHealth() returning 'green'/'yellow'/'red'.
+    function reportSubAppHealth(state) {
+      invoke('multiview_set_health', { label: wv.label, state: state })
+        .catch(function () {});
+    }
+    if (typeof opts.getHealth === 'function') {
+      setInterval(function () {
+        try { reportSubAppHealth(String(opts.getHealth() || 'green')); }
+        catch (_) {}
+      }, 2000);
+      reportSubAppHealth(String(opts.getHealth() || 'green'));
+    } else {
+      reportSubAppHealth('green');
+    }
 
     if (typeof opts.onReady === 'function') opts.onReady(wv);
   }

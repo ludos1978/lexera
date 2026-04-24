@@ -420,6 +420,8 @@ fn main() {
         // based shell. See TODOs-lexera-multiview.md.
         .manage(webview_mgr::WebviewRegistry::default())
         .manage(webview_mgr::FocusTracker::default())
+        .manage(webview_mgr::SubscriptionRegistry::default())
+        .manage(webview_mgr::HealthTracker::default())
         .manage(drag_coordinator::DragState::default())
         .invoke_handler(tauri::generate_handler![
             open_new_window,
@@ -479,6 +481,11 @@ fn main() {
             webview_mgr::log_broadcast,
             webview_mgr::multiview_broadcast,
             webview_mgr::multiview_emit_to,
+            webview_mgr::multiview_subscribe,
+            webview_mgr::multiview_unsubscribe,
+            webview_mgr::multiview_set_health,
+            webview_mgr::multiview_get_health,
+            webview_mgr::multiview_list_health,
             webview_mgr::multiview_open_modal_window,
             webview_mgr::multiview_close_window,
             webview_mgr::multiview_set_focused,
