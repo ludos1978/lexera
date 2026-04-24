@@ -159,6 +159,32 @@ pub fn multiview_list(app: AppHandle) -> Vec<WebviewMeta> {
     result
 }
 
+/// Show/hide a child webview without destroying it. Useful for
+/// inactive tabs so we can keep the webview alive (state preserved)
+/// but not visible.
+#[tauri::command]
+pub fn multiview_set_visible(
+    app: AppHandle,
+    label: String,
+    visible: bool,
+) -> Result<(), String> {
+    let main_window = app.get_window("main").ok_or("main window not found")?;
+    if let Some(webview) = main_window.get_webview(&label) {
+        if visible {
+            // Tauri 2 child webview show/hide via setSize to non-zero/zero
+            // is unreliable across platforms. Use the Webview API.
+            webview
+                .show()
+                .map_err(|e| format!("show failed for {}: {}", label, e))?;
+        } else {
+            webview
+                .hide()
+                .map_err(|e| format!("hide failed for {}: {}", label, e))?;
+        }
+    }
+    Ok(())
+}
+
 // ── Cross-webview event broadcasting ────────────────────────────
 //
 // Used by per-view sub-apps to share events that any other view
@@ -196,6 +222,21 @@ pub fn multiview_broadcast(
 ) -> Result<(), String> {
     use tauri::Emitter;
     let _ = app.emit(&event, payload);
+    Ok(())
+}
+
+/// Emit an event to a specific webview by label. Used when the
+/// main shell wants to send a targeted message (e.g., a board
+/// action to the currently-active board webview).
+#[tauri::command]
+pub fn multiview_emit_to(
+    app: AppHandle,
+    target: String,
+    event: String,
+    payload: serde_json::Value,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    let _ = app.emit_to(target.as_str(), &event, payload);
     Ok(())
 }
 
@@ -303,6 +344,95 @@ pub fn multiview_set_focused(
 #[tauri::command]
 pub fn multiview_get_focused(tracker: State<FocusTracker>) -> Option<String> {
     tracker.inner.lock().clone()
+}
+
+// ── Drag ghost window (Stage 7) ────────────────────────────────
+//
+// Transparent always-on-top child window used during cross-webview
+// drag. Hosts a tiny HTML page that renders the drag preview and
+// follows the OS cursor via set_position calls from JS.
+//
+// Created lazily on first drag, kept alive between drags (cheaper
+// than respawning each time). Hidden via set_visible(false) when
+// not in use.
+
+const GHOST_LABEL: &str = "drag-ghost";
+
+#[derive(Deserialize)]
+pub struct GhostSpec {
+    pub url: String,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[tauri::command]
+pub fn drag_ghost_ensure(
+    app: AppHandle,
+    spec: GhostSpec,
+) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    if app.get_webview_window(GHOST_LABEL).is_some() {
+        return Ok(());
+    }
+    let url_obj = tauri::WebviewUrl::App(spec.url.into());
+    // Note: Tauri's `.transparent(true)` requires the `macos-private-api`
+    // / `linux-private-api` features and per-platform setup that's beyond
+    // this scope. The ghost window uses a colored, opaque background instead
+    // (works on all platforms without extra config).
+    WebviewWindowBuilder::new(&app, GHOST_LABEL, url_obj)
+        .inner_size(spec.width, spec.height)
+        .resizable(false)
+        .decorations(false)
+        .always_on_top(true)
+        .visible(false)
+        .skip_taskbar(true)
+        .focused(false)
+        .build()
+        .map_err(|e| format!("ghost window build failed: {}", e))?;
+    log::info!("[drag-ghost] created");
+    Ok(())
+}
+
+#[derive(Deserialize)]
+pub struct GhostMove {
+    pub x: f64,
+    pub y: f64,
+    pub visible: Option<bool>,
+}
+
+#[tauri::command]
+pub fn drag_ghost_move(app: AppHandle, m: GhostMove) -> Result<(), String> {
+    use tauri::LogicalPosition;
+    let win = app.get_webview_window(GHOST_LABEL)
+        .ok_or("ghost window not created — call drag_ghost_ensure first")?;
+    win.set_position(LogicalPosition::new(m.x, m.y))
+        .map_err(|e| format!("ghost set_position failed: {}", e))?;
+    if let Some(visible) = m.visible {
+        if visible {
+            win.show().map_err(|e| format!("ghost show failed: {}", e))?;
+        } else {
+            win.hide().map_err(|e| format!("ghost hide failed: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn drag_ghost_hide(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window(GHOST_LABEL) {
+        win.hide().map_err(|e| format!("ghost hide failed: {}", e))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn drag_ghost_set_content(
+    app: AppHandle,
+    html: String,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    let _ = app.emit_to(GHOST_LABEL, "ghost-content", html);
+    Ok(())
 }
 
 // ── Internal API for the drag coordinator ───────────────────────

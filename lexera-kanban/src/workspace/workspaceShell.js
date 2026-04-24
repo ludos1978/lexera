@@ -2222,6 +2222,104 @@
     state.deferredBoardLoadTimer = setTimeout(pumpDeferredBoardFrameLoads, 200);
   }
 
+  // Multiview migration: board tabs are ALWAYS hosted by Tauri child
+  // webviews. The iframe code path is removed except inside child
+  // webviews themselves (recursive shell would create infinite child
+  // webviews for the embedded boards inside boards).
+  //
+  // Known gaps in the multiview path that silently no-op until
+  // bridged in follow-up work:
+  //   - showContextMenuInBoardFrame (LexeraRowStackMenu cross-frame)
+  //   - Direct frame.contentDocument DOM access for highlighting
+  //   - Card drag across boards
+  // See TODOs-lexera-multiview.md for the full gap list.
+  var MULTIVIEW_BOARDS = !(function () {
+    try { return urlParams && urlParams.get('embedded') === '1'; }
+    catch (_) { return false; }
+  })();
+  if (MULTIVIEW_BOARDS) {
+    console.log('[ws-shell] multiview boards: ON (iframe path removed)');
+  }
+
+  // Track which tabs have a multiview webview spawned, so we can
+  // destroy + re-spawn on URL change instead of contentWindow.location.
+  var multiviewSpawnedTabs = {};
+  var multiviewGeometryObservers = {};
+
+  function multiviewLabelForTab(tabId) {
+    return 'board-tab-' + String(tabId);
+  }
+
+  function multiviewUrlForTab(desiredSrc) {
+    // Tauri 2 WebviewBuilder::App expects a relative path, not the
+    // full asset-protocol URL. Strip off scheme/host so we pass
+    // 'index.html?embedded=1&board=...' rather than the full URL.
+    if (!desiredSrc) return desiredSrc;
+    try {
+      var u = new URL(desiredSrc);
+      var rel = u.pathname.replace(/^\/+/, '') + (u.search || '') + (u.hash || '');
+      return rel || 'index.html';
+    } catch (_) {
+      return desiredSrc;
+    }
+  }
+
+  function ensureMultiviewWebview(tab, placeholderEl, desiredSrc) {
+    if (!window.LexeraMultiview) return;
+    var label = multiviewLabelForTab(tab.id);
+    var url = multiviewUrlForTab(desiredSrc);
+    function pushGeom() {
+      var r = placeholderEl.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return;
+      window.LexeraMultiview.setGeometry([{
+        label: label, x: r.left, y: r.top, width: r.width, height: r.height
+      }]).catch(function () {});
+    }
+    if (!multiviewSpawnedTabs[tab.id]) {
+      var r = placeholderEl.getBoundingClientRect();
+      // Hidden offscreen until placeholder is laid out
+      var x = r.width > 0 ? r.left : -10000;
+      var y = r.height > 0 ? r.top : -10000;
+      var w = r.width > 0 ? r.width : 10;
+      var h = r.height > 0 ? r.height : 10;
+      window.LexeraMultiview.spawn({
+        label: label, url: url, x: x, y: y, width: w, height: h
+      }).then(function () {
+        multiviewSpawnedTabs[tab.id] = { url: url };
+        // After spawn, push the real geometry on next frame
+        requestAnimationFrame(pushGeom);
+        if (typeof ResizeObserver !== 'undefined' && !multiviewGeometryObservers[tab.id]) {
+          var ro = new ResizeObserver(function () { pushGeom(); });
+          ro.observe(placeholderEl);
+          multiviewGeometryObservers[tab.id] = ro;
+        }
+        window.addEventListener('resize', pushGeom);
+      }).catch(function (err) {
+        console.warn('[ws-shell] multiview spawn failed for', tab.id, err);
+      });
+    } else if (multiviewSpawnedTabs[tab.id].url !== url) {
+      // URL changed — destroy and re-spawn
+      window.LexeraMultiview.destroy(label).then(function () {
+        delete multiviewSpawnedTabs[tab.id];
+        ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
+      }).catch(function () {});
+    } else {
+      // Already spawned at correct URL — just push current geom
+      requestAnimationFrame(pushGeom);
+    }
+  }
+
+  function destroyMultiviewWebview(tabId) {
+    if (!window.LexeraMultiview) return;
+    var label = multiviewLabelForTab(tabId);
+    if (multiviewGeometryObservers[tabId]) {
+      try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
+      delete multiviewGeometryObservers[tabId];
+    }
+    window.LexeraMultiview.destroy(label).catch(function () {});
+    delete multiviewSpawnedTabs[tabId];
+  }
+
   function getOrCreateFrame(tab, options) {
     var view = state.frameCache[tab.id];
     if (isPanelTab(tab)) {
@@ -2245,6 +2343,26 @@
       return view;
     }
     var desiredSrc = getEmbeddedUrlForTab(tab);
+    if (MULTIVIEW_BOARDS) {
+      // Multiview path: placeholder div, child webview floats above
+      if (!view) {
+        view = document.createElement('div');
+        view.className = 'workspace-shell-view workspace-shell-frame workspace-shell-multiview-placeholder';
+        view.setAttribute('data-tab-id', tab.id);
+        view.setAttribute('data-src', desiredSrc);
+        view.setAttribute('data-multiview', '1');
+        view.addEventListener('pointerdown', function () {
+          activateTab(tab.id);
+        });
+        state.frameCache[tab.id] = view;
+      }
+      if (shouldLoadBoardFrame(tab, options)) {
+        state.loadedBoardFrames[tab.id] = true;
+        view.setAttribute('data-loaded-src', desiredSrc);
+        ensureMultiviewWebview(tab, view, desiredSrc);
+      }
+      return view;
+    }
     if (!view) {
       view = document.createElement('iframe');
       view.className = 'workspace-shell-view workspace-shell-frame';
@@ -2266,6 +2384,9 @@
   function removeFrame(tabId) {
     var frame = state.frameCache[tabId];
     if (!frame) return;
+    if (MULTIVIEW_BOARDS && frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
+      destroyMultiviewWebview(tabId);
+    }
     if (frame.parentNode) frame.parentNode.removeChild(frame);
     delete state.frameCache[tabId];
     delete state.loadedBoardFrames[tabId];
@@ -4477,6 +4598,19 @@
   function deliverFocusTargetToFrame(frame, target, options) {
     if (!frame) return;
     options = options || {};
+    // Multiview path: cross-process — the embedded board's
+    // navigateToHierarchyTarget handles everything locally.
+    if (MULTIVIEW_BOARDS && frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
+      var tabId = frame.getAttribute('data-tab-id');
+      if (tabId && window.__TAURI__ && window.__TAURI__.core) {
+        window.__TAURI__.core.invoke('multiview_emit_to', {
+          target: multiviewLabelForTab(tabId),
+          event: 'focus-hierarchy-target',
+          payload: { target: target, options: options }
+        }).catch(function () {});
+      }
+      return;
+    }
     try {
       var doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
       if (!doc) return;
@@ -4673,12 +4807,27 @@
     var activeTab = getActiveTab();
     if (!activeTab) return false;
     var frame = getOrCreateFrame(activeTab, { shouldLoad: true });
-    if (!frame || !frame.contentWindow) return false;
-    frame.contentWindow.postMessage({
-      type: 'lexera-board-action',
-      action: action
-    }, '*');
-    return true;
+    if (!frame) return false;
+    if (frame.contentWindow) {
+      frame.contentWindow.postMessage({
+        type: 'lexera-board-action',
+        action: action
+      }, '*');
+      return true;
+    }
+    // Multiview path: targeted Tauri event to the board's webview
+    if (MULTIVIEW_BOARDS && frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
+      var label = multiviewLabelForTab(activeTab.id);
+      if (window.__TAURI__ && window.__TAURI__.core) {
+        window.__TAURI__.core.invoke('multiview_emit_to', {
+          target: label,
+          event: 'board-action',
+          payload: { action: action }
+        }).catch(function () {});
+        return true;
+      }
+    }
+    return false;
   }
 
   // Notify every embedded kanban frame that a layout-divider drag has started
@@ -4688,13 +4837,23 @@
     var frameIds = Object.keys(state.frameCache || {});
     for (var i = 0; i < frameIds.length; i++) {
       var frame = state.frameCache[frameIds[i]];
-      if (!frame || !frame.contentWindow) continue;
-      try {
-        frame.contentWindow.postMessage({
-          type: 'lexera-layout-drag',
-          active: !!active
-        }, '*');
-      } catch (e) { /* cross-origin or closed frame — ignore */ }
+      if (!frame) continue;
+      if (frame.contentWindow) {
+        try {
+          frame.contentWindow.postMessage({
+            type: 'lexera-layout-drag',
+            active: !!active
+          }, '*');
+        } catch (e) { /* cross-origin or closed frame — ignore */ }
+      }
+    }
+    // Multiview path: one global Tauri broadcast covers all child
+    // webviews (each one's embedded bridge will translate to message).
+    if (MULTIVIEW_BOARDS && window.__TAURI__ && window.__TAURI__.core) {
+      window.__TAURI__.core.invoke('multiview_broadcast', {
+        event: 'layout-drag',
+        payload: { active: !!active }
+      }).catch(function () {});
     }
   }
 
@@ -4725,10 +4884,19 @@
 
   function broadcastCatalogSnapshot() {
     var frameIds = Object.keys(state.frameCache);
+    var snapshot = normalizeCatalogSnapshot(state.catalogSnapshot);
     for (var i = 0; i < frameIds.length; i++) {
       var frame = state.frameCache[frameIds[i]];
-      if (!frame || frame.tagName !== 'IFRAME') continue;
-      postCatalogSnapshotToFrame(frame);
+      if (!frame) continue;
+      if (frame.tagName === 'IFRAME') {
+        postCatalogSnapshotToFrame(frame);
+      } else if (MULTIVIEW_BOARDS && frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
+        // Child webview path: broadcast via Tauri event so the
+        // embedded board sub-app can subscribe and respond.
+        if (window.LexeraMultiview && window.LexeraMultiview.broadcastCatalog) {
+          window.LexeraMultiview.broadcastCatalog(snapshot);
+        }
+      }
     }
   }
 
@@ -4737,7 +4905,35 @@
     var found = findLeafContainingBoard(state.dockTree, boardId);
     if (!found) return false;
     var frame = state.frameCache[found.tab.id];
-    if (!frame || !frame.contentWindow) return false;
+    if (!frame) return false;
+    // Multiview path: request/response IPC to the board webview
+    if (MULTIVIEW_BOARDS && frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
+      if (!window.LexeraMultiview || typeof window.LexeraMultiview.request !== 'function') return false;
+      var label = multiviewLabelForTab(found.tab.id);
+      window.LexeraMultiview.request(label, 'build-context-menu', {
+        scope: scope, context: ctx
+      }, 1500).then(function (built) {
+        if (!built || !built.items || built.items.length === 0) return;
+        if (built.context && built.context.colIndex != null) ctx.colIndex = built.context.colIndex;
+        if (state.hooks && typeof state.hooks.showNativeMenu === 'function') {
+          state.hooks.showNativeMenu(built.items, x, y).then(function (action) {
+            if (!action) return;
+            // Send action back to the board for dispatch via its
+            // LexeraActionRegistry.
+            if (window.__TAURI__ && window.__TAURI__.core) {
+              window.__TAURI__.core.invoke('multiview_emit_to', {
+                target: label, event: 'dispatch-action',
+                payload: { scope: scope, action: action, context: built.context }
+              }).catch(function () {});
+            }
+          });
+        }
+      }).catch(function (err) {
+        console.warn('[multiview ctxmenu] request failed:', err);
+      });
+      return true;
+    }
+    if (!frame.contentWindow) return false;
     try {
       var iframeApp = frame.contentWindow.LexeraDashboard;
       if (!iframeApp || typeof iframeApp.showElementContextMenu !== 'function') return false;

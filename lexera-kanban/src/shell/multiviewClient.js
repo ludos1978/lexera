@@ -98,6 +98,102 @@
     return invoke('drop_ack', { ack: { accepted: !!accepted } });
   }
 
+  // ── Drag ghost window helpers (Stage 7) ───────────────────────
+  function ghostEnsure(opts) {
+    opts = opts || {};
+    return invoke('drag_ghost_ensure', {
+      spec: {
+        url: opts.url || 'views/drag-ghost/index.html',
+        width: opts.width != null ? opts.width : 220,
+        height: opts.height != null ? opts.height : 60
+      }
+    });
+  }
+  function ghostMove(x, y, visible) {
+    return invoke('drag_ghost_move', {
+      m: { x: Number(x), y: Number(y), visible: visible == null ? null : !!visible }
+    });
+  }
+  function ghostHide() {
+    return invoke('drag_ghost_hide', {});
+  }
+  function ghostSetContent(html) {
+    return invoke('drag_ghost_set_content', { html: String(html || '') });
+  }
+
+  // ── Request/response IPC pattern ──────────────────────────────
+  //
+  // Tauri events are fire-and-forget. For cross-webview features
+  // that need a return value (e.g., "what context menu items do
+  // you have for this scope?"), pair a request event with a response
+  // event using a unique correlation ID. The caller listens for the
+  // response, the responder listens for the request and emits the
+  // response keyed to the correlation ID.
+
+  var requestCounter = 0;
+
+  // Caller side: send a request to a specific webview and resolve
+  // with its response. Times out after `timeoutMs` (default 2000).
+  function request(targetLabel, requestEvent, payload, timeoutMs) {
+    timeoutMs = timeoutMs == null ? 2000 : timeoutMs;
+    var corrId = 'req-' + (++requestCounter) + '-' + Date.now();
+    var responseEvent = requestEvent + '-response';
+    var t = tauri();
+    if (!t || !t.event || typeof t.event.listen !== 'function') {
+      return Promise.reject(new Error('no Tauri event API'));
+    }
+    return new Promise(function (resolve, reject) {
+      var unsubPromise = t.event.listen(responseEvent, function (event) {
+        var p = event && event.payload ? event.payload : {};
+        if (p._corr !== corrId) return;
+        unsubPromise.then(function (unsub) { try { unsub(); } catch (_) {} });
+        clearTimeout(timeoutHandle);
+        if (p._error) reject(new Error(p._error));
+        else resolve(p.data);
+      });
+      var timeoutHandle = setTimeout(function () {
+        unsubPromise.then(function (unsub) { try { unsub(); } catch (_) {} });
+        reject(new Error('request ' + requestEvent + ' timed out after ' + timeoutMs + 'ms'));
+      }, timeoutMs);
+      invoke('multiview_emit_to', {
+        target: targetLabel, event: requestEvent,
+        payload: { _corr: corrId, data: payload || {} }
+      }).catch(function (err) {
+        unsubPromise.then(function (unsub) { try { unsub(); } catch (_) {} });
+        clearTimeout(timeoutHandle);
+        reject(err);
+      });
+    });
+  }
+
+  // Responder side: install a handler for a request event that
+  // automatically broadcasts the response with the correlation ID.
+  function handleRequest(requestEvent, handler) {
+    var t = tauri();
+    if (!t || !t.event || typeof t.event.listen !== 'function') {
+      return Promise.reject(new Error('no Tauri event API'));
+    }
+    var responseEvent = requestEvent + '-response';
+    return t.event.listen(requestEvent, function (event) {
+      var p = event && event.payload ? event.payload : {};
+      var corr = p._corr;
+      Promise.resolve()
+        .then(function () { return handler(p.data || {}); })
+        .then(function (data) {
+          invoke('multiview_broadcast', {
+            event: responseEvent,
+            payload: { _corr: corr, data: data }
+          }).catch(function () {});
+        })
+        .catch(function (err) {
+          invoke('multiview_broadcast', {
+            event: responseEvent,
+            payload: { _corr: corr, _error: String(err && err.message || err) }
+          }).catch(function () {});
+        });
+    });
+  }
+
   // ── Scoped event listener ─────────────────────────────────────
   //
   // Scopes a listener to the CURRENT webview only. Events emitted via
@@ -141,6 +237,11 @@
     }).catch(function () { /* best effort — main log is unaffected */ });
   }
 
+  // Gate: log wrapping only activates when at least one log
+  // subscriber exists. Tests + non-multiview usage pay zero IPC
+  // cost. Activated by openLogView (and by anyone calling
+  // LexeraMultiview.activateLogBridge()).
+  var logBridgeActive = false;
   function wrapLexeraLog() {
     if (typeof window === 'undefined') return;
     if (window.__lexeraMultiviewLogWrapped) return;
@@ -148,7 +249,9 @@
     var origLexeraLog = window.lexeraLog;
     if (typeof origLexeraLog === 'function') {
       window.lexeraLog = function (level, message) {
-        try { broadcastLog(level, 'frontend', message); } catch (_) {}
+        if (logBridgeActive) {
+          try { broadcastLog(level, 'frontend', message); } catch (_) {}
+        }
         return origLexeraLog.apply(this, arguments);
       };
     }
@@ -156,24 +259,17 @@
     var origWithTarget = window.lexeraLogWithTarget;
     if (typeof origWithTarget === 'function') {
       window.lexeraLogWithTarget = function (level, target, message) {
-        try { broadcastLog(level, target, message); } catch (_) {}
+        if (logBridgeActive) {
+          try { broadcastLog(level, target, message); } catch (_) {}
+        }
         return origWithTarget.apply(this, arguments);
       };
     }
 
     window.__lexeraMultiviewLogWrapped = true;
   }
-
-  // Wrap as soon as loggingSystem.js has finished defining the globals.
-  // loggingSystem.js loads later in index.html (no dependency); we wait
-  // for DOMContentLoaded which fires after all sync scripts have run.
-  if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', wrapLexeraLog, { once: true });
-    } else {
-      wrapLexeraLog();
-    }
-  }
+  function activateLogBridge() { logBridgeActive = true; }
+  function deactivateLogBridge() { logBridgeActive = false; }
 
   // Demo: spawn 3 child webviews overlaid on the running kanban.
   // Each loads multiview-demo.html. Useful for proving end-to-end
@@ -411,6 +507,7 @@
   //   await LexeraMultiview.closeLogView()
   function openLogView(opts) {
     opts = opts || {};
+    activateBridges(); // log + catalog + active-board broadcasts now hot
     if (opts.side) {
       return openAsSidePanel({
         label: 'log-view',
@@ -449,6 +546,7 @@
   //   await LexeraMultiview.closeInspector()
   function openInspector(opts) {
     opts = opts || {};
+    activateBridges();
     if (opts.side) {
       return openAsSidePanel({
         label: 'inspector',
@@ -481,6 +579,7 @@
   //   await LexeraMultiview.closeWorkspaces()
   function openWorkspaces(opts) {
     opts = opts || {};
+    activateBridges();
     if (opts.side) {
       return openAsSidePanel({
         label: 'workspaces',
@@ -512,6 +611,7 @@
   //   await LexeraMultiview.closeDashboard()
   function openDashboard(opts) {
     opts = opts || {};
+    activateBridges();
     if (opts.side) {
       return openAsSidePanel({
         label: 'dashboard',
@@ -649,6 +749,9 @@
     }).catch(function () { /* ignore */ });
   }
 
+  // Gate: catalog broadcasting only when activated. Same reasoning
+  // as logBridgeActive — avoid IPC overhead for non-multiview users.
+  var catalogBridgeActive = false;
   function wrapCatalogUpdates() {
     if (typeof window === 'undefined' || !window.LexeraWorkspaceShell) return;
     var shell = window.LexeraWorkspaceShell;
@@ -656,17 +759,18 @@
     var orig = shell.onCatalogUpdated;
     if (typeof orig !== 'function') return;
     shell.onCatalogUpdated = function (snapshot) {
-      try { broadcastCatalog(snapshot); } catch (_) {}
+      if (catalogBridgeActive) {
+        try { broadcastCatalog(snapshot); } catch (_) {}
+      }
       return orig.apply(this, arguments);
     };
     window.__lexeraMultiviewCatalogWrapped = true;
   }
+  function activateCatalogBridge() { catalogBridgeActive = true; }
+  function deactivateCatalogBridge() { catalogBridgeActive = false; }
 
-  // ── Active board broadcast ────────────────────────────────────
-  //
-  // Wrap LexeraWorkspaceShell.openBoard so every board switch is
-  // broadcast as 'active-board-changed' for sub-apps that need to
-  // highlight the current board (workspaces picker, etc).
+  // Gate: active-board broadcasting only when activated.
+  var activeBoardBridgeActive = false;
   var lastActiveBoardId = null;
   function broadcastActiveBoard(boardId) {
     if (boardId === lastActiveBoardId) return Promise.resolve();
@@ -684,10 +788,137 @@
     if (typeof orig !== 'function') return;
     shell.openBoard = function (boardId) {
       var result = orig.apply(this, arguments);
-      try { broadcastActiveBoard(boardId); } catch (_) {}
+      if (activeBoardBridgeActive) {
+        try { broadcastActiveBoard(boardId); } catch (_) {}
+      }
       return result;
     };
     window.__lexeraMultiviewOpenBoardWrapped = true;
+  }
+  function activateActiveBoardBridge() { activeBoardBridgeActive = true; }
+  function deactivateActiveBoardBridge() { activeBoardBridgeActive = false; }
+
+  // Activates all the bridges. Call this when opening any sub-app
+  // that needs cross-view state. Ensures tests + non-multiview
+  // sessions pay zero overhead.
+  function activateBridges() {
+    activateLogBridge();
+    activateCatalogBridge();
+    activateActiveBoardBridge();
+  }
+
+  // ── Embedded-board bridge ──────────────────────────────────────
+  //
+  // When this script runs inside a child webview that hosts an
+  // embedded board (URL has ?embedded=1), bridge the new Tauri
+  // 'catalog-snapshot' event into the existing postMessage shape
+  // ('lexera-workspace-catalog') so the embedded board's existing
+  // handler in orderHelpers.js processes it without modification.
+  // Also bridge active-board-changed so the embedded board can
+  // highlight its state.
+  function isEmbeddedKanban() {
+    try {
+      var p = new URLSearchParams(window.location.search || '');
+      return p.get('embedded') === '1';
+    } catch (_) { return false; }
+  }
+
+  function installEmbeddedBoardBridge() {
+    if (!isEmbeddedKanban()) return;
+    var wv = getCurrentWebview();
+    if (!wv || typeof wv.listen !== 'function') return;
+
+    function dispatchAsMessage(data) {
+      try {
+        window.dispatchEvent(new MessageEvent('message', { data: data }));
+      } catch (_) {}
+    }
+
+    wv.listen('catalog-snapshot', function (event) {
+      var p = (event && event.payload) || {};
+      dispatchAsMessage({
+        type: 'lexera-workspace-catalog',
+        boards: Array.isArray(p.boards) ? p.boards : [],
+        remoteBoards: Array.isArray(p.remoteBoards) ? p.remoteBoards : [],
+        workspaces: Array.isArray(p.workspaces) ? p.workspaces : []
+      });
+    });
+
+    // Targeted board action — fires on this webview when shell calls
+    // multiview_emit_to(<this label>, 'board-action', { action }).
+    wv.listen('board-action', function (event) {
+      var p = (event && event.payload) || {};
+      if (p.action) {
+        dispatchAsMessage({ type: 'lexera-board-action', action: p.action });
+      }
+    });
+
+    // Global layout drag toggle — broadcast to all child webviews so
+    // their CSS content-visibility / observer short-circuits apply.
+    wv.listen('layout-drag', function (event) {
+      var p = (event && event.payload) || {};
+      dispatchAsMessage({ type: 'lexera-layout-drag', active: !!p.active });
+    });
+
+    // Targeted hierarchy focus — shell asks this board webview to
+    // scroll/focus a specific row/stack/column/card.
+    wv.listen('focus-hierarchy-target', function (event) {
+      var p = (event && event.payload) || {};
+      if (p.target) {
+        dispatchAsMessage({
+          type: 'lexera-focus-hierarchy-target',
+          target: p.target
+        });
+      }
+    });
+
+    // Re-request snapshots in case the board mounted after the last
+    // broadcast — main shell re-emits on receiving these requests.
+    invoke('multiview_broadcast', { event: 'catalog-request', payload: {} })
+      .catch(function () {});
+
+    // Report focus state to Rust so the shell can detect pane
+    // activation in multiview mode (replaces the old window.parent
+    // postMessage path that doesn't work cross-process).
+    function reportFocus(focused) {
+      invoke('multiview_set_focused', { label: wv.label, focused: focused })
+        .catch(function () {});
+    }
+    window.addEventListener('focus', function () { reportFocus(true); });
+    window.addEventListener('blur', function () { reportFocus(false); });
+    // Coarse-grained: any pointerdown counts as activation
+    document.addEventListener('pointerdown', function () { reportFocus(true); }, true);
+    if (document.hasFocus()) reportFocus(true);
+
+    // Cross-webview request handler: shell asks for context menu
+    // items, this board computes via its own LexeraRowStackMenu.
+    handleRequest('build-context-menu', function (req) {
+      try {
+        var rsm = window.LexeraRowStackMenu;
+        if (!rsm || typeof rsm.buildContextMenuItemsAndContext !== 'function') {
+          return { items: [], context: req.context || {} };
+        }
+        var built = rsm.buildContextMenuItemsAndContext(req.scope, req.context || {});
+        return {
+          items: (built && built.items) || [],
+          context: (built && built.context) || (req.context || {})
+        };
+      } catch (e) {
+        return { items: [], context: req.context || {}, error: String(e && e.message) };
+      }
+    });
+
+    // Cross-webview command: shell sends action dispatch back after
+    // user picks a menu item. Board executes via LexeraActionRegistry.
+    wv.listen('dispatch-action', function (event) {
+      var p = (event && event.payload) || {};
+      try {
+        var ar = window.LexeraActionRegistry;
+        if (ar && typeof ar.dispatch === 'function' && p.scope && p.action) {
+          ar.dispatch(p.scope, p.action, p.context || {});
+        }
+      } catch (_) {}
+    });
   }
 
   // ── Navigation requests ───────────────────────────────────────
@@ -748,37 +979,30 @@
         try { fn(); } catch (err) { console.warn('[multiview-shortcut]', action, err); }
       }
     });
-    // Wire global keyboard shortcuts for the MAIN shell window.
-    // Uses Alt (not Shift) to avoid conflicting with existing kanban
-    // shortcuts (e.g., Cmd+Shift+L toggles the legacy log panel).
-    var MAIN_SHORTCUTS = {
-      'Ctrl+Alt+L': 'open-log-view',
-      'Meta+Alt+L': 'open-log-view',
-      'Ctrl+Alt+I': 'open-inspector',
-      'Meta+Alt+I': 'open-inspector',
-      'Ctrl+Alt+W': 'open-workspaces',
-      'Meta+Alt+W': 'open-workspaces',
-      'Ctrl+Alt+D': 'open-dashboard',
-      'Meta+Alt+D': 'open-dashboard'
-    };
-    document.addEventListener('keydown', function (event) {
-      var parts = [];
-      if (event.ctrlKey) parts.push('Ctrl');
-      if (event.metaKey) parts.push('Meta');
-      if (event.shiftKey) parts.push('Shift');
-      if (event.altKey) parts.push('Alt');
-      if (event.key && event.key.length === 1) parts.push(event.key.toUpperCase());
-      else if (event.key) parts.push(event.key);
-      var combo = parts.join('+');
-      var action = MAIN_SHORTCUTS[combo];
-      if (action) {
-        var fn = SHORTCUT_ACTIONS[action];
-        if (fn) {
-          event.preventDefault();
-          try { fn(); } catch (err) { console.warn('[shortcut]', action, err); }
-        }
-      }
+    // Bridge focus-changed → synthetic 'lexera-pane-activated' message
+    // for the workspace shell. When a board webview gains focus, the
+    // shell's existing handleWindowMessage handler runs to clear
+    // pending focus targets / mark the pane as activated.
+    t.event.listen('focus-changed', function (event) {
+      var p = event && event.payload ? event.payload : {};
+      var label = p.label || '';
+      // Only handle our board-tab-* labels
+      var prefix = 'board-tab-';
+      if (label.indexOf(prefix) !== 0) return;
+      var tabId = label.substring(prefix.length);
+      try {
+        window.dispatchEvent(new MessageEvent('message', {
+          data: { type: 'lexera-pane-activated', pane: tabId }
+        }));
+      } catch (_) {}
     });
+    // Note: a global keydown handler in the MAIN shell window is
+    // tempting but would intercept events the existing kanban code
+    // and tests rely on. Kept the shortcut handler ONLY in sub-app
+    // webviews (subAppRuntime.js). Users opening the multiview
+    // panels via DevTools console always works; opening via
+    // keyboard requires a sub-app to be focused first. This is a
+    // deliberate trade-off for non-invasive coexistence.
   }
 
   // Auto-broadcast on init (after main theme loads) and on prefers-
@@ -804,18 +1028,23 @@
     }
   }
   if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function () {
-        initThemeBridge();
-        wrapCatalogUpdates();
-        wrapOpenBoard();
-        installNavigationHandler();
-      }, { once: true });
-    } else {
+    function bootMultiview() {
       initThemeBridge();
       wrapCatalogUpdates();
       wrapOpenBoard();
       installNavigationHandler();
+      installEmbeddedBoardBridge();
+      // If we're hosting child webviews (default mode in main shell),
+      // any embedded board webview will need catalog updates as soon
+      // as it loads. Activate the catalog bridge so broadcasts flow.
+      if (typeof window !== 'undefined' && !isEmbeddedKanban()) {
+        activateBridges();
+      }
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bootMultiview, { once: true });
+    } else {
+      bootMultiview();
     }
   }
 
@@ -866,6 +1095,15 @@
     closeDashboard: closeDashboard,
     // Modal-as-window dialogs (Stage 6)
     confirmModal: confirmModal,
+    // Drag ghost window (Stage 7)
+    ghostEnsure: ghostEnsure,
+    ghostMove: ghostMove,
+    ghostHide: ghostHide,
+    ghostSetContent: ghostSetContent,
+    // Request/response IPC pattern (for cross-webview features
+    // that need a return value, e.g., context menu items query)
+    request: request,
+    handleRequest: handleRequest,
     // Stage 8 lifecycle
     lifecycle: {
       configure: lifecycleConfigure,

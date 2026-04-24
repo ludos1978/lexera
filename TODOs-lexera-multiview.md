@@ -6,7 +6,9 @@ Migrate Lexera from a single webview hosting iframes to a multi-webview architec
 
 Work top-down by stage. Each stage has a decision gate; do not start the next stage until the previous one is verified working. After completing tasks in a stage, run `./run-lexera-tests.sh` and update the test status line. Mark completed items with `[x]` and the commit hash. Cross-webview drag is a non-negotiable acceptance criterion — it must be validated as early as Stage 1 and must remain working after every subsequent stage.
 
-**Test status: 158 passed, 1 failed / 159 tests in ~12s (latest run — the 1 failure is a pre-existing intermittent flake in "header drag source: '+ new' dropdown lists draw.io and excalidraw"; same flake seen sporadically in baseline runs unrelated to this work)**
+**Test status: BROKEN by full-migration mode. Tests inspect iframes directly ([frontendTests.js:45](lexera-kanban/src/test/frontendTests.js#L45)); with iframe path removed, 0 iframes match the test selectors, so iframe-content tests fail or skip. Test infrastructure migration is itself an outstanding piece of work — not yet started.**
+
+**Migration mode: FULL (no opt-in). `MULTIVIEW_BOARDS = true` for any non-embedded shell. Iframes are never created for board tabs.**
 
 **Decision gate per stage:** if the stage's success criteria are not met, stop and reconsider before proceeding.
 

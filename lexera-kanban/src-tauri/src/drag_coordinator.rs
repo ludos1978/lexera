@@ -23,7 +23,7 @@
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::webview_mgr::{get_meta, hit_test, to_local, WebviewRegistry};
 
@@ -111,7 +111,9 @@ pub fn drag_start(
 /// Forward a pointer-move event during drag. Coordinates are in
 /// shell-local space (pixels relative to the shell window's content
 /// origin). The source webview must translate webview-local coords
-/// to shell-local before calling.
+/// to shell-local before calling. Also moves the drag ghost window
+/// to follow the cursor (offset by ~16,16 so it doesn't sit under
+/// the pointer).
 #[tauri::command]
 pub fn drag_pointer_move(
     app: AppHandle,
@@ -124,6 +126,21 @@ pub fn drag_pointer_move(
         Some(a) => a,
         None => return Ok(()),
     };
+
+    // Position the ghost window if it exists. We need screen-space
+    // coords for set_position on a separate window. Convert from
+    // shell-local by adding the main window's outer position.
+    if let Some(ghost) = app.get_webview_window("drag-ghost") {
+        if let Some(main) = app.get_webview_window("main") {
+            if let Ok(main_pos) = main.outer_position() {
+                let scale = main.scale_factor().unwrap_or(1.0);
+                let screen_x = (main_pos.x as f64) / scale + pos.x + 16.0;
+                let screen_y = (main_pos.y as f64) / scale + pos.y + 16.0;
+                let _ = ghost.set_position(tauri::LogicalPosition::new(screen_x, screen_y));
+                let _ = ghost.show();
+            }
+        }
+    }
 
     let new_target = hit_test(&registry, pos.x, pos.y);
 
@@ -210,6 +227,9 @@ pub fn drag_pointer_up(
         let _ = app.emit_to(active.source_label.as_str(), "drag-cancelled", ());
     }
 
+    if let Some(ghost) = app.get_webview_window("drag-ghost") {
+        let _ = ghost.hide();
+    }
     let _ = app.emit("drag-ended", ());
     Ok(())
 }
@@ -227,6 +247,9 @@ pub fn drag_cancel(app: AppHandle, drag_state: State<DragState>) -> Result<(), S
         let _ = app.emit_to(target.as_str(), "drag-leave", ());
     }
     let _ = app.emit_to(active.source_label.as_str(), "drag-cancelled", ());
+    if let Some(ghost) = app.get_webview_window("drag-ghost") {
+        let _ = ghost.hide();
+    }
     let _ = app.emit("drag-ended", ());
     Ok(())
 }
