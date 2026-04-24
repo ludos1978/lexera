@@ -159,6 +159,46 @@ pub fn multiview_list(app: AppHandle) -> Vec<WebviewMeta> {
     result
 }
 
+// ── Cross-webview event broadcasting ────────────────────────────
+//
+// Used by per-view sub-apps to share events that any other view
+// might care about (e.g., log messages, theme changes, catalog
+// updates). Recipients use scoped `webview.listen()` per the
+// "Architectural rules" in TODOs-lexera-multiview.md — global
+// broadcasts reach scoped listeners since they target "all".
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct LogEvent {
+    pub level: String,
+    pub source: String,
+    pub message: String,
+    pub timestamp_ms: f64,
+}
+
+/// Broadcast a log entry to every webview that has subscribed to
+/// `log-message`. Called from the main kanban process whenever
+/// lexeraLog is invoked, so any open log sub-app webview sees it.
+#[tauri::command]
+pub fn log_broadcast(app: AppHandle, entry: LogEvent) -> Result<(), String> {
+    use tauri::Emitter;
+    let _ = app.emit("log-message", entry);
+    Ok(())
+}
+
+/// Generic event broadcaster for use by per-view sub-apps that
+/// want to share state changes with other views (theme, catalog,
+/// active board, etc). Uses `app.emit()` (broadcast to all).
+#[tauri::command]
+pub fn multiview_broadcast(
+    app: AppHandle,
+    event: String,
+    payload: serde_json::Value,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    let _ = app.emit(&event, payload);
+    Ok(())
+}
+
 // ── Internal API for the drag coordinator ───────────────────────
 
 /// Hit-test a shell-local coordinate against known webview rectangles.

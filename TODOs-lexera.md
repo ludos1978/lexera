@@ -14,6 +14,10 @@ Keep this file structured and clean:
 
 ### Unsorted (leave this header here!)
 
+- [ ] can you create 3 dedicated test markdown boards that use all the features with valid images and graphics in different formats. also including all formats that we can include. especially using !!!include()!!! in the column title for the multi-page documents we support (pdf, epub, marp-presentation-markdown, xlsx, etc.) make sure you also test broken includes. make a immutable backup of the test-boards and one that is used while testing!
+
+first create a list of elements each board should have. then create some unique aspects the individual boards should feature. make sure one of the boards features at least one row, with 20 stacks, with each having 1 to 10 columns, with each column having 1-40 cards. every second cards should features some time of graphic, video, or other media!
+
 - [x] if we can add the mergeIncludes depth cap to the plugin settings put it there
 after the user exported the board, it might 
 - eighter be an active export: the automatically-updating must be shown in the active processes. this is displayed in a button in the top right of the board view. it must show that it's an active process and it can be stopped there (stop re-exporting the changes the user does on saving it).

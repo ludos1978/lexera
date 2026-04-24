@@ -470,11 +470,13 @@ fn main() {
             export_commands::get_marp_engine_path,
             export_commands::get_file_mtime_ms,
             export_commands::read_file_as_data_uri,
-            // Multi-webview scaffolding (Stage 2 — dormant until views migrate)
+            // Multi-webview scaffolding (Stage 2/3 — used by demo + log view)
             webview_mgr::multiview_spawn,
             webview_mgr::multiview_destroy,
             webview_mgr::multiview_set_geometry,
             webview_mgr::multiview_list,
+            webview_mgr::log_broadcast,
+            webview_mgr::multiview_broadcast,
             drag_coordinator::drag_start,
             drag_coordinator::drag_pointer_move,
             drag_coordinator::drag_pointer_up,

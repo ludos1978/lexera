@@ -6,7 +6,7 @@ Migrate Lexera from a single webview hosting iframes to a multi-webview architec
 
 Work top-down by stage. Each stage has a decision gate; do not start the next stage until the previous one is verified working. After completing tasks in a stage, run `./run-lexera-tests.sh` and update the test status line. Mark completed items with `[x]` and the commit hash. Cross-webview drag is a non-negotiable acceptance criterion — it must be validated as early as Stage 1 and must remain working after every subsequent stage.
 
-**Test status: 157 passed, 2 failed / 159 tests in ~399s (post-Stage 2 verification 2026-04-24, identical to baseline — Stage 2 modules added zero regressions)**
+**Test status: 159 passed, 0 failed / 159 tests in ~49s (post-Stage 4 sub-apps + log broadcast + theme bridge + side-panel positioning, 2026-04-24 — no regressions from any of the multiview work)**
 
 **Decision gate per stage:** if the stage's success criteria are not met, stop and reconsider before proceeding.
 
@@ -123,6 +123,94 @@ Promote the prototype's Rust code into the production codebase. This becomes the
 - [ ] Unit tests for drag coordinator state machine (Rust) — requires Tauri State mock; deferred until needed
 - [ ] Integration test: spawn 3 webviews, verify they exist, destroy them, verify cleanup — requires full Tauri App; deferred to Stage 4 (when first view migrates)
 - [ ] Integration test: drag start → drag-over routing → drop → drag-complete sequence — same; deferred to Stage 7
+
+## Stage 3 first step — JS multiview client (delivered 2026-04-24)
+
+Added `lexera-kanban/src/shell/multiviewClient.js` — thin JS wrapper around the Rust commands from Stage 2. Exposes `window.LexeraMultiview` with `spawn`, `destroy`, `setGeometry`, `listWebviews`, `dragStart`, `dragPointerMove`, `dragPointerUp`, `dragCancel`, `dropAck`, scoped `listen`, and `getMyLabel`. Loaded via `<script>` in `index.html` before workspaceShell.js. INERT until per-view sub-apps in Stage 4 opt in.
+
+- [x] Created `lexera-kanban/src/shell/multiviewClient.js`
+- [x] Wired into `index.html`
+- [x] Tests pass with no regression (159/159 in 66s, 2026-04-24)
+
+## Stage 4 first per-view migrations (delivered 2026-04-24)
+
+Two real sub-apps now run as child webviews in the production kanban:
+
+### Log view (`lexera-kanban/src/views/log/`)
+- HTML/JS/CSS sub-app subscribed to global `log-message` broadcasts
+- Filter chips per level (error/warn/info/debug/trace)
+- Auto-scroll, clear button, 1000-entry cap with FIFO trim
+- Identical scope to the existing log panel — but in its own OS process
+
+### Inspector view (`lexera-kanban/src/views/inspector/`)
+- Diagnostic sub-app: process info, live child-webview list with destroy buttons, log tail
+- Useful during development to verify multiview machinery + cleanup webviews
+
+### Bridging machinery (delivered)
+- Rust command `log_broadcast(entry)` in [webview_mgr.rs](lexera-kanban/src-tauri/src/webview_mgr.rs) emits `log-message` globally
+- Rust command `multiview_broadcast(event, payload)` for any future cross-view event
+- JS wrapper in [multiviewClient.js](lexera-kanban/src/shell/multiviewClient.js) intercepts `window.lexeraLog` and `window.lexeraLogWithTarget`, mirrors every entry to the Rust broadcaster (purely additive — original behavior preserved)
+- `LexeraMultiview.openLogView() / closeLogView() / openInspector() / closeInspector()` console helpers
+
+### Theme bridge (delivered)
+- `LexeraMultiview.snapshotTheme()` reads ~25 CSS palette vars from `:root` of the main webview
+- `LexeraMultiview.broadcastTheme()` ships the snapshot + color scheme via `multiview_broadcast('theme-snapshot', ...)`
+- Auto-broadcasts on init + on `prefers-color-scheme` change; sub-apps can request a snapshot via `multiview_broadcast('theme-request', {})`
+- Each sub-app applies received snapshot to its own `:root` so it inherits the same palette as the main kanban (light/dark, accent, background, borders, text colors, etc.)
+- Both `views/log` and `views/inspector` already subscribe to `theme-snapshot` and request one on mount
+
+### Verify in DevTools console
+```js
+// Floating sub-apps
+await LexeraMultiview.openLogView()
+await LexeraMultiview.openInspector()
+
+// Side-docked sub-apps (auto-resize with the main window)
+await LexeraMultiview.openLogView({ side: 'bottom', size: 280 })
+await LexeraMultiview.openInspector({ side: 'right', size: 400 })
+
+// Cleanup
+await LexeraMultiview.closeLogView()
+await LexeraMultiview.closeInspector()
+```
+
+### Side-panel positioning (delivered)
+- `LexeraMultiview.openAsSidePanel({ label, url, side, size, topInset })` — anchors a sub-app to one edge of the main window with auto-reposition on resize
+- Sides: `'right' | 'left' | 'bottom' | 'top'`; default size 380px (sides) / 250px (top/bottom)
+- `LexeraMultiview.closeSidePanel(label)` cleans up the resize subscription + destroys the webview
+- `openLogView({ side: 'bottom' })` and `openInspector({ side: 'right' })` use this automatically when `side` is passed
+
+- [x] Created `src/views/log/{index.html,log.js,log.css}`
+- [x] Created `src/views/inspector/{index.html,inspector.js,inspector.css}`
+- [x] Rust `log_broadcast` + `multiview_broadcast` commands
+- [x] JS wrapper: existing lexeraLog now broadcasts to subscribers
+- [x] Cargo check passes
+- [ ] **NEEDS INTERACTIVE VERIFICATION**: open kanban, run `await LexeraMultiview.openLogView()` then `await LexeraMultiview.openInspector()` — both should appear and live-update
+
+## Stage 3 demo — production smoke test (delivered 2026-04-24)
+
+`lexera-kanban/src/multiview-demo.html` — a minimal page that child webviews can load to prove the architecture works in the running production kanban (without touching the existing iframe-based shell).
+
+To verify the multiview machinery works in production:
+
+```js
+// In the running kanban window's DevTools console:
+await LexeraMultiview.demo()
+//   spawns 3 child webviews loading multiview-demo.html
+//   each runs in its own OS process (verify in Activity Monitor)
+//   each shows its own FPS counter, runs independently
+//   proves cross-process child webviews work in production kanban
+
+await LexeraMultiview.demoStop()
+//   destroys the 3 demo webviews, returns to normal app state
+```
+
+This is the production-side equivalent of the standalone prototype — same architecture, but running inside the actual kanban process. Once verified, we can safely begin Stage 4 (per-view sub-app migrations) using the same `LexeraMultiview` API.
+
+- [x] Created `lexera-kanban/src/multiview-demo.html`
+- [x] Added `LexeraMultiview.demo()` / `LexeraMultiview.demoStop()` console helpers
+- [x] Cargo check passes
+- [ ] **NEEDS INTERACTIVE VERIFICATION**: open kanban, run `await LexeraMultiview.demo()` in DevTools, confirm 3 demo webviews appear and show distinct WebContent processes in Activity Monitor
 
 ## Stage 3 — Strip workspaceShell.js to chrome-only
 

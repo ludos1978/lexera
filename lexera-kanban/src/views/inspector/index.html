@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multiview Inspector</title>
+  <link rel="stylesheet" href="inspector.css">
+</head>
+<body>
+  <header class="header">
+    <span class="title">Multiview Inspector</span>
+    <span class="fps" id="fps">— fps</span>
+  </header>
+  <main class="body">
+    <section>
+      <h3>Process info</h3>
+      <table id="proc-info"></table>
+    </section>
+    <section>
+      <h3>Active child webviews <span class="muted" id="webview-count"></span></h3>
+      <table id="webview-table">
+        <thead>
+          <tr><th>Label</th><th>X</th><th>Y</th><th>W</th><th>H</th><th></th></tr>
+        </thead>
+        <tbody id="webview-tbody"></tbody>
+      </table>
+    </section>
+    <section>
+      <h3>Recent log events <span class="muted">(last 50)</span></h3>
+      <div class="log-tail" id="log-tail"></div>
+    </section>
+  </main>
+  <script src="inspector.js"></script>
+</body>
+</html>
