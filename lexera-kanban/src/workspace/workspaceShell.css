@@ -1255,32 +1255,35 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspa
 
 /* Health indicator dot in the tab header — placed left of the
    close button so users can see at a glance whether each view is
-   synced (green), catching up (yellow), or disconnected (red). */
+   synced (green), catching up (yellow), or disconnected (red).
+   Sized + glow matched to the universal .lexera-mv-status-dot. */
 .ws-view-tab-health {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  margin: 0 6px 0 4px;
+  margin: 0 6px 0 6px;
   flex: 0 0 auto;
-  background: #777;
+  background: #888;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   vertical-align: middle;
+  align-self: center;
   transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 .ws-view-tab-health[data-health="green"] {
   background: #4caf50;
-  box-shadow: 0 0 4px rgba(76, 175, 80, 0.55);
+  box-shadow: 0 0 6px rgba(76, 175, 80, 0.7);
 }
 .ws-view-tab-health[data-health="yellow"] {
   background: #f5a623;
-  box-shadow: 0 0 4px rgba(245, 166, 35, 0.55);
+  box-shadow: 0 0 6px rgba(245, 166, 35, 0.7);
 }
 .ws-view-tab-health[data-health="red"] {
   background: #f44336;
-  box-shadow: 0 0 4px rgba(244, 67, 54, 0.55);
+  box-shadow: 0 0 6px rgba(244, 67, 54, 0.7);
 }
 .ws-view-tab-health[data-health="unknown"] {
-  background: #666;
+  background: #888;
 }
 
 /* Legacy: health indicator on the placeholder (kept for parity

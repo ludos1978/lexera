@@ -1,84 +1,117 @@
-# Multi-Webview Migration Plan
+# Multiview Status And Roadmap
 
-Migrate Lexera from a single webview hosting iframes to a multi-webview architecture where every view (workspace, dashboard, log, config, each board) is its own native child webview backed by its own OS process. Goal: process-level parallel rendering on macOS (WKWebView), Windows (WebView2), and Linux (WebKitGTK). Mobile (iOS/Android) is out of scope for this migration — they share only sub-parts of the codebase.
+This file tracks the production status and remaining work for the multiview migration in `lexera-kanban`.
 
-## Workflow
+The authoritative architecture and code-boundary document now lives in [lexera-kanban/MULTIVIEW_ARCHITECTURE.md](lexera-kanban/MULTIVIEW_ARCHITECTURE.md).
 
-Work top-down by stage. Each stage has a decision gate; do not start the next stage until the previous one is verified working. After completing tasks in a stage, run `./run-lexera-tests.sh` and update the test status line. Mark completed items with `[x]` and the commit hash. Cross-webview drag is a non-negotiable acceptance criterion — it must be validated as early as Stage 1 and must remain working after every subsequent stage.
+## Documentation map
 
-**Test status: 158 passed, 1 failed / 159 in 35s (2026-04-24). Tests synchronously detect `auto-run-config.json` at workspaceShell init and fall back to iframe path so the iframe-content test infrastructure works unchanged. The 1 remaining failure is the pre-existing intermittent "card move: view→view cross-column" flake. Real users (no test config file) always get the multiview path.**
+- Architecture and code structure: [lexera-kanban/MULTIVIEW_ARCHITECTURE.md](lexera-kanban/MULTIVIEW_ARCHITECTURE.md)
+- Prototype walkthrough: [prototypes/multiview/README.md](prototypes/multiview/README.md)
+- Prototype measurement sheet: [prototypes/multiview/RESULTS.md](prototypes/multiview/RESULTS.md)
 
-**Migration mode: FULL (no opt-in). `MULTIVIEW_BOARDS = true` for any non-embedded shell. Iframes are never created for board tabs.**
+## Current implementation snapshot (2026-04-24)
 
-## Final delivered conversion (2026-04-24)
+### Implemented
 
-### Bridges (all wired through Tauri events between main shell and embedded boards)
-- `catalog-snapshot` ↔ `lexera-workspace-catalog` postMessage
-- `board-action` (targeted) ↔ `lexera-board-action` postMessage
-- `layout-drag` (broadcast) ↔ `lexera-layout-drag` postMessage
-- `focus-hierarchy-target` (targeted) → embedded board's `navigateToHierarchyTarget`
-- `pane-activated` synthesized from `focus-changed` events (replaces window.parent postMessage path)
-- focus reporting (embedded board → Rust → focus-changed event)
-- request/response IPC pattern: `LexeraMultiview.request(label, event, payload)` / `.handleRequest(event, handler)`
-- `build-context-menu` request/response for `showContextMenuInBoardFrame`
-- `dispatch-action` (targeted) for context menu action dispatch back to board
-- placeholder visibility (is-active class + offsetParent) → `multiview_set_visible` per webview
+- Board tabs in the normal desktop shell spawn as native Tauri child webviews via `workspaceShell.js` + `multiviewClient.js` + `webview_mgr.rs`.
+- Extracted child-webview sub-apps exist for `log`, `inspector`, `workspaces`, and `dashboard`.
+- Rust owns webview lifecycle, event routing, health, focus, modal windows, and drag primitives.
+- `LexeraDialogs.confirm()` and `LexeraDialogs.prompt()` already switch to native modal windows when multiview is active.
+- Context-menu request/response routing, hierarchy-focus delivery, active-board broadcasts, catalog broadcasts, and theme broadcasts are all in place.
+- LRU-style freshness tracking and destroy/respawn cleanup hooks exist for board child webviews.
 
-### Modal dialogs (Stage 6 fix)
-- `LexeraDialogs.confirm(message)` auto-delegates to `confirmModal` (separate Tauri window) when multiview is active
-- `LexeraDialogs.prompt(message, initial)` auto-delegates to `promptModal`
-- HTML overlay path retained as fallback for embedded mode and tests
-- Both modals inherit theme via `theme-snapshot` event
+### Partially implemented
 
-### Drag ghost (Stage 7 partial)
-- Transparent (color-fill) always-on-top child window via Rust `drag_ghost_*` commands
-- Auto-shown by drag coordinator on `drag_pointer_move`, hidden on `drag_pointer_up` / `drag_cancel`
-- Position computed from main window's outer position + shell-local pointer + 16px offset
+- Lifecycle pooling exists as scaffolding, but the shell does not yet depend on a true pre-warmed navigation path.
+- The drag coordinator and ghost window exist, but production board drag/drop still primarily uses the legacy board drag system.
+- Event subscriptions are filtered in Rust, but batching and scale-tuning are still unfinished.
+- The board runs in child webviews today, but it is still the legacy embedded board app rather than a clean `views/board/` sub-app.
 
-### Webview lifecycle
-- Spawned lazily via `getOrCreateFrame` when `shouldLoadBoardFrame(tab)` returns true
-- ResizeObserver pushes geometry on placeholder size changes
-- MutationObserver pushes visibility on `is-active` class / `style` changes
-- Destroyed via `destroyMultiviewWebview` when tab closes (cleans both observers)
-- URL changes trigger destroy + respawn
+### Deliberate fallbacks still in use
 
-### Polish added after initial migration
-- LRU lifecycle: `lifecycleSpawn` called from `ensureMultiviewWebview`; `touch()` called on `activateTab` and on every `focus-changed` event. Soft cap default 8, oldest non-pinned evicted.
-- Eviction cleanup: Rust emits `multiview-destroyed` on any destroy; workspaceShell.js listens for `board-tab-*` labels and clears local state so next activation re-spawns.
-- Placeholder CSS: `.workspace-shell-multiview-placeholder.is-active::before` draws a fading accent-colored inset ring while the webview is loading; fades out when `is-loaded` class is added (two RAFs after spawn resolves).
-- Inspector reload button: each row in the webview table has a `↻` button that destroys + respawns at same URL/geometry (WebviewMeta now includes `url`).
-- beforeunload cleanup: main window unload destroys all spawned board webviews + hides the drag ghost (minimizes orphaned WebContent processes during dev reloads).
-- Drag ghost auto-ensure: `drag_start` builds the ghost window lazily on first drag (~50-100ms one-time cost, reused thereafter). Payload `.text` automatically shown in the ghost.
-- Mutation delegation bridge: `_delegateMutationToOwningFrame` in app.js now routes to the owning board webview via `multiview_emit_to('delegate-mutation', ...)` in multiview mode. Fire-and-forget; Loro CRDT propagates the result. Embedded board calls `window.LexeraDashboard[method](...args)`.
-- `getTabIdForBoard(boardId)` exported on LexeraWorkspaceShell — used by mutation delegation to address webviews by label.
-- `multiview_set_visible(label, visible)` + `watchPlaceholderVisibility`: MutationObserver on is-active/style + offsetParent check hides child webviews when their placeholder is hidden.
-- Duplicate-geometry coalescing in `pushGeom` to cut IPC noise during dock divider drag.
+- Embedded mode (`?embedded=1`) still disables multiview board spawning.
+- Frontend auto-run tests still force the iframe path by detecting `auto-run-config.json`.
 
-### Known still-broken (silently degraded)
-- Test infrastructure ([frontendTests.js:45](lexera-kanban/src/test/frontendTests.js#L45)) — queries `iframe` elements; with iframes gone, iframe-content tests early-return or fail (1 known card-move flake)
-- `_delegateMutationToOwningFrame` in app.js (synchronous return value cannot bridge async IPC; in practice the shell window doesn't own boards in multiview, so this rarely fires)
-- `getActiveBoardColumnsContainer`, `getFrameWindowForBoard` (return DOM/window references that have no cross-process equivalent)
-- Card drag across boards (existing card drag uses HTML5 dragstart bound to iframe DOM; cross-iframe drag would need pointer-based drag + drag coordinator integration)
-- Direct `frame.contentDocument` queries from shell into board (unbridgeable; callers handle null gracefully)
+### Current test status
 
-### What's in place but needs interactive verification
-- Run kanban (`cargo tauri dev` in `lexera-kanban`)
-- Boards open as child webviews (verify in Activity Monitor — search "WebContent")
-- Click hierarchy items in workspace browser → board navigates
-- Right-click in board → context menu appears
-- LexeraDialogs.confirm/prompt called from any code → opens as separate native window
-- Switch between board tabs → inactive ones hide, active one shows
+- `158 passed, 1 failed / 159 in 35s (2026-04-24)`
+- The remaining failure is the pre-existing intermittent `card move: view→view cross-column` flake.
 
-**Decision gate per stage:** if the stage's success criteria are not met, stop and reconsider before proceeding.
+## Reality check vs. the original stage plan
 
-## Architectural Targets
+- `workspaceShell.js` is no longer untouched migration scaffolding. It is now the central multiview composition layer for board hosting.
+- `app.js` is no longer untouched either; it contains mutation-delegation bridges for multiview ownership handoff.
+- Stage 3 and Stage 4 happened only partially. The system already hosts real child webviews, but the codebase has not yet been fully restructured around clean module boundaries.
+- The board-hosting migration happened before a dedicated board-view extraction, so the current implementation includes compatibility bridges that the original plan treated as temporary.
+- The stage numbering below is still useful as historical context, but it is no longer the best mental model for ongoing work. Use the workstreams below for current planning.
 
-- Each top-level "view" in the app is its own webview process: shell (chrome only), workspace browser, dashboard, log, config, and one webview per open board.
-- Shell webview owns: menu bar, dock divider handles, tab bars, drag-drop coordination overlays, dialog routing.
-- Per-platform: each desktop OS gets equivalent process-per-webview behavior. Linux requires per-`WebContext` configuration in WebKitGTK. No platform compromised.
-- Cross-webview drag works for cards, tabs, and panels. Source webview never reflows during drag; target webview only reflows on drop.
-- Memory budget: lazy-spawn views, LRU-evict idle webviews, pre-warm hot pool of 2-3 ready webviews.
-- All cross-webview communication goes through Rust as the source of truth. Webviews never communicate peer-to-peer.
+## Workstreams from here
+
+### 1. Stabilize the current multiview production path
+
+- Verify macOS behavior interactively against the current implementation, not just the prototype.
+- Close the known cross-process gaps around direct DOM/window assumptions.
+- Tighten inspector, health, and reload tooling so failures are easier to diagnose.
+
+### 2. Extract a dedicated board boundary first
+
+- Create an explicit board-view boundary instead of loading the legacy embedded app behind multiview compatibility shims.
+- Replace `contentWindow` ownership assumptions and mutation delegation with explicit board host commands/events.
+- Move board-specific multiview boot code out of `multiviewClient.js`.
+- Reduce the need for synthetic `MessageEvent` translation between shell and board.
+
+### 3. Introduce slot-based layout as the source of truth
+
+- Define slots as a pure layout output of the dock tree.
+- Diff slot state once per frame and batch geometry/visibility updates into Rust.
+- Stop treating placeholder DOM and observers as the primary layout model.
+
+### 4. Split `workspaceShell.js` into real modules
+
+- Extract dock-tree/layout math into pure workspace modules.
+- Extract board hosting and slot application into a dedicated host module.
+- Extract focus routing, catalog bridging, and context-menu bridging into separate modules.
+- Keep `workspaceShell.js` as a composition root instead of a feature bucket.
+
+### 5. Split `multiviewClient.js` into transport plus services
+
+- Leave low-level `invoke`, scoped `listen`, and request/response helpers in the transport layer.
+- Move launchers, theme bridge, navigation bridge, embedded-board bridge, and lifecycle helpers into focused shell modules.
+
+### 6. Migrate production drag/drop onto the Rust drag coordinator
+
+- Route card drag, tab drag, and panel drag through the native coordinator.
+- Remove iframe-era assumptions from the current drag system and board integration points.
+- Validate drag ghost behavior and drop acknowledgement semantics under real shell usage.
+
+### 7. Make tests multiview-native
+
+- Stop relying on `iframe.contentDocument` access in frontend tests.
+- Add direct verification around child-webview spawn/destroy, routing, and modal behavior.
+- Remove the auto-run forced iframe fallback once the test surface is updated.
+
+### 8. Finish cross-platform hardening
+
+- Verify Windows and Linux behavior, not just macOS.
+- Add Linux-specific per-context/process configuration where needed.
+- Re-test modal z-order, drag ghost, visibility, and memory behavior on each desktop OS.
+
+## Current acceptance criteria
+
+- Normal desktop shell uses native child webviews for board tabs.
+- Embedded mode and test mode may keep explicit iframe fallbacks until their migration is complete.
+- All new cross-view communication goes through Rust-owned routing.
+- New non-board child views live under `src/views/<name>/`.
+- Modal UI that must paint above child webviews uses native windows, not shell HTML overlays.
+- Hidden child webviews must be hidden or parked so they never paint over unrelated content.
+
+## Historical stage notes
+
+Everything below this heading is retained as the original stage-by-stage migration log. It still contains useful prototype detail and delivery history, but parts of it no longer match the exact structure of the current codebase.
+
+Task descriptions from Stage 3 onward were updated on `2026-04-25` to reflect the real production bottleneck:
+the compatibility seam between the multiview host and the legacy iframe-era board runtime.
 
 ## Stage 1 — Prototype (validate the whole hypothesis before committing)
 
@@ -330,45 +363,53 @@ This is the production-side equivalent of the standalone prototype — same arch
 - [x] Cargo check passes
 - [ ] **NEEDS INTERACTIVE VERIFICATION**: open kanban, run `await LexeraMultiview.demo()` in DevTools, confirm 3 demo webviews appear and show distinct WebContent processes in Activity Monitor
 
-## Stage 3 — Strip workspaceShell.js to chrome-only
+## Stage 3 — Turn `workspaceShell.js` into a composition root
 
-Today `workspaceShell.js` is ~5k LOC mixing layout, iframe hosting, event dispatch, and drag coordination. Reduce it to ~1.5k LOC of pure window-management code.
+The bottleneck is not just file size. `workspaceShell.js` currently mixes dock layout, board hosting, focus delivery, context-menu routing, and iframe-era compatibility branches. The goal of this stage is to make the shell compose explicit modules around a stable board-host boundary and slot model.
 
-### Extract layout/geometry math
-- [ ] Identify pure layout functions in `workspaceShell.js` (slot positioning, dock sizing, divider hit areas)
-- [ ] Move them into `lexera-kanban/src/shell/layout.js` as a pure module
-- [ ] Add unit tests for slot positioning (input dock sizes → output rectangles)
+### Extract a pure slot/layout layer
+- [ ] Identify pure dock-tree and slot-computation functions in `workspaceShell.js`
+- [ ] Move them into `lexera-kanban/src/workspace/layoutTree.js` as pure modules
+- [ ] Define `Slot` / `SlotMap` outputs as the authoritative layout contract for hosted views
+- [ ] Add unit tests for slot computation (dock state → rectangles, visibility, active state)
 
-### Replace iframe code paths with webview manager calls
-- [ ] Replace `getOrCreateFrame()` with `getOrCreateWebview(viewType, params)` that calls Rust `create_webview`
-- [ ] Replace `frame.contentWindow.postMessage(...)` with `core.invoke('emit_to_view', { target, event, payload })`
-- [ ] Replace `frame.classList.add('is-active')` with `core.invoke('set_webview_visibility', { id, visible })`
-- [ ] Replace iframe geometry setting with `core.invoke('set_webview_geometry', ...)`
-- [ ] Update `broadcastLayoutDragState` to broadcast through Rust event router
-- [ ] Remove iframe creation, `frameCache`, and related code paths
+### Extract board-host lifecycle
+- [ ] Move placeholder creation, spawn/destroy, geometry push, and visibility handling into `lexera-kanban/src/workspace/boardHost.js`
+- [ ] Replace `getFrameWindowForBoard()`-style ownership helpers with a host lookup API that works for native webviews and fallback mode
+- [ ] Centralize geometry and visibility diffing so the shell no longer pushes ad-hoc updates from many call sites
+- [ ] Keep iframe fallback behind one adapter instead of open-coded branches across the shell
+
+### Extract shell bridges
+- [ ] Move focus routing into `lexera-kanban/src/workspace/focusRouter.js`
+- [ ] Move catalog and active-board propagation into `lexera-kanban/src/workspace/catalogBridge.js`
+- [ ] Move board context-menu request/response logic into `lexera-kanban/src/workspace/contextMenuBridge.js`
+- [ ] Keep `workspaceShell.js` as a composition root that wires these modules together
 
 ### Shell-only chrome
-- [ ] Move all chrome HTML (toolbar, dock containers, divider handles, drop overlays) into `lexera-kanban/src/shell/index.html`
-- [ ] Move shell JS into `lexera-kanban/src/shell/shell.js`
-- [ ] Move shell CSS into `lexera-kanban/src/shell/shell.css`
-- [ ] Verify shell HTML loads with no iframes — child views appear via webview manager only
+- [ ] Move shell chrome HTML/CSS/JS into dedicated shell files once hosting and slot boundaries are stable
+- [ ] Verify the shell owns only chrome, dock state, and host orchestration
 
 ### Shell tests
-- [ ] Update `tests/workspaceShell.test.js` to test the new shell module
-- [ ] Add tests for the layout module (pure functions, easy to test)
+- [ ] Update `tests/workspaceShell.test.js` to cover the composition root and extracted modules
+- [ ] Add tests for slot computation and host diffing
 - [ ] Run `./run-lexera-tests.sh` — all tests pass
 
 ## Stage 4 — Extract per-view sub-apps
 
-Split the existing monolithic frontend into self-contained per-view sub-apps. Each view becomes its own HTML/JS/CSS bundle.
+Split the existing monolithic frontend into self-contained per-view sub-apps. The first priority is no longer "all views eventually"; it is establishing a real board-view boundary so the multiview shell can stop emulating iframe-era APIs.
 
-### Directory structure
-- [ ] Create `lexera-kanban/src/views/board/` — HTML entry, JS, CSS
-- [ ] Create `lexera-kanban/src/views/workspace/` — workspace browser
-- [ ] Create `lexera-kanban/src/views/dashboard/` — board overview, stats
-- [ ] Create `lexera-kanban/src/views/log/` — lexeraLog viewer
-- [ ] Create `lexera-kanban/src/views/config/` — settings (currently lexera-shared/management)
-- [ ] Move/refactor existing code into these directories
+### Board boundary first
+- [ ] Create `lexera-kanban/src/views/board/` as an explicit board entry boundary, even if it initially reuses existing board modules internally
+- [ ] Define the board host contract for board actions, focus targets, context-menu building, mutation apply, layout-drag signals, and health/focus reporting
+- [ ] Replace synthetic `MessageEvent` translation with direct multiview event handling inside the board boundary
+- [ ] Replace `_delegateMutationToOwningFrame()` ownership handoff with explicit async board commands/requests
+- [ ] Move board-specific multiview boot code out of `multiviewClient.js`
+
+### Remaining view extraction
+- [ ] Keep `log`, `inspector`, `workspaces`, and `dashboard` under `src/views/` and converge them on shared runtime patterns
+- [ ] Create `lexera-kanban/src/views/config/` for settings / management (currently still shell-owned)
+- [ ] Decide whether a separate `src/views/workspace/` browser is still needed beyond the existing `workspaces` sub-app
+- [ ] Move/refactor view-specific code so each child view owns its own UI and subscribes only to the events it needs
 
 ### Shared libraries
 - [ ] Promote shared code to `lexera-kanban/src/shared/` (or expand `lexera-shared/`):
@@ -384,12 +425,11 @@ Split the existing monolithic frontend into self-contained per-view sub-apps. Ea
 - [ ] Tauri asset server serves per-view bundles
 - [ ] Initial state passed via URL params or post-mount event
 
-### Migration order (lowest risk first)
-- [ ] Migrate Log view first — smallest scope, validates plumbing end-to-end
-- [ ] Migrate Workspace view
-- [ ] Migrate Dashboard view
-- [ ] Migrate Config view
-- [ ] Migrate Board view (largest scope; saved for last)
+### Migration order (reflecting the real bottleneck)
+- [ ] Establish the board boundary first — architecture blocker
+- [ ] Migrate Config view next — still shell-owned and z-order sensitive
+- [ ] Converge existing sub-apps (`log`, `inspector`, `workspaces`, `dashboard`) onto the shared runtime and protocol patterns
+- [ ] Decompose the board further only after the boundary is stable
 
 ### Per-view tests
 - [ ] Each view has its own test suite under `lexera-kanban/tests/views/<view>/`
@@ -398,22 +438,23 @@ Split the existing monolithic frontend into self-contained per-view sub-apps. Ea
 
 ## Stage 5 — Slot-based layout system
 
-The shell uses a "slot" abstraction. Each slot has a rectangle; the webview manager places a child webview in that rectangle. Slots are computed from dock sizes + divider positions.
+The shell should use a "slot" abstraction as the authoritative layout output of the dock tree. Right now placeholder DOM and observers do too much of that work implicitly. This stage makes slots explicit so layout is computed once, diffed once, and then applied to the native host.
 
 ### Slot system
-- [ ] Define `Slot { id, rect, view_type, view_state }` data type
-- [ ] Shell computes slot rectangles from current dock layout
-- [ ] Layout changes (dock resize, panel split, tab switch) → recompute slots → push new geometry to webview manager
-- [ ] Webview manager applies geometry changes to all affected webviews in one batch
+- [ ] Define `Slot { id, view_kind, view_key, rect, visible, active, dock_context }`
+- [ ] Shell computes slot maps from dock layout without using placeholder DOM as the source of truth
+- [ ] Layout changes (dock resize, panel split, tab switch) → recompute slot map → diff against previous slot map
+- [ ] Apply geometry and visibility changes to all affected webviews in one batch per frame
+- [ ] Treat placeholders as consumers/debug surfaces, not as layout authorities
 
 ### Performance during dock resize
-- [ ] Dock divider drag → batched geometry updates (one IPC per frame, not per webview)
-- [ ] Verify each child webview reflows in its own process — main shell thread stays responsive
+- [ ] Dock divider drag → one slot diff and one batched IPC update per animation frame
+- [ ] Verify each child webview reflows in its own process while the shell remains responsive
 - [ ] Measure FPS during dock resize on macOS, Windows, Linux — must match Stage 1 prototype numbers
 
 ### Tests
-- [ ] Unit tests for slot computation (dock sizes → slot rectangles)
-- [ ] Integration test: resize a dock → verify webview manager receives correct geometry calls
+- [ ] Unit tests for slot computation (dock state → slot map)
+- [ ] Integration test: resize a dock → verify one coherent geometry/visibility batch is sent
 - [ ] Run `./run-lexera-tests.sh`
 
 ## Stage 6 — Z-order workarounds (the architectural friction)
@@ -455,11 +496,16 @@ Native child webviews paint above HTML in the shell. Anything that needs to appe
 
 ## Stage 7 — Cross-webview drag (production hardening)
 
-The Stage 1 prototype validated drag works. Production hardening ensures all real-world drag scenarios work.
+The Stage 1 prototype validated drag works. Production hardening now depends on the board boundary from Stage 4 and the slot model from Stage 5, so drag no longer depends on iframe-era DOM ownership assumptions.
+
+### Preconditions
+- [ ] Board view receives direct host events instead of synthetic iframe/message shims
+- [ ] Drag/drop integrates with the explicit board host contract
+- [ ] Source completion waits for real `drop_ack`, not optimistic success
 
 ### Drag scenarios that must work
-- [ ] Card drag within a single board webview (existing behavior preserved)
-- [ ] Card drag across two board webviews (new — validated in Stage 1)
+- [ ] Card drag within a single board webview uses the same drag model as cross-webview drag
+- [ ] Card drag across two board webviews uses the native coordinator and board host protocol
 - [ ] Tab drag across docks (panel from log dock to right dock)
 - [ ] Panel drag — moving a whole view between docks
 - [ ] Drag a card onto a dock divider → split / new tab indicator
@@ -475,7 +521,7 @@ The Stage 1 prototype validated drag works. Production hardening ensures all rea
 - [ ] Test by intentionally crashing a webview mid-drag
 
 ### Drag tests
-- [ ] Add `lexera-kanban/tests/cross_webview_drag.test.js` — automated drag scenarios via simulated pointer events
+- [ ] Add `lexera-kanban/tests/cross_webview_drag.test.js` — automated drag scenarios via simulated pointer events against the multiview path
 - [ ] Add Rust integration test for drag coordinator state machine with all scenarios
 - [ ] Manual test checklist documenting each scenario above
 - [ ] Run `./run-lexera-tests.sh` and verify all drag tests pass
@@ -491,8 +537,8 @@ Production quality lifecycle: lazy spawn, LRU eviction, pre-warm pool, graceful 
 
 ### LRU eviction
 - [ ] Hidden views older than configurable threshold (default 10 min) get destroyed
-- [ ] State preserved in Rust before destruction
-- [ ] Re-show triggers spawn with state restoration
+- [ ] State is preserved through an explicit host snapshot API, not shell DOM access
+- [ ] Re-show triggers spawn with state restoration through the board/view boundary
 
 ### Pre-warm pool
 - [ ] App startup spawns 2 empty webviews after main window appears
@@ -512,7 +558,13 @@ Production quality lifecycle: lazy spawn, LRU eviction, pre-warm pool, graceful 
 
 ## Stage 9 — State sync at scale
 
-With many webviews, state synchronization patterns matter for correctness and performance.
+With many webviews, state synchronization patterns matter for correctness and performance. The goal is not only subscription filtering, but also replacing compatibility shims with explicit view protocols.
+
+### View protocol cleanup
+- [ ] Replace synthetic `window.dispatchEvent(new MessageEvent(...))` bridging with direct board/view host events
+- [ ] Remove remaining `contentWindow` / `contentDocument` assumptions from shell and app code
+- [ ] Document the board host command/event/request protocol
+- [ ] Make ownership and routing explicit instead of inferred from iframe-style helpers
 
 ### Event subscription registry
 - [ ] Each webview declares which events it subscribes to at mount

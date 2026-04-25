@@ -881,6 +881,24 @@
     var wv = getCurrentWebview();
     if (!wv || typeof wv.listen !== 'function') return;
 
+    // Inject CSS to remove the scrollbar-gutter reservation that the
+    // legacy layout used to keep scrollbar width stable. In multiview
+    // the webview is always sized to the exact slot so we don't need
+    // the reservation — and the reserved edges showed as ~20px of
+    // empty space at the end of the board (matching user complaint
+    // "at least 20 pixels off"). Also ensure the body/html stretch.
+    if (!document.getElementById('lexera-mv-embed-fill-styles')) {
+      var fillStyle = document.createElement('style');
+      fillStyle.id = 'lexera-mv-embed-fill-styles';
+      fillStyle.textContent =
+        'html, body { margin: 0; padding: 0; min-height: 100%; }' +
+        '.columns-container { scrollbar-gutter: auto !important; }' +
+        /* Slight stretch so the last row's visible area reaches the
+           viewport edge instead of leaving a ~gap-sized empty strip. */
+        '.columns-container > *:last-child { margin-bottom: 0 !important; }';
+      document.head.appendChild(fillStyle);
+    }
+
     function dispatchAsMessage(data) {
       try {
         window.dispatchEvent(new MessageEvent('message', { data: data }));

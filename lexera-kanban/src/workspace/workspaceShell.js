@@ -2359,11 +2359,22 @@
   // out of view, dock collapsed, etc.) leave their webview at last
   // known geometry, possibly painting over other content.
   var multiviewVisibilityObservers = {};
-  function watchPlaceholderVisibility(tabId, placeholderEl) {
+  function watchPlaceholderVisibility(tabId, placeholderEl, pushGeomFn) {
     if (multiviewVisibilityObservers[tabId]) return;
     if (!window.LexeraMultiview) return;
     var label = multiviewLabelForTab(tabId);
     var lastVisible = null;
+    // Inline geometry-push fallback if no specific pushGeomFn was
+    // provided. Uses exact float rect; Tauri rounds to native pixels.
+    function localPushGeom() {
+      if (placeholderEl.offsetParent === null) return;
+      var r = placeholderEl.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return;
+      window.LexeraMultiview.setGeometry([{
+        label: label, x: r.left, y: r.top, width: r.width, height: r.height
+      }]).catch(function () {});
+    }
+    var doPushGeom = typeof pushGeomFn === 'function' ? pushGeomFn : localPushGeom;
     function syncVisible() {
       var visible = placeholderEl.classList.contains('is-active') &&
         placeholderEl.offsetParent !== null &&
@@ -2373,7 +2384,16 @@
       window.LexeraMultiview.invoke('multiview_set_visible', {
         label: label, visible: visible
       }).catch(function () {});
-      if (visible) pushGeom(); // make sure geometry is fresh on show
+      if (visible) {
+        doPushGeom(); // make sure geometry is fresh on show
+      } else {
+        // Belt-and-braces: park the hidden webview far offscreen so
+        // even if Tauri's hide() is delayed/unreliable on this OS,
+        // the webview is not visually overlapping anything else.
+        window.LexeraMultiview.setGeometry([{
+          label: label, x: -50000, y: -50000, width: 1, height: 1
+        }]).catch(function () {});
+      }
     }
     var observers = [];
     if (window.MutationObserver) {
@@ -2401,17 +2421,33 @@
     if (!window.LexeraMultiview) return;
     var label = multiviewLabelForTab(tab.id);
     var url = multiviewUrlForTab(desiredSrc);
-    // Immediate geometry push. Tested with rAF batching — but the
-    // resulting 1-2 frame lag was visible during dock divider drag.
-    // Now we push on every callback (RO / resize / spawn-tick); the
-    // setGeometry IPC at Rust side is fast (~1-3ms) and Tauri's
-    // native set_position absorbs duplicates without flicker.
+    // Geometry push: send the placeholder's exact float rect.
+    // Tauri rounds to native pixels consistently; adjacent webviews
+    // and dividers are positioned from the same placeholder/grid
+    // rect data, so they round consistently too — no gaps, no
+    // overlaps. (Previous floor-floor strategy left a 1px gap on
+    // each side that compounded to visible "empty space below the
+    // kanban".)
+    //
+    // Optional safety inset (?multiview-inset=N): subtracts N pixels
+    // from each side as a debug aid for divider-cover issues.
+    var MV_INSET = (function () {
+      try {
+        var p = new URLSearchParams(window.location.search || '');
+        var v = parseInt(p.get('multiview-inset') || '0', 10);
+        return Number.isFinite(v) && v >= 0 ? v : 0;
+      } catch (_) { return 0; }
+    })();
     function pushGeom() {
       if (placeholderEl.offsetParent === null) return;
       var r = placeholderEl.getBoundingClientRect();
       if (r.width <= 0 || r.height <= 0) return;
       window.LexeraMultiview.setGeometry([{
-        label: label, x: r.left, y: r.top, width: r.width, height: r.height
+        label: label,
+        x: r.left + MV_INSET,
+        y: r.top + MV_INSET,
+        width: Math.max(1, r.width - 2 * MV_INSET),
+        height: Math.max(1, r.height - 2 * MV_INSET)
       }]).catch(function () {});
     }
     if (!multiviewSpawnedTabs[tab.id]) {
@@ -2454,7 +2490,7 @@
           multiviewGeometryObservers[tab.id] = ro;
         }
         window.addEventListener('resize', pushGeom);
-        watchPlaceholderVisibility(tab.id, placeholderEl);
+        watchPlaceholderVisibility(tab.id, placeholderEl, pushGeom);
       }).catch(function (err) {
         console.warn('[ws-shell] multiview spawn failed for', tab.id, err);
         if (typeof window.lexeraLog === 'function') {

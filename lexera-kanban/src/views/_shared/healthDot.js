@@ -69,69 +69,95 @@
   }
 
   var currentHealth = 'unknown';
-  var hostHeader = null;
 
-  function findHeader() {
+  function findAllHeaders() {
+    // Return de-duplicated set of matching header elements.
+    var seen = new Set();
+    var found = [];
     for (var i = 0; i < HEADER_SELECTORS.length; i++) {
-      var el = document.querySelector(HEADER_SELECTORS[i]);
-      if (el) return el;
+      var els = document.querySelectorAll(HEADER_SELECTORS[i]);
+      for (var j = 0; j < els.length; j++) {
+        var el = els[j];
+        if (seen.has(el)) continue;
+        seen.add(el);
+        // Skip headers that are descendants of an already-included
+        // header (avoid double-injection in nested header structures
+        // like log-panel-header > log-panel-header-main).
+        var skip = false;
+        for (var k = 0; k < found.length; k++) {
+          if (found[k].contains(el) || el.contains(found[k])) {
+            skip = true;
+            break;
+          }
+        }
+        if (!skip) found.push(el);
+      }
     }
-    return null;
+    return found;
   }
 
   function findTrailingAnchor(headerEl) {
     for (var i = 0; i < TRAILING_ANCHOR_SELECTORS.length; i++) {
-      var el = headerEl.querySelector(TRAILING_ANCHOR_SELECTORS[i]);
+      var el = headerEl.querySelector(':scope > ' + TRAILING_ANCHOR_SELECTORS[i]) ||
+        headerEl.querySelector(TRAILING_ANCHOR_SELECTORS[i]);
       if (el) return el;
     }
     return null;
   }
 
-  function ensureSingleDot() {
-    var headerEl = findHeader();
-    if (!headerEl) return null;
-    // Remove any pre-existing dots elsewhere in the document — only
-    // one dot total, in the chosen header. (Re-runs on mutations.)
-    var existingAll = document.querySelectorAll('.' + DOT_CLASS);
-    var keep = null;
-    for (var i = 0; i < existingAll.length; i++) {
-      if (existingAll[i].parentNode === headerEl && !keep) {
-        keep = existingAll[i];
-      } else {
-        existingAll[i].remove();
-      }
+  function ensureDotIn(headerEl) {
+    var existing = headerEl.querySelector(':scope > .' + DOT_CLASS);
+    if (existing) {
+      existing.setAttribute('data-health', currentHealth);
+      existing.setAttribute('title', 'Connection state: ' + currentHealth);
+      return existing;
     }
-    if (!keep) {
-      keep = document.createElement('span');
-      keep.className = DOT_CLASS;
-      keep.setAttribute('data-health', currentHealth);
-      keep.setAttribute('title', 'Connection state: ' + currentHealth);
-    } else {
-      keep.setAttribute('data-health', currentHealth);
-      keep.setAttribute('title', 'Connection state: ' + currentHealth);
-    }
-    // Place the dot just before the trailing anchor (close/fold).
-    // If no anchor exists, append to end. Either way the dot is on
-    // the right side of the header.
+    var dot = document.createElement('span');
+    dot.className = DOT_CLASS;
+    dot.setAttribute('data-health', currentHealth);
+    dot.setAttribute('title', 'Connection state: ' + currentHealth);
     var anchor = findTrailingAnchor(headerEl);
-    if (anchor && anchor.parentNode) {
-      anchor.parentNode.insertBefore(keep, anchor);
-    } else if (keep.parentNode !== headerEl) {
-      headerEl.appendChild(keep);
+    if (anchor && anchor.parentNode === headerEl) {
+      headerEl.insertBefore(dot, anchor);
+    } else {
+      headerEl.appendChild(dot);
     }
-    hostHeader = headerEl;
-    return keep;
+    return dot;
+  }
+
+  function ensureDots() {
+    var headers = findAllHeaders();
+    if (headers.length === 0) return;
+    // Remove dots that are NOT in any of the chosen headers (cleans
+    // up dots from previous runs that may have ended up elsewhere)
+    var allDots = document.querySelectorAll('.' + DOT_CLASS);
+    for (var i = 0; i < allDots.length; i++) {
+      var inAHeader = false;
+      for (var j = 0; j < headers.length; j++) {
+        if (allDots[i].parentNode === headers[j]) {
+          inAHeader = true;
+          break;
+        }
+      }
+      if (!inAHeader) allDots[i].remove();
+    }
+    // Inject (or refresh) one dot in each chosen header
+    for (var h = 0; h < headers.length; h++) {
+      ensureDotIn(headers[h]);
+    }
   }
 
   function applyHealth(state) {
     currentHealth = state || 'unknown';
-    var dot = document.querySelector('.' + DOT_CLASS);
-    if (!dot) {
-      dot = ensureSingleDot();
-      if (!dot) return;
+    var dots = document.querySelectorAll('.' + DOT_CLASS);
+    if (dots.length === 0) {
+      ensureDots();
+      dots = document.querySelectorAll('.' + DOT_CLASS);
     }
-    dot.setAttribute('data-health', currentHealth);
-    dot.setAttribute('title', 'Connection state: ' + currentHealth);
+    for (var i = 0; i < dots.length; i++) {
+      dots[i].setAttribute('data-health', currentHealth);
+      dots[i].setAttribute('title', 'Connection state: ' + currentHealth);
+    }
   }
 
   function reportSelfHealth(state) {
@@ -146,9 +172,9 @@
 
   function init() {
     injectStyles();
-    ensureSingleDot();
+    ensureDots();
 
-    // Watch for re-renders that might remove or duplicate the dot.
+    // Watch for re-renders that might remove or duplicate dots.
     if (window.MutationObserver) {
       var pending = false;
       var mo = new MutationObserver(function () {
@@ -156,7 +182,7 @@
         pending = true;
         requestAnimationFrame(function () {
           pending = false;
-          ensureSingleDot();
+          ensureDots();
         });
       });
       mo.observe(document.body, { childList: true, subtree: true });
