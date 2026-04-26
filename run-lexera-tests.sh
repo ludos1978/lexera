@@ -1,23 +1,42 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────
-#  run-lexera-tests.sh  —  Automated frontend-test runner
+#  run-lexera-tests.sh  —  Test runner with multiple modes
 #
-#  Starts backend + lexera-kanban + lexera-capture-ios (desktop),
-#  auto-runs the frontend test suite after a short boot delay, and
-#  writes the formatted results to `logs/frontend-tests.log`.
-#  When the suite finishes, the kanban app quits itself so the
-#  script can exit cleanly — allowing a parent process (or human)
-#  to tail the log file for results without manual interaction.
+#  Default mode (integration): starts backend + lexera-kanban +
+#  lexera-capture-ios (desktop), auto-runs the in-app frontend test
+#  suite after a short boot delay, writes the formatted results to
+#  `logs/frontend-tests.log`, and quits the kanban app when finished.
 #
-#  Usage:
-#    ./run-lexera-tests.sh                 Default: 10s boot delay,
-#                                          writes to logs/frontend-tests.log
-#    ./run-lexera-tests.sh --delay=5000    Override boot delay (ms)
-#    ./run-lexera-tests.sh --output=path   Override log path
-#    ./run-lexera-tests.sh --board=<id>    Pin a specific board for tests
-#    ./run-lexera-tests.sh --filter=text   Run tests whose names contain text
-#    ./run-lexera-tests.sh --no-capture    Skip starting capture app
-#    ./run-lexera-tests.sh --kill          Just kill running instances
+#  Other modes (much faster — no Tauri stack):
+#    --unit                Run all vitest unit tests (lexera-kanban/tests).
+#    --unit <patterns…>    Run vitest with the given file/path patterns.
+#    --unit-multiview      Run only the multiview-adjacent vitest suite
+#                          (panelHost, boardHost, layoutTree, panelLaunchers
+#                          if present, workspaceShell, workspaceShellOverflowMenuStyles,
+#                          appShellShortcuts). The post-edit sanity loop
+#                          for ongoing multiview refactor work.
+#    --check               cargo check on lexera-kanban/src-tauri (Rust
+#                          compiles cleanly; no tests executed).
+#    --quick               Shorthand for --check + --unit-multiview.
+#                          The fastest end-to-end "is everything OK after
+#                          a multiview edit?" check.
+#
+#  Integration-mode flags (only applicable in default mode):
+#    --delay=5000          Override boot delay (ms)
+#    --output=path         Override log path
+#    --board=<id>          Pin a specific board for tests
+#    --filter=text         Run tests whose names contain text
+#    --no-capture          Skip starting capture app
+#
+#  Misc:
+#    --kill                Just kill running instances and exit
+#    -h / --help           Print this help
+#
+#  Examples:
+#    ./run-lexera-tests.sh --quick                      # fast sanity loop
+#    ./run-lexera-tests.sh --unit-multiview             # JS tests only
+#    ./run-lexera-tests.sh --unit tests/panelHost.test.js
+#    ./run-lexera-tests.sh                              # full integration run
 # ─────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -30,7 +49,21 @@ TARGET_DIR="$SCRIPT_DIR/target"
 PATH_MARKER="$TARGET_DIR/.project-path"
 BACKEND_READY_PORTS=(13080 8083 1431 12080 14080 11080 15080)
 
-# ── Defaults (overridable via flags below) ──────────────────────
+# Multiview-adjacent vitest files. Order matches the subjects of the
+# in-flight refactor (Workstream P + Workstream 5 + Refactor priority #1).
+# Update this list as new test files are added for the multiview work.
+MULTIVIEW_TEST_FILES=(
+  tests/panelHost.test.js
+  tests/boardHost.test.js
+  tests/layoutTree.test.js
+  tests/workspaceShell.test.js
+  tests/workspaceShellOverflowMenuStyles.test.js
+  tests/appShellShortcuts.test.js
+)
+
+# ── Mode dispatch + defaults ────────────────────────────────────
+MODE="integration"
+UNIT_PATTERNS=()
 DELAY_MS=10000
 OUTPUT_PATH="$SCRIPT_DIR/logs/frontend-tests.log"
 BOARD_ID=""
@@ -38,8 +71,15 @@ TEST_FILTER=""
 START_CAPTURE=1
 KILL_ONLY=0
 
+# Parse arguments. After --unit, every subsequent positional argument is
+# treated as a file pattern (until another flag like --kill).
+COLLECTING_UNIT_PATTERNS=0
 for arg in "$@"; do
   case "$arg" in
+    --unit) MODE="unit"; COLLECTING_UNIT_PATTERNS=1 ;;
+    --unit-multiview) MODE="unit-multiview" ;;
+    --check) MODE="check" ;;
+    --quick) MODE="quick" ;;
     --kill) KILL_ONLY=1 ;;
     --no-capture) START_CAPTURE=0 ;;
     --delay=*) DELAY_MS="${arg#--delay=}" ;;
@@ -47,15 +87,73 @@ for arg in "$@"; do
     --board=*) BOARD_ID="${arg#--board=}" ;;
     --filter=*) TEST_FILTER="${arg#--filter=}" ;;
     -h|--help)
-      sed -n '2,22p' "$0"
+      sed -n '2,42p' "$0"
       exit 0
       ;;
-    *)
+    --*)
       echo "Unknown flag: $arg" >&2
       exit 1
       ;;
+    *)
+      if [[ "$COLLECTING_UNIT_PATTERNS" == "1" ]]; then
+        UNIT_PATTERNS+=("$arg")
+      else
+        echo "Unexpected positional argument: $arg" >&2
+        echo "(positional args are only accepted after --unit)" >&2
+        exit 1
+      fi
+      ;;
   esac
 done
+
+# ── Fast modes (no Tauri stack) ─────────────────────────────────
+# These modes short-circuit before any service startup so the typical
+# post-edit sanity check is sub-second instead of multi-minute.
+
+run_check() {
+  echo "[check] cargo check lexera-kanban/src-tauri ..."
+  (cd "$KANBAN_DIR/src-tauri" && cargo check 2>&1 | sed 's/^/[check]  /')
+  local rc=${PIPESTATUS[0]}
+  if [[ "$rc" != "0" ]]; then
+    echo "[check] FAILED (cargo check returned $rc)" >&2
+    return "$rc"
+  fi
+  echo "[check] OK"
+  return 0
+}
+
+run_unit() {
+  local files=("$@")
+  local cmd=(npx vitest run)
+  if [[ ${#files[@]} -gt 0 ]]; then
+    cmd+=("${files[@]}")
+  fi
+  echo "[unit] ${cmd[*]}"
+  (cd "$KANBAN_DIR" && "${cmd[@]}" 2>&1 | sed 's/^/[unit]   /')
+  return ${PIPESTATUS[0]}
+}
+
+case "$MODE" in
+  check)
+    run_check
+    exit $?
+    ;;
+  unit)
+    run_unit "${UNIT_PATTERNS[@]}"
+    exit $?
+    ;;
+  unit-multiview)
+    run_unit "${MULTIVIEW_TEST_FILES[@]}"
+    exit $?
+    ;;
+  quick)
+    run_check || exit $?
+    run_unit "${MULTIVIEW_TEST_FILES[@]}"
+    exit $?
+    ;;
+esac
+
+# ── Integration mode: continues below ───────────────────────────
 
 # Ensure parent dir for the log file exists.
 mkdir -p "$(dirname "$OUTPUT_PATH")"

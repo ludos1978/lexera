@@ -214,7 +214,7 @@ var LexeraPollingService = (function () {
             console.warn('[poll] active board ' + _dep('activeBoardId') + ' not found in board list (' + (_dep('boards') ? _dep('boards').length : 0) + ' boards), clearing');
             _callDep('setShellActiveBoard', null);
           }
-          if (!_dep('activeBoardId')) {
+          if (_dep('workspaceShellBoardHostEnabled') && !_dep('activeBoardId')) {
             var initialBoardId = _dep('embeddedMode')
               ? _dep('embeddedPreferredBoardId')
               : (_dep('urlParams').get('board') || (_Settings ? _Settings.get('lastBoard') : localStorage.getItem('lexera-last-board')) || (_dep('boards')[0] && _dep('boards')[0].id) || '');

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Plugin Settings</title>
+  <link rel="stylesheet" href="../../management.css">
+  <link rel="stylesheet" href="../_shared/stub.css">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #d4d4d4);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      font-size: 12px;
+    }
+    .shell-settings-panel {
+      width: 100%;
+      height: 100vh;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <!-- Skeleton mirrors `sharedPanels.js → createRenderAppsPanelElement`. -->
+  <div class="shell-settings-panel render-apps-settings-panel lexera-shared-panel lexera-shared-panel-render-apps"
+       data-shell-panel="renderApps" data-shell-panel-instance="renderApps">
+    <div class="shell-settings-header">
+      <span class="shell-settings-title">Plugin Settings</span>
+    </div>
+    <div class="shell-settings-body">
+      <div class="mgmt-section">
+        <div class="mgmt-section-title">Application Paths</div>
+        <p class="render-apps-description">Configure paths to external tools used for rendering and export. Leave empty to use automatic detection.</p>
+        <div class="mgmt-settings-grid render-apps-grid">
+          <label for="render-app-drawio">Draw.io</label>
+          <input class="mgmt-field-input lexera-shared-render-apps-drawio" id="render-app-drawio" type="text" placeholder="Auto-detect">
+          <span class="render-apps-indicator lexera-shared-render-apps-indicator-drawio" aria-live="polite"></span>
+          <label for="render-app-marp">Marp CLI</label>
+          <input class="mgmt-field-input lexera-shared-render-apps-marp" id="render-app-marp" type="text" placeholder="Auto-detect (npx or marp)">
+          <span class="render-apps-indicator lexera-shared-render-apps-indicator-marp" aria-live="polite"></span>
+          <label for="render-app-pandoc">Pandoc</label>
+          <input class="mgmt-field-input lexera-shared-render-apps-pandoc" id="render-app-pandoc" type="text" placeholder="Auto-detect">
+          <span class="render-apps-indicator lexera-shared-render-apps-indicator-pandoc" aria-live="polite"></span>
+          <label for="render-app-soffice">LibreOffice</label>
+          <input class="mgmt-field-input lexera-shared-render-apps-soffice" id="render-app-soffice" type="text" placeholder="Auto-detect">
+          <span class="render-apps-indicator lexera-shared-render-apps-indicator-soffice" aria-live="polite"></span>
+          <label for="render-app-pdftoppm">pdftoppm</label>
+          <input class="mgmt-field-input lexera-shared-render-apps-pdftoppm" id="render-app-pdftoppm" type="text" placeholder="Auto-detect">
+          <span class="render-apps-indicator lexera-shared-render-apps-indicator-pdftoppm" aria-live="polite"></span>
+          <label for="render-app-mutool">mutool</label>
+          <input class="mgmt-field-input lexera-shared-render-apps-mutool" id="render-app-mutool" type="text" placeholder="Auto-detect">
+          <span class="render-apps-indicator lexera-shared-render-apps-indicator-mutool" aria-live="polite"></span>
+        </div>
+      </div>
+      <div class="mgmt-section">
+        <div class="mgmt-section-title">Marp Plugin</div>
+        <p class="render-apps-description">Override the bundled Marp engine with a custom <code>engine.js</code>, and/or point Marp at a folder of custom theme CSS files.</p>
+        <div class="mgmt-settings-grid render-apps-grid">
+          <label for="render-app-marp-engine-path">Custom engine.js</label>
+          <input class="mgmt-field-input lexera-shared-render-apps-marpEnginePath" id="render-app-marp-engine-path" type="text" placeholder="Leave empty to use bundled engine.js">
+          <button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-marpEnginePath-browse" type="button" title="Browse for a JS file">Browse&hellip;</button>
+          <label for="render-app-marp-templates-path">Templates folder</label>
+          <input class="mgmt-field-input lexera-shared-render-apps-marpTemplatesPath" id="render-app-marp-templates-path" type="text" placeholder="Directory containing .css theme templates">
+          <button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-marpTemplatesPath-browse" type="button" title="Browse for a folder">Browse&hellip;</button>
+        </div>
+        <div class="render-apps-themes-section">
+          <div class="render-apps-themes-header">
+            <span class="render-apps-themes-label">Discovered themes</span>
+            <button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-themes-refresh" type="button" title="Re-scan the templates folder">Refresh</button>
+          </div>
+          <div class="render-apps-themes lexera-shared-render-apps-themes"></div>
+        </div>
+      </div>
+      <div class="mgmt-section">
+        <div class="render-apps-tool-status lexera-shared-render-apps-tool-status"></div>
+        <div class="mgmt-settings-actions">
+          <button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-test" type="button" title="Run --version on each tool">Test Version</button>
+          <button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-test-run" type="button" title="Run a minimal end-to-end render with each tool (slower)">Test Run</button>
+          <button class="mgmt-btn mgmt-btn-small lexera-shared-render-apps-reload" type="button">Reload</button>
+          <button class="mgmt-btn mgmt-btn-small mgmt-btn-primary lexera-shared-render-apps-save" type="button">Save</button>
+        </div>
+        <div class="mgmt-status lexera-shared-render-apps-status"></div>
+      </div>
+    </div>
+  </div>
+  <script src="../../api.js"></script>
+  <script src="../../settings/renderAppsSettings.js"></script>
+  <script src="../_shared/subAppRuntime.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      LexeraSubApp.init({});
+      var panel = document.querySelector('.lexera-shared-panel-render-apps');
+      try {
+        LexeraRenderAppsSettings.init(panel);
+      } catch (err) {
+        var status = document.querySelector('.lexera-shared-render-apps-status');
+        if (status) {
+          status.textContent = 'Failed to initialize: ' + (err && err.message || err);
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,10 +1,12 @@
-// Multiview client — thin JS wrapper around the Rust IPC commands
-// added in Stage 2 (webview_mgr + drag_coordinator).
+// Multiview client — browser-side transport plus shell bridges for the
+// Rust IPC commands in webview_mgr + drag_coordinator.
 //
-// This file is loaded by index.html but is INERT until a per-view
-// sub-app explicitly opts into the multiview path. Loading it costs
-// nothing at runtime; it just exposes window.LexeraMultiview for use
-// by future view migrations (Stage 4).
+// This file is part of the active multiview path in the normal desktop
+// shell. It exposes window.LexeraMultiview, launches utility views,
+// handles theme/catalog/focus/shortcut/modal bridges, and carries the
+// embedded-board compatibility layer. Embedded mode and some tests
+// still use iframe fallbacks, so transport and migration glue
+// currently coexist in this file.
 //
 // IPC contract is documented in TODOs-lexera-multiview.md
 // "Architectural rules". The most important rule: when listening for
@@ -70,8 +72,165 @@
     });
   }
 
+  // Per-frame coalescer for geometry updates. Multiple `pushGeomDeferred`
+  // calls in the same animation frame collapse to a single IPC. The
+  // last update for any given label wins. Updates identical to the
+  // last-sent geometry for that label are dropped before IPC so the
+  // render loop can call this freely without thrashing Rust.
+  // Eliminates the N×M setGeometry storm during dock-divider drags
+  // (Perf #2 in TODOs-lexera-multiview.md).
+  var pendingGeometry = {};   // label → next update
+  var lastSentGeometry = {};  // label → last update actually sent
+  var geometryFlushScheduled = false;
+
+  function geomEquals(a, b) {
+    return !!a && !!b
+      && a.x === b.x && a.y === b.y
+      && a.width === b.width && a.height === b.height;
+  }
+
+  function flushPendingGeometry() {
+    geometryFlushScheduled = false;
+    var labels = Object.keys(pendingGeometry);
+    if (labels.length === 0) return;
+    var batch = [];
+    for (var i = 0; i < labels.length; i++) {
+      var l = labels[i];
+      var u = pendingGeometry[l];
+      if (geomEquals(u, lastSentGeometry[l])) continue; // no-op suppression
+      batch.push(u);
+      lastSentGeometry[l] = u;
+    }
+    pendingGeometry = {};
+    if (batch.length === 0) return;
+    setGeometry(batch).catch(function () { /* swallowed */ });
+  }
+
+  /**
+   * Coalesce a single geometry update into the next animation frame's
+   * batched IPC. Cheaper than calling `setGeometry([...])` per webview
+   * during dock-divider drag because all updates collapse into one IPC,
+   * and identical-to-last-sent updates are dropped before IPC.
+   */
+  function pushGeomDeferred(update) {
+    if (!update || !update.label) return;
+    pendingGeometry[update.label] = {
+      label: String(update.label),
+      x: Number(update.x) || 0,
+      y: Number(update.y) || 0,
+      width: Number(update.width) || 0,
+      height: Number(update.height) || 0
+    };
+    if (geometryFlushScheduled) return;
+    geometryFlushScheduled = true;
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(flushPendingGeometry);
+    } else {
+      setTimeout(flushPendingGeometry, 16);
+    }
+  }
+
   function listWebviews() {
     return invoke('multiview_list', {});
+  }
+
+  /**
+   * Navigate an existing child webview to a new URL via Rust's
+   * `multiview_navigate` command. Used by the lifecycle pool fast-path:
+   * pre-warmed webviews are repurposed without destroy+spawn, which is
+   * dramatically faster (renderer process is already running).
+   */
+  function navigateWebview(label, url) {
+    return invoke('multiview_navigate', { label: String(label || ''), url: String(url || '') });
+  }
+
+  // ── Lifecycle (Stage 8) ───────────────────────────────────────────
+  //
+  // LRU freshness, soft-cap eviction, and the pre-warmed webview pool
+  // live in `src/shell/lifecycle.js`. Transport primitives are injected
+  // so the lifecycle module is self-contained. The instance is created
+  // lazily on first access so unit tests that load the IIFE without the
+  // lifecycle bridge stay quiet (they don't touch lifecycle features).
+  var _lifecycleInstance = null;
+  function lifecycle() {
+    if (_lifecycleInstance) return _lifecycleInstance;
+    var factory = (typeof window !== 'undefined' && window.LexeraLifecycle) || null;
+    if (!factory || typeof factory.create !== 'function') return null;
+    _lifecycleInstance = factory.create({
+      spawn: spawn,
+      destroy: destroy,
+      setGeometry: setGeometry,
+      navigateWebview: navigateWebview,
+      listWebviews: listWebviews,
+      locationSearch: (typeof window !== 'undefined' && window.location ? window.location.search : '')
+    });
+    return _lifecycleInstance;
+  }
+  function lifecycleApi() {
+    var l = lifecycle();
+    if (l) return l;
+    // Hard-stub so DevTools calls don't crash when the bridge file is
+    // missing (e.g., test harness, partial deploy). Reads are
+    // best-effort; writes are no-ops.
+    return {
+      configure: function () { return {}; },
+      status: function () { return { config: {}, freshness: {}, pool: [] }; },
+      spawn: function (opts) { return spawn(opts).then(function () { return { label: opts.label, fromPool: false }; }); },
+      touch: function () {},
+      evictOldestIfOverCap: function () { return Promise.resolve(null); },
+      refillPool: function () { return Promise.resolve(); }
+    };
+  }
+
+  // ── FPS meter (Perf #10) ──────────────────────────────────────────
+  //
+  // Quick FPS sampler for measuring dock-divider drag and cross-webview
+  // drag performance from DevTools:
+  //
+  //   await LexeraMultiview.fpsMeter()           // 5-second sample
+  //   await LexeraMultiview.fpsMeter(10000)      // 10-second sample
+  //
+  // Returns { samples, durationMs, fps, min, max, p50, p95 }.
+  // Use to pin baseline numbers in prototypes/multiview/RESULTS.md.
+  function fpsMeter(durationMs) {
+    durationMs = Number(durationMs) || 5000;
+    return new Promise(function (resolve) {
+      var frames = 0;
+      var frameTimes = [];
+      var startMs = (typeof performance !== 'undefined' && performance.now)
+        ? performance.now() : Date.now();
+      var lastMs = startMs;
+      function tick(t) {
+        var now = t || ((typeof performance !== 'undefined' && performance.now)
+          ? performance.now() : Date.now());
+        frameTimes.push(now - lastMs);
+        lastMs = now;
+        frames++;
+        if (now - startMs < durationMs) {
+          requestAnimationFrame(tick);
+        } else {
+          var elapsed = now - startMs;
+          var sorted = frameTimes.slice().sort(function (a, b) { return a - b; });
+          var p = function (q) {
+            return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] || 0;
+          };
+          var minF = sorted[0] || 0;
+          var maxF = sorted[sorted.length - 1] || 0;
+          var result = {
+            samples: frames,
+            durationMs: Math.round(elapsed),
+            fps: +((frames / elapsed) * 1000).toFixed(1),
+            minFrameMs: +minF.toFixed(2),
+            maxFrameMs: +maxF.toFixed(2),
+            p50FrameMs: +p(0.5).toFixed(2),
+            p95FrameMs: +p(0.95).toFixed(2)
+          };
+          if (typeof console !== 'undefined') console.log('[fps-meter]', result);
+          resolve(result);
+        }
+      }
+      requestAnimationFrame(tick);
+    });
   }
 
   // ── Drag coordinator ──────────────────────────────────────────
@@ -321,195 +480,22 @@
   // Sides supported: 'right' | 'left' | 'bottom' | 'top'
   // Top inset defaults to ~32px to clear a toolbar row.
 
-  var sidePanelSubscriptions = {};
-
-  function getMainWindowClientRect() {
-    // Main webview's body (this script runs in the main webview)
-    if (typeof document === 'undefined' || !document.body) return null;
-    var r = document.body.getBoundingClientRect();
-    return { x: 0, y: 0, width: r.width, height: r.height };
-  }
-
-  function computeSlotRect(side, size, opts) {
-    var topInset = opts && opts.topInset != null ? opts.topInset : 32;
-    var rect = getMainWindowClientRect();
-    if (!rect) return null;
-    if (side === 'right') {
-      return { x: rect.width - size, y: topInset, width: size, height: rect.height - topInset };
-    }
-    if (side === 'left') {
-      return { x: 0, y: topInset, width: size, height: rect.height - topInset };
-    }
-    if (side === 'bottom') {
-      return { x: 0, y: rect.height - size, width: rect.width, height: size };
-    }
-    if (side === 'top') {
-      return { x: 0, y: topInset, width: rect.width, height: size };
-    }
+  // Side-panel positioning + per-kind launchers moved to
+  // shell/panelLaunchers.js (Workstream 5). The thin wrappers below
+  // keep the existing LexeraMultiview public API unchanged.
+  function panelLaunchers() {
+    if (typeof window !== 'undefined' && window.LexeraPanelLaunchers) return window.LexeraPanelLaunchers;
     return null;
   }
-
   function openAsSidePanel(opts) {
-    var label = String(opts.label || 'side-panel');
-    var url = String(opts.url || '');
-    var side = opts.side || 'right';
-    var size = opts.size != null ? opts.size : (side === 'bottom' || side === 'top' ? 250 : 380);
-    var slot = computeSlotRect(side, size, opts);
-    if (!slot) return Promise.reject(new Error('Could not compute slot rect'));
-
-    var promise = spawn({
-      label: label, url: url,
-      x: slot.x, y: slot.y, width: slot.width, height: slot.height
-    });
-
-    // Auto-reposition on main window resize.
-    var resizeHandler = function () {
-      var newSlot = computeSlotRect(side, size, opts);
-      if (!newSlot) return;
-      setGeometry([{ label: label, x: newSlot.x, y: newSlot.y, width: newSlot.width, height: newSlot.height }])
-        .catch(function () { /* webview may have been destroyed */ });
-    };
-    window.addEventListener('resize', resizeHandler);
-    sidePanelSubscriptions[label] = resizeHandler;
-
-    return promise;
+    var p = panelLaunchers();
+    return p ? p.openAsSidePanel(opts) : Promise.reject(new Error('LexeraPanelLaunchers not loaded'));
   }
-
   function closeSidePanel(label) {
-    var handler = sidePanelSubscriptions[label];
-    if (handler) {
-      window.removeEventListener('resize', handler);
-      delete sidePanelSubscriptions[label];
-    }
-    return destroy(label).catch(function () { /* ignore */ });
+    var p = panelLaunchers();
+    return p ? p.closeSidePanel(label) : Promise.resolve();
   }
 
-  // ── Stage 8: Lazy spawn + LRU eviction + pre-warm pool ─────────
-  //
-  // Memory budget for the multi-webview architecture: each webview
-  // is its own OS process at ~50-150MB. Without bounds, opening
-  // many boards consumes GBs of RAM. These helpers manage:
-  //  - LRU tracking: bump a webview's freshness on use; evict the
-  //    oldest when over the soft cap
-  //  - Pre-warm pool: keep N empty webviews ready to be repurposed
-  //    via webview.navigate(), so first-show is near-instant
-  //
-  // Configurable via LexeraMultiview.lifecycle.config({...}).
-
-  // Default lifecycle config, overrideable via URL params:
-  //   ?multiview-cap=12    — soft cap (max non-pinned webviews alive)
-  //   ?multiview-pool=2    — pre-warmed pool size (0 = disabled)
-  var lifecycleConfig = (function () {
-    var defaults = {
-      softCap: 8,
-      poolSize: 0,
-      poolUrl: 'multiview-demo.html',
-      pinnedLabels: ['inspector', 'log-view', 'workspaces', 'dashboard']
-    };
-    try {
-      var params = new URLSearchParams(window.location.search || '');
-      var cap = parseInt(params.get('multiview-cap') || '', 10);
-      var pool = parseInt(params.get('multiview-pool') || '', 10);
-      if (Number.isFinite(cap) && cap > 0) defaults.softCap = cap;
-      if (Number.isFinite(pool) && pool >= 0) defaults.poolSize = pool;
-    } catch (_) {}
-    return defaults;
-  })();
-  var freshness = {};       // label -> timestamp of last touch
-  var pool = [];            // pre-warmed webview labels
-
-  function touch(label) {
-    freshness[label] = Date.now();
-  }
-
-  function evictOldestIfOverCap() {
-    return listWebviews().then(function (list) {
-      var evictable = list.filter(function (w) {
-        return lifecycleConfig.pinnedLabels.indexOf(w.label) < 0
-          && pool.indexOf(w.label) < 0;
-      });
-      if (evictable.length <= lifecycleConfig.softCap) return null;
-      // Sort by freshness ascending (oldest first)
-      evictable.sort(function (a, b) {
-        return (freshness[a.label] || 0) - (freshness[b.label] || 0);
-      });
-      var victim = evictable[0].label;
-      console.log('[lifecycle] evicting LRU webview:', victim);
-      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
-        window.lexeraLog('info', '[lifecycle] LRU evicted ' + victim +
-          ' (' + evictable.length + '/' + lifecycleConfig.softCap + ' over cap)');
-      }
-      delete freshness[victim];
-      return destroy(victim);
-    });
-  }
-
-  // Spawn that participates in lifecycle (touches freshness, may
-  // trigger eviction). Use this for ordinary view spawning instead
-  // of the bare spawn() when you want lifecycle semantics.
-  function lifecycleSpawn(opts) {
-    return spawn(opts).then(function (result) {
-      touch(opts.label);
-      evictOldestIfOverCap();
-      return result;
-    });
-  }
-
-  // Repurpose a pool webview by navigating it to a new URL.
-  // Returns a Promise<bool> — true if a pool webview was used.
-  function tryRepurposeFromPool(targetLabel, url, position, size) {
-    if (!pool.length) return Promise.resolve(false);
-    var poolLabel = pool.shift();
-    var t = tauri();
-    var win = null;
-    try { win = t.window ? t.window.getCurrentWindow() : null; } catch (_) {}
-    // We can't rename a webview, so the pool webview's label stays as
-    // poolLabel. Caller still gets the spawned webview at poolLabel.
-    // For the migration this is fine since we use unique labels per view.
-    return setGeometry([{ label: poolLabel, x: position.x, y: position.y, width: size.width, height: size.height }])
-      .then(function () {
-        // Navigate via the webview API. Tauri 2 webview has `setUrl`?
-        // For now, destroy+respawn at the requested label is reliable.
-        return destroy(poolLabel).then(function () {
-          return spawn({ label: targetLabel, url: url, x: position.x, y: position.y, width: size.width, height: size.height });
-        });
-      })
-      .then(function () {
-        // Re-fill the pool in the background
-        refillPool();
-        return true;
-      });
-  }
-
-  function refillPool() {
-    var deficit = lifecycleConfig.poolSize - pool.length;
-    if (deficit <= 0) return Promise.resolve();
-    var spawns = [];
-    for (var i = 0; i < deficit; i++) {
-      var poolLabel = '_pool_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
-      pool.push(poolLabel);
-      // Spawn off-screen at 0x0 size so it's invisible until repurposed
-      spawns.push(spawn({
-        label: poolLabel, url: lifecycleConfig.poolUrl,
-        x: -10000, y: -10000, width: 1, height: 1
-      }).catch(function () { /* ignore */ }));
-    }
-    return Promise.all(spawns);
-  }
-
-  function lifecycleConfigure(updates) {
-    Object.keys(updates || {}).forEach(function (k) { lifecycleConfig[k] = updates[k]; });
-    if (lifecycleConfig.poolSize > 0) refillPool();
-    return Object.assign({}, lifecycleConfig);
-  }
-
-  function lifecycleStatus() {
-    return {
-      config: Object.assign({}, lifecycleConfig),
-      freshness: Object.assign({}, freshness),
-      pool: pool.slice()
-    };
-  }
 
   // ── Log view sub-app ──────────────────────────────────────────
   //
@@ -518,141 +504,26 @@
   // the Rust log_broadcast command; every lexeraLog() call in the
   // main webview is mirrored here.
   //
-  // Run from DevTools console:
-  //   await LexeraMultiview.openLogView()                    // floating
-  //   await LexeraMultiview.openLogView({ side: 'right' })   // docked
-  //   await LexeraMultiview.openLogView({ side: 'bottom' })
-  //   await LexeraMultiview.closeLogView()
-  function openLogView(opts) {
-    opts = opts || {};
-    activateBridges(); // log + catalog + active-board broadcasts now hot
-    if (opts.side) {
-      return openAsSidePanel({
-        label: 'log-view',
-        url: 'views/log/index.html',
-        side: opts.side, size: opts.size, topInset: opts.topInset
-      }).then(function () {
-        console.log('[log-view] opened as ' + opts.side + ' side panel');
-      });
-    }
-    return spawn({
-      label: 'log-view',
-      url: 'views/log/index.html',
-      x: opts.x != null ? opts.x : 100,
-      y: opts.y != null ? opts.y : 100,
-      width: opts.width != null ? opts.width : 800,
-      height: opts.height != null ? opts.height : 500
-    }).then(function () {
-      console.log('[log-view] opened — every lexeraLog() will appear here');
-      console.log('[log-view] cleanup: await LexeraMultiview.closeLogView()');
-    });
+  // Per-kind launchers moved to shell/panelLaunchers.js. Thin wrappers
+  // below keep the LexeraMultiview public API unchanged for DevTools
+  // console use (`await LexeraMultiview.openLogView()` etc.).
+  function delegateLauncher(name) {
+    return function () {
+      var p = panelLaunchers();
+      if (!p || typeof p[name] !== 'function') {
+        return Promise.reject(new Error('LexeraPanelLaunchers not loaded'));
+      }
+      return p[name].apply(null, arguments);
+    };
   }
-
-  function closeLogView() {
-    return closeSidePanel('log-view');
-  }
-
-  // ── Inspector view sub-app ────────────────────────────────────
-  //
-  // Diagnostic sub-app showing:
-  //   - process info for the inspector's webview
-  //   - live list of all child webviews with destroy buttons
-  //   - tail of recent log-message events
-  //
-  // Useful during multiview development. Run from console:
-  //   await LexeraMultiview.openInspector()
-  //   await LexeraMultiview.closeInspector()
-  function openInspector(opts) {
-    opts = opts || {};
-    activateBridges();
-    if (opts.side) {
-      return openAsSidePanel({
-        label: 'inspector',
-        url: 'views/inspector/index.html',
-        side: opts.side, size: opts.size, topInset: opts.topInset
-      }).then(function () {
-        console.log('[inspector] opened as ' + opts.side + ' side panel');
-      });
-    }
-    return spawn({
-      label: 'inspector',
-      url: 'views/inspector/index.html',
-      x: opts.x != null ? opts.x : 100,
-      y: opts.y != null ? opts.y : 100,
-      width: opts.width != null ? opts.width : 700,
-      height: opts.height != null ? opts.height : 600
-    }).then(function () {
-      console.log('[inspector] opened');
-    });
-  }
-  function closeInspector() {
-    return closeSidePanel('inspector');
-  }
-
-  // ── Workspaces sub-app ────────────────────────────────────────
-  //
-  // Console:
-  //   await LexeraMultiview.openWorkspaces({ side: 'left', size: 280 })
-  //   // shows boards + workspaces; click a board → main shell opens it
-  //   await LexeraMultiview.closeWorkspaces()
-  function openWorkspaces(opts) {
-    opts = opts || {};
-    activateBridges();
-    if (opts.side) {
-      return openAsSidePanel({
-        label: 'workspaces',
-        url: 'views/workspaces/index.html',
-        side: opts.side, size: opts.size, topInset: opts.topInset
-      }).then(function () {
-        console.log('[workspaces] opened as ' + opts.side + ' side panel');
-      });
-    }
-    return spawn({
-      label: 'workspaces',
-      url: 'views/workspaces/index.html',
-      x: opts.x != null ? opts.x : 100,
-      y: opts.y != null ? opts.y : 100,
-      width: opts.width != null ? opts.width : 320,
-      height: opts.height != null ? opts.height : 600
-    }).then(function () {
-      console.log('[workspaces] opened');
-    });
-  }
-  function closeWorkspaces() {
-    return closeSidePanel('workspaces');
-  }
-
-  // ── Dashboard sub-app ─────────────────────────────────────────
-  //
-  // Console:
-  //   await LexeraMultiview.openDashboard({ side: 'right', size: 320 })
-  //   await LexeraMultiview.closeDashboard()
-  function openDashboard(opts) {
-    opts = opts || {};
-    activateBridges();
-    if (opts.side) {
-      return openAsSidePanel({
-        label: 'dashboard',
-        url: 'views/dashboard/index.html',
-        side: opts.side, size: opts.size, topInset: opts.topInset
-      }).then(function () {
-        console.log('[dashboard] opened as ' + opts.side + ' side panel');
-      });
-    }
-    return spawn({
-      label: 'dashboard',
-      url: 'views/dashboard/index.html',
-      x: opts.x != null ? opts.x : 100,
-      y: opts.y != null ? opts.y : 100,
-      width: opts.width != null ? opts.width : 380,
-      height: opts.height != null ? opts.height : 500
-    }).then(function () {
-      console.log('[dashboard] opened');
-    });
-  }
-  function closeDashboard() {
-    return closeSidePanel('dashboard');
-  }
+  var openLogView = delegateLauncher('openLogView');
+  var closeLogView = delegateLauncher('closeLogView');
+  var openInspector = delegateLauncher('openInspector');
+  var closeInspector = delegateLauncher('closeInspector');
+  var openWorkspaces = delegateLauncher('openWorkspaces');
+  var closeWorkspaces = delegateLauncher('closeWorkspaces');
+  var openDashboard = delegateLauncher('openDashboard');
+  var closeDashboard = delegateLauncher('closeDashboard');
 
   // ── Modal-as-window dialogs (Stage 6 architectural fix) ───────
   //
@@ -741,115 +612,69 @@
   // Broadcast a snapshot whenever the theme might have changed.
   // Sub-apps subscribe via 'theme-snapshot' and apply to their root.
 
-  var THEME_VAR_NAMES = [
-    '--bg-primary', '--bg-secondary', '--bg-tertiary', '--bg-hover', '--bg-active',
-    '--border', '--font-color-mode', '--text-primary', '--text-muted',
-    '--accent', '--accent-hover', '--success', '--error',
-    '--card-bg', '--card-border', '--card-checked',
-    '--scrollbar-thumb', '--scrollbar-thumb-hover', '--scrollbar-track',
-    '--btn-bg', '--btn-bg-hover', '--btn-fg',
-    '--input-bg', '--input-border',
-    '--font-size-base', '--font-size-s', '--font-size-l'
-  ];
-
+  // Theme bridge moved to shell/themeBridge.js (Workstream 5). Local
+  // bindings here keep the existing call sites working unchanged.
+  function themeBridge() {
+    if (typeof window !== 'undefined' && window.LexeraThemeBridge) return window.LexeraThemeBridge;
+    return null;
+  }
   function snapshotTheme() {
-    if (typeof document === 'undefined' || !document.documentElement) return null;
-    var cs = getComputedStyle(document.documentElement);
-    var palette = {};
-    for (var i = 0; i < THEME_VAR_NAMES.length; i++) {
-      var v = cs.getPropertyValue(THEME_VAR_NAMES[i]);
-      if (v) palette[THEME_VAR_NAMES[i]] = v.trim();
-    }
-    var isDark = (document.documentElement.style.colorScheme === 'dark') ||
-      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    return { palette: palette, color_scheme: isDark ? 'dark' : 'light' };
+    var b = themeBridge();
+    return b ? b.snapshotTheme() : null;
   }
-
   function broadcastTheme() {
-    var snap = snapshotTheme();
-    if (!snap) return Promise.resolve();
-    return invoke('multiview_broadcast', {
-      event: 'theme-snapshot',
-      payload: snap
-    }).catch(function () { /* ignore */ });
+    var b = themeBridge();
+    return b ? b.broadcastTheme() : Promise.resolve();
   }
-
-  // Apply a received palette to this webview's :root. Used by sub-apps.
   function applyThemeSnapshot(snapshot) {
-    if (!snapshot || !snapshot.palette) return;
-    var root = document.documentElement;
-    var keys = Object.keys(snapshot.palette);
-    for (var i = 0; i < keys.length; i++) {
-      root.style.setProperty(keys[i], snapshot.palette[keys[i]]);
-    }
-    if (snapshot.color_scheme) root.style.colorScheme = snapshot.color_scheme;
+    var b = themeBridge();
+    if (b) b.applyThemeSnapshot(snapshot);
   }
 
-  // ── Catalog bridge ────────────────────────────────────────────
-  //
-  // The main shell (LexeraWorkspaceShell) holds the active catalog
-  // (boards + remote boards + workspaces). Per-view sub-apps that
-  // show board lists / picker UIs need this. Broadcast every time
-  // the catalog updates; sub-apps receive 'catalog-snapshot'.
-  var lastCatalogSnapshot = null;
-
+  // Catalog + active-board bridges moved to shell/catalogBridge.js
+  // (Workstream 5). Local bindings here keep existing call sites and
+  // the public LexeraMultiview API working unchanged.
+  function catalogBridge() {
+    if (typeof window !== 'undefined' && window.LexeraCatalogBridge) return window.LexeraCatalogBridge;
+    return null;
+  }
   function broadcastCatalog(snapshot) {
-    if (!snapshot) return Promise.resolve();
-    lastCatalogSnapshot = snapshot;
-    return invoke('multiview_broadcast', {
-      event: 'catalog-snapshot',
-      payload: snapshot
-    }).catch(function () { /* ignore */ });
+    var b = catalogBridge();
+    return b ? b.broadcastCatalog(snapshot) : Promise.resolve();
   }
-
-  // Gate: catalog broadcasting only when activated. Same reasoning
-  // as logBridgeActive — avoid IPC overhead for non-multiview users.
-  var catalogBridgeActive = false;
   function wrapCatalogUpdates() {
-    if (typeof window === 'undefined' || !window.LexeraWorkspaceShell) return;
-    var shell = window.LexeraWorkspaceShell;
-    if (window.__lexeraMultiviewCatalogWrapped) return;
-    var orig = shell.onCatalogUpdated;
-    if (typeof orig !== 'function') return;
-    shell.onCatalogUpdated = function (snapshot) {
-      if (catalogBridgeActive) {
-        try { broadcastCatalog(snapshot); } catch (_) {}
-      }
-      return orig.apply(this, arguments);
-    };
-    window.__lexeraMultiviewCatalogWrapped = true;
+    var b = catalogBridge();
+    if (b) b.wrapShellMethods();
   }
-  function activateCatalogBridge() { catalogBridgeActive = true; }
-  function deactivateCatalogBridge() { catalogBridgeActive = false; }
-
-  // Gate: active-board broadcasting only when activated.
-  var activeBoardBridgeActive = false;
-  var lastActiveBoardId = null;
+  function activateCatalogBridge() {
+    var b = catalogBridge();
+    if (b) b.activateCatalog();
+  }
+  function deactivateCatalogBridge() {
+    var b = catalogBridge();
+    if (b) b.deactivateCatalog();
+  }
   function broadcastActiveBoard(boardId) {
-    if (boardId === lastActiveBoardId) return Promise.resolve();
-    lastActiveBoardId = boardId;
-    return invoke('multiview_broadcast', {
-      event: 'active-board-changed',
-      payload: { boardId: boardId || null }
-    }).catch(function () {});
+    var b = catalogBridge();
+    return b ? b.broadcastActiveBoard(boardId) : Promise.resolve();
   }
   function wrapOpenBoard() {
-    if (typeof window === 'undefined' || !window.LexeraWorkspaceShell) return;
-    var shell = window.LexeraWorkspaceShell;
-    if (window.__lexeraMultiviewOpenBoardWrapped) return;
-    var orig = shell.openBoard;
-    if (typeof orig !== 'function') return;
-    shell.openBoard = function (boardId) {
-      var result = orig.apply(this, arguments);
-      if (activeBoardBridgeActive) {
-        try { broadcastActiveBoard(boardId); } catch (_) {}
-      }
-      return result;
-    };
-    window.__lexeraMultiviewOpenBoardWrapped = true;
+    var b = catalogBridge();
+    if (b) b.wrapShellMethods();
   }
-  function activateActiveBoardBridge() { activeBoardBridgeActive = true; }
-  function deactivateActiveBoardBridge() { activeBoardBridgeActive = false; }
+  function activateActiveBoardBridge() {
+    var b = catalogBridge();
+    if (b) b.activateActiveBoard();
+  }
+  function deactivateActiveBoardBridge() {
+    var b = catalogBridge();
+    if (b) b.deactivateActiveBoard();
+  }
+  // Last-snapshot accessor used by the public API.
+  function getLastCatalog() {
+    var b = catalogBridge();
+    return b ? b.getLastCatalog() : null;
+  }
 
   // Activates all the bridges. Call this when opening any sub-app
   // that needs cross-view state. Ensures tests + non-multiview
@@ -862,14 +687,13 @@
 
   // ── Embedded-board bridge ──────────────────────────────────────
   //
-  // When this script runs inside a child webview that hosts an
-  // embedded board (URL has ?embedded=1), bridge the new Tauri
-  // 'catalog-snapshot' event into the existing postMessage shape
-  // ('lexera-workspace-catalog') so the embedded board's existing
-  // handler in orderHelpers.js processes it without modification.
-  // Also bridge active-board-changed so the embedded board can
-  // highlight its state.
+  // The embedded-board bridge (catalog/board-action/layout-drag/focus/
+  // health/shortcuts/delegate-mutation, plus context-menu request
+  // handler) lives in `src/shell/embeddedBoardBridge.js`. Tauri-runtime
+  // dependencies are injected so the bridge file is self-contained.
   function isEmbeddedKanban() {
+    var bridge = (typeof window !== 'undefined' && window.LexeraEmbeddedBoardBridge) || null;
+    if (bridge && typeof bridge.isEmbeddedKanban === 'function') return bridge.isEmbeddedKanban();
     try {
       var p = new URLSearchParams(window.location.search || '');
       return p.get('embedded') === '1';
@@ -877,316 +701,38 @@
   }
 
   function installEmbeddedBoardBridge() {
-    if (!isEmbeddedKanban()) return;
-    var wv = getCurrentWebview();
-    if (!wv || typeof wv.listen !== 'function') return;
-
-    // Inject CSS to remove the scrollbar-gutter reservation that the
-    // legacy layout used to keep scrollbar width stable. In multiview
-    // the webview is always sized to the exact slot so we don't need
-    // the reservation — and the reserved edges showed as ~20px of
-    // empty space at the end of the board (matching user complaint
-    // "at least 20 pixels off"). Also ensure the body/html stretch.
-    if (!document.getElementById('lexera-mv-embed-fill-styles')) {
-      var fillStyle = document.createElement('style');
-      fillStyle.id = 'lexera-mv-embed-fill-styles';
-      fillStyle.textContent =
-        'html, body { margin: 0; padding: 0; min-height: 100%; }' +
-        '.columns-container { scrollbar-gutter: auto !important; }' +
-        /* Slight stretch so the last row's visible area reaches the
-           viewport edge instead of leaving a ~gap-sized empty strip. */
-        '.columns-container > *:last-child { margin-bottom: 0 !important; }';
-      document.head.appendChild(fillStyle);
-    }
-
-    function dispatchAsMessage(data) {
-      try {
-        window.dispatchEvent(new MessageEvent('message', { data: data }));
-      } catch (_) {}
-    }
-
-    wv.listen('catalog-snapshot', function (event) {
-      var p = (event && event.payload) || {};
-      dispatchAsMessage({
-        type: 'lexera-workspace-catalog',
-        boards: Array.isArray(p.boards) ? p.boards : [],
-        remoteBoards: Array.isArray(p.remoteBoards) ? p.remoteBoards : [],
-        workspaces: Array.isArray(p.workspaces) ? p.workspaces : []
-      });
-    });
-
-    // Targeted board action — fires on this webview when shell calls
-    // multiview_emit_to(<this label>, 'board-action', { action }).
-    wv.listen('board-action', function (event) {
-      var p = (event && event.payload) || {};
-      if (p.action) {
-        dispatchAsMessage({ type: 'lexera-board-action', action: p.action });
-      }
-    });
-
-    // Global layout drag toggle — broadcast to all child webviews so
-    // their CSS content-visibility / observer short-circuits apply.
-    wv.listen('layout-drag', function (event) {
-      var p = (event && event.payload) || {};
-      dispatchAsMessage({ type: 'lexera-layout-drag', active: !!p.active });
-    });
-
-    // Targeted hierarchy focus — shell asks this board webview to
-    // scroll/focus a specific row/stack/column/card.
-    wv.listen('focus-hierarchy-target', function (event) {
-      var p = (event && event.payload) || {};
-      if (p.target) {
-        dispatchAsMessage({
-          type: 'lexera-focus-hierarchy-target',
-          target: p.target
-        });
-      }
-    });
-
-    // Re-request snapshots in case the board mounted after the last
-    // broadcast — main shell re-emits on receiving these requests.
-    invoke('multiview_broadcast', { event: 'catalog-request', payload: {} })
-      .catch(function () {});
-
-    // Report focus state to Rust so the shell can detect pane
-    // activation in multiview mode (replaces the old window.parent
-    // postMessage path that doesn't work cross-process).
-    function reportFocus(focused) {
-      invoke('multiview_set_focused', { label: wv.label, focused: focused })
-        .catch(function () {});
-    }
-    window.addEventListener('focus', function () { reportFocus(true); });
-    window.addEventListener('blur', function () { reportFocus(false); });
-    // Coarse-grained: any pointerdown counts as activation
-    document.addEventListener('pointerdown', function () { reportFocus(true); }, true);
-    if (document.hasFocus()) reportFocus(true);
-
-    // Report health to Rust: green when backend-connected + no pending
-    // load, yellow during sync, red on disconnect. Starts as 'unknown'
-    // until we observe state.
-    function reportHealth(state) {
-      invoke('multiview_set_health', { label: wv.label, state: state })
-        .catch(function () {});
-    }
-    reportHealth('yellow'); // assume syncing until proven otherwise
-
-    function refreshHealthFromRuntime() {
-      try {
-        var rt = window.LexeraRuntime;
-        if (!rt || typeof rt.getState !== 'function') return;
-        var connected = !!rt.getState('backendConnected');
-        var pendingRenders = rt.getState('pendingRenderCount') || 0;
-        var state = connected
-          ? (pendingRenders > 0 ? 'yellow' : 'green')
-          : 'red';
-        reportHealth(state);
-        // healthDot.js renders the dot — when we set health via Rust,
-        // it broadcasts health-changed which healthDot.js picks up.
-      } catch (_) {}
-    }
-
-    // Listen for backend connection changes via the native event
-    window.addEventListener('lexera-backend-connection-state-changed', refreshHealthFromRuntime);
-    // Refresh once on mount and every 3s as a heartbeat (cheap IPC)
-    setTimeout(refreshHealthFromRuntime, 500);
-    setInterval(refreshHealthFromRuntime, 3000);
-
-    // Cross-webview request handler: shell asks for context menu
-    // items, this board computes via its own LexeraRowStackMenu.
-    handleRequest('build-context-menu', function (req) {
-      try {
-        var rsm = window.LexeraRowStackMenu;
-        if (!rsm || typeof rsm.buildContextMenuItemsAndContext !== 'function') {
-          return { items: [], context: req.context || {} };
-        }
-        var built = rsm.buildContextMenuItemsAndContext(req.scope, req.context || {});
-        return {
-          items: (built && built.items) || [],
-          context: (built && built.context) || (req.context || {})
-        };
-      } catch (e) {
-        return { items: [], context: req.context || {}, error: String(e && e.message) };
-      }
-    });
-
-    // Cross-webview command: shell sends action dispatch back after
-    // user picks a menu item. Board executes via LexeraActionRegistry.
-    wv.listen('dispatch-action', function (event) {
-      var p = (event && event.payload) || {};
-      try {
-        var ar = window.LexeraActionRegistry;
-        if (ar && typeof ar.dispatch === 'function' && p.scope && p.action) {
-          ar.dispatch(p.scope, p.action, p.context || {});
-        }
-      } catch (_) {}
-    });
-
-    // Multiview shortcuts forwarded from embedded boards. Lets
-    // Cmd+Alt+L, Cmd+Alt+I, etc. work while focus is inside a board
-    // webview (otherwise each webview captures the keystroke and the
-    // shell never sees it).
-    var MV_SHORTCUTS = {
-      'Ctrl+Alt+L': 'open-log-view',
-      'Meta+Alt+L': 'open-log-view',
-      'Ctrl+Alt+I': 'open-inspector',
-      'Meta+Alt+I': 'open-inspector',
-      'Ctrl+Alt+W': 'open-workspaces',
-      'Meta+Alt+W': 'open-workspaces',
-      'Ctrl+Alt+D': 'open-dashboard',
-      'Meta+Alt+D': 'open-dashboard'
-    };
-    document.addEventListener('keydown', function (event) {
-      var parts = [];
-      if (event.ctrlKey) parts.push('Ctrl');
-      if (event.metaKey) parts.push('Meta');
-      if (event.shiftKey) parts.push('Shift');
-      if (event.altKey) parts.push('Alt');
-      if (event.key && event.key.length === 1) parts.push(event.key.toUpperCase());
-      else if (event.key) parts.push(event.key);
-      var action = MV_SHORTCUTS[parts.join('+')];
-      if (action) {
-        event.preventDefault();
-        invoke('multiview_broadcast', {
-          event: 'multiview-shortcut',
-          payload: { action: action, from: wv.label }
-        }).catch(function () {});
-      }
-    });
-
-    // Mutation delegation from shell-window app.js. Replaces the
-    // old iframe path of `frameWin.LexeraDashboard[method](...args)`.
-    // Fire-and-forget; the result lands in the board's own
-    // fullBoardData and propagates via Loro CRDT sync to other
-    // observers.
-    wv.listen('delegate-mutation', function (event) {
-      var p = (event && event.payload) || {};
-      try {
-        var dash = window.LexeraDashboard;
-        if (dash && typeof dash[p.method] === 'function') {
-          dash[p.method].apply(dash, Array.isArray(p.args) ? p.args : []);
-        }
-      } catch (e) {
-        try {
-          if (typeof window.lexeraLog === 'function') {
-            window.lexeraLog('warn', '[multiview] delegate-mutation failed: ' + (e && e.message || e));
-          }
-        } catch (_) {}
-      }
+    var bridge = (typeof window !== 'undefined' && window.LexeraEmbeddedBoardBridge) || null;
+    if (!bridge || typeof bridge.install !== 'function') return;
+    bridge.install({
+      getCurrentWebview: getCurrentWebview,
+      invoke: invoke,
+      handleRequest: handleRequest
     });
   }
 
   // ── Navigation requests ───────────────────────────────────────
   //
-  // Sub-apps emit 'multiview-navigate' events to ask the main shell
-  // to act on their behalf (open a board, reveal a panel, etc).
-  // The main shell receives these and routes to LexeraWorkspaceShell.
-  //
-  // Payload shape: { type: 'open-board' | 'reveal-panel' | ..., ... }
+  // The shell-side navigation/shortcut/focus listeners live in
+  // `src/shell/navigationBridge.js`. This wrapper preserves the prior
+  // call site (`bootMultiview` invokes `installNavigationHandler()`).
   function installNavigationHandler() {
-    var t = tauri();
-    if (!t || !t.event || typeof t.event.listen !== 'function') return;
-    t.event.listen('multiview-navigate', function (event) {
-      var payload = event && event.payload ? event.payload : {};
-      var shell = window.LexeraWorkspaceShell;
-      if (!shell) return;
-      try {
-        if (payload.type === 'open-board' && payload.boardId && typeof shell.openBoard === 'function') {
-          shell.openBoard(payload.boardId, payload.options || {});
-        } else if (payload.type === 'reveal-panel' && payload.panelId && typeof shell.revealPanel === 'function') {
-          shell.revealPanel(payload.panelId);
-        }
-      } catch (err) {
-        console.warn('[multiview-navigate] handler failed:', err);
-      }
-    });
-    // Multiview shortcut handler: receives 'multiview-shortcut' from
-    // any sub-app (via Ctrl+Shift+L etc) and runs the corresponding
-    // open helper in the main shell. This means panel toggles work
-    // consistently regardless of which webview has focus.
-    var SHORTCUT_ACTIONS = {
-      'open-log-view': function () {
-        if (window.LexeraMultiview && window.LexeraMultiview.openLogView) {
-          return window.LexeraMultiview.openLogView({ side: 'bottom', size: 280 });
-        }
-      },
-      'open-inspector': function () {
-        if (window.LexeraMultiview && window.LexeraMultiview.openInspector) {
-          return window.LexeraMultiview.openInspector({ side: 'right', size: 400 });
-        }
-      },
-      'open-workspaces': function () {
-        if (window.LexeraMultiview && window.LexeraMultiview.openWorkspaces) {
-          return window.LexeraMultiview.openWorkspaces({ side: 'left', size: 280 });
-        }
-      },
-      'open-dashboard': function () {
-        if (window.LexeraMultiview && window.LexeraMultiview.openDashboard) {
-          return window.LexeraMultiview.openDashboard({ side: 'right', size: 360 });
-        }
-      }
-    };
-    t.event.listen('multiview-shortcut', function (event) {
-      var payload = event && event.payload ? event.payload : {};
-      var action = payload.action;
-      var fn = SHORTCUT_ACTIONS[action];
-      if (fn) {
-        try { fn(); } catch (err) { console.warn('[multiview-shortcut]', action, err); }
-      }
-    });
-    // Bridge focus-changed → synthetic 'lexera-pane-activated' message
-    // for the workspace shell. When a board webview gains focus, the
-    // shell's existing handleWindowMessage handler runs to clear
-    // pending focus targets / mark the pane as activated. Also bump
-    // lifecycle freshness so this webview is not the next eviction
-    // candidate.
-    t.event.listen('focus-changed', function (event) {
-      var p = event && event.payload ? event.payload : {};
-      var label = p.label || '';
-      // Bump LRU regardless of label so all view types get freshness updates
-      if (window.LexeraMultiview && window.LexeraMultiview.lifecycle &&
-          typeof window.LexeraMultiview.lifecycle.touch === 'function') {
-        try { window.LexeraMultiview.lifecycle.touch(label); } catch (_) {}
-      }
-      // Only synthesize pane-activated for board-tab-* labels
-      var prefix = 'board-tab-';
-      if (label.indexOf(prefix) !== 0) return;
-      var tabId = label.substring(prefix.length);
-      try {
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'lexera-pane-activated', pane: tabId }
-        }));
-      } catch (_) {}
-    });
-    // Note: a global keydown handler in the MAIN shell window is
-    // tempting but would intercept events the existing kanban code
-    // and tests rely on. Kept the shortcut handler ONLY in sub-app
-    // webviews (subAppRuntime.js). Users opening the multiview
-    // panels via DevTools console always works; opening via
-    // keyboard requires a sub-app to be focused first. This is a
-    // deliberate trade-off for non-invasive coexistence.
+    var bridge = (typeof window !== 'undefined' && window.LexeraNavigationBridge) || null;
+    if (!bridge) return;
+    if (typeof bridge.installWith === 'function') {
+      bridge.installWith(tauri());
+    } else if (typeof bridge.install === 'function') {
+      bridge.install();
+    }
   }
 
-  // Auto-broadcast on init (after main theme loads) and on prefers-
-  // color-scheme changes. Sub-apps will request a snapshot on their
-  // own startup via a 'theme-request' event handled below.
+  // Theme + catalog listeners now live in their own bridge modules.
+  // This wrapper is kept so existing call sites (`bootMultiview`)
+  // continue to work without changes.
   function initThemeBridge() {
-    // Initial broadcast after theme has been applied.
-    setTimeout(broadcastTheme, 200);
-    // Re-broadcast on color scheme changes.
-    if (window.matchMedia) {
-      var mq = window.matchMedia('(prefers-color-scheme: dark)');
-      var handler = function () { setTimeout(broadcastTheme, 50); };
-      if (mq.addEventListener) mq.addEventListener('change', handler);
-      else if (mq.addListener) mq.addListener(handler);
-    }
-    // Re-broadcast on demand when a sub-app requests it.
-    var t = tauri();
-    if (t && t.event && typeof t.event.listen === 'function') {
-      t.event.listen('theme-request', function () { broadcastTheme(); });
-      t.event.listen('catalog-request', function () {
-        if (lastCatalogSnapshot) broadcastCatalog(lastCatalogSnapshot);
-      });
-    }
+    var t = themeBridge();
+    if (t) t.initListeners();
+    var c = catalogBridge();
+    if (c) c.initListeners();
   }
   if (typeof document !== 'undefined') {
     function bootMultiview() {
@@ -1200,6 +746,16 @@
       // as it loads. Activate the catalog bridge so broadcasts flow.
       if (typeof window !== 'undefined' && !isEmbeddedKanban()) {
         activateBridges();
+        // Pre-warm the pool so first-show of any board webview hits
+        // the navigate fast-path (Perf #1). Defer one frame so the
+        // shell has time to mount before we add load.
+        var lc = lifecycleApi();
+        var lcCfg = lc.status().config;
+        if (lcCfg.poolSize && lcCfg.poolSize > 0) {
+          requestAnimationFrame(function () {
+            lc.refillPool().catch(function () {});
+          });
+        }
       }
     }
     if (document.readyState === 'loading') {
@@ -1214,6 +770,9 @@
     spawn: spawn,
     destroy: destroy,
     setGeometry: setGeometry,
+    pushGeomDeferred: pushGeomDeferred,
+    fpsMeter: fpsMeter,
+    navigate: navigateWebview,
     listWebviews: listWebviews,
     // Drag coordinator
     dragStart: dragStart,
@@ -1247,7 +806,7 @@
     closeSidePanel: closeSidePanel,
     // Catalog bridge (active boards/workspaces broadcast)
     broadcastCatalog: broadcastCatalog,
-    getLastCatalog: function () { return lastCatalogSnapshot; },
+    getLastCatalog: getLastCatalog,
     // Workspaces sub-app (Stage 4)
     openWorkspaces: openWorkspaces,
     closeWorkspaces: closeWorkspaces,
@@ -1266,14 +825,17 @@
     // that need a return value, e.g., context menu items query)
     request: request,
     handleRequest: handleRequest,
-    // Stage 8 lifecycle
+    // Stage 8 lifecycle (extracted to src/shell/lifecycle.js).
+    // Each property is a forwarder so the public surface stays stable
+    // even though the underlying implementation lives in another file
+    // and is created lazily on first transport availability.
     lifecycle: {
-      configure: lifecycleConfigure,
-      status: lifecycleStatus,
-      spawn: lifecycleSpawn,
-      touch: touch,
-      evictOldestIfOverCap: evictOldestIfOverCap,
-      refillPool: refillPool
+      configure: function (updates) { return lifecycleApi().configure(updates); },
+      status: function () { return lifecycleApi().status(); },
+      spawn: function (opts) { return lifecycleApi().spawn(opts); },
+      touch: function (label) { return lifecycleApi().touch(label); },
+      evictOldestIfOverCap: function () { return lifecycleApi().evictOldestIfOverCap(); },
+      refillPool: function () { return lifecycleApi().refillPool(); }
     }
   };
 })();

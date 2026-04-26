@@ -3,13 +3,16 @@ import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadIIFE } from './load-iife.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(__dirname, '..', 'src', 'settings', 'frontendSettings.js'), 'utf8');
 
-function loadFrontendSettings(window) {
-  const factory = new Function('globalThis', 'document', source + '\nreturn globalThis.LexeraFrontendSettings;');
-  return factory(window, window.document);
+function loadFrontendSettings(window, globals = {}) {
+  const argNames = ['globalThis', 'document'].concat(Object.keys(globals));
+  const argValues = [window, window.document].concat(Object.values(globals));
+  const factory = new Function(...argNames, source + '\nreturn globalThis.LexeraFrontendSettings;');
+  return factory(...argValues);
 }
 
 function createPanel(window) {
@@ -32,9 +35,37 @@ function createPanel(window) {
   return panel;
 }
 
+function createTagGroupsPanel(window) {
+  const panel = window.document.createElement('div');
+  panel.className = 'lexera-shared-panel-frontend-settings';
+  panel.innerHTML = `
+    <div class="lexera-shared-frontend-settings-tag-groups-card tag-group-chips"></div>
+  `;
+  window.document.body.appendChild(panel);
+  return panel;
+}
+
+function createControlsPanel(window) {
+  const panel = window.document.createElement('div');
+  panel.className = 'lexera-shared-panel-frontend-settings';
+  panel.innerHTML = `
+    <div data-frontend-settings-section="controls">
+      <div class="controls-settings-group" data-controls-mode="kanban">
+        <div class="controls-settings-action" data-controls-action="move">
+          <div class="controls-settings-chips"></div>
+          <button type="button" data-controls-add="true">+</button>
+        </div>
+      </div>
+      <button type="button" data-controls-reset="true">Reset</button>
+    </div>
+  `;
+  window.document.body.appendChild(panel);
+  return panel;
+}
+
 describe('LexeraFrontendSettings interactions', () => {
   it('dispatches user changes from select and checkbox controls to settings handlers', () => {
-    const dom = new JSDOM('<!doctype html><body></body>');
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
     const { window } = dom;
     const panel = createPanel(window);
     const applyVisualTheme = vi.fn();
@@ -95,5 +126,83 @@ describe('LexeraFrontendSettings interactions', () => {
       grips: false,
       menus: true
     });
+  });
+
+  it('renders tag-group chips and persists add/remove actions through ContextMenuBuilders', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
+    const { window } = dom;
+    const panel = createTagGroupsPanel(window);
+    window.localStorage.setItem('lexera-tag-groups-card', JSON.stringify(['special', 'priority']));
+    const ContextMenuBuilders = loadIIFE('menu/contextMenuBuilders.js', 'ContextMenuBuilders', {
+      window,
+      localStorage: window.localStorage,
+      console,
+      JSON
+    });
+    const LexeraFrontendSettings = loadFrontendSettings(window);
+
+    LexeraFrontendSettings.init({
+      getContextMenuBuilders: () => ContextMenuBuilders
+    }, panel);
+
+    const firstChip = panel.querySelector('.tag-group-chip');
+    expect(firstChip).toBeTruthy();
+    expect(firstChip.textContent).toContain('Special');
+    expect(panel.querySelectorAll('.tag-group-chip')).toHaveLength(2);
+
+    const removeBtn = panel.querySelector('.tag-group-chip-remove');
+    removeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    expect(JSON.parse(window.localStorage.getItem('lexera-tag-groups-card'))).toEqual(['priority']);
+    expect(panel.querySelectorAll('.tag-group-chip')).toHaveLength(1);
+
+    const input = panel.querySelector('.tag-group-add-input');
+    input.value = 'Status';
+    input.dispatchEvent(new window.Event('change', { bubbles: true }));
+    expect(JSON.parse(window.localStorage.getItem('lexera-tag-groups-card'))).toEqual(['priority', 'status']);
+    expect(Array.from(panel.querySelectorAll('.tag-group-chip')).map((chip) => chip.textContent)).toEqual([
+      expect.stringContaining('Priority'),
+      expect.stringContaining('Status')
+    ]);
+  });
+
+  it('renders control-binding chips and removes bindings via LexeraControlsSettings', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
+    const { window } = dom;
+    const panel = createControlsPanel(window);
+    const LexeraControlsSettings = loadIIFE('settings/controlsSettings.js', 'LexeraControlsSettings', {
+      window,
+      localStorage: window.localStorage,
+      JSON
+    });
+    const LexeraFrontendSettings = loadFrontendSettings(window, { LexeraControlsSettings });
+
+    LexeraFrontendSettings.init({}, panel);
+
+    expect(panel.querySelectorAll('.controls-chip')).toHaveLength(3);
+
+    const removeBtn = panel.querySelector('.controls-chip-remove');
+    removeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+
+    expect(panel.querySelectorAll('.controls-chip')).toHaveLength(2);
+    expect(JSON.parse(window.localStorage.getItem('lexera-controls-settings')).kanban.move).toHaveLength(2);
+  });
+
+  it('settings runtime exposes ContextMenuBuilders to frontend settings sub-apps', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
+    const { window } = dom;
+    const ContextMenuBuilders = loadIIFE('menu/contextMenuBuilders.js', 'ContextMenuBuilders', {
+      window,
+      localStorage: window.localStorage,
+      console,
+      JSON
+    });
+    const runtime = loadIIFE('views/_shared/settingsRuntime.js', 'window.LexeraSettingsRuntime', {
+      window,
+      localStorage: window.localStorage,
+      JSON
+    });
+
+    const options = runtime.buildFrontendSettingsOptions();
+    expect(options.getContextMenuBuilders()).toBe(ContextMenuBuilders);
   });
 });

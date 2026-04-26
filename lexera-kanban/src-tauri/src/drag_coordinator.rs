@@ -17,8 +17,11 @@
 // every event to every webview. See TODOs-lexera-multiview.md
 // "Architectural rules" for details.
 //
-// This module is registered but DORMANT until per-view sub-apps in
-// Stage 4 begin to use it. The current iframe-based shell ignores it.
+// This module provides the native drag-routing path for multiview
+// child webviews. The primitives are active and callable today, but
+// production board drag/drop still mostly runs through the legacy
+// board drag system. This coordinator is the target architecture,
+// not yet the only production path.
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};

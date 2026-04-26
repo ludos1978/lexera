@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Frontend Settings</title>
+  <link rel="stylesheet" href="../../management.css">
+  <link rel="stylesheet" href="../_shared/frontendSettings.css">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #d4d4d4);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      font-size: 12px;
+    }
+    .shell-settings-panel {
+      width: 100%;
+      height: 100vh;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <!-- Skeleton mirrors `sharedPanels.js → createFrontendSettingsPanelElement`.
+       The classnames are what `LexeraFrontendSettings.init(opts, panel)`
+       queries for (`q(panel, 'visual-theme')` → `.lexera-shared-frontend-settings-visual-theme`). -->
+  <div class="shell-settings-panel frontend-settings-panel lexera-shared-panel lexera-shared-panel-frontend-settings"
+       data-shell-panel="frontendSettings" data-shell-panel-instance="frontendSettings">
+    <div class="shell-settings-header">
+      <span class="shell-settings-title">Frontend Settings</span>
+    </div>
+    <div class="shell-settings-body">
+      <div class="mgmt-section" data-frontend-settings-section="appearance">
+        <div class="mgmt-section-title">Appearance</div>
+        <div class="mgmt-field-row">
+          <label class="mgmt-field-label">Visual Theme</label>
+          <select class="mgmt-field-input lexera-shared-frontend-settings-visual-theme"></select>
+        </div>
+        <div class="mgmt-field-row">
+          <label class="mgmt-field-label">UI Scale</label>
+          <select class="mgmt-field-input lexera-shared-frontend-settings-ui-scale">
+            <option value="0.75">75%</option><option value="0.85">85%</option>
+            <option value="0.95">95%</option><option value="1">100%</option>
+            <option value="1.1">110%</option><option value="1.25">125%</option>
+          </select>
+        </div>
+      </div>
+      <div class="mgmt-section" data-frontend-settings-section="interaction">
+        <div class="mgmt-section-title">Interaction</div>
+        <div class="mgmt-field-row">
+          <label class="mgmt-field-label">Scroll Speed</label>
+          <select class="mgmt-field-input lexera-shared-frontend-settings-scroll-speed">
+            <option value="0.1">10%</option>
+            <option value="0.32">32%</option>
+            <option value="0.56">56%</option>
+            <option value="1">100% (default)</option>
+            <option value="1.33">133%</option>
+            <option value="2">200%</option>
+            <option value="3">300%</option>
+          </select>
+        </div>
+        <div class="mgmt-field-row">
+          <label class="mgmt-field-label">Zoom Speed</label>
+          <select class="mgmt-field-input lexera-shared-frontend-settings-zoom-speed">
+            <option value="0.01">1% (finest)</option>
+            <option value="0.02">2%</option>
+            <option value="0.03">3%</option>
+            <option value="0.06">6% (default)</option>
+            <option value="0.1">10%</option>
+            <option value="0.18">18%</option>
+            <option value="0.32">32%</option>
+            <option value="0.56">56%</option>
+            <option value="1">100%</option>
+            <option value="2">200% (fastest)</option>
+          </select>
+        </div>
+      </div>
+      <div class="mgmt-section" data-frontend-settings-section="controls">
+        <div class="mgmt-section-title">Controls</div>
+        <div class="controls-settings-group" data-controls-mode="kanban">
+          <div class="controls-settings-mode-label">Kanban Mode</div>
+          <div class="controls-settings-action" data-controls-action="move">
+            <span class="controls-settings-action-label">Move View</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="zoom">
+            <span class="controls-settings-action-label">Zoom View</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="edit">
+            <span class="controls-settings-action-label">Edit Field</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="enter">
+            <span class="controls-settings-action-label">Enter / Drill In</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="drag-card">
+            <span class="controls-settings-action-label">Drag Card</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="drag-column">
+            <span class="controls-settings-action-label">Drag Column</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="drag-stack">
+            <span class="controls-settings-action-label">Drag Stack</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="drag-row">
+            <span class="controls-settings-action-label">Drag Row</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+        </div>
+        <div class="controls-settings-group" data-controls-mode="canvas">
+          <div class="controls-settings-mode-label">Canvas Mode</div>
+          <div class="controls-settings-action" data-controls-action="move">
+            <span class="controls-settings-action-label">Move View</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="zoom">
+            <span class="controls-settings-action-label">Zoom View</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="edit">
+            <span class="controls-settings-action-label">Edit Field</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="enter">
+            <span class="controls-settings-action-label">Enter / Drill In</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="drag-card">
+            <span class="controls-settings-action-label">Drag Card</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="drag-column">
+            <span class="controls-settings-action-label">Drag Column</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="drag-stack">
+            <span class="controls-settings-action-label">Drag Stack</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+          <div class="controls-settings-action" data-controls-action="drag-row">
+            <span class="controls-settings-action-label">Drag Row</span>
+            <div class="controls-settings-chips lexera-shared-controls-chips"></div>
+            <button class="controls-settings-add mgmt-btn mgmt-btn-small" type="button" data-controls-add="true" title="Add binding">+</button>
+          </div>
+        </div>
+        <button class="controls-settings-reset mgmt-btn mgmt-btn-small" type="button" data-controls-reset="true">Reset to Defaults</button>
+      </div>
+      <div class="mgmt-section" data-frontend-settings-section="display">
+        <div class="mgmt-section-title">Display</div>
+        <div class="mgmt-field-row">
+          <label class="mgmt-field-label">Tag Visibility</label>
+          <select class="mgmt-field-input lexera-shared-frontend-settings-tag-visibility">
+            <option value="all">All</option>
+            <option value="allexcludinglayout">All (excl. layout)</option>
+            <option value="customonly">Custom only</option>
+            <option value="mentionsonly">Mentions only</option>
+            <option value="dim">Dim</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div class="mgmt-field-row">
+          <label class="mgmt-field-label">HTML Comments</label>
+          <select class="mgmt-field-input lexera-shared-frontend-settings-html-comments">
+            <option value="hidden">Hidden</option>
+            <option value="text">Text</option>
+            <option value="dim">Dim</option>
+          </select>
+        </div>
+        <div class="mgmt-field-row">
+          <label class="mgmt-field-label">HTML Content</label>
+          <select class="mgmt-field-input lexera-shared-frontend-settings-html-content">
+            <option value="html">Render HTML</option>
+            <option value="text">Plain Text</option>
+          </select>
+        </div>
+      </div>
+      <div class="mgmt-section" data-frontend-settings-section="tag-groups">
+        <div class="mgmt-section-title">Tag Groups in Menus</div>
+        <div class="tag-group-row"><span class="tag-group-scope-label">Card</span><div class="lexera-shared-frontend-settings-tag-groups-card tag-group-chips"></div></div>
+        <div class="tag-group-row"><span class="tag-group-scope-label">Column</span><div class="lexera-shared-frontend-settings-tag-groups-column tag-group-chips"></div></div>
+        <div class="tag-group-row"><span class="tag-group-scope-label">Stack</span><div class="lexera-shared-frontend-settings-tag-groups-stack tag-group-chips"></div></div>
+        <div class="tag-group-row"><span class="tag-group-scope-label">Row</span><div class="lexera-shared-frontend-settings-tag-groups-row tag-group-chips"></div></div>
+      </div>
+      <div class="mgmt-section" data-frontend-settings-section="editors">
+        <div class="mgmt-section-title">Editors</div>
+        <label class="frontend-settings-toggle">
+          <input class="lexera-shared-frontend-settings-overlay-editor" type="checkbox">
+          <span>Overlay editor</span>
+        </label>
+        <label class="frontend-settings-toggle">
+          <input class="lexera-shared-frontend-settings-special-chars" type="checkbox">
+          <span>Show special characters</span>
+        </label>
+      </div>
+      <div class="mgmt-section" data-frontend-settings-section="hierarchy">
+        <div class="mgmt-section-title">Hierarchy</div>
+        <label class="frontend-settings-toggle">
+          <input class="lexera-shared-frontend-settings-sidebar-counts" type="checkbox">
+          <span>Counts</span>
+        </label>
+        <label class="frontend-settings-toggle">
+          <input class="lexera-shared-frontend-settings-sidebar-presence" type="checkbox">
+          <span>Presence badges</span>
+        </label>
+        <label class="frontend-settings-toggle">
+          <input class="lexera-shared-frontend-settings-sidebar-grips" type="checkbox">
+          <span>Drag icons</span>
+        </label>
+        <label class="frontend-settings-toggle">
+          <input class="lexera-shared-frontend-settings-sidebar-menus" type="checkbox">
+          <span>Burger menus</span>
+        </label>
+      </div>
+    </div>
+  </div>
+  <script src="../_shared/subAppRuntime.js"></script>
+  <script src="../_shared/settingsRuntime.js"></script>
+  <script src="../../settings/controlsSettings.js"></script>
+  <script src="../../menu/contextMenuBuilders.js"></script>
+  <script src="../../settings/frontendSettings.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      LexeraSubApp.init({});
+      var panel = document.querySelector('.lexera-shared-panel-frontend-settings');
+      var options = LexeraSettingsRuntime.buildFrontendSettingsOptions();
+      LexeraFrontendSettings.init(options, panel);
+    })();
+  </script>
+</body>
+</html>

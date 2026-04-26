@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Workspace Settings</title>
+  <link rel="stylesheet" href="../../management.css">
+  <link rel="stylesheet" href="../_shared/stub.css">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-primary, #1e1e1e);
+      color: var(--text-primary, #d4d4d4);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      font-size: 12px;
+    }
+    .shell-settings-panel {
+      width: 100%;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .shell-settings-container.view-loading::before {
+      content: 'Loading…';
+      display: block;
+      padding: 12px;
+      color: var(--text-muted, #888);
+    }
+  </style>
+</head>
+<body>
+  <!-- Skeleton mirrors `sharedPanels.js → createFilesPanelElement`. -->
+  <div class="shell-settings-panel lexera-shared-panel lexera-shared-panel-files"
+       data-shell-panel="files" data-shell-panel-instance="files">
+    <div class="shell-settings-container lexera-shared-files-container view-loading"
+         id="mgmt-container"></div>
+  </div>
+  <script src="../../api.js"></script>
+  <script src="../../management.js"></script>
+  <script src="../_shared/subAppRuntime.js"></script>
+  <script src="../_shared/settingsRuntime.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      LexeraSubApp.init({});
+      var container = document.getElementById('mgmt-container');
+      try {
+        ManagementUI.mount('files', {
+          container: container,
+          ui: ManagementUI.getUiPreset('files'),
+          api: LexeraSettingsRuntime.buildBackendApiAdapter(),
+          callbacks: LexeraSettingsRuntime.buildBackendCallbacks()
+        });
+      } catch (err) {
+        container.classList.remove('view-loading');
+        container.innerHTML =
+          '<div style="padding:16px;color:var(--text-muted,#888);">' +
+          '<p>Failed to initialize workspace settings:</p>' +
+          '<pre style="white-space:pre-wrap;font-size:11px;">' +
+          String(err && err.message || err).replace(/</g, '&lt;') +
+          '</pre>' +
+          '</div>';
+      }
+    })();
+  </script>
+</body>
+</html>

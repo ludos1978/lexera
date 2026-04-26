@@ -9,13 +9,44 @@
   }
 
   var urlParams = parseSearchParams();
+  var WORKSPACE_SHELL_BOOT_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
 
-  function normalizeViewKind(value) {
-    var normalized = String(value == null ? '' : value).trim().toLowerCase();
-    if (normalized === 'canvas') return 'canvas';
-    if (normalized === 'kanban') return 'kanban';
-    return 'default';
+  function traceWorkspaceShell(message) {
+    var text = '[ws-shell ' + WORKSPACE_SHELL_BOOT_ID + '] ' + String(message || '');
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      window.lexeraLog('info', text);
+      return;
+    }
+    if (typeof console !== 'undefined' && typeof console.info === 'function') {
+      console.info(text);
+    }
   }
+
+  var layoutTree = (typeof window !== 'undefined' && window.LexeraLayoutTree) || null;
+  if (!layoutTree) {
+    throw new Error('LexeraLayoutTree global is required before workspaceShell.js');
+  }
+  var boardHost = (typeof window !== 'undefined' && window.LexeraBoardHost) || null;
+  if (!boardHost) {
+    throw new Error('LexeraBoardHost global is required before workspaceShell.js');
+  }
+  var panelHost = (typeof window !== 'undefined' && window.LexeraPanelHost) || null;
+  if (!panelHost) {
+    throw new Error('LexeraPanelHost global is required before workspaceShell.js');
+  }
+
+  var normalizeViewKind = layoutTree.normalizeViewKind;
+  var isPanelTab = layoutTree.isPanelTab;
+  var isBoardTab = layoutTree.isBoardTab;
+  var visitTree = layoutTree.visitTree;
+  var getFirstLeaf = layoutTree.getFirstLeaf;
+  var findLeafById = layoutTree.findLeafById;
+  var findNodeAndParent = layoutTree.findNodeAndParent;
+  var findTab = layoutTree.findTab;
+  var findClosestSplitParent = layoutTree.findClosestSplitParent;
+  var countTreeTabs = layoutTree.countTreeTabs;
+  var findLeafContainingBoard = layoutTree.findLeafContainingBoard;
+  var findAnyLeafContainingBoard = layoutTree.findAnyLeafContainingBoard;
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -58,14 +89,6 @@
     window.close();
   }
 
-  function createIdFactory() {
-    var counter = 1;
-    return function (prefix) {
-      counter += 1;
-      return prefix + '-' + Date.now().toString(36) + '-' + counter.toString(36);
-    };
-  }
-
   function getBody() {
     return document.body;
   }
@@ -74,33 +97,21 @@
     return urlParams.get('embedded') !== '1' && urlParams.get('workspaceShell') !== '0';
   }
 
-  var nextId = createIdFactory();
+  var nextId = layoutTree.createIdFactory();
+  function createTabsetNode(tabs) { return layoutTree.createTabsetNode(tabs, nextId); }
+  function createSplitNode(axis, first, second, ratio) {
+    return layoutTree.createSplitNode(axis, first, second, ratio, nextId);
+  }
+  function withNormalizedLeaves(node, isRoot) { return layoutTree.withNormalizedLeaves(node, isRoot, nextId); }
+  function findLeafContainingPanel(node, panelId) {
+    return layoutTree.findLeafContainingPanel(node, panelId, resolvePanelTarget);
+  }
+  function createBoardTab(boardId, viewKind) { return layoutTree.createBoardTab(boardId, viewKind, nextId); }
+  function createPanelTab(panelId) { return layoutTree.createPanelTab(panelId, nextId); }
+  function migratePanelDocksToSideDocks(panelDocks, panelGroupActives) {
+    return layoutTree.migratePanelDocksToSideDocks(panelDocks, panelGroupActives, nextId);
+  }
   var FOLD_HOVER_OPEN_DELAY_MS = 40;
-
-  function createBoardTab(boardId, viewKind) {
-    return {
-      id: nextId('tab'),
-      kind: 'board',
-      boardId: boardId || '',
-      viewKind: normalizeViewKind(viewKind)
-    };
-  }
-
-  function createPanelTab(panelId) {
-    return {
-      id: nextId('tab'),
-      kind: 'panel',
-      panelId: String(panelId || '')
-    };
-  }
-
-  function isPanelTab(tab) {
-    return !!(tab && tab.kind === 'panel');
-  }
-
-  function isBoardTab(tab) {
-    return !!tab && !isPanelTab(tab);
-  }
 
   var PANEL_DEFINITIONS = {
     hierarchy: { id: 'hierarchy', title: 'Workspaces', defaultDock: 'left', duplicable: true, integratedHeader: true },
@@ -354,27 +365,6 @@
     return clampPanelSize(dockId, number);
   }
 
-  function createTabsetNode(tabs) {
-    var list = Array.isArray(tabs) ? tabs.slice() : [];
-    return {
-      type: 'tabs',
-      id: nextId('pane'),
-      tabs: list,
-      activeTabId: list.length > 0 ? list[0].id : ''
-    };
-  }
-
-  function createSplitNode(axis, first, second, ratio) {
-    return {
-      type: 'split',
-      id: nextId('split'),
-      axis: axis === 'horizontal' ? 'horizontal' : 'vertical',
-      ratio: typeof ratio === 'number' && isFinite(ratio) ? Math.max(0.18, Math.min(0.82, ratio)) : 0.5,
-      first: first,
-      second: second
-    };
-  }
-
   function createDefaultSideDocks(profile) {
     if (profile === 'detachedBoard') return { left: null, right: null, bottom: null };
     var defaultGroups = getDefaultDockGroups();
@@ -455,108 +445,6 @@
     return null;
   }
 
-  function countTreeTabs(tree) {
-    var count = 0;
-    visitTree(tree, function(node) {
-      if (node.type === 'tabs') count += node.tabs.length;
-    });
-    return count;
-  }
-
-  function migratePanelDocksToSideDocks(panelDocks, panelGroupActives) {
-    var result = { left: null, right: null, bottom: null };
-    var dockIds = ['left', 'right', 'bottom'];
-    for (var d = 0; d < dockIds.length; d++) {
-      var dockId = dockIds[d];
-      var groups = panelDocks[dockId];
-      if (!Array.isArray(groups) || groups.length === 0) continue;
-      var tabsetNodes = [];
-      for (var g = 0; g < groups.length; g++) {
-        var group = groups[g];
-        if (!Array.isArray(group) || group.length === 0) continue;
-        var tabs = [];
-        for (var p = 0; p < group.length; p++) {
-          tabs.push(createPanelTab(group[p]));
-        }
-        if (tabs.length === 0) continue;
-        var node = createTabsetNode(tabs);
-        var groupKey = group.join(',');
-        var activePanel = panelGroupActives && panelGroupActives[groupKey];
-        if (activePanel) {
-          for (var k = 0; k < node.tabs.length; k++) {
-            if (node.tabs[k].panelId === activePanel) {
-              node.activeTabId = node.tabs[k].id;
-              break;
-            }
-          }
-        }
-        tabsetNodes.push(node);
-      }
-      if (tabsetNodes.length === 0) continue;
-      if (tabsetNodes.length === 1) {
-        result[dockId] = tabsetNodes[0];
-      } else {
-        var axis = dockId === 'bottom' ? 'horizontal' : 'vertical';
-        var tree = tabsetNodes[0];
-        for (var n = 1; n < tabsetNodes.length; n++) {
-          tree = createSplitNode(axis, tree, tabsetNodes[n], 0.5);
-        }
-        result[dockId] = tree;
-      }
-    }
-    return result;
-  }
-
-  function getFirstLeaf(node) {
-    if (!node) return null;
-    if (node.type === 'tabs') return node;
-    return getFirstLeaf(node.first) || getFirstLeaf(node.second);
-  }
-
-  function visitTree(node, visitor, parent, side) {
-    if (!node) return;
-    visitor(node, parent || null, side || '');
-    if (node.type === 'split') {
-      visitTree(node.first, visitor, node, 'first');
-      visitTree(node.second, visitor, node, 'second');
-    }
-  }
-
-  function findLeafById(node, leafId) {
-    var found = null;
-    visitTree(node, function (candidate) {
-      if (!found && candidate.type === 'tabs' && candidate.id === leafId) found = candidate;
-    });
-    return found;
-  }
-
-  function findNodeAndParent(node, nodeId) {
-    var found = null;
-    visitTree(node, function (candidate, parent, side) {
-      if (!found && candidate.id === nodeId) {
-        found = { node: candidate, parent: parent || null, side: side || '' };
-      }
-    });
-    return found;
-  }
-
-  function findTab(node, tabId) {
-    var found = null;
-    visitTree(node, function (candidate) {
-      if (found || candidate.type !== 'tabs') return;
-      for (var i = 0; i < candidate.tabs.length; i++) {
-        if (candidate.tabs[i].id === tabId) {
-          found = {
-            tab: candidate.tabs[i],
-            leaf: candidate,
-            index: i
-          };
-          return;
-        }
-      }
-    });
-    return found;
-  }
 
   // Return the tab id for any tab (any view kind) showing this
   // board, across all trees (center + side docks). Used by the
@@ -584,93 +472,18 @@
     return '';
   }
 
-  function findLeafContainingBoard(node, boardId, viewKind) {
-    var desiredView = normalizeViewKind(viewKind);
-    var found = null;
-    visitTree(node, function (candidate) {
-      if (found || candidate.type !== 'tabs') return;
-      for (var i = 0; i < candidate.tabs.length; i++) {
-        var tab = candidate.tabs[i];
-        if (!isBoardTab(tab)) continue;
-        if (tab.boardId === boardId && tab.viewKind === desiredView) {
-          found = {
-            tab: tab,
-            leaf: candidate
-          };
-          return;
-        }
-      }
-    });
-    return found;
-  }
-
-  /** Find any tab (any view kind) showing the given boardId. Used by the
-   *  parent shell's mutation-delegation path: if the user reorders an
-   *  element in the workspace view (sidebar tree) for a board that's open
-   *  in some iframe, we need to route the mutation INTO that iframe so
-   *  it lands on the iframe's live `fullBoardData` and goes through its
-   *  save pipeline. The viewKind doesn't matter for delegation purposes
-   *  — both kanban and canvas iframes own the same board state.
+  /** Find any tab (any view kind) showing the given boardId — see
+   *  `LexeraLayoutTree.findAnyLeafContainingBoard`. Used by the parent shell's
+   *  mutation-delegation path: if the user reorders an element in the workspace
+   *  view (sidebar tree) for a board that's open in some iframe, we need to
+   *  route the mutation INTO that iframe so it lands on the iframe's live
+   *  `fullBoardData` and goes through its save pipeline. The viewKind doesn't
+   *  matter for delegation purposes — both kanban and canvas iframes own the
+   *  same board state.
    */
-  function findAnyLeafContainingBoard(node, boardId) {
-    var found = null;
-    visitTree(node, function (candidate) {
-      if (found || candidate.type !== 'tabs') return;
-      for (var i = 0; i < candidate.tabs.length; i++) {
-        var tab = candidate.tabs[i];
-        if (!isBoardTab(tab)) continue;
-        if (tab.boardId === boardId) {
-          found = { tab: tab, leaf: candidate };
-          return;
-        }
-      }
-    });
-    return found;
-  }
 
-  /** Return the iframe contentWindow currently rendering boardId, or null
-   *  if no iframe owns it. The parent shell uses this to delegate
-   *  mutation calls (moveCard / reorderRows / moveStack /
-   *  moveColumnWithinBoard / moveColumnToExistingStack) to the iframe
-   *  whose `fullBoardData` IS the live source of truth for that board.
-   *  Without this, mutations triggered from the parent's workspace tree
-   *  would mutate a freshly-loaded detached copy and be silently lost
-   *  (the symptom: "save.auto.skip — active board is not ready").
-   */
   function getFrameWindowForBoard(boardId) {
-    if (!boardId) return null;
-    var found = findAnyLeafContainingBoard(state.dockTree, boardId);
-    if (!found || !found.tab) return null;
-    var frame = state.frameCache[found.tab.id];
-    if (!frame || !frame.contentWindow) return null;
-    return frame.contentWindow;
-  }
-
-  function findLeafContainingPanel(node, panelId) {
-    var normalizedPanelId = resolvePanelTarget(panelId);
-    if (!normalizedPanelId) return null;
-    var found = null;
-    visitTree(node, function (candidate) {
-      if (found || candidate.type !== 'tabs') return;
-      for (var i = 0; i < candidate.tabs.length; i++) {
-        var tab = candidate.tabs[i];
-        if (!isPanelTab(tab)) continue;
-        if (resolvePanelTarget(tab.panelId) === normalizedPanelId) {
-          found = {
-            tab: tab,
-            leaf: candidate
-          };
-          return;
-        }
-      }
-    });
-    return found;
-  }
-
-  function findClosestSplitParent(node, targetLeafId, parentSplit) {
-    if (!node) return null;
-    if (node.type === 'tabs') return node.id === targetLeafId ? parentSplit : null;
-    return findClosestSplitParent(node.first, targetLeafId, node) || findClosestSplitParent(node.second, targetLeafId, node);
+    return boardHost.getFrameWindowForBoard(state.dockTree, state.frameCache, boardId);
   }
 
   function getBoardMetaLabel(meta) {
@@ -682,45 +495,7 @@
   }
 
   function getEmbeddedUrlForTab(tab) {
-    if (!isBoardTab(tab)) return '';
-    var url = new URL(window.location.href);
-    url.search = '';
-    url.hash = '';
-    url.searchParams.set('embedded', '1');
-    url.searchParams.set('workspaceShell', '0');
-    url.searchParams.set('workspaceShellParent', '1');
-    url.searchParams.set('pane', tab.id);
-    if (tab.boardId) url.searchParams.set('board', tab.boardId);
-    if (tab.viewKind === 'kanban' || tab.viewKind === 'canvas') {
-      url.searchParams.set('view', tab.viewKind);
-    }
-    return url.toString();
-  }
-
-  function withNormalizedLeaves(node, isRoot) {
-    if (!node) return isRoot ? createTabsetNode([]) : null;
-    if (node.type === 'tabs') {
-      if (!Array.isArray(node.tabs)) node.tabs = [];
-      if (node.tabs.length === 0) {
-        node.activeTabId = '';
-        return isRoot ? node : null;
-      }
-      var hasActive = false;
-      for (var i = 0; i < node.tabs.length; i++) {
-        if (node.tabs[i].id === node.activeTabId) {
-          hasActive = true;
-          break;
-        }
-      }
-      if (!hasActive) node.activeTabId = node.tabs[0].id;
-      return node;
-    }
-    node.first = withNormalizedLeaves(node.first, false);
-    node.second = withNormalizedLeaves(node.second, false);
-    if (!node.first && !node.second) return isRoot ? createTabsetNode([]) : null;
-    if (!node.first) return node.second;
-    if (!node.second) return node.first;
-    return node;
+    return boardHost.getEmbeddedUrlForTab(tab, window.location.href);
   }
 
   var state = {
@@ -733,6 +508,7 @@
     initialPanelKind: normalizePanelKind(urlParams.get('initialPanel') || ''),
     windowRole: String(urlParams.get('windowRole') || ''),
     windowLabel: String(urlParams.get('windowLabel') || 'main'),
+    hostWindowLabel: String(urlParams.get('workspaceShellHostLabel') || urlParams.get('windowLabel') || 'main'),
     dockTree: createTabsetNode([]),
     panelInstances: createDefaultPanelInstances(),
     sideDocks: createDefaultSideDocks(urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace'),
@@ -838,6 +614,10 @@
 
   function isHierarchyLauncherWindow() {
     return state.windowRole === 'hierarchyLauncher' || (isPanelOnlyWindow() && state.panelOnlyKind === 'hierarchy');
+  }
+
+  function canHostBoardTabs() {
+    return state.enabled && !isPanelOnlyWindow();
   }
 
   function createPanelInstance(kind, panelId) {
@@ -1325,11 +1105,6 @@
     removePanelFromDocks(panelId);
     delete state.panelInstances[panelId];
     delete state.panelVisibility[panelId];
-    if (state.panelElements && state.panelElements[panelId]) {
-      var panelEl = state.panelElements[panelId];
-      if (panelEl.parentNode) panelEl.parentNode.removeChild(panelEl);
-      delete state.panelElements[panelId];
-    }
     var sharedPanels = getSharedPanelsApi();
     if (sharedPanels && typeof sharedPanels.unregisterInstance === 'function') {
       sharedPanels.unregisterInstance(panelId);
@@ -1579,20 +1354,6 @@
       }
 
       strip.appendChild(zone);
-    }
-
-    // Move logs status bar into fold strip so it's visible when collapsed
-    for (var si = 0; si < panelIds.length; si++) {
-      if (dockId === 'bottom' && getPanelKind(panelIds[si]) === 'logs') {
-        // Status may be in the panel element or already moved to the ws-view-header
-        var statusEl = dockEl.querySelector('.log-panel-status');
-        if (!statusEl) {
-          var logPanel = getPanelElement(panelIds[si]);
-          if (logPanel) statusEl = logPanel.querySelector('.log-panel-status');
-        }
-        if (statusEl) strip.appendChild(statusEl);
-        break;
-      }
     }
 
     // Lock button — prevents hover-unfold (default: locked)
@@ -2285,22 +2046,56 @@
   // destroy + re-spawn on URL change instead of contentWindow.location.
   var multiviewSpawnedTabs = {};
   var multiviewGeometryObservers = {};
+  var multiviewPendingLocalDestroyAcks = {};
 
   function multiviewLabelForTab(tabId) {
-    return 'board-tab-' + String(tabId);
+    return boardHost.multiviewLabelForTab(tabId);
   }
 
-  // Health dot — one per placeholder. Updated via health-changed event.
-  function ensureHealthDot(placeholderEl) {
-    var dot = placeholderEl.querySelector('.mv-health-dot');
-    if (!dot) {
-      dot = document.createElement('div');
-      dot.className = 'mv-health-dot';
-      dot.setAttribute('data-health', 'unknown');
-      dot.setAttribute('title', 'Connection state: unknown');
-      placeholderEl.appendChild(dot);
+  // Compute the multiview webview label for a tab object, taking its
+  // kind into account. Panel webviews use the 'panel-tab-' prefix so
+  // the multiview-destroyed listener and LRU registry can disambiguate
+  // them from board webviews ('board-tab-' prefix).
+  function labelForTabObject(tab) {
+    if (isPanelTab(tab)) return panelHost.panelLabelForTab(tab.id);
+    return boardHost.multiviewLabelForTab(tab.id);
+  }
+
+  // Reverse lookup: tabId for a given webview label. Handles three
+  // cases:
+  //   1. Formula labels with our 'board-tab-' / 'panel-tab-' prefixes
+  //   2. Pool labels ('_pool_<n>') that were repurposed and now own
+  //      a tab — we find the tabId by scanning the spawn registry
+  //   3. Anything else: returns the original label so callers can
+  //      surface it in logs/diagnostics.
+  function tabIdFromLabel(label) {
+    if (typeof label !== 'string') return '';
+    if (label.indexOf('board-tab-') === 0) return label.substring('board-tab-'.length);
+    if (label.indexOf('panel-tab-') === 0) return label.substring('panel-tab-'.length);
+    var tabIds = Object.keys(multiviewSpawnedTabs);
+    for (var i = 0; i < tabIds.length; i++) {
+      if (multiviewSpawnedTabs[tabIds[i]].label === label) return tabIds[i];
     }
-    return dot;
+    return label;
+  }
+
+  function noteLocalDestroy(label) {
+    var key = String(label || '');
+    if (!key) return;
+    multiviewPendingLocalDestroyAcks[key] = (multiviewPendingLocalDestroyAcks[key] || 0) + 1;
+  }
+
+  function consumeLocalDestroyAck(label) {
+    var key = String(label || '');
+    var count = multiviewPendingLocalDestroyAcks[key] || 0;
+    if (count <= 0) return false;
+    if (count === 1) delete multiviewPendingLocalDestroyAcks[key];
+    else multiviewPendingLocalDestroyAcks[key] = count - 1;
+    return true;
+  }
+
+  function ensureHealthDot(placeholderEl) {
+    return boardHost.ensureHealthDot(placeholderEl, document);
   }
   // Last-known health per tab so re-renders reapply the state.
   var lastKnownHealth = {};
@@ -2340,97 +2135,77 @@
   }
 
   function multiviewUrlForTab(desiredSrc) {
-    // Tauri 2 WebviewBuilder::App expects a relative path, not the
-    // full asset-protocol URL. Strip off scheme/host so we pass
-    // 'index.html?embedded=1&board=...' rather than the full URL.
-    if (!desiredSrc) return desiredSrc;
-    try {
-      var u = new URL(desiredSrc);
-      var rel = u.pathname.replace(/^\/+/, '') + (u.search || '') + (u.hash || '');
-      return rel || 'index.html';
-    } catch (_) {
-      return desiredSrc;
-    }
+    return boardHost.multiviewUrlForTab(desiredSrc);
   }
 
-  // Track placeholder visibility (is-active class + intersection with
-  // viewport) and show/hide the corresponding child webview. Without
-  // this, hidden placeholders (display:none on ancestor, scrolled
-  // out of view, dock collapsed, etc.) leave their webview at last
-  // known geometry, possibly painting over other content.
-  var multiviewVisibilityObservers = {};
-  function watchPlaceholderVisibility(tabId, placeholderEl, pushGeomFn) {
-    if (multiviewVisibilityObservers[tabId]) return;
-    if (!window.LexeraMultiview) return;
-    var label = multiviewLabelForTab(tabId);
-    var lastVisible = null;
-    // Inline geometry-push fallback if no specific pushGeomFn was
-    // provided. Uses exact float rect; Tauri rounds to native pixels.
-    function localPushGeom() {
-      if (placeholderEl.offsetParent === null) return;
-      var r = placeholderEl.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) return;
-      window.LexeraMultiview.setGeometry([{
-        label: label, x: r.left, y: r.top, width: r.width, height: r.height
-      }]).catch(function () {});
-    }
-    var doPushGeom = typeof pushGeomFn === 'function' ? pushGeomFn : localPushGeom;
-    function syncVisible() {
-      var visible = placeholderEl.classList.contains('is-active') &&
-        placeholderEl.offsetParent !== null &&
-        placeholderEl.getBoundingClientRect().width > 0;
-      if (visible === lastVisible) return;
-      lastVisible = visible;
-      window.LexeraMultiview.invoke('multiview_set_visible', {
-        label: label, visible: visible
-      }).catch(function () {});
-      if (visible) {
-        doPushGeom(); // make sure geometry is fresh on show
-      } else {
-        // Belt-and-braces: park the hidden webview far offscreen so
-        // even if Tauri's hide() is delayed/unreliable on this OS,
-        // the webview is not visually overlapping anything else.
-        window.LexeraMultiview.setGeometry([{
-          label: label, x: -50000, y: -50000, width: 1, height: 1
-        }]).catch(function () {});
-      }
-    }
-    var observers = [];
-    if (window.MutationObserver) {
-      var mo = new MutationObserver(syncVisible);
-      mo.observe(placeholderEl, { attributes: true, attributeFilter: ['class', 'style'] });
-      observers.push({ disconnect: function () { mo.disconnect(); } });
-    }
-    if (window.IntersectionObserver) {
-      // Catches ancestor display:none, dock collapse, scroll-out-of-view
-      var io = new IntersectionObserver(syncVisible);
-      io.observe(placeholderEl);
-      observers.push({ disconnect: function () { io.disconnect(); } });
-    }
-    multiviewVisibilityObservers[tabId] = {
-      disconnect: function () {
-        for (var i = 0; i < observers.length; i++) {
-          try { observers[i].disconnect(); } catch (_) {}
-        }
-      }
-    };
-    requestAnimationFrame(syncVisible);
+  function watchPlaceholderVisibility(tab, placeholderEl, pushGeomFn) {
+    if (!tab || !tab.id) return;
+    boardHost.watchPlaceholderVisibility(
+      tab.id,
+      placeholderEl,
+      pushGeomFn,
+      labelForTabObject(tab)
+    );
   }
 
+  // Per-tab spawn lifecycle:
+  //   absent      — no webview, no spawn in flight
+  //   'pending'   — spawn IPC issued, awaiting Rust ack
+  //   'ready'     — spawn confirmed, webview exists at .url
+  //   'destroying'— destroy IPC issued, awaiting Rust ack
+  // Encoding the state explicitly (rather than presence/url alone)
+  // prevents render-loop re-entry and destroy/spawn races from
+  // producing duplicate Rust webviews — see TODOs-lexera-multiview.md
+  // "lifecycle-race fix" for a full trace.
+  // Emergency kill switch — flip to true if the runaway-spawn loop returns.
+  // The cap+delay fix on "already exists" recovery wasn't sufficient last
+  // time we hit it; if it recurs we want a circuit-breaker that auto-arms.
+  var MULTIVIEW_SPAWN_DISABLED = false;
+  // Circuit breaker: per-tab call frequency tracker. If ensureMultiviewWebview
+  // is called more than CIRCUIT_BREAKER_THRESHOLD times within
+  // CIRCUIT_BREAKER_WINDOW_MS for the same tab, auto-arm the kill switch and
+  // log enough context to identify what's looping. The user can then
+  // reproduce, file a bug with the captured label/url, and we have something
+  // to actually trace instead of guessing.
+  var CIRCUIT_BREAKER_THRESHOLD = 12;
+  var CIRCUIT_BREAKER_WINDOW_MS = 1000;
+  var ensureCallTimestamps = {}; // tabId -> array of timestamps (newest at end)
+  function noteEnsureCall(tabId, label, url) {
+    var now = Date.now();
+    var arr = ensureCallTimestamps[tabId] || (ensureCallTimestamps[tabId] = []);
+    arr.push(now);
+    while (arr.length > 0 && now - arr[0] > CIRCUIT_BREAKER_WINDOW_MS) arr.shift();
+    if (arr.length >= CIRCUIT_BREAKER_THRESHOLD && !MULTIVIEW_SPAWN_DISABLED) {
+      MULTIVIEW_SPAWN_DISABLED = true;
+      var msg = '[multiview] CIRCUIT BREAKER tripped — ' + arr.length +
+        ' ensure() calls in ' + CIRCUIT_BREAKER_WINDOW_MS + 'ms for tab="' +
+        tabId + '" label="' + label + '" url="' + url +
+        '". Spawn auto-disabled. Reload after fix.';
+      try { console.error(msg); } catch (_) {}
+      try { if (window.lexeraLog) window.lexeraLog('error', msg); } catch (_) {}
+    }
+    return MULTIVIEW_SPAWN_DISABLED;
+  }
   function ensureMultiviewWebview(tab, placeholderEl, desiredSrc) {
     if (!window.LexeraMultiview) return;
-    var label = multiviewLabelForTab(tab.id);
+    if (MULTIVIEW_SPAWN_DISABLED || urlParams.get('mv-disable') === '1') {
+      placeholderEl.classList.add('is-loaded');
+      placeholderEl.innerHTML = '<div class="mv-error-msg" style="padding:12px;opacity:.6">multiview spawn disabled (kill-switch active)</div>';
+      return;
+    }
+    var label = labelForTabObject(tab);
     var url = multiviewUrlForTab(desiredSrc);
-    // Geometry push: send the placeholder's exact float rect.
-    // Tauri rounds to native pixels consistently; adjacent webviews
-    // and dividers are positioned from the same placeholder/grid
-    // rect data, so they round consistently too — no gaps, no
-    // overlaps. (Previous floor-floor strategy left a 1px gap on
-    // each side that compounded to visible "empty space below the
-    // kanban".)
-    //
+    if (noteEnsureCall(tab.id, label, url)) {
+      placeholderEl.classList.add('is-loaded');
+      placeholderEl.innerHTML = '<div class="mv-error-msg" style="padding:12px;opacity:.6">circuit breaker tripped — see log</div>';
+      return;
+    }
+
     // Optional safety inset (?multiview-inset=N): subtracts N pixels
-    // from each side as a debug aid for divider-cover issues.
+    // from each side as a debug aid for divider-cover issues. Geometry
+    // push uses the placeholder's exact float rect; Tauri rounds to
+    // native pixels consistently so adjacent webviews and dividers
+    // round the same way (no gaps, no overlaps).
     var MV_INSET = (function () {
       try {
         var p = new URLSearchParams(window.location.search || '');
@@ -2442,131 +2217,285 @@
       if (placeholderEl.offsetParent === null) return;
       var r = placeholderEl.getBoundingClientRect();
       if (r.width <= 0 || r.height <= 0) return;
-      window.LexeraMultiview.setGeometry([{
+      // Use the per-frame coalescer (Perf #2) so dock-divider drags
+      // collapse N webviews × 1 IPC each into 1 batched IPC per frame.
+      var update = {
         label: label,
         x: r.left + MV_INSET,
         y: r.top + MV_INSET,
         width: Math.max(1, r.width - 2 * MV_INSET),
         height: Math.max(1, r.height - 2 * MV_INSET)
-      }]).catch(function () {});
+      };
+      if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
+        window.LexeraMultiview.pushGeomDeferred(update);
+      } else {
+        window.LexeraMultiview.setGeometry([update]).catch(function () {});
+      }
     }
-    if (!multiviewSpawnedTabs[tab.id]) {
-      var r = placeholderEl.getBoundingClientRect();
-      // Hidden offscreen until placeholder is laid out
-      var x = r.width > 0 ? r.left : -10000;
-      var y = r.height > 0 ? r.top : -10000;
-      var w = r.width > 0 ? r.width : 10;
-      var h = r.height > 0 ? r.height : 10;
-      // Use lifecycle spawn so this board participates in LRU
-      // tracking. Once active webview count exceeds the soft cap
-      // (default 8), the oldest non-pinned webview is evicted.
-      var lifecycleApi = window.LexeraMultiview.lifecycle;
-      var spawnPromise = lifecycleApi && typeof lifecycleApi.spawn === 'function'
-        ? lifecycleApi.spawn({ label: label, url: url, x: x, y: y, width: w, height: h })
-        : window.LexeraMultiview.spawn({ label: label, url: url, x: x, y: y, width: w, height: h });
-      spawnPromise.then(function () {
-        multiviewSpawnedTabs[tab.id] = { url: url };
-        if (typeof window.lexeraLog === 'function') {
-          window.lexeraLog('debug', '[multiview] spawned ' + label);
-        }
-        // Mark placeholder as loaded so its spawning ring fades out.
-        // Delay one frame so the browser can actually paint the
-        // transition (otherwise the ring never shows).
-        requestAnimationFrame(function () {
-          requestAnimationFrame(function () {
-            placeholderEl.classList.add('is-loaded');
-          });
+    function showSpawnErrorUi(err) {
+      placeholderEl.classList.add('has-error');
+      placeholderEl.classList.remove('is-loaded');
+      placeholderEl.innerHTML =
+        '<div class="mv-error-msg">Failed to load board webview.' +
+        '<br><small>' + String(err && err.message || err).replace(/</g, '&lt;') + '</small>' +
+        '<br><button type="button" data-mv-retry="1">Retry</button></div>';
+      var retryBtn = placeholderEl.querySelector('[data-mv-retry]');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', function () {
+          placeholderEl.classList.remove('has-error');
+          placeholderEl.innerHTML = '';
+          delete multiviewSpawnedTabs[tab.id];
+          ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
         });
-        // Multi-step geometry push: spawn-time, next frame, and 50/200ms
-        // later. Catches the case where the placeholder is briefly
-        // mis-sized while the dock layout is still settling — common
-        // during initial render and tab activation cascades.
-        requestAnimationFrame(pushGeom);
-        setTimeout(pushGeom, 50);
-        setTimeout(pushGeom, 200);
-        if (typeof ResizeObserver !== 'undefined' && !multiviewGeometryObservers[tab.id]) {
-          var ro = new ResizeObserver(function () { pushGeom(); });
-          ro.observe(placeholderEl);
-          multiviewGeometryObservers[tab.id] = ro;
+      }
+    }
+    function onSpawned() {
+      multiviewSpawnedTabs[tab.id] = { url: url, state: 'ready', label: label };
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('debug', '[multiview] spawned ' + label);
+      }
+      // Delay two frames so the browser can paint the spawning ring
+      // transition before we mark loaded (otherwise the ring never
+      // shows).
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          placeholderEl.classList.add('is-loaded');
+        });
+      });
+      // Multi-step geometry push: spawn-time, next frame, and 50/200ms
+      // later. Catches the case where the placeholder is briefly
+      // mis-sized while the dock layout is still settling — common
+      // during initial render and tab activation cascades.
+      requestAnimationFrame(pushGeom);
+      setTimeout(pushGeom, 50);
+      setTimeout(pushGeom, 200);
+      if (typeof ResizeObserver !== 'undefined' && !multiviewGeometryObservers[tab.id]) {
+        var ro = new ResizeObserver(function () { pushGeom(); });
+        ro.observe(placeholderEl);
+        multiviewGeometryObservers[tab.id] = ro;
+      }
+      window.addEventListener('resize', pushGeom);
+      watchPlaceholderVisibility(tab, placeholderEl, pushGeom);
+    }
+    function doSpawn() {
+      var r = placeholderEl.getBoundingClientRect();
+      if (!placeholderEl.isConnected || placeholderEl.offsetParent === null || r.width <= 0 || r.height <= 0) {
+        return;
+      }
+      var x = r.left;
+      var y = r.top;
+      var w = r.width;
+      var h = r.height;
+      traceWorkspaceShell(
+        'spawn label=' + label +
+        ' tab=' + tab.id +
+        ' pos=(' + x + ', ' + y + ')' +
+        ' size=(' + w + ', ' + h + ')' +
+        ' active=' + placeholderEl.classList.contains('is-active') +
+        ' connected=' + (!!placeholderEl.isConnected) +
+        ' offsetParent=' + (placeholderEl.offsetParent ? 'set' : 'null')
+      );
+      // Mark pending BEFORE the IPC call so render-loop re-entry sees
+      // a spawn in flight and short-circuits. Carry the resolved label
+      // so destroy paths can recover it without redoing the dispatch.
+      // `attempts` accumulates across recovery cycles for this tab; it
+      // is the loop-stop guard for the "already exists" retry path.
+      var prior = multiviewSpawnedTabs[tab.id];
+      var attempts = (prior && prior.attempts) ? prior.attempts : 0;
+      multiviewSpawnedTabs[tab.id] = { url: url, state: 'pending', label: label, attempts: attempts };
+      // Use lifecycle spawn so this board participates in LRU tracking
+      // AND can repurpose a pre-warmed pool webview (Perf #1) — that
+      // returns `{ label: '_pool_<n>', fromPool: true }` instead of a
+      // freshly-spawned webview at the requested label.
+      var lifecycleApi = window.LexeraMultiview.lifecycle;
+      var args = { label: label, url: url, x: x, y: y, width: w, height: h };
+      var spawnPromise = lifecycleApi && typeof lifecycleApi.spawn === 'function'
+        ? lifecycleApi.spawn(args)
+        : window.LexeraMultiview.spawn(args).then(function () {
+            return { label: label, fromPool: false };
+          });
+      spawnPromise.then(function (result) {
+        // If the pool fast-path was taken, the actual webview lives at
+        // `result.label` (e.g. `_pool_3`), NOT the formula label we
+        // computed up front. Rebind the closure variable so all
+        // subsequent operations (pushGeom, destroy, error UI retry)
+        // address the correct webview.
+        if (result && result.label && result.label !== label) {
+          label = result.label;
+          multiviewSpawnedTabs[tab.id].label = label;
         }
-        window.addEventListener('resize', pushGeom);
-        watchPlaceholderVisibility(tab.id, placeholderEl, pushGeom);
+        onSpawned();
       }).catch(function (err) {
         console.warn('[ws-shell] multiview spawn failed for', tab.id, err);
         if (typeof window.lexeraLog === 'function') {
           window.lexeraLog('warn', '[multiview] spawn failed for ' + label + ': ' + (err && err.message || err));
         }
-        // Show error UI in the placeholder + retry button
-        placeholderEl.classList.add('has-error');
-        placeholderEl.classList.remove('is-loaded');
-        placeholderEl.innerHTML =
-          '<div class="mv-error-msg">Failed to load board webview.' +
-          '<br><small>' + String(err && err.message || err).replace(/</g, '&lt;') + '</small>' +
-          '<br><button type="button" data-mv-retry="1">Retry</button></div>';
-        var retryBtn = placeholderEl.querySelector('[data-mv-retry]');
-        if (retryBtn) {
-          retryBtn.addEventListener('click', function () {
-            placeholderEl.classList.remove('has-error');
-            placeholderEl.innerHTML = '';
+        var msg = String(err && err.message || err || '');
+        if (/already exists/i.test(msg)) {
+          // A Rust-side webview already holds this label. Could be a
+          // race-loser, an orphan from a prior shell reload, or an
+          // out-of-band create. Destroy and retry — but cap attempts so a
+          // persistent close/respawn race can't burn down the app, and
+          // hold the slot in `destroying` state across the await so a
+          // concurrent ensure() call short-circuits instead of stacking
+          // a parallel spawn.
+          var attemptsSoFar = (multiviewSpawnedTabs[tab.id] && multiviewSpawnedTabs[tab.id].attempts) || 0;
+          var MAX_ATTEMPTS = 3;
+          if (attemptsSoFar + 1 >= MAX_ATTEMPTS) {
+            if (typeof window.lexeraLog === 'function') {
+              window.lexeraLog('error', '[multiview] giving up on ' + label + ' after ' + (attemptsSoFar + 1) + ' attempts');
+            }
             delete multiviewSpawnedTabs[tab.id];
-            ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
+            showSpawnErrorUi(new Error('webview spawn failed after ' + (attemptsSoFar + 1) + ' attempts: ' + msg));
+            return;
+          }
+          if (typeof window.lexeraLog === 'function') {
+            window.lexeraLog('info', '[multiview] resolving stale ' + label + ' (attempt ' + (attemptsSoFar + 1) + '/' + MAX_ATTEMPTS + ')');
+          }
+          multiviewSpawnedTabs[tab.id] = {
+            url: url, state: 'destroying', label: label, attempts: attemptsSoFar + 1
+          };
+          noteLocalDestroy(label);
+          window.LexeraMultiview.destroy(label).then(function () {
+            // Defer respawn one frame so Tauri's async webview.close()
+            // gets a tick to actually free the registry slot. Without
+            // this delay the immediate doSpawn() races the close and
+            // can hit "already exists" again, looping until the cap.
+            requestAnimationFrame(function () {
+              setTimeout(doSpawn, 16);
+            });
+          }).catch(function (destroyErr) {
+            delete multiviewSpawnedTabs[tab.id];
+            showSpawnErrorUi(destroyErr || err);
           });
+          return;
         }
+        delete multiviewSpawnedTabs[tab.id];
+        showSpawnErrorUi(err);
       });
-    } else if (multiviewSpawnedTabs[tab.id].url !== url) {
-      // URL changed — destroy and re-spawn
+    }
+
+    var entry = multiviewSpawnedTabs[tab.id];
+    if (!entry) {
+      doSpawn();
+      return;
+    }
+    if (entry.state === 'pending' || entry.state === 'destroying') {
+      // An IPC op is already in flight for this tab. Whichever resolver
+      // eventually runs will reconcile to the latest desired url via
+      // the next render-driven ensureMultiviewWebview() call.
+      return;
+    }
+    // entry.state === 'ready'
+    if (entry.url !== url) {
+      // URL change — destroy then respawn. Mark destroying first so
+      // any concurrent ensure() short-circuits instead of stacking
+      // additional spawn attempts on top.
+      multiviewSpawnedTabs[tab.id] = { url: entry.url, state: 'destroying', label: label };
+      noteLocalDestroy(label);
       window.LexeraMultiview.destroy(label).then(function () {
         delete multiviewSpawnedTabs[tab.id];
         ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
-      }).catch(function () {});
-    } else {
-      // Already spawned at correct URL — just push current geom
-      requestAnimationFrame(pushGeom);
+      }).catch(function () {
+        // Even on destroy failure, clear and retry — the next spawn
+        // will surface the real error (or recover via "already exists").
+        delete multiviewSpawnedTabs[tab.id];
+        ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
+      });
+      return;
     }
+    // Already spawned at correct URL — refresh geometry only.
+    requestAnimationFrame(pushGeom);
   }
 
   function destroyMultiviewWebview(tabId) {
     if (!window.LexeraMultiview) return;
-    var label = multiviewLabelForTab(tabId);
-    cleanupMultiviewLocalState(tabId);
-    window.LexeraMultiview.destroy(label).catch(function () {});
+    var entry = multiviewSpawnedTabs[tabId];
+    // Recover the panel/board-correct label from the lifecycle entry.
+    // Fallback to the board prefix only if no entry exists (the spawn
+    // never registered, or already cleared) — this matches legacy
+    // behavior for orphan-cleanup paths.
+    var label = (entry && entry.label) || multiviewLabelForTab(tabId);
+    // Disconnect placeholder observers immediately — the placeholder
+    // is about to be removed from the DOM.
+    if (multiviewGeometryObservers[tabId]) {
+      try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
+      delete multiviewGeometryObservers[tabId];
+    }
+    boardHost.cleanupVisibilityObserver(tabId);
+    // Mark destroying BEFORE the IPC so a concurrent ensure() for the
+    // same tab short-circuits instead of trying to spawn on top of a
+    // half-torn-down webview. Keep the entry until Rust confirms.
+    if (entry) {
+      multiviewSpawnedTabs[tabId] = {
+        url: entry.url,
+        state: 'destroying',
+        label: label
+      };
+    }
+    noteLocalDestroy(label);
+    window.LexeraMultiview.destroy(label).then(function () {
+      delete multiviewSpawnedTabs[tabId];
+    }).catch(function () {
+      delete multiviewSpawnedTabs[tabId];
+    });
   }
 
-  // Local cleanup (does NOT issue Rust destroy). Used both by
-  // destroyMultiviewWebview (after the Rust destroy is requested) and
-  // by the multiview-destroyed event listener (when something else
-  // destroyed our webview, e.g., LRU eviction).
+  // Local cleanup invoked when Rust unilaterally destroyed our
+  // webview (LRU eviction or external destroy via the
+  // `multiview-destroyed` event). Distinct from `destroyMultiviewWebview`
+  // which initiates the destroy.
   function cleanupMultiviewLocalState(tabId) {
     if (multiviewGeometryObservers[tabId]) {
       try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
       delete multiviewGeometryObservers[tabId];
     }
-    if (multiviewVisibilityObservers[tabId]) {
-      try { multiviewVisibilityObservers[tabId].disconnect(); } catch (_) {}
-      delete multiviewVisibilityObservers[tabId];
+    boardHost.cleanupVisibilityObserver(tabId);
+    // Preserve a 'pending' entry: if a fresh spawn is in flight, this
+    // destroy event refers to an earlier lifecycle and must not stomp
+    // the new one.
+    var entry = multiviewSpawnedTabs[tabId];
+    if (!entry || entry.state !== 'pending') {
+      delete multiviewSpawnedTabs[tabId];
     }
-    delete multiviewSpawnedTabs[tabId];
   }
 
   // Listen for multiview-destroyed broadcasts from Rust (LRU eviction
   // or external destroy) and clean up local state for any tab whose
-  // webview was destroyed without our knowledge.
+  // webview was destroyed without our knowledge. Handles both
+  // 'board-tab-' (board webviews) and 'panel-tab-' (panel webviews
+  // hosted via Workstream P) prefixes.
   if (typeof window !== 'undefined' && window.__TAURI__ && window.__TAURI__.event) {
-    var labelPrefix = 'board-tab-';
+    function isHostedTabLabel(label) {
+      if (typeof label !== 'string') return false;
+      if (label.indexOf('board-tab-') === 0) return true;
+      if (label.indexOf('panel-tab-') === 0) return true;
+      // Pool-derived labels: a `_pool_<n>` webview that has been
+      // repurposed for a tab is registered in `multiviewSpawnedTabs`
+      // with that label.
+      var tabIds = Object.keys(multiviewSpawnedTabs);
+      for (var i = 0; i < tabIds.length; i++) {
+        if (multiviewSpawnedTabs[tabIds[i]].label === label) return true;
+      }
+      return false;
+    }
     // Health dot updates
     window.__TAURI__.event.listen('health-changed', function (event) {
       var p = event && event.payload ? event.payload : {};
       var label = p.label || '';
-      if (label.indexOf(labelPrefix) !== 0) return;
-      var tabId = label.substring(labelPrefix.length);
+      if (!isHostedTabLabel(label)) return;
+      var tabId = tabIdFromLabel(label);
       applyHealthToTab(tabId, p.state);
     });
     window.__TAURI__.event.listen('multiview-destroyed', function (event) {
       var p = event && event.payload ? event.payload : {};
       var label = p.label || '';
-      if (label.indexOf(labelPrefix) !== 0) return;
-      var tabId = label.substring(labelPrefix.length);
+      if (!isHostedTabLabel(label)) return;
+      var locallyInitiated = consumeLocalDestroyAck(label);
+      traceWorkspaceShell('destroyed label=' + label + ' local=' + locallyInitiated);
+      var tabId = tabIdFromLabel(label);
       cleanupMultiviewLocalState(tabId);
+      if (locallyInitiated) return;
       // Auto-respawn if this tab is the active tab of an active leaf
       // (meaning the user currently sees its placeholder). Otherwise
       // lazy-spawn happens on next activateTab as usual.
@@ -2578,7 +2507,13 @@
         var placeholderEl = state.frameCache[tabId];
         if (placeholderEl && placeholderEl.getAttribute &&
             placeholderEl.getAttribute('data-multiview') === '1') {
-          var desiredSrc = getEmbeddedUrlForTab(foundTab.tab);
+          var desiredSrc;
+          if (isPanelTab(foundTab.tab)) {
+            var panelKind = getPanelKind(foundTab.tab.panelId);
+            desiredSrc = panelHost.panelUrlForTab(foundTab.tab, panelKind, window.location.href);
+          } else {
+            desiredSrc = getEmbeddedUrlForTab(foundTab.tab);
+          }
           if (typeof window.lexeraLog === 'function') {
             window.lexeraLog('info', '[multiview] auto-respawning ' + label +
               ' (destroyed while visible)');
@@ -2597,7 +2532,9 @@
   // the window closes anyway, but an explicit destroy minimizes
   // orphaned WebContent processes during dev/reload.
   if (typeof window !== 'undefined') {
+    traceWorkspaceShell('boot href=' + window.location.href);
     window.addEventListener('beforeunload', function () {
+      traceWorkspaceShell('beforeunload');
       var tabIds = Object.keys(multiviewSpawnedTabs);
       for (var i = 0; i < tabIds.length; i++) {
         try { destroyMultiviewWebview(tabIds[i]); } catch (_) {}
@@ -2612,24 +2549,13 @@
   function getOrCreateFrame(tab, options) {
     var view = state.frameCache[tab.id];
     if (isPanelTab(tab)) {
-      if (!view) {
-        view = document.createElement('div');
-        view.className = 'workspace-shell-view workspace-shell-panel-tab-view';
-        view.setAttribute('data-tab-id', tab.id);
-        view.setAttribute('data-panel-id', resolvePanelTarget(tab.panelId));
-        view.addEventListener('pointerdown', function () {
-          activateTab(tab.id);
-        });
-        state.frameCache[tab.id] = view;
-      }
-      var panelEl = getPanelElement(tab.panelId);
-      if (panelEl && panelEl.parentNode !== view) {
-        view.innerHTML = '';
-        panelEl.classList.remove('hidden');
-        panelEl.style.display = '';
-        view.appendChild(panelEl);
-      }
-      return view;
+      // Workstream P: every panel kind is hosted as a child webview.
+      // Center-dock panels go through the same multiview placeholder
+      // helper as side-dock panels (renderSideDockTabset).
+      var panelId = resolvePanelTarget(tab.panelId);
+      var panelKind = getPanelKind(panelId);
+      if (!panelKind) return view || null;
+      return buildMultiviewPanelPlaceholder(tab, panelId, panelKind);
     }
     var desiredSrc = getEmbeddedUrlForTab(tab);
     if (MULTIVIEW_BOARDS) {
@@ -2640,6 +2566,14 @@
         view.setAttribute('data-tab-id', tab.id);
         view.setAttribute('data-src', desiredSrc);
         view.setAttribute('data-multiview', '1');
+        // Diagnostic skeleton (see buildMultiviewPanelPlaceholder for
+        // rationale). Hidden by the child webview overlay once it spawns.
+        view.innerHTML = '<div class="mv-placeholder-skeleton" style="' +
+          'padding:10px;font-size:12px;font-family:monospace;color:#888;' +
+          'pointer-events:none;user-select:none;">' +
+          'board: <strong>' + String(tab.boardId || '(no boardId)').replace(/[<>&]/g, '?') + '</strong>' +
+          '<br>tab: ' + String(tab.id).replace(/[<>&]/g, '?') +
+          '<br>spawning…</div>';
         view.addEventListener('pointerdown', function () {
           activateTab(tab.id);
         });
@@ -2648,7 +2582,9 @@
       if (shouldLoadBoardFrame(tab, options)) {
         state.loadedBoardFrames[tab.id] = true;
         view.setAttribute('data-loaded-src', desiredSrc);
-        ensureMultiviewWebview(tab, view, desiredSrc);
+        requestAnimationFrame(function () {
+          if (view.parentNode) ensureMultiviewWebview(tab, view, desiredSrc);
+        });
       }
       return view;
     }
@@ -2694,11 +2630,15 @@
     render();
     if (didChange) notifyActiveBoardChanged();
     // Bump LRU freshness for multiview lifecycle so this webview is
-    // not the next eviction candidate.
+    // not the next eviction candidate. Use the spawn entry's recorded
+    // label so panel webviews touch their actual ('panel-tab-') label
+    // rather than the board prefix.
     if (MULTIVIEW_BOARDS && window.LexeraMultiview &&
         window.LexeraMultiview.lifecycle &&
         typeof window.LexeraMultiview.lifecycle.touch === 'function') {
-      try { window.LexeraMultiview.lifecycle.touch(multiviewLabelForTab(tabId)); }
+      var spawnEntry = multiviewSpawnedTabs[tabId];
+      var touchLabel = (spawnEntry && spawnEntry.label) || labelForTabObject(found.tab);
+      try { window.LexeraMultiview.lifecycle.touch(touchLabel); }
       catch (_) {}
     }
     return true;
@@ -2938,6 +2878,13 @@
     });
   }
 
+  // Panel-element registry — used INSIDE each panel webview when it
+  // boots in panel-only mode (`?panelKind=<kind>`). The shell webview
+  // itself spawns child webviews for each panel; the panel-only entry
+  // inside each child webview then renders the legacy panel element
+  // here, giving full feature parity (rich hierarchy tree, full
+  // dashboard, etc.) without per-kind reimplementation.
+
   function ensurePanelElements() {
     if (state.panelElements) return state.panelElements;
 
@@ -2958,6 +2905,13 @@
     var renderAppsPanelEl = hookPanels.renderApps || (sharedPanels ? sharedPanels.createPanelElement('renderApps', 'renderApps') : null);
     var filesPanelEl = hookPanels.files || (sharedPanels ? sharedPanels.createPanelElement('files', 'files') : null);
     var frontendTestsPanelEl = hookPanels.frontendTests || (sharedPanels ? sharedPanels.createPanelElement('frontendTests', 'frontendTests') : null);
+    // Eagerly create the calendar panels via sharedPanels so panel-only
+    // webviews for weekCalendar / monthCalendar render immediately
+    // (instead of waiting for getPanelElement's lazy fallback).
+    var weekCalendarPanelEl = hookPanels.weekCalendar ||
+      (sharedPanels ? sharedPanels.createPanelElement('weekCalendar', 'weekCalendar') : null);
+    var monthCalendarPanelEl = hookPanels.monthCalendar ||
+      (sharedPanels ? sharedPanels.createPanelElement('monthCalendar', 'monthCalendar') : null);
 
     if (!logPanelEl && sharedPanels && typeof sharedPanels.createPanelElement === 'function') {
       logPanelEl = sharedPanels.createPanelElement('logs', 'logs');
@@ -2981,11 +2935,13 @@
     if (dashboardEl) {
       dashboardEl.style.removeProperty('flex');
       dashboardEl.style.removeProperty('height');
-      dashboardEl.classList.remove('hidden');
     }
-    if (logPanelEl) {
-      logPanelEl.classList.remove('hidden');
-    }
+    // Do NOT unhide logPanelEl here. The shell never reparents #log-panel
+    // (Workstream P uses a child webview placeholder), so unhiding it
+    // would leave the log content visible at body grid row 2 in every
+    // webview — including panel-only webviews for unrelated kinds.
+    // `renderPanelOnly` removes 'hidden' explicitly when it reparents
+    // the target panel into the panel-only host.
     if (sidebarEl) sidebarEl.setAttribute('data-shell-panel', 'hierarchy');
     if (dashboardEl) dashboardEl.setAttribute('data-shell-panel', 'dashboard');
     if (logPanelEl) logPanelEl.setAttribute('data-shell-panel', 'logs');
@@ -2994,6 +2950,8 @@
     if (renderAppsPanelEl) renderAppsPanelEl.setAttribute('data-shell-panel', 'renderApps');
     if (filesPanelEl) filesPanelEl.setAttribute('data-shell-panel', 'files');
     if (frontendTestsPanelEl) frontendTestsPanelEl.setAttribute('data-shell-panel', 'frontendTests');
+    if (weekCalendarPanelEl) weekCalendarPanelEl.setAttribute('data-shell-panel', 'weekCalendar');
+    if (monthCalendarPanelEl) monthCalendarPanelEl.setAttribute('data-shell-panel', 'monthCalendar');
 
     state.panelElements = {
       hierarchy: sidebarEl,
@@ -3003,7 +2961,9 @@
       frontendSettings: frontendSettingsPanelEl,
       renderApps: renderAppsPanelEl,
       files: filesPanelEl,
-      frontendTests: frontendTestsPanelEl
+      frontendTests: frontendTestsPanelEl,
+      weekCalendar: weekCalendarPanelEl,
+      monthCalendar: monthCalendarPanelEl
     };
     return state.panelElements;
   }
@@ -3018,7 +2978,6 @@
     }
     var kind = getPanelKind(normalized);
     if (!kind) return null;
-    // For any panel kind not pre-created in ensurePanelElements, create on demand
     var sharedPanels = getSharedPanelsApi();
     if (!sharedPanels || typeof sharedPanels.createPanelElement !== 'function') return null;
     var panelEl = sharedPanels.createPanelElement(kind, normalized);
@@ -3414,6 +3373,58 @@
     });
   }
 
+  /**
+   * Workstream P helper: build (or reuse from cache) a multiview placeholder
+   * for a side-dock panel tab whose kind is on the webview allowlist. The
+   * placeholder is keyed by tab.id in state.frameCache so subsequent renders
+   * reuse the same DOM node and don't churn the underlying webview.
+   *
+   * The placeholder also carries `data-shell-panel-instance` so the existing
+   * `syncSideDockTabsetDom` patch logic — which keys panels by that attribute
+   * — recognizes it on incremental updates.
+   *
+   * Schedules `ensureMultiviewWebview` via rAF so the spawn IPC fires AFTER
+   * the placeholder is inserted in the DOM (the spawn reads getBoundingClientRect
+   * for initial geometry).
+   */
+  function buildMultiviewPanelPlaceholder(tab, panelId, panelKind) {
+    var view = state.frameCache[tab.id];
+    var panelSrc = panelHost.panelUrlForTab(tab, panelKind, window.location.href);
+    if (!view || !view.getAttribute || view.getAttribute('data-multiview') !== '1') {
+      if (view && view.parentNode) view.parentNode.removeChild(view);
+      view = document.createElement('div');
+      view.className = 'workspace-shell-view workspace-shell-frame workspace-shell-multiview-placeholder';
+      view.setAttribute('data-tab-id', tab.id);
+      view.setAttribute('data-panel-id', panelId);
+      view.setAttribute('data-panel-kind', panelKind);
+      view.setAttribute('data-shell-panel-instance', panelId);
+      view.setAttribute('data-src', panelSrc);
+      view.setAttribute('data-multiview', '1');
+      // Diagnostic skeleton — visible UNTIL the child webview overlays it.
+      // Once the webview is positioned over the placeholder we don't see this
+      // anymore, but if the spawn fails or geometry never pushes, the user
+      // sees what kind it should be (instead of a blank rectangle) and can
+      // tell us which kinds aren't materializing.
+      view.innerHTML = '<div class="mv-placeholder-skeleton" style="' +
+        'padding:10px;font-size:12px;font-family:monospace;color:#888;' +
+        'pointer-events:none;user-select:none;">' +
+        'panel: <strong>' + String(panelKind).replace(/[<>&]/g, '?') + '</strong>' +
+        ' (' + String(panelId).replace(/[<>&]/g, '?') + ')' +
+        '<br>tab: ' + String(tab.id).replace(/[<>&]/g, '?') +
+        '<br>spawning…</div>';
+      view.addEventListener('pointerdown', function () {
+        activateTab(tab.id);
+      });
+      state.frameCache[tab.id] = view;
+    }
+    requestAnimationFrame(function () {
+      if (view.parentNode) {
+        ensureMultiviewWebview(tab, view, panelSrc);
+      }
+    });
+    return view;
+  }
+
   function renderSideDockTabset(node, parentEl, dockId) {
     var tabsetEl = document.createElement('div');
     tabsetEl.className = 'workspace-shell-tabset workspace-shell-node workspace-shell-panel-window';
@@ -3442,6 +3453,10 @@
 
     var contentEl = document.createElement('div');
     contentEl.className = 'workspace-shell-panel-content';
+    // Workstream P: every panel kind is now hosted as a child webview.
+    // For each panel tab, build a multiview placeholder. The webview is
+    // spawned via ensureMultiviewWebview after insertion (rAF-deferred so
+    // initial geometry is correct).
     for (var ci = 0; ci < node.tabs.length; ci++) {
       var panelTab = node.tabs[ci];
       if (!isPanelTab(panelTab)) continue;
@@ -3449,27 +3464,11 @@
       if (!panelId) continue;
       if (!state.panelVisibility[panelId]) continue;
       if (isPanelIntegrated(panelId)) continue;
-      var panelEl = getPanelElement(panelId);
-      if (panelEl) {
-        // When dock is folded (hover overlay), use a static snapshot for heavy
-        // panels like dashboard to avoid detaching/reattaching the live DOM
-        // subtree on every hover cycle.
-        var isFoldedOverlay = state.dockSizes[dockId] === 0;
-        var panelKind = getPanelKind(panelId);
-        var useSnapshot = isFoldedOverlay && panelKind === 'dashboard';
-        var insertEl = useSnapshot ? panelEl.cloneNode(true) : panelEl;
-        if (useSnapshot) {
-          insertEl.setAttribute('data-fold-snapshot', '1');
-          insertEl.removeAttribute('id');
-        }
-        insertEl.classList.remove('hidden');
-        if (panelTab.id === node.activeTabId) {
-          insertEl.style.display = '';
-        } else {
-          insertEl.style.display = 'none';
-        }
-        contentEl.appendChild(insertEl);
-      }
+      var panelKind = getPanelKind(panelId);
+      if (!panelKind) continue;
+      var insertEl = buildMultiviewPanelPlaceholder(panelTab, panelId, panelKind);
+      insertEl.classList.toggle('is-active', panelTab.id === node.activeTabId);
+      contentEl.appendChild(insertEl);
     }
     tabsetEl.appendChild(contentEl);
 
@@ -3618,28 +3617,30 @@
       if (!expectedIds[removeId]) existingMap[removeId].remove();
     }
 
-    // Ensure each expected panel is mounted and in correct display state
-    var isFoldedOverlay = state.dockSizes[dockId] === 0;
+    // Workstream P: mount missing panels as multiview placeholders. The
+    // build helper handles caching by tab.id (state.frameCache) and
+    // schedules ensureMultiviewWebview() so each panel runs in its own
+    // child webview.
     var overlayEl = contentEl.querySelector('.workspace-shell-drop-overlay');
     for (var pi = 0; pi < expectedPanels.length; pi++) {
       var ep = expectedPanels[pi];
       var panelEl = existingMap[ep.panelId];
       if (!panelEl) {
-        // New panel — mount it
-        panelEl = getPanelElement(ep.panelId);
-        if (!panelEl) continue;
-        var panelKind = getPanelKind(ep.panelId);
-        var useSnapshot = isFoldedOverlay && panelKind === 'dashboard';
-        var insertEl = useSnapshot ? panelEl.cloneNode(true) : panelEl;
-        if (useSnapshot) {
-          insertEl.setAttribute('data-fold-snapshot', '1');
-          insertEl.removeAttribute('id');
+        var tabForPanel = null;
+        for (var tt = 0; tt < node.tabs.length; tt++) {
+          var ptab = node.tabs[tt];
+          if (isPanelTab(ptab) && resolvePanelTarget(ptab.panelId) === ep.panelId) {
+            tabForPanel = ptab;
+            break;
+          }
         }
-        insertEl.classList.remove('hidden');
-        contentEl.insertBefore(insertEl, overlayEl);
-        panelEl = insertEl;
+        if (!tabForPanel) continue;
+        var panelKind = getPanelKind(ep.panelId);
+        if (!panelKind) continue;
+        panelEl = buildMultiviewPanelPlaceholder(tabForPanel, ep.panelId, panelKind);
+        contentEl.insertBefore(panelEl, overlayEl);
       }
-      panelEl.style.display = ep.isActive ? '' : 'none';
+      panelEl.classList.toggle('is-active', ep.isActive);
     }
 
     return true;
@@ -4446,12 +4447,20 @@
     else renderTabset(node, parentEl);
   }
 
+  // Panel-only mode renders a single panel as the entire window content.
+  // This entry runs INSIDE each panel-tab child webview (URL pattern
+  // `index.html?panelKind=<kind>&panelOnly=1`) and uses the legacy
+  // `getPanelElement` to mount the FULL panel UI — same code that the
+  // shell used to embed in-DOM, now running in its own webview process.
+  // No multiview placeholder here: the placeholder lives in the SHELL
+  // webview that spawned this child; we just render the panel content
+  // directly into our document.
   function renderPanelOnly(panelId, hostEl) {
     if (!hostEl) return;
     hostEl.classList.add('workspace-shell-panel-only-host');
 
-    // Patch: if the panel window already shows the right panel, just ensure
-    // the panel element is mounted — skip full rebuild.
+    // Patch: if the panel window already shows the right panel, only
+    // ensure the panel element is mounted in the content slot.
     var existingWindow = hostEl.querySelector('.workspace-shell-panel-only-window[data-panel-id="' + panelId + '"]');
     if (existingWindow) {
       var existingContent = existingWindow.querySelector('.workspace-shell-panel-content');
@@ -4490,11 +4499,11 @@
 
     var contentEl = document.createElement('div');
     contentEl.className = 'workspace-shell-panel-content';
-    var panelEl = getPanelElement(panelId);
-    if (panelEl) {
-      panelEl.classList.remove('hidden');
-      panelEl.style.display = '';
-      contentEl.appendChild(panelEl);
+    var panelEl2 = getPanelElement(panelId);
+    if (panelEl2) {
+      panelEl2.classList.remove('hidden');
+      panelEl2.style.display = '';
+      contentEl.appendChild(panelEl2);
     }
     panelWindowEl.appendChild(contentEl);
     hostEl.appendChild(panelWindowEl);
@@ -4629,13 +4638,9 @@
       }
       viewEl.classList.toggle('is-active', isActiveInLeaf);
       if (isPanelTab(frameTab)) {
-        var panelEl = getPanelElement(frameTab.panelId);
-        if (panelEl && panelEl.parentNode !== viewEl) {
-          viewEl.innerHTML = '';
-          panelEl.classList.remove('hidden');
-          panelEl.style.display = '';
-          viewEl.appendChild(panelEl);
-        }
+        // Workstream P: panel tabs are multiview placeholders constructed
+        // by getOrCreateFrame -> buildMultiviewPanelPlaceholder. The webview
+        // spawn handles its own content; the shell only manages activation.
         viewEl.setAttribute('data-panel-id', resolvePanelTarget(frameTab.panelId));
       } else {
         syncBoardFrameSource(viewEl, frameTab, {
@@ -5644,8 +5649,36 @@
   }
 
   function handleBoardAction(action) {
+    // Diagnostic: surface every action that reaches the shell to the
+    // in-app log so "menu doesn't open panels" is debuggable without
+    // DevTools. Throttled by the lexeraLog ratelimiter on its end.
+    try {
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('debug', '[ws-shell] handleBoardAction(' + action +
+          ') enabled=' + state.enabled + ' mounted=' + state.mounted +
+          ' panelOnly=' + isPanelOnlyWindow());
+      }
+    } catch (_) {}
     if (!state.enabled || !state.mounted) return false;
     if (!action) return false;
+    // Shell-management actions (panel reveals, layout commands) belong
+    // to the SHELL webview only. Since menu-action is now broadcast to
+    // every webview (so it reliably reaches the shell), panel-only
+    // webviews and embedded-board webviews must opt out — otherwise
+    // each panel webview would try to mutate its own (irrelevant) dock
+    // tree and the user-visible action could double-handle.
+    if (isPanelOnlyWindow()) {
+      var shellOnlyPrefixes = ['toggle-panel:', 'reveal-panel:', 'set-board-layout:'];
+      var shellOnlyActions = { 'split-disable': 1, 'split-enable': 1,
+        'split-enable-vertical': 1, 'split-enable-horizontal': 1,
+        'split-orientation': 1, 'next-tab': 1, 'prev-tab': 1,
+        'close-active-tab': 1, 'new-window': 1 };
+      var isShellOnlyPrefix = false;
+      for (var pi = 0; pi < shellOnlyPrefixes.length; pi++) {
+        if (action.indexOf(shellOnlyPrefixes[pi]) === 0) { isShellOnlyPrefix = true; break; }
+      }
+      if (isShellOnlyPrefix || shellOnlyActions[action]) return false;
+    }
     if (action === 'close-active-tab') {
       var active = getActiveTab();
       if (active) closeTab(active.id);
@@ -5691,6 +5724,11 @@
 
   window.LexeraWorkspaceShell = {
     isEnabled: isEnabled,
+    canHostBoardTabs: canHostBoardTabs,
+    isPanelOnlyWindow: isPanelOnlyWindow,
+    isHierarchyLauncherWindow: isHierarchyLauncherWindow,
+    getWindowLabel: function () { return state.windowLabel || 'main'; },
+    getHostWindowLabel: function () { return state.hostWindowLabel || state.windowLabel || 'main'; },
     mount: mount,
     render: render,
     onBoardsUpdated: onBoardsUpdated,

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Workspaces</title>
+  <link rel="stylesheet" href="hierarchy.css">
+</head>
+<body>
+  <header class="hierarchy-header">
+    <span class="hierarchy-title" id="title">All Workspaces</span>
+    <span class="hierarchy-status" id="status">connecting</span>
+  </header>
+  <main class="hierarchy-body">
+    <section class="hierarchy-section">
+      <h3 class="hierarchy-section-title">Local boards <span class="muted" id="local-count"></span></h3>
+      <ul class="board-list" id="local-boards"></ul>
+    </section>
+    <section class="hierarchy-section">
+      <h3 class="hierarchy-section-title">Remote boards <span class="muted" id="remote-count"></span></h3>
+      <ul class="board-list" id="remote-boards"></ul>
+    </section>
+    <section class="hierarchy-section">
+      <h3 class="hierarchy-section-title">Workspaces <span class="muted" id="ws-count"></span></h3>
+      <ul class="ws-list" id="workspaces"></ul>
+    </section>
+    <p class="hierarchy-note">
+      Rich tree (stacks / columns / cards, drag &amp; drop, expand / collapse, inline rename, context menus) ports to this webview in a later slice.
+    </p>
+  </main>
+  <script src="../_shared/subAppRuntime.js"></script>
+  <script src="hierarchy.js"></script>
+</body>
+</html>

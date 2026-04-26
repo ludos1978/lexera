@@ -1,10 +1,11 @@
 // Multi-webview lifecycle manager for the workspace shell.
 //
-// This module is the foundation for the multi-webview migration
-// described in TODOs-lexera-multiview.md. It is currently UNUSED by
-// the existing iframe-based shell — all commands are registered but
-// no JS code calls them yet. The shell migration in Stage 3+ wires
-// this up incrementally; until then, this module is dormant code.
+// This module is part of the active multiview runtime used by the
+// normal desktop shell today. Board tabs, utility views, modal
+// windows, focus/health tracking, and cross-webview routing all
+// depend on it. Embedded board mode and the frontend auto-run test
+// mode still keep explicit iframe fallbacks, so both architectures
+// coexist for now.
 //
 // Tauri 2 child webviews (Window::add_child) each get their own OS
 // renderer process on macOS (WKWebView WebContent), Windows (WebView2),
@@ -18,6 +19,24 @@ use tauri::{
     webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager,
     State, WebviewUrl, Window,
 };
+
+fn is_reserved_window_label(app: &AppHandle, label: &str) -> bool {
+    let trimmed = label.trim();
+    !trimmed.is_empty() && app.get_webview_window(trimmed).is_some()
+}
+
+fn ensure_child_webview_label(app: &AppHandle, label: &str, action: &str) -> Result<(), String> {
+    if is_reserved_window_label(app, label) {
+        let msg = format!(
+            "{} refused reserved top-level window label '{}'",
+            action, label
+        );
+        eprintln!("[webview_mgr] {}", msg);
+        log::error!("[webview_mgr] {}", msg);
+        return Err(msg);
+    }
+    Ok(())
+}
 
 /// Registry of all child webviews currently mounted in a window.
 /// Keyed by webview label. Geometry is tracked here so the drag
@@ -70,6 +89,27 @@ pub fn spawn_internal(
     position: (f64, f64),
     size: (f64, f64),
 ) -> Result<(), String> {
+    eprintln!(
+        "[webview_mgr] spawn_internal parent='{}' label='{}' url='{}' pos=({}, {}) size=({}, {})",
+        window.label(),
+        label,
+        url,
+        position.0,
+        position.1,
+        size.0,
+        size.1
+    );
+    log::info!(
+        "[webview_mgr] spawn_internal parent='{}' label='{}' url='{}' pos=({}, {}) size=({}, {})",
+        window.label(),
+        label,
+        url,
+        position.0,
+        position.1,
+        size.0,
+        size.1
+    );
+    ensure_child_webview_label(app, label, "spawn_internal")?;
     let builder = WebviewBuilder::new(label, WebviewUrl::App(url.into()));
     window
         .add_child(
@@ -77,7 +117,11 @@ pub fn spawn_internal(
             LogicalPosition::new(position.0, position.1),
             LogicalSize::new(size.0, size.1),
         )
-        .map_err(|e| format!("add_child failed for {}: {}", label, e))?;
+        .map_err(|e| {
+            let msg = format!("add_child failed for {}: {}", label, e);
+            eprintln!("[webview_mgr] {}", msg);
+            msg
+        })?;
 
     let registry: State<WebviewRegistry> = app.state();
     registry.inner.write().insert(
@@ -101,8 +145,37 @@ pub fn spawn_internal(
 /// Spawn a new child webview at the given position/size. Called from
 /// JS via `core.invoke('multiview_spawn', payload)`.
 #[tauri::command]
-pub fn multiview_spawn(app: AppHandle, req: SpawnRequest) -> Result<(), String> {
+pub fn multiview_spawn(
+    app: AppHandle,
+    caller: tauri::Webview,
+    req: SpawnRequest,
+) -> Result<(), String> {
     let parent = req.parent_window.as_deref().unwrap_or("main");
+    eprintln!(
+        "[webview_mgr] multiview_spawn caller='{}' caller_window='{}' parent='{}' label='{}' url='{}' pos=({}, {}) size=({}, {})",
+        caller.label(),
+        caller.window().label(),
+        parent,
+        req.label,
+        req.url,
+        req.x,
+        req.y,
+        req.width,
+        req.height
+    );
+    log::info!(
+        "[webview_mgr] multiview_spawn caller='{}' caller_window='{}' parent='{}' label='{}' url='{}' pos=({}, {}) size=({}, {})",
+        caller.label(),
+        caller.window().label(),
+        parent,
+        req.label,
+        req.url,
+        req.x,
+        req.y,
+        req.width,
+        req.height
+    );
+    ensure_child_webview_label(&app, &req.label, "multiview_spawn")?;
     let window = app
         .get_window(parent)
         .ok_or_else(|| format!("parent window '{}' not found", parent))?;
@@ -116,6 +189,9 @@ pub fn multiview_spawn(app: AppHandle, req: SpawnRequest) -> Result<(), String> 
 #[tauri::command]
 pub fn multiview_destroy(app: AppHandle, label: String) -> Result<(), String> {
     use tauri::Emitter;
+    eprintln!("[webview_mgr] multiview_destroy label='{}'", label);
+    log::info!("[webview_mgr] multiview_destroy label='{}'", label);
+    ensure_child_webview_label(&app, &label, "multiview_destroy")?;
     let main_window = app.get_window("main").ok_or("main window not found")?;
     if let Some(webview) = main_window.get_webview(&label) {
         webview
@@ -173,6 +249,63 @@ pub fn multiview_list(app: AppHandle) -> Vec<WebviewMeta> {
     result
 }
 
+/// Navigate an existing child webview to a new URL without destroying
+/// and recreating it. Used by the lifecycle pool fast-path: pre-warmed
+/// webviews live at a placeholder URL; on first activation they're
+/// navigated to the real URL, which is dramatically cheaper than
+/// `add_child` because the renderer process is already running.
+///
+/// Resolves the (typically relative) `url` against the main window's
+/// own URL so the navigation lands on the same origin / asset protocol
+/// the shell uses. Hardcoding `tauri://localhost/` would break on
+/// targets that serve via `http://localhost:PORT` (dev) or a custom
+/// asset protocol like `lexera-asset:` — both of which the kanban CSP
+/// explicitly allows.
+#[tauri::command]
+pub fn multiview_navigate(app: AppHandle, label: String, url: String) -> Result<(), String> {
+    eprintln!(
+        "[webview_mgr] multiview_navigate label='{}' url='{}'",
+        label,
+        url
+    );
+    log::info!(
+        "[webview_mgr] multiview_navigate label='{}' url='{}'",
+        label,
+        url
+    );
+    ensure_child_webview_label(&app, &label, "multiview_navigate")?;
+    let main_window = app.get_window("main").ok_or("main window not found")?;
+    let webview = main_window
+        .get_webview(&label)
+        .ok_or_else(|| format!("no webview with label '{}'", label))?;
+
+    // Try parsing as an absolute URL first (caller may pass a fully-
+    // qualified url). If that fails, treat the input as a path relative
+    // to the webview's CURRENT url and resolve against it. This keeps
+    // navigation on the same origin (`http://localhost:PORT` in dev,
+    // the configured asset protocol in built mode) instead of forcing
+    // a hardcoded `tauri://` scheme that the kanban's CSP doesn't allow.
+    let parsed = tauri::Url::parse(&url).or_else(|_| {
+        let base = webview
+            .url()
+            .map_err(|e| format!("get webview url for '{}': {}", label, e))?;
+        base.join(&url).map_err(|e| format!(
+            "could not resolve '{}' against webview url '{}': {}",
+            url, base, e
+        ))
+    })?;
+
+    webview
+        .navigate(parsed.clone())
+        .map_err(|e| format!("navigate failed for {}: {}", label, e))?;
+    let registry: State<WebviewRegistry> = app.state();
+    if let Some(meta) = registry.inner.write().get_mut(&label) {
+        meta.url = url.clone();
+    }
+    log::info!("[webview_mgr] navigated '{}' to '{}' (resolved: {})", label, url, parsed);
+    Ok(())
+}
+
 /// Show/hide a child webview without destroying it. Useful for
 /// inactive tabs so we can keep the webview alive (state preserved)
 /// but not visible.
@@ -182,6 +315,7 @@ pub fn multiview_set_visible(
     label: String,
     visible: bool,
 ) -> Result<(), String> {
+    ensure_child_webview_label(&app, &label, "multiview_set_visible")?;
     let main_window = app.get_window("main").ok_or("main window not found")?;
     if let Some(webview) = main_window.get_webview(&label) {
         if visible {
@@ -276,10 +410,23 @@ pub struct LogEvent {
 /// Broadcast a log entry to every webview that has subscribed to
 /// `log-message`. Called from the main kanban process whenever
 /// lexeraLog is invoked, so any open log sub-app webview sees it.
+///
+/// Filtered via SubscriptionRegistry: only webviews that called
+/// `multiview_subscribe(['log-message'])` actually wake up. This
+/// prevents the dozen-plus settings/board/calendar webviews from being
+/// woken on every log line.
 #[tauri::command]
 pub fn log_broadcast(app: AppHandle, entry: LogEvent) -> Result<(), String> {
     use tauri::Emitter;
-    let _ = app.emit("log-message", entry);
+    let reg: State<SubscriptionRegistry> = app.state();
+    let subs = subscribers_for(&reg, "log-message");
+    if subs.is_empty() {
+        let _ = app.emit("log-message", entry);
+    } else {
+        for label in subs {
+            let _ = app.emit_to(label.as_str(), "log-message", entry.clone());
+        }
+    }
     Ok(())
 }
 
@@ -666,4 +813,3 @@ mod tests {
         assert!(get_meta(&r, "missing").is_none());
     }
 }
-

@@ -240,6 +240,12 @@ fn snap_window_to_edges(window: &tauri::Window) {
 
 /// Find the window with the lowest ID. "main" is always lowest (id 0),
 /// then "kanban-1", "kanban-2", etc.
+///
+/// Currently unused after the 2026-04-26 switch to global `app.emit` for
+/// menu actions; kept available because the previous targeted-window
+/// dispatch may need to come back if the broadcast approach causes
+/// double-handling in some scenarios.
+#[allow(dead_code)]
 fn find_lowest_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
     if let Some(main_win) = app.get_webview_window("main") {
         return Some(main_win);
@@ -397,27 +403,29 @@ fn main() {
                     let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None, None, None);
                     return;
                 }
-                // Panel reveal actions go to the lowest-numbered window;
-                // all other actions go to the focused window.
-                let target = if action.starts_with("reveal-panel:") {
-                    find_lowest_window(app)
-                } else {
-                    app.webview_windows().values()
-                        .find(|w| w.is_focused().unwrap_or(false))
-                        .cloned()
-                        .or_else(|| find_lowest_window(app))
-                };
-                if let Some(window) = target {
-                    let _ = window.emit("menu-action", action);
-                }
+                // Multiview architecture: in Tauri 2, `WebviewWindow::emit`
+                // only delivers to the webview attached to that window —
+                // NOT the child webviews added via `Window::add_child`.
+                // Since our SHELL webview is the one attached to the
+                // "main" WebviewWindow, panel reveals targeting just the
+                // window WOULD reach it. But focused-window targeting is
+                // brittle when child webviews steal focus, and globalish
+                // actions like layout commands need to land on the SHELL
+                // regardless. Use `app.emit` (broadcast) so every webview
+                // gets the action and decides locally whether to handle
+                // it. The shell handles panel reveals; embedded boards
+                // handle their own actions; panel-only webviews ignore
+                // shell-management actions in handleBoardAction.
+                let _ = app.emit("menu-action", action);
+                log::debug!("[main] menu-action emitted globally: {}", action);
             }
         })
         .manage(export_commands::MarpWatchState::new())
         .manage::<ipc_client::SharedIpcClient>(std::sync::Arc::new(ipc_client::IpcClientState::new()))
         .manage::<ipc_streams::SharedStreamRegistry>(std::sync::Arc::new(ipc_streams::StreamRegistry::new()))
-        // Multi-webview migration scaffolding (Stage 2). Registered
-        // and callable from JS but currently UNUSED by the iframe-
-        // based shell. See TODOs-lexera-multiview.md.
+        // Active multiview runtime state for child-webview hosting in the
+        // normal desktop shell. Embedded mode and frontend auto-run tests
+        // still keep explicit iframe fallbacks.
         .manage(webview_mgr::WebviewRegistry::default())
         .manage(webview_mgr::FocusTracker::default())
         .manage(webview_mgr::SubscriptionRegistry::default())
@@ -473,11 +481,13 @@ fn main() {
             export_commands::get_marp_engine_path,
             export_commands::get_file_mtime_ms,
             export_commands::read_file_as_data_uri,
-            // Multi-webview scaffolding (Stage 2/3 — used by demo + log view)
+            // Multi-webview runtime commands used by board hosting,
+            // utility views, modal windows, and smoke-test tooling.
             webview_mgr::multiview_spawn,
             webview_mgr::multiview_destroy,
             webview_mgr::multiview_set_geometry,
             webview_mgr::multiview_list,
+            webview_mgr::multiview_navigate,
             webview_mgr::log_broadcast,
             webview_mgr::multiview_broadcast,
             webview_mgr::multiview_emit_to,

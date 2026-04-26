@@ -298,11 +298,12 @@ Not yet fully implemented:
 
 The next structural work should happen in this order:
 
-1. Split `workspaceShell.js` into layout, hosting, routing, and panel modules.
-2. Split `multiviewClient.js` into transport primitives and higher-level shell services.
-3. Extract a dedicated board sub-app boundary so the board is no longer "legacy app loaded in embedded mode".
-4. Migrate drag/drop to the Rust drag coordinator and remove iframe-era assumptions.
-5. Move tests away from iframe-only inspection so multiview becomes test-native.
+1. Extract a dedicated board sub-app boundary so the board is no longer "legacy app loaded in embedded mode". The current `layoutTree.js` / `boardHost.js` extraction work is useful only insofar as it makes that seam explicit.
+2. Introduce slot-based layout as the source of truth so geometry and visibility updates are diffed from state instead of inferred from placeholder DOM.
+3. Continue splitting `workspaceShell.js` into layout, hosting, routing, and panel modules around that cleaner board boundary.
+4. Split `multiviewClient.js` into transport primitives and higher-level shell services.
+5. Migrate drag/drop to the Rust drag coordinator and remove iframe-era assumptions.
+6. Move tests away from iframe-only inspection so multiview becomes test-native.
 
 ## Short architectural summary
 

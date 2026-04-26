@@ -1,0 +1,69 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg-primary, #1e1e1e);
+  color: var(--text-primary, #d4d4d4);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stub-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #333);
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--bg-secondary, #252525);
+}
+
+.stub-body {
+  padding: 16px;
+  color: var(--text-muted, #888);
+}
+
+.stub-body p {
+  margin: 0 0 8px 0;
+}
+
+.stub-kind {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background: var(--bg-secondary, #2a2a2a);
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--text-primary, #d4d4d4);
+}
+
+.stub-section-title {
+  margin: 16px 0 4px 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #888);
+}
+
+.stub-list {
+  margin: 0 0 8px 0;
+  padding-left: 18px;
+  color: var(--text-primary, #d4d4d4);
+}
+
+.stub-list li {
+  margin: 2px 0;
+}
+
+.stub-status {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stub-status.pending {
+  background: color-mix(in srgb, var(--accent, #d97706) 30%, transparent);
+  color: var(--accent, #fbbf24);
+}

@@ -1,0 +1,456 @@
+import { describe, expect, it } from 'vitest';
+import { loadIIFE } from './load-iife.js';
+
+const layoutTree = loadIIFE('workspace/layoutTree.js', 'window.LexeraLayoutTree', {
+  window: {}
+});
+
+function tabsetNode(id, tabs, activeTabId) {
+  return {
+    type: 'tabs',
+    id: id,
+    tabs: tabs,
+    activeTabId: activeTabId == null ? (tabs[0] && tabs[0].id) || '' : activeTabId
+  };
+}
+
+function splitNode(id, axis, first, second, ratio) {
+  return {
+    type: 'split',
+    id: id,
+    axis: axis,
+    ratio: ratio == null ? 0.5 : ratio,
+    first: first,
+    second: second
+  };
+}
+
+describe('LexeraLayoutTree.normalizeViewKind', () => {
+  it('normalizes canvas and kanban inputs', () => {
+    expect(layoutTree.normalizeViewKind('canvas')).toBe('canvas');
+    expect(layoutTree.normalizeViewKind('CANVAS')).toBe('canvas');
+    expect(layoutTree.normalizeViewKind(' kanban ')).toBe('kanban');
+  });
+
+  it('falls back to default for unknown or empty values', () => {
+    expect(layoutTree.normalizeViewKind('')).toBe('default');
+    expect(layoutTree.normalizeViewKind(null)).toBe('default');
+    expect(layoutTree.normalizeViewKind(undefined)).toBe('default');
+    expect(layoutTree.normalizeViewKind('mystery')).toBe('default');
+  });
+});
+
+describe('LexeraLayoutTree.isPanelTab / isBoardTab', () => {
+  it('classifies panel tabs', () => {
+    expect(layoutTree.isPanelTab({ kind: 'panel' })).toBe(true);
+    expect(layoutTree.isPanelTab({ kind: 'board' })).toBe(false);
+    expect(layoutTree.isPanelTab(null)).toBe(false);
+  });
+
+  it('treats anything non-panel as a board tab', () => {
+    expect(layoutTree.isBoardTab({ kind: 'board' })).toBe(true);
+    expect(layoutTree.isBoardTab({ kind: 'panel' })).toBe(false);
+    expect(layoutTree.isBoardTab({})).toBe(true);
+    expect(layoutTree.isBoardTab(null)).toBe(false);
+  });
+});
+
+describe('LexeraLayoutTree.visitTree', () => {
+  it('visits each node once with parent and side context', () => {
+    const leafA = tabsetNode('A', [{ id: 't1' }]);
+    const leafB = tabsetNode('B', [{ id: 't2' }]);
+    const root = splitNode('S', 'horizontal', leafA, leafB);
+    const visits = [];
+    layoutTree.visitTree(root, (node, parent, side) => {
+      visits.push({ id: node.id, parent: parent && parent.id, side });
+    });
+    expect(visits).toEqual([
+      { id: 'S', parent: null, side: '' },
+      { id: 'A', parent: 'S', side: 'first' },
+      { id: 'B', parent: 'S', side: 'second' }
+    ]);
+  });
+
+  it('is a no-op for null/undefined input', () => {
+    const visits = [];
+    layoutTree.visitTree(null, (node) => visits.push(node.id));
+    expect(visits).toEqual([]);
+  });
+});
+
+describe('LexeraLayoutTree.getFirstLeaf', () => {
+  it('returns the first leaf of a nested split tree', () => {
+    const leafA = tabsetNode('A', [{ id: 't1' }]);
+    const leafB = tabsetNode('B', [{ id: 't2' }]);
+    const inner = splitNode('S2', 'vertical', leafA, leafB);
+    const root = splitNode('S1', 'horizontal', inner, tabsetNode('C', []));
+    expect(layoutTree.getFirstLeaf(root)).toBe(leafA);
+  });
+
+  it('returns null for empty input', () => {
+    expect(layoutTree.getFirstLeaf(null)).toBe(null);
+  });
+});
+
+describe('LexeraLayoutTree.findLeafById', () => {
+  it('finds a leaf by id within a nested tree', () => {
+    const leafA = tabsetNode('A', []);
+    const leafB = tabsetNode('B', []);
+    const root = splitNode('S', 'horizontal', leafA, leafB);
+    expect(layoutTree.findLeafById(root, 'B')).toBe(leafB);
+  });
+
+  it('returns null when the id is not present', () => {
+    const leafA = tabsetNode('A', []);
+    expect(layoutTree.findLeafById(leafA, 'missing')).toBe(null);
+  });
+});
+
+describe('LexeraLayoutTree.findNodeAndParent', () => {
+  it('finds the parent split and side for a leaf', () => {
+    const leafA = tabsetNode('A', []);
+    const leafB = tabsetNode('B', []);
+    const root = splitNode('S', 'horizontal', leafA, leafB);
+    const result = layoutTree.findNodeAndParent(root, 'B');
+    expect(result.node).toBe(leafB);
+    expect(result.parent).toBe(root);
+    expect(result.side).toBe('second');
+  });
+
+  it('returns null parent for the root node', () => {
+    const root = tabsetNode('A', []);
+    const result = layoutTree.findNodeAndParent(root, 'A');
+    expect(result.node).toBe(root);
+    expect(result.parent).toBe(null);
+    expect(result.side).toBe('');
+  });
+});
+
+describe('LexeraLayoutTree.findTab', () => {
+  it('locates a tab and reports its containing leaf and index', () => {
+    const tabAlpha = { id: 'alpha' };
+    const tabBeta = { id: 'beta' };
+    const leaf = tabsetNode('A', [tabAlpha, tabBeta]);
+    const result = layoutTree.findTab(leaf, 'beta');
+    expect(result.tab).toBe(tabBeta);
+    expect(result.leaf).toBe(leaf);
+    expect(result.index).toBe(1);
+  });
+
+  it('returns null when the tab id is unknown', () => {
+    const leaf = tabsetNode('A', [{ id: 'alpha' }]);
+    expect(layoutTree.findTab(leaf, 'missing')).toBe(null);
+  });
+});
+
+describe('LexeraLayoutTree.findClosestSplitParent', () => {
+  it('returns the immediate split parent for a target leaf', () => {
+    const leafA = tabsetNode('A', []);
+    const leafB = tabsetNode('B', []);
+    const inner = splitNode('S-inner', 'vertical', leafA, leafB);
+    const root = splitNode('S-root', 'horizontal', inner, tabsetNode('C', []));
+    expect(layoutTree.findClosestSplitParent(root, 'B', null)).toBe(inner);
+  });
+
+  it('returns the supplied parent when the root itself is the target leaf', () => {
+    const root = tabsetNode('A', []);
+    const sentinel = { id: 'sentinel' };
+    expect(layoutTree.findClosestSplitParent(root, 'A', sentinel)).toBe(sentinel);
+  });
+
+  it('returns null when no leaf matches', () => {
+    const leafA = tabsetNode('A', []);
+    const leafB = tabsetNode('B', []);
+    const root = splitNode('S', 'horizontal', leafA, leafB);
+    expect(layoutTree.findClosestSplitParent(root, 'missing', null)).toBe(null);
+  });
+});
+
+describe('LexeraLayoutTree.countTreeTabs', () => {
+  it('sums tab counts across all leaves', () => {
+    const leafA = tabsetNode('A', [{ id: 't1' }, { id: 't2' }]);
+    const leafB = tabsetNode('B', [{ id: 't3' }]);
+    const root = splitNode('S', 'horizontal', leafA, leafB);
+    expect(layoutTree.countTreeTabs(root)).toBe(3);
+  });
+
+  it('returns 0 for null input', () => {
+    expect(layoutTree.countTreeTabs(null)).toBe(0);
+  });
+});
+
+describe('LexeraLayoutTree.createIdFactory', () => {
+  it('returns a function that produces unique prefixed ids within one factory', () => {
+    const factory = layoutTree.createIdFactory();
+    const a = factory('pane');
+    const b = factory('pane');
+    const c = factory('split');
+    expect(a).toMatch(/^pane-/);
+    expect(b).toMatch(/^pane-/);
+    expect(c).toMatch(/^split-/);
+    expect(a).not.toBe(b);
+  });
+});
+
+describe('LexeraLayoutTree.createTabsetNode / createSplitNode', () => {
+  it('builds a tabset with the first tab active by default', () => {
+    let counter = 0;
+    const idFactory = (prefix) => `${prefix}-${++counter}`;
+    const node = layoutTree.createTabsetNode([{ id: 'a' }, { id: 'b' }], idFactory);
+    expect(node).toEqual({
+      type: 'tabs',
+      id: 'pane-1',
+      tabs: [{ id: 'a' }, { id: 'b' }],
+      activeTabId: 'a'
+    });
+  });
+
+  it('builds an empty tabset with empty activeTabId', () => {
+    const idFactory = () => 'pane-x';
+    const node = layoutTree.createTabsetNode(null, idFactory);
+    expect(node.tabs).toEqual([]);
+    expect(node.activeTabId).toBe('');
+  });
+
+  it('builds a split with clamped ratio and normalized axis', () => {
+    let counter = 0;
+    const idFactory = (prefix) => `${prefix}-${++counter}`;
+    const split = layoutTree.createSplitNode('vertical', { type: 'tabs' }, { type: 'tabs' }, 0.7, idFactory);
+    expect(split.axis).toBe('vertical');
+    expect(split.ratio).toBe(0.7);
+    expect(split.id).toBe('split-1');
+  });
+
+  it('clamps ratio to [0.18, 0.82]', () => {
+    const idFactory = () => 'split-x';
+    const lo = layoutTree.createSplitNode('vertical', null, null, 0.05, idFactory);
+    const hi = layoutTree.createSplitNode('vertical', null, null, 0.99, idFactory);
+    const dflt = layoutTree.createSplitNode('vertical', null, null, 'not-a-number', idFactory);
+    expect(lo.ratio).toBe(0.18);
+    expect(hi.ratio).toBe(0.82);
+    expect(dflt.ratio).toBe(0.5);
+  });
+
+  it('falls back to vertical axis for unknown values', () => {
+    const idFactory = () => 'split-x';
+    const split = layoutTree.createSplitNode('weird', null, null, 0.5, idFactory);
+    expect(split.axis).toBe('vertical');
+  });
+});
+
+describe('LexeraLayoutTree.withNormalizedLeaves', () => {
+  it('keeps an existing active tab id if still present', () => {
+    const idFactory = () => 'pane-x';
+    const node = { type: 'tabs', id: 'A', tabs: [{ id: 't1' }, { id: 't2' }], activeTabId: 't2' };
+    const result = layoutTree.withNormalizedLeaves(node, false, idFactory);
+    expect(result.activeTabId).toBe('t2');
+  });
+
+  it('snaps activeTabId to the first tab if missing', () => {
+    const idFactory = () => 'pane-x';
+    const node = { type: 'tabs', id: 'A', tabs: [{ id: 't1' }, { id: 't2' }], activeTabId: 'gone' };
+    layoutTree.withNormalizedLeaves(node, false, idFactory);
+    expect(node.activeTabId).toBe('t1');
+  });
+
+  it('returns an empty tabset when the root is missing', () => {
+    let counter = 0;
+    const idFactory = (prefix) => `${prefix}-${++counter}`;
+    const result = layoutTree.withNormalizedLeaves(null, true, idFactory);
+    expect(result.type).toBe('tabs');
+    expect(result.tabs).toEqual([]);
+  });
+
+  it('collapses a split with both children empty into an empty root', () => {
+    let counter = 0;
+    const idFactory = (prefix) => `${prefix}-${++counter}`;
+    const split = {
+      type: 'split',
+      id: 'S',
+      axis: 'vertical',
+      ratio: 0.5,
+      first: { type: 'tabs', id: 'A', tabs: [], activeTabId: '' },
+      second: { type: 'tabs', id: 'B', tabs: [], activeTabId: '' }
+    };
+    const result = layoutTree.withNormalizedLeaves(split, true, idFactory);
+    expect(result.type).toBe('tabs');
+    expect(result.tabs).toEqual([]);
+  });
+
+  it('promotes the surviving child when one side is empty', () => {
+    const idFactory = () => 'pane-x';
+    const survivor = { type: 'tabs', id: 'B', tabs: [{ id: 't1' }], activeTabId: 't1' };
+    const split = {
+      type: 'split',
+      id: 'S',
+      axis: 'vertical',
+      ratio: 0.5,
+      first: { type: 'tabs', id: 'A', tabs: [], activeTabId: '' },
+      second: survivor
+    };
+    const result = layoutTree.withNormalizedLeaves(split, false, idFactory);
+    expect(result).toBe(survivor);
+  });
+});
+
+describe('LexeraLayoutTree.findLeafContainingBoard / findAnyLeafContainingBoard', () => {
+  function boardTab(boardId, viewKind) {
+    return { id: `tab-${boardId}-${viewKind}`, kind: 'board', boardId, viewKind };
+  }
+
+  it('finds a board tab by viewKind', () => {
+    const tabKanban = boardTab('alpha', 'kanban');
+    const tabCanvas = boardTab('alpha', 'canvas');
+    const leaf = tabsetNode('A', [tabKanban, tabCanvas]);
+    const result = layoutTree.findLeafContainingBoard(leaf, 'alpha', 'canvas');
+    expect(result.tab).toBe(tabCanvas);
+    expect(result.leaf).toBe(leaf);
+  });
+
+  it('returns null when the viewKind does not match', () => {
+    const leaf = tabsetNode('A', [boardTab('alpha', 'kanban')]);
+    expect(layoutTree.findLeafContainingBoard(leaf, 'alpha', 'canvas')).toBe(null);
+  });
+
+  it('finds any tab for the board regardless of viewKind', () => {
+    const tabCanvas = boardTab('alpha', 'canvas');
+    const leaf = tabsetNode('A', [tabCanvas]);
+    const result = layoutTree.findAnyLeafContainingBoard(leaf, 'alpha');
+    expect(result.tab).toBe(tabCanvas);
+  });
+
+  it('ignores panel tabs', () => {
+    const panelTab = { id: 't1', kind: 'panel', panelId: 'logs' };
+    const leaf = tabsetNode('A', [panelTab]);
+    expect(layoutTree.findAnyLeafContainingBoard(leaf, 'alpha')).toBe(null);
+  });
+});
+
+describe('LexeraLayoutTree.createBoardTab / createPanelTab', () => {
+  it('builds a board tab with normalized viewKind', () => {
+    let counter = 0;
+    const idFactory = (prefix) => `${prefix}-${++counter}`;
+    const tab = layoutTree.createBoardTab('alpha', 'CANVAS', idFactory);
+    expect(tab).toEqual({
+      id: 'tab-1',
+      kind: 'board',
+      boardId: 'alpha',
+      viewKind: 'canvas'
+    });
+  });
+
+  it('falls back to default viewKind for unknown values', () => {
+    const idFactory = () => 'tab-x';
+    const tab = layoutTree.createBoardTab('alpha', 'mystery', idFactory);
+    expect(tab.viewKind).toBe('default');
+  });
+
+  it('coerces missing boardId to empty string', () => {
+    const idFactory = () => 'tab-x';
+    const tab = layoutTree.createBoardTab(null, 'kanban', idFactory);
+    expect(tab.boardId).toBe('');
+  });
+
+  it('builds a panel tab with stringified panelId', () => {
+    const idFactory = () => 'tab-x';
+    const tab = layoutTree.createPanelTab('logs', idFactory);
+    expect(tab).toEqual({ id: 'tab-x', kind: 'panel', panelId: 'logs' });
+  });
+
+  it('coerces missing panelId to empty string', () => {
+    const idFactory = () => 'tab-x';
+    const tab = layoutTree.createPanelTab(null, idFactory);
+    expect(tab.panelId).toBe('');
+  });
+});
+
+describe('LexeraLayoutTree.migratePanelDocksToSideDocks', () => {
+  function makeIdFactory() {
+    let counter = 0;
+    return (prefix) => `${prefix}-${++counter}`;
+  }
+
+  it('returns null docks when input is empty', () => {
+    const result = layoutTree.migratePanelDocksToSideDocks(
+      { left: [], right: [], bottom: [] },
+      {},
+      makeIdFactory()
+    );
+    expect(result).toEqual({ left: null, right: null, bottom: null });
+  });
+
+  it('builds a single tabset for a single group', () => {
+    const result = layoutTree.migratePanelDocksToSideDocks(
+      { left: [['hierarchy', 'dashboard']], right: [], bottom: [] },
+      {},
+      makeIdFactory()
+    );
+    expect(result.left.type).toBe('tabs');
+    expect(result.left.tabs.map((t) => t.panelId)).toEqual(['hierarchy', 'dashboard']);
+    expect(result.right).toBe(null);
+    expect(result.bottom).toBe(null);
+  });
+
+  it('selects the active tab when panelGroupActives names a member', () => {
+    const result = layoutTree.migratePanelDocksToSideDocks(
+      { left: [['hierarchy', 'dashboard']], right: [], bottom: [] },
+      { 'hierarchy,dashboard': 'dashboard' },
+      makeIdFactory()
+    );
+    const active = result.left.tabs.find((t) => t.id === result.left.activeTabId);
+    expect(active.panelId).toBe('dashboard');
+  });
+
+  it('builds a vertical split when a side dock has multiple groups', () => {
+    const result = layoutTree.migratePanelDocksToSideDocks(
+      { left: [['hierarchy'], ['dashboard']], right: [], bottom: [] },
+      {},
+      makeIdFactory()
+    );
+    expect(result.left.type).toBe('split');
+    expect(result.left.axis).toBe('vertical');
+  });
+
+  it('builds a horizontal split for the bottom dock with multiple groups', () => {
+    const result = layoutTree.migratePanelDocksToSideDocks(
+      { left: [], right: [], bottom: [['logs'], ['monthCalendar']] },
+      {},
+      makeIdFactory()
+    );
+    expect(result.bottom.type).toBe('split');
+    expect(result.bottom.axis).toBe('horizontal');
+  });
+});
+
+describe('LexeraLayoutTree.findLeafContainingPanel', () => {
+  function panelTab(panelId) {
+    return { id: `tab-${panelId}`, kind: 'panel', panelId };
+  }
+  const identity = (value) => String(value || '');
+
+  it('finds a panel tab using the resolver', () => {
+    const tabLogs = panelTab('logs');
+    const leaf = tabsetNode('A', [tabLogs]);
+    const result = layoutTree.findLeafContainingPanel(leaf, 'logs', identity);
+    expect(result.tab).toBe(tabLogs);
+    expect(result.leaf).toBe(leaf);
+  });
+
+  it('returns null when the resolver yields an empty target', () => {
+    const leaf = tabsetNode('A', [panelTab('logs')]);
+    expect(layoutTree.findLeafContainingPanel(leaf, '', identity)).toBe(null);
+  });
+
+  it('respects a resolver that aliases panel ids', () => {
+    const tabLogs = panelTab('logs-2');
+    const leaf = tabsetNode('A', [tabLogs]);
+    const aliasResolver = (value) => (value === 'logs-2' || value === 'logs') ? 'logs' : '';
+    const result = layoutTree.findLeafContainingPanel(leaf, 'logs', aliasResolver);
+    expect(result.tab).toBe(tabLogs);
+  });
+
+  it('ignores board tabs', () => {
+    const leaf = tabsetNode('A', [{ id: 't', kind: 'board', boardId: 'alpha', viewKind: 'kanban' }]);
+    expect(layoutTree.findLeafContainingPanel(leaf, 'logs', identity)).toBe(null);
+  });
+});

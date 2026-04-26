@@ -24,6 +24,7 @@ var LexeraDashboard = (function () {
     _rt.defineState('liveSyncState', null);
     _rt.defineState('boardPresenceCache', {});
     _rt.defineState('workspaceShellEnabled', false);
+    _rt.defineState('workspaceShellBoardHostEnabled', false);
   }
 
   // Local variables — kept for backwards compat with code that reads them directly.
@@ -470,7 +471,15 @@ var LexeraDashboard = (function () {
   var embeddedWorkspaceShellParent = embeddedMode && urlParams.get('workspaceShellParent') === '1';
   var WorkspaceShell = window.LexeraWorkspaceShell || null;
   var workspaceShellEnabled = !embeddedMode && !!(WorkspaceShell && typeof WorkspaceShell.isEnabled === 'function' && WorkspaceShell.isEnabled());
-  if (_rt) _rt.setState('workspaceShellEnabled', workspaceShellEnabled);
+  var workspaceShellBoardHostEnabled = !embeddedMode && !!(WorkspaceShell && (
+    typeof WorkspaceShell.canHostBoardTabs === 'function'
+      ? WorkspaceShell.canHostBoardTabs()
+      : workspaceShellEnabled
+  ));
+  if (_rt) {
+    _rt.setState('workspaceShellEnabled', workspaceShellEnabled);
+    _rt.setState('workspaceShellBoardHostEnabled', workspaceShellBoardHostEnabled);
+  }
   var SidebarResize = window.LexeraSidebarResize;
   var sidebarSplitRatio = Settings ? Settings.get('sidebarSplitRatio') : parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
   var sidebarWidth = Settings ? Settings.get('sidebarWidth') : (parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0);
@@ -1341,6 +1350,29 @@ var LexeraDashboard = (function () {
     }, '*');
     return true;
   }
+  function requestWorkspaceShellBoardOpen(boardId, options) {
+    var targetBoardId = String(boardId || '').trim();
+    if (!targetBoardId || !workspaceShellEnabled || workspaceShellBoardHostEnabled || !WorkspaceShell) return false;
+    var multiview = typeof window !== 'undefined' ? window.LexeraMultiview : null;
+    if (!multiview || typeof multiview.invoke !== 'function') return false;
+    var targetLabel = typeof WorkspaceShell.getHostWindowLabel === 'function'
+      ? String(WorkspaceShell.getHostWindowLabel() || 'main')
+      : typeof WorkspaceShell.getWindowLabel === 'function'
+      ? String(WorkspaceShell.getWindowLabel() || 'main')
+      : 'main';
+    multiview.invoke('multiview_emit_to', {
+      target: targetLabel,
+      event: 'multiview-navigate',
+      payload: {
+        type: 'open-board',
+        boardId: targetBoardId,
+        options: options || {}
+      }
+    }).catch(function (err) {
+      logFrontendIssue('warn', 'multiview.navigate', 'Failed to route board-open request to workspace shell host', err);
+    });
+    return true;
+  }
   async function openDashboardSearch(query, options) {
     options = options || {};
     var value = String(query || '').trim();
@@ -1747,6 +1779,17 @@ var LexeraDashboard = (function () {
       // Native OS menu bar actions
       tauriListen('menu-action', function (event) {
         var action = event.payload;
+        // Diagnostic: trace menu actions arriving at this webview so we
+        // can tell which one(s) the OS menu is reaching when panel
+        // toggles aren't working. Each child webview also runs this
+        // file, so panel-only / embedded webviews will log too — the
+        // line tells us which webview each event lands in.
+        try {
+          if (typeof window.lexeraLog === 'function') {
+            var loc = window.location && window.location.search ? window.location.search : '';
+            window.lexeraLog('debug', '[app] menu-action="' + action + '" at webview' + loc);
+          }
+        } catch (_) {}
         if (action) handleBoardAction(action);
       });
       // Sync initial check states to native menu
@@ -2545,6 +2588,7 @@ var LexeraDashboard = (function () {
     get searchMode() { return searchMode; },
     get isEditing() { return isEditing; },
     get workspaceShellEnabled() { return workspaceShellEnabled; },
+    get workspaceShellBoardHostEnabled() { return workspaceShellBoardHostEnabled; },
     get embeddedMode() { return embeddedMode; },
     get embeddedPreferredBoardId() { return embeddedPreferredBoardId; },
     get urlParams() { return urlParams; },
@@ -2866,13 +2910,17 @@ var LexeraDashboard = (function () {
   async function selectBoard(boardId, options) {
     options = options || {};
     if (!boardId) return;
+    var boardOpenOptions = {
+      duplicate: !!options.duplicate,
+      preferExisting: options.preferExisting !== false,
+      viewKind: options.viewKind || 'default'
+    };
     if (workspaceShellEnabled && WorkspaceShell && !options.forceLocalBoardLoad) {
-      WorkspaceShell.openBoard(boardId, {
-        duplicate: !!options.duplicate,
-        preferExisting: options.preferExisting !== false,
-        viewKind: options.viewKind || 'default'
-      });
-      return;
+      if (workspaceShellBoardHostEnabled && typeof WorkspaceShell.openBoard === 'function') {
+        WorkspaceShell.openBoard(boardId, boardOpenOptions);
+        return;
+      }
+      if (requestWorkspaceShellBoardOpen(boardId, boardOpenOptions)) return;
     }
     // Save unsaved changes before switching away from the current board
     if (activeBoardId && activeBoardId !== boardId && isBoardDirty()) {

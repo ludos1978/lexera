@@ -161,7 +161,7 @@ function createShellHarness() {
   window.document = document;
   const mainContent = createElement('main');
   body.appendChild(mainContent);
-  const shell = loadIIFE('workspace/workspaceShell.js', 'window.LexeraWorkspaceShell', {
+  const shell = loadIIFE(['workspace/layoutTree.js', 'workspace/boardHost.js', 'workspace/panelHost.js', 'workspace/workspaceShell.js'], 'window.LexeraWorkspaceShell', {
     window,
     document,
     console: { log() {}, warn() {}, error() {}, info() {} },
