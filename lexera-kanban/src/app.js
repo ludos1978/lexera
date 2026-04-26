@@ -101,6 +101,7 @@ var LexeraDashboard = (function () {
     if (viewWorkspaceId === nextWorkspaceId) return;
     viewWorkspaceId = nextWorkspaceId;
     syncRuntimeState('viewWorkspaceId', viewWorkspaceId);
+    syncWorkspaceShellCatalogSnapshot();
   }
 
   function setWorkspaceViewModeState(nextMode) {
@@ -108,6 +109,7 @@ var LexeraDashboard = (function () {
     if (workspaceViewMode === normalizedMode) return;
     workspaceViewMode = normalizedMode;
     syncRuntimeState('workspaceViewMode', workspaceViewMode);
+    syncWorkspaceShellCatalogSnapshot();
   }
 
   function setActiveBoardDataState(nextBoardData) {
@@ -133,10 +135,25 @@ var LexeraDashboard = (function () {
 
   function syncWorkspaceShellCatalogSnapshot() {
     if (embeddedMode || !workspaceShellEnabled || !WorkspaceShell || typeof WorkspaceShell.onCatalogUpdated !== 'function') return;
+    function resolveWorkspaceSnapshot(workspaceId) {
+      var normalized = workspaceId || ALL_WORKSPACES_ID;
+      if (!normalized || normalized === ALL_WORKSPACES_ID) return null;
+      for (var i = 0; i < workspaces.length; i++) {
+        var workspace = workspaces[i];
+        if (!workspace || workspace.id !== normalized) continue;
+        return Object.assign({}, workspace);
+      }
+      return null;
+    }
     WorkspaceShell.onCatalogUpdated({
       boards: boards,
       remoteBoards: remoteBoards,
-      workspaces: workspaces
+      workspaces: workspaces,
+      activeWorkspaceId: activeWorkspaceId || ALL_WORKSPACES_ID,
+      activeWorkspace: resolveWorkspaceSnapshot(activeWorkspaceId),
+      viewWorkspaceId: viewWorkspaceId || ALL_WORKSPACES_ID,
+      viewWorkspace: resolveWorkspaceSnapshot(viewWorkspaceId),
+      workspaceViewMode: workspaceViewMode
     });
   }
 
@@ -178,6 +195,7 @@ var LexeraDashboard = (function () {
     if (OrderHelpers && typeof OrderHelpers.refreshDashboardTagsFromBackend === 'function') {
       OrderHelpers.refreshDashboardTagsFromBackend();
     }
+    syncWorkspaceShellCatalogSnapshot();
   }
   var BoardSettingRegistry = window.LexeraBoardSettingRegistry;
   var MenuContributorRegistry = window.LexeraMenuContributorRegistry;

@@ -6,35 +6,35 @@
 //  - tail recent log events to verify the broadcaster pipe works
 //  - destroy individual webviews (cleanup after testing)
 //
-// Subscribes to:
-//  - 'log-message' (global broadcast from log_broadcast Rust command)
-//
-// Calls:
-//  - multiview_list  (poll for current child webview registry state)
-//  - multiview_destroy (per-row cleanup button)
+// The shared LexeraSubApp runtime owns theme inheritance, scoped log
+// subscription, focus reporting, health, and panel lifecycle
+// handshakes. This file only owns inspector-specific polling and
+// controls.
 
 (function () {
   'use strict';
 
-  function tauri() {
-    if (typeof window === 'undefined' || !window.__TAURI__) return null;
-    return window.__TAURI__;
-  }
-  function invoke(cmd, args) {
-    var t = tauri();
-    if (!t || !t.core) return Promise.reject(new Error('no Tauri'));
-    return t.core.invoke(cmd, args || {});
-  }
-  function getCurrentWebview() {
-    try { return tauri().webview.getCurrentWebview(); }
-    catch (_) { return null; }
-  }
+  var subApp = window.LexeraSubApp || null;
 
   var procInfoEl = document.getElementById('proc-info');
   var webviewTbody = document.getElementById('webview-tbody');
   var webviewCountEl = document.getElementById('webview-count');
   var logTailEl = document.getElementById('log-tail');
   var fpsEl = document.getElementById('fps');
+
+  function invoke(cmd, args) {
+    if (subApp && typeof subApp.invoke === 'function') {
+      return subApp.invoke(cmd, args || {});
+    }
+    return Promise.reject(new Error('no Tauri context'));
+  }
+
+  function getCurrentWebview() {
+    if (subApp && typeof subApp.getCurrentWebview === 'function') {
+      return subApp.getCurrentWebview();
+    }
+    return null;
+  }
 
   function renderRow(label, value) {
     var tr = document.createElement('tr');
@@ -61,6 +61,7 @@
   // Webview list — polling at 1Hz
   var lastList = [];
   var lastHealth = {};
+  var refreshTimerId = null;
   function refreshWebviewList() {
     Promise.all([
       invoke('multiview_list'),
@@ -114,8 +115,11 @@
       invoke('multiview_destroy', { label: label }).then(refreshWebviewList);
     }
   });
-  refreshWebviewList();
-  setInterval(refreshWebviewList, 1000);
+  function startWebviewPolling() {
+    if (refreshTimerId) return;
+    refreshWebviewList();
+    refreshTimerId = setInterval(refreshWebviewList, 1000);
+  }
 
   // Log tail — subscribe to global 'log-message' broadcasts
   var logEntries = [];
@@ -141,30 +145,26 @@
     });
     if (nearBottom) logTailEl.scrollTop = logTailEl.scrollHeight;
   }
-  if (wv && typeof wv.listen === 'function') {
-    wv.listen('log-message', function (event) {
-      if (event && event.payload) appendLog(event.payload);
+
+  function showRuntimeError(err) {
+    webviewCountEl.textContent = '';
+    webviewTbody.innerHTML = '<tr><td colspan="7">' + escapeHtml(String(err)) + '</td></tr>';
+    var dot = document.querySelector('.lexera-mv-status-dot');
+    if (dot) dot.setAttribute('data-health', 'red');
+  }
+
+  if (subApp && typeof subApp.init === 'function') {
+    subApp.init({
+      onLog: appendLog,
+      onReady: function () {
+        startWebviewPolling();
+      },
+      onError: function (err) {
+        showRuntimeError(err);
+      }
     });
-    // Theme bridge
-    wv.listen('theme-snapshot', function (event) {
-      if (!event || !event.payload || !event.payload.palette) return;
-      var root = document.documentElement;
-      var p = event.payload.palette;
-      Object.keys(p).forEach(function (k) { root.style.setProperty(k, p[k]); });
-      if (event.payload.color_scheme) root.style.colorScheme = event.payload.color_scheme;
-    });
-    try {
-      invoke('multiview_broadcast', { event: 'theme-request', payload: {} }).catch(function () {});
-    } catch (_) {}
-    // Report health + update local dot
-    try {
-      invoke('multiview_set_health', { label: wv.label, state: 'green' }).catch(function () {});
-      var dot = document.querySelector('.lexera-mv-status-dot');
-      if (dot) dot.setAttribute('data-health', 'green');
-    } catch (_) {}
   } else {
-    var dot2 = document.querySelector('.lexera-mv-status-dot');
-    if (dot2) dot2.setAttribute('data-health', 'red');
+    showRuntimeError('no Tauri context');
   }
 
   // FPS

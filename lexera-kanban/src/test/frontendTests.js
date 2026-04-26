@@ -7717,11 +7717,11 @@
   }
 
   function copyResults() {
-    var scope = getCopyScope();
+    var scope = arguments.length > 0 && arguments[0] ? String(arguments[0]) : getCopyScope();
     var text = buildCopiedResultsText(scope);
     var btn = findPanelRoot() && findPanelRoot().querySelector('.lexera-shared-test-copy');
     setCopyButtonFeedback(btn, 'Copying...', 'Copying results...', 1200);
-    writeClipboardText(text).then(function () {
+    return writeClipboardText(text).then(function () {
       setCopyButtonFeedback(btn, scope === 'errors' || scope === 'errors-with-logs' ? 'Errors Copied' : 'Copied', 'Copied to clipboard', 3000);
     }).catch(function () {
       setCopyButtonFeedback(btn, 'Copy Failed', 'Clipboard copy failed', 3000);
@@ -8087,18 +8087,20 @@
   }
 
   function clearResults() {
-    var root = findPanelRoot(); if (!root) return;
     if (isRunActive()) return; // don't clear mid-run
-    var rows = root.querySelectorAll('.test-row');
-    for (var i = 0; i < rows.length; i++) {
-      var ind = rows[i].querySelector('.test-indicator');
-      if (ind) { ind.className = 'test-indicator'; ind.textContent = ''; }
-      var dur = rows[i].querySelector('.test-duration');
-      if (dur) { dur.textContent = ''; dur.style.color = 'var(--text-muted)'; dur.title = ''; }
-      var err = rows[i].nextElementSibling;
-      if (err && err.classList && err.classList.contains('test-error')) {
-        err.textContent = '';
-        err.style.display = 'none';
+    var root = findPanelRoot();
+    if (root) {
+      var rows = root.querySelectorAll('.test-row');
+      for (var i = 0; i < rows.length; i++) {
+        var ind = rows[i].querySelector('.test-indicator');
+        if (ind) { ind.className = 'test-indicator'; ind.textContent = ''; }
+        var dur = rows[i].querySelector('.test-duration');
+        if (dur) { dur.textContent = ''; dur.style.color = 'var(--text-muted)'; dur.title = ''; }
+        var err = rows[i].nextElementSibling;
+        if (err && err.classList && err.classList.contains('test-error')) {
+          err.textContent = '';
+          err.style.display = 'none';
+        }
       }
     }
     lastResults = [];
@@ -8133,6 +8135,95 @@
 
   function updateSummary(p, f, t) {
     setSummaryText(p + ' passed, ' + f + ' failed / ' + t, f > 0 ? 'var(--error)' : 'var(--success)');
+  }
+
+  function getCurrentTestName() {
+    var idx = _runState && typeof _runState.currentIndex === 'number' ? _runState.currentIndex : -1;
+    return idx >= 0 && tests[idx] ? tests[idx].name : '';
+  }
+
+  function getActiveBoardIdSnapshot() {
+    try {
+      var currentApi = api();
+      return currentApi && typeof currentApi.getActiveBoardId === 'function'
+        ? String(currentApi.getActiveBoardId() || '')
+        : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function buildCategorySnapshot() {
+    var resultByName = Object.create(null);
+    for (var i = 0; i < lastResults.length; i++) {
+      var entry = lastResults[i];
+      if (!entry || !entry.name) continue;
+      resultByName[entry.name] = entry;
+    }
+    return buildCategoryGroups().map(function (group) {
+      var completed = 0;
+      var passed = 0;
+      var failed = 0;
+      for (var gi = 0; gi < group.testIndices.length; gi++) {
+        var testIndex = group.testIndices[gi];
+        var testDef = tests[testIndex];
+        if (!testDef) continue;
+        var result = resultByName[testDef.name];
+        if (!result) continue;
+        completed++;
+        if (result.passed) passed++;
+        else failed++;
+      }
+      return {
+        name: group.name,
+        total: group.testIndices.length,
+        completed: completed,
+        passed: passed,
+        failed: failed
+      };
+    });
+  }
+
+  function getStateSnapshot() {
+    var passed = 0;
+    var failed = 0;
+    for (var i = 0; i < lastResults.length; i++) {
+      if (lastResults[i] && lastResults[i].passed) passed++;
+      else if (lastResults[i]) failed++;
+    }
+    var completed = passed + failed;
+    return {
+      totalTests: tests.length,
+      activeBoardId: getActiveBoardIdSnapshot(),
+      runState: {
+        active: !!(_runState && _runState.active),
+        cancelRequested: !!(_runState && _runState.cancelRequested),
+        currentIndex: _runState && typeof _runState.currentIndex === 'number' ? _runState.currentIndex : -1,
+        total: _runState && typeof _runState.total === 'number' ? _runState.total : 0,
+        phase: _runState && _runState.phase ? String(_runState.phase) : 'idle',
+        autoRun: !!(_runState && _runState.autoRun),
+        currentTestName: getCurrentTestName()
+      },
+      summary: {
+        total: tests.length,
+        completed: completed,
+        passed: passed,
+        failed: failed,
+        remaining: Math.max(0, tests.length - completed)
+      },
+      categories: buildCategorySnapshot(),
+      results: lastResults.map(function (entry) {
+        return {
+          name: entry.name,
+          passed: !!entry.passed,
+          error: entry.error || '',
+          durationMs: typeof entry.durationMs === 'number' ? entry.durationMs : null,
+          setupMs: typeof entry.setupMs === 'number' ? entry.setupMs : null,
+          bodyMs: typeof entry.bodyMs === 'number' ? entry.bodyMs : null,
+          teardownMs: typeof entry.teardownMs === 'number' ? entry.teardownMs : null
+        };
+      })
+    };
   }
 
   function _nowMs() {
@@ -8498,6 +8589,9 @@
       }
       console.error('Category not found: ' + name);
     },
+    getStateSnapshot: function () { return getStateSnapshot(); },
+    buildResults: function (scope) { return buildCopiedResultsText(scope || 'all'); },
+    copyResults: function (scope) { return copyResults(scope || 'all'); },
     stop: function () { requestStopRun(); },
     continueUndo: function () { continueManualUndo(); },
     showPanel: function () { populateTestList(); },
@@ -8505,8 +8599,7 @@
     // Exposed for Rust-side auto-run eval to poll completion + get results
     _runState: _runState,
     _currentTestName: function () {
-      var idx = _runState && typeof _runState.currentIndex === 'number' ? _runState.currentIndex : -1;
-      return idx >= 0 && tests[idx] ? tests[idx].name : '';
+      return getCurrentTestName();
     },
     _buildResults: function () { return buildCopiedResultsText('all'); }
   };

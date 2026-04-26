@@ -1,14 +1,8 @@
-// Log view sub-app — runs in its own Tauri child webview.
+// Log view sub-app — converged onto the shared LexeraSubApp runtime.
 //
-// Subscribes to the global 'log-message' event broadcast by the
-// main kanban via the Rust `log_broadcast` command. Each lexeraLog
-// call in the main webview reaches here as an event delivery.
-//
-// CRITICAL: scoped to this webview via getCurrentWebview().listen().
-// The global @tauri-apps/api/event listen() defaults to Any target
-// and would receive events emitted_to other webviews — NOT what we
-// want. Global broadcasts (app.emit) DO reach scoped listeners
-// because their target is "all".
+// The runtime owns theme inheritance, scoped event subscriptions,
+// focus reporting, health, and panel lifecycle handshakes. This file
+// only owns log-specific rendering/filtering behavior.
 
 (function () {
   'use strict';
@@ -104,43 +98,19 @@
     rerender();
   });
 
-  // Subscribe to log-message events from the Rust broadcaster.
-  function getCurrentWebview() {
-    try { return window.__TAURI__.webview.getCurrentWebview(); }
-    catch (_) { return null; }
-  }
-  var wv = getCurrentWebview();
-  if (wv && typeof wv.listen === 'function') {
-    wv.listen('log-message', function (event) {
-      if (event && event.payload) appendOne(event.payload);
+  if (window.LexeraSubApp && typeof window.LexeraSubApp.init === 'function') {
+    window.LexeraSubApp.init({
+      onLog: appendOne,
+      onReady: function () {
+        statusEl.textContent = 'connected';
+      },
+      onError: function (err) {
+        statusEl.textContent = String(err);
+        var dot = document.querySelector('.lexera-mv-status-dot');
+        if (dot) dot.setAttribute('data-health', 'red');
+      }
     });
-    // Theme bridge — apply received palette + request initial snapshot
-    wv.listen('theme-snapshot', function (event) {
-      if (!event || !event.payload || !event.payload.palette) return;
-      var root = document.documentElement;
-      var p = event.payload.palette;
-      Object.keys(p).forEach(function (k) { root.style.setProperty(k, p[k]); });
-      if (event.payload.color_scheme) root.style.colorScheme = event.payload.color_scheme;
-    });
-    // Ask the main webview to broadcast its theme now that we're listening
-    try {
-      window.__TAURI__.core.invoke('multiview_broadcast', {
-        event: 'theme-request',
-        payload: {}
-      }).catch(function () {});
-    } catch (_) {}
-    statusEl.textContent = 'connected';
-    // Report health 'green' (we're connected) and update local dot
-    try {
-      window.__TAURI__.core.invoke('multiview_set_health', {
-        label: wv.label, state: 'green'
-      }).catch(function () {});
-      var dot = document.querySelector('.lexera-mv-status-dot');
-      if (dot) dot.setAttribute('data-health', 'green');
-    } catch (_) {}
   } else {
     statusEl.textContent = 'no Tauri context';
-    var dot2 = document.querySelector('.lexera-mv-status-dot');
-    if (dot2) dot2.setAttribute('data-health', 'red');
   }
 })();

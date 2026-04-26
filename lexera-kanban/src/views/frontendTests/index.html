@@ -3,17 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <title>Frontend Tests</title>
-  <link rel="stylesheet" href="../_shared/stub.css">
+  <link rel="stylesheet" href="frontendTests.css">
 </head>
 <body>
-  <header class="stub-header">Frontend Tests <span class="stub-status pending">stub</span></header>
-  <main class="stub-body">
-    <p>In-app test runner for the frontend test suite (8000+ lines of integration tests).</p>
-    <p class="stub-section-title">When ported, this panel will:</p>
-    <ul class="stub-list"><li>Board picker + filter for selecting which tests to run</li><li>Run All / Stop / Clear buttons with live result indicators</li><li>Pause-after-Do mode for inspecting test snapshots</li><li>Copy results in multiple formats (all / errors / errors+logs)</li><li>Per-category expand/collapse and category-level run buttons</li></ul>
-    <p>Right-click → Inspect on this content opens DevTools scoped to this webview only — proving the multiview hosting works.</p>
+  <header class="header">
+    <span class="title">Frontend Tests</span>
+    <span class="status" id="status">connecting</span>
+  </header>
+  <main class="body">
+    <section class="summary-panel">
+      <div class="summary-line" id="summary">Waiting for runner state…</div>
+      <div class="summary-meta">
+        <span id="progress">No run in progress</span>
+        <span id="active-board">Board: none</span>
+      </div>
+    </section>
+
+    <section class="controls">
+      <button class="panel-btn primary" id="run-all" type="button">Run All</button>
+      <button class="panel-btn" id="stop" type="button">Stop</button>
+      <button class="panel-btn" id="clear" type="button">Clear</button>
+      <select class="panel-select" id="copy-scope">
+        <option value="all">Copy All</option>
+        <option value="errors">Copy Errors</option>
+        <option value="errors-with-logs">Copy Errors + Logs</option>
+      </select>
+      <button class="panel-btn" id="copy" type="button">Copy</button>
+      <button class="panel-btn" id="refresh" type="button">Refresh</button>
+    </section>
+
+    <section>
+      <h3>Categories</h3>
+      <div class="category-list" id="categories"></div>
+    </section>
+
+    <section>
+      <h3>Recent Results</h3>
+      <div class="results-list" id="results"></div>
+    </section>
   </main>
+
   <script src="../_shared/subAppRuntime.js"></script>
-  <script>(function () { 'use strict'; LexeraSubApp.init({}); })();</script>
+  <script src="frontendTests.js"></script>
 </body>
 </html>

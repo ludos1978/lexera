@@ -21,9 +21,14 @@
 //  - LexeraSubApp.navigate(payload) helper to send navigation requests
 //  - LexeraSubApp.broadcast(event, payload) for ad-hoc broadcasts
 //  - LexeraSubApp.invoke(cmd, args) for direct IPC
+//  - LexeraSubApp.getPanelInstanceId() / getPanelKind() / getPaneId()
+//    for panel-webview identity without shell DOM lookups
 
 (function () {
   'use strict';
+
+  var panelTeardownInstalled = false;
+  var currentPanelLifecycle = null;
 
   function tauri() {
     if (typeof window === 'undefined' || !window.__TAURI__) return null;
@@ -46,9 +51,53 @@
     if (snap.color_scheme) root.style.colorScheme = snap.color_scheme;
   }
 
+  function getUrlParams() {
+    try {
+      return new URLSearchParams((window.location && window.location.search) || '');
+    } catch (_) {
+      return new URLSearchParams('');
+    }
+  }
+
+  function getQueryParam(name) {
+    if (!name) return '';
+    return String(getUrlParams().get(String(name)) || '');
+  }
+
+  function getWindowLabel() {
+    return getQueryParam('windowLabel') || 'main';
+  }
+
+  function getHostWindowLabel() {
+    return getQueryParam('workspaceShellHostLabel') || getWindowLabel();
+  }
+
+  function getPanelKind() {
+    return getQueryParam('panelKind');
+  }
+
+  function getPanelInstanceId() {
+    return getQueryParam('panel');
+  }
+
+  function getPaneId() {
+    return getQueryParam('pane');
+  }
+
+  function getContext() {
+    return {
+      panelKind: getPanelKind(),
+      panelInstanceId: getPanelInstanceId(),
+      paneId: getPaneId(),
+      windowLabel: getWindowLabel(),
+      hostWindowLabel: getHostWindowLabel()
+    };
+  }
+
   function init(opts) {
     opts = opts || {};
     var wv = getCurrentWebview();
+    var ctx = getContext();
     if (!wv || typeof wv.listen !== 'function') {
       if (typeof opts.onError === 'function') opts.onError(new Error('no Tauri context'));
       return;
@@ -190,8 +239,56 @@
     // can react (e.g., log panel shows when a sub-app connects).
     invoke('multiview_broadcast', {
       event: 'sub-app-mounted',
-      payload: { label: wv.label, at: Date.now() }
+      payload: {
+        label: wv.label,
+        at: Date.now(),
+        paneId: ctx.paneId,
+        panelKind: ctx.panelKind,
+        panelInstanceId: ctx.panelInstanceId,
+        windowLabel: ctx.windowLabel,
+        hostWindowLabel: ctx.hostWindowLabel
+      }
     }).catch(function () {});
+    if (ctx.panelKind) {
+      currentPanelLifecycle = {
+        label: wv.label,
+        paneId: ctx.paneId,
+        panelKind: ctx.panelKind,
+        panelInstanceId: ctx.panelInstanceId,
+        windowLabel: ctx.windowLabel,
+        hostWindowLabel: ctx.hostWindowLabel
+      };
+      invoke('multiview_broadcast', {
+        event: 'panel-ready',
+        payload: {
+          label: wv.label,
+          at: Date.now(),
+          paneId: ctx.paneId,
+          panelKind: ctx.panelKind,
+          panelInstanceId: ctx.panelInstanceId,
+          windowLabel: ctx.windowLabel,
+          hostWindowLabel: ctx.hostWindowLabel
+        }
+      }).catch(function () {});
+      if (!panelTeardownInstalled) {
+        panelTeardownInstalled = true;
+        window.addEventListener('beforeunload', function () {
+          if (!currentPanelLifecycle) return;
+          invoke('multiview_broadcast', {
+            event: 'panel-teardown',
+            payload: {
+              label: currentPanelLifecycle.label,
+              at: Date.now(),
+              paneId: currentPanelLifecycle.paneId,
+              panelKind: currentPanelLifecycle.panelKind,
+              panelInstanceId: currentPanelLifecycle.panelInstanceId,
+              windowLabel: currentPanelLifecycle.windowLabel,
+              hostWindowLabel: currentPanelLifecycle.hostWindowLabel
+            }
+          }).catch(function () {});
+        });
+      }
+    }
 
     // Report health AND inject a visible status dot into the
     // sub-app's own header so the view shows its own state
@@ -275,6 +372,13 @@
     navigate: navigate,
     broadcast: broadcast,
     invoke: invoke,
+    getQueryParam: getQueryParam,
+    getContext: getContext,
+    getPanelKind: getPanelKind,
+    getPanelInstanceId: getPanelInstanceId,
+    getPaneId: getPaneId,
+    getWindowLabel: getWindowLabel,
+    getHostWindowLabel: getHostWindowLabel,
     getCurrentWebview: getCurrentWebview,
     applyThemeSnapshot: applyThemeSnapshot
   };

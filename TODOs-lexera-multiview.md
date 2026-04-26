@@ -23,7 +23,7 @@ Every view that the user can dock as a tab — board tabs **and** panel tabs (hi
 
 **Current gap (2026-04-25):**
 
-Board tabs **and** dock-hosted panel tabs now satisfy the hosting rule. The remaining gap is feature completeness and legacy cleanup, not shell-DOM hosting: several panel sub-apps are still partial (`hierarchy` rich tree deferred, `frontendTests` still a stub), and legacy modules still read `LexeraSharedPanels` roots or `lexera-shared-panel-created` even though the workspace shell no longer uses that registry to render panels.
+Board tabs **and** dock-hosted panel tabs now satisfy the hosting rule. The remaining gap is feature completeness and legacy cleanup, not shell-DOM hosting: several panel sub-apps are still partial (`hierarchy` rich tree deferred, `frontendTests` now a shell-bridged control surface rather than a full in-view port), and legacy modules still read `LexeraSharedPanels` roots or `lexera-shared-panel-created` even though the workspace shell no longer uses that registry to render panels.
 
 The floating helper views exposed by `LexeraMultiview.openLogView()` / `openInspector()` / `openWorkspaces()` / `openDashboard()` still duplicate some surfaces outside the dock-hosted path. That is acceptable as dev tooling, but the authoritative user-facing implementation remains the dock-hosted child-webview path.
 
@@ -45,7 +45,7 @@ The floating helper views exposed by `LexeraMultiview.openLogView()` / `openInsp
 - The drag coordinator and ghost window exist, but production board drag/drop still primarily uses the legacy board drag system.
 - Event subscriptions are filtered in Rust, but batching and scale-tuning are still unfinished.
 - The board runs in child webviews today, but it is still the legacy embedded board app rather than a clean `views/board/` sub-app.
-- Several panel sub-apps are still only partial ports: `hierarchy` is minimal and `frontendTests` is still a stub.
+- Several panel sub-apps are still only partial ports: `hierarchy` is minimal and `frontendTests` is a child-webview control surface over the legacy shell runner, not yet a self-contained runner implementation.
 - Legacy `LexeraSharedPanels` consumers still exist in non-workspace modules and need explicit retirement so panel discovery and hydration no longer depend on shell-DOM-era hooks.
 
 ### Deliberate fallbacks still in use
@@ -319,7 +319,8 @@ The first refactor priority from `MULTIVIEW_ARCHITECTURE.md` is being executed i
 - [x] **navigationBridge** *(2026-04-26)* — extracted to [`src/shell/navigationBridge.js`](lexera-kanban/src/shell/navigationBridge.js). Exposes `window.LexeraNavigationBridge` with `install`/`installWith(runtime)` plus the three handlers `handleNavigate`, `handleShortcut`, `handleFocusChanged`, and the `SHORTCUT_ACTIONS` map. `multiviewClient.js` keeps a 7-line `installNavigationHandler` wrapper so the boot path is unchanged. `installWith(runtime)` is a test seam — pass any object with `event.listen` and the bridge attaches the three listeners. 16 unit tests cover routing, missing-shell tolerance, lifecycle.touch, board-tab pane synthesis, and the shortcut launchers.
 - [x] **embeddedBoardBridge** *(2026-04-26)* — extracted to [`src/shell/embeddedBoardBridge.js`](lexera-kanban/src/shell/embeddedBoardBridge.js). Exposes `window.LexeraEmbeddedBoardBridge` with `isEmbeddedKanban()`, `install({ getCurrentWebview, invoke, handleRequest })`, `shortcutForKeydownEvent(event)`, and `MV_SHORTCUTS`. Tauri-runtime accessors are dependency-injected so the bridge is self-contained; `multiviewClient.js` keeps a thin `installEmbeddedBoardBridge()` wrapper that passes the runtime helpers in. The bridge installs the catalog/board-action/layout-drag/focus-hierarchy/dispatch-action/delegate-mutation listeners, the focus + health reporters, the `build-context-menu` request handler, the embedded-fill CSS, and the Cmd/Ctrl+Alt keyboard-shortcut forwarder. 14 unit tests cover URL detection, shortcut mapping, and `install` precondition guards.
 - [x] **lifecycle** *(2026-04-26)* — extracted to [`src/shell/lifecycle.js`](lexera-kanban/src/shell/lifecycle.js). Exposes `window.LexeraLifecycle` with a `create({ spawn, destroy, setGeometry, navigateWebview, listWebviews, locationSearch?, config? })` factory and a `defaultConfig(searchString)` helper. Transport primitives are dependency-injected — the lifecycle file has zero Tauri imports. `multiviewClient.js` lazily creates one instance via `lifecycle()` and exposes a thin forwarder under `LexeraMultiview.lifecycle.{configure, status, spawn, touch, evictOldestIfOverCap, refillPool}` so the public API and DevTools surface are unchanged. The boot path's pre-warm decision now reads `lc.status().config.poolSize` instead of the closure-private `lifecycleConfig`. 16 unit tests cover defaults, URL overrides, freshness tracking, cold-spawn return shape, eviction (under-cap no-op, oldest-by-freshness selection, pinned/pool exclusion), refill (pool=0 no-op, deficit fill, pool-full no-op), and configure.
-- Result: `multiviewClient.js` 1473 → **841 lines** (632 lines moved out across 6 bridges); `themeBridge.js` 128 + `catalogBridge.js` 157 + `panelLaunchers.js` (untracked) + `navigationBridge.js` 141 + `embeddedBoardBridge.js` 215 + `lifecycle.js` 182. **All 6 sub-slices DONE**.
+- [x] **requestBridge (bonus extraction, 2026-04-26)** — extracted to [`src/shell/requestBridge.js`](lexera-kanban/src/shell/requestBridge.js). The cross-webview request/response IPC pattern (`request(target, event, payload, timeoutMs)` + `handleRequest(event, handler)`) lives in its own factory. Tauri-runtime + `invoke` are injected via `create({ tauri, invoke })`. `multiviewClient.js` keeps thin `request`/`handleRequest` forwarders so callers (e.g., `embeddedBoardBridge.handleRequest('build-context-menu', ...)`) are unchanged. 13 unit tests cover correlation-id matching, mismatched-corr filtering, timeouts, error broadcasts, sync/async handlers, and emit-fail propagation.
+- Result: `multiviewClient.js` 1473 → **793 lines** (680 lines moved out across 7 bridges); `themeBridge.js` 128 + `catalogBridge.js` 157 + `panelLaunchers.js` (untracked) + `navigationBridge.js` 141 + `embeddedBoardBridge.js` 215 + `lifecycle.js` 182 + `requestBridge.js` 101. **All planned sub-slices done plus the bonus request bridge**.
 
 ### 6. Migrate production drag/drop onto the Rust drag coordinator
 
@@ -412,14 +413,14 @@ Slice plan:
 |---|---|
 | `logs` | ✅ functional — existing `src/views/log/` extraction, log entries render live |
 | `dashboard` | ✅ functional — existing `src/views/dashboard/` extraction, full metrics + nav |
-| `hierarchy` | 🟢 minimal-but-working — `src/views/hierarchy/` shows active workspace title + flat board/workspace lists with click-to-navigate. Active-board highlight works. **Rich tree (stacks/columns/cards, drag/drop, expand/collapse, inline rename, context menus) deferred** to a future slice — porting requires moving substantial portions of the 3204-line `src/board/boardList.js`. |
+| `hierarchy` | 🟢 minimal-but-working — `src/views/hierarchy/` shows the current workspace title, flat board/workspace lists, active-row highlighting, board click-to-open, and workspace click-to-focus via the multiview navigation bridge. **Rich tree (stacks/columns/cards, drag/drop, expand/collapse, inline rename, context menus) deferred** to a future slice — porting requires moving substantial portions of the 3204-line `src/board/boardList.js`. |
 | `frontendSettings` | ✅ functional — full skeleton rendered inside `src/views/frontendSettings/`, including per-mode control bindings and tag-group chips. Persists to `localStorage`, uses the shared `LexeraControlsSettings` + `ContextMenuBuilders` modules inside the sub-app, and still broadcasts `frontend-setting-changed` for live-apply on the board side. |
 | `backendSettings` | 🟢 full ManagementUI mounted — loads `api.js` + `management.js` inside the sub-app, calls `ManagementUI.init({ ui: getUiPreset('backendSettings'), api: backendAdapter })`. Backend REST calls flow through `LexeraApi`. |
 | `files` | 🟢 full ManagementUI mounted — same as `backendSettings` but uses `ManagementUI.mount('files', ...)` to invoke the workspace-files preset. |
 | `renderApps` | 🟢 full skeleton + `LexeraRenderAppsSettings.init(panel)` — application paths, Marp plugin section, themes refresh, test/save buttons. Auto-discovers via `LexeraApi`. |
 | `weekCalendar` | ✅ functional — real week grid + task list, fetches tasks directly from the backend `/calendar/tasks` endpoint via `LexeraApi.getCalendarTasks()`. Refreshes on `management-board-mutation` events and on a 30-second poll. |
 | `monthCalendar` | ✅ functional — same fetch path as weekCalendar, renders a 6-week month grid with per-day task counters. |
-| `frontendTests` | 🟧 descriptive stub — kind-specific title and feature list. Hydration is the biggest of all the kinds — the test runner code in `src/test/frontendTests.js` is 8805 lines and assumes shell-context globals. Significant adapter work needed. |
+| `frontendTests` | 🟡 functional control surface — `src/views/frontendTests/` now provides Run All / Stop / Clear / Copy controls, category-level run/clear actions, and live state/results via a multiview bridge to the legacy `window.LexeraFrontendTests` runner in the shell. Full self-contained port is still deferred because the runner code in `src/test/frontendTests.js` is 8805 lines and still assumes shell-context globals. |
 
 **Per-kind hydration plan:**
 
@@ -499,10 +500,10 @@ Each remaining kind requires a `src/views/<dir>/` sub-app that is **feature-equi
 
 Cross-cutting tasks for Workstream P:
 
-- [ ] Update `views/_shared/subAppRuntime.js` so `LexeraSubApp.init()` exposes the `?panel=<instanceId>` URL parameter as `LexeraSubApp.getPanelInstanceId()`.
+- [x] Update `views/_shared/subAppRuntime.js` so `LexeraSubApp.init()` exposes the `?panel=<instanceId>` URL parameter as `LexeraSubApp.getPanelInstanceId()`. *(2026-04-26 — also added `getPanelKind()`, `getPaneId()`, `getWindowLabel()`, `getHostWindowLabel()`, and `getContext()` so panel sub-apps can identify themselves without shell-DOM lookups.)*
 - [ ] Extend `LexeraBoardHost` (or introduce `LexeraPanelHost`) so panel webviews participate in the same lifecycle state machine as boards (pending/ready/destroying — see "Lifecycle-race fix" above). The state machine is generic over webview labels; the only difference is the URL template.
-- [ ] Add an explicit `panel-ready` / `panel-teardown` handshake so legacy modules stop inferring panel existence from DOM creation side effects.
-- [ ] Document the per-kind event contract (what each panel subscribes to) in `MULTIVIEW_ARCHITECTURE.md`.
+- [x] Add an explicit `panel-ready` / `panel-teardown` handshake so legacy modules stop inferring panel existence from DOM creation side effects. *(2026-04-26 — emitted by `LexeraSubApp.init()` / `beforeunload` with `label`, `paneId`, `panelKind`, `panelInstanceId`, `windowLabel`, and `hostWindowLabel`.)*
+- [x] Document the per-kind event contract (what each panel subscribes to) in `MULTIVIEW_ARCHITECTURE.md`. *(2026-04-26 — added current per-kind subscription table plus the shared panel-runtime metadata/handshake contract.)*
 - [ ] Tests: each migrated panel kind gets a `tests/views/<kind>/` test directory with at least URL-routing and event-subscription tests.
 - [ ] Slice 6 of the in-flight `workspaceShell.js` split (`panelRegistry.js`) is **retargeted**: it now hosts the `PANEL_WEBVIEW_KINDS` allowlist and `panelUrlForTab` helper, not in-shell panel construction.
 
@@ -825,7 +826,7 @@ Split the existing monolithic frontend into self-contained per-view sub-apps. Th
 - [ ] Move board-specific multiview boot code out of `multiviewClient.js`
 
 ### Remaining view extraction
-- [ ] Keep `log`, `inspector`, `workspaces`, and `dashboard` under `src/views/` and converge them on shared runtime patterns
+- [x] Keep `log`, `inspector`, `workspaces`, and `dashboard` under `src/views/` and converge them on shared runtime patterns *(2026-04-26 — `inspector` now boots through `LexeraSubApp`; theme, log subscription, focus, health, and lifecycle handshakes are owned by `subAppRuntime.js` across all four utility views.)*
 - [ ] Create `lexera-kanban/src/views/config/` for settings / management (currently still shell-owned)
 - [ ] Decide whether a separate `src/views/workspace/` browser is still needed beyond the existing `workspaces` sub-app
 - [ ] Move/refactor view-specific code so each child view owns its own UI and subscribes only to the events it needs
@@ -847,7 +848,7 @@ Split the existing monolithic frontend into self-contained per-view sub-apps. Th
 ### Migration order (reflecting the real bottleneck)
 - [ ] Establish the board boundary first — architecture blocker
 - [ ] Migrate Config view next — still shell-owned and z-order sensitive
-- [ ] Converge existing sub-apps (`log`, `inspector`, `workspaces`, `dashboard`) onto the shared runtime and protocol patterns
+- [x] Converge existing sub-apps (`log`, `inspector`, `workspaces`, `dashboard`) onto the shared runtime and protocol patterns *(2026-04-26 — utility views now share the same runtime contract; remaining view work is feature completeness for `hierarchy`, `frontendTests`, and the board boundary.)*
 - [ ] Decompose the board further only after the boundary is stable
 
 ### Per-view tests

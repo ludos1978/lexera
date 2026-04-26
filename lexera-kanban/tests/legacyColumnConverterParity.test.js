@@ -450,8 +450,8 @@ const FORMAT_GATE_BUDGET = {
   'src/export/exportTreeBuilder.js': 1,
   // Test harness: setup() / assertBoardIntegrity / findTwoColumnsWithCards
   // all guard on `data.rows && data.rows.length > 0` before walking the
-  // fixture. Not production code.
-  'src/test/frontendTests.js': 3,
+  // fixture. Not production code. Lowered to 2 (2026-04-26) after cleanup.
+  'src/test/frontendTests.js': 2,
 };
 
 const FLAT_COLUMN_RE = /\b(?:fullBoard|fullBoardData|boardData|board|bd)\.columns\b/g;

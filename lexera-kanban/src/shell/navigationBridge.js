@@ -7,7 +7,8 @@
   //
   // Sub-apps emit:
   //   - 'multiview-navigate' with payload { type, ... } — typically
-  //     'open-board' (boardId, options) or 'reveal-panel' (panelId).
+  //     'open-board' (boardId, options), 'focus-workspace'
+  //     (workspaceId), or 'reveal-panel' (panelId).
   //   - 'multiview-shortcut' with payload { action } — keyboard shortcut
   //     forwarded from a board webview because the embedded webview, not
   //     the shell, captured the keystroke.
@@ -31,6 +32,44 @@
 
   function shellApi() {
     return (typeof window !== 'undefined' && window.LexeraWorkspaceShell) || null;
+  }
+
+  function frontendTestsApi() {
+    return (typeof window !== 'undefined' && window.LexeraFrontendTests) || null;
+  }
+
+  function broadcastToSubApps(eventName, payload) {
+    var t = tauriRuntime();
+    if (!t || !t.core || typeof t.core.invoke !== 'function') return Promise.resolve(false);
+    return t.core.invoke('multiview_broadcast', {
+      event: String(eventName || ''),
+      payload: payload || {}
+    }).then(function () {
+      return true;
+    }).catch(function () {
+      return false;
+    });
+  }
+
+  function getFrontendTestsStatePayload() {
+    var testsApi = frontendTestsApi();
+    if (!testsApi || typeof testsApi.getStateSnapshot !== 'function') {
+      return { available: false, error: 'Frontend tests runner unavailable' };
+    }
+    try {
+      var snapshot = testsApi.getStateSnapshot();
+      snapshot.available = true;
+      return snapshot;
+    } catch (err) {
+      return {
+        available: false,
+        error: err && err.message ? err.message : String(err)
+      };
+    }
+  }
+
+  function broadcastFrontendTestsState() {
+    return broadcastToSubApps('frontend-tests-state', getFrontendTestsStatePayload());
   }
 
   var SHORTCUT_ACTIONS = {
@@ -67,6 +106,8 @@
     try {
       if (payload.type === 'open-board' && payload.boardId && typeof shell.openBoard === 'function') {
         shell.openBoard(payload.boardId, payload.options || {});
+      } else if (payload.type === 'focus-workspace' && payload.workspaceId && typeof shell.focusWorkspace === 'function') {
+        shell.focusWorkspace(payload.workspaceId);
       } else if (payload.type === 'reveal-panel' && payload.panelId && typeof shell.revealPanel === 'function') {
         shell.revealPanel(payload.panelId);
       }
@@ -81,6 +122,43 @@
     var fn = SHORTCUT_ACTIONS[action];
     if (!fn) return;
     try { fn(); } catch (err) { console.warn('[multiview-shortcut]', action, err); }
+  }
+
+  function handleFrontendTestsCommand(event) {
+    var payload = event && event.payload ? event.payload : {};
+    var action = String(payload.action || 'refresh-state');
+    var testsApi = frontendTestsApi();
+    if (!testsApi) {
+      broadcastFrontendTestsState();
+      return;
+    }
+    try {
+      var result = null;
+      if (action === 'run-all' && typeof testsApi.runAllWithUI === 'function') {
+        result = testsApi.runAllWithUI(payload.options || {});
+      } else if (action === 'run-category' && payload.category && typeof testsApi.runCategory === 'function') {
+        result = testsApi.runCategory(payload.category);
+      } else if (action === 'clear-results' && typeof testsApi.clearResults === 'function') {
+        result = testsApi.clearResults();
+      } else if (action === 'clear-category' && payload.category && typeof testsApi.clearCategory === 'function') {
+        result = testsApi.clearCategory(payload.category);
+      } else if (action === 'stop' && typeof testsApi.stop === 'function') {
+        result = testsApi.stop();
+      } else if (action === 'copy-results' && typeof testsApi.copyResults === 'function') {
+        result = testsApi.copyResults(payload.scope || 'all');
+      }
+      broadcastFrontendTestsState();
+      if (result && typeof result.then === 'function') {
+        result.then(function () {
+          broadcastFrontendTestsState();
+        }).catch(function () {
+          broadcastFrontendTestsState();
+        });
+      }
+    } catch (err) {
+      console.warn('[frontend-tests-command]', action, err);
+      broadcastFrontendTestsState();
+    }
   }
 
   // Bridge focus-changed → synthetic 'lexera-pane-activated' message for
@@ -111,6 +189,7 @@
     t.event.listen('multiview-navigate', handleNavigate);
     t.event.listen('multiview-shortcut', handleShortcut);
     t.event.listen('focus-changed', handleFocusChanged);
+    t.event.listen('frontend-tests-command', handleFrontendTestsCommand);
     return true;
   }
 
@@ -123,6 +202,7 @@
     runtime.event.listen('multiview-navigate', handleNavigate);
     runtime.event.listen('multiview-shortcut', handleShortcut);
     runtime.event.listen('focus-changed', handleFocusChanged);
+    runtime.event.listen('frontend-tests-command', handleFrontendTestsCommand);
     return true;
   }
 
@@ -132,6 +212,8 @@
     handleNavigate: handleNavigate,
     handleShortcut: handleShortcut,
     handleFocusChanged: handleFocusChanged,
+    handleFrontendTestsCommand: handleFrontendTestsCommand,
+    broadcastFrontendTestsState: broadcastFrontendTestsState,
     SHORTCUT_ACTIONS: SHORTCUT_ACTIONS
   };
 

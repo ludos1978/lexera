@@ -322,7 +322,10 @@ describe('workspace shell catalog sync', () => {
 
   it('broadcasts the latest workspace catalog to loaded board frames', () => {
     vi.useFakeTimers();
-    const { shell, mainContent } = createShellHarness();
+    const { shell, window, mainContent } = createShellHarness();
+    window.LexeraMultiview = {
+      broadcastCatalog: vi.fn()
+    };
 
     shell.mount({
       getMainContent: () => mainContent
@@ -332,8 +335,9 @@ describe('workspace shell catalog sync', () => {
     vi.advanceTimersByTime(150);
 
     const frame = findFirstElementByTag(mainContent, 'iframe');
-    expect(frame).toBeTruthy();
-    frame.contentWindow = { postMessage: vi.fn() };
+    const placeholder = findFirstElementByTag(mainContent, 'div');
+    expect(placeholder).toBeTruthy();
+    expect(frame).toBeNull();
 
     shell.onCatalogUpdated({
       boards: [{ id: 'alpha', title: 'Alpha' }],
@@ -341,12 +345,16 @@ describe('workspace shell catalog sync', () => {
       workspaces: [{ id: 'ws-1', name: 'Workspace 1' }]
     });
 
-    expect(frame.contentWindow.postMessage).toHaveBeenCalledWith({
-      type: 'lexera-workspace-catalog',
+    expect(window.LexeraMultiview.broadcastCatalog).toHaveBeenCalledWith(expect.objectContaining({
       boards: [{ id: 'alpha', title: 'Alpha' }],
       remoteBoards: [{ id: 'remote-a', title: 'Remote A' }],
-      workspaces: [{ id: 'ws-1', name: 'Workspace 1' }]
-    }, '*');
+      workspaces: [{ id: 'ws-1', name: 'Workspace 1' }],
+      activeWorkspaceId: '',
+      activeWorkspace: null,
+      viewWorkspaceId: '',
+      viewWorkspace: null,
+      workspaceViewMode: 'follow-active-board'
+    }));
   });
 });
 
@@ -540,6 +548,15 @@ describe('workspace shell board loading', () => {
 
     expect(tab).toBeTruthy();
     expect(tab.boardId).toBe('alpha');
+  });
+
+  it('focusWorkspace delegates to LexeraBoardList.focusWorkspaceView', () => {
+    const { shell, window } = createShellHarness();
+    const focusWorkspaceView = vi.fn();
+    window.LexeraBoardList = { focusWorkspaceView };
+
+    expect(shell.focusWorkspace('ws-1')).toBe(true);
+    expect(focusWorkspaceView).toHaveBeenCalledWith('ws-1');
   });
 
   it('opening the same board twice returns the existing tab', () => {

@@ -3184,6 +3184,7 @@ var LexeraBoardList = (function () {
     refreshBoardHierarchyProjection: refreshBoardHierarchyProjection,
     cardPreviewText: cardPreviewText,
     setActiveWorkspaceId: setActiveWorkspaceId,
+    focusWorkspaceView: focusWorkspaceView,
     resolveActiveWorkspaceId: resolveActiveWorkspaceId,
     resolveWorkspaceContextForBoard: resolveWorkspaceContextForBoard,
     syncWorkspaceContextForBoard: syncWorkspaceContextForBoard,

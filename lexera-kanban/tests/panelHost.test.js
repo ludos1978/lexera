@@ -76,19 +76,17 @@ describe('LexeraPanelHost.panelUrlForTab', () => {
     expect(panelHost.panelUrlForTab(tab, 'logs', '')).toBe('');
   });
 
-  it('keeps the host index.html pathname (panel-only mode)', () => {
+  it('routes logs to its dedicated sub-app entrypoint', () => {
     const tab = { id: 't1', kind: 'panel', panelId: 'logs' };
     const result = new URL(panelHost.panelUrlForTab(tab, 'logs', origin));
-    // The shell's index.html boots the kanban in panel-only mode via
-    // the `panelKind` query param. Same pathname as the host URL.
-    expect(result.pathname).toBe('/index.html');
+    expect(result.pathname).toBe('/views/log/index.html');
   });
 
-  it('triggers panel-only mode via the panelKind + panelOnly query params', () => {
+  it('keeps the panel kind identity in the query string for routing/diagnostics', () => {
     const tab = { id: 't1', kind: 'panel', panelId: 'logs' };
     const result = new URL(panelHost.panelUrlForTab(tab, 'logs', origin));
     expect(result.searchParams.get('panelKind')).toBe('logs');
-    expect(result.searchParams.get('panelOnly')).toBe('1');
+    expect(result.searchParams.has('panelOnly')).toBe(false);
   });
 
   it('carries the pane (tabId) and panel (panelInstanceId) params', () => {
@@ -127,10 +125,17 @@ describe('LexeraPanelHost.panelUrlForTab', () => {
     expect(result.searchParams.get('workspaceShellHostLabel')).toBe('main');
   });
 
-  it('preserves the host pathname for any kind (each panel is the same kanban entry)', () => {
+  it('uses the per-kind view directory for any panel kind', () => {
     const tab = { id: 't1', kind: 'panel', panelId: 'weekCalendar' };
     const result = new URL(panelHost.panelUrlForTab(tab, 'weekCalendar', origin));
-    expect(result.pathname).toBe('/index.html');
+    expect(result.pathname).toBe('/views/weekCalendar/index.html');
     expect(result.searchParams.get('panelKind')).toBe('weekCalendar');
+  });
+
+  it('honors directory overrides when kind and view directory differ', () => {
+    const tab = { id: 't1', kind: 'panel', panelId: 'logs' };
+    const result = new URL(panelHost.panelUrlForTab(tab, 'logs', origin));
+    expect(result.pathname).toBe('/views/log/index.html');
+    expect(result.pathname.includes('/views/logs/')).toBe(false);
   });
 });

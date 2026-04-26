@@ -69,35 +69,27 @@
    * relative to its inputs (locationHref is supplied by the shell from
    * window.location.href) so the function is easy to unit-test.
    *
-   * The URL points at the kanban's `index.html` with the `panelKind`
-   * query parameter — that triggers the kanban's existing panel-only-
-   * window mode, which renders the FULL legacy panel UI (rich
-   * hierarchy tree, full dashboard, full test runner, etc.) inside the
-   * webview. Same code as before; just running in its own webview /
-   * process. This gives architectural compliance (each view in its
-   * own DOM) plus exact feature parity (no per-kind reimplementation).
+   * IMPORTANT: dock-hosted panels must load their dedicated per-kind
+   * sub-app entrypoint under `src/views/<kind>/index.html`, not the
+   * shell's `index.html?panelKind=...` compatibility path. The latter
+   * boots the legacy workspace shell runtime inside the child webview
+   * and defeats the view migration entirely.
    *
    * URL params:
-   *   - `panelKind=<kind>` — triggers panel-only-window mode in the
-   *     kanban's workspaceShell IIFE.
+   *   - `panelKind=<kind>` — kind identity for diagnostics/future hooks.
    *   - `pane=<tabId>` — the dock-tab identity for routing.
    *   - `panel=<panelInstanceId>` — instance id for duplicable panels.
-   *   - `panelOnly=1` — explicit marker (currently unused by the shell
-   *     but useful for quick visual identification in DevTools).
    *
    * Returns '' if the inputs are missing required pieces.
    */
   function panelUrlForTab(tab, panelKind, locationHref) {
     if (!tab || !panelKind || !locationHref) return '';
     var sourceUrl = new URL(locationHref);
-    var url = new URL(locationHref);
-    url.search = '';
-    url.hash = '';
+    var viewDir = viewDirForKind(panelKind);
+    if (!viewDir) return '';
+    var url = new URL('views/' + viewDir + '/index.html', sourceUrl);
     applyChildWindowContext(sourceUrl, url, panelLabelForTab(tab.id));
-    // Same pathname as the shell (`index.html`); the panelKind query
-    // param flips the runtime into panel-only mode.
     url.searchParams.set('panelKind', panelKind);
-    url.searchParams.set('panelOnly', '1');
     url.searchParams.set('pane', tab.id);
     url.searchParams.set('panel', tab.panelId || panelKind);
     return url.toString();

@@ -124,8 +124,8 @@ Recommended structure per view:
 
 Implementation note:
 
-- `workspaces` and `dashboard` already follow the shared runtime pattern well.
-- `log` and `inspector` predate `LexeraSubApp` and still contain more hand-written boilerplate than ideal.
+- `workspaces`, `dashboard`, `log`, and `inspector` now follow the shared runtime pattern.
+- The remaining view gaps are feature completeness (`hierarchy`, `frontendTests`) and the explicit board-entry boundary, not utility-view bootstrap drift.
 
 ### 5. Legacy board application
 
@@ -185,6 +185,8 @@ Examples already in use:
 - `log-message`
 - `layout-drag`
 - `multiview-shortcut`
+- `panel-ready`
+- `panel-teardown`
 - `focus-changed`
 - `health-changed`
 - `multiview-destroyed`
@@ -231,11 +233,42 @@ wv.listen('drop', handler);
 
 Do not use the global event listener for targeted webview traffic, because it defaults to an any-target subscription and breaks event isolation.
 
+### Current panel-view contract
+
+For dock-hosted panel webviews, `src/views/_shared/subAppRuntime.js` is the shared contract boundary.
+
+- Identity helpers exposed on `window.LexeraSubApp`:
+  - `getPanelKind()`
+  - `getPanelInstanceId()`
+  - `getPaneId()`
+  - `getWindowLabel()`
+  - `getHostWindowLabel()`
+  - `getContext()`
+- Lifecycle handshake emitted by `LexeraSubApp.init()`:
+  - `panel-ready` with `{ label, paneId, panelKind, panelInstanceId, windowLabel, hostWindowLabel, at }`
+  - `panel-teardown` with the same payload shape on `beforeunload`
+
+Current per-kind event subscriptions:
+
+| Kind | Entry | Subscriptions |
+|---|---|---|
+| `logs` | `src/views/log/` | `log-message`, `theme-snapshot` |
+| `dashboard` | `src/views/dashboard/` | `catalog-snapshot`, `active-board-changed`, `theme-snapshot` |
+| `hierarchy` | `src/views/hierarchy/` | `catalog-snapshot`, `active-board-changed`, `theme-snapshot` |
+| `weekCalendar` | `src/views/weekCalendar/` | `theme-snapshot`, `management-board-mutation`, `calendar-tasks-update` |
+| `monthCalendar` | `src/views/monthCalendar/` | `theme-snapshot`, `management-board-mutation`, `calendar-tasks-update` |
+| `backendSettings` | `src/views/backendSettings/` | `theme-snapshot` |
+| `frontendSettings` | `src/views/frontendSettings/` | `theme-snapshot` |
+| `renderApps` | `src/views/renderApps/` | `theme-snapshot` |
+| `files` | `src/views/files/` | `theme-snapshot` |
+| `frontendTests` | `src/views/frontendTests/` | `theme-snapshot`, `frontend-tests-state` |
+
 ## Labels and ownership
 
 Current label conventions:
 
 - Board tabs: `board-tab-<tabId>`
+- Panel tabs: `panel-tab-<tabId>`
 - Utility views: `log-view`, `inspector`, `workspaces`, `dashboard`
 - Modal windows: generated unique labels such as `confirm-modal-<n>`
 - Drag ghost: `drag-ghost`

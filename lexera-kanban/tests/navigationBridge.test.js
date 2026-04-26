@@ -10,15 +10,16 @@ function freshBridge() {
 }
 
 describe('LexeraNavigationBridge.installWith', () => {
-  it('attaches three event listeners on the runtime', () => {
+  it('attaches four event listeners on the runtime', () => {
     const { bridge } = freshBridge();
     const listen = vi.fn();
     bridge.installWith({ event: { listen } });
-    expect(listen).toHaveBeenCalledTimes(3);
+    expect(listen).toHaveBeenCalledTimes(4);
     const events = listen.mock.calls.map((c) => c[0]);
     expect(events).toContain('multiview-navigate');
     expect(events).toContain('multiview-shortcut');
     expect(events).toContain('focus-changed');
+    expect(events).toContain('frontend-tests-command');
   });
 
   it('returns false when the runtime has no event.listen', () => {
@@ -44,6 +45,14 @@ describe('LexeraNavigationBridge.handleNavigate', () => {
     win.LexeraWorkspaceShell = { revealPanel };
     bridge.handleNavigate({ payload: { type: 'reveal-panel', panelId: 'logs' } });
     expect(revealPanel).toHaveBeenCalledWith('logs');
+  });
+
+  it('routes focus-workspace to LexeraWorkspaceShell.focusWorkspace', () => {
+    const { bridge, win } = freshBridge();
+    const focusWorkspace = vi.fn();
+    win.LexeraWorkspaceShell = { focusWorkspace };
+    bridge.handleNavigate({ payload: { type: 'focus-workspace', workspaceId: 'ws-1' } });
+    expect(focusWorkspace).toHaveBeenCalledWith('ws-1');
   });
 
   it('is a no-op when shell is missing', () => {
@@ -146,5 +155,60 @@ describe('LexeraNavigationBridge.handleFocusChanged', () => {
     const { bridge } = freshBridge();
     expect(() => bridge.handleFocusChanged({})).not.toThrow();
     expect(() => bridge.handleFocusChanged({ payload: {} })).not.toThrow();
+  });
+});
+
+describe('LexeraNavigationBridge.handleFrontendTestsCommand', () => {
+  it('broadcasts the current frontend-tests runner snapshot', () => {
+    const { bridge, win } = freshBridge();
+    const invoke = vi.fn(() => Promise.resolve(null));
+    const getStateSnapshot = vi.fn(() => ({
+      totalTests: 2,
+      activeBoardId: 'board-1',
+      runState: { active: false, currentTestName: '', phase: 'idle' },
+      summary: { total: 2, completed: 1, passed: 1, failed: 0, remaining: 1 },
+      categories: [{ name: 'scope: kanban', total: 2, completed: 1, passed: 1, failed: 0 }],
+      results: [{ name: 'example', passed: true, error: '', durationMs: 12 }]
+    }));
+    win.__TAURI__ = { core: { invoke } };
+    win.LexeraFrontendTests = { getStateSnapshot };
+
+    bridge.handleFrontendTestsCommand({ payload: { action: 'refresh-state' } });
+
+    expect(getStateSnapshot).toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'frontend-tests-state',
+      payload: expect.objectContaining({
+        available: true,
+        totalTests: 2,
+        activeBoardId: 'board-1'
+      })
+    });
+  });
+
+  it('routes run-all to the shell-owned frontend test runner', () => {
+    const { bridge, win } = freshBridge();
+    const invoke = vi.fn(() => Promise.resolve(null));
+    const runAllWithUI = vi.fn(() => Promise.resolve());
+    win.__TAURI__ = { core: { invoke } };
+    win.LexeraFrontendTests = {
+      runAllWithUI,
+      getStateSnapshot: () => ({
+        totalTests: 0,
+        activeBoardId: '',
+        runState: { active: true, currentTestName: 'example', phase: 'starting' },
+        summary: { total: 0, completed: 0, passed: 0, failed: 0, remaining: 0 },
+        categories: [],
+        results: []
+      })
+    };
+
+    bridge.handleFrontendTestsCommand({ payload: { action: 'run-all', options: { filter: 'kanban' } } });
+
+    expect(runAllWithUI).toHaveBeenCalledWith({ filter: 'kanban' });
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'frontend-tests-state',
+      payload: expect.objectContaining({ available: true })
+    });
   });
 });

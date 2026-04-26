@@ -26,7 +26,20 @@
   var wsCountEl = document.getElementById('ws-count');
 
   var activeBoardId = null;
-  var activeWorkspaceId = null;
+  var selectedWorkspaceId = null;
+
+  function resolveWorkspaceFromSnapshot(snap) {
+    if (!snap || typeof snap !== 'object') return null;
+    if (snap.viewWorkspace && snap.viewWorkspace.id) return snap.viewWorkspace;
+    if (snap.activeWorkspace && snap.activeWorkspace.id) return snap.activeWorkspace;
+    var preferredId = String(snap.viewWorkspaceId || snap.activeWorkspaceId || '');
+    if (!preferredId || preferredId === '__all__') return null;
+    var workspaces = Array.isArray(snap.workspaces) ? snap.workspaces : [];
+    for (var i = 0; i < workspaces.length; i++) {
+      if (workspaces[i] && workspaces[i].id === preferredId) return workspaces[i];
+    }
+    return null;
+  }
 
   function refreshActiveHighlight() {
     var items = document.querySelectorAll('li.board-item');
@@ -35,7 +48,7 @@
     }
     var wsItems = document.querySelectorAll('li.ws-item');
     for (var j = 0; j < wsItems.length; j++) {
-      wsItems[j].classList.toggle('is-active', wsItems[j].dataset.workspaceId === activeWorkspaceId);
+      wsItems[j].classList.toggle('is-active', wsItems[j].dataset.workspaceId === selectedWorkspaceId);
     }
   }
 
@@ -74,19 +87,22 @@
       li.innerHTML =
         '<span class="ws-name">' + escapeHtml(w.name || '(untitled)') + '</span>' +
         '<span class="ws-id">' + escapeHtml(w.id ? w.id.substring(0, 8) : '') + '</span>';
+      li.addEventListener('click', function () {
+        LexeraSubApp.navigate({ type: 'focus-workspace', workspaceId: w.id });
+      });
       workspacesEl.appendChild(li);
     });
   }
 
   LexeraSubApp.init({
     onCatalog: function (snap) {
-      var ws = snap.activeWorkspace;
+      var ws = resolveWorkspaceFromSnapshot(snap);
       if (ws && ws.name) {
         titleEl.textContent = ws.name;
-        activeWorkspaceId = ws.id || null;
+        selectedWorkspaceId = ws.id || null;
       } else {
         titleEl.textContent = 'All Workspaces';
-        activeWorkspaceId = null;
+        selectedWorkspaceId = null;
       }
       renderBoards(localBoardsEl, snap.boards || [], localCountEl);
       renderBoards(remoteBoardsEl, snap.remoteBoards || [], remoteCountEl);

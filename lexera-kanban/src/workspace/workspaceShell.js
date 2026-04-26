@@ -2046,6 +2046,12 @@
   // destroy + re-spawn on URL change instead of contentWindow.location.
   var multiviewSpawnedTabs = {};
   var multiviewGeometryObservers = {};
+  // Per-tab watchers that retry doSpawn() once the placeholder becomes
+  // measurable (paint-visible, > 0×0). Set up by
+  // scheduleSpawnRetryWhenMeasurable; nulled out in `fire()` after one
+  // successful retry. Without this, a placeholder that's hidden at
+  // initial render would stay "spawning…" forever.
+  var multiviewSpawnRetryWatchers = {};
   var multiviewPendingLocalDestroyAcks = {};
 
   function multiviewLabelForTab(tabId) {
@@ -2232,6 +2238,79 @@
         window.LexeraMultiview.setGeometry([update]).catch(function () {});
       }
     }
+    // One-shot retry: when doSpawn() can't measure the placeholder yet
+    // (dock collapsed, layout hasn't settled, etc.), wait for the next
+    // visibility / resize signal then try again. Idempotent per tab —
+    // the first signal disconnects all watchers and re-enters
+    // ensureMultiviewWebview which goes back through doSpawn().
+    function scheduleSpawnRetryWhenMeasurable() {
+      if (multiviewSpawnRetryWatchers[tab.id]) return;
+      var disposers = [];
+      function fire() {
+        if (!multiviewSpawnRetryWatchers[tab.id]) return;
+        multiviewSpawnRetryWatchers[tab.id] = null;
+        for (var i = 0; i < disposers.length; i++) {
+          try { disposers[i](); } catch (_) {}
+        }
+        ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
+      }
+      multiviewSpawnRetryWatchers[tab.id] = { fire: fire, disposers: disposers };
+      if (typeof ResizeObserver !== 'undefined') {
+        var ro = new ResizeObserver(function () {
+          var rr = placeholderEl.getBoundingClientRect();
+          if (placeholderEl.isConnected && placeholderEl.offsetParent !== null &&
+              rr.width > 0 && rr.height > 0) fire();
+        });
+        try { ro.observe(placeholderEl); disposers.push(function () { ro.disconnect(); }); }
+        catch (_) {}
+      }
+      if (typeof IntersectionObserver !== 'undefined') {
+        var io = new IntersectionObserver(function (entries) {
+          for (var i = 0; i < entries.length; i++) {
+            if (entries[i].isIntersecting && entries[i].intersectionRatio > 0) { fire(); return; }
+          }
+        });
+        try { io.observe(placeholderEl); disposers.push(function () { io.disconnect(); }); }
+        catch (_) {}
+      }
+      if (typeof MutationObserver !== 'undefined' && placeholderEl.parentNode) {
+        var mo = new MutationObserver(function () {
+          var rr = placeholderEl.getBoundingClientRect();
+          if (placeholderEl.isConnected && placeholderEl.offsetParent !== null &&
+              rr.width > 0 && rr.height > 0) fire();
+        });
+        try {
+          mo.observe(placeholderEl, { attributes: true, attributeFilter: ['class', 'style'] });
+          if (placeholderEl.parentNode) {
+            mo.observe(placeholderEl.parentNode, { attributes: true, attributeFilter: ['class', 'style'] });
+          }
+          disposers.push(function () { mo.disconnect(); });
+        } catch (_) {}
+      }
+      // Fallback: poll every 500ms for up to 10s in case observers miss
+      // (e.g., display:none → display:block via ancestor; intermittent
+      // layout). 20 attempts × 500ms = 10s total, way under the
+      // circuit-breaker window.
+      var polls = 0;
+      var pollInterval = setInterval(function () {
+        polls += 1;
+        var rr = placeholderEl.getBoundingClientRect();
+        if (placeholderEl.isConnected && placeholderEl.offsetParent !== null &&
+            rr.width > 0 && rr.height > 0) {
+          clearInterval(pollInterval);
+          fire();
+        } else if (polls >= 20) {
+          clearInterval(pollInterval);
+          // Give up quietly; the next render() that re-enters
+          // ensureMultiviewWebview will re-arm via doSpawn → here.
+          multiviewSpawnRetryWatchers[tab.id] = null;
+          for (var i = 0; i < disposers.length; i++) {
+            try { disposers[i](); } catch (_) {}
+          }
+        }
+      }, 500);
+      disposers.push(function () { clearInterval(pollInterval); });
+    }
     function showSpawnErrorUi(err) {
       placeholderEl.classList.add('has-error');
       placeholderEl.classList.remove('is-loaded');
@@ -2280,6 +2359,13 @@
     function doSpawn() {
       var r = placeholderEl.getBoundingClientRect();
       if (!placeholderEl.isConnected || placeholderEl.offsetParent === null || r.width <= 0 || r.height <= 0) {
+        // Placeholder is in the DOM but not yet measurable — most often
+        // because the dock it lives in is collapsed at boot or the layout
+        // hasn't reflowed yet. Without a retry hook, doSpawn() silently
+        // never fires for that tab and the placeholder shows "spawning…"
+        // forever. Hook a one-shot watcher that re-attempts as soon as
+        // the placeholder is connected, paint-visible, and >0×0.
+        scheduleSpawnRetryWhenMeasurable();
         return;
       }
       var x = r.left;
@@ -2422,6 +2508,14 @@
       try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
       delete multiviewGeometryObservers[tabId];
     }
+    var _spawnRetry = multiviewSpawnRetryWatchers[tabId];
+    if (_spawnRetry) {
+      multiviewSpawnRetryWatchers[tabId] = null;
+      var _disposers = _spawnRetry.disposers || [];
+      for (var _ri = 0; _ri < _disposers.length; _ri++) {
+        try { _disposers[_ri](); } catch (_) {}
+      }
+    }
     boardHost.cleanupVisibilityObserver(tabId);
     // Mark destroying BEFORE the IPC so a concurrent ensure() for the
     // same tab short-circuits instead of trying to spawn on top of a
@@ -2449,6 +2543,14 @@
     if (multiviewGeometryObservers[tabId]) {
       try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
       delete multiviewGeometryObservers[tabId];
+    }
+    var _spawnRetry = multiviewSpawnRetryWatchers[tabId];
+    if (_spawnRetry) {
+      multiviewSpawnRetryWatchers[tabId] = null;
+      var _disposers = _spawnRetry.disposers || [];
+      for (var _ri = 0; _ri < _disposers.length; _ri++) {
+        try { _disposers[_ri](); } catch (_) {}
+      }
     }
     boardHost.cleanupVisibilityObserver(tabId);
     // Preserve a 'pending' entry: if a fresh spawn is in flight, this
@@ -5168,7 +5270,16 @@
     return {
       boards: Array.isArray(snapshot.boards) ? snapshot.boards.slice() : [],
       remoteBoards: Array.isArray(snapshot.remoteBoards) ? snapshot.remoteBoards.slice() : [],
-      workspaces: Array.isArray(snapshot.workspaces) ? snapshot.workspaces.slice() : []
+      workspaces: Array.isArray(snapshot.workspaces) ? snapshot.workspaces.slice() : [],
+      activeWorkspaceId: String(snapshot.activeWorkspaceId || ''),
+      activeWorkspace: snapshot.activeWorkspace && typeof snapshot.activeWorkspace === 'object'
+        ? Object.assign({}, snapshot.activeWorkspace)
+        : null,
+      viewWorkspaceId: String(snapshot.viewWorkspaceId || ''),
+      viewWorkspace: snapshot.viewWorkspace && typeof snapshot.viewWorkspace === 'object'
+        ? Object.assign({}, snapshot.viewWorkspace)
+        : null,
+      workspaceViewMode: snapshot.workspaceViewMode === 'manual' ? 'manual' : 'follow-active-board'
     };
   }
 
@@ -5180,7 +5291,12 @@
         type: 'lexera-workspace-catalog',
         boards: snapshot.boards,
         remoteBoards: snapshot.remoteBoards,
-        workspaces: snapshot.workspaces
+        workspaces: snapshot.workspaces,
+        activeWorkspaceId: snapshot.activeWorkspaceId,
+        activeWorkspace: snapshot.activeWorkspace,
+        viewWorkspaceId: snapshot.viewWorkspaceId,
+        viewWorkspace: snapshot.viewWorkspace,
+        workspaceViewMode: snapshot.workspaceViewMode
       }, '*');
       return true;
     } catch (e) {
@@ -5734,6 +5850,12 @@
     onBoardsUpdated: onBoardsUpdated,
     onCatalogUpdated: onCatalogUpdated,
     openBoard: openBoard,
+    focusWorkspace: function (workspaceId) {
+      var boardList = (typeof window !== 'undefined' && window.LexeraBoardList) || null;
+      if (!boardList || typeof boardList.focusWorkspaceView !== 'function') return false;
+      boardList.focusWorkspaceView(workspaceId);
+      return true;
+    },
     ensureInitialTab: ensureInitialTab,
     focusHierarchyTarget: focusHierarchyTarget,
     showContextMenuInBoardFrame: showContextMenuInBoardFrame,
