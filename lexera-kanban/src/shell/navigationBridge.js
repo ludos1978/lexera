@@ -136,6 +136,8 @@
       var result = null;
       if (action === 'run-all' && typeof testsApi.runAllWithUI === 'function') {
         result = testsApi.runAllWithUI(payload.options || {});
+      } else if (action === 'run-test' && payload.testName && typeof testsApi.runTest === 'function') {
+        result = testsApi.runTest(payload.testName);
       } else if (action === 'run-category' && payload.category && typeof testsApi.runCategory === 'function') {
         result = testsApi.runCategory(payload.category);
       } else if (action === 'clear-results' && typeof testsApi.clearResults === 'function') {
@@ -144,6 +146,12 @@
         result = testsApi.clearCategory(payload.category);
       } else if (action === 'stop' && typeof testsApi.stop === 'function') {
         result = testsApi.stop();
+      } else if (action === 'continue-undo' && typeof testsApi.continueUndo === 'function') {
+        result = testsApi.continueUndo();
+      } else if (action === 'set-board-selection' && typeof testsApi.setBoardSelection === 'function') {
+        result = testsApi.setBoardSelection(payload.boardId || '');
+      } else if (action === 'set-manual-inspect' && typeof testsApi.setManualInspectEnabled === 'function') {
+        result = testsApi.setManualInspectEnabled(payload.enabled === true);
       } else if (action === 'copy-results' && typeof testsApi.copyResults === 'function') {
         result = testsApi.copyResults(payload.scope || 'all');
       }

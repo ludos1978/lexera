@@ -364,6 +364,14 @@ pub fn multiview_subscribe(
     Ok(())
 }
 
+/// Debug: print a message to Tauri's stderr from JS. Used during the
+/// "duplicate spawn" investigation when console.error in the webview
+/// doesn't reach the kanban stdout. Remove after the loop is fixed.
+#[tauri::command]
+pub fn ws_debug_log(message: String) {
+    eprintln!("[ws-debug] {}", message);
+}
+
 #[tauri::command]
 pub fn multiview_unsubscribe(
     app: AppHandle,

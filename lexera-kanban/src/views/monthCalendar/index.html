@@ -3,39 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <title>Month Calendar</title>
+  <link rel="stylesheet" href="../../fonts.css">
+  <link rel="stylesheet" href="../../tokens.css">
+  <link rel="stylesheet" href="../../hierarchical.css">
+  <link rel="stylesheet" href="../../app.css">
+  <link rel="stylesheet" href="../../workspace/workspaceShell.css">
+  <link rel="stylesheet" href="../_shared/panelShellFit.css">
   <link rel="stylesheet" href="../_shared/calendar.css">
 </head>
 <body>
-  <div class="calendar-panel">
+  <div class="calendar-panel lexera-shared-panel lexera-shared-panel-month-calendar">
     <header class="calendar-panel-header">
       <span class="calendar-panel-title">Month Calendar</span>
       <div class="calendar-panel-controls">
-        <select class="calendar-scope-select lexera-shared-calendar-scope" title="Calendar scope">
-          <option value="active">Active Board</option>
-          <option value="all">All Boards</option>
-        </select>
+        <div class="workspace-select-wrap calendar-scope-wrap">
+          <select class="calendar-scope-select lexera-shared-calendar-scope" title="Calendar scope">
+            <option value="active">Active Board</option>
+            <option value="all">All Boards</option>
+          </select>
+        </div>
       </div>
     </header>
-    <main class="calendar-panel-body">
-      <div class="lexera-shared-calendar-month-view"></div>
-      <div class="lexera-shared-calendar-task-list"></div>
+    <main class="calendar-panel-body view-loading">
+      <div class="dashboard-calendar lexera-shared-calendar-month-view"></div>
+      <div class="dashboard-list lexera-shared-calendar-task-list"></div>
     </main>
   </div>
   <script src="../../api.js"></script>
   <script src="../_shared/subAppRuntime.js"></script>
   <script src="../_shared/calendarRuntime.js"></script>
-  <script>
-    (function () {
-      'use strict';
-      var panel = document.querySelector('.calendar-panel');
-      var instance = LexeraCalendarRuntime.mount(panel, { kind: 'month' });
-      var scope = panel.querySelector('.lexera-shared-calendar-scope');
-      if (scope) {
-        scope.addEventListener('change', function () {
-          instance.refresh();
-        });
-      }
-    })();
-  </script>
+  <script src="monthCalendar.js"></script>
 </body>
 </html>

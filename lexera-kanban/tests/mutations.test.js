@@ -1990,6 +1990,58 @@ describe('Card move scenarios', () => {
     expect(M.getLastPersistTargets()).toContain('sidebar');
   });
 
+  it('view-to-view same-column reorder prefers the indexed duplicate source card', async () => {
+    var board = makeBoard([
+      makeRow('row-a1', 'Row A1', [
+        makeStack('stack-a1', 'Stack A1', [
+          makeColumn('col-a1', 'Column A1', [
+            makeCard('dup-card', 'Duplicate First', { kid: 'dup-card' }),
+            makeCard('middle-card', 'Middle'),
+            makeCard('dup-card', 'Duplicate Second', { kid: 'dup-card' })
+          ])
+        ])
+      ])
+    ]);
+    M.setState(board, buildActiveBoard(M, board), 'board-a');
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 2, cardId: 'dup-card', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-a', flatColIndex: 0, insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    var col = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    expect(col.cards.map(function (c) { return c.content; })).toEqual(['Duplicate Second', 'Duplicate First', 'Middle']);
+    expect(M.getLastPersistTargets()).toContain('column');
+    expect(M.getLastPersistTargets()).toContain('sidebar');
+  });
+
+  it('view-to-view same-column reorder anchors duplicate target ids near the requested insert index', async () => {
+    var board = makeBoard([
+      makeRow('row-a1', 'Row A1', [
+        makeStack('stack-a1', 'Stack A1', [
+          makeColumn('col-a1', 'Column A1', [
+            makeCard('move-card', 'Move Me'),
+            makeCard('dup-card', 'Duplicate First', { kid: 'dup-card' }),
+            makeCard('dup-card', 'Duplicate Second', { kid: 'dup-card' })
+          ])
+        ])
+      ])
+    ]);
+    M.setState(board, buildActiveBoard(M, board), 'board-a');
+    M.resetRefreshTracking();
+
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 0, cardId: 'move-card', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-a', flatColIndex: 0, cardId: 'dup-card', before: false, insertIdx: 2, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    var col = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    expect(col.cards.map(function (c) { return c.content; })).toEqual(['Duplicate First', 'Duplicate Second', 'Move Me']);
+    expect(M.getLastPersistTargets()).toContain('column');
+    expect(M.getLastPersistTargets()).toContain('sidebar');
+  });
+
   // ── View → View (same board, cross column) ─────────────────────────────
   it('view-to-view cross-column refreshes board and sidebar', async () => {
     var setup = makeTwoBoardSetup();

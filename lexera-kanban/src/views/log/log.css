@@ -1,8 +1,16 @@
+/* Theme-respecting log view. All colors come from `tokens.css`
+ * variables so light / dark / custom themes carry through. The
+ * previous hardcoded `#16161a` etc. left this panel always-dark even
+ * when the user picked a light theme. Fallback values mirror the
+ * dark token defaults so the panel still renders if tokens.css fails
+ * to load. */
+
 html, body {
   margin: 0; padding: 0; width: 100%; height: 100%;
-  background: #16161a; color: #e8e8ec;
+  background: var(--bg-primary, #16161a);
+  color: var(--text-primary, #e8e8ec);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px; overflow: hidden;
+  font-size: var(--font-size-base, 12px); overflow: hidden;
 }
 body { display: flex; flex-direction: column; height: 100vh; }
 
@@ -10,39 +18,46 @@ body { display: flex; flex-direction: column; height: 100vh; }
   flex: 0 0 auto;
   display: flex; align-items: center; gap: 8px;
   padding: 6px 10px;
-  background: #22222a;
-  border-bottom: 1px solid #333;
+  background: var(--bg-secondary, #22222a);
+  border-bottom: 1px solid var(--border, #333);
   height: 28px;
 }
-.title { font-weight: 600; font-size: 12px; }
+.title { font-weight: 600; font-size: var(--font-size-base, 12px); }
 
 .lexera-mv-status-dot {
   display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-  background: #666; margin: 0 4px 0 0; flex: 0 0 auto;
+  background: var(--text-muted, #666); margin: 0 4px 0 0; flex: 0 0 auto;
   vertical-align: middle; transition: background .2s, box-shadow .2s;
 }
-.lexera-mv-status-dot[data-health="green"]  { background: #4caf50; box-shadow: 0 0 4px rgba(76,175,80,.55); }
-.lexera-mv-status-dot[data-health="yellow"] { background: #f5a623; box-shadow: 0 0 4px rgba(245,166,35,.55); }
-.lexera-mv-status-dot[data-health="red"]    { background: #f44336; box-shadow: 0 0 4px rgba(244,67,54,.55); }
+.lexera-mv-status-dot[data-health="green"]  { background: var(--success, #4caf50); box-shadow: 0 0 4px color-mix(in srgb, var(--success, #4caf50) 55%, transparent); }
+.lexera-mv-status-dot[data-health="yellow"] { background: var(--warning, #f5a623); box-shadow: 0 0 4px color-mix(in srgb, var(--warning, #f5a623) 55%, transparent); }
+.lexera-mv-status-dot[data-health="red"]    { background: var(--error, #f44336);   box-shadow: 0 0 4px color-mix(in srgb, var(--error, #f44336) 55%, transparent); }
 .filters {
   display: flex; gap: 4px;
 }
 .filter-chip {
   padding: 1px 6px; border-radius: 2px;
-  background: #2a2a32; color: #aaa;
-  border: 1px solid #3a3a42;
+  background: var(--bg-tertiary, #2a2a32);
+  color: var(--text-muted, #aaa);
+  border: 1px solid var(--border, #3a3a42);
   cursor: pointer; font-size: 10px;
   user-select: none;
 }
-.filter-chip.active { background: #3a4a62; color: #def; border-color: #5a6a82; }
-.filter-chip:hover { background: #2a3a4a; }
+.filter-chip.active {
+  background: color-mix(in srgb, var(--accent, #3a4a62) 35%, var(--bg-tertiary, #2a2a32));
+  color: var(--text-primary, #def);
+  border-color: var(--accent, #5a6a82);
+}
+.filter-chip:hover { background: var(--bg-hover, #2a3a4a); }
 .clear-btn {
-  padding: 2px 8px; background: #2a2a32; color: #ccc;
-  border: 1px solid #3a3a42; border-radius: 2px; cursor: pointer;
+  padding: 2px 8px;
+  background: var(--bg-tertiary, #2a2a32);
+  color: var(--text-secondary, #ccc);
+  border: 1px solid var(--border, #3a3a42); border-radius: 2px; cursor: pointer;
   font-size: 10px; font-family: inherit;
 }
-.clear-btn:hover { background: #3a3a42; }
-.status { margin-left: auto; color: #888; font-size: 10px; }
+.clear-btn:hover { background: var(--bg-hover, #3a3a42); }
+.status { margin-left: auto; color: var(--text-muted, #888); font-size: 10px; }
 
 .entries {
   flex: 1 1 auto; overflow-y: auto;
@@ -51,15 +66,15 @@ body { display: flex; flex-direction: column; height: 100vh; }
 .entry {
   display: flex; gap: 8px;
   padding: 2px 10px;
-  border-bottom: 1px solid #1d1d23;
+  border-bottom: 1px solid var(--border-subtle, #1d1d23);
   white-space: pre-wrap; word-break: break-word;
 }
-.entry:hover { background: #1c1c22; }
-.entry.level-error { color: #ff7b7b; }
-.entry.level-warn  { color: #ffc66d; }
-.entry.level-info  { color: #d0d0d4; }
-.entry.level-debug { color: #888; }
-.entry.level-trace { color: #666; }
-.timestamp { color: #555; flex: 0 0 auto; min-width: 80px; }
-.source { color: #6a8; flex: 0 0 auto; min-width: 80px; }
+.entry:hover { background: var(--bg-hover, #1c1c22); }
+.entry.level-error { color: var(--error, #ff7b7b); }
+.entry.level-warn  { color: var(--warning, #ffc66d); }
+.entry.level-info  { color: var(--text-primary, #d0d0d4); }
+.entry.level-debug { color: var(--text-muted, #888); }
+.entry.level-trace { color: var(--text-disabled, #666); }
+.timestamp { color: var(--text-disabled, #555); flex: 0 0 auto; min-width: 80px; }
+.source { color: var(--accent-muted, #6a8); flex: 0 0 auto; min-width: 80px; }
 .message { flex: 1 1 auto; }

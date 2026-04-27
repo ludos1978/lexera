@@ -96,6 +96,22 @@
 
   function init(opts) {
     opts = opts || {};
+    // Apply the same body class the legacy SHELL set so that all the
+    // `body.workspace-shell-mode .board-list { ... }` rules in app.css
+    // (and friends) take effect inside this child webview. Without
+    // this, panels render with browser defaults instead of the legacy
+    // shell look. Adding `data-shell-panel` on body too lets sub-app
+    // CSS scope rules to "I'm hosted as a panel" without parsing URLs.
+    try {
+      var bodyEl = document.body;
+      if (bodyEl) {
+        bodyEl.classList.add('workspace-shell-mode');
+        var kind = getPanelKind();
+        if (kind) bodyEl.setAttribute('data-shell-panel', kind);
+        var pane = getPaneId();
+        if (pane) bodyEl.setAttribute('data-shell-pane', pane);
+      }
+    } catch (_) {}
     var wv = getCurrentWebview();
     var ctx = getContext();
     if (!wv || typeof wv.listen !== 'function') {

@@ -211,4 +211,47 @@ describe('LexeraNavigationBridge.handleFrontendTestsCommand', () => {
       payload: expect.objectContaining({ available: true })
     });
   });
+
+  it('routes the richer panel commands to the shell-owned frontend test runner', () => {
+    const { bridge, win } = freshBridge();
+    const invoke = vi.fn(() => Promise.resolve(null));
+    const runTest = vi.fn();
+    const setBoardSelection = vi.fn();
+    const setManualInspectEnabled = vi.fn();
+    const continueUndo = vi.fn();
+    win.__TAURI__ = { core: { invoke } };
+    win.LexeraFrontendTests = {
+      runTest,
+      setBoardSelection,
+      setManualInspectEnabled,
+      continueUndo,
+      getStateSnapshot: () => ({
+        totalTests: 1,
+        activeBoardId: 'board-1',
+        selectedBoardId: 'board-1',
+        boardOptions: [{ id: 'board-1', title: 'Board 1', isRemote: false }],
+        manualInspectEnabled: false,
+        awaitingUndo: false,
+        tests: [{ index: 0, name: 'example', categories: ['scope: kanban'] }],
+        runState: { active: false, currentTestName: '', phase: 'idle' },
+        summary: { total: 1, completed: 0, passed: 0, failed: 0, remaining: 1 },
+        categories: [{ name: 'scope: kanban', total: 1, completed: 0, passed: 0, failed: 0 }],
+        results: []
+      })
+    };
+
+    bridge.handleFrontendTestsCommand({ payload: { action: 'run-test', testName: 'example' } });
+    bridge.handleFrontendTestsCommand({ payload: { action: 'set-board-selection', boardId: 'board-2' } });
+    bridge.handleFrontendTestsCommand({ payload: { action: 'set-manual-inspect', enabled: true } });
+    bridge.handleFrontendTestsCommand({ payload: { action: 'continue-undo' } });
+
+    expect(runTest).toHaveBeenCalledWith('example');
+    expect(setBoardSelection).toHaveBeenCalledWith('board-2');
+    expect(setManualInspectEnabled).toHaveBeenCalledWith(true);
+    expect(continueUndo).toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'frontend-tests-state',
+      payload: expect.objectContaining({ available: true, totalTests: 1 })
+    });
+  });
 });

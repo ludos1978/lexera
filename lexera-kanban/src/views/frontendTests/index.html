@@ -3,45 +3,52 @@
 <head>
   <meta charset="UTF-8">
   <title>Frontend Tests</title>
+  <link rel="stylesheet" href="../../fonts.css">
+  <link rel="stylesheet" href="../../tokens.css">
+  <link rel="stylesheet" href="../../app.css">
+  <link rel="stylesheet" href="../../workspace/workspaceShell.css">
+  <link rel="stylesheet" href="../_shared/panelShellFit.css">
   <link rel="stylesheet" href="frontendTests.css">
 </head>
 <body>
-  <header class="header">
-    <span class="title">Frontend Tests</span>
-    <span class="status" id="status">connecting</span>
-  </header>
-  <main class="body">
-    <section class="summary-panel">
-      <div class="summary-line" id="summary">Waiting for runner state…</div>
-      <div class="summary-meta">
-        <span id="progress">No run in progress</span>
-        <span id="active-board">Board: none</span>
+  <div class="test-panel lexera-shared-panel lexera-shared-panel-frontend-tests">
+    <div class="test-panel-header">
+      <div class="test-panel-actions">
+        <div class="test-panel-action-group test-panel-action-group-run">
+          <select class="test-panel-board-select lexera-shared-test-board-select" title="Board to test"></select>
+          <input class="test-panel-filter lexera-shared-test-filter" type="search" placeholder="Search tests or categories…" title="Search by test name or category (substring match)">
+          <span class="test-panel-control-cluster" aria-label="Category controls">
+            <button class="test-panel-btn lexera-shared-test-expand-all" type="button" title="Expand all categories">Expand All</button>
+            <button class="test-panel-btn lexera-shared-test-collapse-all" type="button" title="Collapse all categories">Collapse All</button>
+          </span>
+          <span class="test-panel-control-cluster test-panel-run-controls" aria-label="Run controls">
+            <button class="test-panel-btn lexera-shared-test-run-all" type="button">Run All</button>
+            <button class="test-panel-btn test-panel-btn-stop lexera-shared-test-stop" type="button">Stop Run</button>
+            <button class="test-panel-btn lexera-shared-test-clear-results" type="button" title="Clear all result indicators, durations, and errors">Clear Results</button>
+          </span>
+          <span class="test-panel-control-cluster test-panel-restore-controls">
+            <label class="test-panel-restore-toggle" title="Pause after each test mutation, before the harness restores the snapshot. This is not app undo or Ctrl+Z.">
+              <input class="lexera-shared-test-manual-inspect" type="checkbox">
+              Pause after Do
+            </label>
+            <button class="test-panel-btn lexera-shared-test-continue-undo" type="button" title="Restore the test snapshot and continue. This is not Ctrl+Z." disabled>Restore Snapshot</button>
+          </span>
+        </div>
+        <div class="test-panel-action-group test-panel-action-group-copy">
+          <select class="test-panel-copy-scope lexera-shared-test-copy-scope" title="Copy scope">
+            <option value="all">All Results</option>
+            <option value="errors">Only Errors</option>
+            <option value="errors-with-logs">Errors + FE/BE Logs</option>
+          </select>
+          <button class="test-panel-btn lexera-shared-test-copy" type="button">Copy</button>
+          <button class="test-panel-btn lexera-shared-test-refresh" type="button" title="Refresh runner state">Refresh</button>
+          <span class="test-panel-copy-feedback lexera-shared-test-copy-feedback" aria-live="polite"></span>
+        </div>
       </div>
-    </section>
-
-    <section class="controls">
-      <button class="panel-btn primary" id="run-all" type="button">Run All</button>
-      <button class="panel-btn" id="stop" type="button">Stop</button>
-      <button class="panel-btn" id="clear" type="button">Clear</button>
-      <select class="panel-select" id="copy-scope">
-        <option value="all">Copy All</option>
-        <option value="errors">Copy Errors</option>
-        <option value="errors-with-logs">Copy Errors + Logs</option>
-      </select>
-      <button class="panel-btn" id="copy" type="button">Copy</button>
-      <button class="panel-btn" id="refresh" type="button">Refresh</button>
-    </section>
-
-    <section>
-      <h3>Categories</h3>
-      <div class="category-list" id="categories"></div>
-    </section>
-
-    <section>
-      <h3>Recent Results</h3>
-      <div class="results-list" id="results"></div>
-    </section>
-  </main>
+    </div>
+    <div class="test-panel-summary lexera-shared-test-summary">Waiting for runner state…</div>
+    <div class="test-panel-body lexera-shared-test-list"></div>
+  </div>
 
   <script src="../_shared/subAppRuntime.js"></script>
   <script src="frontendTests.js"></script>

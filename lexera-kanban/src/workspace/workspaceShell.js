@@ -2052,6 +2052,16 @@
   // successful retry. Without this, a placeholder that's hidden at
   // initial render would stay "spawning…" forever.
   var multiviewSpawnRetryWatchers = {};
+  // Per-LABEL in-flight spawn promise. Hard fence against duplicate
+  // `multiview_spawn` IPCs racing for the same Tauri webview label.
+  // Runtime evidence (2026-04-26): two spawns for the same label fired
+  // back-to-back, the second hit "already exists", recovery looped
+  // forever. The tab-keyed state machine wasn't sufficient — most likely
+  // because two distinct triggers (render-restart rAF + spawn-retry
+  // watcher fire) both decided no entry existed in the same JS task
+  // batch. This map keys on label, so any second spawn attempt finds
+  // the first promise and waits on it.
+  var multiviewLabelSpawnLocks = {};
   var multiviewPendingLocalDestroyAcks = {};
 
   function multiviewLabelForTab(tabId) {
@@ -2192,6 +2202,31 @@
     }
     return MULTIVIEW_SPAWN_DISABLED;
   }
+  // Verbose multiview tracing. Gated so the per-ensure / per-doSpawn
+  // chatter doesn't flood the kanban stdout in normal runs. Enable via
+  // URL param `?ws-debug=1` or by setting `localStorage['ws-debug']='1'`
+  // so reproducing in a live session is possible without code changes.
+  // ADOPT, BOOT, BEFOREUNLOAD markers always print — they're rare
+  // enough to be useful baseline signal even with verbose off.
+  var WS_DEBUG_VERBOSE = (function () {
+    try {
+      if (urlParams.get('ws-debug') === '1') return true;
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('ws-debug') === '1') return true;
+    } catch (_) {}
+    return false;
+  })();
+  var _wsDebugSeq = 0;
+  function wsDebug(msg, opts) {
+    var force = !!(opts && opts.force);
+    if (!force && !WS_DEBUG_VERBOSE) return;
+    var seq = ++_wsDebugSeq;
+    try {
+      if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+        window.__TAURI__.core.invoke('ws_debug_log', { message: '#' + seq + ' ' + String(msg) });
+      }
+    } catch (_) {}
+  }
+  function wsDebugForce(msg) { wsDebug(msg, { force: true }); }
   function ensureMultiviewWebview(tab, placeholderEl, desiredSrc) {
     if (!window.LexeraMultiview) return;
     if (MULTIVIEW_SPAWN_DISABLED || urlParams.get('mv-disable') === '1') {
@@ -2201,6 +2236,11 @@
     }
     var label = labelForTabObject(tab);
     var url = multiviewUrlForTab(desiredSrc);
+    var _e = multiviewSpawnedTabs[tab.id];
+    wsDebug('ensure tab=' + tab.id + ' label=' + label +
+      ' entryState=' + (_e ? _e.state : 'none') +
+      ' lock=' + (multiviewLabelSpawnLocks[label] ? 'yes' : 'no') +
+      ' urlMatch=' + (_e && _e.url === url));
     if (noteEnsureCall(tab.id, label, url)) {
       placeholderEl.classList.add('is-loaded');
       placeholderEl.innerHTML = '<div class="mv-error-msg" style="padding:12px;opacity:.6">circuit breaker tripped — see log</div>';
@@ -2357,6 +2397,9 @@
       watchPlaceholderVisibility(tab, placeholderEl, pushGeom);
     }
     function doSpawn() {
+      wsDebug('doSpawn tab=' + tab.id + ' label=' + label +
+        ' entryState=' + (multiviewSpawnedTabs[tab.id] ? multiviewSpawnedTabs[tab.id].state : 'none') +
+        ' lock=' + (multiviewLabelSpawnLocks[label] ? 'yes' : 'no'));
       var r = placeholderEl.getBoundingClientRect();
       if (!placeholderEl.isConnected || placeholderEl.offsetParent === null || r.width <= 0 || r.height <= 0) {
         // Placeholder is in the DOM but not yet measurable — most often
@@ -2381,6 +2424,26 @@
         ' connected=' + (!!placeholderEl.isConnected) +
         ' offsetParent=' + (placeholderEl.offsetParent ? 'set' : 'null')
       );
+      // Label-level in-flight lock. The tab-keyed `multiviewSpawnedTabs`
+      // state machine should already prevent duplicate spawns, but
+      // runtime data (2026-04-26) shows two `multiview_spawn` IPCs racing
+      // for the same label before the first resolves. The state machine
+      // is per-tab.id; the lock below is per-label and adds a hard fence
+      // so concurrent ensure() calls (regardless of trigger — render
+      // restart, watcher fire, retry, etc.) all share the same promise
+      // instead of issuing duplicate IPCs that hit "already exists".
+      if (multiviewLabelSpawnLocks[label]) {
+        wsDebugForce('DEDUPE label=' + label + ' (in-flight)');
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('debug', '[multiview] spawn de-duplicated for ' + label);
+        }
+        multiviewLabelSpawnLocks[label].then(onSpawned).catch(function (err) {
+          if (typeof window.lexeraLog === 'function') {
+            window.lexeraLog('warn', '[multiview] de-dupe wait for ' + label + ' failed: ' + (err && err.message || err));
+          }
+        });
+        return;
+      }
       // Mark pending BEFORE the IPC call so render-loop re-entry sees
       // a spawn in flight and short-circuits. Carry the resolved label
       // so destroy paths can recover it without redoing the dispatch.
@@ -2400,6 +2463,12 @@
         : window.LexeraMultiview.spawn(args).then(function () {
             return { label: label, fromPool: false };
           });
+      multiviewLabelSpawnLocks[label] = spawnPromise.finally
+        ? spawnPromise.finally(function () { delete multiviewLabelSpawnLocks[label]; })
+        : spawnPromise.then(
+            function (r) { delete multiviewLabelSpawnLocks[label]; return r; },
+            function (e) { delete multiviewLabelSpawnLocks[label]; throw e; }
+          );
       spawnPromise.then(function (result) {
         // If the pool fast-path was taken, the actual webview lives at
         // `result.label` (e.g. `_pool_3`), NOT the formula label we
@@ -2418,42 +2487,25 @@
         }
         var msg = String(err && err.message || err || '');
         if (/already exists/i.test(msg)) {
-          // A Rust-side webview already holds this label. Could be a
-          // race-loser, an orphan from a prior shell reload, or an
-          // out-of-band create. Destroy and retry — but cap attempts so a
-          // persistent close/respawn race can't burn down the app, and
-          // hold the slot in `destroying` state across the await so a
-          // concurrent ensure() call short-circuits instead of stacking
-          // a parallel spawn.
-          var attemptsSoFar = (multiviewSpawnedTabs[tab.id] && multiviewSpawnedTabs[tab.id].attempts) || 0;
-          var MAX_ATTEMPTS = 3;
-          if (attemptsSoFar + 1 >= MAX_ATTEMPTS) {
-            if (typeof window.lexeraLog === 'function') {
-              window.lexeraLog('error', '[multiview] giving up on ' + label + ' after ' + (attemptsSoFar + 1) + ' attempts');
-            }
-            delete multiviewSpawnedTabs[tab.id];
-            showSpawnErrorUi(new Error('webview spawn failed after ' + (attemptsSoFar + 1) + ' attempts: ' + msg));
-            return;
-          }
+          // Runtime data (2026-04-26) showed the SHELL itself reloads
+          // mid-session (cause unknown — webview is recreated without
+          // beforeunload firing). Each reload, the fresh shell tries to
+          // spawn webviews at the same labels its previous instance
+          // already created. Old strategy: destroy and respawn. This
+          // looped because the shell would reload again after the
+          // respawn, hitting "already exists" again.
+          //
+          // New strategy: ADOPT. If the Rust registry already holds a
+          // webview at this label, treat the spawn as effectively
+          // succeeded — populate our local entry as 'ready' and run
+          // onSpawned(). The previous shell session's webview is still
+          // there, which is what we want anyway.
+          wsDebugForce('ADOPT label=' + label + ' (already exists in Rust)');
           if (typeof window.lexeraLog === 'function') {
-            window.lexeraLog('info', '[multiview] resolving stale ' + label + ' (attempt ' + (attemptsSoFar + 1) + '/' + MAX_ATTEMPTS + ')');
+            window.lexeraLog('info', '[multiview] adopting pre-existing webview ' + label);
           }
-          multiviewSpawnedTabs[tab.id] = {
-            url: url, state: 'destroying', label: label, attempts: attemptsSoFar + 1
-          };
-          noteLocalDestroy(label);
-          window.LexeraMultiview.destroy(label).then(function () {
-            // Defer respawn one frame so Tauri's async webview.close()
-            // gets a tick to actually free the registry slot. Without
-            // this delay the immediate doSpawn() races the close and
-            // can hit "already exists" again, looping until the cap.
-            requestAnimationFrame(function () {
-              setTimeout(doSpawn, 16);
-            });
-          }).catch(function (destroyErr) {
-            delete multiviewSpawnedTabs[tab.id];
-            showSpawnErrorUi(destroyErr || err);
-          });
+          multiviewSpawnedTabs[tab.id] = { url: url, state: 'ready', label: label, attempts: 0 };
+          onSpawned();
           return;
         }
         delete multiviewSpawnedTabs[tab.id];
@@ -2595,6 +2647,7 @@
       if (!isHostedTabLabel(label)) return;
       var locallyInitiated = consumeLocalDestroyAck(label);
       traceWorkspaceShell('destroyed label=' + label + ' local=' + locallyInitiated);
+      wsDebugForce('multiview-destroyed event label=' + label + ' local=' + locallyInitiated);
       var tabId = tabIdFromLabel(label);
       cleanupMultiviewLocalState(tabId);
       if (locallyInitiated) return;
@@ -2635,8 +2688,13 @@
   // orphaned WebContent processes during dev/reload.
   if (typeof window !== 'undefined') {
     traceWorkspaceShell('boot href=' + window.location.href);
+    // Marker fires on every IIFE init — useful for catching unexpected
+    // shell reloads (`BOOT shell` lines should be exactly 1 per session).
+    wsDebugForce('BOOT shell href=' + window.location.href + ' label=' +
+      ((window.__TAURI__ && window.__TAURI__.webview && window.__TAURI__.webview.getCurrent && window.__TAURI__.webview.getCurrent().label) || '?'));
     window.addEventListener('beforeunload', function () {
       traceWorkspaceShell('beforeunload');
+      wsDebugForce('BEFOREUNLOAD shell href=' + window.location.href);
       var tabIds = Object.keys(multiviewSpawnedTabs);
       for (var i = 0; i < tabIds.length; i++) {
         try { destroyMultiviewWebview(tabIds[i]); } catch (_) {}

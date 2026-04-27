@@ -48,6 +48,16 @@ html, body {
   gap: 12px;
 }
 
+.calendar-panel-body.view-loading {
+  background:
+    linear-gradient(to bottom, color-mix(in srgb, var(--bg-secondary, #252525) 18%, transparent), transparent 72%);
+}
+
+.dashboard-calendar,
+.dashboard-list {
+  min-width: 0;
+}
+
 /* ── Week grid ───────────────────────────────────────────────────── */
 .cal-week-grid {
   display: grid;

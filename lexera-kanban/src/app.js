@@ -9582,26 +9582,85 @@ var LexeraDashboard = (function () {
     };
   }
 
-  function resolveCardIndexByStableId(column, cardId) {
+  function resolveCardIndexByStableId(column, cardId, preferredCardIndex, preferredCardIndexMode, tieBreakDirection) {
     cardId = normalizeStableCardMutationId(cardId);
     if (!column || !column.cards || !cardId) return -1;
+    var matches = [];
     for (var i = 0; i < column.cards.length; i++) {
       var card = column.cards[i] || null;
-      if (normalizeStableCardMutationId(card && card.id) === cardId) return i;
-      if (normalizeStableCardMutationId(card && card.kid) === cardId) return i;
+      if (normalizeStableCardMutationId(card && card.id) === cardId) {
+        matches.push(i);
+        continue;
+      }
+      if (normalizeStableCardMutationId(card && card.kid) === cardId) {
+        matches.push(i);
+      }
     }
-    return -1;
+    if (!matches.length) return -1;
+    if (typeof preferredCardIndex !== 'number' || matches.length === 1) return matches[0];
+
+    var preferredFullIdx = preferredCardIndexMode === 'visible'
+      ? getFullCardIndex(column, preferredCardIndex)
+      : preferredCardIndex;
+    if (preferredFullIdx < 0) preferredFullIdx = preferredCardIndex;
+    if (preferredFullIdx < 0) preferredFullIdx = 0;
+    if (preferredFullIdx >= column.cards.length) preferredFullIdx = column.cards.length - 1;
+
+    var bestIdx = matches[0];
+    var bestDistance = Math.abs(bestIdx - preferredFullIdx);
+    for (var m = 1; m < matches.length; m++) {
+      var candidateIdx = matches[m];
+      var candidateDistance = Math.abs(candidateIdx - preferredFullIdx);
+      if (candidateDistance < bestDistance) {
+        bestIdx = candidateIdx;
+        bestDistance = candidateDistance;
+        continue;
+      }
+      if (candidateDistance !== bestDistance) continue;
+      if (tieBreakDirection === 'forward' && candidateIdx > bestIdx) {
+        bestIdx = candidateIdx;
+        continue;
+      }
+      if (tieBreakDirection === 'backward' && candidateIdx < bestIdx) {
+        bestIdx = candidateIdx;
+      }
+    }
+    return bestIdx;
   }
 
   function resolveSourceCardIndex(column, cardIndex, cardIndexMode, cardId) {
     if (!column || !column.cards) return -1;
-    var stableCardIdx = resolveCardIndexByStableId(column, cardId);
-    if (stableCardIdx >= 0) return stableCardIdx;
-    if (typeof cardIndex !== 'number') return -1;
-    if (cardIndexMode === 'full') {
-      return (cardIndex >= 0 && cardIndex < column.cards.length) ? cardIndex : -1;
+    var indexedCardIdx = -1;
+    if (typeof cardIndex === 'number') {
+      if (cardIndexMode === 'full') {
+        indexedCardIdx = (cardIndex >= 0 && cardIndex < column.cards.length) ? cardIndex : -1;
+      } else {
+        indexedCardIdx = getFullCardIndex(column, cardIndex);
+      }
     }
-    return getFullCardIndex(column, cardIndex);
+    if (indexedCardIdx >= 0 && indexedCardIdx < column.cards.length) {
+      if (!cardId) return indexedCardIdx;
+      var indexedCard = column.cards[indexedCardIdx] || null;
+      var normalizedCardId = normalizeStableCardMutationId(cardId);
+      if (
+        normalizedCardId &&
+        (
+          normalizeStableCardMutationId(indexedCard && indexedCard.id) === normalizedCardId ||
+          normalizeStableCardMutationId(indexedCard && indexedCard.kid) === normalizedCardId
+        )
+      ) {
+        return indexedCardIdx;
+      }
+    }
+    var stableCardIdx = resolveCardIndexByStableId(
+      column,
+      cardId,
+      typeof cardIndex === 'number' ? cardIndex : null,
+      cardIndexMode,
+      'forward'
+    );
+    if (stableCardIdx >= 0) return stableCardIdx;
+    return indexedCardIdx;
   }
 
   function resolveInsertCardIndex(column, insertIdx, insertMode) {
@@ -9696,7 +9755,13 @@ var LexeraDashboard = (function () {
       var targetInsertMode = target.insertMode || 'visible';
       var targetInsertIdx = -1;
       if (target && typeof target.before === 'boolean' && target.cardId) {
-        var stableTargetCardIdx = resolveCardIndexByStableId(targetRef.column, target.cardId);
+        var stableTargetCardIdx = resolveCardIndexByStableId(
+          targetRef.column,
+          target.cardId,
+          typeof target.insertIdx === 'number' ? target.insertIdx : null,
+          targetInsertMode,
+          target.before ? 'backward' : 'forward'
+        );
         if (stableTargetCardIdx >= 0) {
           targetInsertIdx = target.before ? stableTargetCardIdx : (stableTargetCardIdx + 1);
         }

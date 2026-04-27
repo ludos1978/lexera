@@ -1,0 +1,105 @@
+/* panelShellFit.css — make a sub-app's <body> behave like the legacy
+ * `.workspace-shell-panel-content` host so panels styled for the old
+ * shell DOM layout fill their child-webview viewport correctly.
+ *
+ * Why this exists: `workspaceShell.css` has rules like
+ *   body.workspace-shell-mode .workspace-shell-panel-content > .sidebar {...}
+ * that no longer match in the multiview architecture, because each panel
+ * runs in its own webview where there's no `.workspace-shell-panel-content`
+ * ancestor — the panel is a direct child of <body>. This file replicates
+ * those rules with `body.workspace-shell-mode > .X` selectors so layout
+ * lands the same.
+ *
+ * The `subAppRuntime.js` boot adds the `workspace-shell-mode` class so
+ * these rules activate in every sub-app webview.
+ */
+
+body.workspace-shell-mode {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Each panel's top-level element should fill the body. Mirrors the
+ * `.workspace-shell-panel-content > .X` block from workspaceShell.css. */
+body.workspace-shell-mode > .sidebar,
+body.workspace-shell-mode > .lexera-shared-panel-hierarchy {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  flex: 1 1 auto;
+  border-right: 0;
+}
+
+body.workspace-shell-mode > .sidebar-dashboard,
+body.workspace-shell-mode > .lexera-shared-panel-dashboard {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body.workspace-shell-mode > .log-panel,
+body.workspace-shell-mode > .lexera-shared-panel-logs {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  border-top: 0;
+}
+
+body.workspace-shell-mode > .shell-settings-panel,
+body.workspace-shell-mode > .lexera-shared-panel-backend-settings,
+body.workspace-shell-mode > .lexera-shared-panel-frontend-settings,
+body.workspace-shell-mode > .lexera-shared-panel-files,
+body.workspace-shell-mode > .lexera-shared-panel-render-apps {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+}
+
+body.workspace-shell-mode > .calendar-panel,
+body.workspace-shell-mode > .lexera-shared-panel-week-calendar,
+body.workspace-shell-mode > .lexera-shared-panel-month-calendar {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+}
+
+body.workspace-shell-mode > .test-panel,
+body.workspace-shell-mode > .lexera-shared-panel-frontend-tests {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+}
+
+/* The header/main pattern used by the simpler views (dashboard, log,
+ * workspaces, inspector). Same idea — direct children of body share the
+ * panel-content layout. */
+body.workspace-shell-mode > .header {
+  flex: 0 0 auto;
+}
+body.workspace-shell-mode > .body,
+body.workspace-shell-mode > main,
+body.workspace-shell-mode > .entries {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}

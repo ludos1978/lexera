@@ -691,6 +691,12 @@
       initThemeBridge();
       wrapCatalogUpdates();
       wrapOpenBoard();
+      // Wrap window.lexeraLog so every frontend log entry produced in
+      // this webview is also forwarded to Rust's log_broadcast — which
+      // in turn relays the entry to any sub-app webview that subscribed
+      // to 'log-message' (the log panel webview being the first such
+      // subscriber). Without this wrap, the log panel stays empty.
+      wrapLexeraLog();
       installNavigationHandler();
       installEmbeddedBoardBridge();
       // If we're hosting child webviews (default mode in main shell),

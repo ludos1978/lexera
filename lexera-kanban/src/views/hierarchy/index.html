@@ -2,31 +2,42 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Workspaces</title>
+  <title>Hierarchy</title>
+  <link rel="stylesheet" href="../../fonts.css">
+  <link rel="stylesheet" href="../../tokens.css">
+  <link rel="stylesheet" href="../../hierarchical.css">
+  <link rel="stylesheet" href="../../app.css">
+  <link rel="stylesheet" href="../../workspace/workspaceShell.css">
+  <link rel="stylesheet" href="../_shared/panelShellFit.css">
   <link rel="stylesheet" href="hierarchy.css">
 </head>
 <body>
-  <header class="hierarchy-header">
-    <span class="hierarchy-title" id="title">All Workspaces</span>
-    <span class="hierarchy-status" id="status">connecting</span>
-  </header>
-  <main class="hierarchy-body">
-    <section class="hierarchy-section">
-      <h3 class="hierarchy-section-title">Local boards <span class="muted" id="local-count"></span></h3>
-      <ul class="board-list" id="local-boards"></ul>
-    </section>
-    <section class="hierarchy-section">
-      <h3 class="hierarchy-section-title">Remote boards <span class="muted" id="remote-count"></span></h3>
-      <ul class="board-list" id="remote-boards"></ul>
-    </section>
-    <section class="hierarchy-section">
-      <h3 class="hierarchy-section-title">Workspaces <span class="muted" id="ws-count"></span></h3>
-      <ul class="ws-list" id="workspaces"></ul>
-    </section>
-    <p class="hierarchy-note">
-      Rich tree (stacks / columns / cards, drag &amp; drop, expand / collapse, inline rename, context menus) ports to this webview in a later slice.
-    </p>
-  </main>
+  <div class="sidebar lexera-shared-panel lexera-shared-panel-hierarchy">
+    <header class="sidebar-header hierarchy-header">
+      <div class="sidebar-header-title-wrap hierarchy-header-main">
+        <span class="sidebar-header-title hierarchy-title" id="title">All Workspaces</span>
+        <span class="hierarchy-mode" id="view-mode">follow active board</span>
+      </div>
+      <span class="hierarchy-status" id="status">connecting</span>
+    </header>
+    <main class="hierarchy-body">
+      <section class="hierarchy-section">
+        <h3 class="hierarchy-section-title">Workspace tree <span class="muted" id="local-count"></span></h3>
+        <ul class="board-list lexera-shared-board-list" id="local-boards"></ul>
+      </section>
+      <section class="hierarchy-section">
+        <h3 class="hierarchy-section-title">Remote boards <span class="muted" id="remote-count"></span></h3>
+        <ul class="board-list" id="remote-boards"></ul>
+      </section>
+      <section class="hierarchy-section">
+        <h3 class="hierarchy-section-title">Workspaces <span class="muted" id="ws-count"></span></h3>
+        <ul class="ws-list" id="workspaces"></ul>
+      </section>
+      <p class="hierarchy-note">
+        Workspace grouping and expand / collapse now run inside this webview. Rich board internals (stacks / columns / cards, drag &amp; drop, inline rename, context menus) still port in a later slice.
+      </p>
+    </main>
+  </div>
   <script src="../_shared/subAppRuntime.js"></script>
   <script src="hierarchy.js"></script>
 </body>

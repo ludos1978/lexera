@@ -493,6 +493,7 @@ fn main() {
             webview_mgr::multiview_emit_to,
             webview_mgr::multiview_subscribe,
             webview_mgr::multiview_unsubscribe,
+            webview_mgr::ws_debug_log,
             webview_mgr::multiview_set_health,
             webview_mgr::multiview_get_health,
             webview_mgr::multiview_list_health,

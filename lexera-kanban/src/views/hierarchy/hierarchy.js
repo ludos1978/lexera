@@ -1,11 +1,9 @@
-// Hierarchy sub-app — minimal navigation panel (Workstream P).
+// Hierarchy sub-app — grouped workspace navigation panel (Workstream P).
 //
 // This webview replaces the in-shell `.sidebar` board-list rendering.
-// Today it shows a flat list of boards + workspaces with click-to-navigate.
-// The rich-tree functionality (stacks/columns/cards, drag/drop,
-// expand/collapse, inline rename, context menus) lives in
-// `src/board/boardList.js` (3204 lines) — porting that into this
-// sub-app is its own future slice.
+// It now groups local boards by workspace with local expand/collapse
+// state, while richer tree internals (stacks/columns/cards, drag/drop,
+// inline rename, context menus) still remain in `src/board/boardList.js`.
 
 (function () {
   'use strict';
@@ -16,8 +14,11 @@
       .replace(/"/g, '&quot;');
   }
 
+  var ALL_WORKSPACES_ID = '__all__';
+
   var statusEl = document.getElementById('status');
   var titleEl = document.getElementById('title');
+  var viewModeEl = document.getElementById('view-mode');
   var localBoardsEl = document.getElementById('local-boards');
   var remoteBoardsEl = document.getElementById('remote-boards');
   var workspacesEl = document.getElementById('workspaces');
@@ -26,19 +27,33 @@
   var wsCountEl = document.getElementById('ws-count');
 
   var activeBoardId = null;
-  var selectedWorkspaceId = null;
+  var selectedWorkspaceId = ALL_WORKSPACES_ID;
+  var latestCatalog = null;
+  var expandedWorkspaceIds = {};
 
   function resolveWorkspaceFromSnapshot(snap) {
     if (!snap || typeof snap !== 'object') return null;
+    if (String(snap.viewWorkspaceId || '') === ALL_WORKSPACES_ID) return null;
     if (snap.viewWorkspace && snap.viewWorkspace.id) return snap.viewWorkspace;
     if (snap.activeWorkspace && snap.activeWorkspace.id) return snap.activeWorkspace;
-    var preferredId = String(snap.viewWorkspaceId || snap.activeWorkspaceId || '');
-    if (!preferredId || preferredId === '__all__') return null;
+    var preferredId = snap.viewWorkspaceId != null && snap.viewWorkspaceId !== ''
+      ? String(snap.viewWorkspaceId)
+      : String(snap.activeWorkspaceId || '');
+    if (!preferredId || preferredId === ALL_WORKSPACES_ID) return null;
     var workspaces = Array.isArray(snap.workspaces) ? snap.workspaces : [];
     for (var i = 0; i < workspaces.length; i++) {
       if (workspaces[i] && workspaces[i].id === preferredId) return workspaces[i];
     }
     return null;
+  }
+
+  function getBoardWorkspaceIds(board) {
+    if (!board || typeof board !== 'object') return [];
+    if (Array.isArray(board.workspace_ids)) return board.workspace_ids.filter(Boolean);
+    if (Array.isArray(board.workspaceIds)) return board.workspaceIds.filter(Boolean);
+    if (board.workspace_id) return [board.workspace_id];
+    if (board.workspaceId) return [board.workspaceId];
+    return [];
   }
 
   function refreshActiveHighlight() {
@@ -49,6 +64,10 @@
     var wsItems = document.querySelectorAll('li.ws-item');
     for (var j = 0; j < wsItems.length; j++) {
       wsItems[j].classList.toggle('is-active', wsItems[j].dataset.workspaceId === selectedWorkspaceId);
+    }
+    var wsGroups = document.querySelectorAll('button.ws-group-header');
+    for (var k = 0; k < wsGroups.length; k++) {
+      wsGroups[k].classList.toggle('is-active', wsGroups[k].dataset.workspaceId === selectedWorkspaceId);
     }
   }
 
@@ -73,13 +92,153 @@
     });
   }
 
-  function renderWorkspaces(workspaces) {
-    wsCountEl.textContent = '(' + workspaces.length + ')';
-    if (!workspaces.length) {
-      workspacesEl.innerHTML = '<li class="empty">none</li>';
+  function buildWorkspaceGroups(boards, workspaces, workspaceId) {
+    var groups = [];
+    var normalizedWorkspaceId = String(workspaceId || ALL_WORKSPACES_ID);
+    var isAllView = normalizedWorkspaceId === ALL_WORKSPACES_ID;
+    var workspaceById = {};
+    var assignedBoardIds = {};
+    var i;
+
+    for (i = 0; i < workspaces.length; i++) {
+      if (workspaces[i] && workspaces[i].id) workspaceById[workspaces[i].id] = workspaces[i];
+    }
+
+    if (isAllView) {
+      var boardsByWorkspace = {};
+      var seenByWorkspace = {};
+      for (i = 0; i < workspaces.length; i++) {
+        boardsByWorkspace[workspaces[i].id] = [];
+        seenByWorkspace[workspaces[i].id] = {};
+      }
+      for (i = 0; i < boards.length; i++) {
+        var board = boards[i];
+        if (!board || !board.id) continue;
+        var boardWorkspaceIds = getBoardWorkspaceIds(board);
+        for (var wi = 0; wi < boardWorkspaceIds.length; wi++) {
+          var currentWorkspaceId = boardWorkspaceIds[wi];
+          if (!boardsByWorkspace[currentWorkspaceId]) continue;
+          if (seenByWorkspace[currentWorkspaceId][board.id]) continue;
+          seenByWorkspace[currentWorkspaceId][board.id] = true;
+          boardsByWorkspace[currentWorkspaceId].push(board);
+          assignedBoardIds[board.id] = true;
+        }
+      }
+      for (i = 0; i < workspaces.length; i++) {
+        var workspace = workspaces[i];
+        var workspaceBoards = boardsByWorkspace[workspace.id] || [];
+        if (!workspaceBoards.length) continue;
+        groups.push({
+          id: workspace.id,
+          name: workspace.name || '(untitled)',
+          boards: workspaceBoards
+        });
+      }
+      var unassignedBoards = [];
+      var unassignedSeen = {};
+      for (i = 0; i < boards.length; i++) {
+        var looseBoard = boards[i];
+        if (!looseBoard || !looseBoard.id) continue;
+        if (assignedBoardIds[looseBoard.id] || unassignedSeen[looseBoard.id]) continue;
+        unassignedSeen[looseBoard.id] = true;
+        unassignedBoards.push(looseBoard);
+      }
+      if (unassignedBoards.length) {
+        groups.push({
+          id: '__unassigned__',
+          name: 'Unassigned',
+          boards: unassignedBoards
+        });
+      }
+      return groups;
+    }
+
+    var selectedWorkspace = workspaceById[normalizedWorkspaceId];
+    if (!selectedWorkspace) return groups;
+    groups.push({
+      id: selectedWorkspace.id,
+      name: selectedWorkspace.name || '(untitled)',
+      boards: boards.filter(function (board) {
+        return getBoardWorkspaceIds(board).indexOf(normalizedWorkspaceId) >= 0;
+      })
+    });
+    return groups;
+  }
+
+  function isWorkspaceExpanded(groupId, workspaceId) {
+    if (Object.prototype.hasOwnProperty.call(expandedWorkspaceIds, groupId)) {
+      return expandedWorkspaceIds[groupId] === true;
+    }
+    return true;
+  }
+
+  function renderWorkspaceGroups(boards, workspaces, workspaceId) {
+    localCountEl.textContent = '(' + boards.length + ')';
+    var groups = buildWorkspaceGroups(boards, workspaces, workspaceId);
+    if (!groups.length) {
+      localBoardsEl.innerHTML = '<li class="empty">none</li>';
       return;
     }
+    localBoardsEl.innerHTML = '';
+    groups.forEach(function (group) {
+      var wrapper = document.createElement('li');
+      var expanded = isWorkspaceExpanded(group.id, workspaceId);
+      wrapper.className = 'ws-group';
+      wrapper.setAttribute('data-workspace-group', group.id);
+
+      var header = document.createElement('button');
+      header.type = 'button';
+      header.className = 'ws-group-header';
+      header.dataset.workspaceId = group.id;
+      header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      header.innerHTML =
+        '<span class="ws-group-caret" aria-hidden="true">' + (expanded ? '▾' : '▸') + '</span>' +
+        '<span class="ws-group-name">' + escapeHtml(group.name) + '</span>' +
+        '<span class="ws-group-meta">' + escapeHtml(String(group.boards.length)) + '</span>';
+      header.addEventListener('click', function () {
+        expandedWorkspaceIds[group.id] = !isWorkspaceExpanded(group.id, workspaceId);
+        if (latestCatalog) {
+          renderWorkspaceGroups(latestCatalog.boards || [], latestCatalog.workspaces || [], selectedWorkspaceId);
+          refreshActiveHighlight();
+        }
+      });
+      wrapper.appendChild(header);
+
+      var list = document.createElement('ul');
+      list.className = 'board-list nested' + (expanded ? '' : ' collapsed');
+      group.boards.forEach(function (board) {
+        var li = document.createElement('li');
+        li.className = 'board-item';
+        li.dataset.boardId = board.id || '';
+        li.innerHTML =
+          '<span class="board-name">' + escapeHtml(board.name || board.title || '(untitled)') + '</span>' +
+          '<span class="board-id">' + escapeHtml(board.id ? board.id.substring(0, 8) : '') + '</span>';
+        li.addEventListener('click', function () {
+          LexeraSubApp.navigate({ type: 'open-board', boardId: board.id });
+        });
+        list.appendChild(li);
+      });
+      wrapper.appendChild(list);
+      localBoardsEl.appendChild(wrapper);
+    });
+  }
+
+  function renderWorkspaces(workspaces) {
+    wsCountEl.textContent = '(' + workspaces.length + ')';
     workspacesEl.innerHTML = '';
+
+    var allItem = document.createElement('li');
+    allItem.className = 'ws-item all-workspaces';
+    allItem.dataset.workspaceId = ALL_WORKSPACES_ID;
+    allItem.innerHTML =
+      '<span class="ws-name">All Workspaces</span>' +
+      '<span class="ws-id">all</span>';
+    allItem.addEventListener('click', function () {
+      LexeraSubApp.navigate({ type: 'focus-workspace', workspaceId: ALL_WORKSPACES_ID });
+    });
+    workspacesEl.appendChild(allItem);
+
+    if (!workspaces.length) return;
     workspaces.forEach(function (w) {
       var li = document.createElement('li');
       li.className = 'ws-item';
@@ -96,15 +255,17 @@
 
   LexeraSubApp.init({
     onCatalog: function (snap) {
+      latestCatalog = snap || null;
       var ws = resolveWorkspaceFromSnapshot(snap);
       if (ws && ws.name) {
         titleEl.textContent = ws.name;
-        selectedWorkspaceId = ws.id || null;
+        selectedWorkspaceId = ws.id || ALL_WORKSPACES_ID;
       } else {
         titleEl.textContent = 'All Workspaces';
-        selectedWorkspaceId = null;
+        selectedWorkspaceId = ALL_WORKSPACES_ID;
       }
-      renderBoards(localBoardsEl, snap.boards || [], localCountEl);
+      viewModeEl.textContent = snap && snap.workspaceViewMode === 'manual' ? 'manual view' : 'follow active board';
+      renderWorkspaceGroups(snap.boards || [], snap.workspaces || [], selectedWorkspaceId);
       renderBoards(remoteBoardsEl, snap.remoteBoards || [], remoteCountEl);
       renderWorkspaces(snap.workspaces || []);
       refreshActiveHighlight();

@@ -53,11 +53,18 @@ describe('LexeraFrontendTests public API', () => {
     expect(typeof api.getStateSnapshot).toBe('function');
     expect(typeof api.buildResults).toBe('function');
     expect(typeof api.copyResults).toBe('function');
+    expect(typeof api.runTest).toBe('function');
+    expect(typeof api.setBoardSelection).toBe('function');
+    expect(typeof api.setManualInspectEnabled).toBe('function');
 
     const snapshot = api.getStateSnapshot();
     expect(snapshot.totalTests).toBeGreaterThan(0);
     expect(snapshot.summary.total).toBe(snapshot.totalTests);
     expect(snapshot.summary.completed).toBe(0);
+    expect(Array.isArray(snapshot.boardOptions)).toBe(true);
+    expect(Array.isArray(snapshot.tests)).toBe(true);
+    expect(typeof snapshot.manualInspectEnabled).toBe('boolean');
+    expect(typeof snapshot.awaitingUndo).toBe('boolean');
     expect(api.buildResults('all')).toContain('Frontend Test Results');
   });
 });

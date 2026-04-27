@@ -23,6 +23,7 @@
     autoRun: false
   };
   var _manualInspectState = {
+    enabled: false,
     awaitingUndo: false
   };
   var _autoRunBoardSelectorRefreshed = false;
@@ -770,7 +771,15 @@
   function isManualInspectEnabled() {
     if (isAutoRunContext()) return false;
     var checkbox = getManualInspectCheckbox();
-    return !!(checkbox && checkbox.checked);
+    if (checkbox) return !!checkbox.checked;
+    return !!_manualInspectState.enabled;
+  }
+
+  function setManualInspectEnabled(enabled) {
+    _manualInspectState.enabled = !!enabled;
+    var checkbox = getManualInspectCheckbox();
+    if (checkbox) checkbox.checked = !!enabled;
+    updateRunControls();
   }
 
   function continueManualUndo() {
@@ -8195,6 +8204,23 @@
     return {
       totalTests: tests.length,
       activeBoardId: getActiveBoardIdSnapshot(),
+      selectedBoardId: getSelectedBoardId(),
+      boardOptions: getAvailableBoards().map(function (board) {
+        return {
+          id: board.id,
+          title: board.title || board.id,
+          isRemote: !!board.isRemote
+        };
+      }),
+      manualInspectEnabled: isManualInspectEnabled(),
+      awaitingUndo: !!_manualInspectState.awaitingUndo,
+      tests: tests.map(function (testDef, index) {
+        return {
+          index: index,
+          name: testDef.name,
+          categories: Array.isArray(testDef.categories) ? testDef.categories.slice() : []
+        };
+      }),
       runState: {
         active: !!(_runState && _runState.active),
         cancelRequested: !!(_runState && _runState.cancelRequested),
@@ -8565,6 +8591,12 @@
       if (!t) { console.error('Not found: ' + name); return; }
       return t.fn();
     },
+    runTest: function (name) {
+      for (var i = 0; i < tests.length; i++) {
+        if (tests[i] && tests[i].name === name) return runOneUI(i);
+      }
+      console.error('Test not found: ' + name);
+    },
     list: function () { return tests.map(function (t) { return t.name; }); },
     listWithCategories: function () {
       return tests.map(function (t) { return { name: t.name, categories: (t.categories || []).slice() }; });
@@ -8594,6 +8626,18 @@
     copyResults: function (scope) { return copyResults(scope || 'all'); },
     stop: function () { requestStopRun(); },
     continueUndo: function () { continueManualUndo(); },
+    setBoardSelection: function (boardId) {
+      var selectedBoardId = String(boardId || '');
+      setStoredBoardSelection(selectedBoardId);
+      var selector = getBoardSelector();
+      if (selector) {
+        refreshBoardSelector();
+        selector.value = selectedBoardId;
+      }
+      updateRunControls();
+      return getSelectedBoardId();
+    },
+    setManualInspectEnabled: function (enabled) { setManualInspectEnabled(enabled); },
     showPanel: function () { populateTestList(); },
     runAllWithUI: function (options) { populateTestList(); return runAllUI(options); },
     // Exposed for Rust-side auto-run eval to poll completion + get results
