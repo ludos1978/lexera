@@ -35,17 +35,25 @@ describe('renderApps view sub-app', () => {
     const dom = createDom();
     const { window } = dom;
     const initPanel = vi.fn();
+    const destroyPanel = vi.fn();
     window.LexeraSubApp = {
       init: vi.fn()
     };
     window.LexeraRenderAppsSettings = {
-      init: initPanel
+      init: initPanel,
+      destroy: destroyPanel
     };
 
     loadRenderAppsView(window);
 
-    expect(window.LexeraSubApp.init).toHaveBeenCalledWith({});
+    expect(window.LexeraSubApp.init).toHaveBeenCalledWith(expect.objectContaining({
+      onTeardown: expect.any(Function)
+    }));
     expect(initPanel).toHaveBeenCalledWith(
+      window.document.querySelector('.lexera-shared-panel-render-apps')
+    );
+    window.LexeraSubApp.init.mock.calls[0][0].onTeardown();
+    expect(destroyPanel).toHaveBeenCalledWith(
       window.document.querySelector('.lexera-shared-panel-render-apps')
     );
     expect(window.document.querySelector('.lexera-shared-render-apps-status')?.textContent).toBe('');

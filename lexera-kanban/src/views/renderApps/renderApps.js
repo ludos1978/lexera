@@ -4,7 +4,14 @@
   var panel = document.querySelector('.lexera-shared-panel-render-apps');
 
   if (window.LexeraSubApp && typeof window.LexeraSubApp.init === 'function') {
-    window.LexeraSubApp.init({});
+    window.LexeraSubApp.init({
+      onTeardown: function () {
+        if (window.LexeraRenderAppsSettings &&
+            typeof window.LexeraRenderAppsSettings.destroy === 'function') {
+          window.LexeraRenderAppsSettings.destroy(panel);
+        }
+      }
+    });
   }
 
   try {

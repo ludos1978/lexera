@@ -95,11 +95,13 @@ describe('LexeraSubApp runtime metadata', () => {
       setInterval: vi.fn(() => 1),
       clearInterval: vi.fn()
     });
+    const onTeardown = vi.fn();
 
     subApp.init({
       requestTheme: false,
       reportFocus: false,
-      shortcuts: false
+      shortcuts: false,
+      onTeardown
     });
     await Promise.resolve();
 
@@ -118,6 +120,8 @@ describe('LexeraSubApp runtime metadata', () => {
 
     window.dispatchEvent(new window.Event('beforeunload'));
     await Promise.resolve();
+
+    expect(onTeardown).toHaveBeenCalledTimes(1);
 
     expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
       event: 'panel-teardown',

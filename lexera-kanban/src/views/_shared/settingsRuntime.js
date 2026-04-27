@@ -43,17 +43,46 @@
     } catch (_) { /* offline */ }
   }
 
-  // Visual themes registry — sub-app webviews don't have access to the
-  // shell's VISUAL_THEMES global, so the runtime broadcasts a
-  // `frontend-setting-changed` event with the new theme id and the active
-  // board (or any other shell consumer) applies it. The sub-app shows a
-  // hardcoded list of theme ids; full theme editing happens in the
-  // shell-side appearance module today.
+  // Visual themes registry — the legacy shell populated this from
+  // `visualThemes.js`, including user-installed themes discovered on disk.
+  // Child settings views now reload that same registry when it is present,
+  // but still fall back to a minimal list in plain browser/test contexts.
   var DEFAULT_VISUAL_THEMES = [
-    { id: 'classic', name: 'Classic' },
-    { id: 'modern', name: 'Modern' },
-    { id: 'high-contrast', name: 'High Contrast' }
+    { id: 'classic', name: 'No style' }
   ];
+
+  function getVisualThemes() {
+    if (typeof window !== 'undefined' &&
+        Array.isArray(window.LEXERA_VISUAL_THEMES) &&
+        window.LEXERA_VISUAL_THEMES.length) {
+      return window.LEXERA_VISUAL_THEMES.slice();
+    }
+    return DEFAULT_VISUAL_THEMES.slice();
+  }
+
+  function getCurrentVisualThemeId() {
+    if (typeof window !== 'undefined' &&
+        typeof window.getLexeraCurrentVisualThemeId === 'function') {
+      try {
+        var current = window.getLexeraCurrentVisualThemeId();
+        if (current) return String(current);
+      } catch (_) { /* ignore theme bridge errors */ }
+    }
+    return getLs('lexera-visual-theme', 'classic');
+  }
+
+  function applyVisualTheme(id) {
+    var nextId = String(id || 'classic');
+    if (typeof window !== 'undefined' &&
+        typeof window.applyLexeraVisualTheme === 'function') {
+      try {
+        var applied = window.applyLexeraVisualTheme(nextId);
+        if (applied && applied.id) nextId = String(applied.id);
+      } catch (_) { /* ignore theme bridge errors */ }
+    }
+    setLs('lexera-visual-theme', nextId);
+    broadcast('frontend-setting-changed', { setting: 'visualTheme', value: nextId });
+  }
 
   function resolveContextMenuBuilders() {
     if (typeof window !== 'undefined' && window.ContextMenuBuilders) {
@@ -70,14 +99,9 @@
       getOptions: function () { return buildFrontendSettingsOptions(); },
 
       // ── Visual theme ─────────────────────────────────────────────
-      getVisualThemes: function () { return DEFAULT_VISUAL_THEMES.slice(); },
-      getCurrentVisualThemeId: function () {
-        return getLs('lexera-visual-theme', 'classic');
-      },
-      applyVisualTheme: function (id) {
-        setLs('lexera-visual-theme', id);
-        broadcast('frontend-setting-changed', { setting: 'visualTheme', value: id });
-      },
+      getVisualThemes: getVisualThemes,
+      getCurrentVisualThemeId: getCurrentVisualThemeId,
+      applyVisualTheme: applyVisualTheme,
 
       // ── UI scale ─────────────────────────────────────────────────
       getUiScale: function () { return parseFloat(getLs('lexera-ui-scale', '1')) || 1; },

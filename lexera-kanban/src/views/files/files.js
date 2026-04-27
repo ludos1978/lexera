@@ -2,7 +2,13 @@
   'use strict';
 
   if (window.LexeraSubApp && typeof window.LexeraSubApp.init === 'function') {
-    window.LexeraSubApp.init({});
+    window.LexeraSubApp.init({
+      onTeardown: function () {
+        if (window.ManagementUI && typeof window.ManagementUI.unmount === 'function') {
+          window.ManagementUI.unmount('files');
+        }
+      }
+    });
   }
 
   var container = document.getElementById('mgmt-container');
@@ -15,6 +21,9 @@
     if (!window.LexeraSettingsRuntime ||
         typeof window.LexeraSettingsRuntime.buildBackendApiAdapter !== 'function') {
       throw new Error('LexeraSettingsRuntime not loaded');
+    }
+    if (typeof window.ManagementUI.unmount === 'function') {
+      window.ManagementUI.unmount('files');
     }
     window.ManagementUI.mount('files', {
       container: container,

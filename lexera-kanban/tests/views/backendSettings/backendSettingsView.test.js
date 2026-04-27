@@ -39,6 +39,7 @@ describe('backendSettings view sub-app', () => {
     const callbacks = { onSaved: vi.fn() };
     window.LexeraSubApp = { init: subAppInit };
     window.ManagementUI = {
+      destroy: vi.fn(),
       init: mgmtInit,
       getUiPreset: vi.fn(() => ({ sections: [] }))
     };
@@ -49,13 +50,39 @@ describe('backendSettings view sub-app', () => {
 
     loadBackendSettingsView(window);
 
-    expect(subAppInit).toHaveBeenCalledWith({});
+    expect(subAppInit).toHaveBeenCalledWith(expect.objectContaining({
+      onTeardown: expect.any(Function)
+    }));
+    expect(window.ManagementUI.destroy).toHaveBeenCalledTimes(1);
     expect(window.ManagementUI.getUiPreset).toHaveBeenCalledWith('backendSettings');
     expect(mgmtInit).toHaveBeenCalledTimes(1);
     const opts = mgmtInit.mock.calls[0][0];
     expect(opts.container).toBe(window.document.getElementById('mgmt-container'));
     expect(opts.api).toBe(apiAdapter);
     expect(opts.callbacks).toBe(callbacks);
+  });
+
+  it('destroys the management mount on teardown', () => {
+    const dom = createDom();
+    const { window } = dom;
+    const subAppInit = vi.fn();
+    const destroy = vi.fn();
+    window.LexeraSubApp = { init: subAppInit };
+    window.ManagementUI = {
+      destroy,
+      init: vi.fn(),
+      getUiPreset: vi.fn(() => ({ sections: [] }))
+    };
+    window.LexeraSettingsRuntime = {
+      buildBackendApiAdapter: vi.fn(() => ({})),
+      buildBackendCallbacks: vi.fn(() => ({}))
+    };
+
+    loadBackendSettingsView(window);
+
+    const initOpts = subAppInit.mock.calls[0][0];
+    initOpts.onTeardown();
+    expect(destroy).toHaveBeenCalledTimes(2);
   });
 
   it('surfaces failures inline when ManagementUI is missing', () => {
@@ -92,6 +119,7 @@ describe('backendSettings view sub-app', () => {
     const { window } = dom;
     window.LexeraSubApp = { init: vi.fn() };
     window.ManagementUI = {
+      destroy: vi.fn(),
       init: vi.fn(() => { throw new Error('<script>alert(1)</script>'); }),
       getUiPreset: vi.fn()
     };

@@ -38,6 +38,7 @@ describe('files view sub-app', () => {
     const apiAdapter = { get: vi.fn() };
     window.LexeraSubApp = { init: subAppInit };
     window.ManagementUI = {
+      unmount: vi.fn(),
       mount: mgmtMount,
       getUiPreset: vi.fn(() => ({ sections: [] }))
     };
@@ -48,13 +49,39 @@ describe('files view sub-app', () => {
 
     loadFilesView(window);
 
-    expect(subAppInit).toHaveBeenCalledWith({});
+    expect(subAppInit).toHaveBeenCalledWith(expect.objectContaining({
+      onTeardown: expect.any(Function)
+    }));
+    expect(window.ManagementUI.unmount).toHaveBeenCalledWith('files');
     expect(window.ManagementUI.getUiPreset).toHaveBeenCalledWith('files');
     expect(mgmtMount).toHaveBeenCalledTimes(1);
     const [presetName, opts] = mgmtMount.mock.calls[0];
     expect(presetName).toBe('files');
     expect(opts.container).toBe(window.document.getElementById('mgmt-container'));
     expect(opts.api).toBe(apiAdapter);
+  });
+
+  it('unmounts the files management surface on teardown', () => {
+    const dom = createDom();
+    const { window } = dom;
+    const subAppInit = vi.fn();
+    const unmount = vi.fn();
+    window.LexeraSubApp = { init: subAppInit };
+    window.ManagementUI = {
+      unmount,
+      mount: vi.fn(),
+      getUiPreset: vi.fn(() => ({ sections: [] }))
+    };
+    window.LexeraSettingsRuntime = {
+      buildBackendApiAdapter: vi.fn(() => ({})),
+      buildBackendCallbacks: vi.fn(() => ({}))
+    };
+
+    loadFilesView(window);
+
+    const initOpts = subAppInit.mock.calls[0][0];
+    initOpts.onTeardown();
+    expect(unmount).toHaveBeenCalledTimes(2);
   });
 
   it('surfaces failures inline when ManagementUI is missing', () => {
@@ -77,6 +104,7 @@ describe('files view sub-app', () => {
     const { window } = dom;
     window.LexeraSubApp = { init: vi.fn() };
     window.ManagementUI = {
+      unmount: vi.fn(),
       mount: vi.fn(() => { throw new Error('mount failed'); }),
       getUiPreset: vi.fn()
     };

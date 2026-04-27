@@ -35,21 +35,31 @@ describe('frontendSettings view sub-app', () => {
     const { window } = dom;
     const subAppInit = vi.fn();
     const fsInit = vi.fn();
+    const fsRender = vi.fn();
     const builtOptions = { theme: 'auto', uiScale: 1 };
     window.LexeraSubApp = { init: subAppInit };
     window.LexeraSettingsRuntime = {
       buildFrontendSettingsOptions: vi.fn(() => builtOptions)
     };
-    window.LexeraFrontendSettings = { init: fsInit };
+    window.LexeraFrontendSettings = { init: fsInit, render: fsRender };
 
     loadFrontendSettingsView(window);
 
-    expect(subAppInit).toHaveBeenCalledWith({});
+    expect(subAppInit).toHaveBeenCalledWith(expect.objectContaining({
+      onTeardown: expect.any(Function)
+    }));
     expect(window.LexeraSettingsRuntime.buildFrontendSettingsOptions).toHaveBeenCalledTimes(1);
     expect(fsInit).toHaveBeenCalledTimes(1);
     const [optsArg, panelArg] = fsInit.mock.calls[0];
     expect(optsArg).toBe(builtOptions);
     expect(panelArg).toBe(window.document.querySelector('.lexera-shared-panel-frontend-settings'));
+
+    window.dispatchEvent(new window.Event('lexera-visual-themes-changed'));
+    expect(window.LexeraSettingsRuntime.buildFrontendSettingsOptions).toHaveBeenCalledTimes(2);
+    expect(fsRender).toHaveBeenCalledWith(
+      builtOptions,
+      window.document.querySelector('.lexera-shared-panel-frontend-settings')
+    );
   });
 
   it('surfaces failures inline when LexeraFrontendSettings is missing', () => {

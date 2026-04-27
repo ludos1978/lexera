@@ -19,6 +19,7 @@
   var MARP_PLUGIN_KEYS = ['marpEnginePath', 'marpTemplatesPath'];
   var FIELD_KEYS = TOOL_KEYS.concat(MARP_PLUGIN_KEYS);
   var initializedPanels = [];
+  var panelRecords = [];
 
   // Shared cache: populated by ensureDiscovery() or the first panel open.
   // Export view reads from this instead of spawning its own CLI probes, so
@@ -114,6 +115,24 @@
   function resolvePanels(panel) {
     if (panel && panel.nodeType === 1) return [panel];
     return findPanels();
+  }
+
+  function getPanelRecord(panel) {
+    for (var i = 0; i < panelRecords.length; i++) {
+      if (panelRecords[i].panel === panel) return panelRecords[i];
+    }
+    return null;
+  }
+
+  function ensurePanelRecord(panel) {
+    var record = getPanelRecord(panel);
+    if (record) return record;
+    record = {
+      panel: panel,
+      unsubscribeDiscovery: null
+    };
+    panelRecords.push(record);
+    return record;
   }
 
   function q(panel, cls) {
@@ -510,6 +529,7 @@
     for (var i = 0; i < panels.length; i++) {
       var root = panels[i];
       if (!root) continue;
+      var record = ensurePanelRecord(root);
       if (initializedPanels.indexOf(root) === -1) {
         initializedPanels.push(root);
         bindPanel(root);
@@ -517,7 +537,7 @@
         (function (p) {
           renderToolStatus(p);
           renderThemesList(p);
-          onDiscoveryChange(function () {
+          record.unsubscribeDiscovery = onDiscoveryChange(function () {
             renderToolStatus(p);
             renderThemesList(p);
           });
@@ -537,9 +557,28 @@
     return true;
   }
 
+  function destroy(panel) {
+    var panels = resolvePanels(panel);
+    for (var i = 0; i < panels.length; i++) {
+      var root = panels[i];
+      if (!root) continue;
+      var idx = initializedPanels.indexOf(root);
+      if (idx !== -1) initializedPanels.splice(idx, 1);
+      var record = getPanelRecord(root);
+      if (!record) continue;
+      if (typeof record.unsubscribeDiscovery === 'function') {
+        record.unsubscribeDiscovery();
+      }
+      record.unsubscribeDiscovery = null;
+      var recordIdx = panelRecords.indexOf(record);
+      if (recordIdx !== -1) panelRecords.splice(recordIdx, 1);
+    }
+  }
+
   return {
     render: render,
     init: init,
+    destroy: destroy,
     reload: function (panel) {
       var panels = resolvePanels(panel);
       for (var i = 0; i < panels.length; i++) {

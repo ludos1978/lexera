@@ -92,8 +92,17 @@ body.workspace-shell-mode > .lexera-shared-panel-frontend-tests {
 
 /* The header/main pattern used by the simpler views (dashboard, log,
  * workspaces, inspector). Same idea — direct children of body share the
- * panel-content layout. */
+ * panel-content layout.
+ *
+ * Note: app.css has `.header { display: none; }` because in the legacy
+ * shell `.header` was the global top bar that the workspace-shell-mode
+ * hid. Sub-apps reuse the `.header` class for their own panel header,
+ * so we must restore display here — otherwise dashboard/log/workspaces/
+ * inspector headers vanish entirely. Use `display: flex` to match the
+ * styling each sub-app's CSS already expects. */
 body.workspace-shell-mode > .header {
+  display: flex;
+  align-items: center;
   flex: 0 0 auto;
 }
 body.workspace-shell-mode > .body,

@@ -28,7 +28,9 @@
   'use strict';
 
   var panelTeardownInstalled = false;
+  var panelTeardownRan = false;
   var currentPanelLifecycle = null;
+  var teardownCallbacks = [];
 
   function tauri() {
     if (typeof window === 'undefined' || !window.__TAURI__) return null;
@@ -94,8 +96,43 @@
     };
   }
 
+  function runTeardownCallbacks() {
+    if (panelTeardownRan) return;
+    panelTeardownRan = true;
+    var callbacks = teardownCallbacks.slice();
+    teardownCallbacks.length = 0;
+    for (var i = 0; i < callbacks.length; i++) {
+      try { callbacks[i](); } catch (_) { /* ignore teardown callback errors */ }
+    }
+  }
+
+  function installPanelTeardownListener() {
+    if (panelTeardownInstalled) return;
+    panelTeardownInstalled = true;
+    window.addEventListener('beforeunload', function () {
+      runTeardownCallbacks();
+      if (!currentPanelLifecycle) return;
+      invoke('multiview_broadcast', {
+        event: 'panel-teardown',
+        payload: {
+          label: currentPanelLifecycle.label,
+          at: Date.now(),
+          paneId: currentPanelLifecycle.paneId,
+          panelKind: currentPanelLifecycle.panelKind,
+          panelInstanceId: currentPanelLifecycle.panelInstanceId,
+          windowLabel: currentPanelLifecycle.windowLabel,
+          hostWindowLabel: currentPanelLifecycle.hostWindowLabel
+        }
+      }).catch(function () {});
+    });
+  }
+
   function init(opts) {
     opts = opts || {};
+    if (typeof opts.onTeardown === 'function') {
+      teardownCallbacks.push(opts.onTeardown);
+      installPanelTeardownListener();
+    }
     // Apply the same body class the legacy SHELL set so that all the
     // `body.workspace-shell-mode .board-list { ... }` rules in app.css
     // (and friends) take effect inside this child webview. Without
@@ -286,24 +323,7 @@
           hostWindowLabel: ctx.hostWindowLabel
         }
       }).catch(function () {});
-      if (!panelTeardownInstalled) {
-        panelTeardownInstalled = true;
-        window.addEventListener('beforeunload', function () {
-          if (!currentPanelLifecycle) return;
-          invoke('multiview_broadcast', {
-            event: 'panel-teardown',
-            payload: {
-              label: currentPanelLifecycle.label,
-              at: Date.now(),
-              paneId: currentPanelLifecycle.paneId,
-              panelKind: currentPanelLifecycle.panelKind,
-              panelInstanceId: currentPanelLifecycle.panelInstanceId,
-              windowLabel: currentPanelLifecycle.windowLabel,
-              hostWindowLabel: currentPanelLifecycle.hostWindowLabel
-            }
-          }).catch(function () {});
-        });
-      }
+      installPanelTeardownListener();
     }
 
     // Report health AND inject a visible status dot into the

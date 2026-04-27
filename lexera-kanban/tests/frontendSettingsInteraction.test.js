@@ -205,4 +205,35 @@ describe('LexeraFrontendSettings interactions', () => {
     const options = runtime.buildFrontendSettingsOptions();
     expect(options.getContextMenuBuilders()).toBe(ContextMenuBuilders);
   });
+
+  it('settings runtime uses the live visual theme registry when available', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
+    const { window } = dom;
+    const applyLexeraVisualTheme = vi.fn(() => ({ id: 'sleek-uniform' }));
+    window.LEXERA_VISUAL_THEMES = [
+      { id: 'classic', name: 'No style' },
+      { id: 'sleek-uniform', name: 'Sleek Uniform' }
+    ];
+    window.getLexeraCurrentVisualThemeId = vi.fn(() => 'classic');
+    window.applyLexeraVisualTheme = applyLexeraVisualTheme;
+    window.__TAURI__ = {
+      core: {
+        invoke: vi.fn(() => Promise.resolve(null))
+      }
+    };
+
+    const runtime = loadIIFE('views/_shared/settingsRuntime.js', 'window.LexeraSettingsRuntime', {
+      window,
+      localStorage: window.localStorage,
+      JSON
+    });
+
+    const options = runtime.buildFrontendSettingsOptions();
+    expect(options.getVisualThemes()).toEqual(window.LEXERA_VISUAL_THEMES);
+    expect(options.getCurrentVisualThemeId()).toBe('classic');
+
+    options.applyVisualTheme('sleek-uniform');
+    expect(applyLexeraVisualTheme).toHaveBeenCalledWith('sleek-uniform');
+    expect(window.localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
+  });
 });
