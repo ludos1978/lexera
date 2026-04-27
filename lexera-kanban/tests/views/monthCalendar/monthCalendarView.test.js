@@ -41,21 +41,30 @@ function createDom() {
 }
 
 describe('monthCalendar view sub-app', () => {
-  it('boots through LexeraSubApp.init and mounts the runtime in month mode', () => {
+  it('mounts the runtime in month mode then registers refresh callbacks via a single LexeraSubApp.init', () => {
     const dom = createDom();
     const { window } = dom;
     const subAppInit = vi.fn();
-    const mount = vi.fn(() => ({ refresh: vi.fn() }));
+    const refresh = vi.fn();
+    const mount = vi.fn(() => ({ refresh }));
     window.LexeraSubApp = { init: subAppInit };
     window.LexeraCalendarRuntime = { mount };
 
     loadMonthCalendarView(window);
 
-    expect(subAppInit).toHaveBeenCalledWith({});
     expect(mount).toHaveBeenCalledTimes(1);
     const [panelArg, opts] = mount.mock.calls[0];
     expect(panelArg).toBe(window.document.querySelector('.calendar-panel'));
     expect(opts).toEqual({ kind: 'month' });
+
+    // Single init call with calendar onCustom callbacks.
+    expect(subAppInit).toHaveBeenCalledTimes(1);
+    const initOpts = subAppInit.mock.calls[0][0];
+    expect(typeof initOpts.onCustom['management-board-mutation']).toBe('function');
+    expect(typeof initOpts.onCustom['calendar-tasks-update']).toBe('function');
+    initOpts.onCustom['management-board-mutation']();
+    initOpts.onCustom['calendar-tasks-update']();
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 
   it('refreshes the calendar when the scope filter changes', () => {

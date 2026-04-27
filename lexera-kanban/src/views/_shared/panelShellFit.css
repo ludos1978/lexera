@@ -7,14 +7,20 @@
  * that no longer match in the multiview architecture, because each panel
  * runs in its own webview where there's no `.workspace-shell-panel-content`
  * ancestor — the panel is a direct child of <body>. This file replicates
- * those rules with `body.workspace-shell-mode > .X` selectors so layout
- * lands the same.
+ * those rules with `body > .X` selectors so layout lands the same.
  *
- * The `subAppRuntime.js` boot adds the `workspace-shell-mode` class so
- * these rules activate in every sub-app webview.
- */
+ * Selector scoping: `body.workspace-shell-mode[data-shell-panel]`. The
+ * `workspace-shell-mode` class is set by BOTH the SHELL webview AND every
+ * SUB-APP webview (the shell's `applyShellBodyClasses` AND
+ * `subAppRuntime.init()` both add it), but `data-shell-panel="<kind>"`
+ * is only set by `subAppRuntime.init()` for sub-apps. Without that
+ * attribute scope, the `display: flex; height: 100vh` body rule below
+ * would also hit the SHELL and override its `.layout { grid-row: 1 }`
+ * placement — collapsing the shell content to ~content height and
+ * costing every panel ~20px at the bottom (the legacy bottom-row
+ * reserved space). */
 
-body.workspace-shell-mode {
+body.workspace-shell-mode[data-shell-panel] {
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -27,8 +33,8 @@ body.workspace-shell-mode {
 
 /* Each panel's top-level element should fill the body. Mirrors the
  * `.workspace-shell-panel-content > .X` block from workspaceShell.css. */
-body.workspace-shell-mode > .sidebar,
-body.workspace-shell-mode > .lexera-shared-panel-hierarchy {
+body.workspace-shell-mode[data-shell-panel] > .sidebar,
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel-hierarchy {
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -38,8 +44,8 @@ body.workspace-shell-mode > .lexera-shared-panel-hierarchy {
   border-right: 0;
 }
 
-body.workspace-shell-mode > .sidebar-dashboard,
-body.workspace-shell-mode > .lexera-shared-panel-dashboard {
+body.workspace-shell-mode[data-shell-panel] > .sidebar-dashboard,
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel-dashboard {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -49,8 +55,8 @@ body.workspace-shell-mode > .lexera-shared-panel-dashboard {
   height: 100%;
 }
 
-body.workspace-shell-mode > .log-panel,
-body.workspace-shell-mode > .lexera-shared-panel-logs {
+body.workspace-shell-mode[data-shell-panel] > .log-panel,
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel-logs {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -59,11 +65,11 @@ body.workspace-shell-mode > .lexera-shared-panel-logs {
   border-top: 0;
 }
 
-body.workspace-shell-mode > .shell-settings-panel,
-body.workspace-shell-mode > .lexera-shared-panel-backend-settings,
-body.workspace-shell-mode > .lexera-shared-panel-frontend-settings,
-body.workspace-shell-mode > .lexera-shared-panel-files,
-body.workspace-shell-mode > .lexera-shared-panel-render-apps {
+body.workspace-shell-mode[data-shell-panel] > .shell-settings-panel,
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel-backend-settings,
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel-frontend-settings,
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel-files,
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel-render-apps {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -71,9 +77,9 @@ body.workspace-shell-mode > .lexera-shared-panel-render-apps {
   height: 100%;
 }
 
-body.workspace-shell-mode > .calendar-panel,
-body.workspace-shell-mode > .lexera-shared-panel-week-calendar,
-body.workspace-shell-mode > .lexera-shared-panel-month-calendar {
+body.workspace-shell-mode[data-shell-panel] > .calendar-panel,
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel-week-calendar,
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel-month-calendar {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -81,13 +87,31 @@ body.workspace-shell-mode > .lexera-shared-panel-month-calendar {
   height: 100%;
 }
 
-body.workspace-shell-mode > .test-panel,
-body.workspace-shell-mode > .lexera-shared-panel-frontend-tests {
+body.workspace-shell-mode[data-shell-panel] > .test-panel,
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel-frontend-tests {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
+}
+
+/* Catch-all for any future panel kind that wears the shared
+ * `.lexera-shared-panel` class. The per-kind rules above always win
+ * when present (same specificity but they appear earlier in the
+ * cascade — no, actually CSS source-order applies last among equal
+ * specificity, so this rule wins for kinds NOT explicitly listed
+ * above and yields to per-kind rules via the explicit class
+ * selectors). Keeps body-fill behavior consistent for anything
+ * downstream code adds without needing to come back here. */
+body.workspace-shell-mode[data-shell-panel] > .lexera-shared-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 /* The header/main pattern used by the simpler views (dashboard, log,
@@ -100,14 +124,14 @@ body.workspace-shell-mode > .lexera-shared-panel-frontend-tests {
  * so we must restore display here — otherwise dashboard/log/workspaces/
  * inspector headers vanish entirely. Use `display: flex` to match the
  * styling each sub-app's CSS already expects. */
-body.workspace-shell-mode > .header {
+body.workspace-shell-mode[data-shell-panel] > .header {
   display: flex;
   align-items: center;
   flex: 0 0 auto;
 }
-body.workspace-shell-mode > .body,
-body.workspace-shell-mode > main,
-body.workspace-shell-mode > .entries {
+body.workspace-shell-mode[data-shell-panel] > .body,
+body.workspace-shell-mode[data-shell-panel] > main,
+body.workspace-shell-mode[data-shell-panel] > .entries {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;

@@ -41,21 +41,34 @@ function createDom() {
 }
 
 describe('weekCalendar view sub-app', () => {
-  it('boots through LexeraSubApp.init and mounts the runtime in week mode', () => {
+  it('mounts the runtime in week mode then registers refresh callbacks via a single LexeraSubApp.init', () => {
     const dom = createDom();
     const { window } = dom;
     const subAppInit = vi.fn();
-    const mount = vi.fn(() => ({ refresh: vi.fn() }));
+    const refresh = vi.fn();
+    const mount = vi.fn(() => ({ refresh }));
     window.LexeraSubApp = { init: subAppInit };
     window.LexeraCalendarRuntime = { mount };
 
     loadWeekCalendarView(window);
 
-    expect(subAppInit).toHaveBeenCalledWith({});
+    // Mount runs first so the bootstrap can attach refresh to subsequent
+    // multiview events.
     expect(mount).toHaveBeenCalledTimes(1);
     const [panelArg, opts] = mount.mock.calls[0];
     expect(panelArg).toBe(window.document.querySelector('.calendar-panel'));
     expect(opts).toEqual({ kind: 'week' });
+
+    // Single SubApp.init with the calendar's onCustom handlers — replaces
+    // the previous double-init (one in the bootstrap with `{}`, another
+    // inside calendarRuntime.mount with onCustom).
+    expect(subAppInit).toHaveBeenCalledTimes(1);
+    const initOpts = subAppInit.mock.calls[0][0];
+    expect(typeof initOpts.onCustom['management-board-mutation']).toBe('function');
+    expect(typeof initOpts.onCustom['calendar-tasks-update']).toBe('function');
+    initOpts.onCustom['management-board-mutation']();
+    initOpts.onCustom['calendar-tasks-update']();
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 
   it('refreshes the calendar when the scope filter changes', () => {

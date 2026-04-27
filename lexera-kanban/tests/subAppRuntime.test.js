@@ -136,4 +136,210 @@ describe('LexeraSubApp runtime metadata', () => {
       }
     });
   });
+
+  it('installs sub-app log helpers that forward into log_broadcast when shell logging is absent', async () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/views/renderApps/index.html?panelKind=renderApps&panel=renderApps-1&pane=tab-4&windowLabel=panel-tab-tab-4&workspaceShellHostLabel=main'
+    });
+    const { window } = dom;
+    const invoke = vi.fn(() => Promise.resolve(null));
+    const listen = vi.fn();
+    window.__TAURI__ = {
+      core: { invoke },
+      webview: {
+        getCurrentWebview() {
+          return { label: 'panel-tab-tab-4', listen };
+        }
+      }
+    };
+    const subApp = loadSubApp(window, {
+      URLSearchParams,
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+
+    subApp.init({
+      requestTheme: false,
+      reportFocus: false,
+      shortcuts: false
+    });
+
+    window.logFrontendIssue('error', 'render-apps.test-run', 'Test run failed', new Error('boom'));
+    window.traceFrontendAction('warn', 'settings.save', 'Saved settings', { panel: 'frontend' });
+
+    await Promise.resolve();
+
+    expect(invoke).toHaveBeenCalledWith('log_broadcast', {
+      entry: {
+        level: 'error',
+        source: 'render-apps.test-run',
+        message: expect.stringContaining('Test run failed: Error: boom'),
+        timestamp_ms: expect.any(Number)
+      }
+    });
+    expect(invoke).toHaveBeenCalledWith('log_broadcast', {
+      entry: {
+        level: 'warn',
+        source: 'settings.save',
+        message: expect.stringContaining('Saved settings'),
+        timestamp_ms: expect.any(Number)
+      }
+    });
+  });
+
+  it('installs a child-webview showNotification shim with shell-style dedupe and auto-dismiss', () => {
+    vi.useFakeTimers();
+    try {
+      const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+        url: 'http://127.0.0.1:1431/views/backendSettings/index.html?panelKind=backendSettings&panel=backendSettings-1&pane=tab-5&windowLabel=panel-tab-tab-5&workspaceShellHostLabel=main'
+      });
+      const { window } = dom;
+      const subApp = loadSubApp(window, {
+        URLSearchParams,
+        setInterval: vi.fn(() => 1),
+        clearInterval: vi.fn()
+      });
+
+      subApp.init({ onError: vi.fn() });
+
+      expect(typeof window.showNotification).toBe('function');
+
+      window.showNotification('Workspace created');
+      window.showNotification('Workspace created');
+
+      expect(window.document.querySelectorAll('.notification')).toHaveLength(1);
+      expect(window.document.querySelector('.notification')?.textContent).toContain('Workspace created');
+
+      vi.advanceTimersByTime(3300);
+      expect(window.document.querySelector('.notification')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('opens confirm modals through the shared child-webview runtime', async () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/views/backendSettings/index.html?panelKind=backendSettings&panel=backendSettings-1&pane=tab-5&windowLabel=panel-tab-tab-5&workspaceShellHostLabel=main'
+    });
+    const { window } = dom;
+    let modalHandler = null;
+    const unsub = vi.fn();
+    const invoke = vi.fn(() => Promise.resolve(null));
+    const listen = vi.fn((eventName, handler) => {
+      modalHandler = handler;
+      return Promise.resolve(unsub);
+    });
+    window.__TAURI__ = {
+      core: { invoke },
+      event: { listen },
+      webview: {
+        getCurrentWebview() {
+          return { label: 'panel-tab-tab-5', listen: vi.fn() };
+        }
+      }
+    };
+    const subApp = loadSubApp(window, {
+      URLSearchParams,
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+
+    const resultPromise = subApp.confirmModal({ title: 'Confirm delete', message: 'Delete workspace?' });
+    await Promise.resolve();
+
+    expect(listen).toHaveBeenCalledWith(expect.stringMatching(/^modal-result-confirm-modal-/), expect.any(Function));
+    expect(invoke).toHaveBeenCalledWith('multiview_open_modal_window', {
+      spec: expect.objectContaining({
+        title: 'Confirm delete',
+        url: expect.stringContaining('views/modals/confirm.html?')
+      })
+    });
+
+    modalHandler({ payload: { accepted: true } });
+    await expect(resultPromise).resolves.toBe(true);
+    expect(unsub).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens prompt modals through the shared child-webview runtime and unsubscribes after resolve', async () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/views/files/index.html?panelKind=files&panel=files-1&pane=tab-6&windowLabel=panel-tab-tab-6&workspaceShellHostLabel=main'
+    });
+    const { window } = dom;
+    let modalHandler = null;
+    const unsub = vi.fn();
+    const invoke = vi.fn(() => Promise.resolve(null));
+    const listen = vi.fn((eventName, handler) => {
+      modalHandler = handler;
+      return Promise.resolve(unsub);
+    });
+    window.__TAURI__ = {
+      core: { invoke },
+      event: { listen },
+      webview: {
+        getCurrentWebview() {
+          return { label: 'panel-tab-tab-6', listen: vi.fn() };
+        }
+      }
+    };
+    const subApp = loadSubApp(window, {
+      URLSearchParams,
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+
+    const resultPromise = subApp.promptModal({
+      title: 'Rename workspace',
+      message: 'Enter the new name',
+      initial: 'Alpha'
+    });
+    await Promise.resolve();
+
+    expect(listen).toHaveBeenCalledWith(expect.stringMatching(/^modal-result-prompt-modal-/), expect.any(Function));
+    expect(invoke).toHaveBeenCalledWith('multiview_open_modal_window', {
+      spec: expect.objectContaining({
+        title: 'Rename workspace',
+        url: expect.stringContaining('views/modals/prompt.html?')
+      })
+    });
+
+    modalHandler({ payload: { value: 'Beta' } });
+    await expect(resultPromise).resolves.toBe('Beta');
+    expect(unsub).toHaveBeenCalledTimes(1);
+  });
+
+  it('cleans up a late modal listener when opening the modal window fails', async () => {
+    let resolveListen = null;
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/views/backendSettings/index.html?panelKind=backendSettings&panel=backendSettings-1&pane=tab-5&windowLabel=panel-tab-tab-5&workspaceShellHostLabel=main'
+    });
+    const { window } = dom;
+    const unsub = vi.fn();
+    const invoke = vi.fn(() => Promise.reject(new Error('open failed')));
+    const listen = vi.fn(() => new Promise((resolve) => {
+      resolveListen = resolve;
+    }));
+    window.__TAURI__ = {
+      core: { invoke },
+      event: { listen },
+      webview: {
+        getCurrentWebview() {
+          return { label: 'panel-tab-tab-5', listen: vi.fn() };
+        }
+      }
+    };
+    const subApp = loadSubApp(window, {
+      URLSearchParams,
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+
+    const resultPromise = subApp.confirmModal({ title: 'Confirm delete', message: 'Delete workspace?' });
+    await Promise.resolve();
+    await expect(resultPromise).resolves.toBe(false);
+
+    resolveListen(unsub);
+    await Promise.resolve();
+
+    expect(unsub).toHaveBeenCalledTimes(1);
+  });
 });

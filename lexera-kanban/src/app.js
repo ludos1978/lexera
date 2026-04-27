@@ -2451,8 +2451,10 @@ var LexeraDashboard = (function () {
   function handleSSEEvent(event) {
     try {
     var kind = event.kind || event.type || '';
-    // Forward collab/peer/config events to the shared management UI
+    // Forward collab/peer/config events to child settings panels and the shared management UI
+    var handledManagementRefresh = broadcastManagementRefreshFromSSE(kind);
     if (ManagementWiring && ManagementWiring.handleSSEManagementEvent(kind)) return;
+    if (handledManagementRefresh) return;
     if (!activeBoardId || searchMode) return;
     var boardId = event.board_id || event.boardId || '';
     var includeBoardIds = event.board_ids || event.boardIds || [];
@@ -6051,6 +6053,103 @@ var LexeraDashboard = (function () {
 
   // ── Management Panel (shared module) — delegated to LexeraManagementWiring ──
 
+  function getManagementRefreshPayload(kind) {
+    if (kind === 'CollabConnectionChanged') {
+      return { kind: kind, section: 'connections' };
+    }
+    if (kind === 'PeerDiscoveryChanged') {
+      return { kind: kind, section: 'peers' };
+    }
+    if (kind === 'ConfigChanged') {
+      return { kind: kind, section: null };
+    }
+    return null;
+  }
+
+  function broadcastManagementRefresh(payload) {
+    if (!payload) {
+      return false;
+    }
+    if (window.LexeraMultiview &&
+        typeof window.LexeraMultiview.invoke === 'function') {
+      window.LexeraMultiview.invoke('multiview_broadcast', {
+        event: 'management-refresh',
+        payload: payload
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'management.refresh', 'Failed to broadcast management refresh to child views', err);
+      });
+    }
+    return true;
+  }
+
+  function broadcastManagementRefreshFromSSE(kind) {
+    return broadcastManagementRefresh(getManagementRefreshPayload(kind));
+  }
+
+  function handleManagementWorkspacesLoaded(workspaceList, defaultWorkspaceId) {
+    var nextWorkspaces = Array.isArray(workspaceList) ? workspaceList : [];
+    setWorkspacesState(nextWorkspaces);
+    resolveActiveWorkspaceId(defaultWorkspaceId || null);
+  }
+
+  function handleManagementBoardAdded() {
+    poll();
+  }
+
+  function handleManagementBoardRemoved(boardId) {
+    setBoardsState(boards.filter(function (b) { return b.id !== boardId; }));
+    BoardList.deleteBoardHierarchyCacheEntry(boardId);
+    if (activeBoardId === boardId) {
+      setActiveBoardIdState(null);
+      setActiveBoardDataState(null);
+      setFullBoardDataState(null);
+      if (Settings) Settings.set('lastBoard', null); else localStorage.removeItem('lexera-last-board');
+    }
+    renderMainView();
+    scheduleDashboardRefresh(60);
+  }
+
+  function handleManagementBoardSettingsSaved(boardId, settings) {
+    if (boardId === activeBoardId && fullBoardData) {
+      if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
+      for (var s in settings) {
+        if (settings[s] == null) {
+          delete fullBoardData.boardSettings[s];
+        } else {
+          fullBoardData.boardSettings[s] = settings[s];
+        }
+      }
+      applyBoardSettings();
+    }
+  }
+
+  function handleRenderAppsConfigSaved(values) {
+    var normalized = values && typeof values === 'object'
+      ? Object.assign({}, values)
+      : null;
+    if (window.ExportService) {
+      window.ExportService._renderAppsConfigCache = normalized || undefined;
+      window.ExportService._marpEnginePathCache = undefined;
+    }
+    var exportUi = window._exportUI;
+    function refreshExportUiToolState() {
+      if (exportUi && typeof exportUi.checkToolAvailability === 'function') {
+        exportUi.checkToolAvailability();
+      }
+    }
+    if (window.LexeraRenderAppsSettings &&
+        typeof window.LexeraRenderAppsSettings.refreshDiscovery === 'function') {
+      window.LexeraRenderAppsSettings.refreshDiscovery().then(function () {
+        refreshExportUiToolState();
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'render-apps.bridge', 'Plugin settings refreshDiscovery failed after cross-view save', err);
+        refreshExportUiToolState();
+      });
+      return;
+    }
+    refreshExportUiToolState();
+  }
+
   var ManagementWiring = window.LexeraManagementWiring || null;
   if (ManagementWiring) {
     ManagementWiring.init({
@@ -6059,37 +6158,10 @@ var LexeraDashboard = (function () {
       apiRequest: function (path, options) { return LexeraApi.request(path, options); },
       showNotification: function (msg) { showNotification(msg); },
       showConfirmDialog: function (msg) { return showConfirmDialog(msg); },
-      poll: function () { poll(); },
-      onWorkspacesLoaded: function (workspaceList, defaultWorkspaceId) {
-        var nextWorkspaces = Array.isArray(workspaceList) ? workspaceList : [];
-        setWorkspacesState(nextWorkspaces);
-        resolveActiveWorkspaceId(defaultWorkspaceId || null);
-      },
-      onBoardRemoved: function (boardId) {
-        setBoardsState(boards.filter(function (b) { return b.id !== boardId; }));
-        BoardList.deleteBoardHierarchyCacheEntry(boardId);
-        if (activeBoardId === boardId) {
-          setActiveBoardIdState(null);
-          setActiveBoardDataState(null);
-          setFullBoardDataState(null);
-          if (Settings) Settings.set('lastBoard', null); else localStorage.removeItem('lexera-last-board');
-        }
-        renderMainView();
-        scheduleDashboardRefresh(60);
-      },
-      onBoardSettingsSaved: function (boardId, settings) {
-        if (boardId === activeBoardId && fullBoardData) {
-          if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
-          for (var s in settings) {
-            if (settings[s] == null) {
-              delete fullBoardData.boardSettings[s];
-            } else {
-              fullBoardData.boardSettings[s] = settings[s];
-            }
-          }
-          applyBoardSettings();
-        }
-      },
+      poll: function () { handleManagementBoardAdded(); },
+      onWorkspacesLoaded: handleManagementWorkspacesLoaded,
+      onBoardRemoved: handleManagementBoardRemoved,
+      onBoardSettingsSaved: handleManagementBoardSettingsSaved,
       getElLogSettingsContainer: function () { return getElLogSettingsContainer(); },
       getElMgmtPanelBody: function () { return getElMgmtPanelBody(); },
       getElMgmtPanel: function () { return getElMgmtPanel(); },
@@ -6098,6 +6170,21 @@ var LexeraDashboard = (function () {
       setElLogSettingsPane: function (v) { elLogSettingsPane = v; },
       initFrontendSettingsPanel: function (el) { initFrontendSettingsPanel(el); },
       initRenderAppsPanel: function (el) { initRenderAppsPanel(el); },
+    });
+  }
+
+  var ManagementBridge = window.LexeraManagementBridge || null;
+  if (ManagementBridge && typeof ManagementBridge.install === 'function') {
+    ManagementBridge.install({
+      onWorkspacesLoaded: function (workspaceList, defaultWorkspaceId) {
+        handleManagementWorkspacesLoaded(workspaceList, defaultWorkspaceId);
+        renderBoardList();
+        scheduleDashboardRefresh(60);
+      },
+      onBoardAdded: handleManagementBoardAdded,
+      onBoardRemoved: handleManagementBoardRemoved,
+      onBoardSettingsSaved: handleManagementBoardSettingsSaved,
+      onRenderAppsConfigSaved: handleRenderAppsConfigSaved
     });
   }
 

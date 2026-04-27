@@ -236,4 +236,70 @@ describe('LexeraFrontendSettings interactions', () => {
     expect(applyLexeraVisualTheme).toHaveBeenCalledWith('sleek-uniform');
     expect(window.localStorage.getItem('lexera-visual-theme')).toBe('sleek-uniform');
   });
+
+  it('settings runtime routes backend notifications through showNotification when present', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
+    const { window } = dom;
+    window.showNotification = vi.fn();
+
+    const runtime = loadIIFE('views/_shared/settingsRuntime.js', 'window.LexeraSettingsRuntime', {
+      window,
+      localStorage: window.localStorage,
+      JSON
+    });
+
+    const callbacks = runtime.buildBackendCallbacks();
+    callbacks.onNotify('Workspace created');
+
+    expect(window.showNotification).toHaveBeenCalledWith('Workspace created');
+  });
+
+  it('settings runtime broadcasts workspace snapshots for shell-state refresh', async () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
+    const { window } = dom;
+    const invoke = vi.fn(() => Promise.resolve(null));
+    window.__TAURI__ = {
+      core: { invoke }
+    };
+
+    const runtime = loadIIFE('views/_shared/settingsRuntime.js', 'window.LexeraSettingsRuntime', {
+      window,
+      localStorage: window.localStorage,
+      JSON
+    });
+
+    const callbacks = runtime.buildBackendCallbacks();
+    callbacks.onWorkspacesLoaded([{ id: 'ws-1', name: 'Alpha' }], 'ws-1');
+    await Promise.resolve();
+
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'management-workspaces-loaded',
+      payload: {
+        workspaces: [{ id: 'ws-1', name: 'Alpha' }],
+        defaultWorkspaceId: 'ws-1'
+      }
+    });
+  });
+
+  it('settings runtime prefers the shared sub-app confirm modal over window.confirm', async () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
+    const { window } = dom;
+    const confirmModal = vi.fn(() => Promise.resolve(true));
+    window.LexeraSubApp = { confirmModal };
+    window.confirm = vi.fn(() => false);
+
+    const runtime = loadIIFE('views/_shared/settingsRuntime.js', 'window.LexeraSettingsRuntime', {
+      window,
+      localStorage: window.localStorage,
+      JSON
+    });
+
+    const callbacks = runtime.buildBackendCallbacks();
+    await expect(callbacks.onConfirm('Delete workspace?')).resolves.toBe(true);
+    expect(confirmModal).toHaveBeenCalledWith({
+      title: 'Confirm',
+      message: 'Delete workspace?'
+    });
+    expect(window.confirm).not.toHaveBeenCalled();
+  });
 });

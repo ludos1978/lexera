@@ -1,8 +1,21 @@
 (function () {
   'use strict';
 
+  function handleManagementRefresh(payload) {
+    if (!window.ManagementUI || typeof window.ManagementUI.refresh !== 'function') return;
+    var section = payload && payload.section ? String(payload.section) : '';
+    if (section) {
+      window.ManagementUI.refresh(section);
+      return;
+    }
+    window.ManagementUI.refresh();
+  }
+
   if (window.LexeraSubApp && typeof window.LexeraSubApp.init === 'function') {
     window.LexeraSubApp.init({
+      onCustom: {
+        'management-refresh': handleManagementRefresh
+      },
       onTeardown: function () {
         if (window.ManagementUI && typeof window.ManagementUI.destroy === 'function') {
           window.ManagementUI.destroy();

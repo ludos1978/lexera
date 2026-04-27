@@ -50,6 +50,9 @@ describe('files view sub-app', () => {
     loadFilesView(window);
 
     expect(subAppInit).toHaveBeenCalledWith(expect.objectContaining({
+      onCustom: expect.objectContaining({
+        'management-refresh': expect.any(Function)
+      }),
       onTeardown: expect.any(Function)
     }));
     expect(window.ManagementUI.unmount).toHaveBeenCalledWith('files');
@@ -59,6 +62,33 @@ describe('files view sub-app', () => {
     expect(presetName).toBe('files');
     expect(opts.container).toBe(window.document.getElementById('mgmt-container'));
     expect(opts.api).toBe(apiAdapter);
+  });
+
+  it('refreshes the files management surface when the shell broadcasts management-refresh', () => {
+    const dom = createDom();
+    const { window } = dom;
+    const subAppInit = vi.fn();
+    const refresh = vi.fn();
+    window.LexeraSubApp = { init: subAppInit };
+    window.ManagementUI = {
+      unmount: vi.fn(),
+      refresh,
+      mount: vi.fn(),
+      getUiPreset: vi.fn(() => ({ sections: [] }))
+    };
+    window.LexeraSettingsRuntime = {
+      buildBackendApiAdapter: vi.fn(() => ({})),
+      buildBackendCallbacks: vi.fn(() => ({}))
+    };
+
+    loadFilesView(window);
+
+    const onCustom = subAppInit.mock.calls[0][0].onCustom;
+    onCustom['management-refresh']({ section: 'peers' });
+    onCustom['management-refresh']({});
+
+    expect(refresh).toHaveBeenNthCalledWith(1, 'peers');
+    expect(refresh).toHaveBeenNthCalledWith(2);
   });
 
   it('unmounts the files management surface on teardown', () => {

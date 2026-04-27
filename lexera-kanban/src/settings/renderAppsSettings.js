@@ -94,6 +94,39 @@
   function getCachedStatus() { return cachedState.toolStatus; }
   function getCachedThemes() { return cachedState.themes; }
 
+  function notify(message, variant) {
+    if (typeof window === 'undefined' || typeof window.showNotification !== 'function') return;
+    try {
+      window.showNotification(String(message || ''), {
+        variant: variant || 'info'
+      });
+    } catch (_) { /* ignore notification failures */ }
+  }
+
+  function broadcastConfigSaved(values) {
+    var payload = {
+      values: values && typeof values === 'object'
+        ? Object.assign({}, values)
+        : {}
+    };
+    if (typeof window !== 'undefined' &&
+        window.LexeraSubApp &&
+        typeof window.LexeraSubApp.broadcast === 'function') {
+      return window.LexeraSubApp.broadcast('render-apps-config-saved', payload)
+        .catch(function () { return null; });
+    }
+    if (typeof window !== 'undefined' &&
+        window.__TAURI__ &&
+        window.__TAURI__.core &&
+        typeof window.__TAURI__.core.invoke === 'function') {
+      return window.__TAURI__.core.invoke('multiview_broadcast', {
+        event: 'render-apps-config-saved',
+        payload: payload
+      }).catch(function () { return null; });
+    }
+    return Promise.resolve(null);
+  }
+
   function onDiscoveryChange(fn) {
     if (typeof fn !== 'function') return function () {};
     discoveryListeners.push(fn);
@@ -350,6 +383,7 @@
     var api = getApi();
     if (!api || typeof api.get !== 'function') {
       showStatus(panel, 'API not available', true);
+      notify('Plugin settings API not available', 'error');
       return;
     }
     try {
@@ -357,6 +391,7 @@
       render(result, panel);
     } catch (err) {
       showStatus(panel, 'Failed to load: ' + (err.message || String(err)), true);
+      notify('Failed to load plugin settings', 'error');
     }
   }
 
@@ -364,17 +399,24 @@
     var api = getApi();
     if (!api || typeof api.put !== 'function') {
       showStatus(panel, 'API not available', true);
+      notify('Plugin settings API not available', 'error');
       return;
     }
     var values = collectValues(panel);
     try {
       await api.put('/config/render-apps', values);
       showStatus(panel, 'Saved', false);
+      notify('Plugin settings saved', 'success');
+      broadcastConfigSaved(values);
       // Templates folder may have changed — re-discover so the export
       // dropdown and the themes list in this panel reflect the new path.
-      refreshDiscovery().then(function () { renderThemesList(panel); });
+      refreshDiscovery().then(function () {
+        renderToolStatus(panel);
+        renderThemesList(panel);
+      });
     } catch (err) {
       showStatus(panel, 'Failed to save: ' + (err.message || String(err)), true);
+      notify('Failed to save plugin settings', 'error');
     }
   }
 

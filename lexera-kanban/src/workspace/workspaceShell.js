@@ -2372,6 +2372,34 @@
       multiviewSpawnedTabs[tab.id] = { url: url, state: 'ready', label: label };
       if (typeof window.lexeraLog === 'function') {
         window.lexeraLog('debug', '[multiview] spawned ' + label);
+        // Diagnostic: log placeholder + ancestry geometry once. The
+        // user reports every panel webview is ~20px short at the
+        // bottom; this trace makes the SHELL-side measurements visible
+        // so we can compare against the sub-app's own body rect (which
+        // the sub-app logs via subAppRuntime). One-shot per spawn.
+        setTimeout(function () {
+          try {
+            var pr = placeholderEl.getBoundingClientRect();
+            var pcEl = placeholderEl.parentNode;
+            var pcr = pcEl ? pcEl.getBoundingClientRect() : null;
+            var tsEl = pcEl ? pcEl.parentNode : null;
+            var tsr = tsEl ? tsEl.getBoundingClientRect() : null;
+            var bodyRect = state.bodyEl ? state.bodyEl.getBoundingClientRect() : null;
+            var rootRect = state.rootEl ? state.rootEl.getBoundingClientRect() : null;
+            var winH = window.innerHeight;
+            var docH = document.documentElement ? document.documentElement.clientHeight : null;
+            window.lexeraLog('info',
+              '[multiview/diag] ' + label +
+              ' placeholder={t:' + pr.top.toFixed(1) + ',b:' + pr.bottom.toFixed(1) + ',h:' + pr.height.toFixed(1) + '}' +
+              ' panel-content=' + (pcr ? '{t:' + pcr.top.toFixed(1) + ',b:' + pcr.bottom.toFixed(1) + ',h:' + pcr.height.toFixed(1) + '}' : 'null') +
+              ' tabset=' + (tsr ? '{t:' + tsr.top.toFixed(1) + ',b:' + tsr.bottom.toFixed(1) + ',h:' + tsr.height.toFixed(1) + '}' : 'null') +
+              ' shell-body=' + (bodyRect ? '{b:' + bodyRect.bottom.toFixed(1) + ',h:' + bodyRect.height.toFixed(1) + '}' : 'null') +
+              ' shell-root=' + (rootRect ? '{b:' + rootRect.bottom.toFixed(1) + ',h:' + rootRect.height.toFixed(1) + '}' : 'null') +
+              ' winH=' + winH + ' docH=' + docH);
+          } catch (e) {
+            window.lexeraLog('warn', '[multiview/diag] failed: ' + (e && e.message || e));
+          }
+        }, 250);
       }
       // Delay two frames so the browser can paint the spawning ring
       // transition before we mark loaded (otherwise the ring never

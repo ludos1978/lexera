@@ -3,10 +3,6 @@
 
   var panel = document.querySelector('.calendar-panel');
 
-  if (window.LexeraSubApp && typeof window.LexeraSubApp.init === 'function') {
-    window.LexeraSubApp.init({});
-  }
-
   var instance = null;
   try {
     if (window.LexeraCalendarRuntime && typeof window.LexeraCalendarRuntime.mount === 'function') {
@@ -19,6 +15,18 @@
         String((err && err.message) || err).replace(/[<&>]/g, '?') +
         '</div>';
     }
+  }
+
+  // Single LexeraSubApp.init: see weekCalendar.js for rationale.
+  if (window.LexeraSubApp && typeof window.LexeraSubApp.init === 'function') {
+    var refresh = instance && typeof instance.refresh === 'function'
+      ? instance.refresh : function () {};
+    window.LexeraSubApp.init({
+      onCustom: {
+        'management-board-mutation': refresh,
+        'calendar-tasks-update': refresh
+      }
+    });
   }
 
   var scope = panel ? panel.querySelector('.lexera-shared-calendar-scope') : null;

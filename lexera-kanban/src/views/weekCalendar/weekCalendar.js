@@ -3,10 +3,6 @@
 
   var panel = document.querySelector('.calendar-panel');
 
-  if (window.LexeraSubApp && typeof window.LexeraSubApp.init === 'function') {
-    window.LexeraSubApp.init({});
-  }
-
   var instance = null;
   try {
     if (window.LexeraCalendarRuntime && typeof window.LexeraCalendarRuntime.mount === 'function') {
@@ -19,6 +15,22 @@
         String((err && err.message) || err).replace(/[<&>]/g, '?') +
         '</div>';
     }
+  }
+
+  // Single LexeraSubApp.init: applies body class + theme + subscribes
+  // to backend mutation broadcasts that drive a calendar refresh.
+  // Previously calendarRuntime.mount called init() too — that produced
+  // duplicate listeners. The runtime now owns rendering only; the
+  // bootstrap owns the SubApp wiring.
+  if (window.LexeraSubApp && typeof window.LexeraSubApp.init === 'function') {
+    var refresh = instance && typeof instance.refresh === 'function'
+      ? instance.refresh : function () {};
+    window.LexeraSubApp.init({
+      onCustom: {
+        'management-board-mutation': refresh,
+        'calendar-tasks-update': refresh
+      }
+    });
   }
 
   // Scope filter is a UI-side concern — backend returns ALL boards;

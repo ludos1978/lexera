@@ -51,6 +51,9 @@ describe('backendSettings view sub-app', () => {
     loadBackendSettingsView(window);
 
     expect(subAppInit).toHaveBeenCalledWith(expect.objectContaining({
+      onCustom: expect.objectContaining({
+        'management-refresh': expect.any(Function)
+      }),
       onTeardown: expect.any(Function)
     }));
     expect(window.ManagementUI.destroy).toHaveBeenCalledTimes(1);
@@ -60,6 +63,33 @@ describe('backendSettings view sub-app', () => {
     expect(opts.container).toBe(window.document.getElementById('mgmt-container'));
     expect(opts.api).toBe(apiAdapter);
     expect(opts.callbacks).toBe(callbacks);
+  });
+
+  it('refreshes the management surface when the shell broadcasts management-refresh', () => {
+    const dom = createDom();
+    const { window } = dom;
+    const subAppInit = vi.fn();
+    const refresh = vi.fn();
+    window.LexeraSubApp = { init: subAppInit };
+    window.ManagementUI = {
+      destroy: vi.fn(),
+      refresh,
+      init: vi.fn(),
+      getUiPreset: vi.fn(() => ({ sections: [] }))
+    };
+    window.LexeraSettingsRuntime = {
+      buildBackendApiAdapter: vi.fn(() => ({})),
+      buildBackendCallbacks: vi.fn(() => ({}))
+    };
+
+    loadBackendSettingsView(window);
+
+    const onCustom = subAppInit.mock.calls[0][0].onCustom;
+    onCustom['management-refresh']({ section: 'connections' });
+    onCustom['management-refresh']({});
+
+    expect(refresh).toHaveBeenNthCalledWith(1, 'connections');
+    expect(refresh).toHaveBeenNthCalledWith(2);
   });
 
   it('destroys the management mount on teardown', () => {

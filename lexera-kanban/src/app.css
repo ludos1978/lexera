@@ -7857,6 +7857,46 @@ select.dialog-input option,
     border-right: none;
     border-bottom: 1px solid var(--border);
   }
+
+  /* Multiview override: this whole @media block was authored for the
+   * legacy SHELL when the user's window itself was narrow. In the
+   * multiview architecture, every panel sub-app runs in its own
+   * webview, and panel webviews are routinely < 760px wide (e.g. a
+   * left-dock workspaces panel at ~200px). Without these overrides,
+   * the rules above (`.sidebar { max-height: 34vh; }`,
+   * `.header { flex-wrap: wrap }` etc.) make panel sub-apps render
+   * stacked-narrow even though their webview already IS the narrow
+   * area — the layout collapses on itself and the workspace tree
+   * gets capped at ~1/3 of the viewport. The `workspace-shell-mode`
+   * body class is set by `subAppRuntime.init()` for every sub-app
+   * webview, so these overrides take effect there but leave the
+   * legacy narrow-window behavior untouched for any consumer not in
+   * multiview mode. */
+  /* Note: `[data-shell-panel]` scopes these to SUB-APP webviews
+   * (subAppRuntime.init() sets that attr). The SHELL webview also
+   * carries `workspace-shell-mode` but does NOT carry data-shell-panel,
+   * so its `.layout`-grid-driven layout stays intact. Without this
+   * attribute scope, the rules below would override `.layout`'s
+   * `grid-row: 1` placement in the shell and shrink it to ~content
+   * height — visible as every panel losing ~20px at the bottom. */
+  body.workspace-shell-mode[data-shell-panel] .sidebar {
+    max-height: none;
+    height: 100%;
+    border-bottom: none;
+  }
+  body.workspace-shell-mode[data-shell-panel] .layout {
+    flex-direction: row;
+  }
+  body.workspace-shell-mode[data-shell-panel] > .header,
+  body.workspace-shell-mode[data-shell-panel] > .header .header-main {
+    flex-wrap: nowrap;
+    padding: 6px 10px;
+    height: auto;
+    min-height: 0;
+  }
+  body.workspace-shell-mode[data-shell-panel] .log-panel-body {
+    flex-direction: row;
+  }
 }
 
 /* Print styles */

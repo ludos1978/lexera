@@ -262,18 +262,14 @@
 
     refresh();
 
-    // Subscribe to backend mutation broadcasts so the calendar reflects
-    // edits made elsewhere in the app without a reload.
-    if (window.LexeraSubApp) {
-      LexeraSubApp.init({
-        onCustom: {
-          'management-board-mutation': refresh,
-          'calendar-tasks-update': refresh
-        }
-      });
-    }
-
     // Light periodic refresh in case mutation events are missed.
+    // The caller is expected to also pass `instance.refresh` into
+    // `LexeraSubApp.init({onCustom: ...})` so backend mutation events
+    // ('management-board-mutation', 'calendar-tasks-update') drive a
+    // re-fetch without a reload. Doing the SubApp.init here used to
+    // double-init the runtime when the bootstrap already called init,
+    // which created duplicate event listeners and re-broadcast
+    // theme-request/panel-ready unnecessarily.
     var pollMs = opts.pollMs == null ? 30000 : opts.pollMs;
     if (pollMs > 0) {
       setInterval(refresh, pollMs);

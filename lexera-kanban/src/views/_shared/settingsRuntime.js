@@ -217,10 +217,37 @@
     return {
       openLogStream: function () { return null; },
       onNotify: function (msg) {
+        if (typeof window !== 'undefined' && typeof window.showNotification === 'function') {
+          try {
+            window.showNotification(msg);
+            return;
+          } catch (_) { /* fall through to console */ }
+        }
         try { console.log('[settings]', msg); } catch (_) {}
       },
-      onWorkspacesLoaded: function () {},
+      onWorkspacesLoaded: function (workspaceList, defaultWorkspaceId) {
+        broadcast('management-workspaces-loaded', {
+          workspaces: Array.isArray(workspaceList) ? workspaceList.slice() : [],
+          defaultWorkspaceId: defaultWorkspaceId || null
+        });
+      },
       onConfirm: function (msg) {
+        if (typeof window !== 'undefined' &&
+            window.LexeraSubApp &&
+            typeof window.LexeraSubApp.confirmModal === 'function') {
+          try {
+            return window.LexeraSubApp.confirmModal({
+              title: 'Confirm',
+              message: String(msg || '')
+            });
+          } catch (_) { /* fall through */ }
+        }
+        if (typeof window !== 'undefined' &&
+            window.LexeraDialogs &&
+            typeof window.LexeraDialogs.confirm === 'function') {
+          try { return window.LexeraDialogs.confirm(String(msg || '')); }
+          catch (_) { /* fall through */ }
+        }
         try { return Promise.resolve(window.confirm(String(msg || ''))); }
         catch (_) { return Promise.resolve(false); }
       },

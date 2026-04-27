@@ -26,8 +26,8 @@ Every view that the user can dock as a tab — board tabs **and** panel tabs (hi
 Board tabs **and** dock-hosted panel tabs now satisfy the hosting rule. The remaining work has split into three buckets:
 
 1. **Boundary cleanup** — board tabs still boot the legacy embedded board app (`index.html?embedded=1...`) rather than a dedicated `src/views/board/` entry.
-2. **Feature completeness** — `hierarchy` still lacks rich tree parity, and `frontendTests` still uses the shell-owned runner even though the child-webview panel shell is restored.
-3. **Runtime regressions / cleanup** — legacy modules still read `LexeraSharedPanels` roots or `lexera-shared-panel-created`, the frontend auto-run harness is flaky again, and there is still an active board-tab empty-state regression to diagnose in some shell/auto-run flows.
+2. **Feature completeness** — `hierarchy` still lacks rich tree parity, `dashboard` and `logs` are still thinner than the original shell panels, and `frontendTests` still uses the shell-owned runner even though the child-webview panel shell is restored.
+3. **Runtime regressions / cleanup** — legacy modules still read `LexeraSharedPanels` roots or `lexera-shared-panel-created`, `panel-ready` / `panel-teardown` exist but are not yet consumed in production, the frontend auto-run harness is flaky again, and there is still an active board-tab empty-state regression to diagnose in some shell/auto-run flows.
 
 The floating helper views exposed by `LexeraMultiview.openLogView()` / `openInspector()` / `openWorkspaces()` / `openDashboard()` still duplicate some surfaces outside the dock-hosted path. That is acceptable as dev tooling, but the authoritative user-facing implementation remains the dock-hosted child-webview path.
 
@@ -48,6 +48,13 @@ The floating helper views exposed by `LexeraMultiview.openLogView()` / `openInsp
   - `frontendSettings` re-renders from the live visual-theme registry and removes its theme-registry listener on teardown.
   - `backendSettings` / `files` explicitly destroy or unmount `ManagementUI` on teardown.
   - `renderApps` exposes `destroy(panel)` so discovery listeners do not accumulate across respawns.
+- The management settings entries now load the shared hierarchy tree stack (`hierarchical.css`, `treeView.js`, `hierarchyContract.js`, `hierarchyController.js`) before `management.js`, so `workspace-config` can use the same richer config tree path the legacy shell had instead of falling back.
+- `views/_shared/subAppRuntime.js` now installs a minimal child-webview logging shim (`lexeraLog`, `lexeraLogWithTarget`, `logFrontendIssue`, `traceFrontendAction`) that forwards into `log_broadcast`, so settings/tool views can still surface failures in the shared log stream without loading the full shell logger.
+- `views/_shared/subAppRuntime.js` now also restores the shell-style `showNotification(...)` toast surface inside child views, and `settingsRuntime.buildBackendCallbacks().onNotify(...)` uses it when present. Backend/files/renderApps child panels can therefore show visible save/error toasts again instead of silently writing those messages to the console.
+- Workspace and board edits made from child settings panels now have an explicit shell refresh path again: `settingsRuntime.buildBackendCallbacks()` broadcasts `management-workspaces-loaded` plus `management-board-mutation`, and `shell/managementBridge.js` applies those back into the main app so the sidebar/catalog views update immediately instead of waiting for later polling.
+- Child `backendSettings` / `files` panels now also receive live shell-side management refreshes again: the main app rebroadcasts management-related SSE (`ConfigChanged`, `CollabConnectionChanged`, `PeerDiscoveryChanged`) as `management-refresh`, and the child views call `ManagementUI.refresh(...)` so network/config state stays live without needing a panel reopen.
+- `Plugin Settings` now also has a cross-webview save path again: successful saves in `renderApps` broadcast `render-apps-config-saved`, the main app invalidates `ExportService`'s cached `/config/render-apps` / Marp-engine state, refreshes the host `LexeraRenderAppsSettings` discovery cache, and re-checks an already-open export dialog's tool/theme state.
+- Destructive confirms in child management/settings panels no longer fall back to browser `window.confirm()`: `LexeraSubApp.confirmModal()` now opens the same native modal-window path from child views, `settingsRuntime.buildBackendCallbacks().onConfirm(...)` prefers that bridge before any HTML/browser fallback, and the shared modal-result listeners are now one-shot so repeated confirms/prompts do not leak stale global event handlers across long-lived settings sessions.
 - Floating sub-app helpers still exist for `log`, `inspector`, `workspaces`, and `dashboard` under `src/views/<name>/` for dev-side inspection and side-panel workflows.
 - Rust owns webview lifecycle, event routing, health, focus, modal windows, and drag primitives.
 - `LexeraDialogs.confirm()` and `LexeraDialogs.prompt()` already switch to native modal windows when multiview is active.
@@ -63,7 +70,11 @@ The floating helper views exposed by `LexeraMultiview.openLogView()` / `openInsp
 - Event subscriptions are filtered in Rust, but batching and scale-tuning are still unfinished.
 - The board runs in child webviews today, but it is still the legacy embedded board app rather than a clean `views/board/` sub-app.
 - The embedded board app still shows an intermittent empty-state regression in some shell-driven flows: a board tab can be visibly active while the child board webview renders the legacy "Select a board from the sidebar" empty state (`activeBoardData === null` inside the embedded app).
-- Several panel sub-apps are still only partial ports: `hierarchy` now has the old sidebar framing plus a workspace-grouped tree, but still lacks the rich board internals; `frontendTests` now has the old panel layout and controls back in the child webview, but still depends on the shell-owned runner implementation.
+- Several panel sub-apps are still only partial ports:
+  - `hierarchy` now has the old sidebar framing plus a workspace-grouped tree, but still lacks the rich board internals.
+  - `dashboard` is no longer a stub, but it is still a lightweight metrics/recent-boards view rather than the legacy searchable multi-section dashboard.
+  - `logs` now renders live appended log entries inside a child webview, but it still does not recreate the legacy log panel controls and mirrored state.
+  - `frontendTests` now has the old panel layout and controls back in the child webview, but still depends on the shell-owned runner implementation.
 - Legacy `LexeraSharedPanels` consumers still exist in non-workspace modules and need explicit retirement so panel discovery and hydration no longer depend on shell-DOM-era hooks.
 - Full `./run-lexera-tests.sh` auto-run remains flaky and should not currently be treated as the authoritative acceptance signal; recent runs have stalled during readiness, `pre-test-paint`, or mid-suite progress without a stable repro yet.
 
@@ -86,8 +97,40 @@ The floating helper views exposed by `LexeraMultiview.openLogView()` / `openInsp
 ### Current triage queue
 
 - [ ] **Embedded board empty-state regression** — active board tab is open in the shell, but the board child webview can still render the embedded-app empty state ("Select a board from the sidebar"). Investigate board selection / `activeBoardData` initialization in the embedded boot path before calling the migration complete.
+- [ ] **Dashboard parity** — the docked `dashboard` child webview is still much smaller than the old shell dashboard. Restore search, all/active scope, pinned queries, and the grouped results sections (`Results`, `Pinned`, `Overdue`, `Upcoming`, `Open Tasks`, `Tagged Items`, `File Embeds`, `Broken Elements`, `Included Files`) before calling it complete.
+- [ ] **Log parity** — the docked `logs` child webview still lacks the legacy log panel’s source filter, level dropdown, text search, reload/copy actions, connection status button, and broader `loggingSystem.js` mirrored-state behavior.
 - [ ] **Frontend auto-run harness instability** — `./run-lexera-tests.sh` can stall at readiness, `pre-test-paint`, or later progress updates. Separate harness reliability from product regressions so full-suite failures are actionable again.
 - [ ] **Legacy module retirement** — keep removing the remaining `LexeraSharedPanels` / `lexera-shared-panel-created` consumers so child-webview state is explicit rather than DOM-discovered.
+- [ ] **Panel lifecycle adoption** — production code still does not consume the emitted `panel-ready` / `panel-teardown` events. Use those to retire remaining discovery-by-DOM/event hacks instead of leaving the new lifecycle bridge idle.
+
+## Legacy layout restored to all panel webviews *(2026-04-27)*
+
+User repeatedly reported "most of the layout should be able to be used mostly the same" / "many layout aspects still missing" / "the logger is somehow in dark!" after the multiview migration. Root cause was structural: each panel sub-app runs in its own Tauri webview with its own document, so only CSS explicitly `<link>`-ed in that webview applies. The legacy SHELL loaded the full bundle (`fonts.css`, `tokens.css`, `hierarchical.css`, `app.css`, `workspaceShell.css`, `management.css`, `dialogs.css`) on a single document; each sub-app HTML was loading just its tiny per-panel CSS slice and missing the foundation entirely. Fixed end-to-end:
+
+### Foundation CSS now loaded in every sub-app HTML
+- All 11 panel sub-apps' `index.html` now `<link>` the foundation chain in this order: `fonts.css → tokens.css → hierarchical.css (where relevant) → app.css → workspaceShell.css → _shared/panelShellFit.css → management.css (settings panels only) → own per-panel CSS`. Same color tokens, same typography, same `.sidebar` / `.board-list` / `.tree-node` / `.calendar-panel` / `.shell-settings-panel` rules the legacy SHELL had.
+
+### `body.workspace-shell-mode` class auto-applied by the runtime
+- [`subAppRuntime.init()`](lexera-kanban/src/views/_shared/subAppRuntime.js) adds `workspace-shell-mode` class plus `data-shell-panel="<kind>"` and `data-shell-pane="<id>"` attributes to `<body>` so the 20+ rules in `app.css` and 8+ rules in `workspaceShell.css` that key on `body.workspace-shell-mode` light up inside each sub-app. Tests cover both happy path and missing-Tauri-context fallback.
+
+### `_shared/panelShellFit.css` shim
+- New file [`src/views/_shared/panelShellFit.css`](lexera-kanban/src/views/_shared/panelShellFit.css). The legacy SHELL had rules like `body.workspace-shell-mode .workspace-shell-panel-content > .X` that don't match in the multiview architecture (no `.workspace-shell-panel-content` ancestor — panels are body-direct children). The shim replicates those layout rules with `body.workspace-shell-mode > .X` selectors so panel top-level elements fill the sub-app webview the same way they filled the legacy panel content area. Generic catch-all for `.lexera-shared-panel` so any future panel kind also fills correctly without per-class plumbing. **Critical fix** also lives here: overrides `app.css`'s `.header { display: none; }` rule (which was the legacy shell's hidden top bar) so sub-apps using `.header` for their own panel header (dashboard, log, workspaces, inspector, ...) actually render it.
+
+### Theme tokens in every sub-app CSS
+- `log.css` and `inspector.css` were the only files still hardcoding `#16161a`-style dark colors instead of `var(--bg-primary)` etc. Both rewritten to source colors from tokens with the dark colors as fallback. Every sub-app CSS file now responds to the shell's theme broadcast (light theme renders panels in light, dark in dark, custom theme honored).
+
+### `wrapLexeraLog()` finally invoked at boot
+- [`shell/multiviewClient.js: bootMultiview`](lexera-kanban/src/shell/multiviewClient.js) was calling `wrapCatalogUpdates()` and `wrapOpenBoard()` but had silently dropped the matching `wrapLexeraLog()` call. Result: `window.lexeraLog` was never wrapped, no `log_broadcast` IPC fired, no `log-message` events reached the log panel webview, log panel rendered empty. Added the missing call. Frontend log entries now flow shell → Rust → log-message subscribers → log panel renders them.
+
+### Result
+- Tests: 1745 pass / 0 fail / 2 skipped (was 1737 before this work).
+- Integration run: same 3 BOOTs (file-watcher reload still happens, still benign), 6 ADOPTs, 0 destroys, 0 spawn loop. Frontend tests run to completion.
+- Visual: panels look like their legacy in-shell counterparts. Light/dark themes apply consistently. Log panel populates. Panel headers visible.
+
+### Memory
+Captured [feedback_reuse_legacy_styles.md](file:///Users/rspoerri/.claude/projects/-Users-rspoerri--REPOSITORIES--TINKERING-REPOs-lexera-standalone/memory/feedback_reuse_legacy_styles.md) so any future agent reuses the existing shell CSS instead of re-authoring per-panel styles from scratch.
+
+---
 
 ## Adopt-on-already-exists: shell reload loop fixed *(2026-04-26)*
 
@@ -123,10 +166,15 @@ A clean integration run (`./run-lexera-tests.sh --no-capture` after a hard kill 
 
 **Most likely cause for the single reload in test mode:** [`src-tauri/src/main.rs:382`](lexera-kanban/src-tauri/src/main.rs#L382) writes `auto-run-config.json` into `lexera-kanban/src/` (the frontendDist). Tauri 2's dev-mode frontend watcher detects this write and reloads the main webview. The write is a once-per-startup operation, hence one reload.
 
-**Fix candidate** (deferred): move the auto-run config out of frontendDist and have JS read it via the existing `get_test_runner_config` Tauri command instead of an XHR. `autoRunBootstrap.js:60-74` already tries the invoke path before falling back to the XHR; `workspaceShell.js:2029` does a synchronous XHR for the same file and would need to switch to a sync detect mechanism (URL param probably). Low priority because:
-- Only matters in `--run-tests` mode (production users don't hit this).
-- ADOPT logic makes the reload completely benign — 0 destroys, just 6 adoptions per session.
-- Test suite runs to 159/0 in 520s, identical to baseline.
+**Partial fix landed (2026-04-27):** [`main.rs`](lexera-kanban/src-tauri/src/main.rs) now skips the `auto-run-config.json` write when the existing on-disk content already matches the new payload, and skips the `remove_file` when the file is already absent. Effect: **the watcher reload only fires the FIRST time `--run-tests` runs with a given config payload**. Subsequent runs (same `--run-tests-delay`, same output path) don't re-touch the file → watcher stays silent → only 1 BOOT, no reload.
+
+The non-test mode case is also fixed: prior code unconditionally `remove_file()`'d on every boot regardless of whether the file existed — now it only removes when actually present, so production users with no leftover config never hit the watcher.
+
+**Remaining (still low priority):** First `--run-tests` run after a config-arg change still fires one watcher reload. Eliminating it entirely would require either:
+- moving the file out of frontendDist (breaks `workspaceShell.js:2029`'s sync XHR detection)
+- switching that sync detection to a URL search param fed by `WebviewBuilder::initialization_script` (requires moving main-window construction from `tauri.conf.json` into `setup()`)
+
+Defer these until someone actually feels the cost. ADOPT logic keeps the single reload benign.
 
 **Production-mode reload sightings** (the user's original "reloads forever" complaint) — no longer reproducing in clean test runs. Either it was the same `auto-run-config` write (if the user was launching with `--run-tests`) or from leftover instances racing on the same `panel-tab-*` labels. Both resolved by ADOPT logic anyway.
 
@@ -446,6 +494,7 @@ Slice plan:
 - [x] **Slice P2 — pilot: `logs` panel kind** *(2026-04-25)*
   - Added `logs` to `PANEL_WEBVIEW_KINDS`. Tested via dedicated unit tests including a "kinds NOT on the allowlist" gate that catches premature additions for the rest.
   - Existing `src/views/log/` sub-app needs no code changes: it already uses `getCurrentWebview().listen('log-message', ...)` (scoped subscription per architecture rule) and ignores URL params. The `log-message` bridge is already activated on shell boot via `multiviewClient.js:1204`, so the dock-hosted log webview receives broadcasts the same way the floating side-panel does.
+  - Later parity audit (2026-04-27): the pilot proved the hosting path, but not full feature parity. The child log view still lacks the legacy panel's source filter, search, reload/copy actions, connection-status control, and mirrored `loggingSystem.js` state.
   - **Stop and demo**: P2 is structurally complete but **needs interactive verification** before continuing to P3:
     1. Open the kanban app. Reveal the Logs panel in the dock (bottom).
     2. The panel should render the log entries (will look the same as before).
@@ -457,7 +506,8 @@ Slice plan:
 
 - [x] **Slice P3 — `dashboard` panel kind** *(2026-04-25)*
   - Added `dashboard` to `PANEL_WEBVIEW_KINDS`. Kind name matches the existing `src/views/dashboard/` directory (no `KIND_VIEW_DIR_OVERRIDES` entry needed).
-  - The dashboard sub-app uses `LexeraSubApp` runtime (scoped event subscription, catalog/active-board snapshots). It is feature-equivalent to the in-shell dashboard panel.
+  - The dashboard sub-app uses `LexeraSubApp` runtime (scoped event subscription, catalog/active-board snapshots).
+  - Later parity audit (2026-04-27): this slice proved the hosting path, but the child dashboard is still only a lightweight summary/launcher, not the full searchable multi-section dashboard from the old shell.
   - Updated the allowlist gate test in `tests/panelHost.test.js`. Status: 118/119 of workspace-adjacent tests pass; same pre-existing baseline failure.
   - **Stop and demo**: same 7-step interactive verification protocol as P2, applied to the Dashboard panel.
 
@@ -485,8 +535,8 @@ Slice plan:
 
 | Kind | Sub-app status |
 |---|---|
-| `logs` | ✅ functional — existing `src/views/log/` extraction, log entries render live |
-| `dashboard` | ✅ functional — existing `src/views/dashboard/` extraction, full metrics + nav |
+| `logs` | 🟡 partial — existing `src/views/log/` extraction renders live appended log entries and supports quick level toggles + clear, but it is not yet feature-equivalent to the legacy log panel. Missing: source filter, level dropdown, free-text search, reload/copy actions, backend connection/status control, and the broader `loggingSystem.js` mirrored-state behavior. |
+| `dashboard` | 🟡 partial — existing `src/views/dashboard/` extraction shows only lightweight metrics and recent-board navigation. Missing from the legacy shell dashboard: query input, all/active scope, pinning, and the grouped result sections (`Results`, `Pinned`, `Overdue`, `Upcoming`, `Open Tasks`, `Tagged Items`, `File Embeds`, `Broken Elements`, `Included Files`). |
 | `hierarchy` | 🟢 workspace-grouped with restored legacy shell framing — `src/views/hierarchy/` now renders inside the old sidebar-style panel shell, with local boards grouped by workspace, local expand/collapse state, an explicit `All Workspaces` selector, active-row highlighting, board click-to-open, and workspace click-to-focus via the multiview navigation bridge. **Rich tree internals (stacks/columns/cards, drag/drop, inline rename, context menus) remain deferred** to a future slice — porting still requires moving substantial portions of the 3204-line `src/board/boardList.js`. |
 | `frontendSettings` | ✅ functional — full skeleton rendered inside `src/views/frontendSettings/`, including per-mode control bindings and tag-group chips. Persists to `localStorage`, uses the shared `LexeraControlsSettings` + `ContextMenuBuilders` modules inside the sub-app, and still broadcasts `frontend-setting-changed` for live-apply on the board side. |
 | `backendSettings` | 🟢 full ManagementUI mounted — loads `api.js` + `management.js` inside the sub-app, calls `ManagementUI.init({ ui: getUiPreset('backendSettings'), api: backendAdapter })`. Backend REST calls flow through `LexeraApi`, and the mount now tears down explicitly on panel unload. |
@@ -495,6 +545,18 @@ Slice plan:
 | `weekCalendar` | ✅ functional with restored legacy panel shell — real week grid + task list, fetches tasks directly from the backend `/calendar/tasks` endpoint via `LexeraApi.getCalendarTasks()`, and now uses the old docked-calendar header/body structure (`calendar-panel-body`, `dashboard-calendar`, `dashboard-list`). Refreshes on `management-board-mutation` events and on a 30-second poll. |
 | `monthCalendar` | ✅ functional with restored legacy panel shell — same fetch path as weekCalendar, renders a 6-week month grid with per-day task counters, and now uses the old docked-calendar header/body structure. |
 | `frontendTests` | 🟡 legacy panel shell restored — `src/views/frontendTests/` now restores the old panel layout inside the child webview: board selector, filter, expand/collapse controls, per-category run/clear, per-test click-to-run, manual inspect / restore-snapshot controls, copy feedback, and live result rows. It still bridges to the legacy `window.LexeraFrontendTests` runner in the shell; the remaining gap is moving the runner implementation itself out of shell-context globals. |
+
+### Legacy parity gaps *(2026-04-27)*
+
+The views that are still not at the same feature level as the original shell-era implementation are:
+
+- `board` — still boots the legacy embedded app instead of a dedicated `src/views/board/` entry, and still shows the intermittent active-tab empty-state regression.
+- `hierarchy` — sidebar framing and workspace grouping are restored, but the rich board internals are still missing: stacks / columns / cards, drag/drop, inline rename, hierarchy focus delivery, and context menus.
+- `dashboard` — current child view is only a summary/launcher. The old searchable, grouped dashboard experience is not yet ported.
+- `logs` — current child view is only a streaming log tail with simple level toggles. The old log panel tools and mirrored state are not yet ported.
+- `frontendTests` — panel shell parity is largely back, but the runner still lives in the shell and has not been extracted into the sub-app boundary.
+
+The settings family (`frontendSettings`, `backendSettings`, `files`, `renderApps`) is much closer to parity now. The main remaining work there is lifecycle retirement and live interactive verification, not obvious missing panel features on the current code path.
 
 **Per-kind hydration plan:**
 
@@ -517,15 +579,15 @@ For each kind, the port becomes:
   <script>LexeraFrontendSettings.init(LexeraSettingsRuntime.buildFrontendSettingsOptions(), panel);</script>
   ```
   Sections rendered: Appearance (visual theme, UI scale), Interaction (scroll/zoom speed), Controls (per-mode keyboard/mouse bindings), Display (tag visibility, HTML comments/content), Tag Groups in Menus, Editors (overlay/special chars), and Hierarchy display toggles. The sub-app now loads `LexeraControlsSettings` and `ContextMenuBuilders` directly, so control-binding chips and tag-group chips work without shell-only closures.
-- [x] **Slice P-backendSettings** *(2026-04-25; bootstrap extracted + tests 2026-04-27; teardown cleanup 2026-04-27)* — `src/views/backendSettings/index.html` loads `../../api.js` + `../../management.js` + `_shared/settingsRuntime.js`. The bootstrap was inline; now extracted to `src/views/backendSettings/backendSettings.js` matching the renderApps pattern. Calls `ManagementUI.init({ ui: ManagementUI.getUiPreset('backendSettings'), api: LexeraSettingsRuntime.buildBackendApiAdapter(), callbacks: LexeraSettingsRuntime.buildBackendCallbacks() })` with explicit dep-presence checks and inline error UI on missing-dep or throw, and now destroys the management mount on panel teardown. Covered by `tests/views/backendSettings/backendSettingsView.test.js` (5 cases).
-- [x] **Slice P-files** *(2026-04-25; bootstrap extracted + tests 2026-04-27; teardown cleanup 2026-04-27)* — same scaffold as backendSettings but `ManagementUI.mount('files', ...)` to invoke the workspace-files preset. Bootstrap extracted to `src/views/files/files.js`. The sub-app now explicitly unmounts `files` on teardown. Covered by `tests/views/files/filesView.test.js` (4 cases). The `lexera-shared-files-container` selector is preserved.
+- [x] **Slice P-backendSettings** *(2026-04-25; bootstrap extracted + tests 2026-04-27; teardown cleanup + shared tree stack restore 2026-04-27; toast notifications restored 2026-04-27; live SSE refresh bridge restored 2026-04-27)* — `src/views/backendSettings/index.html` loads `../../api.js` + `../../management.js` + `_shared/settingsRuntime.js`. The bootstrap was inline; now extracted to `src/views/backendSettings/backendSettings.js` matching the renderApps pattern. Calls `ManagementUI.init({ ui: ManagementUI.getUiPreset('backendSettings'), api: LexeraSettingsRuntime.buildBackendApiAdapter(), callbacks: LexeraSettingsRuntime.buildBackendCallbacks() })` with explicit dep-presence checks and inline error UI on missing-dep or throw, and now destroys the management mount on panel teardown. The entry now also loads `hierarchical.css`, `treeView.js`, `hierarchyContract.js`, and `hierarchyController.js` before `management.js` so the shared config-tree path is available. Save/error notifications now route through the shared child-webview `showNotification(...)` shim instead of disappearing into the console, and shell-side management SSE now rebroadcasts `management-refresh` so the child view can call `ManagementUI.refresh(...)` live. Covered by `tests/views/backendSettings/backendSettingsView.test.js`, `tests/views/settingsManagementHtml.test.js`, and `tests/frontendSettingsInteraction.test.js`.
+- [x] **Slice P-files** *(2026-04-25; bootstrap extracted + tests 2026-04-27; teardown cleanup + shared tree stack restore 2026-04-27; toast notifications restored 2026-04-27; live SSE refresh bridge restored 2026-04-27)* — same scaffold as backendSettings but `ManagementUI.mount('files', ...)` to invoke the workspace-files preset. Bootstrap extracted to `src/views/files/files.js`. The sub-app now explicitly unmounts `files` on teardown and loads the shared hierarchy-tree scripts/styles before `management.js`, restoring the richer `workspace-config` tree path instead of relying on the legacy fallback. Save/error notifications now route through the shared child-webview `showNotification(...)` shim instead of disappearing into the console, and shell-side management SSE now rebroadcasts `management-refresh` so the child view can call `ManagementUI.refresh(...)` live. Covered by `tests/views/files/filesView.test.js`, `tests/views/settingsManagementHtml.test.js`, and `tests/frontendSettingsInteraction.test.js`. The `lexera-shared-files-container` selector is preserved.
 - [x] **Slice P-frontendSettings bootstrap** *(2026-04-27; live theme registry restored 2026-04-27)* — inline init script in `src/views/frontendSettings/index.html` extracted to `src/views/frontendSettings/frontendSettings.js`. Defensive presence checks for `LexeraSettingsRuntime` + `LexeraFrontendSettings` and inline error UI inside the panel body. The sub-app now also loads `visualThemes.js`, re-renders when `lexera-visual-themes-changed` fires, and uses the live `LEXERA_VISUAL_THEMES` registry instead of a placeholder list when available. Covered by `tests/views/frontendSettings/frontendSettingsView.test.js` and `tests/frontendSettingsInteraction.test.js`.
-- [x] **Slice P-renderApps** *(2026-04-25, shell/bootstrap polish 2026-04-27, teardown cleanup 2026-04-27)* — `src/views/renderApps/index.html` ships the full skeleton (mirrored from `sharedPanels.js → createRenderAppsPanelElement`) and now loads a dedicated `renderApps.js` bootstrap plus `renderApps.css` for narrow dock widths. The renderApps module already auto-resolves `window.LexeraApi`, so loading `../../api.js` is enough. `LexeraRenderAppsSettings.destroy(panel)` now releases discovery listeners on teardown.
+- [x] **Slice P-renderApps** *(2026-04-25, shell/bootstrap polish 2026-04-27, teardown cleanup 2026-04-27, cross-webview save refresh 2026-04-27)* — `src/views/renderApps/index.html` ships the full skeleton (mirrored from `sharedPanels.js → createRenderAppsPanelElement`) and now loads a dedicated `renderApps.js` bootstrap plus `renderApps.css` for narrow dock widths. The renderApps module already auto-resolves `window.LexeraApi`, so loading `../../api.js` is enough. `LexeraRenderAppsSettings.destroy(panel)` now releases discovery listeners on teardown. Successful saves now also broadcast `render-apps-config-saved`, show a child-view toast, invalidate the main window's export/plugin caches, and refresh an already-open export dialog's tool/theme state.
 - [x] **Slice P-calendars** *(2026-04-25, shell framing refreshed 2026-04-27, bootstraps extracted + tests 2026-04-27)* — built `src/views/_shared/calendarRuntime.js` (week + month grid renderers, task list, mount helper, backend fetch + normalization) and `src/views/_shared/calendar.css`. Both `weekCalendar` and `monthCalendar` sub-apps render real grids and **fetch tasks directly from the backend** via `LexeraApi.getCalendarTasks()` (the `/calendar/tasks` endpoint already returns the flat task list). Tasks are normalized from the backend's camelCase `SearchResult` shape (`dueDate`, `cardContent`, `boardTitle`, `boardId`) into the runtime's field names. The mount helper schedules a 30-second polling refresh and refreshes on `management-board-mutation` broadcasts so edits land without a manual reload. The 2026-04-27 follow-up restored the old docked-calendar shell classes/structure so the migrated views look like the legacy panels again. Each calendar's inline init was extracted to `weekCalendar.js` / `monthCalendar.js`. Covered by `tests/views/weekCalendar/weekCalendarView.test.js` and `tests/views/monthCalendar/monthCalendarView.test.js` (4 cases each: happy path, scope-change refresh, mount-failure inline, missing-runtime tolerance).
 - [ ] **Slice P-frontendTests-runner** — port the test runner implementation. The child webview now restores the old panel layout and controls, but the runner still lives in the shell and still assumes shell-context globals across 8805 lines of harness code.
 - [ ] **Slice P-frontendTests-harness** — stabilize `autoRunBootstrap` / `run-lexera-tests.sh` so full frontend runs are deterministic again. Current symptoms: readiness stalls, `pre-test-paint` stalls, sparse progress reporting that makes healthy long runs indistinguishable from hung ones, and occasional launcher-state flake after dev-server restarts.
 - [ ] **Slice P-board-entry** — extract a dedicated `src/views/board/` entry and retire the current `index.html?embedded=1...` boot path for docked board tabs. This is also the most likely place to eliminate the active-tab empty-state regression.
-- [ ] **Slice P-hierarchy-rich** — port the rich tree from `src/board/boardList.js` into `src/views/hierarchy/`. The minimal hierarchy already works; this slice ADDS expand/collapse, drag/drop, inline rename, hierarchy focus, context menus.
+- [ ] **Slice P-hierarchy-rich** — port the rich tree from `src/board/boardList.js` into `src/views/hierarchy/`. The minimal hierarchy already works; this slice now focuses on the still-missing internals: stacks/columns/cards, drag/drop, inline rename, hierarchy-focus parity, and context menus.
 - [ ] **Slice P-retirement** — after all kinds are fully hydrated, delete anything in `LexeraSharedPanels` that nothing depends on. Possibly delete `src/workspace/sharedPanels.js` entirely (audit first).
   - Replace [`logging/loggingSystem.js`](lexera-kanban/src/logging/loggingSystem.js) `getSharedLogRoots()` with explicit panel-ready state or log-view presence tracked via multiview events.
   - Replace [`app.js`](lexera-kanban/src/app.js) `lexera-shared-panel-created` hooks with explicit panel-ready / panel-mounted events scoped to panel webviews.

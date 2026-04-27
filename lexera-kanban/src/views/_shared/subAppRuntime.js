@@ -31,6 +31,12 @@
   var panelTeardownRan = false;
   var currentPanelLifecycle = null;
   var teardownCallbacks = [];
+  var subAppLoggerInstalled = false;
+  var subAppNotificationInstalled = false;
+  var subAppNotificationQueue = [];
+  var subAppNotificationActive = null;
+  var subAppNotificationActiveMessage = null;
+  var subAppModalCounter = 0;
 
   function tauri() {
     if (typeof window === 'undefined' || !window.__TAURI__) return null;
@@ -40,6 +46,13 @@
     var t = tauri();
     if (!t || !t.core) return Promise.reject(new Error('no Tauri'));
     return t.core.invoke(cmd, args || {});
+  }
+  function listen(eventName, handler) {
+    var t = tauri();
+    if (!t || !t.event || typeof t.event.listen !== 'function') {
+      return Promise.reject(new Error('no Tauri event runtime'));
+    }
+    return t.event.listen(String(eventName || ''), handler);
   }
   function getCurrentWebview() {
     try { return tauri().webview.getCurrentWebview(); }
@@ -96,6 +109,253 @@
     };
   }
 
+  function normalizeLogMessage(value) {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+    if (value instanceof Error) {
+      return value.stack || value.message || String(value);
+    }
+    try { return JSON.stringify(value); }
+    catch (_) { return String(value); }
+  }
+
+  function formatLogIssueDetails(error) {
+    if (error == null) return '';
+    if (error instanceof Error) return error.stack || error.message || String(error);
+    return normalizeLogMessage(error);
+  }
+
+  function installSubAppNotifications() {
+    if (subAppNotificationInstalled || typeof window === 'undefined' || typeof document === 'undefined') return;
+    subAppNotificationInstalled = true;
+
+    function drainNotificationQueue() {
+      if (subAppNotificationQueue.length === 0) {
+        subAppNotificationActive = null;
+        subAppNotificationActiveMessage = null;
+        return;
+      }
+      if (!document.body) {
+        setTimeout(drainNotificationQueue, 30);
+        return;
+      }
+      var item = subAppNotificationQueue.shift();
+      var el = document.createElement('div');
+      var variant = item.opts.variant || 'info';
+      el.className = 'notification notification-' + variant;
+      el.setAttribute('role', 'alert');
+      el.setAttribute('aria-live', 'polite');
+      var msgSpan = document.createElement('span');
+      msgSpan.className = 'notification-msg';
+      msgSpan.textContent = item.message;
+      el.appendChild(msgSpan);
+      var actionList = Array.isArray(item.opts.actions)
+        ? item.opts.actions
+        : (item.opts.action ? [item.opts.action] : []);
+      for (var ai = 0; ai < actionList.length; ai++) {
+        (function (action) {
+          if (!action || !action.label) return;
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'notification-action';
+          btn.textContent = action.label;
+          btn.addEventListener('click', function () {
+            if (typeof action.callback === 'function') {
+              try { action.callback(); } catch (_) { /* ignore notification action errors */ }
+            }
+            if (action.dismissOnClick === false) return;
+            el.classList.remove('visible');
+            setTimeout(function () {
+              if (el.parentNode) el.parentNode.removeChild(el);
+              drainNotificationQueue();
+            }, 200);
+          });
+          el.appendChild(btn);
+        })(actionList[ai]);
+      }
+      document.body.appendChild(el);
+      el.offsetHeight;
+      el.classList.add('visible');
+      subAppNotificationActive = el;
+      subAppNotificationActiveMessage = item.message;
+      setTimeout(function () {
+        if (!el.isConnected) return;
+        el.classList.remove('visible');
+        setTimeout(function () {
+          if (el.parentNode) el.parentNode.removeChild(el);
+          drainNotificationQueue();
+        }, 300);
+      }, item.opts.duration || 3000);
+    }
+
+    if (typeof window.showNotification !== 'function') {
+      window.showNotification = function (message, opts) {
+        opts = opts || {};
+        var text = String(message == null ? '' : message);
+        var variant = opts.variant || 'info';
+        try {
+          if (typeof window.lexeraLogWithTarget === 'function') {
+            window.lexeraLogWithTarget(
+              variant === 'error' ? 'error' : (variant === 'warn' ? 'warn' : 'info'),
+              'notification.' + variant,
+              text
+            );
+          }
+        } catch (_) { /* ignore logging failures */ }
+        if (opts.dedupe !== false) {
+          if (subAppNotificationActiveMessage === text) return;
+          for (var qi = 0; qi < subAppNotificationQueue.length; qi++) {
+            if (subAppNotificationQueue[qi].message === text) return;
+          }
+        }
+        subAppNotificationQueue.push({ message: text, opts: opts });
+        if (!subAppNotificationActive) drainNotificationQueue();
+      };
+    }
+  }
+
+  function installSubAppLogger() {
+    if (subAppLoggerInstalled || typeof window === 'undefined') return;
+    subAppLoggerInstalled = true;
+
+    function emitLog(level, source, message) {
+      invoke('log_broadcast', {
+        entry: {
+          level: String(level || 'info'),
+          source: String(source || 'frontend'),
+          message: String(message == null ? '' : message),
+          timestamp_ms: Date.now()
+        }
+      }).catch(function () {});
+    }
+
+    if (typeof window.lexeraLog !== 'function') {
+      window.lexeraLog = function (level, message) {
+        emitLog(level, 'frontend', normalizeLogMessage(message));
+      };
+    }
+
+    if (typeof window.lexeraLogWithTarget !== 'function') {
+      window.lexeraLogWithTarget = function (level, target, message) {
+        emitLog(level, target || 'frontend', normalizeLogMessage(message));
+      };
+    }
+
+    if (typeof window.logFrontendIssue !== 'function') {
+      window.logFrontendIssue = function (level, target, context, error) {
+        var detail = formatLogIssueDetails(error);
+        var message = detail ? (String(context || '') + ': ' + detail) : String(context || '');
+        emitLog(level, target || 'frontend', message);
+      };
+    }
+
+    if (typeof window.traceFrontendAction !== 'function') {
+      window.traceFrontendAction = function (level, target, message, details) {
+        var detail = normalizeLogMessage(details);
+        emitLog(level, target || 'frontend', String(message || '') + (detail ? (' ' + detail) : ''));
+      };
+    }
+  }
+
+  function waitForSingleEvent(eventName, onEvent, onMissingRuntime) {
+    var finished = false;
+    var unsubscribe = null;
+
+    function finish(callback, event) {
+      if (finished) return;
+      finished = true;
+      if (typeof unsubscribe === 'function') {
+        try { unsubscribe(); } catch (_) { /* ignore unsubscribe failures */ }
+      }
+      unsubscribe = null;
+      if (typeof callback === 'function') callback(event);
+    }
+
+    listen(String(eventName || ''), function (event) {
+      finish(onEvent, event);
+    }).then(function (unsub) {
+      unsubscribe = typeof unsub === 'function' ? unsub : null;
+      if (finished && typeof unsubscribe === 'function') {
+        try { unsubscribe(); } catch (_) { /* ignore unsubscribe failures */ }
+        unsubscribe = null;
+      }
+    }).catch(function () {
+      finish(onMissingRuntime);
+    });
+
+    return {
+      cancel: function () {
+        finish(null);
+      }
+    };
+  }
+
+  function confirmModal(opts) {
+    opts = opts || {};
+    var label = 'confirm-modal-' + (++subAppModalCounter);
+    var params = new URLSearchParams();
+    params.set('label', label);
+    if (opts.title) params.set('title', opts.title);
+    if (opts.message) params.set('message', opts.message);
+    if (opts.okText) params.set('ok', opts.okText);
+    if (opts.cancelText) params.set('cancel', opts.cancelText);
+    var url = 'views/modals/confirm.html?' + params.toString();
+    return new Promise(function (resolve) {
+      var waiter = waitForSingleEvent('modal-result-' + label, function (event) {
+        resolve(!!(event && event.payload && event.payload.accepted));
+      }, function () {
+        resolve(false);
+      });
+      invoke('multiview_open_modal_window', {
+        spec: {
+          label: label,
+          url: url,
+          title: opts.title || 'Confirm',
+          width: opts.width || 380,
+          height: opts.height || 180,
+          center: true
+        }
+      }).catch(function () {
+        waiter.cancel();
+        resolve(false);
+      });
+    });
+  }
+
+  function promptModal(opts) {
+    opts = opts || {};
+    var label = 'prompt-modal-' + (++subAppModalCounter);
+    var params = new URLSearchParams();
+    params.set('label', label);
+    if (opts.title) params.set('title', opts.title);
+    if (opts.message) params.set('message', opts.message);
+    if (opts.initial != null) params.set('initial', String(opts.initial));
+    if (opts.okText) params.set('ok', opts.okText);
+    if (opts.cancelText) params.set('cancel', opts.cancelText);
+    var url = 'views/modals/prompt.html?' + params.toString();
+    return new Promise(function (resolve) {
+      var waiter = waitForSingleEvent('modal-result-' + label, function (event) {
+        var payload = event && event.payload ? event.payload : {};
+        resolve(payload.value == null ? null : String(payload.value));
+      }, function () {
+        resolve(null);
+      });
+      invoke('multiview_open_modal_window', {
+        spec: {
+          label: label,
+          url: url,
+          title: opts.title || 'Input',
+          width: opts.width || 420,
+          height: opts.height || 200,
+          center: true
+        }
+      }).catch(function () {
+        waiter.cancel();
+        resolve(null);
+      });
+    });
+  }
+
   function runTeardownCallbacks() {
     if (panelTeardownRan) return;
     panelTeardownRan = true;
@@ -129,6 +389,8 @@
 
   function init(opts) {
     opts = opts || {};
+    installSubAppLogger();
+    installSubAppNotifications();
     if (typeof opts.onTeardown === 'function') {
       teardownCallbacks.push(opts.onTeardown);
       installPanelTeardownListener();
@@ -149,6 +411,31 @@
         if (pane) bodyEl.setAttribute('data-shell-pane', pane);
       }
     } catch (_) {}
+    // Diagnostic: log the sub-app's own viewport + body geometry once
+    // after layout settles so we can see whether the webview frame
+    // matches the SHELL placeholder. Compares against the SHELL-side
+    // diag log emitted by `workspaceShell.js#onSpawned`. One-shot per
+    // sub-app boot.
+    setTimeout(function () {
+      try {
+        if (typeof window.lexeraLog !== 'function') return;
+        var b = document.body;
+        var br = b ? b.getBoundingClientRect() : null;
+        var firstChild = b ? (b.children && b.children[0]) : null;
+        var fcr = firstChild ? firstChild.getBoundingClientRect() : null;
+        var lastChild = b ? (b.children && b.children[b.children.length - 1]) : null;
+        var lcr = lastChild ? lastChild.getBoundingClientRect() : null;
+        window.lexeraLog('info',
+          '[subapp/diag] kind=' + (getPanelKind() || '?') +
+          ' winH=' + window.innerHeight +
+          ' docH=' + (document.documentElement && document.documentElement.clientHeight) +
+          ' body=' + (br ? '{t:' + br.top.toFixed(1) + ',b:' + br.bottom.toFixed(1) + ',h:' + br.height.toFixed(1) + '}' : 'null') +
+          ' first=' + (firstChild ? firstChild.tagName + '.' + (firstChild.className || '').split(' ')[0] : '?') +
+          (fcr ? '{t:' + fcr.top.toFixed(1) + ',b:' + fcr.bottom.toFixed(1) + ',h:' + fcr.height.toFixed(1) + '}' : '') +
+          ' last=' + (lastChild ? lastChild.tagName + '.' + (lastChild.className || '').split(' ')[0] : '?') +
+          (lcr ? '{t:' + lcr.top.toFixed(1) + ',b:' + lcr.bottom.toFixed(1) + ',h:' + lcr.height.toFixed(1) + '}' : ''));
+      } catch (_) {}
+    }, 400);
     var wv = getCurrentWebview();
     var ctx = getContext();
     if (!wv || typeof wv.listen !== 'function') {
@@ -416,6 +703,14 @@
     getWindowLabel: getWindowLabel,
     getHostWindowLabel: getHostWindowLabel,
     getCurrentWebview: getCurrentWebview,
-    applyThemeSnapshot: applyThemeSnapshot
+    applyThemeSnapshot: applyThemeSnapshot,
+    confirmModal: confirmModal,
+    promptModal: promptModal,
+    showNotification: function (message, opts) {
+      if (typeof window !== 'undefined' && typeof window.showNotification === 'function') {
+        return window.showNotification(message, opts);
+      }
+      return undefined;
+    }
   };
 })();

@@ -357,19 +357,33 @@ fn main() {
             let menu = app_menu::create_app_menu(app)?;
             app.set_menu(menu)?;
 
-            // ── Auto-run: write config file + navigate with query param ──
-            // Write a JSON config to `src/auto-run-config.json` (served
-            // by the dev server) AND navigate to `index.html?autoRunTests=1`
-            // so the frontend can detect auto-run from location.search
-            // synchronously at IIFE time, then fetch() the config file
-            // for the details (board, output path, quit flag).
+            // ── Auto-run: write config file (best-effort fallback) ──
+            //
+            // Primary delivery: the `get_test_runner_config` Tauri command
+            // (which serves the in-memory `TEST_RUNNER_CONFIG` populated
+            // above). `autoRunBootstrap.js` and the workspace shell prefer
+            // this command over the file fallback.
+            //
+            // The file fallback is kept for `workspaceShell.js`'s
+            // synchronous `MULTIVIEW_BOARDS` detection at IIFE init time
+            // (sync XHR is the only API available before async invokes
+            // resolve). It's also picked up by autoRunBootstrap.js when
+            // the Tauri command path fails.
+            //
+            // Important: writing this file into `lexera-kanban/src/`
+            // (which is `frontendDist` in dev mode) makes Tauri's
+            // frontend watcher fire on the resulting fs event and reload
+            // the main webview a few hundred ms after boot. Same problem
+            // hit `remove_file` whenever a stale file existed from a
+            // previous --run-tests session. Skip the write/remove when
+            // it would be a no-op (file content/state unchanged) so the
+            // watcher stays quiet on every subsequent boot.
             let config_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .parent()
                 .unwrap_or_else(|| std::path::Path::new("."))
                 .join("src")
                 .join("auto-run-config.json");
             if auto_run_tests {
-                // Write config file for fetch()
                 let config_json = serde_json::json!({
                     "auto_run": true,
                     "board": auto_run_board,
@@ -379,12 +393,15 @@ fn main() {
                     "filter": auto_run_filter,
                     "includeFixturePath": include_fixture_path
                 });
-                let _ = std::fs::write(&config_path, config_json.to_string());
-
-                // The frontend polls for `auto-run-config.json` via
-                // XHR on startup (every 1s for 30 attempts). When it
-                // finds the file, it reads the config and starts.
-            } else {
+                let new_content = config_json.to_string();
+                let needs_write = match std::fs::read_to_string(&config_path) {
+                    Ok(existing) => existing != new_content,
+                    Err(_) => true,
+                };
+                if needs_write {
+                    let _ = std::fs::write(&config_path, &new_content);
+                }
+            } else if config_path.exists() {
                 let _ = std::fs::remove_file(&config_path);
             }
 
