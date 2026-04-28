@@ -1,0 +1,678 @@
+/**
+ * LexeraMultiviewWebview
+ *
+ * Spawns and tracks Tauri child webviews ("multiview") that float above
+ * placeholder DIVs in the workspace shell. Every board and panel tab is
+ * hosted by a child webview — there is no iframe fallback.
+ *
+ * Owns:
+ *   - per-tab spawn lifecycle state machine (pending → ready → destroying)
+ *   - per-label in-flight spawn locks (prevents racing IPC calls)
+ *   - circuit breaker (auto-disables on runaway spawn loops)
+ *   - geometry pushers (placeholder rect → webview position)
+ *   - health-dot painting
+ *   - "already exists" adoption path (shell-reload recovery)
+ *   - LRU lifecycle integration (spawn / touch via window.LexeraMultiview.lifecycle)
+ *
+ * Setup contract:
+ *   LexeraMultiviewWebview.setup({
+ *     traceShell,               // function (string) → void
+ *     getActiveLeafId,          // () → string
+ *     getPlaceholder,           // (tabId) → DOM element or null
+ *     findTabInAllTrees,        // (tabId) → { tab, leaf } or null
+ *     isPanelTab,               // (tab) → boolean
+ *     getPanelKind,             // (panelId) → string
+ *     getEmbeddedUrlForTab      // (tab) → string
+ *   });
+ *
+ * Public API:
+ *   ensure(tab, placeholder, src), destroy(tabId),
+ *   cleanupLocalState(tabId), applyHealth(tabId, state),
+ *   reapplyAllHealthDots(), labelForTab(tab), labelForTabId(tabId),
+ *   tabIdFromLabel(label), spawnedLabel(tabId), destroyAll().
+ */
+(function () {
+  'use strict';
+
+  var boardHost = (typeof window !== 'undefined' && window.LexeraBoardHost) || null;
+  if (!boardHost) {
+    throw new Error('LexeraBoardHost global is required before multiviewWebview.js');
+  }
+  var panelHost = (typeof window !== 'undefined' && window.LexeraPanelHost) || null;
+  if (!panelHost) {
+    throw new Error('LexeraPanelHost global is required before multiviewWebview.js');
+  }
+
+  var deps = null;
+
+  // Per-tab spawn lifecycle:
+  //   absent      — no webview, no spawn in flight
+  //   'pending'   — spawn IPC issued, awaiting Rust ack
+  //   'ready'     — spawn confirmed, webview exists at .url
+  //   'destroying'— destroy IPC issued, awaiting Rust ack
+  // Encoding the state explicitly (rather than presence/url alone)
+  // prevents render-loop re-entry and destroy/spawn races from
+  // producing duplicate Rust webviews.
+  var multiviewSpawnedTabs = {};
+  var multiviewGeometryObservers = {};
+  // Per-tab watchers that retry doSpawn() once the placeholder becomes
+  // measurable (paint-visible, > 0×0). Without this, a placeholder
+  // that's hidden at initial render would stay "spawning…" forever.
+  var multiviewSpawnRetryWatchers = {};
+  // Per-LABEL in-flight spawn promise. Hard fence against duplicate
+  // `multiview_spawn` IPCs racing for the same Tauri webview label.
+  var multiviewLabelSpawnLocks = {};
+  var multiviewPendingLocalDestroyAcks = {};
+
+  // Last-known health per tab so re-renders reapply the state.
+  var lastKnownHealth = {};
+
+  // Emergency kill switch for runaway-spawn loops.
+  var MULTIVIEW_SPAWN_DISABLED = false;
+  var CIRCUIT_BREAKER_THRESHOLD = 12;
+  var CIRCUIT_BREAKER_WINDOW_MS = 1000;
+  var ensureCallTimestamps = {};
+
+  // Verbose multiview tracing. Gated so per-ensure / per-doSpawn chatter
+  // doesn't flood normal runs. Enable via `?ws-debug=1` URL param or
+  // localStorage['ws-debug']='1'. ADOPT, BOOT, BEFOREUNLOAD markers always
+  // print regardless.
+  var WS_DEBUG_VERBOSE = (function () {
+    try {
+      var p = new URLSearchParams(window.location.search || '');
+      if (p.get('ws-debug') === '1') return true;
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('ws-debug') === '1') return true;
+    } catch (_) {}
+    return false;
+  })();
+  var _wsDebugSeq = 0;
+
+  function wsDebug(msg, opts) {
+    var force = !!(opts && opts.force);
+    if (!force && !WS_DEBUG_VERBOSE) return;
+    var seq = ++_wsDebugSeq;
+    try {
+      if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+        window.__TAURI__.core.invoke('ws_debug_log', { message: '#' + seq + ' ' + String(msg) });
+      }
+    } catch (_) {}
+  }
+  function wsDebugForce(msg) { wsDebug(msg, { force: true }); }
+
+  function labelForTabId(tabId) {
+    return boardHost.multiviewLabelForTab(tabId);
+  }
+
+  // Compute the multiview webview label for a tab object, taking its
+  // kind into account. Panel webviews use the 'panel-tab-' prefix so
+  // the multiview-destroyed listener and LRU registry can disambiguate
+  // them from board webviews ('board-tab-' prefix).
+  function labelForTab(tab) {
+    if (deps && deps.isPanelTab(tab)) return panelHost.panelLabelForTab(tab.id);
+    return boardHost.multiviewLabelForTab(tab.id);
+  }
+
+  // Reverse lookup: tabId for a given webview label. Handles three
+  // cases:
+  //   1. Formula labels with our 'board-tab-' / 'panel-tab-' prefixes
+  //   2. Pool labels ('_pool_<n>') that were repurposed and now own
+  //      a tab — we find the tabId by scanning the spawn registry
+  //   3. Anything else: returns the original label so callers can
+  //      surface it in logs/diagnostics.
+  function tabIdFromLabel(label) {
+    if (typeof label !== 'string') return '';
+    if (label.indexOf('board-tab-') === 0) return label.substring('board-tab-'.length);
+    if (label.indexOf('panel-tab-') === 0) return label.substring('panel-tab-'.length);
+    var tabIds = Object.keys(multiviewSpawnedTabs);
+    for (var i = 0; i < tabIds.length; i++) {
+      if (multiviewSpawnedTabs[tabIds[i]].label === label) return tabIds[i];
+    }
+    return label;
+  }
+
+  function noteLocalDestroy(label) {
+    var key = String(label || '');
+    if (!key) return;
+    multiviewPendingLocalDestroyAcks[key] = (multiviewPendingLocalDestroyAcks[key] || 0) + 1;
+  }
+
+  function consumeLocalDestroyAck(label) {
+    var key = String(label || '');
+    var count = multiviewPendingLocalDestroyAcks[key] || 0;
+    if (count <= 0) return false;
+    if (count === 1) delete multiviewPendingLocalDestroyAcks[key];
+    else multiviewPendingLocalDestroyAcks[key] = count - 1;
+    return true;
+  }
+
+  function ensureHealthDot(placeholderEl) {
+    return boardHost.ensureHealthDot(placeholderEl, document);
+  }
+
+  // Reapply known health states to all health dots in the DOM.
+  // Called after render() so freshly-built tab headers get the
+  // right color instead of the default 'unknown'.
+  function reapplyAllHealthDots() {
+    var dots = document.querySelectorAll('.ws-view-tab-health[data-tab-id]');
+    for (var i = 0; i < dots.length; i++) {
+      var id = dots[i].getAttribute('data-tab-id');
+      if (!id) continue;
+      var s = lastKnownHealth[id] || 'unknown';
+      dots[i].setAttribute('data-health', s);
+      dots[i].setAttribute('title', 'Connection state: ' + s);
+    }
+  }
+
+  function applyHealth(tabId, healthState) {
+    var s = healthState || 'unknown';
+    lastKnownHealth[tabId] = s;
+    var headerDots = document.querySelectorAll(
+      '.ws-view-tab-health[data-tab-id="' + (tabId || '').replace(/"/g, '') + '"]');
+    for (var i = 0; i < headerDots.length; i++) {
+      headerDots[i].setAttribute('data-health', s);
+      headerDots[i].setAttribute('title', 'Connection state: ' + s);
+    }
+    var placeholderEl = deps && deps.getPlaceholder ? deps.getPlaceholder(tabId) : null;
+    if (placeholderEl && typeof placeholderEl.querySelector === 'function' &&
+        placeholderEl.getAttribute && placeholderEl.getAttribute('data-multiview') === '1') {
+      var dot = ensureHealthDot(placeholderEl);
+      dot.setAttribute('data-health', s);
+      dot.setAttribute('title', 'Connection state: ' + s);
+    }
+  }
+
+  function multiviewUrlForTab(desiredSrc) {
+    return boardHost.multiviewUrlForTab(desiredSrc);
+  }
+
+  function watchPlaceholderVisibility(tab, placeholderEl, pushGeomFn) {
+    if (!tab || !tab.id) return;
+    boardHost.watchPlaceholderVisibility(
+      tab.id,
+      placeholderEl,
+      pushGeomFn,
+      labelForTab(tab)
+    );
+  }
+
+  function noteEnsureCall(tabId, label, url) {
+    var now = Date.now();
+    var arr = ensureCallTimestamps[tabId] || (ensureCallTimestamps[tabId] = []);
+    arr.push(now);
+    while (arr.length > 0 && now - arr[0] > CIRCUIT_BREAKER_WINDOW_MS) arr.shift();
+    if (arr.length >= CIRCUIT_BREAKER_THRESHOLD && !MULTIVIEW_SPAWN_DISABLED) {
+      MULTIVIEW_SPAWN_DISABLED = true;
+      var msg = '[multiview] CIRCUIT BREAKER tripped — ' + arr.length +
+        ' ensure() calls in ' + CIRCUIT_BREAKER_WINDOW_MS + 'ms for tab="' +
+        tabId + '" label="' + label + '" url="' + url +
+        '". Spawn auto-disabled. Reload after fix.';
+      try { console.error(msg); } catch (_) {}
+      try { if (window.lexeraLog) window.lexeraLog('error', msg); } catch (_) {}
+    }
+    return MULTIVIEW_SPAWN_DISABLED;
+  }
+
+  function ensure(tab, placeholderEl, desiredSrc) {
+    if (!window.LexeraMultiview) return;
+    if (MULTIVIEW_SPAWN_DISABLED) {
+      placeholderEl.classList.add('is-loaded');
+      placeholderEl.innerHTML = '<div class="mv-error-msg" style="padding:12px;opacity:.6">multiview spawn disabled (kill-switch active)</div>';
+      return;
+    }
+    var label = labelForTab(tab);
+    var url = multiviewUrlForTab(desiredSrc);
+    var _e = multiviewSpawnedTabs[tab.id];
+    wsDebug('ensure tab=' + tab.id + ' label=' + label +
+      ' entryState=' + (_e ? _e.state : 'none') +
+      ' lock=' + (multiviewLabelSpawnLocks[label] ? 'yes' : 'no') +
+      ' urlMatch=' + (_e && _e.url === url));
+    if (noteEnsureCall(tab.id, label, url)) {
+      placeholderEl.classList.add('is-loaded');
+      placeholderEl.innerHTML = '<div class="mv-error-msg" style="padding:12px;opacity:.6">circuit breaker tripped — see log</div>';
+      return;
+    }
+
+    // Optional safety inset (?multiview-inset=N): subtracts N pixels
+    // from each side as a debug aid for divider-cover issues.
+    var MV_INSET = (function () {
+      try {
+        var p = new URLSearchParams(window.location.search || '');
+        var v = parseInt(p.get('multiview-inset') || '0', 10);
+        return Number.isFinite(v) && v >= 0 ? v : 0;
+      } catch (_) { return 0; }
+    })();
+    function pushGeom() {
+      if (placeholderEl.offsetParent === null) return;
+      var r = placeholderEl.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return;
+      var update = {
+        label: label,
+        x: r.left + MV_INSET,
+        y: r.top + MV_INSET,
+        width: Math.max(1, r.width - 2 * MV_INSET),
+        height: Math.max(1, r.height - 2 * MV_INSET)
+      };
+      if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
+        window.LexeraMultiview.pushGeomDeferred(update);
+      } else {
+        window.LexeraMultiview.setGeometry([update]).catch(function () {});
+      }
+    }
+    // One-shot retry: when doSpawn() can't measure the placeholder yet
+    // (dock collapsed, layout hasn't settled, etc.), wait for the next
+    // visibility / resize signal then try again.
+    function scheduleSpawnRetryWhenMeasurable() {
+      if (multiviewSpawnRetryWatchers[tab.id]) return;
+      var disposers = [];
+      function fire() {
+        if (!multiviewSpawnRetryWatchers[tab.id]) return;
+        multiviewSpawnRetryWatchers[tab.id] = null;
+        for (var i = 0; i < disposers.length; i++) {
+          try { disposers[i](); } catch (_) {}
+        }
+        ensure(tab, placeholderEl, desiredSrc);
+      }
+      multiviewSpawnRetryWatchers[tab.id] = { fire: fire, disposers: disposers };
+      if (typeof ResizeObserver !== 'undefined') {
+        var ro = new ResizeObserver(function () {
+          var rr = placeholderEl.getBoundingClientRect();
+          if (placeholderEl.isConnected && placeholderEl.offsetParent !== null &&
+              rr.width > 0 && rr.height > 0) fire();
+        });
+        try { ro.observe(placeholderEl); disposers.push(function () { ro.disconnect(); }); }
+        catch (_) {}
+      }
+      if (typeof IntersectionObserver !== 'undefined') {
+        var io = new IntersectionObserver(function (entries) {
+          for (var i = 0; i < entries.length; i++) {
+            if (entries[i].isIntersecting && entries[i].intersectionRatio > 0) { fire(); return; }
+          }
+        });
+        try { io.observe(placeholderEl); disposers.push(function () { io.disconnect(); }); }
+        catch (_) {}
+      }
+      if (typeof MutationObserver !== 'undefined' && placeholderEl.parentNode) {
+        var mo = new MutationObserver(function () {
+          var rr = placeholderEl.getBoundingClientRect();
+          if (placeholderEl.isConnected && placeholderEl.offsetParent !== null &&
+              rr.width > 0 && rr.height > 0) fire();
+        });
+        try {
+          mo.observe(placeholderEl, { attributes: true, attributeFilter: ['class', 'style'] });
+          if (placeholderEl.parentNode) {
+            mo.observe(placeholderEl.parentNode, { attributes: true, attributeFilter: ['class', 'style'] });
+          }
+          disposers.push(function () { mo.disconnect(); });
+        } catch (_) {}
+      }
+      // Fallback: poll every 500ms for up to 10s in case observers miss
+      // (e.g., display:none → display:block via ancestor; intermittent
+      // layout). 20 attempts × 500ms = 10s total, way under the
+      // circuit-breaker window.
+      var polls = 0;
+      var pollInterval = setInterval(function () {
+        polls += 1;
+        var rr = placeholderEl.getBoundingClientRect();
+        if (placeholderEl.isConnected && placeholderEl.offsetParent !== null &&
+            rr.width > 0 && rr.height > 0) {
+          clearInterval(pollInterval);
+          fire();
+        } else if (polls >= 20) {
+          clearInterval(pollInterval);
+          multiviewSpawnRetryWatchers[tab.id] = null;
+          for (var i = 0; i < disposers.length; i++) {
+            try { disposers[i](); } catch (_) {}
+          }
+        }
+      }, 500);
+      disposers.push(function () { clearInterval(pollInterval); });
+    }
+    function showSpawnErrorUi(err) {
+      placeholderEl.classList.add('has-error');
+      placeholderEl.classList.remove('is-loaded');
+      placeholderEl.innerHTML =
+        '<div class="mv-error-msg">Failed to load board webview.' +
+        '<br><small>' + String(err && err.message || err).replace(/</g, '&lt;') + '</small>' +
+        '<br><button type="button" data-mv-retry="1">Retry</button></div>';
+      var retryBtn = placeholderEl.querySelector('[data-mv-retry]');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', function () {
+          placeholderEl.classList.remove('has-error');
+          placeholderEl.innerHTML = '';
+          delete multiviewSpawnedTabs[tab.id];
+          ensure(tab, placeholderEl, desiredSrc);
+        });
+      }
+    }
+    function onSpawned() {
+      multiviewSpawnedTabs[tab.id] = { url: url, state: 'ready', label: label };
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('debug', '[multiview] spawned ' + label);
+      }
+      // Delay two frames so the browser can paint the spawning ring
+      // transition before we mark loaded (otherwise the ring never shows).
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          placeholderEl.classList.add('is-loaded');
+        });
+      });
+      // Multi-step geometry push: spawn-time, next frame, and 50/200ms
+      // later. Catches the case where the placeholder is briefly mis-sized
+      // while the dock layout is still settling — common during initial
+      // render and tab activation cascades.
+      requestAnimationFrame(pushGeom);
+      setTimeout(pushGeom, 50);
+      setTimeout(pushGeom, 200);
+      if (typeof ResizeObserver !== 'undefined' && !multiviewGeometryObservers[tab.id]) {
+        var ro = new ResizeObserver(function () { pushGeom(); });
+        ro.observe(placeholderEl);
+        multiviewGeometryObservers[tab.id] = ro;
+      }
+      window.addEventListener('resize', pushGeom);
+      watchPlaceholderVisibility(tab, placeholderEl, pushGeom);
+    }
+    function doSpawn() {
+      wsDebug('doSpawn tab=' + tab.id + ' label=' + label +
+        ' entryState=' + (multiviewSpawnedTabs[tab.id] ? multiviewSpawnedTabs[tab.id].state : 'none') +
+        ' lock=' + (multiviewLabelSpawnLocks[label] ? 'yes' : 'no'));
+      var r = placeholderEl.getBoundingClientRect();
+      if (!placeholderEl.isConnected || placeholderEl.offsetParent === null || r.width <= 0 || r.height <= 0) {
+        // Placeholder is in the DOM but not yet measurable. Hook a
+        // one-shot watcher that re-attempts as soon as the placeholder is
+        // connected, paint-visible, and >0×0.
+        scheduleSpawnRetryWhenMeasurable();
+        return;
+      }
+      var x = r.left;
+      var y = r.top;
+      var w = r.width;
+      var h = r.height;
+      if (deps && typeof deps.traceShell === 'function') {
+        deps.traceShell(
+          'spawn label=' + label +
+          ' tab=' + tab.id +
+          ' pos=(' + x + ', ' + y + ')' +
+          ' size=(' + w + ', ' + h + ')' +
+          ' active=' + placeholderEl.classList.contains('is-active') +
+          ' connected=' + (!!placeholderEl.isConnected) +
+          ' offsetParent=' + (placeholderEl.offsetParent ? 'set' : 'null')
+        );
+      }
+      // Label-level in-flight lock. Hard fence so concurrent ensure()
+      // calls share the same promise instead of issuing duplicate IPCs.
+      if (multiviewLabelSpawnLocks[label]) {
+        wsDebugForce('DEDUPE label=' + label + ' (in-flight)');
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('debug', '[multiview] spawn de-duplicated for ' + label);
+        }
+        multiviewLabelSpawnLocks[label].then(onSpawned).catch(function (err) {
+          if (typeof window.lexeraLog === 'function') {
+            window.lexeraLog('warn', '[multiview] de-dupe wait for ' + label + ' failed: ' + (err && err.message || err));
+          }
+        });
+        return;
+      }
+      // Mark pending BEFORE the IPC so render-loop re-entry sees a spawn
+      // in flight and short-circuits. `attempts` accumulates across
+      // recovery cycles for this tab; loop-stop guard for "already exists".
+      var prior = multiviewSpawnedTabs[tab.id];
+      var attempts = (prior && prior.attempts) ? prior.attempts : 0;
+      multiviewSpawnedTabs[tab.id] = { url: url, state: 'pending', label: label, attempts: attempts };
+      var lifecycleApi = window.LexeraMultiview.lifecycle;
+      var args = { label: label, url: url, x: x, y: y, width: w, height: h };
+      var spawnPromise = lifecycleApi && typeof lifecycleApi.spawn === 'function'
+        ? lifecycleApi.spawn(args)
+        : window.LexeraMultiview.spawn(args).then(function () {
+            return { label: label, fromPool: false };
+          });
+      multiviewLabelSpawnLocks[label] = spawnPromise.finally
+        ? spawnPromise.finally(function () { delete multiviewLabelSpawnLocks[label]; })
+        : spawnPromise.then(
+            function (r) { delete multiviewLabelSpawnLocks[label]; return r; },
+            function (e) { delete multiviewLabelSpawnLocks[label]; throw e; }
+          );
+      spawnPromise.then(function (result) {
+        // Pool fast-path: actual webview lives at `result.label`
+        // (e.g. `_pool_3`), not the formula label. Rebind so subsequent
+        // ops (pushGeom, destroy, retry) address the correct webview.
+        if (result && result.label && result.label !== label) {
+          label = result.label;
+          multiviewSpawnedTabs[tab.id].label = label;
+        }
+        onSpawned();
+      }).catch(function (err) {
+        console.warn('[multiview] spawn failed for', tab.id, err);
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('warn', '[multiview] spawn failed for ' + label + ': ' + (err && err.message || err));
+        }
+        var msg = String(err && err.message || err || '');
+        if (/already exists/i.test(msg)) {
+          // ADOPT path: shell reload mid-session leaves Rust-side webviews
+          // alive at our formula labels. Treat spawn as effectively
+          // succeeded — populate local entry as 'ready' and run onSpawned.
+          wsDebugForce('ADOPT label=' + label + ' (already exists in Rust)');
+          if (typeof window.lexeraLog === 'function') {
+            window.lexeraLog('info', '[multiview] adopting pre-existing webview ' + label);
+          }
+          multiviewSpawnedTabs[tab.id] = { url: url, state: 'ready', label: label, attempts: 0 };
+          onSpawned();
+          return;
+        }
+        delete multiviewSpawnedTabs[tab.id];
+        showSpawnErrorUi(err);
+      });
+    }
+
+    var entry = multiviewSpawnedTabs[tab.id];
+    if (!entry) {
+      doSpawn();
+      return;
+    }
+    if (entry.state === 'pending' || entry.state === 'destroying') {
+      // An IPC op is already in flight for this tab. Whichever resolver
+      // eventually runs reconciles to the latest desired url via the
+      // next render-driven ensure() call.
+      return;
+    }
+    // entry.state === 'ready'
+    if (entry.url !== url) {
+      // URL change — destroy then respawn. Mark destroying first so
+      // any concurrent ensure() short-circuits instead of stacking
+      // additional spawn attempts on top.
+      multiviewSpawnedTabs[tab.id] = { url: entry.url, state: 'destroying', label: label };
+      noteLocalDestroy(label);
+      window.LexeraMultiview.destroy(label).then(function () {
+        delete multiviewSpawnedTabs[tab.id];
+        ensure(tab, placeholderEl, desiredSrc);
+      }).catch(function () {
+        // Even on destroy failure, clear and retry — the next spawn
+        // will surface the real error (or recover via "already exists").
+        delete multiviewSpawnedTabs[tab.id];
+        ensure(tab, placeholderEl, desiredSrc);
+      });
+      return;
+    }
+    // Already spawned at correct URL — refresh geometry only.
+    requestAnimationFrame(pushGeom);
+  }
+
+  function destroy(tabId) {
+    if (!window.LexeraMultiview) return;
+    var entry = multiviewSpawnedTabs[tabId];
+    // Recover the panel/board-correct label from the lifecycle entry.
+    // Fallback to the board prefix only if no entry exists — matches
+    // legacy behavior for orphan-cleanup paths.
+    var label = (entry && entry.label) || labelForTabId(tabId);
+    if (multiviewGeometryObservers[tabId]) {
+      try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
+      delete multiviewGeometryObservers[tabId];
+    }
+    var _spawnRetry = multiviewSpawnRetryWatchers[tabId];
+    if (_spawnRetry) {
+      multiviewSpawnRetryWatchers[tabId] = null;
+      var _disposers = _spawnRetry.disposers || [];
+      for (var _ri = 0; _ri < _disposers.length; _ri++) {
+        try { _disposers[_ri](); } catch (_) {}
+      }
+    }
+    boardHost.cleanupVisibilityObserver(tabId);
+    // Mark destroying BEFORE the IPC so a concurrent ensure() for the
+    // same tab short-circuits instead of trying to spawn on top of a
+    // half-torn-down webview. Keep the entry until Rust confirms.
+    if (entry) {
+      multiviewSpawnedTabs[tabId] = {
+        url: entry.url,
+        state: 'destroying',
+        label: label
+      };
+    }
+    noteLocalDestroy(label);
+    window.LexeraMultiview.destroy(label).then(function () {
+      delete multiviewSpawnedTabs[tabId];
+    }).catch(function () {
+      delete multiviewSpawnedTabs[tabId];
+    });
+  }
+
+  // Local cleanup invoked when Rust unilaterally destroyed our webview
+  // (LRU eviction or external destroy via the `multiview-destroyed`
+  // event). Distinct from destroy() which initiates the destroy.
+  function cleanupLocalState(tabId) {
+    if (multiviewGeometryObservers[tabId]) {
+      try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
+      delete multiviewGeometryObservers[tabId];
+    }
+    var _spawnRetry = multiviewSpawnRetryWatchers[tabId];
+    if (_spawnRetry) {
+      multiviewSpawnRetryWatchers[tabId] = null;
+      var _disposers = _spawnRetry.disposers || [];
+      for (var _ri = 0; _ri < _disposers.length; _ri++) {
+        try { _disposers[_ri](); } catch (_) {}
+      }
+    }
+    boardHost.cleanupVisibilityObserver(tabId);
+    // Preserve a 'pending' entry: if a fresh spawn is in flight, this
+    // destroy event refers to an earlier lifecycle and must not stomp
+    // the new one.
+    var entry = multiviewSpawnedTabs[tabId];
+    if (!entry || entry.state !== 'pending') {
+      delete multiviewSpawnedTabs[tabId];
+    }
+  }
+
+  function isHostedTabLabel(label) {
+    if (typeof label !== 'string') return false;
+    if (label.indexOf('board-tab-') === 0) return true;
+    if (label.indexOf('panel-tab-') === 0) return true;
+    // Pool-derived labels: a `_pool_<n>` webview that has been
+    // repurposed for a tab is registered with that label.
+    var tabIds = Object.keys(multiviewSpawnedTabs);
+    for (var i = 0; i < tabIds.length; i++) {
+      if (multiviewSpawnedTabs[tabIds[i]].label === label) return true;
+    }
+    return false;
+  }
+
+  function destroyAll() {
+    var tabIds = Object.keys(multiviewSpawnedTabs);
+    for (var i = 0; i < tabIds.length; i++) {
+      try { destroy(tabIds[i]); } catch (_) {}
+    }
+  }
+
+  function spawnedLabel(tabId) {
+    var entry = multiviewSpawnedTabs[tabId];
+    return entry && entry.label ? entry.label : '';
+  }
+
+  function setup(setupDeps) {
+    deps = setupDeps || {};
+
+    if (typeof window === 'undefined') return;
+
+    if (window.__TAURI__ && window.__TAURI__.event) {
+      window.__TAURI__.event.listen('health-changed', function (event) {
+        var p = event && event.payload ? event.payload : {};
+        var label = p.label || '';
+        if (!isHostedTabLabel(label)) return;
+        var tabId = tabIdFromLabel(label);
+        applyHealth(tabId, p.state);
+      });
+      window.__TAURI__.event.listen('multiview-destroyed', function (event) {
+        var p = event && event.payload ? event.payload : {};
+        var label = p.label || '';
+        if (!isHostedTabLabel(label)) return;
+        var locallyInitiated = consumeLocalDestroyAck(label);
+        if (deps && typeof deps.traceShell === 'function') {
+          deps.traceShell('destroyed label=' + label + ' local=' + locallyInitiated);
+        }
+        wsDebugForce('multiview-destroyed event label=' + label + ' local=' + locallyInitiated);
+        var tabId = tabIdFromLabel(label);
+        cleanupLocalState(tabId);
+        if (locallyInitiated) return;
+        // Auto-respawn if this tab is the active tab of the active leaf
+        // (user currently sees its placeholder). Otherwise lazy-spawn
+        // happens on next activateTab as usual.
+        var foundTab = deps.findTabInAllTrees ? deps.findTabInAllTrees(tabId) : null;
+        if (!foundTab || !foundTab.leaf) return;
+        var isActiveInLeaf = foundTab.leaf.activeTabId === tabId;
+        var isActiveLeaf = deps.getActiveLeafId && deps.getActiveLeafId() === foundTab.leaf.id;
+        if (isActiveInLeaf && isActiveLeaf) {
+          var placeholderEl = deps.getPlaceholder ? deps.getPlaceholder(tabId) : null;
+          if (placeholderEl && placeholderEl.getAttribute &&
+              placeholderEl.getAttribute('data-multiview') === '1') {
+            var desiredSrc;
+            if (deps.isPanelTab(foundTab.tab)) {
+              var panelKind = deps.getPanelKind(foundTab.tab.panelId);
+              desiredSrc = panelHost.panelUrlForTab(foundTab.tab, panelKind, window.location.href);
+            } else {
+              desiredSrc = deps.getEmbeddedUrlForTab(foundTab.tab);
+            }
+            if (typeof window.lexeraLog === 'function') {
+              window.lexeraLog('info', '[multiview] auto-respawning ' + label +
+                ' (destroyed while visible)');
+            }
+            requestAnimationFrame(function () {
+              ensure(foundTab.tab, placeholderEl, desiredSrc);
+            });
+          }
+        }
+      });
+    }
+
+    // Best-effort cleanup on main-window unload — destroys all child
+    // webviews we've spawned. Tauri should cascade cleanup when the
+    // window closes anyway, but explicit destroy minimizes orphaned
+    // WebContent processes during dev/reload.
+    if (deps && typeof deps.traceShell === 'function') {
+      deps.traceShell('boot href=' + window.location.href);
+    }
+    wsDebugForce('BOOT shell href=' + window.location.href + ' label=' +
+      ((window.__TAURI__ && window.__TAURI__.webview && window.__TAURI__.webview.getCurrent && window.__TAURI__.webview.getCurrent().label) || '?'));
+    window.addEventListener('beforeunload', function () {
+      if (deps && typeof deps.traceShell === 'function') {
+        deps.traceShell('beforeunload');
+      }
+      wsDebugForce('BEFOREUNLOAD shell href=' + window.location.href);
+      destroyAll();
+      if (window.LexeraMultiview && typeof window.LexeraMultiview.ghostHide === 'function') {
+        try { window.LexeraMultiview.ghostHide(); } catch (_) {}
+      }
+    });
+  }
+
+  window.LexeraMultiviewWebview = {
+    setup: setup,
+    ensure: ensure,
+    destroy: destroy,
+    cleanupLocalState: cleanupLocalState,
+    applyHealth: applyHealth,
+    reapplyAllHealthDots: reapplyAllHealthDots,
+    labelForTab: labelForTab,
+    labelForTabId: labelForTabId,
+    tabIdFromLabel: tabIdFromLabel,
+    spawnedLabel: spawnedLabel,
+    destroyAll: destroyAll,
+    noteLocalDestroy: noteLocalDestroy
+  };
+})();

@@ -34,6 +34,19 @@
   if (!panelHost) {
     throw new Error('LexeraPanelHost global is required before workspaceShell.js');
   }
+  var multiview = (typeof window !== 'undefined' && window.LexeraMultiviewWebview) || null;
+  if (!multiview) {
+    throw new Error('LexeraMultiviewWebview global is required before workspaceShell.js');
+  }
+  var messageBridge = (typeof window !== 'undefined' && window.LexeraMessageBridge) || null;
+  if (!messageBridge) {
+    throw new Error('LexeraMessageBridge global is required before workspaceShell.js');
+  }
+  messageBridge.setup({ multiview: multiview });
+  var layoutPersistence = (typeof window !== 'undefined' && window.LexeraLayoutPersistence) || null;
+  if (!layoutPersistence) {
+    throw new Error('LexeraLayoutPersistence global is required before workspaceShell.js');
+  }
 
   var normalizeViewKind = layoutTree.normalizeViewKind;
   var isPanelTab = layoutTree.isPanelTab;
@@ -113,336 +126,64 @@
   }
   var FOLD_HOVER_OPEN_DELAY_MS = 40;
 
-  var PANEL_DEFINITIONS = {
-    hierarchy: { id: 'hierarchy', title: 'Workspaces', defaultDock: 'left', duplicable: true, integratedHeader: true },
-    dashboard: { id: 'dashboard', title: 'Dashboard', defaultDock: 'right', duplicable: true, integratedHeader: true },
-    weekCalendar: { id: 'weekCalendar', title: 'Week Calendar', defaultDock: 'right', duplicable: true, integratedHeader: true },
-    monthCalendar: { id: 'monthCalendar', title: 'Month Calendar', defaultDock: 'right', duplicable: true, integratedHeader: true },
-    logs: { id: 'logs', title: 'Logs', defaultDock: 'bottom', duplicable: true, integratedHeader: true },
-    backendSettings: { id: 'backendSettings', title: 'Backend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
-    frontendSettings: { id: 'frontendSettings', title: 'Frontend Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
-    renderApps: { id: 'renderApps', title: 'Plugin Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
-    files: { id: 'files', title: 'Workspace Settings', defaultDock: 'right', duplicable: true, integratedHeader: true },
-    frontendTests: { id: 'frontendTests', title: 'Frontend Tests', defaultDock: 'right', duplicable: true, integratedHeader: true }
-  };
-
-  var DEFAULT_PANEL_VISIBILITY = {
-    hierarchy: true,
-    dashboard: true,
-    weekCalendar: false,
-    monthCalendar: false,
-    logs: true,
-    backendSettings: false,
-    frontendSettings: false,
-    renderApps: false,
-    files: false,
-    frontendTests: false
-  };
-
-  var runtimeAllowedPanelKinds = Object.keys(PANEL_DEFINITIONS);
-
-  function getAllowedPanelKinds() {
-    return runtimeAllowedPanelKinds.slice();
+  var panelDefs = (typeof window !== 'undefined' && window.LexeraPanelDefinitions) || null;
+  if (!panelDefs) {
+    throw new Error('LexeraPanelDefinitions global is required before workspaceShell.js');
   }
+  panelDefs.setup({ nextId: nextId });
 
-  function isPanelKindAllowed(kind) {
-    return !!(kind && Object.prototype.hasOwnProperty.call(PANEL_DEFINITIONS, kind) && runtimeAllowedPanelKinds.indexOf(kind) !== -1);
+  // Local aliases follow the layoutTree convention used at the top of
+  // this file — call `panelDefs.xxx` would force a refactor sweep we
+  // don't need; the alias keeps the call-site shape stable while the
+  // implementation lives in panelDefinitions.js.
+  var PANEL_DEFINITIONS = panelDefs.PANEL_DEFINITIONS;
+  var DEFAULT_PANEL_VISIBILITY = panelDefs.DEFAULT_PANEL_VISIBILITY;
+  var getAllowedPanelKinds = panelDefs.getAllowedPanelKinds;
+  var isPanelKindAllowed = panelDefs.isPanelKindAllowed;
+  var configureAllowedPanelKinds = panelDefs.configureAllowedPanelKinds;
+  var isPanelKindAllowedFromDefinitions = panelDefs.isPanelKindAllowedFromDefinitions;
+  var getDefaultDockGroups = panelDefs.getDefaultDockGroups;
+  var getFirstAllowedPanelKind = panelDefs.getFirstAllowedPanelKind;
+  var normalizePanelKind = panelDefs.normalizePanelKind;
+  var createDefaultPanelInstances = panelDefs.createDefaultPanelInstances;
+  var normalizePanelInstances = panelDefs.normalizePanelInstances;
+  var normalizePanelIdWithInstances = panelDefs.normalizePanelIdWithInstances;
+  var clampPanelSize = panelDefs.clampPanelSize;
+  var normalizeDockSizeValue = panelDefs.normalizeDockSizeValue;
+  var createDefaultDockSizes = panelDefs.createDefaultDockSizes;
+  var createDefaultDockRestoreSizes = panelDefs.createDefaultDockRestoreSizes;
+  var normalizeDockSizes = panelDefs.normalizeDockSizes;
+  var normalizeDockRestoreSizes = panelDefs.normalizeDockRestoreSizes;
+  var createDefaultPanelVisibility = panelDefs.createDefaultPanelVisibility;
+  var ensureUniquePanelIds = panelDefs.ensureUniquePanelIds;
+  var normalizePanelDocks = panelDefs.normalizePanelDocks;
+  var normalizePanelVisibility = panelDefs.normalizePanelVisibility;
+  var createDefaultSideDocks = panelDefs.createDefaultSideDocks;
+
+
+  // Tree registry: the four-tree iteration layer. Setup happens later
+  // (after `state` is initialised), inside the same block that wires
+  // the persistence module. The aliases here are populated then.
+  var treeRegistry = (typeof window !== 'undefined' && window.LexeraTreeRegistry) || null;
+  if (!treeRegistry) {
+    throw new Error('LexeraTreeRegistry global is required before workspaceShell.js');
   }
-
-  function configureAllowedPanelKinds(allowedKinds) {
-    if (!Array.isArray(allowedKinds) || allowedKinds.length === 0) {
-      runtimeAllowedPanelKinds = Object.keys(PANEL_DEFINITIONS);
-      return;
-    }
-    var filtered = [];
-    for (var i = 0; i < allowedKinds.length; i++) {
-      var kind = String(allowedKinds[i] || '').trim();
-      if (!isPanelKindAllowedFromDefinitions(kind)) continue;
-      if (filtered.indexOf(kind) === -1) filtered.push(kind);
-    }
-    runtimeAllowedPanelKinds = filtered.length > 0 ? filtered : Object.keys(PANEL_DEFINITIONS);
-  }
-
-  function isPanelKindAllowedFromDefinitions(kind) {
-    return !!(kind && Object.prototype.hasOwnProperty.call(PANEL_DEFINITIONS, kind));
-  }
-
-  function getDefaultDockGroups() {
-    var leftGroup = [];
-    if (isPanelKindAllowed('hierarchy')) leftGroup.push('hierarchy');
-    if (isPanelKindAllowed('dashboard')) leftGroup.push('dashboard');
-    var bottomGroup = [];
-    if (isPanelKindAllowed('logs')) bottomGroup.push('logs');
-    return {
-      left: leftGroup.length > 0 ? [leftGroup] : [],
-      right: [],
-      bottom: bottomGroup.length > 0 ? [bottomGroup] : []
-    };
-  }
-
-  function getFirstAllowedPanelKind() {
-    return runtimeAllowedPanelKinds.length > 0 ? runtimeAllowedPanelKinds[0] : '';
-  }
-
-  function createDefaultPanelInstances() {
-    var result = {};
-    for (var i = 0; i < runtimeAllowedPanelKinds.length; i++) {
-      var kind = runtimeAllowedPanelKinds[i];
-      result[kind] = { id: kind, kind: kind };
-    }
-    return result;
-  }
-
-  function createDefaultDockSizes(profile) {
-    if (profile === 'detachedBoard') {
-      return {
-        left: 0,
-        right: 0,
-        bottom: 0
-      };
-    }
-    return {
-      left: 272,
-      right: 0,
-      bottom: 0
-    };
-  }
-
-  function createDefaultDockRestoreSizes(profile) {
-    return createDefaultDockSizes(profile === 'detachedBoard' ? 'workspace' : profile);
-  }
-
-  function clampPanelSize(dockId, value) {
-    var number = typeof value === 'number' && isFinite(value) ? value : null;
-    if (number == null) return createDefaultDockSizes()[dockId];
-    if (dockId === 'bottom') return Math.max(140, Math.min(480, Math.round(number)));
-    return Math.max(200, Math.min(520, Math.round(number)));
-  }
-
-  function normalizeDockSizes(raw, profile) {
-    var defaults = createDefaultDockSizes(profile);
-    var source = raw && typeof raw === 'object' ? raw : {};
-    return {
-      left: normalizeDockSizeValue('left', source.left != null ? source.left : defaults.left),
-      right: normalizeDockSizeValue('right', source.right != null ? source.right : defaults.right),
-      bottom: normalizeDockSizeValue('bottom', source.bottom != null ? source.bottom : defaults.bottom)
-    };
-  }
-
-  function normalizeDockRestoreSizes(raw, profile) {
-    var defaults = createDefaultDockRestoreSizes(profile);
-    var source = raw && typeof raw === 'object' ? raw : {};
-    return {
-      left: clampPanelSize('left', source.left != null ? source.left : defaults.left) || defaults.left,
-      right: clampPanelSize('right', source.right != null ? source.right : defaults.right) || defaults.right,
-      bottom: clampPanelSize('bottom', source.bottom != null ? source.bottom : defaults.bottom) || defaults.bottom
-    };
-  }
-
-  function normalizePanelKind(value) {
-    return isPanelKindAllowed(value) ? value : '';
-  }
-
-  function normalizePanelInstances(raw) {
-    var defaults = createDefaultPanelInstances();
-    var source = raw && typeof raw === 'object' ? raw : {};
-    var result = {};
-    var defaultIds = Object.keys(defaults);
-    for (var i = 0; i < defaultIds.length; i++) {
-      result[defaultIds[i]] = defaults[defaultIds[i]];
-    }
-    var instanceIds = Object.keys(source);
-    for (var j = 0; j < instanceIds.length; j++) {
-      var panelId = String(instanceIds[j] || '');
-      if (!panelId) continue;
-      var entry = source[panelId];
-      var kind = normalizePanelKind(entry && entry.kind ? entry.kind : panelId);
-      if (!kind) continue;
-      if (panelId !== kind && !PANEL_DEFINITIONS[kind].duplicable) continue;
-      result[panelId] = { id: panelId, kind: kind };
-    }
-    return result;
-  }
-
-  function normalizePanelIdWithInstances(value, panelInstances) {
-    var normalized = String(value || '');
-    if (panelInstances && panelInstances[normalized]) return normalized;
-    return normalizePanelKind(normalized);
-  }
-
-  function createDefaultPanelVisibility(profile) {
-    var result = {};
-    for (var i = 0; i < runtimeAllowedPanelKinds.length; i++) {
-      var kind = runtimeAllowedPanelKinds[i];
-      result[kind] = !!DEFAULT_PANEL_VISIBILITY[kind];
-    }
-    return result;
-  }
-
-  function getPanelTitle(panelId) {
-    var kind = getPanelKind(panelId);
-    var definition = PANEL_DEFINITIONS[kind];
-    if (!definition) return 'Panel';
-    if (panelId === kind) return definition.title;
-    var peers = getPanelInstanceIdsByKind(kind);
-    var index = peers.indexOf(panelId);
-    return index > 0 ? (definition.title + ' ' + (index + 1)) : definition.title;
-  }
-
-  function ensureUniquePanelIds(ids, seen, panelInstances) {
-    var result = [];
-    var localSeen = seen || {};
-    var list = Array.isArray(ids) ? ids : [];
-    for (var i = 0; i < list.length; i++) {
-      var panelId = normalizePanelIdWithInstances(list[i], panelInstances);
-      if (!panelId || localSeen[panelId]) continue;
-      localSeen[panelId] = true;
-      result.push(panelId);
-    }
-    return result;
-  }
-
-  function normalizePanelDocks(raw, profile, panelInstances) {
-    var defaults = getDefaultDockGroups();
-    var result = { left: [], right: [], bottom: [] };
-    var seen = {};
-    var dockOrder = ['left', 'right', 'bottom'];
-    for (var i = 0; i < dockOrder.length; i++) {
-      var dockId = dockOrder[i];
-      var source = raw ? raw[dockId] : null;
-      var groups = [];
-      if (Array.isArray(source) && source.length > 0) {
-        // Detect format: grouped (array of arrays) vs flat (array of strings)
-        var isGrouped = Array.isArray(source[0]);
-        if (isGrouped) {
-          for (var g = 0; g < source.length; g++) {
-            var groupIds = ensureUniquePanelIds(source[g], seen, panelInstances);
-            if (groupIds.length > 0) groups.push(groupIds);
-          }
-        } else {
-          // Legacy flat format: each panel becomes its own group
-          var flatIds = ensureUniquePanelIds(source, seen, panelInstances);
-          for (var f = 0; f < flatIds.length; f++) {
-            groups.push([flatIds[f]]);
-          }
-        }
-      }
-      if (groups.length === 0) {
-        // Use defaults (already grouped format)
-        for (var d = 0; d < defaults[dockId].length; d++) {
-          var defGroup = defaults[dockId][d];
-          var defIds = ensureUniquePanelIds(
-            Array.isArray(defGroup) ? defGroup : [defGroup], seen, panelInstances
-          );
-          if (defIds.length > 0) groups.push(defIds);
-        }
-      }
-      result[dockId] = groups;
-    }
-    return result;
-  }
-
-  function normalizePanelVisibility(raw, profile, panelInstances) {
-    var defaults = createDefaultPanelVisibility(profile);
-    var result = {};
-    var source = raw && typeof raw === 'object' ? raw : {};
-    var panelIds = Object.keys(panelInstances || {});
-    for (var i = 0; i < panelIds.length; i++) {
-      var panelId = panelIds[i];
-      var kind = panelInstances[panelId] ? panelInstances[panelId].kind : panelId;
-      var fallback = Object.prototype.hasOwnProperty.call(defaults, panelId)
-        ? !!defaults[panelId]
-        : (panelId === kind ? !!defaults[kind] : true);
-      result[panelId] = typeof source[panelId] === 'boolean' ? source[panelId] : fallback;
-    }
-    return result;
-  }
-
-  function normalizeDockSizeValue(dockId, value) {
-    var number = typeof value === 'number' && isFinite(value) ? value : null;
-    if (number == null) return 0;
-    if (number <= 0) return 0;
-    return clampPanelSize(dockId, number);
-  }
-
-  function createDefaultSideDocks(profile) {
-    if (profile === 'detachedBoard') return { left: null, right: null, bottom: null };
-    var defaultGroups = getDefaultDockGroups();
-    var leftTabs = defaultGroups.left.length > 0 ? defaultGroups.left[0].map(function (panelId) {
-      return createPanelTab(panelId);
-    }) : [];
-    var bottomTabs = defaultGroups.bottom.length > 0 ? defaultGroups.bottom[0].map(function (panelId) {
-      return createPanelTab(panelId);
-    }) : [];
-    var leftDock = null;
-    if (leftTabs.length === 1) {
-      leftDock = createTabsetNode(leftTabs);
-    } else if (leftTabs.length > 1) {
-      leftDock = createSplitNode('horizontal',
-        createTabsetNode([leftTabs[0]]),
-        createTabsetNode([leftTabs[1]]),
-        0.6
-      );
-    }
-    return {
-      left: leftDock,
-      right: null,
-      bottom: bottomTabs.length > 0 ? createTabsetNode(bottomTabs) : null
-    };
-  }
-
-  function getTreeRoot(treeId) {
-    if (treeId === 'center') return state.dockTree;
-    return state.sideDocks ? state.sideDocks[treeId] || null : null;
-  }
-
-  function setTreeRoot(treeId, root) {
-    if (treeId === 'center') { state.dockTree = root; return; }
-    if (state.sideDocks) state.sideDocks[treeId] = root;
-  }
-
-  function allTreeIds() { return ['center', 'left', 'right', 'bottom']; }
-
-  function normalizeAllTrees() {
-    var ids = allTreeIds();
-    for (var i = 0; i < ids.length; i++) {
-      var root = getTreeRoot(ids[i]);
-      if (!root) continue;
-      setTreeRoot(ids[i], withNormalizedLeaves(root, ids[i] === 'center'));
-    }
-  }
-
-  function findLeafInAllTrees(leafId) {
-    var ids = allTreeIds();
-    for (var i = 0; i < ids.length; i++) {
-      var root = getTreeRoot(ids[i]);
-      if (!root) continue;
-      var leaf = findLeafById(root, leafId);
-      if (leaf) return { treeId: ids[i], leaf: leaf };
-    }
-    return null;
-  }
-
-  function findTabInAllTrees(tabId) {
-    var ids = allTreeIds();
-    for (var i = 0; i < ids.length; i++) {
-      var root = getTreeRoot(ids[i]);
-      if (!root) continue;
-      var found = findTab(root, tabId);
-      if (found) return { treeId: ids[i], tab: found.tab, leaf: found.leaf, index: found.index };
-    }
-    return null;
-  }
-
-  function findPanelInAllTrees(panelId) {
-    var ids = allTreeIds();
-    for (var i = 0; i < ids.length; i++) {
-      var root = getTreeRoot(ids[i]);
-      if (!root) continue;
-      var found = findLeafContainingPanel(root, panelId);
-      if (found) return { treeId: ids[i], tab: found.tab, leaf: found.leaf };
-    }
-    return null;
+  var allTreeIds, getTreeRoot, setTreeRoot, normalizeAllTrees;
+  var findLeafInAllTrees, findTabInAllTrees, findPanelInAllTrees;
+  function bindTreeRegistry() {
+    treeRegistry.setup({
+      state: state,
+      layoutTree: layoutTree,
+      withNormalizedLeaves: withNormalizedLeaves,
+      resolvePanelTargetFn: function (value) { return resolvePanelTarget(value); }
+    });
+    allTreeIds = treeRegistry.allTreeIds;
+    getTreeRoot = treeRegistry.getTreeRoot;
+    setTreeRoot = treeRegistry.setTreeRoot;
+    normalizeAllTrees = treeRegistry.normalizeAllTrees;
+    findLeafInAllTrees = treeRegistry.findLeafInAllTrees;
+    findTabInAllTrees = treeRegistry.findTabInAllTrees;
+    findPanelInAllTrees = treeRegistry.findPanelInAllTrees;
   }
 
 
@@ -559,6 +300,10 @@
     dragLastY: 0,
     pendingFocusTargets: {}
   };
+  // Bind treeRegistry now that `state` exists. Subsequent function
+  // bodies can reference findTabInAllTrees / getTreeRoot / etc. as
+  // direct module aliases (no per-call wrappers).
+  bindTreeRegistry();
 
   function getSharedPanelsApi() {
     return window.LexeraSharedPanels || null;
@@ -570,6 +315,19 @@
       return state.panelInstances[normalized].kind;
     }
     return normalizePanelKind(normalized);
+  }
+
+  // Display title for a panel id (kind or duplicated instance). Lives
+  // here rather than in panelDefinitions because it reads
+  // state.panelInstances to compute the instance index.
+  function getPanelTitle(panelId) {
+    var kind = getPanelKind(panelId);
+    var definition = PANEL_DEFINITIONS[kind];
+    if (!definition) return 'Panel';
+    if (panelId === kind) return definition.title;
+    var peers = getPanelInstanceIdsByKind(kind);
+    var index = peers.indexOf(panelId);
+    return index > 0 ? (definition.title + ' ' + (index + 1)) : definition.title;
   }
 
   function getPrimaryPanelId(kind) {
@@ -664,160 +422,6 @@
     return true;
   }
 
-  function getPersistenceStorage() {
-    if (state.windowLabel === 'main') return window.localStorage;
-    return window.sessionStorage;
-  }
-
-  function getPersistenceKey() {
-    if (state.hooks && typeof state.hooks.getPersistenceKey === 'function') {
-      var hookKey = state.hooks.getPersistenceKey();
-      if (hookKey) return String(hookKey);
-    }
-    return 'lexera-workspace-shell:' + state.windowLabel;
-  }
-
-  function serializeNode(node) {
-    if (!node) return null;
-    if (node.type === 'tabs') {
-      return {
-        type: 'tabs',
-        id: node.id,
-        activeTabId: node.activeTabId || '',
-        tabs: (node.tabs || []).map(function (tab) {
-          if (isPanelTab(tab)) {
-            return {
-              id: tab.id,
-              kind: 'panel',
-              panelId: resolvePanelTarget(tab.panelId)
-            };
-          }
-          return {
-            id: tab.id,
-            kind: 'board',
-            boardId: tab.boardId || '',
-            viewKind: normalizeViewKind(tab.viewKind)
-          };
-        })
-      };
-    }
-    return {
-      type: 'split',
-      id: node.id,
-      axis: node.axis === 'horizontal' ? 'horizontal' : 'vertical',
-      ratio: typeof node.ratio === 'number' && isFinite(node.ratio) ? Math.max(0.18, Math.min(0.82, node.ratio)) : 0.5,
-      first: serializeNode(node.first),
-      second: serializeNode(node.second)
-    };
-  }
-
-  function hydrateNode(raw, panelInstances) {
-    if (!raw || typeof raw !== 'object') return null;
-    if (raw.type === 'tabs') {
-      var tabs = [];
-      var rawTabs = Array.isArray(raw.tabs) ? raw.tabs : [];
-      for (var i = 0; i < rawTabs.length; i++) {
-        var rawTab = rawTabs[i];
-        if (!rawTab || typeof rawTab !== 'object') continue;
-        if (rawTab.kind === 'panel') {
-          var panelId = normalizePanelIdWithInstances(rawTab.panelId, panelInstances || state.panelInstances);
-          if (!panelId) continue;
-          tabs.push({
-            id: String(rawTab.id || nextId('tab')),
-            kind: 'panel',
-            panelId: panelId
-          });
-          continue;
-        }
-        if (typeof rawTab.boardId !== 'string' || !rawTab.boardId) continue;
-        tabs.push({
-          id: String(rawTab.id || nextId('tab')),
-          kind: 'board',
-          boardId: rawTab.boardId,
-          viewKind: normalizeViewKind(rawTab.viewKind)
-        });
-      }
-      return {
-        type: 'tabs',
-        id: String(raw.id || nextId('pane')),
-        tabs: tabs,
-        activeTabId: String(raw.activeTabId || '')
-      };
-    }
-    if (raw.type !== 'split') return null;
-    return {
-      type: 'split',
-      id: String(raw.id || nextId('split')),
-      axis: raw.axis === 'horizontal' ? 'horizontal' : 'vertical',
-      ratio: typeof raw.ratio === 'number' && isFinite(raw.ratio) ? Math.max(0.18, Math.min(0.82, raw.ratio)) : 0.5,
-      first: hydrateNode(raw.first, panelInstances),
-      second: hydrateNode(raw.second, panelInstances)
-    };
-  }
-
-  function persistState() {
-    if (!state.mounted) return;
-    try {
-      var storage = getPersistenceStorage();
-      storage.setItem(getPersistenceKey(), JSON.stringify({
-        version: 4,
-        profile: state.profile,
-        panelInstances: state.panelInstances,
-        sideDocks: {
-          left: serializeNode(state.sideDocks.left),
-          right: serializeNode(state.sideDocks.right),
-          bottom: serializeNode(state.sideDocks.bottom)
-        },
-        dockSizes: state.dockSizes,
-        dockRestoreSizes: state.dockRestoreSizes,
-        panelVisibility: state.panelVisibility,
-        activePanelId: state.activePanelId || '',
-        activeLeafId: state.activeLeafId || '',
-        dockTree: serializeNode(state.dockTree),
-        foldedPanes: state.foldedPanes
-      }));
-    } catch (err) {
-      console.warn('[ws-shell] Failed to persist state:', err);
-    }
-  }
-
-  function restoreState() {
-    try {
-      var raw = getPersistenceStorage().getItem(getPersistenceKey());
-      if (!raw) return false;
-      var parsed = JSON.parse(raw);
-      if (!parsed || (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3 && parsed.version !== 4)) return false;
-      if (parsed.profile && parsed.profile !== state.profile) return false;
-      state.panelInstances = normalizePanelInstances(parsed.panelInstances);
-      state.dockTree = hydrateNode(parsed.dockTree, state.panelInstances) || createTabsetNode([]);
-      state.dockTree = withNormalizedLeaves(state.dockTree, true);
-      // Hydrate sideDocks: version 4 stores sideDocks trees; older versions store panelDocks groups
-      if (parsed.version === 4 && parsed.sideDocks && typeof parsed.sideDocks === 'object') {
-        state.sideDocks = {
-          left: hydrateNode(parsed.sideDocks.left, state.panelInstances),
-          right: hydrateNode(parsed.sideDocks.right, state.panelInstances),
-          bottom: hydrateNode(parsed.sideDocks.bottom, state.panelInstances)
-        };
-      } else if (parsed.panelDocks) {
-        var normalizedOldDocks = normalizePanelDocks(parsed.panelDocks, state.profile, state.panelInstances);
-        state.sideDocks = migratePanelDocksToSideDocks(normalizedOldDocks, parsed.panelGroupActives);
-      } else {
-        state.sideDocks = createDefaultSideDocks(state.profile);
-      }
-      state.dockSizes = normalizeDockSizes(parsed.dockSizes, state.profile);
-      state.dockRestoreSizes = normalizeDockRestoreSizes(parsed.dockRestoreSizes, state.profile);
-      state.panelVisibility = normalizePanelVisibility(parsed.panelVisibility, state.profile, state.panelInstances);
-      syncIntegratedPanelVisibility();
-      state.activePanelId = resolvePanelTarget(parsed.activePanelId) || state.activePanelId;
-      state.activeLeafId = String(parsed.activeLeafId || '');
-      state.foldedPanes = (parsed.foldedPanes && typeof parsed.foldedPanes === 'object') ? parsed.foldedPanes : {};
-      ensureActiveLeaf();
-      return true;
-    } catch (err) {
-      console.warn('[ws-shell] Failed to restore state:', err);
-      return false;
-    }
-  }
 
   function openPanelInCenter(panelId, options) {
     var normalized = resolvePanelTarget(panelId);
@@ -1728,7 +1332,7 @@
         try { dividerEl.releasePointerCapture(pointerId); } catch (_) { /* ignore */ }
         thawFrames(frozenFrames);
         applyDockLayout();
-        persistState();
+        layoutPersistence.persist();
       }
       dividerEl.addEventListener('pointermove', handleMove);
       dividerEl.addEventListener('pointerup', handleUp);
@@ -1779,7 +1383,7 @@
       found.leaf.activeTabId = found.tab.id;
       renderToolbar();
       renderPanelDocks();
-      persistState();
+      layoutPersistence.persist();
       return true;
     }
     return false;
@@ -1948,7 +1552,10 @@
     return !!state.loadedBoardFrames[tab.id];
   }
 
-  function syncBoardFrameSource(view, tab, options) {
+  // Reconcile an existing placeholder view with the current tab state.
+  // The webview itself is owned by multiview.ensure() — the placeholder
+  // only carries data-* attributes for diagnostics + tab activation.
+  function syncBoardFrame(view, tab, options) {
     if (!view || !tab || isPanelTab(tab)) return;
     var desiredSrc = getEmbeddedUrlForTab(tab);
     var loadedSrc = view.getAttribute('data-loaded-src') || '';
@@ -1957,8 +1564,8 @@
     if (!shouldLoadBoardFrame(tab, options)) return;
     state.loadedBoardFrames[tab.id] = true;
     if (loadedSrc === desiredSrc) return;
-    view.src = desiredSrc;
     view.setAttribute('data-loaded-src', desiredSrc);
+    multiview.ensure(tab, view, desiredSrc);
   }
 
   function clearDeferredBoardFrameLoads() {
@@ -1991,7 +1598,7 @@
       var found = findTab(state.dockTree, nextTabId);
       if (!found || !found.tab || isPanelTab(found.tab)) continue;
       var frame = getOrCreateFrame(found.tab, { shouldLoad: true });
-      syncBoardFrameSource(frame, found.tab, { shouldLoad: true });
+      syncBoardFrame(frame, found.tab, { shouldLoad: true });
       break;
     }
     if (state.deferredBoardLoadQueue.length > 0) {
@@ -2009,702 +1616,19 @@
     state.deferredBoardLoadTimer = setTimeout(pumpDeferredBoardFrameLoads, 200);
   }
 
-  // Multiview migration: board tabs are hosted by Tauri child webviews
-  // by default. Two automatic exceptions:
-  //   - inside an embedded child webview (would recursively spawn boards)
-  //   - inside the test runner (?autoRunTests=1) — the iframe-content
-  //     test infrastructure inspects frame.contentDocument directly,
-  //     which doesn't exist in multiview mode. Until those tests are
-  //     migrated to query webviews via Tauri IPC, the test mode falls
-  //     back to iframes so the suite remains usable.
-  var MULTIVIEW_BOARDS = (function () {
-    try {
-      if (urlParams && urlParams.get('embedded') === '1') return false;
-      if (urlParams && urlParams.get('multiview') === '0') return false;
-      // Detect test runner: Rust writes `src/auto-run-config.json` when
-      // --run-tests is passed. Check synchronously via XHR; if it exists
-      // and has auto_run, fall back to iframes so the iframe-content
-      // test infrastructure works unchanged.
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', 'auto-run-config.json', false); // synchronous
-      xhr.send(null);
-      if (xhr.status === 200 && xhr.responseText) {
-        var cfg = JSON.parse(xhr.responseText);
-        if (cfg && (cfg.auto_run === true || cfg.autoRun === true)) {
-          console.log('[ws-shell] auto-run mode detected — using iframe path for test compatibility');
-          return false;
-        }
-      }
-    } catch (_) { /* config not present → not in test mode */ }
-    return true;
-  })();
-  if (MULTIVIEW_BOARDS) {
-    console.log('[ws-shell] multiview boards: ON (iframe path removed)');
-  }
-
-  // Track which tabs have a multiview webview spawned, so we can
-  // destroy + re-spawn on URL change instead of contentWindow.location.
-  var multiviewSpawnedTabs = {};
-  var multiviewGeometryObservers = {};
-  // Per-tab watchers that retry doSpawn() once the placeholder becomes
-  // measurable (paint-visible, > 0×0). Set up by
-  // scheduleSpawnRetryWhenMeasurable; nulled out in `fire()` after one
-  // successful retry. Without this, a placeholder that's hidden at
-  // initial render would stay "spawning…" forever.
-  var multiviewSpawnRetryWatchers = {};
-  // Per-LABEL in-flight spawn promise. Hard fence against duplicate
-  // `multiview_spawn` IPCs racing for the same Tauri webview label.
-  // Runtime evidence (2026-04-26): two spawns for the same label fired
-  // back-to-back, the second hit "already exists", recovery looped
-  // forever. The tab-keyed state machine wasn't sufficient — most likely
-  // because two distinct triggers (render-restart rAF + spawn-retry
-  // watcher fire) both decided no entry existed in the same JS task
-  // batch. This map keys on label, so any second spawn attempt finds
-  // the first promise and waits on it.
-  var multiviewLabelSpawnLocks = {};
-  var multiviewPendingLocalDestroyAcks = {};
-
-  function multiviewLabelForTab(tabId) {
-    return boardHost.multiviewLabelForTab(tabId);
-  }
-
-  // Compute the multiview webview label for a tab object, taking its
-  // kind into account. Panel webviews use the 'panel-tab-' prefix so
-  // the multiview-destroyed listener and LRU registry can disambiguate
-  // them from board webviews ('board-tab-' prefix).
-  function labelForTabObject(tab) {
-    if (isPanelTab(tab)) return panelHost.panelLabelForTab(tab.id);
-    return boardHost.multiviewLabelForTab(tab.id);
-  }
-
-  // Reverse lookup: tabId for a given webview label. Handles three
-  // cases:
-  //   1. Formula labels with our 'board-tab-' / 'panel-tab-' prefixes
-  //   2. Pool labels ('_pool_<n>') that were repurposed and now own
-  //      a tab — we find the tabId by scanning the spawn registry
-  //   3. Anything else: returns the original label so callers can
-  //      surface it in logs/diagnostics.
-  function tabIdFromLabel(label) {
-    if (typeof label !== 'string') return '';
-    if (label.indexOf('board-tab-') === 0) return label.substring('board-tab-'.length);
-    if (label.indexOf('panel-tab-') === 0) return label.substring('panel-tab-'.length);
-    var tabIds = Object.keys(multiviewSpawnedTabs);
-    for (var i = 0; i < tabIds.length; i++) {
-      if (multiviewSpawnedTabs[tabIds[i]].label === label) return tabIds[i];
-    }
-    return label;
-  }
-
-  function noteLocalDestroy(label) {
-    var key = String(label || '');
-    if (!key) return;
-    multiviewPendingLocalDestroyAcks[key] = (multiviewPendingLocalDestroyAcks[key] || 0) + 1;
-  }
-
-  function consumeLocalDestroyAck(label) {
-    var key = String(label || '');
-    var count = multiviewPendingLocalDestroyAcks[key] || 0;
-    if (count <= 0) return false;
-    if (count === 1) delete multiviewPendingLocalDestroyAcks[key];
-    else multiviewPendingLocalDestroyAcks[key] = count - 1;
-    return true;
-  }
-
-  function ensureHealthDot(placeholderEl) {
-    return boardHost.ensureHealthDot(placeholderEl, document);
-  }
-  // Last-known health per tab so re-renders reapply the state.
-  var lastKnownHealth = {};
-
-  // Reapply known health states to all health dots in the DOM.
-  // Called after render() so freshly-built tab headers get the
-  // right color instead of the default 'unknown'.
-  function reapplyAllHealthDots() {
-    var dots = document.querySelectorAll('.ws-view-tab-health[data-tab-id]');
-    for (var i = 0; i < dots.length; i++) {
-      var id = dots[i].getAttribute('data-tab-id');
-      if (!id) continue;
-      var s = lastKnownHealth[id] || 'unknown';
-      dots[i].setAttribute('data-health', s);
-      dots[i].setAttribute('title', 'Connection state: ' + s);
-    }
-  }
-
-  function applyHealthToTab(tabId, healthState) {
-    var s = healthState || 'unknown';
-    lastKnownHealth[tabId] = s;
-    // Update the health dot in the tab header (left of close button)
-    var headerDots = document.querySelectorAll(
-      '.ws-view-tab-health[data-tab-id="' + (tabId || '').replace(/"/g, '') + '"]');
-    for (var i = 0; i < headerDots.length; i++) {
-      headerDots[i].setAttribute('data-health', s);
-      headerDots[i].setAttribute('title', 'Connection state: ' + s);
-    }
-    // Also update the placeholder-corner dot as a secondary indicator
-    var placeholderEl = state.frameCache[tabId];
-    if (placeholderEl && typeof placeholderEl.querySelector === 'function' &&
-        placeholderEl.getAttribute && placeholderEl.getAttribute('data-multiview') === '1') {
-      var dot = ensureHealthDot(placeholderEl);
-      dot.setAttribute('data-health', s);
-      dot.setAttribute('title', 'Connection state: ' + s);
-    }
-  }
-
-  function multiviewUrlForTab(desiredSrc) {
-    return boardHost.multiviewUrlForTab(desiredSrc);
-  }
-
-  function watchPlaceholderVisibility(tab, placeholderEl, pushGeomFn) {
-    if (!tab || !tab.id) return;
-    boardHost.watchPlaceholderVisibility(
-      tab.id,
-      placeholderEl,
-      pushGeomFn,
-      labelForTabObject(tab)
-    );
-  }
-
-  // Per-tab spawn lifecycle:
-  //   absent      — no webview, no spawn in flight
-  //   'pending'   — spawn IPC issued, awaiting Rust ack
-  //   'ready'     — spawn confirmed, webview exists at .url
-  //   'destroying'— destroy IPC issued, awaiting Rust ack
-  // Encoding the state explicitly (rather than presence/url alone)
-  // prevents render-loop re-entry and destroy/spawn races from
-  // producing duplicate Rust webviews — see TODOs-lexera-multiview.md
-  // "lifecycle-race fix" for a full trace.
-  // Emergency kill switch — flip to true if the runaway-spawn loop returns.
-  // The cap+delay fix on "already exists" recovery wasn't sufficient last
-  // time we hit it; if it recurs we want a circuit-breaker that auto-arms.
-  var MULTIVIEW_SPAWN_DISABLED = false;
-  // Circuit breaker: per-tab call frequency tracker. If ensureMultiviewWebview
-  // is called more than CIRCUIT_BREAKER_THRESHOLD times within
-  // CIRCUIT_BREAKER_WINDOW_MS for the same tab, auto-arm the kill switch and
-  // log enough context to identify what's looping. The user can then
-  // reproduce, file a bug with the captured label/url, and we have something
-  // to actually trace instead of guessing.
-  var CIRCUIT_BREAKER_THRESHOLD = 12;
-  var CIRCUIT_BREAKER_WINDOW_MS = 1000;
-  var ensureCallTimestamps = {}; // tabId -> array of timestamps (newest at end)
-  function noteEnsureCall(tabId, label, url) {
-    var now = Date.now();
-    var arr = ensureCallTimestamps[tabId] || (ensureCallTimestamps[tabId] = []);
-    arr.push(now);
-    while (arr.length > 0 && now - arr[0] > CIRCUIT_BREAKER_WINDOW_MS) arr.shift();
-    if (arr.length >= CIRCUIT_BREAKER_THRESHOLD && !MULTIVIEW_SPAWN_DISABLED) {
-      MULTIVIEW_SPAWN_DISABLED = true;
-      var msg = '[multiview] CIRCUIT BREAKER tripped — ' + arr.length +
-        ' ensure() calls in ' + CIRCUIT_BREAKER_WINDOW_MS + 'ms for tab="' +
-        tabId + '" label="' + label + '" url="' + url +
-        '". Spawn auto-disabled. Reload after fix.';
-      try { console.error(msg); } catch (_) {}
-      try { if (window.lexeraLog) window.lexeraLog('error', msg); } catch (_) {}
-    }
-    return MULTIVIEW_SPAWN_DISABLED;
-  }
-  // Verbose multiview tracing. Gated so the per-ensure / per-doSpawn
-  // chatter doesn't flood the kanban stdout in normal runs. Enable via
-  // URL param `?ws-debug=1` or by setting `localStorage['ws-debug']='1'`
-  // so reproducing in a live session is possible without code changes.
-  // ADOPT, BOOT, BEFOREUNLOAD markers always print — they're rare
-  // enough to be useful baseline signal even with verbose off.
-  var WS_DEBUG_VERBOSE = (function () {
-    try {
-      if (urlParams.get('ws-debug') === '1') return true;
-      if (typeof localStorage !== 'undefined' && localStorage.getItem('ws-debug') === '1') return true;
-    } catch (_) {}
-    return false;
-  })();
-  var _wsDebugSeq = 0;
-  function wsDebug(msg, opts) {
-    var force = !!(opts && opts.force);
-    if (!force && !WS_DEBUG_VERBOSE) return;
-    var seq = ++_wsDebugSeq;
-    try {
-      if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
-        window.__TAURI__.core.invoke('ws_debug_log', { message: '#' + seq + ' ' + String(msg) });
-      }
-    } catch (_) {}
-  }
-  function wsDebugForce(msg) { wsDebug(msg, { force: true }); }
-  function ensureMultiviewWebview(tab, placeholderEl, desiredSrc) {
-    if (!window.LexeraMultiview) return;
-    if (MULTIVIEW_SPAWN_DISABLED || urlParams.get('mv-disable') === '1') {
-      placeholderEl.classList.add('is-loaded');
-      placeholderEl.innerHTML = '<div class="mv-error-msg" style="padding:12px;opacity:.6">multiview spawn disabled (kill-switch active)</div>';
-      return;
-    }
-    var label = labelForTabObject(tab);
-    var url = multiviewUrlForTab(desiredSrc);
-    var _e = multiviewSpawnedTabs[tab.id];
-    wsDebug('ensure tab=' + tab.id + ' label=' + label +
-      ' entryState=' + (_e ? _e.state : 'none') +
-      ' lock=' + (multiviewLabelSpawnLocks[label] ? 'yes' : 'no') +
-      ' urlMatch=' + (_e && _e.url === url));
-    if (noteEnsureCall(tab.id, label, url)) {
-      placeholderEl.classList.add('is-loaded');
-      placeholderEl.innerHTML = '<div class="mv-error-msg" style="padding:12px;opacity:.6">circuit breaker tripped — see log</div>';
-      return;
-    }
-
-    // Optional safety inset (?multiview-inset=N): subtracts N pixels
-    // from each side as a debug aid for divider-cover issues. Geometry
-    // push uses the placeholder's exact float rect; Tauri rounds to
-    // native pixels consistently so adjacent webviews and dividers
-    // round the same way (no gaps, no overlaps).
-    var MV_INSET = (function () {
-      try {
-        var p = new URLSearchParams(window.location.search || '');
-        var v = parseInt(p.get('multiview-inset') || '0', 10);
-        return Number.isFinite(v) && v >= 0 ? v : 0;
-      } catch (_) { return 0; }
-    })();
-    function pushGeom() {
-      if (placeholderEl.offsetParent === null) return;
-      var r = placeholderEl.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) return;
-      // Use the per-frame coalescer (Perf #2) so dock-divider drags
-      // collapse N webviews × 1 IPC each into 1 batched IPC per frame.
-      var update = {
-        label: label,
-        x: r.left + MV_INSET,
-        y: r.top + MV_INSET,
-        width: Math.max(1, r.width - 2 * MV_INSET),
-        height: Math.max(1, r.height - 2 * MV_INSET)
-      };
-      if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
-        window.LexeraMultiview.pushGeomDeferred(update);
-      } else {
-        window.LexeraMultiview.setGeometry([update]).catch(function () {});
-      }
-    }
-    // One-shot retry: when doSpawn() can't measure the placeholder yet
-    // (dock collapsed, layout hasn't settled, etc.), wait for the next
-    // visibility / resize signal then try again. Idempotent per tab —
-    // the first signal disconnects all watchers and re-enters
-    // ensureMultiviewWebview which goes back through doSpawn().
-    function scheduleSpawnRetryWhenMeasurable() {
-      if (multiviewSpawnRetryWatchers[tab.id]) return;
-      var disposers = [];
-      function fire() {
-        if (!multiviewSpawnRetryWatchers[tab.id]) return;
-        multiviewSpawnRetryWatchers[tab.id] = null;
-        for (var i = 0; i < disposers.length; i++) {
-          try { disposers[i](); } catch (_) {}
-        }
-        ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
-      }
-      multiviewSpawnRetryWatchers[tab.id] = { fire: fire, disposers: disposers };
-      if (typeof ResizeObserver !== 'undefined') {
-        var ro = new ResizeObserver(function () {
-          var rr = placeholderEl.getBoundingClientRect();
-          if (placeholderEl.isConnected && placeholderEl.offsetParent !== null &&
-              rr.width > 0 && rr.height > 0) fire();
-        });
-        try { ro.observe(placeholderEl); disposers.push(function () { ro.disconnect(); }); }
-        catch (_) {}
-      }
-      if (typeof IntersectionObserver !== 'undefined') {
-        var io = new IntersectionObserver(function (entries) {
-          for (var i = 0; i < entries.length; i++) {
-            if (entries[i].isIntersecting && entries[i].intersectionRatio > 0) { fire(); return; }
-          }
-        });
-        try { io.observe(placeholderEl); disposers.push(function () { io.disconnect(); }); }
-        catch (_) {}
-      }
-      if (typeof MutationObserver !== 'undefined' && placeholderEl.parentNode) {
-        var mo = new MutationObserver(function () {
-          var rr = placeholderEl.getBoundingClientRect();
-          if (placeholderEl.isConnected && placeholderEl.offsetParent !== null &&
-              rr.width > 0 && rr.height > 0) fire();
-        });
-        try {
-          mo.observe(placeholderEl, { attributes: true, attributeFilter: ['class', 'style'] });
-          if (placeholderEl.parentNode) {
-            mo.observe(placeholderEl.parentNode, { attributes: true, attributeFilter: ['class', 'style'] });
-          }
-          disposers.push(function () { mo.disconnect(); });
-        } catch (_) {}
-      }
-      // Fallback: poll every 500ms for up to 10s in case observers miss
-      // (e.g., display:none → display:block via ancestor; intermittent
-      // layout). 20 attempts × 500ms = 10s total, way under the
-      // circuit-breaker window.
-      var polls = 0;
-      var pollInterval = setInterval(function () {
-        polls += 1;
-        var rr = placeholderEl.getBoundingClientRect();
-        if (placeholderEl.isConnected && placeholderEl.offsetParent !== null &&
-            rr.width > 0 && rr.height > 0) {
-          clearInterval(pollInterval);
-          fire();
-        } else if (polls >= 20) {
-          clearInterval(pollInterval);
-          // Give up quietly; the next render() that re-enters
-          // ensureMultiviewWebview will re-arm via doSpawn → here.
-          multiviewSpawnRetryWatchers[tab.id] = null;
-          for (var i = 0; i < disposers.length; i++) {
-            try { disposers[i](); } catch (_) {}
-          }
-        }
-      }, 500);
-      disposers.push(function () { clearInterval(pollInterval); });
-    }
-    function showSpawnErrorUi(err) {
-      placeholderEl.classList.add('has-error');
-      placeholderEl.classList.remove('is-loaded');
-      placeholderEl.innerHTML =
-        '<div class="mv-error-msg">Failed to load board webview.' +
-        '<br><small>' + String(err && err.message || err).replace(/</g, '&lt;') + '</small>' +
-        '<br><button type="button" data-mv-retry="1">Retry</button></div>';
-      var retryBtn = placeholderEl.querySelector('[data-mv-retry]');
-      if (retryBtn) {
-        retryBtn.addEventListener('click', function () {
-          placeholderEl.classList.remove('has-error');
-          placeholderEl.innerHTML = '';
-          delete multiviewSpawnedTabs[tab.id];
-          ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
-        });
-      }
-    }
-    function onSpawned() {
-      multiviewSpawnedTabs[tab.id] = { url: url, state: 'ready', label: label };
-      if (typeof window.lexeraLog === 'function') {
-        window.lexeraLog('debug', '[multiview] spawned ' + label);
-      }
-      // Delay two frames so the browser can paint the spawning ring
-      // transition before we mark loaded (otherwise the ring never
-      // shows).
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          placeholderEl.classList.add('is-loaded');
-        });
-      });
-      // Multi-step geometry push: spawn-time, next frame, and 50/200ms
-      // later. Catches the case where the placeholder is briefly
-      // mis-sized while the dock layout is still settling — common
-      // during initial render and tab activation cascades.
-      requestAnimationFrame(pushGeom);
-      setTimeout(pushGeom, 50);
-      setTimeout(pushGeom, 200);
-      if (typeof ResizeObserver !== 'undefined' && !multiviewGeometryObservers[tab.id]) {
-        var ro = new ResizeObserver(function () { pushGeom(); });
-        ro.observe(placeholderEl);
-        multiviewGeometryObservers[tab.id] = ro;
-      }
-      window.addEventListener('resize', pushGeom);
-      watchPlaceholderVisibility(tab, placeholderEl, pushGeom);
-    }
-    function doSpawn() {
-      wsDebug('doSpawn tab=' + tab.id + ' label=' + label +
-        ' entryState=' + (multiviewSpawnedTabs[tab.id] ? multiviewSpawnedTabs[tab.id].state : 'none') +
-        ' lock=' + (multiviewLabelSpawnLocks[label] ? 'yes' : 'no'));
-      var r = placeholderEl.getBoundingClientRect();
-      if (!placeholderEl.isConnected || placeholderEl.offsetParent === null || r.width <= 0 || r.height <= 0) {
-        // Placeholder is in the DOM but not yet measurable — most often
-        // because the dock it lives in is collapsed at boot or the layout
-        // hasn't reflowed yet. Without a retry hook, doSpawn() silently
-        // never fires for that tab and the placeholder shows "spawning…"
-        // forever. Hook a one-shot watcher that re-attempts as soon as
-        // the placeholder is connected, paint-visible, and >0×0.
-        scheduleSpawnRetryWhenMeasurable();
-        return;
-      }
-      var x = r.left;
-      var y = r.top;
-      var w = r.width;
-      var h = r.height;
-      traceWorkspaceShell(
-        'spawn label=' + label +
-        ' tab=' + tab.id +
-        ' pos=(' + x + ', ' + y + ')' +
-        ' size=(' + w + ', ' + h + ')' +
-        ' active=' + placeholderEl.classList.contains('is-active') +
-        ' connected=' + (!!placeholderEl.isConnected) +
-        ' offsetParent=' + (placeholderEl.offsetParent ? 'set' : 'null')
-      );
-      // Label-level in-flight lock. The tab-keyed `multiviewSpawnedTabs`
-      // state machine should already prevent duplicate spawns, but
-      // runtime data (2026-04-26) shows two `multiview_spawn` IPCs racing
-      // for the same label before the first resolves. The state machine
-      // is per-tab.id; the lock below is per-label and adds a hard fence
-      // so concurrent ensure() calls (regardless of trigger — render
-      // restart, watcher fire, retry, etc.) all share the same promise
-      // instead of issuing duplicate IPCs that hit "already exists".
-      if (multiviewLabelSpawnLocks[label]) {
-        wsDebugForce('DEDUPE label=' + label + ' (in-flight)');
-        if (typeof window.lexeraLog === 'function') {
-          window.lexeraLog('debug', '[multiview] spawn de-duplicated for ' + label);
-        }
-        multiviewLabelSpawnLocks[label].then(onSpawned).catch(function (err) {
-          if (typeof window.lexeraLog === 'function') {
-            window.lexeraLog('warn', '[multiview] de-dupe wait for ' + label + ' failed: ' + (err && err.message || err));
-          }
-        });
-        return;
-      }
-      // Mark pending BEFORE the IPC call so render-loop re-entry sees
-      // a spawn in flight and short-circuits. Carry the resolved label
-      // so destroy paths can recover it without redoing the dispatch.
-      // `attempts` accumulates across recovery cycles for this tab; it
-      // is the loop-stop guard for the "already exists" retry path.
-      var prior = multiviewSpawnedTabs[tab.id];
-      var attempts = (prior && prior.attempts) ? prior.attempts : 0;
-      multiviewSpawnedTabs[tab.id] = { url: url, state: 'pending', label: label, attempts: attempts };
-      // Use lifecycle spawn so this board participates in LRU tracking
-      // AND can repurpose a pre-warmed pool webview (Perf #1) — that
-      // returns `{ label: '_pool_<n>', fromPool: true }` instead of a
-      // freshly-spawned webview at the requested label.
-      var lifecycleApi = window.LexeraMultiview.lifecycle;
-      var args = { label: label, url: url, x: x, y: y, width: w, height: h };
-      var spawnPromise = lifecycleApi && typeof lifecycleApi.spawn === 'function'
-        ? lifecycleApi.spawn(args)
-        : window.LexeraMultiview.spawn(args).then(function () {
-            return { label: label, fromPool: false };
-          });
-      multiviewLabelSpawnLocks[label] = spawnPromise.finally
-        ? spawnPromise.finally(function () { delete multiviewLabelSpawnLocks[label]; })
-        : spawnPromise.then(
-            function (r) { delete multiviewLabelSpawnLocks[label]; return r; },
-            function (e) { delete multiviewLabelSpawnLocks[label]; throw e; }
-          );
-      spawnPromise.then(function (result) {
-        // If the pool fast-path was taken, the actual webview lives at
-        // `result.label` (e.g. `_pool_3`), NOT the formula label we
-        // computed up front. Rebind the closure variable so all
-        // subsequent operations (pushGeom, destroy, error UI retry)
-        // address the correct webview.
-        if (result && result.label && result.label !== label) {
-          label = result.label;
-          multiviewSpawnedTabs[tab.id].label = label;
-        }
-        onSpawned();
-      }).catch(function (err) {
-        console.warn('[ws-shell] multiview spawn failed for', tab.id, err);
-        if (typeof window.lexeraLog === 'function') {
-          window.lexeraLog('warn', '[multiview] spawn failed for ' + label + ': ' + (err && err.message || err));
-        }
-        var msg = String(err && err.message || err || '');
-        if (/already exists/i.test(msg)) {
-          // Runtime data (2026-04-26) showed the SHELL itself reloads
-          // mid-session (cause unknown — webview is recreated without
-          // beforeunload firing). Each reload, the fresh shell tries to
-          // spawn webviews at the same labels its previous instance
-          // already created. Old strategy: destroy and respawn. This
-          // looped because the shell would reload again after the
-          // respawn, hitting "already exists" again.
-          //
-          // New strategy: ADOPT. If the Rust registry already holds a
-          // webview at this label, treat the spawn as effectively
-          // succeeded — populate our local entry as 'ready' and run
-          // onSpawned(). The previous shell session's webview is still
-          // there, which is what we want anyway.
-          wsDebugForce('ADOPT label=' + label + ' (already exists in Rust)');
-          if (typeof window.lexeraLog === 'function') {
-            window.lexeraLog('info', '[multiview] adopting pre-existing webview ' + label);
-          }
-          multiviewSpawnedTabs[tab.id] = { url: url, state: 'ready', label: label, attempts: 0 };
-          onSpawned();
-          return;
-        }
-        delete multiviewSpawnedTabs[tab.id];
-        showSpawnErrorUi(err);
-      });
-    }
-
-    var entry = multiviewSpawnedTabs[tab.id];
-    if (!entry) {
-      doSpawn();
-      return;
-    }
-    if (entry.state === 'pending' || entry.state === 'destroying') {
-      // An IPC op is already in flight for this tab. Whichever resolver
-      // eventually runs will reconcile to the latest desired url via
-      // the next render-driven ensureMultiviewWebview() call.
-      return;
-    }
-    // entry.state === 'ready'
-    if (entry.url !== url) {
-      // URL change — destroy then respawn. Mark destroying first so
-      // any concurrent ensure() short-circuits instead of stacking
-      // additional spawn attempts on top.
-      multiviewSpawnedTabs[tab.id] = { url: entry.url, state: 'destroying', label: label };
-      noteLocalDestroy(label);
-      window.LexeraMultiview.destroy(label).then(function () {
-        delete multiviewSpawnedTabs[tab.id];
-        ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
-      }).catch(function () {
-        // Even on destroy failure, clear and retry — the next spawn
-        // will surface the real error (or recover via "already exists").
-        delete multiviewSpawnedTabs[tab.id];
-        ensureMultiviewWebview(tab, placeholderEl, desiredSrc);
-      });
-      return;
-    }
-    // Already spawned at correct URL — refresh geometry only.
-    requestAnimationFrame(pushGeom);
-  }
-
-  function destroyMultiviewWebview(tabId) {
-    if (!window.LexeraMultiview) return;
-    var entry = multiviewSpawnedTabs[tabId];
-    // Recover the panel/board-correct label from the lifecycle entry.
-    // Fallback to the board prefix only if no entry exists (the spawn
-    // never registered, or already cleared) — this matches legacy
-    // behavior for orphan-cleanup paths.
-    var label = (entry && entry.label) || multiviewLabelForTab(tabId);
-    // Disconnect placeholder observers immediately — the placeholder
-    // is about to be removed from the DOM.
-    if (multiviewGeometryObservers[tabId]) {
-      try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
-      delete multiviewGeometryObservers[tabId];
-    }
-    var _spawnRetry = multiviewSpawnRetryWatchers[tabId];
-    if (_spawnRetry) {
-      multiviewSpawnRetryWatchers[tabId] = null;
-      var _disposers = _spawnRetry.disposers || [];
-      for (var _ri = 0; _ri < _disposers.length; _ri++) {
-        try { _disposers[_ri](); } catch (_) {}
-      }
-    }
-    boardHost.cleanupVisibilityObserver(tabId);
-    // Mark destroying BEFORE the IPC so a concurrent ensure() for the
-    // same tab short-circuits instead of trying to spawn on top of a
-    // half-torn-down webview. Keep the entry until Rust confirms.
-    if (entry) {
-      multiviewSpawnedTabs[tabId] = {
-        url: entry.url,
-        state: 'destroying',
-        label: label
-      };
-    }
-    noteLocalDestroy(label);
-    window.LexeraMultiview.destroy(label).then(function () {
-      delete multiviewSpawnedTabs[tabId];
-    }).catch(function () {
-      delete multiviewSpawnedTabs[tabId];
-    });
-  }
-
-  // Local cleanup invoked when Rust unilaterally destroyed our
-  // webview (LRU eviction or external destroy via the
-  // `multiview-destroyed` event). Distinct from `destroyMultiviewWebview`
-  // which initiates the destroy.
-  function cleanupMultiviewLocalState(tabId) {
-    if (multiviewGeometryObservers[tabId]) {
-      try { multiviewGeometryObservers[tabId].disconnect(); } catch (_) {}
-      delete multiviewGeometryObservers[tabId];
-    }
-    var _spawnRetry = multiviewSpawnRetryWatchers[tabId];
-    if (_spawnRetry) {
-      multiviewSpawnRetryWatchers[tabId] = null;
-      var _disposers = _spawnRetry.disposers || [];
-      for (var _ri = 0; _ri < _disposers.length; _ri++) {
-        try { _disposers[_ri](); } catch (_) {}
-      }
-    }
-    boardHost.cleanupVisibilityObserver(tabId);
-    // Preserve a 'pending' entry: if a fresh spawn is in flight, this
-    // destroy event refers to an earlier lifecycle and must not stomp
-    // the new one.
-    var entry = multiviewSpawnedTabs[tabId];
-    if (!entry || entry.state !== 'pending') {
-      delete multiviewSpawnedTabs[tabId];
-    }
-  }
-
-  // Listen for multiview-destroyed broadcasts from Rust (LRU eviction
-  // or external destroy) and clean up local state for any tab whose
-  // webview was destroyed without our knowledge. Handles both
-  // 'board-tab-' (board webviews) and 'panel-tab-' (panel webviews
-  // hosted via Workstream P) prefixes.
-  if (typeof window !== 'undefined' && window.__TAURI__ && window.__TAURI__.event) {
-    function isHostedTabLabel(label) {
-      if (typeof label !== 'string') return false;
-      if (label.indexOf('board-tab-') === 0) return true;
-      if (label.indexOf('panel-tab-') === 0) return true;
-      // Pool-derived labels: a `_pool_<n>` webview that has been
-      // repurposed for a tab is registered in `multiviewSpawnedTabs`
-      // with that label.
-      var tabIds = Object.keys(multiviewSpawnedTabs);
-      for (var i = 0; i < tabIds.length; i++) {
-        if (multiviewSpawnedTabs[tabIds[i]].label === label) return true;
-      }
-      return false;
-    }
-    // Health dot updates
-    window.__TAURI__.event.listen('health-changed', function (event) {
-      var p = event && event.payload ? event.payload : {};
-      var label = p.label || '';
-      if (!isHostedTabLabel(label)) return;
-      var tabId = tabIdFromLabel(label);
-      applyHealthToTab(tabId, p.state);
-    });
-    window.__TAURI__.event.listen('multiview-destroyed', function (event) {
-      var p = event && event.payload ? event.payload : {};
-      var label = p.label || '';
-      if (!isHostedTabLabel(label)) return;
-      var locallyInitiated = consumeLocalDestroyAck(label);
-      traceWorkspaceShell('destroyed label=' + label + ' local=' + locallyInitiated);
-      wsDebugForce('multiview-destroyed event label=' + label + ' local=' + locallyInitiated);
-      var tabId = tabIdFromLabel(label);
-      cleanupMultiviewLocalState(tabId);
-      if (locallyInitiated) return;
-      // Auto-respawn if this tab is the active tab of an active leaf
-      // (meaning the user currently sees its placeholder). Otherwise
-      // lazy-spawn happens on next activateTab as usual.
-      var foundTab = findTabInAllTrees(tabId);
-      if (!foundTab || !foundTab.leaf) return;
-      var isActiveInLeaf = foundTab.leaf.activeTabId === tabId;
-      var isActiveLeaf = state.activeLeafId === foundTab.leaf.id;
-      if (isActiveInLeaf && isActiveLeaf) {
-        var placeholderEl = state.frameCache[tabId];
-        if (placeholderEl && placeholderEl.getAttribute &&
-            placeholderEl.getAttribute('data-multiview') === '1') {
-          var desiredSrc;
-          if (isPanelTab(foundTab.tab)) {
-            var panelKind = getPanelKind(foundTab.tab.panelId);
-            desiredSrc = panelHost.panelUrlForTab(foundTab.tab, panelKind, window.location.href);
-          } else {
-            desiredSrc = getEmbeddedUrlForTab(foundTab.tab);
-          }
-          if (typeof window.lexeraLog === 'function') {
-            window.lexeraLog('info', '[multiview] auto-respawning ' + label +
-              ' (destroyed while visible)');
-          }
-          // Defer one frame so Rust-side cleanup completes first.
-          requestAnimationFrame(function () {
-            ensureMultiviewWebview(foundTab.tab, placeholderEl, desiredSrc);
-          });
-        }
-      }
-    });
-  }
-
-  // Best-effort cleanup on main-window unload — destroys all board
-  // child webviews we've spawned. Tauri should cascade cleanup when
-  // the window closes anyway, but an explicit destroy minimizes
-  // orphaned WebContent processes during dev/reload.
-  if (typeof window !== 'undefined') {
-    traceWorkspaceShell('boot href=' + window.location.href);
-    // Marker fires on every IIFE init — useful for catching unexpected
-    // shell reloads (`BOOT shell` lines should be exactly 1 per session).
-    wsDebugForce('BOOT shell href=' + window.location.href + ' label=' +
-      ((window.__TAURI__ && window.__TAURI__.webview && window.__TAURI__.webview.getCurrent && window.__TAURI__.webview.getCurrent().label) || '?'));
-    window.addEventListener('beforeunload', function () {
-      traceWorkspaceShell('beforeunload');
-      wsDebugForce('BEFOREUNLOAD shell href=' + window.location.href);
-      var tabIds = Object.keys(multiviewSpawnedTabs);
-      for (var i = 0; i < tabIds.length; i++) {
-        try { destroyMultiviewWebview(tabIds[i]); } catch (_) {}
-      }
-      // Also tear down ghost + modal windows if present
-      if (window.LexeraMultiview && typeof window.LexeraMultiview.ghostHide === 'function') {
-        try { window.LexeraMultiview.ghostHide(); } catch (_) {}
-      }
-    });
-  }
+  // Multiview wiring: see workspace/multiviewWebview.js for the full
+  // spawn/destroy/health/circuit-breaker implementation. Setup is
+  // deferred so deps that read `state` and live shell helpers are
+  // valid by the time IPC listeners attach.
+  multiview.setup({
+    traceShell: traceWorkspaceShell,
+    getActiveLeafId: function () { return state.activeLeafId; },
+    getPlaceholder: function (tabId) { return state.frameCache[tabId]; },
+    findTabInAllTrees: findTabInAllTrees,
+    isPanelTab: isPanelTab,
+    getPanelKind: getPanelKind,
+    getEmbeddedUrlForTab: getEmbeddedUrlForTab
+  });
 
   function getOrCreateFrame(tab, options) {
     var view = state.frameCache[tab.id];
@@ -2718,59 +1642,43 @@
       return buildMultiviewPanelPlaceholder(tab, panelId, panelKind);
     }
     var desiredSrc = getEmbeddedUrlForTab(tab);
-    if (MULTIVIEW_BOARDS) {
-      // Multiview path: placeholder div, child webview floats above
-      if (!view) {
-        view = document.createElement('div');
-        view.className = 'workspace-shell-view workspace-shell-frame workspace-shell-multiview-placeholder';
-        view.setAttribute('data-tab-id', tab.id);
-        view.setAttribute('data-src', desiredSrc);
-        view.setAttribute('data-multiview', '1');
-        // Diagnostic skeleton (see buildMultiviewPanelPlaceholder for
-        // rationale). Hidden by the child webview overlay once it spawns.
-        view.innerHTML = '<div class="mv-placeholder-skeleton" style="' +
-          'padding:10px;font-size:12px;font-family:monospace;color:#888;' +
-          'pointer-events:none;user-select:none;">' +
-          'board: <strong>' + String(tab.boardId || '(no boardId)').replace(/[<>&]/g, '?') + '</strong>' +
-          '<br>tab: ' + String(tab.id).replace(/[<>&]/g, '?') +
-          '<br>spawning…</div>';
-        view.addEventListener('pointerdown', function () {
-          activateTab(tab.id);
-        });
-        state.frameCache[tab.id] = view;
-      }
-      if (shouldLoadBoardFrame(tab, options)) {
-        state.loadedBoardFrames[tab.id] = true;
-        view.setAttribute('data-loaded-src', desiredSrc);
-        requestAnimationFrame(function () {
-          if (view.parentNode) ensureMultiviewWebview(tab, view, desiredSrc);
-        });
-      }
-      return view;
-    }
+    // Board tabs are always hosted by Tauri child webviews. The shell
+    // creates a placeholder div; the actual webview is spawned by
+    // multiview.ensure() and floats above it (geometry tracked).
     if (!view) {
-      view = document.createElement('iframe');
-      view.className = 'workspace-shell-view workspace-shell-frame';
+      view = document.createElement('div');
+      view.className = 'workspace-shell-view workspace-shell-frame workspace-shell-multiview-placeholder';
       view.setAttribute('data-tab-id', tab.id);
-      view.setAttribute('title', getTabTitle(tab));
       view.setAttribute('data-src', desiredSrc);
-      view.setAttribute('loading', 'lazy');
+      view.setAttribute('data-multiview', '1');
+      // Diagnostic skeleton (see buildMultiviewPanelPlaceholder for
+      // rationale). Hidden by the child webview overlay once it spawns.
+      view.innerHTML = '<div class="mv-placeholder-skeleton" style="' +
+        'padding:10px;font-size:12px;font-family:monospace;color:#888;' +
+        'pointer-events:none;user-select:none;">' +
+        'board: <strong>' + String(tab.boardId || '(no boardId)').replace(/[<>&]/g, '?') + '</strong>' +
+        '<br>tab: ' + String(tab.id).replace(/[<>&]/g, '?') +
+        '<br>spawning…</div>';
       view.addEventListener('pointerdown', function () {
         activateTab(tab.id);
       });
       state.frameCache[tab.id] = view;
-      syncBoardFrameSource(view, tab, options);
-      return view;
     }
-    syncBoardFrameSource(view, tab, options);
+    if (shouldLoadBoardFrame(tab, options)) {
+      state.loadedBoardFrames[tab.id] = true;
+      view.setAttribute('data-loaded-src', desiredSrc);
+      requestAnimationFrame(function () {
+        if (view.parentNode) multiview.ensure(tab, view, desiredSrc);
+      });
+    }
     return view;
   }
 
   function removeFrame(tabId) {
     var frame = state.frameCache[tabId];
     if (!frame) return;
-    if (MULTIVIEW_BOARDS && frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
-      destroyMultiviewWebview(tabId);
+    if (frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
+      multiview.destroy(tabId);
     }
     if (frame.parentNode) frame.parentNode.removeChild(frame);
     delete state.frameCache[tabId];
@@ -2793,11 +1701,10 @@
     // not the next eviction candidate. Use the spawn entry's recorded
     // label so panel webviews touch their actual ('panel-tab-') label
     // rather than the board prefix.
-    if (MULTIVIEW_BOARDS && window.LexeraMultiview &&
+    if (window.LexeraMultiview &&
         window.LexeraMultiview.lifecycle &&
         typeof window.LexeraMultiview.lifecycle.touch === 'function') {
-      var spawnEntry = multiviewSpawnedTabs[tabId];
-      var touchLabel = (spawnEntry && spawnEntry.label) || labelForTabObject(found.tab);
+      var touchLabel = multiview.spawnedLabel(tabId) || multiview.labelForTab(found.tab);
       try { window.LexeraMultiview.lifecycle.touch(touchLabel); }
       catch (_) {}
     }
@@ -3586,7 +2493,7 @@
     }
     requestAnimationFrame(function () {
       if (view.parentNode) {
-        ensureMultiviewWebview(tab, view, panelSrc);
+        multiview.ensure(tab, view, panelSrc);
       }
     });
     return view;
@@ -4439,7 +3346,7 @@
       var dragTabId = panelFound ? panelFound.tab.id : '';
       startPointerDrag(panelHandleEl, dragTabId, handledPanelId, event);
       renderToolbar();
-      persistState();
+      layoutPersistence.persist();
       return;
     }
     // Panel tab click in side dock: start unified drag (but not on close buttons)
@@ -4453,7 +3360,7 @@
       var dragTabId2 = panelFound2 ? panelFound2.tab.id : '';
       startPointerDrag(panelTabEl, dragTabId2, panelId, event);
       renderToolbar();
-      persistState();
+      layoutPersistence.persist();
       return;
     }
     var panelWindowEl = event.target.closest('.workspace-shell-panel-window[data-panel-id]');
@@ -4462,7 +3369,7 @@
       if (windowPanelId) {
         state.activePanelId = windowPanelId;
         renderToolbar();
-        persistState();
+        layoutPersistence.persist();
       }
     }
     var tabEl = event.target.closest('.ws-view-tab[data-ws-tab-id]') ||
@@ -4475,7 +3382,7 @@
       if (ownerTabset) {
         state.activeLeafId = ownerTabset.getAttribute('data-node-id') || state.activeLeafId;
         renderToolbar();
-        persistState();
+        layoutPersistence.persist();
       }
       startPointerDrag(tabEl, tabId, '', event);
       return;
@@ -4487,7 +3394,7 @@
     state.activeLeafId = nodeId;
     notifyActiveBoardChanged();
     renderToolbar();
-    persistState();
+    layoutPersistence.persist();
   }
 
   function bindSplitDivider(dividerEl, splitId, axis) {
@@ -4833,7 +3740,7 @@
         // spawn handles its own content; the shell only manages activation.
         viewEl.setAttribute('data-panel-id', resolvePanelTarget(frameTab.panelId));
       } else {
-        syncBoardFrameSource(viewEl, frameTab, {
+        syncBoardFrame(viewEl, frameTab, {
           shouldLoad: isActiveInLeaf
         });
       }
@@ -4927,12 +3834,12 @@
     // it causes cascading board switches during poll/board-list updates.
     // Board changes are notified from explicit user actions (tab click,
     // board open) via their own handlers.
-    persistState();
+    layoutPersistence.persist();
     if (state.hooks && typeof state.hooks.onAfterRender === 'function') {
       state.hooks.onAfterRender();
     }
     // Re-apply known health dots to freshly-built tab headers.
-    reapplyAllHealthDots();
+    multiview.reapplyAllHealthDots();
   }
 
   function pruneMissingBoards() {
@@ -5004,169 +3911,14 @@
     return true;
   }
 
-  function findCardPositionInBoardData(boardData, cardId) {
-    if (!boardData || !boardData.rows || !cardId) return null;
-    var rows = boardData.rows;
-    for (var r = 0; r < rows.length; r++) {
-      var stacks = rows[r] && rows[r].stacks ? rows[r].stacks : [];
-      for (var s = 0; s < stacks.length; s++) {
-        var columns = stacks[s] && stacks[s].columns ? stacks[s].columns : [];
-        for (var c = 0; c < columns.length; c++) {
-          var cards = columns[c] && columns[c].cards ? columns[c].cards : [];
-          for (var i = 0; i < cards.length; i++) {
-            if (cards[i] && String(cards[i].id) === cardId) {
-              return { rowIndex: r, stackIndex: s, colLocalIndex: c, cardIndex: i };
-            }
-          }
-        }
-      }
-    }
-    return null;
-  }
-
-  function unfoldPathInContainer(container, rowIndex, stackIndex, colLocalIndex, target) {
-    target = target || {};
-    var rowEl = null;
-    if (target.rowId) {
-      rowEl = container.querySelector('.board-row[data-row-id="' + target.rowId + '"]');
-    }
-    if (!rowEl && typeof rowIndex === 'number') {
-      rowEl = container.querySelector('.board-row[data-row-index="' + rowIndex + '"]');
-    }
-    if (rowEl && rowEl.classList.contains('folded')) rowEl.classList.remove('folded');
-
-    var stackEl = null;
-    if (target.stackId) {
-      stackEl = container.querySelector('.board-stack[data-stack-id="' + target.stackId + '"]');
-    }
-    if (!stackEl && typeof rowIndex === 'number' && typeof stackIndex === 'number') {
-      stackEl = container.querySelector('.board-stack[data-row-index="' + rowIndex + '"][data-stack-index="' + stackIndex + '"]');
-    }
-    if (stackEl && stackEl.classList.contains('folded')) stackEl.classList.remove('folded');
-
-    var colEl = null;
-    if (target.columnId) {
-      colEl = container.querySelector('.column[data-column-id="' + target.columnId + '"]');
-    }
-    if (!colEl && typeof rowIndex === 'number' && typeof stackIndex === 'number' && typeof colLocalIndex === 'number') {
-      colEl = container.querySelector('.column[data-row-index="' + rowIndex + '"][data-stack-index="' + stackIndex + '"][data-col-local-index="' + colLocalIndex + '"]');
-    }
-    if (colEl && colEl.classList.contains('folded')) colEl.classList.remove('folded');
-  }
-
-  function findTargetInIframeDOM(doc, target) {
-    var container = doc.getElementById('columns-container');
-    if (!container) return null;
-    var el = null;
-    if (target.cardId) {
-      el = container.querySelector('.card[data-card-id="' + target.cardId + '"]');
-    }
-    if (!el && target.columnId) {
-      el = container.querySelector('.column[data-column-id="' + target.columnId + '"]');
-    }
-    if (!el && target.stackId) {
-      el = container.querySelector('.board-stack[data-stack-id="' + target.stackId + '"]');
-    }
-    if (!el && target.rowId) {
-      el = container.querySelector('.board-row[data-row-id="' + target.rowId + '"]');
-    }
-    if (!el && typeof target.rowIndex === 'number' && typeof target.stackIndex === 'number' &&
-        typeof target.colLocalIndex === 'number' && typeof target.cardIndex === 'number') {
-      el = container.querySelector(
-        '.column[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"][data-col-local-index="' + target.colLocalIndex + '"] ' +
-        '.card[data-card-index="' + target.cardIndex + '"]'
-      );
-    }
-    if (!el && typeof target.rowIndex === 'number' && typeof target.stackIndex === 'number' &&
-        typeof target.colLocalIndex === 'number') {
-      el = container.querySelector(
-        '.column[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"][data-col-local-index="' + target.colLocalIndex + '"]'
-      );
-    }
-    if (!el && target.brokenSrc) {
-      var brokenEl = container.querySelector('[data-file-path="' + CSS.escape(target.brokenSrc) + '"]') ||
-                     container.querySelector('[data-include-path="' + CSS.escape(target.brokenSrc) + '"]');
-      if (brokenEl) el = brokenEl.closest('.card') || brokenEl.closest('.column') || brokenEl;
-    }
-    return el;
-  }
-
+  // Forward a hierarchy-focus request to the board webview that hosts
+  // the target tab. The embedded board's `focus-hierarchy-target`
+  // handler does the unfold + scroll + edit-mode work locally.
   function deliverFocusTargetToFrame(frame, target, options) {
     if (!frame) return;
-    options = options || {};
-    // Multiview path: cross-process — the embedded board's
-    // navigateToHierarchyTarget handles everything locally.
-    if (MULTIVIEW_BOARDS && frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
-      var tabId = frame.getAttribute('data-tab-id');
-      if (tabId && window.__TAURI__ && window.__TAURI__.core) {
-        window.__TAURI__.core.invoke('multiview_emit_to', {
-          target: multiviewLabelForTab(tabId),
-          event: 'focus-hierarchy-target',
-          payload: { target: target, options: options }
-        }).catch(function () {});
-      }
-      return;
-    }
-    try {
-      var doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
-      if (!doc) return;
-      var container = doc.getElementById('columns-container');
-      if (!container) return;
-
-      // If we have a cardId but no position, look it up in the iframe's board data
-      if (target.cardId && target.rowIndex == null) {
-        var iframeDash = frame.contentWindow && frame.contentWindow.LexeraDashboard;
-        var boardData = iframeDash && typeof iframeDash.getFullBoardData === 'function'
-          ? iframeDash.getFullBoardData()
-          : null;
-        var pos = findCardPositionInBoardData(boardData, target.cardId);
-        if (pos) {
-          target.rowIndex = pos.rowIndex;
-          target.stackIndex = pos.stackIndex;
-          target.colLocalIndex = pos.colLocalIndex;
-          target.cardIndex = pos.cardIndex;
-        }
-      }
-
-      // Unfold parent row/stack/column so the target becomes visible
-      unfoldPathInContainer(container, target.rowIndex, target.stackIndex, target.colLocalIndex, target);
-
-      // Focus helper: scroll + highlight via iframe's KeyboardNavigation
-      var iframeKeyNav = frame.contentWindow && frame.contentWindow.LexeraKeyboardNavigation;
-      function focusElement(el) {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        if (el.classList.contains('card') && iframeKeyNav && typeof iframeKeyNav.focusCard === 'function') {
-          iframeKeyNav.focusCard(el);
-        } else if (iframeKeyNav && typeof iframeKeyNav.focusBoardEntity === 'function') {
-          iframeKeyNav.focusBoardEntity(el);
-        }
-      }
-
-      // After focusing, optionally enter edit mode for the target entity.
-      // Delegated to the iframe's own ActionRegistry so every editor hook and
-      // save pipeline stays identical to an in-board interaction.
-      function maybeEnterEditMode() {
-        if (!options.edit) return;
-        var iframeDash2 = frame.contentWindow && frame.contentWindow.LexeraDashboard;
-        if (iframeDash2 && typeof iframeDash2.openEditForHierarchyTarget === 'function') {
-          try { iframeDash2.openEditForHierarchyTarget(target); } catch (e) { /* ignore */ }
-        }
-      }
-
-      // Find and scroll+focus the element
-      var el = findTargetInIframeDOM(doc, target);
-      if (el) {
-        focusElement(el);
-        maybeEnterEditMode();
-        return;
-      }
-      // Element may need a render tick after unfolding
-      setTimeout(function () {
-        var el2 = findTargetInIframeDOM(doc, target);
-        if (el2) focusElement(el2);
-        maybeEnterEditMode();
-      }, 60);
-    } catch (e) { /* cross-origin or access error */ }
+    var tabId = frame.getAttribute && frame.getAttribute('data-tab-id');
+    if (!tabId) return;
+    messageBridge.focusHierarchy(tabId, target, options || {});
   }
 
   function focusHierarchyTarget(target, boardId, options) {
@@ -5187,22 +3939,20 @@
     });
     if (!tab) return false;
     var frame = getOrCreateFrame(tab, { shouldLoad: true });
-    // Forward only the options keys that deliverFocusTargetToFrame needs so
+    // Forward only the option keys deliverFocusTargetToFrame needs so
     // unrelated focusHierarchyTarget options don't leak into the frame.
     var deliveryOptions = { edit: !!options.edit };
-    // Store as pending so we can deliver it when the frame signals readiness via
-    // lexera-pane-activated (handles the case where the tab is freshly opened and
-    // the board frame hasn't initialized yet when the 60ms/220ms timeouts fire).
+    // Store as pending so we can deliver when the frame signals
+    // readiness via lexera-pane-activated (covers the freshly-opened
+    // tab case where the webview hasn't initialised when the 60/220ms
+    // timeouts fire).
     state.pendingFocusTargets[tab.id] = { target: target, options: deliveryOptions };
     function sendFocus() {
-      if (!frame || !frame.contentWindow) return;
       deliverFocusTargetToFrame(frame, target, deliveryOptions);
     }
     setTimeout(sendFocus, 60);
     setTimeout(function () {
       sendFocus();
-      // Clear pending after the last heuristic attempt — if not delivered via
-      // pane-activated by now, we've done our best.
       delete state.pendingFocusTargets[tab.id];
     }, 220);
     return true;
@@ -5233,8 +3983,11 @@
           }
         }
       }
+      // Newly-activated board may have spawned after the last catalog
+      // broadcast — send a targeted snapshot so it has the workspace
+      // context immediately rather than waiting for the next change.
       if (data.pane) {
-        postCatalogSnapshotToFrame(state.frameCache[data.pane]);
+        messageBridge.sendCatalog(data.pane, messageBridge.normalizeCatalog(state.catalogSnapshot));
       }
       // Only activate if this pane isn't already the active tab in its leaf —
       // prevents cascade where loading an iframe triggers tab activation which
@@ -5249,18 +4002,10 @@
     if (data.type === 'lexera-board-mutated') {
       var mutatedBoardId = data.boardId;
       if (mutatedBoardId) {
-        var fullBoard = Object.prototype.hasOwnProperty.call(data, 'fullBoard') ? (data.fullBoard || null) : null;
-        if (!fullBoard) {
-          var mutatedFrame = data.pane ? state.frameCache[data.pane] : null;
-          if (mutatedFrame && mutatedFrame.contentWindow) {
-            try {
-              var iframeApp = mutatedFrame.contentWindow.LexeraDashboard;
-              fullBoard = iframeApp && typeof iframeApp.getFullBoardData === 'function'
-                ? iframeApp.getFullBoardData()
-                : null;
-            } catch (e) { /* ignore */ }
-          }
-        }
+        // Board webview owns its data — fullBoard is sent in the message.
+        var fullBoard = Object.prototype.hasOwnProperty.call(data, 'fullBoard')
+          ? (data.fullBoard || null)
+          : null;
         if (fullBoard && state.hooks && typeof state.hooks.refreshBoardHierarchy === 'function') {
           state.hooks.refreshBoardHierarchy(mutatedBoardId, fullBoard);
         }
@@ -5302,188 +4047,44 @@
   function forwardActionToActiveFrame(action) {
     var activeTab = getActiveTab();
     if (!activeTab) return false;
-    var frame = getOrCreateFrame(activeTab, { shouldLoad: true });
-    if (!frame) return false;
-    if (frame.contentWindow) {
-      frame.contentWindow.postMessage({
-        type: 'lexera-board-action',
-        action: action
-      }, '*');
-      return true;
-    }
-    // Multiview path: targeted Tauri event to the board's webview
-    if (MULTIVIEW_BOARDS && frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
-      var label = multiviewLabelForTab(activeTab.id);
-      if (window.__TAURI__ && window.__TAURI__.core) {
-        window.__TAURI__.core.invoke('multiview_emit_to', {
-          target: label,
-          event: 'board-action',
-          payload: { action: action }
-        }).catch(function () {});
-        return true;
-      }
-    }
-    return false;
+    return messageBridge.boardAction(activeTab, action);
   }
 
-  // Notify every embedded kanban frame that a layout-divider drag has started
-  // or ended in the parent shell. Iframes toggle their own `body.is-dragging-layout`
-  // so CSS `content-visibility` and observer short-circuits apply inside them too.
   function broadcastLayoutDragState(active) {
-    var frameIds = Object.keys(state.frameCache || {});
-    for (var i = 0; i < frameIds.length; i++) {
-      var frame = state.frameCache[frameIds[i]];
-      if (!frame) continue;
-      if (frame.contentWindow) {
-        try {
-          frame.contentWindow.postMessage({
-            type: 'lexera-layout-drag',
-            active: !!active
-          }, '*');
-        } catch (e) { /* cross-origin or closed frame — ignore */ }
-      }
-    }
-    // Multiview path: one global Tauri broadcast covers all child
-    // webviews (each one's embedded bridge will translate to message).
-    if (MULTIVIEW_BOARDS && window.__TAURI__ && window.__TAURI__.core) {
-      window.__TAURI__.core.invoke('multiview_broadcast', {
-        event: 'layout-drag',
-        payload: { active: !!active }
-      }).catch(function () {});
-    }
-  }
-
-  function normalizeCatalogSnapshot(snapshot) {
-    snapshot = snapshot || {};
-    return {
-      boards: Array.isArray(snapshot.boards) ? snapshot.boards.slice() : [],
-      remoteBoards: Array.isArray(snapshot.remoteBoards) ? snapshot.remoteBoards.slice() : [],
-      workspaces: Array.isArray(snapshot.workspaces) ? snapshot.workspaces.slice() : [],
-      activeWorkspaceId: String(snapshot.activeWorkspaceId || ''),
-      activeWorkspace: snapshot.activeWorkspace && typeof snapshot.activeWorkspace === 'object'
-        ? Object.assign({}, snapshot.activeWorkspace)
-        : null,
-      viewWorkspaceId: String(snapshot.viewWorkspaceId || ''),
-      viewWorkspace: snapshot.viewWorkspace && typeof snapshot.viewWorkspace === 'object'
-        ? Object.assign({}, snapshot.viewWorkspace)
-        : null,
-      workspaceViewMode: snapshot.workspaceViewMode === 'manual' ? 'manual' : 'follow-active-board'
-    };
-  }
-
-  function postCatalogSnapshotToFrame(frame) {
-    if (!frame || !frame.contentWindow) return false;
-    var snapshot = normalizeCatalogSnapshot(state.catalogSnapshot);
-    try {
-      frame.contentWindow.postMessage({
-        type: 'lexera-workspace-catalog',
-        boards: snapshot.boards,
-        remoteBoards: snapshot.remoteBoards,
-        workspaces: snapshot.workspaces,
-        activeWorkspaceId: snapshot.activeWorkspaceId,
-        activeWorkspace: snapshot.activeWorkspace,
-        viewWorkspaceId: snapshot.viewWorkspaceId,
-        viewWorkspace: snapshot.viewWorkspace,
-        workspaceViewMode: snapshot.workspaceViewMode
-      }, '*');
-      return true;
-    } catch (e) {
-      return false;
-    }
+    messageBridge.layoutDrag(active);
   }
 
   function broadcastCatalogSnapshot() {
-    var frameIds = Object.keys(state.frameCache);
-    var snapshot = normalizeCatalogSnapshot(state.catalogSnapshot);
-    for (var i = 0; i < frameIds.length; i++) {
-      var frame = state.frameCache[frameIds[i]];
-      if (!frame) continue;
-      if (frame.tagName === 'IFRAME') {
-        postCatalogSnapshotToFrame(frame);
-      } else if (MULTIVIEW_BOARDS && frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
-        // Child webview path: broadcast via Tauri event so the
-        // embedded board sub-app can subscribe and respond.
-        if (window.LexeraMultiview && window.LexeraMultiview.broadcastCatalog) {
-          window.LexeraMultiview.broadcastCatalog(snapshot);
-        }
-      }
-    }
+    messageBridge.broadcastCatalog(messageBridge.normalizeCatalog(state.catalogSnapshot));
   }
 
+  // Cross-process context menu: ask the board webview to build its
+  // context-menu items, render the resulting native menu in the shell,
+  // then route the chosen action back via dispatch-action.
   function showContextMenuInBoardFrame(boardId, scope, x, y, ctx) {
     if (!boardId) return false;
     var found = findLeafContainingBoard(state.dockTree, boardId);
     if (!found) return false;
-    var frame = state.frameCache[found.tab.id];
-    if (!frame) return false;
-    // Multiview path: request/response IPC to the board webview
-    if (MULTIVIEW_BOARDS && frame.getAttribute && frame.getAttribute('data-multiview') === '1') {
-      if (!window.LexeraMultiview || typeof window.LexeraMultiview.request !== 'function') return false;
-      var label = multiviewLabelForTab(found.tab.id);
-      window.LexeraMultiview.request(label, 'build-context-menu', {
-        scope: scope, context: ctx
-      }, 1500).then(function (built) {
-        if (!built || !built.items || built.items.length === 0) return;
-        if (built.context && built.context.colIndex != null) ctx.colIndex = built.context.colIndex;
-        if (state.hooks && typeof state.hooks.showNativeMenu === 'function') {
-          state.hooks.showNativeMenu(built.items, x, y).then(function (action) {
-            if (!action) return;
-            // Send action back to the board for dispatch via its
-            // LexeraActionRegistry.
-            if (window.__TAURI__ && window.__TAURI__.core) {
-              window.__TAURI__.core.invoke('multiview_emit_to', {
-                target: label, event: 'dispatch-action',
-                payload: { scope: scope, action: action, context: built.context }
-              }).catch(function () {});
-            }
-          });
-        }
-      }).catch(function (err) {
-        console.warn('[multiview ctxmenu] request failed:', err);
-      });
-      return true;
-    }
-    if (!frame.contentWindow) return false;
-    try {
-      var iframeApp = frame.contentWindow.LexeraDashboard;
-      if (!iframeApp || typeof iframeApp.showElementContextMenu !== 'function') return false;
-      // Use parent's Tauri IPC to show native menu, then dispatch in iframe
-      var iframeRSM = frame.contentWindow.LexeraRowStackMenu;
-      if (!iframeRSM || typeof iframeRSM.buildContextMenuItemsAndContext !== 'function') return false;
-      var built = iframeRSM.buildContextMenuItemsAndContext(scope, ctx);
-      // buildContextMenuItemsAndContext resolves colIndex from the iframe's
-      // board data. Update ctx from the enriched context.
-      if (built.context && built.context.colIndex != null) {
-        ctx.colIndex = built.context.colIndex;
-      }
-      if (!built || !built.items || built.items.length === 0) return false;
+    var tabId = found.tab.id;
+    messageBridge.requestContextMenu(tabId, scope, ctx).then(function (built) {
+      if (!built || !built.items || built.items.length === 0) return;
+      if (built.context && built.context.colIndex != null) ctx.colIndex = built.context.colIndex;
       if (state.hooks && typeof state.hooks.showNativeMenu === 'function') {
         state.hooks.showNativeMenu(built.items, x, y).then(function (action) {
           if (!action) return;
-          var iframeActionRegistry = frame.contentWindow.LexeraActionRegistry;
-          if (iframeActionRegistry && typeof iframeActionRegistry.dispatch === 'function') {
-            iframeActionRegistry.dispatch(scope, action, built.context);
-          }
+          messageBridge.dispatchAction(tabId, scope, action, built.context);
         });
-        return true;
       }
-    } catch (e) { /* cross-origin or access error */ }
-    return false;
+    }).catch(function (err) {
+      console.warn('[multiview ctxmenu] request failed:', err);
+    });
+    return true;
   }
 
-  function getActiveBoardColumnsContainer() {
-    var activeTab = getActiveTab();
-    if (!activeTab || isPanelTab(activeTab)) return null;
-    var frame = state.frameCache[activeTab.id] || getOrCreateFrame(activeTab, { shouldLoad: true });
-    if (!frame) return null;
-    try {
-      var doc = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document) || null;
-      if (!doc || typeof doc.getElementById !== 'function') return null;
-      return doc.getElementById('columns-container');
-    } catch (err) {
-      return null;
-    }
-  }
+  // Board DOM lives in a child webview; the shell cannot synchronously
+  // inspect it. Callers (e.g. dashboard broken-element scanner) fall
+  // back to their own local-document path when this returns null.
+  function getActiveBoardColumnsContainer() { return null; }
 
   function handleToolbarAction(action, value, extra) {
     if (!action) return false;
@@ -5796,7 +4397,16 @@
 
     state.mounted = true;
     state.backendConnected = !!document.querySelector('.connection-status-btn.connected');
-    state.didRestoreState = restoreState();
+    layoutPersistence.setup({
+      state: state,
+      layoutTree: layoutTree,
+      panelDefs: panelDefs,
+      nextId: nextId,
+      resolvePanelTarget: resolvePanelTarget,
+      syncIntegratedPanelVisibility: syncIntegratedPanelVisibility,
+      ensureActiveLeaf: ensureActiveLeaf
+    });
+    state.didRestoreState = layoutPersistence.restore();
     applyPanelOnlyWindowState();
     ensureInitialPanelTab(state.initialPanelKind);
     ensurePanelElements();
@@ -5818,11 +4428,13 @@
   }
 
   function onCatalogUpdated(snapshot) {
-    state.catalogSnapshot = normalizeCatalogSnapshot(snapshot);
+    state.catalogSnapshot = messageBridge.normalizeCatalog(snapshot);
     onBoardsUpdated(state.catalogSnapshot.boards.concat(state.catalogSnapshot.remoteBoards));
     broadcastCatalogSnapshot();
   }
 
+  // Aliases that resolve to a reveal-panel of a fixed kind. Sourced
+  // from menu commands that historically used different action names.
   var ACTION_PANEL_ALIASES = {
     'open-management': 'backendSettings',
     'backend-settings': 'backendSettings',
@@ -5833,6 +4445,26 @@
     'open-render-apps': 'renderApps',
     'render-apps': 'renderApps'
   };
+
+  // Actions that are SHELL-only — panel-only and embedded-board
+  // webviews must not handle them. menu-action broadcasts to every
+  // webview, so without this filter each panel webview would try to
+  // mutate its own (irrelevant) dock tree and the user-visible action
+  // could double-handle.
+  var SHELL_ONLY_PREFIXES = ['toggle-panel:', 'reveal-panel:', 'set-board-layout:'];
+  var SHELL_ONLY_EXACT = {
+    'split-disable': 1, 'split-enable': 1, 'split-enable-vertical': 1,
+    'split-enable-horizontal': 1, 'split-orientation': 1, 'next-tab': 1,
+    'prev-tab': 1, 'close-active-tab': 1, 'new-window': 1
+  };
+
+  function isShellOnlyAction(action) {
+    if (SHELL_ONLY_EXACT[action]) return true;
+    for (var i = 0; i < SHELL_ONLY_PREFIXES.length; i++) {
+      if (action.indexOf(SHELL_ONLY_PREFIXES[i]) === 0) return true;
+    }
+    return false;
+  }
 
   function resolveCycleTabTarget(leaf, direction) {
     if (!leaf || !Array.isArray(leaf.tabs) || leaf.tabs.length < 2) return '';
@@ -5845,12 +4477,52 @@
   }
 
   function cycleTab(direction) {
-    var leaf = getActiveLeaf();
-    var nextTabId = resolveCycleTabTarget(leaf, direction);
+    var nextTabId = resolveCycleTabTarget(getActiveLeaf(), direction);
     if (!nextTabId) return false;
     activateTab(nextTabId);
     return true;
   }
+
+  // Exact-match action handlers. Each returns true if it handled the
+  // action. Adding a new shell-level action means one entry here.
+  var EXACT_ACTIONS = {
+    'close-active-tab': function () {
+      var active = getActiveTab();
+      if (active) closeTab(active.id);
+      return true;
+    },
+    'next-tab': function () { return cycleTab(1); },
+    'prev-tab': function () { return cycleTab(-1); },
+    'new-window': function () { openWorkspaceWindow(); return true; },
+    'split-disable': function () { flattenToActiveLeaf(); return true; },
+    // Layout-mode toggles are no-ops; the boards manage their own
+    // split state and the shell only intercepts to swallow the menu
+    // event so it doesn't fall through to forwardActionToActiveFrame.
+    'split-enable': function () { return true; },
+    'split-enable-vertical': function () { return true; },
+    'split-enable-horizontal': function () { return true; },
+    'split-orientation': function () { return true; }
+  };
+
+  // Prefix-match action handlers. Each receives the action body
+  // (everything after the prefix). Returns true if handled.
+  var PREFIX_ACTIONS = [
+    { prefix: 'toggle-panel:', handler: function (target) {
+      if (!PANEL_DEFINITIONS[getPanelKind(target)]) return false;
+      var nextVisible = !isPanelShown(target);
+      setPanelVisibility(target, nextVisible, { activate: true, restoreDock: nextVisible });
+      return true;
+    } },
+    { prefix: 'reveal-panel:', handler: function (kind) {
+      if (!PANEL_DEFINITIONS[kind]) return false;
+      revealPanel(kind);
+      return true;
+    } },
+    { prefix: 'set-board-layout:', handler: function (kind) {
+      setActiveViewKind(kind);
+      return true;
+    } }
+  ];
 
   function handleBoardAction(action) {
     // Diagnostic: surface every action that reaches the shell to the
@@ -5863,64 +4535,18 @@
           ' panelOnly=' + isPanelOnlyWindow());
       }
     } catch (_) {}
-    if (!state.enabled || !state.mounted) return false;
-    if (!action) return false;
-    // Shell-management actions (panel reveals, layout commands) belong
-    // to the SHELL webview only. Since menu-action is now broadcast to
-    // every webview (so it reliably reaches the shell), panel-only
-    // webviews and embedded-board webviews must opt out — otherwise
-    // each panel webview would try to mutate its own (irrelevant) dock
-    // tree and the user-visible action could double-handle.
-    if (isPanelOnlyWindow()) {
-      var shellOnlyPrefixes = ['toggle-panel:', 'reveal-panel:', 'set-board-layout:'];
-      var shellOnlyActions = { 'split-disable': 1, 'split-enable': 1,
-        'split-enable-vertical': 1, 'split-enable-horizontal': 1,
-        'split-orientation': 1, 'next-tab': 1, 'prev-tab': 1,
-        'close-active-tab': 1, 'new-window': 1 };
-      var isShellOnlyPrefix = false;
-      for (var pi = 0; pi < shellOnlyPrefixes.length; pi++) {
-        if (action.indexOf(shellOnlyPrefixes[pi]) === 0) { isShellOnlyPrefix = true; break; }
-      }
-      if (isShellOnlyPrefix || shellOnlyActions[action]) return false;
-    }
-    if (action === 'close-active-tab') {
-      var active = getActiveTab();
-      if (active) closeTab(active.id);
-      return true;
-    }
-    if (action === 'next-tab') { return cycleTab(1); }
-    if (action === 'prev-tab') { return cycleTab(-1); }
-    if (action === 'new-window') {
-      openWorkspaceWindow();
-      return true;
-    }
-    if (action.indexOf('toggle-panel:') === 0) {
-      var toggleTarget = action.substring('toggle-panel:'.length);
-      if (!PANEL_DEFINITIONS[getPanelKind(toggleTarget)]) return false;
-      var nextVisible = !isPanelShown(toggleTarget);
-      setPanelVisibility(toggleTarget, nextVisible, { activate: true, restoreDock: nextVisible });
-      return true;
-    }
-    if (action.indexOf('reveal-panel:') === 0) {
-      var panelKind = action.substring('reveal-panel:'.length);
-      if (PANEL_DEFINITIONS[panelKind]) {
-        revealPanel(panelKind);
-        return true;
+    if (!action || !state.enabled || !state.mounted) return false;
+    if (isPanelOnlyWindow() && isShellOnlyAction(action)) return false;
+
+    if (EXACT_ACTIONS[action]) return EXACT_ACTIONS[action]();
+    for (var i = 0; i < PREFIX_ACTIONS.length; i++) {
+      var entry = PREFIX_ACTIONS[i];
+      if (action.indexOf(entry.prefix) === 0) {
+        return entry.handler(action.substring(entry.prefix.length));
       }
     }
     if (ACTION_PANEL_ALIASES[action]) {
       revealPanel(ACTION_PANEL_ALIASES[action]);
-      return true;
-    }
-    if (action.indexOf('set-board-layout:') === 0) {
-      setActiveViewKind(action.substring('set-board-layout:'.length));
-      return true;
-    }
-    if (action === 'split-disable') {
-      flattenToActiveLeaf();
-      return true;
-    }
-    if (action === 'split-enable' || action === 'split-enable-vertical' || action === 'split-enable-horizontal' || action === 'split-orientation') {
       return true;
     }
     return forwardActionToActiveFrame(action);
