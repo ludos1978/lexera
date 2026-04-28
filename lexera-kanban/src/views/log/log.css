@@ -12,7 +12,7 @@ html, body {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: var(--font-size-base, 12px); overflow: hidden;
 }
-body { display: flex; flex-direction: column; height: 100vh; }
+body { display: flex; flex-direction: column; height: 100%; }
 
 .header {
   flex: 0 0 auto;

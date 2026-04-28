@@ -36,7 +36,7 @@ describe('LexeraSubApp runtime metadata', () => {
     });
   });
 
-  it('applies workspace-shell-mode body class so legacy panel CSS rules in app.css apply inside the child webview', () => {
+  it('applies workspace-shell-mode root/body classes so legacy panel CSS rules and full-height panel layout work inside the child webview', () => {
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'http://127.0.0.1:1431/views/hierarchy/index.html?panelKind=hierarchy&panel=hierarchy&pane=tab-77&windowLabel=panel-tab-tab-77&workspaceShellHostLabel=main'
     });
@@ -54,12 +54,15 @@ describe('LexeraSubApp runtime metadata', () => {
       clearInterval: vi.fn()
     });
     subApp.init({ requestTheme: false, reportFocus: false, shortcuts: false });
+    expect(window.document.documentElement.classList.contains('workspace-shell-mode')).toBe(true);
+    expect(window.document.documentElement.getAttribute('data-shell-panel')).toBe('hierarchy');
+    expect(window.document.documentElement.getAttribute('data-shell-pane')).toBe('tab-77');
     expect(window.document.body.classList.contains('workspace-shell-mode')).toBe(true);
     expect(window.document.body.getAttribute('data-shell-panel')).toBe('hierarchy');
     expect(window.document.body.getAttribute('data-shell-pane')).toBe('tab-77');
   });
 
-  it('skips body-class application gracefully when there is no Tauri context', () => {
+  it('applies root/body layout classes gracefully when there is no Tauri context', () => {
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'http://127.0.0.1:1431/views/log/index.html'
     });
@@ -72,6 +75,7 @@ describe('LexeraSubApp runtime metadata', () => {
       clearInterval: vi.fn()
     });
     subApp.init({ onError: vi.fn() });
+    expect(window.document.documentElement.classList.contains('workspace-shell-mode')).toBe(true);
     expect(window.document.body.classList.contains('workspace-shell-mode')).toBe(true);
   });
 

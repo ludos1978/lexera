@@ -13,15 +13,15 @@ const orderHelpersSource = readFileSync(resolve(__dirname, '..', 'src', 'board',
 describe('hierarchy style contract', () => {
   it('keeps dashboard section children visibly owned by their section header', () => {
     // Dashboard groups use tree-entry/tree-node/tree-children structure
-    // No extra padding-left — TreeView indent guides handle all indentation
-    expect(indexHtml).toContain('data-hierarchy-section-body="true"');
-    expect(indexHtml).toContain('data-dashboard-group-key=');
-    expect(indexHtml).toContain('data-tree-structural-role="section"');
-    expect(indexHtml).toContain('class="dashboard-group tree-entry"');
-    expect(indexHtml).toContain('class="dashboard-list tree-children expanded');
+    // No extra padding-left — TreeView indent guides handle all indentation.
+    // The shell's index.html no longer hardcodes the dashboard markup
+    // (dashboard runs as its own webview); the contract is enforced on
+    // the `sharedPanels.js` factory which builds the dashboard panel.
     expect(sharedPanels).toContain('data-hierarchy-section-body="true"');
     expect(sharedPanels).toContain('data-dashboard-group-key=');
     expect(sharedPanels).toContain('data-tree-structural-role="section"');
+    expect(sharedPanels).toContain('dashboard-group tree-entry');
+    expect(sharedPanels).toContain('dashboard-list tree-children expanded');
     expect(orderHelpersSource).toContain("getAttribute('data-dashboard-group-key')");
   });
 

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/index.html",
+    "src/excalidraw-overlay.html",
+    "src/multiview-demo.html",
+    "src/views/**/*.html",
+    "tests/**/*.test.js",
+    "scripts/**/*.cjs"
+  ],
+  "project": [
+    "src/**/*.js",
+    "src/**/*.cjs"
+  ],
+  "ignore": [
+    "src/management.js",
+    "src/management.css",
+    "src/.gitignore"
+  ],
+  "ignoreDependencies": [
+    "jscpd",
+    "knip"
+  ]
+}

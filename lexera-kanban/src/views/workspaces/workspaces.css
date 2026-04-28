@@ -4,7 +4,7 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 12px; overflow: hidden;
 }
-body { display: flex; flex-direction: column; height: 100vh; }
+body { display: flex; flex-direction: column; height: 100%; }
 
 .header {
   flex: 0 0 auto;

@@ -14,6 +14,8 @@ Keep this file structured and clean:
 
 ### Unsorted (leave this header here!)
 
+- [ ] /refactor the @lexera-kanban/src/workspace/workspaceShell.js this is a mess!
+
 - [ ] can you create 3 dedicated test markdown boards that use all the features with valid images and graphics in different formats. also including all formats that we can include. especially using !!!include()!!! in the column title for the multi-page documents we support (pdf, epub, marp-presentation-markdown, xlsx, etc.) make sure you also test broken includes. make a immutable backup of the test-boards and one that is used while testing!
 
 first create a list of elements each board should have. then create some unique aspects the individual boards should feature. make sure one of the boards features at least one row, with 20 stacks, with each having 1 to 10 columns, with each column having 1-40 cards. every second cards should features some time of graphic, video, or other media!

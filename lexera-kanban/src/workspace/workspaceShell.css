@@ -1481,6 +1481,37 @@ body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-
   border-top: 0;
 }
 
+/* Single-tab (integrated) panel tabsets: collapse the SHELL ws-view-header
+ * so the webview fills the entire dock minus the tabset border. The sub-app
+ * already renders its own header inside the webview (e.g. workspaces shows
+ * "Workspaces" title, log shows "Log Clear" toolbar), and per the project
+ * rule, close/drag/fold UI lives in the native menu bar — not in dock
+ * headers. Without this rule, every single-tab panel webview was ~30px
+ * shorter than its dock (28px ws-view-header min-height + ~2px tabset
+ * borders), creating a visible gap that the user perceived as "20px
+ * missing from the bottom." */
+body.workspace-shell-mode .workspace-shell-panel-window-integrated > .ws-view-header {
+  display: none !important;
+}
+body.workspace-shell-mode .workspace-shell-panel-window-integrated {
+  border: 0 !important;
+}
+
+/* Belt-and-braces: drop the SHELL chrome for EVERY tabset that lives
+ * inside a panel-dock (left/right/bottom), not just single-tab
+ * `panel-window-integrated` ones. If a dock has duplicable panels
+ * (e.g. multiple log instances) `panel-window-integrated` won't be
+ * added, but we still want the webview to fill the dock — the sub-app
+ * already renders its own header inside the webview, and per the
+ * project rule close/drag/fold UI lives in the menu bar, not in dock
+ * headers. */
+body.workspace-shell-mode .workspace-shell-panel-dock .workspace-shell-tabset > .ws-view-header {
+  display: none !important;
+}
+body.workspace-shell-mode .workspace-shell-panel-dock .workspace-shell-tabset {
+  border: 0 !important;
+}
+
 @media (max-width: 960px) {
   .workspace-shell-toolbar {
     flex-wrap: wrap;

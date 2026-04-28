@@ -2372,34 +2372,6 @@
       multiviewSpawnedTabs[tab.id] = { url: url, state: 'ready', label: label };
       if (typeof window.lexeraLog === 'function') {
         window.lexeraLog('debug', '[multiview] spawned ' + label);
-        // Diagnostic: log placeholder + ancestry geometry once. The
-        // user reports every panel webview is ~20px short at the
-        // bottom; this trace makes the SHELL-side measurements visible
-        // so we can compare against the sub-app's own body rect (which
-        // the sub-app logs via subAppRuntime). One-shot per spawn.
-        setTimeout(function () {
-          try {
-            var pr = placeholderEl.getBoundingClientRect();
-            var pcEl = placeholderEl.parentNode;
-            var pcr = pcEl ? pcEl.getBoundingClientRect() : null;
-            var tsEl = pcEl ? pcEl.parentNode : null;
-            var tsr = tsEl ? tsEl.getBoundingClientRect() : null;
-            var bodyRect = state.bodyEl ? state.bodyEl.getBoundingClientRect() : null;
-            var rootRect = state.rootEl ? state.rootEl.getBoundingClientRect() : null;
-            var winH = window.innerHeight;
-            var docH = document.documentElement ? document.documentElement.clientHeight : null;
-            window.lexeraLog('info',
-              '[multiview/diag] ' + label +
-              ' placeholder={t:' + pr.top.toFixed(1) + ',b:' + pr.bottom.toFixed(1) + ',h:' + pr.height.toFixed(1) + '}' +
-              ' panel-content=' + (pcr ? '{t:' + pcr.top.toFixed(1) + ',b:' + pcr.bottom.toFixed(1) + ',h:' + pcr.height.toFixed(1) + '}' : 'null') +
-              ' tabset=' + (tsr ? '{t:' + tsr.top.toFixed(1) + ',b:' + tsr.bottom.toFixed(1) + ',h:' + tsr.height.toFixed(1) + '}' : 'null') +
-              ' shell-body=' + (bodyRect ? '{b:' + bodyRect.bottom.toFixed(1) + ',h:' + bodyRect.height.toFixed(1) + '}' : 'null') +
-              ' shell-root=' + (rootRect ? '{b:' + rootRect.bottom.toFixed(1) + ',h:' + rootRect.height.toFixed(1) + '}' : 'null') +
-              ' winH=' + winH + ' docH=' + docH);
-          } catch (e) {
-            window.lexeraLog('warn', '[multiview/diag] failed: ' + (e && e.message || e));
-          }
-        }, 250);
       }
       // Delay two frames so the browser can paint the spawning ring
       // transition before we mark loaded (otherwise the ring never
@@ -3081,11 +3053,18 @@
       : {};
 
     var sidebarEl = hookPanels.hierarchy || document.querySelector('.layout > .sidebar') || document.querySelector('.sidebar');
-    var dashboardEl = hookPanels.dashboard || document.getElementById('sidebar-dashboard');
+    // The legacy `<div id="sidebar-dashboard">` was removed from
+    // index.html (its hardcoded `.sidebar-dashboard` markup with
+    // `min-height: 180px` from app.css was leaking layout space behind
+    // the multiview webviews). Fall back to sharedPanels so the dashboard
+    // panel element is always built on demand by the same factory the
+    // other shared panels use.
     var dashboardDividerEl = document.getElementById('sidebar-dashboard-divider');
     var boardListEl = document.getElementById('board-list');
     var logPanelEl = hookPanels.logs || document.getElementById('log-panel');
     var sharedPanels = getSharedPanelsApi();
+    var dashboardEl = hookPanels.dashboard || document.getElementById('sidebar-dashboard') ||
+      (sharedPanels ? sharedPanels.createPanelElement('dashboard', 'dashboard') : null);
     var backendSettingsPanelEl = hookPanels.backendSettings || document.getElementById('backend-settings-panel') ||
       (sharedPanels ? sharedPanels.createPanelElement('backendSettings', 'backendSettings') : null);
     var frontendSettingsPanelEl = hookPanels.frontendSettings || document.getElementById('frontend-settings-panel') ||
@@ -3636,8 +3615,20 @@
     }
     if (containsActive) tabsetEl.classList.add('is-active');
 
-    var headerEl = buildSideDockHeader(node);
-    tabsetEl.appendChild(headerEl);
+    // Panel-dock tabsets do NOT render the SHELL ws-view-header. Each
+    // sub-app webview renders its own header inside (e.g. log shows
+    // "Log [filters] Clear"; workspaces shows the workspace title).
+    // Per the project rule, close/drag/fold UI lives in the native menu
+    // bar — not in dock headers — so the SHELL chrome here only ate
+    // ~28-30 px from the panel webview's available height (and from the
+    // visible space above the bottom-dock divider, making the divider
+    // feel "35px below" where users expected it). Only multi-tab
+    // tabsets need the SHELL header for the tab bar; single-tab panels
+    // don't.
+    if (node.tabs.length > 1) {
+      var headerEl = buildSideDockHeader(node);
+      tabsetEl.appendChild(headerEl);
+    }
 
     var contentEl = document.createElement('div');
     contentEl.className = 'workspace-shell-panel-content';
@@ -3741,19 +3732,30 @@
     tabsetEl.classList.toggle('is-active', containsActive);
 
     // ── Header: rebuild if tab count changed, else patch in place ──
+    // Single-tab panel tabsets render NO header (sub-app provides its own
+    // chrome inside the webview). Strip any stale header if we transitioned
+    // from multi-tab → single-tab; bail to a full rebuild if we're going
+    // the other way (no header to patch).
     var headerEl = tabsetEl.querySelector('.ws-view-header');
-    if (!headerEl) return false;
-    var tabsEl = headerEl.querySelector('.ws-view-tabs');
+    if (node.tabs.length === 1) {
+      if (headerEl) {
+        tabsetEl.removeChild(headerEl);
+        headerEl = null;
+      }
+    } else {
+      if (!headerEl) return false;
+    }
+    var tabsEl = headerEl ? headerEl.querySelector('.ws-view-tabs') : null;
     var tabBtns = tabsEl ? tabsEl.querySelectorAll('.ws-view-tab') : [];
     var headerNeedsRebuild = tabsEl
       ? tabBtns.length !== node.tabs.length
       : node.tabs.length > 1;
 
-    if (headerNeedsRebuild) {
+    if (headerNeedsRebuild && headerEl) {
       var newHeader = buildSideDockHeader(node);
       tabsetEl.replaceChild(newHeader, headerEl);
       headerEl = newHeader;
-    } else {
+    } else if (headerEl) {
       // Patch header in place
       if (tabsEl) {
         for (var h = 0; h < node.tabs.length; h++) {
@@ -5946,9 +5948,6 @@
     focusHierarchyTarget: focusHierarchyTarget,
     showContextMenuInBoardFrame: showContextMenuInBoardFrame,
     handleBoardAction: handleBoardAction,
-    revealPanel: function (panelId) {
-      return setPanelVisibility(panelId, true, { activate: true });
-    },
     setPanelVisibility: setPanelVisibility,
     movePanelToDock: movePanelToDock,
     movePanelToGroup: movePanelToGroup,

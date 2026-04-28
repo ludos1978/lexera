@@ -395,47 +395,29 @@
       teardownCallbacks.push(opts.onTeardown);
       installPanelTeardownListener();
     }
-    // Apply the same body class the legacy SHELL set so that all the
+    // Apply the same root/body classes the legacy SHELL set so that all the
     // `body.workspace-shell-mode .board-list { ... }` rules in app.css
     // (and friends) take effect inside this child webview. Without
     // this, panels render with browser defaults instead of the legacy
-    // shell look. Adding `data-shell-panel` on body too lets sub-app
-    // CSS scope rules to "I'm hosted as a panel" without parsing URLs.
+    // shell look. Adding `data-shell-panel` on both html/body lets the
+    // shared CSS stretch the full document root as well, which is required
+    // for nested `height: 100%` layouts to fill the webview reliably.
     try {
+      var docEl = document.documentElement;
       var bodyEl = document.body;
+      var kind = getPanelKind();
+      var pane = getPaneId();
+      if (docEl) {
+        docEl.classList.add('workspace-shell-mode');
+        if (kind) docEl.setAttribute('data-shell-panel', kind);
+        if (pane) docEl.setAttribute('data-shell-pane', pane);
+      }
       if (bodyEl) {
         bodyEl.classList.add('workspace-shell-mode');
-        var kind = getPanelKind();
         if (kind) bodyEl.setAttribute('data-shell-panel', kind);
-        var pane = getPaneId();
         if (pane) bodyEl.setAttribute('data-shell-pane', pane);
       }
     } catch (_) {}
-    // Diagnostic: log the sub-app's own viewport + body geometry once
-    // after layout settles so we can see whether the webview frame
-    // matches the SHELL placeholder. Compares against the SHELL-side
-    // diag log emitted by `workspaceShell.js#onSpawned`. One-shot per
-    // sub-app boot.
-    setTimeout(function () {
-      try {
-        if (typeof window.lexeraLog !== 'function') return;
-        var b = document.body;
-        var br = b ? b.getBoundingClientRect() : null;
-        var firstChild = b ? (b.children && b.children[0]) : null;
-        var fcr = firstChild ? firstChild.getBoundingClientRect() : null;
-        var lastChild = b ? (b.children && b.children[b.children.length - 1]) : null;
-        var lcr = lastChild ? lastChild.getBoundingClientRect() : null;
-        window.lexeraLog('info',
-          '[subapp/diag] kind=' + (getPanelKind() || '?') +
-          ' winH=' + window.innerHeight +
-          ' docH=' + (document.documentElement && document.documentElement.clientHeight) +
-          ' body=' + (br ? '{t:' + br.top.toFixed(1) + ',b:' + br.bottom.toFixed(1) + ',h:' + br.height.toFixed(1) + '}' : 'null') +
-          ' first=' + (firstChild ? firstChild.tagName + '.' + (firstChild.className || '').split(' ')[0] : '?') +
-          (fcr ? '{t:' + fcr.top.toFixed(1) + ',b:' + fcr.bottom.toFixed(1) + ',h:' + fcr.height.toFixed(1) + '}' : '') +
-          ' last=' + (lastChild ? lastChild.tagName + '.' + (lastChild.className || '').split(' ')[0] : '?') +
-          (lcr ? '{t:' + lcr.top.toFixed(1) + ',b:' + lcr.bottom.toFixed(1) + ',h:' + lcr.height.toFixed(1) + '}' : ''));
-      } catch (_) {}
-    }, 400);
     var wv = getCurrentWebview();
     var ctx = getContext();
     if (!wv || typeof wv.listen !== 'function') {
