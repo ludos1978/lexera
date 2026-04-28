@@ -47,6 +47,12 @@
   if (!layoutPersistence) {
     throw new Error('LexeraLayoutPersistence global is required before workspaceShell.js');
   }
+  var tabDragController = (typeof window !== 'undefined' && window.LexeraTabDragController) || null;
+  if (!tabDragController) {
+    throw new Error('LexeraTabDragController global is required before workspaceShell.js');
+  }
+  var SIDE_DOCK_DIVIDER_SIZE_PX = 5;
+  var BOTTOM_DOCK_DIVIDER_SIZE_PX = 12;
 
   var normalizeViewKind = layoutTree.normalizeViewKind;
   var isPanelTab = layoutTree.isPanelTab;
@@ -1201,28 +1207,46 @@
 
     // Grid: folded docks get FOLD_SIZE px, visible docks get their size, hidden get nothing
     var leftCol = '';
-    if (layoutState.visible.left) leftCol = clampPanelSize('left', state.dockSizes.left) + 'px 5px ';
+    if (layoutState.visible.left) leftCol = clampPanelSize('left', state.dockSizes.left) + 'px ' + SIDE_DOCK_DIVIDER_SIZE_PX + 'px ';
     else if (layoutState.folded.left) leftCol = FOLD_SIZE + 'px ';
 
     var rightCol = '';
-    if (layoutState.visible.right) rightCol = ' 5px ' + clampPanelSize('right', state.dockSizes.right) + 'px';
+    if (layoutState.visible.right) rightCol = ' ' + SIDE_DOCK_DIVIDER_SIZE_PX + 'px ' + clampPanelSize('right', state.dockSizes.right) + 'px';
     else if (layoutState.folded.right) rightCol = ' ' + FOLD_SIZE + 'px';
 
     state.mainRowEl.style.gridTemplateColumns =
       leftCol + 'minmax(0, 1fr)' + rightCol;
 
     var bottomRow = '';
-    if (layoutState.visible.bottom) bottomRow = ' 5px ' + clampPanelSize('bottom', state.dockSizes.bottom) + 'px';
+    if (layoutState.visible.bottom) bottomRow = ' ' + clampPanelSize('bottom', state.dockSizes.bottom) + 'px';
     else if (layoutState.folded.bottom) bottomRow = ' ' + FOLD_SIZE + 'px';
 
     state.bodyEl.style.gridTemplateRows =
       'minmax(0, 1fr)' + bottomRow;
   }
 
+  function syncBottomDividerPlacement(layoutState) {
+    if (!state.bottomDividerEl) return;
+    if (!layoutState.visible.bottom && !layoutState.folded.bottom) {
+      state.bottomDividerEl.style.bottom = '0px';
+      return;
+    }
+    var bottomOffset = layoutState.visible.bottom
+      ? clampPanelSize('bottom', state.dockSizes.bottom)
+      : 22;
+    state.bottomDividerEl.style.bottom = bottomOffset + 'px';
+  }
+
   function applyDockLayout() {
     var layoutState = getDockLayoutState();
     syncDockStructure(layoutState);
     syncDockGridTracks(layoutState);
+    syncBottomDividerPlacement(layoutState);
+    if (multiview && typeof multiview.refreshAllGeometry === 'function') {
+      requestAnimationFrame(function () {
+        multiview.refreshAllGeometry();
+      });
+    }
   }
 
   // Freeze every visible iframe at its current pixel size for the duration
@@ -1300,6 +1324,7 @@
           lastLayoutState = nextLayoutState;
         }
         syncDockGridTracks(nextLayoutState);
+        syncBottomDividerPlacement(nextLayoutState);
       }
       function scheduleMove(moveEvent) {
         pendingMoveEvent = moveEvent;
@@ -1758,6 +1783,36 @@
       return true;
     }
     return false;
+  }
+
+  function reorderTabInLeaf(tabId, leafId, targetIndex) {
+    var found = findTabInAllTrees(tabId);
+    if (!found || found.leaf.id !== leafId) return false;
+    var currentIndex = found.index;
+    if (currentIndex === targetIndex || currentIndex + 1 === targetIndex) return false;
+    var tab = found.leaf.tabs.splice(currentIndex, 1)[0];
+    var insertAt = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
+    found.leaf.tabs.splice(insertAt, 0, tab);
+    render();
+    return true;
+  }
+
+  function moveTabToLeafAtIndex(tabId, targetLeafId, targetIndex) {
+    var extracted = extractTab(tabId);
+    if (!extracted) return false;
+    var found = findLeafInAllTrees(targetLeafId);
+    if (!found) {
+      insertTabIntoLeaf(extracted.tab, extracted.sourceLeafId);
+      return false;
+    }
+    var idx = Math.max(0, Math.min(targetIndex, found.leaf.tabs.length));
+    found.leaf.tabs.splice(idx, 0, extracted.tab);
+    found.leaf.activeTabId = extracted.tab.id;
+    if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
+    normalizeAllTrees();
+    ensureActiveLeaf();
+    render();
+    return true;
   }
 
   function moveTabToLeaf(tabId, targetLeafId) {
@@ -2843,7 +2898,7 @@
     for (var i = 0; i < zones.length; i++) {
       zones[i].classList.remove('is-active');
     }
-    clearDropZones();
+    tabDragController.clearDropZones();
   }
 
   function setPanelDropTarget(dockId) {
@@ -2992,409 +3047,6 @@
     var activeTab = getActiveTab();
     if (!activeTab) return false;
     return setTabViewKind(activeTab.id, viewKind, { activate: true });
-  }
-
-  function getDropZoneForEvent(tabsetEl, event) {
-    var rect = tabsetEl.getBoundingClientRect();
-    var x = event.clientX;
-    var y = event.clientY;
-    var edgeX = Math.min(80, rect.width * 0.24);
-    var edgeY = Math.min(80, rect.height * 0.24);
-    if (x <= rect.left + edgeX) return 'left';
-    if (x >= rect.right - edgeX) return 'right';
-    if (y <= rect.top + edgeY) return 'top';
-    if (y >= rect.bottom - edgeY) return 'bottom';
-    return 'center';
-  }
-
-  function clearDropZones() {
-    var containers = [state.dockEl, state.leftDockEl, state.rightDockEl, state.bottomDockEl];
-    for (var c = 0; c < containers.length; c++) {
-      if (!containers[c]) continue;
-      var nodes = containers[c].querySelectorAll('.workspace-shell-tabset[data-drop-zone]');
-      for (var i = 0; i < nodes.length; i++) nodes[i].removeAttribute('data-drop-zone');
-      var zones = containers[c].querySelectorAll('.workspace-shell-drop-zone.is-active');
-      for (var j = 0; j < zones.length; j++) zones[j].classList.remove('is-active');
-    }
-    state.dragHoverLeafId = '';
-    state.dragHoverZone = '';
-    clearTabInsertIndicator();
-  }
-
-  // ── Tab reorder within tabset ──
-
-  function getTabInsertIndex(tabsEl, clientX) {
-    var children = tabsEl.children;
-    var tabs = [];
-    for (var j = 0; j < children.length; j++) {
-      if (!children[j].classList.contains('ws-tab-insert-marker')) tabs.push(children[j]);
-    }
-    if (!tabs.length) return 0;
-    for (var i = 0; i < tabs.length; i++) {
-      var rect = tabs[i].getBoundingClientRect();
-      var mid = rect.left + rect.width / 2;
-      if (clientX < mid) return i;
-    }
-    return tabs.length;
-  }
-
-  function setTabInsertIndicator(tabsEl, index) {
-    clearTabInsertIndicator();
-    if (!tabsEl || index < 0) return;
-    state.dragHoverTabIndex = index;
-    var marker = document.createElement('div');
-    marker.className = 'ws-tab-insert-marker';
-    // Collect real tab children (excluding markers)
-    var children = tabsEl.children;
-    var tabs = [];
-    for (var j = 0; j < children.length; j++) {
-      if (!children[j].classList.contains('ws-tab-insert-marker')) tabs.push(children[j]);
-    }
-    if (index < tabs.length) {
-      tabsEl.insertBefore(marker, tabs[index]);
-    } else {
-      tabsEl.appendChild(marker);
-    }
-  }
-
-  function clearTabInsertIndicator() {
-    state.dragHoverTabIndex = -1;
-    var markers = document.querySelectorAll('.ws-tab-insert-marker');
-    for (var i = 0; i < markers.length; i++) {
-      markers[i].parentNode.removeChild(markers[i]);
-    }
-  }
-
-  function reorderTabInLeaf(tabId, leafId, targetIndex) {
-    var found = findTabInAllTrees(tabId);
-    if (!found || found.leaf.id !== leafId) return false;
-    var currentIndex = found.index;
-    if (currentIndex === targetIndex || currentIndex + 1 === targetIndex) return false; // no-op
-    var tab = found.leaf.tabs.splice(currentIndex, 1)[0];
-    var insertAt = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
-    found.leaf.tabs.splice(insertAt, 0, tab);
-    render();
-    return true;
-  }
-
-  function moveTabToLeafAtIndex(tabId, targetLeafId, targetIndex) {
-    var extracted = extractTab(tabId);
-    if (!extracted) return false;
-    var found = findLeafInAllTrees(targetLeafId);
-    if (!found) {
-      insertTabIntoLeaf(extracted.tab, extracted.sourceLeafId);
-      return false;
-    }
-    var idx = Math.max(0, Math.min(targetIndex, found.leaf.tabs.length));
-    found.leaf.tabs.splice(idx, 0, extracted.tab);
-    found.leaf.activeTabId = extracted.tab.id;
-    if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
-    normalizeAllTrees();
-    ensureActiveLeaf();
-    render();
-    return true;
-  }
-
-  function setTabDragModeEnabled(enabled) {
-    getBody().classList.toggle('workspace-shell-tab-dragging', !!enabled);
-  }
-
-  function createTabDragGhost(tabId) {
-    var found = findTabInAllTrees(tabId);
-    if (!found) return null;
-    var ghost = document.createElement('div');
-    ghost.className = 'workspace-shell-tab-ghost';
-    ghost.textContent = getTabTitle(found.tab);
-    document.body.appendChild(ghost);
-    return ghost;
-  }
-
-  function positionTabDragGhost(ghost, x, y) {
-    if (!ghost) return;
-    ghost.style.left = Math.round(x) + 'px';
-    ghost.style.top = Math.round(y) + 'px';
-  }
-
-  function destroyTabDragGhost(ghost) {
-    if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
-  }
-
-  function setDropZoneHighlight(leafId, zone) {
-    clearDropZones();
-    if (!leafId || !zone) return;
-    state.dragHoverLeafId = leafId;
-    state.dragHoverZone = zone;
-    var containers = [state.dockEl, state.leftDockEl, state.rightDockEl, state.bottomDockEl];
-    for (var c = 0; c < containers.length; c++) {
-      if (!containers[c]) continue;
-      var tabsetEl = containers[c].querySelector('.workspace-shell-tabset[data-node-id="' + leafId + '"]');
-      if (tabsetEl) { tabsetEl.setAttribute('data-drop-zone', zone); break; }
-    }
-    for (var d = 0; d < containers.length; d++) {
-      if (!containers[d]) continue;
-      var zoneEl = containers[d].querySelector('.workspace-shell-drop-zone[data-ws-drop-leaf="' + leafId + '"][data-zone="' + zone + '"]');
-      if (zoneEl) { zoneEl.classList.add('is-active'); break; }
-    }
-  }
-
-  function handleTabPointerMove(event) {
-    var drag = state.pointerDrag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    drag.lastX = event.clientX;
-    drag.lastY = event.clientY;
-    if (isPointOutsideWorkspaceBounds(event.clientX, event.clientY, 40)) {
-      drag.detachArmed = true;
-    }
-    state.dragLastX = event.clientX;
-    state.dragLastY = event.clientY;
-
-    if (!drag.started) {
-      var dx = event.clientX - drag.startX;
-      var dy = event.clientY - drag.startY;
-      if ((dx * dx) + (dy * dy) < 36) return;
-      drag.started = true;
-      state.dragTabId = drag.tabId || '';
-      state.dragPanelId = drag.panelId || '';
-      state.dragDroppedInternally = false;
-      if (drag.tabId) {
-        drag.ghost = createTabDragGhost(drag.tabId);
-      } else if (drag.panelId) {
-        // Create ghost for panel-only drag
-        var ghost = document.createElement('div');
-        ghost.className = 'workspace-shell-tab-ghost';
-        ghost.textContent = getPanelTitle(drag.panelId);
-        document.body.appendChild(ghost);
-        drag.ghost = ghost;
-      }
-      setTabDragModeEnabled(true);
-    }
-
-    positionTabDragGhost(drag.ghost, event.clientX, event.clientY);
-
-    var target = document.elementFromPoint(event.clientX, event.clientY);
-
-    // Tab bar reorder detection: if pointer is over tab area, show insert marker
-    var headerEl = target ? target.closest('.ws-view-header') : null;
-    if (headerEl) {
-      var headerTabsetEl = headerEl.closest('.workspace-shell-tabset');
-      if (headerTabsetEl) {
-        var leafId = headerTabsetEl.getAttribute('data-node-id');
-        // Multi-tab header: reorder within tab bar
-        if (!headerEl.classList.contains('is-single')) {
-          var tabsEl = headerEl.querySelector('.ws-view-tabs');
-          if (tabsEl && leafId) {
-            clearPanelDropTargets();
-            clearDropZones();
-            var insertIdx = getTabInsertIndex(tabsEl, event.clientX);
-            setTabInsertIndicator(tabsEl, insertIdx);
-            state.dragHoverLeafId = leafId;
-            state.dragHoverZone = 'tab-reorder';
-            return;
-          }
-        }
-        // Single-tab header: treat as center drop (merge into tabset)
-        if (leafId) {
-          clearPanelDropTargets();
-          clearTabInsertIndicator();
-          setDropZoneHighlight(leafId, 'center');
-          return;
-        }
-      }
-    }
-
-    var zoneEl = target ? target.closest('[data-ws-drop-zone][data-ws-drop-leaf]') : null;
-    var tabsetEl = target ? target.closest('.workspace-shell-tabset') : null;
-    if (zoneEl) {
-      clearPanelDropTargets();
-      setDropZoneHighlight(zoneEl.getAttribute('data-ws-drop-leaf'), zoneEl.getAttribute('data-ws-drop-zone'));
-      return;
-    }
-    if (tabsetEl) {
-      clearPanelDropTargets();
-      setDropZoneHighlight(tabsetEl.getAttribute('data-node-id'), getDropZoneForEvent(tabsetEl, event));
-      return;
-    }
-    // Check for dock-level panel drop zones
-    var dockZoneEl = target ? target.closest('[data-ws-panel-drop-dock]') : null;
-    if (dockZoneEl) {
-      setPanelDropTarget(dockZoneEl.getAttribute('data-ws-panel-drop-dock'));
-      return;
-    }
-    clearPanelDropTargets();
-    clearDropZones();
-  }
-
-  function finishTabPointerDrag(event) {
-    var drag = state.pointerDrag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    window.removeEventListener('pointermove', handleTabPointerMove, true);
-    window.removeEventListener('pointerup', finishTabPointerDrag, true);
-    window.removeEventListener('pointercancel', finishTabPointerDrag, true);
-
-    if (drag.sourceEl && typeof drag.sourceEl.releasePointerCapture === 'function') {
-      try { drag.sourceEl.releasePointerCapture(event.pointerId); } catch (_) { /* ignore */ }
-    }
-
-    destroyTabDragGhost(drag.ghost);
-    setTabDragModeEnabled(false);
-
-    if (!drag.started) {
-      state.pointerDrag = null;
-      state.dragTabId = '';
-      state.dragPanelId = '';
-      clearDropZones();
-      if (drag.panelId) activatePanel(drag.panelId);
-      else if (drag.tabId) activateTab(drag.tabId);
-      return;
-    }
-
-    var tabId = drag.tabId;
-    var panelId = drag.panelId || '';
-    var x = drag.lastX;
-    var y = drag.lastY;
-    var leafId = state.dragHoverLeafId;
-    var zone = state.dragHoverZone;
-    var dockId = state.dragHoverDock || '';
-
-    clearDropZones();
-    clearPanelDropTargets();
-    state.pointerDrag = null;
-    state.dragTabId = '';
-    state.dragPanelId = '';
-
-    // Dock-level drop for panel drags
-    if (dockId && panelId) {
-      movePanelToDock(panelId, dockId);
-      activatePanel(panelId);
-      state.dragDroppedInternally = false;
-      return;
-    }
-
-    if (leafId && zone) {
-      state.dragDroppedInternally = true;
-      var dropTabIndex = state.dragHoverTabIndex;
-      clearTabInsertIndicator();
-
-      if (zone === 'tab-reorder' && dropTabIndex >= 0) {
-        // Tab reorder: same leaf = reorder, different leaf = move at index
-        var effectiveTabId = tabId;
-        if (!effectiveTabId && panelId) {
-          var panelInfo = findPanelInAllTrees(panelId);
-          if (panelInfo) effectiveTabId = panelInfo.tab.id;
-        }
-        if (effectiveTabId) {
-          var tabInfo = findTabInAllTrees(effectiveTabId);
-          if (tabInfo && tabInfo.leaf.id === leafId) {
-            reorderTabInLeaf(effectiveTabId, leafId, dropTabIndex);
-          } else {
-            moveTabToLeafAtIndex(effectiveTabId, leafId, dropTabIndex);
-          }
-        }
-      } else if (panelId && !tabId) {
-        // Panel drag onto a leaf
-        if (zone === 'center') placePanelInLeaf(panelId, leafId);
-        else splitLeafWithPanel(leafId, zone, panelId);
-      } else if (tabId) {
-        if (zone === 'center') moveTabToLeaf(tabId, leafId);
-        else splitLeafWithTab(leafId, zone, tabId);
-      }
-      state.dragDroppedInternally = false;
-      return;
-    }
-
-    var outsideWindow = drag.detachArmed && isPointOutsideWorkspaceBounds(x, y, 20);
-    if (outsideWindow) {
-      if (panelId && !tabId) detachPanelView(panelId);
-      else if (tabId) detachTab(tabId);
-    }
-    state.dragDroppedInternally = false;
-  }
-
-  function startPointerDrag(sourceEl, tabId, panelId, event) {
-    state.pointerDrag = {
-      tabId: tabId,
-      panelId: panelId,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      detachArmed: false,
-      started: false,
-      sourceEl: sourceEl,
-      ghost: null
-    };
-    if (typeof sourceEl.setPointerCapture === 'function') {
-      try { sourceEl.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
-    }
-    window.addEventListener('pointermove', handleTabPointerMove, true);
-    window.addEventListener('pointerup', finishTabPointerDrag, true);
-    window.addEventListener('pointercancel', finishTabPointerDrag, true);
-  }
-
-  function handlePointerDown(event) {
-    if (event.button !== 0) return;
-    // Panel drag handle: find the panel's tab in side dock tree, start unified drag
-    var panelHandleEl = event.target.closest('[data-ws-panel-drag-handle]');
-    if (panelHandleEl) {
-      event.preventDefault();
-      var handledPanelId = resolvePanelTarget(panelHandleEl.getAttribute('data-ws-panel-drag-handle'));
-      if (!handledPanelId) return;
-      state.activePanelId = handledPanelId;
-      // Find the tab for this panel in any tree
-      var panelFound = findPanelInAllTrees(handledPanelId);
-      var dragTabId = panelFound ? panelFound.tab.id : '';
-      startPointerDrag(panelHandleEl, dragTabId, handledPanelId, event);
-      renderToolbar();
-      layoutPersistence.persist();
-      return;
-    }
-    // Panel tab click in side dock: start unified drag (but not on close buttons)
-    var panelTabEl = event.target.closest('.ws-view-tab[data-ws-panel-id]');
-    if (panelTabEl && !event.target.closest('[data-ws-action="close-panel"]')) {
-      event.preventDefault();
-      var panelId = panelTabEl.getAttribute('data-ws-panel-id');
-      if (!panelId) return;
-      state.activePanelId = panelId;
-      var panelFound2 = findPanelInAllTrees(panelId);
-      var dragTabId2 = panelFound2 ? panelFound2.tab.id : '';
-      startPointerDrag(panelTabEl, dragTabId2, panelId, event);
-      renderToolbar();
-      layoutPersistence.persist();
-      return;
-    }
-    var panelWindowEl = event.target.closest('.workspace-shell-panel-window[data-panel-id]');
-    if (panelWindowEl) {
-      var windowPanelId = resolvePanelTarget(panelWindowEl.getAttribute('data-panel-id'));
-      if (windowPanelId) {
-        state.activePanelId = windowPanelId;
-        renderToolbar();
-        layoutPersistence.persist();
-      }
-    }
-    var tabEl = event.target.closest('.ws-view-tab[data-ws-tab-id]') ||
-                event.target.closest('.ws-view-drag[data-ws-tab-id]');
-    if (tabEl && !event.target.closest('[data-ws-action="close-tab"]')) {
-      event.preventDefault();
-      var tabId = tabEl.getAttribute('data-ws-tab-id');
-      if (!tabId) return;
-      var ownerTabset = tabEl.closest('.workspace-shell-tabset');
-      if (ownerTabset) {
-        state.activeLeafId = ownerTabset.getAttribute('data-node-id') || state.activeLeafId;
-        renderToolbar();
-        layoutPersistence.persist();
-      }
-      startPointerDrag(tabEl, tabId, '', event);
-      return;
-    }
-    var tabset = event.target.closest('.workspace-shell-tabset');
-    if (!tabset) return;
-    var nodeId = tabset.getAttribute('data-node-id');
-    if (!nodeId) return;
-    state.activeLeafId = nodeId;
-    notifyActiveBoardChanged();
-    renderToolbar();
-    layoutPersistence.persist();
   }
 
   function bindSplitDivider(dividerEl, splitId, axis) {
@@ -4042,6 +3694,7 @@
     var detail = event && event.detail ? event.detail : {};
     state.backendConnected = !!detail.connected;
     if (state.enabled && state.mounted) render();
+    messageBridge.broadcastBackendConnectionState(state.backendConnected);
   }
 
   function forwardActionToActiveFrame(action) {
@@ -4389,7 +4042,7 @@
 
     state.rootEl.addEventListener('click', handleRootClick);
     state.rootEl.addEventListener('contextmenu', handleRootContextMenu);
-    state.rootEl.addEventListener('pointerdown', handlePointerDown, true);
+    state.rootEl.addEventListener('pointerdown', tabDragController.handlePointerDown, true);
 
     mainContent.appendChild(state.rootEl);
     window.addEventListener('message', handleWindowMessage);
@@ -4397,6 +4050,16 @@
 
     state.mounted = true;
     state.backendConnected = !!document.querySelector('.connection-status-btn.connected');
+    // Sub-apps that just mounted (e.g., the log webview) request the
+    // current connection state — without this they'd start as
+    // "Disconnected" until the next state change broadcast.
+    if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
+      window.__TAURI__.event.listen('backend-connection-state-request', function () {
+        messageBridge.broadcastBackendConnectionState(state.backendConnected);
+      });
+    }
+    // Order matters: persistence first so its `persist` reference can
+    // be passed to the drag controller's setup deps.
     layoutPersistence.setup({
       state: state,
       layoutTree: layoutTree,
@@ -4405,6 +4068,32 @@
       resolvePanelTarget: resolvePanelTarget,
       syncIntegratedPanelVisibility: syncIntegratedPanelVisibility,
       ensureActiveLeaf: ensureActiveLeaf
+    });
+    tabDragController.setup({
+      state: state,
+      getBody: getBody,
+      findTabInAllTrees: findTabInAllTrees,
+      findPanelInAllTrees: findPanelInAllTrees,
+      moveTabToLeaf: moveTabToLeaf,
+      moveTabToLeafAtIndex: moveTabToLeafAtIndex,
+      splitLeafWithTab: splitLeafWithTab,
+      splitLeafWithPanel: splitLeafWithPanel,
+      placePanelInLeaf: placePanelInLeaf,
+      reorderTabInLeaf: reorderTabInLeaf,
+      movePanelToDock: movePanelToDock,
+      detachTab: detachTab,
+      detachPanelView: detachPanelView,
+      activateTab: activateTab,
+      activatePanel: activatePanel,
+      resolvePanelTarget: resolvePanelTarget,
+      getPanelTitle: getPanelTitle,
+      getTabTitle: getTabTitle,
+      clearPanelDropTargets: clearPanelDropTargets,
+      setPanelDropTarget: setPanelDropTarget,
+      isPointOutsideWorkspaceBounds: isPointOutsideWorkspaceBounds,
+      renderToolbar: renderToolbar,
+      notifyActiveBoardChanged: notifyActiveBoardChanged,
+      persist: layoutPersistence.persist
     });
     state.didRestoreState = layoutPersistence.restore();
     applyPanelOnlyWindowState();

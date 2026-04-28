@@ -12,34 +12,74 @@
   <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
-  <header class="header">
-    <span class="title">Dashboard</span>
-    <span class="status" id="status">connecting</span>
-  </header>
-  <main class="body">
-    <section class="metrics">
-      <div class="metric">
-        <div class="metric-label">Local boards</div>
-        <div class="metric-value" id="m-local">—</div>
+  <!--
+    Dashboard sub-app: mirrors the canonical markup that
+    `sharedPanels.js#createDashboardPanelElement` produces, so the
+    legacy app.js dashboard logic (search/scope/pin/categorize) keeps
+    finding the elements it expects to drive. Class hierarchy:
+      `.sidebar-dashboard`              — root, picks up `.sidebar-dashboard`
+                                          rules from app.css (flex column,
+                                          min-height, etc.)
+      `.lexera-shared-panel-dashboard`  — multiview panel marker
+      `.sidebar-dashboard-controls`     — top bar (search input, scope
+                                          checkbox, pin button)
+      `.sidebar-dashboard-body`         — scrollable list area, hosts the
+                                          9 result groups identified by
+                                          `data-dashboard-group-key`
+    Group ordering is preserved from the original SHELL markup; render
+    code in `app.js` keys off `data-dashboard-group-key`.
+  -->
+  <div class="sidebar-dashboard lexera-shared-panel lexera-shared-panel-dashboard"
+       data-shell-panel="dashboard" data-shell-panel-instance="dashboard">
+    <div class="sidebar-dashboard-controls">
+      <div class="dashboard-query-row">
+        <input id="dashboard-search-input" class="dashboard-search-input lexera-shared-dashboard-search" type="text" placeholder="Search board content...">
       </div>
-      <div class="metric">
-        <div class="metric-label">Remote boards</div>
-        <div class="metric-value" id="m-remote">—</div>
+      <div class="dashboard-filter-row">
+        <button id="btn-dashboard-search" class="sidebar-btn dashboard-search-btn lexera-shared-dashboard-search-btn" type="button" title="Run dashboard search">&#8981;</button>
+        <label class="dashboard-scope-label" title="Search all boards instead of only the active board"><input id="dashboard-scope-select" class="dashboard-scope-checkbox lexera-shared-dashboard-scope" type="checkbox" title="Search all boards">All Boards</label>
+        <button id="btn-dashboard-pin" class="board-action-btn lexera-shared-dashboard-pin" type="button" title="Pin current dashboard query">Pin</button>
       </div>
-      <div class="metric">
-        <div class="metric-label">Workspaces</div>
-        <div class="metric-value" id="m-ws">—</div>
+    </div>
+    <div class="sidebar-dashboard-body view-loading">
+      <div class="dashboard-group tree-entry" data-dashboard-group-key="results">
+        <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Results</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
+        <div id="dashboard-results-list" class="dashboard-list tree-children expanded lexera-shared-dashboard-results" data-hierarchy-section-body="true"></div>
       </div>
-      <div class="metric">
-        <div class="metric-label">Active board</div>
-        <div class="metric-value small" id="m-active">none</div>
+      <div class="dashboard-group tree-entry" data-dashboard-group-key="pinned">
+        <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Pinned Searches</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
+        <div id="dashboard-pinned-list" class="dashboard-list tree-children expanded lexera-shared-dashboard-pinned" data-hierarchy-section-body="true"></div>
       </div>
-    </section>
-    <section>
-      <h3>Recent boards</h3>
-      <ul class="recent-list" id="recent"></ul>
-    </section>
-  </main>
+      <div class="dashboard-group tree-entry" data-dashboard-group-key="overdue">
+        <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Overdue</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
+        <div id="dashboard-overdue-list" class="dashboard-list tree-children expanded lexera-shared-dashboard-overdue" data-hierarchy-section-body="true"></div>
+      </div>
+      <div class="dashboard-group tree-entry" data-dashboard-group-key="upcoming">
+        <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Upcoming</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
+        <div id="dashboard-upcoming-list" class="dashboard-list tree-children expanded lexera-shared-dashboard-upcoming" data-hierarchy-section-body="true"></div>
+      </div>
+      <div class="dashboard-group tree-entry" data-dashboard-group-key="open-tasks">
+        <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Open Tasks</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
+        <div id="dashboard-todos-list" class="dashboard-list tree-children expanded lexera-shared-dashboard-todos" data-hierarchy-section-body="true"></div>
+      </div>
+      <div class="dashboard-group tree-entry" id="dashboard-tagged-group" data-dashboard-group-key="tagged">
+        <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Tagged Items</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
+        <div id="dashboard-tagged-list" class="dashboard-list tree-children expanded lexera-shared-dashboard-tagged" data-hierarchy-section-body="true"></div>
+      </div>
+      <div class="dashboard-group tree-entry" data-dashboard-group-key="file-embeds">
+        <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">File Embeds</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
+        <div id="dashboard-embeds-list" class="dashboard-list tree-children expanded lexera-shared-dashboard-embeds" data-hierarchy-section-body="true"></div>
+      </div>
+      <div class="dashboard-group tree-entry" data-dashboard-group-key="broken-elements">
+        <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Broken Elements</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
+        <div id="dashboard-broken-list" class="dashboard-list tree-children expanded lexera-shared-dashboard-broken" data-hierarchy-section-body="true"></div>
+      </div>
+      <div class="dashboard-group tree-entry" data-dashboard-group-key="included-files">
+        <div class="dashboard-group-header tree-node" data-tree-node-role="branch" data-tree-structural-role="section" aria-expanded="true"><span class="tree-indent tree-indent-root" aria-hidden="true"></span><span class="dashboard-group-toggle tree-toggle expanded" aria-hidden="true"></span><span class="tree-label dashboard-group-title">Included Files</span><span class="tree-meta"><span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span><span class="tree-count hidden"></span><span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span><span class="tree-grip tree-grip-spacer" aria-hidden="true"></span></span></div>
+        <div id="dashboard-included-list" class="dashboard-list tree-children expanded lexera-shared-dashboard-included" data-hierarchy-section-body="true"></div>
+      </div>
+    </div>
+  </div>
   <script src="../_shared/subAppRuntime.js"></script>
   <script src="../_shared/healthDot.js"></script>
   <script src="dashboard.js"></script>

@@ -185,6 +185,57 @@
     return boardHost.multiviewUrlForTab(desiredSrc);
   }
 
+  function getMultiviewInset() {
+    try {
+      var p = new URLSearchParams(window.location.search || '');
+      var v = parseInt(p.get('multiview-inset') || '0', 10);
+      return Number.isFinite(v) && v >= 0 ? v : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  // Shared native child-webview translation. Keep this in the single
+  // placeholder-rect -> native-geometry path so every board/panel view uses
+  // the same offset contract.
+  var MULTIVIEW_NATIVE_TOP_OFFSET_PX = 28;
+
+  function buildGeometryUpdate(label, placeholderEl) {
+    if (!label || !placeholderEl || placeholderEl.offsetParent === null) return null;
+    var r = placeholderEl.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return null;
+    var inset = getMultiviewInset();
+    var topInset = inset + MULTIVIEW_NATIVE_TOP_OFFSET_PX;
+    return {
+      label: label,
+      x: r.left + inset,
+      y: r.top + topInset,
+      width: Math.max(1, r.width - 2 * inset),
+      height: Math.max(1, r.height - inset)
+    };
+  }
+
+  function pushGeometryForLabel(label, placeholderEl) {
+    var update = buildGeometryUpdate(label, placeholderEl);
+    if (!update) return;
+    if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
+      window.LexeraMultiview.pushGeomDeferred(update);
+    } else {
+      window.LexeraMultiview.setGeometry([update]).catch(function () {});
+    }
+  }
+
+  function refreshAllGeometry() {
+    if (!deps || typeof deps.getPlaceholder !== 'function') return;
+    var tabIds = Object.keys(multiviewSpawnedTabs || {});
+    for (var i = 0; i < tabIds.length; i++) {
+      var tabId = tabIds[i];
+      var entry = multiviewSpawnedTabs[tabId];
+      if (!entry || entry.state !== 'ready' || !entry.label) continue;
+      pushGeometryForLabel(entry.label, deps.getPlaceholder(tabId));
+    }
+  }
+
   function watchPlaceholderVisibility(tab, placeholderEl, pushGeomFn) {
     if (!tab || !tab.id) return;
     boardHost.watchPlaceholderVisibility(
@@ -232,31 +283,8 @@
       return;
     }
 
-    // Optional safety inset (?multiview-inset=N): subtracts N pixels
-    // from each side as a debug aid for divider-cover issues.
-    var MV_INSET = (function () {
-      try {
-        var p = new URLSearchParams(window.location.search || '');
-        var v = parseInt(p.get('multiview-inset') || '0', 10);
-        return Number.isFinite(v) && v >= 0 ? v : 0;
-      } catch (_) { return 0; }
-    })();
     function pushGeom() {
-      if (placeholderEl.offsetParent === null) return;
-      var r = placeholderEl.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) return;
-      var update = {
-        label: label,
-        x: r.left + MV_INSET,
-        y: r.top + MV_INSET,
-        width: Math.max(1, r.width - 2 * MV_INSET),
-        height: Math.max(1, r.height - 2 * MV_INSET)
-      };
-      if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
-        window.LexeraMultiview.pushGeomDeferred(update);
-      } else {
-        window.LexeraMultiview.setGeometry([update]).catch(function () {});
-      }
+      pushGeometryForLabel(label, placeholderEl);
     }
     // One-shot retry: when doSpawn() can't measure the placeholder yet
     // (dock collapsed, layout hasn't settled, etc.), wait for the next
@@ -375,18 +403,18 @@
       wsDebug('doSpawn tab=' + tab.id + ' label=' + label +
         ' entryState=' + (multiviewSpawnedTabs[tab.id] ? multiviewSpawnedTabs[tab.id].state : 'none') +
         ' lock=' + (multiviewLabelSpawnLocks[label] ? 'yes' : 'no'));
-      var r = placeholderEl.getBoundingClientRect();
-      if (!placeholderEl.isConnected || placeholderEl.offsetParent === null || r.width <= 0 || r.height <= 0) {
+      var update = buildGeometryUpdate(label, placeholderEl);
+      if (!placeholderEl.isConnected || !update) {
         // Placeholder is in the DOM but not yet measurable. Hook a
         // one-shot watcher that re-attempts as soon as the placeholder is
         // connected, paint-visible, and >0×0.
         scheduleSpawnRetryWhenMeasurable();
         return;
       }
-      var x = r.left;
-      var y = r.top;
-      var w = r.width;
-      var h = r.height;
+      var x = update.x;
+      var y = update.y;
+      var w = update.width;
+      var h = update.height;
       if (deps && typeof deps.traceShell === 'function') {
         deps.traceShell(
           'spawn label=' + label +
@@ -666,6 +694,7 @@
     ensure: ensure,
     destroy: destroy,
     cleanupLocalState: cleanupLocalState,
+    refreshAllGeometry: refreshAllGeometry,
     applyHealth: applyHealth,
     reapplyAllHealthDots: reapplyAllHealthDots,
     labelForTab: labelForTab,

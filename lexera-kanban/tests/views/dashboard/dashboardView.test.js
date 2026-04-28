@@ -15,39 +15,72 @@ function loadDashboardView(window) {
   factory(window, window.document, window.LexeraSubApp);
 }
 
+// Mirror of the canonical dashboard markup that
+// `sharedPanels.js#createDashboardPanelElement` and
+// `views/dashboard/index.html` both produce. Keeping it inline here
+// (rather than importing the file) keeps the test independent of any
+// HTML-loader pipeline.
 function createDom() {
   return new JSDOM(`
     <!doctype html>
     <html>
       <body>
-        <header class="header">
-          <span class="title">Dashboard</span>
-          <span class="status" id="status">connecting</span>
-        </header>
-        <main class="body">
-          <section class="metrics">
-            <div class="metric"><div class="metric-value" id="m-local">—</div></div>
-            <div class="metric"><div class="metric-value" id="m-remote">—</div></div>
-            <div class="metric"><div class="metric-value" id="m-ws">—</div></div>
-            <div class="metric"><div class="metric-value small" id="m-active">none</div></div>
-          </section>
-          <section>
-            <ul class="recent-list" id="recent"></ul>
-          </section>
-        </main>
+        <div class="sidebar-dashboard lexera-shared-panel lexera-shared-panel-dashboard"
+             data-shell-panel="dashboard" data-shell-panel-instance="dashboard">
+          <div class="sidebar-dashboard-controls">
+            <div class="dashboard-query-row">
+              <input id="dashboard-search-input" class="dashboard-search-input lexera-shared-dashboard-search" type="text">
+            </div>
+            <div class="dashboard-filter-row">
+              <button id="btn-dashboard-search" class="dashboard-search-btn lexera-shared-dashboard-search-btn" type="button"></button>
+              <label><input id="dashboard-scope-select" class="dashboard-scope-checkbox lexera-shared-dashboard-scope" type="checkbox">All Boards</label>
+              <button id="btn-dashboard-pin" class="board-action-btn lexera-shared-dashboard-pin" type="button">Pin</button>
+            </div>
+          </div>
+          <div class="sidebar-dashboard-body view-loading">
+            <div class="dashboard-group" data-dashboard-group-key="results">
+              <div id="dashboard-results-list" class="dashboard-list lexera-shared-dashboard-results"></div>
+            </div>
+            <div class="dashboard-group" data-dashboard-group-key="pinned">
+              <div id="dashboard-pinned-list" class="dashboard-list lexera-shared-dashboard-pinned"></div>
+            </div>
+            <div class="dashboard-group" data-dashboard-group-key="overdue">
+              <div id="dashboard-overdue-list" class="dashboard-list lexera-shared-dashboard-overdue"></div>
+            </div>
+            <div class="dashboard-group" data-dashboard-group-key="upcoming">
+              <div id="dashboard-upcoming-list" class="dashboard-list lexera-shared-dashboard-upcoming"></div>
+            </div>
+            <div class="dashboard-group" data-dashboard-group-key="open-tasks">
+              <div id="dashboard-todos-list" class="dashboard-list lexera-shared-dashboard-todos"></div>
+            </div>
+            <div class="dashboard-group" data-dashboard-group-key="tagged">
+              <div id="dashboard-tagged-list" class="dashboard-list lexera-shared-dashboard-tagged"></div>
+            </div>
+            <div class="dashboard-group" data-dashboard-group-key="file-embeds">
+              <div id="dashboard-embeds-list" class="dashboard-list lexera-shared-dashboard-embeds"></div>
+            </div>
+            <div class="dashboard-group" data-dashboard-group-key="broken-elements">
+              <div id="dashboard-broken-list" class="dashboard-list lexera-shared-dashboard-broken"></div>
+            </div>
+            <div class="dashboard-group" data-dashboard-group-key="included-files">
+              <div id="dashboard-included-list" class="dashboard-list lexera-shared-dashboard-included"></div>
+            </div>
+          </div>
+        </div>
       </body>
     </html>
   `, { url: 'http://127.0.0.1:1431/views/dashboard/index.html?panelKind=dashboard&pane=tab-1' });
 }
 
 describe('dashboard view sub-app', () => {
-  it('renders metrics, keeps the active board first, and navigates from the recent list', () => {
+  it('renders the canonical dashboard markup and registers a single LexeraSubApp.init', () => {
     const dom = createDom();
     const { window } = dom;
     let capturedOpts = null;
     window.LexeraSubApp = {
       init: vi.fn((opts) => { capturedOpts = opts; }),
-      navigate: vi.fn()
+      navigate: vi.fn(),
+      broadcast: vi.fn()
     };
 
     loadDashboardView(window);
@@ -56,29 +89,82 @@ describe('dashboard view sub-app', () => {
     expect(typeof capturedOpts.onCatalog).toBe('function');
     expect(typeof capturedOpts.onActiveBoard).toBe('function');
     expect(typeof capturedOpts.onError).toBe('function');
+    expect(capturedOpts.onCustom && typeof capturedOpts.onCustom['dashboard-results-update']).toBe('function');
 
-    capturedOpts.onCatalog({
-      boards: [{ id: 'board-1', name: 'Local Board' }],
-      remoteBoards: [{ id: 'board-2', title: 'Remote Board' }],
-      workspaces: [{ id: 'ws-1', name: 'Primary Workspace' }]
+    // Confirm all 9 result lists are present from the canonical markup.
+    [
+      'dashboard-results-list',
+      'dashboard-pinned-list',
+      'dashboard-overdue-list',
+      'dashboard-upcoming-list',
+      'dashboard-todos-list',
+      'dashboard-tagged-list',
+      'dashboard-embeds-list',
+      'dashboard-broken-list',
+      'dashboard-included-list'
+    ].forEach((id) => {
+      expect(window.document.getElementById(id)).toBeTruthy();
     });
-    capturedOpts.onActiveBoard('board-2');
+  });
 
-    expect(window.document.getElementById('status').textContent).toBe('connected');
-    expect(window.document.getElementById('m-local').textContent).toBe('1');
-    expect(window.document.getElementById('m-remote').textContent).toBe('1');
-    expect(window.document.getElementById('m-ws').textContent).toBe('1');
-    expect(window.document.getElementById('m-active').textContent).toBe('Remote Board');
+  it('broadcasts a dashboard-search event when Enter is pressed in the search input', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = {
+      init: vi.fn(),
+      navigate: vi.fn(),
+      broadcast: vi.fn()
+    };
 
-    const recentItems = window.document.querySelectorAll('.recent-item');
-    expect(recentItems).toHaveLength(2);
-    expect(recentItems[0].dataset.boardId).toBe('board-2');
-    expect(recentItems[0].classList.contains('is-active')).toBe(true);
+    loadDashboardView(window);
 
-    recentItems[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-    expect(window.LexeraSubApp.navigate).toHaveBeenCalledWith({
-      type: 'open-board',
-      boardId: 'board-1'
+    const input = window.document.getElementById('dashboard-search-input');
+    const scope = window.document.getElementById('dashboard-scope-select');
+    input.value = 'test query';
+    scope.checked = true;
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(window.LexeraSubApp.broadcast).toHaveBeenCalledWith('dashboard-search', {
+      query: 'test query',
+      allBoards: true
     });
+  });
+
+  it('broadcasts a dashboard-pin event when the Pin button is clicked', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = {
+      init: vi.fn(),
+      navigate: vi.fn(),
+      broadcast: vi.fn()
+    };
+
+    loadDashboardView(window);
+
+    const input = window.document.getElementById('dashboard-search-input');
+    input.value = 'pinned query';
+    const pin = window.document.getElementById('btn-dashboard-pin');
+    pin.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+
+    expect(window.LexeraSubApp.broadcast).toHaveBeenCalledWith('dashboard-pin', {
+      query: 'pinned query'
+    });
+  });
+
+  it('does not broadcast a pin event when the search input is empty', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = {
+      init: vi.fn(),
+      navigate: vi.fn(),
+      broadcast: vi.fn()
+    };
+
+    loadDashboardView(window);
+
+    const pin = window.document.getElementById('btn-dashboard-pin');
+    pin.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+
+    expect(window.LexeraSubApp.broadcast).not.toHaveBeenCalled();
   });
 });

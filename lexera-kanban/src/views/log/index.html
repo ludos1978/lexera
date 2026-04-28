@@ -11,13 +11,62 @@
   <link rel="stylesheet" href="log.css">
 </head>
 <body>
-  <header class="header">
-    <span class="title">Log</span>
-    <div class="filters" id="filters"></div>
-    <button class="clear-btn" id="clear-btn" type="button" title="Clear log">Clear</button>
-    <span class="status" id="status"></span>
-  </header>
-  <main class="entries" id="entries"></main>
+  <!--
+    Log view sub-app: mirrors `sharedPanels.js#createLogsPanelElement`
+    one-to-one (root `.log-panel` / `.lexera-shared-panel-logs`, header
+    with source dropdown, level dropdown, search, status, reload/copy/
+    clear buttons; status row; main body with entries + stats div).
+    The legacy SHELL filtering/persistence logic in `loggingSystem.js`
+    keys off these IDs/classes; restoring the full skeleton here lets
+    that logic continue to function once the SHELL→log webview
+    broadcast channel is hooked up.
+  -->
+  <div class="log-panel lexera-shared-panel lexera-shared-panel-logs"
+       data-shell-panel="logs" data-shell-panel-instance="logs">
+    <div class="log-panel-header">
+      <div class="log-panel-header-main">
+        <span class="log-panel-title">Logs</span>
+        <div class="log-panel-source-dropdown">
+          <button id="log-source-btn" class="log-panel-tab lexera-shared-log-source-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Filter log sources">
+            <span id="log-source-label" class="lexera-shared-log-source-label">Sources</span>
+            <span class="log-panel-source-caret" aria-hidden="true">&#9662;</span>
+          </button>
+          <button id="log-source-clear" class="log-panel-filter-clear lexera-shared-log-source-clear hidden" type="button" title="Show all sources" aria-label="Show all sources">&times;</button>
+          <div id="log-source-menu" class="log-panel-source-menu lexera-shared-log-source-menu hidden" role="menu"></div>
+        </div>
+        <div class="log-panel-source-dropdown">
+          <button id="log-level-btn" class="log-panel-tab lexera-shared-log-level-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Filter log levels">
+            <span id="log-level-label" class="lexera-shared-log-level-label">Levels</span>
+            <span class="log-panel-source-caret" aria-hidden="true">&#9662;</span>
+          </button>
+          <button id="log-level-clear" class="log-panel-filter-clear lexera-shared-log-level-clear hidden" type="button" title="Show all levels" aria-label="Show all levels">&times;</button>
+          <div id="log-level-menu" class="log-panel-source-menu lexera-shared-log-level-menu hidden" role="menu"></div>
+        </div>
+        <div class="log-panel-search-wrap">
+          <input id="log-search-input" class="log-panel-search lexera-shared-log-search" type="text" placeholder="Filter..." aria-label="Filter log entries by text" autocomplete="off" spellcheck="false" />
+          <button id="log-search-clear" class="log-panel-filter-clear log-panel-search-clear lexera-shared-log-search-clear hidden" type="button" title="Clear search filter" aria-label="Clear search filter">&times;</button>
+        </div>
+      </div>
+      <div class="log-panel-actions">
+        <button id="btn-connection-status" class="log-panel-status-btn connection-status-btn disconnected" type="button" title="Backend disconnected" aria-label="Backend disconnected">
+          <span id="connection-dot" class="connection-dot" aria-hidden="true"></span>
+          <span class="connection-status-label">Disconnected</span>
+        </button>
+        <button id="log-refresh-btn" class="log-panel-btn lexera-shared-log-refresh" title="Reload backend logs" type="button">Reload</button>
+        <button id="log-copy-btn" class="log-panel-btn lexera-shared-log-copy" title="Copy visible logs to clipboard" type="button">Copy</button>
+        <button id="log-clear-btn" class="log-panel-btn lexera-shared-log-clear" title="Clear log" type="button">Clear</button>
+      </div>
+    </div>
+    <div class="log-panel-status">
+      <span id="status-msg" class="status-msg"></span>
+    </div>
+    <div class="log-panel-body">
+      <div class="log-panel-main view-loading">
+        <div id="log-entries" class="log-entries lexera-shared-log-entries"></div>
+        <div id="log-entries-stats" class="log-entries lexera-shared-log-entries-stats hidden"></div>
+      </div>
+    </div>
+  </div>
   <script src="../_shared/subAppRuntime.js"></script>
   <script src="log.js"></script>
 </body>

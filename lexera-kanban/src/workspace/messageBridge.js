@@ -84,6 +84,10 @@
     return broadcast('layout-drag', { active: !!active });
   }
 
+  function broadcastBackendConnectionState(connected) {
+    return broadcast('backend-connection-state', { connected: !!connected });
+  }
+
   function normalizeCatalog(snapshot) {
     snapshot = snapshot || {};
     return {
@@ -138,6 +142,7 @@
     focusHierarchy: focusHierarchy,
     boardAction: boardAction,
     layoutDrag: layoutDrag,
+    broadcastBackendConnectionState: broadcastBackendConnectionState,
     broadcastCatalog: broadcastCatalog,
     sendCatalog: sendCatalog,
     normalizeCatalog: normalizeCatalog,

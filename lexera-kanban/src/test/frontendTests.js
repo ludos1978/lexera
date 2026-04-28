@@ -1211,6 +1211,44 @@
     return docs;
   }
 
+  function getReachableWindows() {
+    var wins = [];
+    function pushWin(win) {
+      if (!win) return;
+      if (wins.indexOf(win) !== -1) return;
+      wins.push(win);
+    }
+
+    pushWin(window);
+    try { if (window.parent && window.parent !== window) pushWin(window.parent); } catch (_) {}
+
+    var entries = getIframeEntries(document);
+    for (var i = 0; i < entries.length; i++) pushWin(entries[i].win);
+    return wins;
+  }
+
+  function getWorkspaceShellWindow() {
+    var wins = getReachableWindows();
+    for (var i = 0; i < wins.length; i++) {
+      var win = wins[i];
+      try {
+        if (!win || !win.LexeraWorkspaceShell || !win.document || typeof win.document.querySelector !== 'function') continue;
+        if (!win.document.querySelector('.workspace-shell')) continue;
+        return win;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  function getWorkspaceShellDocument() {
+    var shellWin = getWorkspaceShellWindow();
+    try {
+      return shellWin && shellWin.document ? shellWin.document : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function getAvailableBoardsFromShellDom() {
     var list = [];
     var docs = getReachableDocuments();
@@ -6315,6 +6353,106 @@
       assertEqual(getViewCardCount(info.dstCol.flatIdx), dstCountBefore + 1, 'dst column +1 card');
       await waitForAssertion(function () { assertBoardIntegrity('after cross-column move realtime'); }, 3000);
       await waitForAssertion(function () { assertViewWorkspaceConsistency('after cross-column move realtime sidebar'); }, 3000);
+    } finally { await teardown(); }
+  });
+
+  register('workspace shell: bottom logs webview stays below the divider', async function () {
+    await setup();
+    try {
+      var shellWin = getWorkspaceShellWindow();
+      if (!shellWin || !shellWin.LexeraWorkspaceShell) return;
+      var shell = shellWin.LexeraWorkspaceShell;
+      if (typeof shell.revealPanel === 'function') shell.revealPanel('logs');
+
+      await waitForCondition(function () {
+        var shellDoc = getWorkspaceShellDocument();
+        if (!shellDoc) return false;
+        var divider = shellDoc.querySelector('.workspace-shell-dock-divider[data-dock-divider="bottom"].is-visible');
+        var dock = shellDoc.querySelector('.workspace-shell-panel-dock[data-dock="bottom"].is-visible');
+        var placeholder = shellDoc.querySelector(
+          '.workspace-shell-panel-dock[data-dock="bottom"] ' +
+          '.workspace-shell-multiview-placeholder[data-panel-kind="logs"].is-active'
+        );
+        if (!divider || !dock || !placeholder) return false;
+        var dr = divider.getBoundingClientRect();
+        var dor = dock.getBoundingClientRect();
+        var pr = placeholder.getBoundingClientRect();
+        return dr.height > 0 && dor.height > 0 && pr.height > 0;
+      }, 10000, 100, 'bottom logs panel did not become visible');
+
+      await delay(300);
+
+      var shellDoc = getWorkspaceShellDocument();
+      assert(shellDoc, 'workspace shell document is reachable');
+      var divider = shellDoc.querySelector('.workspace-shell-dock-divider[data-dock-divider="bottom"].is-visible');
+      var dock = shellDoc.querySelector('.workspace-shell-panel-dock[data-dock="bottom"].is-visible');
+      var placeholder = shellDoc.querySelector(
+        '.workspace-shell-panel-dock[data-dock="bottom"] ' +
+        '.workspace-shell-multiview-placeholder[data-panel-kind="logs"].is-active'
+      );
+      assert(divider, 'bottom divider exists');
+      assert(dock, 'bottom dock exists');
+      assert(placeholder, 'active logs placeholder exists');
+
+      var dividerRect = divider.getBoundingClientRect();
+      var dockRect = dock.getBoundingClientRect();
+      var placeholderRect = placeholder.getBoundingClientRect();
+      var expectedTopOffset = 28;
+      function fmtRect(r) {
+        return '{top:' + r.top.toFixed(1) +
+          ',bottom:' + r.bottom.toFixed(1) +
+          ',left:' + r.left.toFixed(1) +
+          ',right:' + r.right.toFixed(1) +
+          ',width:' + r.width.toFixed(1) +
+          ',height:' + r.height.toFixed(1) + '}';
+      }
+
+      var diag =
+        ' divider=' + fmtRect(dividerRect) +
+        ' dock=' + fmtRect(dockRect) +
+        ' placeholder=' + fmtRect(placeholderRect);
+
+      assert(
+        dockRect.top >= dividerRect.bottom - 1,
+        'bottom dock starts at or below the divider.' + diag
+      );
+      assert(
+        Math.abs(placeholderRect.top - dockRect.top) <= 1.5,
+        'logs placeholder still starts at the real dock top.' + diag
+      );
+      assert(
+        Math.abs(dividerRect.bottom - dockRect.top) <= 1.5,
+        'bottom divider edge aligns with the dock top.' + diag
+      );
+
+      var mv = shellWin.LexeraMultiview || window.LexeraMultiview || null;
+      var mvWebview = shellWin.LexeraMultiviewWebview || window.LexeraMultiviewWebview || null;
+      if (mv && mvWebview && typeof mv.listWebviews === 'function' && typeof mvWebview.spawnedLabel === 'function') {
+        var tabId = placeholder.getAttribute('data-tab-id') || '';
+        var label = mvWebview.spawnedLabel(tabId) || '';
+        assert(label, 'active logs placeholder resolves to a spawned multiview label');
+        var metas = await mv.listWebviews();
+        var meta = null;
+        for (var i = 0; i < metas.length; i++) {
+          if (metas[i] && metas[i].label === label) {
+            meta = metas[i];
+            break;
+          }
+        }
+        assert(meta, 'Rust multiview registry contains active logs webview "' + label + '"');
+        var metaDiag = diag + ' meta=' + JSON.stringify({
+          label: meta.label,
+          x: meta.x,
+          y: meta.y,
+          width: meta.width,
+          height: meta.height,
+          url: meta.url
+        });
+        assert(
+          Math.abs(meta.y - (placeholderRect.top + expectedTopOffset)) <= 1.5,
+          'Rust webview y applies the shared native top offset.' + metaDiag
+        );
+      }
     } finally { await teardown(); }
   });
 

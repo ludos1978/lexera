@@ -55,6 +55,7 @@
   min-height: 0;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
+  position: relative;
 }
 
 .workspace-shell-toolbar {
@@ -162,14 +163,19 @@
 }
 
 .workspace-shell-dock-divider[data-dock-divider="bottom"] {
-  height: 5px;
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 12px;
   cursor: row-resize;
+  z-index: 35;
 }
 
 .workspace-shell-dock-divider[data-dock-divider="bottom"]::after {
   left: 0;
   right: 0;
-  top: 2px;
+  top: auto;
+  bottom: 0;
   height: 1px;
 }
 
