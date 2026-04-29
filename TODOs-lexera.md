@@ -38,7 +38,7 @@ we might modify the export "Link & asset handling" settings:
 
 we also move the merge includes into main file down to the output section. it will embed all media into the main file if it's possible (other markdown files) and convert it to the appropriate export format. 
 
-- [ ] **Audit: unify all IPC call construction so auth is applied consistently.** Verify every place that calls `core.invoke('backend_ipc_request', …)`, `core.invoke('backend_ipc_upload', …)`, or any other backend-bound Tauri command in `lexera-kanban/src/**/*.js` routes through a single construction path (currently `ensureIpcAuthHeaders()` in [api.js:132-148](lexera-kanban/src/api.js#L132-L148)) so Authorization headers are injected automatically. Grep for raw `core.invoke(` / `__TAURI_INTERNALS__.invoke` / `backend_ipc_` references; flag any that build their own headers array or skip the helper. Fix by routing through a shared helper (extend `ipcFetch` for binary bodies if needed, or expose a dedicated `ipcInvokeAuthed` wrapper). Rationale: a missing token surfaces as an opaque 401 — recently caused built-in Excalidraw/Draw.io template drags from the `+ new` header dropdown to fail silently.
+- [ ] **Audit: unify all IPC call construction so auth is applied consistently.** Verify every place that calls `core.invoke('backend_ipc_request', …)`, `core.invoke('backend_ipc_upload', …)`, or any other backend-bound Tauri command in `lexera-kanban/src/**/*.js` routes through a single construction path (currently `ensureIpcAuthHeaders()` in [api.js:132-148](lexera-kanban/src/api.js#L132-L148)) so Authorization headers are injected automatically. Grep for raw `core.invoke(` / `__TAURI_INTERNALS__.invoke` / `backend_ipc_` references; flag any that build their own headers array or skip the helper. Fix by routing through a shared helper (extend `ipcFetch` for binary bodies if needed, or expose a dedicated `ipcInvokeAuthed` wrapper). Rationale: a missing token surfaces as an opaque 401 — recently caused built-in Excalidraw/Draw.io template drags from the `+ new` header dropdown to fail silently. — **in progress**
 
 - [ ] add stack, column and card must only show in the parent element if there is no sibling already in there! solve it with css!
 
@@ -46,7 +46,7 @@ we also move the merge includes into main file down to the output section. it wi
 
 - [x] ~~when i drag-move a card downwards in the column it's not put into the highlighted position, but one above!~~ — 4865830a
 
-- [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option. — **in progress**
+- [x] ~~for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.~~ — 4c83ad87
 
 ### Lexera v2 design rollout (handoff bundle from claude.ai/design)
 
