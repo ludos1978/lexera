@@ -121,7 +121,7 @@ Requires workspace shell mode (multiple boards open in iframes). Tests use `Lexe
 - [ ] Board switch: `selectBoard()` loads correct board data and re-renders view
 - [ ] Board switch: switching back restores previous board state
 - [ ] Workspace view: sidebar shows correct cards after cross-board move
-- [ ] Same-board move via workspace coordinates still works in multi-board context — covered indirectly by mutations.test.js view-to-workspace + workspace-to-view existing tests
+- [ ] Same-board move via workspace coordinates still works in multi-board context — covered indirectly by mutations.test.js view-to-workspace + workspace-to-view existing tests — **in progress**
 - [ ] Cross-board move with workspace-style source coordinates (rowIndex/stackIndex/colIndex) — covered by `workspace-to-view cross-board commits both boards for UI refresh`
 - [ ] Cross-board move with workspace-style target coordinates — covered by `view-to-workspace cross-board commits both boards for UI refresh`
 - [x] ~~Cross-board move: no duplicate card IDs in either board after move~~ — 25f815f1
