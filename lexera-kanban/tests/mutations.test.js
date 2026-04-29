@@ -2193,6 +2193,41 @@ describe('Card move scenarios', () => {
     expect(M.getLastCommitBoardIds()).toBeNull();
   });
 
+  // Multi-board context: a same-board move via workspace coordinates
+  // (rowIndex/stackIndex/colIndex + stable IDs) must NOT touch board B
+  // even when board B is loaded into state. Pin commitBoardIds === null
+  // and persist targets are board-a-scoped — guards against a regression
+  // that would re-resolve into the wrong board when sibling state exists.
+  it('workspace-to-workspace same-board move ignores other loaded boards', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.setBoardState('board-b', setup.boardB);
+    M.resetRefreshTracking();
+
+    var beforeBoardB = M.getBoardState('board-b');
+    var beforeBSnapshot = JSON.parse(JSON.stringify(beforeBoardB));
+
+    await M.moveCard(
+      { boardId: 'board-a', rowIndex: 0, stackIndex: 0, colIndex: 0, columnId: 'col-a1', cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-a', rowIndex: 0, stackIndex: 0, colIndex: 1, columnId: 'col-a2', insertIdx: 0, insertMode: 'visible', indexMode: 'display' }
+    );
+
+    // Board A reflects the same-column reshuffle.
+    var colA1 = M.getState().fullBoardData.rows[0].stacks[0].columns[0];
+    var colA2 = M.getState().fullBoardData.rows[0].stacks[0].columns[1];
+    expect(colA1.cards.map(function (c) { return c.id; })).toEqual(['card-2']);
+    expect(colA2.cards.map(function (c) { return c.id; })).toEqual(['card-1', 'card-3']);
+
+    // Board B is bit-for-bit unchanged.
+    expect(M.getBoardState('board-b')).toEqual(beforeBSnapshot);
+
+    // UI: same-board path → targeted persistBoardMutation, no commit
+    // for board B even though it's loaded.
+    expect(M.getLastCommitBoardIds()).toBeNull();
+    expect(M.getLastPersistTargets()).toContain('card-remove');
+    expect(M.getLastPersistTargets()).toContain('card-insert');
+  });
+
   // ── View → View (different board) ──────────────────────────────────────
   it('view-to-view cross-board commits both boards for UI refresh', async () => {
     var setup = makeTwoBoardSetup();
