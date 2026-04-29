@@ -38,9 +38,9 @@ we might modify the export "Link & asset handling" settings:
 
 we also move the merge includes into main file down to the output section. it will embed all media into the main file if it's possible (other markdown files) and convert it to the appropriate export format. 
 
-- [ ] **Audit: unify all IPC call construction so auth is applied consistently.** Verify every place that calls `core.invoke('backend_ipc_request', …)`, `core.invoke('backend_ipc_upload', …)`, or any other backend-bound Tauri command in `lexera-kanban/src/**/*.js` routes through a single construction path (currently `ensureIpcAuthHeaders()` in [api.js:132-148](lexera-kanban/src/api.js#L132-L148)) so Authorization headers are injected automatically. Grep for raw `core.invoke(` / `__TAURI_INTERNALS__.invoke` / `backend_ipc_` references; flag any that build their own headers array or skip the helper. Fix by routing through a shared helper (extend `ipcFetch` for binary bodies if needed, or expose a dedicated `ipcInvokeAuthed` wrapper). Rationale: a missing token surfaces as an opaque 401 — recently caused built-in Excalidraw/Draw.io template drags from the `+ new` header dropdown to fail silently. — **in progress**
+- [x] ~~**Audit: unify all IPC call construction so auth is applied consistently.**~~ — 33603763 (already centralised; locked with contract test)
 
-- [ ] add stack, column and card must only show in the parent element if there is no sibling already in there! solve it with css!
+- [ ] add stack, column and card must only show in the parent element if there is no sibling already in there! solve it with css! — **in progress**
 
 - [x] ~~when i drag-move a card it sometimes disappears instead of showing up in the new locaiton!~~ — 4e10704c
 
