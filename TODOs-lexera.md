@@ -110,21 +110,21 @@ Requires workspace shell mode (multiple boards open in iframes). Tests use `Lexe
 
 **Setup:** Use `LexeraTestApi.selectBoard()` to switch between boards, `setTestBoard()` to inject test data into each board.
 
-- [ ] Cross-board move: card from board A column appears in board B column — **in progress**
-- [ ] Cross-board move: source card is trashed with `#hidden-internal-deleted` (not removed)
-- [ ] Cross-board move: target board card count increases by 1
-- [ ] Cross-board move: source board visible card count decreases by 1
-- [ ] Cross-board move: card content preserved exactly in target board
-- [ ] Cross-board move: total visible card count across both boards stays constant
-- [ ] Cross-board move: source board sidebar reflects the trashed card (hidden)
-- [ ] Cross-board move: target board sidebar reflects the new card
+- [x] ~~Cross-board move: card from board A column appears in board B column~~ — 25f815f1
+- [x] ~~Cross-board move: source card is trashed with `#hidden-internal-deleted` (not removed)~~ — 25f815f1
+- [x] ~~Cross-board move: target board card count increases by 1~~ — 25f815f1
+- [x] ~~Cross-board move: source board visible card count decreases by 1~~ — 25f815f1
+- [x] ~~Cross-board move: card content preserved exactly in target board~~ — 25f815f1
+- [x] ~~Cross-board move: total visible card count across both boards stays constant~~ — 25f815f1
+- [x] ~~Cross-board move: source board sidebar reflects the trashed card (hidden)~~ — 25f815f1 (asserted via commitBoardIds → board-a)
+- [x] ~~Cross-board move: target board sidebar reflects the new card~~ — 25f815f1 (asserted via commitBoardIds → board-b)
 - [ ] Board switch: `selectBoard()` loads correct board data and re-renders view
 - [ ] Board switch: switching back restores previous board state
 - [ ] Workspace view: sidebar shows correct cards after cross-board move
-- [ ] Same-board move via workspace coordinates still works in multi-board context
-- [ ] Cross-board move with workspace-style source coordinates (rowIndex/stackIndex/colIndex)
-- [ ] Cross-board move with workspace-style target coordinates
-- [ ] Cross-board move: no duplicate card IDs in either board after move
+- [ ] Same-board move via workspace coordinates still works in multi-board context — covered indirectly by mutations.test.js view-to-workspace + workspace-to-view existing tests
+- [ ] Cross-board move with workspace-style source coordinates (rowIndex/stackIndex/colIndex) — covered by `workspace-to-view cross-board commits both boards for UI refresh`
+- [ ] Cross-board move with workspace-style target coordinates — covered by `view-to-workspace cross-board commits both boards for UI refresh`
+- [x] ~~Cross-board move: no duplicate card IDs in either board after move~~ — 25f815f1
 
 Scope: the active Lexera code now lives in the promoted top-level V2 directories such as `lexera-core`, `lexera-backend`, `lexera-kanban`, `lexera-capture-ios`, `lexera-shared`, and `lexera-web-clipper`. This backlog tracks the remaining architecture, boundary, tooling, and cleanup work after that repository promotion. Completed promotion-path tasks were moved to `todo-archive.md`.
 
