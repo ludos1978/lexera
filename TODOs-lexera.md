@@ -14,7 +14,7 @@ Keep this file structured and clean:
 
 ### Unsorted (leave this header here!)
 
-- [ ] the workspace tree doesnt look at all good! not the right list of elements, not the right structure
+- [ ] the workspace tree doesnt look at all good! not the right list of elements, not the right structure — **needs user input**: which specific elements look wrong and what structure is expected? sidebar tree at [sidebar/sidebarTree.js](lexera-kanban/src/sidebar/sidebarTree.js) renders Workspace > Board > Row > Stack > Column > Card
 
 - [x] /refactor the @lexera-kanban/src/workspace/workspaceShell.js this is a mess!
 
