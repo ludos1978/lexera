@@ -4020,8 +4020,15 @@ ins.critic.critic-sub {
 }
 
 .card.dragging {
-  opacity: 0.3;
-  cursor: grabbing;
+  /* Take the source out of layout flow during a drag so the cards
+   * below it shift up. The drop indicator (rendered at top of
+   * cards[insertIdx] among `.card:not(.dragging)`) then aligns with
+   * where the card will actually land — without this, dragging a card
+   * downward in the same column visually drops one slot above the
+   * highlighted position because the source still occupied its slot
+   * while the indicator and the post-drop layout were source-excluded.
+   * The drag ghost is the visual feedback for what's being dragged. */
+  display: none;
 }
 
 /* Card markdown content */
