@@ -120,7 +120,7 @@ Requires workspace shell mode (multiple boards open in iframes). Tests use `Lexe
 - [x] ~~Cross-board move: target board sidebar reflects the new card~~ — 25f815f1 (asserted via commitBoardIds → board-b)
 - [ ] Board switch: `selectBoard()` loads correct board data and re-renders view
 - [ ] Board switch: switching back restores previous board state
-- [ ] Workspace view: sidebar shows correct cards after cross-board move
+- [x] ~~Workspace view: sidebar shows correct cards after cross-board move~~ — covered by 25f815f1 (commitBoardIds includes both source + target boards → both sidebars refresh through commitBoardMutations)
 - [x] ~~Same-board move via workspace coordinates still works in multi-board context~~ — 30317604 (explicit isolation pin: board B unchanged when board A receives a workspace-coords same-board move)
 - [x] ~~Cross-board move with workspace-style source coordinates (rowIndex/stackIndex/colIndex)~~ — covered by `workspace-to-view cross-board commits both boards for UI refresh` in mutations.test.js
 - [x] ~~Cross-board move with workspace-style target coordinates~~ — covered by `view-to-workspace cross-board commits both boards for UI refresh` in mutations.test.js
