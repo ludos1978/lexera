@@ -2248,6 +2248,18 @@
     if (existing) {
       existing.classList.remove('is-open');
       if (existing.parentNode) existing.parentNode.removeChild(existing);
+      setShellOverlayActive(false);
+    }
+  }
+
+  // Forward shell-DOM overlay open/close to the multiview module's
+  // refcounted suppression. Native child webviews paint above the shell
+  // DOM regardless of CSS z-index, so any popover that wants to render
+  // on top must suppress them while it's open.
+  function setShellOverlayActive(active) {
+    if (window.LexeraMultiviewWebview &&
+        typeof window.LexeraMultiviewWebview.setAllVisible === 'function') {
+      window.LexeraMultiviewWebview.setAllVisible(!active);
     }
   }
 
@@ -2259,6 +2271,7 @@
       var sameHeader = existing._wsOverflowHeaderEl === headerEl;
       existing.classList.remove('is-open');
       if (existing.parentNode) existing.parentNode.removeChild(existing);
+      setShellOverlayActive(false);
       if (sameHeader) return;
     }
 
@@ -2363,6 +2376,7 @@
     }
 
     document.body.appendChild(menu);
+    setShellOverlayActive(true);
 
     // Close menu when clicking outside
     var _closeOnOutsideClick = function (evt) {

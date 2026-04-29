@@ -150,6 +150,14 @@
 
   function setTabDragModeEnabled(enabled) {
     deps.getBody().classList.toggle('workspace-shell-tab-dragging', !!enabled);
+    // Native Tauri child webviews (panels/boards) paint above the shell
+    // DOM and capture pointer events at the OS layer, so without hiding
+    // them the user can't drop a tab between existing tabs whose tabset
+    // overlaps a webview, and the drop indicator would be invisible.
+    // Park all spawned webviews offscreen for the duration of the drag.
+    if (window.LexeraMultiviewWebview && typeof window.LexeraMultiviewWebview.setAllVisible === 'function') {
+      window.LexeraMultiviewWebview.setAllVisible(!enabled);
+    }
   }
 
   function createTabDragGhost(tabId) {

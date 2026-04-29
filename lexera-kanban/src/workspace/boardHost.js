@@ -150,7 +150,11 @@
     }
     var doPushGeom = typeof pushGeomFn === 'function' ? pushGeomFn : localPushGeom;
     function syncVisible() {
-      var visible = placeholderEl.classList.contains('is-active') &&
+      var suppressed = window.LexeraMultiviewWebview &&
+        typeof window.LexeraMultiviewWebview.isAllVisibleSuppressed === 'function' &&
+        window.LexeraMultiviewWebview.isAllVisibleSuppressed();
+      var visible = !suppressed &&
+        placeholderEl.classList.contains('is-active') &&
         placeholderEl.offsetParent !== null &&
         placeholderEl.getBoundingClientRect().width > 0;
       if (visible === lastVisible) return;

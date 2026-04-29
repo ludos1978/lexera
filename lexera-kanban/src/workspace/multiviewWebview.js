@@ -503,6 +503,72 @@
     }
   }
 
+  // Globally suppress (or restore) all spawned multiview webviews.
+  // Used during drag and while shell-DOM overlays (dropdowns/menus) are
+  // open so native child webviews don't paint over the shell's drop
+  // indicators or popovers. Refcounted so concurrent suppressors (e.g.
+  // user opens an overflow menu, then drags a tab) compose: webviews
+  // stay hidden until every suppression is released.
+  var _suppressionCount = 0;
+
+  function shouldRestoreTabVisible(tabId) {
+    if (!deps || typeof deps.getPlaceholder !== 'function') return true;
+    var placeholderEl = deps.getPlaceholder(tabId);
+    if (!placeholderEl) return false;
+    var rect = (typeof placeholderEl.getBoundingClientRect === 'function')
+      ? placeholderEl.getBoundingClientRect() : null;
+    return (placeholderEl.classList && placeholderEl.classList.contains('is-active')) &&
+      placeholderEl.offsetParent !== null &&
+      rect && rect.width > 0;
+  }
+
+  function parkWebviewOffscreen(label) {
+    var update = { label: label, x: -50000, y: -50000, width: 1, height: 1 };
+    if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
+      window.LexeraMultiview.pushGeomDeferred(update);
+    } else {
+      window.LexeraMultiview.setGeometry([update]).catch(function () {});
+    }
+  }
+
+  function syncSuppressedEntryVisibility(tabId, entry, nowSuppressed) {
+    if (!entry || entry.state !== 'ready' || !entry.label) return;
+    var shouldShow = !nowSuppressed && shouldRestoreTabVisible(tabId);
+    window.LexeraMultiview.invoke('multiview_set_visible', {
+      label: entry.label, visible: shouldShow
+    }).catch(function () {});
+    if (!shouldShow) {
+      // Park offscreen too — belt-and-braces in case the OS hide is
+      // delayed or unreliable on this platform.
+      parkWebviewOffscreen(entry.label);
+    }
+  }
+
+  function isAllVisibleSuppressed() {
+    return _suppressionCount > 0;
+  }
+
+  function setAllVisible(visible) {
+    var prevCount = _suppressionCount;
+    if (visible) {
+      if (_suppressionCount === 0) return;
+      _suppressionCount -= 1;
+    } else {
+      _suppressionCount += 1;
+    }
+    var nowSuppressed = _suppressionCount > 0;
+    var wasSuppressed = prevCount > 0;
+    if (nowSuppressed === wasSuppressed) return;
+    if (!window.LexeraMultiview || typeof window.LexeraMultiview.invoke !== 'function') return;
+    var tabIds = Object.keys(multiviewSpawnedTabs || {});
+    for (var i = 0; i < tabIds.length; i++) {
+      var tabId = tabIds[i];
+      var entry = multiviewSpawnedTabs[tabId];
+      syncSuppressedEntryVisibility(tabId, entry, nowSuppressed);
+    }
+    if (!nowSuppressed) refreshAllGeometry();
+  }
+
   function watchPlaceholderVisibility(tab, placeholderEl, pushGeomFn) {
     if (!tab || !tab.id) return;
     boardHost.watchPlaceholderVisibility(
@@ -551,6 +617,10 @@
     }
 
     function pushGeom() {
+      if (_suppressionCount > 0) {
+        parkWebviewOffscreen(label);
+        return;
+      }
       pushGeometryForLabel(label, placeholderEl);
     }
     // One-shot retry: when doSpawn() can't measure the placeholder yet
@@ -641,6 +711,10 @@
     }
     function onSpawned() {
       multiviewSpawnedTabs[tab.id] = { url: url, state: 'ready', label: label };
+      if (_suppressionCount > 0 && window.LexeraMultiview &&
+          typeof window.LexeraMultiview.invoke === 'function') {
+        syncSuppressedEntryVisibility(tab.id, multiviewSpawnedTabs[tab.id], true);
+      }
       if (typeof window.lexeraLog === 'function') {
         window.lexeraLog('debug', '[multiview] spawned ' + label);
       }
@@ -690,6 +764,12 @@
       var y = update.y;
       var w = update.width;
       var h = update.height;
+      if (_suppressionCount > 0) {
+        x = -50000;
+        y = -50000;
+        w = 1;
+        h = 1;
+      }
       if (deps && typeof deps.traceShell === 'function') {
         deps.traceShell(
           'spawn label=' + label +
@@ -977,6 +1057,8 @@
     destroy: destroy,
     cleanupLocalState: cleanupLocalState,
     refreshAllGeometry: refreshAllGeometry,
+    setAllVisible: setAllVisible,
+    isAllVisibleSuppressed: isAllVisibleSuppressed,
     computeNativeGeometry: computeNativeGeometry,
     getNativeGeometryConfig: getNativeGeometryConfig,
     getHostGeometryContext: getHostGeometryContext,
