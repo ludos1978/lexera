@@ -474,6 +474,67 @@ describe('applyCardDropByPoint — end-to-end drop pipeline', () => {
 
     DDH.setCardDrag(null);
   });
+
+  // Regression: finishCardDrag set the source's inline style.display to
+  // 'none' before invoking moveCard so the card wouldn't flash at its old
+  // position during the async DOM rebuild. On the failure paths (no
+  // valid drop target, or moveCard rejecting) the rebuild never ran, so
+  // the source kept the inline display:none and the user saw the card
+  // "disappear". Both paths must restore visibility.
+
+  it('restores source visibility when the drop has no valid target', () => {
+    const board = makeBoard([
+      makeRow('r1', 'Row', [
+        makeStack('s1', 'Stack', [
+          makeColumn('col-1', 'Col', [makeCard('card-a', 'A')]),
+        ]),
+      ]),
+    ]);
+    buildBoardDom(board);
+    const moveCardSpy = vi.fn().mockResolvedValue();
+    DDH.init(makeDeps({ board, moveCardSpy }));
+
+    const sourceEl = document.querySelector('.card[data-card-id="card-a"]');
+    expect(sourceEl).toBeTruthy();
+    DDH.setCardDrag({
+      started: true, el: sourceEl, boardId: 'test-board',
+      flatColIndex: 0, cardIndex: 0, cardId: 'card-a'
+    });
+
+    // Drop far outside any drop target.
+    DDH.finishCardDrag(100, 10000);
+
+    expect(sourceEl.style.display).not.toBe('none');
+    expect(moveCardSpy).not.toHaveBeenCalled();
+  });
+
+  it('restores source visibility when moveCard rejects', async () => {
+    const board = makeBoard([
+      makeRow('r1', 'Row', [
+        makeStack('s1', 'Stack', [
+          makeColumn('col-1', 'Col', [makeCard('card-a', 'A'), makeCard('card-b', 'B')]),
+        ]),
+      ]),
+    ]);
+    buildBoardDom(board);
+    const moveCardSpy = vi.fn().mockRejectedValue(new Error('boom'));
+    DDH.init(makeDeps({ board, moveCardSpy }));
+
+    const sourceEl = document.querySelector('.card[data-card-id="card-a"]');
+    expect(sourceEl).toBeTruthy();
+    DDH.setCardDrag({
+      started: true, el: sourceEl, boardId: 'test-board',
+      flatColIndex: 0, cardIndex: 0, cardId: 'card-a'
+    });
+
+    // Drop inside the same column (valid target → moveCard runs but rejects).
+    DDH.finishCardDrag(100, 100);
+
+    expect(moveCardSpy).toHaveBeenCalledTimes(1);
+    // Allow the rejection's catch handler to run.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(sourceEl.style.display).not.toBe('none');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

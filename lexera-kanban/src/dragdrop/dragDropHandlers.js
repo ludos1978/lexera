@@ -527,7 +527,7 @@ var LexeraDragDropHandlers = (function () {
     return false;
   }
 
-  function applyCardDropByPoint(source, mx, my) {
+  function applyCardDropByPoint(source, mx, my, onFailure) {
     var target = resolveCardDropTarget(mx, my);
     if (!target) return false;
 
@@ -564,6 +564,9 @@ var LexeraDragDropHandlers = (function () {
 
     _deps.moveCard(source, target).catch(function (err) {
       _deps.logFrontendIssue('error', 'moveCard', 'Drop failed', err);
+      if (typeof onFailure === 'function') {
+        try { onFailure(); } catch (_) { /* ignore */ }
+      }
     });
     return true;
   }
@@ -596,9 +599,19 @@ var LexeraDragDropHandlers = (function () {
       source.colIndex = cardDrag.colIndex;
     }
     // Hide the source card element immediately so it does not flash at the
-    // old position while the async moveCard rebuilds the DOM.
-    if (cardDrag.el) cardDrag.el.style.display = 'none';
-    applyCardDropByPoint(source, mx, my);
+    // old position while the async moveCard rebuilds the DOM. The
+    // successful path (column refresh / card-remove) replaces this DOM
+    // node, so the inline display:none is harmless. The two failure paths
+    // — no valid drop target, and a moveCard rejection — must restore
+    // visibility, otherwise the card silently "disappears" from the
+    // user's view at its original position.
+    var sourceEl = cardDrag.el;
+    if (sourceEl) sourceEl.style.display = 'none';
+    var restoreSourceVisibility = function () {
+      if (sourceEl) sourceEl.style.display = '';
+    };
+    var handled = applyCardDropByPoint(source, mx, my, restoreSourceVisibility);
+    if (!handled) restoreSourceVisibility();
     cleanupCardDrag();
   }
 
