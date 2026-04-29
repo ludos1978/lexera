@@ -941,7 +941,7 @@ mod tests {
     use super::*;
 
     fn meta(label: &str, x: f64, y: f64, w: f64, h: f64) -> WebviewMeta {
-        WebviewMeta { label: label.into(), x, y, width: w, height: h }
+        WebviewMeta { label: label.into(), x, y, width: w, height: h, url: String::new() }
     }
 
     fn registry_with(metas: Vec<WebviewMeta>) -> WebviewRegistry {
