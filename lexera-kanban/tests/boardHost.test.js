@@ -241,7 +241,7 @@ describe('LexeraBoardHost.ensureHealthDot', () => {
 });
 
 describe('LexeraBoardHost.watchPlaceholderVisibility lifecycle', () => {
-  function buildEnv() {
+  function buildEnv(windowOverrides = {}) {
     const setGeometry = vi.fn().mockResolvedValue(undefined);
     const invoke = vi.fn().mockResolvedValue(undefined);
     const moInstances = [];
@@ -270,7 +270,8 @@ describe('LexeraBoardHost.watchPlaceholderVisibility lifecycle', () => {
       LexeraMultiview: { setGeometry, invoke },
       MutationObserver: FakeMutationObserver,
       IntersectionObserver: FakeIntersectionObserver,
-      requestAnimationFrame: (fn) => fn()
+      requestAnimationFrame: (fn) => fn(),
+      ...windowOverrides
     };
     const isolated = loadWithWindow(win);
     return { isolated, win, setGeometry, invoke, moInstances, ioInstances };
@@ -327,6 +328,29 @@ describe('LexeraBoardHost.watchPlaceholderVisibility lifecycle', () => {
     const placeholder = fakeElement({ classList: ['is-active'] });
     isolated.watchPlaceholderVisibility('p4', placeholder, null, 'panel-tab-p4');
     expect(invoke).toHaveBeenCalledWith('multiview_set_visible', { label: 'panel-tab-p4', visible: true });
+  });
+
+  it('uses the shared multiview geometry helper when available', () => {
+    const computeNativeGeometry = vi.fn(() => ({
+      label: 'board-tab-t6',
+      x: 111,
+      y: 222,
+      width: 333,
+      height: 444
+    }));
+    const { isolated, setGeometry } = buildEnv({
+      LexeraMultiviewWebview: { computeNativeGeometry }
+    });
+    const placeholder = fakeElement({ classList: ['is-active'] });
+    isolated.watchPlaceholderVisibility('t6', placeholder);
+    expect(computeNativeGeometry).toHaveBeenCalledWith('board-tab-t6', placeholder);
+    expect(setGeometry).toHaveBeenCalledWith([{
+      label: 'board-tab-t6',
+      x: 111,
+      y: 222,
+      width: 333,
+      height: 444
+    }]);
   });
 
   it('cleanupVisibilityObserver disconnects observers and forgets the tab', () => {

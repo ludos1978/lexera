@@ -281,7 +281,12 @@
   }
 
   function openLogStream(onEntry, onOpen, onError) {
-    if (!window.LexeraApi || typeof window.LexeraApi.connectLogStream !== 'function') return null;
+    if (!window.LexeraApi || typeof window.LexeraApi.connectLogStream !== 'function') {
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('warn', '[connection-settings.openLogStream] returning null — LexeraApi.connectLogStream missing at call time (boot order broken?)');
+      }
+      return null;
+    }
     var es = window.LexeraApi.connectLogStream(onEntry);
     if (!es) return null;
     es.onopen = function (event) {

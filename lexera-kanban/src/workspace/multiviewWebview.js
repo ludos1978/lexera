@@ -72,6 +72,17 @@
   var CIRCUIT_BREAKER_THRESHOLD = 12;
   var CIRCUIT_BREAKER_WINDOW_MS = 1000;
   var ensureCallTimestamps = {};
+  var debugGeometryOverrides = {};
+  var lastDebugGeometryPayloads = {};
+  var hostGeometryContext = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    ready: false
+  };
+  var pendingHostGeometryPromise = null;
+  var HOST_GEOMETRY_RETRY_MS = 50;
 
   // Verbose multiview tracing. Gated so per-ensure / per-doSpawn chatter
   // doesn't flood normal runs. Enable via `?ws-debug=1` URL param or
@@ -195,34 +206,290 @@
     }
   }
 
-  // Shared native child-webview translation. Keep this in the single
-  // placeholder-rect -> native-geometry path so every board/panel view uses
-  // the same offset contract.
-  var MULTIVIEW_NATIVE_TOP_OFFSET_PX = 28;
-
-  function buildGeometryUpdate(label, placeholderEl) {
-    if (!label || !placeholderEl || placeholderEl.offsetParent === null) return null;
-    var r = placeholderEl.getBoundingClientRect();
-    if (r.width <= 0 || r.height <= 0) return null;
-    var inset = getMultiviewInset();
-    var topInset = inset + MULTIVIEW_NATIVE_TOP_OFFSET_PX;
+  function normalizeHostGeometryContext(raw) {
+    raw = raw || {};
     return {
-      label: label,
-      x: r.left + inset,
-      y: r.top + topInset,
-      width: Math.max(1, r.width - 2 * inset),
-      height: Math.max(1, r.height - inset)
+      x: Number(raw.x) || 0,
+      y: Number(raw.y) || 0,
+      width: Number(raw.width) || 0,
+      height: Number(raw.height) || 0,
+      ready: true
     };
   }
 
+  function emptyHostGeometryContext() {
+    return {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      ready: false
+    };
+  }
+
+  function hasDesktopTauriBridge() {
+    return !!(
+      (window.LexeraMultiview && typeof window.LexeraMultiview.invoke === 'function') ||
+      (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function')
+    );
+  }
+
+  function shouldUseZeroHostGeometryFallback() {
+    return !window.LexeraMultiview && !(window.__TAURI__ && window.__TAURI__.core);
+  }
+
+  function scheduleHostGeometryRetry(force) {
+    pendingHostGeometryPromise = new Promise(function (resolve) {
+      setTimeout(function () {
+        pendingHostGeometryPromise = null;
+        refreshHostGeometryContext(force).then(resolve);
+      }, HOST_GEOMETRY_RETRY_MS);
+    });
+    return pendingHostGeometryPromise;
+  }
+
+  function getHostGeometryContext() {
+    return {
+      x: Number(hostGeometryContext.x) || 0,
+      y: Number(hostGeometryContext.y) || 0,
+      width: Number(hostGeometryContext.width) || 0,
+      height: Number(hostGeometryContext.height) || 0,
+      ready: !!hostGeometryContext.ready
+    };
+  }
+
+  function refreshHostGeometryContext(force) {
+    if (!force && hostGeometryContext.ready) return Promise.resolve(getHostGeometryContext());
+    if (pendingHostGeometryPromise) return pendingHostGeometryPromise;
+    var invoker = hasDesktopTauriBridge()
+      ? ((window.LexeraMultiview && typeof window.LexeraMultiview.invoke === 'function' && window.LexeraMultiview.invoke) ||
+        (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function' && window.__TAURI__.core.invoke))
+      : null;
+    if (!invoker) {
+      if (shouldUseZeroHostGeometryFallback()) {
+        hostGeometryContext = normalizeHostGeometryContext(null);
+        return Promise.resolve(getHostGeometryContext());
+      }
+      hostGeometryContext = emptyHostGeometryContext();
+      return scheduleHostGeometryRetry(force);
+    }
+    var requestPromise = invoker('multiview_get_host_geometry', {})
+      .then(function (payload) {
+        hostGeometryContext = normalizeHostGeometryContext(payload);
+        return getHostGeometryContext();
+      })
+      .catch(function () {
+        hostGeometryContext = emptyHostGeometryContext();
+        return scheduleHostGeometryRetry(force);
+      })
+      .finally(function () {
+        if (pendingHostGeometryPromise === requestPromise) {
+          pendingHostGeometryPromise = null;
+        }
+      });
+    pendingHostGeometryPromise = requestPromise;
+    return requestPromise;
+  }
+
+  function getNativeGeometryConfig() {
+    var host = getHostGeometryContext();
+    return {
+      inset: getMultiviewInset(),
+      hostX: host.x,
+      hostY: host.y,
+      hostWidth: host.width,
+      hostHeight: host.height,
+      hostReady: host.ready
+    };
+  }
+
+  function normalizeDebugGeometryOverride(raw) {
+    raw = raw || {};
+    return {
+      x: Number(raw.x) || 0,
+      y: Number(raw.y) || 0,
+      width: Number(raw.width) || 0,
+      height: Number(raw.height) || 0
+    };
+  }
+
+  function getDebugGeometryOverride(label) {
+    return normalizeDebugGeometryOverride(debugGeometryOverrides[String(label || '')]);
+  }
+
+  function setDebugGeometryOverride(label, override) {
+    var key = String(label || '');
+    if (!key) return;
+    var normalized = normalizeDebugGeometryOverride(override);
+    if (!normalized.x && !normalized.y && !normalized.width && !normalized.height) {
+      delete debugGeometryOverrides[key];
+      return;
+    }
+    debugGeometryOverrides[key] = normalized;
+  }
+
+  function computeNativeGeometry(label, placeholderEl) {
+    if (!label || !placeholderEl || placeholderEl.offsetParent === null) return null;
+    var r = placeholderEl.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return null;
+    var config = getNativeGeometryConfig();
+    var inset = config.inset;
+    var adjust = getDebugGeometryOverride(label);
+
+    return {
+      label: label,
+      x: config.hostX + r.left + inset + adjust.x,
+      y: config.hostY + r.top + inset + adjust.y,
+      width: Math.max(1, r.width - 2 * inset + adjust.width),
+      height: Math.max(1, r.height - 2 * inset + adjust.height)
+    };
+  }
+
+  function roundDebugGeometryValue(value) {
+    return Math.round(Number(value) || 0);
+  }
+
+  function getPlaceholderBoardId(placeholderEl) {
+    if (!placeholderEl || !placeholderEl.getAttribute) return '';
+    var raw = placeholderEl.getAttribute('data-loaded-src') ||
+      placeholderEl.getAttribute('data-src') || '';
+    if (!raw) return '';
+    try {
+      var url = new URL(raw, window.location.href);
+      return String(url.searchParams.get('board') || '');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function describePlaceholderDebugTarget(label, placeholderEl) {
+    if (!placeholderEl || !placeholderEl.getAttribute) return String(label || 'view');
+    var panelKind = placeholderEl.getAttribute('data-panel-kind') || '';
+    if (panelKind) return 'panel ' + panelKind;
+    var boardId = getPlaceholderBoardId(placeholderEl);
+    if (boardId) return 'board ' + boardId;
+    var tabId = placeholderEl.getAttribute('data-tab-id') || '';
+    return tabId ? ('view ' + tabId) : String(label || 'view');
+  }
+
+  function updatePlaceholderDebugGeometry(label, placeholderEl, update) {
+    if (!placeholderEl || !placeholderEl.setAttribute || !update) return;
+    var r = placeholderEl.getBoundingClientRect();
+    var target = describePlaceholderDebugTarget(label, placeholderEl);
+    var adjust = getDebugGeometryOverride(label);
+    placeholderEl.setAttribute(
+      'data-debug-shell-geometry',
+      target +
+      ' shell ' + roundDebugGeometryValue(r.left) + ',' + roundDebugGeometryValue(r.top) +
+      ' ' + roundDebugGeometryValue(r.width) + 'x' + roundDebugGeometryValue(r.height) +
+      ' delta ' + roundDebugGeometryValue(adjust.x) + ',' + roundDebugGeometryValue(adjust.y) +
+      ' ' + roundDebugGeometryValue(adjust.width) + 'x' + roundDebugGeometryValue(adjust.height)
+    );
+  }
+
+  function buildDebugGeometryPayload(label, placeholderEl, update) {
+    if (!label || !placeholderEl || !update) return null;
+    var r = placeholderEl.getBoundingClientRect();
+    return {
+      label: String(label),
+      kind: placeholderEl.getAttribute ? String(placeholderEl.getAttribute('data-panel-kind') || '') : '',
+      panelId: placeholderEl.getAttribute ? String(placeholderEl.getAttribute('data-panel-id') || '') : '',
+      tabId: placeholderEl.getAttribute ? String(placeholderEl.getAttribute('data-tab-id') || '') : '',
+      boardId: getPlaceholderBoardId(placeholderEl),
+      adjust: getDebugGeometryOverride(label),
+      shell: {
+        x: roundDebugGeometryValue(r.left),
+        y: roundDebugGeometryValue(r.top),
+        width: roundDebugGeometryValue(r.width),
+        height: roundDebugGeometryValue(r.height)
+      },
+      native: {
+        x: roundDebugGeometryValue(update.x),
+        y: roundDebugGeometryValue(update.y),
+        width: roundDebugGeometryValue(update.width),
+        height: roundDebugGeometryValue(update.height)
+      }
+    };
+  }
+
+  function emitDebugGeometryPayload(label, payload) {
+    if (!label || !payload || !window.LexeraMultiview ||
+        typeof window.LexeraMultiview.invoke !== 'function') {
+      return;
+    }
+    lastDebugGeometryPayloads[String(label)] = payload;
+    window.LexeraMultiview.invoke('multiview_emit_to', {
+      target: String(label),
+      event: 'debug-geometry',
+      payload: payload
+    }).catch(function () {});
+  }
+
+  function emitChildDebugGeometry(label, placeholderEl, update) {
+    var payload = buildDebugGeometryPayload(label, placeholderEl, update);
+    if (!payload) return;
+    emitDebugGeometryPayload(label, payload);
+  }
+
   function pushGeometryForLabel(label, placeholderEl) {
-    var update = buildGeometryUpdate(label, placeholderEl);
+    if (!hostGeometryContext.ready) {
+      refreshHostGeometryContext().then(function () {
+        pushGeometryForLabel(label, placeholderEl);
+      });
+      return;
+    }
+    var update = computeNativeGeometry(label, placeholderEl);
     if (!update) return;
+    updatePlaceholderDebugGeometry(label, placeholderEl, update);
+    emitChildDebugGeometry(label, placeholderEl, update);
     if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
       window.LexeraMultiview.pushGeomDeferred(update);
     } else {
       window.LexeraMultiview.setGeometry([update]).catch(function () {});
     }
+  }
+
+  function handleDebugGeometryAdjust(payload) {
+    payload = payload || {};
+    var label = String(payload.label || '');
+    if (!label || !isHostedTabLabel(label)) return;
+    var field = String(payload.field || '');
+    if (['x', 'y', 'width', 'height'].indexOf(field) === -1) return;
+    var delta = Number(payload.delta);
+    if (!Number.isFinite(delta) || !delta) return;
+    var next = getDebugGeometryOverride(label);
+    next[field] += delta;
+    setDebugGeometryOverride(label, next);
+    var tabId = tabIdFromLabel(label);
+    if (!deps || typeof deps.getPlaceholder !== 'function') return;
+    var placeholderEl = deps.getPlaceholder(tabId);
+    if (!placeholderEl) return;
+    pushGeometryForLabel(label, placeholderEl);
+  }
+
+  function handleDebugGeometryRequest(payload) {
+    payload = payload || {};
+    var label = String(payload.label || '');
+    if (!label || !isHostedTabLabel(label)) return;
+    if (!hostGeometryContext.ready) {
+      refreshHostGeometryContext().then(function () {
+        handleDebugGeometryRequest(payload);
+      });
+      return;
+    }
+    var tabId = tabIdFromLabel(label);
+    var placeholderEl = deps && typeof deps.getPlaceholder === 'function'
+      ? deps.getPlaceholder(tabId)
+      : null;
+    if (placeholderEl) {
+      var update = computeNativeGeometry(label, placeholderEl);
+      if (update) {
+        updatePlaceholderDebugGeometry(label, placeholderEl, update);
+        emitChildDebugGeometry(label, placeholderEl, update);
+        return;
+      }
+    }
+    emitDebugGeometryPayload(label, lastDebugGeometryPayloads[label]);
   }
 
   function refreshAllGeometry() {
@@ -396,14 +663,22 @@
         ro.observe(placeholderEl);
         multiviewGeometryObservers[tab.id] = ro;
       }
-      window.addEventListener('resize', pushGeom);
+      window.addEventListener('resize', function () {
+        refreshHostGeometryContext(true).then(pushGeom);
+      });
       watchPlaceholderVisibility(tab, placeholderEl, pushGeom);
     }
     function doSpawn() {
+      if (!hostGeometryContext.ready) {
+        refreshHostGeometryContext().then(function () {
+          doSpawn();
+        });
+        return;
+      }
       wsDebug('doSpawn tab=' + tab.id + ' label=' + label +
         ' entryState=' + (multiviewSpawnedTabs[tab.id] ? multiviewSpawnedTabs[tab.id].state : 'none') +
         ' lock=' + (multiviewLabelSpawnLocks[label] ? 'yes' : 'no'));
-      var update = buildGeometryUpdate(label, placeholderEl);
+      var update = computeNativeGeometry(label, placeholderEl);
       if (!placeholderEl.isConnected || !update) {
         // Placeholder is in the DOM but not yet measurable. Hook a
         // one-shot watcher that re-attempts as soon as the placeholder is
@@ -617,6 +892,7 @@
     deps = setupDeps || {};
 
     if (typeof window === 'undefined') return;
+    refreshHostGeometryContext();
 
     if (window.__TAURI__ && window.__TAURI__.event) {
       window.__TAURI__.event.listen('health-changed', function (event) {
@@ -666,6 +942,12 @@
           }
         }
       });
+      window.__TAURI__.event.listen('debug-geometry-adjust', function (event) {
+        handleDebugGeometryAdjust(event && event.payload ? event.payload : {});
+      });
+      window.__TAURI__.event.listen('debug-geometry-request', function (event) {
+        handleDebugGeometryRequest(event && event.payload ? event.payload : {});
+      });
     }
 
     // Best-effort cleanup on main-window unload — destroys all child
@@ -695,6 +977,11 @@
     destroy: destroy,
     cleanupLocalState: cleanupLocalState,
     refreshAllGeometry: refreshAllGeometry,
+    computeNativeGeometry: computeNativeGeometry,
+    getNativeGeometryConfig: getNativeGeometryConfig,
+    getHostGeometryContext: getHostGeometryContext,
+    refreshHostGeometryContext: refreshHostGeometryContext,
+    getDebugGeometryOverride: getDebugGeometryOverride,
     applyHealth: applyHealth,
     reapplyAllHealthDots: reapplyAllHealthDots,
     labelForTab: labelForTab,

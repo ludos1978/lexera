@@ -2916,6 +2916,8 @@ dependencies = [
  "libc",
  "log",
  "notify",
+ "objc2-app-kit",
+ "objc2-foundation",
  "parking_lot",
  "rfd",
  "serde",

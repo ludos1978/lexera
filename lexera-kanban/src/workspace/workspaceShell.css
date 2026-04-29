@@ -166,17 +166,14 @@
   position: absolute;
   left: 0;
   right: 0;
-  height: 12px;
+  height: 5px;
   cursor: row-resize;
   z-index: 35;
+  background: var(--bg-tertiary);
 }
 
 .workspace-shell-dock-divider[data-dock-divider="bottom"]::after {
-  left: 0;
-  right: 0;
-  top: auto;
-  bottom: 0;
-  height: 1px;
+  display: none;
 }
 
 .workspace-shell-dock-divider:hover,
@@ -1051,13 +1048,11 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-drop-overlay {
 .workspace-shell-divider[data-axis="horizontal"] {
   height: 5px;
   cursor: row-resize;
+  background: var(--bg-tertiary);
 }
 
 .workspace-shell-divider[data-axis="horizontal"]::after {
-  left: 0;
-  right: 0;
-  top: 2px;
-  height: 1px;
+  display: none;
 }
 
 .workspace-shell-divider:hover,
@@ -1220,6 +1215,23 @@ body.workspace-shell-tab-dragging .workspace-shell-drop-overlay {
   height: 100%;
   display: none;
   background: var(--bg-primary);
+}
+
+.workspace-shell-view[data-debug-shell-geometry]::before {
+  content: attr(data-debug-shell-geometry);
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 2;
+  pointer-events: none;
+  font: 11px/1.25 var(--font-mono, monospace);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-secondary) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 3px;
+  padding: 2px 5px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-ink, #000) 14%, transparent);
 }
 
 .workspace-shell-view.is-active {

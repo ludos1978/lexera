@@ -154,7 +154,12 @@
 
   function createTabDragGhost(tabId) {
     var found = deps.findTabInAllTrees(tabId);
-    if (!found) return null;
+    if (!found) {
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('warn', '[tabDragController.createTabDragGhost] returning null — tab "' + tabId + '" not found in any tree during active drag');
+      }
+      return null;
+    }
     var ghost = document.createElement('div');
     ghost.className = 'workspace-shell-tab-ghost';
     ghost.textContent = deps.getTabTitle(found.tab);

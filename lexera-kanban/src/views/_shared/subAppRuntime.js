@@ -37,6 +37,10 @@
   var subAppNotificationActive = null;
   var subAppNotificationActiveMessage = null;
   var subAppModalCounter = 0;
+  var subAppDebugGeometryStyleId = 'lexera-mv-debug-geometry-styles';
+  var subAppDebugGeometryOverlayId = 'lexera-mv-debug-geometry';
+  var subAppPendingDebugGeometryPayload = null;
+  var subAppPendingDebugGeometryFlushInstalled = false;
 
   function tauri() {
     if (typeof window === 'undefined' || !window.__TAURI__) return null;
@@ -107,6 +111,191 @@
       windowLabel: getWindowLabel(),
       hostWindowLabel: getHostWindowLabel()
     };
+  }
+
+  function formatDebugGeometryValue(value) {
+    return String(Math.round(Number(value) || 0));
+  }
+
+  function formatSignedDebugGeometryValue(value) {
+    var num = Math.round(Number(value) || 0);
+    if (num > 0) return '+' + String(num);
+    return String(num);
+  }
+
+  function requestDebugGeometryAdjust(label, field, delta) {
+    if (!label || !field || !delta) return;
+    invoke('multiview_broadcast', {
+      event: 'debug-geometry-adjust',
+      payload: {
+        label: String(label),
+        field: String(field),
+        delta: Number(delta) || 0
+      }
+    }).catch(function () {});
+  }
+
+  function requestCurrentDebugGeometry(label) {
+    if (!label) return;
+    invoke('multiview_broadcast', {
+      event: 'debug-geometry-request',
+      payload: { label: String(label) }
+    }).catch(function () {});
+  }
+
+  function schedulePendingDebugGeometryOverlayFlush() {
+    if (subAppPendingDebugGeometryFlushInstalled || typeof document === 'undefined') return;
+    subAppPendingDebugGeometryFlushInstalled = true;
+    var flush = function () {
+      subAppPendingDebugGeometryFlushInstalled = false;
+      if (!subAppPendingDebugGeometryPayload) return;
+      var payload = subAppPendingDebugGeometryPayload;
+      subAppPendingDebugGeometryPayload = null;
+      updateDebugGeometryOverlay(payload);
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', flush, { once: true });
+      return;
+    }
+    setTimeout(flush, 0);
+  }
+
+  function ensureDebugGeometryOverlay() {
+    if (typeof document === 'undefined') return null;
+    var styleEl = document.getElementById(subAppDebugGeometryStyleId);
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = subAppDebugGeometryStyleId;
+      styleEl.textContent =
+        '#' + subAppDebugGeometryOverlayId + ' {' +
+        'position: fixed;' +
+        'top: 4px;' +
+        'left: 4px;' +
+        'z-index: 2147483647;' +
+        'pointer-events: auto;' +
+        'font: 11px/1.25 var(--font-mono, monospace);' +
+        'color: var(--text-primary, #fff);' +
+        'background: color-mix(in srgb, var(--bg-secondary, #111) 88%, transparent);' +
+        'border: 1px solid color-mix(in srgb, var(--accent, #6aa0ff) 55%, transparent);' +
+        'border-radius: 3px;' +
+        'padding: 3px 6px;' +
+        'box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);' +
+        'display: flex;' +
+        'flex-direction: column;' +
+        'gap: 4px;' +
+        'min-width: 168px;' +
+        '}' +
+        '#' + subAppDebugGeometryOverlayId + ' .mv-debug-geometry-text {' +
+        'white-space: pre;' +
+        'pointer-events: none;' +
+        '}' +
+        '#' + subAppDebugGeometryOverlayId + ' .mv-debug-geometry-controls {' +
+        'display: grid;' +
+        'grid-template-columns: repeat(4, minmax(0, 1fr));' +
+        'gap: 3px 6px;' +
+        '}' +
+        '#' + subAppDebugGeometryOverlayId + ' .mv-debug-geometry-row {' +
+        'display: flex;' +
+        'align-items: center;' +
+        'gap: 3px;' +
+        '}' +
+        '#' + subAppDebugGeometryOverlayId + ' .mv-debug-geometry-key {' +
+        'min-width: 10px;' +
+        'text-transform: lowercase;' +
+        'pointer-events: none;' +
+        '}' +
+        '#' + subAppDebugGeometryOverlayId + ' button {' +
+        'appearance: none;' +
+        'border: 1px solid color-mix(in srgb, var(--accent, #6aa0ff) 55%, transparent);' +
+        'background: color-mix(in srgb, var(--bg-tertiary, #1c1c1c) 90%, transparent);' +
+        'color: var(--text-primary, #fff);' +
+        'border-radius: 2px;' +
+        'padding: 0 5px;' +
+        'font: inherit;' +
+        'line-height: 1.2;' +
+        'cursor: pointer;' +
+        '}' +
+        '#' + subAppDebugGeometryOverlayId + ' button:hover {' +
+        'background: color-mix(in srgb, var(--accent, #6aa0ff) 20%, var(--bg-tertiary, #1c1c1c));' +
+        '}';
+      (document.head || document.documentElement || document.body).appendChild(styleEl);
+    }
+    if (!document.body) return null;
+    var overlay = document.getElementById(subAppDebugGeometryOverlayId);
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = subAppDebugGeometryOverlayId;
+      overlay.setAttribute('aria-hidden', 'true');
+      var textEl = document.createElement('div');
+      textEl.className = 'mv-debug-geometry-text';
+      overlay.appendChild(textEl);
+      var controlsEl = document.createElement('div');
+      controlsEl.className = 'mv-debug-geometry-controls';
+      var fields = [
+        { key: 'x', label: 'x' },
+        { key: 'y', label: 'y' },
+        { key: 'width', label: 'w' },
+        { key: 'height', label: 'h' }
+      ];
+      for (var i = 0; i < fields.length; i++) {
+        (function (field) {
+          var row = document.createElement('div');
+          row.className = 'mv-debug-geometry-row';
+          var keyEl = document.createElement('span');
+          keyEl.className = 'mv-debug-geometry-key';
+          keyEl.textContent = field.label;
+          row.appendChild(keyEl);
+          ['-', '+'].forEach(function (symbol) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = symbol;
+            button.setAttribute('data-field', field.key);
+            button.setAttribute('data-delta', symbol === '+' ? '1' : '-1');
+            button.addEventListener('click', function (event) {
+              event.preventDefault();
+              event.stopPropagation();
+              requestDebugGeometryAdjust(
+                overlay.getAttribute('data-target-label') || '',
+                field.key,
+                symbol === '+' ? 1 : -1
+              );
+            });
+            row.appendChild(button);
+          });
+          controlsEl.appendChild(row);
+        })(fields[i]);
+      }
+      overlay.appendChild(controlsEl);
+      document.body.appendChild(overlay);
+    }
+    return overlay;
+  }
+
+  function updateDebugGeometryOverlay(payload) {
+    if (!payload) return;
+    subAppPendingDebugGeometryPayload = payload;
+    var overlay = ensureDebugGeometryOverlay();
+    if (!overlay) {
+      schedulePendingDebugGeometryOverlayFlush();
+      return;
+    }
+    subAppPendingDebugGeometryPayload = null;
+    overlay.setAttribute('data-target-label', String(payload.label || ''));
+    var title = payload.kind
+      ? ('panel ' + String(payload.kind))
+      : (payload.boardId ? ('board ' + String(payload.boardId)) : String(payload.label || 'view'));
+    var nativeRect = payload.native || {};
+    var shellRect = payload.shell || {};
+    var adjust = payload.adjust || {};
+    var textEl = overlay.querySelector('.mv-debug-geometry-text') || overlay;
+    textEl.textContent =
+      title + '\n' +
+      'native ' + formatDebugGeometryValue(nativeRect.x) + ',' + formatDebugGeometryValue(nativeRect.y) +
+      ' ' + formatDebugGeometryValue(nativeRect.width) + 'x' + formatDebugGeometryValue(nativeRect.height) + '\n' +
+      'shell  ' + formatDebugGeometryValue(shellRect.x) + ',' + formatDebugGeometryValue(shellRect.y) +
+      ' ' + formatDebugGeometryValue(shellRect.width) + 'x' + formatDebugGeometryValue(shellRect.height) + '\n' +
+      'delta  ' + formatSignedDebugGeometryValue(adjust.x) + ',' + formatSignedDebugGeometryValue(adjust.y) +
+      ' ' + formatSignedDebugGeometryValue(adjust.width) + 'x' + formatSignedDebugGeometryValue(adjust.height);
   }
 
   function normalizeLogMessage(value) {
@@ -424,6 +613,11 @@
       if (typeof opts.onError === 'function') opts.onError(new Error('no Tauri context'));
       return;
     }
+
+    wv.listen('debug-geometry', function (event) {
+      updateDebugGeometryOverlay(event && event.payload ? event.payload : null);
+    });
+    requestCurrentDebugGeometry(ctx.windowLabel || wv.label || '');
 
     // Build the list of events this view will subscribe to so we can
     // register interest with Rust's SubscriptionRegistry. Filtering

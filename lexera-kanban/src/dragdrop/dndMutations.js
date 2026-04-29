@@ -53,6 +53,9 @@ var LexeraDndMutations = (function () {
     for (var i = 0; i < fbd.rows.length; i++) {
       if (fbd.rows[i].id === displayRow.id) return fbd.rows[i];
     }
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      window.lexeraLog('warn', '[dndMutations.findFullDataRow] returning null — display row id "' + displayRow.id + '" not found in fullBoardData (active/full board desync)');
+    }
     return null;
   }
 
@@ -65,6 +68,9 @@ var LexeraDndMutations = (function () {
     var displayStack = displayRow.stacks[displayStackIdx];
     for (var i = 0; i < row.stacks.length; i++) {
       if (row.stacks[i].id === displayStack.id) return row.stacks[i];
+    }
+    if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+      window.lexeraLog('warn', '[dndMutations.findFullDataStack] returning null — display stack id "' + displayStack.id + '" not found in fullBoardData row (active/full board desync)');
     }
     return null;
   }

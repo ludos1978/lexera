@@ -179,6 +179,9 @@
       if (localhostResult) return localhostResult.baseUrl;
     }
 
+    if (typeof root !== 'undefined' && typeof root.lexeraLog === 'function') {
+      root.lexeraLog('warn', '[backendDiscovery.discoverBackend] returning null — no backend found after preferred/Tauri/port scan');
+    }
     return null;
   }
 

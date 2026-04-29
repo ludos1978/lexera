@@ -52,7 +52,7 @@
     throw new Error('LexeraTabDragController global is required before workspaceShell.js');
   }
   var SIDE_DOCK_DIVIDER_SIZE_PX = 5;
-  var BOTTOM_DOCK_DIVIDER_SIZE_PX = 12;
+  var BOTTOM_DOCK_DIVIDER_SIZE_PX = 5;
 
   var normalizeViewKind = layoutTree.normalizeViewKind;
   var isPanelTab = layoutTree.isPanelTab;
@@ -1234,7 +1234,11 @@
     var bottomOffset = layoutState.visible.bottom
       ? clampPanelSize('bottom', state.dockSizes.bottom)
       : 22;
-    state.bottomDividerEl.style.bottom = bottomOffset + 'px';
+    // This divider is absolutely positioned rather than occupying a grid track.
+    // Place the full 5px separator band directly above the bottom dock boundary
+    // so horizontal splits have the same visible spacing as internal split rows.
+    state.bottomDividerEl.style.bottom =
+      (bottomOffset - BOTTOM_DOCK_DIVIDER_SIZE_PX) + 'px';
   }
 
   function applyDockLayout() {
@@ -1676,6 +1680,10 @@
       view.setAttribute('data-tab-id', tab.id);
       view.setAttribute('data-src', desiredSrc);
       view.setAttribute('data-multiview', '1');
+      view.setAttribute(
+        'data-debug-shell-geometry',
+        'board ' + String(tab.boardId || '(none)') + ' tab ' + String(tab.id) + ' pending'
+      );
       // Diagnostic skeleton (see buildMultiviewPanelPlaceholder for
       // rationale). Hidden by the child webview overlay once it spawns.
       view.innerHTML = '<div class="mv-placeholder-skeleton" style="' +
@@ -2106,9 +2114,19 @@
       return elements[normalized];
     }
     var kind = getPanelKind(normalized);
-    if (!kind) return null;
+    if (!kind) {
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('warn', '[workspaceShell.getPanelElement] returning null — could not derive kind for panel "' + normalized + '"');
+      }
+      return null;
+    }
     var sharedPanels = getSharedPanelsApi();
-    if (!sharedPanels || typeof sharedPanels.createPanelElement !== 'function') return null;
+    if (!sharedPanels || typeof sharedPanels.createPanelElement !== 'function') {
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('warn', '[workspaceShell.getPanelElement] returning null — LexeraSharedPanels.createPanelElement missing at call time (boot order broken?)');
+      }
+      return null;
+    }
     var panelEl = sharedPanels.createPanelElement(kind, normalized);
     if (!panelEl) return null;
     panelEl.setAttribute('data-shell-panel', kind);
@@ -2529,6 +2547,10 @@
       view.setAttribute('data-shell-panel-instance', panelId);
       view.setAttribute('data-src', panelSrc);
       view.setAttribute('data-multiview', '1');
+      view.setAttribute(
+        'data-debug-shell-geometry',
+        'panel ' + String(panelKind) + ' tab ' + String(tab.id) + ' pending'
+      );
       // Diagnostic skeleton — visible UNTIL the child webview overlays it.
       // Once the webview is positioned over the placeholder we don't see this
       // anymore, but if the spawn fails or geometry never pushes, the user

@@ -1609,7 +1609,12 @@ var LexeraDragDropHandlers = (function () {
     var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
     var stackIdx = parseInt(treeTarget.node.getAttribute('data-stack-index'), 10);
     var colIdx = parseInt(treeTarget.node.getAttribute('data-col-local-index'), 10);
-    if (isNaN(rowIdx) || isNaN(stackIdx) || isNaN(colIdx)) return null;
+    if (isNaN(rowIdx) || isNaN(stackIdx) || isNaN(colIdx)) {
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('warn', '[dragDropHandlers.getTreeColumnDropTarget] returning null — tree-column node missing/corrupt data-row/stack/col-local-index attributes (render bug)');
+      }
+      return null;
+    }
     return {
       boardId: boardId,
       rowIndex: rowIdx,
@@ -1647,7 +1652,12 @@ var LexeraDragDropHandlers = (function () {
     var zoneBoardId = zone.getAttribute('data-board-id') || activeBoardId;
     var zoneRowIdx = parseInt(zone.getAttribute('data-row-index'), 10);
     var zoneStackIdx = parseInt(zone.getAttribute('data-stack-index'), 10);
-    if (isNaN(zoneRowIdx) || isNaN(zoneStackIdx)) return null;
+    if (isNaN(zoneRowIdx) || isNaN(zoneStackIdx)) {
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('warn', '[dragDropHandlers.getTreeStackDropTarget] returning null — tree-stack-drop-zone missing/corrupt data-row/stack-index attributes (render bug)');
+      }
+      return null;
+    }
     return {
       boardId: zoneBoardId,
       rowIndex: zoneRowIdx,
@@ -1668,7 +1678,12 @@ var LexeraDragDropHandlers = (function () {
     var stackIdx = parseInt(treeTarget.node.getAttribute('data-stack-index'), 10);
     var colIdx = parseInt(treeTarget.node.getAttribute('data-col-local-index'), 10);
     var cardIdx = parseInt(treeTarget.node.getAttribute('data-card-index'), 10);
-    if (isNaN(rowIdx) || isNaN(stackIdx) || isNaN(colIdx) || isNaN(cardIdx)) return null;
+    if (isNaN(rowIdx) || isNaN(stackIdx) || isNaN(colIdx) || isNaN(cardIdx)) {
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('warn', '[dragDropHandlers.getTreeCardDropTarget] returning null — tree-card node missing/corrupt data-row/stack/col-local/card-index attributes (render bug)');
+      }
+      return null;
+    }
     return {
       kind: 'sidebar',
       boardId: boardId,

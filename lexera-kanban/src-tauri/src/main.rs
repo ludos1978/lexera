@@ -501,6 +501,7 @@ fn main() {
             // Multi-webview runtime commands used by board hosting,
             // utility views, modal windows, and smoke-test tooling.
             webview_mgr::multiview_spawn,
+            webview_mgr::multiview_get_host_geometry,
             webview_mgr::multiview_destroy,
             webview_mgr::multiview_set_geometry,
             webview_mgr::multiview_list,

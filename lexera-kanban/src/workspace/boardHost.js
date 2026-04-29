@@ -101,6 +101,24 @@
   // the shell does not have to track visibility observers itself.
   var visibilityObservers = {};
 
+  function computeVisibilityGeometryUpdate(label, placeholderEl) {
+    if (!label || !placeholderEl || placeholderEl.offsetParent === null) return null;
+    var sharedMultiviewWebview = (typeof window !== 'undefined' && window.LexeraMultiviewWebview) || null;
+    if (sharedMultiviewWebview &&
+        typeof sharedMultiviewWebview.computeNativeGeometry === 'function') {
+      return sharedMultiviewWebview.computeNativeGeometry(label, placeholderEl);
+    }
+    var r = placeholderEl.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return null;
+    return {
+      label: label,
+      x: r.left,
+      y: r.top,
+      width: r.width,
+      height: r.height
+    };
+  }
+
   /**
    * Track a placeholder's visibility (`.is-active` class + viewport
    * intersection) and mirror it onto the corresponding child webview via
@@ -119,20 +137,15 @@
     var label = labelOverride || multiviewLabelForTab(tabId);
     var lastVisible = null;
     function localPushGeom() {
-      if (placeholderEl.offsetParent === null) return;
-      var r = placeholderEl.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) return;
+      var update = computeVisibilityGeometryUpdate(label, placeholderEl);
+      if (!update) return;
       // Use the per-frame coalescer if available (Perf #2 in the
       // multiview TODOs) so dock-divider drags don't generate one IPC
       // per webview per frame.
       if (typeof multiview.pushGeomDeferred === 'function') {
-        multiview.pushGeomDeferred({
-          label: label, x: r.left, y: r.top, width: r.width, height: r.height
-        });
+        multiview.pushGeomDeferred(update);
       } else {
-        multiview.setGeometry([{
-          label: label, x: r.left, y: r.top, width: r.width, height: r.height
-        }]).catch(function () {});
+        multiview.setGeometry([update]).catch(function () {});
       }
     }
     var doPushGeom = typeof pushGeomFn === 'function' ? pushGeomFn : localPushGeom;

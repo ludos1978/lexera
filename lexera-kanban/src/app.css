@@ -2064,7 +2064,9 @@ body.embedded-mode .layout {
 }
 
 body.embedded-mode {
+  --multiview-debug-border: color-mix(in srgb, var(--accent) 82%, white 18%);
   grid-template-rows: minmax(0, 1fr);
+  position: relative;
 }
 
 body.embedded-mode .layout > .main {
@@ -2077,6 +2079,15 @@ body.embedded-mode .main {
 
 body.embedded-mode .columns-container {
   min-height: 0;
+}
+
+body.embedded-mode::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--multiview-debug-border);
+  z-index: 2147483647;
 }
 
 .board-header {

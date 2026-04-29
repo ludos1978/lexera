@@ -42,6 +42,183 @@
     } catch (_) {}
   }
 
+  function formatDebugGeometryValue(value) {
+    return String(Math.round(Number(value) || 0));
+  }
+
+  function formatSignedDebugGeometryValue(value) {
+    var num = Math.round(Number(value) || 0);
+    if (num > 0) return '+' + String(num);
+    return String(num);
+  }
+
+  var debugGeometryInvoke = null;
+  var pendingDebugGeometryPayload = null;
+  var pendingDebugGeometryFlushInstalled = false;
+
+  function requestCurrentDebugGeometry(label) {
+    if (!label || typeof debugGeometryInvoke !== 'function') return;
+    debugGeometryInvoke('multiview_broadcast', {
+      event: 'debug-geometry-request',
+      payload: { label: String(label) }
+    }).catch(function () {});
+  }
+
+  function schedulePendingDebugGeometryOverlayFlush() {
+    if (pendingDebugGeometryFlushInstalled || typeof document === 'undefined') return;
+    pendingDebugGeometryFlushInstalled = true;
+    var flush = function () {
+      pendingDebugGeometryFlushInstalled = false;
+      if (!pendingDebugGeometryPayload) return;
+      var payload = pendingDebugGeometryPayload;
+      pendingDebugGeometryPayload = null;
+      updateDebugGeometryOverlay(payload);
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', flush, { once: true });
+      return;
+    }
+    setTimeout(flush, 0);
+  }
+
+  function ensureDebugGeometryOverlay() {
+    if (!document.getElementById('lexera-mv-debug-geometry-styles')) {
+      var styleEl = document.createElement('style');
+      styleEl.id = 'lexera-mv-debug-geometry-styles';
+      styleEl.textContent =
+        '#lexera-mv-debug-geometry {' +
+        'position: fixed;' +
+        'top: 4px;' +
+        'left: 4px;' +
+        'z-index: 2147483647;' +
+        'pointer-events: auto;' +
+        'font: 11px/1.25 var(--font-mono, monospace);' +
+        'color: var(--text-primary, #fff);' +
+        'background: color-mix(in srgb, var(--bg-secondary, #111) 88%, transparent);' +
+        'border: 1px solid color-mix(in srgb, var(--accent, #6aa0ff) 55%, transparent);' +
+        'border-radius: 3px;' +
+        'padding: 3px 6px;' +
+        'box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);' +
+        'display: flex;' +
+        'flex-direction: column;' +
+        'gap: 4px;' +
+        'min-width: 168px;' +
+        '}' +
+        '#lexera-mv-debug-geometry .mv-debug-geometry-text {' +
+        'white-space: pre;' +
+        'pointer-events: none;' +
+        '}' +
+        '#lexera-mv-debug-geometry .mv-debug-geometry-controls {' +
+        'display: grid;' +
+        'grid-template-columns: repeat(4, minmax(0, 1fr));' +
+        'gap: 3px 6px;' +
+        '}' +
+        '#lexera-mv-debug-geometry .mv-debug-geometry-row {' +
+        'display: flex;' +
+        'align-items: center;' +
+        'gap: 3px;' +
+        '}' +
+        '#lexera-mv-debug-geometry .mv-debug-geometry-key {' +
+        'min-width: 10px;' +
+        'pointer-events: none;' +
+        '}' +
+        '#lexera-mv-debug-geometry button {' +
+        'appearance: none;' +
+        'border: 1px solid color-mix(in srgb, var(--accent, #6aa0ff) 55%, transparent);' +
+        'background: color-mix(in srgb, var(--bg-tertiary, #1c1c1c) 90%, transparent);' +
+        'color: var(--text-primary, #fff);' +
+        'border-radius: 2px;' +
+        'padding: 0 5px;' +
+        'font: inherit;' +
+        'line-height: 1.2;' +
+        'cursor: pointer;' +
+        '}' +
+        '#lexera-mv-debug-geometry button:hover {' +
+        'background: color-mix(in srgb, var(--accent, #6aa0ff) 20%, var(--bg-tertiary, #1c1c1c));' +
+        '}';
+      (document.head || document.documentElement || document.body).appendChild(styleEl);
+    }
+    if (!document.body) return null;
+    var overlay = document.getElementById('lexera-mv-debug-geometry');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'lexera-mv-debug-geometry';
+      overlay.setAttribute('aria-hidden', 'true');
+      var textEl = document.createElement('div');
+      textEl.className = 'mv-debug-geometry-text';
+      overlay.appendChild(textEl);
+      var controlsEl = document.createElement('div');
+      controlsEl.className = 'mv-debug-geometry-controls';
+      var fields = [
+        { key: 'x', label: 'x' },
+        { key: 'y', label: 'y' },
+        { key: 'width', label: 'w' },
+        { key: 'height', label: 'h' }
+      ];
+      for (var i = 0; i < fields.length; i++) {
+        (function (field) {
+          var row = document.createElement('div');
+          row.className = 'mv-debug-geometry-row';
+          var keyEl = document.createElement('span');
+          keyEl.className = 'mv-debug-geometry-key';
+          keyEl.textContent = field.label;
+          row.appendChild(keyEl);
+          ['-', '+'].forEach(function (symbol) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = symbol;
+            button.addEventListener('click', function (event) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!overlay.getAttribute('data-target-label')) return;
+              if (typeof debugGeometryInvoke !== 'function') return;
+              debugGeometryInvoke('multiview_broadcast', {
+                event: 'debug-geometry-adjust',
+                payload: {
+                  label: overlay.getAttribute('data-target-label'),
+                  field: field.key,
+                  delta: symbol === '+' ? 1 : -1
+                }
+              }).catch(function () {});
+            });
+            row.appendChild(button);
+          });
+          controlsEl.appendChild(row);
+        })(fields[i]);
+      }
+      overlay.appendChild(controlsEl);
+      document.body.appendChild(overlay);
+    }
+    return overlay;
+  }
+
+  function updateDebugGeometryOverlay(payload) {
+    if (!payload) return;
+    pendingDebugGeometryPayload = payload;
+    var overlay = ensureDebugGeometryOverlay();
+    if (!overlay) {
+      schedulePendingDebugGeometryOverlayFlush();
+      return;
+    }
+    pendingDebugGeometryPayload = null;
+    overlay.setAttribute('data-target-label', String(payload.label || ''));
+    var title = payload.boardId
+      ? ('board ' + String(payload.boardId))
+      : String(payload.label || 'board');
+    var nativeRect = payload.native || {};
+    var shellRect = payload.shell || {};
+    var adjust = payload.adjust || {};
+    var textEl = overlay.querySelector('.mv-debug-geometry-text') || overlay;
+    textEl.textContent =
+      title + '\n' +
+      'native ' + formatDebugGeometryValue(nativeRect.x) + ',' + formatDebugGeometryValue(nativeRect.y) +
+      ' ' + formatDebugGeometryValue(nativeRect.width) + 'x' + formatDebugGeometryValue(nativeRect.height) + '\n' +
+      'shell  ' + formatDebugGeometryValue(shellRect.x) + ',' + formatDebugGeometryValue(shellRect.y) +
+      ' ' + formatDebugGeometryValue(shellRect.width) + 'x' + formatDebugGeometryValue(shellRect.height) + '\n' +
+      'delta  ' + formatSignedDebugGeometryValue(adjust.x) + ',' + formatSignedDebugGeometryValue(adjust.y) +
+      ' ' + formatSignedDebugGeometryValue(adjust.width) + 'x' + formatSignedDebugGeometryValue(adjust.height);
+  }
+
   // Keyboard shortcuts that the focused webview captures before the
   // shell can see them. Forwarded as `multiview-shortcut` so the shell
   // (via `navigationBridge`) routes them to the right open helper.
@@ -74,10 +251,16 @@
     var invoke = deps.invoke;
     var handleRequest = deps.handleRequest;
     if (typeof getCurrentWebview !== 'function' || typeof invoke !== 'function') return false;
+    debugGeometryInvoke = invoke;
     var wv = getCurrentWebview();
     if (!wv || typeof wv.listen !== 'function') return false;
 
     injectFillStyles();
+
+    wv.listen('debug-geometry', function (event) {
+      updateDebugGeometryOverlay(event && event.payload ? event.payload : null);
+    });
+    requestCurrentDebugGeometry(wv.label || '');
 
     wv.listen('catalog-snapshot', function (event) {
       var p = (event && event.payload) || {};

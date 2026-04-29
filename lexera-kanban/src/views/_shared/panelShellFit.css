@@ -49,6 +49,7 @@ html {
 }
 
 body.workspace-shell-mode[data-shell-panel] {
+  --multiview-debug-border: color-mix(in srgb, var(--accent) 82%, white 18%);
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -57,9 +58,19 @@ body.workspace-shell-mode[data-shell-panel] {
   min-width: 0;
   margin: 0;
   padding: 0;
+  position: relative;
   overflow: hidden;
   background: var(--bg-primary);
   color: var(--text-primary);
+}
+
+body.workspace-shell-mode[data-shell-panel]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--multiview-debug-border);
+  z-index: 2147483647;
 }
 
 /* Each panel's top-level element should fill the body. Mirrors the

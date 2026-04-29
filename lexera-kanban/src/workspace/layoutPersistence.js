@@ -134,7 +134,12 @@
         activeTabId: String(raw.activeTabId || '')
       };
     }
-    if (raw.type !== 'split') return null;
+    if (raw.type !== 'split') {
+      if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+        window.lexeraLog('warn', '[layoutPersistence.hydrate] returning null — unrecognized node type "' + raw.type + '" (silently dropping subtree; possible corrupt or version-mismatched state)');
+      }
+      return null;
+    }
     return {
       type: 'split',
       id: String(raw.id || deps.nextId('split')),

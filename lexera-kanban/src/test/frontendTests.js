@@ -6397,7 +6397,6 @@
       var dividerRect = divider.getBoundingClientRect();
       var dockRect = dock.getBoundingClientRect();
       var placeholderRect = placeholder.getBoundingClientRect();
-      var expectedTopOffset = 28;
       function fmtRect(r) {
         return '{top:' + r.top.toFixed(1) +
           ',bottom:' + r.bottom.toFixed(1) +
@@ -6427,10 +6426,16 @@
 
       var mv = shellWin.LexeraMultiview || window.LexeraMultiview || null;
       var mvWebview = shellWin.LexeraMultiviewWebview || window.LexeraMultiviewWebview || null;
-      if (mv && mvWebview && typeof mv.listWebviews === 'function' && typeof mvWebview.spawnedLabel === 'function') {
+      if (mv &&
+          mvWebview &&
+          typeof mv.listWebviews === 'function' &&
+          typeof mvWebview.spawnedLabel === 'function' &&
+          typeof mvWebview.computeNativeGeometry === 'function') {
         var tabId = placeholder.getAttribute('data-tab-id') || '';
         var label = mvWebview.spawnedLabel(tabId) || '';
         assert(label, 'active logs placeholder resolves to a spawned multiview label');
+        var expectedGeometry = mvWebview.computeNativeGeometry(label, placeholder);
+        assert(expectedGeometry, 'runtime computes native geometry for active logs placeholder');
         var metas = await mv.listWebviews();
         var meta = null;
         for (var i = 0; i < metas.length; i++) {
@@ -6446,11 +6451,24 @@
           y: meta.y,
           width: meta.width,
           height: meta.height,
-          url: meta.url
+          url: meta.url,
+          expected: expectedGeometry
         });
         assert(
-          Math.abs(meta.y - (placeholderRect.top + expectedTopOffset)) <= 1.5,
-          'Rust webview y applies the shared native top offset.' + metaDiag
+          Math.abs(meta.x - expectedGeometry.x) <= 1.5,
+          'Rust webview x matches the shared native geometry.' + metaDiag
+        );
+        assert(
+          Math.abs(meta.y - expectedGeometry.y) <= 1.5,
+          'Rust webview y matches the shared native geometry.' + metaDiag
+        );
+        assert(
+          Math.abs(meta.width - expectedGeometry.width) <= 1.5,
+          'Rust webview width matches the shared native geometry.' + metaDiag
+        );
+        assert(
+          Math.abs(meta.height - expectedGeometry.height) <= 1.5,
+          'Rust webview height matches the shared native geometry.' + metaDiag
         );
       }
     } finally { await teardown(); }

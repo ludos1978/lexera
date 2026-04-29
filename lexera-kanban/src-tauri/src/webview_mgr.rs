@@ -19,6 +19,8 @@ use tauri::{
     webview::WebviewBuilder, AppHandle, LogicalPosition, LogicalSize, Manager,
     State, WebviewUrl, Window,
 };
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{NSView, NSWindow};
 
 fn is_reserved_window_label(app: &AppHandle, label: &str) -> bool {
     let trimmed = label.trim();
@@ -57,6 +59,14 @@ pub struct WebviewMeta {
     pub url: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct HostGeometry {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
 #[derive(Deserialize)]
 pub struct GeometryUpdate {
     pub label: String,
@@ -76,6 +86,148 @@ pub struct SpawnRequest {
     pub height: f64,
     /// Optional parent window label; defaults to "main".
     pub parent_window: Option<String>,
+}
+
+#[cfg(not(target_os = "macos"))]
+fn default_host_geometry() -> HostGeometry {
+    HostGeometry {
+        x: 0.0,
+        y: 0.0,
+        width: 0.0,
+        height: 0.0,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn top_inset_for_view_rect(parent_height: f64, rect: objc2_foundation::NSRect, parent_is_flipped: bool) -> f64 {
+    if parent_is_flipped {
+        rect.origin.y
+    } else {
+        (parent_height - rect.origin.y - rect.size.height).max(0.0)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn current_host_geometry(caller: &tauri::Webview) -> Result<HostGeometry, String> {
+    use std::sync::mpsc::channel;
+
+    let window_ptr = caller
+        .window()
+        .ns_window()
+        .map_err(|e| format!("read ns_window failed: {}", e))?;
+
+    let (window_frame, content_rect, content_layout_rect, content_view_frame) = unsafe {
+        let window: &NSWindow = &*window_ptr.cast();
+        let frame = window.frame();
+        let content_rect = window.contentRectForFrameRect(frame);
+        let content_layout_rect = window.contentLayoutRect();
+        let content_view_frame = window.contentView().map(|view| view.frame());
+        (frame, content_rect, content_layout_rect, content_view_frame)
+    };
+
+    let (tx, rx) = channel();
+    caller
+        .with_webview(move |webview| unsafe {
+            let view: &NSView = &*webview.inner().cast();
+            let host_frame = view.frame();
+            let parent = view.superview();
+            let parent_frame = parent.as_ref().map(|v| v.frame());
+            let parent_is_flipped = parent.as_ref().map(|v| v.isFlipped()).unwrap_or(false);
+            let parent_height = parent_frame
+                .as_ref()
+                .map(|frame| frame.size.height)
+                .unwrap_or(host_frame.size.height);
+            let host_y = top_inset_for_view_rect(parent_height, host_frame, parent_is_flipped);
+            let _ = tx.send((
+                host_frame,
+                parent_frame,
+                parent_height,
+                parent_is_flipped,
+                HostGeometry {
+                    x: host_frame.origin.x,
+                    y: host_y,
+                    width: host_frame.size.width,
+                    height: host_frame.size.height,
+                },
+            ));
+        })
+        .map_err(|e| format!("inspect host webview failed: {}", e))?;
+
+    let (host_frame, parent_frame, parent_height, parent_is_flipped, host_geometry) = rx
+        .recv()
+        .map_err(|e| format!("host webview geometry unavailable: {}", e))?;
+
+    let content_top_inset =
+        top_inset_for_view_rect(window_frame.size.height, content_rect, false);
+    let layout_top_inset =
+        top_inset_for_view_rect(window_frame.size.height, content_layout_rect, false);
+    let content_view_top_inset = content_view_frame
+        .map(|rect| top_inset_for_view_rect(window_frame.size.height, rect, false))
+        .unwrap_or(0.0);
+    let host_fills_window = host_frame.origin.x.abs() < 0.5
+        && host_frame.origin.y.abs() < 0.5
+        && (host_frame.size.width - window_frame.size.width).abs() < 0.5
+        && (host_frame.size.height - window_frame.size.height).abs() < 0.5;
+    let host_top = host_geometry.y;
+    let geometry = if host_fills_window && layout_top_inset > 0.0 {
+        HostGeometry {
+            x: content_layout_rect.origin.x.max(0.0),
+            y: layout_top_inset,
+            width: content_layout_rect.size.width.max(0.0),
+            height: content_layout_rect.size.height.max(0.0),
+        }
+    } else {
+        host_geometry
+    };
+
+    eprintln!(
+        "[webview_mgr] host geometry analysis caller='{}' window='{}' \
+window_frame=({}, {}, {}x{}) content_rect=({}, {}, {}x{}) content_top={} \
+content_layout_rect=({}, {}, {}x{}) layout_top={} content_view_top={} \
+host_frame=({}, {}, {}x{}) parent_frame={:?} parent_height={} parent_flipped={} host_top={} host_fills_window={} effective=({}, {}, {}x{})",
+        caller.label(),
+        caller.window().label(),
+        window_frame.origin.x,
+        window_frame.origin.y,
+        window_frame.size.width,
+        window_frame.size.height,
+        content_rect.origin.x,
+        content_rect.origin.y,
+        content_rect.size.width,
+        content_rect.size.height,
+        content_top_inset,
+        content_layout_rect.origin.x,
+        content_layout_rect.origin.y,
+        content_layout_rect.size.width,
+        content_layout_rect.size.height,
+        layout_top_inset,
+        content_view_top_inset,
+        host_frame.origin.x,
+        host_frame.origin.y,
+        host_frame.size.width,
+        host_frame.size.height,
+        parent_frame.map(|frame| (
+            frame.origin.x,
+            frame.origin.y,
+            frame.size.width,
+            frame.size.height
+        )),
+        parent_height,
+        parent_is_flipped,
+        host_top,
+        host_fills_window,
+        geometry.x,
+        geometry.y,
+        geometry.width,
+        geometry.height
+    );
+
+    Ok(geometry)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn current_host_geometry(_caller: &tauri::Webview) -> Result<HostGeometry, String> {
+    Ok(default_host_geometry())
 }
 
 /// Internal helper: spawn a child webview without going through the
@@ -180,6 +332,30 @@ pub fn multiview_spawn(
         .get_window(parent)
         .ok_or_else(|| format!("parent window '{}' not found", parent))?;
     spawn_internal(&app, &window, &req.label, &req.url, (req.x, req.y), (req.width, req.height))
+}
+
+#[tauri::command]
+pub fn multiview_get_host_geometry(caller: tauri::Webview) -> Result<HostGeometry, String> {
+    let geometry = current_host_geometry(&caller)?;
+    eprintln!(
+        "[webview_mgr] multiview_get_host_geometry caller='{}' window='{}' host=({}, {}) size=({}, {})",
+        caller.label(),
+        caller.window().label(),
+        geometry.x,
+        geometry.y,
+        geometry.width,
+        geometry.height
+    );
+    log::info!(
+        "[webview_mgr] multiview_get_host_geometry caller='{}' window='{}' host=({}, {}) size=({}, {})",
+        caller.label(),
+        caller.window().label(),
+        geometry.x,
+        geometry.y,
+        geometry.width,
+        geometry.height
+    );
+    Ok(geometry)
 }
 
 /// Destroy a child webview. The geometry registry entry is removed,
