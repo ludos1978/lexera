@@ -75,7 +75,7 @@ Bundle lives at `/tmp/lexera-design-v2/lexera-v2/` (palette + typography + JSX p
 
 ### Board Rendering
 
-- [ ] Items still needing full board render: row/stack hidden tags, board frontmatter changes, board settings changes, tag style preset change. These genuinely affect the whole board. — **in progress**
+- [x] ~~Items still needing full board render: row/stack hidden tags, board frontmatter changes, board settings changes, tag style preset change. These genuinely affect the whole board.~~ — 593c08d0 (contract test pins all four call sites)
 
 ### Dashboard
 
