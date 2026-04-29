@@ -549,10 +549,29 @@ describe('workspace shell burger menu on board tabs', () => {
     shell.openBoard('alpha');
     vi.advanceTimersByTime(200);
 
-    // The workspace shell uses a custom DOM — find burger menu action in the rendered tree
-    // by checking that the shell renders without errors and the tab is present
-    const result = shell.handleBoardAction('close-active-tab');
-    expect(result).toBe(true);
+    // Single-tab BOARD header renders a `ws-view-menu` (burger,
+    // action: tab-menu) instead of the × close button. Search for any
+    // element in the rendered tree that carries `data-ws-action`
+    // === 'tab-menu' — that's the burger; finding one proves the
+    // board-tab swap happened. Cross-check that there ALSO exists a
+    // matching `ws-view-menu` class on the same element.
+    function findByAttr(root, attrName, attrValue) {
+      if (!root) return null;
+      if (root.attributes && root.attributes[attrName] === attrValue) return root;
+      const children = Array.isArray(root.childNodes) ? root.childNodes : [];
+      for (let i = 0; i < children.length; i += 1) {
+        const found = findByAttr(children[i], attrName, attrValue);
+        if (found) return found;
+      }
+      return null;
+    }
+    const burgerBtn = findByAttr(mainContent, 'data-ws-action', 'tab-menu');
+    expect(burgerBtn, 'expected a burger button (data-ws-action=tab-menu) on the board tab header').toBeTruthy();
+    expect(burgerBtn.className).toContain('ws-view-menu');
+    expect(burgerBtn.attributes['data-ws-tab-id']).toBeTruthy();
+
+    // Existing functional check: closing the tab still works through the action handler.
+    expect(shell.handleBoardAction('close-active-tab')).toBe(true);
   });
 
   it('opening multiple boards creates tabs that can all be closed', () => {

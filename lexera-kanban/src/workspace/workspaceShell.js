@@ -2442,13 +2442,25 @@
         if (item.id === opts.activeId) tab.classList.add('is-active');
         if (item.isSelected) tab.classList.add('is-selected');
 
+        // Per-item action button: board tabs render a burger menu
+        // (\u2630, action: 'tab-menu') so the user can reach the full board
+        // context-menu (open detached, reveal in finder, split, remove
+        // from workspace, \u2026) instead of being limited to a \u00d7 close.
+        // Panel tabs keep the \u00d7 close button. Default = closeAction.
+        var itemActionKind = item.actionKind === 'menu' ? 'menu' : 'close';
+        var itemActionHtml = itemActionKind === 'menu'
+          ? '<button class="ws-view-tab-menu burger-menu-btn" type="button" data-ws-action="tab-menu" ' +
+              'data-ws-tab-id="' + escapeHtml(item.id) + '" title="Tab actions" ' +
+              'aria-haspopup="menu" aria-label="Tab actions">' +
+              '<span class="burger-lines" aria-hidden="true"></span></button>'
+          : '<button class="ws-view-tab-close" type="button" data-ws-action="' + escapeHtml(opts.closeAction) + '" ' +
+              escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Close">\u00d7</button>';
         tab.innerHTML =
           '<span class="ws-view-tab-label">' + escapeHtml(item.label) + '</span>' +
           (opts.showMeta && item.meta ? '<span class="ws-view-tab-meta">' + escapeHtml(item.meta) + '</span>' : '') +
           '<span class="ws-view-tab-health" data-tab-id="' + escapeHtml(item.id) +
             '" data-health="unknown" title="Connection state: unknown"></span>' +
-          '<button class="ws-view-tab-close" type="button" data-ws-action="' + escapeHtml(opts.closeAction) + '" ' +
-            escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Close">\u00d7</button>';
+          itemActionHtml;
         tabs.appendChild(tab);
       }
       el.appendChild(tabs);
@@ -2485,15 +2497,36 @@
       el.appendChild(fold);
     }
 
-    // Header-level close button (always visible)
-    var close = document.createElement('button');
-    close.className = 'ws-view-close';
-    close.type = 'button';
-    close.title = 'Close';
-    close.setAttribute('data-ws-action', opts.closeAction);
-    close.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
-    close.textContent = '\u00d7';
-    el.appendChild(close);
+    // Header-level action button (always visible). Match the active
+    // item's actionKind so single-tab board headers also get the
+    // burger menu (\u2630) and the user can reach the same set of board
+    // actions as right-clicking. Single-tab panel headers and any
+    // tabset whose active item is not a board fall back to \u00d7.
+    var headerActiveItem = null;
+    for (var hi = 0; hi < opts.items.length; hi++) {
+      if (opts.items[hi].id === opts.activeId) { headerActiveItem = opts.items[hi]; break; }
+    }
+    if (!headerActiveItem && opts.items.length > 0) headerActiveItem = opts.items[0];
+    var headerActionKind = headerActiveItem && headerActiveItem.actionKind === 'menu' ? 'menu' : 'close';
+    var headerBtn = document.createElement('button');
+    if (headerActionKind === 'menu') {
+      headerBtn.className = 'ws-view-menu burger-menu-btn';
+      headerBtn.type = 'button';
+      headerBtn.title = 'Tab actions';
+      headerBtn.setAttribute('aria-haspopup', 'menu');
+      headerBtn.setAttribute('aria-label', 'Tab actions');
+      headerBtn.setAttribute('data-ws-action', 'tab-menu');
+      headerBtn.setAttribute('data-ws-tab-id', opts.items.length > 0 ? opts.activeId : '');
+      headerBtn.innerHTML = '<span class="burger-lines" aria-hidden="true"></span>';
+    } else {
+      headerBtn.className = 'ws-view-close';
+      headerBtn.type = 'button';
+      headerBtn.title = 'Close';
+      headerBtn.setAttribute('data-ws-action', opts.closeAction);
+      headerBtn.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
+      headerBtn.textContent = '\u00d7';
+    }
+    el.appendChild(headerBtn);
 
     return el;
   }
@@ -3302,7 +3335,12 @@
       headerItems.push({
         id: tab.id,
         label: getTabTitle(tab),
-        meta: getTabMetaLabel(tab)
+        meta: getTabMetaLabel(tab),
+        // Board tabs (kanban / canvas) replace the × close button with
+        // a burger menu that opens showBoardTabMenu — same options as
+        // right-click on the board (open detached, reveal in finder,
+        // split, set view kind, close from workspace …).
+        actionKind: isBoardTab(tab) ? 'menu' : 'close'
       });
     }
     var activeTabId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
