@@ -40,7 +40,7 @@ we also move the merge includes into main file down to the output section. it wi
 
 - [x] ~~**Audit: unify all IPC call construction so auth is applied consistently.**~~ — 33603763 (already centralised; locked with contract test)
 
-- [ ] add stack, column and card must only show in the parent element if there is no sibling already in there! solve it with css! — **in progress**
+- [x] ~~add stack, column and card must only show in the parent element if there is no sibling already in there! solve it with css!~~ — 1651b213 (already implemented; row/stack/column via JS emptiness branches, card via `.column.has-cards > .column-footer { display:none }`. Contract test now pins all four levels.)
 
 - [x] ~~when i drag-move a card it sometimes disappears instead of showing up in the new locaiton!~~ — 4e10704c
 
@@ -110,7 +110,7 @@ Requires workspace shell mode (multiple boards open in iframes). Tests use `Lexe
 
 **Setup:** Use `LexeraTestApi.selectBoard()` to switch between boards, `setTestBoard()` to inject test data into each board.
 
-- [ ] Cross-board move: card from board A column appears in board B column
+- [ ] Cross-board move: card from board A column appears in board B column — **in progress**
 - [ ] Cross-board move: source card is trashed with `#hidden-internal-deleted` (not removed)
 - [ ] Cross-board move: target board card count increases by 1
 - [ ] Cross-board move: source board visible card count decreases by 1
