@@ -47,4 +47,14 @@ describe('empty-child add affordances', () => {
     expect(appJs).toContain('board-level-empty-stacks');
     expect(appJs).toContain('board-level-empty-rows');
   });
+
+  it('hides "+ Add card" footer on columns that already have card siblings', () => {
+    // The user-visible rule: add affordances must only appear when the
+    // parent has no children at the same level. Stack ("+ Add column"),
+    // row ("+ Add stack"), and board ("+ Add row") are JS-emptiness-
+    // gated; card ("+ Add card") relies on a CSS rule keyed on the
+    // `has-cards` class set by buildColumnElement. This test pins the
+    // CSS rule that completes the contract for the card level.
+    expect(appCss).toMatch(/\.column\.has-cards\s*>\s*\.column-footer[^{]*\{\s*display\s*:\s*none/);
+  });
 });
