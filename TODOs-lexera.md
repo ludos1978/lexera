@@ -8,7 +8,7 @@ Keep this file structured and clean:
 - One task per line. Keep descriptions concise — details belong in code comments or commit messages.
 - Update the test status line below after each test run.
 
-**Test status: 1779 passed, 0 failed, 2 skipped / 1781 tests in ~14s (vitest)**
+**Test status: 1792 passed, 0 failed, 2 skipped / 1794 tests in ~14s (vitest); 160 / 160 in `./run-lexera-tests.sh`**
 
 ## Open Tasks
 
