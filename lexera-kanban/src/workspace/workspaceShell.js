@@ -2389,9 +2389,8 @@
   // opts.showMeta: show meta label on tabs
   function renderViewHeader(opts) {
     var el = document.createElement('div');
-    el.className = 'ws-view-header';
     var isSingle = opts.items.length <= 1;
-    if (isSingle) el.classList.add('is-single');
+    el.className = 'ws-view-header' + (isSingle ? ' is-single' : '');
 
     // Drag handle
     var drag = document.createElement('button');
@@ -4215,8 +4214,11 @@
   var PREFIX_ACTIONS = [
     { prefix: 'toggle-panel:', handler: function (target) {
       if (!PANEL_DEFINITIONS[getPanelKind(target)]) return false;
-      var nextVisible = !isPanelShown(target);
-      setPanelVisibility(target, nextVisible, { activate: true, restoreDock: nextVisible });
+      if (isPanelShown(target)) {
+        closePanelView(target);
+      } else {
+        setPanelVisibility(target, true, { activate: true, restoreDock: true });
+      }
       return true;
     } },
     { prefix: 'reveal-panel:', handler: function (kind) {

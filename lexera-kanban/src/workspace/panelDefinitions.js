@@ -288,17 +288,9 @@
     var bottomTabs = defaultGroups.bottom.length > 0 ? defaultGroups.bottom[0].map(function (panelId) {
       return layoutTree.createPanelTab(panelId, nextId);
     }) : [];
-    var leftDock = null;
-    if (leftTabs.length === 1) {
-      leftDock = layoutTree.createTabsetNode(leftTabs, nextId);
-    } else if (leftTabs.length > 1) {
-      leftDock = layoutTree.createSplitNode('horizontal',
-        layoutTree.createTabsetNode([leftTabs[0]], nextId),
-        layoutTree.createTabsetNode([leftTabs[1]], nextId),
-        0.6,
-        nextId
-      );
-    }
+    var leftDock = leftTabs.length > 0
+      ? layoutTree.createTabsetNode(leftTabs, nextId)
+      : null;
     return {
       left: leftDock,
       right: null,
