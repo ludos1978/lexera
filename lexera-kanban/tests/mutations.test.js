@@ -2299,4 +2299,114 @@ describe('Card move scenarios', () => {
     expect(M.getLastPersistTargets()).toContain('sidebar');
     expect(M.getLastCommitBoardIds()).toBeNull();
   });
+
+  // ── Cross-board move data-invariant assertions ───────────────────────
+  // Pin the user-visible promises of a cross-board move at the data
+  // layer: target gains exactly one card, source visible-card count
+  // drops by one (source remains as a #hidden-internal-deleted tombstone
+  // so undo can restore it), card content is byte-identical in the
+  // target, the global visible-card count is conserved, and no card id
+  // ends up duplicated across either board.
+
+  function isHiddenDeleted(card) {
+    return !!(card && card.content && String(card.content).indexOf('#hidden-internal-deleted') !== -1);
+  }
+  function visibleCardCount(board) {
+    if (!board || !board.rows) return 0;
+    var n = 0;
+    for (var r = 0; r < board.rows.length; r++) {
+      var stacks = (board.rows[r] && board.rows[r].stacks) || [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = (stacks[s] && stacks[s].columns) || [];
+        for (var c = 0; c < cols.length; c++) {
+          var cards = (cols[c] && cols[c].cards) || [];
+          for (var k = 0; k < cards.length; k++) {
+            if (!isHiddenDeleted(cards[k])) n += 1;
+          }
+        }
+      }
+    }
+    return n;
+  }
+  function collectAllCardIds(board) {
+    var ids = [];
+    if (!board || !board.rows) return ids;
+    for (var r = 0; r < board.rows.length; r++) {
+      var stacks = (board.rows[r] && board.rows[r].stacks) || [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = (stacks[s] && stacks[s].columns) || [];
+        for (var c = 0; c < cols.length; c++) {
+          var cards = (cols[c] && cols[c].cards) || [];
+          for (var k = 0; k < cards.length; k++) {
+            ids.push(String(cards[k] && cards[k].id != null ? cards[k].id : ''));
+          }
+        }
+      }
+    }
+    return ids;
+  }
+
+  it('cross-board move conserves visible card count, preserves content, and avoids id duplication', async () => {
+    var setup = makeTwoBoardSetup();
+    M.setState(setup.boardA, buildActiveBoard(M, setup.boardA), 'board-a');
+    M.setBoardState('board-b', setup.boardB);
+
+    var beforeA = M.getState().fullBoardData;
+    var beforeB = M.getBoardState('board-b');
+    var beforeVisibleA = visibleCardCount(beforeA);
+    var beforeVisibleB = visibleCardCount(beforeB);
+    var beforeTotal = beforeVisibleA + beforeVisibleB;
+    var movedContent = beforeA.rows[0].stacks[0].columns[0].cards[0].content;
+
+    M.resetRefreshTracking();
+    await M.moveCard(
+      { boardId: 'board-a', flatColIndex: 0, cardIndex: 0, cardId: 'card-1', cardIndexMode: 'visible', indexMode: 'display' },
+      { boardId: 'board-b', rowId: 'row-b1', stackId: 'stack-b1', columnId: 'col-b1', insertIdx: 1, insertMode: 'full', indexMode: 'full' }
+    );
+
+    var afterA = M.getState().fullBoardData;
+    var afterB = M.getBoardState('board-b');
+
+    // 1. Card appears in board B's target column.
+    var afterTargetCol = afterB.rows[0].stacks[0].columns[0];
+    var movedInTarget = afterTargetCol.cards.filter(function (c) { return c.id === 'card-1'; });
+    expect(movedInTarget.length).toBe(1);
+
+    // 2. Source card is trashed in place with #hidden-internal-deleted (not removed).
+    var afterSourceCol = afterA.rows[0].stacks[0].columns[0];
+    var sourceTombstones = afterSourceCol.cards.filter(function (c) { return c.id === 'card-1'; });
+    expect(sourceTombstones.length).toBe(1);
+    expect(isHiddenDeleted(sourceTombstones[0])).toBe(true);
+
+    // 3. Target visible count is exactly +1; source visible count is exactly -1.
+    expect(visibleCardCount(afterB)).toBe(beforeVisibleB + 1);
+    expect(visibleCardCount(afterA)).toBe(beforeVisibleA - 1);
+
+    // 4. Total visible card count across both boards is conserved.
+    expect(visibleCardCount(afterA) + visibleCardCount(afterB)).toBe(beforeTotal);
+
+    // 5. Card content is byte-identical in the target board.
+    expect(movedInTarget[0].content).toBe(movedContent);
+
+    // 6. No card id is duplicated within board A or board B (across the
+    //    move: the source's tombstone keeps id `card-1` AND the target
+    //    holds id `card-1` — same id, different boards is fine; the
+    //    test below ensures neither board internally has duplicates).
+    function hasNoDuplicateIdsInside(board) {
+      var seen = {};
+      var ids = collectAllCardIds(board);
+      for (var i = 0; i < ids.length; i++) {
+        if (seen[ids[i]]) return false;
+        seen[ids[i]] = true;
+      }
+      return true;
+    }
+    expect(hasNoDuplicateIdsInside(afterA)).toBe(true);
+    expect(hasNoDuplicateIdsInside(afterB)).toBe(true);
+
+    // 7. UI: both boards are committed so the source sidebar reflects
+    //    the trashed card and the target sidebar reflects the new one.
+    expect(M.getLastCommitBoardIds()).toContain('board-a');
+    expect(M.getLastCommitBoardIds()).toContain('board-b');
+  });
 });
