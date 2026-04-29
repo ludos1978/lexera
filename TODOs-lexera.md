@@ -10,15 +10,13 @@ Keep this file structured and clean:
 
 **Test status: 1779 passed, 0 failed, 2 skipped / 1781 tests in ~14s (vitest)**
 
-## Recently Done
-
-- ~~native multiview webviews paint above shell DOM, hiding dropdowns and drag indicators~~ — c0627702: refcounted `setAllVisible` on `LexeraMultiviewWebview`, hooks tab drag mode + tab overflow dropdown, gates `boardHost` visibility observer + spawn-time visibility on the same flag so concurrent suppressors compose.
-
 ## Open Tasks
 
 ### Unsorted (leave this header here!)
 
-- [ ] /refactor the @lexera-kanban/src/workspace/workspaceShell.js this is a mess!
+- [ ] the workspace tree doesnt look at all good! not the right list of elements, not the right structure
+
+- [x] /refactor the @lexera-kanban/src/workspace/workspaceShell.js this is a mess!
 
 - [ ] can you create 3 dedicated test markdown boards that use all the features with valid images and graphics in different formats. also including all formats that we can include. especially using !!!include()!!! in the column title for the multi-page documents we support (pdf, epub, marp-presentation-markdown, xlsx, etc.) make sure you also test broken includes. make a immutable backup of the test-boards and one that is used while testing!
 
@@ -44,9 +42,9 @@ we also move the merge includes into main file down to the output section. it wi
 
 - [ ] add stack, column and card must only show in the parent element if there is no sibling already in there! solve it with css!
 
-- [ ] when i drag-move a card it sometimes disappears instead of showing up in the new locaiton!
+- [ ] when i drag-move a card it sometimes disappears instead of showing up in the new locaiton! — **in progress**
 
-- [ ] when i drag-move a card downwards in the column it's not put into the highlighted position, but one above! — **in progress**
+- [x] ~~when i drag-move a card downwards in the column it's not put into the highlighted position, but one above!~~ — 4865830a
 
 - [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.
 
@@ -549,3 +547,6 @@ Break app.js into bootstrap + modules (11,063 lines), split workspaceShell.js (4
 ## Historical Review Notes
 
 Large historical status sections, package-by-package quality reviews, already-completed hardening work, and the older phased recommendation lists were moved out of the active backlog. Keep the active file focused on unresolved architecture and product work; use [todo-archive.md](todo-archive.md) and git history for the older progress reports.
+
+- ~~native multiview webviews paint above shell DOM, hiding dropdowns and drag indicators~~ — c0627702: refcounted `setAllVisible` on `LexeraMultiviewWebview`, hooks tab drag mode + tab overflow dropdown, gates `boardHost` visibility observer + spawn-time visibility on the same flag so concurrent suppressors compose.
+
