@@ -8,7 +8,11 @@ Keep this file structured and clean:
 - One task per line. Keep descriptions concise — details belong in code comments or commit messages.
 - Update the test status line below after each test run.
 
-**Test status: 155 passed, 0 failed / 155 tests in ~209s**
+**Test status: 1779 passed, 0 failed, 2 skipped / 1781 tests in ~14s (vitest)**
+
+## Recently Done
+
+- ~~native multiview webviews paint above shell DOM, hiding dropdowns and drag indicators~~ — c0627702: refcounted `setAllVisible` on `LexeraMultiviewWebview`, hooks tab drag mode + tab overflow dropdown, gates `boardHost` visibility observer + spawn-time visibility on the same flag so concurrent suppressors compose.
 
 ## Open Tasks
 
@@ -42,7 +46,7 @@ we also move the merge includes into main file down to the output section. it wi
 
 - [ ] when i drag-move a card it sometimes disappears instead of showing up in the new locaiton!
 
-- [ ] when i drag-move a card downwards in the column it's not put into the highlighted position, but one above!
+- [ ] when i drag-move a card downwards in the column it's not put into the highlighted position, but one above! — **in progress**
 
 - [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.
 
