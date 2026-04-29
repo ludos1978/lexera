@@ -42,11 +42,11 @@ we also move the merge includes into main file down to the output section. it wi
 
 - [ ] add stack, column and card must only show in the parent element if there is no sibling already in there! solve it with css!
 
-- [ ] when i drag-move a card it sometimes disappears instead of showing up in the new locaiton! — **in progress**
+- [x] ~~when i drag-move a card it sometimes disappears instead of showing up in the new locaiton!~~ — 4e10704c
 
 - [x] ~~when i drag-move a card downwards in the column it's not put into the highlighted position, but one above!~~ — 4865830a
 
-- [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option.
+- [ ] for the kanban/canvas boards elements in the workspaces instead of the "x" button (remove) add a burger menu (the same as for all sub-elements in the board). put the options that appear when right clicking a board in there, as well as the remove board from workspace option. — **in progress**
 
 ### Lexera v2 design rollout (handoff bundle from claude.ai/design)
 
