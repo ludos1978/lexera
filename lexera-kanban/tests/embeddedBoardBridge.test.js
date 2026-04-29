@@ -161,4 +161,36 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
       }
     });
   });
+
+  it('injects a full-height viewport fill override for embedded board views', () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1'
+    });
+    const { window } = dom;
+    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+
+    const installed = bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn(() => {})
+      }),
+      invoke: vi.fn(() => Promise.resolve()),
+      handleRequest: vi.fn()
+    });
+
+    expect(installed).toBe(true);
+    const styleEl = window.document.getElementById('lexera-mv-embed-fill-styles');
+    expect(styleEl).not.toBeNull();
+    expect(styleEl?.textContent).toContain('html, body { width: 100%; height: 100%; min-height: 100%;');
+    expect(styleEl?.textContent).toContain('overflow: hidden;');
+  });
 });

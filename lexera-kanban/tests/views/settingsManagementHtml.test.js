@@ -26,12 +26,26 @@ function expectManagementTreeResources(html) {
     .toBeLessThan(html.indexOf('<script src="../../management.js"></script>'));
 }
 
+function expectViewportFillContract(html) {
+  expect(html).not.toContain('height: 100vh;');
+  expect(html).toContain('height: 100%;');
+  expect(html).toContain('min-height: 0;');
+}
+
 describe('management settings sub-app HTML entries', () => {
   it('backendSettings loads the shared hierarchy tree stack before management.js', () => {
-    expectManagementTreeResources(readViewHtml('backendSettings'));
+    const html = readViewHtml('backendSettings');
+    expectManagementTreeResources(html);
+    expectViewportFillContract(html);
   });
 
   it('files loads the shared hierarchy tree stack before management.js', () => {
-    expectManagementTreeResources(readViewHtml('files'));
+    const html = readViewHtml('files');
+    expectManagementTreeResources(html);
+    expectViewportFillContract(html);
+  });
+
+  it('frontendSettings uses the shared viewport-fill contract instead of a 100vh root', () => {
+    expectViewportFillContract(readViewHtml('frontendSettings'));
   });
 });
