@@ -98,12 +98,11 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     })).toBe(false);
   });
 
-  it('renders a top-left debug geometry overlay for embedded board views', () => {
+  it('does not request or render embedded board debug geometry overlays', () => {
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1'
     });
     const { window } = dom;
-    const listeners = {};
     const invoke = vi.fn(() => Promise.resolve());
     const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
       window,
@@ -119,47 +118,17 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     const installed = bridge.install({
       getCurrentWebview: () => ({
         label: 'board-tab-tab-1',
-        listen: vi.fn((eventName, handler) => {
-          listeners[eventName] = handler;
-        })
+        listen: vi.fn()
       }),
       invoke,
       handleRequest: vi.fn()
     });
 
     expect(installed).toBe(true);
-    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
-      event: 'debug-geometry-request',
-      payload: { label: 'board-tab-tab-1' }
-    });
-    listeners['debug-geometry']({
-      payload: {
-        label: 'board-tab-tab-1',
-        boardId: 'board-alpha',
-        adjust: { x: 0, y: 0, width: 0, height: 0 },
-        shell: { x: 300.4, y: 41.2, width: 912.9, height: 620.1 },
-        native: { x: 300.4, y: 41.2, width: 912.9, height: 620.1 }
-      }
-    });
-
-    const overlay = window.document.getElementById('lexera-mv-debug-geometry');
-    expect(overlay).not.toBeNull();
-    expect(overlay?.textContent).toContain('board board-alpha');
-    expect(overlay?.textContent).toContain('native 300,41 913x620');
-    expect(overlay?.textContent).toContain('shell  300,41 913x620');
-    expect(overlay?.textContent).toContain('delta  0,0 0x0');
-
-    const minusButtons = overlay?.querySelectorAll('button') || [];
-    minusButtons[0]?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-
-    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
-      event: 'debug-geometry-adjust',
-      payload: {
-        label: 'board-tab-tab-1',
-        field: 'x',
-        delta: -1
-      }
-    });
+    expect(invoke).not.toHaveBeenCalledWith('multiview_broadcast', expect.objectContaining({
+      event: 'debug-geometry-request'
+    }));
+    expect(window.document.getElementById('lexera-mv-debug-geometry')).toBeNull();
   });
 
   it('injects a full-height viewport fill override for embedded board views', () => {

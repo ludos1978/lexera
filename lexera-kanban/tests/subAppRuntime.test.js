@@ -62,21 +62,18 @@ describe('LexeraSubApp runtime metadata', () => {
     expect(window.document.body.getAttribute('data-shell-pane')).toBe('tab-77');
   });
 
-  it('renders a top-left debug geometry overlay from child-webview geometry events', () => {
+  it('does not request or render child-view debug geometry overlays during init', () => {
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'http://127.0.0.1:1431/views/hierarchy/index.html?panelKind=hierarchy&panel=hierarchy&pane=tab-77&windowLabel=panel-tab-tab-77&workspaceShellHostLabel=main'
     });
     const { window } = dom;
-    const listeners = {};
     window.__TAURI__ = {
       core: { invoke: vi.fn(() => Promise.resolve(null)) },
       webview: {
         getCurrentWebview() {
           return {
             label: 'panel-tab-tab-77',
-            listen: vi.fn((eventName, handler) => {
-              listeners[eventName] = handler;
-            })
+            listen: vi.fn()
           };
         }
       }
@@ -88,38 +85,10 @@ describe('LexeraSubApp runtime metadata', () => {
     });
 
     subApp.init({ requestTheme: false, reportFocus: false, shortcuts: false });
-    expect(window.__TAURI__?.core?.invoke).toHaveBeenCalledWith('multiview_broadcast', {
-      event: 'debug-geometry-request',
-      payload: { label: 'panel-tab-tab-77' }
-    });
-    listeners['debug-geometry']({
-      payload: {
-        kind: 'hierarchy',
-        label: 'panel-tab-tab-77',
-        adjust: { x: 0, y: 0, width: 0, height: 0 },
-        shell: { x: 12.2, y: 32.6, width: 280.1, height: 610.8 },
-        native: { x: 12.2, y: 32.6, width: 280.1, height: 610.8 }
-      }
-    });
-
-    const overlay = window.document.getElementById('lexera-mv-debug-geometry');
-    expect(overlay).not.toBeNull();
-    expect(overlay?.textContent).toContain('panel hierarchy');
-    expect(overlay?.textContent).toContain('native 12,33 280x611');
-    expect(overlay?.textContent).toContain('shell  12,33 280x611');
-    expect(overlay?.textContent).toContain('delta  0,0 0x0');
-
-    const plusButtons = overlay?.querySelectorAll('button') || [];
-    plusButtons[1]?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-
-    expect(window.__TAURI__?.core?.invoke).toHaveBeenCalledWith('multiview_broadcast', {
-      event: 'debug-geometry-adjust',
-      payload: {
-        label: 'panel-tab-tab-77',
-        field: 'x',
-        delta: 1
-      }
-    });
+    expect(window.__TAURI__?.core?.invoke).not.toHaveBeenCalledWith('multiview_broadcast', expect.objectContaining({
+      event: 'debug-geometry-request'
+    }));
+    expect(window.document.getElementById('lexera-mv-debug-geometry')).toBeNull();
   });
 
   it('applies root/body layout classes gracefully when there is no Tauri context', () => {

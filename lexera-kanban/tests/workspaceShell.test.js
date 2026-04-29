@@ -113,6 +113,23 @@ function findFirstElementByTag(root, tagName) {
   return null;
 }
 
+function hasClassName(element, className) {
+  if (!element || !className) return false;
+  const classes = String(element.className || '').split(/\s+/).filter(Boolean);
+  return classes.includes(String(className));
+}
+
+function findFirstElementByClass(root, className) {
+  if (!root) return null;
+  if (hasClassName(root, className)) return root;
+  const children = Array.isArray(root.childNodes) ? root.childNodes : [];
+  for (let i = 0; i < children.length; i += 1) {
+    const found = findFirstElementByClass(children[i], className);
+    if (found) return found;
+  }
+  return null;
+}
+
 function createStorage() {
   const store = {};
   return {
@@ -489,6 +506,33 @@ describe('workspace shell tab actions (Phase 1 keyboard shortcuts)', () => {
     expect(shell.handleBoardAction('toggle-panel:hierarchy')).toBe(true);
     expect(shell.handleBoardAction('toggle-panel:dashboard')).toBe(true);
     expect(shell.handleBoardAction('toggle-panel:files')).toBe(true);
+  });
+
+  it('renders a shell tab header for default multi-view panel groups', () => {
+    const { shell, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+
+    const headerEl = findFirstElementByClass(mainContent, 'ws-view-header');
+    const tabsEl = findFirstElementByClass(mainContent, 'ws-view-tabs');
+
+    expect(headerEl).toBeTruthy();
+    expect(tabsEl).toBeTruthy();
+  });
+
+  it('keeps a shell header for single panel views so they remain draggable', () => {
+    const { shell, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+
+    expect(shell.handleBoardAction('toggle-panel:dashboard')).toBe(true);
+
+    const headerEl = findFirstElementByClass(mainContent, 'ws-view-header');
+    const titleEl = findFirstElementByClass(mainContent, 'ws-view-title');
+    const dragEl = findFirstElementByClass(mainContent, 'ws-view-drag');
+
+    expect(headerEl).toBeTruthy();
+    expect(titleEl).toBeTruthy();
+    expect(titleEl.textContent).toBe('Workspaces');
+    expect(dragEl).toBeTruthy();
   });
 });
 

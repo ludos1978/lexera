@@ -2603,20 +2603,12 @@
     }
     if (containsActive) tabsetEl.classList.add('is-active');
 
-    // Panel-dock tabsets do NOT render the SHELL ws-view-header. Each
-    // sub-app webview renders its own header inside (e.g. log shows
-    // "Log [filters] Clear"; workspaces shows the workspace title).
-    // Per the project rule, close/drag/fold UI lives in the native menu
-    // bar — not in dock headers — so the SHELL chrome here only ate
-    // ~28-30 px from the panel webview's available height (and from the
-    // visible space above the bottom-dock divider, making the divider
-    // feel "35px below" where users expected it). Only multi-tab
-    // tabsets need the SHELL header for the tab bar; single-tab panels
-    // don't.
-    if (node.tabs.length > 1) {
-      var headerEl = buildSideDockHeader(node);
-      tabsetEl.appendChild(headerEl);
-    }
+    // Side-dock tabsets render the shell header again so panel views have
+    // a consistent drag handle / fold / close strip and grouped panels are
+    // shown in an actual tabbed top bar. Single-item groups use the same
+    // header component in its title mode (`is-single`).
+    var headerEl = buildSideDockHeader(node);
+    tabsetEl.appendChild(headerEl);
 
     var contentEl = document.createElement('div');
     contentEl.className = 'workspace-shell-panel-content';
@@ -2720,24 +2712,22 @@
     tabsetEl.classList.toggle('is-active', containsActive);
 
     // ── Header: rebuild if tab count changed, else patch in place ──
-    // Single-tab panel tabsets render NO header (sub-app provides its own
-    // chrome inside the webview). Strip any stale header if we transitioned
-    // from multi-tab → single-tab; bail to a full rebuild if we're going
-    // the other way (no header to patch).
+    // Side-dock tabsets always keep a shell header. Multi-tab groups show
+    // tabs; single-tab groups show the view title plus drag/fold/close
+    // controls.
     var headerEl = tabsetEl.querySelector('.ws-view-header');
-    if (node.tabs.length === 1) {
-      if (headerEl) {
-        tabsetEl.removeChild(headerEl);
-        headerEl = null;
-      }
-    } else {
-      if (!headerEl) return false;
+    if (!headerEl) {
+      var contentHost = tabsetEl.querySelector('.workspace-shell-panel-content');
+      var newHeaderEl = buildSideDockHeader(node);
+      if (contentHost) tabsetEl.insertBefore(newHeaderEl, contentHost);
+      else tabsetEl.appendChild(newHeaderEl);
+      headerEl = newHeaderEl;
     }
     var tabsEl = headerEl ? headerEl.querySelector('.ws-view-tabs') : null;
     var tabBtns = tabsEl ? tabsEl.querySelectorAll('.ws-view-tab') : [];
     var headerNeedsRebuild = tabsEl
       ? tabBtns.length !== node.tabs.length
-      : node.tabs.length > 1;
+      : node.tabs.length !== 1;
 
     if (headerNeedsRebuild && headerEl) {
       var newHeader = buildSideDockHeader(node);
