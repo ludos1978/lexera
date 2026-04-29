@@ -53,6 +53,7 @@
   }
   var SIDE_DOCK_DIVIDER_SIZE_PX = 5;
   var BOTTOM_DOCK_DIVIDER_SIZE_PX = 5;
+  var SPLIT_DIVIDER_SIZE_PX = 5;
 
   var normalizeViewKind = layoutTree.normalizeViewKind;
   var isPanelTab = layoutTree.isPanelTab;
@@ -739,10 +740,10 @@
     var firstSize = firstFolded ? '28px' : (Math.round(node.ratio * 1000) + 'fr');
     var secondSize = secondFolded ? '28px' : ((1000 - Math.round(node.ratio * 1000)) + 'fr');
     if (node.axis === 'vertical') {
-      splitEl.style.gridTemplateColumns = firstSize + ' 1px ' + secondSize;
+      splitEl.style.gridTemplateColumns = firstSize + ' ' + SPLIT_DIVIDER_SIZE_PX + 'px ' + secondSize;
       splitEl.style.gridTemplateRows = '1fr';
     } else {
-      splitEl.style.gridTemplateRows = firstSize + ' 1px ' + secondSize;
+      splitEl.style.gridTemplateRows = firstSize + ' ' + SPLIT_DIVIDER_SIZE_PX + 'px ' + secondSize;
       splitEl.style.gridTemplateColumns = '1fr';
     }
 
@@ -1144,6 +1145,11 @@
     clearTimeout(handle);
   }
 
+  function refreshMultiviewGeometryDuringDrag() {
+    if (!multiview || typeof multiview.refreshAllGeometry !== 'function') return;
+    multiview.refreshAllGeometry();
+  }
+
   function getDockLayoutState() {
     var dockIds = ['left', 'right', 'bottom'];
     var visible = {};
@@ -1217,28 +1223,25 @@
     state.mainRowEl.style.gridTemplateColumns =
       leftCol + 'minmax(0, 1fr)' + rightCol;
 
-    var bottomRow = '';
-    if (layoutState.visible.bottom) bottomRow = ' ' + clampPanelSize('bottom', state.dockSizes.bottom) + 'px';
-    else if (layoutState.folded.bottom) bottomRow = ' ' + FOLD_SIZE + 'px';
+    var bottomDividerRow = ' 0px';
+    var bottomDockRow = '';
+    if (layoutState.visible.bottom) {
+      bottomDividerRow = ' ' + BOTTOM_DOCK_DIVIDER_SIZE_PX + 'px';
+      bottomDockRow = ' ' + clampPanelSize('bottom', state.dockSizes.bottom) + 'px';
+    } else if (layoutState.folded.bottom) {
+      bottomDockRow = ' ' + FOLD_SIZE + 'px';
+    }
 
     state.bodyEl.style.gridTemplateRows =
-      'minmax(0, 1fr)' + bottomRow;
+      'minmax(0, 1fr)' + bottomDividerRow + bottomDockRow;
   }
 
   function syncBottomDividerPlacement(layoutState) {
     if (!state.bottomDividerEl) return;
-    if (!layoutState.visible.bottom && !layoutState.folded.bottom) {
-      state.bottomDividerEl.style.bottom = '0px';
-      return;
-    }
-    var bottomOffset = layoutState.visible.bottom
-      ? clampPanelSize('bottom', state.dockSizes.bottom)
-      : 22;
-    // This divider is absolutely positioned rather than occupying a grid track.
-    // Place the full 5px separator band directly above the bottom dock boundary
-    // so horizontal splits have the same visible spacing as internal split rows.
-    state.bottomDividerEl.style.bottom =
-      (bottomOffset - BOTTOM_DOCK_DIVIDER_SIZE_PX) + 'px';
+    // Bottom divider now occupies a real grid row like the side dock dividers.
+    // Clear any legacy absolute-positioning residue so the grid track is the
+    // only source of truth for its hit area and visible spacing.
+    state.bottomDividerEl.style.bottom = '';
   }
 
   function applyDockLayout() {
@@ -1329,6 +1332,7 @@
         }
         syncDockGridTracks(nextLayoutState);
         syncBottomDividerPlacement(nextLayoutState);
+        refreshMultiviewGeometryDuringDrag();
       }
       function scheduleMove(moveEvent) {
         pendingMoveEvent = moveEvent;
@@ -3094,10 +3098,10 @@
         var firstWeight = Math.round(splitNode.ratio * 1000);
         var secondWeight = 1000 - firstWeight;
         if (axis === 'vertical') {
-          container.style.gridTemplateColumns = firstWeight + 'fr 1px ' + secondWeight + 'fr';
+          container.style.gridTemplateColumns = firstWeight + 'fr ' + SPLIT_DIVIDER_SIZE_PX + 'px ' + secondWeight + 'fr';
           container.style.gridTemplateRows = '1fr';
         } else {
-          container.style.gridTemplateRows = firstWeight + 'fr 1px ' + secondWeight + 'fr';
+          container.style.gridTemplateRows = firstWeight + 'fr ' + SPLIT_DIVIDER_SIZE_PX + 'px ' + secondWeight + 'fr';
           container.style.gridTemplateColumns = '1fr';
         }
       }
@@ -3115,6 +3119,7 @@
           splitNode.ratio = Math.max(0.18, Math.min(0.82, (moveEvent.clientY - rect.top) / Math.max(1, rect.height)));
         }
         applySplitContainerLayout();
+        refreshMultiviewGeometryDuringDrag();
       }
       function scheduleMove(moveEvent) {
         pendingMoveEvent = moveEvent;

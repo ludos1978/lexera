@@ -46,7 +46,7 @@
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) 0px auto;
   position: relative;
 }
 
@@ -163,9 +163,8 @@
 }
 
 .workspace-shell-dock-divider[data-dock-divider="bottom"] {
-  position: absolute;
-  left: 0;
-  right: 0;
+  position: relative;
+  width: 100%;
   height: 5px;
   cursor: row-resize;
   z-index: 35;
