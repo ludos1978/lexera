@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * Workspace-shell dashboard mirror contract.
+ * Workspace-shell dashboard mirror contract — regex + runtime.
  *
  * The dashboard sub-app's visible surface lives in a child webview, so
  * the SHELL no longer has a `#sidebar-dashboard` element of its own.
@@ -14,16 +14,21 @@
  * to the dashboard webview, which writes it into its own visible
  * elements.
  *
- * This test pins the SHELL-side half: the mirror DOM exists with the
- * right IDs, and the renderDashboard() tail issues a
- * `dashboard-mirror-update` broadcast carrying { lists, loading,
- * query, scope }.
+ * Two layers:
+ *   1. Source-level regex audit pins the canonical IDs / call sites
+ *      so a textual refactor can't drift them silently.
+ *   2. Runtime test loads orderHelpers.js into jsdom, exercises
+ *      `_ensureDashboardShellMirrorForTest`, and confirms the mirror
+ *      DOM has the right structure + style — catches mismatches the
+ *      regex layer can't see (e.g. a typo'd id that survives the
+ *      regex because the same typo is also in the source).
  */
 
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { loadIIFE } from './load-iife.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const orderHelpersJs = readFileSync(resolve(__dirname, '..', 'src', 'board', 'orderHelpers.js'), 'utf8');
@@ -128,5 +133,75 @@ describe('dashboard shell mirror contract', () => {
     // bounce a no-op `dashboard-navigate` to the SHELL.
     expect(dashboardJs).toContain(".tree-toggle");
     expect(dashboardJs).toContain("classList.toggle('expanded'");
+  });
+});
+
+describe('dashboard shell mirror — runtime DOM', () => {
+  afterEach(() => {
+    // jsdom carries DOM state across tests; clean the mirror so
+    // each test starts from a known empty state.
+    var existing = document.getElementById('sidebar-dashboard');
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+  });
+
+  function loadOrderHelpers() {
+    // Minimal dependency surface — the mirror code only needs `document`
+    // and the workspaceShellEnabled flag (reads via `_dep`). Skip the
+    // hundreds of unrelated deps so the test stays fast.
+    if (!global.LexeraHierarchyContract) {
+      // hierarchyContract is required by the IIFE before it returns.
+      // eslint-disable-next-line global-require
+      global.LexeraHierarchyContract = require('../src/hierarchy/hierarchyContract.js');
+    }
+    return loadIIFE('board/orderHelpers.js', 'LexeraOrderHelpers');
+  }
+
+  it('ensureDashboardShellMirror() creates the off-screen mirror with all nine canonical list IDs', () => {
+    const OrderHelpers = loadOrderHelpers();
+    OrderHelpers.init({});
+    expect(typeof OrderHelpers._ensureDashboardShellMirrorForTest).toBe('function');
+
+    // Mirror does not exist yet.
+    expect(document.getElementById('sidebar-dashboard')).toBeNull();
+
+    OrderHelpers._ensureDashboardShellMirrorForTest();
+
+    const root = document.getElementById('sidebar-dashboard');
+    expect(root).not.toBeNull();
+    expect(root.getAttribute('data-shell-mirror')).toBe('dashboard');
+    expect(root.getAttribute('aria-hidden')).toBe('true');
+
+    // Inline style must keep the mirror invisible / non-interactive /
+    // outside the SHELL viewport. jsdom normalises the inline style
+    // with spaces, so match the property names regardless of spacing.
+    const style = (root.getAttribute('style') || '').replace(/\s+/g, '');
+    expect(style).toContain('position:absolute');
+    expect(style).toContain('left:-99999px');
+    expect(style).toContain('visibility:hidden');
+    expect(style).toContain('pointer-events:none');
+
+    // All nine canonical list IDs land in the mirror.
+    const ids = OrderHelpers._getDashboardMirrorListIds();
+    expect(ids.length).toBe(9);
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      expect(el, 'mirror must include #' + id).not.toBeNull();
+      expect(el.classList.contains('dashboard-list')).toBe(true);
+    }
+  });
+
+  it('ensureDashboardShellMirror() is idempotent — second call is a no-op', () => {
+    const OrderHelpers = loadOrderHelpers();
+    OrderHelpers.init({});
+    OrderHelpers._ensureDashboardShellMirrorForTest();
+    const firstRoot = document.getElementById('sidebar-dashboard');
+    expect(firstRoot).not.toBeNull();
+
+    OrderHelpers._ensureDashboardShellMirrorForTest();
+    const secondRoot = document.getElementById('sidebar-dashboard');
+    expect(secondRoot).toBe(firstRoot);
+
+    // Still exactly one #sidebar-dashboard element in the document.
+    expect(document.querySelectorAll('#sidebar-dashboard').length).toBe(1);
   });
 });

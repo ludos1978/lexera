@@ -3260,6 +3260,11 @@ var LexeraOrderHelpers = (function () {
     _getDashboardPendingFlags: function () {
       return { refresh: dashboardRefreshPending, render: dashboardRenderPending };
     },
+    // Test helpers: inspect the workspace-shell dashboard mirror so a
+    // runtime test can verify the canonical list IDs land in the DOM
+    // and that the broadcast payload mirrors the rendered HTML.
+    _ensureDashboardShellMirrorForTest: ensureDashboardShellMirror,
+    _getDashboardMirrorListIds: function () { return DASHBOARD_MIRROR_LIST_IDS.slice(); },
     _resetDashboardPendingFlags: function () {
       if (dashboardRefreshTimer) {
         clearTimeout(dashboardRefreshTimer);
