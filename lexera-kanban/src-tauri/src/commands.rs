@@ -682,6 +682,22 @@ pub fn set_menu_check_state(app: AppHandle, id: String, checked: bool) -> Result
     Ok(())
 }
 
+/// Rebuild the entire native menu so File > Open Workspace ▶ reflects
+/// the current workspace catalog. Called by the frontend after every
+/// `setWorkspacesState(...)` so users see fresh entries without a
+/// restart.
+#[tauri::command]
+pub fn set_workspaces_submenu(
+    app: AppHandle,
+    workspaces: Vec<crate::app_menu::WorkspaceMenuEntry>,
+) -> Result<(), String> {
+    let menu = crate::app_menu::create_app_menu(&app, &workspaces)
+        .map_err(|e| format!("set_workspaces_submenu: {}", e))?;
+    app.set_menu(menu)
+        .map_err(|e| format!("set_workspaces_submenu set_menu: {}", e))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn quit_app(app: AppHandle) -> Result<(), String> {
     app.exit(0);

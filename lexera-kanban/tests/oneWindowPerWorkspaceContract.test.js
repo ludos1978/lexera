@@ -82,10 +82,26 @@ describe('one workspace per window — wiring contract', () => {
   // entry point per CLAUDE memory ("Views in menu bar only"); this
   // test pins the four-link chain: Rust submenu item → action map →
   // frontend ActionRegistry handler → existing openWorkspaceWindow.
-  it('File menu has an "Open Workspace…" entry mapped to the open-workspace action', () => {
-    expect(appMenuRs).toContain('"file-open-workspace"');
-    expect(appMenuRs).toContain('"Open Workspace…"');
-    expect(appMenuRs).toMatch(/"file-open-workspace"\s*,\s*"open-workspace"/);
+  it('File menu has a dynamic "Open Workspace ▶" submenu populated from the live workspace catalog', () => {
+    // Submenu, not a leaf — each child item maps to one workspace and
+    // dispatches `open-workspace:<id>` to the frontend ActionRegistry.
+    expect(appMenuRs).toContain('SubmenuBuilder::new(app, "Open Workspace")');
+    expect(appMenuRs).toContain('OPEN_WORKSPACE_ITEM_PREFIX');
+    expect(appMenuRs).toMatch(/"file-open-workspace::"/);
+    // Empty catalog renders a disabled placeholder, not an error.
+    expect(appMenuRs).toContain('(no workspaces — create one in Workspace Settings)');
+    // Dynamic items resolve to `open-workspace:<id>` actions.
+    expect(appMenuRs).toMatch(/strip_prefix\(OPEN_WORKSPACE_ITEM_PREFIX\)[\s\S]{0,200}open-workspace:/);
+  });
+
+  it('frontend refreshes the native submenu via set_workspaces_submenu after every workspace catalog change', () => {
+    expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1200}tauriInvoke\(['"]set_workspaces_submenu['"]/);
+  });
+
+  it('Tauri command set_workspaces_submenu rebuilds the menu with the supplied workspace list', () => {
+    const commandsRs = readFileSync(resolve(__dirname, '..', 'src-tauri', 'src', 'commands.rs'), 'utf8');
+    expect(commandsRs).toMatch(/pub fn set_workspaces_submenu\([\s\S]{0,400}Vec<crate::app_menu::WorkspaceMenuEntry>/);
+    expect(commandsRs).toMatch(/create_app_menu\(&app, &workspaces\)[\s\S]{0,200}set_menu/);
   });
 
   it('actionRegistrations.js wires both `open-workspace:<id>` (direct dispatch from native submenu) and `open-workspace` (chooser fallback) to WorkspaceShell.openWorkspaceWindow', () => {

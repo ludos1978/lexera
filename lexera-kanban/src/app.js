@@ -173,6 +173,17 @@ var LexeraDashboard = (function () {
     workspaces = Array.isArray(nextWorkspaces) ? nextWorkspaces : [];
     syncRuntimeState('workspaces', workspaces);
     syncWorkspaceShellCatalogSnapshot();
+    // Refresh the native File > Open Workspace ▶ submenu so the user
+    // gets one entry per workspace. Best-effort — non-Tauri / browser
+    // dev mode silently skips.
+    if (hasTauri && typeof tauriInvoke === 'function') {
+      var entries = workspaces.map(function (w) {
+        return { id: String(w.id || ''), name: String(w.name || '') };
+      }).filter(function (e) { return e.id; });
+      try {
+        tauriInvoke('set_workspaces_submenu', { workspaces: entries });
+      } catch (_) { /* menu refresh is best-effort */ }
+    }
   }
 
   function setActiveWorkspaceIdState(nextWorkspaceId, options) {

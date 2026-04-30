@@ -366,7 +366,10 @@ fn main() {
             },
         )
         .setup(move |app| {
-            let menu = app_menu::create_app_menu(app)?;
+            // Boot with an empty workspaces submenu — the frontend
+            // refills it via `set_workspaces_submenu` once the catalog
+            // hydrates from the backend.
+            let menu = app_menu::create_app_menu(app, &[])?;
             app.set_menu(menu)?;
 
             // ── Auto-run: write config file (best-effort fallback) ──
@@ -445,7 +448,7 @@ fn main() {
                 // it. The shell handles panel reveals; embedded boards
                 // handle their own actions; panel-only webviews ignore
                 // shell-management actions in handleBoardAction.
-                let _ = app.emit("menu-action", action);
+                let _ = app.emit("menu-action", action.clone());
                 log::debug!("[main] menu-action emitted globally: {}", action);
             }
         })
@@ -488,6 +491,7 @@ fn main() {
             commands::show_context_menu,
             commands::toggle_devtools,
             commands::set_menu_check_state,
+            commands::set_workspaces_submenu,
             commands::quit_app,
             // Export commands
             export_commands::marp_export,
