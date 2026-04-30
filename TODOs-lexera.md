@@ -14,11 +14,13 @@ To mark a task with input required add (input required) at the start of the task
 
 Generally do the most time consuming tasks first. If a task takes very long to complete, start it early to finish early, DO NOT DELAY LONG TASKS!
 
-**Test status: focused vitest `exportService.test.js` + `exportUiDefaultFolder.test.js`: 79 passed, 0 failed; 160 / 160 in `./run-lexera-tests.sh` (14.67s); prior full vitest: 1792 passed, 0 failed, 2 skipped / 1794 tests in ~14s**
+**Test status: focused vitest `api.test.js` + `orderHelpers.test.js` + dashboard focus/tree/mirror tests: 116 passed, 0 failed; focused cargo `dashboard_data`: 2 passed, 0 failed; 160 / 160 in `./run-lexera-tests.sh` (14.29s); prior full vitest: 1792 passed, 0 failed, 2 skipped / 1794 tests in ~14s**
 
 ## Open Tasks
 
 ### Unsorted (leave this header here!)
+
+- [ ] (in progress) how can the frontend tests success if the features are not functional? for example in the dashboard the features were not ported, but all tests succeeded! make sure the tests really only read and write into the frontend. maybe have an api for the frontend functionalities that are very close to the actual user interactions! make sure all tests use them and make sure future tests create and use similar methods!
 
 - [~] check all tests if they are really testing what we need! — 1fe4f101 (PARTIAL: started by upgrading the dashboardShellMirrorContract from regex-only to regex+runtime DOM checks; same pattern needs broader rollout — flagged regex-only contract tests at cardDraggingLayoutContract / fullBoardRenderContract / ipcAuthSingleEntryContract; full audit is multi-day)
 
@@ -96,7 +98,6 @@ Bundle lives at `/tmp/lexera-design-v2/lexera-v2/` (palette + typography + JSX p
 - [ ] **Incremental DOM updates** — `renderDashboard()` does `innerHTML = ''` on every call. Diff and update only changed items. — **partial / outdated**: most renderers now go through `TreeView.patch` (incremental) before falling back to `innerHTML = ''` ([orderHelpers.js:2117](lexera-kanban/src/board/orderHelpers.js#L2117)). The remaining unconditional clear is `renderDashboardPinnedList` for ≤5 entries — not worth the diff overhead. Item is essentially closed; needs confirmation before strikethrough.
 - [ ] **Virtual scrolling for result lists** — currently renders 80 result + 60 todo + 40x4 calendar items as DOM nodes. Only render visible viewport items.
 - [ ] **Move search to Web Worker** — the backend search itself is fast, but parsing/grouping/tree-building on the main thread blocks rendering. Move post-processing off-thread.
-- [ ] **Request only scoped data from backend** — currently fetches all boards then filters client-side. Pass active boardId to backend query to reduce response size.
 
 ### Large Board Performance
 
