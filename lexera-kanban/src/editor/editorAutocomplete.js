@@ -35,9 +35,7 @@ var EditorAutocomplete = (function () {
       });
     }
 
-    if (Array.isArray(boardData.columns)) {
-      scanCols(boardData.columns);
-    } else if (Array.isArray(boardData.rows)) {
+    if (Array.isArray(boardData.rows)) {
       boardData.rows.forEach(function (row) {
         if (Array.isArray(row.stacks)) {
           row.stacks.forEach(function (stack) { scanCols(stack.columns); });

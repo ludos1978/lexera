@@ -26,34 +26,38 @@ describe('collectBoardTags', () => {
     expect(AC.collectBoardTags(null)).toEqual([]);
   });
 
-  it('extracts user tags from flat columns', () => {
-    const boardData = {
-      columns: [
-        { cards: [{ content: 'hello #urgent #important' }] },
-        { cards: [{ content: 'world #urgent' }] },
-      ],
+  function rowsBoard(cardContents) {
+    return {
+      rows: [{
+        stacks: [{
+          columns: cardContents.map(function (cards) {
+            return { cards: cards };
+          }),
+        }],
+      }],
     };
+  }
+
+  it('extracts user tags from row->stack->column cards', () => {
+    const boardData = rowsBoard([
+      [{ content: 'hello #urgent #important' }],
+      [{ content: 'world #urgent' }],
+    ]);
     const tags = AC.collectBoardTags(boardData);
     expect(tags).toContain('#important');
     expect(tags).toContain('#urgent');
   });
 
   it('deduplicates tags and lowercases them', () => {
-    const boardData = {
-      columns: [
-        { cards: [{ content: '#Foo #foo #FOO' }] },
-      ],
-    };
+    const boardData = rowsBoard([[{ content: '#Foo #foo #FOO' }]]);
     const tags = AC.collectBoardTags(boardData);
     expect(tags).toEqual(['#foo']);
   });
 
   it('excludes structural layout tags', () => {
-    const boardData = {
-      columns: [
-        { cards: [{ content: '#row5 #stack #span2 #header #footer #wip-3 #sticky #hidden #hidden-internal-archived #mytag' }] },
-      ],
-    };
+    const boardData = rowsBoard([[
+      { content: '#row5 #stack #span2 #header #footer #wip-3 #sticky #hidden #hidden-internal-archived #mytag' },
+    ]]);
     const tags = AC.collectBoardTags(boardData);
     expect(tags).toContain('#mytag');
     expect(tags).not.toContain('#row5');
@@ -68,39 +72,19 @@ describe('collectBoardTags', () => {
   });
 
   it('extracts tags from hierarchical rows/stacks/columns', () => {
-    const boardData = {
-      rows: [
-        {
-          stacks: [
-            {
-              columns: [
-                { cards: [{ content: '#nested-tag' }] },
-              ],
-            },
-          ],
-        },
-      ],
-    };
+    const boardData = rowsBoard([[{ content: '#nested-tag' }]]);
     const tags = AC.collectBoardTags(boardData);
     expect(tags).toContain('#nested-tag');
   });
 
   it('returns tags sorted alphabetically', () => {
-    const boardData = {
-      columns: [
-        { cards: [{ content: '#zebra #apple #mango' }] },
-      ],
-    };
+    const boardData = rowsBoard([[{ content: '#zebra #apple #mango' }]]);
     const tags = AC.collectBoardTags(boardData);
     expect(tags).toEqual(['#apple', '#mango', '#zebra']);
   });
 
   it('handles cards with no content', () => {
-    const boardData = {
-      columns: [
-        { cards: [{ content: null }, {}, { content: '#ok' }] },
-      ],
-    };
+    const boardData = rowsBoard([[{ content: null }, {}, { content: '#ok' }]]);
     expect(AC.collectBoardTags(boardData)).toEqual(['#ok']);
   });
 });

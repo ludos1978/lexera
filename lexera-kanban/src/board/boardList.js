@@ -551,14 +551,12 @@ var LexeraBoardList = (function () {
   function resolveSavedBoardData(boardData, result, boardId) {
     var savedBoard = result && result.board ? result.board : boardData;
     _callDep('ensureBoardRowsForMutation', savedBoard, _callDep('getMutationBoardTitle', boardId, savedBoard));
-    if (!savedBoard.columns) savedBoard.columns = [];
     return setBoardSaveBase(savedBoard, savedBoard);
   }
 
   function resolveLiveSyncBoardData(boardData, boardId) {
     if (!boardData) return null;
     _callDep('ensureBoardRowsForMutation', boardData, _callDep('getMutationBoardTitle', boardId, boardData));
-    if (!boardData.columns) boardData.columns = [];
     return setBoardSaveBase(boardData, boardData);
   }
 
@@ -740,7 +738,6 @@ var LexeraBoardList = (function () {
     if (replaceLocalBoard) {
       fullBoardData = cloneBoardData(canonicalBoard);
       _callDep('ensureBoardRowsForMutation', fullBoardData, _callDep('getMutationBoardTitle', boardId, fullBoardData));
-      if (!fullBoardData.columns) fullBoardData.columns = [];
       setBoardSaveBase(fullBoardData, canonicalBoard);
       _callDep('setFullBoardData', fullBoardData);
       _callDep('clearBoardDirty');
@@ -831,7 +828,6 @@ var LexeraBoardList = (function () {
     _callDep('setFullBoardData', workingBoard);
     var fullBoardData = _dep('fullBoardData');
     _callDep('ensureBoardRowsForMutation', fullBoardData, _callDep('getMutationBoardTitle', boardId, fullBoardData));
-    if (!fullBoardData.columns) fullBoardData.columns = [];
     setBoardSaveBase(fullBoardData, currentBoard || workingBoard);
     _callDep('setPendingExternalRebaseConflict', null);
     if (result) {
@@ -2951,9 +2947,7 @@ var LexeraBoardList = (function () {
       var isExpanded = expandedIds.indexOf(board.id) !== -1;
       var isActive = board.id === activeBoardId;
       var rows = getBoardHierarchyRows(board.id) || [];
-      var totalCards = rows.length > 0
-        ? countCardsInRows(rows)
-        : board.columns.reduce(function (sum, c) { return sum + (c.cardCount || 0); }, 0);
+      var totalCards = countCardsInRows(rows);
       bEntry.index = boardIdx;
       var existingBoard = (localKeyMap || existingByKey)[bEntry.key];
       var boardNode;

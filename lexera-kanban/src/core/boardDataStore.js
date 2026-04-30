@@ -445,7 +445,6 @@ var LexeraBoardDataStore = (function () {
     try {
       dep('setLastSaveTime')(Date.now());
       ensureBoardRowsForMutation(fullBoardData);
-      if (!fullBoardData.columns) fullBoardData.columns = [];
       dep('traceFrontendAction')('warn', 'board.save.force', 'Overwriting external board version with local draft', {
         boardId: activeBoardId,
         trigger: trigger || null,
@@ -548,7 +547,6 @@ var LexeraBoardDataStore = (function () {
         _savePending = false;
         dep('setLastSaveTime')(Date.now());
         fullBoardData = getFullBoardData();
-        if (!fullBoardData.columns) fullBoardData.columns = [];
 
         var liveSession = dep('getLiveSyncSession')(activeBoardId);
         if (liveSession && window.__lexeraDebugMutations) {
@@ -799,7 +797,6 @@ var LexeraBoardDataStore = (function () {
 
     if (options.ensureRows !== false) {
       ensureBoardRowsForMutation(boardData);
-      if (!boardData.columns) boardData.columns = [];
     }
 
     if (targetBoardId === activeBoardId && getActiveBoardData()) {
@@ -1068,7 +1065,6 @@ var LexeraBoardDataStore = (function () {
         dep('showSaving')();
         dep('setLastSaveTime')(Date.now());
         ensureBoardRowsForMutation(boardData);
-        if (!boardData.columns) boardData.columns = [];
         var baseBoardData = dep('getBoardSaveBase')(boardData);
         var LexeraApi = dep('LexeraApi')();
         var result = baseBoardData
@@ -1234,7 +1230,6 @@ var LexeraBoardDataStore = (function () {
                     setFullBoardDataState(rebasedDraft.board || draftSnapshot.board);
                     fullBoardData = getFullBoardData();
                     ensureBoardRowsForMutation(fullBoardData);
-                    if (!fullBoardData.columns) fullBoardData.columns = [];
                     dep('setBoardSaveBase')(fullBoardData, rebasedDraft.currentBoard || response.fullBoard || fullBoardData);
                     markBoardDirty();
                   } else if (rebasedDraft && rebasedDraft.hasConflicts) {
@@ -1260,7 +1255,6 @@ var LexeraBoardDataStore = (function () {
                 setFullBoardDataState(draftSnapshot.board);
                 fullBoardData = getFullBoardData();
                 ensureBoardRowsForMutation(fullBoardData);
-                if (!fullBoardData.columns) fullBoardData.columns = [];
                 dep('setBoardSaveBase')(fullBoardData, draftBaseBoard || response.fullBoard || fullBoardData);
                 markBoardDirty();
               }

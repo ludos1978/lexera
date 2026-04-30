@@ -27,8 +27,6 @@
     if (settingsDelta) delta.boardSettings = settingsDelta;
     var rowsDelta = diffIdArray(oldBoard.rows || [], newBoard.rows || [], diffRow);
     if (rowsDelta) delta.rows = rowsDelta;
-    var colsDelta = diffIdArray(oldBoard.columns || [], newBoard.columns || [], diffColumn);
-    if (colsDelta) delta.columns = colsDelta;
     return delta;
   }
 
@@ -172,9 +170,6 @@
     if (delta.rows) {
       board.rows = applyIdArrayDelta(board.rows || [], delta.rows, reverse, applyRowDelta);
     }
-    if (delta.columns) {
-      board.columns = applyIdArrayDelta(board.columns || [], delta.columns, reverse, applyColumnDelta);
-    }
   }
 
   function applyFlatObjectDelta(parent, prop, diff, reverse) {
@@ -296,12 +291,10 @@
     }
     if (delta.boardSettings) return null;
     var hasRowShapeChange = !!(delta.rows && _hasArrayShapeChange(delta.rows));
-    if (delta.columns && _hasArrayShapeChange(delta.columns)) return null;
 
     // If nothing modified, nothing to do
     var hasRowMods = delta.rows && delta.rows.modified;
-    var hasColMods = delta.columns && delta.columns.modified;
-    if (!hasRowShapeChange && !hasRowMods && !hasColMods) return null;
+    if (!hasRowShapeChange && !hasRowMods) return null;
 
     // Build id→location maps from activeBoardData.
     // Any delta id that can't be found here means the change touches a
@@ -404,40 +397,6 @@
             }
           }
         }
-      }
-    }
-
-    // Legacy path: if only delta.columns exists (no rows), walk it too.
-    // In practice, migrated boards never have delta.columns, but keep this
-    // for robustness.
-    if (!hasRowMods && hasColMods) {
-      for (var colId2 in delta.columns.modified) {
-        var colD2 = delta.columns.modified[colId2];
-        var colIdStr2 = String(colId2);
-        var colFlatIdx2 = maps.colIdToFlatIdx[colIdStr2];
-        if (colFlatIdx2 == null) return null;
-
-        if (colD2.title || colD2.include_source) {
-          emit({ type: 'column', colIndex: colFlatIdx2 });
-          continue;
-        }
-        if (!colD2.cards) continue;
-        if (_hasArrayShapeChange(colD2.cards)) {
-          emit({ type: 'column', colIndex: colFlatIdx2 });
-          continue;
-        }
-        if (!colD2.cards.modified) continue;
-
-        var cardMap2 = maps.colIdToCardMap[colIdStr2] || {};
-        var bail2 = false;
-        var cardT2 = [];
-        for (var cardId2 in colD2.cards.modified) {
-          var cardIdx2 = cardMap2[String(cardId2)];
-          if (cardIdx2 == null) { bail2 = true; break; }
-          cardT2.push({ type: 'card-content', colIndex: colFlatIdx2, cardIndex: cardIdx2 });
-        }
-        if (bail2) emit({ type: 'column', colIndex: colFlatIdx2 });
-        else for (var ci2 = 0; ci2 < cardT2.length; ci2++) emit(cardT2[ci2]);
       }
     }
 

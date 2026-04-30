@@ -11825,7 +11825,6 @@ var LexeraDashboard = (function () {
       pendingExternalRebaseConflict = null;
       clearScheduledAutoSave('test-fixture-save');
       ensureBoardRowsForMutation(fullBoardData);
-      if (!fullBoardData.columns) fullBoardData.columns = [];
       var result = await LexeraApi.saveBoard(activeBoardId, fullBoardData);
       var savedBoardData = resolveSavedBoardData(fullBoardData, result, activeBoardId);
       if (savedBoardData) {
