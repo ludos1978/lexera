@@ -8,7 +8,7 @@ import {
   dedupeWebClipperFeedCandidates,
   type WebClipperCollectedPageContext,
   type WebClipperFeedCandidate,
-} from '@ludos/shared';
+} from '@lexera/shared';
 
 declare const browser: any;
 declare const chrome: any;

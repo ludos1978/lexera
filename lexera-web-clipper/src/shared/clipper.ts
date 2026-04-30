@@ -6,7 +6,7 @@ import {
   WebClipperContext,
   WebClipperMode,
   WebClipperTarget,
-} from '@ludos/shared';
+} from '@lexera/shared';
 import { submitMarkdownCard, uploadBlobToBoardMedia } from './backend';
 
 function dataUrlToBlob(dataUrl: string): Blob {

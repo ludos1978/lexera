@@ -1,7 +1,7 @@
 {
-  "name": "@ludos/shared",
+  "name": "@lexera/shared",
   "version": "0.1.0",
-  "description": "Shared types and parser for Ludos Kanban ecosystem",
+  "description": "Shared types and parser for Lexera Kanban ecosystem",
   "main": "dist/index.js",
   "exports": {
     ".": {

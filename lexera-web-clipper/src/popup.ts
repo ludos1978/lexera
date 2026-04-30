@@ -8,7 +8,7 @@ import {
   getPreferredWebClipperContext,
   normalizeClipperMode,
   trimPreview,
-} from '@ludos/shared';
+} from '@lexera/shared';
 import { sendRuntimeMessage } from './shared/browser';
 import { fetchFeedContext } from './shared/feed';
 import { MESSAGE_TYPES } from './shared/messages';

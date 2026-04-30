@@ -6,7 +6,7 @@ import {
   isDownloadableWebClipperUrl,
   markdownFileLink,
   inferWebClipperAssetCategory,
-} from '@ludos/shared';
+} from '@lexera/shared';
 
 type CaptureResult = {
   markdown: string;

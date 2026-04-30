@@ -5,7 +5,7 @@ import {
   normalizeLexeraBackendBaseUrl,
   prependIncomingCaptureTag,
   resolveLexeraBackendStatusBaseUrl,
-} from '@ludos/shared';
+} from '@lexera/shared';
 import { getLocalStorage, setLocalStorage } from './browser';
 
 const STORAGE_KEY = 'lexeraWebClipperState';

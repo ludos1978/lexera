@@ -4,7 +4,7 @@
   "private": true,
   "description": "Cross-browser web clipper for Lexera kanban boards",
   "dependencies": {
-    "@ludos/shared": "file:../packages/shared"
+    "@lexera/shared": "file:../packages/shared"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -12,6 +12,7 @@
     "test": "npm run build && node --test tests/*.test.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.28.0"
+    "esbuild": "^0.28.0",
+    "jsdom": "^29.0.2"
   }
 }

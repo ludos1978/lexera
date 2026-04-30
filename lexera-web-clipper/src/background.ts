@@ -8,7 +8,7 @@ import {
   getPreferredWebClipperContext,
   normalizeClipperMode,
   trimPreview,
-} from '@ludos/shared';
+} from '@lexera/shared';
 import {
   addContextMenuListener,
   addInstalledListener,
