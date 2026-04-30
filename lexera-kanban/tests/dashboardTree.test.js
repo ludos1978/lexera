@@ -222,3 +222,85 @@ describe('dashboard tree builders', () => {
     });
   });
 });
+
+describe('dashboard tree click → nav payload (temporal-section routing)', () => {
+  // The Overdue / Upcoming / Due-soon dashboard sections render result
+  // items as `data-dashboard-target="result"` tree nodes carrying the
+  // boardId / cardId / row-stack-col indices on data-* attributes.
+  // Clicking a node hits `activateDashboardTreeNode` → calls
+  // `buildDashboardNavResultFromTreeNode(node)` → routes through
+  // `navigateToSearchResult(navResult)` → focusHierarchyTargetLocally
+  // → focusCard. This test pins the FIRST hop of that chain: a clicked
+  // node produces the exact nav payload the focus code expects.
+
+  function makeFakeNode(attrs) {
+    return {
+      getAttribute: function (name) {
+        return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null;
+      }
+    };
+  }
+
+  it('extracts the canonical nav payload from a temporal-section result node', () => {
+    const node = makeFakeNode({
+      'data-dashboard-target': 'result',
+      'data-dashboard-board-id': 'board-1',
+      'data-dashboard-card-id': 'card-42',
+      'data-dashboard-column-index': '2',
+      'data-dashboard-row-index': '0',
+      'data-dashboard-stack-index': '1',
+      'data-dashboard-column-title': 'Doing'
+    });
+
+    const payload = DashboardTree.buildDashboardNavResultFromTreeNode(node);
+    expect(payload).toEqual({
+      boardId: 'board-1',
+      cardId: 'card-42',
+      columnIndex: 2,
+      rowIndex: 0,
+      stackIndex: 1,
+      columnTitle: 'Doing'
+    });
+  });
+
+  it('returns null when the node carries no boardId — the focus chain bails before navigating', () => {
+    const node = makeFakeNode({
+      'data-dashboard-target': 'result',
+      'data-dashboard-card-id': 'card-orphan'
+    });
+    expect(DashboardTree.buildDashboardNavResultFromTreeNode(node)).toBeNull();
+  });
+
+  it('preserves null indices when the data-* attribute is absent (overdue items lacking position)', () => {
+    const node = makeFakeNode({
+      'data-dashboard-board-id': 'board-1',
+      'data-dashboard-card-id': 'card-no-position'
+    });
+    const payload = DashboardTree.buildDashboardNavResultFromTreeNode(node);
+    expect(payload).toEqual({
+      boardId: 'board-1',
+      cardId: 'card-no-position',
+      columnIndex: null,
+      rowIndex: null,
+      stackIndex: null,
+      columnTitle: null
+    });
+  });
+
+  it('coerces numeric strings on indices but leaves cardId / columnTitle as strings', () => {
+    const node = makeFakeNode({
+      'data-dashboard-board-id': 'b',
+      'data-dashboard-card-id': 'c',
+      'data-dashboard-row-index': '5',
+      'data-dashboard-stack-index': '3',
+      'data-dashboard-column-index': '7',
+      'data-dashboard-column-title': 'Backlog'
+    });
+    const payload = DashboardTree.buildDashboardNavResultFromTreeNode(node);
+    expect(payload.rowIndex).toBe(5);
+    expect(payload.stackIndex).toBe(3);
+    expect(payload.columnIndex).toBe(7);
+    expect(payload.cardId).toBe('c');
+    expect(payload.columnTitle).toBe('Backlog');
+  });
+});
