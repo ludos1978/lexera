@@ -588,38 +588,6 @@
   opacity: 0.8;
 }
 
-/* Burger menu button in board tabs (replaces × close) */
-.ws-view-tab-menu,
-.ws-view-menu {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
-  min-width: var(--icon-button-size);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  padding: 0;
-  opacity: 0.62;
-}
-
-.ws-view-tab:hover .ws-view-tab-menu,
-.ws-view-tab-menu:hover,
-.ws-view-menu:hover {
-  opacity: 1;
-  background: var(--hover-bg, rgba(128,128,128,0.15));
-}
-
-/* Header-level burger menu pushes right like close button */
-.ws-view-menu:not(.ws-view-fold ~ .ws-view-menu) {
-  margin-left: auto;
-  align-self: center;
-}
-
 /* Hidden tab (overflowed into dropdown) */
 .ws-view-tab.is-tab-overflowed {
   display: none;

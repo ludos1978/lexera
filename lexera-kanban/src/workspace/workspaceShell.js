@@ -2317,12 +2317,9 @@
       closeBtn.type = 'button';
       closeBtn.title = 'Close';
       closeBtn.textContent = '\u00d7';
-      var origClose = tab.querySelector('.ws-view-tab-close') || tab.querySelector('.ws-view-tab-menu');
+      var origClose = tab.querySelector('.ws-view-tab-close');
       if (origClose) {
-        var closeAction = origClose.getAttribute('data-ws-action');
-        // Map burger menu action to close-tab for overflow menu
-        if (closeAction === 'tab-menu') closeAction = 'close-tab';
-        closeBtn.setAttribute('data-ws-action', closeAction || 'close-tab');
+        closeBtn.setAttribute('data-ws-action', origClose.getAttribute('data-ws-action') || 'close-tab');
         if (tabId) closeBtn.setAttribute('data-ws-tab-id', tabId);
         if (panelId) closeBtn.setAttribute('data-ws-panel-id', panelId);
       }
@@ -2448,19 +2445,13 @@
         if (item.id === opts.activeId) tab.classList.add('is-active');
         if (item.isSelected) tab.classList.add('is-selected');
 
-        // Per-item action button: board tabs render a burger menu
-        // (\u2630, action: 'tab-menu') so the user can reach the full board
-        // context-menu (open detached, reveal in finder, split, remove
-        // from workspace, \u2026) instead of being limited to a \u00d7 close.
-        // Panel tabs keep the \u00d7 close button. Default = closeAction.
-        var itemActionKind = item.actionKind === 'menu' ? 'menu' : 'close';
-        var itemActionHtml = itemActionKind === 'menu'
-          ? '<button class="ws-view-tab-menu burger-menu-btn" type="button" data-ws-action="tab-menu" ' +
-              'data-ws-tab-id="' + escapeHtml(item.id) + '" title="Tab actions" ' +
-              'aria-haspopup="menu" aria-label="Tab actions">' +
-              '<span class="burger-lines" aria-hidden="true"></span></button>'
-          : '<button class="ws-view-tab-close" type="button" data-ws-action="' + escapeHtml(opts.closeAction) + '" ' +
-              escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Close">\u00d7</button>';
+        // Per-item action button: \u00d7 close, identical for board and panel
+        // tabs. Board context actions (open detached, reveal in finder,
+        // split, set view kind, remove from workspace, \u2026) are reached
+        // via right-click on the tab \u2014 see handleRootContextMenu.
+        var itemActionHtml =
+          '<button class="ws-view-tab-close" type="button" data-ws-action="' + escapeHtml(opts.closeAction) + '" ' +
+            escapeHtml(opts.closeIdAttr) + '="' + escapeHtml(item.id) + '" title="Close">\u00d7</button>';
         tab.innerHTML =
           '<span class="ws-view-tab-label">' + escapeHtml(item.label) + '</span>' +
           (opts.showMeta && item.meta ? '<span class="ws-view-tab-meta">' + escapeHtml(item.meta) + '</span>' : '') +
@@ -3404,12 +3395,12 @@
         var titleEl = headerEl.querySelector('.ws-view-title');
         if (titleEl) titleEl.textContent = getTabTitle(node.tabs[0]);
       }
-      // Keep header-level drag handle and close/menu button pointing at the active tab
+      // Keep header-level drag handle and close button pointing at the active tab
       var activeId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
       var dragEl = headerEl.querySelector('.ws-view-drag');
       if (dragEl) dragEl.setAttribute('data-ws-tab-id', activeId);
-      var closeOrMenuEl = headerEl.querySelector('.ws-view-close') || headerEl.querySelector('.ws-view-menu');
-      if (closeOrMenuEl) closeOrMenuEl.setAttribute('data-ws-tab-id', activeId);
+      var closeEl = headerEl.querySelector('.ws-view-close');
+      if (closeEl) closeEl.setAttribute('data-ws-tab-id', activeId);
     }
 
     // ── Content: patch view frames (add/remove/reorder) ──
@@ -3899,14 +3890,6 @@
       event.preventDefault();
       event.stopPropagation();
       closeTab(closeBtn.getAttribute('data-ws-tab-id'));
-      return;
-    }
-
-    var tabMenuBtn = event.target.closest('[data-ws-action="tab-menu"]');
-    if (tabMenuBtn) {
-      event.preventDefault();
-      event.stopPropagation();
-      showBoardTabMenu(tabMenuBtn.getAttribute('data-ws-tab-id'), tabMenuBtn);
       return;
     }
 
