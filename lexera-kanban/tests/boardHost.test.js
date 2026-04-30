@@ -367,4 +367,37 @@ describe('LexeraBoardHost.watchPlaceholderVisibility lifecycle', () => {
     const { isolated } = buildEnv();
     expect(() => isolated.cleanupVisibilityObserver('never-watched')).not.toThrow();
   });
+
+  // Regression for the multiview-suppression contract: the placeholder
+  // visibility observer must respect the global suppression flag set by
+  // LexeraMultiviewWebview.setAllVisible(). Without this gate, a drag or
+  // shell-DOM dropdown that suppresses webviews would still see them
+  // re-shown the moment any placeholder mutation fires (since the
+  // observer's first-run pushes visible:true). Pinning the gate here so
+  // a refactor that drops the boardHost ↔ multiviewWebview link is caught.
+  it('honours LexeraMultiviewWebview.isAllVisibleSuppressed() — keeps the webview hidden even when the placeholder is is-active', () => {
+    const { isolated, invoke, setGeometry } = buildEnv({
+      LexeraMultiviewWebview: {
+        isAllVisibleSuppressed: () => true
+      }
+    });
+    const placeholder = fakeElement({ classList: ['is-active'] });
+    isolated.watchPlaceholderVisibility('t-suppressed', placeholder);
+    // First call must mark the webview hidden, not visible.
+    expect(invoke).toHaveBeenCalledWith('multiview_set_visible', { label: 'board-tab-t-suppressed', visible: false });
+    // And it should be parked offscreen as belt-and-braces.
+    const lastGeom = setGeometry.mock.calls[setGeometry.mock.calls.length - 1][0][0];
+    expect(lastGeom.x).toBe(-50000);
+    expect(lastGeom.y).toBe(-50000);
+  });
+
+  it('falls through to the placeholder check when isAllVisibleSuppressed is unavailable', () => {
+    // No LexeraMultiviewWebview global at all → behaviour is the legacy
+    // "is the placeholder is-active and measurable?" path. Confirms the
+    // suppression hook is a strict ADD-ON, not a hard dependency.
+    const { isolated, invoke } = buildEnv();
+    const placeholder = fakeElement({ classList: ['is-active'] });
+    isolated.watchPlaceholderVisibility('t-no-mvw', placeholder);
+    expect(invoke).toHaveBeenCalledWith('multiview_set_visible', { label: 'board-tab-t-no-mvw', visible: true });
+  });
 });
