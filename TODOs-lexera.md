@@ -20,11 +20,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ### Unsorted (leave this header here!)
 
-- [ ] (in progress) one window per workspace + "Open" menu action.
-  Each window must be tied to a SINGLE workspace; the workspace selector becomes a per-window setting, not a filter on a global list.
-  Workspace dropdowns / context menus get a new "Open" item that spawns a fresh window for the chosen workspace.
-  Cross-window drag-drop (boards / cards between two workspace windows) must keep working — this needs the existing multi-window IPC channel rather than the in-shell workspace filter.
-  Investigation entry points: [app.js#openWorkspaceWindow / focusWorkspaceView](lexera-kanban/src/app.js), [boardList.js#showBoardActionsMenu](lexera-kanban/src/board/boardList.js), [workspaceShell.js#focusWorkspace](lexera-kanban/src/workspace/workspaceShell.js).
+- [x] ~~one window per workspace + "Open" menu action.~~ — 31814eb7 (workspaces sub-app row gets per-workspace "Open" button → emits `open-workspace-window` navigate; navigationBridge routes to `shell.openWorkspaceWindow(workspaceId)`; workspaceShell forwards `payload.workspaceId` to `open_new_window`; Rust appends `?workspace=<id>` to the new window URL; app.js reads `urlParams.get('workspace')` and pins the window's `activeWorkspaceId` per-window only — not persisted, so closing a locked window can't bleed the lock into the next generic window. Cross-window drag-drop unchanged — rides the existing multiview drag IPC, orthogonal to the in-window workspace filter. 5-step source-level contract test + workspaces view runtime test cover the chain.)
 
 - [ ] (in progress) how can the frontend tests success if the features are not functional? for example in the dashboard the features were not ported, but all tests succeeded! make sure the tests really only read and write into the frontend. maybe have an api for the frontend functionalities that are very close to the actual user interactions! make sure all tests use them and make sure future tests create and use similar methods!
   - dashboard: `LexeraDashboardTestApi` (collectState / setSearch / clickCard) — already in place.
