@@ -176,4 +176,88 @@ describe('log view sub-app', () => {
       .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
     expect(window.LexeraSubApp.broadcast).toHaveBeenCalledWith('log-reload-request', {});
   });
+
+  // ── User-interaction API exercise ────────────────────────────────
+  // Drives the log view ONLY through LexeraLogTestApi. A regression
+  // that breaks log rendering or filter handling makes the API
+  // helpers return false / yield wrong state — no false positives.
+  it('LexeraLogTestApi.collectState mirrors visible entries + filter state the user sees', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      broadcast: vi.fn()
+    };
+    loadLogView(window);
+    capturedOpts.onReady();
+
+    window.LexeraLogTestApi.appendEntry({ level: 'info', source: 'frontend', message: 'Boot complete', timestamp_ms: Date.UTC(2026, 3, 30, 9) });
+    window.LexeraLogTestApi.appendEntry({ level: 'error', source: 'backend', message: 'Disk full', timestamp_ms: Date.UTC(2026, 3, 30, 10) });
+
+    const state = window.LexeraLogTestApi.collectState();
+    expect(state.totalEntries).toBe(2);
+    expect(state.visibleEntries).toHaveLength(2);
+    expect(state.visibleEntries[0]).toMatchObject({ level: 'info', source: 'frontend', message: 'Boot complete' });
+    expect(state.visibleEntries[1]).toMatchObject({ level: 'error', source: 'backend', message: 'Disk full' });
+    expect(state.status).toContain('2/2');
+    // Filters at default — every level on, sourceFilterAll true.
+    expect(state.activeLevels.error).toBe(true);
+    expect(state.activeLevels.info).toBe(true);
+    expect(state.sourceFilterAll).toBe(true);
+  });
+
+  it('LexeraLogTestApi.toggleLevel hides matching entries and updates the status counter', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      broadcast: vi.fn()
+    };
+    loadLogView(window);
+    capturedOpts.onReady();
+
+    window.LexeraLogTestApi.appendEntry({ level: 'info', message: 'a', timestamp_ms: 0 });
+    window.LexeraLogTestApi.appendEntry({ level: 'error', message: 'b', timestamp_ms: 0 });
+    window.LexeraLogTestApi.appendEntry({ level: 'info', message: 'c', timestamp_ms: 0 });
+
+    expect(window.LexeraLogTestApi.toggleLevel('info')).toBe(true);
+    const state = window.LexeraLogTestApi.collectState();
+    expect(state.totalEntries).toBe(3);
+    expect(state.visibleEntries).toHaveLength(1);
+    expect(state.visibleEntries[0].message).toBe('b');
+    expect(state.status).toBe('1/3 entries');
+    expect(state.activeLevels.info).toBe(false);
+    expect(state.activeLevels.error).toBe(true);
+
+    // Unknown level → no-op (returns false), nothing else flips.
+    expect(window.LexeraLogTestApi.toggleLevel('does-not-exist')).toBe(false);
+  });
+
+  it('LexeraLogTestApi.setSearch + clickClear exercise the same DOM paths the user does', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      broadcast: vi.fn()
+    };
+    loadLogView(window);
+    capturedOpts.onReady();
+
+    window.LexeraLogTestApi.appendEntry({ level: 'info', message: 'apple pie', timestamp_ms: 0 });
+    window.LexeraLogTestApi.appendEntry({ level: 'info', message: 'banana split', timestamp_ms: 0 });
+
+    window.LexeraLogTestApi.setSearch('banana');
+    let state = window.LexeraLogTestApi.collectState();
+    expect(state.visibleEntries).toHaveLength(1);
+    expect(state.visibleEntries[0].message).toBe('banana split');
+    expect(state.searchText).toBe('banana');
+
+    window.LexeraLogTestApi.clickClear();
+    state = window.LexeraLogTestApi.collectState();
+    expect(state.totalEntries).toBe(0);
+    expect(state.visibleEntries).toHaveLength(0);
+  });
 });

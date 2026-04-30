@@ -309,4 +309,121 @@
   } else if (statusEl) {
     statusEl.textContent = 'no Tauri context';
   }
+
+  // ── Test API ──────────────────────────────────────────────────────
+  // User-interaction surface for vitest tests. Mirrors the
+  // LexeraDashboardTestApi / LexeraWorkspacesTestApi / LexeraHierarchy-
+  // TestApi shape: every operation drives the SAME DOM and event paths
+  // a user does. `collectState` returns only what the user can see
+  // (status text, connection state, visible entries with their level /
+  // source / message). `appendEntry` rides the SAME `appendOne` path
+  // a real log message arrival uses.
+  function dispatchClick(node) {
+    if (!node) return false;
+    var MouseEv = window.MouseEvent;
+    var ev = typeof MouseEv === 'function'
+      ? new MouseEv('click', { bubbles: true, cancelable: true })
+      : document.createEvent('MouseEvent');
+    if (ev.initMouseEvent && typeof MouseEv !== 'function') {
+      ev.initMouseEvent('click', true, true, window, 1, 0, 0, 0, 0, false, false, false, false, 0, null);
+    }
+    node.dispatchEvent(ev);
+    return true;
+  }
+  function dispatchInput(input, value) {
+    if (!input) return false;
+    input.value = String(value == null ? '' : value);
+    var Ev = window.Event;
+    var ev = typeof Ev === 'function'
+      ? new Ev('input', { bubbles: true })
+      : document.createEvent('Event');
+    if (ev.initEvent && typeof Ev !== 'function') ev.initEvent('input', true, true);
+    input.dispatchEvent(ev);
+    return true;
+  }
+  function dispatchChange(input) {
+    if (!input) return false;
+    var Ev = window.Event;
+    var ev = typeof Ev === 'function'
+      ? new Ev('change', { bubbles: true })
+      : document.createEvent('Event');
+    if (ev.initEvent && typeof Ev !== 'function') ev.initEvent('change', true, true);
+    input.dispatchEvent(ev);
+    return true;
+  }
+  function collectVisibleEntries() {
+    if (!entriesEl) return [];
+    var nodes = entriesEl.querySelectorAll(':scope > .entry');
+    var out = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var levelEl = nodes[i];
+      var msgEl = nodes[i].querySelector('.message');
+      var sourceEl = nodes[i].querySelector('.source');
+      out.push({
+        level: levelEl.dataset.level || '',
+        source: levelEl.dataset.source || '',
+        message: msgEl ? msgEl.textContent : ''
+      });
+    }
+    return out;
+  }
+  window.LexeraLogTestApi = {
+    collectState: function () {
+      return {
+        status: statusEl ? statusEl.textContent : '',
+        connected: connectionBtn ? connectionBtn.classList.contains('connected') : false,
+        visibleEntries: collectVisibleEntries(),
+        totalEntries: entries.length,
+        searchText: searchText,
+        activeLevels: Object.assign({}, activeLevels),
+        activeSources: Object.assign({}, activeSources),
+        sourceFilterAll: sourceFilterAll
+      };
+    },
+    appendEntry: function (entry) {
+      // Drive the SAME path a real log message arrival uses (onLog
+      // callback registered with LexeraSubApp.init). Tests can call
+      // this to seed entries without faking the IPC layer.
+      appendOne(entry || {});
+    },
+    setSearch: function (text) {
+      return dispatchInput(searchInput, text);
+    },
+    clickClear: function () {
+      return dispatchClick(clearBtn);
+    },
+    clickRefresh: function () {
+      return dispatchClick(refreshBtn);
+    },
+    toggleLevel: function (lvl) {
+      // Find the menu item for this level and dispatch a real change
+      // event on its checkbox — same path a user click takes.
+      if (!levelMenu) return false;
+      var labels = levelMenu.querySelectorAll('label.log-panel-source-menu-item');
+      for (var i = 0; i < labels.length; i++) {
+        var span = labels[i].querySelector('span');
+        if (span && span.textContent === String(lvl || '')) {
+          var cb = labels[i].querySelector('input[type="checkbox"]');
+          if (!cb) return false;
+          cb.checked = !cb.checked;
+          return dispatchChange(cb);
+        }
+      }
+      return false;
+    },
+    toggleSource: function (src) {
+      if (!sourceMenu) return false;
+      var labels = sourceMenu.querySelectorAll('label.log-panel-source-menu-item');
+      for (var i = 0; i < labels.length; i++) {
+        var span = labels[i].querySelector('span');
+        if (span && span.textContent === String(src || '')) {
+          var cb = labels[i].querySelector('input[type="checkbox"]');
+          if (!cb) return false;
+          cb.checked = !cb.checked;
+          return dispatchChange(cb);
+        }
+      }
+      return false;
+    }
+  };
 })();
