@@ -53,7 +53,7 @@
 
   function resolveRequestedVisualThemeId(value) {
     var source = String(value || '').trim().toLowerCase();
-    if (!source || source === 'default' || source === 'legacy') return 'classic';
+    if (!source || source === 'default') return 'classic';
     if (source === 'classic' || source === 'no-style' || source === 'nostyle' || source === 'none' ||
         source === 'paper' || source === 'paper-v2' || source === 'warm-paper' || source === 'lexera-v2') return 'classic';
     if (source === 'sleek' || source === 'minimal' || source === 'modern') return 'sleek-uniform';
@@ -250,12 +250,6 @@
     try {
       var stored = Settings ? Settings.get('visualTheme') : localStorage.getItem('lexera-visual-theme');
       if (stored) return resolveRequestedVisualThemeId(stored);
-
-      var legacyTemplate = localStorage.getItem('lexera-ui-template');
-      if (legacyTemplate) return resolveRequestedVisualThemeId(legacyTemplate);
-
-      var legacyBoardTheme = localStorage.getItem('lexera-board-theme');
-      if (legacyBoardTheme) return resolveRequestedVisualThemeId(legacyBoardTheme);
     } catch (err) {
       /* ignore localStorage errors */
     }

@@ -378,47 +378,23 @@ describe('board hierarchy single-source contract', () => {
     expect(api.getBoardHierarchy).not.toHaveBeenCalled();
   });
 
-  it('uses the injected shared legacy converter for columns-only hierarchy data', () => {
+  it('returns an empty hierarchy when board data has no rows (legacy column-based payloads are no longer accepted)', () => {
     const BoardList = loadBoardList();
-    const convertedRows = [{
-      id: 'row-legacy',
-      title: 'Row 2',
-      stacks: [{
-        id: 'stack-legacy',
-        title: 'Backlog',
-        columns: [{
-          id: 'col-legacy',
-          index: 0,
-          title: 'Backlog',
-          cards: [],
-        }],
-      }],
-    }];
-    const normalizeLegacyColumnsToRows = vi.fn(() => convertedRows);
+    BoardList.init({ renderBoardList() {} });
 
-    BoardList.init({
-      normalizeLegacyColumnsToRows,
-      renderBoardList() {},
-    });
-
-    BoardList.refreshBoardHierarchyProjection('board-legacy', {
-      title: 'Legacy Board',
+    BoardList.refreshBoardHierarchyProjection('board-no-rows', {
+      title: 'No Rows Board',
       rows: [],
       columns: [{
-        id: 'col-legacy',
+        id: 'col-stale',
         index: 0,
         title: 'Backlog #row2',
         cards: [],
       }],
-    }, 'Legacy Board', { render: false });
+    }, 'No Rows Board', { render: false });
 
-    expect(normalizeLegacyColumnsToRows).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ title: 'Backlog #row2' })
-      ]),
-      'Legacy Board'
-    );
-    expect(BoardList.getBoardHierarchyRows('board-legacy')).toEqual(convertedRows);
+    // The legacy `columns` field is ignored — boards now use rows only.
+    expect(BoardList.getBoardHierarchyRows('board-no-rows')).toEqual([]);
   });
 
   it('routes live-sync snapshots through commitLocalBoardChange when skipping render', () => {

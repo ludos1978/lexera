@@ -1274,7 +1274,6 @@ var LexeraDashboard = (function () {
   }
   function stripLayoutTags(title) { return OrderHelpers.stripLayoutTags(title); }
   function stripStackTag(title) { return OrderHelpers.stripStackTag(title); }
-  function stripLegacyImportStructureTags(title) { return OrderHelpers.stripLegacyImportStructureTags(title); }
   function isColumnHeaderTagged(title) { return OrderHelpers.isColumnHeaderTagged(title); }
   function isColumnFooterTagged(title) { return OrderHelpers.isColumnFooterTagged(title); }
   function getDisplayOrderedColumnEntries(columns, options) { return OrderHelpers.getDisplayOrderedColumnEntries(columns, options); }
@@ -1284,11 +1283,6 @@ var LexeraDashboard = (function () {
   function suggestIncludePathForColumn(title) { return OrderHelpers.suggestIncludePathForColumn(title); }
   function getColumnLayoutTags(title) { return OrderHelpers.getColumnLayoutTags(title); }
   function getElementSizeTag(title, tagName) { return OrderHelpers.getElementSizeTag(title, tagName); }
-  function getLegacyImportRowNumber(title) { return OrderHelpers.getLegacyImportRowNumber(title); }
-  function buildRowsFromLegacyColumns(cols, fallbackTitle) { return OrderHelpers.buildRowsFromLegacyColumns(cols, fallbackTitle); }
-  function normalizeLegacyColumnsToRows(cols, fallbackTitle) {
-    return OrderHelpers['buildRowsFromLegacy' + 'Columns'](cols, fallbackTitle);
-  }
   function reconstructColumnTitle(userInput, originalTitle) { return OrderHelpers.reconstructColumnTitle(userInput, originalTitle); }
   async function toggleColumnWidth(colIndex) { return OrderHelpers.toggleColumnWidth(colIndex); }
   async function setColumnSpan(colIndex, span) { return OrderHelpers.setColumnSpan(colIndex, span); }
@@ -2713,7 +2707,6 @@ var LexeraDashboard = (function () {
     getOrderedItems: function(items, key, fn) { return getOrderedItems(items, key, fn); },
     getAllColumnsFromBoardData: function(boardData) { return getAllColumnsFromBoardData(boardData); },
     getMutationBoardTitle: function(boardId, boardData) { return getMutationBoardTitle(boardId, boardData); },
-    normalizeLegacyColumnsToRows: function(cols, fallbackTitle) { return normalizeLegacyColumnsToRows(cols, fallbackTitle); },
     loadBoardDataForMutation: function(boardId) { return loadBoardDataForMutation(boardId); },
     commitHierarchyTreeEdit: function(boardId, boardData, opts) { return commitHierarchyTreeEdit(boardId, boardData, opts); },
     getDisplayNameFromPath: function(filePath) { return getDisplayNameFromPath(filePath); },
@@ -2729,7 +2722,7 @@ var LexeraDashboard = (function () {
     addIncludeSyntaxToTitle: function(title, filePath) { return addIncludeSyntaxToTitle(title, filePath); },
     removeIncludeSyntaxFromTitle: function(title) { return removeIncludeSyntaxFromTitle(title); },
     pushUndo: function() { pushUndo(); },
-    ensureBoardRowsForMutation: function(boardData, title) { ensureBoardRowsForMutation(boardData, title); },
+    ensureBoardRowsForMutation: function(boardData) { ensureBoardRowsForMutation(boardData); },
     updateDisplayFromFullBoard: function() { updateDisplayFromFullBoard(); },
     logFrontendIssue: function(level, target, msg, err) { logFrontendIssue(level, target, msg, err); },
     traceFrontendAction: function(level, target, msg, details) { traceFrontendAction(level, target, msg, details); },
@@ -2801,8 +2794,7 @@ var LexeraDashboard = (function () {
   function applyLiveSyncBoardSnapshot(boardId, boardData, options) { _bl('applyLiveSyncBoardSnapshot', boardId, boardData, options); }
   function applyRebasedBoardSnapshot(boardId, workingBoard, currentBoard, result, options) { _bl('applyRebasedBoardSnapshot', boardId, workingBoard, currentBoard, result, options); }
   async function rebaseDirtyBoardFromServer(triggerKind) { return _bl('rebaseDirtyBoardFromServer', triggerKind); }
-  function rowsFromLegacyColumns(columns, boardTitle) { return _bl('rowsFromLegacyColumns', columns, boardTitle); }
-  function rowsForBoardData(fullBoard, fallbackTitle) { return _bl('rowsForBoardData', fullBoard, fallbackTitle); }
+  function rowsForBoardData(fullBoard) { return _bl('rowsForBoardData', fullBoard); }
 
   function getBoardHierarchyRows(boardId) { return _bl('getBoardHierarchyRows', boardId); }
   async function refreshBoardHierarchyCache(boardList) { return _bl('refreshBoardHierarchyCache', boardList); }
@@ -2836,7 +2828,6 @@ var LexeraDashboard = (function () {
     updateActiveBoardDataState: function (updater) { return updateActiveBoardDataState(updater); },
     // Board data helpers (via BoardList)
     is_archived_or_deleted: function (text) { return is_archived_or_deleted(text); },
-    buildRowsFromLegacyColumns: function (cols, t) { return buildRowsFromLegacyColumns(cols, t); },
     findBoardMeta: function (id) { return findBoardMeta(id); },
     cloneBoardData: function (bd) { return cloneBoardData(bd); },
     // Dirty state deps
@@ -5634,7 +5625,7 @@ var LexeraDashboard = (function () {
     requestAnimationFrame(restoreBoardScroll);
   }
 
-  function ensureBoardRowsForMutation(boardData, fallbackTitle) { BoardDataStore.ensureBoardRowsForMutation(boardData, fallbackTitle); }
+  function ensureBoardRowsForMutation(boardData) { BoardDataStore.ensureBoardRowsForMutation(boardData); }
   function getMutationBoardTitle(boardId, boardData) { return BoardDataStore.getMutationBoardTitle(boardId, boardData); }
   async function loadBoardDataForMutation(boardId) { return BoardDataStore.loadBoardDataForMutation(boardId); }
   function normalizeHierarchyEditTargets(targets) { return BoardDataStore.normalizeHierarchyEditTargets(targets); }
@@ -11734,7 +11725,7 @@ var LexeraDashboard = (function () {
       var _prevActiveBoardData = activeBoardData;
       setFullBoardDataState(boardData);
       if (fullBoardData) {
-        ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
+        ensureBoardRowsForMutation(fullBoardData);
         setBoardSaveBase(fullBoardData, fullBoardData);
       }
       _stbMark('afterSetFullBoard');
@@ -11833,12 +11824,12 @@ var LexeraDashboard = (function () {
       try { await closeLiveSyncSession(activeBoardId); } catch (_) {}
       pendingExternalRebaseConflict = null;
       clearScheduledAutoSave('test-fixture-save');
-      ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
+      ensureBoardRowsForMutation(fullBoardData);
       if (!fullBoardData.columns) fullBoardData.columns = [];
       var result = await LexeraApi.saveBoard(activeBoardId, fullBoardData);
       var savedBoardData = resolveSavedBoardData(fullBoardData, result, activeBoardId);
       if (savedBoardData) {
-        ensureBoardRowsForMutation(savedBoardData, getMutationBoardTitle(activeBoardId, savedBoardData));
+        ensureBoardRowsForMutation(savedBoardData);
         setFullBoardDataState(savedBoardData);
         updateActiveBoardDataState(function (nextBoardData) {
           nextBoardData.fullBoard = savedBoardData;

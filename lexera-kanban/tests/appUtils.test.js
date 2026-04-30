@@ -136,10 +136,7 @@ function loadAppUtils() {
     extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function buildPastedEmbedImageFileName(')),
     extractFunctionFrom(hiddenItemsLines, findLineIn(hiddenItemsLines, 'function getUploadedMediaEmbedTarget(')),
     extractFunction(findLine('function stripLayoutTags(')),
-    extractFunction(findLine('function stripLegacyImportStructureTags(')),
     extractFunction(findLine('function getColumnLayoutTags(')),
-    extractFunction(findLine('function getLegacyImportRowNumber(')),
-    extractFunction(findLine('function buildRowsFromLegacyColumns(')),
     extractFunction(findLine('function reconstructColumnTitle(')),
     extractFunction(findLine('function reorderItems(')),
     extractFunction(findLine('function normalizeDroppedPath(')),
@@ -222,10 +219,7 @@ function loadAppUtils() {
       buildPastedEmbedImageFileName,
       getUploadedMediaEmbedTarget,
       stripLayoutTags,
-      stripLegacyImportStructureTags,
       getColumnLayoutTags,
-      getLegacyImportRowNumber,
-      buildRowsFromLegacyColumns,
       reconstructColumnTitle,
       reorderItems,
       normalizeDroppedPath,
@@ -432,12 +426,6 @@ describe('stripLayoutTags', () => {
   });
 });
 
-describe('stripLegacyImportStructureTags', () => {
-  it('removes only #row and #stack from legacy import titles', () => {
-    expect(U.stripLegacyImportStructureTags('Col #row2 #stack #span3')).toBe('Col #span3');
-  });
-});
-
 describe('buildSourceSummaryLabel', () => {
   it('collapses whitespace and trims the result', () => {
     expect(U.buildSourceSummaryLabel('  alpha   beta \n gamma  ', 'fallback')).toBe('alpha beta gamma');
@@ -584,32 +572,6 @@ describe('getColumnLayoutTags', () => {
     expect(result.stack).toBe(false);
     expect(result.header).toBe(false);
     expect(result.footer).toBe(false);
-  });
-});
-
-describe('legacy import row/stack grouping helpers', () => {
-  it('parses the legacy row number from the column title', () => {
-    expect(U.getLegacyImportRowNumber('Column #row2 #stack')).toBe(2);
-    expect(U.getLegacyImportRowNumber('Column')).toBe(1);
-  });
-
-  it('groups flat legacy columns into numbered rows and stack chains', () => {
-    const rows = U.buildRowsFromLegacyColumns([
-      { title: 'Todo', cards: [] },
-      { title: 'Backlog #row2', cards: [] },
-      { title: 'Doing #row2 #stack', cards: [] },
-      { title: 'Done', cards: [] },
-    ], 'Board');
-
-    expect(rows.length).toBe(2);
-    expect(rows[0].title).toBe('Row 1');
-    expect(rows[0].stacks.length).toBe(2);
-    expect(rows[0].stacks[0].columns[0].title).toBe('Todo');
-    expect(rows[0].stacks[1].columns[0].title).toBe('Done');
-
-    expect(rows[1].title).toBe('Row 2');
-    expect(rows[1].stacks.length).toBe(1);
-    expect(rows[1].stacks[0].columns.map((c) => c.title)).toEqual(['Backlog', 'Doing']);
   });
 });
 

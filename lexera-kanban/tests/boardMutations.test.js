@@ -288,7 +288,6 @@ function loadMutationFunctions() {
         setActiveBoardDataState: function () {},
         updateActiveBoardDataState: function () {},
         is_archived_or_deleted: typeof is_archived_or_deleted === 'function' ? is_archived_or_deleted : function () { return false; },
-        buildRowsFromLegacyColumns: function () { return []; },
         findBoardMeta: function () { return null; },
         cloneBoardData: function (bd) { return JSON.parse(JSON.stringify(bd)); },
         refreshBoardHeaderActionStates: function () {},

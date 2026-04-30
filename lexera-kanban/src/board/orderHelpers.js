@@ -67,10 +67,6 @@ var LexeraOrderHelpers = (function () {
     return _dep('LexeraTagSystem').stripLayoutTags(title);
   }
 
-  function stripLegacyImportStructureTags(title) {
-    return _dep('LexeraTagSystem').stripLegacyStructureTags(title);
-  }
-
   function isColumnHeaderTagged(title) {
     return _callDep('hasTag', String(title || ''), '#header');
   }
@@ -145,68 +141,6 @@ var LexeraOrderHelpers = (function () {
 
   function getElementSizeTag(title, tagName) {
     return _dep('LexeraTagSystem').getElementSizeTag(title, tagName);
-  }
-
-  function getLegacyImportRowNumber(title) {
-    var tags = getColumnLayoutTags(title);
-    if (!tags.row) return 1;
-    var match = tags.row.match(/\d+/);
-    if (!match) return 1;
-    var parsed = parseInt(match[0], 10);
-    return isFinite(parsed) && parsed > 0 ? parsed : 1;
-  }
-
-  function buildRowsFromLegacyColumns(cols, fallbackTitle) {
-    var list = Array.isArray(cols) ? cols : [];
-    if (list.length === 0) return [];
-
-    var rowsByNumber = {};
-    var rowNumbers = [];
-    for (var i = 0; i < list.length; i++) {
-      var col = list[i];
-      if (!col) continue;
-      var rowNumber = getLegacyImportRowNumber(col.title || '');
-      if (!rowsByNumber[rowNumber]) {
-        rowsByNumber[rowNumber] = [];
-        rowNumbers.push(rowNumber);
-      }
-      rowsByNumber[rowNumber].push({
-        col: Object.assign({}, col, {
-          title: stripLegacyImportStructureTags(col.title || '')
-        }),
-        stack: !!getColumnLayoutTags(col.title || '').stack
-      });
-    }
-
-    rowNumbers.sort(function (a, b) { return a - b; });
-    var multipleRows = rowNumbers.length > 1 || (rowNumbers.length === 1 && rowNumbers[0] !== 1);
-    var rows = [];
-    for (var r = 0; r < rowNumbers.length; r++) {
-      var rn = rowNumbers[r];
-      var entries = rowsByNumber[rn] || [];
-      var groups = [];
-      for (var j = 0; j < entries.length; j++) {
-        if (entries[j].stack && groups.length > 0) groups[groups.length - 1].push(entries[j].col);
-        else groups.push([entries[j].col]);
-      }
-
-      var stacks = [];
-      for (var g = 0; g < groups.length; g++) {
-        var baseTitle = groups[g][0] && groups[g][0].title ? groups[g][0].title.trim() : '';
-        stacks.push({
-          id: 'stack-' + Date.now() + '-' + r + '-' + g,
-          title: baseTitle || ('Stack ' + (g + 1)),
-          columns: groups[g]
-        });
-      }
-
-      rows.push({
-        id: 'row-' + Date.now() + '-' + r,
-        title: multipleRows ? ('Row ' + rn) : (fallbackTitle || 'Default'),
-        stacks: stacks
-      });
-    }
-    return rows;
   }
 
   function reconstructColumnTitle(userInput, originalTitle) {
@@ -3320,7 +3254,6 @@ var LexeraOrderHelpers = (function () {
     normalizeCanvasStackDirection: normalizeCanvasStackDirection,
     stripLayoutTags: stripLayoutTags,
     stripStackTag: stripStackTag,
-    stripLegacyImportStructureTags: stripLegacyImportStructureTags,
     isColumnHeaderTagged: isColumnHeaderTagged,
     isColumnFooterTagged: isColumnFooterTagged,
     getDisplayOrderedColumnEntries: getDisplayOrderedColumnEntries,
@@ -3330,8 +3263,6 @@ var LexeraOrderHelpers = (function () {
     suggestIncludePathForColumn: suggestIncludePathForColumn,
     getColumnLayoutTags: getColumnLayoutTags,
     getElementSizeTag: getElementSizeTag,
-    getLegacyImportRowNumber: getLegacyImportRowNumber,
-    buildRowsFromLegacyColumns: buildRowsFromLegacyColumns,
     reconstructColumnTitle: reconstructColumnTitle,
     toggleColumnWidth: toggleColumnWidth,
     setColumnSpan: setColumnSpan,

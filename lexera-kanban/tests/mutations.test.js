@@ -419,7 +419,6 @@ function loadMutationHarness() {
           return activeBoardData;
         },
         is_archived_or_deleted: function (text) { return typeof is_archived_or_deleted === 'function' ? is_archived_or_deleted(text) : false; },
-        buildRowsFromLegacyColumns: function (cols, t) { return typeof buildRowsFromLegacyColumns === 'function' ? buildRowsFromLegacyColumns(cols, t) : []; },
         findBoardMeta: function () { return null; },
         cloneBoardData: function (bd) { return JSON.parse(JSON.stringify(bd)); },
         refreshBoardHeaderActionStates: function () {},

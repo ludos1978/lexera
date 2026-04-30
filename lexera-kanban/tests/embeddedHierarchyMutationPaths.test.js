@@ -101,14 +101,14 @@ function createEmbeddedBoardListHarness(onParentMessage, overrides = {}) {
       return columns;
     },
     isBoardDirty() { return false; },
-    ensureBoardRowsForMutation(boardData, fallbackTitle) {
+    ensureBoardRowsForMutation(boardData) {
       if (!boardData) return;
       if (!Array.isArray(boardData.rows)) boardData.rows = [];
       if (!Array.isArray(boardData.columns)) boardData.columns = [];
       if (boardData.rows.length === 0) {
         boardData.rows.push({
           id: 'row-1',
-          title: fallbackTitle || boardData.title || 'Board',
+          title: boardData.title || "Board",
           stacks: []
         });
       }
@@ -200,14 +200,14 @@ function loadEmbeddedMutationHarness(onParentMessage, onSaveFullBoard) {
     function requestAnimationFrame(fn) { fn(); }
     function setActiveBoardDataState(nextBoardData) { activeBoardData = nextBoardData; }
     function setFullBoardDataState(nextBoardData) { fullBoardData = nextBoardData; }
-    function ensureBoardRowsForMutation(boardData, fallbackTitle) {
+    function ensureBoardRowsForMutation(boardData) {
       if (!boardData) return;
       if (!Array.isArray(boardData.rows)) boardData.rows = [];
       if (!Array.isArray(boardData.columns)) boardData.columns = [];
       if (boardData.rows.length === 0) {
         boardData.rows.push({
           id: 'row-1',
-          title: fallbackTitle || boardData.title || 'Board',
+          title: boardData.title || "Board",
           stacks: []
         });
       }
@@ -295,7 +295,7 @@ function loadEmbeddedMutationHarness(onParentMessage, onSaveFullBoard) {
           return boardData || null;
         }
         if (options.ensureRows !== false) {
-          ensureBoardRowsForMutation(boardData, getMutationBoardTitle(targetBoardId, boardData));
+          ensureBoardRowsForMutation(boardData);
           if (!boardData.columns) boardData.columns = [];
         }
         if (targetBoardId === activeBoardId && activeBoardData) {
@@ -319,7 +319,7 @@ function loadEmbeddedMutationHarness(onParentMessage, onSaveFullBoard) {
             var boardData = changedBoards[boardId];
             if (!boardData) continue;
             if (boardId === activeBoardId) {
-              ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
+              ensureBoardRowsForMutation(boardData);
               if (!getBoardSaveBase(boardData)) setBoardSaveBase(boardData, boardData);
               if (fullBoardData !== boardData) fullBoardData = boardData;
               if (!activeBoardData) {
@@ -335,7 +335,7 @@ function loadEmbeddedMutationHarness(onParentMessage, onSaveFullBoard) {
             }
             showSaving();
             lastSaveTime = Date.now();
-            ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
+            ensureBoardRowsForMutation(boardData);
             if (!boardData.columns) boardData.columns = [];
             var baseBoardData = getBoardSaveBase(boardData);
             var result = baseBoardData

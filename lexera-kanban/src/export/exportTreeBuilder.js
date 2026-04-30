@@ -1,7 +1,6 @@
 /**
- * Build the hierarchical selection tree for the export dialog.
- * Uses the board's real row -> stack -> column structure when available,
- * while keeping a legacy flat-column fallback for old boards.
+ * Build the hierarchical selection tree for the export dialog from the
+ * board's row -> stack -> column structure.
  */
 
 const PARKED_TAG = '#hidden-internal-parked';
@@ -117,88 +116,7 @@ class ExportTreeBuilder {
     static normalizeBoardRows(board) {
         if (!board) return [];
         if (Array.isArray(board.rows) && board.rows.length > 0) return board.rows;
-        if (Array.isArray(board.columns) && board.columns.length > 0) {
-            return this.rowsFromLegacyColumns(board.columns);
-        }
         return [];
-    }
-
-    static rowsFromLegacyColumns(columns) {
-        var rowMap = new Map();
-        var list = Array.isArray(columns) ? columns : [];
-
-        for (var i = 0; i < list.length; i++) {
-            var column = list[i];
-            if (!column || this.isHiddenItem(column.title)) continue;
-            var rowNumber = this.getColumnRow(column.title);
-            if (!rowMap.has(rowNumber)) rowMap.set(rowNumber, []);
-            rowMap.get(rowNumber).push({
-                id: column.id || null,
-                title: column.title || '',
-                cards: Array.isArray(column.cards) ? column.cards : [],
-                includeSource: column.includeSource || null,
-                isStacked: this.isColumnStacked(column.title),
-            });
-        }
-
-        var sortedRows = Array.from(rowMap.entries()).sort(function (a, b) {
-            return a[0] - b[0];
-        });
-
-        return sortedRows.map(function (entry, rowIdx) {
-            var rowNumber = entry[0];
-            var rowColumns = entry[1];
-            var stacks = ExportTreeBuilder.groupIntoStacks(rowColumns).map(function (stackColumns, stackIdx) {
-                return {
-                    id: 'legacy-stack-' + rowNumber + '-' + stackIdx,
-                    title: stackColumns.length > 1
-                        ? ('Stack ' + (stackIdx + 1))
-                        : (stackColumns[0] && stackColumns[0].title ? stackColumns[0].title : ('Stack ' + (stackIdx + 1))),
-                    columns: stackColumns,
-                };
-            });
-            return {
-                id: 'legacy-row-' + rowNumber + '-' + rowIdx,
-                title: 'Row ' + rowNumber,
-                stacks: stacks,
-            };
-        });
-    }
-
-    static getColumnRow(title) {
-        if (typeof LexeraTagSystem !== 'undefined') {
-            var t = LexeraTagSystem.extractLayoutTags(title);
-            return t.row || 1;
-        }
-        var value = String(title || '');
-        var matches = value.match(/#row(\d+)\b/gi);
-        if (matches && matches.length > 0) {
-            var num = parseInt(matches[matches.length - 1].replace(/#row/i, ''), 10);
-            return isNaN(num) ? 1 : num;
-        }
-        return 1;
-    }
-
-    static isColumnStacked(title) {
-        if (typeof LexeraTagSystem !== 'undefined') {
-            return LexeraTagSystem.extractLayoutTags(title).stack;
-        }
-        return /#stack\b/i.test(String(title || ''));
-    }
-
-    static groupIntoStacks(columns) {
-        var stacks = [];
-        var i = 0;
-        while (i < columns.length) {
-            var currentStack = [columns[i]];
-            i += 1;
-            while (i < columns.length && columns[i].isStacked) {
-                currentStack.push(columns[i]);
-                i += 1;
-            }
-            stacks.push(currentStack);
-        }
-        return stacks;
     }
 
     static cleanHierarchyTitle(title, fallback) {

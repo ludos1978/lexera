@@ -221,33 +221,9 @@ var LexeraBoardDataStore = (function () {
 
   // ── Board structure helpers ────────────────────────────────────────
 
-  function migrateLegacyBoard() {
-    var fullBoardData = getFullBoardData();
-    if (!fullBoardData) return;
-    if (fullBoardData.rows && fullBoardData.rows.length > 0) return;
-    var cols = fullBoardData.columns || [];
-    if (cols.length === 0) {
-      fullBoardData.rows = [];
-      return;
-    }
-    fullBoardData.rows = dep('buildRowsFromLegacyColumns')(cols, fullBoardData.title || 'Default');
-    fullBoardData.columns = [];
-  }
-
-  function ensureBoardRowsForMutation(boardData, fallbackTitle) {
+  function ensureBoardRowsForMutation(boardData) {
     if (!boardData) return;
-    if (boardData.rows && boardData.rows.length > 0) {
-      if (!boardData.columns) boardData.columns = [];
-      return;
-    }
-    var cols = boardData.columns || [];
-    if (cols.length === 0) {
-      boardData.rows = [];
-      boardData.columns = [];
-      return;
-    }
-    boardData.rows = dep('buildRowsFromLegacyColumns')(cols, boardData.title || fallbackTitle || 'Default');
-    boardData.columns = [];
+    if (!boardData.rows) boardData.rows = [];
   }
 
   function getMutationBoardTitle(boardId, boardData) {
@@ -468,7 +444,7 @@ var LexeraBoardDataStore = (function () {
     dep('showSaving')();
     try {
       dep('setLastSaveTime')(Date.now());
-      ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
+      ensureBoardRowsForMutation(fullBoardData);
       if (!fullBoardData.columns) fullBoardData.columns = [];
       dep('traceFrontendAction')('warn', 'board.save.force', 'Overwriting external board version with local draft', {
         boardId: activeBoardId,
@@ -484,7 +460,7 @@ var LexeraBoardDataStore = (function () {
       var result = await dep('LexeraApi')().saveBoard(activeBoardId, fullBoardData);
       var savedBoard = result && result.board ? result.board : null;
       if (savedBoard) {
-        ensureBoardRowsForMutation(savedBoard, getMutationBoardTitle(activeBoardId, savedBoard));
+        ensureBoardRowsForMutation(savedBoard);
         dep('setBoardSaveBase')(fullBoardData, savedBoard);
       } else {
         dep('setBoardSaveBase')(fullBoardData, fullBoardData);
@@ -671,7 +647,7 @@ var LexeraBoardDataStore = (function () {
 
         var savedBoard = result && result.board ? result.board : null;
         if (savedBoard) {
-          ensureBoardRowsForMutation(savedBoard, getMutationBoardTitle(activeBoardId, savedBoard));
+          ensureBoardRowsForMutation(savedBoard);
           dep('setBoardSaveBase')(fullBoardData, savedBoard);
           dep('clearPendingExternalRebaseConflict')();
         } else {
@@ -822,7 +798,7 @@ var LexeraBoardDataStore = (function () {
     }
 
     if (options.ensureRows !== false) {
-      ensureBoardRowsForMutation(boardData, getMutationBoardTitle(targetBoardId, boardData));
+      ensureBoardRowsForMutation(boardData);
       if (!boardData.columns) boardData.columns = [];
     }
 
@@ -1058,7 +1034,7 @@ var LexeraBoardDataStore = (function () {
         if (!boardData) continue;
 
         if (boardId === activeBoardId) {
-          ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
+          ensureBoardRowsForMutation(boardData);
           if (!dep('getBoardSaveBase')(boardData)) dep('setBoardSaveBase')(boardData, boardData);
           if (getFullBoardData() !== boardData) setFullBoardDataState(boardData);
           if (!getActiveBoardData()) {
@@ -1091,7 +1067,7 @@ var LexeraBoardDataStore = (function () {
 
         dep('showSaving')();
         dep('setLastSaveTime')(Date.now());
-        ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
+        ensureBoardRowsForMutation(boardData);
         if (!boardData.columns) boardData.columns = [];
         var baseBoardData = dep('getBoardSaveBase')(boardData);
         var LexeraApi = dep('LexeraApi')();
@@ -1196,16 +1172,6 @@ var LexeraBoardDataStore = (function () {
       _lastLoadedRevision = response && response.revision ? response.revision : null;
       if (isRemoteBoard) {
         dep('clearLocalBoardDraft')(boardId);
-      } else if (fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
-        loadStage = 'migrate-legacy-board';
-        migrateLegacyBoard();
-        try {
-          loadStage = 'save-migrated-board';
-          await saveFullBoard();
-        } catch (err) {
-          dep('logFrontendIssue')('warn', 'board.load.migrate', 'Failed to persist migrated board ' + boardId, err);
-        }
-        if (seq !== dep('getBoardLoadSeq')()) return;
       }
       if (!isBoardSwitch && draftSnapshot) {
         dep('clearLocalBoardDraft')(boardId);
@@ -1267,7 +1233,7 @@ var LexeraBoardDataStore = (function () {
                   if (rebasedDraft && rebasedDraft.currentBoard && !rebasedDraft.hasConflicts) {
                     setFullBoardDataState(rebasedDraft.board || draftSnapshot.board);
                     fullBoardData = getFullBoardData();
-                    ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+                    ensureBoardRowsForMutation(fullBoardData);
                     if (!fullBoardData.columns) fullBoardData.columns = [];
                     dep('setBoardSaveBase')(fullBoardData, rebasedDraft.currentBoard || response.fullBoard || fullBoardData);
                     markBoardDirty();
@@ -1293,7 +1259,7 @@ var LexeraBoardDataStore = (function () {
               } else {
                 setFullBoardDataState(draftSnapshot.board);
                 fullBoardData = getFullBoardData();
-                ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+                ensureBoardRowsForMutation(fullBoardData);
                 if (!fullBoardData.columns) fullBoardData.columns = [];
                 dep('setBoardSaveBase')(fullBoardData, draftBaseBoard || response.fullBoard || fullBoardData);
                 markBoardDirty();
@@ -1363,14 +1329,14 @@ var LexeraBoardDataStore = (function () {
     var activeBoardId = getActiveBoardId();
     var fullBoardData = getFullBoardData();
     if (boardId === activeBoardId && fullBoardData) {
-      ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+      ensureBoardRowsForMutation(fullBoardData);
       if (!dep('getBoardSaveBase')(fullBoardData)) dep('setBoardSaveBase')(fullBoardData, fullBoardData);
       return fullBoardData;
     }
     if (!dep('findBoardMeta')(boardId)) return null;
     var response = await dep('LexeraApi')().getBoardColumns(boardId);
     var boardData = response && response.fullBoard ? response.fullBoard : { rows: [], columns: [] };
-    ensureBoardRowsForMutation(boardData, response && response.title ? response.title : getMutationBoardTitle(boardId, boardData));
+    ensureBoardRowsForMutation(boardData);
     return dep('setBoardSaveBase')(boardData, boardData);
   }
 
@@ -1408,7 +1374,6 @@ var LexeraBoardDataStore = (function () {
     updateDisplayFromFullBoard: updateDisplayFromFullBoard,
 
     // Board structure
-    migrateLegacyBoard: migrateLegacyBoard,
     ensureBoardRowsForMutation: ensureBoardRowsForMutation,
     getMutationBoardTitle: getMutationBoardTitle,
 

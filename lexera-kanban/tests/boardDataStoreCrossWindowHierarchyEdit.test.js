@@ -37,7 +37,6 @@ function makeDeps(store) {
       return store.activeBoardData;
     },
     is_archived_or_deleted: () => false,
-    buildRowsFromLegacyColumns: () => [],
     findBoardMeta: () => null,
     cloneBoardData: (bd) => JSON.parse(JSON.stringify(bd)),
     refreshBoardHeaderActionStates: () => {},

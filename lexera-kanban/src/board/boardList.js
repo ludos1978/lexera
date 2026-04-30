@@ -922,19 +922,9 @@ var LexeraBoardList = (function () {
 
   // ─── Row helpers ──────────────────────────────────────────────────
 
-  function rowsFromLegacyColumns(columns, boardTitle) {
-    var rows = _callDep('normalizeLegacyColumnsToRows', columns, boardTitle || 'Board');
-    if (Array.isArray(rows)) return cloneRows(rows);
-    logFrontendIssue('error', 'board.rows.legacy', 'Missing normalizeLegacyColumnsToRows dependency for legacy board normalization');
-    return [];
-  }
-
-  function rowsForBoardData(fullBoard, fallbackTitle) {
+  function rowsForBoardData(fullBoard) {
     if (fullBoard && fullBoard.rows && fullBoard.rows.length > 0) {
       return cloneRows(fullBoard.rows);
-    }
-    if (fullBoard && fullBoard.columns) {
-      return rowsFromLegacyColumns(fullBoard.columns, fullBoard.title || fallbackTitle || 'Board');
     }
     return [];
   }
@@ -970,7 +960,7 @@ var LexeraBoardList = (function () {
   }
 
   function setBoardHierarchyRows(boardId, fullBoard, fallbackTitle, options) {
-    return setBoardHierarchyProjection(boardId, rowsForBoardData(fullBoard, fallbackTitle), options);
+    return setBoardHierarchyProjection(boardId, rowsForBoardData(fullBoard), options);
   }
 
   function clearBoardHierarchyProjection(boardId, options) {
@@ -1051,7 +1041,7 @@ var LexeraBoardList = (function () {
       }
       setBoardHierarchyProjection(
         boardMeta.id,
-        rowsForBoardData(response || null, response && response.title ? response.title : (boardMeta.title || 'Board')),
+        rowsForBoardData(response || null),
         {
           revision: response && response.revision ? response.revision : null,
           emit: false
@@ -1140,7 +1130,7 @@ var LexeraBoardList = (function () {
   function refreshBoardHierarchyProjection(boardId, fullBoard, fallbackTitle, options) {
     if (_dep('embeddedMode')) return fullBoard || null;
     options = options || {};
-    setBoardHierarchyProjection(boardId, rowsForBoardData(fullBoard, fallbackTitle), {
+    setBoardHierarchyProjection(boardId, rowsForBoardData(fullBoard), {
       revision: options.revision || null,
       emit: options.render !== false && options.emit !== false,
       mirrorsOnly: !!options.mirrorsOnly
@@ -3176,7 +3166,6 @@ var LexeraBoardList = (function () {
     applyLiveSyncBoardSnapshot: applyLiveSyncBoardSnapshot,
     applyRebasedBoardSnapshot: applyRebasedBoardSnapshot,
     rebaseDirtyBoardFromServer: rebaseDirtyBoardFromServer,
-    rowsFromLegacyColumns: rowsFromLegacyColumns,
     rowsForBoardData: rowsForBoardData,
     getBoardHierarchyRows: getBoardHierarchyRows,
     deleteBoardHierarchyCacheEntry: deleteBoardHierarchyCacheEntry,
