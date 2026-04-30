@@ -165,7 +165,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Move legacy `src/` into an explicit archive location such as `archive/v1/` while preserving history and build reproducibility.
 - [ ] Keep the restructure mostly path-level and boundary-level first, without mixing it with feature refactors in the same change set.
 - [ ] Convert fragile relative cross-module imports to stable workspace or crate references before large directory moves.
-- [ ] Choose one package manager for the whole repository and remove mixed lockfile usage after migration. VERIFIED NOT DONE: both `package-lock.json` (npm) and `pnpm-lock.yaml` (pnpm) exist at root.
+- [x] ~~Choose one package manager for the whole repository and remove mixed lockfile usage after migration.~~ — 7f0425a6 (npm is canonical; root + per-package use `package-lock.json`. The orphan `pnpm-lock.yaml` (2918 lines, stale — no `pnpm-workspace.yaml`, no package.json referenced its top-level imports) was deleted.)
 - [ ] Create one root `lint` command that runs all supported packages in dependency order.
 - [ ] Standardize TypeScript base config and let packages extend it instead of drifting independently.
 - [ ] Standardize Rust workspace settings and shared lint rules for all Tauri and core crates.
@@ -510,7 +510,7 @@ All items verified against the actual codebase by code inspection, file existenc
 - [~] Config mutation centralized — `config_api.rs` (995 lines) handles most config flows, but 20 `save_config`/`normalize_workspace` refs scattered across other API handlers
 
 ### Verified NOT done (with evidence)
-- [ ] Choose one package manager — both `package-lock.json` (npm) and `pnpm-lock.yaml` (pnpm) at root
+- [x] ~~Choose one package manager — both `package-lock.json` (npm) and `pnpm-lock.yaml` (pnpm) at root~~ — 7f0425a6 (orphan pnpm-lock.yaml removed; npm is canonical)
 - [ ] Architecture document — no ARCHITECTURE.md at root
 - [ ] Root lint command — `test.sh` has no lint; no `lint` in `package.json`
 - [ ] Package boundary checks — root `eslint.config.mjs` exists, but no boundary/import restriction rules found
