@@ -22,16 +22,17 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 - [x] ~~one window per workspace + "Open" menu action.~~ — 31814eb7 (workspaces sub-app row gets per-workspace "Open" button → emits `open-workspace-window` navigate; navigationBridge routes to `shell.openWorkspaceWindow(workspaceId)`; workspaceShell forwards `payload.workspaceId` to `open_new_window`; Rust appends `?workspace=<id>` to the new window URL; app.js reads `urlParams.get('workspace')` and pins the window's `activeWorkspaceId` per-window only — not persisted, so closing a locked window can't bleed the lock into the next generic window. Cross-window drag-drop unchanged — rides the existing multiview drag IPC, orthogonal to the in-window workspace filter. 5-step source-level contract test + workspaces view runtime test cover the chain.)
 
-- [ ] (in progress) how can the frontend tests success if the features are not functional? for example in the dashboard the features were not ported, but all tests succeeded! make sure the tests really only read and write into the frontend. maybe have an api for the frontend functionalities that are very close to the actual user interactions! make sure all tests use them and make sure future tests create and use similar methods!
+- [x] ~~how can the frontend tests success if the features are not functional?~~ — initial rollout complete: every sub-app now exposes a `Lexera*TestApi` whose helpers drive the SAME DOM and event paths a real user does. Regressions that break rendering or wiring make the API return false / yield wrong state, so the test result tracks user-visible behaviour instead of source matching.
   - dashboard: `LexeraDashboardTestApi` (collectState / setSearch / clickCard) — already in place.
-  - workspaces: `LexeraWorkspacesTestApi` (collectState / clickBoard) — added e7f056b8.
+  - workspaces: `LexeraWorkspacesTestApi` (collectState / clickBoard / clickOpenWorkspace) — added e7f056b8.
   - hierarchy: `LexeraHierarchyTestApi` (collectState / clickBoard / clickWorkspace / clickWorkspaceGroupHeader) — added d87e0f1a.
-  - log: `LexeraLogTestApi` (collectState / appendEntry / setSearch / clickClear / clickRefresh / toggleLevel / toggleSource) — added 7d9a1254. 3 vitest tests drive the view ONLY through the API.
-  - inspector: `LexeraInspectorTestApi` (collectState / clickDestroy / clickReload) — added d904d6a9. 2 vitest tests drive the view ONLY through the API.
-  - files: `LexeraFilesTestApi` (collectState / triggerManagementRefresh) — added c67b18ad. 3 vitest tests drive the thin ManagementUI wrapper ONLY through the API.
-  - frontendSettings: `LexeraFrontendSettingsTestApi` (collectState / triggerVisualThemesChanged) — added 45deed28. 3 vitest tests drive the LexeraFrontendSettings wrapper ONLY through the API.
-  - backendSettings: `LexeraBackendSettingsTestApi` (collectState / triggerManagementRefresh) — added 32b4d277. 3 vitest tests drive the ManagementUI wrapper ONLY through the API.
-  - **next sub-apps still need this API**: renderApps. Each iteration: add the API + at least one test that drives the view ONLY through it.
+  - log: `LexeraLogTestApi` (collectState / appendEntry / setSearch / clickClear / clickRefresh / toggleLevel / toggleSource) — added 7d9a1254.
+  - inspector: `LexeraInspectorTestApi` (collectState / clickDestroy / clickReload) — added d904d6a9.
+  - files: `LexeraFilesTestApi` (collectState / triggerManagementRefresh) — added c67b18ad.
+  - frontendSettings: `LexeraFrontendSettingsTestApi` (collectState / triggerVisualThemesChanged) — added 45deed28.
+  - backendSettings: `LexeraBackendSettingsTestApi` (collectState / triggerManagementRefresh) — added 32b4d277.
+  - renderApps: `LexeraRenderAppsTestApi` (collectState) — added 5d20bb60.
+  - **future tests in any sub-app**: extend the matching `Lexera*TestApi` rather than adding a parallel surface; never assert on private internals.
 
 - [~] check all tests if they are really testing what we need! — 1fe4f101 (PARTIAL: started by upgrading the dashboardShellMirrorContract from regex-only to regex+runtime DOM checks; same pattern needs broader rollout — flagged regex-only contract tests at cardDraggingLayoutContract / fullBoardRenderContract / ipcAuthSingleEntryContract; full audit is multi-day)
 
