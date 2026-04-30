@@ -2503,35 +2503,21 @@
       el.appendChild(fold);
     }
 
-    // Header-level action button (always visible). Match the active
-    // item's actionKind so single-tab board headers also get the
-    // burger menu (\u2630) and the user can reach the same set of board
-    // actions as right-clicking. Single-tab panel headers and any
-    // tabset whose active item is not a board fall back to \u00d7.
+    // Header-level action button (always visible) \u2014 \u00d7 close for every
+    // tabset, matching the per-tab close. Board context actions live
+    // on right-click (showBoardTabMenu) instead of a header burger.
     var headerActiveItem = null;
     for (var hi = 0; hi < opts.items.length; hi++) {
       if (opts.items[hi].id === opts.activeId) { headerActiveItem = opts.items[hi]; break; }
     }
     if (!headerActiveItem && opts.items.length > 0) headerActiveItem = opts.items[0];
-    var headerActionKind = headerActiveItem && headerActiveItem.actionKind === 'menu' ? 'menu' : 'close';
     var headerBtn = document.createElement('button');
-    if (headerActionKind === 'menu') {
-      headerBtn.className = 'ws-view-menu burger-menu-btn';
-      headerBtn.type = 'button';
-      headerBtn.title = 'Tab actions';
-      headerBtn.setAttribute('aria-haspopup', 'menu');
-      headerBtn.setAttribute('aria-label', 'Tab actions');
-      headerBtn.setAttribute('data-ws-action', 'tab-menu');
-      headerBtn.setAttribute('data-ws-tab-id', opts.items.length > 0 ? opts.activeId : '');
-      headerBtn.innerHTML = '<span class="burger-lines" aria-hidden="true"></span>';
-    } else {
-      headerBtn.className = 'ws-view-close';
-      headerBtn.type = 'button';
-      headerBtn.title = 'Close';
-      headerBtn.setAttribute('data-ws-action', opts.closeAction);
-      headerBtn.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
-      headerBtn.textContent = '\u00d7';
-    }
+    headerBtn.className = 'ws-view-close';
+    headerBtn.type = 'button';
+    headerBtn.title = 'Close';
+    headerBtn.setAttribute('data-ws-action', opts.closeAction);
+    headerBtn.setAttribute(opts.closeIdAttr, opts.items.length > 0 ? opts.activeId : '');
+    headerBtn.textContent = '\u00d7';
     el.appendChild(headerBtn);
 
     return el;
@@ -3342,11 +3328,12 @@
         id: tab.id,
         label: getTabTitle(tab),
         meta: getTabMetaLabel(tab),
-        // Board tabs (kanban / canvas) replace the × close button with
-        // a burger menu that opens showBoardTabMenu — same options as
-        // right-click on the board (open detached, reveal in finder,
-        // split, set view kind, close from workspace …).
-        actionKind: isBoardTab(tab) ? 'menu' : 'close'
+        // All tab kinds — board AND panel — render the × close button
+        // for visual consistency. Board tab actions (open detached,
+        // reveal in finder, split, set view kind, close from workspace
+        // …) move to right-click → showBoardTabMenu so the per-tab
+        // button stays a single, predictable close action.
+        actionKind: 'close'
       });
     }
     var activeTabId = node.activeTabId || (node.tabs.length > 0 ? node.tabs[0].id : '');
@@ -4002,6 +3989,24 @@
   }
 
   function handleRootContextMenu(event) {
+    // Board tabs: right-click opens the full board context menu —
+    // the same options that previously hung off the per-tab burger
+    // (open detached, reveal in finder, split, set view kind, close
+    // from workspace …). The per-tab × button only closes; this is
+    // the discoverability path for board-specific actions.
+    var boardTab = event.target.closest(
+      '.ws-view-tab[data-ws-tab-id]:not([data-ws-panel-id])'
+    );
+    if (boardTab) {
+      var boardTabId = boardTab.getAttribute('data-ws-tab-id');
+      if (boardTabId) {
+        event.preventDefault();
+        event.stopPropagation();
+        showBoardTabMenu(boardTabId, boardTab);
+        return;
+      }
+    }
+
     var panelTab = event.target.closest('.ws-view-tab[data-ws-panel-id]');
     var panelHandle = event.target.closest('[data-ws-panel-drag-handle]');
     if (!panelTab && !panelHandle) return;

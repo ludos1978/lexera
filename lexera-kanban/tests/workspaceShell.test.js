@@ -536,12 +536,12 @@ describe('workspace shell tab actions (Phase 1 keyboard shortcuts)', () => {
   });
 });
 
-describe('workspace shell burger menu on board tabs', () => {
+describe('workspace shell close button on board tabs', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('renders burger menu button instead of close button on board tab headers', () => {
+  it('renders × close buttons on board tab headers (no burger), matching all other view kinds', () => {
     vi.useFakeTimers();
     const { shell, mainContent } = createShellHarness();
     shell.mount({ getMainContent: () => mainContent });
@@ -549,12 +549,6 @@ describe('workspace shell burger menu on board tabs', () => {
     shell.openBoard('alpha');
     vi.advanceTimersByTime(200);
 
-    // Single-tab BOARD header renders a `ws-view-menu` (burger,
-    // action: tab-menu) instead of the × close button. Search for any
-    // element in the rendered tree that carries `data-ws-action`
-    // === 'tab-menu' — that's the burger; finding one proves the
-    // board-tab swap happened. Cross-check that there ALSO exists a
-    // matching `ws-view-menu` class on the same element.
     function findByAttr(root, attrName, attrValue) {
       if (!root) return null;
       if (root.attributes && root.attributes[attrName] === attrValue) return root;
@@ -565,10 +559,26 @@ describe('workspace shell burger menu on board tabs', () => {
       }
       return null;
     }
+    function findByClass(root, cls) {
+      if (!root) return null;
+      if (root.className && String(root.className).indexOf(cls) !== -1) return root;
+      const children = Array.isArray(root.childNodes) ? root.childNodes : [];
+      for (let i = 0; i < children.length; i += 1) {
+        const found = findByClass(children[i], cls);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    // No burger button on board tab headers — the per-tab and
+    // header-level action buttons are both × close, same as panel
+    // tabs. The tab-menu action only attaches via right-click now.
     const burgerBtn = findByAttr(mainContent, 'data-ws-action', 'tab-menu');
-    expect(burgerBtn, 'expected a burger button (data-ws-action=tab-menu) on the board tab header').toBeTruthy();
-    expect(burgerBtn.className).toContain('ws-view-menu');
-    expect(burgerBtn.attributes['data-ws-tab-id']).toBeTruthy();
+    expect(burgerBtn, 'board tab headers must NOT render the legacy ☰ burger menu — replaced by × close').toBeNull();
+
+    // The board tab header still renders a `.ws-view-close` button.
+    const closeBtn = findByClass(mainContent, 'ws-view-close');
+    expect(closeBtn, 'board tab header must render a .ws-view-close button').toBeTruthy();
 
     // Existing functional check: closing the tab still works through the action handler.
     expect(shell.handleBoardAction('close-active-tab')).toBe(true);
