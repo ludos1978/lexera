@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -28,6 +29,33 @@ describe('card-drag layout contract', () => {
     expect(
       removesFromFlow,
       '.card.dragging must remove the source from layout flow (display:none, position:absolute, or height:0) so the drop indicator matches the result'
+    ).toBe(true);
+  });
+
+  it('runtime: an actual .card.dragging element resolves to a layout-flow-removing computed style', () => {
+    // Runtime sibling to the regex assertion above. Loads app.css into a
+    // jsdom document, mounts a `.card.dragging` node, and reads
+    // `getComputedStyle` — catches drift the regex layer could miss
+    // (e.g. a rule shadowed by a later more-specific selector that
+    // re-enables `display: block` in some board context).
+    const dom = new JSDOM(
+      '<!doctype html><html><head><style>' + appCss + '</style></head>' +
+      '<body><div class="board"><div class="card-list">' +
+      '<div class="card dragging" id="src"></div>' +
+      '<div class="card" id="other"></div>' +
+      '</div></div></body></html>'
+    );
+    const src = dom.window.document.getElementById('src');
+    const cs = dom.window.getComputedStyle(src);
+    const removesFromFlow =
+      cs.display === 'none' ||
+      cs.position === 'absolute' ||
+      cs.position === 'fixed' ||
+      cs.height === '0px';
+    expect(
+      removesFromFlow,
+      'computed style of a real .card.dragging element must remove it from layout flow ' +
+      '(display=' + cs.display + ', position=' + cs.position + ', height=' + cs.height + ')'
     ).toBe(true);
   });
 
