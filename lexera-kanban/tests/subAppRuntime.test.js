@@ -105,7 +105,25 @@ describe('LexeraSubApp runtime metadata', () => {
     });
     subApp.init({ onError: vi.fn() });
     expect(window.document.documentElement.classList.contains('workspace-shell-mode')).toBe(true);
+    expect(window.document.documentElement.getAttribute('data-shell-panel')).toBe('logs');
     expect(window.document.body.classList.contains('workspace-shell-mode')).toBe(true);
+    expect(window.document.body.getAttribute('data-shell-panel')).toBe('logs');
+  });
+
+  it('infers utility sub-app panel identity from bare view URLs so shared layout selectors apply', () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/views/workspaces/index.html'
+    });
+    const { window } = dom;
+    const subApp = loadSubApp(window, {
+      URLSearchParams,
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+    subApp.init({ onError: vi.fn() });
+    expect(subApp.getPanelKind()).toBe('workspaces');
+    expect(window.document.documentElement.getAttribute('data-shell-panel')).toBe('workspaces');
+    expect(window.document.body.getAttribute('data-shell-panel')).toBe('workspaces');
   });
 
   it('emits panel-ready on init and panel-teardown on beforeunload', async () => {

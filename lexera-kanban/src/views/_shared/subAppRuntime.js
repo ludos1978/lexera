@@ -87,8 +87,24 @@
     return getQueryParam('workspaceShellHostLabel') || getWindowLabel();
   }
 
+  var VIEW_DIR_PANEL_KIND_OVERRIDES = {
+    log: 'logs'
+  };
+
+  function inferPanelKindFromPath() {
+    try {
+      var path = (window.location && window.location.pathname) || '';
+      var match = path.match(/\/views\/([^/]+)\/index\.html$/);
+      if (!match) return '';
+      var dir = decodeURIComponent(match[1] || '');
+      return VIEW_DIR_PANEL_KIND_OVERRIDES[dir] || dir;
+    } catch (_) {
+      return '';
+    }
+  }
+
   function getPanelKind() {
-    return getQueryParam('panelKind');
+    return getQueryParam('panelKind') || inferPanelKindFromPath();
   }
 
   function getPanelInstanceId() {

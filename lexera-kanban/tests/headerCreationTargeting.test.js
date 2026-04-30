@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
 import { loadIIFE } from './load-iife.js';
 
@@ -22,6 +23,55 @@ function makeAttrNode(attrs, rect) {
 }
 
 describe('board header creation target synthesis', () => {
+  it('renders a header slot for the export processes control beside Export', () => {
+    document.body.innerHTML = '<div id="board-header" class="board-header"></div>';
+    const BoardHeader = loadIIFE('board/boardHeader.js', 'LexeraBoardHeader', {
+      window: window,
+      document: document
+    });
+    BoardHeader.init({
+      BURGER_MENU_ICON_HTML: 'menu',
+      getIncomingCount: () => 0,
+      getParkedCount: () => 0,
+      getArchivedCount: () => 0,
+      getDeletedCount: () => 0,
+      getActiveBoardFilePath: () => '/boards/demo.md',
+      getActiveBoardData: () => ({ title: 'Demo' }),
+      getActiveBoardId: () => 'board-1',
+      getConnected: () => true,
+      getEmbeddedMode: () => false,
+      getDisplayFileNameFromPath: () => 'demo.md',
+      escapeAttr: (value) => String(value == null ? '' : value).replace(/"/g, '&quot;'),
+      escapeHtml: (value) => String(value == null ? '' : value),
+      getElBoardHeader: () => document.getElementById('board-header'),
+      applyTagStyleToEntity: vi.fn(),
+      loadTemplatesOnce: vi.fn(),
+      areAllColumnsFolded: () => false,
+      areAllCardsCollapsed: () => false,
+      isCanvasBoardLayout: () => false,
+      isBoardDirty: () => false,
+      getHeaderSavingInProgress: () => false,
+      getFullBoardData: () => ({ rows: [] }),
+      handleBoardAction: vi.fn(),
+      showSaveTrackingMenu: vi.fn(),
+      showThemeZoomMenu: vi.fn(),
+      showHeaderSourceDropdown: vi.fn(),
+      showIncomingItems: vi.fn(),
+      triggerBoardExport: vi.fn(),
+      showParkedItems: vi.fn(),
+      showArchivedItems: vi.fn(),
+      showDeletedItems: vi.fn(),
+      showBoardContextMenu: vi.fn()
+    });
+
+    BoardHeader.renderBoardHeader();
+
+    const slot = document.getElementById('board-export-processes-slot');
+    expect(slot).toBeTruthy();
+    expect(slot.classList.contains('board-export-processes-slot')).toBe(true);
+    expect(slot.previousElementSibling?.id).toBe('btn-export');
+  });
+
   it('preserves stable ids for card creation targets', () => {
     const BoardHeader = createBoardHeader();
     BoardHeader.init({

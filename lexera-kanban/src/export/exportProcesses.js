@@ -1,6 +1,6 @@
 /**
- * Export processes button — floating top-right indicator that tracks
- * auto-export runs and recent one-shot exports.
+ * Export processes button — board-header indicator that tracks auto-export
+ * runs and recent one-shot exports.
  *
  * Listens to window events:
  *   'lexera-export-process-changed' with detail = {
@@ -10,10 +10,12 @@
  *     reportEntries? { skipped:[], embedded:[] }
  *   }
  *
- * The button only mounts when a board is loaded in the current window. The
- * recent list is in-memory only (size cap = 10) and clears on app restart,
- * matching the toast-as-ephemeral mental model — the toast is the primary
- * surface, this popover is the recall mechanism.
+ * The button only mounts when an export event exists. In the board view it
+ * moves into #board-export-processes-slot so it does not block board
+ * interactions. Standalone/test contexts without that slot fall back to a
+ * fixed body mount. The recent list is in-memory only (size cap = 10) and
+ * clears on app restart, matching the toast-as-ephemeral mental model: the
+ * toast is the primary surface, this popover is the recall mechanism.
  */
 var LexeraExportProcesses = (function () {
   // Mirror to parent frame's logger — kanban UI runs in a workspace-shell
@@ -38,6 +40,7 @@ var LexeraExportProcesses = (function () {
   var _btnEl = null;
   var _popoverEl = null;
   var _countEl = null;
+  var HEADER_SLOT_ID = 'board-export-processes-slot';
 
   function invokeTauri(cmd, args) {
     var internals = (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) || null;
@@ -82,8 +85,27 @@ var LexeraExportProcesses = (function () {
     });
   }
 
+  function getHeaderSlot() {
+    if (typeof document === 'undefined') return null;
+    return document.getElementById(HEADER_SLOT_ID);
+  }
+
+  function syncMount() {
+    if (!_rootEl || typeof document === 'undefined') return;
+    var slot = getHeaderSlot();
+    var target = slot || document.body;
+    if (!target) return;
+    if (_rootEl.parentNode !== target) target.appendChild(_rootEl);
+    _rootEl.classList.toggle('is-header-mounted', !!slot);
+    _rootEl.classList.toggle('is-floating', !slot);
+  }
+
   function ensureMounted() {
-    if (_mounted || typeof document === 'undefined') return;
+    if (typeof document === 'undefined') return;
+    if (_mounted) {
+      syncMount();
+      return;
+    }
     _rootEl = document.createElement('div');
     _rootEl.className = 'lexera-export-processes';
     _rootEl.setAttribute('data-lexera-export-processes', 'true');
@@ -108,8 +130,8 @@ var LexeraExportProcesses = (function () {
     });
     _rootEl.appendChild(_btnEl);
     _rootEl.appendChild(_popoverEl);
-    document.body.appendChild(_rootEl);
     _mounted = true;
+    syncMount();
     _updateBadge();
   }
 
@@ -119,6 +141,7 @@ var LexeraExportProcesses = (function () {
 
   function _updateBadge() {
     if (!_mounted) return;
+    syncMount();
     var count = _countActive();
     var hasRecent = _recent.length > 0;
     _rootEl.classList.toggle('is-active', count > 0);
@@ -139,6 +162,7 @@ var LexeraExportProcesses = (function () {
 
   function _renderPopover() {
     if (!_mounted) return;
+    syncMount();
     var html = '';
     var activeKeys = Object.keys(_active);
     if (activeKeys.length) {
@@ -299,6 +323,7 @@ var LexeraExportProcesses = (function () {
     recordStopped: recordStopped,
     recordCompleted: recordCompleted,
     handleEvent: handleEvent,
+    syncMount: syncMount,
     // Internals exposed for tests
     _getActive: function () { return Object.assign({}, _active); },
     _getRecent: function () { return _recent.slice(); },

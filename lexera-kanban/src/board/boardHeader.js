@@ -124,6 +124,7 @@ var LexeraBoardHeader = (function () {
       title: 'Open frontend settings' });
     html += drawerPill({ id: 'btn-export', icon: '\u2197', label: 'export', kind: 'neutral',
       title: 'Export or pack board' });
+    html += '<span id="board-export-processes-slot" class="board-export-processes-slot" aria-live="polite"></span>';
     html += '<button class="burger-menu-btn board-menu-btn" id="btn-board-menu" title="Extended board settings">' + BURGER_MENU_ICON_HTML + '</button>';
     html += '</div>';
     html += '</div>';
@@ -252,6 +253,10 @@ var LexeraBoardHeader = (function () {
       e.stopPropagation();
       _callDep('showBoardContextMenu', e.clientX, e.clientY);
     };
+    if (typeof window !== 'undefined' && window.LexeraExportProcesses &&
+        typeof window.LexeraExportProcesses.syncMount === 'function') {
+      window.LexeraExportProcesses.syncMount();
+    }
     if (!_boardHeaderResizeBound) {
       _boardHeaderResizeBound = true;
       window.addEventListener('resize', refreshBoardHeaderActionStates);

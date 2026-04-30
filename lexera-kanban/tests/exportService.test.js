@@ -600,6 +600,32 @@ describe('_output', () => {
     expect(result.message).toBe('Markdown file saved');
   });
 
+  it('updates only the watched markdown file for Marp auto-export save runs', async () => {
+    mockInvoke.mockResolvedValueOnce(undefined); // write_export_file
+
+    const result = await ES._output('# Slides', {
+      mode: 'save',
+      format: 'presentation',
+      runMarp: true,
+      marpFormat: 'html',
+      marpWatch: true,
+      autoExportRun: true,
+      targetFolder: '/out',
+      exportFolderName: 'board',
+    });
+
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith('write_export_file', {
+      path: '/out/board/board.md',
+      content: '# Slides',
+    });
+    expect(result).toMatchObject({
+      success: true,
+      exportedPath: '/out/board/board.md',
+      message: 'Markdown file updated for active Marp export',
+    });
+  });
+
   it('runs Pandoc export in save mode when runPandoc is true', async () => {
     mockInvoke
       .mockResolvedValueOnce(undefined) // write_export_file

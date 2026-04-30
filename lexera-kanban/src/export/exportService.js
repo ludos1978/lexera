@@ -602,6 +602,17 @@ class ExportService {
             createdFiles.push(mdPath);
 
             throwIfAborted();
+            if (options.autoExportRun && options.runMarp && options.format === 'presentation' && options.marpFormat !== 'markdown') {
+                exportLexeraLog('info', '[ExportService] Phase 3: auto-export refreshed Marp markdown only at ' + mdPath);
+                return {
+                    success: true,
+                    exportedPath: mdPath,
+                    message: 'Markdown file updated for active Marp export',
+                    reportEntries: preparedReportEntries,
+                    readmePath: preparedReadmePath,
+                };
+            }
+
             const enginePath = options.marpEnginePath || await ExportService.getMarpEnginePath();
             // Pull the user-configured Marp templates folder (Plugin Settings)
             // so every Marp CLI call gets `--theme-set <dir>` when set.

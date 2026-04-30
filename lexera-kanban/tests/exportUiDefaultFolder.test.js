@@ -64,6 +64,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  if (ExportUI) ExportUI.clearActiveAutoExport();
   dom.window.document.getElementById('export-target-folder').value = '';
   dom.window.document.getElementById('export-folder-name').value = '';
 });
@@ -93,6 +94,44 @@ describe('ExportUI default target folder', () => {
 
     const target = dom.window.document.getElementById('export-target-folder');
     expect(target.value).toBe('C:\\Users\\r\\notes\\_Export');
+  });
+
+  it('marks Marp auto-export save runs and keeps the watched markdown path stable', async () => {
+    ExportUI.clearActiveAutoExport('board-1');
+    const exportSpy = vi.fn().mockResolvedValue({
+      success: true,
+      exportedPath: '/out/board/board.md',
+      message: 'Markdown file updated for active Marp export',
+    });
+    dom.window.ExportService.export = exportSpy;
+    dom.window.ExportService.generateExportPath = (targetFolder, folderName, ext) => (
+      `${targetFolder}/${folderName}/${folderName}${ext}`
+    );
+
+    ExportUI.setActiveAutoExportSettings({
+      boardId: 'board-1',
+      mode: 'save',
+      format: 'presentation',
+      runMarp: true,
+      marpFormat: 'html',
+      marpWatch: true,
+      autoExportOnSave: true,
+      targetFolder: '/out',
+      exportFolderName: 'board',
+    });
+
+    expect(ExportUI.getActiveAutoExportSettings('board-1').exportPath).toBe('/out/board/board.md');
+    await ExportUI.handleBoardSaved('board-1');
+
+    expect(exportSpy).toHaveBeenCalledTimes(1);
+    expect(exportSpy.mock.calls[0][0]).toMatchObject({
+      boardId: 'board-1',
+      mode: 'save',
+      format: 'presentation',
+      runMarp: true,
+      autoExportRun: true,
+    });
+    expect(exportSpy.mock.calls[0][0].exportPath).toBe('/out/board/board.md');
   });
 
   it('accepts the legacy `file` field in addition to `filePath`', () => {

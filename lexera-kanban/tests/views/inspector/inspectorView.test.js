@@ -9,6 +9,10 @@ const source = readFileSync(
   resolve(__dirname, '..', '..', '..', 'src', 'views', 'inspector', 'inspector.js'),
   'utf8'
 );
+const html = readFileSync(
+  resolve(__dirname, '..', '..', '..', 'src', 'views', 'inspector', 'index.html'),
+  'utf8'
+);
 
 function loadInspectorView(window, globals = {}) {
   const argNames = ['window', 'document'].concat(Object.keys(globals));
@@ -54,6 +58,12 @@ async function flushPromises() {
 }
 
 describe('inspector view sub-app', () => {
+  it('loads the shared shell-fit layout styles used by utility side panels', () => {
+    expect(html).toContain('<link rel="stylesheet" href="../../app.css">');
+    expect(html).toContain('<link rel="stylesheet" href="../../workspace/workspaceShell.css">');
+    expect(html).toContain('<link rel="stylesheet" href="../_shared/panelShellFit.css">');
+  });
+
   it('boots through LexeraSubApp, polls webviews, and appends log events', async () => {
     const dom = createDom();
     const { window } = dom;

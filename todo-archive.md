@@ -1,5 +1,9 @@
 # Lexera Kanban — Completed Items Archive
 
+## Archived During Export Header Integration — 2026-04-29
+- [x] Exporting popup element integrated into the board header row — `LexeraExportProcesses` now mounts into `#board-export-processes-slot` beside Export, keeps a body fallback for standalone contexts, and has focused DOM/header tests plus `./run-lexera-tests.sh` verification.
+- [x] Marp auto-export-on-save refreshes only the saved markdown file — initial export still starts Marp, later board saves set `autoExportRun` and only rewrite the same generated `.md` file so Marp watch can update without restarting or rerunning export.
+
 ## Archived During Partial Fix Round — 2026-04-15
 - [x] `backendDiscovery.js` gitignore — added to `.gitignore` in both kanban and backend
 - [x] `storage/registry.rs` — verified IN USE, not dead code. Resolved.

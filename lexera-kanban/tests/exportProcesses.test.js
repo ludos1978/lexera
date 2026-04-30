@@ -2,10 +2,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { loadIIFE } from './load-iife.js';
 
-// Phase 3B contract tests: the floating export-processes module tracks
-// active auto-exports (stop button) and recent one-shot exports (open /
-// reveal / report buttons), driven by `lexera-export-process-changed`
-// window events.
+// Export-processes module tracks active auto-exports (stop button) and recent
+// one-shot exports (open / reveal / report buttons), driven by
+// `lexera-export-process-changed` window events.
 
 function freshModule() {
   // A minimal DOM. jsdom is default in vitest; no extra setup needed.
@@ -73,12 +72,46 @@ describe('LexeraExportProcesses — state tracking', () => {
 });
 
 describe('LexeraExportProcesses — DOM + event listener', () => {
-  it('mounts a floating root element in document.body the first time an event fires', () => {
+  it('mounts a fallback root element in document.body the first time an event fires without a header slot', () => {
     const { P } = freshModule();
     expect(P._isMounted()).toBe(false);
     P.handleEvent({ kind: 'completed', boardId: 'b1', success: true, outputPath: '/out/b1.pdf' });
     expect(P._isMounted()).toBe(true);
-    expect(document.querySelector('[data-lexera-export-processes]')).toBeTruthy();
+    const root = document.querySelector('[data-lexera-export-processes]');
+    expect(root).toBeTruthy();
+    expect(root.parentElement).toBe(document.body);
+    expect(root.classList.contains('is-floating')).toBe(true);
+  });
+
+  it('mounts into the board header slot when the slot exists', () => {
+    document.body.innerHTML = '<div id="board-export-processes-slot"></div>';
+    const { P } = freshModule();
+    document.body.innerHTML = '<div id="board-export-processes-slot"></div>';
+    const slot = document.getElementById('board-export-processes-slot');
+
+    P.handleEvent({ kind: 'completed', boardId: 'b1', success: true, outputPath: '/out/b1.pdf' });
+
+    const root = document.querySelector('[data-lexera-export-processes]');
+    expect(root).toBeTruthy();
+    expect(root.parentElement).toBe(slot);
+    expect(root.classList.contains('is-header-mounted')).toBe(true);
+    expect(root.classList.contains('is-floating')).toBe(false);
+  });
+
+  it('moves an existing root into a newly rendered board header slot', () => {
+    const { P } = freshModule();
+    P.handleEvent({ kind: 'completed', boardId: 'b1', success: true, outputPath: '/out/b1.pdf' });
+    const root = document.querySelector('[data-lexera-export-processes]');
+    expect(root.parentElement).toBe(document.body);
+
+    const slot = document.createElement('div');
+    slot.id = 'board-export-processes-slot';
+    document.body.appendChild(slot);
+    P.syncMount();
+
+    expect(root.parentElement).toBe(slot);
+    expect(root.classList.contains('is-header-mounted')).toBe(true);
+    expect(root.classList.contains('is-floating')).toBe(false);
   });
 
   it('listens to lexera-export-process-changed window events', () => {

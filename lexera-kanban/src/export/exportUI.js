@@ -323,6 +323,21 @@ function cloneExportAutoOptions(options) {
     }
 }
 
+function deriveAutoExportMarkdownPath(options) {
+    if (!options || !options.targetFolder) return '';
+    var folderName = String(options.exportFolderName || '').trim() || 'export';
+    var targetFolder = String(options.targetFolder || '').trim();
+    if (!targetFolder) return '';
+    if (typeof ExportService !== 'undefined' && ExportService && typeof ExportService.generateExportPath === 'function') {
+        try {
+            return ExportService.generateExportPath(targetFolder, folderName, '.md');
+        } catch (e) { /* fallback below */ }
+    }
+    var sep = targetFolder.indexOf('\\') >= 0 ? '\\' : '/';
+    var base = targetFolder.replace(/[\\/]+$/, '');
+    return base + sep + folderName + sep + folderName + '.md';
+}
+
 var getStoredExportUiPreference = ExportUiPreferenceHelpers.getStoredExportUiPreference;
 var setStoredExportUiPreference = ExportUiPreferenceHelpers.setStoredExportUiPreference;
 
@@ -1749,6 +1764,7 @@ class ExportUI {
         var cloned = cloneExportAutoOptions(options);
         cloned.mode = 'save';
         cloned.autoExportOnSave = true;
+        cloned.exportPath = deriveAutoExportMarkdownPath(cloned);
         ACTIVE_EXPORT_AUTO_SETTINGS = cloned;
         ACTIVE_EXPORT_AUTO_PENDING = false;
         ExportUI._dispatchProcessEvent('active-start', {
@@ -1794,6 +1810,7 @@ class ExportUI {
         var exportOptions = cloneExportAutoOptions(ACTIVE_EXPORT_AUTO_SETTINGS);
         exportOptions.boardId = boardId;
         exportOptions.mode = 'save';
+        exportOptions.autoExportRun = true;
         ACTIVE_EXPORT_AUTO_PENDING = false;
         ACTIVE_EXPORT_AUTO_PROMISE = ExportService.export(exportOptions).then(function (result) {
             if (!result || !result.success) {
