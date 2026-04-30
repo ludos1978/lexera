@@ -8,15 +8,21 @@ Keep this file structured and clean:
 - One task per line. Keep descriptions concise — details belong in code comments or commit messages.
 - Update the test status line below after each test run.
 
+To mark a task in progress add (in progess) at the start of the task (just after the - [ ])
+To mark a task done add (done) at the start of the task and mark the task done (- [x])
+To mark a task with input required add (input required) at the start of the task!
+
+Generally do the most time consuming tasks first. If a task takes very long to complete, start it early to finish early, DO NOT DELAY LONG TASKS!
+
 **Test status: focused vitest `exportService.test.js` + `exportUiDefaultFolder.test.js`: 79 passed, 0 failed; 160 / 160 in `./run-lexera-tests.sh` (14.67s); prior full vitest: 1792 passed, 0 failed, 2 skipped / 1794 tests in ~14s**
 
 ## Open Tasks
 
 ### Unsorted (leave this header here!)
 
-- [ ] check all 
+- [ ] check all tests if they are really testing what we need!
 
-- [ ] the dashboard isnt showing any of the content it should show! — **needs scope confirmation**: dashboard sub-app at [views/dashboard/dashboard.js:1-27](lexera-kanban/src/views/dashboard/dashboard.js#L1-L27) intentionally shows an empty-state ("port pending") because the legacy `renderDashboard*` family in [board/orderHelpers.js](lexera-kanban/src/board/orderHelpers.js) and the SHELL→dashboard board-content broadcast channel haven't been ported yet. This is a multi-day slice — confirm scope before attempting.
+- [x] ~~the dashboard isnt showing any of the content it should show!~~ — 0db2938d + 57957cca (SHELL renders into a hidden mirror DOM, broadcasts each list's innerHTML on `dashboard-mirror-update`; webview applies HTML and forwards tree-node clicks back via `dashboard-navigate` → `navigateToSearchResult` so the focus chain runs unchanged. 8-test contract suite + dashboard view test update locks the wiring.)
 
 - [x] ~~the workspace isnt showing the names of the board, all show (untitled)~~ — ff9cbf03 (workspaces.js fallback chain reordered: prefer canonical `b.title` over legacy `b.name` so /boards-shaped payloads render correctly; 2 regression tests pin the fallback truth-table)
 
