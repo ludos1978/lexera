@@ -104,4 +104,63 @@ describe('frontendSettings view sub-app', () => {
     expect(window.document.querySelector('.frontend-settings-error').textContent)
       .toContain('boot failed');
   });
+
+  // ── User-interaction API exercise ────────────────────────────────
+  // Drives the frontendSettings sub-app ONLY through
+  // LexeraFrontendSettingsTestApi. The visible-to-user surface owned
+  // by THIS file is small (mount state + error block + re-render
+  // hook), so a regression that breaks any of those flips collectState.
+  it('LexeraFrontendSettingsTestApi.collectState reports booted=true when init succeeds', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = { init: vi.fn() };
+    window.LexeraSettingsRuntime = {
+      buildFrontendSettingsOptions: vi.fn(() => ({ theme: 'auto' }))
+    };
+    window.LexeraFrontendSettings = { init: vi.fn(), render: vi.fn() };
+
+    loadFrontendSettingsView(window);
+
+    const state = window.LexeraFrontendSettingsTestApi.collectState();
+    expect(state.booted).toBe(true);
+    expect(state.hasError).toBe(false);
+    expect(state.lastError).toBe('');
+  });
+
+  it('LexeraFrontendSettingsTestApi.collectState reports the error path when LexeraFrontendSettings is missing', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = { init: vi.fn() };
+    window.LexeraSettingsRuntime = { buildFrontendSettingsOptions: vi.fn(() => ({})) };
+
+    loadFrontendSettingsView(window);
+
+    const state = window.LexeraFrontendSettingsTestApi.collectState();
+    expect(state.booted).toBe(false);
+    expect(state.hasError).toBe(true);
+    expect(state.errorText).toContain('LexeraFrontendSettings not loaded');
+    expect(state.lastError).toContain('LexeraFrontendSettings not loaded');
+  });
+
+  it('LexeraFrontendSettingsTestApi.triggerVisualThemesChanged re-renders the panel through the same hook the SHELL uses', () => {
+    const dom = createDom();
+    const { window } = dom;
+    const fsInit = vi.fn();
+    const fsRender = vi.fn();
+    window.LexeraSubApp = { init: vi.fn() };
+    window.LexeraSettingsRuntime = {
+      buildFrontendSettingsOptions: vi.fn(() => ({ theme: 'dark' }))
+    };
+    window.LexeraFrontendSettings = { init: fsInit, render: fsRender };
+
+    loadFrontendSettingsView(window);
+
+    expect(fsInit).toHaveBeenCalledTimes(1);
+    expect(fsRender).not.toHaveBeenCalled();
+
+    expect(window.LexeraFrontendSettingsTestApi.triggerVisualThemesChanged()).toBe(true);
+    expect(fsRender).toHaveBeenCalledTimes(1);
+    expect(window.LexeraSettingsRuntime.buildFrontendSettingsOptions)
+      .toHaveBeenCalledTimes(2);
+  });
 });

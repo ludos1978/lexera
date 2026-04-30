@@ -37,6 +37,8 @@
     booted = true;
   }
 
+  var lastError = '';
+
   try {
     renderPanel();
     if (typeof window.addEventListener === 'function') {
@@ -58,5 +60,34 @@
       '</pre>';
     var body = panel.querySelector('.shell-settings-body') || panel;
     body.appendChild(errEl);
+    lastError = String((err && err.message) || err);
   }
+
+  // ── User-interaction test API ──────────────────────────────────
+  // Same-shape contract as Lexera{Files,Inspector,Log,Hierarchy,
+  // Workspaces,Dashboard}TestApi. Surfaces the mount/error state and
+  // the visual-themes-changed re-render hook so tests can drive the
+  // sub-app the way the SHELL does.
+  window.LexeraFrontendSettingsTestApi = {
+    collectState: function () {
+      var errEl = panel ? panel.querySelector('.frontend-settings-error') : null;
+      var pre = errEl ? errEl.querySelector('pre') : null;
+      return {
+        booted: booted,
+        hasError: !!errEl,
+        errorText: pre ? pre.textContent : '',
+        lastError: lastError
+      };
+    },
+    triggerVisualThemesChanged: function () {
+      if (typeof window.dispatchEvent !== 'function') return false;
+      var Ev = window.Event;
+      var ev = typeof Ev === 'function'
+        ? new Ev('lexera-visual-themes-changed')
+        : document.createEvent('Event');
+      if (ev.initEvent && typeof Ev !== 'function') ev.initEvent('lexera-visual-themes-changed', false, false);
+      window.dispatchEvent(ev);
+      return true;
+    }
+  };
 })();
