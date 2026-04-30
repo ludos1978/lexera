@@ -19,6 +19,7 @@ describe('dashboard tree builders', () => {
         path: 'docs/spec.pdf',
         count: 2,
         firstContextLabel: 'Attachments',
+        firstBoardId: 'board-1',
         status: 'missing'
       },
       {
@@ -69,6 +70,7 @@ describe('dashboard tree builders', () => {
       },
       attrs: {
         'data-dashboard-target': 'file',
+        'data-dashboard-board-id': 'board-1',
         'data-dashboard-status': 'missing',
         title: 'docs/spec.pdf / Attachments / Missing / 2 references'
       }
@@ -92,6 +94,7 @@ describe('dashboard tree builders', () => {
       {
         type: 'image',
         src: 'media/missing.png',
+        boardId: 'board-1',
         colIndex: 2,
         cardIndex: 5,
         count: 3
@@ -133,7 +136,9 @@ describe('dashboard tree builders', () => {
       },
       attrs: {
         'data-dashboard-target': 'broken',
+        'data-dashboard-board-id': 'board-1',
         'data-dashboard-col-index': '2',
+        'data-dashboard-column-index': '2',
         'data-dashboard-card-index': '5',
         title: 'media/missing.png / Image / 3 occurrences'
       }
@@ -249,6 +254,8 @@ describe('dashboard tree click → nav payload (temporal-section routing)', () =
       'data-dashboard-column-index': '2',
       'data-dashboard-row-index': '0',
       'data-dashboard-stack-index': '1',
+      'data-dashboard-col-local-index': '3',
+      'data-dashboard-card-index': '4',
       'data-dashboard-column-title': 'Doing'
     });
 
@@ -259,6 +266,8 @@ describe('dashboard tree click → nav payload (temporal-section routing)', () =
       columnIndex: 2,
       rowIndex: 0,
       stackIndex: 1,
+      colLocalIndex: 3,
+      cardIndex: 4,
       columnTitle: 'Doing'
     });
   });
@@ -283,6 +292,8 @@ describe('dashboard tree click → nav payload (temporal-section routing)', () =
       columnIndex: null,
       rowIndex: null,
       stackIndex: null,
+      colLocalIndex: null,
+      cardIndex: null,
       columnTitle: null
     });
   });

@@ -83,13 +83,11 @@ mod tests {
         Router::new()
             .route("/ping", get(|| async { "pong" }))
             .route("/echo", post(|body: String| async move { body }))
+            .route("/json", get(|| async { Json(json!({ "ok": true })) }))
             .route(
-                "/json",
-                get(|| async { Json(json!({ "ok": true })) }),
+                "/error",
+                get(|| async { (axum::http::StatusCode::IM_A_TEAPOT, "teapot") }),
             )
-            .route("/error", get(|| async {
-                (axum::http::StatusCode::IM_A_TEAPOT, "teapot")
-            }))
     }
 
     #[tokio::test]
@@ -172,10 +170,8 @@ mod tests {
         // Route returns a body larger than MAX_FRAME_BYTES. Dispatch must
         // refuse rather than crash, so large media responses are forced onto
         // the (Phase 4) streaming `AssetRequest` path.
-        let big_router = Router::new().route(
-            "/big",
-            get(|| async { vec![0u8; MAX_FRAME_BYTES + 1] }),
-        );
+        let big_router =
+            Router::new().route("/big", get(|| async { vec![0u8; MAX_FRAME_BYTES + 1] }));
         let req = ApiRequest {
             method: "GET".into(),
             uri: "/big".into(),

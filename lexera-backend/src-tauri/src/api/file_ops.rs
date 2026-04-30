@@ -469,8 +469,11 @@ pub async fn search_files(
     }
 
     // Check the time-based cache for a recent identical request.
-    let cache_key: crate::state::FileSearchCacheKey =
-        (query.clone(), body.workspace_id.clone(), body.category.clone());
+    let cache_key: crate::state::FileSearchCacheKey = (
+        query.clone(),
+        body.workspace_id.clone(),
+        body.category.clone(),
+    );
     {
         let cache = state
             .file_search_cache

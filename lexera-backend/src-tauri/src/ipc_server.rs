@@ -12,9 +12,7 @@ use crate::ipc_dispatch::{self, DispatchError};
 use crate::ipc_stream;
 use crate::state::AppState;
 use axum::Router;
-use lexera_local_ipc::frame::{
-    read_frame, write_frame, ApiRequest, ClientFrame, ServerFrame,
-};
+use lexera_local_ipc::frame::{read_frame, write_frame, ApiRequest, ClientFrame, ServerFrame};
 use lexera_local_ipc::{Descriptor, Server};
 use std::sync::Arc;
 use tokio::sync::watch;
@@ -158,13 +156,9 @@ async fn handle_connection(
                 correlation_id,
                 topic,
             } => {
-                if let Err(e) = ipc_stream::handle_subscribe(
-                    &mut stream,
-                    &app_state,
-                    correlation_id,
-                    topic,
-                )
-                .await
+                if let Err(e) =
+                    ipc_stream::handle_subscribe(&mut stream, &app_state, correlation_id, topic)
+                        .await
                 {
                     log::debug!(target: "lexera.ipc", "subscribe IO error: {}", e);
                     return;
@@ -187,7 +181,8 @@ async fn handle_connection(
                 correlation_id,
                 request,
             } => {
-                let server_frame = build_api_response(router.clone(), correlation_id, request).await;
+                let server_frame =
+                    build_api_response(router.clone(), correlation_id, request).await;
                 if let Err(e) = write_frame(&mut stream, &server_frame).await {
                     log::debug!(target: "lexera.ipc", "ApiResponse write failed: {}", e);
                     return;
@@ -221,23 +216,21 @@ async fn handle_connection(
             ClientFrame::UploadChunk {
                 correlation_id,
                 bytes,
-            } => {
-                match pending_upload.as_mut() {
-                    Some(u) if u.correlation_id == correlation_id => {
-                        u.body.extend_from_slice(&bytes);
-                    }
-                    _ => {
-                        let err = ServerFrame::Error {
-                            correlation_id: Some(correlation_id),
-                            code: "upload_not_started".into(),
-                            message: "UploadChunk without matching UploadStart".into(),
-                        };
-                        if write_frame(&mut stream, &err).await.is_err() {
-                            return;
-                        }
+            } => match pending_upload.as_mut() {
+                Some(u) if u.correlation_id == correlation_id => {
+                    u.body.extend_from_slice(&bytes);
+                }
+                _ => {
+                    let err = ServerFrame::Error {
+                        correlation_id: Some(correlation_id),
+                        code: "upload_not_started".into(),
+                        message: "UploadChunk without matching UploadStart".into(),
+                    };
+                    if write_frame(&mut stream, &err).await.is_err() {
+                        return;
                     }
                 }
-            }
+            },
             ClientFrame::UploadEnd { correlation_id } => {
                 let upload = match pending_upload.take() {
                     Some(u) if u.correlation_id == correlation_id => u,

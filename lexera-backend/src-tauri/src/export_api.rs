@@ -201,7 +201,13 @@ fn selected_board_for_export(
                     flat_index += 1;
                     if include {
                         retained += 1;
-                        retained_details.push((column.id.clone(), column.title.clone(), idx, by_id, by_idx));
+                        retained_details.push((
+                            column.id.clone(),
+                            column.title.clone(),
+                            idx,
+                            by_id,
+                            by_idx,
+                        ));
                     }
                     include
                 });
@@ -217,7 +223,13 @@ fn selected_board_for_export(
             flat_index += 1;
             if include {
                 retained += 1;
-                retained_details.push((column.id.clone(), column.title.clone(), idx, by_id, by_idx));
+                retained_details.push((
+                    column.id.clone(),
+                    column.title.clone(),
+                    idx,
+                    by_id,
+                    by_idx,
+                ));
             }
             include
         });
@@ -254,8 +266,15 @@ fn selected_board_for_export(
     );
     // One-line summary: exactly which columns (by title) ended up in the
     // export, in flat order. Lets the user confirm visually.
-    let kept_titles: Vec<&str> = retained_details.iter().map(|(_id, t, _i, _b, _x)| t.as_str()).collect();
-    log::info!("[export.select] SUMMARY {} columns kept: {:?}", kept_titles.len(), kept_titles);
+    let kept_titles: Vec<&str> = retained_details
+        .iter()
+        .map(|(_id, t, _i, _b, _x)| t.as_str())
+        .collect();
+    log::info!(
+        "[export.select] SUMMARY {} columns kept: {:?}",
+        kept_titles.len(),
+        kept_titles
+    );
     for (id, title, idx, by_id, by_idx) in &retained_details {
         log::info!(
             "[export.select] KEEPING col idx={} id={} by_id={} by_idx={} title={:?}",
@@ -507,10 +526,7 @@ fn feed_default_exclude_tags() -> Vec<String> {
 /// clients (calendar apps, bookmark managers) pick up updates on each poll.
 fn feed_headers(content_type: &'static str, filename: &str) -> HeaderMap {
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(content_type),
-    );
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     // `Cache-Control: no-store` avoids clients silently pinning a stale body.
     headers.insert(
         header::CACHE_CONTROL,
@@ -518,9 +534,7 @@ fn feed_headers(content_type: &'static str, filename: &str) -> HeaderMap {
     );
     // `Content-Disposition: inline` with a filename hint — helps browsers and
     // calendar clients pick a sensible display name when the feed is saved.
-    if let Ok(disposition) =
-        HeaderValue::from_str(&format!("inline; filename=\"{}\"", filename))
-    {
+    if let Ok(disposition) = HeaderValue::from_str(&format!("inline; filename=\"{}\"", filename)) {
         headers.insert(header::CONTENT_DISPOSITION, disposition);
     }
     headers
@@ -846,10 +860,17 @@ mod tests {
             "POST /boards/{{id}}/export/presentation must be mounted (was orphaned)"
         );
         let body = response_json(resp).await;
-        assert!(body.get("markdown").is_some(), "response must contain a markdown field");
+        assert!(
+            body.get("markdown").is_some(),
+            "response must contain a markdown field"
+        );
         let md = body["markdown"].as_str().unwrap();
         // MINIMAL_BOARD from test_helpers contains "Col" / "card".
-        assert!(md.contains("Col") || md.contains("card"), "markdown: {}", md);
+        assert!(
+            md.contains("Col") || md.contains("card"),
+            "markdown: {}",
+            md
+        );
     }
 
     #[tokio::test]
@@ -909,7 +930,10 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
         let body = response_json(resp).await;
-        assert!(body.get("content").is_some(), "response must contain a content field");
+        assert!(
+            body.get("content").is_some(),
+            "response must contain a content field"
+        );
     }
 
     #[tokio::test]
@@ -977,10 +1001,7 @@ kanban-plugin: board
 
         let app = test_router(state);
         let resp = app
-            .oneshot(get_request(&format!(
-                "/boards/{}/export/ical",
-                board_id
-            )))
+            .oneshot(get_request(&format!("/boards/{}/export/ical", board_id)))
             .await
             .unwrap();
 
@@ -1034,10 +1055,7 @@ kanban-plugin: board
 
         let app = test_router(state);
         let resp = app
-            .oneshot(get_request(&format!(
-                "/boards/{}/export/xbel",
-                board_id
-            )))
+            .oneshot(get_request(&format!("/boards/{}/export/xbel", board_id)))
             .await
             .unwrap();
 
@@ -1087,10 +1105,7 @@ kanban-plugin: board
 
         let app = test_router(state);
         let resp = app
-            .oneshot(get_request(&format!(
-                "/boards/{}/export/ical",
-                board_id
-            )))
+            .oneshot(get_request(&format!("/boards/{}/export/ical", board_id)))
             .await
             .unwrap();
 
@@ -1151,10 +1166,7 @@ kanban-plugin: board
 
         let app = test_router(state);
         let resp = app
-            .oneshot(get_request(&format!(
-                "/boards/{}/export/ical",
-                board_id
-            )))
+            .oneshot(get_request(&format!("/boards/{}/export/ical", board_id)))
             .await
             .unwrap();
 
@@ -1162,8 +1174,16 @@ kanban-plugin: board
         let (_, body) = response_text(resp).await;
 
         // Kept: public + regular cards that have dates
-        assert!(body.contains("Public meeting"), "expected 'Public meeting' in:\n{}", body);
-        assert!(body.contains("Regular card"), "expected 'Regular card' in:\n{}", body);
+        assert!(
+            body.contains("Public meeting"),
+            "expected 'Public meeting' in:\n{}",
+            body
+        );
+        assert!(
+            body.contains("Regular card"),
+            "expected 'Regular card' in:\n{}",
+            body
+        );
 
         // Dropped: entire hidden column's cards
         assert!(
@@ -1194,10 +1214,7 @@ kanban-plugin: board
 
         let app = test_router(state);
         let resp = app
-            .oneshot(get_request(&format!(
-                "/boards/{}/export/xbel",
-                board_id
-            )))
+            .oneshot(get_request(&format!("/boards/{}/export/xbel", board_id)))
             .await
             .unwrap();
 
@@ -1205,8 +1222,16 @@ kanban-plugin: board
         let (_, body) = response_text(resp).await;
 
         // Kept: bookmarks in public columns and the real link in Mixed
-        assert!(body.contains("https://public.example.com"), "public link missing:\n{}", body);
-        assert!(body.contains("https://real.example.com"), "real link missing:\n{}", body);
+        assert!(
+            body.contains("https://public.example.com"),
+            "public link missing:\n{}",
+            body
+        );
+        assert!(
+            body.contains("https://real.example.com"),
+            "real link missing:\n{}",
+            body
+        );
         assert!(body.contains("bm-public"));
         assert!(body.contains("bm-real"));
 
@@ -1236,10 +1261,18 @@ kanban-plugin: board
     async fn feed_default_exclude_tags_covers_all_hidden_markers() {
         let tags = feed_default_exclude_tags();
         assert!(tags.iter().any(|t| t == "#hidden"));
-        assert!(tags.iter().any(|t| t == lexera_core::types::HIDDEN_TAG_DELETED));
-        assert!(tags.iter().any(|t| t == lexera_core::types::HIDDEN_TAG_ARCHIVED));
-        assert!(tags.iter().any(|t| t == lexera_core::types::HIDDEN_TAG_PARKED));
-        assert!(tags.iter().any(|t| t == lexera_core::types::HIDDEN_TAG_INCOMING));
+        assert!(tags
+            .iter()
+            .any(|t| t == lexera_core::types::HIDDEN_TAG_DELETED));
+        assert!(tags
+            .iter()
+            .any(|t| t == lexera_core::types::HIDDEN_TAG_ARCHIVED));
+        assert!(tags
+            .iter()
+            .any(|t| t == lexera_core::types::HIDDEN_TAG_PARKED));
+        assert!(tags
+            .iter()
+            .any(|t| t == lexera_core::types::HIDDEN_TAG_INCOMING));
     }
 
     // -------------------------------------------------------------------
@@ -1248,7 +1281,10 @@ kanban-plugin: board
 
     #[test]
     fn sanitize_filename_keeps_safe_chars() {
-        assert_eq!(sanitize_filename("my-board_1.2", "fallback"), "my-board_1.2");
+        assert_eq!(
+            sanitize_filename("my-board_1.2", "fallback"),
+            "my-board_1.2"
+        );
     }
 
     #[test]

@@ -172,4 +172,50 @@ describe('dashboard view sub-app', () => {
 
     expect(window.LexeraSubApp.broadcast).not.toHaveBeenCalled();
   });
+
+  it('mirrors visible result HTML and lets tests click the dashboard panel DOM', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn(),
+      broadcast: vi.fn()
+    };
+
+    loadDashboardView(window);
+    capturedOpts.onCustom['dashboard-mirror-update']({
+      activeBoardId: 'board-1',
+      lists: {
+        'dashboard-results-list': `
+          <div class="tree-node"
+               data-dashboard-target="result"
+               data-dashboard-board-id="board-1"
+               data-dashboard-card-id="card-1"
+               data-dashboard-column-index="2"
+               data-dashboard-card-index="4"
+               data-dashboard-column-title="Doing">Card 1</div>
+        `
+      }
+    });
+
+    const state = window.LexeraDashboardTestApi.collectState();
+    expect(state.mounted).toBe(true);
+    expect(state.receivedFirstSnapshot).toBe(true);
+    expect(state.activeBoardId).toBe('board-1');
+    expect(state.lists['dashboard-results-list'].cardIds).toEqual(['card-1']);
+
+    window.LexeraSubApp.broadcast.mockClear();
+    expect(window.LexeraDashboardTestApi.clickCard('card-1', 'dashboard-results-list')).toBe(true);
+    expect(window.LexeraSubApp.broadcast).toHaveBeenCalledWith('dashboard-navigate', {
+      target: 'result',
+      nav: expect.objectContaining({
+        boardId: 'board-1',
+        cardId: 'card-1',
+        columnIndex: 2,
+        cardIndex: 4,
+        columnTitle: 'Doing'
+      })
+    });
+  });
 });

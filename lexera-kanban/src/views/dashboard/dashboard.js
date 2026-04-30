@@ -40,6 +40,7 @@
   var pinBtn = document.getElementById('btn-dashboard-pin');
   var bodyEl = rootEl ? rootEl.querySelector('.sidebar-dashboard-body') : null;
   var resultsList = document.getElementById('dashboard-results-list');
+  var lastActiveBoardId = '';
 
   // List elements receive innerHTML straight from the SHELL's hidden
   // dashboard mirror (rendered by orderHelpers.js#renderDashboard).
@@ -67,12 +68,43 @@
     if (!payload || !payload.lists) return;
     if (bodyEl) bodyEl.classList.remove('view-loading');
     receivedFirstSnapshot = true;
+    lastActiveBoardId = String(payload.activeBoardId || lastActiveBoardId || '').trim();
     for (var i = 0; i < DASHBOARD_LIST_IDS.length; i++) {
       var id = DASHBOARD_LIST_IDS[i];
       if (!Object.prototype.hasOwnProperty.call(payload.lists, id)) continue;
       var el = document.getElementById(id);
       if (el) el.innerHTML = String(payload.lists[id] == null ? '' : payload.lists[id]);
     }
+  }
+
+  function collectDashboardTestState() {
+    var lists = {};
+    for (var i = 0; i < DASHBOARD_LIST_IDS.length; i++) {
+      var id = DASHBOARD_LIST_IDS[i];
+      var el = document.getElementById(id);
+      var cardIds = [];
+      if (el && el.querySelectorAll) {
+        var nodes = el.querySelectorAll('.tree-node[data-dashboard-card-id]');
+        for (var n = 0; n < nodes.length; n++) {
+          var cardId = String(nodes[n].getAttribute('data-dashboard-card-id') || '').trim();
+          if (cardId) cardIds.push(cardId);
+        }
+      }
+      lists[id] = {
+        cardIds: cardIds,
+        nodeCount: el && el.querySelectorAll ? el.querySelectorAll('.tree-node[data-dashboard-target]').length : 0,
+        htmlLength: el ? String(el.innerHTML || '').length : 0
+      };
+    }
+    return {
+      mounted: !!rootEl,
+      loading: !!(bodyEl && bodyEl.classList.contains('view-loading')),
+      receivedFirstSnapshot: !!receivedFirstSnapshot,
+      query: searchInput ? String(searchInput.value || '') : '',
+      allBoards: scopeCheckbox ? !!scopeCheckbox.checked : false,
+      activeBoardId: lastActiveBoardId,
+      lists: lists
+    };
   }
 
   function requestDashboardSnapshot() {
@@ -120,12 +152,17 @@
   }
   function buildNavTargetFromNode(node) {
     if (!node) return null;
-    var boardId = (node.getAttribute('data-dashboard-board-id') || '').trim();
+    var boardId = (node.getAttribute('data-dashboard-board-id') || lastActiveBoardId || '').trim();
     if (!boardId) return null;
+    var columnIndex = readNumericAttr(node, 'data-dashboard-column-index');
+    if (columnIndex == null) columnIndex = readNumericAttr(node, 'data-dashboard-col-index');
     return {
       boardId: boardId,
+      rowId: (node.getAttribute('data-dashboard-row-id') || '').trim() || null,
+      stackId: (node.getAttribute('data-dashboard-stack-id') || '').trim() || null,
+      columnId: (node.getAttribute('data-dashboard-column-id') || '').trim() || null,
       cardId: (node.getAttribute('data-dashboard-card-id') || '').trim() || null,
-      columnIndex: readNumericAttr(node, 'data-dashboard-column-index'),
+      columnIndex: columnIndex,
       rowIndex: readNumericAttr(node, 'data-dashboard-row-index'),
       stackIndex: readNumericAttr(node, 'data-dashboard-stack-index'),
       colLocalIndex: readNumericAttr(node, 'data-dashboard-col-local-index'),
@@ -134,6 +171,67 @@
       brokenSrc: (node.getAttribute('data-dashboard-broken-src') || '').trim() || null
     };
   }
+  function findDashboardNodeForCard(cardId, listId) {
+    var targetCardId = String(cardId || '').trim();
+    if (!targetCardId) return null;
+    var roots = [];
+    if (listId) {
+      var listEl = document.getElementById(String(listId));
+      if (listEl) roots.push(listEl);
+    } else if (bodyEl) {
+      roots.push(bodyEl);
+    }
+    for (var r = 0; r < roots.length; r++) {
+      var nodes = roots[r].querySelectorAll('.tree-node[data-dashboard-card-id]');
+      for (var i = 0; i < nodes.length; i++) {
+        if (String(nodes[i].getAttribute('data-dashboard-card-id') || '').trim() === targetCardId) {
+          return nodes[i];
+        }
+      }
+    }
+    return null;
+  }
+
+  function clickDashboardNode(node) {
+    if (!node) return false;
+    var ev = typeof MouseEvent === 'function'
+      ? new MouseEvent('click', { bubbles: true, cancelable: true })
+      : document.createEvent('MouseEvent');
+    if (ev.initMouseEvent) {
+      ev.initMouseEvent('click', true, true, window, 1, 0, 0, 0, 0, false, false, false, false, 0, null);
+    }
+    node.dispatchEvent(ev);
+    return true;
+  }
+
+  function handleDashboardTestRequest(payload) {
+    payload = payload || {};
+    var action = String(payload.action || 'state');
+    var result = { action: action, ok: true };
+    if (action === 'set-search') {
+      if (searchInput) searchInput.value = String(payload.query || '');
+      if (scopeCheckbox) scopeCheckbox.checked = !!payload.allBoards;
+      broadcastSearch();
+    } else if (action === 'apply-mirror') {
+      applyDashboardMirrorUpdate({
+        activeBoardId: payload.activeBoardId || lastActiveBoardId || '',
+        lists: payload.lists || {}
+      });
+    } else if (action === 'click-card') {
+      var node = findDashboardNodeForCard(payload.cardId, payload.listId);
+      result.nav = node ? buildNavTargetFromNode(node) : null;
+      result.target = node ? String(node.getAttribute('data-dashboard-target') || '') : '';
+      result.clicked = clickDashboardNode(node);
+      result.cardId = String(payload.cardId || '');
+      if (!result.clicked) result.ok = false;
+    }
+    LexeraSubApp.broadcast('dashboard-test-response', {
+      requestId: String(payload.requestId || ''),
+      result: result,
+      state: collectDashboardTestState()
+    });
+  }
+
   if (bodyEl) {
     bodyEl.addEventListener('click', function (e) {
       // Local toggle: section headers should expand/collapse in place
@@ -162,7 +260,7 @@
       // Group / context / tag / board headers are not navigation targets
       // on their own — they only group children. Ignore so the click
       // can fall through to the toggle path above on the next event.
-      if (target === 'context' || target === 'tag' || target === 'board' || target === 'group') return;
+      if (target === 'context' || target === 'tag' || target === 'board' || target === 'group' || target === 'broken-group') return;
       var navTarget = buildNavTargetFromNode(node);
       if (!navTarget) return;
       LexeraSubApp.broadcast('dashboard-navigate', {
@@ -185,6 +283,7 @@
       // The SHELL re-renders the dashboard whenever the active board
       // changes; that re-render fires another `dashboard-mirror-update`,
       // so nothing to do here beyond letting the subscription handle it.
+      lastActiveBoardId = String(boardId || '').trim();
     },
     onCustom: {
       // The SHELL's renderDashboard() harvests its hidden mirror DOM
@@ -193,7 +292,8 @@
       // Legacy event name kept for backwards compatibility — older
       // SHELL builds may still emit `dashboard-results-update` while
       // pinned-search rendering catches up. No-op for now.
-      'dashboard-results-update': function () {}
+      'dashboard-results-update': function () {},
+      'dashboard-test-request': handleDashboardTestRequest
     },
     onError: function (err) {
       setEmptyStateMessage('Error: ' + (err && err.message || err));
@@ -205,4 +305,17 @@
   // on connect) we get a `dashboard-mirror-update` back almost
   // immediately and the empty-state message is replaced.
   requestDashboardSnapshot();
+
+  window.LexeraDashboardTestApi = {
+    collectState: collectDashboardTestState,
+    setSearch: function (query, allBoards) {
+      handleDashboardTestRequest({ action: 'set-search', query: query, allBoards: allBoards });
+    },
+    applyMirror: function (snapshot) {
+      applyDashboardMirrorUpdate(snapshot || {});
+    },
+    clickCard: function (cardId, listId) {
+      return clickDashboardNode(findDashboardNodeForCard(cardId, listId));
+    }
+  };
 })();

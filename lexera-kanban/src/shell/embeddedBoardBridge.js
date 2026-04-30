@@ -42,6 +42,72 @@
     } catch (_) {}
   }
 
+  function cleanText(value) {
+    return String(value == null ? '' : value).trim();
+  }
+
+  function findFirstBoardCardForTest() {
+    var api = window.LexeraTestApi || null;
+    if (!api || typeof api.getFullBoardData !== 'function') return null;
+    var boardContainer = document.getElementById('columns-container');
+    var renderedCard = boardContainer ? boardContainer.querySelector('.card[data-card-id]') : null;
+    if (renderedCard) {
+      var renderedCardId = cleanText(renderedCard.getAttribute('data-card-id'));
+      if (renderedCardId) {
+        var renderedColumnIndex = parseInt(renderedCard.getAttribute('data-col-index') || '', 10);
+        var renderedCardIndex = parseInt(renderedCard.getAttribute('data-card-index') || '', 10);
+        var titleEl = renderedCard.querySelector('.card-title-display') || renderedCard;
+        return {
+          boardId: typeof api.getActiveBoardId === 'function' ? cleanText(api.getActiveBoardId()) : '',
+          rowId: '',
+          stackId: '',
+          columnId: '',
+          cardId: renderedCardId,
+          rowIndex: null,
+          stackIndex: null,
+          colLocalIndex: null,
+          columnIndex: isNaN(renderedColumnIndex) ? null : renderedColumnIndex,
+          cardIndex: isNaN(renderedCardIndex) ? null : renderedCardIndex,
+          columnTitle: '',
+          title: cleanText(titleEl && titleEl.textContent) || renderedCardId
+        };
+      }
+    }
+    var board = api.getFullBoardData();
+    var rows = board && Array.isArray(board.rows) ? board.rows : [];
+    var flatIdx = 0;
+    for (var r = 0; r < rows.length; r++) {
+      var stacks = rows[r] && Array.isArray(rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        var cols = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < cols.length; c++) {
+          var cards = cols[c] && Array.isArray(cols[c].cards) ? cols[c].cards : [];
+          for (var k = 0; k < cards.length; k++) {
+            var card = cards[k] || {};
+            var cardId = cleanText(card.kid || card.id);
+            if (!cardId) continue;
+            return {
+              boardId: typeof api.getActiveBoardId === 'function' ? cleanText(api.getActiveBoardId()) : '',
+              rowId: cleanText(rows[r] && rows[r].id),
+              stackId: cleanText(stacks[s] && stacks[s].id),
+              columnId: cleanText(cols[c] && cols[c].id),
+              cardId: cardId,
+              rowIndex: r,
+              stackIndex: s,
+              colLocalIndex: c,
+              columnIndex: flatIdx,
+              cardIndex: k,
+              columnTitle: cleanText(cols[c] && cols[c].title),
+              title: cleanText(String(card.content || '').split('\n')[0]) || cardId
+            };
+          }
+          flatIdx++;
+        }
+      }
+    }
+    return null;
+  }
+
   // Keyboard shortcuts that the focused webview captures before the
   // shell can see them. Forwarded as `multiview-shortcut` so the shell
   // (via `navigationBridge`) routes them to the right open helper.
@@ -78,6 +144,10 @@
     if (!wv || typeof wv.listen !== 'function') return false;
 
     injectFillStyles();
+    invoke('multiview_subscribe', {
+      label: wv.label,
+      events: ['dashboard-navigate', 'dashboard-board-test-request']
+    }).catch(function () {});
 
     wv.listen('catalog-snapshot', function (event) {
       var p = (event && event.payload) || {};
@@ -106,6 +176,45 @@
       if (p.target) {
         dispatchAsMessage({ type: 'lexera-focus-hierarchy-target', target: p.target });
       }
+    });
+
+    wv.listen('dashboard-navigate', function (event) {
+      var p = (event && event.payload) || {};
+      if (p.nav) {
+        var helpers = window.LexeraOrderHelpers;
+        if (helpers && typeof helpers.navigateHierarchyTargetInIframe === 'function') {
+          helpers.navigateHierarchyTargetInIframe(p.nav).then(function (focused) {
+            invoke('multiview_broadcast', {
+              event: 'dashboard-focus-applied',
+              payload: {
+                nav: p.nav,
+                focused: !!focused,
+                label: wv.label
+              }
+            }).catch(function () {});
+          }).catch(function () {
+            dispatchAsMessage({ type: 'lexera-focus-hierarchy-target', target: p.nav });
+          });
+        } else {
+          dispatchAsMessage({ type: 'lexera-focus-hierarchy-target', target: p.nav });
+        }
+      }
+    });
+
+    wv.listen('dashboard-board-test-request', function (event) {
+      var p = (event && event.payload) || {};
+      var result = { action: cleanText(p.action || 'state'), ok: true };
+      if (result.action === 'first-visible-card') {
+        result.card = findFirstBoardCardForTest();
+        if (!result.card) result.ok = false;
+      }
+      invoke('multiview_broadcast', {
+        event: 'dashboard-board-test-response',
+        payload: {
+          requestId: cleanText(p.requestId),
+          result: result
+        }
+      }).catch(function () {});
     });
 
     // Re-request snapshots in case the board mounted after the last

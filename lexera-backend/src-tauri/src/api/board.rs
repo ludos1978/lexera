@@ -1039,16 +1039,13 @@ pub async fn gather_board(
     let move_count = moves.len();
 
     if move_count > 0 {
-        state
-            .storage
-            .write_board(&board_id, &board)
-            .map_err(|e| {
-                storage_error_response(
-                    e,
-                    "lexera.api.gather_board",
-                    format!("Failed to save gathered board {}", board_id),
-                )
-            })?;
+        state.storage.write_board(&board_id, &board).map_err(|e| {
+            storage_error_response(
+                e,
+                "lexera.api.gather_board",
+                format!("Failed to save gathered board {}", board_id),
+            )
+        })?;
         emit_main_file_changed(&state, &board_id);
         broadcast_crdt_to_sync_hub(&state, &board_id).await;
     }

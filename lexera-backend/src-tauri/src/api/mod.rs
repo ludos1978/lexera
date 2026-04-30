@@ -160,10 +160,7 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             "/boards/{board_id}/gather",
             axum::routing::post(board::gather_board),
         )
-        .route(
-            "/boards/{board_id}/scan",
-            get(board::scan_board),
-        )
+        .route("/boards/{board_id}/scan", get(board::scan_board))
         .route(
             "/boards/{board_id}/live-sync/open",
             axum::routing::post(board::open_live_sync_session),
@@ -192,10 +189,7 @@ pub fn api_router(state: &AppState) -> Router<AppState> {
             "/boards/{board_id}/media/{filename}",
             get(media::serve_media),
         )
-        .route(
-            "/media/workspace-index",
-            get(media::workspace_media_index),
-        )
+        .route("/media/workspace-index", get(media::workspace_media_index))
         // ── Registry ────────────────────────────────────────────────────────
         .route("/registry", get(registry::get_registry))
         .route(
@@ -475,9 +469,7 @@ pub(crate) fn resolve_board_file(
         }
     }
 
-    let within_allowed = allowed_roots
-        .iter()
-        .any(|root| canonical.starts_with(root));
+    let within_allowed = allowed_roots.iter().any(|root| canonical.starts_with(root));
     if !within_allowed {
         log::warn!(
             target: "lexera.api.file",

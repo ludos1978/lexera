@@ -659,6 +659,7 @@ describe('getDashboardData', () => {
     await Api.getDashboardData({
       q: 'login',
       tags: ['#important', '#blocked'],
+      boardIds: ['board-1', 'board-3'],
       searchLimit: 30,
       calendarLimit: 20,
     });
@@ -669,6 +670,7 @@ describe('getDashboardData', () => {
     expect(JSON.parse(opts.body)).toEqual({
       q: 'login',
       tags: ['#important', '#blocked'],
+      boardIds: ['board-1', 'board-3'],
       searchLimit: 30,
       calendarLimit: 20,
     });

@@ -175,6 +175,8 @@
             'data-dashboard-column-index': item.columnIndex != null ? String(item.columnIndex) : null,
             'data-dashboard-row-index': item.rowIndex != null ? String(item.rowIndex) : null,
             'data-dashboard-stack-index': item.stackIndex != null ? String(item.stackIndex) : null,
+            'data-dashboard-col-local-index': item.colLocalIndex != null ? String(item.colLocalIndex) : null,
+            'data-dashboard-card-index': item.cardIndex != null ? String(item.cardIndex) : null,
             'data-dashboard-column-title': item.columnTitle ? String(item.columnTitle) : null,
             title: dashboardTreeNodeTooltip(item) || null
           }
@@ -234,6 +236,7 @@
           },
           attrs: {
             'data-dashboard-target': 'file',
+            'data-dashboard-board-id': item.boardId || item.firstBoardId || null,
             'data-dashboard-card-id': item.firstCardId || null,
             'data-dashboard-column-index': item.firstColumnIndex != null ? String(item.firstColumnIndex) : null,
             'data-dashboard-row-index': item.firstRowIndex != null ? String(item.firstRowIndex) : null,
@@ -294,7 +297,9 @@
           },
           attrs: {
             'data-dashboard-target': 'broken',
+            'data-dashboard-board-id': item.boardId || null,
             'data-dashboard-col-index': item.colIndex != null ? String(item.colIndex) : null,
+            'data-dashboard-column-index': item.colIndex != null ? String(item.colIndex) : null,
             'data-dashboard-card-index': item.cardIndex != null ? String(item.cardIndex) : null,
             'data-dashboard-card-id': item.cardId || null,
             'data-dashboard-row-index': item.rowIndex != null ? String(item.rowIndex) : null,
@@ -373,6 +378,8 @@
       columnIndex: parseOptionalSearchIndex(result.columnIndex),
       rowIndex: parseOptionalSearchIndex(result.rowIndex),
       stackIndex: parseOptionalSearchIndex(result.stackIndex),
+      colLocalIndex: parseOptionalSearchIndex(result.colLocalIndex),
+      cardIndex: parseOptionalSearchIndex(result.cardIndex),
       columnTitle: result.columnTitle
     };
   }
@@ -387,6 +394,8 @@
       columnIndex: parseOptionalSearchIndex(node.getAttribute('data-dashboard-column-index')),
       rowIndex: parseOptionalSearchIndex(node.getAttribute('data-dashboard-row-index')),
       stackIndex: parseOptionalSearchIndex(node.getAttribute('data-dashboard-stack-index')),
+      colLocalIndex: parseOptionalSearchIndex(node.getAttribute('data-dashboard-col-local-index')),
+      cardIndex: parseOptionalSearchIndex(node.getAttribute('data-dashboard-card-index')),
       columnTitle: String(node.getAttribute('data-dashboard-column-title') || '').trim() || null
     };
   }

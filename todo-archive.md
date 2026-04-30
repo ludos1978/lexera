@@ -1,5 +1,8 @@
 # Lexera Kanban — Completed Items Archive
 
+## Archived During Dashboard Backend Scope — 2026-04-30
+- [x] Request only scoped dashboard data from backend — dashboard requests now include `boardIds` for active-board and visible-workspace scopes; backend search/todos/tags/calendar aggregation respects that scope, with frontend API/request tests and backend route coverage.
+
 ## Archived During Export Header Integration — 2026-04-29
 - [x] Exporting popup element integrated into the board header row — `LexeraExportProcesses` now mounts into `#board-export-processes-slot` beside Export, keeps a body fallback for standalone contexts, and has focused DOM/header tests plus `./run-lexera-tests.sh` verification.
 - [x] Marp auto-export-on-save refreshes only the saved markdown file — initial export still starts Marp, later board saves set `autoExportRun` and only rewrite the same generated `.md` file so Marp watch can update without restarting or rerunning export.

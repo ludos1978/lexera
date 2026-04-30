@@ -6,9 +6,7 @@
 //! concurrent streams, the same as they do for assets.
 
 use crate::state::AppState;
-use lexera_local_ipc::frame::{
-    read_frame, write_frame, ClientFrame, ServerFrame, StreamTopic,
-};
+use lexera_local_ipc::frame::{read_frame, write_frame, ClientFrame, ServerFrame, StreamTopic};
 use lexera_local_ipc::transport::Stream;
 use lexera_local_ipc::IpcError;
 use tokio::sync::broadcast::error::RecvError;
@@ -210,8 +208,9 @@ mod tests {
                 topic,
             } = frame
             {
-                let _ = super::handle_subscribe(&mut stream, &state_for_server, correlation_id, topic)
-                    .await;
+                let _ =
+                    super::handle_subscribe(&mut stream, &state_for_server, correlation_id, topic)
+                        .await;
             }
         });
 
@@ -302,8 +301,9 @@ mod tests {
                 topic,
             } = frame
             {
-                let _ = super::handle_subscribe(&mut stream, &state_for_server, correlation_id, topic)
-                    .await;
+                let _ =
+                    super::handle_subscribe(&mut stream, &state_for_server, correlation_id, topic)
+                        .await;
             }
         });
 
@@ -365,9 +365,7 @@ mod tests {
         // It may first drain any pending hub broadcasts (e.g. presence).
         let mut saw_end = false;
         for _ in 0..5 {
-            let frame = read_frame::<_, ServerFrame>(client.stream())
-                .await
-                .unwrap();
+            let frame = read_frame::<_, ServerFrame>(client.stream()).await.unwrap();
             match frame {
                 Some(ServerFrame::StreamEnd { error, .. }) => {
                     assert!(error.is_none(), "unexpected end error: {:?}", error);
@@ -387,10 +385,7 @@ mod tests {
 /// Mirrors `api::events::stream_logs`: emits a "Connected" entry on open,
 /// then forwards `log_bridge` broadcasts as JSON. No resync concept — log
 /// drops are recoverable without UI refresh.
-async fn forward_logs(
-    stream: &mut Stream,
-    correlation_id: Uuid,
-) -> Result<(), IpcError> {
+async fn forward_logs(stream: &mut Stream, correlation_id: Uuid) -> Result<(), IpcError> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let started = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -405,7 +400,10 @@ async fn forward_logs(
     let payload = serde_json::to_vec(&greeting).unwrap_or_default();
     write_frame(
         stream,
-        &ServerFrame::StreamMessage { correlation_id, payload },
+        &ServerFrame::StreamMessage {
+            correlation_id,
+            payload,
+        },
     )
     .await?;
 

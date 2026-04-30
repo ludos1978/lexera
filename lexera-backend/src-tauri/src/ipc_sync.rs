@@ -40,7 +40,9 @@ pub async fn forward_sync(
                 correlation_id: cid,
                 payload,
             }) if cid == correlation_id => break payload,
-            Some(ClientFrame::Cancel { correlation_id: cid }) if cid == correlation_id => {
+            Some(ClientFrame::Cancel {
+                correlation_id: cid,
+            }) if cid == correlation_id => {
                 return write_frame(
                     stream,
                     &ServerFrame::StreamEnd {

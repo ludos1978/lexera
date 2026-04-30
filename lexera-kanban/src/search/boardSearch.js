@@ -220,9 +220,24 @@ var LexeraBoardSearch = (function () {
       if (byCardId) return byCardId;
     }
 
+    if (typeof target.columnIndex === 'number' && typeof target.cardIndex === 'number') {
+      var byVisibleCardIndex = getElColumnsContainer().querySelector(
+        '.card[data-col-index="' + target.columnIndex + '"][data-card-index="' + target.cardIndex + '"]'
+      );
+      if (byVisibleCardIndex) return byVisibleCardIndex;
+    }
+
     if (target.columnId) {
       var byColumnId = getElColumnsContainer().querySelector('.column[data-column-id="' + escapeAttr(String(target.columnId)) + '"]');
       if (byColumnId) return byColumnId;
+    }
+
+    if (typeof target.columnIndex === 'number') {
+      var byVisibleColumnIndex = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + target.columnIndex + '"]');
+      var byVisibleColumn = byVisibleColumnIndex && typeof byVisibleColumnIndex.closest === 'function'
+        ? byVisibleColumnIndex.closest('.column')
+        : null;
+      if (byVisibleColumn) return byVisibleColumn;
     }
 
     if (target.stackId) {
@@ -325,7 +340,11 @@ var LexeraBoardSearch = (function () {
     if (isWorkspaceShellEnabled() && ws && result && result.boardId) {
       var focusTarget = {
         boardId: result.boardId,
+        rowId: result.rowId || null,
+        stackId: result.stackId || null,
+        columnId: result.columnId || null,
         cardId: result.cardId,
+        columnIndex: parseOptionalSearchIndex(result.columnIndex),
         rowIndex: parseOptionalSearchIndex(result.rowIndex),
         stackIndex: parseOptionalSearchIndex(result.stackIndex),
         colLocalIndex: parseOptionalSearchIndex(result.colLocalIndex),

@@ -284,10 +284,7 @@ struct MonitorRect {
 }
 
 impl MonitorRect {
-    fn from_parts(
-        position: tauri::PhysicalPosition<i32>,
-        size: tauri::PhysicalSize<u32>,
-    ) -> Self {
+    fn from_parts(position: tauri::PhysicalPosition<i32>, size: tauri::PhysicalSize<u32>) -> Self {
         Self {
             x: position.x,
             y: position.y,
@@ -756,7 +753,10 @@ mod tests {
 
         let current = monitor(0, 0, 1920, 1080);
 
-        assert_eq!(plan_capture_resnap(pos(100, 100), current, false, false), None);
+        assert_eq!(
+            plan_capture_resnap(pos(100, 100), current, false, false),
+            None
+        );
         assert_eq!(
             plan_capture_resnap(pos(-5, 100), current, false, false),
             Some(CaptureResnapMode::Strip)

@@ -148,11 +148,7 @@ pub(crate) fn sync_watcher_include_paths(
             }
         }
         Err(error) => {
-            log::warn!(
-                "[{}] Failed to sync include watch paths: {}",
-                target,
-                error
-            );
+            log::warn!("[{}] Failed to sync include watch paths: {}", target, error);
         }
     }
 }
@@ -199,7 +195,8 @@ fn setup_file_watcher(
             if let Err(e) = watcher.watch_board_media_dir(board_id, path) {
                 log::warn!(
                     "[lexera.watcher] Failed to watch media dir for board {}: {}",
-                    board_id, e
+                    board_id,
+                    e
                 );
             }
         }
@@ -970,7 +967,8 @@ pub fn run() {
             let server_shutdown: Arc<std::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>>> =
                 Arc::new(std::sync::Mutex::new(None));
 
-            let config_svc = config_service::ConfigService::new(config.clone(), config_path.clone());
+            let config_svc =
+                config_service::ConfigService::new(config.clone(), config_path.clone());
             let app_state = AppState {
                 storage: storage.clone(),
                 event_tx: event_tx.clone(),
@@ -995,13 +993,15 @@ pub fn run() {
                 clipboard_history: None,
                 collab_dir,
                 shutdown_tx,
-                file_search_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+                file_search_cache: Arc::new(
+                    std::sync::Mutex::new(std::collections::HashMap::new()),
+                ),
             };
 
             app.manage(app_state.clone());
-            app.manage::<local_api::SharedLocalStreamRegistry>(
-                std::sync::Arc::new(local_api::LocalStreamRegistry::new()),
-            );
+            app.manage::<local_api::SharedLocalStreamRegistry>(std::sync::Arc::new(
+                local_api::LocalStreamRegistry::new(),
+            ));
 
             // ── Restore persisted connections ───────────────────────────────
             restore_persisted_connections(&config, &app_state, &local_user.id, &local_user.name);

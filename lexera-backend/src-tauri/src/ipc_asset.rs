@@ -139,12 +139,7 @@ pub async fn handle_asset_request(
                 &ServerFrame::Error {
                     correlation_id: Some(correlation_id),
                     code: code.into(),
-                    message: format!(
-                        "{} {}: {}",
-                        status.as_u16(),
-                        status.as_str(),
-                        relative_path
-                    ),
+                    message: format!("{} {}: {}", status.as_u16(), status.as_str(), relative_path),
                 },
             )
             .await;
@@ -219,7 +214,10 @@ async fn stream_file(
                 &ServerFrame::Error {
                     correlation_id: Some(correlation_id),
                     code: "range_unsatisfiable".into(),
-                    message: format!("range {:?} not satisfiable for {} bytes", range_header, total_len),
+                    message: format!(
+                        "range {:?} not satisfiable for {} bytes",
+                        range_header, total_len
+                    ),
                 },
             )
             .await;
@@ -228,7 +226,10 @@ async fn stream_file(
 
     let content_length = range.map(|r| r.len()).unwrap_or(total_len);
     let content_type = content_type_for_ext(
-        path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()).as_deref(),
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_lowercase())
+            .as_deref(),
     )
     .to_string();
 
@@ -237,7 +238,10 @@ async fn stream_file(
 
     let mut headers: Vec<(String, Vec<u8>)> = vec![
         ("content-type".into(), content_type.into_bytes()),
-        ("content-length".into(), content_length.to_string().into_bytes()),
+        (
+            "content-length".into(),
+            content_length.to_string().into_bytes(),
+        ),
         ("accept-ranges".into(), b"bytes".to_vec()),
         ("etag".into(), etag.into_bytes()),
         ("cache-control".into(), b"private, max-age=3600".to_vec()),
@@ -502,11 +506,8 @@ mod e2e {
             let frame = read_frame::<_, ServerFrame>(client.stream()).await.unwrap();
             match frame {
                 Some(f) => {
-                    let terminal = matches!(
-                        f,
-                        ServerFrame::Error { .. }
-                            | ServerFrame::AssetEnd { .. }
-                    );
+                    let terminal =
+                        matches!(f, ServerFrame::Error { .. } | ServerFrame::AssetEnd { .. });
                     out.push(f);
                     if terminal {
                         break;
@@ -528,10 +529,7 @@ mod e2e {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("board");
-        let media_dir = board_path
-            .parent()
-            .unwrap()
-            .join(format!("{}-Media", stem));
+        let media_dir = board_path.parent().unwrap().join(format!("{}-Media", stem));
         std::fs::create_dir_all(&media_dir).unwrap();
         let full = media_dir.join(filename);
         std::fs::write(&full, bytes).unwrap();

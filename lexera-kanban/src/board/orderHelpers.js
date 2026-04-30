@@ -797,7 +797,14 @@ var LexeraOrderHelpers = (function () {
         if (!c) return false;
         var el = null;
         if (t.cardId) el = c.querySelector('.card[data-card-id="' + t.cardId + '"]');
+        if (!el && typeof t.columnIndex === 'number' && typeof t.cardIndex === 'number') {
+          el = c.querySelector('.card[data-col-index="' + t.columnIndex + '"][data-card-index="' + t.cardIndex + '"]');
+        }
         if (!el && t.columnId) el = c.querySelector('.column[data-column-id="' + t.columnId + '"]');
+        if (!el && typeof t.columnIndex === 'number') {
+          var cardsEl = c.querySelector('.column-cards[data-col-index="' + t.columnIndex + '"]');
+          el = cardsEl && typeof cardsEl.closest === 'function' ? cardsEl.closest('.column') : null;
+        }
         if (!el && t.stackId) el = c.querySelector('.board-stack[data-stack-id="' + t.stackId + '"]');
         if (!el && t.rowId) el = c.querySelector('.board-row[data-row-id="' + t.rowId + '"]');
         if (!el && typeof t.rowIndex === 'number' && typeof t.stackIndex === 'number' && typeof t.colLocalIndex === 'number') {
@@ -820,8 +827,12 @@ var LexeraOrderHelpers = (function () {
         }
         if (!el) return false;
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        if (el.classList.contains('card')) _callDep('focusCard', el);
-        else _callDep('focusBoardEntity', el);
+        if (el.classList.contains('card')) {
+          _callDep('focusCard', el);
+          if (!el.classList.contains('focused') && typeof el.classList.add === 'function') el.classList.add('focused');
+        } else {
+          _callDep('focusBoardEntity', el);
+        }
         return true;
       }
     });
@@ -848,7 +859,7 @@ var LexeraOrderHelpers = (function () {
       return;
     }
     if (data.type !== 'lexera-focus-hierarchy-target' || !data.target) return;
-    _callDep('navigateToHierarchyTarget', data.target).catch(function (err) {
+    navigateHierarchyTargetInIframe(data.target).catch(function (err) {
       _callDep('logFrontendIssue', 'warn', 'embedded.focus', 'Failed to focus hierarchy target inside embedded pane', err);
     });
   }
@@ -914,6 +925,7 @@ var LexeraOrderHelpers = (function () {
 
   function setupWorkspaceShell() {
     if (!_dep('workspaceShellEnabled') || !_dep('WorkspaceShell')) return;
+    initDashboardSnapshotRequestListener();
     var shell = _dep('WorkspaceShell');
     shell.mount({
       getMainContent: _dep('getElMainContent'),
@@ -1261,13 +1273,53 @@ var LexeraOrderHelpers = (function () {
     scheduleMirroredDashboardSync();
   }
 
+  function getDashboardBoardWorkspaceIds(board) {
+    if (!board) return [];
+    var raw = board.workspace_ids || board.workspaceIds;
+    if (Array.isArray(raw)) return raw;
+    if (board.workspace_id || board.workspaceId) return [board.workspace_id || board.workspaceId];
+    return [];
+  }
+
+  function getDashboardWorkspaceVisibleBoardSet() {
+    if (!_dep('workspaceShellEnabled')) return null;
+    var allWorkspacesId = _dep('ALL_WORKSPACES_ID') || '__all__';
+    var workspaceId = _dep('viewWorkspaceId') || _dep('activeWorkspaceId') || allWorkspacesId;
+    if (!workspaceId || workspaceId === allWorkspacesId) return null;
+    var boards = Array.isArray(_dep('boards')) ? _dep('boards') : [];
+    if (boards.length === 0) return null;
+    var set = {};
+    for (var i = 0; i < boards.length; i++) {
+      var board = boards[i];
+      if (!board || !board.id) continue;
+      if (getDashboardBoardWorkspaceIds(board).indexOf(workspaceId) === -1) continue;
+      set[board.id] = true;
+    }
+    return set;
+  }
+
+  function getDashboardScopedBoardIds() {
+    if (dashboardState && dashboardState.scope === 'active') {
+      return _dep('activeBoardId') ? [_dep('activeBoardId')] : [];
+    }
+    var visibleBoardSet = getDashboardWorkspaceVisibleBoardSet();
+    if (!visibleBoardSet) return null;
+    return Object.keys(visibleBoardSet);
+  }
+
   function filterDashboardResultsByScope(results) {
     if (!Array.isArray(results)) return [];
-    if (!dashboardState || dashboardState.scope !== 'active') return results;
-    if (!_dep('activeBoardId')) return [];
-    var boardId = _dep('activeBoardId');
+    if (dashboardState && dashboardState.scope === 'active') {
+      if (!_dep('activeBoardId')) return [];
+      var boardId = _dep('activeBoardId');
+      return results.filter(function (item) {
+        return item && item.boardId === boardId;
+      });
+    }
+    var visibleBoardSet = getDashboardWorkspaceVisibleBoardSet();
+    if (!visibleBoardSet) return results;
     return results.filter(function (item) {
-      return item && item.boardId === boardId;
+      return item && item.boardId && visibleBoardSet[item.boardId] === true;
     });
   }
 
@@ -1359,6 +1411,19 @@ var LexeraOrderHelpers = (function () {
   function asSearchResultArray(payload) {
     if (!payload || !Array.isArray(payload.results)) return [];
     return payload.results;
+  }
+
+  function buildDashboardDataRequestOptions(query, dashTags, dashSearchOpts, dashCalendarOpts) {
+    var requestOptions = {
+      q: query,
+      tags: dashTags,
+      searchLimit: dashSearchOpts.limit,
+      searchTruncate: dashSearchOpts.truncate,
+      calendarLimit: dashCalendarOpts.limit
+    };
+    var scopedBoardIds = getDashboardScopedBoardIds();
+    if (scopedBoardIds) requestOptions.boardIds = scopedBoardIds;
+    return requestOptions;
   }
 
   function scopeHintForDashboard() {
@@ -1831,6 +1896,9 @@ var LexeraOrderHelpers = (function () {
         extension: ext,
         mediaCategory: mediaCategory
       };
+      if (locationData && locationData.boardId) {
+        store.byKey[key].firstBoardId = locationData.boardId;
+      }
       store.list.push(store.byKey[key]);
     }
     store.byKey[key].count += 1;
@@ -1876,7 +1944,14 @@ var LexeraOrderHelpers = (function () {
           if (!col) continue;
           var contextLabel = getDashboardInventoryContextLabel(col, visibleIndex);
           var includePath = getColumnIncludeSourcePath(col);
-          var colLocation = { cardId: null, columnIndex: visibleIndex, rowIndex: rowIdx, stackIndex: stackIdx, colLocalIndex: colIdx };
+          var colLocation = {
+            boardId: boardData && boardData.id ? String(boardData.id) : (_dep('activeBoardId') || null),
+            cardId: null,
+            columnIndex: visibleIndex,
+            rowIndex: rowIdx,
+            stackIndex: stackIdx,
+            colLocalIndex: colIdx
+          };
           if (includePath) appendDashboardFileGroup(includeStore, 'include', includePath, contextLabel, colLocation);
 
           var cards = Array.isArray(col.cards) ? col.cards : [];
@@ -1884,7 +1959,14 @@ var LexeraOrderHelpers = (function () {
             var card = cards[cardIdx];
             var content = getDashboardResolvedCardContent(col, card);
             if (!content) continue;
-            var cardLocation = { cardId: (card && card.id) ? String(card.id) : null, columnIndex: visibleIndex, rowIndex: rowIdx, stackIndex: stackIdx, colLocalIndex: colIdx };
+            var cardLocation = {
+              boardId: boardData && boardData.id ? String(boardData.id) : (_dep('activeBoardId') || null),
+              cardId: (card && card.id) ? String(card.id) : null,
+              columnIndex: visibleIndex,
+              rowIndex: rowIdx,
+              stackIndex: stackIdx,
+              colLocalIndex: colIdx
+            };
 
             String(content).replace(/!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g, function (_match, _alt, rawTarget) {
               var parsed = _callDep('parseMarkdownTarget', rawTarget);
@@ -1956,13 +2038,15 @@ var LexeraOrderHelpers = (function () {
       var rIdx = colEl ? parseInt(colEl.getAttribute('data-row-index'), 10) : NaN;
       var sIdx = colEl ? parseInt(colEl.getAttribute('data-stack-index'), 10) : NaN;
       var clIdx = colEl ? parseInt(colEl.getAttribute('data-col-local-index'), 10) : NaN;
-      return {
+      var location = {
         cardId: cardId || null,
         columnIndex: isNaN(colIdx) ? null : colIdx,
         rowIndex: isNaN(rIdx) ? null : rIdx,
         stackIndex: isNaN(sIdx) ? null : sIdx,
         colLocalIndex: isNaN(clIdx) ? null : clIdx
       };
+      if (_dep('activeBoardId')) location.boardId = _dep('activeBoardId');
+      return location;
     }
 
     var embedEls = container.querySelectorAll(embedSelector);
@@ -2162,6 +2246,7 @@ var LexeraOrderHelpers = (function () {
           src: item.src || '',
           count: 0
         };
+        if (item.boardId) byKey[key].boardId = item.boardId;
         if (typeof item.colIndex === 'number') byKey[key].colIndex = item.colIndex;
         if (typeof item.cardIndex === 'number') byKey[key].cardIndex = item.cardIndex;
         if (item.cardId) byKey[key].cardId = item.cardId;
@@ -2169,6 +2254,7 @@ var LexeraOrderHelpers = (function () {
         items.push(byKey[key]);
       }
       byKey[key].count += item.count || 1;
+      if (!byKey[key].boardId && item.boardId) byKey[key].boardId = item.boardId;
       if (!byKey[key].reason && item.reason) byKey[key].reason = item.reason;
       if ((byKey[key].colIndex == null || byKey[key].colIndex < 0) && typeof item.colIndex === 'number') {
         byKey[key].colIndex = item.colIndex;
@@ -2186,6 +2272,7 @@ var LexeraOrderHelpers = (function () {
           ? 'include'
           : (inventories[i].mediaCategory || 'embed'),
         src: inventories[i].path,
+        boardId: inventories[i].boardId || inventories[i].firstBoardId || _fileInventoryBoardId || _dep('activeBoardId') || null,
         count: inventories[i].count || 1
       });
     }
@@ -2352,6 +2439,8 @@ var LexeraOrderHelpers = (function () {
         stackIndex: stackIndex >= 0 ? stackIndex : null,
         colLocalIndex: colLocalIndex >= 0 ? colLocalIndex : null
       };
+      var itemBoardId = _dep('activeBoardId') || _brokenScanBoardId || null;
+      if (itemBoardId) item.boardId = itemBoardId;
       if (reason) item.reason = reason;
       broken.push(item);
     }
@@ -2514,6 +2603,29 @@ var LexeraOrderHelpers = (function () {
     scheduleMirroredDashboardSync();
   }
 
+  function toggleDashboardPinnedQuery(query) {
+    ensureDashboardState();
+    var pinnedQuery = String(query || (dashboardState ? dashboardState.query : '') || '').trim();
+    if (!pinnedQuery) {
+      _callDep('showNotification', 'Enter a query to pin');
+      return false;
+    }
+    if (!Array.isArray(dashboardState.pinnedQueries)) dashboardState.pinnedQueries = [];
+    var idx = dashboardState.pinnedQueries.indexOf(pinnedQuery);
+    if (idx === -1) {
+      dashboardState.pinnedQueries.unshift(pinnedQuery);
+      dashboardState.activePinnedQuery = pinnedQuery;
+      _callDep('showNotification', 'Pinned dashboard query');
+    } else {
+      dashboardState.pinnedQueries.splice(idx, 1);
+      if (dashboardState.activePinnedQuery === pinnedQuery) dashboardState.activePinnedQuery = '';
+      _callDep('showNotification', 'Unpinned dashboard query');
+    }
+    persistDashboardPrefs();
+    renderDashboardPinnedList();
+    return true;
+  }
+
   function setDashboardGroupEmptyState(targetEl, isEmpty) {
     if (!targetEl || typeof targetEl.closest !== 'function') return;
     var group = targetEl.closest('.dashboard-group');
@@ -2590,10 +2702,11 @@ var LexeraOrderHelpers = (function () {
     var loading = !!(dashboardState && dashboardState.loading);
     var query = dashboardState && typeof dashboardState.query === 'string' ? dashboardState.query : '';
     var scope = dashboardState && typeof dashboardState.scope === 'string' ? dashboardState.scope : 'all';
+    var activeBoardId = _dep('activeBoardId') || '';
     try {
       window.__TAURI__.core.invoke('multiview_broadcast', {
         event: 'dashboard-mirror-update',
-        payload: { lists: lists, loading: loading, query: query, scope: scope }
+        payload: { lists: lists, loading: loading, query: query, scope: scope, activeBoardId: activeBoardId }
       }).catch(function () {});
     } catch (_) {}
   }
@@ -2779,13 +2892,12 @@ var LexeraOrderHelpers = (function () {
     var dashSearchOpts = { limit: 30, truncate: 200 };
     var dashCalendarOpts = { limit: 20 };
 
-    return LexeraApi.getDashboardData({
-      q: query,
-      tags: dashTags,
-      searchLimit: dashSearchOpts.limit,
-      searchTruncate: dashSearchOpts.truncate,
-      calendarLimit: dashCalendarOpts.limit
-    }).then(function (data) {
+    return LexeraApi.getDashboardData(buildDashboardDataRequestOptions(
+      query,
+      dashTags,
+      dashSearchOpts,
+      dashCalendarOpts
+    )).then(function (data) {
       if (refreshId !== dashboardRefreshSeq) return;
       queryResult = (data && data.query) || { results: [] };
       calendarResponse = (data && data.calendar) || { results: [] };
@@ -3004,23 +3116,7 @@ var LexeraOrderHelpers = (function () {
 
     if (_callDep('getElDashboardPinBtn')) {
       _callDep('getElDashboardPinBtn').addEventListener('click', function () {
-        var query = String(dashboardState ? dashboardState.query : '' || '').trim();
-        if (!query) {
-          _callDep('showNotification', 'Enter a query to pin');
-          return;
-        }
-        var idx = dashboardState.pinnedQueries.indexOf(query);
-        if (idx === -1) {
-          dashboardState.pinnedQueries.unshift(query);
-          dashboardState.activePinnedQuery = query;
-          _callDep('showNotification', 'Pinned dashboard query');
-        } else {
-          dashboardState.pinnedQueries.splice(idx, 1);
-          if (dashboardState.activePinnedQuery === query) dashboardState.activePinnedQuery = '';
-          _callDep('showNotification', 'Unpinned dashboard query');
-        }
-        persistDashboardPrefs();
-        renderDashboardPinnedList();
+        toggleDashboardPinnedQuery(dashboardState ? dashboardState.query : '');
       });
     }
 
@@ -3116,19 +3212,50 @@ var LexeraOrderHelpers = (function () {
     // the last refresh can pull the current state without waiting for
     // the next change.
     initDashboardSnapshotRequestListener();
+    initEmbeddedDashboardNavigateListener();
   }
 
   var _dashboardSnapshotListenerInstalled = false;
+  var _dashboardSnapshotListenerRetryTimer = 0;
   function initDashboardSnapshotRequestListener() {
     if (_dashboardSnapshotListenerInstalled) return;
     if (typeof window === 'undefined' || !window.__TAURI__ || !window.__TAURI__.event ||
-        typeof window.__TAURI__.event.listen !== 'function') return;
+        typeof window.__TAURI__.event.listen !== 'function') {
+      if (!_dashboardSnapshotListenerRetryTimer && _dep('workspaceShellEnabled')) {
+        _dashboardSnapshotListenerRetryTimer = setTimeout(function () {
+          _dashboardSnapshotListenerRetryTimer = 0;
+          initDashboardSnapshotRequestListener();
+        }, 100);
+      }
+      return;
+    }
     if (!_dep('workspaceShellEnabled')) return;
+    if (_dashboardSnapshotListenerRetryTimer) {
+      clearTimeout(_dashboardSnapshotListenerRetryTimer);
+      _dashboardSnapshotListenerRetryTimer = 0;
+    }
     _dashboardSnapshotListenerInstalled = true;
     window.__TAURI__.event.listen('dashboard-snapshot-request', function () {
       // Re-render so the mirror is fresh, then the broadcast fires
       // automatically from renderDashboard's tail.
       try { renderDashboard(); } catch (_) { /* ignore */ }
+    });
+    window.__TAURI__.event.listen('dashboard-search', function (event) {
+      var payload = event && event.payload || {};
+      try {
+        ensureDashboardState();
+        setDashboardScope(payload.allBoards ? 'all' : 'active');
+        setDashboardQuery(payload.query || '');
+        refreshDashboardData({ deferRender: true });
+      } catch (_) { /* ignore */ }
+    });
+    window.__TAURI__.event.listen('dashboard-pin', function (event) {
+      var payload = event && event.payload || {};
+      try {
+        ensureDashboardState();
+        if (payload.query != null) setDashboardQuery(payload.query || '');
+        toggleDashboardPinnedQuery(payload.query || (dashboardState ? dashboardState.query : ''));
+      } catch (_) { /* ignore */ }
     });
     // Click navigation from the dashboard webview — the sub-app
     // collects data-* attributes off the rendered tree node and emits
@@ -3140,12 +3267,47 @@ var LexeraOrderHelpers = (function () {
       var payload = event && event.payload;
       if (!payload || !payload.nav || !payload.nav.boardId) return;
       try {
-        if (typeof _deps.navigateToSearchResult === 'function') {
+        var shell = _dep('WorkspaceShell');
+        if (_dep('workspaceShellEnabled') && shell && typeof shell.focusHierarchyTarget === 'function') {
+          shell.focusHierarchyTarget(payload.nav, payload.nav.boardId, {});
+        } else if (typeof _deps.navigateToSearchResult === 'function') {
           _callDep('navigateToSearchResult', payload.nav);
         } else if (typeof _deps.navigateToHierarchyTarget === 'function') {
           _callDep('navigateToHierarchyTarget', payload.nav);
         }
       } catch (_) { /* ignore */ }
+    });
+  }
+
+  var _embeddedDashboardNavigateListenerInstalled = false;
+  var _embeddedDashboardNavigateListenerRetryTimer = 0;
+  function initEmbeddedDashboardNavigateListener() {
+    if (_embeddedDashboardNavigateListenerInstalled) return;
+    if (!_dep('embeddedMode')) return;
+    if (typeof window === 'undefined' || !window.__TAURI__ || !window.__TAURI__.event ||
+        typeof window.__TAURI__.event.listen !== 'function') {
+      if (!_embeddedDashboardNavigateListenerRetryTimer) {
+        _embeddedDashboardNavigateListenerRetryTimer = setTimeout(function () {
+          _embeddedDashboardNavigateListenerRetryTimer = 0;
+          initEmbeddedDashboardNavigateListener();
+        }, 100);
+      }
+      return;
+    }
+    if (_embeddedDashboardNavigateListenerRetryTimer) {
+      clearTimeout(_embeddedDashboardNavigateListenerRetryTimer);
+      _embeddedDashboardNavigateListenerRetryTimer = 0;
+    }
+    _embeddedDashboardNavigateListenerInstalled = true;
+    window.__TAURI__.event.listen('dashboard-navigate', function (event) {
+      var payload = event && event.payload;
+      var nav = payload && payload.nav;
+      if (!nav || !nav.boardId) return;
+      var activeBoardId = _dep('activeBoardId') || '';
+      if (activeBoardId && activeBoardId !== nav.boardId) return;
+      navigateHierarchyTargetInIframe(nav).catch(function (err) {
+        _callDep('logFrontendIssue', 'warn', 'dashboard.navigate', 'Failed to focus dashboard target inside embedded board', err);
+      });
     });
   }
 
@@ -3230,6 +3392,7 @@ var LexeraOrderHelpers = (function () {
     persistDashboardPrefs: persistDashboardPrefs,
     setDashboardScope: setDashboardScope,
     setDashboardQuery: setDashboardQuery,
+    getDashboardScopedBoardIds: getDashboardScopedBoardIds,
     filterDashboardResultsByScope: filterDashboardResultsByScope,
     parseSearchDateValue: parseSearchDateValue,
     formatLocalDateValue: formatLocalDateValue,
@@ -3240,6 +3403,7 @@ var LexeraOrderHelpers = (function () {
     asCalendarTaskArray: asCalendarTaskArray,
     limitedSearchResults: limitedSearchResults,
     asSearchResultArray: asSearchResultArray,
+    buildDashboardDataRequestOptions: buildDashboardDataRequestOptions,
     scopeHintForDashboard: scopeHintForDashboard,
     bindMirroredDashboardView: bindMirroredDashboardView,
     syncMirroredDashboardViews: syncMirroredDashboardViews,

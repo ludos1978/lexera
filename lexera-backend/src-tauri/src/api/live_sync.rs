@@ -132,7 +132,10 @@ fn board_identity_stats(a: &KanbanBoard, b: &KanbanBoard) -> (usize, usize, usiz
 }
 
 fn encode_vv(store: &CrdtStore) -> Result<Vec<u8>, String> {
-    store.oplog_vv_result().map(|vv| vv.encode()).map_err(|e| e.to_string())
+    store
+        .oplog_vv_result()
+        .map(|vv| vv.encode())
+        .map_err(|e| e.to_string())
 }
 
 fn session_peer_id(session_id: &Uuid) -> u64 {

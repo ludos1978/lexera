@@ -4,6 +4,7 @@ use lexera_core::storage::local::BatchSearchQuery;
 use lexera_core::storage::BoardStorage;
 use lexera_core::types::{GroupedCalendarTasks, PaginatedSearchResults};
 use serde::Deserialize;
+use std::collections::HashSet;
 
 use crate::state::AppState;
 
@@ -22,6 +23,8 @@ pub struct DashboardDataBody {
     calendar_limit: Option<usize>,
     #[serde(default, alias = "calendarTruncate")]
     calendar_truncate: Option<usize>,
+    #[serde(default, alias = "boardIds")]
+    board_ids: Option<Vec<String>>,
 }
 
 fn empty_paginated(options: SearchOptions) -> PaginatedSearchResults {
@@ -33,11 +36,23 @@ fn empty_paginated(options: SearchOptions) -> PaginatedSearchResults {
     }
 }
 
+fn normalize_board_ids(board_ids: Option<Vec<String>>) -> Option<Vec<String>> {
+    board_ids.map(|ids| {
+        let mut seen = HashSet::new();
+        ids.into_iter()
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty())
+            .filter(|id| seen.insert(id.clone()))
+            .collect()
+    })
+}
+
 pub async fn dashboard_data(
     State(state): State<AppState>,
     Json(body): Json<DashboardDataBody>,
 ) -> Json<serde_json::Value> {
     let query = body.q.unwrap_or_default();
+    let board_ids = normalize_board_ids(body.board_ids);
     let tags: Vec<String> = body
         .tags
         .into_iter()
@@ -72,12 +87,15 @@ pub async fn dashboard_data(
         });
     }
 
-    let mut search_results = state
-        .storage
-        .search_many_with_options(&queries)
-        .into_iter()
-        .map(|result| (result.key, result.paginated))
-        .collect::<std::collections::HashMap<_, _>>();
+    let mut search_results = match board_ids.as_deref() {
+        Some(ids) => state
+            .storage
+            .search_many_with_options_for_boards(&queries, ids),
+        None => state.storage.search_many_with_options(&queries),
+    }
+    .into_iter()
+    .map(|result| (result.key, result.paginated))
+    .collect::<std::collections::HashMap<_, _>>();
 
     let query_results = search_results
         .remove("query")
@@ -102,7 +120,10 @@ pub async fn dashboard_data(
         })
         .collect();
 
-    let calendar_results = state.storage.calendar_tasks();
+    let calendar_results = match board_ids.as_deref() {
+        Some(ids) => state.storage.calendar_tasks_for_boards(ids),
+        None => state.storage.calendar_tasks(),
+    };
     let (today, end_of_week, two_weeks_out) = compute_date_boundaries();
     let calendar_groups = GroupedCalendarTasks::from_tasks(
         calendar_results.clone(),
@@ -166,6 +187,16 @@ kanban-plugin: board
 - [x] Blocked migration #blocked @2030-01-01
 ";
 
+    const DASHBOARD_OTHER_BOARD: &str = "\
+---
+kanban-plugin: board
+---
+
+## Todo
+- [ ] Fix billing bug #important @2030-01-03
+- [ ] Write release notes #blocked @2030-01-04
+";
+
     #[tokio::test]
     async fn dashboard_data_returns_query_calendar_and_tags() {
         let tmp = tempfile::tempdir().unwrap();
@@ -204,5 +235,63 @@ kanban-plugin: board
         assert_eq!(json["tags"].as_array().unwrap().len(), 2);
         assert_eq!(json["tags"][0]["results"].as_array().unwrap().len(), 1);
         assert_eq!(json["calendar"]["results"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn dashboard_data_limits_search_and_calendar_to_requested_board_ids() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = write_board_file(tmp.path(), "dashboard.md", DASHBOARD_BOARD);
+        let other_board_path =
+            write_board_file(tmp.path(), "dashboard-other.md", DASHBOARD_OTHER_BOARD);
+        let state = test_state(tmp.path());
+        let token = register_test_user(&state);
+        let board_id = state.storage.add_board(&board_path).unwrap();
+        let other_board_id = state.storage.add_board(&other_board_path).unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/dashboard/data")
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "q": "bug",
+                            "tags": ["#important", "#blocked"],
+                            "boardIds": [other_board_id],
+                            "searchLimit": 30,
+                            "calendarLimit": 20,
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["query"]["results"].as_array().unwrap().len(), 1);
+        assert_eq!(json["todos"]["results"].as_array().unwrap().len(), 2);
+        assert_eq!(json["tags"][0]["results"].as_array().unwrap().len(), 1);
+        assert_eq!(json["tags"][1]["results"].as_array().unwrap().len(), 1);
+        assert_eq!(json["calendar"]["results"].as_array().unwrap().len(), 2);
+
+        for section in ["query", "todos"] {
+            for result in json[section]["results"].as_array().unwrap() {
+                assert_eq!(result["boardId"].as_str().unwrap(), other_board_id);
+                assert_ne!(result["boardId"].as_str().unwrap(), board_id);
+            }
+        }
+        for tag in json["tags"].as_array().unwrap() {
+            for result in tag["results"].as_array().unwrap() {
+                assert_eq!(result["boardId"].as_str().unwrap(), other_board_id);
+            }
+        }
+        for result in json["calendar"]["results"].as_array().unwrap() {
+            assert_eq!(result["boardId"].as_str().unwrap(), other_board_id);
+        }
     }
 }

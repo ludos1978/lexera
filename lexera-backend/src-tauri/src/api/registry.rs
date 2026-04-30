@@ -100,15 +100,14 @@ pub async fn add_search(
     if body.query.trim().is_empty() {
         return Err(err_bad_request("query must not be empty"));
     }
-    state.storage.registry_add_search(&body.query, body.use_regex);
+    state
+        .storage
+        .registry_add_search(&body.query, body.use_regex);
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// DELETE /registry/searches/{query} -- remove a search entry.
-pub async fn remove_search(
-    State(state): State<AppState>,
-    Path(query): Path<String>,
-) -> StatusCode {
+pub async fn remove_search(State(state): State<AppState>, Path(query): Path<String>) -> StatusCode {
     state.storage.registry_remove_search(&query);
     StatusCode::NO_CONTENT
 }
@@ -139,10 +138,7 @@ mod tests {
         let token = register_test_user(&state);
 
         let app = test_router(state);
-        let resp = app
-            .oneshot(authed_get("/registry", &token))
-            .await
-            .unwrap();
+        let resp = app.oneshot(authed_get("/registry", &token)).await.unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
@@ -179,7 +175,8 @@ mod tests {
 
         let app = test_router(state);
         let add_resp = app
-            .oneshot(Request::builder()
+            .oneshot(
+                Request::builder()
                     .method("POST")
                     .uri("/registry/searches")
                     .header("content-type", "application/json")
@@ -187,7 +184,8 @@ mod tests {
                     .body(axum::body::Body::from(
                         serde_json::json!({"query": "my search", "useRegex": false}).to_string(),
                     ))
-                    .unwrap())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 

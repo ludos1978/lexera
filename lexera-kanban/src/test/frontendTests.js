@@ -1861,6 +1861,158 @@
     return getDashboardCardIds(listId).length;
   }
 
+  function getTauriTestRuntime() {
+    var wins = getReachableWindows();
+    for (var i = 0; i < wins.length; i++) {
+      var win = wins[i];
+      try {
+        if (win && win.__TAURI__ && win.__TAURI__.core && win.__TAURI__.event &&
+            typeof win.__TAURI__.core.invoke === 'function' &&
+            typeof win.__TAURI__.event.listen === 'function') {
+          return {
+            invoke: function (cmd, args) { return win.__TAURI__.core.invoke(cmd, args || {}); },
+            listen: function (eventName, handler) { return win.__TAURI__.event.listen(eventName, handler); }
+          };
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  function getDirectDashboardTestApi() {
+    var wins = getReachableWindows();
+    for (var i = 0; i < wins.length; i++) {
+      try {
+        if (wins[i] && wins[i].LexeraDashboardTestApi) return wins[i].LexeraDashboardTestApi;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  async function requestDashboardPanelTest(action, payload, timeoutMs) {
+    payload = payload || {};
+    action = String(action || 'state');
+    var direct = getDirectDashboardTestApi();
+    if (direct) {
+      var directResult = { action: action, ok: true };
+      if (action === 'set-search' && typeof direct.setSearch === 'function') {
+        direct.setSearch(payload.query || '', !!payload.allBoards);
+      } else if (action === 'apply-mirror' && typeof direct.applyMirror === 'function') {
+        direct.applyMirror({
+          activeBoardId: payload.activeBoardId || '',
+          lists: payload.lists || {}
+        });
+      } else if (action === 'click-card' && typeof direct.clickCard === 'function') {
+        directResult.clicked = direct.clickCard(payload.cardId, payload.listId);
+        if (!directResult.clicked) directResult.ok = false;
+      }
+      return { result: directResult, state: direct.collectState ? direct.collectState() : null };
+    }
+
+    var runtime = getTauriTestRuntime();
+    assert(runtime, 'Tauri event runtime available for dashboard panel interaction test');
+    var requestId = 'dashboard-test-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    var response = null;
+    var unlisten = await runtime.listen('dashboard-test-response', function (event) {
+      var data = event && event.payload;
+      if (!data || String(data.requestId || '') !== requestId) return;
+      response = data;
+    });
+    try {
+      await runtime.invoke('multiview_broadcast', {
+        event: 'dashboard-test-request',
+        payload: Object.assign({}, payload, { action: action, requestId: requestId })
+      });
+      await waitForCondition(function () { return !!response; }, timeoutMs || 2500, 50,
+        'dashboard panel did not answer ' + action + ' request');
+      return response;
+    } finally {
+      if (typeof unlisten === 'function') {
+        try { unlisten(); } catch (_) {}
+      }
+    }
+  }
+
+  async function waitForDashboardPanelCardPresence(listId, cardId, expectedPresent, timeoutMs) {
+    var normalized = cleanBoardText(cardId);
+    var deadline = Date.now() + (timeoutMs || 5000);
+    var lastState = null;
+    while (Date.now() <= deadline) {
+      var response = await requestDashboardPanelTest('state', {}, 2000);
+      lastState = response && response.state;
+      var list = lastState && lastState.lists && lastState.lists[listId];
+      var ids = list && Array.isArray(list.cardIds) ? list.cardIds : [];
+      var present = ids.indexOf(normalized) !== -1;
+      if (expectedPresent ? present : !present) return lastState;
+      await delay(75);
+    }
+    throw new Error(
+      'dashboard panel card presence mismatch for ' + normalized +
+      ' in ' + listId + ': expectedPresent=' + expectedPresent +
+      ', state=' + JSON.stringify(lastState)
+    );
+  }
+
+  async function clickDashboardPanelCardAndWaitForFocus(listId, cardId, boardId, timeoutMs) {
+    var runtime = getTauriTestRuntime();
+    assert(runtime, 'Tauri event runtime available for dashboard focus application test');
+    var normalizedCardId = cleanBoardText(cardId);
+    var normalizedBoardId = cleanBoardText(boardId);
+    var focusResponse = null;
+    var unlisten = await runtime.listen('dashboard-focus-applied', function (event) {
+      var data = event && event.payload;
+      var nav = data && data.nav;
+      if (!data || !nav) return;
+      if (normalizedCardId && String(nav.cardId || '') !== normalizedCardId) return;
+      if (normalizedBoardId && String(nav.boardId || '') !== normalizedBoardId) return;
+      focusResponse = data;
+    });
+    try {
+      var clickResponse = await requestDashboardPanelTest('click-card', {
+        listId: listId,
+        cardId: cardId
+      }, 3000);
+      await waitForCondition(function () { return !!focusResponse; }, timeoutMs || 5000, 50,
+        'embedded board did not report dashboard focus application for ' + normalizedCardId);
+      return {
+        clickResponse: clickResponse,
+        focusResponse: focusResponse
+      };
+    } finally {
+      if (typeof unlisten === 'function') {
+        try { unlisten(); } catch (_) {}
+      }
+    }
+  }
+
+  async function requestEmbeddedBoardDashboardTest(action, payload, timeoutMs) {
+    var runtime = getTauriTestRuntime();
+    assert(runtime, 'Tauri event runtime available for embedded board dashboard test request');
+    var requestId = 'dashboard-board-test-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    var response = null;
+    var unlisten = await runtime.listen('dashboard-board-test-response', function (event) {
+      var data = event && event.payload;
+      if (!data || String(data.requestId || '') !== requestId) return;
+      response = data;
+    });
+    try {
+      await runtime.invoke('multiview_broadcast', {
+        event: 'dashboard-board-test-request',
+        payload: Object.assign({}, payload || {}, {
+          action: String(action || 'state'),
+          requestId: requestId
+        })
+      });
+      await waitForCondition(function () { return !!response; }, timeoutMs || 3000, 50,
+        'embedded board did not answer dashboard test request ' + action);
+      return response;
+    } finally {
+      if (typeof unlisten === 'function') {
+        try { unlisten(); } catch (_) {}
+      }
+    }
+  }
+
   function getVisibleRowIds(boardData) {
     var projection = getExpectedVisibleProjection(boardData);
     var ids = [];
@@ -1902,6 +2054,27 @@
       }
     }
     return ids;
+  }
+
+  function getFirstVisibleCardProjection(boardData) {
+    var projection = getExpectedVisibleProjection(boardData);
+    for (var i = 0; i < projection.columns.length; i++) {
+      var col = projection.columns[i];
+      var cards = col.cards || [];
+      for (var k = 0; k < cards.length; k++) {
+        var card = cards[k] || {};
+        var cardId = cleanBoardText(card.kid || card.id);
+        if (cardId) {
+          return {
+            column: col,
+            card: card,
+            cardId: cardId,
+            cardIndex: k
+          };
+        }
+      }
+    }
+    return null;
   }
 
   function findNewId(beforeIds, afterIds) {
@@ -4070,6 +4243,71 @@
     } finally {
       var h = getDashboardHelpers();
       if (h && typeof h.setDashboardScope === 'function') h.setDashboardScope('all');
+      await teardown();
+    }
+  });
+
+  register('dashboard panel: visible result click focuses the matching board card', async function () {
+    await setup();
+    try {
+      var boardResponse = await requestEmbeddedBoardDashboardTest('first-visible-card', {}, 5000);
+      var target = boardResponse && boardResponse.result && boardResponse.result.card;
+      assert(target && target.cardId && target.boardId,
+        'embedded board exposes a visible card for dashboard panel focus test');
+      var targetCardId = target.cardId;
+      var targetBoardId = target.boardId;
+      var targetTitle = cleanBoardText(target.title) || 'Visible Dashboard Click Target';
+      var targetColumnTitle = cleanBoardText(target.columnTitle) || 'Dashboard Column';
+
+      await requestDashboardPanelTest('apply-mirror', {
+        activeBoardId: targetBoardId,
+        lists: {
+          'dashboard-results-list':
+            '<div class="tree-node" data-dashboard-target="result" ' +
+            'data-dashboard-board-id="' + targetBoardId + '" ' +
+            'data-dashboard-card-id="' + targetCardId + '" ' +
+            'data-dashboard-row-id="' + cleanBoardText(target.rowId) + '" ' +
+            'data-dashboard-stack-id="' + cleanBoardText(target.stackId) + '" ' +
+            'data-dashboard-column-id="' + cleanBoardText(target.columnId) + '" ' +
+            'data-dashboard-row-index="' + target.rowIndex + '" ' +
+            'data-dashboard-stack-index="' + target.stackIndex + '" ' +
+            'data-dashboard-col-local-index="' + target.colLocalIndex + '" ' +
+            'data-dashboard-column-index="' + target.columnIndex + '" ' +
+            'data-dashboard-card-index="' + target.cardIndex + '" ' +
+            'data-dashboard-column-title="' + targetColumnTitle.replace(/"/g, '&quot;') + '">' +
+            targetTitle.replace(/</g, '&lt;') + '</div>'
+        }
+      }, 3000);
+      var state = await waitForDashboardPanelCardPresence(
+        'dashboard-results-list',
+        targetCardId,
+        true,
+        3000
+      );
+      assert(state && state.mounted && state.receivedFirstSnapshot,
+        'visible dashboard panel received a real mirror snapshot');
+
+      var focusResult = await clickDashboardPanelCardAndWaitForFocus(
+        'dashboard-results-list',
+        targetCardId,
+        targetBoardId,
+        5000
+      );
+      var clickResponse = focusResult.clickResponse;
+      var focusResponse = focusResult.focusResponse;
+      assert(clickResponse && clickResponse.result && clickResponse.result.clicked,
+        'visible dashboard panel clicked the rendered result node');
+      assert(focusResponse && focusResponse.focused === true,
+        'embedded board reported dashboard result focus was applied');
+      assert(focusResponse && focusResponse.nav && focusResponse.nav.cardId === targetCardId,
+        'embedded board focused the matching dashboard result card');
+    } finally {
+      try {
+        await requestDashboardPanelTest('apply-mirror', {
+          activeBoardId: _boardId,
+          lists: { 'dashboard-results-list': '' }
+        }, 1000);
+      } catch (_) {}
       await teardown();
     }
   });

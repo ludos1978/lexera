@@ -112,6 +112,131 @@ describe('orderHelpers.handleEmbeddedHierarchyFocusMessage', () => {
     expect(setRemoteBoards).toHaveBeenCalledWith([{ id: 'remote-a', title: 'Remote A' }]);
     expect(setWorkspaces).toHaveBeenCalledWith([{ id: 'ws-1', name: 'Workspace 1' }]);
   });
+
+  it('focuses hierarchy targets locally inside the embedded board frame', async () => {
+    const focusCard = vi.fn();
+    const navigateLocallyThroughBoardNavigation = vi.fn();
+    const routeThroughWorkspaceNavigation = vi.fn();
+    const cardEl = {
+      classList: {
+        contains(name) {
+          return name === 'card';
+        }
+      },
+      scrollIntoView: vi.fn()
+    };
+    const container = {
+      querySelector(selector) {
+        if (selector === '.card[data-card-id="card-1"]') return cardEl;
+        return null;
+      }
+    };
+    const EmbeddedOrderHelpers = loadIIFE('board/orderHelpers.js', 'LexeraOrderHelpers', {
+      window: {},
+      document: {
+        getElementById(id) {
+          return id === 'columns-container' ? container : null;
+        }
+      }
+    });
+    EmbeddedOrderHelpers.init({
+      embeddedMode: true,
+      getBoardNavigationApi() {
+        return {
+          navigateToHierarchyTarget(target, options) {
+            navigateLocallyThroughBoardNavigation(target);
+            return Promise.resolve(options.focusHierarchyTargetLocally(target));
+          }
+        };
+      },
+      getActiveBoardData() {
+        return { id: 'board-1' };
+      },
+      focusBoardEntity: vi.fn(),
+      focusCard,
+      navigateToHierarchyTarget: routeThroughWorkspaceNavigation
+    });
+
+    EmbeddedOrderHelpers.handleEmbeddedHierarchyFocusMessage({
+      data: {
+        type: 'lexera-focus-hierarchy-target',
+        target: {
+          boardId: 'board-1',
+          cardId: 'card-1'
+        }
+      }
+    });
+
+    await vi.waitFor(() => expect(focusCard).toHaveBeenCalledWith(cardEl));
+    expect(navigateLocallyThroughBoardNavigation).toHaveBeenCalledWith({
+      boardId: 'board-1',
+      cardId: 'card-1'
+    });
+    expect(routeThroughWorkspaceNavigation).not.toHaveBeenCalled();
+  });
+
+  it('listens for dashboard navigation broadcasts inside the matching embedded board', async () => {
+    const focusCard = vi.fn();
+    let dashboardNavigateHandler = null;
+    const cardEl = {
+      classList: {
+        contains(name) {
+          return name === 'card';
+        }
+      },
+      scrollIntoView: vi.fn()
+    };
+    const container = {
+      querySelector(selector) {
+        if (selector === '.card[data-card-id="card-1"]') return cardEl;
+        return null;
+      }
+    };
+    const EmbeddedOrderHelpers = loadIIFE('board/orderHelpers.js', 'LexeraOrderHelpers', {
+      window: {
+        __TAURI__: {
+          event: {
+            listen(eventName, handler) {
+              if (eventName === 'dashboard-navigate') dashboardNavigateHandler = handler;
+            }
+          }
+        }
+      },
+      document: {
+        getElementById(id) {
+          return id === 'columns-container' ? container : null;
+        }
+      }
+    });
+    EmbeddedOrderHelpers.init({
+      embeddedMode: true,
+      activeBoardId: 'board-1',
+      getBoardNavigationApi() {
+        return {
+          navigateToHierarchyTarget(target, options) {
+            return Promise.resolve(options.focusHierarchyTargetLocally(target));
+          }
+        };
+      },
+      getActiveBoardData() {
+        return { id: 'board-1' };
+      },
+      focusBoardEntity: vi.fn(),
+      focusCard
+    });
+
+    expect(typeof dashboardNavigateHandler).toBe('function');
+    dashboardNavigateHandler({
+      payload: {
+        nav: {
+          boardId: 'board-1',
+          cardId: 'card-1'
+        }
+      }
+    });
+
+    await vi.waitFor(() => expect(focusCard).toHaveBeenCalledWith(cardEl));
+  });
 });
 
 describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
@@ -169,5 +294,119 @@ describe('orderHelpers.navigateHierarchyTargetInIframe', () => {
     expect(columnEl.scrollIntoView).toHaveBeenCalledTimes(1);
     expect(focusBoardEntity).toHaveBeenCalledWith(columnEl);
     expect(focusCard).not.toHaveBeenCalled();
+  });
+
+  it('focuses a dashboard target by visible column/card indices inside an embedded board', async () => {
+    const focusBoardEntity = vi.fn();
+    const focusCard = vi.fn();
+    const cardEl = {
+      classList: {
+        contains(name) {
+          return name === 'card';
+        }
+      },
+      scrollIntoView: vi.fn()
+    };
+    const container = {
+      querySelector(selector) {
+        if (selector === '.card[data-col-index="7"][data-card-index="3"]') return cardEl;
+        return null;
+      }
+    };
+    const documentMock = {
+      getElementById(id) {
+        return id === 'columns-container' ? container : null;
+      }
+    };
+    const EmbeddedOrderHelpers = loadIIFE('board/orderHelpers.js', 'LexeraOrderHelpers', {
+      window: {},
+      document: documentMock
+    });
+    EmbeddedOrderHelpers.init({
+      getBoardNavigationApi() {
+        return {
+          navigateToHierarchyTarget(target, options) {
+            return Promise.resolve(options.focusHierarchyTargetLocally(target));
+          }
+        };
+      },
+      getActiveBoardData() {
+        return { id: 'board-1' };
+      },
+      focusBoardEntity,
+      focusCard
+    });
+
+    const result = await EmbeddedOrderHelpers.navigateHierarchyTargetInIframe({
+      boardId: 'board-1',
+      columnIndex: 7,
+      cardIndex: 3
+    });
+
+    expect(result).toBe(true);
+    expect(cardEl.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(focusCard).toHaveBeenCalledWith(cardEl);
+    expect(focusBoardEntity).not.toHaveBeenCalled();
+  });
+});
+
+describe('orderHelpers dashboard scope filtering', () => {
+  it('keeps all-scope dashboard results within the workspace currently shown by the shell', () => {
+    OrderHelpers.init({
+      dashboardState: { scope: 'all' },
+      workspaceShellEnabled: true,
+      ALL_WORKSPACES_ID: '__all__',
+      viewWorkspaceId: 'ws-1',
+      activeWorkspaceId: 'ws-2',
+      boards: [
+        { id: 'board-1', workspace_ids: ['ws-1'] },
+        { id: 'board-2', workspace_ids: ['ws-2'] },
+        { id: 'board-3', workspace_ids: ['ws-1', 'ws-2'] }
+      ]
+    });
+
+    expect(OrderHelpers.filterDashboardResultsByScope([
+      { boardId: 'board-1', cardId: 'a' },
+      { boardId: 'board-2', cardId: 'b' },
+      { boardId: 'board-3', cardId: 'c' },
+      { boardId: 'board-missing', cardId: 'd' }
+    ])).toEqual([
+      { boardId: 'board-1', cardId: 'a' },
+      { boardId: 'board-3', cardId: 'c' }
+    ]);
+    expect(OrderHelpers.getDashboardScopedBoardIds()).toEqual(['board-1', 'board-3']);
+  });
+
+  it('active dashboard scope still narrows to the active board only', () => {
+    OrderHelpers.init({
+      dashboardState: { scope: 'active' },
+      workspaceShellEnabled: true,
+      activeBoardId: 'board-2',
+      viewWorkspaceId: 'ws-1',
+      boards: [
+        { id: 'board-1', workspace_ids: ['ws-1'] },
+        { id: 'board-2', workspace_ids: ['ws-2'] }
+      ]
+    });
+
+    expect(OrderHelpers.filterDashboardResultsByScope([
+      { boardId: 'board-1', cardId: 'a' },
+      { boardId: 'board-2', cardId: 'b' }
+    ])).toEqual([
+      { boardId: 'board-2', cardId: 'b' }
+    ]);
+    expect(OrderHelpers.buildDashboardDataRequestOptions(
+      'login',
+      ['#important'],
+      { limit: 30, truncate: 200 },
+      { limit: 20 }
+    )).toEqual({
+      q: 'login',
+      tags: ['#important'],
+      searchLimit: 30,
+      searchTruncate: 200,
+      calendarLimit: 20,
+      boardIds: ['board-2']
+    });
   });
 });

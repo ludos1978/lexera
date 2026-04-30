@@ -151,6 +151,33 @@ describe('board search local focus targeting', () => {
     expect(syncSidebarToView).toHaveBeenCalledTimes(1);
   });
 
+  it('focuses a card by visible column/card indices when no stable card id is available', () => {
+    const cardEl = {
+      classList: createClassList(['card']),
+      scrollIntoView: vi.fn()
+    };
+    const selectors = {
+      '.card[data-col-index="7"][data-card-index="3"]': cardEl
+    };
+    const BoardSearch = createBoardSearch({
+      querySelector(selector) {
+        return Object.prototype.hasOwnProperty.call(selectors, selector) ? selectors[selector] : null;
+      }
+    });
+    const focusCard = vi.fn();
+    BoardSearch.init({
+      escapeAttr: (v) => String(v),
+      focusCard
+    });
+
+    expect(BoardSearch.focusHierarchyTargetLocally({
+      columnIndex: 7,
+      cardIndex: 3
+    })).toBe(true);
+
+    expect(focusCard).toHaveBeenCalledWith(cardEl);
+  });
+
   // Dashboard-result click reveals the matching card in the board view —
   // the action ultimately routes to focusHierarchyTargetLocally with a
   // `cardId`. When the card is rendered, the helper must call
@@ -274,5 +301,61 @@ describe('board search wiki search routing', () => {
 
     expect(resolved).toEqual({ kind: 'tag', document: '#backend' });
     expect(openDashboardSearch).toHaveBeenCalledWith('#backend', undefined);
+  });
+});
+
+describe('board search workspace-shell result routing', () => {
+  it('preserves dashboard focus coordinates when routing through the workspace shell', async () => {
+    const focusHierarchyTarget = vi.fn();
+    const BoardSearch = createBoardSearch({
+      querySelector() {
+        return null;
+      }
+    });
+    BoardSearch.init({
+      isWorkspaceShellEnabled() {
+        return true;
+      },
+      getWorkspaceShell() {
+        return { focusHierarchyTarget };
+      },
+      getDashboardTreeApi() {
+        return {
+          parseOptionalSearchIndex(value) {
+            if (value == null || value === '') return null;
+            const parsed = parseInt(value, 10);
+            return Number.isNaN(parsed) ? null : parsed;
+          }
+        };
+      }
+    });
+
+    await BoardSearch.navigateToSearchResult({
+      boardId: 'board-2',
+      rowId: 'row-1',
+      stackId: 'stack-1',
+      columnId: 'col-1',
+      cardId: '',
+      columnIndex: '7',
+      rowIndex: '2',
+      stackIndex: '3',
+      colLocalIndex: '4',
+      cardIndex: '5',
+      brokenSrc: 'docs/missing.md'
+    });
+
+    expect(focusHierarchyTarget).toHaveBeenCalledWith({
+      boardId: 'board-2',
+      rowId: 'row-1',
+      stackId: 'stack-1',
+      columnId: 'col-1',
+      cardId: '',
+      columnIndex: 7,
+      rowIndex: 2,
+      stackIndex: 3,
+      colLocalIndex: 4,
+      cardIndex: 5,
+      brokenSrc: 'docs/missing.md'
+    }, 'board-2', {});
   });
 });

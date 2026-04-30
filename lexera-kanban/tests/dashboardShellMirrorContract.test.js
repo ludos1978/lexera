@@ -81,17 +81,18 @@ describe('dashboard shell mirror contract', () => {
     expect(cssBody[1]).toContain('pointer-events:none');
   });
 
-  it('broadcast payload carries lists + loading + query + scope so the webview can render the right empty-state', () => {
+  it('broadcast payload carries lists + loading + query + scope + activeBoardId so the webview can render and route correctly', () => {
     // The webview uses `loading` to swap the spinner text and `query`/
-    // `scope` to render the "search all" / scope-hint copy. Missing
-    // any of these would force the webview to derive them from
-    // catalog-snapshot, which doesn't carry them.
+    // `scope` to render the "search all" / scope-hint copy. activeBoardId
+    // lets file/broken dashboard rows without an explicit board attr
+    // still route back to the board view that produced the mirror.
     const broadcastBlock = orderHelpersJs.match(/event:\s*'dashboard-mirror-update',\s*payload:\s*\{[^}]*\}/);
     expect(broadcastBlock).toBeTruthy();
     expect(broadcastBlock[0]).toContain('lists:');
     expect(broadcastBlock[0]).toContain('loading:');
     expect(broadcastBlock[0]).toContain('query:');
     expect(broadcastBlock[0]).toContain('scope:');
+    expect(broadcastBlock[0]).toContain('activeBoardId:');
   });
 
   it('SHELL listens for dashboard-snapshot-request so a late-mounting webview can pull the current state', () => {
@@ -99,6 +100,8 @@ describe('dashboard shell mirror contract', () => {
     // refresh would stay stuck on "Loading dashboard…" until the next
     // unrelated render kicked the broadcast.
     expect(orderHelpersJs).toContain("listen('dashboard-snapshot-request'");
+    expect(orderHelpersJs).toMatch(/function setupWorkspaceShell[\s\S]{0,180}?initDashboardSnapshotRequestListener\(\)/);
+    expect(orderHelpersJs).toContain('_dashboardSnapshotListenerRetryTimer');
   });
 
   it('dashboard sub-app subscribes to dashboard-mirror-update and requests a snapshot on mount', () => {
@@ -112,17 +115,29 @@ describe('dashboard shell mirror contract', () => {
     expect(dashboardJs).toContain("'dashboard-included-list'");
   });
 
-  it('dashboard sub-app forwards tree-node clicks as dashboard-navigate, SHELL routes them through navigateToSearchResult', () => {
+  it('dashboard sub-app search and pin events are handled by the SHELL owner', () => {
+    expect(dashboardJs).toContain("LexeraSubApp.broadcast('dashboard-search'");
+    expect(dashboardJs).toContain("LexeraSubApp.broadcast('dashboard-pin'");
+    expect(orderHelpersJs).toContain("listen('dashboard-search'");
+    expect(orderHelpersJs).toContain("listen('dashboard-pin'");
+    expect(orderHelpersJs).toContain('setDashboardScope(payload.allBoards');
+    expect(orderHelpersJs).toContain('toggleDashboardPinnedQuery');
+  });
+
+  it('dashboard sub-app forwards tree-node clicks as dashboard-navigate, SHELL routes them through the board focus path', () => {
     // Click navigation: the rendered HTML carries data-* attributes
     // but no event handlers. The sub-app reads them and emits
     // `dashboard-navigate { target, nav }`. The SHELL listens and
-    // routes the payload through `navigateToSearchResult` so the
-    // existing focus + reveal chain runs unchanged.
+    // routes the payload through the workspace-shell board focus path,
+    // falling back to `navigateToSearchResult` outside shell mode.
     expect(dashboardJs).toContain("LexeraSubApp.broadcast('dashboard-navigate'");
     expect(dashboardJs).toContain("'data-dashboard-board-id'");
+    expect(dashboardJs).toContain("'data-dashboard-column-id'");
+    expect(dashboardJs).toContain("'data-dashboard-col-index'");
     expect(dashboardJs).toContain("'data-dashboard-card-id'");
     expect(dashboardJs).toContain("'data-dashboard-broken-src'");
     expect(orderHelpersJs).toContain("listen('dashboard-navigate'");
+    expect(orderHelpersJs).toContain("shell.focusHierarchyTarget");
     expect(orderHelpersJs).toContain("navigateToSearchResult");
   });
 

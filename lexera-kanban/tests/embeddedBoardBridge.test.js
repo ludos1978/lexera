@@ -162,4 +162,227 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     expect(styleEl?.textContent).toContain('html, body { width: 100%; height: 100%; min-height: 100%;');
     expect(styleEl?.textContent).toContain('overflow: hidden;');
   });
+
+  it('subscribes embedded boards to dashboard navigation broadcasts and reports applied focus', async () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1'
+    });
+    const { window } = dom;
+    const invoke = vi.fn(() => Promise.resolve());
+    const handlers = {};
+    const navigateHierarchyTargetInIframe = vi.fn(() => Promise.resolve(true));
+    window.LexeraOrderHelpers = { navigateHierarchyTargetInIframe };
+    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+    const received = [];
+    window.addEventListener('message', (event) => {
+      received.push(event.data);
+    });
+
+    const installed = bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn((eventName, handler) => {
+          handlers[eventName] = handler;
+        })
+      }),
+      invoke,
+      handleRequest: vi.fn()
+    });
+
+    expect(installed).toBe(true);
+    expect(invoke).toHaveBeenCalledWith('multiview_subscribe', {
+      label: 'board-tab-tab-1',
+      events: ['dashboard-navigate', 'dashboard-board-test-request']
+    });
+    expect(typeof handlers['dashboard-navigate']).toBe('function');
+
+    handlers['dashboard-navigate']({
+      payload: {
+        nav: {
+          boardId: 'board-alpha',
+          cardId: 'card-1'
+        }
+      }
+    });
+
+    expect(navigateHierarchyTargetInIframe).toHaveBeenCalledWith({
+      boardId: 'board-alpha',
+      cardId: 'card-1'
+    });
+    await Promise.resolve();
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'dashboard-focus-applied',
+      payload: {
+        nav: {
+          boardId: 'board-alpha',
+          cardId: 'card-1'
+        },
+        focused: true,
+        label: 'board-tab-tab-1'
+      }
+    });
+    expect(received).toEqual([]);
+  });
+
+  it('answers dashboard board test requests from the embedded board data', async () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1'
+    });
+    const { window } = dom;
+    const invoke = vi.fn(() => Promise.resolve());
+    const handlers = {};
+    window.LexeraTestApi = {
+      getActiveBoardId: () => 'board-alpha',
+      getFullBoardData: () => ({
+        rows: [{
+          id: 'row-1',
+          stacks: [{
+            id: 'stack-1',
+            columns: [{
+              id: 'col-1',
+              title: 'Column 1',
+              cards: [{ id: 'card-1', kid: 'card-1', content: 'Card One\nbody' }]
+            }]
+          }]
+        }]
+      })
+    };
+    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+
+    expect(bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn((eventName, handler) => {
+          handlers[eventName] = handler;
+        })
+      }),
+      invoke,
+      handleRequest: vi.fn()
+    })).toBe(true);
+
+    handlers['dashboard-board-test-request']({
+      payload: {
+        action: 'first-visible-card',
+        requestId: 'req-1'
+      }
+    });
+
+    await Promise.resolve();
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'dashboard-board-test-response',
+      payload: {
+        requestId: 'req-1',
+        result: {
+          action: 'first-visible-card',
+          ok: true,
+          card: {
+            boardId: 'board-alpha',
+            rowId: 'row-1',
+            stackId: 'stack-1',
+            columnId: 'col-1',
+            cardId: 'card-1',
+            rowIndex: 0,
+            stackIndex: 0,
+            colLocalIndex: 0,
+            columnIndex: 0,
+            cardIndex: 0,
+            columnTitle: 'Column 1',
+            title: 'Card One'
+          }
+        }
+      }
+    });
+  });
+
+  it('prefers a rendered DOM card for dashboard board test requests', async () => {
+    const dom = new JSDOM(
+      '<!doctype html><html><head></head><body>' +
+      '<div id="columns-container">' +
+      '<div class="card" data-card-id="dom-card-1" data-col-index="2" data-card-index="3">' +
+      '<span class="card-title-display">Rendered Card</span>' +
+      '</div>' +
+      '</div>' +
+      '</body></html>',
+      { url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1' }
+    );
+    const { window } = dom;
+    const invoke = vi.fn(() => Promise.resolve());
+    const handlers = {};
+    window.LexeraTestApi = {
+      getActiveBoardId: () => 'board-alpha',
+      getFullBoardData: () => ({ rows: [] })
+    };
+    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+
+    expect(bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn((eventName, handler) => {
+          handlers[eventName] = handler;
+        })
+      }),
+      invoke,
+      handleRequest: vi.fn()
+    })).toBe(true);
+
+    handlers['dashboard-board-test-request']({
+      payload: {
+        action: 'first-visible-card',
+        requestId: 'req-dom'
+      }
+    });
+
+    await Promise.resolve();
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'dashboard-board-test-response',
+      payload: {
+        requestId: 'req-dom',
+        result: {
+          action: 'first-visible-card',
+          ok: true,
+          card: {
+            boardId: 'board-alpha',
+            rowId: '',
+            stackId: '',
+            columnId: '',
+            cardId: 'dom-card-1',
+            rowIndex: null,
+            stackIndex: null,
+            colLocalIndex: null,
+            columnIndex: 2,
+            cardIndex: 3,
+            columnTitle: '',
+            title: 'Rendered Card'
+          }
+        }
+      }
+    });
+  });
 });

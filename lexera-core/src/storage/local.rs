@@ -3920,6 +3920,23 @@ impl LocalStorage {
         &self,
         queries: &[BatchSearchQuery],
     ) -> Vec<BatchSearchResultSet> {
+        self.search_many_with_options_inner(queries, None)
+    }
+
+    pub fn search_many_with_options_for_boards(
+        &self,
+        queries: &[BatchSearchQuery],
+        board_ids: &[String],
+    ) -> Vec<BatchSearchResultSet> {
+        let board_scope = Self::search_board_scope(board_ids);
+        self.search_many_with_options_inner(queries, Some(&board_scope))
+    }
+
+    fn search_many_with_options_inner(
+        &self,
+        queries: &[BatchSearchQuery],
+        board_scope: Option<&HashSet<String>>,
+    ) -> Vec<BatchSearchResultSet> {
         if queries.is_empty() {
             return Vec::new();
         }
@@ -3959,6 +3976,11 @@ impl LocalStorage {
         };
 
         for (board_id, state) in boards.iter() {
+            if let Some(scope) = board_scope {
+                if !scope.contains(board_id) {
+                    continue;
+                }
+            }
             let board_title = state.summary.title.as_str();
             let mut cached_results: HashMap<usize, SearchResult> = HashMap::new();
             for query in &mut compiled {
@@ -3998,6 +4020,63 @@ impl LocalStorage {
                 }
             })
             .collect()
+    }
+
+    fn search_board_scope(board_ids: &[String]) -> HashSet<String> {
+        board_ids
+            .iter()
+            .map(|id| id.trim())
+            .filter(|id| !id.is_empty())
+            .map(ToOwned::to_owned)
+            .collect()
+    }
+
+    pub fn calendar_tasks_for_boards(&self, board_ids: &[String]) -> Vec<SearchResult> {
+        let board_scope = Self::search_board_scope(board_ids);
+        self.calendar_tasks_inner(Some(&board_scope))
+    }
+
+    fn calendar_tasks_inner(&self, board_scope: Option<&HashSet<String>>) -> Vec<SearchResult> {
+        let boards = match self.boards.read() {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("[lexera.storage.calendar] Boards lock poisoned: {}", e);
+                return Vec::new();
+            }
+        };
+        let mut results = Vec::new();
+
+        for (board_id, state) in boards.iter() {
+            if let Some(scope) = board_scope {
+                if !scope.contains(board_id) {
+                    continue;
+                }
+            }
+            let board_title = state.summary.title.as_str();
+            for doc in &state.search_docs {
+                if doc.meta.due_date.is_none() {
+                    continue;
+                }
+                results.push(Self::search_result_from_cached_doc(
+                    board_id,
+                    board_title,
+                    doc,
+                ));
+            }
+        }
+
+        results.sort_by(|a, b| {
+            a.due_date
+                .cmp(&b.due_date)
+                .then_with(|| {
+                    a.board_title
+                        .to_ascii_lowercase()
+                        .cmp(&b.board_title.to_ascii_lowercase())
+                })
+                .then_with(|| a.column_index.cmp(&b.column_index))
+        });
+
+        results
     }
 }
 
@@ -4274,41 +4353,7 @@ impl BoardStorage for LocalStorage {
     }
 
     fn calendar_tasks(&self) -> Vec<SearchResult> {
-        let boards = match self.boards.read() {
-            Ok(b) => b,
-            Err(e) => {
-                log::error!("[lexera.storage.calendar] Boards lock poisoned: {}", e);
-                return Vec::new();
-            }
-        };
-        let mut results = Vec::new();
-
-        for (board_id, state) in boards.iter() {
-            let board_title = state.summary.title.as_str();
-            for doc in &state.search_docs {
-                if doc.meta.due_date.is_none() {
-                    continue;
-                }
-                results.push(Self::search_result_from_cached_doc(
-                    board_id,
-                    board_title,
-                    doc,
-                ));
-            }
-        }
-
-        results.sort_by(|a, b| {
-            a.due_date
-                .cmp(&b.due_date)
-                .then_with(|| {
-                    a.board_title
-                        .to_ascii_lowercase()
-                        .cmp(&b.board_title.to_ascii_lowercase())
-                })
-                .then_with(|| a.column_index.cmp(&b.column_index))
-        });
-
-        results
+        self.calendar_tasks_inner(None)
     }
 }
 
