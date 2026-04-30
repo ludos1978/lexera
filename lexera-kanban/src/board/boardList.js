@@ -128,7 +128,7 @@ var LexeraBoardList = (function () {
     var shouldInvalidate = _scheduledRefresh.invalidate;
     resetScheduledRefreshFlags();
     if (shouldInvalidate) invalidateBoardListFingerprint();
-    if (shouldRefreshWorkspace) renderWorkspaceSelect();
+    if (shouldRefreshWorkspace) refreshWorkspaceMirrors();
     if (shouldRefreshList) renderBoardList();
     else if (!shouldRefreshWorkspace && shouldRefreshMirrors) syncMirroredWorkspaceViews();
   }
@@ -1268,7 +1268,7 @@ var LexeraBoardList = (function () {
     setWorkspaceViewMode(nextViewMode);
     if (options.render === false) return context;
     if (!_rt) {
-      renderWorkspaceSelect();
+      refreshWorkspaceMirrors();
       renderBoardList();
     }
     return context;
@@ -1532,7 +1532,7 @@ var LexeraBoardList = (function () {
       event.stopPropagation();
     }
     setWorkspaceViewId(_dep('ALL_WORKSPACES_ID'), { mode: 'manual' });
-    renderWorkspaceSelect();
+    refreshWorkspaceMirrors();
     renderBoardList();
   }
 
@@ -1594,7 +1594,7 @@ var LexeraBoardList = (function () {
 
   // ─── Workspace header rendering ───────────────────────────────────
 
-  function renderWorkspaceSelect() {
+  function refreshWorkspaceMirrors() {
     resolveActiveWorkspaceId(null);
     syncMirroredWorkspaceViews();
   }
@@ -1767,7 +1767,7 @@ var LexeraBoardList = (function () {
 
   function focusWorkspaceView(workspaceId) {
     setWorkspaceViewId(workspaceId, { mode: 'manual' });
-    renderWorkspaceSelect();
+    refreshWorkspaceMirrors();
     renderBoardList();
   }
 
@@ -3194,7 +3194,7 @@ var LexeraBoardList = (function () {
     bindMirroredWorkspaceView: bindMirroredWorkspaceView,
     syncMirroredWorkspaceViews: syncMirroredWorkspaceViews,
     beginHierarchyNodeInlineEdit: beginHierarchyNodeInlineEdit,
-    renderWorkspaceSelect: renderWorkspaceSelect,
+    refreshWorkspaceMirrors: refreshWorkspaceMirrors,
     getBoardWorkspaceIds: getBoardWorkspaceIds,
     removeBoardFromSidebar: removeBoardFromSidebar,
     renderBoardList: renderBoardList,

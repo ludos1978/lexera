@@ -42,7 +42,7 @@ function buildDeps(overrides = {}) {
     setConnectedState: vi.fn(function (value) { deps.connected = value; }),
     setWorkspaces: vi.fn(),
     resolveActiveWorkspaceId: vi.fn(),
-    renderWorkspaceSelect: vi.fn(),
+    refreshWorkspaceMirrors: vi.fn(),
     setBoards: vi.fn(function (value) { deps.boards = value; }),
     setRemoteBoards: vi.fn(function (value) { deps.remoteBoards = value; }),
     renderBoardList: vi.fn(),
@@ -138,7 +138,7 @@ describe('LexeraPollingService', () => {
 
     expect(deps.setWorkspaces).toHaveBeenCalledWith([{ id: 'ws-1', name: 'Workspace 1' }]);
     expect(deps.resolveActiveWorkspaceId).toHaveBeenCalledWith('ws-1');
-    expect(deps.renderWorkspaceSelect).toHaveBeenCalled();
+    expect(deps.refreshWorkspaceMirrors).toHaveBeenCalled();
   });
 
   it('skips global workspace and sidebar refreshes in embedded mode', async () => {

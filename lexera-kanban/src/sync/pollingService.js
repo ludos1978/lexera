@@ -165,7 +165,7 @@ var LexeraPollingService = (function () {
           workspacesChanged = true;
           _callDep('setWorkspaces', wsList);
           _callDep('resolveActiveWorkspaceId', wsData.default_workspace || null);
-          _callDep('renderWorkspaceSelect');
+          _callDep('refreshWorkspaceMirrors');
         }
       }
 

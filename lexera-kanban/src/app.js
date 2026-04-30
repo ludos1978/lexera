@@ -2641,7 +2641,7 @@ var LexeraDashboard = (function () {
     getElConnectionStatusBtn: function () { return getElConnectionStatusBtn(); },
     getElConnectionDot: function () { return getElConnectionDot(); },
     resolveActiveWorkspaceId: function (id) { resolveActiveWorkspaceId(id); },
-    renderWorkspaceSelect: function () { renderWorkspaceSelect(); },
+    refreshWorkspaceMirrors: function () { refreshWorkspaceMirrors(); },
     refreshBoardHierarchyCache: function (bl) { return refreshBoardHierarchyCache(bl); },
     renderBoardList: function () { renderBoardList(); },
     setShellActiveBoard: function (id) { setShellActiveBoard(id); },
@@ -2818,7 +2818,7 @@ var LexeraDashboard = (function () {
   function bindMirroredWorkspaceView(rootEl) { _bl('bindMirroredWorkspaceView', rootEl); }
   function syncMirroredWorkspaceViews() { _bl('syncMirroredWorkspaceViews'); }
 
-  function renderWorkspaceSelect() { _bl('renderWorkspaceSelect'); }
+  function refreshWorkspaceMirrors() { _bl('refreshWorkspaceMirrors'); }
   function getBoardWorkspaceIds(board) { return _bl('getBoardWorkspaceIds', board); }
   async function removeBoardFromSidebar(boardId, boardName) { return _bl('removeBoardFromSidebar', boardId, boardName); }
 
