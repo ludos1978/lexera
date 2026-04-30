@@ -139,4 +139,116 @@ describe('hierarchy view sub-app', () => {
       workspaceId: 'ws-1'
     });
   });
+
+  // ── User-interaction API exercise ────────────────────────────────
+  // Drives the hierarchy view ONLY through LexeraHierarchyTestApi.
+  // A regression that breaks rendering (board list invisible,
+  // workspace items missing) makes clickBoard/clickWorkspace return
+  // false so the test fails — no false positive.
+  it('LexeraHierarchyTestApi.collectState exposes the rendered grouped tree the user sees', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadHierarchyView(window);
+
+    capturedOpts.onCatalog({
+      boards: [
+        { id: 'board-1', title: 'Roadmap', workspace_id: 'ws-1' },
+        { id: 'board-2', title: 'Sprint', workspace_id: 'ws-1' },
+        { id: 'board-orphan', title: 'Orphan' }
+      ],
+      remoteBoards: [{ id: 'remote-1', title: 'Shared' }],
+      workspaces: [{ id: 'ws-1', name: 'Default' }],
+      activeWorkspaceId: '__all__',
+      viewWorkspaceId: '__all__',
+      workspaceViewMode: 'follow-active-board'
+    });
+    capturedOpts.onActiveBoard('board-2');
+
+    const state = window.LexeraHierarchyTestApi.collectState();
+    expect(state.status).toBe('connected');
+    expect(state.title).toBe('All Workspaces');
+    expect(state.activeBoardId).toBe('board-2');
+    expect(state.selectedWorkspaceId).toBe('__all__');
+
+    // Two workspace groups: ws-1 + __unassigned__
+    expect(state.groups.map((g) => g.id)).toEqual(['ws-1', '__unassigned__']);
+    const wsGroup = state.groups.find((g) => g.id === 'ws-1');
+    expect(wsGroup.expanded).toBe(true);
+    expect(wsGroup.boards.map((b) => b.label)).toEqual(['Roadmap', 'Sprint']);
+    expect(wsGroup.boards.find((b) => b.id === 'board-2').active).toBe(true);
+
+    expect(state.remote.map((b) => b.label)).toEqual(['Shared']);
+    expect(state.workspaces.map((w) => w.id)).toEqual(['__all__', 'ws-1']);
+  });
+
+  it('LexeraHierarchyTestApi.clickBoard / clickWorkspace dispatch the same navigate a real click does', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadHierarchyView(window);
+
+    capturedOpts.onCatalog({
+      boards: [{ id: 'board-1', title: 'Roadmap', workspace_id: 'ws-1' }],
+      remoteBoards: [{ id: 'remote-1', title: 'Shared' }],
+      workspaces: [{ id: 'ws-1', name: 'Default' }],
+      activeWorkspaceId: '__all__',
+      viewWorkspaceId: '__all__'
+    });
+
+    expect(window.LexeraHierarchyTestApi.clickBoard('board-1')).toBe(true);
+    expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
+      type: 'open-board',
+      boardId: 'board-1'
+    });
+
+    expect(window.LexeraHierarchyTestApi.clickBoard('remote-1', 'remote')).toBe(true);
+    expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
+      type: 'open-board',
+      boardId: 'remote-1'
+    });
+
+    expect(window.LexeraHierarchyTestApi.clickWorkspace('ws-1')).toBe(true);
+    expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
+      type: 'focus-workspace',
+      workspaceId: 'ws-1'
+    });
+
+    // Unknown ids → no navigate, no false positives.
+    expect(window.LexeraHierarchyTestApi.clickBoard('does-not-exist')).toBe(false);
+    expect(window.LexeraHierarchyTestApi.clickWorkspace('does-not-exist')).toBe(false);
+  });
+
+  it('LexeraHierarchyTestApi.clickWorkspaceGroupHeader toggles expand state without firing a navigate', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadHierarchyView(window);
+
+    capturedOpts.onCatalog({
+      boards: [{ id: 'board-1', title: 'Roadmap', workspace_id: 'ws-1' }],
+      remoteBoards: [],
+      workspaces: [{ id: 'ws-1', name: 'Default' }],
+      activeWorkspaceId: '__all__',
+      viewWorkspaceId: '__all__'
+    });
+
+    expect(window.LexeraHierarchyTestApi.collectState().groups[0].expanded).toBe(true);
+    expect(window.LexeraHierarchyTestApi.clickWorkspaceGroupHeader('ws-1')).toBe(true);
+    expect(window.LexeraHierarchyTestApi.collectState().groups[0].expanded).toBe(false);
+    // Toggling group must not fire a board/workspace navigate.
+    expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
+  });
 });

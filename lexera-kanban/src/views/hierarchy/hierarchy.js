@@ -279,4 +279,131 @@
       statusEl.textContent = String(err);
     }
   });
+
+  // ── Test API ──────────────────────────────────────────────────────
+  // User-interaction surface for vitest + autoRun integration tests.
+  // Mirrors LexeraDashboardTestApi / LexeraWorkspacesTestApi: every
+  // operation drives the SAME DOM and event paths a real user does
+  // — no internal-state shortcuts. Tests that read collectState()
+  // see only what the user can see; tests that call clickBoard /
+  // clickWorkspace / clickWorkspaceGroupHeader trigger the same
+  // click events a mouse would.
+  function dispatchClick(node) {
+    if (!node) return false;
+    var ev = typeof MouseEvent === 'function'
+      ? new MouseEvent('click', { bubbles: true, cancelable: true })
+      : document.createEvent('MouseEvent');
+    if (ev.initMouseEvent) {
+      ev.initMouseEvent('click', true, true, window, 1, 0, 0, 0, 0, false, false, false, false, 0, null);
+    }
+    node.dispatchEvent(ev);
+    return true;
+  }
+  function findBoardItem(rootEl, boardId) {
+    if (!rootEl) return null;
+    var items = rootEl.querySelectorAll('li.board-item');
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].dataset.boardId === String(boardId || '')) return items[i];
+    }
+    return null;
+  }
+  function findWorkspaceItem(workspaceId) {
+    if (!workspacesEl) return null;
+    var items = workspacesEl.querySelectorAll('li.ws-item');
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].dataset.workspaceId === String(workspaceId || '')) return items[i];
+    }
+    return null;
+  }
+  function findWorkspaceGroupHeader(groupId) {
+    if (!localBoardsEl) return null;
+    var headers = localBoardsEl.querySelectorAll('button.ws-group-header');
+    for (var i = 0; i < headers.length; i++) {
+      if (headers[i].dataset.workspaceId === String(groupId || '')) return headers[i];
+    }
+    return null;
+  }
+  function collectGroupState() {
+    if (!localBoardsEl) return [];
+    var groups = localBoardsEl.querySelectorAll('li.ws-group');
+    var out = [];
+    for (var i = 0; i < groups.length; i++) {
+      var header = groups[i].querySelector('button.ws-group-header');
+      var nested = groups[i].querySelector('ul.board-list.nested');
+      var boards = nested ? nested.querySelectorAll('li.board-item') : [];
+      var boardList = [];
+      for (var j = 0; j < boards.length; j++) {
+        var name = boards[j].querySelector('.board-name');
+        boardList.push({
+          id: boards[j].dataset.boardId || '',
+          label: name ? name.textContent : '',
+          active: boards[j].classList.contains('is-active')
+        });
+      }
+      out.push({
+        id: groups[i].getAttribute('data-workspace-group') || '',
+        name: header ? (header.querySelector('.ws-group-name') || {}).textContent || '' : '',
+        expanded: header ? header.getAttribute('aria-expanded') === 'true' : false,
+        active: header ? header.classList.contains('is-active') : false,
+        boards: boardList
+      });
+    }
+    return out;
+  }
+  function collectFlatBoardItems(rootEl) {
+    if (!rootEl) return [];
+    var items = rootEl.querySelectorAll('li.board-item');
+    var out = [];
+    for (var i = 0; i < items.length; i++) {
+      var name = items[i].querySelector('.board-name');
+      out.push({
+        id: items[i].dataset.boardId || '',
+        label: name ? name.textContent : '',
+        active: items[i].classList.contains('is-active')
+      });
+    }
+    return out;
+  }
+  function collectWorkspaceItems() {
+    if (!workspacesEl) return [];
+    var items = workspacesEl.querySelectorAll('li.ws-item');
+    var out = [];
+    for (var i = 0; i < items.length; i++) {
+      var name = items[i].querySelector('.ws-name');
+      out.push({
+        id: items[i].dataset.workspaceId || '',
+        label: name ? name.textContent : '',
+        active: items[i].classList.contains('is-active')
+      });
+    }
+    return out;
+  }
+  window.LexeraHierarchyTestApi = {
+    collectState: function () {
+      return {
+        status: statusEl ? statusEl.textContent : '',
+        title: titleEl ? titleEl.textContent : '',
+        viewMode: viewModeEl ? viewModeEl.textContent : '',
+        activeBoardId: activeBoardId,
+        selectedWorkspaceId: selectedWorkspaceId,
+        groups: collectGroupState(),
+        remote: collectFlatBoardItems(remoteBoardsEl),
+        workspaces: collectWorkspaceItems()
+      };
+    },
+    clickBoard: function (boardId, scope) {
+      // scope: 'local' (default — searches inside grouped tree) | 'remote'
+      var rootEl = scope === 'remote' ? remoteBoardsEl : localBoardsEl;
+      return dispatchClick(findBoardItem(rootEl, boardId));
+    },
+    clickWorkspace: function (workspaceId) {
+      // Top "Workspaces" sidebar list — focuses the workspace view.
+      return dispatchClick(findWorkspaceItem(workspaceId));
+    },
+    clickWorkspaceGroupHeader: function (groupId) {
+      // Inline group header inside the local-boards tree — toggles
+      // expand/collapse without firing a navigate.
+      return dispatchClick(findWorkspaceGroupHeader(groupId));
+    }
+  };
 })();
