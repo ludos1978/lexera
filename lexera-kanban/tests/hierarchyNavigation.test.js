@@ -243,6 +243,99 @@ describe('navigateToHierarchyTarget', () => {
     expect(state.unfoldCalls).toHaveLength(1);
     expect(state.localFocusCalls).toHaveLength(1);
   });
+
+  // Regression coverage for the user-visible "board switch" promise:
+  //
+  //   1. selectBoard() runs FIRST (ordering matters — loadBoard reads
+  //      the active id), and only when the target board differs from
+  //      the currently active board (no spurious switch when the
+  //      target is already active).
+  //   2. loadBoard() runs AFTER selectBoard so the new board's data
+  //      lands in state.activeBoardData before focus + unfold fire.
+  //   3. The view re-renders implicitly via focusHierarchyTargetLocally
+  //      → focusCard / focusBoardEntity (locked elsewhere by
+  //      boardSearchFocus.test.js).
+  //   4. "Switching back" — calling navigateToHierarchyTarget against
+  //      a previously-loaded board re-runs the same chain and ends up
+  //      focusing the right element on the restored board.
+
+  it('runs selectBoard BEFORE loadBoard so the active id is set before data fetch', async () => {
+    state.activeBoardId = 'board-old';
+    state.activeBoardData = null;
+    const order = [];
+    const opts = buildOptions();
+    const origSelect = opts.selectBoard;
+    const origLoad = opts.loadBoard;
+    opts.selectBoard = async function (id) {
+      order.push('select:' + id);
+      return origSelect(id);
+    };
+    opts.loadBoard = async function (id) {
+      order.push('load:' + id);
+      return origLoad(id);
+    };
+
+    await BoardNavigation.navigateToHierarchyTarget({ boardId: 'board-X' }, opts);
+
+    expect(order).toEqual(['select:board-X', 'load:board-X']);
+  });
+
+  it('skips selectBoard when the target board is already active (no flicker)', async () => {
+    state.activeBoardId = 'board-A';
+    state.activeBoardData = { id: 'board-A' };
+
+    await BoardNavigation.navigateToHierarchyTarget({
+      boardId: 'board-A',
+      rowIndex: 0
+    }, buildOptions());
+
+    // No selectBoard call — active board didn't change.
+    expect(state.selectCalls).toEqual([]);
+    // No re-load either — activeBoardData was already populated.
+    expect(state.loadCalls).toEqual([]);
+    // But focus + unfold MUST still fire so the view re-reveals the card.
+    expect(state.unfoldCalls).toHaveLength(1);
+    expect(state.localFocusCalls).toHaveLength(1);
+  });
+
+  it('switches back to a previously-loaded board and re-runs the full focus chain', async () => {
+    // Simulate "user opened board A → switched to board B → switched back to board A".
+    // Each navigateToHierarchyTarget call must reach focusHierarchyTargetLocally
+    // so the restored view actually reveals the requested element.
+    state.activeBoardId = 'board-A';
+    state.activeBoardData = { id: 'board-A' };
+
+    // Build options whose mock selectBoard ALSO clears activeBoardData —
+    // matches the real `selectBoard` in app.js (setActiveBoardDataState(null))
+    // so the subsequent loadBoard branch fires correctly.
+    function buildSwitchOpts() {
+      const opts = buildOptions();
+      const origSelect = opts.selectBoard;
+      opts.selectBoard = async function (boardId, options) {
+        await origSelect(boardId, options);
+        state.activeBoardData = null;
+      };
+      return opts;
+    }
+
+    // First switch: A → B
+    await BoardNavigation.navigateToHierarchyTarget({ boardId: 'board-B', cardId: 'card-on-B' }, buildSwitchOpts());
+    expect(state.selectCalls.at(-1)).toEqual({ boardId: 'board-B', options: {} });
+    expect(state.loadCalls.at(-1)).toBe('board-B');
+    expect(state.localFocusCalls.at(-1)).toMatchObject({ boardId: 'board-B', cardId: 'card-on-B' });
+
+    // Switch back: B → A. State is now activeBoardId=board-B (set by mock
+    // selectBoard) and activeBoardData was repopulated by mock loadBoard.
+    await BoardNavigation.navigateToHierarchyTarget({ boardId: 'board-A', cardId: 'card-on-A' }, buildSwitchOpts());
+    expect(state.selectCalls.at(-1)).toEqual({ boardId: 'board-A', options: {} });
+    expect(state.loadCalls.at(-1)).toBe('board-A');
+    expect(state.localFocusCalls.at(-1)).toMatchObject({ boardId: 'board-A', cardId: 'card-on-A' });
+
+    // Both boards saw a switch + load + focus — the chain ran twice.
+    expect(state.selectCalls.length).toBe(2);
+    expect(state.loadCalls.length).toBe(2);
+    expect(state.localFocusCalls.length).toBe(2);
+  });
 });
 
 describe('openEditForHierarchyTarget', () => {
