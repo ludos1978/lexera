@@ -76,4 +76,41 @@ describe('renderApps view sub-app', () => {
     expect(window.document.querySelector('.lexera-shared-render-apps-status')?.textContent)
       .toContain('Failed to initialize: boom');
   });
+
+  // ── User-interaction API exercise ────────────────────────────────
+  // Drives the renderApps sub-app ONLY through LexeraRenderAppsTestApi.
+  // The visible-to-user surface owned by THIS file is small (init state
+  // + status text), so a regression that breaks bootstrap or error
+  // reporting flips collectState.
+  it('LexeraRenderAppsTestApi.collectState reports initialised=true on success', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = { init: vi.fn() };
+    window.LexeraRenderAppsSettings = { init: vi.fn(), destroy: vi.fn() };
+
+    loadRenderAppsView(window);
+
+    const state = window.LexeraRenderAppsTestApi.collectState();
+    expect(state.initialised).toBe(true);
+    expect(state.error).toBe('');
+    expect(state.hasErrorBlock).toBe(false);
+    expect(state.statusText).toBe('');
+  });
+
+  it('LexeraRenderAppsTestApi.collectState reports the error path when init throws', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = { init: vi.fn() };
+    window.LexeraRenderAppsSettings = {
+      init: vi.fn(() => { throw new Error('settings loader missing'); })
+    };
+
+    loadRenderAppsView(window);
+
+    const state = window.LexeraRenderAppsTestApi.collectState();
+    expect(state.initialised).toBe(false);
+    expect(state.error).toBe('settings loader missing');
+    expect(state.hasErrorBlock).toBe(true);
+    expect(state.statusText).toContain('Failed to initialize: settings loader missing');
+  });
 });
