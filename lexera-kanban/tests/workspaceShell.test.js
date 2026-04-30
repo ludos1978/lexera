@@ -508,6 +508,18 @@ describe('workspace shell tab actions (Phase 1 keyboard shortcuts)', () => {
     expect(shell.handleBoardAction('toggle-panel:files')).toBe(true);
   });
 
+  it('handles native open-workspace:<id> menu actions in the shell', () => {
+    const { shell, mainContent } = createShellHarness();
+    const openWindow = vi.fn();
+    shell.mount({ getMainContent: () => mainContent, openWindow });
+
+    expect(shell.handleBoardAction('open-workspace:ws-selected')).toBe(true);
+    expect(openWindow).toHaveBeenCalledWith({
+      profile: 'workspace',
+      workspaceId: 'ws-selected'
+    });
+  });
+
   it('renders a shell tab header for default multi-view panel groups', () => {
     const { shell, mainContent } = createShellHarness();
     shell.mount({ getMainContent: () => mainContent });

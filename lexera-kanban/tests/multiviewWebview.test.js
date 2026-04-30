@@ -192,6 +192,45 @@ describe('LexeraMultiviewWebview native geometry mapping', () => {
 });
 
 describe('LexeraMultiviewWebview.setAllVisible suppression refcount', () => {
+  it('passes the owning top-level window label as the child webview parent', async () => {
+    const placeholder = createPlaceholder();
+    const invoke = vi.fn((command) => {
+      if (command === 'multiview_get_host_geometry') {
+        return Promise.resolve({ x: 0, y: 0, width: 1200, height: 800 });
+      }
+      return Promise.resolve(null);
+    });
+    const spawn = vi.fn(() => Promise.resolve(null));
+    const window = {
+      location: { href: 'http://127.0.0.1:1431/?windowLabel=kanban-2', search: '?windowLabel=kanban-2' },
+      localStorage: createStorage(),
+      addEventListener() {},
+      removeEventListener() {},
+      LexeraMultiview: {
+        invoke,
+        spawn,
+        pushGeomDeferred: vi.fn(),
+        setGeometry: () => Promise.resolve(null)
+      }
+    };
+    const { api } = loadMultiviewWebview({ window });
+    api.setup({
+      getHostWindowLabel() { return 'kanban-2'; },
+      getPlaceholder(tabId) { return tabId === 'tab-a' ? placeholder : null; },
+      isPanelTab() { return false; }
+    });
+    await api.refreshHostGeometryContext(true);
+
+    api.ensure({ id: 'tab-a' }, placeholder, '/board-a.md');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(spawn).toHaveBeenCalledWith(expect.objectContaining({
+      label: 'board-tab-tab-a',
+      parentWindow: 'kanban-2'
+    }));
+  });
+
   it('only fires hide/show IPCs at the 0↔1 suppression boundary so concurrent suppressors compose', async () => {
     const placeholders = {
       'tab-a': createPlaceholder(),

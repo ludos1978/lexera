@@ -8,14 +8,17 @@
 // filter.
 //
 // This contract test pins the wiring across four files:
-//   1. workspaces sub-app emits `open-workspace-window` navigate.
-//   2. navigationBridge routes that to `shell.openWorkspaceWindow`.
-//   3. workspaceShell.openWorkspaceWindow forwards `workspaceId` to
+//   1. native File > Open Workspace emits `open-workspace:<id>`.
+//   2. workspaceShell handles that prefix before forwarding actions
+//      into a child view.
+//   3. navigationBridge still routes explicit open-workspace-window
+//      messages to `shell.openWorkspaceWindow`.
+//   4. workspaceShell.openWorkspaceWindow forwards `workspaceId` to
 //      `open_new_window` so the URL of the new window carries
 //      `?workspace=<id>`.
-//   4. Rust `open_new_window` accepts a `workspace_id` parameter and
+//   5. Rust `open_new_window` accepts a `workspace_id` parameter and
 //      appends it to the URL.
-//   5. app.js reads `?workspace=<id>` on boot and pins the window's
+//   6. app.js reads `?workspace=<id>` on boot and pins the window's
 //      activeWorkspaceId to it (per-window only — not persisted).
 //
 // Each link in the chain is independently asserted; a refactor that
@@ -36,12 +39,13 @@ const appJs = readFileSync(resolve(__dirname, '..', 'src', 'app.js'), 'utf8');
 const actionRegistrationsJs = readFileSync(resolve(__dirname, '..', 'src', 'core', 'actionRegistrations.js'), 'utf8');
 
 describe('one workspace per window — wiring contract', () => {
-  it('workspaces sub-app emits the new open-workspace-window navigate from per-row "Open" button', () => {
-    expect(workspacesJs).toContain("'open-workspace-window'");
-    expect(workspacesJs).toContain('ws-open-btn');
-    // The Open button stops propagation so the click doesn't bubble
-    // up to the row and accidentally fire a focus-workspace navigate.
-    expect(workspacesJs).toMatch(/openBtn[\s\S]{0,200}?stopPropagation\(\)/);
+  it('workspaces sub-app shows only the current workspace and no per-row workspace opener', () => {
+    expect(workspacesJs).toContain('function renderCurrentWorkspace');
+    expect(workspacesJs).not.toContain('ws-list');
+    expect(workspacesJs).not.toContain('ws-item');
+    expect(workspacesJs).not.toContain('ws-open-btn');
+    expect(workspacesJs).not.toContain("'open-workspace-window'");
+    expect(workspacesJs).toContain('activeWorkspaceId');
   });
 
   it('navigationBridge routes open-workspace-window to shell.openWorkspaceWindow', () => {
@@ -57,6 +61,11 @@ describe('one workspace per window — wiring contract', () => {
     expect(workspaceShellJs).toMatch(/payload\.workspaceId\s*=\s*String\(workspaceId\)/);
     // Public export so navigationBridge can dispatch it.
     expect(workspaceShellJs).toContain('openWorkspaceWindow: openWorkspaceWindow');
+  });
+
+  it('workspaceShell handles native open-workspace:<id> menu actions before child views can consume them', () => {
+    expect(workspaceShellJs).toMatch(/prefix:\s*'open-workspace:'/);
+    expect(workspaceShellJs).toMatch(/openWorkspaceWindow\(workspaceId\)/);
   });
 
   it('Rust open_new_window accepts workspace_id and appends ?workspace=<id> to the new window URL', () => {

@@ -1660,6 +1660,7 @@
     findTabInAllTrees: findTabInAllTrees,
     isPanelTab: isPanelTab,
     getPanelKind: getPanelKind,
+    getHostWindowLabel: function () { return state.hostWindowLabel || state.windowLabel || 'main'; },
     getEmbeddedUrlForTab: getEmbeddedUrlForTab
   });
 
@@ -4258,6 +4259,11 @@
   // Prefix-match action handlers. Each receives the action body
   // (everything after the prefix). Returns true if handled.
   var PREFIX_ACTIONS = [
+    { prefix: 'open-workspace:', handler: function (workspaceId) {
+      if (!workspaceId) return false;
+      openWorkspaceWindow(workspaceId);
+      return true;
+    } },
     { prefix: 'toggle-panel:', handler: function (target) {
       if (!PANEL_DEFINITIONS[getPanelKind(target)]) return false;
       if (isPanelShown(target)) {

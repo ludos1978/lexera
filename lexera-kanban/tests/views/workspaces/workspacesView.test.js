@@ -34,8 +34,8 @@ function createDom() {
             <ul class="board-list" id="remote-boards"></ul>
           </section>
           <section>
-            <h3>Workspaces <span class="muted" id="ws-count"></span></h3>
-            <ul class="ws-list" id="workspaces"></ul>
+            <h3>Current workspace</h3>
+            <div class="current-workspace" id="current-workspace"></div>
           </section>
         </main>
       </body>
@@ -63,14 +63,21 @@ describe('workspaces view sub-app', () => {
     capturedOpts.onCatalog({
       boards: [{ id: 'board-1', name: 'Local Board' }],
       remoteBoards: [{ id: 'board-2', title: 'Remote Board' }],
-      workspaces: [{ id: 'ws-1', name: 'Primary Workspace' }]
+      activeWorkspaceId: 'ws-1',
+      activeWorkspace: { id: 'ws-1', name: 'Primary Workspace' },
+      workspaces: [
+        { id: 'ws-1', name: 'Primary Workspace' },
+        { id: 'ws-2', name: 'Sibling Workspace' }
+      ]
     });
     capturedOpts.onActiveBoard('board-2');
 
     expect(window.document.getElementById('status').textContent).toBe('connected');
     expect(window.document.getElementById('local-count').textContent).toBe('(1)');
     expect(window.document.getElementById('remote-count').textContent).toBe('(1)');
-    expect(window.document.getElementById('ws-count').textContent).toBe('(1)');
+    expect(window.document.getElementById('current-workspace').textContent).toContain('Primary Workspace');
+    expect(window.document.getElementById('current-workspace').textContent).not.toContain('Sibling Workspace');
+    expect(window.document.querySelector('#workspaces')).toBeNull();
     expect(window.document.getElementById('remote-boards').textContent).toContain('Remote Board');
     expect(window.document.querySelector('#remote-boards .board-item')?.classList.contains('is-active')).toBe(true);
 
@@ -168,7 +175,11 @@ describe('workspaces view sub-app', () => {
     capturedOpts.onCatalog({
       boards: [{ id: 'b1', title: 'Roadmap' }, { id: 'b2', title: 'Sprint' }],
       remoteBoards: [{ id: 'r1', title: 'Shared' }],
-      workspaces: [{ id: 'w1', name: 'Default' }]
+      activeWorkspaceId: 'w1',
+      workspaces: [
+        { id: 'w1', name: 'Default' },
+        { id: 'w2', name: 'Sandbox' }
+      ]
     });
     capturedOpts.onActiveBoard('b2');
 
@@ -179,7 +190,8 @@ describe('workspaces view sub-app', () => {
     expect(state.local.find((b) => b.id === 'b2').active).toBe(true);
     expect(state.local.find((b) => b.id === 'b1').active).toBe(false);
     expect(state.remote.map((b) => b.label)).toEqual(['Shared']);
-    expect(state.workspaces.map((w) => w.label)).toEqual(['Default']);
+    expect(state.currentWorkspace).toEqual({ id: 'w1', label: 'Default' });
+    expect(state.workspaces).toEqual([]);
   });
 
   it('LexeraWorkspacesTestApi.clickBoard fires the same navigate call a real click would', () => {
@@ -214,7 +226,7 @@ describe('workspaces view sub-app', () => {
     expect(window.LexeraWorkspacesTestApi.clickBoard('does-not-exist')).toBe(false);
   });
 
-  it('LexeraWorkspacesTestApi.clickOpenWorkspace fires the open-workspace-window navigate (one window per workspace)', () => {
+  it('renders only the current workspace and has no per-row workspace opener', () => {
     const dom = createDom();
     const { window } = dom;
     let capturedOpts = null;
@@ -227,33 +239,19 @@ describe('workspaces view sub-app', () => {
     capturedOpts.onCatalog({
       boards: [],
       remoteBoards: [],
+      activeWorkspaceId: 'ws-1',
       workspaces: [
         { id: 'ws-1', name: 'Default' },
         { id: 'ws-2', name: 'Sandbox' }
       ]
     });
 
-    // The "Open" button on the ws-1 row should fire the new
-    // open-workspace-window navigate type — the SHELL routes that to
-    // `WorkspaceShell.openWorkspaceWindow(workspaceId)` which spawns
-    // a fresh window pinned to that workspace via `?workspace=<id>`.
-    expect(window.LexeraWorkspacesTestApi.clickOpenWorkspace('ws-1')).toBe(true);
-    expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
-      type: 'open-workspace-window',
-      workspaceId: 'ws-1'
-    });
-
-    // The Open button must NOT trigger the legacy open-board navigate
-    // for the workspace's first board (would be a UX regression — user
-    // asked for a window, not a board switch).
-    const openBoardCalls = window.LexeraSubApp.navigate.mock.calls.filter(
-      (call) => call[0] && call[0].type === 'open-board'
-    );
-    expect(openBoardCalls.length).toBe(0);
-
-    // Unknown workspace id → no navigate.
-    window.LexeraSubApp.navigate.mockClear();
-    expect(window.LexeraWorkspacesTestApi.clickOpenWorkspace('does-not-exist')).toBe(false);
+    const state = window.LexeraWorkspacesTestApi.collectState();
+    expect(state.currentWorkspace).toEqual({ id: 'ws-1', label: 'Default' });
+    expect(state.workspaces).toEqual([]);
+    expect(window.document.getElementById('current-workspace').textContent).not.toContain('Sandbox');
+    expect(window.document.querySelector('#workspaces')).toBeNull();
+    expect(window.LexeraWorkspacesTestApi.clickOpenWorkspace('ws-1')).toBe(false);
     expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
   });
 });

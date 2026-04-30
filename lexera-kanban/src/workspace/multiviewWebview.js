@@ -22,7 +22,8 @@
  *     findTabInAllTrees,        // (tabId) → { tab, leaf } or null
  *     isPanelTab,               // (tab) → boolean
  *     getPanelKind,             // (panelId) → string
- *     getEmbeddedUrlForTab      // (tab) → string
+ *     getEmbeddedUrlForTab,     // (tab) → string
+ *     getHostWindowLabel        // () → top-level window label for child webview parent
  *   });
  *
  * Public API:
@@ -802,7 +803,18 @@
       var attempts = (prior && prior.attempts) ? prior.attempts : 0;
       multiviewSpawnedTabs[tab.id] = { url: url, state: 'pending', label: label, attempts: attempts };
       var lifecycleApi = window.LexeraMultiview.lifecycle;
-      var args = { label: label, url: url, x: x, y: y, width: w, height: h };
+      var parentWindow = deps && typeof deps.getHostWindowLabel === 'function'
+        ? String(deps.getHostWindowLabel() || '')
+        : '';
+      var args = {
+        label: label,
+        url: url,
+        x: x,
+        y: y,
+        width: w,
+        height: h,
+        parentWindow: parentWindow || null
+      };
       var spawnPromise = lifecycleApi && typeof lifecycleApi.spawn === 'function'
         ? lifecycleApi.spawn(args)
         : window.LexeraMultiview.spawn(args).then(function () {

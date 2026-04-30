@@ -188,6 +188,38 @@ describe('LexeraSubApp runtime metadata', () => {
     });
   });
 
+  it('routes navigation requests to the owning host window instead of broadcasting to every window', async () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/views/workspaces/index.html?panelKind=workspaces&panel=workspaces-1&pane=tab-4&windowLabel=panel-tab-tab-4&workspaceShellHostLabel=kanban-2'
+    });
+    const { window } = dom;
+    const invoke = vi.fn(() => Promise.resolve(null));
+    window.__TAURI__ = {
+      core: { invoke },
+      webview: {
+        getCurrentWebview() {
+          return { label: 'panel-tab-tab-4', listen: vi.fn() };
+        }
+      }
+    };
+    const subApp = loadSubApp(window, {
+      URLSearchParams,
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+
+    await subApp.navigate({ type: 'open-board', boardId: 'board-alpha' });
+
+    expect(invoke).toHaveBeenCalledWith('multiview_emit_to', {
+      target: 'kanban-2',
+      event: 'multiview-navigate',
+      payload: { type: 'open-board', boardId: 'board-alpha' }
+    });
+    expect(invoke).not.toHaveBeenCalledWith('multiview_broadcast', expect.objectContaining({
+      event: 'multiview-navigate'
+    }));
+  });
+
   it('installs sub-app log helpers that forward into log_broadcast when shell logging is absent', async () => {
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'http://127.0.0.1:1431/views/renderApps/index.html?panelKind=renderApps&panel=renderApps-1&pane=tab-4&windowLabel=panel-tab-tab-4&workspaceShellHostLabel=main'

@@ -1,6 +1,6 @@
 // Workspaces sub-app — uses LexeraSubApp shared runtime.
 //
-// Shows local boards, remote boards, and workspaces. Click a board
+// Shows local boards, remote boards, and the current workspace. Click a board
 // to broadcast a navigation request to the main shell.
 
 (function () {
@@ -15,12 +15,12 @@
   var statusEl = document.getElementById('status');
   var localBoardsEl = document.getElementById('local-boards');
   var remoteBoardsEl = document.getElementById('remote-boards');
-  var workspacesEl = document.getElementById('workspaces');
+  var currentWorkspaceEl = document.getElementById('current-workspace');
   var localCountEl = document.getElementById('local-count');
   var remoteCountEl = document.getElementById('remote-count');
-  var wsCountEl = document.getElementById('ws-count');
 
   var activeBoardId = null;
+  var currentWorkspace = null;
 
   function refreshActiveHighlight() {
     var items = document.querySelectorAll('li.board-item');
@@ -60,43 +60,38 @@
     });
   }
 
-  function renderWorkspaces(workspaces) {
-    wsCountEl.textContent = '(' + workspaces.length + ')';
-    if (!workspaces.length) {
-      workspacesEl.innerHTML = '<li class="empty">none</li>';
+  function findCurrentWorkspace(snap) {
+    if (snap && snap.activeWorkspace && snap.activeWorkspace.id) return snap.activeWorkspace;
+    var activeId = snap && snap.activeWorkspaceId ? String(snap.activeWorkspaceId) : '';
+    var workspaces = snap && Array.isArray(snap.workspaces) ? snap.workspaces : [];
+    if (activeId) {
+      for (var i = 0; i < workspaces.length; i++) {
+        if (String(workspaces[i] && workspaces[i].id || '') === activeId) return workspaces[i];
+      }
+      return { id: activeId, name: activeId };
+    }
+    return workspaces.length ? workspaces[0] : null;
+  }
+
+  function renderCurrentWorkspace(snap) {
+    var workspace = findCurrentWorkspace(snap || {});
+    currentWorkspace = workspace;
+    if (!currentWorkspaceEl) return;
+    if (!workspace) {
+      currentWorkspaceEl.innerHTML = '<span class="empty">none</span>';
       return;
     }
-    workspacesEl.innerHTML = '';
-    workspaces.forEach(function (w) {
-      var li = document.createElement('li');
-      li.className = 'ws-item';
-      li.dataset.workspaceId = w.id || '';
-      // "Open" button spawns the workspace in a new window — the SHELL
-      // routes this to `WorkspaceShell.openWorkspaceWindow(workspaceId)`,
-      // which passes the id to `open_new_window` so the new window
-      // boots with `?workspace=<id>` and locks itself to that workspace.
-      li.innerHTML =
-        '<span class="ws-name">' + escapeHtml(w.name || '(untitled)') + '</span>' +
-        '<span class="ws-id">' + escapeHtml(w.id ? w.id.substring(0, 8) : '') + '</span>' +
-        '<button class="ws-open-btn" type="button" title="Open in new window" aria-label="Open workspace in new window">Open</button>';
-      var openBtn = li.querySelector('.ws-open-btn');
-      if (openBtn) {
-        openBtn.addEventListener('click', function (ev) {
-          ev.stopPropagation();
-          ev.preventDefault();
-          if (!w.id) return;
-          LexeraSubApp.navigate({ type: 'open-workspace-window', workspaceId: w.id });
-        });
-      }
-      workspacesEl.appendChild(li);
-    });
+    currentWorkspaceEl.dataset.workspaceId = workspace.id || '';
+    currentWorkspaceEl.innerHTML =
+      '<span class="current-workspace-name">' + escapeHtml(workspace.name || '(untitled)') + '</span>' +
+      '<span class="current-workspace-id">' + escapeHtml(workspace.id ? String(workspace.id).substring(0, 8) : '') + '</span>';
   }
 
   LexeraSubApp.init({
     onCatalog: function (snap) {
       renderBoards(localBoardsEl, snap.boards || [], localCountEl);
       renderBoards(remoteBoardsEl, snap.remoteBoards || [], remoteCountEl);
-      renderWorkspaces(snap.workspaces || []);
+      renderCurrentWorkspace(snap || {});
       refreshActiveHighlight();
       statusEl.textContent = 'connected';
     },
@@ -119,7 +114,7 @@
   // mouse would.
   function collectListItemState(listEl) {
     if (!listEl) return [];
-    var items = listEl.querySelectorAll('li.board-item, li.ws-item');
+    var items = listEl.querySelectorAll('li.board-item');
     var out = [];
     for (var i = 0; i < items.length; i++) {
       var name = items[i].querySelector('.board-name, .ws-name');
@@ -150,14 +145,6 @@
     node.dispatchEvent(ev);
     return true;
   }
-  function findWorkspaceItem(workspaceId) {
-    if (!workspacesEl) return null;
-    var items = workspacesEl.querySelectorAll('li.ws-item');
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].dataset.workspaceId === String(workspaceId || '')) return items[i];
-    }
-    return null;
-  }
   window.LexeraWorkspacesTestApi = {
     collectState: function () {
       return {
@@ -165,7 +152,11 @@
         activeBoardId: activeBoardId,
         local: collectListItemState(localBoardsEl),
         remote: collectListItemState(remoteBoardsEl),
-        workspaces: collectListItemState(workspacesEl)
+        currentWorkspace: currentWorkspace ? {
+          id: currentWorkspace.id || '',
+          label: currentWorkspace.name || '(untitled)'
+        } : null,
+        workspaces: []
       };
     },
     clickBoard: function (boardId, scope) {
@@ -177,15 +168,8 @@
       return dispatchClick(findBoardItem(listEl, boardId));
     },
     clickOpenWorkspace: function (workspaceId) {
-      // Drives the per-row "Open" button — fires the same
-      // `LexeraSubApp.navigate({ type: 'open-workspace-window', ... })`
-      // a real click does. Returns false when the workspace row or
-      // the open button isn't visible (so a regression that hides
-      // the affordance fails the test loudly).
-      var item = findWorkspaceItem(workspaceId);
-      if (!item) return false;
-      var btn = item.querySelector('.ws-open-btn');
-      return dispatchClick(btn);
+      void workspaceId;
+      return false;
     }
   };
 })();

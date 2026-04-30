@@ -678,6 +678,14 @@
   }
 
   function navigate(payload) {
+    var target = getHostWindowLabel();
+    if (target) {
+      return invoke('multiview_emit_to', {
+        target: target,
+        event: 'multiview-navigate',
+        payload: payload || {}
+      });
+    }
     return invoke('multiview_broadcast', {
       event: 'multiview-navigate',
       payload: payload || {}

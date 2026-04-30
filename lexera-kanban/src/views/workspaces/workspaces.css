@@ -24,57 +24,43 @@ h3 {
 }
 .muted { color: var(--text-muted, #666); font-weight: 400; }
 
-ul.board-list, ul.ws-list { list-style: none; margin: 0; padding: 0; }
-li.board-item, li.ws-item {
+ul.board-list { list-style: none; margin: 0; padding: 0; }
+li.board-item {
   padding: 5px 8px;
   border-radius: 3px;
-  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
   user-select: none;
 }
-li.board-item:hover, li.ws-item:hover {
+li.board-item {
+  cursor: pointer;
+}
+li.board-item:hover {
   background: var(--bg-hover, #2a2a32);
 }
 li.board-item.is-active {
   background: var(--bg-active, #094771);
   color: var(--accent, #fff);
 }
-.board-name, .ws-name { flex: 1 1 auto; }
-.board-id, .ws-id {
+.board-name { flex: 1 1 auto; }
+.board-id, .current-workspace-id {
   font-family: ui-monospace, monospace;
   font-size: 10px;
   color: var(--text-muted, #666);
 }
+.current-workspace {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 3px;
+  background: var(--bg-active, #094771);
+  color: var(--accent, #fff);
+}
+.current-workspace-name { flex: 1 1 auto; }
 li.empty {
   padding: 4px 8px;
   color: var(--text-muted, #666);
   font-style: italic;
-}
-
-/* Per-row "Open" button on the workspaces panel. Spawns a new window
-   pinned to the workspace via shell.openWorkspaceWindow(). */
-button.ws-open-btn {
-  flex: 0 0 auto;
-  padding: 3px 10px;
-  background: var(--bg-tertiary, var(--bg-secondary, #2a2a32));
-  border: 1px solid var(--border, #3a3a40);
-  border-radius: 3px;
-  color: var(--text-primary, #e8e8ec);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  user-select: none;
-}
-
-button.ws-open-btn:hover {
-  background: var(--accent, #094771);
-  border-color: var(--accent, #094771);
-  color: var(--text-primary, #ffffff);
-}
-
-button.ws-open-btn:focus {
-  outline: 1px solid var(--accent, #094771);
-  outline-offset: 1px;
 }
