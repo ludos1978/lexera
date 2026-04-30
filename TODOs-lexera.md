@@ -14,7 +14,7 @@ Keep this file structured and clean:
 
 ### Unsorted (leave this header here!)
 
-- [ ] the dashboard isnt showing any of the content it should show!
+- [ ] the dashboard isnt showing any of the content it should show! — **in progress**
 
 - [ ] the workspace isnt showing the names of the board, all show (untitled)
 
