@@ -438,29 +438,24 @@ fn main() {
                 // Route menu actions to the FOCUSED window only. macOS
                 // shares one menu bar across windows; clicking
                 // View > Panels > Dashboard means "show the dashboard
-                // panel in THIS window I'm in". Broadcasting via
-                // `app.emit` revealed the panel in every window
-                // simultaneously and was the source of "the views show
-                // in the wrong window" bug.
+                // panel in THIS window I'm in". `app.emit("menu-action")`
+                // and `WebviewWindow::emit("menu-action")` BOTH
+                // broadcast in Tauri 2 — only `emit_to(label, …)`
+                // actually targets a single webview. Use the focused
+                // window's label as the target.
                 //
-                // Each window has its own SHELL webview attached to its
-                // "main" WebviewWindow, plus child multiview webviews.
-                // `WebviewWindow::emit` delivers to just that window's
-                // attached webview — exactly the shell that should
-                // handle the action.
-                //
-                // Fallback: if no window is focused (rare; can happen
-                // briefly during window creation or when the app is in
-                // the background), emit globally so a SHELL still picks
-                // it up and the action isn't silently lost.
-                let focused = app
+                // Fallback: if no window is focused (rare — eg during
+                // window creation or while the app is in the
+                // background), broadcast so the action is not silently
+                // lost.
+                let focused_label = app
                     .webview_windows()
                     .into_iter()
                     .find(|(_, w)| w.is_focused().unwrap_or(false))
-                    .map(|(_, w)| w);
-                if let Some(window) = focused {
-                    let _ = window.emit("menu-action", action.clone());
-                    log::debug!("[main] menu-action sent to focused window {}: {}", window.label(), action);
+                    .map(|(label, _)| label);
+                if let Some(label) = focused_label {
+                    let _ = app.emit_to(label.as_str(), "menu-action", action.clone());
+                    log::debug!("[main] menu-action sent to focused window '{}': {}", label, action);
                 } else {
                     let _ = app.emit("menu-action", action.clone());
                     log::debug!("[main] menu-action emitted globally (no focused window): {}", action);

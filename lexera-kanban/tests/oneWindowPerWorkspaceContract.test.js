@@ -152,19 +152,24 @@ describe('one workspace per window — wiring contract', () => {
     expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}workspaces\.some\(/);
   });
 
-  it('native menu actions target the FOCUSED window only — no app-wide broadcast that would fire the action in every window', () => {
+  it('native menu actions target the FOCUSED window only — must use app.emit_to(label, …) since both app.emit and WebviewWindow::emit broadcast in Tauri 2', () => {
     // Each window owns one workspace; menu actions like
     // View > Panels > Dashboard mean "show this panel in THIS
-    // window". `app.emit("menu-action", …)` broadcasts to every
-    // window and was causing the panel to reveal everywhere at once.
-    // Focused-window targeting via `webview_windows()` + `is_focused`
-    // routes the action to just the window the user clicked from.
+    // window". The user reported "views show in the wrong window"
+    // twice: first when we used `app.emit` (obvious broadcast), then
+    // again after switching to `WebviewWindow::emit` — which ALSO
+    // broadcasts (Tauri 2 quirk: only `emit_to(label, …)` actually
+    // targets a single webview). The third fix uses the focused
+    // window's label with `app.emit_to(label, …)`.
     expect(mainRs).toMatch(/\.webview_windows\(\)[\s\S]{0,200}is_focused\(\)/);
-    expect(mainRs).toMatch(/window\.emit\("menu-action"/);
-    // The fallback `app.emit` only runs when no window is focused —
-    // pin the structure so a future refactor doesn't accidentally
+    expect(mainRs).toMatch(/app\.emit_to\(\s*label\.as_str\(\)\s*,\s*"menu-action"/);
+    // The plain `WebviewWindow::emit("menu-action", …)` pattern is
+    // explicitly forbidden — it broadcasts.
+    expect(mainRs).not.toMatch(/window\.emit\("menu-action"/);
+    // The fallback `app.emit("menu-action")` only runs when no window
+    // is focused — pin the structure so a future refactor doesn't
     // re-broadcast unconditionally.
-    expect(mainRs).toMatch(/if let Some\(window\) = focused[\s\S]{0,500}else[\s\S]{0,300}app\.emit\("menu-action"/);
+    expect(mainRs).toMatch(/if let Some\(label\) = focused_label[\s\S]{0,500}else[\s\S]{0,300}app\.emit\("menu-action"/);
   });
 
   it('the legacy ALL_WORKSPACES_ID sentinel is gone — no codepath references __all__ or ALL_WORKSPACES_ID anymore', () => {
