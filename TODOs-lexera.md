@@ -34,7 +34,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
   - renderApps: `LexeraRenderAppsTestApi` (collectState) — added 5d20bb60.
   - **future tests in any sub-app**: extend the matching `Lexera*TestApi` rather than adding a parallel surface; never assert on private internals.
 
-- [~] check all tests if they are really testing what we need! — 1fe4f101 (PARTIAL: started by upgrading the dashboardShellMirrorContract from regex-only to regex+runtime DOM checks; same pattern needs broader rollout — flagged regex-only contract tests at cardDraggingLayoutContract / fullBoardRenderContract / ipcAuthSingleEntryContract; full audit is multi-day)
+- [~] check all tests if they are really testing what we need! — 1fe4f101 + b73f67eb (PARTIAL: dashboardShellMirrorContract upgraded to regex+runtime; cardDraggingLayoutContract gained runtime computed-style check on `.card.dragging` (b73f67eb). Remaining: fullBoardRenderContract (source-level invariants — runtime equivalent would need orderHelpers + persistBoardMutation harness), ipcAuthSingleEntryContract (first test is intentionally a source walk, second pins regex on api.js — runtime equivalent would mock core.invoke).)
 
 - [x] ~~the dashboard isnt showing any of the content it should show!~~ — 0db2938d + 57957cca (SHELL renders into a hidden mirror DOM, broadcasts each list's innerHTML on `dashboard-mirror-update`; webview applies HTML and forwards tree-node clicks back via `dashboard-navigate` → `navigateToSearchResult` so the focus chain runs unchanged. 8-test contract suite + dashboard view test update locks the wiring.)
 
