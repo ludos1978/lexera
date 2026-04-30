@@ -70,9 +70,26 @@
     workspaces.forEach(function (w) {
       var li = document.createElement('li');
       li.className = 'ws-item';
+      li.dataset.workspaceId = w.id || '';
+      // "Open" button spawns the workspace in a new window — the SHELL
+      // routes this to `WorkspaceShell.openWorkspaceWindow(workspaceId)`,
+      // which passes the id to `open_new_window` so the new window
+      // boots with `?workspace=<id>` and locks itself to that workspace.
+      // Clicking the row label still triggers the legacy
+      // `focus-workspace` navigate (in-window filter switch).
       li.innerHTML =
         '<span class="ws-name">' + escapeHtml(w.name || '(untitled)') + '</span>' +
-        '<span class="ws-id">' + escapeHtml(w.id ? w.id.substring(0, 8) : '') + '</span>';
+        '<span class="ws-id">' + escapeHtml(w.id ? w.id.substring(0, 8) : '') + '</span>' +
+        '<button class="ws-open-btn" type="button" title="Open in new window" aria-label="Open workspace in new window">Open</button>';
+      var openBtn = li.querySelector('.ws-open-btn');
+      if (openBtn) {
+        openBtn.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          ev.preventDefault();
+          if (!w.id) return;
+          LexeraSubApp.navigate({ type: 'open-workspace-window', workspaceId: w.id });
+        });
+      }
       workspacesEl.appendChild(li);
     });
   }
@@ -135,6 +152,14 @@
     node.dispatchEvent(ev);
     return true;
   }
+  function findWorkspaceItem(workspaceId) {
+    if (!workspacesEl) return null;
+    var items = workspacesEl.querySelectorAll('li.ws-item');
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].dataset.workspaceId === String(workspaceId || '')) return items[i];
+    }
+    return null;
+  }
   window.LexeraWorkspacesTestApi = {
     collectState: function () {
       return {
@@ -152,6 +177,17 @@
       // real click does.
       var listEl = scope === 'remote' ? remoteBoardsEl : localBoardsEl;
       return dispatchClick(findBoardItem(listEl, boardId));
+    },
+    clickOpenWorkspace: function (workspaceId) {
+      // Drives the per-row "Open" button — fires the same
+      // `LexeraSubApp.navigate({ type: 'open-workspace-window', ... })`
+      // a real click does. Returns false when the workspace row or
+      // the open button isn't visible (so a regression that hides
+      // the affordance fails the test loudly).
+      var item = findWorkspaceItem(workspaceId);
+      if (!item) return false;
+      var btn = item.querySelector('.ws-open-btn');
+      return dispatchClick(btn);
     }
   };
 })();

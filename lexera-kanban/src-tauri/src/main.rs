@@ -52,6 +52,7 @@ fn open_new_window(
     window_role: Option<String>,
     width: Option<f64>,
     height: Option<f64>,
+    workspace_id: Option<String>,
 ) -> Result<String, String> {
     let n = WINDOW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let label = format!("kanban-{}", n);
@@ -86,6 +87,17 @@ fn open_new_window(
     if let Some(ref role) = window_role {
         url_str.push_str(if query_started { "&windowRole=" } else { "?windowRole=" });
         url_str.push_str(role);
+        query_started = true;
+    }
+    // workspace_id locks the new window to a single workspace — the
+    // frontend reads `urlParams.get('workspace')` at boot and uses it
+    // as the workspace filter for the entire session of that window.
+    // This implements "one workspace per window": the user picks
+    // "Open" on a workspace dropdown, we open a fresh window for it,
+    // and the existing window stays on its current workspace.
+    if let Some(ref ws) = workspace_id {
+        url_str.push_str(if query_started { "&workspace=" } else { "?workspace=" });
+        url_str.push_str(ws);
         query_started = true;
     }
     url_str.push_str(if query_started { "&windowLabel=" } else { "?windowLabel=" });
@@ -417,7 +429,7 @@ fn main() {
             if let Some(action) = app_menu::menu_id_to_action(id) {
                 // Handle Rust-side actions that don't go to the frontend
                 if action == "new-window" {
-                    let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None, None, None);
+                    let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None, None, None, None);
                     return;
                 }
                 // Multiview architecture: in Tauri 2, `WebviewWindow::emit`

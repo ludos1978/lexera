@@ -108,6 +108,12 @@
         shell.openBoard(payload.boardId, payload.options || {});
       } else if (payload.type === 'focus-workspace' && payload.workspaceId && typeof shell.focusWorkspace === 'function') {
         shell.focusWorkspace(payload.workspaceId);
+      } else if (payload.type === 'open-workspace-window' && payload.workspaceId && typeof shell.openWorkspaceWindow === 'function') {
+        // "Open" action from the workspaces sub-app: spawn a fresh
+        // window pinned to the chosen workspace. The new window's
+        // workspace-shell reads `?workspace=<id>` from its URL on
+        // boot and stays locked to that workspace for its lifetime.
+        shell.openWorkspaceWindow(payload.workspaceId);
       } else if (payload.type === 'reveal-panel' && payload.panelId && typeof shell.revealPanel === 'function') {
         shell.revealPanel(payload.panelId);
       }

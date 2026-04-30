@@ -2006,8 +2006,14 @@
     });
   }
 
-  function openWorkspaceWindow() {
-    return openWindow({ profile: 'workspace' }).catch(function () {
+  function openWorkspaceWindow(workspaceId) {
+    // workspaceId pins the new window to a single workspace — read by
+    // app.js from the URL `workspace` param and applied as a locked
+    // filter for the lifetime of that window. Omit to spawn a generic
+    // workspace window that the user can switch around.
+    var payload = { profile: 'workspace' };
+    if (workspaceId) payload.workspaceId = String(workspaceId);
+    return openWindow(payload).catch(function () {
       return false;
     });
   }
@@ -4330,6 +4336,7 @@
       boardList.focusWorkspaceView(workspaceId);
       return true;
     },
+    openWorkspaceWindow: openWorkspaceWindow,
     ensureInitialTab: ensureInitialTab,
     focusHierarchyTarget: focusHierarchyTarget,
     showContextMenuInBoardFrame: showContextMenuInBoardFrame,

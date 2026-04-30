@@ -213,4 +213,47 @@ describe('workspaces view sub-app', () => {
     // Unknown id → no false-positive navigate.
     expect(window.LexeraWorkspacesTestApi.clickBoard('does-not-exist')).toBe(false);
   });
+
+  it('LexeraWorkspacesTestApi.clickOpenWorkspace fires the open-workspace-window navigate (one window per workspace)', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadWorkspacesView(window);
+
+    capturedOpts.onCatalog({
+      boards: [],
+      remoteBoards: [],
+      workspaces: [
+        { id: 'ws-1', name: 'Default' },
+        { id: 'ws-2', name: 'Sandbox' }
+      ]
+    });
+
+    // The "Open" button on the ws-1 row should fire the new
+    // open-workspace-window navigate type — the SHELL routes that to
+    // `WorkspaceShell.openWorkspaceWindow(workspaceId)` which spawns
+    // a fresh window pinned to that workspace via `?workspace=<id>`.
+    expect(window.LexeraWorkspacesTestApi.clickOpenWorkspace('ws-1')).toBe(true);
+    expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
+      type: 'open-workspace-window',
+      workspaceId: 'ws-1'
+    });
+
+    // The Open button must NOT trigger the legacy open-board navigate
+    // for the workspace's first board (would be a UX regression — user
+    // asked for a window, not a board switch).
+    const openBoardCalls = window.LexeraSubApp.navigate.mock.calls.filter(
+      (call) => call[0] && call[0].type === 'open-board'
+    );
+    expect(openBoardCalls.length).toBe(0);
+
+    // Unknown workspace id → no navigate.
+    window.LexeraSubApp.navigate.mockClear();
+    expect(window.LexeraWorkspacesTestApi.clickOpenWorkspace('does-not-exist')).toBe(false);
+    expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
+  });
 });

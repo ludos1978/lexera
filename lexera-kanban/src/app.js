@@ -487,6 +487,17 @@ var LexeraDashboard = (function () {
   var embeddedPreferredBoardId = embeddedInitialBoardId;
   var embeddedForcedBoardLayout = embeddedMode ? String(urlParams.get('view') || '').trim().toLowerCase() : '';
   var embeddedWorkspaceShellParent = embeddedMode && urlParams.get('workspaceShellParent') === '1';
+  // `?workspace=<id>` pins this window to a single workspace — set by
+  // `open_new_window` when the user clicks "Open" on a workspace
+  // dropdown. Empty / unset means "no lock; user can switch freely".
+  // Per-window lock only — we override the in-memory `activeWorkspaceId`
+  // but DON'T persist it to Settings, so closing the locked window
+  // doesn't bleed into the next-opened generic window.
+  var initialWorkspaceLockId = String(urlParams.get('workspace') || '').trim();
+  if (initialWorkspaceLockId && !embeddedMode) {
+    activeWorkspaceId = initialWorkspaceLockId;
+    syncRuntimeState('activeWorkspaceId', activeWorkspaceId);
+  }
   var WorkspaceShell = window.LexeraWorkspaceShell || null;
   var workspaceShellEnabled = !embeddedMode && !!(WorkspaceShell && typeof WorkspaceShell.isEnabled === 'function' && WorkspaceShell.isEnabled());
   var workspaceShellBoardHostEnabled = !embeddedMode && !!(WorkspaceShell && (
