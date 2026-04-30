@@ -148,4 +148,74 @@ describe('files view sub-app', () => {
     expect(window.document.getElementById('mgmt-container').textContent)
       .toContain('mount failed');
   });
+
+  // ── User-interaction API exercise ────────────────────────────────
+  // Drives the files sub-app ONLY through LexeraFilesTestApi. The
+  // sub-app is a thin wrapper around ManagementUI, so the user-
+  // visible surface owned by THIS file is just the mount state, the
+  // inline error block, and the management-refresh hook fired by the
+  // shell. A regression that breaks any of those flips collectState.
+  it('LexeraFilesTestApi.collectState mirrors mount + error visibility the user sees', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = { init: vi.fn() };
+    window.ManagementUI = {
+      unmount: vi.fn(),
+      mount: vi.fn(),
+      getUiPreset: vi.fn(() => ({ sections: [] }))
+    };
+    window.LexeraSettingsRuntime = {
+      buildBackendApiAdapter: vi.fn(() => ({})),
+      buildBackendCallbacks: vi.fn(() => ({}))
+    };
+
+    loadFilesView(window);
+
+    const state = window.LexeraFilesTestApi.collectState();
+    expect(state.mounted).toBe(true);
+    expect(state.error).toBe('');
+    expect(state.hasErrorBlock).toBe(false);
+  });
+
+  it('LexeraFilesTestApi.collectState reports the error path when ManagementUI is missing', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = { init: vi.fn() };
+    window.LexeraSettingsRuntime = {
+      buildBackendApiAdapter: vi.fn(() => ({})),
+      buildBackendCallbacks: vi.fn(() => ({}))
+    };
+
+    loadFilesView(window);
+
+    const state = window.LexeraFilesTestApi.collectState();
+    expect(state.mounted).toBe(false);
+    expect(state.hasErrorBlock).toBe(true);
+    expect(state.errorText).toContain('ManagementUI not loaded');
+    expect(state.loadingClass).toBe(false);
+  });
+
+  it('LexeraFilesTestApi.triggerManagementRefresh fires the same refresh path the shell broadcasts', () => {
+    const dom = createDom();
+    const { window } = dom;
+    const refresh = vi.fn();
+    window.LexeraSubApp = { init: vi.fn() };
+    window.ManagementUI = {
+      unmount: vi.fn(),
+      mount: vi.fn(),
+      refresh,
+      getUiPreset: vi.fn(() => ({ sections: [] }))
+    };
+    window.LexeraSettingsRuntime = {
+      buildBackendApiAdapter: vi.fn(() => ({})),
+      buildBackendCallbacks: vi.fn(() => ({}))
+    };
+
+    loadFilesView(window);
+
+    expect(window.LexeraFilesTestApi.triggerManagementRefresh('peers')).toBe(true);
+    expect(window.LexeraFilesTestApi.triggerManagementRefresh()).toBe(true);
+    expect(refresh).toHaveBeenNthCalledWith(1, 'peers');
+    expect(refresh).toHaveBeenNthCalledWith(2);
+  });
 });

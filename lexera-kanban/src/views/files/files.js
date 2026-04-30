@@ -1,6 +1,8 @@
 (function () {
   'use strict';
 
+  var mountState = { mounted: false, error: '' };
+
   function handleManagementRefresh(payload) {
     if (!window.ManagementUI || typeof window.ManagementUI.refresh !== 'function') return;
     var section = payload && payload.section ? String(payload.section) : '';
@@ -44,6 +46,7 @@
       api: window.LexeraSettingsRuntime.buildBackendApiAdapter(),
       callbacks: window.LexeraSettingsRuntime.buildBackendCallbacks()
     });
+    mountState.mounted = true;
   } catch (err) {
     container.classList.remove('view-loading');
     container.innerHTML =
@@ -53,5 +56,31 @@
       String((err && err.message) || err).replace(/</g, '&lt;') +
       '</pre>' +
       '</div>';
+    mountState.error = String((err && err.message) || err);
   }
+
+  // ── User-interaction test API ──────────────────────────────────
+  // Surface the mount/error state and the management-refresh hook
+  // through one helper. Same-shape contract as Lexera{Dashboard,
+  // Workspaces,Hierarchy,Log,Inspector}TestApi. The files sub-app is
+  // a thin wrapper around ManagementUI, so the visible-to-user
+  // surface owned by THIS file is small: did mount succeed, what
+  // error sits in the container, and the refresh hook the SHELL fires.
+  window.LexeraFilesTestApi = {
+    collectState: function () {
+      var c = container;
+      var pre = c ? c.querySelector('pre') : null;
+      return {
+        mounted: mountState.mounted,
+        error: mountState.error,
+        loadingClass: !!(c && c.classList.contains('view-loading')),
+        errorText: pre ? pre.textContent : '',
+        hasErrorBlock: !!(c && c.textContent.indexOf('Failed to initialize') !== -1)
+      };
+    },
+    triggerManagementRefresh: function (section) {
+      handleManagementRefresh(section ? { section: section } : {});
+      return true;
+    }
+  };
 })();
