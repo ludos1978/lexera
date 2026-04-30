@@ -576,11 +576,6 @@ var LexeraBoardList = (function () {
       if (delta[scalarKeys[k]]) return false;
     }
     if (delta.boardSettings) return false;
-    // Flat columns format (legacy)
-    if (delta.columns) {
-      if (!isIdArrayDeltaCardContentOnly(delta.columns)) return false;
-    }
-    // Hierarchical rows format
     if (delta.rows) {
       if (!isIdArrayDeltaModifiedOnly(delta.rows, isRowDeltaCardContentOnly)) return false;
     }
@@ -662,18 +657,6 @@ var LexeraBoardList = (function () {
             if (cardIds.length > 0) result.push({ columnId: colId, cardIds: cardIds });
           }
         }
-      }
-    }
-    // Flat columns format (legacy)
-    if (delta.columns && delta.columns.modified) {
-      for (var fColId in delta.columns.modified) {
-        var fColDelta = delta.columns.modified[fColId];
-        if (!fColDelta.cards || !fColDelta.cards.modified) continue;
-        var fCardIds = [];
-        for (var fCardId in fColDelta.cards.modified) {
-          fCardIds.push(fCardId);
-        }
-        if (fCardIds.length > 0) result.push({ columnId: fColId, cardIds: fCardIds });
       }
     }
     return result;

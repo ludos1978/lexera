@@ -659,12 +659,6 @@ var LexeraBoardDataStore = (function () {
             if (result.revision) nextBoardData.revision = result.revision;
           });
         }
-        if (result && result.redirectedPath) {
-          dep('traceFrontendAction')('info', 'save.legacy_redirect', 'Board saved to new file to preserve original v1 file', {
-            boardId: activeBoardId,
-            redirectedPath: result.redirectedPath
-          });
-        }
         if (result && typeof result.generation === 'number') {
           _lastLoadedGeneration = result.generation;
         }
