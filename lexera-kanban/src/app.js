@@ -8076,8 +8076,16 @@ var LexeraDashboard = (function () {
   }
 
   function buildColumnFooterContent(colIndex) {
+    // Card add button uses BOTH the unified `add-entity-btn` class
+    // (shared visual treatment with row / stack / column add buttons —
+    // same border, radius, background, padding, font) AND the legacy
+    // `add-card-btn` class (kept for selector compatibility with
+    // existing card-specific rules around inline edit / drag focus
+    // / virtualised footers). The shared class wins on style; the
+    // card-specific class only carries column-footer-context tweaks
+    // (width: 100% + text-align: left for the full-width footer slot).
     return renderCreationSource('card', { colIndex: colIndex }, {
-      btnClass: 'add-card-btn',
+      btnClass: 'add-entity-btn add-card-btn',
       btnText: '+ Add card',
       wrapperClass: 'creation-source-card'
     });

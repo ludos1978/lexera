@@ -72,4 +72,27 @@ describe('empty-child add affordances', () => {
     // hide rule so add-mode stays interactive in either path.
     expect(appCss).toMatch(/\.column-cards:not\(:empty\)\s*\+\s*\.column-footer:not\(\.add-mode\)/);
   });
+
+  it('"+ Add Row / Stack / Column / Card" buttons share visual treatment via the unified add-entity-btn class', () => {
+    // The user-visible promise: every add-element button looks the
+    // same. The unified `.add-entity-btn` class supplies the visual
+    // treatment (border, radius, background, padding, font). Cards
+    // additionally tag their button with `add-card-btn` for column-
+    // footer-context tweaks (full width + left align). Pin both halves
+    // so a refactor that splits the visuals back into per-entity
+    // classes is caught.
+    expect(appJs).toContain("btnClass: 'add-entity-btn add-card-btn'");
+    // `.add-entity-btn` owns the shared visual treatment.
+    expect(appCss).toMatch(/\.add-entity-btn\s*\{[^}]*background:\s*var\(--btn-bg\)[^}]*border:\s*1px dashed var\(--border\)[^}]*\}/s);
+    // `.add-card-btn` keeps ONLY the context tweaks. `width: 100%` and
+    // `text-align: left` belong here; visual treatment must NOT be
+    // re-introduced or it would override the shared class.
+    const addCardRule = appCss.match(/\.add-card-btn\s*\{([^}]*)\}/);
+    expect(addCardRule, '.add-card-btn rule must exist').toBeTruthy();
+    expect(addCardRule[1]).toContain('width: 100%');
+    expect(addCardRule[1]).toContain('text-align: left');
+    expect(addCardRule[1]).not.toMatch(/background\s*:/);
+    expect(addCardRule[1]).not.toMatch(/border\s*:/);
+    expect(addCardRule[1]).not.toMatch(/border-radius\s*:/);
+  });
 });

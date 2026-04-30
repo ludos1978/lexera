@@ -4984,22 +4984,15 @@ img[data-lazy-src] {
   display: none;
 }
 
+/* `.add-card-btn` carries ONLY the column-footer-context tweaks now.
+ * Visual treatment (border, radius, background, padding, font) comes
+ * from the shared `.add-entity-btn` class applied alongside it (set in
+ * buildColumnFooterContent). This unifies the layout of "+ Add Row",
+ * "+ Add Stack", "+ Add Column", "+ Add Card" while preserving the
+ * full-width left-aligned slot the card footer needs. */
 .add-card-btn {
   width: 100%;
-  padding: 5px 8px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px dashed var(--border);
-  border-radius: 2px;
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: var(--font-size-sm);
   text-align: left;
-}
-
-.add-card-btn:hover {
-  border-color: var(--accent);
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.06);
 }
 
 .add-card-input {
