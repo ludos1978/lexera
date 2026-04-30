@@ -202,7 +202,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 
 ## Shared Contracts And Shared UI
 
-- [~] Rename shared package identifiers from Ludos naming to Lexera naming — MOSTLY DONE: no `ludos` in JS/RS source code, but root `package.json` still has `"@ludos/shared": "file:packages/shared"` dependency.
+- [x] ~~Rename shared package identifiers from Ludos naming to Lexera naming~~ — ab603cab (`packages/shared` now publishes as `@lexera/shared`; root + `lexera-web-clipper/package.json` updated; 7 web-clipper source imports rewritten; lockfiles regenerated; redundant `packages/shared/package-lock.json` removed (npm-workspaces consolidates). Side fixes: shared `tsconfig.json` gained `"DOM"` lib so `webClipper.ts` (uses fetch/URL/AbortSignal/setTimeout) compiles; `lexera-web-clipper` pinned `jsdom@^29.0.2` in devDependencies — popup tests imported it without a manifest entry and only worked through transitive hoisting before.)
 - [ ] Decide whether temporal parsing belongs in the shared contract layer, `lexera-core`, or a dedicated parsing library.
 - [ ] If `lexera-shared` remains active, replace the current `management.js` and `management.css` file-copy workflow with a real shared package that has its own manifest, build, and tests.
 - [ ] Stop copying shared management assets into app source folders during Tauri build hooks.
