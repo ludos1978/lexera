@@ -845,36 +845,14 @@ var LexeraDashboard = (function () {
     }
   });
 
-  window.addEventListener('storage', function (event) {
-    try {
-      if (!event || !event.key) return;
-      // Note: `lexera-active-workspace` is intentionally NOT observed
-      // cross-window. Each window owns its own workspace for its
-      // lifetime — see setActiveWorkspaceId in boardList.js.
-      if (
-        event.key === 'lexera-dashboard-query' ||
-        event.key === 'lexera-dashboard-scope' ||
-        event.key === 'lexera-dashboard-active-pinned' ||
-        event.key === 'lexera-dashboard-pinned-queries'
-      ) {
-        dashboardState.query = Settings ? Settings.get('dashboardQuery') : (localStorage.getItem('lexera-dashboard-query') || '');
-        dashboardState.scope = Settings ? (Settings.get('dashboardScope') === 'all' ? 'all' : 'active') : (localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active');
-        dashboardState.activePinnedQuery = Settings ? Settings.get('dashboardActivePinned') : (localStorage.getItem('lexera-dashboard-active-pinned') || '');
-        dashboardState.pinnedQueries = loadDashboardPinnedQueries();
-        renderDashboard();
-        scheduleDashboardRefresh(0);
-      }
-      if (event.key === 'lexera-dock-panel' && event.newValue) {
-        if (Settings) Settings.set('dockPanel', null); else localStorage.removeItem('lexera-dock-panel');
-        var shell = window.LexeraWorkspaceShell;
-        if (shell && typeof shell.revealPanel === 'function') {
-          shell.revealPanel(event.newValue);
-        }
-      }
-    } catch (err) {
-      logFrontendIssue('error', 'event.storage', 'Error in storage event handler', err);
-    }
-  });
+  // No `storage` event listeners. Each window owns its workspace,
+  // its dashboard search/scope/pins, and its dock panel state for its
+  // lifetime — observing sibling-window writes via the cross-window
+  // storage event was the source of "views show in the wrong window"
+  // reports (typing in window A's dashboard switched window B's view;
+  // popping a panel-only window's dock-back also fired everywhere).
+  // Writes still happen for next-launch persistence; siblings simply
+  // don't react mid-session.
 
   // Suppress layout transitions during window resize for instant visual response.
   // The body.window-resizing class disables .board-stack width/flex transitions.

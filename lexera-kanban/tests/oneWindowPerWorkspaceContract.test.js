@@ -189,6 +189,22 @@ describe('one workspace per window — wiring contract', () => {
     }
   });
 
+  it('per-window state never reacts to sibling-window storage events — no addEventListener("storage", ...) handler routes any per-window key', () => {
+    // Listening for cross-window `storage` events on per-window keys
+    // is what makes one window steal another's view. The user
+    // reported it for `lexera-active-workspace` first (fixed in
+    // 82417477), then again for dashboard search and dock-panel
+    // (typing in one window's dashboard yanked another's view, and
+    // popping a panel-only window made every window reveal the panel).
+    // Pin: no storage listener should branch on any of these keys.
+    expect(appJs).not.toMatch(/event\.key\s*===\s*['"]lexera-active-workspace['"]/);
+    expect(appJs).not.toMatch(/event\.key\s*===\s*['"]lexera-dashboard-query['"]/);
+    expect(appJs).not.toMatch(/event\.key\s*===\s*['"]lexera-dashboard-scope['"]/);
+    expect(appJs).not.toMatch(/event\.key\s*===\s*['"]lexera-dashboard-active-pinned['"]/);
+    expect(appJs).not.toMatch(/event\.key\s*===\s*['"]lexera-dashboard-pinned-queries['"]/);
+    expect(appJs).not.toMatch(/event\.key\s*===\s*['"]lexera-dock-panel['"]/);
+  });
+
   it('the active workspace is NEVER persisted to the shared Settings store (would leak across windows)', () => {
     // Persisting via `Settings.set('activeWorkspace', …)` fires a
     // `storage` event into sibling windows; the listener in app.js
