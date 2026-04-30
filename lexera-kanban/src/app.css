@@ -2184,7 +2184,7 @@ body.embedded-mode::after {
 }
 .board-header-actions-right {
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
   flex: 0 1 auto;
   justify-content: flex-end;
 }
@@ -4963,10 +4963,24 @@ img[data-lazy-src] {
   background: var(--surface-footer-bg);
 }
 
-/* Previously used `:has()` here — replaced with the JS-driven `.has-cards`
-   class added in buildColumnElement. `:has()` was the dominant cost in
-   full-board renders (~700ms out of 820ms for 917 cards on WKWebView). */
-.column.has-cards > .column-footer:not(.add-mode) {
+/* Two-layer hide rule for the "+ Add card" footer:
+ *
+ *   1. JS-driven `.has-cards` class on the column (added in
+ *      buildColumnElement) — canonical, survives DOM mutations the
+ *      sibling selector below can't see (e.g. virtualised placeholders).
+ *      Replaces an earlier `:has()` selector that cost ~700ms out of
+ *      820ms in full-board renders on WKWebView.
+ *
+ *   2. Adjacent-sibling selector — fires the moment a card node lands
+ *      in `.column-cards`, even before the next render swaps the
+ *      column element and re-applies `.has-cards`. This is the
+ *      "hide instantly when a card is added" path the user asked for
+ *      (column-cards is :empty when no cards exist; gains a child as
+ *      soon as a new card DOM appears). Sibling selectors are cheap on
+ *      WebKit — the perf trap was the descendant `:has()`.
+ */
+.column.has-cards > .column-footer:not(.add-mode),
+.column-cards:not(:empty) + .column-footer:not(.add-mode) {
   display: none;
 }
 
@@ -5434,15 +5448,27 @@ select.dialog-input option,
 }
 .notification-action:hover { background: var(--bg-primary); }
 
-/* ── Export processes button (Phase 3B) ─────────────────────────────── */
+/* ── Export processes button (header-integrated recall surface) ─────── */
+.board-export-processes-slot {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
 .lexera-export-processes {
+  position: relative;
+  z-index: 60;
+  display: none;
+  flex: 0 0 auto;
+  font-size: var(--font-size-s);
+  color: var(--text-primary);
+}
+.lexera-export-processes.is-floating {
   position: fixed;
   top: 10px;
   right: 10px;
   z-index: 210;
-  display: none;
-  font-size: var(--font-size-s);
-  color: var(--text-primary);
 }
 .lexera-export-processes.is-visible { display: block; }
 .lexera-export-processes-btn {
@@ -5456,6 +5482,10 @@ select.dialog-input option,
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   cursor: pointer;
+  box-shadow: none;
+  min-height: 18px;
+}
+.lexera-export-processes.is-floating .lexera-export-processes-btn {
   box-shadow: var(--shadow-floating);
 }
 .lexera-export-processes.is-active .lexera-export-processes-btn {
@@ -10091,6 +10121,28 @@ body .board-action-btn.has-items {
 body .board-action-btn.danger {
   color: var(--error);
   border-color: color-mix(in srgb, var(--error) 45%, transparent);
+}
+body .board-header .lexera-export-processes-btn {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.1px;
+  color: var(--ink2);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-3);
+  min-height: 18px;
+}
+body .board-header .lexera-export-processes-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+body .board-header .lexera-export-processes-count {
+  min-width: 14px;
+  line-height: 12px;
+  border-radius: 7px;
+  font-size: 10px;
 }
 
 /* Vertical separator ticks between drawer groups — design's Sep is

@@ -57,4 +57,19 @@ describe('empty-child add affordances', () => {
     // CSS rule that completes the contract for the card level.
     expect(appCss).toMatch(/\.column\.has-cards\s*>\s*\.column-footer[^{]*\{\s*display\s*:\s*none/);
   });
+
+  it('hides "+ Add card" instantly via an adjacent-sibling rule the moment a card lands in column-cards', () => {
+    // The JS-driven `.has-cards` class only flips on the next render
+    // tick — the user wants the button gone the instant the first card
+    // appears. An adjacent-sibling selector keyed on `:not(:empty)`
+    // fires on DOM insertion without waiting for re-render. The rule
+    // must also exclude `.add-mode` so the inline-edit footer (which
+    // expands to a card editor in place of the button) stays visible
+    // while typing. Sibling selectors are cheap — the perf trap was
+    // the deleted `:has()` descendant selector.
+    expect(appCss).toMatch(/\.column-cards:not\(:empty\)\s*\+\s*\.column-footer[^{]*\{\s*display\s*:\s*none/);
+    // The :not(.add-mode) carve-out applies to BOTH branches of the
+    // hide rule so add-mode stays interactive in either path.
+    expect(appCss).toMatch(/\.column-cards:not\(:empty\)\s*\+\s*\.column-footer:not\(\.add-mode\)/);
+  });
 });
