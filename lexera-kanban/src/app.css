@@ -1024,10 +1024,9 @@ textarea {
   min-width: 0;
 }
 
-/* Dashboard/workspace section headers are .tree-node elements —
- * they inherit layout from .tree-node CSS. Only add cursor. */
-.dashboard-group-header,
-.workspace-section-header {
+/* Dashboard group headers are .tree-node elements — they inherit
+ * layout from .tree-node CSS. Only add cursor. */
+.dashboard-group-header {
   cursor: pointer;
 }
 .dashboard-group.is-empty > .dashboard-group-header {
@@ -1334,47 +1333,12 @@ textarea {
   color: var(--hierarchy-meta-color);
 }
 
-/* Workspace section headers: styled to match the shared .tree-node row
- * layout — same padding, border-radius, gap, font, hover, and toggle
- * arrow as every other hierarchy node. */
-.workspace-section-header.workspace-unassigned .workspace-section-name {
-  color: inherit;
-}
-.dashboard-group-title,
-.workspace-section-name {
+.dashboard-group-title {
   grid-column: 2;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.workspace-section-count {
-  grid-column: 3;
-  justify-self: end;
-  margin-left: var(--space-1);
-  font-weight: var(--hierarchy-font-weight);
-  color: var(--hierarchy-meta-color);
-  font-variant-numeric: tabular-nums;
-}
-.workspace-section-focus {
-  grid-column: 4;
-  justify-self: end;
-  border: none;
-  background: transparent;
-  color: var(--hierarchy-meta-color);
-  font: inherit;
-  line-height: 1;
-  padding: 0;
-  margin-left: 2px;
-  cursor: pointer;
-  flex-shrink: 0;
-  opacity: 0.78;
-}
-.workspace-section-focus:hover,
-.workspace-section-focus:focus-visible {
-  color: var(--hierarchy-text-color);
-  opacity: 1;
-  outline: none;
 }
 
 .dashboard-tag-section {
@@ -1655,21 +1619,6 @@ textarea {
 /* Indentation via nested .tree-children */
 .tree-children { display: none; position: relative; }
 .tree-children.expanded { display: block; }
-
-.workspace-section-boards.expanded {
-  box-sizing: border-box;
-  padding-left: var(--tree-indent-step);
-}
-
-.workspace-section-boards.expanded::before {
-  content: '';
-  position: absolute;
-  left: var(--tree-indent-guide-center);
-  top: 0;
-  bottom: 0;
-  border-left: var(--tree-line-width) solid var(--tree-guide);
-  pointer-events: none;
-}
 
 .tree-children.tree-stack-drop-zone {
   position: relative;
@@ -9170,7 +9119,6 @@ body .card-due-badge,
 body .tree-count,
 body .tree-meta,
 body .board-item-count,
-body .workspace-section-count,
 body .column-include-badge,
 body .board-item-remote-icon,
 body .file-badge,
@@ -9217,8 +9165,7 @@ body .sidebar-header-title-text {
   color: var(--text-muted);
 }
 
-/* Workspace section header / dashboard group header — tiny mono caps. */
-body .workspace-section-name,
+/* Dashboard group header — tiny mono caps. */
 body .dashboard-group-title {
   font-family: var(--font-mono);
   font-size: var(--section-label-size);
@@ -9355,7 +9302,6 @@ body .board-stack,
 body .card,
 body .sidebar,
 body .dashboard-group,
-body .workspace-section-header,
 body .workspace-shell,
 body .workspace-shell-tabset,
 body .workspace-shell-panel-window {
@@ -10012,7 +9958,6 @@ select,
 }
 .board-item-title,
 .board-item-title-text,
-.workspace-section-name,
 .card-title-display,
 .card-description,
 .card-content,

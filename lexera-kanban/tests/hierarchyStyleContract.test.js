@@ -25,9 +25,11 @@ describe('hierarchy style contract', () => {
     expect(orderHelpersSource).toContain("getAttribute('data-dashboard-group-key')");
   });
 
-  it('shares the top-level fold affordance between dashboard and workspace headers', () => {
-    // Both use tree-toggle for expand/collapse, shared .tree-node styling
-    expect(appCss).toMatch(/\.dashboard-group-header,\s*\n?\.workspace-section-header/);
+  it('dashboard group headers carry the cursor:pointer affordance from the shared .tree-node row layout', () => {
+    // Workspace section headers were removed when each window was
+    // pinned to a single workspace (window-per-workspace rule). Only
+    // dashboard groups still need the joint pointer affordance.
+    expect(appCss).toMatch(/\.dashboard-group-header\s*\{[\s\S]{0,80}cursor:\s*pointer/);
   });
 
   it('uses one quiet typography and accent-line state model across hierarchy surfaces', () => {
@@ -53,7 +55,10 @@ describe('hierarchy style contract', () => {
     expect(appCss).toMatch(/\.sidebar-dashboard-body\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)/);
     expect(appCss).toMatch(/\.sidebar-dashboard-controls\s*\{[\s\S]*font-size:\s*var\(--hierarchy-font-size\)/);
     expect(appCss).toMatch(/\.tree-node\s*\{[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
-    expect(appCss).toMatch(/\.dashboard-group-header,\s*\.workspace-section-header\s*\{[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
+    // Dashboard group headers inherit font-weight from .tree-node
+    // (asserted above). The legacy joint selector with workspace
+    // section headers is gone — single-workspace-per-window means
+    // there's no workspace section header anymore.
     expect(appCss).toMatch(/\.dashboard-item\s*\{[\s\S]*font-weight:\s*var\(--hierarchy-font-weight\)/);
     expect(appCss).toMatch(/\.tree-node:hover\s*\{[\s\S]*background:\s*var\(--hierarchy-hover-bg\)/);
     expect(appCss).toMatch(/\.dashboard-item\.pinned-active\s*\{[\s\S]*background:\s*var\(--hierarchy-active-bg\)[\s\S]*box-shadow:\s*inset 2px 0 0 var\(--hierarchy-active-accent\)/);
