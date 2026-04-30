@@ -126,8 +126,8 @@ Requires workspace shell mode (multiple boards open in iframes). Tests use `Lexe
 - [x] ~~Cross-board move: total visible card count across both boards stays constant~~ — 25f815f1
 - [x] ~~Cross-board move: source board sidebar reflects the trashed card (hidden)~~ — 25f815f1 (asserted via commitBoardIds → board-a)
 - [x] ~~Cross-board move: target board sidebar reflects the new card~~ — 25f815f1 (asserted via commitBoardIds → board-b)
-- [ ] Board switch: `selectBoard()` loads correct board data and re-renders view — **in progress**
-- [ ] Board switch: switching back restores previous board state
+- [x] ~~Board switch: `selectBoard()` loads correct board data and re-renders view~~ — 4cfe272b (selectBoard runs before loadBoard, skipped when target already active, focus chain still fires for re-reveal)
+- [x] ~~Board switch: switching back restores previous board state~~ — 4cfe272b (round-trip test: A→B→A re-runs the full chain twice; each focus event carries the correct cardId for its target board)
 - [x] ~~Workspace view: sidebar shows correct cards after cross-board move~~ — covered by 25f815f1 (commitBoardIds includes both source + target boards → both sidebars refresh through commitBoardMutations)
 - [x] ~~Same-board move via workspace coordinates still works in multi-board context~~ — 30317604 (explicit isolation pin: board B unchanged when board A receives a workspace-coords same-board move)
 - [x] ~~Cross-board move with workspace-style source coordinates (rowIndex/stackIndex/colIndex)~~ — covered by `workspace-to-view cross-board commits both boards for UI refresh` in mutations.test.js
