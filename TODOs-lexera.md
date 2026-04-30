@@ -22,7 +22,7 @@ Keep this file structured and clean:
 
 - [x] ~~when adding a card to a column it should hide the "+ add card" button immediately, solve it using css only by detecting any siblings and hide the button directly.~~ — eaaac0fa (added `.column-cards:not(:empty) + .column-footer:not(.add-mode) { display: none }` adjacent-sibling rule alongside the existing JS-driven `.has-cards` class — instant hide on first card insertion without paying the WebKit `:has()` perf cost)
 
-- [ ] make all add element buttons (+ Add Row, + Add Stack, + Add Column, + Add Card) have the same layout.
+- [ ] make all add element buttons (+ Add Row, + Add Stack, + Add Column, + Add Card) have the same layout. — **in progress**
 
 - [ ] the workspace tree doesnt look at all good! not the right list of elements, not the right structure — **needs user input**: which specific elements look wrong and what structure is expected? sidebar tree at [sidebar/sidebarTree.js](lexera-kanban/src/sidebar/sidebarTree.js) renders Workspace > Board > Row > Stack > Column > Card
 
