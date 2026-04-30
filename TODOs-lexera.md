@@ -20,7 +20,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ### Unsorted (leave this header here!)
 
-- [ ] check all tests if they are really testing what we need!
+- [ ] check all tests if they are really testing what we need! — **in progress**
 
 - [x] ~~the dashboard isnt showing any of the content it should show!~~ — 0db2938d + 57957cca (SHELL renders into a hidden mirror DOM, broadcasts each list's innerHTML on `dashboard-mirror-update`; webview applies HTML and forwards tree-node clicks back via `dashboard-navigate` → `navigateToSearchResult` so the focus chain runs unchanged. 8-test contract suite + dashboard view test update locks the wiring.)
 
