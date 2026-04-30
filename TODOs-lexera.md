@@ -14,7 +14,7 @@ To mark a task with input required add (input required) at the start of the task
 
 Generally do the most time consuming tasks first. If a task takes very long to complete, start it early to finish early, DO NOT DELAY LONG TASKS!
 
-**Test status: focused vitest `api.test.js` + `orderHelpers.test.js` + dashboard focus/tree/mirror tests: 116 passed, 0 failed; focused cargo `dashboard_data`: 2 passed, 0 failed; 160 / 160 in `./run-lexera-tests.sh` (14.29s); prior full vitest: 1792 passed, 0 failed, 2 skipped / 1794 tests in ~14s**
+**Test status: focused dashboard/bridge vitest: 56 passed, 0 failed; focused frontend `dashboard panel: visible result click focuses the matching board card`: 1 passed, 0 failed; full `./run-lexera-tests.sh`: 161 / 161 passed (14.74s); prior full vitest: 1792 passed, 0 failed, 2 skipped / 1794 tests in ~14s**
 
 ## Open Tasks
 
@@ -23,7 +23,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 - [x] ~~one window per workspace + "Open" menu action.~~ — 31814eb7 (workspaces sub-app row gets per-workspace "Open" button → emits `open-workspace-window` navigate; navigationBridge routes to `shell.openWorkspaceWindow(workspaceId)`; workspaceShell forwards `payload.workspaceId` to `open_new_window`; Rust appends `?workspace=<id>` to the new window URL; app.js reads `urlParams.get('workspace')` and pins the window's `activeWorkspaceId` per-window only — not persisted, so closing a locked window can't bleed the lock into the next generic window. Cross-window drag-drop unchanged — rides the existing multiview drag IPC, orthogonal to the in-window workspace filter. 5-step source-level contract test + workspaces view runtime test cover the chain.)
 
 - [x] ~~how can the frontend tests success if the features are not functional?~~ — initial rollout complete: every sub-app now exposes a `Lexera*TestApi` whose helpers drive the SAME DOM and event paths a real user does. Regressions that break rendering or wiring make the API return false / yield wrong state, so the test result tracks user-visible behaviour instead of source matching.
-  - dashboard: `LexeraDashboardTestApi` (collectState / setSearch / clickCard) — already in place.
+  - dashboard: `LexeraDashboardTestApi` (collectState / setSearch / clickCard) — now exercises the visible dashboard panel DOM, result click event path, and embedded board focus acknowledgement.
   - workspaces: `LexeraWorkspacesTestApi` (collectState / clickBoard / clickOpenWorkspace) — added e7f056b8.
   - hierarchy: `LexeraHierarchyTestApi` (collectState / clickBoard / clickWorkspace / clickWorkspaceGroupHeader) — added d87e0f1a.
   - log: `LexeraLogTestApi` (collectState / appendEntry / setSearch / clickClear / clickRefresh / toggleLevel / toggleSource) — added 7d9a1254.
@@ -166,7 +166,7 @@ Scope: the active Lexera code now lives in the promoted top-level V2 directories
 - [ ] Keep the restructure mostly path-level and boundary-level first, without mixing it with feature refactors in the same change set.
 - [ ] Convert fragile relative cross-module imports to stable workspace or crate references before large directory moves.
 - [x] ~~Choose one package manager for the whole repository and remove mixed lockfile usage after migration.~~ — 7f0425a6 (npm is canonical; root + per-package use `package-lock.json`. The orphan `pnpm-lock.yaml` (2918 lines, stale — no `pnpm-workspace.yaml`, no package.json referenced its top-level imports) was deleted.)
-- [ ] Create one root `lint` command that runs all supported packages in dependency order.
+- [x] ~~Create one root `lint` command that runs all supported packages in dependency order.~~ — 2a8f10dd (`npm run lint` → `lint.sh` → `lint:js` (eslint `--quiet` so the 89k+ style warnings don't drown the 0 errors — transport-discipline rules stay error-severity) then `lint:rust` (cargo clippy `--workspace --all-targets --no-deps`, baseline warnings retained but not promoted to errors). Eslint + @typescript-eslint plugins now pinned in root devDependencies.)
 - [ ] Standardize TypeScript base config and let packages extend it instead of drifting independently.
 - [ ] Standardize Rust workspace settings and shared lint rules for all Tauri and core crates.
 - [ ] Add package boundary checks so app packages do not reach into each other through private files.
@@ -512,7 +512,7 @@ All items verified against the actual codebase by code inspection, file existenc
 ### Verified NOT done (with evidence)
 - [x] ~~Choose one package manager — both `package-lock.json` (npm) and `pnpm-lock.yaml` (pnpm) at root~~ — 7f0425a6 (orphan pnpm-lock.yaml removed; npm is canonical)
 - [ ] Architecture document — no ARCHITECTURE.md at root
-- [ ] Root lint command — `test.sh` has no lint; no `lint` in `package.json`
+- [x] ~~Root lint command — `test.sh` has no lint; no `lint` in `package.json`~~ — 2a8f10dd (`npm run lint` wired up; eslint deps pinned)
 - [ ] Package boundary checks — root `eslint.config.mjs` exists, but no boundary/import restriction rules found
 - [ ] Dependency map document — none
 - [ ] ADR (architecture decision records) — no `adr/` or `decisions/`
