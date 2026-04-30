@@ -107,7 +107,7 @@ Bundle lives at `/tmp/lexera-design-v2/lexera-v2/` (palette + typography + JSX p
 - [~] Dashboard deadline/overdue sections update after temporal tag mutations. PARTIAL: basic rendering and search-refresh tests exist; dashboard-section DOM assertions need manual-mode tests (autoRun skips dashboard DOM).
 - [x] ~~Clicking a dashboard result focuses and reveals the matching card in the board view.~~ — b9b8ced4 + 6671f8a0 (search-focus path: focusHierarchyTargetLocally calls focusCard(el) on the rendered card + no column-fallback firing; reveal path: revealCardContent flips data-hidden-revealed on exactly the matching card)
 - [x] ~~Dashboard navigation targets still focus the correct element after live mutations and rerenders.~~ — covered by existing `boardSearchFocus.test.js` (stable column-id wins over stale visible-path indices, falls back from missing card to owning column via stable ids) + b9b8ced4 (focusCard happy-path + silent no-op)
-- [ ] Dashboard selection on temporal sections (due-soon, overdue) jumps to correct card with expected focus state. — **in progress** (next iteration: write a test that exercises the temporal section item click path → routes through focusHierarchyTargetLocally with cardId targeting; the focus path itself is already locked by b9b8ced4)
+- [x] ~~Dashboard selection on temporal sections (due-soon, overdue) jumps to correct card with expected focus state.~~ — 2b57d4ca + b9b8ced4 + 6671f8a0 (full chain pinned: tree-node click → buildDashboardNavResultFromTreeNode payload → navigateToSearchResult → focusHierarchyTargetLocally cardId path → focusCard reveals)
 - [~] Dashboard results stay correct after tag edits that change visibility (deadline, overdue, parked, archived, hidden). PARTIAL: tag-edit and hidden-state tests cover data; dashboard-specific DOM assertions need manual-mode tests.
 - [x] ~~Burger-menu reveal and edit actions open or focus the expected content target (not just data mutation).~~ — 6671f8a0 (8-test suite in burgerMenuRevealTargets.test.js pins data-hidden-revealed flipping at card / column / row / stack scope, including idempotent toggling and out-of-range no-ops)
 - [~] Temporal tags via burger-menu update visible time badges and dashboard groupings. PARTIAL: badge rendering verified; grouping assertions need manual-mode tests.
@@ -126,7 +126,7 @@ Requires workspace shell mode (multiple boards open in iframes). Tests use `Lexe
 - [x] ~~Cross-board move: total visible card count across both boards stays constant~~ — 25f815f1
 - [x] ~~Cross-board move: source board sidebar reflects the trashed card (hidden)~~ — 25f815f1 (asserted via commitBoardIds → board-a)
 - [x] ~~Cross-board move: target board sidebar reflects the new card~~ — 25f815f1 (asserted via commitBoardIds → board-b)
-- [ ] Board switch: `selectBoard()` loads correct board data and re-renders view
+- [ ] Board switch: `selectBoard()` loads correct board data and re-renders view — **in progress**
 - [ ] Board switch: switching back restores previous board state
 - [x] ~~Workspace view: sidebar shows correct cards after cross-board move~~ — covered by 25f815f1 (commitBoardIds includes both source + target boards → both sidebars refresh through commitBoardMutations)
 - [x] ~~Same-board move via workspace coordinates still works in multi-board context~~ — 30317604 (explicit isolation pin: board B unchanged when board A receives a workspace-coords same-board move)
