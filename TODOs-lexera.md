@@ -103,11 +103,11 @@ Bundle lives at `/tmp/lexera-design-v2/lexera-v2/` (palette + typography + JSX p
 ### Frontend Test Additions
 
 - [~] Dashboard deadline/overdue sections update after temporal tag mutations. PARTIAL: basic rendering and search-refresh tests exist; dashboard-section DOM assertions need manual-mode tests (autoRun skips dashboard DOM).
-- [ ] Clicking a dashboard result focuses and reveals the matching card in the board view.
-- [ ] Dashboard navigation targets still focus the correct element after live mutations and rerenders.
-- [ ] Dashboard selection on temporal sections (due-soon, overdue) jumps to correct card with expected focus state.
+- [x] ~~Clicking a dashboard result focuses and reveals the matching card in the board view.~~ — b9b8ced4 + 6671f8a0 (search-focus path: focusHierarchyTargetLocally calls focusCard(el) on the rendered card + no column-fallback firing; reveal path: revealCardContent flips data-hidden-revealed on exactly the matching card)
+- [x] ~~Dashboard navigation targets still focus the correct element after live mutations and rerenders.~~ — covered by existing `boardSearchFocus.test.js` (stable column-id wins over stale visible-path indices, falls back from missing card to owning column via stable ids) + b9b8ced4 (focusCard happy-path + silent no-op)
+- [ ] Dashboard selection on temporal sections (due-soon, overdue) jumps to correct card with expected focus state. — **in progress** (next iteration: write a test that exercises the temporal section item click path → routes through focusHierarchyTargetLocally with cardId targeting; the focus path itself is already locked by b9b8ced4)
 - [~] Dashboard results stay correct after tag edits that change visibility (deadline, overdue, parked, archived, hidden). PARTIAL: tag-edit and hidden-state tests cover data; dashboard-specific DOM assertions need manual-mode tests.
-- [ ] Burger-menu reveal and edit actions open or focus the expected content target (not just data mutation). — **in progress** (next iteration: write a vitest that asserts the burger menu reveal/edit handlers route to the right DOM target via showNativeMenu / showBoardTabMenu rather than just mutating board data).
+- [x] ~~Burger-menu reveal and edit actions open or focus the expected content target (not just data mutation).~~ — 6671f8a0 (8-test suite in burgerMenuRevealTargets.test.js pins data-hidden-revealed flipping at card / column / row / stack scope, including idempotent toggling and out-of-range no-ops)
 - [~] Temporal tags via burger-menu update visible time badges and dashboard groupings. PARTIAL: badge rendering verified; grouping assertions need manual-mode tests.
 
 ### Multi-Board Drag & Drop Test Plan
