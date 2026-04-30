@@ -14,11 +14,13 @@ Keep this file structured and clean:
 
 ### Unsorted (leave this header here!)
 
+- [ ] check all 
+
 - [ ] the dashboard isnt showing any of the content it should show! — **needs scope confirmation**: dashboard sub-app at [views/dashboard/dashboard.js:1-27](lexera-kanban/src/views/dashboard/dashboard.js#L1-L27) intentionally shows an empty-state ("port pending") because the legacy `renderDashboard*` family in [board/orderHelpers.js](lexera-kanban/src/board/orderHelpers.js) and the SHELL→dashboard board-content broadcast channel haven't been ported yet. This is a multi-day slice — confirm scope before attempting.
 
-- [ ] the workspace isnt showing the names of the board, all show (untitled) — **in progress**
+- [x] ~~the workspace isnt showing the names of the board, all show (untitled)~~ — ff9cbf03 (workspaces.js fallback chain reordered: prefer canonical `b.title` over legacy `b.name` so /boards-shaped payloads render correctly; 2 regression tests pin the fallback truth-table)
 
-- [ ] when adding a card to a column it should hide the "+ add card" button immediately, solve it using css only by detecting any siblings and hide the button directly.
+- [ ] when adding a card to a column it should hide the "+ add card" button immediately, solve it using css only by detecting any siblings and hide the button directly. — **in progress**
 
 - [ ] make all add element buttons (+ Add Row, + Add Stack, + Add Column, + Add Card) have the same layout.
 
