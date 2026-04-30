@@ -40,8 +40,18 @@
       var li = document.createElement('li');
       li.className = 'board-item';
       li.dataset.boardId = b.id || '';
+      // BoardInfo from /boards uses `title` (camelCase per the Rust
+      // serde rename); `name` is a legacy field still accepted as a
+      // fallback. The previous order `b.name || b.title` evaluated
+      // `undefined || ''` for real boards (since `name` is absent and
+      // `title` may briefly be an empty string before the file parse
+      // completes), short-circuiting to '(untitled)' for every row.
+      // Prefer `title` first so the canonical field wins, with `name`
+      // as the legacy fallback and `(untitled)` only when both are
+      // truly absent.
+      var boardLabel = b.title || b.name || '(untitled)';
       li.innerHTML =
-        '<span class="board-name">' + escapeHtml(b.name || b.title || '(untitled)') + '</span>' +
+        '<span class="board-name">' + escapeHtml(boardLabel) + '</span>' +
         '<span class="board-id">' + escapeHtml(b.id ? b.id.substring(0, 8) : '') + '</span>';
       li.addEventListener('click', function () {
         LexeraSubApp.navigate({ type: 'open-board', boardId: b.id });

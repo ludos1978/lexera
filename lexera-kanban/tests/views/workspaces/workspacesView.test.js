@@ -82,4 +82,68 @@ describe('workspaces view sub-app', () => {
       boardId: 'board-1'
     });
   });
+
+  // Regression: every board showed "(untitled)" because the fallback
+  // chain checked `b.name` first. Real /boards payloads ship `title`
+  // (camelCase rename of BoardInfo.title in lexera-core), and `name`
+  // is undefined — so the chain `undefined || ''` short-circuited
+  // straight to "(untitled)" the moment a board's title was briefly
+  // empty (e.g. while the file was being parsed).
+  it('renders the canonical board title from the /boards payload (title field, not name)', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+
+    loadWorkspacesView(window);
+
+    // Real /boards payload shape: { id, title, filePath, ... } — no `name`.
+    capturedOpts.onCatalog({
+      boards: [
+        { id: 'b1', title: 'My Roadmap' },
+        { id: 'b2', title: 'Sprint 42' }
+      ],
+      remoteBoards: [],
+      workspaces: []
+    });
+
+    const items = window.document.querySelectorAll('#local-boards .board-item .board-name');
+    expect(items.length).toBe(2);
+    expect(items[0].textContent).toBe('My Roadmap');
+    expect(items[1].textContent).toBe('Sprint 42');
+    expect(window.document.getElementById('local-boards').textContent).not.toContain('(untitled)');
+  });
+
+  it('falls back to (untitled) only when both title and name are absent', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+
+    loadWorkspacesView(window);
+
+    capturedOpts.onCatalog({
+      boards: [
+        { id: 'b1', title: 'Has title only' },
+        { id: 'b2', name: 'Has name only (legacy)' },
+        { id: 'b3', title: '', name: '' },
+        { id: 'b4' }
+      ],
+      remoteBoards: [],
+      workspaces: []
+    });
+
+    const items = window.document.querySelectorAll('#local-boards .board-item .board-name');
+    expect(items.length).toBe(4);
+    expect(items[0].textContent).toBe('Has title only');
+    expect(items[1].textContent).toBe('Has name only (legacy)');
+    expect(items[2].textContent).toBe('(untitled)');
+    expect(items[3].textContent).toBe('(untitled)');
+  });
 });
