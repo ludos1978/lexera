@@ -146,4 +146,71 @@ describe('workspaces view sub-app', () => {
     expect(items[2].textContent).toBe('(untitled)');
     expect(items[3].textContent).toBe('(untitled)');
   });
+
+  // ── User-interaction API exercise ────────────────────────────────
+  // The TODO at the top of TODOs-lexera.md asks every sub-app to expose
+  // a small "do what a user would do" API so tests stop drifting from
+  // user-visible behaviour. These tests drive the workspaces view ONLY
+  // through `LexeraWorkspacesTestApi`. If a regression makes the board
+  // list invisible, the click stops finding the row and the test
+  // fails — so the test result tracks user-visible behaviour, not
+  // string-matched source.
+  it('LexeraWorkspacesTestApi.collectState mirrors what the user sees in the rendered tree', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadWorkspacesView(window);
+
+    capturedOpts.onCatalog({
+      boards: [{ id: 'b1', title: 'Roadmap' }, { id: 'b2', title: 'Sprint' }],
+      remoteBoards: [{ id: 'r1', title: 'Shared' }],
+      workspaces: [{ id: 'w1', name: 'Default' }]
+    });
+    capturedOpts.onActiveBoard('b2');
+
+    const state = window.LexeraWorkspacesTestApi.collectState();
+    expect(state.status).toBe('connected');
+    expect(state.activeBoardId).toBe('b2');
+    expect(state.local.map((b) => b.label)).toEqual(['Roadmap', 'Sprint']);
+    expect(state.local.find((b) => b.id === 'b2').active).toBe(true);
+    expect(state.local.find((b) => b.id === 'b1').active).toBe(false);
+    expect(state.remote.map((b) => b.label)).toEqual(['Shared']);
+    expect(state.workspaces.map((w) => w.label)).toEqual(['Default']);
+  });
+
+  it('LexeraWorkspacesTestApi.clickBoard fires the same navigate call a real click would', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadWorkspacesView(window);
+
+    capturedOpts.onCatalog({
+      boards: [{ id: 'b1', title: 'Roadmap' }],
+      remoteBoards: [{ id: 'r1', title: 'Shared' }],
+      workspaces: []
+    });
+
+    expect(window.LexeraWorkspacesTestApi.clickBoard('b1')).toBe(true);
+    expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
+      type: 'open-board',
+      boardId: 'b1'
+    });
+
+    expect(window.LexeraWorkspacesTestApi.clickBoard('r1', 'remote')).toBe(true);
+    expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
+      type: 'open-board',
+      boardId: 'r1'
+    });
+
+    // Unknown id → no false-positive navigate.
+    expect(window.LexeraWorkspacesTestApi.clickBoard('does-not-exist')).toBe(false);
+  });
 });

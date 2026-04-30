@@ -93,4 +93,65 @@
       statusEl.textContent = String(err);
     }
   });
+
+  // ── Test API ──────────────────────────────────────────────────────
+  // User-interaction surface for vitest + autoRun integration tests.
+  // Mirrors the LexeraDashboardTestApi shape (see views/dashboard/
+  // dashboard.js): everything tests do here drives the SAME DOM and
+  // event paths a user does — no internal-state shortcuts. Tests that
+  // call collectState() see only what the user can see; tests that
+  // call clickBoard()/clickWorkspace() trigger the same click event a
+  // mouse would.
+  function collectListItemState(listEl) {
+    if (!listEl) return [];
+    var items = listEl.querySelectorAll('li.board-item, li.ws-item');
+    var out = [];
+    for (var i = 0; i < items.length; i++) {
+      var name = items[i].querySelector('.board-name, .ws-name');
+      out.push({
+        id: items[i].dataset.boardId || '',
+        label: name ? name.textContent : '',
+        active: items[i].classList.contains('is-active')
+      });
+    }
+    return out;
+  }
+  function findBoardItem(listEl, boardId) {
+    if (!listEl) return null;
+    var items = listEl.querySelectorAll('li.board-item');
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].dataset.boardId === String(boardId || '')) return items[i];
+    }
+    return null;
+  }
+  function dispatchClick(node) {
+    if (!node) return false;
+    var ev = typeof MouseEvent === 'function'
+      ? new MouseEvent('click', { bubbles: true, cancelable: true })
+      : document.createEvent('MouseEvent');
+    if (ev.initMouseEvent) {
+      ev.initMouseEvent('click', true, true, window, 1, 0, 0, 0, 0, false, false, false, false, 0, null);
+    }
+    node.dispatchEvent(ev);
+    return true;
+  }
+  window.LexeraWorkspacesTestApi = {
+    collectState: function () {
+      return {
+        status: statusEl ? statusEl.textContent : '',
+        activeBoardId: activeBoardId,
+        local: collectListItemState(localBoardsEl),
+        remote: collectListItemState(remoteBoardsEl),
+        workspaces: collectListItemState(workspacesEl)
+      };
+    },
+    clickBoard: function (boardId, scope) {
+      // scope: 'local' | 'remote' (default: 'local'). Returns true if
+      // an item was found and clicked, false otherwise — drives the
+      // same `LexeraSubApp.navigate({ type: 'open-board', ... })` a
+      // real click does.
+      var listEl = scope === 'remote' ? remoteBoardsEl : localBoardsEl;
+      return dispatchClick(findBoardItem(listEl, boardId));
+    }
+  };
 })();
