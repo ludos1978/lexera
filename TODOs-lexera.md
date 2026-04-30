@@ -107,7 +107,7 @@ Bundle lives at `/tmp/lexera-design-v2/lexera-v2/` (palette + typography + JSX p
 
 ### Dashboard
 
-- [ ] **Incremental DOM updates** — `renderDashboard()` does `innerHTML = ''` on every call. Diff and update only changed items. — **partial / outdated**: most renderers now go through `TreeView.patch` (incremental) before falling back to `innerHTML = ''` ([orderHelpers.js:2117](lexera-kanban/src/board/orderHelpers.js#L2117)). The remaining unconditional clear is `renderDashboardPinnedList` for ≤5 entries — not worth the diff overhead. Item is essentially closed; needs confirmation before strikethrough.
+- [x] ~~**Incremental DOM updates** — `renderDashboard()` does `innerHTML = ''` on every call. Diff and update only changed items.~~ — closed: `renderDashboardTreeItems` ([orderHelpers.js:2197](lexera-kanban/src/board/orderHelpers.js#L2197)) tries `TreeView.patch` first, only falling back to `innerHTML = ''` when no existing tree exists; `_dashboardFingerprint` change-detection ([orderHelpers.js:2178-2182](lexera-kanban/src/board/orderHelpers.js#L2178-L2182)) skips the rebuild entirely when data is unchanged. Patch behavior pinned by `treeViewPatch.test.js`. Only remaining unconditional clear is `renderDashboardPinnedList` for ≤5 entries — diff overhead would cost more than the rebuild.
 - [ ] **Virtual scrolling for result lists** — currently renders 80 result + 60 todo + 40x4 calendar items as DOM nodes. Only render visible viewport items.
 - [ ] **Move search to Web Worker** — the backend search itself is fast, but parsing/grouping/tree-building on the main thread blocks rendering. Move post-processing off-thread.
 
