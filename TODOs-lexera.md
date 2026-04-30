@@ -23,7 +23,8 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 - [ ] (in progress) how can the frontend tests success if the features are not functional? for example in the dashboard the features were not ported, but all tests succeeded! make sure the tests really only read and write into the frontend. maybe have an api for the frontend functionalities that are very close to the actual user interactions! make sure all tests use them and make sure future tests create and use similar methods!
   - dashboard: `LexeraDashboardTestApi` (collectState / setSearch / clickCard) — already in place.
   - workspaces: `LexeraWorkspacesTestApi` (collectState / clickBoard) — added e7f056b8.
-  - **next sub-apps still need this API**: hierarchy, log, inspector, files, frontendSettings, backendSettings, renderApps. Each iteration: add the API + at least one test that drives the view ONLY through it.
+  - hierarchy: `LexeraHierarchyTestApi` (collectState / clickBoard / clickWorkspace / clickWorkspaceGroupHeader) — added d87e0f1a.
+  - **next sub-apps still need this API**: log, inspector, files, frontendSettings, backendSettings, renderApps. Each iteration: add the API + at least one test that drives the view ONLY through it.
 
 - [~] check all tests if they are really testing what we need! — 1fe4f101 (PARTIAL: started by upgrading the dashboardShellMirrorContract from regex-only to regex+runtime DOM checks; same pattern needs broader rollout — flagged regex-only contract tests at cardDraggingLayoutContract / fullBoardRenderContract / ipcAuthSingleEntryContract; full audit is multi-day)
 
