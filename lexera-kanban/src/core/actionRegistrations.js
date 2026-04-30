@@ -72,6 +72,47 @@
       if (d.hasTauri) d.tauriInvoke('open_new_window', { boardId: null });
     });
 
+    // File > Open Workspace… — present a chooser of workspaces, then
+    // spawn a new window pinned to the picked one. Mirrors the per-row
+    // "Open" button on the workspaces sub-app, but reachable from the
+    // native menu bar so the user does not need that panel open.
+    ActionRegistry.register('board', 'open-workspace', function () {
+      var workspaces = Array.isArray(d.workspaces) ? d.workspaces : [];
+      var dialogs = (typeof window !== 'undefined') ? window.LexeraDialogs : null;
+      if (!dialogs || typeof dialogs.choose !== 'function') {
+        if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
+          window.lexeraLog('warn', 'open-workspace: LexeraDialogs.choose unavailable — cannot present picker');
+        }
+        return;
+      }
+      if (workspaces.length === 0) {
+        dialogs.confirm('No workspaces available. Create one in Workspace Settings first.');
+        return;
+      }
+      var options = workspaces.map(function (w) {
+        return {
+          value: String(w.id || ''),
+          label: String(w.name || '(untitled)'),
+          hint: w.id ? String(w.id).substring(0, 8) : ''
+        };
+      });
+      dialogs.choose('Pick a workspace to open in a new window:', options, { title: 'Open Workspace' })
+        .then(function (workspaceId) {
+          if (!workspaceId) return;
+          var shell = (typeof window !== 'undefined') ? window.LexeraWorkspaceShell : null;
+          if (shell && typeof shell.openWorkspaceWindow === 'function') {
+            shell.openWorkspaceWindow(workspaceId);
+            return;
+          }
+          // Fallback: workspace shell unavailable (eg embedded mode) —
+          // route through the Tauri command directly so the URL still
+          // carries the workspace lock.
+          if (d.hasTauri) {
+            d.tauriInvoke('open_new_window', { boardId: null, workspaceId: workspaceId });
+          }
+        });
+    });
+
     // Undo/redo
     ActionRegistry.register('board', 'undo', function () { d.undo(); });
     ActionRegistry.register('board', 'redo', function () { d.redo(); });

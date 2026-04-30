@@ -31,7 +31,9 @@ const workspacesJs = readFileSync(resolve(__dirname, '..', 'src', 'views', 'work
 const navigationBridgeJs = readFileSync(resolve(__dirname, '..', 'src', 'shell', 'navigationBridge.js'), 'utf8');
 const workspaceShellJs = readFileSync(resolve(__dirname, '..', 'src', 'workspace', 'workspaceShell.js'), 'utf8');
 const mainRs = readFileSync(resolve(__dirname, '..', 'src-tauri', 'src', 'main.rs'), 'utf8');
+const appMenuRs = readFileSync(resolve(__dirname, '..', 'src-tauri', 'src', 'app_menu.rs'), 'utf8');
 const appJs = readFileSync(resolve(__dirname, '..', 'src', 'app.js'), 'utf8');
+const actionRegistrationsJs = readFileSync(resolve(__dirname, '..', 'src', 'core', 'actionRegistrations.js'), 'utf8');
 
 describe('one workspace per window — wiring contract', () => {
   it('workspaces sub-app emits the new open-workspace-window navigate from per-row "Open" button', () => {
@@ -72,5 +74,29 @@ describe('one workspace per window — wiring contract', () => {
     const lockBlock = appJs.match(/initialWorkspaceLockId\s*=[\s\S]{0,400}?activeWorkspaceId\s*=\s*initialWorkspaceLockId/);
     expect(lockBlock).toBeTruthy();
     expect(lockBlock[0]).not.toMatch(/Settings\.set\(\s*'activeWorkspace'/);
+  });
+
+  // ── File menu reachability — without this entry, the user has no
+  // top-level way to spawn a workspace window unless the Workspaces
+  // panel is already open. The native menu bar is the canonical
+  // entry point per CLAUDE memory ("Views in menu bar only"); this
+  // test pins the four-link chain: Rust submenu item → action map →
+  // frontend ActionRegistry handler → existing openWorkspaceWindow.
+  it('File menu has an "Open Workspace…" entry mapped to the open-workspace action', () => {
+    expect(appMenuRs).toContain('"file-open-workspace"');
+    expect(appMenuRs).toContain('"Open Workspace…"');
+    expect(appMenuRs).toMatch(/"file-open-workspace"\s*,\s*"open-workspace"/);
+  });
+
+  it('actionRegistrations.js wires open-workspace to the LexeraDialogs.choose chooser + WorkspaceShell.openWorkspaceWindow', () => {
+    // The handler must read `d.workspaces`, present them via
+    // LexeraDialogs.choose, and on a non-null pick call
+    // `LexeraWorkspaceShell.openWorkspaceWindow(workspaceId)` so the
+    // chain in this contract test continues unchanged from the per-row
+    // button path.
+    expect(actionRegistrationsJs).toMatch(/ActionRegistry\.register\(\s*'board'\s*,\s*'open-workspace'/);
+    expect(actionRegistrationsJs).toMatch(/d\.workspaces/);
+    expect(actionRegistrationsJs).toMatch(/LexeraDialogs[\s\S]{0,400}choose/);
+    expect(actionRegistrationsJs).toMatch(/LexeraWorkspaceShell[\s\S]{0,400}openWorkspaceWindow\(/);
   });
 });

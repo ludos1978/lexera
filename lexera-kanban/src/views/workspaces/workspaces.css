@@ -52,3 +52,29 @@ li.empty {
   color: var(--text-muted, #666);
   font-style: italic;
 }
+
+/* Per-row "Open" button on the workspaces panel. Spawns a new window
+   pinned to the workspace via shell.openWorkspaceWindow(). */
+button.ws-open-btn {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  background: var(--bg-tertiary, var(--bg-secondary, #2a2a32));
+  border: 1px solid var(--border, #3a3a40);
+  border-radius: 3px;
+  color: var(--text-primary, #e8e8ec);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+
+button.ws-open-btn:hover {
+  background: var(--accent, #094771);
+  border-color: var(--accent, #094771);
+  color: var(--text-primary, #ffffff);
+}
+
+button.ws-open-btn:focus {
+  outline: 1px solid var(--accent, #094771);
+  outline-offset: 1px;
+}

@@ -103,3 +103,31 @@
 .lexera-dialog-overlay .dialog-btn-primary:hover {
   background: var(--accent-hover, var(--accent, #2563eb));
 }
+
+/* choose() — list of selectable rows. Each row is a full-width button
+   stacked vertically; rendered after the prompt note and before the
+   cancel-row. */
+.lexera-dialog-overlay .dialog-choose-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.lexera-dialog-overlay .dialog-choose-row {
+  text-align: left;
+  width: 100%;
+  padding: 8px 12px;
+}
+
+.lexera-dialog-overlay .dialog-choose-label {
+  font-weight: 500;
+}
+
+.lexera-dialog-overlay .dialog-choose-hint {
+  font-size: 0.85em;
+  color: var(--text-muted, #888888);
+  margin-top: 2px;
+}

@@ -18,6 +18,7 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
     // ── File menu ──
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(&MenuItemBuilder::with_id("file-new-window", "New Window").accelerator("CmdOrCtrl+N").build(app)?)
+        .item(&MenuItemBuilder::with_id("file-open-workspace", "Open Workspace…").accelerator("CmdOrCtrl+O").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("file-save", "Save").accelerator("CmdOrCtrl+S").build(app)?)
         .separator()
@@ -308,6 +309,7 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("app-quit", "quit-app"),
     // File
     ("file-new-window", "new-window"),
+    ("file-open-workspace", "open-workspace"),
     ("file-save", "save-now"),
     ("file-rename", "rename-file"),
     ("file-reveal", "open-folder"),
