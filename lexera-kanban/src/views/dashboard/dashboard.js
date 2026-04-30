@@ -5,26 +5,24 @@
 // Overdue, Upcoming, Open Tasks, Tagged Items, File Embeds, Broken
 // Elements, Included Files).
 //
-// Status: markup parity is complete (matches `sharedPanels.js#
-// createDashboardPanelElement` and the legacy SHELL HTML one-to-one).
-// The full search / categorization / pin-persistence logic still
-// lives in the SHELL's `app.js` against the legacy DOM and has not
-// yet been ported into this webview process — that's a separate slice
-// because the dashboard needs the full board content (cards, tags,
-// dates), which currently isn't broadcast from the SHELL. Until the
-// port lands, this script:
-//   - wires up the basic input/button event handlers so they don't
-//     silently no-op
-//   - subscribes to `catalog-snapshot` and `active-board-changed` so
-//     the boot lifecycle is correct (theme, focus, teardown)
-//   - shows an "empty state" message in the Results list when the
-//     full data flow isn't there yet
-//
-// TODO: Port `app.js#renderDashboard*` family + pinned-search store
-// into this file once the SHELL→dashboard board-content broadcast
-// channel is in place. Until then, the visible result lists stay
-// empty (the search input is wired but emits a navigate event the
-// SHELL can pick up to drive search).
+// Data flow (workspace-shell mode):
+//   1. The SHELL keeps owning the categorization pipeline. After every
+//      refresh it populates a hidden mirror DOM (created lazily by
+//      `orderHelpers.js#ensureDashboardShellMirror`), then harvests
+//      each list element's `innerHTML` and broadcasts a
+//      `dashboard-mirror-update` event with `{ lists, loading, query,
+//      scope }`.
+//   2. This sub-app subscribes to that event and writes the HTML
+//      directly into the matching `#dashboard-*-list` elements so the
+//      visible surface mirrors the SHELL's render output without
+//      having to port the entire renderer family across the IPC
+//      boundary.
+//   3. On boot the sub-app broadcasts `dashboard-snapshot-request`;
+//      the SHELL responds by re-rendering and re-broadcasting so the
+//      webview lands populated even when it opens AFTER the last
+//      refresh.
+// Search / pin / scope still emit `dashboard-search` / `dashboard-pin`
+// to the SHELL, which drives the categorization pipeline (unchanged).
 
 (function () {
   'use strict';
@@ -43,12 +41,42 @@
   var bodyEl = rootEl ? rootEl.querySelector('.sidebar-dashboard-body') : null;
   var resultsList = document.getElementById('dashboard-results-list');
 
+  // List elements receive innerHTML straight from the SHELL's hidden
+  // dashboard mirror (rendered by orderHelpers.js#renderDashboard).
+  var DASHBOARD_LIST_IDS = [
+    'dashboard-results-list', 'dashboard-pinned-list',
+    'dashboard-overdue-list', 'dashboard-upcoming-list',
+    'dashboard-todos-list',  'dashboard-tagged-list',
+    'dashboard-embeds-list', 'dashboard-broken-list',
+    'dashboard-included-list'
+  ];
+
   function setEmptyStateMessage(text) {
     if (!resultsList) return;
     resultsList.innerHTML =
       '<div class="dashboard-empty" style="padding:8px 12px;color:var(--text-muted,#888);font-style:italic;">' +
       escapeHtml(text) +
       '</div>';
+  }
+
+  // Tracks whether the SHELL has pushed a real snapshot yet — we keep
+  // the empty-state message visible until the first update lands.
+  var receivedFirstSnapshot = false;
+
+  function applyDashboardMirrorUpdate(payload) {
+    if (!payload || !payload.lists) return;
+    if (bodyEl) bodyEl.classList.remove('view-loading');
+    receivedFirstSnapshot = true;
+    for (var i = 0; i < DASHBOARD_LIST_IDS.length; i++) {
+      var id = DASHBOARD_LIST_IDS[i];
+      if (!Object.prototype.hasOwnProperty.call(payload.lists, id)) continue;
+      var el = document.getElementById(id);
+      if (el) el.innerHTML = String(payload.lists[id] == null ? '' : payload.lists[id]);
+    }
+  }
+
+  function requestDashboardSnapshot() {
+    LexeraSubApp.broadcast('dashboard-snapshot-request', {});
   }
 
   function broadcastSearch() {
@@ -77,34 +105,37 @@
   if (scopeCheckbox) scopeCheckbox.addEventListener('change', broadcastSearch);
   if (pinBtn) pinBtn.addEventListener('click', broadcastPin);
 
-  setEmptyStateMessage('Dashboard search/categorize is wired up but not yet hooked to live board data — port pending.');
+  setEmptyStateMessage('Loading dashboard…');
 
   LexeraSubApp.init({
     onCatalog: function (snap) {
       if (bodyEl) bodyEl.classList.remove('view-loading');
-      // TODO: feed `snap.boards` / `snap.workspaces` into the
-      // categorization pipeline (Overdue / Upcoming / Tagged …).
+      // Catalog landed but no mirror snapshot yet — ask the SHELL to
+      // push one. Subsequent renders broadcast automatically.
+      if (!receivedFirstSnapshot) requestDashboardSnapshot();
     },
     onActiveBoard: function (boardId) {
-      // TODO: when scope = "active board", trigger a re-categorize
-      // against the new active board's content.
+      // The SHELL re-renders the dashboard whenever the active board
+      // changes; that re-render fires another `dashboard-mirror-update`,
+      // so nothing to do here beyond letting the subscription handle it.
     },
     onCustom: {
-      // The SHELL is the source of truth for pinned searches and
-      // categorized results today; once the data flow lands, dashboard
-      // updates will arrive on these custom events and we'll render
-      // into the 9 result lists.
-      'dashboard-results-update': function (payload) {
-        // Placeholder for the future render path.
-        if (payload && resultsList && Array.isArray(payload.results)) {
-          if (payload.results.length === 0) {
-            setEmptyStateMessage('No results.');
-          }
-        }
-      }
+      // The SHELL's renderDashboard() harvests its hidden mirror DOM
+      // and broadcasts each list's innerHTML on this channel.
+      'dashboard-mirror-update': applyDashboardMirrorUpdate,
+      // Legacy event name kept for backwards compatibility — older
+      // SHELL builds may still emit `dashboard-results-update` while
+      // pinned-search rendering catches up. No-op for now.
+      'dashboard-results-update': function () {}
     },
     onError: function (err) {
       setEmptyStateMessage('Error: ' + (err && err.message || err));
     }
   });
+
+  // First mount: ask the SHELL for the latest snapshot. If the SHELL
+  // already has one cached (the common case — dashboard data refreshes
+  // on connect) we get a `dashboard-mirror-update` back almost
+  // immediately and the empty-state message is replaced.
+  requestDashboardSnapshot();
 })();

@@ -2538,12 +2538,77 @@ var LexeraOrderHelpers = (function () {
     );
   }
 
+  // ── Workspace-shell dashboard mirror ──────────────────────────────────
+  // The dashboard sub-app's visible surface lives in a child webview, so
+  // the SHELL has no `#sidebar-dashboard` element of its own. We create a
+  // hidden mirror (off-screen, visibility:hidden) with the same IDs the
+  // existing render pipeline targets — `renderDashboardResultItems` and
+  // friends keep writing innerHTML on `document.getElementById('dashboard-
+  // results-list')` exactly as before, but the writes land in the mirror.
+  // After each render we harvest the mirror's innerHTML and broadcast it
+  // to the dashboard webview so the visible surface updates. This avoids
+  // porting the entire renderer family across the IPC boundary.
+  var DASHBOARD_MIRROR_LIST_IDS = [
+    'dashboard-results-list', 'dashboard-pinned-list',
+    'dashboard-overdue-list', 'dashboard-upcoming-list',
+    'dashboard-todos-list',  'dashboard-tagged-list',
+    'dashboard-embeds-list', 'dashboard-broken-list',
+    'dashboard-included-list'
+  ];
+
+  function ensureDashboardShellMirror() {
+    if (typeof document === 'undefined' || !document.body) return null;
+    var existing = document.getElementById('sidebar-dashboard');
+    if (existing) return existing;
+    var root = document.createElement('div');
+    root.id = 'sidebar-dashboard';
+    root.className = 'sidebar-dashboard sidebar-dashboard-shell-mirror';
+    root.setAttribute('data-shell-mirror', 'dashboard');
+    root.setAttribute('aria-hidden', 'true');
+    root.style.cssText = 'position:absolute; left:-99999px; top:-99999px; width:1px; height:1px; overflow:hidden; pointer-events:none; visibility:hidden;';
+    var body = document.createElement('div');
+    body.className = 'sidebar-dashboard-body';
+    root.appendChild(body);
+    for (var i = 0; i < DASHBOARD_MIRROR_LIST_IDS.length; i++) {
+      var listEl = document.createElement('div');
+      listEl.id = DASHBOARD_MIRROR_LIST_IDS[i];
+      listEl.className = 'dashboard-list';
+      body.appendChild(listEl);
+    }
+    document.body.appendChild(root);
+    return root;
+  }
+
+  function broadcastDashboardShellMirrorHtml() {
+    if (typeof window === 'undefined') return;
+    if (!window.__TAURI__ || !window.__TAURI__.core || typeof window.__TAURI__.core.invoke !== 'function') return;
+    var lists = {};
+    for (var i = 0; i < DASHBOARD_MIRROR_LIST_IDS.length; i++) {
+      var el = document.getElementById(DASHBOARD_MIRROR_LIST_IDS[i]);
+      if (el) lists[DASHBOARD_MIRROR_LIST_IDS[i]] = el.innerHTML;
+    }
+    var loading = !!(dashboardState && dashboardState.loading);
+    var query = dashboardState && typeof dashboardState.query === 'string' ? dashboardState.query : '';
+    var scope = dashboardState && typeof dashboardState.scope === 'string' ? dashboardState.scope : 'all';
+    try {
+      window.__TAURI__.core.invoke('multiview_broadcast', {
+        event: 'dashboard-mirror-update',
+        payload: { lists: lists, loading: loading, query: query, scope: scope }
+      }).catch(function () {});
+    } catch (_) {}
+  }
+
   function renderDashboard() {
     if (!dashboardState) return;
 
     // Always render standalone calendar panels, even without dashboard DOM
     var allCalendar = getCalendarTasks();
     renderStandaloneCalendarPanels(allCalendar);
+
+    // Workspace-shell mode: the dashboard's visible surface is a child
+    // webview, not part of the SHELL DOM. Materialise the hidden mirror
+    // so the existing renderer pipeline has live #id targets to write to.
+    if (_dep('workspaceShellEnabled')) ensureDashboardShellMirror();
 
     if (!_callDep('getElDashboardRoot')) {
       // DOM not available — defer re-render until it reconnects.
@@ -2615,6 +2680,12 @@ var LexeraOrderHelpers = (function () {
     // Broken-element DOM scan runs off the hot path via requestIdleCallback
     scheduleDeferredBrokenScan();
     scheduleMirroredDashboardSync();
+
+    // Workspace-shell mode: harvest the hidden mirror's innerHTML and
+    // broadcast each list to the dashboard child webview so the visible
+    // surface updates. The legacy single-window mode skips this since
+    // the renderers wrote directly into the visible DOM.
+    if (_dep('workspaceShellEnabled')) broadcastDashboardShellMirrorHtml();
   }
 
   function ensureDashboardState() {
@@ -2651,6 +2722,12 @@ var LexeraOrderHelpers = (function () {
   function refreshDashboardData(options) {
     options = options || {};
     if (_dep('embeddedMode')) return Promise.resolve();
+    // Workspace-shell mode: the dashboard's visible surface is a child
+    // webview, but the renderer pipeline still targets `#sidebar-
+    // dashboard` in the SHELL DOM. Lazily materialise the hidden mirror
+    // so `getElDashboardRoot()` is truthy and refresh proceeds instead
+    // of deferring forever.
+    if (_dep('workspaceShellEnabled')) ensureDashboardShellMirror();
     var hasDashboard = !!_callDep('getElDashboardRoot');
     var hasCalendars = hasAnyCalendarPanel();
     if (!hasDashboard && !hasCalendars) {
@@ -3033,6 +3110,26 @@ var LexeraOrderHelpers = (function () {
     }
     // Capture the shared dashboardState reference
     if (deps.dashboardState) dashboardState = deps.dashboardState;
+
+    // Workspace-shell mode: listen for `dashboard-snapshot-request`
+    // events from the dashboard sub-app so a webview that mounts AFTER
+    // the last refresh can pull the current state without waiting for
+    // the next change.
+    initDashboardSnapshotRequestListener();
+  }
+
+  var _dashboardSnapshotListenerInstalled = false;
+  function initDashboardSnapshotRequestListener() {
+    if (_dashboardSnapshotListenerInstalled) return;
+    if (typeof window === 'undefined' || !window.__TAURI__ || !window.__TAURI__.event ||
+        typeof window.__TAURI__.event.listen !== 'function') return;
+    if (!_dep('workspaceShellEnabled')) return;
+    _dashboardSnapshotListenerInstalled = true;
+    window.__TAURI__.event.listen('dashboard-snapshot-request', function () {
+      // Re-render so the mirror is fresh, then the broadcast fires
+      // automatically from renderDashboard's tail.
+      try { renderDashboard(); } catch (_) { /* ignore */ }
+    });
   }
 
   return {
