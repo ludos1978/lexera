@@ -438,16 +438,16 @@ fn main() {
                 // Route menu actions to the FOCUSED window only. macOS
                 // shares one menu bar across windows; clicking
                 // View > Panels > Dashboard means "show the dashboard
-                // panel in THIS window I'm in". `app.emit("menu-action")`
+                // panel in THIS window I'm in". Global app emission
                 // and `WebviewWindow::emit("menu-action")` BOTH
                 // broadcast in Tauri 2 — only `emit_to(label, …)`
                 // actually targets a single webview. Use the focused
                 // window's label as the target.
                 //
-                // Fallback: if no window is focused (rare — eg during
-                // window creation or while the app is in the
-                // background), broadcast so the action is not silently
-                // lost.
+                // If no window is focused, drop the action instead of
+                // broadcasting. Broadcasting `open-workspace:<id>` lets
+                // every webview try to spawn a window, which multiplies
+                // the requested workspace window.
                 let focused_label = app
                     .webview_windows()
                     .into_iter()
@@ -457,8 +457,7 @@ fn main() {
                     let _ = app.emit_to(label.as_str(), "menu-action", action.clone());
                     log::debug!("[main] menu-action sent to focused window '{}': {}", label, action);
                 } else {
-                    let _ = app.emit("menu-action", action.clone());
-                    log::debug!("[main] menu-action emitted globally (no focused window): {}", action);
+                    log::warn!("[main] menu-action dropped because no focused window was found: {}", action);
                 }
             }
         })

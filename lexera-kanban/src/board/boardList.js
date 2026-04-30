@@ -85,6 +85,13 @@ var LexeraBoardList = (function () {
     return workspaceId || null;
   }
 
+  var REMOTE_WORKSPACE_ID = '__remote_boards__';
+  var REMOTE_WORKSPACE_NAME = 'Remote Boards';
+
+  function isRemoteWorkspaceId(workspaceId) {
+    return String(workspaceId || '') === REMOTE_WORKSPACE_ID;
+  }
+
   function getWorkspaceViewId() {
     var viewWorkspaceId = _dep('viewWorkspaceId');
     if (viewWorkspaceId != null && viewWorkspaceId !== '') {
@@ -1146,7 +1153,9 @@ var LexeraBoardList = (function () {
     var nextWorkspaceId = viewWorkspaceId;
     var preferredWorkspaceId = normalizeWorkspaceId(options.preferredWorkspaceId);
 
-    if (workspaceIds.length > 0) {
+    if (boardMeta && boardMeta.isRemote) {
+      nextWorkspaceId = REMOTE_WORKSPACE_ID;
+    } else if (workspaceIds.length > 0) {
       if (preferredWorkspaceId && workspaceIds.indexOf(preferredWorkspaceId) >= 0) {
         nextWorkspaceId = preferredWorkspaceId;
       } else if (viewWorkspaceId && workspaceIds.indexOf(viewWorkspaceId) >= 0) {
@@ -1197,6 +1206,7 @@ var LexeraBoardList = (function () {
   function isWorkspaceViewIdKnown(workspaceId) {
     var normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
     if (!normalizedWorkspaceId) return false;
+    if (isRemoteWorkspaceId(normalizedWorkspaceId)) return true;
     var workspaces = Array.isArray(_dep('workspaces')) ? _dep('workspaces') : [];
     for (var i = 0; i < workspaces.length; i++) {
       if (workspaces[i] && workspaces[i].id === normalizedWorkspaceId) return true;
@@ -1260,6 +1270,7 @@ var LexeraBoardList = (function () {
     var activeWorkspaceId = _dep('activeWorkspaceId');
     var workspaces = _dep('workspaces');
     var knownWorkspaceIds = workspaces.map(function (ws) { return ws.id; });
+    if (isRemoteWorkspaceId(activeWorkspaceId)) return;
     if (activeWorkspaceId && knownWorkspaceIds.indexOf(activeWorkspaceId) >= 0) return;
     if (defaultWorkspaceId && knownWorkspaceIds.indexOf(defaultWorkspaceId) >= 0) {
       setActiveWorkspaceId(defaultWorkspaceId);
@@ -1447,6 +1458,7 @@ var LexeraBoardList = (function () {
 
   function getWorkspaceHeaderState() {
     var viewWorkspaceId = getWorkspaceViewId();
+    if (isRemoteWorkspaceId(viewWorkspaceId)) return { label: REMOTE_WORKSPACE_NAME };
     if (!viewWorkspaceId) return { label: 'Workspace' };
     var workspaces = Array.isArray(_dep('workspaces')) ? _dep('workspaces') : [];
     for (var i = 0; i < workspaces.length; i++) {
@@ -2610,11 +2622,11 @@ var LexeraBoardList = (function () {
    */
   function _buildDesiredEntries(boards, remoteBoards, workspaces, workspaceViewId, activeBoardId) {
     // Each window owns exactly one workspace — no "all workspaces"
-    // pseudo-mode. When the catalog hasn't hydrated and no workspace
-    // is selected yet, render only remote boards (if any). The catalog
-    // hydrate path promotes the window to a real workspace via
-    // setWorkspacesState, after which the local boards filter applies.
-    var filteredBoards = workspaceViewId
+    // pseudo-mode. Local workspace windows list only boards assigned
+    // to that workspace. The synthetic Remote Boards workspace lists
+    // only remote boards.
+    var isRemoteWorkspace = isRemoteWorkspaceId(workspaceViewId);
+    var filteredBoards = workspaceViewId && !isRemoteWorkspace
       ? boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(workspaceViewId) >= 0; })
       : [];
     var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; }) || filteredBoards;
@@ -2654,8 +2666,7 @@ var LexeraBoardList = (function () {
     }
 
     // Remote boards. Dedupe by id for the same reason as above.
-    if (remoteBoards.length > 0) {
-      entries.push({ key: '__remote_divider__', type: 'remote_divider' });
+    if (isRemoteWorkspace && remoteBoards.length > 0) {
       var remoteSeen = {};
       for (var ri = 0; ri < remoteBoards.length; ri++) {
         var rb = remoteBoards[ri];
@@ -2930,6 +2941,7 @@ var LexeraBoardList = (function () {
     resolveWorkspaceContextForBoard: resolveWorkspaceContextForBoard,
     syncWorkspaceContextForBoard: syncWorkspaceContextForBoard,
     reconcileActiveWorkspaceContext: reconcileActiveWorkspaceContext,
+    isRemoteWorkspaceId: isRemoteWorkspaceId,
     dispatchMirrorMouseEvent: dispatchMirrorMouseEvent,
     findCanonicalHierarchyTarget: findCanonicalHierarchyTarget,
     bindMirroredWorkspaceView: bindMirroredWorkspaceView,

@@ -110,7 +110,13 @@ describe('one workspace per window — wiring contract', () => {
   });
 
   it('frontend refreshes the native submenu via set_workspaces_submenu after every workspace catalog change', () => {
-    expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,2400}tauriInvoke\(['"]set_workspaces_submenu['"]/);
+    expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,2600}syncWorkspaceMenuEntries\(\)/);
+    expect(appJs).toMatch(/function setRemoteBoardsState[\s\S]{0,1200}syncWorkspaceMenuEntries\(\)/);
+    expect(appJs).toMatch(/function syncWorkspaceMenuEntries[\s\S]{0,500}if \(embeddedMode\) return/);
+    expect(appJs).toMatch(/function syncWorkspaceMenuEntries[\s\S]{0,1200}lastWorkspaceMenuSignature/);
+    expect(appJs).toMatch(/function syncWorkspaceMenuEntries[\s\S]{0,1400}tauriInvoke\(['"]set_workspaces_submenu['"]/);
+    expect(appJs).toContain("'__remote_boards__'");
+    expect(appJs).toContain("'Remote Boards'");
   });
 
   it('Tauri command set_workspaces_submenu rebuilds the menu with the supplied workspace list', () => {
@@ -175,10 +181,11 @@ describe('one workspace per window — wiring contract', () => {
     // The plain `WebviewWindow::emit("menu-action", …)` pattern is
     // explicitly forbidden — it broadcasts.
     expect(mainRs).not.toMatch(/window\.emit\("menu-action"/);
-    // The fallback `app.emit("menu-action")` only runs when no window
-    // is focused — pin the structure so a future refactor doesn't
-    // re-broadcast unconditionally.
-    expect(mainRs).toMatch(/if let Some\(label\) = focused_label[\s\S]{0,500}else[\s\S]{0,300}app\.emit\("menu-action"/);
+    // No-focus fallback must NOT broadcast. Broadcasting
+    // `open-workspace:<id>` lets every webview spawn a workspace
+    // window.
+    expect(mainRs).not.toMatch(/app\.emit\("menu-action"/);
+    expect(mainRs).toMatch(/menu-action dropped because no focused window was found/);
   });
 
   it('the legacy ALL_WORKSPACES_ID sentinel is gone — no codepath references __all__ or ALL_WORKSPACES_ID anymore', () => {

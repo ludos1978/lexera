@@ -6232,12 +6232,21 @@
   register('workspace sidebar: remote boards dedupe by id', async function () {
     var BL = window.LexeraBoardList;
     var remote = { id: 'r1', title: 'Remote 1' };
-    var entries = BL._buildDesiredEntries([], [remote, remote], [], null, null);
+    var entries = BL._buildDesiredEntries([], [remote, remote], [], '__remote_boards__', null);
     var seen = 0;
     for (var i = 0; i < entries.length; i++) {
       if (entries[i].type === 'remote_board' && entries[i].rb.id === 'r1') seen++;
     }
     assertEqual(seen, 1, 'remote boards deduped by id');
+  });
+
+  register('workspace sidebar: remote boards are hidden from local workspace windows', async function () {
+    var BL = window.LexeraBoardList;
+    var ws = [{ id: 'ws-A', name: 'Alpha' }];
+    var remote = { id: 'r1', title: 'Remote 1' };
+    var entries = BL._buildDesiredEntries([], [remote], ws, 'ws-A', null);
+    var remoteRows = entries.filter(function (e) { return e.type === 'remote_board'; });
+    assertEqual(remoteRows.length, 0, 'remote boards are only listed in the remote workspace');
   });
 
   register('workspace sidebar: rendered sidebar has no duplicate board entries', async function () {

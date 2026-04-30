@@ -18,13 +18,11 @@
   var titleEl = document.getElementById('title');
   var viewModeEl = document.getElementById('view-mode');
   var localBoardsEl = document.getElementById('local-boards');
-  var remoteBoardsEl = document.getElementById('remote-boards');
-  var workspacesEl = document.getElementById('workspaces');
   var localCountEl = document.getElementById('local-count');
-  var remoteCountEl = document.getElementById('remote-count');
-  var wsCountEl = document.getElementById('ws-count');
 
   var activeBoardId = null;
+  var REMOTE_WORKSPACE_ID = '__remote_boards__';
+  var REMOTE_WORKSPACE_NAME = 'Remote Boards';
   // Each window owns exactly one workspace, set by the catalog
   // snapshot. Null only during pre-hydration.
   var selectedWorkspaceId = null;
@@ -39,6 +37,9 @@
       ? String(snap.viewWorkspaceId)
       : String(snap.activeWorkspaceId || '');
     if (!preferredId) return null;
+    if (preferredId === REMOTE_WORKSPACE_ID) {
+      return { id: REMOTE_WORKSPACE_ID, name: REMOTE_WORKSPACE_NAME, isRemoteWorkspace: true };
+    }
     var workspaces = Array.isArray(snap.workspaces) ? snap.workspaces : [];
     for (var i = 0; i < workspaces.length; i++) {
       if (workspaces[i] && workspaces[i].id === preferredId) return workspaces[i];
@@ -60,41 +61,24 @@
     for (var i = 0; i < items.length; i++) {
       items[i].classList.toggle('is-active', items[i].dataset.boardId === activeBoardId);
     }
-    var wsItems = document.querySelectorAll('li.ws-item');
-    for (var j = 0; j < wsItems.length; j++) {
-      wsItems[j].classList.toggle('is-active', wsItems[j].dataset.workspaceId === selectedWorkspaceId);
-    }
     var wsGroups = document.querySelectorAll('button.ws-group-header');
-    for (var k = 0; k < wsGroups.length; k++) {
-      wsGroups[k].classList.toggle('is-active', wsGroups[k].dataset.workspaceId === selectedWorkspaceId);
+    for (var j = 0; j < wsGroups.length; j++) {
+      wsGroups[j].classList.toggle('is-active', wsGroups[j].dataset.workspaceId === selectedWorkspaceId);
     }
   }
 
-  function renderBoards(target, boards, counterEl) {
-    counterEl.textContent = '(' + boards.length + ')';
-    if (!boards.length) {
-      target.innerHTML = '<li class="empty">none</li>';
-      return;
-    }
-    target.innerHTML = '';
-    boards.forEach(function (b) {
-      var li = document.createElement('li');
-      li.className = 'board-item';
-      li.dataset.boardId = b.id || '';
-      li.innerHTML =
-        '<span class="board-name">' + escapeHtml(b.name || b.title || '(untitled)') + '</span>' +
-        '<span class="board-id">' + escapeHtml(b.id ? b.id.substring(0, 8) : '') + '</span>';
-      li.addEventListener('click', function () {
-        LexeraSubApp.navigate({ type: 'open-board', boardId: b.id });
-      });
-      target.appendChild(li);
-    });
-  }
-
-  function buildWorkspaceGroups(boards, workspaces, workspaceId) {
+  function buildWorkspaceGroups(boards, remoteBoards, workspaces, workspaceId) {
     var groups = [];
     var normalizedWorkspaceId = String(workspaceId || '');
     if (!normalizedWorkspaceId) return groups;
+    if (normalizedWorkspaceId === REMOTE_WORKSPACE_ID) {
+      groups.push({
+        id: REMOTE_WORKSPACE_ID,
+        name: REMOTE_WORKSPACE_NAME,
+        boards: remoteBoards || []
+      });
+      return groups;
+    }
     var workspaceById = {};
     for (var i = 0; i < workspaces.length; i++) {
       if (workspaces[i] && workspaces[i].id) workspaceById[workspaces[i].id] = workspaces[i];
@@ -118,9 +102,10 @@
     return true;
   }
 
-  function renderWorkspaceGroups(boards, workspaces, workspaceId) {
-    localCountEl.textContent = '(' + boards.length + ')';
-    var groups = buildWorkspaceGroups(boards, workspaces, workspaceId);
+  function renderWorkspaceGroups(boards, remoteBoards, workspaces, workspaceId) {
+    var groups = buildWorkspaceGroups(boards, remoteBoards, workspaces, workspaceId);
+    var visibleCount = groups.length ? groups[0].boards.length : 0;
+    localCountEl.textContent = '(' + visibleCount + ')';
     if (!groups.length) {
       localBoardsEl.innerHTML = '<li class="empty">none</li>';
       return;
@@ -144,7 +129,7 @@
       header.addEventListener('click', function () {
         expandedWorkspaceIds[group.id] = !isWorkspaceExpanded(group.id, workspaceId);
         if (latestCatalog) {
-          renderWorkspaceGroups(latestCatalog.boards || [], latestCatalog.workspaces || [], selectedWorkspaceId);
+          renderWorkspaceGroups(latestCatalog.boards || [], latestCatalog.remoteBoards || [], latestCatalog.workspaces || [], selectedWorkspaceId);
           refreshActiveHighlight();
         }
       });
@@ -169,27 +154,6 @@
     });
   }
 
-  function renderWorkspaces(workspaces) {
-    wsCountEl.textContent = '(' + workspaces.length + ')';
-    workspacesEl.innerHTML = '';
-    if (!workspaces.length) return;
-    workspaces.forEach(function (w) {
-      var li = document.createElement('li');
-      li.className = 'ws-item';
-      li.dataset.workspaceId = w.id || '';
-      li.innerHTML =
-        '<span class="ws-name">' + escapeHtml(w.name || '(untitled)') + '</span>' +
-        '<span class="ws-id">' + escapeHtml(w.id ? w.id.substring(0, 8) : '') + '</span>';
-      // Clicking a different workspace opens it in a NEW window — each
-      // window owns exactly one workspace for its lifetime.
-      li.addEventListener('click', function () {
-        if (!w.id) return;
-        LexeraSubApp.navigate({ type: 'open-workspace-window', workspaceId: w.id });
-      });
-      workspacesEl.appendChild(li);
-    });
-  }
-
   LexeraSubApp.init({
     onCatalog: function (snap) {
       latestCatalog = snap || null;
@@ -202,9 +166,7 @@
         selectedWorkspaceId = null;
       }
       viewModeEl.textContent = snap && snap.workspaceViewMode === 'manual' ? 'manual view' : 'follow active board';
-      renderWorkspaceGroups(snap.boards || [], snap.workspaces || [], selectedWorkspaceId);
-      renderBoards(remoteBoardsEl, snap.remoteBoards || [], remoteCountEl);
-      renderWorkspaces(snap.workspaces || []);
+      renderWorkspaceGroups(snap.boards || [], snap.remoteBoards || [], snap.workspaces || [], selectedWorkspaceId);
       refreshActiveHighlight();
       statusEl.textContent = 'connected';
     },
@@ -241,14 +203,6 @@
     var items = rootEl.querySelectorAll('li.board-item');
     for (var i = 0; i < items.length; i++) {
       if (items[i].dataset.boardId === String(boardId || '')) return items[i];
-    }
-    return null;
-  }
-  function findWorkspaceItem(workspaceId) {
-    if (!workspacesEl) return null;
-    var items = workspacesEl.querySelectorAll('li.ws-item');
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].dataset.workspaceId === String(workspaceId || '')) return items[i];
     }
     return null;
   }
@@ -301,20 +255,6 @@
     }
     return out;
   }
-  function collectWorkspaceItems() {
-    if (!workspacesEl) return [];
-    var items = workspacesEl.querySelectorAll('li.ws-item');
-    var out = [];
-    for (var i = 0; i < items.length; i++) {
-      var name = items[i].querySelector('.ws-name');
-      out.push({
-        id: items[i].dataset.workspaceId || '',
-        label: name ? name.textContent : '',
-        active: items[i].classList.contains('is-active')
-      });
-    }
-    return out;
-  }
   window.LexeraHierarchyTestApi = {
     collectState: function () {
       return {
@@ -324,18 +264,17 @@
         activeBoardId: activeBoardId,
         selectedWorkspaceId: selectedWorkspaceId,
         groups: collectGroupState(),
-        remote: collectFlatBoardItems(remoteBoardsEl),
-        workspaces: collectWorkspaceItems()
+        remote: [],
+        workspaces: []
       };
     },
     clickBoard: function (boardId, scope) {
-      // scope: 'local' (default — searches inside grouped tree) | 'remote'
-      var rootEl = scope === 'remote' ? remoteBoardsEl : localBoardsEl;
-      return dispatchClick(findBoardItem(rootEl, boardId));
+      void scope;
+      return dispatchClick(findBoardItem(localBoardsEl, boardId));
     },
     clickWorkspace: function (workspaceId) {
-      // Top "Workspaces" sidebar list — focuses the workspace view.
-      return dispatchClick(findWorkspaceItem(workspaceId));
+      void workspaceId;
+      return false;
     },
     clickWorkspaceGroupHeader: function (groupId) {
       // Inline group header inside the local-boards tree — toggles

@@ -116,8 +116,7 @@ html, body {
   margin-left: 4px;
 }
 
-.board-list,
-.ws-list {
+.board-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -128,16 +127,14 @@ html, body {
   border-left: 1px solid var(--border, #333);
 }
 
-.board-list .empty,
-.ws-list .empty {
+.board-list .empty {
   padding: 4px 12px;
   color: var(--text-muted, #888);
   font-style: italic;
   font-size: 11px;
 }
 
-.board-item,
-.ws-item {
+.board-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -147,31 +144,23 @@ html, body {
   user-select: none;
 }
 
-.board-item:hover,
-.ws-item:hover {
+.board-item:hover {
   background: var(--bg-hover, #2c2c2c);
 }
 
-.ws-item.all-workspaces {
-  font-style: italic;
-}
-
-.board-item.is-active,
-.ws-item.is-active {
+.board-item.is-active {
   background: var(--accent-bg, color-mix(in srgb, var(--accent, #007acc) 20%, transparent));
   color: var(--accent-fg, var(--text-primary, #d4d4d4));
 }
 
-.board-name,
-.ws-name {
+.board-name {
   flex: 1 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.board-id,
-.ws-id {
+.board-id {
   flex: 0 0 auto;
   color: var(--text-muted, #888);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;

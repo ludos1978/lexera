@@ -1,7 +1,7 @@
 // Workspaces sub-app — uses LexeraSubApp shared runtime.
 //
-// Shows local boards, remote boards, and the current workspace. Click a board
-// to broadcast a navigation request to the main shell.
+// Shows the current workspace and its boards. The synthetic Remote Boards
+// workspace uses the same list, but with remote boards as its contents.
 
 (function () {
   'use strict';
@@ -14,13 +14,13 @@
 
   var statusEl = document.getElementById('status');
   var localBoardsEl = document.getElementById('local-boards');
-  var remoteBoardsEl = document.getElementById('remote-boards');
   var currentWorkspaceEl = document.getElementById('current-workspace');
   var localCountEl = document.getElementById('local-count');
-  var remoteCountEl = document.getElementById('remote-count');
 
   var activeBoardId = null;
   var currentWorkspace = null;
+  var REMOTE_WORKSPACE_ID = '__remote_boards__';
+  var REMOTE_WORKSPACE_NAME = 'Remote Boards';
 
   function refreshActiveHighlight() {
     var items = document.querySelectorAll('li.board-item');
@@ -63,6 +63,9 @@
   function findCurrentWorkspace(snap) {
     if (snap && snap.activeWorkspace && snap.activeWorkspace.id) return snap.activeWorkspace;
     var activeId = snap && snap.activeWorkspaceId ? String(snap.activeWorkspaceId) : '';
+    if (activeId === REMOTE_WORKSPACE_ID) {
+      return { id: REMOTE_WORKSPACE_ID, name: REMOTE_WORKSPACE_NAME, isRemoteWorkspace: true };
+    }
     var workspaces = snap && Array.isArray(snap.workspaces) ? snap.workspaces : [];
     if (activeId) {
       for (var i = 0; i < workspaces.length; i++) {
@@ -89,8 +92,11 @@
 
   LexeraSubApp.init({
     onCatalog: function (snap) {
-      renderBoards(localBoardsEl, snap.boards || [], localCountEl);
-      renderBoards(remoteBoardsEl, snap.remoteBoards || [], remoteCountEl);
+      var workspace = findCurrentWorkspace(snap || {});
+      var visibleBoards = workspace && workspace.id === REMOTE_WORKSPACE_ID
+        ? (snap.remoteBoards || [])
+        : (snap.boards || []);
+      renderBoards(localBoardsEl, visibleBoards, localCountEl);
       renderCurrentWorkspace(snap || {});
       refreshActiveHighlight();
       statusEl.textContent = 'connected';
@@ -151,7 +157,7 @@
         status: statusEl ? statusEl.textContent : '',
         activeBoardId: activeBoardId,
         local: collectListItemState(localBoardsEl),
-        remote: collectListItemState(remoteBoardsEl),
+        remote: [],
         currentWorkspace: currentWorkspace ? {
           id: currentWorkspace.id || '',
           label: currentWorkspace.name || '(untitled)'
@@ -164,8 +170,8 @@
       // an item was found and clicked, false otherwise — drives the
       // same `LexeraSubApp.navigate({ type: 'open-board', ... })` a
       // real click does.
-      var listEl = scope === 'remote' ? remoteBoardsEl : localBoardsEl;
-      return dispatchClick(findBoardItem(listEl, boardId));
+      void scope;
+      return dispatchClick(findBoardItem(localBoardsEl, boardId));
     },
     clickOpenWorkspace: function (workspaceId) {
       void workspaceId;

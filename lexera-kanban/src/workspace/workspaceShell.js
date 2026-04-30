@@ -1977,6 +1977,9 @@
     return invokeTauri('open_new_window', payload || {});
   }
 
+  var OPEN_WORKSPACE_WINDOW_DEDUP_MS = 1200;
+  var lastOpenWorkspaceWindowRequest = { key: '', at: 0 };
+
   function getPanelWindowRect(panelId) {
     if (!state.rootEl) return null;
     var normalized = resolvePanelTarget(panelId);
@@ -2012,6 +2015,13 @@
     // app.js from the URL `workspace` param and applied as a locked
     // filter for the lifetime of that window. Omit to spawn a generic
     // workspace window that the user can switch around.
+    var key = String(workspaceId || '');
+    var now = Date.now();
+    if (lastOpenWorkspaceWindowRequest.key === key &&
+        now - lastOpenWorkspaceWindowRequest.at < OPEN_WORKSPACE_WINDOW_DEDUP_MS) {
+      return Promise.resolve(false);
+    }
+    lastOpenWorkspaceWindowRequest = { key: key, at: now };
     var payload = { profile: 'workspace' };
     if (workspaceId) payload.workspaceId = String(workspaceId);
     return openWindow(payload).catch(function () {

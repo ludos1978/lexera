@@ -79,8 +79,17 @@
     // The legacy `open-workspace` (no id) entry is kept as a fallback
     // chooser for environments that haven't rebuilt the menu yet (eg
     // first paint before the workspaces catalog has hydrated).
+    var lastOpenWorkspaceRequest = { key: '', at: 0 };
+    var OPEN_WORKSPACE_REQUEST_DEDUP_MS = 1200;
     function openPickedWorkspace(workspaceId) {
       if (!workspaceId) return;
+      var key = String(workspaceId || '');
+      var now = Date.now();
+      if (lastOpenWorkspaceRequest.key === key &&
+          now - lastOpenWorkspaceRequest.at < OPEN_WORKSPACE_REQUEST_DEDUP_MS) {
+        return;
+      }
+      lastOpenWorkspaceRequest = { key: key, at: now };
       var shell = (typeof window !== 'undefined') ? window.LexeraWorkspaceShell : null;
       if (shell && typeof shell.openWorkspaceWindow === 'function') {
         shell.openWorkspaceWindow(workspaceId);

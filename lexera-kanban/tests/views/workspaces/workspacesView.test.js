@@ -26,12 +26,8 @@ function createDom() {
         </header>
         <main class="body">
           <section>
-            <h3>Local boards <span class="muted" id="local-count"></span></h3>
+            <h3>Boards <span class="muted" id="local-count"></span></h3>
             <ul class="board-list" id="local-boards"></ul>
-          </section>
-          <section>
-            <h3>Remote boards <span class="muted" id="remote-count"></span></h3>
-            <ul class="board-list" id="remote-boards"></ul>
           </section>
           <section>
             <h3>Current workspace</h3>
@@ -70,16 +66,16 @@ describe('workspaces view sub-app', () => {
         { id: 'ws-2', name: 'Sibling Workspace' }
       ]
     });
-    capturedOpts.onActiveBoard('board-2');
+    capturedOpts.onActiveBoard('board-1');
 
     expect(window.document.getElementById('status').textContent).toBe('connected');
     expect(window.document.getElementById('local-count').textContent).toBe('(1)');
-    expect(window.document.getElementById('remote-count').textContent).toBe('(1)');
     expect(window.document.getElementById('current-workspace').textContent).toContain('Primary Workspace');
     expect(window.document.getElementById('current-workspace').textContent).not.toContain('Sibling Workspace');
     expect(window.document.querySelector('#workspaces')).toBeNull();
-    expect(window.document.getElementById('remote-boards').textContent).toContain('Remote Board');
-    expect(window.document.querySelector('#remote-boards .board-item')?.classList.contains('is-active')).toBe(true);
+    expect(window.document.querySelector('#remote-boards')).toBeNull();
+    expect(window.document.getElementById('local-boards').textContent).not.toContain('Remote Board');
+    expect(window.document.querySelector('#local-boards .board-item')?.classList.contains('is-active')).toBe(true);
 
     window.document.querySelector('#local-boards .board-item')
       .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
@@ -189,7 +185,7 @@ describe('workspaces view sub-app', () => {
     expect(state.local.map((b) => b.label)).toEqual(['Roadmap', 'Sprint']);
     expect(state.local.find((b) => b.id === 'b2').active).toBe(true);
     expect(state.local.find((b) => b.id === 'b1').active).toBe(false);
-    expect(state.remote.map((b) => b.label)).toEqual(['Shared']);
+    expect(state.remote).toEqual([]);
     expect(state.currentWorkspace).toEqual({ id: 'w1', label: 'Default' });
     expect(state.workspaces).toEqual([]);
   });
@@ -216,14 +212,41 @@ describe('workspaces view sub-app', () => {
       boardId: 'b1'
     });
 
+    expect(window.LexeraWorkspacesTestApi.clickBoard('r1', 'remote')).toBe(false);
+
+    // Unknown id → no false-positive navigate.
+    expect(window.LexeraWorkspacesTestApi.clickBoard('does-not-exist')).toBe(false);
+  });
+
+  it('renders remote boards only when the current workspace is the remote workspace', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadWorkspacesView(window);
+
+    capturedOpts.onCatalog({
+      boards: [{ id: 'b1', title: 'Local Roadmap' }],
+      remoteBoards: [{ id: 'r1', title: 'Shared' }],
+      activeWorkspaceId: '__remote_boards__',
+      workspaces: [{ id: 'w1', name: 'Default' }]
+    });
+    capturedOpts.onActiveBoard('r1');
+
+    const state = window.LexeraWorkspacesTestApi.collectState();
+    expect(state.currentWorkspace).toEqual({ id: '__remote_boards__', label: 'Remote Boards' });
+    expect(state.local.map((b) => b.label)).toEqual(['Shared']);
+    expect(state.local.find((b) => b.id === 'r1').active).toBe(true);
+    expect(window.document.getElementById('local-boards').textContent).not.toContain('Local Roadmap');
+
     expect(window.LexeraWorkspacesTestApi.clickBoard('r1', 'remote')).toBe(true);
     expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
       type: 'open-board',
       boardId: 'r1'
     });
-
-    // Unknown id → no false-positive navigate.
-    expect(window.LexeraWorkspacesTestApi.clickBoard('does-not-exist')).toBe(false);
   });
 
   it('renders only the current workspace and has no per-row workspace opener', () => {

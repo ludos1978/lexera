@@ -520,6 +520,21 @@ describe('workspace shell tab actions (Phase 1 keyboard shortcuts)', () => {
     });
   });
 
+  it('dedupes repeated native open-workspace:<id> menu actions', () => {
+    const { shell, mainContent } = createShellHarness();
+    const openWindow = vi.fn();
+    shell.mount({ getMainContent: () => mainContent, openWindow });
+
+    expect(shell.handleBoardAction('open-workspace:ws-selected')).toBe(true);
+    expect(shell.handleBoardAction('open-workspace:ws-selected')).toBe(true);
+
+    expect(openWindow).toHaveBeenCalledTimes(1);
+    expect(openWindow).toHaveBeenCalledWith({
+      profile: 'workspace',
+      workspaceId: 'ws-selected'
+    });
+  });
+
   it('renders a shell tab header for default multi-view panel groups', () => {
     const { shell, mainContent } = createShellHarness();
     shell.mount({ getMainContent: () => mainContent });

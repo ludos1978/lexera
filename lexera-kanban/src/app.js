@@ -35,6 +35,9 @@ var LexeraDashboard = (function () {
 
   // Local variables — kept for backwards compat with code that reads them directly.
   // Setters update BOTH the local var and the runtime state.
+  var REMOTE_WORKSPACE_ID = '__remote_boards__';
+  var REMOTE_WORKSPACE_NAME = 'Remote Boards';
+  var lastWorkspaceMenuSignature = '';
   let boards = [];
   let remoteBoards = [];
   let workspaces = [];
@@ -145,6 +148,9 @@ var LexeraDashboard = (function () {
     if (embeddedMode || !workspaceShellEnabled || !WorkspaceShell || typeof WorkspaceShell.onCatalogUpdated !== 'function') return;
     function resolveWorkspaceSnapshot(workspaceId) {
       if (!workspaceId) return null;
+      if (workspaceId === REMOTE_WORKSPACE_ID) {
+        return { id: REMOTE_WORKSPACE_ID, name: REMOTE_WORKSPACE_NAME, isRemoteWorkspace: true };
+      }
       for (var i = 0; i < workspaces.length; i++) {
         var workspace = workspaces[i];
         if (!workspace || workspace.id !== workspaceId) continue;
@@ -173,6 +179,13 @@ var LexeraDashboard = (function () {
   function setRemoteBoardsState(nextBoards) {
     remoteBoards = Array.isArray(nextBoards) ? nextBoards : [];
     syncRuntimeState('remoteBoards', remoteBoards);
+    if (!activeWorkspaceId && !workspaces.length && remoteBoards.length > 0) {
+      activeWorkspaceId = REMOTE_WORKSPACE_ID;
+      viewWorkspaceId = REMOTE_WORKSPACE_ID;
+      syncRuntimeState('activeWorkspaceId', activeWorkspaceId);
+      syncRuntimeState('viewWorkspaceId', viewWorkspaceId);
+    }
+    syncWorkspaceMenuEntries();
     syncWorkspaceShellCatalogSnapshot();
   }
 
@@ -199,8 +212,8 @@ var LexeraDashboard = (function () {
     // available). The window stays on this workspace for its lifetime
     // — workspace switches happen by opening a new window via
     // File > Open Workspace > <name>.
-    var hasReal = !!activeWorkspaceId
-      && workspaces.some(function (w) { return w && String(w.id) === String(activeWorkspaceId); });
+    var hasReal = activeWorkspaceId === REMOTE_WORKSPACE_ID || (!!activeWorkspaceId
+      && workspaces.some(function (w) { return w && String(w.id) === String(activeWorkspaceId); }));
     if (!hasReal) {
       var picked = pickDefaultWorkspaceId(workspaces);
       if (picked) {
@@ -218,13 +231,29 @@ var LexeraDashboard = (function () {
       syncRuntimeState('viewWorkspaceId', viewWorkspaceId);
     }
     syncWorkspaceShellCatalogSnapshot();
+    syncWorkspaceMenuEntries();
+  }
+
+  function syncWorkspaceMenuEntries() {
     // Refresh the native File > Open Workspace ▶ submenu so the user
     // gets one entry per workspace. Best-effort — non-Tauri / browser
-    // dev mode silently skips.
+    // dev mode silently skips. Only the top-level shell refreshes the
+    // shared native menu; embedded board webviews also poll catalogs,
+    // but rebuilding the global menu from every child can retrigger
+    // native submenu activation on macOS.
+    if (embeddedMode) return;
     if (hasTauri && typeof tauriInvoke === 'function') {
       var entries = workspaces.map(function (w) {
         return { id: String(w.id || ''), name: String(w.name || '') };
       }).filter(function (e) { return e.id; });
+      if (remoteBoards.length > 0) {
+        entries.push({ id: REMOTE_WORKSPACE_ID, name: REMOTE_WORKSPACE_NAME });
+      }
+      var signature = entries.map(function (e) {
+        return e.id + '\u0000' + e.name;
+      }).join('\u0001');
+      if (signature === lastWorkspaceMenuSignature) return;
+      lastWorkspaceMenuSignature = signature;
       try {
         tauriInvoke('set_workspaces_submenu', { workspaces: entries });
       } catch (_) { /* menu refresh is best-effort */ }

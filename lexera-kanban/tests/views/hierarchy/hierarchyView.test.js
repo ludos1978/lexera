@@ -33,14 +33,6 @@ function createDom() {
               <h3 class="hierarchy-section-title">Workspace tree <span class="muted" id="local-count"></span></h3>
               <ul class="board-list lexera-shared-board-list" id="local-boards"></ul>
             </section>
-            <section class="hierarchy-section">
-              <h3 class="hierarchy-section-title">Remote boards <span class="muted" id="remote-count"></span></h3>
-              <ul class="board-list" id="remote-boards"></ul>
-            </section>
-            <section class="hierarchy-section">
-              <h3 class="hierarchy-section-title">Workspaces <span class="muted" id="ws-count"></span></h3>
-              <ul class="ws-list" id="workspaces"></ul>
-            </section>
           </main>
         </div>
       </body>
@@ -49,7 +41,7 @@ function createDom() {
 }
 
 describe('hierarchy view sub-app', () => {
-  it('renders grouped workspace boards, supports collapse, and navigates for boards and workspaces', () => {
+  it('renders grouped workspace boards, supports collapse, and does not render a workspace list', () => {
     const dom = createDom();
     const { window } = dom;
     let capturedOpts = null;
@@ -80,43 +72,38 @@ describe('hierarchy view sub-app', () => {
       viewWorkspace: { id: 'ws-2', name: 'Workspace Two' },
       workspaceViewMode: 'manual'
     });
-    capturedOpts.onActiveBoard('board-2');
+    capturedOpts.onActiveBoard('board-1');
 
     expect(window.document.getElementById('status').textContent).toBe('connected');
     // Each window owns exactly one workspace — title shows that workspace's name
     expect(window.document.getElementById('title').textContent).toBe('Workspace Two');
     expect(window.document.getElementById('view-mode').textContent).toBe('manual view');
     expect(window.document.getElementById('local-count').textContent).toBe('(1)');
-    expect(window.document.getElementById('remote-count').textContent).toBe('(1)');
-    expect(window.document.getElementById('ws-count').textContent).toBe('(2)');
-    expect(window.document.querySelector('#remote-boards .board-item')?.classList.contains('is-active')).toBe(true);
+    expect(window.document.querySelector('#remote-boards')).toBeNull();
+    expect(window.document.getElementById('local-boards').textContent).not.toContain('Remote Board');
     // The single visible workspace group is the one this window owns
     expect(window.document.querySelector('[data-workspace-group="ws-2"]')).toBeTruthy();
     expect(window.document.querySelector('[data-workspace-group="ws-1"]')).toBeNull();
-    // No "All Workspaces" pseudo-item in the workspace picker
+    // No workspace picker/list at all.
+    expect(window.document.querySelector('#workspaces')).toBeNull();
+    expect(window.document.querySelector('.ws-list')).toBeNull();
     expect(window.document.querySelector('[data-workspace-id="__all__"]')).toBeNull();
 
     // Click the local board → open it
     window.document.querySelector('#local-boards .board-item')
-      .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-    // Click a sibling workspace → opens a NEW window pinned to it
-    window.document.querySelector('#workspaces [data-workspace-id="ws-1"]')
       .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 
     expect(window.LexeraSubApp.navigate).toHaveBeenNthCalledWith(1, {
       type: 'open-board',
       boardId: 'board-1'
     });
-    expect(window.LexeraSubApp.navigate).toHaveBeenNthCalledWith(2, {
-      type: 'open-workspace-window',
-      workspaceId: 'ws-1'
-    });
+    expect(window.LexeraSubApp.navigate).toHaveBeenCalledTimes(1);
   });
 
   // ── User-interaction API exercise ────────────────────────────────
   // Drives the hierarchy view ONLY through LexeraHierarchyTestApi.
   // A regression that breaks rendering (board list invisible,
-  // workspace items missing) makes clickBoard/clickWorkspace return
+  // board items missing makes clickBoard return
   // false so the test fails — no false positive.
   it('LexeraHierarchyTestApi.collectState exposes the rendered grouped tree the user sees', () => {
     const dom = createDom();
@@ -158,12 +145,12 @@ describe('hierarchy view sub-app', () => {
     expect(wsGroup.boards.map((b) => b.label)).toEqual(['Roadmap', 'Sprint']);
     expect(wsGroup.boards.find((b) => b.id === 'board-2').active).toBe(true);
 
-    expect(state.remote.map((b) => b.label)).toEqual(['Shared']);
-    // Workspace picker shows only real workspaces — no `__all__` entry
-    expect(state.workspaces.map((w) => w.id)).toEqual(['ws-1']);
+    expect(state.remote).toEqual([]);
+    // Workspace selector is not rendered in this view.
+    expect(state.workspaces).toEqual([]);
   });
 
-  it('LexeraHierarchyTestApi.clickBoard / clickWorkspace dispatch the same navigate a real click does', () => {
+  it('LexeraHierarchyTestApi.clickBoard dispatches navigate, while clickWorkspace is unavailable', () => {
     const dom = createDom();
     const { window } = dom;
     let capturedOpts = null;
@@ -192,19 +179,10 @@ describe('hierarchy view sub-app', () => {
       boardId: 'board-1'
     });
 
-    expect(window.LexeraHierarchyTestApi.clickBoard('remote-1', 'remote')).toBe(true);
-    expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
-      type: 'open-board',
-      boardId: 'remote-1'
-    });
+    expect(window.LexeraHierarchyTestApi.clickBoard('remote-1', 'remote')).toBe(false);
 
-    // Clicking a sibling workspace opens a NEW window pinned to it —
-    // each window owns exactly one workspace for its lifetime.
-    expect(window.LexeraHierarchyTestApi.clickWorkspace('ws-2')).toBe(true);
-    expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
-      type: 'open-workspace-window',
-      workspaceId: 'ws-2'
-    });
+    // No workspace list in this view.
+    expect(window.LexeraHierarchyTestApi.clickWorkspace('ws-2')).toBe(false);
 
     // Unknown ids → no navigate, no false positives.
     expect(window.LexeraHierarchyTestApi.clickBoard('does-not-exist')).toBe(false);
@@ -236,5 +214,40 @@ describe('hierarchy view sub-app', () => {
     expect(window.LexeraHierarchyTestApi.collectState().groups[0].expanded).toBe(false);
     // Toggling group must not fire a board/workspace navigate.
     expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
+  });
+
+  it('renders remote boards as their own workspace tree when that workspace is open', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadHierarchyView(window);
+
+    capturedOpts.onCatalog({
+      boards: [{ id: 'board-1', title: 'Roadmap', workspace_id: 'ws-1' }],
+      remoteBoards: [{ id: 'remote-1', title: 'Shared' }],
+      workspaces: [{ id: 'ws-1', name: 'Default' }],
+      activeWorkspaceId: '__remote_boards__',
+      viewWorkspaceId: '__remote_boards__',
+      workspaceViewMode: 'manual'
+    });
+    capturedOpts.onActiveBoard('remote-1');
+
+    const state = window.LexeraHierarchyTestApi.collectState();
+    expect(state.title).toBe('Remote Boards');
+    expect(state.selectedWorkspaceId).toBe('__remote_boards__');
+    expect(state.groups.map((g) => g.id)).toEqual(['__remote_boards__']);
+    expect(state.groups[0].boards.map((b) => b.label)).toEqual(['Shared']);
+    expect(state.groups[0].boards[0].active).toBe(true);
+    expect(window.document.getElementById('local-boards').textContent).not.toContain('Roadmap');
+
+    expect(window.LexeraHierarchyTestApi.clickBoard('remote-1', 'remote')).toBe(true);
+    expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
+      type: 'open-board',
+      boardId: 'remote-1'
+    });
   });
 });
