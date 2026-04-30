@@ -1,6 +1,8 @@
 (function () {
   'use strict';
 
+  var mountState = { mounted: false, error: '' };
+
   function handleManagementRefresh(payload) {
     if (!window.ManagementUI || typeof window.ManagementUI.refresh !== 'function') return;
     var section = payload && payload.section ? String(payload.section) : '';
@@ -44,6 +46,7 @@
       api: window.LexeraSettingsRuntime.buildBackendApiAdapter(),
       callbacks: window.LexeraSettingsRuntime.buildBackendCallbacks()
     });
+    mountState.mounted = true;
   } catch (err) {
     container.classList.remove('view-loading');
     container.innerHTML =
@@ -53,5 +56,29 @@
       String((err && err.message) || err).replace(/</g, '&lt;') +
       '</pre>' +
       '</div>';
+    mountState.error = String((err && err.message) || err);
   }
+
+  // ── User-interaction test API ──────────────────────────────────
+  // Same-shape contract as Lexera{Files,FrontendSettings,Inspector,
+  // Log,Hierarchy,Workspaces,Dashboard}TestApi. Surfaces the
+  // mount/error state and the management-refresh hook so tests can
+  // drive the sub-app the way the SHELL does.
+  window.LexeraBackendSettingsTestApi = {
+    collectState: function () {
+      var c = container;
+      var pre = c ? c.querySelector('pre') : null;
+      return {
+        mounted: mountState.mounted,
+        error: mountState.error,
+        loadingClass: !!(c && c.classList.contains('view-loading')),
+        errorText: pre ? pre.textContent : '',
+        hasErrorBlock: !!(c && c.textContent.indexOf('Failed to initialize') !== -1)
+      };
+    },
+    triggerManagementRefresh: function (section) {
+      handleManagementRefresh(section ? { section: section } : {});
+      return true;
+    }
+  };
 })();

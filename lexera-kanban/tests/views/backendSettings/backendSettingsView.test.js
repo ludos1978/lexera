@@ -164,4 +164,74 @@ describe('backendSettings view sub-app', () => {
     expect(container.querySelector('script')).toBeNull();
     expect(container.textContent).toContain('<script>alert(1)</script>');
   });
+
+  // ── User-interaction API exercise ────────────────────────────────
+  // Drives the backendSettings sub-app ONLY through
+  // LexeraBackendSettingsTestApi. Same surface-area pattern as the
+  // files sub-app — a thin wrapper around ManagementUI whose
+  // visible-to-user state owned by THIS file is mount + error +
+  // refresh hook.
+  it('LexeraBackendSettingsTestApi.collectState mirrors mount + error visibility the user sees', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = { init: vi.fn() };
+    window.ManagementUI = {
+      destroy: vi.fn(),
+      init: vi.fn(),
+      getUiPreset: vi.fn(() => ({ sections: [] }))
+    };
+    window.LexeraSettingsRuntime = {
+      buildBackendApiAdapter: vi.fn(() => ({})),
+      buildBackendCallbacks: vi.fn(() => ({}))
+    };
+
+    loadBackendSettingsView(window);
+
+    const state = window.LexeraBackendSettingsTestApi.collectState();
+    expect(state.mounted).toBe(true);
+    expect(state.error).toBe('');
+    expect(state.hasErrorBlock).toBe(false);
+  });
+
+  it('LexeraBackendSettingsTestApi.collectState reports the error path when ManagementUI is missing', () => {
+    const dom = createDom();
+    const { window } = dom;
+    window.LexeraSubApp = { init: vi.fn() };
+    window.LexeraSettingsRuntime = {
+      buildBackendApiAdapter: vi.fn(() => ({})),
+      buildBackendCallbacks: vi.fn(() => ({}))
+    };
+
+    loadBackendSettingsView(window);
+
+    const state = window.LexeraBackendSettingsTestApi.collectState();
+    expect(state.mounted).toBe(false);
+    expect(state.hasErrorBlock).toBe(true);
+    expect(state.errorText).toContain('ManagementUI not loaded');
+    expect(state.loadingClass).toBe(false);
+  });
+
+  it('LexeraBackendSettingsTestApi.triggerManagementRefresh fires the same refresh path the shell broadcasts', () => {
+    const dom = createDom();
+    const { window } = dom;
+    const refresh = vi.fn();
+    window.LexeraSubApp = { init: vi.fn() };
+    window.ManagementUI = {
+      destroy: vi.fn(),
+      init: vi.fn(),
+      refresh,
+      getUiPreset: vi.fn(() => ({ sections: [] }))
+    };
+    window.LexeraSettingsRuntime = {
+      buildBackendApiAdapter: vi.fn(() => ({})),
+      buildBackendCallbacks: vi.fn(() => ({}))
+    };
+
+    loadBackendSettingsView(window);
+
+    expect(window.LexeraBackendSettingsTestApi.triggerManagementRefresh('connections')).toBe(true);
+    expect(window.LexeraBackendSettingsTestApi.triggerManagementRefresh()).toBe(true);
+    expect(refresh).toHaveBeenNthCalledWith(1, 'connections');
+    expect(refresh).toHaveBeenNthCalledWith(2);
+  });
 });
