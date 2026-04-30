@@ -8,11 +8,19 @@ Keep this file structured and clean:
 - One task per line. Keep descriptions concise — details belong in code comments or commit messages.
 - Update the test status line below after each test run.
 
-**Test status: 1792 passed, 0 failed, 2 skipped / 1794 tests in ~14s (vitest); 160 / 160 in `./run-lexera-tests.sh`**
+**Test status: focused vitest `exportService.test.js` + `exportUiDefaultFolder.test.js`: 79 passed, 0 failed; 160 / 160 in `./run-lexera-tests.sh` (14.67s); prior full vitest: 1792 passed, 0 failed, 2 skipped / 1794 tests in ~14s**
 
 ## Open Tasks
 
 ### Unsorted (leave this header here!)
+
+- [ ] the dashboard isnt showing any of the content it should show!
+
+- [ ] the workspace isnt showing the names of the board, all show (untitled)
+
+- [ ] when adding a card to a column it should hide the "+ add card" button immediately, solve it using css only by detecting any siblings and hide the button directly.
+
+- [ ] make all add element buttons (+ Add Row, + Add Stack, + Add Column, + Add Card) have the same layout.
 
 - [ ] the workspace tree doesnt look at all good! not the right list of elements, not the right structure — **needs user input**: which specific elements look wrong and what structure is expected? sidebar tree at [sidebar/sidebarTree.js](lexera-kanban/src/sidebar/sidebarTree.js) renders Workspace > Board > Row > Stack > Column > Card
 
@@ -99,7 +107,7 @@ Bundle lives at `/tmp/lexera-design-v2/lexera-v2/` (palette + typography + JSX p
 - [ ] Dashboard navigation targets still focus the correct element after live mutations and rerenders.
 - [ ] Dashboard selection on temporal sections (due-soon, overdue) jumps to correct card with expected focus state.
 - [~] Dashboard results stay correct after tag edits that change visibility (deadline, overdue, parked, archived, hidden). PARTIAL: tag-edit and hidden-state tests cover data; dashboard-specific DOM assertions need manual-mode tests.
-- [ ] Burger-menu reveal and edit actions open or focus the expected content target (not just data mutation).
+- [ ] Burger-menu reveal and edit actions open or focus the expected content target (not just data mutation). — **in progress** (next iteration: write a vitest that asserts the burger menu reveal/edit handlers route to the right DOM target via showNativeMenu / showBoardTabMenu rather than just mutating board data).
 - [~] Temporal tags via burger-menu update visible time badges and dashboard groupings. PARTIAL: badge rendering verified; grouping assertions need manual-mode tests.
 
 ### Multi-Board Drag & Drop Test Plan
@@ -547,4 +555,3 @@ Break app.js into bootstrap + modules (11,063 lines), split workspaceShell.js (4
 Large historical status sections, package-by-package quality reviews, already-completed hardening work, and the older phased recommendation lists were moved out of the active backlog. Keep the active file focused on unresolved architecture and product work; use [todo-archive.md](todo-archive.md) and git history for the older progress reports.
 
 - ~~native multiview webviews paint above shell DOM, hiding dropdowns and drag indicators~~ — c0627702: refcounted `setAllVisible` on `LexeraMultiviewWebview`, hooks tab drag mode + tab overflow dropdown, gates `boardHost` visibility observer + spawn-time visibility on the same flag so concurrent suppressors compose.
-
