@@ -152,6 +152,21 @@ describe('one workspace per window — wiring contract', () => {
     expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}workspaces\.some\(/);
   });
 
+  it('native menu actions target the FOCUSED window only — no app-wide broadcast that would fire the action in every window', () => {
+    // Each window owns one workspace; menu actions like
+    // View > Panels > Dashboard mean "show this panel in THIS
+    // window". `app.emit("menu-action", …)` broadcasts to every
+    // window and was causing the panel to reveal everywhere at once.
+    // Focused-window targeting via `webview_windows()` + `is_focused`
+    // routes the action to just the window the user clicked from.
+    expect(mainRs).toMatch(/\.webview_windows\(\)[\s\S]{0,200}is_focused\(\)/);
+    expect(mainRs).toMatch(/window\.emit\("menu-action"/);
+    // The fallback `app.emit` only runs when no window is focused —
+    // pin the structure so a future refactor doesn't accidentally
+    // re-broadcast unconditionally.
+    expect(mainRs).toMatch(/if let Some\(window\) = focused[\s\S]{0,500}else[\s\S]{0,300}app\.emit\("menu-action"/);
+  });
+
   it('the legacy ALL_WORKSPACES_ID sentinel is gone — no codepath references __all__ or ALL_WORKSPACES_ID anymore', () => {
     // The pseudo-workspace-id was the source of the cross-window leak
     // in the all-view branches. After 82417477 + this cleanup, every

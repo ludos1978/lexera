@@ -623,13 +623,10 @@ describe('workspace shell board loading', () => {
     expect(tab.boardId).toBe('alpha');
   });
 
-  it('focusWorkspace delegates to LexeraBoardList.focusWorkspaceView', () => {
-    const { shell, window } = createShellHarness();
-    const focusWorkspaceView = vi.fn();
-    window.LexeraBoardList = { focusWorkspaceView };
-
-    expect(shell.focusWorkspace('ws-1')).toBe(true);
-    expect(focusWorkspaceView).toHaveBeenCalledWith('ws-1');
+  it('shell.focusWorkspace is gone — each window owns one workspace, so workspace switching means opening a new window', () => {
+    const { shell } = createShellHarness();
+    expect(typeof shell.focusWorkspace).toBe('undefined');
+    expect(typeof shell.openWorkspaceWindow).toBe('function');
   });
 
   it('opening the same board twice returns the existing tab', () => {

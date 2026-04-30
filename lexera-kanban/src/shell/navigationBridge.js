@@ -7,7 +7,7 @@
   //
   // Sub-apps emit:
   //   - 'multiview-navigate' with payload { type, ... } — typically
-  //     'open-board' (boardId, options), 'focus-workspace'
+  //     'open-board' (boardId, options), 'open-workspace-window'
   //     (workspaceId), or 'reveal-panel' (panelId).
   //   - 'multiview-shortcut' with payload { action } — keyboard shortcut
   //     forwarded from a board webview because the embedded webview, not
@@ -106,8 +106,6 @@
     try {
       if (payload.type === 'open-board' && payload.boardId && typeof shell.openBoard === 'function') {
         shell.openBoard(payload.boardId, payload.options || {});
-      } else if (payload.type === 'focus-workspace' && payload.workspaceId && typeof shell.focusWorkspace === 'function') {
-        shell.focusWorkspace(payload.workspaceId);
       } else if (payload.type === 'open-workspace-window' && payload.workspaceId && typeof shell.openWorkspaceWindow === 'function') {
         // "Open" action from the workspaces sub-app: spawn a fresh
         // window pinned to the chosen workspace. The new window's

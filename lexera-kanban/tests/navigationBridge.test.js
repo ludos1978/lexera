@@ -47,12 +47,12 @@ describe('LexeraNavigationBridge.handleNavigate', () => {
     expect(revealPanel).toHaveBeenCalledWith('logs');
   });
 
-  it('routes focus-workspace to LexeraWorkspaceShell.focusWorkspace', () => {
+  it('routes open-workspace-window to LexeraWorkspaceShell.openWorkspaceWindow (each window owns one workspace, so a sibling-workspace click opens a new window)', () => {
     const { bridge, win } = freshBridge();
-    const focusWorkspace = vi.fn();
-    win.LexeraWorkspaceShell = { focusWorkspace };
-    bridge.handleNavigate({ payload: { type: 'focus-workspace', workspaceId: 'ws-1' } });
-    expect(focusWorkspace).toHaveBeenCalledWith('ws-1');
+    const openWorkspaceWindow = vi.fn();
+    win.LexeraWorkspaceShell = { openWorkspaceWindow };
+    bridge.handleNavigate({ payload: { type: 'open-workspace-window', workspaceId: 'ws-1' } });
+    expect(openWorkspaceWindow).toHaveBeenCalledWith('ws-1');
   });
 
   it('is a no-op when shell is missing', () => {

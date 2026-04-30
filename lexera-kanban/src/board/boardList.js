@@ -1297,13 +1297,6 @@ var LexeraBoardList = (function () {
     var treeNode = sourceTarget.closest('.tree-node[data-tree-id]');
     var anyTreeNode = sourceTarget.closest('.tree-node');
     var boardRow = sourceTarget.closest('.board-item[data-board-id]');
-    var workspaceHeader = sourceTarget.closest('.workspace-section-header[data-workspace-id]');
-    if (sourceTarget.closest('.workspace-section-focus') && workspaceHeader) {
-      return boardList.querySelector('.workspace-section-header[data-workspace-id="' + workspaceHeader.getAttribute('data-workspace-id') + '"] .workspace-section-focus');
-    }
-    if (workspaceHeader) {
-      return boardList.querySelector('.workspace-section-header[data-workspace-id="' + workspaceHeader.getAttribute('data-workspace-id') + '"]');
-    }
     if (sourceTarget.closest('.board-item-ws-menu') && boardRow) {
       return boardList.querySelector('.board-item[data-board-id="' + boardRow.getAttribute('data-board-id') + '"] .board-item-ws-menu');
     }
@@ -1368,15 +1361,6 @@ var LexeraBoardList = (function () {
         e.preventDefault();
         e.stopPropagation();
         _callDep('showSidebarHierarchyMenu', menuBtn);
-        return;
-      }
-      var focusBtn = e.target.closest('.workspace-section-focus');
-      if (focusBtn) {
-        var localWorkspaceHeader = focusBtn.closest('.workspace-section-header[data-workspace-id]');
-        if (!localWorkspaceHeader) return;
-        e.preventDefault();
-        e.stopPropagation();
-        focusWorkspaceView(localWorkspaceHeader.getAttribute('data-workspace-id'));
         return;
       }
       // Board burger menu — handle locally in the mirror (avoid re-dispatching
@@ -1690,75 +1674,6 @@ var LexeraBoardList = (function () {
     if (boardId && el.classList.contains('remote-board')) return 'remote:' + boardId;
     if (boardId) return 'board:' + boardId;
     return null;
-  }
-
-  function focusWorkspaceView(workspaceId) {
-    setWorkspaceViewId(workspaceId, { mode: 'manual' });
-    refreshWorkspaceMirrors();
-    renderBoardList();
-  }
-
-  /** Create a workspace tree-entry element with header and children container. */
-  function _createWsHeaderEl(wsInfo) {
-    var entry = document.createElement('div');
-    entry.className = 'tree-entry tree-entry-workspace';
-    entry.setAttribute('data-workspace-id', wsInfo.ws.id);
-
-    var wsHeader = document.createElement('div');
-    wsHeader.className = 'workspace-section-header tree-node' + (wsInfo.expanded ? ' expanded' : '');
-    wsHeader.setAttribute('data-workspace-id', wsInfo.ws.id);
-    wsHeader.setAttribute('data-tree-node-role', 'branch');
-    wsHeader.setAttribute('data-tree-structural-role', 'section');
-    wsHeader.setAttribute('aria-expanded', wsInfo.expanded ? 'true' : 'false');
-    _updateWsHeaderContent(wsHeader, wsInfo);
-    if (wsInfo.unassigned) wsHeader.classList.add('workspace-unassigned');
-
-    var childContainer = document.createElement('div');
-    childContainer.className = 'tree-children workspace-section-boards' + (wsInfo.expanded ? ' expanded' : '');
-    childContainer.setAttribute('role', 'group');
-
-    entry.appendChild(wsHeader);
-    entry.appendChild(childContainer);
-
-    (function (wsId) {
-      // dblclick on workspace header no longer drills into the workspace.
-      // Use the focus arrow button or keyboard right-arrow instead.
-      wsHeader.addEventListener('click', function (e) {
-        if (e.target.closest('.workspace-section-focus')) {
-          e.preventDefault();
-          e.stopPropagation();
-          focusWorkspaceView(wsId);
-          return;
-        }
-        if (e.detail > 1) return;
-        var ids = getSidebarExpandedBoards();
-        var key = 'ws:' + wsId;
-        var idx = ids.indexOf(key);
-        if (idx !== -1) ids.splice(idx, 1); else ids.push(key);
-        saveSidebarExpandedBoards(ids);
-        renderBoardList();
-      });
-    })(wsInfo.ws.id);
-    return entry;
-  }
-
-  /** Update workspace header content in place. */
-  function _updateWsHeaderContent(wsHeader, wsInfo) {
-    var expanded = wsInfo.expanded;
-    if (expanded) { wsHeader.classList.add('expanded'); } else { wsHeader.classList.remove('expanded'); }
-    wsHeader.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    wsHeader.innerHTML =
-      '<span class="tree-indent tree-indent-root" aria-hidden="true"></span>' +
-      '<span class="workspace-section-toggle tree-toggle' + (expanded ? ' expanded' : '') + '" aria-hidden="true"></span>' +
-      '<span class="tree-label workspace-section-name">' + _callDep('escapeHtml', wsInfo.ws.name || 'Untitled') + '</span>' +
-      '<span class="tree-meta">' +
-        '<span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span>' +
-        (wsInfo.count ? '<span class="tree-count workspace-section-count">' + wsInfo.count + '</span>' : '<span class="tree-count hidden"></span>') +
-        (wsInfo.unassigned
-          ? '<span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span>'
-          : '<button class="tree-meta-action workspace-section-focus" type="button" title="Focus workspace" aria-label="Focus workspace">\u2192</button>') +
-        '<span class="tree-grip tree-grip-spacer" aria-hidden="true"></span>' +
-      '</span>';
   }
 
   /** Create a remote board element. */
@@ -2751,15 +2666,10 @@ var LexeraBoardList = (function () {
       }
     }
 
-    // Fix board indices to be sequential among all board entries (flat + nested)
+    // Fix board indices to be sequential
     var boardIdx = 0;
     for (var fi = 0; fi < entries.length; fi++) {
       if (entries[fi].type === 'board') { entries[fi].index = boardIdx++; }
-      if (entries[fi].type === 'ws_header' && entries[fi].boards) {
-        for (var fbi = 0; fbi < entries[fi].boards.length; fbi++) {
-          entries[fi].boards[fbi].index = boardIdx++;
-        }
-      }
     }
 
     return entries;
@@ -2876,46 +2786,7 @@ var LexeraBoardList = (function () {
       var existing = existingByKey[entry.key];
       var node;
 
-      if (entry.type === 'ws_header') {
-        if (existing) {
-          var wsHeaderEl = existing.querySelector('.workspace-section-header');
-          if (wsHeaderEl) _updateWsHeaderContent(wsHeaderEl, entry);
-          node = existing;
-        } else {
-          node = _createWsHeaderEl(entry);
-        }
-        // Reconcile boards inside the workspace's .tree-children container.
-        // Build a LOCAL key→node map from wsChildContainer so nested board
-        // nodes are found and reused. The global existingByKey only indexes
-        // top-level boardListEl children, so workspace-nested boards were
-        // never matched and got re-created on every re-render.
-        var wsChildContainer = node.querySelector('.tree-children');
-        if (wsChildContainer) {
-          if (entry.expanded) { wsChildContainer.classList.add('expanded'); } else { wsChildContainer.classList.remove('expanded'); }
-          var wsBoards = entry.boards || [];
-          var wsExistingByKey = {};
-          // Build lookup AND remove duplicates + stale nodes in one pass.
-          // Keep the FIRST node for each key that matches a desired entry;
-          // remove everything else (stale keys AND duplicate keys).
-          var wsDesiredKeys = {};
-          for (var wdi = 0; wdi < wsBoards.length; wdi++) wsDesiredKeys[wsBoards[wdi].key] = true;
-          for (var wri = wsChildContainer.children.length - 1; wri >= 0; wri--) {
-            var wck = _nodeKey(wsChildContainer.children[wri]);
-            if (!wck || !wsDesiredKeys[wck] || wsExistingByKey[wck]) {
-              wsChildContainer.removeChild(wsChildContainer.children[wri]);
-            } else {
-              wsExistingByKey[wck] = wsChildContainer.children[wri];
-            }
-          }
-          if (entry.expanded) {
-            for (var wbi = 0; wbi < wsBoards.length; wbi++) {
-              _reconcileBoardEntry(wsBoards[wbi], wbi, wsChildContainer, globalBoardIdx++, wsExistingByKey);
-            }
-          } else {
-            wsChildContainer.innerHTML = '';
-          }
-        }
-      } else if (entry.type === 'board') {
+      if (entry.type === 'board') {
         _reconcileBoardEntry(entry, i, boardListEl, globalBoardIdx++);
         node = null; // already placed by _reconcileBoardEntry
       } else if (entry.type === 'remote_divider') {
@@ -3055,7 +2926,6 @@ var LexeraBoardList = (function () {
     refreshBoardHierarchyProjection: refreshBoardHierarchyProjection,
     cardPreviewText: cardPreviewText,
     setActiveWorkspaceId: setActiveWorkspaceId,
-    focusWorkspaceView: focusWorkspaceView,
     resolveActiveWorkspaceId: resolveActiveWorkspaceId,
     resolveWorkspaceContextForBoard: resolveWorkspaceContextForBoard,
     syncWorkspaceContextForBoard: syncWorkspaceContextForBoard,

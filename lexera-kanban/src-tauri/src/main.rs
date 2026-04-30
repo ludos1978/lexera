@@ -435,21 +435,36 @@ fn main() {
                     let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None, None, None, None);
                     return;
                 }
-                // Multiview architecture: in Tauri 2, `WebviewWindow::emit`
-                // only delivers to the webview attached to that window —
-                // NOT the child webviews added via `Window::add_child`.
-                // Since our SHELL webview is the one attached to the
-                // "main" WebviewWindow, panel reveals targeting just the
-                // window WOULD reach it. But focused-window targeting is
-                // brittle when child webviews steal focus, and globalish
-                // actions like layout commands need to land on the SHELL
-                // regardless. Use `app.emit` (broadcast) so every webview
-                // gets the action and decides locally whether to handle
-                // it. The shell handles panel reveals; embedded boards
-                // handle their own actions; panel-only webviews ignore
-                // shell-management actions in handleBoardAction.
-                let _ = app.emit("menu-action", action.clone());
-                log::debug!("[main] menu-action emitted globally: {}", action);
+                // Route menu actions to the FOCUSED window only. macOS
+                // shares one menu bar across windows; clicking
+                // View > Panels > Dashboard means "show the dashboard
+                // panel in THIS window I'm in". Broadcasting via
+                // `app.emit` revealed the panel in every window
+                // simultaneously and was the source of "the views show
+                // in the wrong window" bug.
+                //
+                // Each window has its own SHELL webview attached to its
+                // "main" WebviewWindow, plus child multiview webviews.
+                // `WebviewWindow::emit` delivers to just that window's
+                // attached webview — exactly the shell that should
+                // handle the action.
+                //
+                // Fallback: if no window is focused (rare; can happen
+                // briefly during window creation or when the app is in
+                // the background), emit globally so a SHELL still picks
+                // it up and the action isn't silently lost.
+                let focused = app
+                    .webview_windows()
+                    .into_iter()
+                    .find(|(_, w)| w.is_focused().unwrap_or(false))
+                    .map(|(_, w)| w);
+                if let Some(window) = focused {
+                    let _ = window.emit("menu-action", action.clone());
+                    log::debug!("[main] menu-action sent to focused window {}: {}", window.label(), action);
+                } else {
+                    let _ = app.emit("menu-action", action.clone());
+                    log::debug!("[main] menu-action emitted globally (no focused window): {}", action);
+                }
             }
         })
         .manage(export_commands::MarpWatchState::new())

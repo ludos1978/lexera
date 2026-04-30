@@ -75,8 +75,6 @@
       // routes this to `WorkspaceShell.openWorkspaceWindow(workspaceId)`,
       // which passes the id to `open_new_window` so the new window
       // boots with `?workspace=<id>` and locks itself to that workspace.
-      // Clicking the row label still triggers the legacy
-      // `focus-workspace` navigate (in-window filter switch).
       li.innerHTML =
         '<span class="ws-name">' + escapeHtml(w.name || '(untitled)') + '</span>' +
         '<span class="ws-id">' + escapeHtml(w.id ? w.id.substring(0, 8) : '') + '</span>' +

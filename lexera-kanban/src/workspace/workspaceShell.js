@@ -4318,12 +4318,6 @@
     onBoardsUpdated: onBoardsUpdated,
     onCatalogUpdated: onCatalogUpdated,
     openBoard: openBoard,
-    focusWorkspace: function (workspaceId) {
-      var boardList = (typeof window !== 'undefined' && window.LexeraBoardList) || null;
-      if (!boardList || typeof boardList.focusWorkspaceView !== 'function') return false;
-      boardList.focusWorkspaceView(workspaceId);
-      return true;
-    },
     openWorkspaceWindow: openWorkspaceWindow,
     ensureInitialTab: ensureInitialTab,
     focusHierarchyTarget: focusHierarchyTarget,
