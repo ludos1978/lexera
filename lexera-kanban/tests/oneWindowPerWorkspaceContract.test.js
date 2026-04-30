@@ -74,6 +74,12 @@ describe('one workspace per window — wiring contract', () => {
     const lockBlock = appJs.match(/initialWorkspaceLockId\s*=[\s\S]{0,400}?activeWorkspaceId\s*=\s*initialWorkspaceLockId/);
     expect(lockBlock).toBeTruthy();
     expect(lockBlock[0]).not.toMatch(/Settings\.set\(\s*'activeWorkspace'/);
+    // The URL-lock branch must set BOTH activeWorkspaceId AND
+    // viewWorkspaceId. The sidebar filter `_buildDesiredEntries` reads
+    // viewWorkspaceId; without setting it the URL-locked window boots
+    // with active=<id> but view=null, so the filter returns no boards
+    // (header shows the workspace name, content is empty).
+    expect(appJs).toMatch(/initialWorkspaceLockId[\s\S]{0,500}?viewWorkspaceId\s*=\s*initialWorkspaceLockId/);
   });
 
   // ── File menu reachability — without this entry, the user has no

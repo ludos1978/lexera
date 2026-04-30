@@ -209,6 +209,13 @@ var LexeraDashboard = (function () {
         syncRuntimeState('activeWorkspaceId', activeWorkspaceId);
         syncRuntimeState('viewWorkspaceId', viewWorkspaceId);
       }
+    } else if (!viewWorkspaceId) {
+      // URL-locked window: activeWorkspaceId was set from `?workspace=`
+      // and IS valid, but viewWorkspaceId may still be null if the
+      // initial sync ran before the catalog hydrated. Mirror it now so
+      // the sidebar filter has the right id to match against.
+      viewWorkspaceId = activeWorkspaceId;
+      syncRuntimeState('viewWorkspaceId', viewWorkspaceId);
     }
     syncWorkspaceShellCatalogSnapshot();
     // Refresh the native File > Open Workspace ▶ submenu so the user
@@ -545,7 +552,13 @@ var LexeraDashboard = (function () {
   var initialWorkspaceLockId = String(urlParams.get('workspace') || '').trim();
   if (initialWorkspaceLockId && !embeddedMode) {
     activeWorkspaceId = initialWorkspaceLockId;
+    // viewWorkspaceId drives the sidebar boards filter
+    // (`_buildDesiredEntries`) — without this, a URL-locked window
+    // boots with active=<id> but view=null, so the sidebar filters
+    // boards against `null` and shows nothing.
+    viewWorkspaceId = initialWorkspaceLockId;
     syncRuntimeState('activeWorkspaceId', activeWorkspaceId);
+    syncRuntimeState('viewWorkspaceId', viewWorkspaceId);
   }
   var WorkspaceShell = window.LexeraWorkspaceShell || null;
   var workspaceShellEnabled = !embeddedMode && !!(WorkspaceShell && typeof WorkspaceShell.isEnabled === 'function' && WorkspaceShell.isEnabled());
