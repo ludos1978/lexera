@@ -14,8 +14,14 @@ var LexeraDashboard = (function () {
     _rt.defineState('boards', []);
     _rt.defineState('remoteBoards', []);
     _rt.defineState('workspaces', []);
-    _rt.defineState('activeWorkspaceId', (Settings ? Settings.get('activeWorkspace') : localStorage.getItem('lexera-active-workspace')) || null);
-    _rt.defineState('viewWorkspaceId', (Settings ? Settings.get('activeWorkspace') : localStorage.getItem('lexera-active-workspace')) || null);
+    // activeWorkspaceId / viewWorkspaceId are PER-WINDOW state. They
+    // are never read from the shared Settings store — that would tie
+    // every window to the most recent picker click and break the
+    // "each window owns one workspace" invariant. The URL `?workspace=`
+    // lock and the catalog-default picker (see setWorkspacesState)
+    // are the only sources.
+    _rt.defineState('activeWorkspaceId', null);
+    _rt.defineState('viewWorkspaceId', null);
     _rt.defineState('workspaceViewMode', 'follow-active-board');
     _rt.defineState('activeBoardId', null);
     _rt.defineState('activeBoardData', null);
@@ -33,8 +39,11 @@ var LexeraDashboard = (function () {
   let remoteBoards = [];
   let workspaces = [];
   const ALL_WORKSPACES_ID = '__all__';
-  let activeWorkspaceId = (Settings ? Settings.get('activeWorkspace') : localStorage.getItem('lexera-active-workspace')) || null;
-  let viewWorkspaceId = activeWorkspaceId;
+  // Per-window: starts unset, gets pinned by URL `?workspace=` lock
+  // (see initialWorkspaceLockId below) or defaulted by the catalog
+  // picker. Never read from / written to the shared Settings store.
+  let activeWorkspaceId = null;
+  let viewWorkspaceId = null;
   let workspaceViewMode = 'follow-active-board';
   let activeBoardId = null;
   let activeBoardData = null;
@@ -829,10 +838,9 @@ var LexeraDashboard = (function () {
   window.addEventListener('storage', function (event) {
     try {
       if (!event || !event.key) return;
-      if (event.key === 'lexera-active-workspace') {
-        setActiveWorkspaceIdState(event.newValue || ALL_WORKSPACES_ID);
-        return;
-      }
+      // Note: `lexera-active-workspace` is intentionally NOT observed
+      // cross-window. Each window owns its own workspace for its
+      // lifetime — see setActiveWorkspaceId in boardList.js.
       if (
         event.key === 'lexera-dashboard-query' ||
         event.key === 'lexera-dashboard-scope' ||

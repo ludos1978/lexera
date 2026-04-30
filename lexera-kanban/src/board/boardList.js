@@ -1178,14 +1178,17 @@ var LexeraBoardList = (function () {
   }
 
   function setActiveWorkspaceId(workspaceId) {
+    // Per-window in-memory state ONLY — never persist to the shared
+    // Settings store. Each window owns exactly one workspace for its
+    // lifetime; persisting the choice would broadcast a `storage`
+    // event into sibling windows and yank their view to this
+    // workspace.
     var normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
     setWorkspaceViewMode('follow-active-board');
     if (typeof _deps.setViewWorkspaceIdState === 'function') {
       _deps.setViewWorkspaceIdState(normalizedWorkspaceId);
     }
     _callDep('setActiveWorkspaceIdState', normalizedWorkspaceId, { syncView: true });
-    if (_Settings) { _Settings.set('activeWorkspace', normalizedWorkspaceId); }
-    else { writeLocalStorageItem('lexera-active-workspace', normalizedWorkspaceId); }
   }
 
   function setWorkspaceViewId(workspaceId, options) {
@@ -1227,9 +1230,9 @@ var LexeraBoardList = (function () {
       options.syncSelection !== false &&
       normalizeWorkspaceId(_dep('activeWorkspaceId')) !== context.workspaceId
     ) {
+      // Per-window state only — see setActiveWorkspaceId for why
+      // persisting via Settings would leak into sibling windows.
       _callDep('setActiveWorkspaceIdState', context.workspaceId, { syncView: !preserveManualView });
-      if (_Settings) { _Settings.set('activeWorkspace', context.workspaceId); }
-      else { writeLocalStorageItem('lexera-active-workspace', context.workspaceId); }
     }
     if (typeof _deps.setViewWorkspaceIdState === 'function') {
       _deps.setViewWorkspaceIdState(nextViewWorkspaceId);

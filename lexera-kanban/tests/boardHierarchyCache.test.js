@@ -90,7 +90,11 @@ describe('board hierarchy cache refresh', () => {
     expect(context.workspaceId).toBe('ws-2');
     expect(state.activeWorkspaceId).toBe('ws-2');
     expect(state.viewWorkspaceId).toBe('ws-2');
-    expect(localStorage.getItem('lexera-active-workspace')).toBe('ws-2');
+    // The active workspace is per-window in-memory state ONLY. It must
+    // NOT be persisted to lexera-active-workspace — doing so would
+    // fire a `storage` event into sibling windows and yank their views
+    // to whatever this window picked.
+    expect(localStorage.getItem('lexera-active-workspace')).toBeNull();
   });
 
   it('keeps the current view workspace when the active board belongs to multiple workspaces', () => {

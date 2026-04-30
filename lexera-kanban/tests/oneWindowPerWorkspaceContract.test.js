@@ -144,4 +144,21 @@ describe('one workspace per window — wiring contract', () => {
     expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}pickDefaultWorkspaceId/);
     expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}activeWorkspaceId !== ALL_WORKSPACES_ID/);
   });
+
+  it('the active workspace is NEVER persisted to the shared Settings store (would leak across windows)', () => {
+    // Persisting via `Settings.set('activeWorkspace', …)` fires a
+    // `storage` event into sibling windows; the listener in app.js
+    // then yanks their view to whatever the just-clicked window
+    // picked. Each window must own its workspace in-memory only.
+    const boardListJs = readFileSync(resolve(__dirname, '..', 'src', 'board', 'boardList.js'), 'utf8');
+    expect(boardListJs).not.toMatch(/_Settings\.set\(\s*['"]activeWorkspace['"]/);
+    expect(boardListJs).not.toMatch(/writeLocalStorageItem\(\s*['"]lexera-active-workspace['"]/);
+    // The boot path must not seed activeWorkspaceId from the shared
+    // Settings store either — only the URL `?workspace=` lock and
+    // the catalog default-picker are valid sources.
+    expect(appJs).not.toMatch(/Settings\.get\(\s*['"]activeWorkspace['"]/);
+    // The cross-window storage listener for the legacy key must be
+    // gone so an old residual write doesn't switch this window.
+    expect(appJs).not.toMatch(/event\.key === ['"]lexera-active-workspace['"]/);
+  });
 });
