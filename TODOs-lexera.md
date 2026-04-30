@@ -530,7 +530,7 @@ All items verified against the actual codebase by code inspection, file existenc
 - [ ] Golden/snapshot tests for exports — none
 - [ ] End-to-end board editing flow test — none
 - [ ] Board format version field — no `format_version` in `types.rs`
-- [ ] (input required) Legacy loading still present — `legacyColumns` IS gone from the codebase (0 refs). `migrateLegacyBoard` remains actively used in `boardDataStore.js` (line 224 def, line 1201 call site, line 1411 export, 1 wrapper in app.js) — it's the on-load conversion for older board formats. Removing it requires a policy decision: do we auto-convert legacy files on save? Reject? Warn? Without that decision the call must stay.
+- [x] ~~Legacy loading still present — `migrateLegacyBoard` (3 refs), `legacyColumns` (4 refs)~~ — 69310267 (user authorised "remove all legacy code!" — full deletion: `migrateLegacyBoard`, `buildRowsFromLegacyColumns`, `rowsFromLegacyColumns` (boardList + ExportTreeBuilder), `normalizeLegacyColumnsToRows`, `stripLegacyImportStructureTags`, `getLegacyImportRowNumber`, `groupIntoStacks` (only used by the converter), legacy `lexera-ui-template` / `lexera-board-theme` localStorage migrations, legacy `'legacy'` theme alias. `ensureBoardRowsForMutation` simplified to a one-line guard (drops legacy `columns→rows` fallback + unused `fallbackTitle` arg). 17 callsites updated. `legacyColumnConverterParity.test.js` deleted. App now only accepts row-based board JSON; columns-only payloads return empty hierarchy. 1857 vitest pass, 161 / 161 run-lexera-tests.sh pass.)
 - [ ] `collab_api.rs` not split — 2,206 lines
 - [ ] `api/board.rs` not split — 1,812 lines
 - [ ] Stop copying shared management assets — `beforeDevCommand` still runs `sync-runtime-assets.mjs`
