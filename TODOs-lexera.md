@@ -26,7 +26,8 @@ Generally do the most time consuming tasks first. If a task takes very long to c
   - dashboard: `LexeraDashboardTestApi` (collectState / setSearch / clickCard) — already in place.
   - workspaces: `LexeraWorkspacesTestApi` (collectState / clickBoard) — added e7f056b8.
   - hierarchy: `LexeraHierarchyTestApi` (collectState / clickBoard / clickWorkspace / clickWorkspaceGroupHeader) — added d87e0f1a.
-  - **next sub-apps still need this API**: log, inspector, files, frontendSettings, backendSettings, renderApps. Each iteration: add the API + at least one test that drives the view ONLY through it.
+  - log: `LexeraLogTestApi` (collectState / appendEntry / setSearch / clickClear / clickRefresh / toggleLevel / toggleSource) — added 7d9a1254. 3 vitest tests drive the view ONLY through the API.
+  - **next sub-apps still need this API**: inspector, files, frontendSettings, backendSettings, renderApps. Each iteration: add the API + at least one test that drives the view ONLY through it.
 
 - [~] check all tests if they are really testing what we need! — 1fe4f101 (PARTIAL: started by upgrading the dashboardShellMirrorContract from regex-only to regex+runtime DOM checks; same pattern needs broader rollout — flagged regex-only contract tests at cardDraggingLayoutContract / fullBoardRenderContract / ipcAuthSingleEntryContract; full audit is multi-day)
 
