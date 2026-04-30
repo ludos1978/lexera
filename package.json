@@ -8,7 +8,10 @@
     "packages/shared-fixtures"
   ],
   "scripts": {
-    "test": "./test.sh"
+    "test": "./test.sh",
+    "lint": "./lint.sh",
+    "lint:js": "eslint --quiet lexera-kanban/src lexera-backend/src",
+    "lint:rust": "cargo clippy --workspace --all-targets --no-deps"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.17.6",
@@ -16,5 +19,10 @@
     "playwright": "^1.49.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.59.1",
+    "@typescript-eslint/parser": "^8.59.1",
+    "eslint": "^10.2.1"
   }
 }
