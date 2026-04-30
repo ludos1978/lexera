@@ -6168,83 +6168,65 @@
   // tests don't depend on the live runtime state (no setup/teardown).
   // ═══════════════════════════════════════════════════════════════════════
 
-  register('workspace sidebar: duplicate board in boards array renders once per workspace', async function () {
+  register('workspace sidebar: duplicate board in boards array renders once', async function () {
     var BL = window.LexeraBoardList;
     assert(BL && typeof BL._buildDesiredEntries === 'function', 'LexeraBoardList._buildDesiredEntries exposed');
     var ws = [{ id: 'ws-A', name: 'Alpha' }];
     var board = { id: 'b1', title: 'Board 1', columns: [], workspace_ids: ['ws-A'] };
     // Same board listed twice (simulates a bad upstream catalog snapshot).
     var boards = [board, board];
-    var entries = BL._buildDesiredEntries(boards, [], ws, null /* all workspaces */, null);
-    var wsHeader = null;
-    for (var i = 0; i < entries.length; i++) {
-      if (entries[i].type === 'ws_header' && entries[i].ws.id === 'ws-A') { wsHeader = entries[i]; break; }
-    }
-    assert(wsHeader, 'workspace ws-A rendered as section header');
-    assertEqual(wsHeader.boards.length, 1, 'only one board entry inside workspace ws-A');
-    assertEqual(wsHeader.count, 1, 'workspace count reflects deduped boards');
-    assertEqual(wsHeader.boards[0].board.id, 'b1', 'the deduped entry is b1');
-  });
-
-  register('workspace sidebar: duplicate workspace id in workspace_ids renders once', async function () {
-    var BL = window.LexeraBoardList;
-    assert(BL && typeof BL._buildDesiredEntries === 'function', 'LexeraBoardList._buildDesiredEntries exposed');
-    var ws = [{ id: 'ws-A', name: 'Alpha' }];
-    // Pathological: the board claims ws-A twice. Must still render once.
-    var boards = [{ id: 'b1', title: 'Board 1', columns: [], workspace_ids: ['ws-A', 'ws-A'] }];
-    var entries = BL._buildDesiredEntries(boards, [], ws, null, null);
-    var wsHeader = null;
-    for (var i = 0; i < entries.length; i++) {
-      if (entries[i].type === 'ws_header' && entries[i].ws.id === 'ws-A') { wsHeader = entries[i]; break; }
-    }
-    assert(wsHeader, 'workspace ws-A rendered');
-    assertEqual(wsHeader.boards.length, 1, 'board appears once despite duplicate workspace_ids');
-  });
-
-  register('workspace sidebar: board in two workspaces appears once in each', async function () {
-    var BL = window.LexeraBoardList;
-    var ws = [{ id: 'ws-A', name: 'Alpha' }, { id: 'ws-B', name: 'Beta' }];
-    var boards = [{ id: 'b1', title: 'Board 1', columns: [], workspace_ids: ['ws-A', 'ws-B'] }];
-    var entries = BL._buildDesiredEntries(boards, [], ws, null, null);
-    var countA = 0, countB = 0;
-    for (var i = 0; i < entries.length; i++) {
-      if (entries[i].type !== 'ws_header') continue;
-      for (var j = 0; j < entries[i].boards.length; j++) {
-        if (entries[i].boards[j].board.id !== 'b1') continue;
-        if (entries[i].ws.id === 'ws-A') countA++;
-        else if (entries[i].ws.id === 'ws-B') countB++;
-      }
-    }
-    assertEqual(countA, 1, 'b1 appears once in ws-A');
-    assertEqual(countB, 1, 'b1 appears once in ws-B');
-  });
-
-  register('workspace sidebar: unassigned bucket dedupes duplicate boards', async function () {
-    var BL = window.LexeraBoardList;
-    // Workspaces exist but board belongs to none → goes into Unassigned.
-    var ws = [{ id: 'ws-A', name: 'Alpha' }];
-    var board = { id: 'orphan', title: 'Orphan', columns: [], workspace_ids: [] };
-    var boards = [board, board]; // duplicate entry
-    var entries = BL._buildDesiredEntries(boards, [], ws, null, null);
-    var unassigned = null;
-    for (var i = 0; i < entries.length; i++) {
-      if (entries[i].type === 'ws_header' && entries[i].unassigned) { unassigned = entries[i]; break; }
-    }
-    assert(unassigned, 'unassigned section rendered');
-    assertEqual(unassigned.boards.length, 1, 'unassigned section dedupes duplicate board');
-  });
-
-  register('workspace sidebar: flat view (no workspaces) dedupes duplicate boards', async function () {
-    var BL = window.LexeraBoardList;
-    var board = { id: 'b1', title: 'Board 1', columns: [], workspace_ids: [] };
-    var boards = [board, board];
-    // No workspaces → flat-list branch.
-    var entries = BL._buildDesiredEntries(boards, [], [], null, null);
+    var entries = BL._buildDesiredEntries(boards, [], ws, 'ws-A', null);
     var seen = 0;
     for (var i = 0; i < entries.length; i++) {
       if (entries[i].type === 'board' && entries[i].board.id === 'b1') seen++;
     }
-    assertEqual(seen, 1, 'flat view dedupes duplicate board');
+    assertEqual(seen, 1, 'duplicate board entry deduped to one row');
+  });
+
+  register('workspace sidebar: duplicate workspace id in workspace_ids renders once', async function () {
+    var BL = window.LexeraBoardList;
+    var ws = [{ id: 'ws-A', name: 'Alpha' }];
+    // Pathological: the board claims ws-A twice. Must still render once.
+    var boards = [{ id: 'b1', title: 'Board 1', columns: [], workspace_ids: ['ws-A', 'ws-A'] }];
+    var entries = BL._buildDesiredEntries(boards, [], ws, 'ws-A', null);
+    var seen = 0;
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].type === 'board' && entries[i].board.id === 'b1') seen++;
+    }
+    assertEqual(seen, 1, 'board appears once despite duplicate workspace_ids');
+  });
+
+  register('workspace sidebar: shows only boards belonging to the active workspace', async function () {
+    var BL = window.LexeraBoardList;
+    // Each window owns exactly one workspace — boards belonging to
+    // OTHER workspaces must not bleed into this window's sidebar.
+    var ws = [{ id: 'ws-A', name: 'Alpha' }, { id: 'ws-B', name: 'Beta' }];
+    var boards = [
+      { id: 'b1', title: 'In A', columns: [], workspace_ids: ['ws-A'] },
+      { id: 'b2', title: 'In B', columns: [], workspace_ids: ['ws-B'] },
+      { id: 'b3', title: 'In Both', columns: [], workspace_ids: ['ws-A', 'ws-B'] }
+    ];
+    var entries = BL._buildDesiredEntries(boards, [], ws, 'ws-A', null);
+    var ids = entries.filter(function (e) { return e.type === 'board'; }).map(function (e) { return e.board.id; });
+    assertEqual(ids.length, 2, 'sidebar shows exactly the two boards in ws-A');
+    assert(ids.indexOf('b1') >= 0, 'b1 (only ws-A) included');
+    assert(ids.indexOf('b3') >= 0, 'b3 (in both) included');
+    assert(ids.indexOf('b2') === -1, 'b2 (only ws-B) excluded');
+  });
+
+  register('workspace sidebar: orphan boards (no workspace assignment) are not visible in any single-workspace window', async function () {
+    var BL = window.LexeraBoardList;
+    // With the all-view gone, orphan boards have no rendering path.
+    // They are invisible until the user assigns them to a workspace.
+    var ws = [{ id: 'ws-A', name: 'Alpha' }];
+    var boards = [
+      { id: 'inA', title: 'In A', columns: [], workspace_ids: ['ws-A'] },
+      { id: 'orphan', title: 'Orphan', columns: [], workspace_ids: [] }
+    ];
+    var entries = BL._buildDesiredEntries(boards, [], ws, 'ws-A', null);
+    var ids = entries.filter(function (e) { return e.type === 'board'; }).map(function (e) { return e.board.id; });
+    assert(ids.indexOf('inA') >= 0, 'workspace-assigned board visible');
+    assert(ids.indexOf('orphan') === -1, 'orphan board NOT visible in single-workspace view');
   });
 
   register('workspace sidebar: remote boards dedupe by id', async function () {

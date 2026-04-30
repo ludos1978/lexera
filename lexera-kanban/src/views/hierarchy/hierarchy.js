@@ -14,8 +14,6 @@
       .replace(/"/g, '&quot;');
   }
 
-  var ALL_WORKSPACES_ID = '__all__';
-
   var statusEl = document.getElementById('status');
   var titleEl = document.getElementById('title');
   var viewModeEl = document.getElementById('view-mode');
@@ -27,19 +25,20 @@
   var wsCountEl = document.getElementById('ws-count');
 
   var activeBoardId = null;
-  var selectedWorkspaceId = ALL_WORKSPACES_ID;
+  // Each window owns exactly one workspace, set by the catalog
+  // snapshot. Null only during pre-hydration.
+  var selectedWorkspaceId = null;
   var latestCatalog = null;
   var expandedWorkspaceIds = {};
 
   function resolveWorkspaceFromSnapshot(snap) {
     if (!snap || typeof snap !== 'object') return null;
-    if (String(snap.viewWorkspaceId || '') === ALL_WORKSPACES_ID) return null;
     if (snap.viewWorkspace && snap.viewWorkspace.id) return snap.viewWorkspace;
     if (snap.activeWorkspace && snap.activeWorkspace.id) return snap.activeWorkspace;
     var preferredId = snap.viewWorkspaceId != null && snap.viewWorkspaceId !== ''
       ? String(snap.viewWorkspaceId)
       : String(snap.activeWorkspaceId || '');
-    if (!preferredId || preferredId === ALL_WORKSPACES_ID) return null;
+    if (!preferredId) return null;
     var workspaces = Array.isArray(snap.workspaces) ? snap.workspaces : [];
     for (var i = 0; i < workspaces.length; i++) {
       if (workspaces[i] && workspaces[i].id === preferredId) return workspaces[i];
@@ -94,65 +93,12 @@
 
   function buildWorkspaceGroups(boards, workspaces, workspaceId) {
     var groups = [];
-    var normalizedWorkspaceId = String(workspaceId || ALL_WORKSPACES_ID);
-    var isAllView = normalizedWorkspaceId === ALL_WORKSPACES_ID;
+    var normalizedWorkspaceId = String(workspaceId || '');
+    if (!normalizedWorkspaceId) return groups;
     var workspaceById = {};
-    var assignedBoardIds = {};
-    var i;
-
-    for (i = 0; i < workspaces.length; i++) {
+    for (var i = 0; i < workspaces.length; i++) {
       if (workspaces[i] && workspaces[i].id) workspaceById[workspaces[i].id] = workspaces[i];
     }
-
-    if (isAllView) {
-      var boardsByWorkspace = {};
-      var seenByWorkspace = {};
-      for (i = 0; i < workspaces.length; i++) {
-        boardsByWorkspace[workspaces[i].id] = [];
-        seenByWorkspace[workspaces[i].id] = {};
-      }
-      for (i = 0; i < boards.length; i++) {
-        var board = boards[i];
-        if (!board || !board.id) continue;
-        var boardWorkspaceIds = getBoardWorkspaceIds(board);
-        for (var wi = 0; wi < boardWorkspaceIds.length; wi++) {
-          var currentWorkspaceId = boardWorkspaceIds[wi];
-          if (!boardsByWorkspace[currentWorkspaceId]) continue;
-          if (seenByWorkspace[currentWorkspaceId][board.id]) continue;
-          seenByWorkspace[currentWorkspaceId][board.id] = true;
-          boardsByWorkspace[currentWorkspaceId].push(board);
-          assignedBoardIds[board.id] = true;
-        }
-      }
-      for (i = 0; i < workspaces.length; i++) {
-        var workspace = workspaces[i];
-        var workspaceBoards = boardsByWorkspace[workspace.id] || [];
-        if (!workspaceBoards.length) continue;
-        groups.push({
-          id: workspace.id,
-          name: workspace.name || '(untitled)',
-          boards: workspaceBoards
-        });
-      }
-      var unassignedBoards = [];
-      var unassignedSeen = {};
-      for (i = 0; i < boards.length; i++) {
-        var looseBoard = boards[i];
-        if (!looseBoard || !looseBoard.id) continue;
-        if (assignedBoardIds[looseBoard.id] || unassignedSeen[looseBoard.id]) continue;
-        unassignedSeen[looseBoard.id] = true;
-        unassignedBoards.push(looseBoard);
-      }
-      if (unassignedBoards.length) {
-        groups.push({
-          id: '__unassigned__',
-          name: 'Unassigned',
-          boards: unassignedBoards
-        });
-      }
-      return groups;
-    }
-
     var selectedWorkspace = workspaceById[normalizedWorkspaceId];
     if (!selectedWorkspace) return groups;
     groups.push({
@@ -226,18 +172,6 @@
   function renderWorkspaces(workspaces) {
     wsCountEl.textContent = '(' + workspaces.length + ')';
     workspacesEl.innerHTML = '';
-
-    var allItem = document.createElement('li');
-    allItem.className = 'ws-item all-workspaces';
-    allItem.dataset.workspaceId = ALL_WORKSPACES_ID;
-    allItem.innerHTML =
-      '<span class="ws-name">All Workspaces</span>' +
-      '<span class="ws-id">all</span>';
-    allItem.addEventListener('click', function () {
-      LexeraSubApp.navigate({ type: 'focus-workspace', workspaceId: ALL_WORKSPACES_ID });
-    });
-    workspacesEl.appendChild(allItem);
-
     if (!workspaces.length) return;
     workspaces.forEach(function (w) {
       var li = document.createElement('li');
@@ -246,8 +180,11 @@
       li.innerHTML =
         '<span class="ws-name">' + escapeHtml(w.name || '(untitled)') + '</span>' +
         '<span class="ws-id">' + escapeHtml(w.id ? w.id.substring(0, 8) : '') + '</span>';
+      // Clicking a different workspace opens it in a NEW window — each
+      // window owns exactly one workspace for its lifetime.
       li.addEventListener('click', function () {
-        LexeraSubApp.navigate({ type: 'focus-workspace', workspaceId: w.id });
+        if (!w.id) return;
+        LexeraSubApp.navigate({ type: 'open-workspace-window', workspaceId: w.id });
       });
       workspacesEl.appendChild(li);
     });
@@ -259,10 +196,10 @@
       var ws = resolveWorkspaceFromSnapshot(snap);
       if (ws && ws.name) {
         titleEl.textContent = ws.name;
-        selectedWorkspaceId = ws.id || ALL_WORKSPACES_ID;
+        selectedWorkspaceId = ws.id || null;
       } else {
-        titleEl.textContent = 'All Workspaces';
-        selectedWorkspaceId = ALL_WORKSPACES_ID;
+        titleEl.textContent = 'Workspace';
+        selectedWorkspaceId = null;
       }
       viewModeEl.textContent = snap && snap.workspaceViewMode === 'manual' ? 'manual view' : 'follow active board';
       renderWorkspaceGroups(snap.boards || [], snap.workspaces || [], selectedWorkspaceId);

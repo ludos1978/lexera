@@ -38,7 +38,6 @@ var LexeraDashboard = (function () {
   let boards = [];
   let remoteBoards = [];
   let workspaces = [];
-  const ALL_WORKSPACES_ID = '__all__';
   // Per-window: starts unset, gets pinned by URL `?workspace=` lock
   // (see initialWorkspaceLockId below) or defaulted by the catalog
   // picker. Never read from / written to the shared Settings store.
@@ -106,7 +105,7 @@ var LexeraDashboard = (function () {
   }
 
   function setViewWorkspaceIdState(nextWorkspaceId) {
-    nextWorkspaceId = nextWorkspaceId || ALL_WORKSPACES_ID;
+    nextWorkspaceId = nextWorkspaceId || null;
     if (viewWorkspaceId === nextWorkspaceId) return;
     viewWorkspaceId = nextWorkspaceId;
     syncRuntimeState('viewWorkspaceId', viewWorkspaceId);
@@ -145,11 +144,10 @@ var LexeraDashboard = (function () {
   function syncWorkspaceShellCatalogSnapshot() {
     if (embeddedMode || !workspaceShellEnabled || !WorkspaceShell || typeof WorkspaceShell.onCatalogUpdated !== 'function') return;
     function resolveWorkspaceSnapshot(workspaceId) {
-      var normalized = workspaceId || ALL_WORKSPACES_ID;
-      if (!normalized || normalized === ALL_WORKSPACES_ID) return null;
+      if (!workspaceId) return null;
       for (var i = 0; i < workspaces.length; i++) {
         var workspace = workspaces[i];
-        if (!workspace || workspace.id !== normalized) continue;
+        if (!workspace || workspace.id !== workspaceId) continue;
         return Object.assign({}, workspace);
       }
       return null;
@@ -158,9 +156,9 @@ var LexeraDashboard = (function () {
       boards: boards,
       remoteBoards: remoteBoards,
       workspaces: workspaces,
-      activeWorkspaceId: activeWorkspaceId || ALL_WORKSPACES_ID,
+      activeWorkspaceId: activeWorkspaceId || null,
       activeWorkspace: resolveWorkspaceSnapshot(activeWorkspaceId),
-      viewWorkspaceId: viewWorkspaceId || ALL_WORKSPACES_ID,
+      viewWorkspaceId: viewWorkspaceId || null,
       viewWorkspace: resolveWorkspaceSnapshot(viewWorkspaceId),
       workspaceViewMode: workspaceViewMode
     });
@@ -202,7 +200,6 @@ var LexeraDashboard = (function () {
     // — workspace switches happen by opening a new window via
     // File > Open Workspace > <name>.
     var hasReal = !!activeWorkspaceId
-      && activeWorkspaceId !== ALL_WORKSPACES_ID
       && workspaces.some(function (w) { return w && String(w.id) === String(activeWorkspaceId); });
     if (!hasReal) {
       var picked = pickDefaultWorkspaceId(workspaces);
@@ -229,7 +226,7 @@ var LexeraDashboard = (function () {
 
   function setActiveWorkspaceIdState(nextWorkspaceId, options) {
     options = options || {};
-    nextWorkspaceId = nextWorkspaceId || ALL_WORKSPACES_ID;
+    nextWorkspaceId = nextWorkspaceId || null;
     if (activeWorkspaceId === nextWorkspaceId) {
       if (options.syncView !== false) {
         setWorkspaceViewModeState('follow-active-board');
@@ -2733,7 +2730,6 @@ var LexeraDashboard = (function () {
     TreeView: TreeView,
     SidebarSync: window.LexeraSidebarSync,
     WorkspaceShell: window.LexeraWorkspaceShell,
-    ALL_WORKSPACES_ID: ALL_WORKSPACES_ID,
     isBoardDirty: function() { return isBoardDirty(); },
     clearBoardDirty: function() { clearBoardDirty(); },
     markBoardDirty: function() { markBoardDirty(); },
@@ -7720,7 +7716,7 @@ var LexeraDashboard = (function () {
 
   function refreshWorkspaceSettings() {
     var wsId = activeWorkspaceId || '';
-    if (!wsId || wsId === ALL_WORKSPACES_ID || !LexeraApi || typeof LexeraApi.request !== 'function') return;
+    if (!wsId || !LexeraApi || typeof LexeraApi.request !== 'function') return;
     LexeraApi.request('/config/settings?workspace=' + encodeURIComponent(wsId), { timeoutMs: 3000 })
       .then(function (data) {
         if (data && data.settings) _cachedWorkspaceSettings = data.settings;

@@ -30,13 +30,14 @@ function createState(overrides) {
   return {
     boards: [],
     remoteBoards: [],
-    workspaces: [],
-    activeWorkspaceId: '__all__',
-    viewWorkspaceId: '__all__',
+    // Each window owns exactly one workspace — wire a real workspace
+    // so the boards-by-workspace filter has something to match.
+    workspaces: [{ id: 'ws-1', name: 'Workspace 1' }],
+    activeWorkspaceId: 'ws-1',
+    viewWorkspaceId: 'ws-1',
     workspaceViewMode: 'follow-active-board',
     activeBoardId: '',
     boardPresenceCache: {},
-    ALL_WORKSPACES_ID: '__all__',
     ...overrides
   };
 }
@@ -110,7 +111,7 @@ describe('board list loading state', () => {
 
     // Simulate poll data arriving
     state.boards = [
-      { id: 'board-1', title: 'Test Board', columns: [] }
+      { id: 'board-1', title: 'Test Board', workspace_ids: ['ws-1'] }
     ];
     BoardList.renderBoardList();
     expect(el.classList.contains('view-loading')).toBe(false);
@@ -133,8 +134,8 @@ describe('board list loading state', () => {
     const BoardList = loadBoardList();
     const state = createState({
       boards: [
-        { id: 'board-1', title: 'Alpha', columns: [] },
-        { id: 'board-2', title: 'Beta', columns: [] }
+        { id: 'board-1', title: 'Alpha', workspace_ids: ['ws-1'] },
+        { id: 'board-2', title: 'Beta', workspace_ids: ['ws-1'] }
       ]
     });
     initBoardList(BoardList, state);
@@ -196,7 +197,7 @@ describe('board list loading state', () => {
     expect(el.classList.contains('view-loading')).toBe(true);
 
     // Step 3: Data arrives — loading removed, boards rendered
-    state.boards = [{ id: 'b1', title: 'Board', columns: [] }];
+    state.boards = [{ id: 'b1', title: 'Board', workspace_ids: ['ws-1'] }];
     BoardList.renderBoardList();
     expect(el.classList.contains('view-loading')).toBe(false);
     expect(el.querySelectorAll('.board-item').length).toBe(1);

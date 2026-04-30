@@ -1217,9 +1217,8 @@ var LexeraOrderHelpers = (function () {
 
   function getDashboardWorkspaceVisibleBoardSet() {
     if (!_dep('workspaceShellEnabled')) return null;
-    var allWorkspacesId = _dep('ALL_WORKSPACES_ID') || '__all__';
-    var workspaceId = _dep('viewWorkspaceId') || _dep('activeWorkspaceId') || allWorkspacesId;
-    if (!workspaceId || workspaceId === allWorkspacesId) return null;
+    var workspaceId = _dep('viewWorkspaceId') || _dep('activeWorkspaceId') || null;
+    if (!workspaceId) return null;
     var boards = Array.isArray(_dep('boards')) ? _dep('boards') : [];
     if (boards.length === 0) return null;
     var set = {};
@@ -1583,7 +1582,6 @@ var LexeraOrderHelpers = (function () {
     try { if (_Settings) { _Settings.set('dashboardTags', tags); } else { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(tags)); } } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
     var LexeraApi = _dep('LexeraApi');
     var workspaceId = _dep('activeWorkspaceId') || null;
-    if (workspaceId === '__all__') workspaceId = null;
     if (LexeraApi && typeof LexeraApi.request === 'function') {
       LexeraApi.request('/config/dashboard-tags', {
         method: 'PUT',
@@ -1597,7 +1595,6 @@ var LexeraOrderHelpers = (function () {
     var LexeraApi = _dep('LexeraApi');
     if (!LexeraApi || typeof LexeraApi.request !== 'function') return;
     var workspaceId = _dep('activeWorkspaceId') || '';
-    if (workspaceId === '__all__') workspaceId = '';
     var url = '/config/dashboard-tags' + (workspaceId ? '?workspace=' + encodeURIComponent(workspaceId) : '');
     LexeraApi.request(url, { timeoutMs: 3000 }).then(function (data) {
       if (data && Array.isArray(data.tags)) {

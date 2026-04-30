@@ -82,7 +82,7 @@ var LexeraBoardList = (function () {
   }
 
   function normalizeWorkspaceId(workspaceId) {
-    return workspaceId || _dep('ALL_WORKSPACES_ID');
+    return workspaceId || null;
   }
 
   function getWorkspaceViewId() {
@@ -1147,26 +1147,17 @@ var LexeraBoardList = (function () {
     var preferredWorkspaceId = normalizeWorkspaceId(options.preferredWorkspaceId);
 
     if (workspaceIds.length > 0) {
-      if (
-        preferredWorkspaceId !== _dep('ALL_WORKSPACES_ID') &&
-        workspaceIds.indexOf(preferredWorkspaceId) >= 0
-      ) {
+      if (preferredWorkspaceId && workspaceIds.indexOf(preferredWorkspaceId) >= 0) {
         nextWorkspaceId = preferredWorkspaceId;
-      } else if (
-        viewWorkspaceId !== _dep('ALL_WORKSPACES_ID') &&
-        workspaceIds.indexOf(viewWorkspaceId) >= 0
-      ) {
+      } else if (viewWorkspaceId && workspaceIds.indexOf(viewWorkspaceId) >= 0) {
         nextWorkspaceId = viewWorkspaceId;
-      } else if (
-        activeWorkspaceId !== _dep('ALL_WORKSPACES_ID') &&
-        workspaceIds.indexOf(activeWorkspaceId) >= 0
-      ) {
+      } else if (activeWorkspaceId && workspaceIds.indexOf(activeWorkspaceId) >= 0) {
         nextWorkspaceId = activeWorkspaceId;
       } else {
         nextWorkspaceId = workspaceIds[0];
       }
     } else if (boardMeta) {
-      nextWorkspaceId = _dep('ALL_WORKSPACES_ID');
+      nextWorkspaceId = null;
     }
 
     return {
@@ -1205,7 +1196,7 @@ var LexeraBoardList = (function () {
 
   function isWorkspaceViewIdKnown(workspaceId) {
     var normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-    if (normalizedWorkspaceId === _dep('ALL_WORKSPACES_ID')) return true;
+    if (!normalizedWorkspaceId) return false;
     var workspaces = Array.isArray(_dep('workspaces')) ? _dep('workspaces') : [];
     for (var i = 0; i < workspaces.length; i++) {
       if (workspaces[i] && workspaces[i].id === normalizedWorkspaceId) return true;
@@ -1267,14 +1258,9 @@ var LexeraBoardList = (function () {
 
   function resolveActiveWorkspaceId(defaultWorkspaceId) {
     var activeWorkspaceId = _dep('activeWorkspaceId');
-    var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var workspaces = _dep('workspaces');
     var knownWorkspaceIds = workspaces.map(function (ws) { return ws.id; });
-    var storedIsValid = activeWorkspaceId === ALL_WORKSPACES_ID
-      || knownWorkspaceIds.indexOf(activeWorkspaceId) >= 0;
-
-    if (storedIsValid) return;
-
+    if (activeWorkspaceId && knownWorkspaceIds.indexOf(activeWorkspaceId) >= 0) return;
     if (defaultWorkspaceId && knownWorkspaceIds.indexOf(defaultWorkspaceId) >= 0) {
       setActiveWorkspaceId(defaultWorkspaceId);
       return;
@@ -1283,7 +1269,8 @@ var LexeraBoardList = (function () {
       setActiveWorkspaceId(knownWorkspaceIds[0]);
       return;
     }
-    setActiveWorkspaceId(ALL_WORKSPACES_ID);
+    // No workspaces yet — leave the active id unset; setWorkspacesState
+    // will pick a default once the catalog hydrates.
   }
 
   // ─── Mirrored workspace views ─────────────────────────────────────
@@ -1476,56 +1463,24 @@ var LexeraBoardList = (function () {
 
   function getWorkspaceHeaderState() {
     var viewWorkspaceId = getWorkspaceViewId();
-    var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
-    if (!viewWorkspaceId || viewWorkspaceId === ALL_WORKSPACES_ID) {
-      return {
-        label: 'All Workspaces',
-        canGoUp: false
-      };
-    }
+    if (!viewWorkspaceId) return { label: 'Workspace' };
     var workspaces = Array.isArray(_dep('workspaces')) ? _dep('workspaces') : [];
     for (var i = 0; i < workspaces.length; i++) {
       var workspace = workspaces[i];
       if (!workspace || workspace.id !== viewWorkspaceId) continue;
-      return {
-        label: String(workspace.name || 'Untitled Workspace'),
-        canGoUp: true
-      };
+      return { label: String(workspace.name || 'Untitled Workspace') };
     }
-    return {
-      label: 'Workspaces',
-      canGoUp: true
-    };
-  }
-
-  function navigateToAllWorkspaces(event) {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    setWorkspaceViewId(_dep('ALL_WORKSPACES_ID'), { mode: 'manual' });
-    refreshWorkspaceMirrors();
-    renderBoardList();
+    return { label: 'Workspace' };
   }
 
   function renderWorkspaceHeaderTitle(titleEl, state) {
     if (!titleEl) return;
-    state = state || { label: 'Workspaces', canGoUp: false };
+    state = state || { label: 'Workspace' };
     titleEl.textContent = '';
-    titleEl.setAttribute('title', state.label || 'Workspaces');
-    if (state.canGoUp) {
-      var backBtn = document.createElement('button');
-      backBtn.type = 'button';
-      backBtn.className = 'sidebar-header-back';
-      backBtn.setAttribute('aria-label', 'Go to all workspaces');
-      backBtn.setAttribute('title', 'All Workspaces');
-      backBtn.textContent = '\u2190';
-      backBtn.addEventListener('click', navigateToAllWorkspaces);
-      titleEl.appendChild(backBtn);
-    }
+    titleEl.setAttribute('title', state.label || 'Workspace');
     var textEl = document.createElement('span');
     textEl.className = 'sidebar-header-title-text';
-    textEl.textContent = state.label || 'Workspaces';
+    textEl.textContent = state.label || 'Workspace';
     titleEl.appendChild(textEl);
   }
 
@@ -2739,11 +2694,14 @@ var LexeraBoardList = (function () {
    * Each entry has { key, type, ... } plus type-specific data.
    */
   function _buildDesiredEntries(boards, remoteBoards, workspaces, workspaceViewId, activeBoardId) {
-    var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
-    var isAllView = !workspaceViewId || workspaceViewId === ALL_WORKSPACES_ID;
-    var filteredBoards = isAllView
-      ? boards
-      : boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(workspaceViewId) >= 0; });
+    // Each window owns exactly one workspace — no "all workspaces"
+    // pseudo-mode. When the catalog hasn't hydrated and no workspace
+    // is selected yet, render only remote boards (if any). The catalog
+    // hydrate path promotes the window to a real workspace via
+    // setWorkspacesState, after which the local boards filter applies.
+    var filteredBoards = workspaceViewId
+      ? boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(workspaceViewId) >= 0; })
+      : [];
     var orderedBoards = _callDep('getOrderedItems', filteredBoards, 'lexera-board-order', function (b) { return b.id; }) || filteredBoards;
 
     // Detect upstream duplicates in the boards array so we can trace
@@ -2767,72 +2725,17 @@ var LexeraBoardList = (function () {
     var expandedIds = getSidebarExpandedBoards();
     var entries = [];
 
-    // In "All Workspaces" view, show workspace section headers with boards nested inside.
-    // Each workspace is an ordered dictionary of boards keyed by board.id: insertion
-    // order follows `orderedBoards`, and a board never appears twice in the same
-    // workspace even if upstream data lists it more than once (duplicate entry in
-    // `boards`, or duplicate id in `board.workspace_ids`).
-    if (isAllView && workspaces.length > 0) {
-      var wsBoardOrder = {};
-      var wsBoardSeen = {};
-      var assignedBoardIds = {};
-      for (var wi = 0; wi < workspaces.length; wi++) {
-        wsBoardOrder[workspaces[wi].id] = [];
-        wsBoardSeen[workspaces[wi].id] = {};
-      }
-      for (var bi = 0; bi < orderedBoards.length; bi++) {
-        var board = orderedBoards[bi];
-        if (!board || !board.id) continue;
-        var bws = getBoardWorkspaceIds(board);
-        for (var bwi = 0; bwi < bws.length; bwi++) {
-          var wsId = bws[bwi];
-          if (!wsBoardOrder[wsId]) continue;
-          if (wsBoardSeen[wsId][board.id]) continue;
-          wsBoardSeen[wsId][board.id] = true;
-          wsBoardOrder[wsId].push(board);
-          assignedBoardIds[board.id] = true;
-        }
-      }
-      for (var wgi = 0; wgi < workspaces.length; wgi++) {
-        var ws = workspaces[wgi];
-        var wsBoards = wsBoardOrder[ws.id] || [];
-        if (wsBoards.length === 0) continue;
-        var wsExpanded = expandedIds.indexOf('ws:' + ws.id) !== -1;
-        var wsBoardEntries = [];
-        for (var wbi = 0; wbi < wsBoards.length; wbi++) {
-          wsBoardEntries.push({ key: 'board:' + ws.id + ':' + wsBoards[wbi].id, type: 'board', board: wsBoards[wbi], index: 0, workspaceChild: true, workspaceId: ws.id });
-        }
-        entries.push({ key: 'ws:' + ws.id, type: 'ws_header', ws: ws, count: wsBoards.length, expanded: wsExpanded, unassigned: false, boards: wsBoardEntries });
-      }
-      // Unassigned: boards with no valid workspace assignment. Dedup by id since
-      // orderedBoards itself may contain duplicates under pathological upstream data.
-      var unassignedBoards = [];
-      var unassignedSeen = {};
-      for (var ubi = 0; ubi < orderedBoards.length; ubi++) {
-        var ub = orderedBoards[ubi];
-        if (!ub || !ub.id) continue;
-        if (assignedBoardIds[ub.id]) continue;
-        if (unassignedSeen[ub.id]) continue;
-        unassignedSeen[ub.id] = true;
-        unassignedBoards.push({ key: 'board:' + ub.id, type: 'board', board: ub, index: 0, workspaceChild: true });
-      }
-      if (unassignedBoards.length > 0) {
-        entries.push({ key: 'ws:__unassigned__', type: 'ws_header', ws: { id: '__unassigned__', name: 'Unassigned' }, count: unassignedBoards.length, expanded: true, unassigned: true, boards: unassignedBoards });
-      }
-    } else {
-      // Simple flat list or single-workspace view. Dedupe by id so duplicate
-      // entries in the upstream `boards` array never produce duplicate sidebar rows.
-      // In single-workspace view (workspaceViewId set), carry the workspaceId so the
-      // per-board action renders as the "Remove from workspace" burger instead of ×.
-      var flatSeen = {};
-      var flatWsId = isAllView ? '' : String(workspaceViewId || '');
-      for (var si = 0; si < orderedBoards.length; si++) {
-        var fb = orderedBoards[si];
-        if (!fb || !fb.id) continue;
-        if (flatSeen[fb.id]) continue;
-        flatSeen[fb.id] = true;
-        entries.push({ key: 'board:' + fb.id, type: 'board', board: fb, index: entries.length, workspaceId: flatWsId });
-      }
+    // Single-workspace view — flat list of boards belonging to the
+    // active workspace. Carry the workspaceId so the per-board action
+    // renders as the "Remove from workspace" burger instead of ×.
+    var flatSeen = {};
+    var flatWsId = String(workspaceViewId || '');
+    for (var si = 0; si < orderedBoards.length; si++) {
+      var fb = orderedBoards[si];
+      if (!fb || !fb.id) continue;
+      if (flatSeen[fb.id]) continue;
+      flatSeen[fb.id] = true;
+      entries.push({ key: 'board:' + fb.id, type: 'board', board: fb, index: entries.length, workspaceId: flatWsId });
     }
 
     // Remote boards. Dedupe by id for the same reason as above.
@@ -2868,7 +2771,6 @@ var LexeraBoardList = (function () {
     var rt = typeof window !== 'undefined' && window.LexeraRuntime ? window.LexeraRuntime : null;
 
     var workspaceViewId = getWorkspaceViewId();
-    var ALL_WORKSPACES_ID = _dep('ALL_WORKSPACES_ID');
     var boards = _dep('boards');
     var remoteBoards = _dep('remoteBoards');
 

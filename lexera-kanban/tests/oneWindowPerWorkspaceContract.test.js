@@ -140,9 +140,27 @@ describe('one workspace per window — wiring contract', () => {
     // workspace, else falls back to the first available.
     expect(appJs).toMatch(/pickDefaultWorkspaceId[\s\S]{0,500}isDefault/);
     // setWorkspacesState invokes the picker when the active id is
-    // missing, the legacy sentinel, or orphaned.
+    // missing or references a workspace that no longer exists.
     expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}pickDefaultWorkspaceId/);
-    expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}activeWorkspaceId !== ALL_WORKSPACES_ID/);
+    // Validity check: active id must exist in the workspaces catalog.
+    expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}workspaces\.some\(/);
+  });
+
+  it('the legacy ALL_WORKSPACES_ID sentinel is gone — no codepath references __all__ or ALL_WORKSPACES_ID anymore', () => {
+    // The pseudo-workspace-id was the source of the cross-window leak
+    // in the all-view branches. After 82417477 + this cleanup, every
+    // window owns one real workspace, so the sentinel and the branches
+    // that special-cased it must be deleted entirely.
+    const sourceFiles = [
+      readFileSync(resolve(__dirname, '..', 'src', 'app.js'), 'utf8'),
+      readFileSync(resolve(__dirname, '..', 'src', 'board', 'boardList.js'), 'utf8'),
+      readFileSync(resolve(__dirname, '..', 'src', 'board', 'orderHelpers.js'), 'utf8'),
+      readFileSync(resolve(__dirname, '..', 'src', 'views', 'hierarchy', 'hierarchy.js'), 'utf8')
+    ];
+    for (const src of sourceFiles) {
+      expect(src).not.toMatch(/ALL_WORKSPACES_ID/);
+      expect(src).not.toContain("'__all__'");
+    }
   });
 
   it('the active workspace is NEVER persisted to the shared Settings store (would leak across windows)', () => {

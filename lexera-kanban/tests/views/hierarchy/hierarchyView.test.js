@@ -67,16 +67,15 @@ describe('hierarchy view sub-app', () => {
 
     capturedOpts.onCatalog({
       boards: [
-        { id: 'board-1', name: 'Local Board', workspace_id: 'ws-1' },
-        { id: 'board-3', name: 'Loose Board' }
+        { id: 'board-1', name: 'Local Board', workspace_id: 'ws-2' }
       ],
       remoteBoards: [{ id: 'board-2', title: 'Remote Board' }],
       workspaces: [
         { id: 'ws-1', name: 'Workspace One' },
         { id: 'ws-2', name: 'Workspace Two' }
       ],
-      activeWorkspaceId: 'ws-1',
-      activeWorkspace: { id: 'ws-1', name: 'Workspace One' },
+      activeWorkspaceId: 'ws-2',
+      activeWorkspace: { id: 'ws-2', name: 'Workspace Two' },
       viewWorkspaceId: 'ws-2',
       viewWorkspace: { id: 'ws-2', name: 'Workspace Two' },
       workspaceViewMode: 'manual'
@@ -84,45 +83,23 @@ describe('hierarchy view sub-app', () => {
     capturedOpts.onActiveBoard('board-2');
 
     expect(window.document.getElementById('status').textContent).toBe('connected');
+    // Each window owns exactly one workspace — title shows that workspace's name
     expect(window.document.getElementById('title').textContent).toBe('Workspace Two');
     expect(window.document.getElementById('view-mode').textContent).toBe('manual view');
-    expect(window.document.getElementById('local-count').textContent).toBe('(2)');
+    expect(window.document.getElementById('local-count').textContent).toBe('(1)');
     expect(window.document.getElementById('remote-count').textContent).toBe('(1)');
     expect(window.document.getElementById('ws-count').textContent).toBe('(2)');
     expect(window.document.querySelector('#remote-boards .board-item')?.classList.contains('is-active')).toBe(true);
-    expect(window.document.querySelector('[data-workspace-id="ws-2"]')?.classList.contains('is-active')).toBe(true);
+    // The single visible workspace group is the one this window owns
     expect(window.document.querySelector('[data-workspace-group="ws-2"]')).toBeTruthy();
     expect(window.document.querySelector('[data-workspace-group="ws-1"]')).toBeNull();
+    // No "All Workspaces" pseudo-item in the workspace picker
+    expect(window.document.querySelector('[data-workspace-id="__all__"]')).toBeNull();
 
-    capturedOpts.onCatalog({
-      boards: [
-        { id: 'board-1', name: 'Local Board', workspace_id: 'ws-1' },
-        { id: 'board-3', name: 'Loose Board' }
-      ],
-      remoteBoards: [{ id: 'board-2', title: 'Remote Board' }],
-      workspaces: [
-        { id: 'ws-1', name: 'Workspace One' },
-        { id: 'ws-2', name: 'Workspace Two' }
-      ],
-      activeWorkspaceId: 'ws-1',
-      activeWorkspace: { id: 'ws-1', name: 'Workspace One' },
-      viewWorkspaceId: '__all__',
-      viewWorkspace: null,
-      workspaceViewMode: 'follow-active-board'
-    });
-
-    expect(window.document.getElementById('title').textContent).toBe('All Workspaces');
-    expect(window.document.getElementById('view-mode').textContent).toBe('follow active board');
-    expect(window.document.querySelector('[data-workspace-group="ws-1"]')).toBeTruthy();
-    expect(window.document.querySelector('[data-workspace-group="__unassigned__"]')).toBeTruthy();
-
+    // Click the local board → open it
     window.document.querySelector('#local-boards .board-item')
       .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-    window.document.querySelector('[data-workspace-group="ws-1"] .ws-group-header')
-      .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-    expect(window.document.querySelector('[data-workspace-group="ws-1"] .board-list.nested')?.classList.contains('collapsed')).toBe(true);
-    window.document.querySelector('[data-workspace-id="__all__"]')
-      .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    // Click a sibling workspace → opens a NEW window pinned to it
     window.document.querySelector('#workspaces [data-workspace-id="ws-1"]')
       .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 
@@ -131,11 +108,7 @@ describe('hierarchy view sub-app', () => {
       boardId: 'board-1'
     });
     expect(window.LexeraSubApp.navigate).toHaveBeenNthCalledWith(2, {
-      type: 'focus-workspace',
-      workspaceId: '__all__'
-    });
-    expect(window.LexeraSubApp.navigate).toHaveBeenNthCalledWith(3, {
-      type: 'focus-workspace',
+      type: 'open-workspace-window',
       workspaceId: 'ws-1'
     });
   });
@@ -163,27 +136,31 @@ describe('hierarchy view sub-app', () => {
       ],
       remoteBoards: [{ id: 'remote-1', title: 'Shared' }],
       workspaces: [{ id: 'ws-1', name: 'Default' }],
-      activeWorkspaceId: '__all__',
-      viewWorkspaceId: '__all__',
+      activeWorkspaceId: 'ws-1',
+      activeWorkspace: { id: 'ws-1', name: 'Default' },
+      viewWorkspaceId: 'ws-1',
+      viewWorkspace: { id: 'ws-1', name: 'Default' },
       workspaceViewMode: 'follow-active-board'
     });
     capturedOpts.onActiveBoard('board-2');
 
     const state = window.LexeraHierarchyTestApi.collectState();
     expect(state.status).toBe('connected');
-    expect(state.title).toBe('All Workspaces');
+    // Title is the workspace this window owns — never "All Workspaces"
+    expect(state.title).toBe('Default');
     expect(state.activeBoardId).toBe('board-2');
-    expect(state.selectedWorkspaceId).toBe('__all__');
+    expect(state.selectedWorkspaceId).toBe('ws-1');
 
-    // Two workspace groups: ws-1 + __unassigned__
-    expect(state.groups.map((g) => g.id)).toEqual(['ws-1', '__unassigned__']);
-    const wsGroup = state.groups.find((g) => g.id === 'ws-1');
+    // Single workspace group — no __unassigned__ pseudo-group
+    expect(state.groups.map((g) => g.id)).toEqual(['ws-1']);
+    const wsGroup = state.groups[0];
     expect(wsGroup.expanded).toBe(true);
     expect(wsGroup.boards.map((b) => b.label)).toEqual(['Roadmap', 'Sprint']);
     expect(wsGroup.boards.find((b) => b.id === 'board-2').active).toBe(true);
 
     expect(state.remote.map((b) => b.label)).toEqual(['Shared']);
-    expect(state.workspaces.map((w) => w.id)).toEqual(['__all__', 'ws-1']);
+    // Workspace picker shows only real workspaces — no `__all__` entry
+    expect(state.workspaces.map((w) => w.id)).toEqual(['ws-1']);
   });
 
   it('LexeraHierarchyTestApi.clickBoard / clickWorkspace dispatch the same navigate a real click does', () => {
@@ -199,9 +176,14 @@ describe('hierarchy view sub-app', () => {
     capturedOpts.onCatalog({
       boards: [{ id: 'board-1', title: 'Roadmap', workspace_id: 'ws-1' }],
       remoteBoards: [{ id: 'remote-1', title: 'Shared' }],
-      workspaces: [{ id: 'ws-1', name: 'Default' }],
-      activeWorkspaceId: '__all__',
-      viewWorkspaceId: '__all__'
+      workspaces: [
+        { id: 'ws-1', name: 'Default' },
+        { id: 'ws-2', name: 'Other' }
+      ],
+      activeWorkspaceId: 'ws-1',
+      activeWorkspace: { id: 'ws-1', name: 'Default' },
+      viewWorkspaceId: 'ws-1',
+      viewWorkspace: { id: 'ws-1', name: 'Default' }
     });
 
     expect(window.LexeraHierarchyTestApi.clickBoard('board-1')).toBe(true);
@@ -216,10 +198,12 @@ describe('hierarchy view sub-app', () => {
       boardId: 'remote-1'
     });
 
-    expect(window.LexeraHierarchyTestApi.clickWorkspace('ws-1')).toBe(true);
+    // Clicking a sibling workspace opens a NEW window pinned to it —
+    // each window owns exactly one workspace for its lifetime.
+    expect(window.LexeraHierarchyTestApi.clickWorkspace('ws-2')).toBe(true);
     expect(window.LexeraSubApp.navigate).toHaveBeenLastCalledWith({
-      type: 'focus-workspace',
-      workspaceId: 'ws-1'
+      type: 'open-workspace-window',
+      workspaceId: 'ws-2'
     });
 
     // Unknown ids → no navigate, no false positives.
@@ -241,8 +225,10 @@ describe('hierarchy view sub-app', () => {
       boards: [{ id: 'board-1', title: 'Roadmap', workspace_id: 'ws-1' }],
       remoteBoards: [],
       workspaces: [{ id: 'ws-1', name: 'Default' }],
-      activeWorkspaceId: '__all__',
-      viewWorkspaceId: '__all__'
+      activeWorkspaceId: 'ws-1',
+      activeWorkspace: { id: 'ws-1', name: 'Default' },
+      viewWorkspaceId: 'ws-1',
+      viewWorkspace: { id: 'ws-1', name: 'Default' }
     });
 
     expect(window.LexeraHierarchyTestApi.collectState().groups[0].expanded).toBe(true);
