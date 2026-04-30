@@ -106,4 +106,27 @@ describe('dashboard shell mirror contract', () => {
     expect(dashboardJs).toContain("'dashboard-broken-list'");
     expect(dashboardJs).toContain("'dashboard-included-list'");
   });
+
+  it('dashboard sub-app forwards tree-node clicks as dashboard-navigate, SHELL routes them through navigateToSearchResult', () => {
+    // Click navigation: the rendered HTML carries data-* attributes
+    // but no event handlers. The sub-app reads them and emits
+    // `dashboard-navigate { target, nav }`. The SHELL listens and
+    // routes the payload through `navigateToSearchResult` so the
+    // existing focus + reveal chain runs unchanged.
+    expect(dashboardJs).toContain("LexeraSubApp.broadcast('dashboard-navigate'");
+    expect(dashboardJs).toContain("'data-dashboard-board-id'");
+    expect(dashboardJs).toContain("'data-dashboard-card-id'");
+    expect(dashboardJs).toContain("'data-dashboard-broken-src'");
+    expect(orderHelpersJs).toContain("listen('dashboard-navigate'");
+    expect(orderHelpersJs).toContain("navigateToSearchResult");
+  });
+
+  it('dashboard sub-app handles tree-toggle clicks locally so section expand/collapse does not round-trip through the SHELL', () => {
+    // Local-only: clicking a section header should toggle the
+    // `expanded` class on the matching `.tree-children` without
+    // emitting a navigate event. Otherwise every collapse would
+    // bounce a no-op `dashboard-navigate` to the SHELL.
+    expect(dashboardJs).toContain(".tree-toggle");
+    expect(dashboardJs).toContain("classList.toggle('expanded'");
+  });
 });

@@ -162,6 +162,11 @@ describe('dashboard view sub-app', () => {
 
     loadDashboardView(window);
 
+    // The mount also broadcasts `dashboard-snapshot-request` to pull
+    // the SHELL's current mirror — clear the spy so we only assert
+    // on the pin click below.
+    window.LexeraSubApp.broadcast.mockClear();
+
     const pin = window.document.getElementById('btn-dashboard-pin');
     pin.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 

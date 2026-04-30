@@ -105,6 +105,73 @@
   if (scopeCheckbox) scopeCheckbox.addEventListener('change', broadcastSearch);
   if (pinBtn) pinBtn.addEventListener('click', broadcastPin);
 
+  // ── Click navigation ──────────────────────────────────────────────
+  // The HTML the SHELL pushes carries no event handlers. Result rows,
+  // file-embed rows, broken-element rows etc. all expose
+  // `data-dashboard-target` plus enough data-* attributes to identify
+  // the target — collect them and broadcast a navigation request the
+  // SHELL routes through `navigateToHierarchyTarget` /
+  // `navigateToSearchResult`.
+  function readNumericAttr(el, name) {
+    var raw = el.getAttribute(name);
+    if (raw == null || raw === '') return null;
+    var n = parseInt(raw, 10);
+    return isNaN(n) ? null : n;
+  }
+  function buildNavTargetFromNode(node) {
+    if (!node) return null;
+    var boardId = (node.getAttribute('data-dashboard-board-id') || '').trim();
+    if (!boardId) return null;
+    return {
+      boardId: boardId,
+      cardId: (node.getAttribute('data-dashboard-card-id') || '').trim() || null,
+      columnIndex: readNumericAttr(node, 'data-dashboard-column-index'),
+      rowIndex: readNumericAttr(node, 'data-dashboard-row-index'),
+      stackIndex: readNumericAttr(node, 'data-dashboard-stack-index'),
+      colLocalIndex: readNumericAttr(node, 'data-dashboard-col-local-index'),
+      cardIndex: readNumericAttr(node, 'data-dashboard-card-index'),
+      columnTitle: (node.getAttribute('data-dashboard-column-title') || '').trim() || null,
+      brokenSrc: (node.getAttribute('data-dashboard-broken-src') || '').trim() || null
+    };
+  }
+  if (bodyEl) {
+    bodyEl.addEventListener('click', function (e) {
+      // Local toggle: section headers should expand/collapse in place
+      // instead of routing as a navigate. The SHELL renders these with
+      // a `.tree-toggle` element; we just flip the `expanded` class on
+      // the matching `.tree-children` sibling.
+      var toggle = e.target && e.target.closest && e.target.closest('.tree-toggle');
+      if (toggle) {
+        var section = toggle.closest('.tree-node');
+        if (section) {
+          var children = section.parentNode && section.parentNode.querySelector
+            ? section.parentNode.querySelector(':scope > .tree-children')
+            : null;
+          if (children) {
+            var nowExpanded = !children.classList.contains('expanded');
+            children.classList.toggle('expanded', nowExpanded);
+            toggle.classList.toggle('expanded', nowExpanded);
+            section.setAttribute('aria-expanded', nowExpanded ? 'true' : 'false');
+          }
+          return;
+        }
+      }
+      var node = e.target && e.target.closest && e.target.closest('.tree-node[data-dashboard-target]');
+      if (!node) return;
+      var target = (node.getAttribute('data-dashboard-target') || '').trim();
+      // Group / context / tag / board headers are not navigation targets
+      // on their own — they only group children. Ignore so the click
+      // can fall through to the toggle path above on the next event.
+      if (target === 'context' || target === 'tag' || target === 'board' || target === 'group') return;
+      var navTarget = buildNavTargetFromNode(node);
+      if (!navTarget) return;
+      LexeraSubApp.broadcast('dashboard-navigate', {
+        target: target || 'result',
+        nav: navTarget
+      });
+    });
+  }
+
   setEmptyStateMessage('Loading dashboard…');
 
   LexeraSubApp.init({

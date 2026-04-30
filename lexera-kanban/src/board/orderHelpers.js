@@ -3130,6 +3130,23 @@ var LexeraOrderHelpers = (function () {
       // automatically from renderDashboard's tail.
       try { renderDashboard(); } catch (_) { /* ignore */ }
     });
+    // Click navigation from the dashboard webview — the sub-app
+    // collects data-* attributes off the rendered tree node and emits
+    // `dashboard-navigate { target, nav }`. Route results / temporal
+    // sections / file embeds / broken elements through
+    // navigateToSearchResult so the SHELL focus-chain reveals the
+    // matching card.
+    window.__TAURI__.event.listen('dashboard-navigate', function (event) {
+      var payload = event && event.payload;
+      if (!payload || !payload.nav || !payload.nav.boardId) return;
+      try {
+        if (typeof _deps.navigateToSearchResult === 'function') {
+          _callDep('navigateToSearchResult', payload.nav);
+        } else if (typeof _deps.navigateToHierarchyTarget === 'function') {
+          _callDep('navigateToHierarchyTarget', payload.nav);
+        }
+      } catch (_) { /* ignore */ }
+    });
   }
 
   return {
