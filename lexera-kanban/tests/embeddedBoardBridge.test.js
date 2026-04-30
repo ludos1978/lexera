@@ -233,6 +233,68 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     expect(received).toEqual([]);
   });
 
+  it('falls back to focusing a rendered card when dashboard navigation helper returns false', async () => {
+    const dom = new JSDOM(
+      '<!doctype html><html><head></head><body>' +
+      '<div id="columns-container">' +
+      '<div class="card focused" data-card-id="card-old"></div>' +
+      '<div class="card" data-card-id="card-1" data-col-index="1" data-card-index="2"></div>' +
+      '</div>' +
+      '</body></html>',
+      { url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1' }
+    );
+    const { window } = dom;
+    const invoke = vi.fn(() => Promise.resolve());
+    const handlers = {};
+    const navigateHierarchyTargetInIframe = vi.fn(() => Promise.resolve(false));
+    window.LexeraOrderHelpers = { navigateHierarchyTargetInIframe };
+    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+
+    expect(bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn((eventName, handler) => {
+          handlers[eventName] = handler;
+        })
+      }),
+      invoke,
+      handleRequest: vi.fn()
+    })).toBe(true);
+
+    handlers['dashboard-navigate']({
+      payload: {
+        nav: {
+          boardId: 'board-alpha',
+          cardId: 'card-1'
+        }
+      }
+    });
+
+    await Promise.resolve();
+    expect(window.document.querySelector('[data-card-id="card-1"]')?.classList.contains('focused')).toBe(true);
+    expect(window.document.querySelector('[data-card-id="card-old"]')?.classList.contains('focused')).toBe(false);
+    expect(invoke).toHaveBeenCalledWith('multiview_broadcast', {
+      event: 'dashboard-focus-applied',
+      payload: {
+        nav: {
+          boardId: 'board-alpha',
+          cardId: 'card-1'
+        },
+        focused: true,
+        label: 'board-tab-tab-1'
+      }
+    });
+  });
+
   it('answers dashboard board test requests from the embedded board data', async () => {
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1'

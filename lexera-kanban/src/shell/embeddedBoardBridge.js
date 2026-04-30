@@ -46,6 +46,60 @@
     return String(value == null ? '' : value).trim();
   }
 
+  function findByAttr(root, selector, attr, value) {
+    if (!root || value == null || typeof root.querySelectorAll !== 'function') return null;
+    var expected = String(value);
+    var nodes = root.querySelectorAll(selector);
+    for (var i = 0; i < nodes.length; i++) {
+      if (String(nodes[i].getAttribute(attr) || '') === expected) return nodes[i];
+    }
+    return null;
+  }
+
+  function findDashboardFocusElement(nav) {
+    if (!nav) return null;
+    var boardContainer = document.getElementById('columns-container');
+    if (!boardContainer) return null;
+    var el = null;
+    if (nav.cardId) el = findByAttr(boardContainer, '.card[data-card-id]', 'data-card-id', nav.cardId);
+    if (!el && typeof nav.columnIndex === 'number' && typeof nav.cardIndex === 'number') {
+      var cards = boardContainer.querySelectorAll('.card[data-col-index][data-card-index]');
+      for (var i = 0; i < cards.length; i++) {
+        if (parseInt(cards[i].getAttribute('data-col-index') || '', 10) === nav.columnIndex &&
+            parseInt(cards[i].getAttribute('data-card-index') || '', 10) === nav.cardIndex) {
+          el = cards[i];
+          break;
+        }
+      }
+    }
+    if (!el && nav.columnId) el = findByAttr(boardContainer, '.column[data-column-id]', 'data-column-id', nav.columnId);
+    if (!el && typeof nav.columnIndex === 'number') {
+      var cardsEl = findByAttr(boardContainer, '.column-cards[data-col-index]', 'data-col-index', nav.columnIndex);
+      el = cardsEl && typeof cardsEl.closest === 'function' ? cardsEl.closest('.column') : null;
+    }
+    if (!el && nav.stackId) el = findByAttr(boardContainer, '.board-stack[data-stack-id]', 'data-stack-id', nav.stackId);
+    if (!el && nav.rowId) el = findByAttr(boardContainer, '.board-row[data-row-id]', 'data-row-id', nav.rowId);
+    return el;
+  }
+
+  function applyDashboardFocusFallback(nav) {
+    var el = findDashboardFocusElement(nav);
+    if (!el) return false;
+    if (typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    if (el.classList && el.classList.contains('card')) {
+      var previous = document.querySelectorAll('.card.focused');
+      for (var i = 0; i < previous.length; i++) {
+        if (previous[i] !== el) previous[i].classList.remove('focused');
+      }
+      el.classList.add('focused');
+    } else if (el.classList) {
+      el.classList.add('board-focus-highlight');
+    }
+    return true;
+  }
+
   function findFirstBoardCardForTest() {
     var api = window.LexeraTestApi || null;
     if (!api || typeof api.getFullBoardData !== 'function') return null;
@@ -182,21 +236,26 @@
       var p = (event && event.payload) || {};
       if (p.nav) {
         var helpers = window.LexeraOrderHelpers;
+        var reportFocus = function (focused) {
+          invoke('multiview_broadcast', {
+            event: 'dashboard-focus-applied',
+            payload: {
+              nav: p.nav,
+              focused: !!focused,
+              label: wv.label
+            }
+          }).catch(function () {});
+        };
         if (helpers && typeof helpers.navigateHierarchyTargetInIframe === 'function') {
           helpers.navigateHierarchyTargetInIframe(p.nav).then(function (focused) {
-            invoke('multiview_broadcast', {
-              event: 'dashboard-focus-applied',
-              payload: {
-                nav: p.nav,
-                focused: !!focused,
-                label: wv.label
-              }
-            }).catch(function () {});
+            reportFocus(!!focused || applyDashboardFocusFallback(p.nav));
           }).catch(function () {
             dispatchAsMessage({ type: 'lexera-focus-hierarchy-target', target: p.nav });
+            reportFocus(applyDashboardFocusFallback(p.nav));
           });
         } else {
           dispatchAsMessage({ type: 'lexera-focus-hierarchy-target', target: p.nav });
+          reportFocus(applyDashboardFocusFallback(p.nav));
         }
       }
     });
