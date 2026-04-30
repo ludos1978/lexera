@@ -72,12 +72,32 @@
       if (d.hasTauri) d.tauriInvoke('open_new_window', { boardId: null });
     });
 
-    // File > Open Workspace… — present a chooser of workspaces, then
-    // spawn a new window pinned to the picked one. Mirrors the per-row
-    // "Open" button on the workspaces sub-app, but reachable from the
-    // native menu bar so the user does not need that panel open.
+    // File > Open Workspace::<id> — direct dispatch from the native
+    // submenu (each child item maps to one workspace id). Spawns a
+    // fresh window pinned to that workspace.
+    //
+    // The legacy `open-workspace` (no id) entry is kept as a fallback
+    // chooser for environments that haven't rebuilt the menu yet (eg
+    // first paint before the workspaces catalog has hydrated).
+    function openPickedWorkspace(workspaceId) {
+      if (!workspaceId) return;
+      var shell = (typeof window !== 'undefined') ? window.LexeraWorkspaceShell : null;
+      if (shell && typeof shell.openWorkspaceWindow === 'function') {
+        shell.openWorkspaceWindow(workspaceId);
+        return;
+      }
+      if (d.hasTauri) {
+        d.tauriInvoke('open_new_window', { boardId: null, workspaceId: workspaceId });
+      }
+    }
+    ActionRegistry.register('board', 'open-workspace:*', function (action) {
+      var workspaceId = action.substring('open-workspace:'.length);
+      openPickedWorkspace(workspaceId);
+    });
     ActionRegistry.register('board', 'open-workspace', function () {
-      var workspaces = Array.isArray(d.workspaces) ? d.workspaces : [];
+      var workspaces = typeof d.getWorkspaces === 'function'
+        ? (d.getWorkspaces() || [])
+        : (Array.isArray(d.workspaces) ? d.workspaces : []);
       var dialogs = (typeof window !== 'undefined') ? window.LexeraDialogs : null;
       if (!dialogs || typeof dialogs.choose !== 'function') {
         if (typeof window !== 'undefined' && typeof window.lexeraLog === 'function') {
@@ -97,20 +117,7 @@
         };
       });
       dialogs.choose('Pick a workspace to open in a new window:', options, { title: 'Open Workspace' })
-        .then(function (workspaceId) {
-          if (!workspaceId) return;
-          var shell = (typeof window !== 'undefined') ? window.LexeraWorkspaceShell : null;
-          if (shell && typeof shell.openWorkspaceWindow === 'function') {
-            shell.openWorkspaceWindow(workspaceId);
-            return;
-          }
-          // Fallback: workspace shell unavailable (eg embedded mode) —
-          // route through the Tauri command directly so the URL still
-          // carries the workspace lock.
-          if (d.hasTauri) {
-            d.tauriInvoke('open_new_window', { boardId: null, workspaceId: workspaceId });
-          }
-        });
+        .then(openPickedWorkspace);
     });
 
     // Undo/redo

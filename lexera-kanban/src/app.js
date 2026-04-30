@@ -11241,6 +11241,9 @@ var LexeraDashboard = (function () {
       getActiveBoardData: function () { return activeBoardData; },
       getActiveBoardId: function () { return activeBoardId; },
       getFullBoardData: function () { return fullBoardData; },
+      // Live workspace list — getter so handlers see the current list
+      // every invocation, not the empty array captured at registration.
+      getWorkspaces: function () { return workspaces; },
       hasTauri: hasTauri,
       tauriInvoke: tauriInvoke,
       WorkspaceShell: WorkspaceShell,

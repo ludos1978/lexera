@@ -88,15 +88,27 @@ describe('one workspace per window — wiring contract', () => {
     expect(appMenuRs).toMatch(/"file-open-workspace"\s*,\s*"open-workspace"/);
   });
 
-  it('actionRegistrations.js wires open-workspace to the LexeraDialogs.choose chooser + WorkspaceShell.openWorkspaceWindow', () => {
-    // The handler must read `d.workspaces`, present them via
-    // LexeraDialogs.choose, and on a non-null pick call
-    // `LexeraWorkspaceShell.openWorkspaceWindow(workspaceId)` so the
-    // chain in this contract test continues unchanged from the per-row
-    // button path.
+  it('actionRegistrations.js wires both `open-workspace:<id>` (direct dispatch from native submenu) and `open-workspace` (chooser fallback) to WorkspaceShell.openWorkspaceWindow', () => {
+    // `open-workspace:<id>` — fires when the user clicks a workspace
+    // entry in the native File > Open Workspace submenu. The handler
+    // strips the prefix and goes straight to openWorkspaceWindow with
+    // no chooser dialog.
+    expect(actionRegistrationsJs).toMatch(/ActionRegistry\.register\(\s*'board'\s*,\s*'open-workspace:\*'/);
+    // The fallback chooser must read the LIVE workspace list via
+    // d.getWorkspaces() — otherwise the array captured at registration
+    // time is stale (always empty pre-hydration), which is why the
+    // earlier `d.workspaces` reference popped "No workspaces available".
     expect(actionRegistrationsJs).toMatch(/ActionRegistry\.register\(\s*'board'\s*,\s*'open-workspace'/);
-    expect(actionRegistrationsJs).toMatch(/d\.workspaces/);
-    expect(actionRegistrationsJs).toMatch(/LexeraDialogs[\s\S]{0,400}choose/);
+    expect(actionRegistrationsJs).toMatch(/d\.getWorkspaces\(\)/);
     expect(actionRegistrationsJs).toMatch(/LexeraWorkspaceShell[\s\S]{0,400}openWorkspaceWindow\(/);
+  });
+
+  it('app.js wires `getWorkspaces` (live-getter) into the action dep bag — captures-by-getter, not by-value', () => {
+    // Reading `workspaces` directly into the registerAll dep bag
+    // captures the empty initial array; subsequent `setWorkspacesState`
+    // assignments rebind the local variable but the dep bag still
+    // points at the empty original. Use a getter so handlers always
+    // see the current array.
+    expect(appJs).toMatch(/getWorkspaces:\s*function\s*\(\)\s*\{\s*return workspaces;\s*\}/);
   });
 });
