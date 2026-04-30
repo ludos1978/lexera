@@ -178,4 +178,98 @@ describe('inspector view sub-app', () => {
       }
     });
   });
+
+  // ── User-interaction API exercise ────────────────────────────────
+  // Drives the inspector view ONLY through LexeraInspectorTestApi —
+  // a regression that breaks the table render or destroy/reload
+  // wiring makes the API return false / yield wrong state, so the
+  // test result tracks user-visible behaviour, not source matching.
+  it('LexeraInspectorTestApi.collectState mirrors the rows + log tail the user sees', async () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    const invoke = vi.fn((cmd) => {
+      if (cmd === 'multiview_list') {
+        return Promise.resolve([
+          { label: 'board-tab-tab-1', x: 0, y: 0, width: 100, height: 80, url: 'http://x/' },
+          { label: 'panel-logs-tab-1', x: 200, y: 50, width: 320, height: 240, url: 'http://y/' }
+        ]);
+      }
+      if (cmd === 'multiview_list_health') {
+        return Promise.resolve({ 'board-tab-tab-1': 'green', 'panel-logs-tab-1': 'yellow' });
+      }
+      return Promise.resolve(null);
+    });
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      invoke,
+      getCurrentWebview: vi.fn(() => ({ label: 'inspector' }))
+    };
+
+    loadInspectorView(window, {
+      requestAnimationFrame: vi.fn(() => 1),
+      setInterval: vi.fn(() => 1)
+    });
+
+    capturedOpts.onReady();
+    await flushPromises();
+    capturedOpts.onLog({ level: 'error', source: 'frontend', message: 'Disk drift', timestamp_ms: Date.UTC(2026, 3, 30, 10) });
+
+    const state = window.LexeraInspectorTestApi.collectState();
+    expect(state.countLabel).toBe('(2)');
+    expect(state.rows.map((r) => r.label)).toEqual(['board-tab-tab-1', 'panel-logs-tab-1']);
+    expect(state.rows[0]).toMatchObject({ health: 'green', x: 0, y: 0, width: 100, height: 80 });
+    expect(state.rows[1]).toMatchObject({ health: 'yellow', x: 200, y: 50, width: 320, height: 240 });
+    expect(state.logLines).toHaveLength(1);
+    expect(state.logLines[0].level).toBe('error');
+    expect(state.logLines[0].text).toContain('Disk drift');
+  });
+
+  it('LexeraInspectorTestApi.clickDestroy / clickReload fire the same Tauri commands a real click would', async () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    const invoke = vi.fn((cmd, args) => {
+      if (cmd === 'multiview_list') {
+        return Promise.resolve([{ label: 'panel-logs-tab-1', x: 1, y: 2, width: 3, height: 4, url: 'http://z/' }]);
+      }
+      if (cmd === 'multiview_list_health') return Promise.resolve({ 'panel-logs-tab-1': 'green' });
+      if (cmd === 'multiview_destroy' || cmd === 'multiview_spawn') return Promise.resolve(args || null);
+      return Promise.resolve(null);
+    });
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      invoke,
+      getCurrentWebview: vi.fn(() => ({ label: 'inspector' }))
+    };
+
+    loadInspectorView(window, {
+      requestAnimationFrame: vi.fn(() => 1),
+      setInterval: vi.fn(() => 1)
+    });
+
+    capturedOpts.onReady();
+    await flushPromises();
+
+    expect(window.LexeraInspectorTestApi.clickReload('panel-logs-tab-1')).toBe(true);
+    await flushPromises();
+    await flushPromises();
+
+    expect(invoke).toHaveBeenCalledWith('multiview_destroy', { label: 'panel-logs-tab-1' });
+    expect(invoke).toHaveBeenCalledWith('multiview_spawn', {
+      req: { label: 'panel-logs-tab-1', url: 'http://z/', x: 1, y: 2, width: 3, height: 4 }
+    });
+
+    invoke.mockClear();
+
+    // After reload, the row repopulates through polling.
+    await flushPromises();
+    expect(window.LexeraInspectorTestApi.clickDestroy('panel-logs-tab-1')).toBe(true);
+    await flushPromises();
+    expect(invoke).toHaveBeenCalledWith('multiview_destroy', { label: 'panel-logs-tab-1' });
+
+    // Unknown label → no-op (returns false).
+    expect(window.LexeraInspectorTestApi.clickDestroy('does-not-exist')).toBe(false);
+    expect(window.LexeraInspectorTestApi.clickReload('does-not-exist')).toBe(false);
+  });
 });

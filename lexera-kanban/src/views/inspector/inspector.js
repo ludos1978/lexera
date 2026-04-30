@@ -167,6 +167,77 @@
     showRuntimeError('no Tauri context');
   }
 
+  // ── User-interaction test API ──────────────────────────────────
+  // Drives the inspector view through the SAME DOM and event paths
+  // a user does. Mirrors the LexeraDashboardTestApi / Workspaces /
+  // Hierarchy / Log shape: every operation reads from or dispatches
+  // into the same nodes the live UI uses, so a regression that breaks
+  // rendering or button wiring makes these helpers return false /
+  // yield wrong state — no false positives.
+  function dispatchClick(node) {
+    if (!node) return false;
+    var MouseEv = window.MouseEvent;
+    var ev = typeof MouseEv === 'function'
+      ? new MouseEv('click', { bubbles: true, cancelable: true })
+      : document.createEvent('MouseEvent');
+    if (ev.initMouseEvent && typeof MouseEv !== 'function') {
+      ev.initMouseEvent('click', true, true, window, 1, 0, 0, 0, 0, false, false, false, false, 0, null);
+    }
+    node.dispatchEvent(ev);
+    return true;
+  }
+  function collectVisibleRows() {
+    var rows = webviewTbody ? webviewTbody.querySelectorAll('tr') : [];
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+      var cells = rows[i].querySelectorAll('td');
+      if (cells.length < 7) continue;
+      var dot = cells[0].querySelector('.inspector-health-dot');
+      out.push({
+        health: dot ? dot.getAttribute('data-health') : '',
+        label: cells[1].textContent,
+        x: Number(cells[2].textContent),
+        y: Number(cells[3].textContent),
+        width: Number(cells[4].textContent),
+        height: Number(cells[5].textContent)
+      });
+    }
+    return out;
+  }
+  function collectLogLines() {
+    var lines = logTailEl ? logTailEl.querySelectorAll('.log-line') : [];
+    var out = [];
+    for (var i = 0; i < lines.length; i++) {
+      out.push({
+        level: (lines[i].className.replace('log-line', '').trim()) || 'info',
+        text: lines[i].textContent
+      });
+    }
+    return out;
+  }
+  window.LexeraInspectorTestApi = {
+    collectState: function () {
+      return {
+        countLabel: webviewCountEl ? webviewCountEl.textContent : '',
+        rows: collectVisibleRows(),
+        logLines: collectLogLines(),
+        fps: fpsEl ? fpsEl.textContent : ''
+      };
+    },
+    clickDestroy: function (label) {
+      var btn = webviewTbody && webviewTbody.querySelector(
+        'button.destroy-btn[data-label="' + String(label).replace(/"/g, '\\"') + '"]:not([data-reload])'
+      );
+      return dispatchClick(btn);
+    },
+    clickReload: function (label) {
+      var btn = webviewTbody && webviewTbody.querySelector(
+        'button.destroy-btn[data-reload="1"][data-label="' + String(label).replace(/"/g, '\\"') + '"]'
+      );
+      return dispatchClick(btn);
+    }
+  };
+
   // FPS
   var frames = 0; var last = performance.now();
   function tick() {
