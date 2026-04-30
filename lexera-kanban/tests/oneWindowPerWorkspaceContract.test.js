@@ -95,7 +95,7 @@ describe('one workspace per window — wiring contract', () => {
   });
 
   it('frontend refreshes the native submenu via set_workspaces_submenu after every workspace catalog change', () => {
-    expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1200}tauriInvoke\(['"]set_workspaces_submenu['"]/);
+    expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,2400}tauriInvoke\(['"]set_workspaces_submenu['"]/);
   });
 
   it('Tauri command set_workspaces_submenu rebuilds the menu with the supplied workspace list', () => {
@@ -126,5 +126,22 @@ describe('one workspace per window — wiring contract', () => {
     // points at the empty original. Use a getter so handlers always
     // see the current array.
     expect(appJs).toMatch(/getWorkspaces:\s*function\s*\(\)\s*\{\s*return workspaces;\s*\}/);
+  });
+
+  // ── Each window owns exactly one workspace ─────────────────────────
+  // After the catalog hydrates, the window's activeWorkspaceId must be
+  // a REAL workspace id (not the legacy `__all__` sentinel, not an
+  // orphan id pointing at a deleted workspace). Whoever boots the
+  // app — URL lock, persisted setting, or fresh install — should end
+  // up viewing exactly one workspace, never "all".
+  it('app.js promotes the window to a real workspace whenever the catalog hydrates without a valid active id', () => {
+    expect(appJs).toMatch(/function pickDefaultWorkspaceId/);
+    // The default-picker prefers the explicitly default-marked
+    // workspace, else falls back to the first available.
+    expect(appJs).toMatch(/pickDefaultWorkspaceId[\s\S]{0,500}isDefault/);
+    // setWorkspacesState invokes the picker when the active id is
+    // missing, the legacy sentinel, or orphaned.
+    expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}pickDefaultWorkspaceId/);
+    expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}activeWorkspaceId !== ALL_WORKSPACES_ID/);
   });
 });

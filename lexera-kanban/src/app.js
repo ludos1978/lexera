@@ -169,9 +169,41 @@ var LexeraDashboard = (function () {
     syncWorkspaceShellCatalogSnapshot();
   }
 
+  // Pick the workspace this window should default to when nothing
+  // specific was requested. Each window owns exactly one workspace
+  // for its lifetime — we never show the "all workspaces" pseudo-view.
+  function pickDefaultWorkspaceId(list) {
+    if (!Array.isArray(list) || list.length === 0) return null;
+    for (var i = 0; i < list.length; i++) {
+      var ws = list[i];
+      if (ws && ws.isDefault && ws.id) return String(ws.id);
+    }
+    var first = list[0];
+    return first && first.id ? String(first.id) : null;
+  }
+
   function setWorkspacesState(nextWorkspaces) {
     workspaces = Array.isArray(nextWorkspaces) ? nextWorkspaces : [];
     syncRuntimeState('workspaces', workspaces);
+    // After catalog hydration, every window must own a real workspace.
+    // If `activeWorkspaceId` is missing, points at the legacy
+    // `__all__` sentinel, or references a workspace that no longer
+    // exists, fall back to the default-marked workspace (else first
+    // available). The window stays on this workspace for its lifetime
+    // — workspace switches happen by opening a new window via
+    // File > Open Workspace > <name>.
+    var hasReal = !!activeWorkspaceId
+      && activeWorkspaceId !== ALL_WORKSPACES_ID
+      && workspaces.some(function (w) { return w && String(w.id) === String(activeWorkspaceId); });
+    if (!hasReal) {
+      var picked = pickDefaultWorkspaceId(workspaces);
+      if (picked) {
+        activeWorkspaceId = picked;
+        viewWorkspaceId = picked;
+        syncRuntimeState('activeWorkspaceId', activeWorkspaceId);
+        syncRuntimeState('viewWorkspaceId', viewWorkspaceId);
+      }
+    }
     syncWorkspaceShellCatalogSnapshot();
     // Refresh the native File > Open Workspace ▶ submenu so the user
     // gets one entry per workspace. Best-effort — non-Tauri / browser
