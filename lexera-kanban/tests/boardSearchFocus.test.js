@@ -150,6 +150,79 @@ describe('board search local focus targeting', () => {
     expect(focusBoardEntity).toHaveBeenCalledWith(columnEl);
     expect(syncSidebarToView).toHaveBeenCalledTimes(1);
   });
+
+  // Dashboard-result click reveals the matching card in the board view —
+  // the action ultimately routes to focusHierarchyTargetLocally with a
+  // `cardId`. When the card is rendered, the helper must call
+  // focusCard(el) (which highlights + reveals the card) and skip the
+  // column-fallback path that would scroll an entire column instead.
+  it('focuses the rendered card directly when the card element exists (dashboard reveal happy path)', () => {
+    const cardEl = {
+      classList: createClassList(['card']),
+      scrollIntoView: vi.fn()
+    };
+    const selectors = {
+      '.card[data-card-id="card-rendered"]': cardEl
+    };
+    const BoardSearch = createBoardSearch({
+      querySelector(selector) {
+        return Object.prototype.hasOwnProperty.call(selectors, selector) ? selectors[selector] : null;
+      }
+    });
+    const focusCard = vi.fn();
+    const unfocusCard = vi.fn();
+    const focusBoardEntity = vi.fn();
+    const syncSidebarToView = vi.fn();
+    BoardSearch.init({
+      escapeAttr: (v) => String(v),
+      focusCard,
+      unfocusCard,
+      focusBoardEntity,
+      syncSidebarToView
+    });
+
+    expect(BoardSearch.focusHierarchyTargetLocally({
+      cardId: 'card-rendered',
+      columnId: 'col-live'
+    })).toBe(true);
+
+    // Card-specific path: focusCard called with the rendered element.
+    expect(focusCard).toHaveBeenCalledTimes(1);
+    expect(focusCard).toHaveBeenCalledWith(cardEl);
+    // Column-fallback signals must NOT have fired — the rendered card
+    // already handled focus + reveal on its own.
+    expect(unfocusCard).not.toHaveBeenCalled();
+    expect(focusBoardEntity).not.toHaveBeenCalled();
+    expect(syncSidebarToView).not.toHaveBeenCalled();
+    expect(cardEl.scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('returns false when no entity matches and no fallback is available (silent no-op)', () => {
+    const BoardSearch = createBoardSearch({
+      querySelector() { return null; }
+    });
+    const focusCard = vi.fn();
+    const unfocusCard = vi.fn();
+    const focusBoardEntity = vi.fn();
+    BoardSearch.init({
+      escapeAttr: (v) => String(v),
+      focusCard,
+      unfocusCard,
+      focusBoardEntity
+    });
+
+    expect(BoardSearch.focusHierarchyTargetLocally({
+      cardId: 'no-such-card',
+      columnId: 'no-such-column',
+      rowId: 'no-such-row',
+      stackId: 'no-such-stack'
+    })).toBe(false);
+
+    // No focus side-effects when nothing was found.
+    expect(focusCard).not.toHaveBeenCalled();
+    expect(unfocusCard).not.toHaveBeenCalled();
+    expect(focusBoardEntity).not.toHaveBeenCalled();
+  });
 });
 
 describe('board search wiki search routing', () => {
