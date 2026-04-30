@@ -93,7 +93,7 @@ Bundle lives at `/tmp/lexera-design-v2/lexera-v2/` (palette + typography + JSX p
 
 ### Dashboard
 
-- [ ] **Incremental DOM updates** — `renderDashboard()` does `innerHTML = ''` on every call. Diff and update only changed items.
+- [ ] **Incremental DOM updates** — `renderDashboard()` does `innerHTML = ''` on every call. Diff and update only changed items. — **partial / outdated**: most renderers now go through `TreeView.patch` (incremental) before falling back to `innerHTML = ''` ([orderHelpers.js:2117](lexera-kanban/src/board/orderHelpers.js#L2117)). The remaining unconditional clear is `renderDashboardPinnedList` for ≤5 entries — not worth the diff overhead. Item is essentially closed; needs confirmation before strikethrough.
 - [ ] **Virtual scrolling for result lists** — currently renders 80 result + 60 todo + 40x4 calendar items as DOM nodes. Only render visible viewport items.
 - [ ] **Move search to Web Worker** — the backend search itself is fast, but parsing/grouping/tree-building on the main thread blocks rendering. Move post-processing off-thread.
 - [ ] **Request only scoped data from backend** — currently fetches all boards then filters client-side. Pass active boardId to backend query to reduce response size.
