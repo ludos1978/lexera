@@ -270,23 +270,6 @@ fn snap_window_to_edges(window: &tauri::Window) {
     }
 }
 
-/// Find the window with the lowest ID. "main" is always lowest (id 0),
-/// then "kanban-1", "kanban-2", etc.
-///
-/// Currently unused after the 2026-04-26 switch to global `app.emit` for
-/// menu actions; kept available because the previous targeted-window
-/// dispatch may need to come back if the broadcast approach causes
-/// double-handling in some scenarios.
-#[allow(dead_code)]
-fn find_lowest_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
-    if let Some(main_win) = app.get_webview_window("main") {
-        return Some(main_win);
-    }
-    let mut windows: Vec<_> = app.webview_windows().into_iter().collect();
-    windows.sort_by(|a, b| a.0.cmp(&b.0));
-    windows.into_iter().next().map(|(_, w)| w)
-}
-
 fn main() {
     install_panic_hook();
 
