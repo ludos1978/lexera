@@ -167,6 +167,18 @@ describe('one workspace per window — wiring contract', () => {
     expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}workspaces\.some\(/);
   });
 
+  it('CloseRequested clears LAST_FOCUSED_WINDOW + drops the closing window\'s subscriptions', () => {
+    // If a workspace window closes while LAST_FOCUSED_WINDOW points
+    // at it, the next menu click does `emit_to(<dead-label>, …)` →
+    // silently no-ops → menu appears broken. And every subscription
+    // the closing window's child webviews registered would otherwise
+    // pile up in the SubscriptionRegistry forever.
+    const webviewMgrRs = readFileSync(resolve(__dirname, '..', 'src-tauri', 'src', 'webview_mgr.rs'), 'utf8');
+    expect(webviewMgrRs).toMatch(/impl SubscriptionRegistry[\s\S]{0,600}fn drop_labels/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,1500}LAST_FOCUSED_WINDOW\.lock\(\)[\s\S]{0,400}\*last = None/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,3000}drop_labels\(&dead_labels\)/);
+  });
+
   it('the menu handler tracks the last-focused window so macOS menu-clicks (which transiently take focus) still resolve a target', () => {
     // On macOS, clicking a menu bar item briefly transfers focus
     // from the window to the menu. During the menu_event handler,
@@ -203,6 +215,26 @@ describe('one workspace per window — wiring contract', () => {
     // window.
     expect(mainRs).not.toMatch(/app\.emit\("menu-action"/);
     expect(mainRs).toMatch(/menu-action dropped because no focused window was found/);
+  });
+
+  it('open-workspace:<id> is handled directly in the Rust menu handler — never emitted as a frontend menu-action event', () => {
+    // Tauri 2's listener filter `target: { kind: 'Any' }` (used by
+    // tauriListen) is a greedy wildcard: emit_to(label, …) reaches
+    // EVERY listening webview regardless of the emitter's label. So
+    // emitting `menu-action: open-workspace:<id>` lets every webview
+    // running app.js — shell + each child board/panel webview + each
+    // other open window — consume it. Each webview JS context has its
+    // own `lastOpenWorkspaceWindowRequest` debounce, so each spawns a
+    // fresh window. User reported "now it opens 2 windows when i open
+    // one new workspace from the menu".
+    //
+    // Fix: handle open-workspace:<id> in on_menu_event by calling
+    // open_new_window directly with workspace_id, then `return`
+    // before the emit_to fall-through. Same pattern as `new-window`.
+    expect(mainRs).toMatch(/strip_prefix\("open-workspace:"\)[\s\S]{0,800}open_new_window\(/);
+    // The call must pass the workspace_id through to open_new_window
+    // so the new window's URL gets `?workspace=<id>` and stays locked.
+    expect(mainRs).toMatch(/strip_prefix\("open-workspace:"\)[\s\S]{0,1500}Some\(workspace_id\.to_string\(\)\)/);
   });
 
   it('multiview_broadcast scopes events to the caller window — sub-app navigates never leak into a sibling window', () => {

@@ -455,13 +455,51 @@ fn main() {
                     let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None, None, None, None, None);
                     return;
                 }
-                // Route menu actions to the FOCUSED window only.
-                // macOS shares one menu bar across windows; clicking
-                // View > Panels > Dashboard means "show the dashboard
-                // panel in THIS window I'm in". The plain `app.emit`
-                // and `WebviewWindow::emit` paths BOTH broadcast in
-                // Tauri 2 — only `emit_to(label, …)`
-                // actually targets a single webview.
+                // open-workspace:<id> → spawn a new window pinned to
+                // that workspace, entirely from Rust. Doing this here
+                // (instead of emitting `menu-action: open-workspace:<id>`
+                // for the frontend to consume) sidesteps a Tauri 2
+                // listener-filter quirk: every webview that registered
+                // `plugin:event|listen` with `target: { kind: 'Any' }`
+                // (i.e. every webview running app.js — shell + each
+                // child board/panel webview + each other open window)
+                // matches `emit_to(label, …)` regardless of label, so
+                // the action would fire once per webview JS context and
+                // each context has its own debounce → multiple new
+                // windows per click.
+                if let Some(workspace_id) = action.strip_prefix("open-workspace:") {
+                    if !workspace_id.is_empty() {
+                        let _ = open_new_window(
+                            app.clone(),
+                            None,
+                            None,
+                            Some("workspace".to_string()),
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            Some(workspace_id.to_string()),
+                            None,
+                        );
+                    }
+                    return;
+                }
+                // Route remaining menu actions to the FOCUSED window
+                // only. macOS shares one menu bar across windows;
+                // clicking View > Panels > Dashboard means "show the
+                // dashboard panel in THIS window I'm in".
+                //
+                // NOTE: Tauri 2's `emit_to(label, …)` does NOT actually
+                // restrict delivery if listeners registered with
+                // `target: { kind: 'Any' }` — those match every emit.
+                // The frontend-side guard for cross-webview leakage is
+                // SHELL_ONLY_PREFIXES / SHELL_ONLY_EXACT in
+                // workspaceShell.js: panel-only/embedded webviews drop
+                // shell-only actions before handling. Keeping this
+                // emit_to call still avoids the OTHER-window leak when
+                // both windows actually filter (e.g. Webview-targeted
+                // listeners added in the future).
                 //
                 // Fallback chain:
                 //   1. live `is_focused()` — works on Linux/Windows
@@ -472,9 +510,7 @@ fn main() {
                 //      every window for the duration of the click, so
                 //      step 1 finds nothing.
                 //   3. drop the action with a log warning rather than
-                //      broadcast — broadcasting open-workspace:<id> in
-                //      particular would spawn one new window per open
-                //      workspace window.
+                //      broadcast.
                 let focused_label = app
                     .webview_windows()
                     .into_iter()
@@ -586,10 +622,42 @@ fn main() {
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
-                    // Only prevent close on the main window; secondary windows close normally
-                    if window.label() == "main" {
+                    let closing_label = window.label().to_string();
+                    if closing_label == "main" {
+                        // Only prevent close on the main window; secondary windows close normally
                         api.prevent_close();
                         let _ = window.minimize();
+                    } else {
+                        // A secondary window is closing. Two cleanups:
+                        //
+                        // 1. If LAST_FOCUSED_WINDOW points at this
+                        //    closing window, clear it. Otherwise the
+                        //    next menu click would `emit_to(<dead-
+                        //    window-label>, …)` and silently no-op
+                        //    because that webview no longer exists.
+                        // 2. Drop every subscription registered by
+                        //    webviews attached to this window. Stale
+                        //    entries in the SubscriptionRegistry would
+                        //    keep multiview_broadcast trying to emit to
+                        //    dead webview labels — harmless today, but
+                        //    grows unbounded over multi-window
+                        //    open/close churn.
+                        if let Ok(mut last) = LAST_FOCUSED_WINDOW.lock() {
+                            if last.as_deref() == Some(closing_label.as_str()) {
+                                *last = None;
+                            }
+                        }
+                        let dead_labels: Vec<String> = window
+                            .webviews()
+                            .into_iter()
+                            .map(|w| w.label().to_string())
+                            .collect();
+                        if !dead_labels.is_empty() {
+                            use tauri::Manager;
+                            let app = window.app_handle();
+                            let reg = app.state::<webview_mgr::SubscriptionRegistry>();
+                            reg.drop_labels(&dead_labels);
+                        }
                     }
                 }
                 tauri::WindowEvent::Moved(_pos) => {

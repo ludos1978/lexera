@@ -526,6 +526,21 @@ pub struct SubscriptionRegistry {
     inner: parking_lot::RwLock<std::collections::HashMap<String, std::collections::HashSet<String>>>,
 }
 
+impl SubscriptionRegistry {
+    /// Drop every subscription registered by any of the supplied
+    /// webview labels. Called from the window-close handler so the
+    /// registry doesn't accumulate stale labels of destroyed webviews.
+    pub fn drop_labels(&self, labels: &[String]) {
+        if labels.is_empty() { return; }
+        let mut w = self.inner.write();
+        for (_event, subs) in w.iter_mut() {
+            for label in labels {
+                subs.remove(label);
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub fn multiview_subscribe(
     app: AppHandle,
