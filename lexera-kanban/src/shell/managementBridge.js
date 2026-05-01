@@ -5,6 +5,12 @@
     return (typeof window !== 'undefined' && window.__TAURI__) || null;
   }
 
+  function getCurrentWebview() {
+    var t = tauriRuntime();
+    if (!t || !t.webview || typeof t.webview.getCurrentWebview !== 'function') return null;
+    try { return t.webview.getCurrentWebview(); } catch (_) { return null; }
+  }
+
   function normalizeWorkspacesPayload(event) {
     var payload = event && event.payload ? event.payload : {};
     return {
@@ -80,7 +86,18 @@
   }
 
   function install(handlers) {
-    return installWith(tauriRuntime(), handlers);
+    var wv = getCurrentWebview();
+    if (!wv || typeof wv.listen !== 'function') return false;
+    wv.listen('management-workspaces-loaded', function (event) {
+      handleWorkspacesLoaded(event, handlers || {});
+    });
+    wv.listen('management-board-mutation', function (event) {
+      handleBoardMutation(event, handlers || {});
+    });
+    wv.listen('render-apps-config-saved', function (event) {
+      handleRenderAppsConfigSaved(event, handlers || {});
+    });
+    return true;
   }
 
   var api = {

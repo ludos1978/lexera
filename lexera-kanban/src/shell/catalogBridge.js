@@ -39,6 +39,12 @@
     return t.core.invoke(cmd, args || {});
   }
 
+  function getCurrentWebview() {
+    var t = tauri();
+    if (!t || !t.webview || typeof t.webview.getCurrentWebview !== 'function') return null;
+    try { return t.webview.getCurrentWebview(); } catch (_) { return null; }
+  }
+
   // ── Catalog snapshot bridge ──────────────────────────────────────
 
   var lastCatalogSnapshot = null;
@@ -130,7 +136,7 @@
   function initListeners() {
     var t = tauri();
     if (!t || !t.event || typeof t.event.listen !== 'function') return;
-    t.event.listen('catalog-request', function () {
+    if (typeof getCurrentWebview === 'function' && getCurrentWebview()) getCurrentWebview().listen('catalog-request', function () {
       if (lastCatalogSnapshot) broadcastCatalog(lastCatalogSnapshot);
     });
   }

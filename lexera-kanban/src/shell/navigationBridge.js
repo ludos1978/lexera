@@ -1,29 +1,14 @@
 (function () {
   'use strict';
 
-  // The shell-side navigation bridge: receives navigation/shortcut/focus
-  // events broadcast from sub-app webviews and routes them to the
-  // workspace shell or the multiview API.
-  //
-  // Sub-apps emit:
-  //   - 'multiview-navigate' with payload { type, ... } — typically
-  //     'open-board' (boardId, options), 'open-workspace-window'
-  //     (workspaceId), or 'reveal-panel' (panelId).
-  //   - 'multiview-shortcut' with payload { action } — keyboard shortcut
-  //     forwarded from a board webview because the embedded webview, not
-  //     the shell, captured the keystroke.
-  //   - 'focus-changed' with payload { label } — a webview gained focus;
-  //     the bridge bumps LRU freshness and synthesizes a
-  //     `lexera-pane-activated` postMessage for the workspace shell so
-  //     pane-activation handling matches the legacy iframe path.
-  //
-  // No global keydown shortcut is installed here; per
-  // `multiviewClient.js`'s prior comment, the main shell window must NOT
-  // intercept those events because the legacy kanban code and tests rely
-  // on them. Shortcuts only work while a sub-app webview holds focus.
-
   function tauriRuntime() {
     return (typeof window !== 'undefined' && window.__TAURI__) || null;
+  }
+
+  function getCurrentWebview() {
+    var t = tauriRuntime();
+    if (!t || !t.webview || typeof t.webview.getCurrentWebview !== 'function') return null;
+    try { return t.webview.getCurrentWebview(); } catch (_) { return null; }
   }
 
   function multiviewApi() {
@@ -107,10 +92,6 @@
       if (payload.type === 'open-board' && payload.boardId && typeof shell.openBoard === 'function') {
         shell.openBoard(payload.boardId, payload.options || {});
       } else if (payload.type === 'open-workspace-window' && payload.workspaceId && typeof shell.openWorkspaceWindow === 'function') {
-        // "Open" action from the workspaces sub-app: spawn a fresh
-        // window pinned to the chosen workspace. The new window's
-        // workspace-shell reads `?workspace=<id>` from its URL on
-        // boot and stays locked to that workspace for its lifetime.
         shell.openWorkspaceWindow(payload.workspaceId);
       } else if (payload.type === 'reveal-panel' && payload.panelId && typeof shell.revealPanel === 'function') {
         shell.revealPanel(payload.panelId);
@@ -173,11 +154,6 @@
     }
   }
 
-  // Bridge focus-changed → synthetic 'lexera-pane-activated' message for
-  // the workspace shell. When a board webview gains focus, the shell's
-  // existing handleWindowMessage handler runs to clear pending focus
-  // targets / mark the pane as activated. Also bumps lifecycle freshness
-  // so this webview is not the next eviction candidate.
   function handleFocusChanged(event) {
     var p = event && event.payload ? event.payload : {};
     var label = p.label || '';
@@ -196,19 +172,15 @@
   }
 
   function install() {
-    var t = tauriRuntime();
-    if (!t || !t.event || typeof t.event.listen !== 'function') return false;
-    t.event.listen('multiview-navigate', handleNavigate);
-    t.event.listen('multiview-shortcut', handleShortcut);
-    t.event.listen('focus-changed', handleFocusChanged);
-    t.event.listen('frontend-tests-command', handleFrontendTestsCommand);
+    var wv = getCurrentWebview();
+    if (!wv || typeof wv.listen !== 'function') return false;
+    wv.listen('multiview-navigate', handleNavigate);
+    wv.listen('multiview-shortcut', handleShortcut);
+    wv.listen('focus-changed', handleFocusChanged);
+    wv.listen('frontend-tests-command', handleFrontendTestsCommand);
     return true;
   }
 
-  // Test seam: callers can pass a custom event runtime (e.g., a stub
-  // exposing `.event.listen`) instead of the global Tauri runtime. The
-  // resolvers above for `multiviewApi`/`shellApi` still consult window
-  // globals, so unit tests should also stub those when relevant.
   function installWith(runtime) {
     if (!runtime || !runtime.event || typeof runtime.event.listen !== 'function') return false;
     runtime.event.listen('multiview-navigate', handleNavigate);
