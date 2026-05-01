@@ -1628,8 +1628,8 @@ var LexeraBoardList = (function () {
       _callDep('setActiveBoardId', null);
       _callDep('setActiveBoardData', null);
       _callDep('setFullBoardData', null);
-      if (_Settings) { _Settings.set('lastBoard', ''); }
-      else { removeLocalStorageItem('lexera-last-board'); }
+      // Active board is per-window state — never persisted to the
+      // shared Settings store.
     }
     renderBoardList();
     _callDep('renderMainView');

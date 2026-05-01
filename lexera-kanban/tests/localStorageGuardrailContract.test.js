@@ -47,7 +47,6 @@ const ALLOWED_LOCAL_STORAGE_FILES = [
   'shared/stateManager.js',
   'sidebar/sidebarResize.js',
   'sidebar/sidebarSync.js',
-  'sync/pollingService.js',
   'tagcolors/tagColors.js',
   'test/autoRunBootstrap.js',
   'test/frontendTests.js',

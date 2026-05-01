@@ -10,7 +10,6 @@ var LexeraPollingService = (function () {
 
   // --- Dependencies (injected via init) ---
   var _deps = {};
-  var _Settings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
 
   function _dep(name) {
     return _deps[name];
@@ -215,9 +214,13 @@ var LexeraPollingService = (function () {
             _callDep('setShellActiveBoard', null);
           }
           if (_dep('workspaceShellBoardHostEnabled') && !_dep('activeBoardId')) {
+            // Initial board is per-window — URL `?board=` first, then
+            // first-available fallback. NEVER read the shared
+            // `lastBoard` setting, which would auto-mirror sibling
+            // windows together on cold start.
             var initialBoardId = _dep('embeddedMode')
               ? _dep('embeddedPreferredBoardId')
-              : (_dep('urlParams').get('board') || (_Settings ? _Settings.get('lastBoard') : localStorage.getItem('lexera-last-board')) || (_dep('boards')[0] && _dep('boards')[0].id) || '');
+              : (_dep('urlParams').get('board') || (_dep('boards')[0] && _dep('boards')[0].id) || '');
             if (initialBoardId && _callDep('findBoardMeta', initialBoardId) && typeof _dep('WorkspaceShell').ensureInitialTab === 'function') {
               _dep('WorkspaceShell').ensureInitialTab(initialBoardId);
             }
@@ -307,19 +310,21 @@ var LexeraPollingService = (function () {
           _callDep('setFullBoardData', null);
           _callDep('setLastLoadedGeneration', null);
           _callDep('setLastLoadedRevision', null);
-          if (!_dep('embeddedMode')) {
-            if (_Settings) { _Settings.set('lastBoard', ''); }
-            else { localStorage.removeItem('lexera-last-board'); }
-          }
+          // Active board is per-window state — never persisted to the
+          // shared Settings store.
           _callDep('renderMainView');
         }
       } else if (!activeBoardId && !_dep('searchMode')) {
-        // Auto-select a board on first load:
-        // - Embedded iframes: use the board ID from ?board= URL param
-        // - Top-level window: use last board from localStorage
+        // Auto-select a board on first load. Each window picks its
+        // initial board from URL `?board=` only — never from the
+        // shared `lastBoard` setting, which would couple windows
+        // together (window A switches → window B opens later → B
+        // auto-loads A's board because lastBoard is shared via
+        // localStorage). Embedded iframes use their parent-supplied
+        // preferred id.
         var lastBoard = _dep('embeddedMode')
           ? _dep('embeddedPreferredBoardId')
-          : (_dep('urlParams').get('board') || (_Settings ? _Settings.get('lastBoard') : localStorage.getItem('lexera-last-board')));
+          : _dep('urlParams').get('board');
         if (lastBoard) {
           var found = _callDep('findBoardMeta', lastBoard);
           if (found) {

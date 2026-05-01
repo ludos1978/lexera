@@ -309,6 +309,32 @@ describe('one workspace per window — wiring contract', () => {
     expect(appJs).not.toMatch(/event\.key\s*===\s*['"]lexera-dock-panel['"]/);
   });
 
+  it('the active board is NEVER persisted to the shared Settings store — switching boards in window A must not influence window B', () => {
+    // User-reported: "now when i switch kanban boards in one view it
+    // switches the other view as well!" + "windows must be independant!".
+    // Settings.set('lastBoard', boardId) writes localStorage, which:
+    //   (a) fires a `storage` event in every other window (no listener
+    //       reacts today, but it's a future-leak risk), AND
+    //   (b) is read on cold start by pollingService.js — so opening
+    //       window B after window A switched to Z auto-loads Z too,
+    //       coupling the windows. **Each window owns its active board**
+    //       — initial board comes from URL `?board=` only, fallback to
+    //       first available; no shared persistence.
+    expect(appJs).not.toMatch(/Settings\.set\(\s*['"]lastBoard['"]/);
+    expect(appJs).not.toMatch(/setItem\(\s*['"]lexera-last-board['"]/);
+    const orderHelpersJs = readFileSync(resolve(__dirname, '..', 'src', 'board', 'orderHelpers.js'), 'utf8');
+    expect(orderHelpersJs).not.toMatch(/_Settings\.set\(\s*['"]lastBoard['"]/);
+    expect(orderHelpersJs).not.toMatch(/setItem\(\s*['"]lexera-last-board['"]/);
+    const boardListJs = readFileSync(resolve(__dirname, '..', 'src', 'board', 'boardList.js'), 'utf8');
+    expect(boardListJs).not.toMatch(/_Settings\.set\(\s*['"]lastBoard['"]/);
+    const pollingJs = readFileSync(resolve(__dirname, '..', 'src', 'sync', 'pollingService.js'), 'utf8');
+    expect(pollingJs).not.toMatch(/_Settings\.set\(\s*['"]lastBoard['"]/);
+    // Cold-start read is also forbidden — would re-couple windows on
+    // every fresh open.
+    expect(pollingJs).not.toMatch(/_Settings\.get\(\s*['"]lastBoard['"]/);
+    expect(pollingJs).not.toMatch(/getItem\(\s*['"]lexera-last-board['"]/);
+  });
+
   it('the active workspace is NEVER persisted to the shared Settings store (would leak across windows)', () => {
     // Persisting via `Settings.set('activeWorkspace', …)` fires a
     // `storage` event into sibling windows; the listener in app.js

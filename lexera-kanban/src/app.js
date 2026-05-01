@@ -3024,7 +3024,15 @@ var LexeraDashboard = (function () {
     addCardColumn = null;
     resetBoardDirtyState('selectBoard-switch', boardId);
     if (!embeddedMode) {
-      if (Settings) Settings.set('lastBoard', boardId); else localStorage.setItem('lexera-last-board', boardId);
+      // Active board is per-window state — do NOT persist via Settings
+      // (shared localStorage). Two open windows pinned to the same
+      // workspace would otherwise share their last-active board: window
+      // A switches to Z, window B opens later and the polling cold-start
+      // path (`!activeBoardId` → `Settings.get('lastBoard')`) auto-loads
+      // Z too, so the windows end up showing the same board. Each window
+      // picks its initial board from URL `?board=` or falls back to the
+      // first available; switching boards in window A must NOT influence
+      // any sibling window.
       trackRecentBoard(boardId);
     } else {
       embeddedPreferredBoardId = boardId;
@@ -6172,7 +6180,8 @@ var LexeraDashboard = (function () {
       setActiveBoardIdState(null);
       setActiveBoardDataState(null);
       setFullBoardDataState(null);
-      if (Settings) Settings.set('lastBoard', null); else localStorage.removeItem('lexera-last-board');
+      // Active board is per-window state — never persisted to the
+      // shared Settings store.
     }
     renderMainView();
     scheduleDashboardRefresh(60);

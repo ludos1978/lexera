@@ -78,7 +78,10 @@ describe('orderHelpers.setShellActiveBoard', () => {
       expect(setActiveBoardId).toHaveBeenCalledWith('board-b');
       expect(syncWorkspaceContextForBoard).toHaveBeenCalledWith('board-b');
       expect(trackRecentBoard).toHaveBeenCalledWith('board-b');
-      expect(localStorageMock.getItem('lexera-last-board')).toBe('board-b');
+      // Active board is per-window in-memory state — must NOT be
+      // persisted to the shared Settings store, otherwise sibling
+      // windows would auto-mirror each other on cold start.
+      expect(localStorageMock.getItem('lexera-last-board')).toBeNull();
     } finally {
       vi.clearAllTimers();
       vi.useRealTimers();

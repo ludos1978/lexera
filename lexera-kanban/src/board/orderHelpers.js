@@ -824,7 +824,8 @@ var LexeraOrderHelpers = (function () {
     _callDep('syncWorkspaceContextForBoard', boardId || null);
     if (!_dep('embeddedMode')) {
       if (boardId) {
-        if (_Settings) { _Settings.set('lastBoard', boardId); } else { localStorage.setItem('lexera-last-board', boardId); }
+        // Per-window state only — see selectBoard for the cross-window
+        // independence rationale.
         _callDep('trackRecentBoard', boardId);
       }
     }
