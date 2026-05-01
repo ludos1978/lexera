@@ -134,7 +134,7 @@ Bundle lives at `/tmp/lexera-design-v2/lexera-v2/` (palette + typography + JSX p
 
 ### Backend Stability
 
-- [ ] **Stale h2c connections after macOS sleep/wake** — After macOS sleep, the h2c (HTTP/2 cleartext) TCP connection between frontend and backend goes stale. Requests on the dead connection fail with body-read errors or invalid JSON. The frontend retry mechanism handles it (clears cached session, re-discovers backend, retries once), but the user sees a brief hiccup. Fix options: (1) TCP keepalive on the backend so the OS detects dead connections, (2) connection health checks before reuse on the frontend, (3) switch from persistent h2c to short-lived HTTP/1.1 connections. See `server.rs:serve_with_h2c` and `api.js:retryWithBackendRecovery`.
+- [~] **Stale h2c connections after macOS sleep/wake** — 341e886d (option 1 of 3 shipped: TCP keepalive on accepted h2c sockets via socket2 — `with_time(30s).with_interval(10s)` — so the kernel tears down dead connections within ~1 minute and request timeouts become the upper bound on staleness instead of multi-minute hangs. Defense-in-depth — frontend retry path in `api.js:retryWithBackendRecovery` still runs the full recover-and-retry chain. Remaining options not yet pursued: (2) frontend-side connection health checks before reuse, (3) switch from persistent h2c to short-lived HTTP/1.1.) — in progress on **frontend health-check** (option 2)
 - [ ] **File upstream Loro issue** — Loro 1.10.8 has a `MovableList::mov()` panic when the element at the source position was already consumed. Our code is safe (`catch_unwind` + session rebuild), and pre-move validation was added in `reorder_list_by_id`. File an issue on `loro-dev/loro` when a minimal reproduction is available.
 
 ### Frontend Test Additions
