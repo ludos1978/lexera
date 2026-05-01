@@ -333,6 +333,16 @@ describe('one workspace per window — wiring contract', () => {
     // every fresh open.
     expect(pollingJs).not.toMatch(/_Settings\.get\(\s*['"]lastBoard['"]/);
     expect(pollingJs).not.toMatch(/getItem\(\s*['"]lexera-last-board['"]/);
+    // The settings DEFS table must not declare `lastBoard` either —
+    // every entry there is supposed to have at least one caller, and
+    // re-adding the def would tempt callers to use it.
+    const settingsStoreJs = readFileSync(resolve(__dirname, '..', 'src', 'core', 'settingsStore.js'), 'utf8');
+    expect(settingsStoreJs).not.toMatch(/lastBoard\s*:\s*\{/);
+    expect(settingsStoreJs).not.toMatch(/['"]lexera-last-board['"]/);
+    // Mirror guard for the state-key registry so dev tools don't keep
+    // surfacing the dead key as if it were live.
+    const stateKeyRegistryJs = readFileSync(resolve(__dirname, '..', 'src', 'shared', 'stateKeyRegistry.js'), 'utf8');
+    expect(stateKeyRegistryJs).not.toMatch(/['"]lexera-last-board['"]/);
   });
 
   it('the active workspace is NEVER persisted to the shared Settings store (would leak across windows)', () => {
