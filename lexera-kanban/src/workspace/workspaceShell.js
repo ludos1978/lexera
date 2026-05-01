@@ -3084,7 +3084,11 @@
     if (!isPanelOnlyWindow() || !state.panelOnlyKind) return;
     var kind = state.panelOnlyKind;
     var target = state.originWindow || '';
-    var menuPayload = 'reveal-panel:' + kind;
+    var action = 'reveal-panel:' + kind;
+    var menuPayload = {
+      target: target || null,
+      action: action
+    };
     var dispatch = target
       ? invokeTauri('multiview_emit_to', {
           target: target,

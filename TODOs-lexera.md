@@ -18,6 +18,14 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Open Tasks
 
+### Multi-Window Structural Improvements
+
+- [ ] **Fix Event Scoping in `embedMenu.js`:** Update `LexeraEmbedMenu.tauriListen` to use the current webview's scope instead of `{ kind: 'Any' }`. This will prevent events like `menu-action` from leaking across windows.
+- [ ] **Prevent `activeWorkspace` State Leakage:** Update `lexera-kanban/src/core/settingsStore.js` to mark `activeWorkspace` as non-persisted or window-scoped. Currently, `localStorage` writes to this key cause other windows to "yank" to the same workspace.
+- [ ] **Enforce Unique Webview Labels:** Modify `boardHost.js` and `panelHost.js` to include a window-unique prefix (e.g., `WORKSPACE_SHELL_BOOT_ID`) in `multiviewLabelForTab` and `panelLabelForTab`. This prevents label collisions and accidental webview "adoption" across windows.
+- [ ] **Audit Rust Emissions:** Audit `main.rs` and `webview_mgr.rs` for `app.emit()` calls. Replace global broadcasts with targeted emissions (`window.emit()` or `webview.emit()`) where the event is window-specific (e.g., `menu-action`).
+- [ ] **Verify Isolation:** Create a verification script or automated test that spawns two top-level windows and confirms that switching workspaces or opening boards in one does not affect the other.
+
 ### Unsorted (leave this header here!)
 
 - [ ] when closing windows, it should close the view, but not the application!

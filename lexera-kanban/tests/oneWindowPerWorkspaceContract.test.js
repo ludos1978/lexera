@@ -216,6 +216,17 @@ describe('one workspace per window — wiring contract', () => {
     expect(mainRs).not.toMatch(/app\.emit\("menu-action"/);
     expect(mainRs).toMatch(/menu-action dropped because no focused window was found/);
   });
+  it('menu-action payloads include the target window label so JavaScript can filter out cross-window leakage', () => {
+    // Tauri 2's target: { kind: 'Any' } listener is a greedy wildcard
+    // that receives events from all windows. To prevent menu actions
+    // from executing in multiple windows simultaneously, the Rust code
+    // now emits a structured payload: { target: string, action: string }.
+    // The JavaScript side filters events where payload.target !== this
+    // window's label (from ?windowLabel= URL param).
+    expect(mainRs).toMatch(/serde_json::json!\(\{\s*"target":/);
+    expect(mainRs).toMatch(/"action":\s*action/);
+  });
+
 
   it('open-workspace:<id> is handled directly in the Rust menu handler — never emitted as a frontend menu-action event', () => {
     // Tauri 2's listener filter `target: { kind: 'Any' }` (used by

@@ -501,7 +501,15 @@ fn main() {
                     .map(|(label, _)| label)
                     .or_else(|| LAST_FOCUSED_WINDOW.lock().ok().and_then(|guard| guard.clone()));
                 if let Some(label) = focused_label {
-                    let _ = app.emit_to(label.as_str(), "menu-action", action.clone());
+                    // Emit a structured payload so JavaScript can filter out
+                    // events intended for other windows. Tauri 2's
+                    // `target: { kind: 'Any' }` listener is a greedy wildcard
+                    // that matches every emit regardless of the emitter's label.
+                    let payload = serde_json::json!({
+                        "target": label,
+                        "action": action
+                    });
+                    let _ = app.emit_to(label.as_str(), "menu-action", payload);
                     log::debug!("[main] menu-action sent to focused window '{}': {}", label, action);
                 } else {
                     log::warn!("[main] menu-action dropped because no focused window was found: {}", action);
