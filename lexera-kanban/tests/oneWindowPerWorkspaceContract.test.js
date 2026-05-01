@@ -212,6 +212,21 @@ describe('one workspace per window — wiring contract', () => {
     expect(fnBody[0]).not.toMatch(/app\.emit\(&event/);
   });
 
+  it('detached-panel "Dock" button targets the originating workspace window, not all open windows', () => {
+    // detachPanelView passes `originWindow: state.windowLabel` to
+    // open_new_window; the new panel-only window reads it from the
+    // URL and dockToMainWindow uses `multiview_emit_to(originWindow, …)`
+    // instead of `tauriEmitAll(…)`. Without this, popping a panel
+    // from window A and clicking Dock would reveal the panel in
+    // every open workspace window simultaneously (same broadcast
+    // pattern as the navigation leak).
+    expect(mainRs).toMatch(/origin_window:\s*Option<String>/);
+    expect(mainRs).toContain('"&originWindow="');
+    expect(workspaceShellJs).toMatch(/originWindow:\s*state\.windowLabel/);
+    expect(workspaceShellJs).toMatch(/originWindow:\s*String\(urlParams\.get\(['"]originWindow['"]\)/);
+    expect(workspaceShellJs).toMatch(/function dockToMainWindow[\s\S]{0,800}multiview_emit_to/);
+  });
+
   it('the legacy ALL_WORKSPACES_ID sentinel is gone — no codepath references __all__ or ALL_WORKSPACES_ID anymore', () => {
     // The pseudo-workspace-id was the source of the cross-window leak
     // in the all-view branches. After 82417477 + this cleanup, every

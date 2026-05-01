@@ -257,6 +257,11 @@
     windowRole: String(urlParams.get('windowRole') || ''),
     windowLabel: String(urlParams.get('windowLabel') || 'main'),
     hostWindowLabel: String(urlParams.get('workspaceShellHostLabel') || urlParams.get('windowLabel') || 'main'),
+    // Set by `open_new_window(origin_window=…)` when a panel-only
+    // window is detached from a parent window. Used by
+    // dockToMainWindow to send the dock-back event to that originator
+    // only, instead of broadcasting to every workspace window.
+    originWindow: String(urlParams.get('originWindow') || ''),
     dockTree: createTabsetNode([]),
     panelInstances: createDefaultPanelInstances(),
     sideDocks: createDefaultSideDocks(urlParams.get('profile') === 'detachedBoard' ? 'detachedBoard' : 'workspace'),
@@ -3062,7 +3067,11 @@
       initialPanel: kind,
       windowRole: kind === 'hierarchy' ? 'hierarchyLauncher' : null,
       width: panelRect ? Math.max(360, Math.round(panelRect.width)) : null,
-      height: panelRect ? Math.max(220, Math.round(panelRect.height)) : null
+      height: panelRect ? Math.max(220, Math.round(panelRect.height)) : null,
+      // Pass through this window's label as the panel-only window's
+      // origin so `Dock` returns the panel HERE, not to every open
+      // workspace window via broadcast.
+      originWindow: state.windowLabel || 'main'
     }).then(function () {
       removePanelFromCurrentWindow(normalized);
       return true;
@@ -3074,10 +3083,22 @@
   function dockToMainWindow() {
     if (!isPanelOnlyWindow() || !state.panelOnlyKind) return;
     var kind = state.panelOnlyKind;
-    tauriEmitAll('menu-action', 'reveal-panel:' + kind).then(function () {
+    var target = state.originWindow || '';
+    var menuPayload = 'reveal-panel:' + kind;
+    var dispatch = target
+      ? invokeTauri('multiview_emit_to', {
+          target: target,
+          event: 'menu-action',
+          payload: menuPayload
+        })
+      : tauriEmitAll('menu-action', menuPayload);
+    dispatch.then(function () {
       closeCurrentWindow();
     }).catch(function () {
-      // Fallback: store intent in localStorage and close
+      // Fallback: store intent in localStorage and close. Each
+      // surviving window will pick this up via the storage event and
+      // reveal — best-effort, only fires when no targeted dispatch
+      // succeeded.
       try { localStorage.setItem('lexera-dock-panel', kind); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
       closeCurrentWindow();
     });

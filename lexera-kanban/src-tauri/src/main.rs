@@ -53,6 +53,7 @@ fn open_new_window(
     width: Option<f64>,
     height: Option<f64>,
     workspace_id: Option<String>,
+    origin_window: Option<String>,
 ) -> Result<String, String> {
     let n = WINDOW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let label = format!("kanban-{}", n);
@@ -98,6 +99,16 @@ fn open_new_window(
     if let Some(ref ws) = workspace_id {
         url_str.push_str(if query_started { "&workspace=" } else { "?workspace=" });
         url_str.push_str(ws);
+        query_started = true;
+    }
+    // origin_window: which window spawned this one. Panel-only
+    // windows use it on dock-back so their `Dock` button targets the
+    // originator with `multiview_emit_to(origin_window, ...)` instead
+    // of broadcasting `menu-action: reveal-panel:<kind>` to every
+    // open workspace window.
+    if let Some(ref origin) = origin_window {
+        url_str.push_str(if query_started { "&originWindow=" } else { "?originWindow=" });
+        url_str.push_str(origin);
         query_started = true;
     }
     url_str.push_str(if query_started { "&windowLabel=" } else { "?windowLabel=" });
@@ -432,7 +443,7 @@ fn main() {
             if let Some(action) = app_menu::menu_id_to_action(id) {
                 // Handle Rust-side actions that don't go to the frontend
                 if action == "new-window" {
-                    let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None, None, None, None);
+                    let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None, None, None, None, None);
                     return;
                 }
                 // Route menu actions to the FOCUSED window only. macOS
