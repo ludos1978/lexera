@@ -73,15 +73,33 @@
 
   function installWith(runtime, handlers) {
     if (!runtime || !runtime.event || typeof runtime.event.listen !== 'function') return false;
-    runtime.event.listen('management-workspaces-loaded', function (event) {
-      handleWorkspacesLoaded(event, handlers || {});
-    });
-    runtime.event.listen('management-board-mutation', function (event) {
-      handleBoardMutation(event, handlers || {});
-    });
-    runtime.event.listen('render-apps-config-saved', function (event) {
-      handleRenderAppsConfigSaved(event, handlers || {});
-    });
+    // Prefer webview-scoped listeners for events emitted via multiview_broadcast
+    // (which uses emit_to).  Due to a Tauri 2 behaviour (see tauri-apps/tauri#11379),
+    // runtime.event.listen() with kind:'Any' receives events from ALL windows,
+    // including emit_to events targeted at other windows.
+    var wv = getCurrentWebview();
+    var useWv = wv && typeof wv.listen === 'function';
+    if (useWv) {
+      wv.listen('management-workspaces-loaded', function (event) {
+        handleWorkspacesLoaded(event, handlers || {});
+      });
+      wv.listen('management-board-mutation', function (event) {
+        handleBoardMutation(event, handlers || {});
+      });
+      wv.listen('render-apps-config-saved', function (event) {
+        handleRenderAppsConfigSaved(event, handlers || {});
+      });
+    } else {
+      runtime.event.listen('management-workspaces-loaded', function (event) {
+        handleWorkspacesLoaded(event, handlers || {});
+      });
+      runtime.event.listen('management-board-mutation', function (event) {
+        handleBoardMutation(event, handlers || {});
+      });
+      runtime.event.listen('render-apps-config-saved', function (event) {
+        handleRenderAppsConfigSaved(event, handlers || {});
+      });
+    }
     return true;
   }
 

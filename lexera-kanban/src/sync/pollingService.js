@@ -218,9 +218,17 @@ var LexeraPollingService = (function () {
             // first-available fallback. NEVER read the shared
             // `lastBoard` setting, which would auto-mirror sibling
             // windows together on cold start.
+            var allBoards = _dep('boards') || [];
+            var viewWs = _dep('viewWorkspaceId') || _dep('activeWorkspaceId');
+            var boardsForWs = viewWs ? allBoards.filter(function (b) {
+              if (!b) return false;
+              var wsIds = b.workspace_ids || b.workspaceIds || (b.workspace_id || b.workspaceId ? [b.workspace_id || b.workspaceId] : []);
+              for (var i = 0; i < wsIds.length; i++) { if (String(wsIds[i]) === String(viewWs)) return true; }
+              return false;
+            }) : allBoards;
             var initialBoardId = _dep('embeddedMode')
               ? _dep('embeddedPreferredBoardId')
-              : (_dep('urlParams').get('board') || (_dep('boards')[0] && _dep('boards')[0].id) || '');
+              : (_dep('urlParams').get('board') || (boardsForWs[0] && boardsForWs[0].id) || '');
             if (initialBoardId && _callDep('findBoardMeta', initialBoardId) && typeof _dep('WorkspaceShell').ensureInitialTab === 'function') {
               _dep('WorkspaceShell').ensureInitialTab(initialBoardId);
             }
@@ -325,6 +333,17 @@ var LexeraPollingService = (function () {
         var lastBoard = _dep('embeddedMode')
           ? _dep('embeddedPreferredBoardId')
           : _dep('urlParams').get('board');
+        if (!lastBoard) {
+          var allBoards = _dep('boards') || [];
+          var viewWs = _dep('viewWorkspaceId') || _dep('activeWorkspaceId');
+          var boardsForWs = viewWs ? allBoards.filter(function (b) {
+            if (!b) return false;
+            var wsIds = b.workspace_ids || b.workspaceIds || (b.workspace_id || b.workspaceId ? [b.workspace_id || b.workspaceId] : []);
+            for (var i = 0; i < wsIds.length; i++) { if (String(wsIds[i]) === String(viewWs)) return true; }
+            return false;
+          }) : allBoards;
+          if (boardsForWs[0]) lastBoard = boardsForWs[0].id;
+        }
         if (lastBoard) {
           var found = _callDep('findBoardMeta', lastBoard);
           if (found) {

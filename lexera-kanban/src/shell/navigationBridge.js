@@ -183,10 +183,24 @@
 
   function installWith(runtime) {
     if (!runtime || !runtime.event || typeof runtime.event.listen !== 'function') return false;
-    runtime.event.listen('multiview-navigate', handleNavigate);
-    runtime.event.listen('multiview-shortcut', handleShortcut);
+    // Prefer webview-scoped listeners for events emitted via emit_to().
+    // Due to a Tauri 2 behaviour (see tauri-apps/tauri#11379), runtime.event.listen()
+    // with kind:'Any' receives events from ALL windows, including emit_to events
+    // targeted at other windows.  wv.listen() scopes to this webview only.
+    var wv = getCurrentWebview();
+    var useWv = wv && typeof wv.listen === 'function';
+    if (useWv) {
+      wv.listen('multiview-navigate', handleNavigate);
+      wv.listen('multiview-shortcut', handleShortcut);
+      wv.listen('frontend-tests-command', handleFrontendTestsCommand);
+    } else {
+      runtime.event.listen('multiview-navigate', handleNavigate);
+      runtime.event.listen('multiview-shortcut', handleShortcut);
+      runtime.event.listen('frontend-tests-command', handleFrontendTestsCommand);
+    }
+    // focus-changed is a true global broadcast (app.emit), so it must use
+    // runtime.event.listen().
     runtime.event.listen('focus-changed', handleFocusChanged);
-    runtime.event.listen('frontend-tests-command', handleFrontendTestsCommand);
     return true;
   }
 

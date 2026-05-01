@@ -504,10 +504,15 @@
         resolve(false);
         return;
       }
-      var unsubPromise = t.event.listen('modal-result-' + label, function (event) {
-        unsubPromise.then(function (unsub) { try { unsub(); } catch (_) {} });
-        resolve(!!(event && event.payload && event.payload.accepted));
-      });
+      var wv = getCurrentWebview();
+      var unsubPromise = (wv && typeof wv.listen === 'function')
+        ? wv.listen('modal-result-' + label, function (event) {
+            resolve(!!(event && event.payload && event.payload.accepted));
+          })
+        : t.event.listen('modal-result-' + label, function (event) {
+            unsubPromise.then(function (unsub) { try { unsub(); } catch (_) {} });
+            resolve(!!(event && event.payload && event.payload.accepted));
+          });
       invoke('multiview_open_modal_window', {
         spec: {
           label: label, url: url,
@@ -538,11 +543,17 @@
         resolve(null);
         return;
       }
-      var unsubPromise = t.event.listen('modal-result-' + label, function (event) {
-        unsubPromise.then(function (unsub) { try { unsub(); } catch (_) {} });
-        var p = event && event.payload ? event.payload : {};
-        resolve(p.value == null ? null : String(p.value));
-      });
+      var wv = getCurrentWebview();
+      var unsubPromise = (wv && typeof wv.listen === 'function')
+        ? wv.listen('modal-result-' + label, function (event) {
+            var p = event && event.payload ? event.payload : {};
+            resolve(p.value == null ? null : String(p.value));
+          })
+        : t.event.listen('modal-result-' + label, function (event) {
+            unsubPromise.then(function (unsub) { try { unsub(); } catch (_) {} });
+            var p = event && event.payload ? event.payload : {};
+            resolve(p.value == null ? null : String(p.value));
+          });
       invoke('multiview_open_modal_window', {
         spec: {
           label: label, url: url,

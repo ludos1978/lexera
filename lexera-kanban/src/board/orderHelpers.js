@@ -3167,12 +3167,18 @@ var LexeraOrderHelpers = (function () {
       _dashboardSnapshotListenerRetryTimer = 0;
     }
     _dashboardSnapshotListenerInstalled = true;
-    window.__TAURI__.event.listen('dashboard-snapshot-request', function () {
+    var __tauri = window.__TAURI__;
+    var _wv = __tauri && __tauri.webview && typeof __tauri.webview.getCurrentWebview === 'function'
+      ? __tauri.webview.getCurrentWebview() : null;
+    var _listen = (_wv && typeof _wv.listen === 'function')
+      ? function (ev, cb) { return _wv.listen(ev, cb); }
+      : function (ev, cb) { return __tauri.event.listen(ev, cb); };
+    _listen('dashboard-snapshot-request', function () {
       // Re-render so the mirror is fresh, then the broadcast fires
       // automatically from renderDashboard's tail.
       try { renderDashboard(); } catch (_) { /* ignore */ }
     });
-    window.__TAURI__.event.listen('dashboard-search', function (event) {
+    _listen('dashboard-search', function (event) {
       var payload = event && event.payload || {};
       try {
         ensureDashboardState();
@@ -3181,7 +3187,7 @@ var LexeraOrderHelpers = (function () {
         refreshDashboardData({ deferRender: true });
       } catch (_) { /* ignore */ }
     });
-    window.__TAURI__.event.listen('dashboard-pin', function (event) {
+    _listen('dashboard-pin', function (event) {
       var payload = event && event.payload || {};
       try {
         ensureDashboardState();
@@ -3195,7 +3201,7 @@ var LexeraOrderHelpers = (function () {
     // sections / file embeds / broken elements through
     // navigateToSearchResult so the SHELL focus-chain reveals the
     // matching card.
-    window.__TAURI__.event.listen('dashboard-navigate', function (event) {
+    _listen('dashboard-navigate', function (event) {
       var payload = event && event.payload;
       if (!payload || !payload.nav || !payload.nav.boardId) return;
       try {
@@ -3231,7 +3237,13 @@ var LexeraOrderHelpers = (function () {
       _embeddedDashboardNavigateListenerRetryTimer = 0;
     }
     _embeddedDashboardNavigateListenerInstalled = true;
-    window.__TAURI__.event.listen('dashboard-navigate', function (event) {
+    var __tauri2 = window.__TAURI__;
+    var _wv2 = __tauri2 && __tauri2.webview && typeof __tauri2.webview.getCurrentWebview === 'function'
+      ? __tauri2.webview.getCurrentWebview() : null;
+    var _listen2 = (_wv2 && typeof _wv2.listen === 'function')
+      ? function (ev, cb) { return _wv2.listen(ev, cb); }
+      : function (ev, cb) { return __tauri2.event.listen(ev, cb); };
+    _listen2('dashboard-navigate', function (event) {
       var payload = event && event.payload;
       var nav = payload && payload.nav;
       if (!nav || !nav.boardId) return;

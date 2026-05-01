@@ -1448,10 +1448,9 @@ var LexeraDashboard = (function () {
     var multiview = typeof window !== 'undefined' ? window.LexeraMultiview : null;
     if (!multiview || typeof multiview.invoke !== 'function') return false;
     var targetLabel = typeof WorkspaceShell.getHostWindowLabel === 'function'
-      ? String(WorkspaceShell.getHostWindowLabel() || 'main')
-      : typeof WorkspaceShell.getWindowLabel === 'function'
-      ? String(WorkspaceShell.getWindowLabel() || 'main')
-      : 'main';
+      ? String(WorkspaceShell.getHostWindowLabel() || '')
+      : '';
+    if (!targetLabel) targetLabel = String(windowLabel || 'main');
     multiview.invoke('multiview_emit_to', {
       target: targetLabel,
       event: 'multiview-navigate',

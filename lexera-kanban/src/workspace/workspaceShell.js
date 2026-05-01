@@ -4151,8 +4151,14 @@
     // Sub-apps that just mounted (e.g., the log webview) request the
     // current connection state — without this they'd start as
     // "Disconnected" until the next state change broadcast.
-    if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
-      window.__TAURI__.event.listen('backend-connection-state-request', function () {
+    var _tSh = window.__TAURI__;
+    var _wvSh = _tSh && _tSh.webview && typeof _tSh.webview.getCurrentWebview === 'function'
+      ? _tSh.webview.getCurrentWebview() : null;
+    var _listenSh = (_wvSh && typeof _wvSh.listen === 'function')
+      ? function (ev, cb) { return _wvSh.listen(ev, cb); }
+      : _tSh && _tSh.event ? function (ev, cb) { return _tSh.event.listen(ev, cb); } : null;
+    if (_listenSh) {
+      _listenSh('backend-connection-state-request', function () {
         messageBridge.broadcastBackendConnectionState(state.backendConnected);
       });
     }
