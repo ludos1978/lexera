@@ -167,6 +167,23 @@ describe('one workspace per window — wiring contract', () => {
     expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}workspaces\.some\(/);
   });
 
+  it('the menu handler tracks the last-focused window so macOS menu-clicks (which transiently take focus) still resolve a target', () => {
+    // On macOS, clicking a menu bar item briefly transfers focus
+    // from the window to the menu. During the menu_event handler,
+    // `WebviewWindow::is_focused()` returns false for EVERY window.
+    // Without a tracker, the handler can't determine the originating
+    // window and either broadcasts (wrong-window bug) or drops the
+    // action (this regression: "Open Workspace > X stopped opening
+    // a new window"). Solution: a `LAST_FOCUSED_WINDOW` Mutex
+    // updated by the `WindowEvent::Focused(true)` arm in
+    // `on_window_event`.
+    expect(mainRs).toMatch(/static LAST_FOCUSED_WINDOW:\s*std::sync::Mutex<Option<String>>/);
+    expect(mainRs).toMatch(/WindowEvent::Focused\(true\)[\s\S]{0,800}LAST_FOCUSED_WINDOW\.lock\(\)/);
+    // The menu handler falls back to LAST_FOCUSED_WINDOW when
+    // is_focused() finds nothing.
+    expect(mainRs).toMatch(/is_focused\(\)\.unwrap_or\(false\)\)[\s\S]{0,400}LAST_FOCUSED_WINDOW\.lock\(\)/);
+  });
+
   it('native menu actions target the FOCUSED window only — must use app.emit_to(label, …) since both app.emit and WebviewWindow::emit broadcast in Tauri 2', () => {
     // Each window owns one workspace; menu actions like
     // View > Panels > Dashboard mean "show this panel in THIS

@@ -18,6 +18,15 @@ use tauri::{Emitter, Manager, WebviewUrl};
 
 static WINDOW_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
+/// Most-recently-focused window label. Updated by the window
+/// `Focused(true)` event. Read by the native menu handler — on macOS
+/// the menu briefly steals focus while a menu item is being clicked,
+/// so `WebviewWindow::is_focused()` returns false for every window
+/// during the menu event. This tracker preserves "the window the user
+/// just clicked from" so menu actions like `open-workspace:<id>`
+/// route correctly.
+static LAST_FOCUSED_WINDOW: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
 /// CLI-derived test-runner config, populated once in `main()` and
 /// exposed to the frontend via the `get_test_runner_config` command.
 /// Pull-based delivery sidesteps timing races between Tauri's
@@ -446,24 +455,32 @@ fn main() {
                     let _ = open_new_window(app.clone(), None, None, Some("workspace".to_string()), None, None, None, None, None, None, None);
                     return;
                 }
-                // Route menu actions to the FOCUSED window only. macOS
-                // shares one menu bar across windows; clicking
+                // Route menu actions to the FOCUSED window only.
+                // macOS shares one menu bar across windows; clicking
                 // View > Panels > Dashboard means "show the dashboard
-                // panel in THIS window I'm in". Global app emission
-                // and `WebviewWindow::emit("menu-action")` BOTH
-                // broadcast in Tauri 2 — only `emit_to(label, …)`
-                // actually targets a single webview. Use the focused
-                // window's label as the target.
+                // panel in THIS window I'm in". The plain `app.emit`
+                // and `WebviewWindow::emit` paths BOTH broadcast in
+                // Tauri 2 — only `emit_to(label, …)`
+                // actually targets a single webview.
                 //
-                // If no window is focused, drop the action instead of
-                // broadcasting. Broadcasting `open-workspace:<id>` lets
-                // every webview try to spawn a window, which multiplies
-                // the requested workspace window.
+                // Fallback chain:
+                //   1. live `is_focused()` — works on Linux/Windows
+                //      where the click doesn't transfer focus to the
+                //      menu bar.
+                //   2. LAST_FOCUSED_WINDOW tracker — required on macOS,
+                //      where opening the menu bar steals focus from
+                //      every window for the duration of the click, so
+                //      step 1 finds nothing.
+                //   3. drop the action with a log warning rather than
+                //      broadcast — broadcasting open-workspace:<id> in
+                //      particular would spawn one new window per open
+                //      workspace window.
                 let focused_label = app
                     .webview_windows()
                     .into_iter()
                     .find(|(_, w)| w.is_focused().unwrap_or(false))
-                    .map(|(label, _)| label);
+                    .map(|(label, _)| label)
+                    .or_else(|| LAST_FOCUSED_WINDOW.lock().ok().and_then(|guard| guard.clone()));
                 if let Some(label) = focused_label {
                     let _ = app.emit_to(label.as_str(), "menu-action", action.clone());
                     log::debug!("[main] menu-action sent to focused window '{}': {}", label, action);
@@ -577,6 +594,17 @@ fn main() {
                 }
                 tauri::WindowEvent::Moved(_pos) => {
                     snap_window_to_edges(window);
+                }
+                tauri::WindowEvent::Focused(true) => {
+                    // Persist the most-recently-focused window label.
+                    // The native menu handler reads this when its own
+                    // `is_focused()` check finds nothing focused — on
+                    // macOS the menu bar steals focus from every window
+                    // while a menu is open, so `is_focused()` returns
+                    // false for all of them during the menu event.
+                    if let Ok(mut last) = LAST_FOCUSED_WINDOW.lock() {
+                        *last = Some(window.label().to_string());
+                    }
                 }
                 _ => {}
             }
