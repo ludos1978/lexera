@@ -160,15 +160,6 @@ var LexeraStateKeyRegistry = {
     settingsStore: true
   },
 
-  'lexera-last-board': {
-    type: 'string',
-    category: 'ephemeral',
-    default: '',
-    description: 'ID of the last opened board (restored on app launch)',
-    files: ['app.js', 'sync/pollingService.js', 'board/orderHelpers.js', 'board/boardList.js'],
-    settingsStore: true
-  },
-
   'lexera-recent-boards': {
     type: 'json',
     category: 'ephemeral',

@@ -45,7 +45,6 @@ var LexeraSettings = (function () {
 
     // --- Navigation ---
     activeWorkspace:      { key: 'lexera-active-workspace',       type: 'string',  default: '' },
-    lastBoard:            { key: 'lexera-last-board',             type: 'string',  default: '' },
 
     // --- Dashboard ---
     dashboardQuery:       { key: 'lexera-dashboard-query',        type: 'string',  default: '' },
