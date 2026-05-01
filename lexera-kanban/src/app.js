@@ -243,6 +243,7 @@ var LexeraDashboard = (function () {
     // native submenu activation on macOS.
     if (embeddedMode) return;
     if (hasTauri && typeof tauriInvoke === 'function') {
+      var entries = workspaces.map(function (w) {
         return { id: String(w.id || ''), name: String(w.name || '') };
       }).filter(function (e) { return e.id; });
       if (remoteBoards.length > 0) {
@@ -256,6 +257,9 @@ var LexeraDashboard = (function () {
       try {
         tauriInvoke('set_workspaces_submenu', { workspaces: entries });
       } catch (_) { /* menu refresh is best-effort */ }
+    }
+  }
+
   function setActiveWorkspaceIdState(nextWorkspaceId, options) {
     options = options || {};
     nextWorkspaceId = nextWorkspaceId || null;
@@ -566,6 +570,7 @@ var LexeraDashboard = (function () {
   var embeddedMode = urlParams.get('embedded') === '1';
   var embeddedPaneId = urlParams.get('pane') || '';
   var embeddedInitialBoardId = urlParams.get('board') || '';
+  var embeddedPreferredBoardId = embeddedInitialBoardId;
   var embeddedForcedBoardLayout = embeddedMode ? String(urlParams.get('view') || '').trim().toLowerCase() : '';
   var embeddedWorkspaceShellParent = embeddedMode && urlParams.get('workspaceShellParent') === '1';
   // `?workspace=<id>` pins this window to a single workspace — set by
@@ -6180,7 +6185,6 @@ var LexeraDashboard = (function () {
     var nextWorkspaces = Array.isArray(workspaceList) ? workspaceList : [];
     setWorkspacesState(nextWorkspaces);
     resolveActiveWorkspaceId(defaultWorkspaceId || null);
-  }
   }
 
   function handleManagementBoardAdded() {

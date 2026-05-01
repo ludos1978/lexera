@@ -86,18 +86,7 @@
   }
 
   function install(handlers) {
-    var wv = getCurrentWebview();
-    if (!wv || typeof wv.listen !== 'function') return false;
-    wv.listen('management-workspaces-loaded', function (event) {
-      handleWorkspacesLoaded(event, handlers || {});
-    });
-    wv.listen('management-board-mutation', function (event) {
-      handleBoardMutation(event, handlers || {});
-    });
-    wv.listen('render-apps-config-saved', function (event) {
-      handleRenderAppsConfigSaved(event, handlers || {});
-    });
-    return true;
+    return installWith(tauriRuntime(), handlers);
   }
 
   var api = {

@@ -8,12 +8,12 @@
   // this scope?"), this bridge pairs a request event with a response
   // event using a unique correlation ID:
   //
-  //   - Caller: emits `<event>` to the target webview with `{ _corr, data }`
-  //     and listens for `<event>-response` filtered by `_corr`.
-  //   - Responder: listens for `<event>`, runs the handler, broadcasts
-  //     `<event>-response` with `{ _corr, data }` (or `{ _corr, _error }`).
+  //   - Caller: emits <event> to the target webview with { _corr, data }
+  //     and listens for <event>-response filtered by _corr.
+  //   - Responder: listens for <event>, runs the handler, broadcasts
+  //     <event>-response with { _corr, data } (or { _corr, _error }).
   //
-  // Tauri-runtime accessors (`tauri`, `invoke`) are dependency-injected
+  // Tauri-runtime accessors (tauri, invoke) are dependency-injected
   // so the bridge file is self-contained and unit-testable.
 
   function create(deps) {
@@ -25,25 +25,34 @@
     }
     var requestCounter = 0;
 
+    function getCurrentWebview() {
+      var t = tauri();
+      if (!t || !t.webview || typeof t.webview.getCurrentWebview !== 'function') return null;
+      try { return t.webview.getCurrentWebview(); } catch (_) { return null; }
+    }
+
     // Caller side: send a request to a specific webview and resolve
-    // with its response. Times out after `timeoutMs` (default 2000).
+    // with its response. Times out after timeoutMs (default 2000).
     function request(targetLabel, requestEvent, payload, timeoutMs) {
       timeoutMs = timeoutMs == null ? 2000 : timeoutMs;
       var corrId = 'req-' + (++requestCounter) + '-' + Date.now();
       var responseEvent = requestEvent + '-response';
       var t = tauri();
-      if (!t || !t.event || typeof t.event.listen !== 'function') {
+      var wv = getCurrentWebview();
+      var listenFn = (wv && typeof wv.listen === 'function') ? wv.listen.bind(wv) : (t && t.event && t.event.listen);
+
+      if (typeof listenFn !== 'function') {
         return Promise.reject(new Error('no Tauri event API'));
       }
       return new Promise(function (resolve, reject) {
-        var unsubPromise = t.event.listen(responseEvent, function (event) {
+        var unsubPromise = Promise.resolve(listenFn(responseEvent, function (event) {
           var p = event && event.payload ? event.payload : {};
           if (p._corr !== corrId) return;
           unsubPromise.then(function (unsub) { try { unsub(); } catch (_) {} });
           clearTimeout(timeoutHandle);
           if (p._error) reject(new Error(p._error));
           else resolve(p.data);
-        });
+        }));
         var timeoutHandle = setTimeout(function () {
           unsubPromise.then(function (unsub) { try { unsub(); } catch (_) {} });
           reject(new Error('request ' + requestEvent + ' timed out after ' + timeoutMs + 'ms'));
@@ -63,11 +72,14 @@
     // automatically broadcasts the response with the correlation ID.
     function handleRequest(requestEvent, handler) {
       var t = tauri();
-      if (!t || !t.event || typeof t.event.listen !== 'function') {
+      var wv = getCurrentWebview();
+      var listenFn = (wv && typeof wv.listen === 'function') ? wv.listen.bind(wv) : (t && t.event && t.event.listen);
+
+      if (typeof listenFn !== 'function') {
         return Promise.reject(new Error('no Tauri event API'));
       }
       var responseEvent = requestEvent + '-response';
-      return t.event.listen(requestEvent, function (event) {
+      return listenFn(requestEvent, function (event) {
         var p = event && event.payload ? event.payload : {};
         var corr = p._corr;
         Promise.resolve()

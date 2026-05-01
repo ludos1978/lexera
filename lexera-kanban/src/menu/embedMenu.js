@@ -3303,7 +3303,6 @@ var LexeraEmbedMenu = (function () {
         };
       });
     }
-    }
     var evApi = (window.__TAURI__ && window.__TAURI__.event) || null;
     if (!evApi) {
       try {
