@@ -598,7 +598,9 @@ pub struct LogEvent {
 /// Filtered via SubscriptionRegistry: only webviews that called
 /// `multiview_subscribe(['log-message'])` actually wake up. This
 /// prevents the dozen-plus settings/board/calendar webviews from being
-/// woken on every log line.
+/// woken on every log line. Log events are intentionally cross-window:
+/// the in-app Log panel in any window reflects activity from any
+/// window's webviews. So this one keeps the global broadcast.
 #[tauri::command]
 pub fn log_broadcast(app: AppHandle, entry: LogEvent) -> Result<(), String> {
     use tauri::Emitter;
@@ -614,22 +616,46 @@ pub fn log_broadcast(app: AppHandle, entry: LogEvent) -> Result<(), String> {
     Ok(())
 }
 
-/// Generic event broadcaster. If the event has subscribers in the
-/// registry, emits only to those. Otherwise falls back to global
-/// emit (back-compat for code that hasn't opted into subscriptions).
+/// Generic event broadcaster — scoped to the CALLER'S window.
+///
+/// Each top-level window owns one workspace shell + its child
+/// multiview webviews. Events emitted by a sub-app must reach only
+/// the shell + sibling webviews IN THE SAME WINDOW; routing them
+/// across windows is the source of "the views show in the wrong
+/// window" reports (a panel click in window B opens the board in
+/// window A's shell).
+///
+/// Behaviour:
+///   * Find every webview attached to the caller's top-level window.
+///   * If the event has registered subscribers (`multiview_subscribe`),
+///     emit only to those subscribers WHOSE LABEL is one of the
+///     caller-window's webviews. Cross-window subscribers are skipped.
+///   * If no subscribers, emit to every webview in the caller's
+///     window (one-shot fan-out, no cross-window leak).
 #[tauri::command]
 pub fn multiview_broadcast(
     app: AppHandle,
+    caller: tauri::Webview,
     event: String,
     payload: serde_json::Value,
 ) -> Result<(), String> {
     use tauri::Emitter;
+    let caller_window = caller.window();
+    let window_webview_labels: std::collections::HashSet<String> = caller_window
+        .webviews()
+        .into_iter()
+        .map(|w| w.label().to_string())
+        .collect();
+
     let reg: State<SubscriptionRegistry> = app.state();
     let subs = subscribers_for(&reg, &event);
     if subs.is_empty() {
-        let _ = app.emit(&event, payload);
+        for label in &window_webview_labels {
+            let _ = app.emit_to(label.as_str(), &event, payload.clone());
+        }
     } else {
         for label in subs {
+            if !window_webview_labels.contains(&label) { continue; }
             let _ = app.emit_to(label.as_str(), &event, payload.clone());
         }
     }

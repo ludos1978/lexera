@@ -188,6 +188,30 @@ describe('one workspace per window — wiring contract', () => {
     expect(mainRs).toMatch(/menu-action dropped because no focused window was found/);
   });
 
+  it('multiview_broadcast scopes events to the caller window — sub-app navigates never leak into a sibling window', () => {
+    // The user reported "views show in the wrong window" three
+    // times. The root cause was multiview_broadcast falling back to
+    // `app.emit(...)` (broadcast) when no subscribers were registered,
+    // AND not filtering subscribers by the caller's window. A
+    // navigate emitted from window B's hierarchy panel would fire in
+    // BOTH windows' navigationBridge listeners — and window A would
+    // open the board too.
+    //
+    // Fix: multiview_broadcast resolves the caller's window via the
+    // Tauri Webview, enumerates webviews attached to that window, and
+    // emits only to those (with the registered-subscribers list as a
+    // further filter when present).
+    const webviewMgrRs = readFileSync(resolve(__dirname, '..', 'src-tauri', 'src', 'webview_mgr.rs'), 'utf8');
+    expect(webviewMgrRs).toMatch(/pub fn multiview_broadcast\([\s\S]{0,400}caller:\s*tauri::Webview/);
+    expect(webviewMgrRs).toMatch(/caller\.window\(\)[\s\S]{0,200}\.webviews\(\)/);
+    expect(webviewMgrRs).toMatch(/window_webview_labels\.contains\(&label\)/);
+    // Empty-subscribers branch must also be window-scoped — no plain
+    // `app.emit(&event, payload)` left as a fallback in this fn.
+    const fnBody = webviewMgrRs.match(/pub fn multiview_broadcast[\s\S]+?\n\}/);
+    expect(fnBody).toBeTruthy();
+    expect(fnBody[0]).not.toMatch(/app\.emit\(&event/);
+  });
+
   it('the legacy ALL_WORKSPACES_ID sentinel is gone — no codepath references __all__ or ALL_WORKSPACES_ID anymore', () => {
     // The pseudo-workspace-id was the source of the cross-window leak
     // in the all-view branches. After 82417477 + this cleanup, every
