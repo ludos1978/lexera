@@ -153,6 +153,21 @@ async fn serve_with_h2c(
                         continue;
                     }
                 };
+                // TCP keepalive: detect stale connections after macOS
+                // sleep/wake. Without this, the OS thinks the existing
+                // h2c connection is alive when in fact the peer's
+                // half-state was reset across sleep — the next request
+                // hangs until userland's per-request timeout fires.
+                // Keepalive probes will tear down the dead connection
+                // within ~`keepalive_time + n*keepalive_interval`, so
+                // request timeouts become the upper bound (instead of
+                // multi-minute hangs).
+                let ka = socket2::TcpKeepalive::new()
+                    .with_time(std::time::Duration::from_secs(30))
+                    .with_interval(std::time::Duration::from_secs(10));
+                if let Err(e) = socket2::SockRef::from(&stream).set_tcp_keepalive(&ka) {
+                    log::debug!("[server] Failed to enable TCP keepalive: {}", e);
+                }
                 let io = TokioIo::new(stream);
                 let svc = app.clone();
                 tokio::spawn(async move {
