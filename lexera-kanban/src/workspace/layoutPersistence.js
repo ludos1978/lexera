@@ -47,7 +47,20 @@
     deps = setupDeps;
   }
 
+  function getWorkspaceIdFromUrl() {
+    try {
+      return String(new URLSearchParams(window.location.search || '').get('workspace') || '');
+    } catch (_) {
+      return '';
+    }
+  }
+
   function getPersistenceStorage() {
+    // Workspace-pinned windows + the boot main window persist across
+    // sessions (localStorage). Detached panel-only windows and other
+    // transient secondary windows stay in sessionStorage so their
+    // ad-hoc layouts don't pollute persistent storage.
+    if (getWorkspaceIdFromUrl()) return window.localStorage;
     if (deps.state.windowLabel === 'main') return window.localStorage;
     return window.sessionStorage;
   }
@@ -58,6 +71,13 @@
       var hookKey = hooks.getPersistenceKey();
       if (hookKey) return String(hookKey);
     }
+    // Per-workspace keying: layout follows the workspace, not the
+    // window. Two windows pinned to the same workspace share one
+    // saved layout (last save wins). Windows without a workspace
+    // (boot main window before catalog hydrate, detached panel-only
+    // windows) fall back to per-window keys.
+    var workspaceId = getWorkspaceIdFromUrl();
+    if (workspaceId) return 'lexera-workspace-shell:ws:' + workspaceId;
     return 'lexera-workspace-shell:' + deps.state.windowLabel;
   }
 
@@ -225,6 +245,8 @@
     serialize: serialize,
     hydrate: hydrate,
     persist: persist,
-    restore: restore
+    restore: restore,
+    getPersistenceKey: getPersistenceKey,
+    getPersistenceStorage: getPersistenceStorage
   };
 })();
