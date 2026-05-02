@@ -159,7 +159,7 @@
     if (profile === 'detachedBoard') {
       return { left: 0, right: 0, bottom: 0 };
     }
-    return { left: 272, right: 0, bottom: 0 };
+    return { left: 272, right: 0, bottom: 180 };
   }
 
   function createDefaultDockRestoreSizes(profile) {
