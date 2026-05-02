@@ -91,6 +91,36 @@ var LexeraSettings = (function () {
     tagGroups: { key: 'lexera-tag-groups-{scope}', type: 'json', default: [] }
   };
 
+  // Per-window key templates: the {windowScope} placeholder is filled
+  // at runtime by `_resolveWindowScope()` — workspace id from the
+  // `?workspace=` URL param when set (so two windows pinned to the
+  // same workspace share state), otherwise window label from
+  // `?windowLabel=` so detached panel-only windows and the boot main
+  // window before catalog hydrate stay isolated.
+  //
+  // Use these for any UI state that's truly per-window (sidebar size,
+  // dashboard query, log panel filters, …). Storing such keys in DEFS
+  // would write a single global localStorage entry that fires a
+  // `storage` event in every other open window — Tauri uses one
+  // shared cookie/storage origin, so cross-window leaks are silent
+  // and surprising.
+  var WINDOW_DEFS = {};
+
+  function _resolveWindowScope() {
+    try {
+      var params = new URLSearchParams(
+        (typeof window !== 'undefined' && window.location && window.location.search) || ''
+      );
+      var workspace = params.get('workspace');
+      if (workspace) return 'ws:' + workspace;
+      var label = params.get('windowLabel');
+      if (label) return 'wl:' + label;
+    } catch (_) {
+      // URLSearchParams unavailable or location inaccessible — fall through.
+    }
+    return 'wl:main';
+  }
+
   // ── Change listeners ────────────────────────────────────────────
   var _listeners = {};
 
@@ -201,6 +231,40 @@ var LexeraSettings = (function () {
   }
 
   /**
+   * Get a per-window setting. Scope is auto-resolved from the
+   * `?workspace=` URL param (preferred — windows on the same workspace
+   * share state) or the `?windowLabel=` URL param (fallback — windows
+   * with no workspace stay isolated).
+   */
+  function getForWindow(name) {
+    var def = WINDOW_DEFS[name];
+    if (!def) return undefined;
+    var storageKey = def.key.replace('{windowScope}', _resolveWindowScope());
+    return _read(storageKey, def.type, def.default);
+  }
+
+  /**
+   * Set a per-window setting. See `getForWindow` for scope rules.
+   */
+  function setForWindow(name, value) {
+    var def = WINDOW_DEFS[name];
+    if (!def) return;
+    var storageKey = def.key.replace('{windowScope}', _resolveWindowScope());
+    _write(storageKey, def.type, value);
+    _notify(name, value);
+  }
+
+  /**
+   * Remove a per-window setting (current scope only).
+   */
+  function removeForWindow(name) {
+    var def = WINDOW_DEFS[name];
+    if (!def) return;
+    var storageKey = def.key.replace('{windowScope}', _resolveWindowScope());
+    try { localStorage.removeItem(storageKey); } catch (e) { /* ignore */ }
+  }
+
+  /**
    * Get a scoped setting (e.g. tag groups per scope).
    */
   function getScoped(name, scope) {
@@ -238,7 +302,7 @@ var LexeraSettings = (function () {
    * Get the raw localStorage key for a setting (for debugging/migration).
    */
   function keyOf(name) {
-    var def = DEFS[name] || BOARD_DEFS[name] || SCOPED_DEFS[name];
+    var def = DEFS[name] || BOARD_DEFS[name] || SCOPED_DEFS[name] || WINDOW_DEFS[name];
     return def ? def.key : null;
   }
 
@@ -253,7 +317,7 @@ var LexeraSettings = (function () {
    * Get the definition object for a setting.
    */
   function defOf(name) {
-    return DEFS[name] || BOARD_DEFS[name] || SCOPED_DEFS[name] || null;
+    return DEFS[name] || BOARD_DEFS[name] || SCOPED_DEFS[name] || WINDOW_DEFS[name] || null;
   }
 
   return {
@@ -264,13 +328,17 @@ var LexeraSettings = (function () {
     removeForBoard: removeForBoard,
     getScoped: getScoped,
     setScoped: setScoped,
+    getForWindow: getForWindow,
+    setForWindow: setForWindow,
+    removeForWindow: removeForWindow,
     on: on,
     keyOf: keyOf,
     allKeys: allKeys,
     defOf: defOf,
     DEFS: DEFS,
     BOARD_DEFS: BOARD_DEFS,
-    SCOPED_DEFS: SCOPED_DEFS
+    SCOPED_DEFS: SCOPED_DEFS,
+    WINDOW_DEFS: WINDOW_DEFS
   };
 })();
 if (typeof globalThis !== 'undefined') globalThis.LexeraSettings = LexeraSettings;
