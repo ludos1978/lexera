@@ -833,10 +833,10 @@ var LexeraDashboard = (function () {
   var BoardHeader = window.LexeraBoardHeader;
   var $uiScale = 1;
   var dashboardState = {
-    query: Settings ? Settings.get('dashboardQuery') : (localStorage.getItem('lexera-dashboard-query') || ''),
-    scope: Settings ? (Settings.get('dashboardScope') === 'all' ? 'all' : 'active') : (localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active'),
+    query: Settings.getForWindow('dashboardQuery'),
+    scope: Settings.getForWindow('dashboardScope') === 'all' ? 'all' : 'active',
     pinnedQueries: [],
-    activePinnedQuery: Settings ? Settings.get('dashboardActivePinned') : (localStorage.getItem('lexera-dashboard-active-pinned') || ''),
+    activePinnedQuery: Settings.getForWindow('dashboardActivePinned'),
     loading: false,
     results: [],
     deadlines: [],

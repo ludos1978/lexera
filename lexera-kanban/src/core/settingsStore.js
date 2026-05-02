@@ -44,13 +44,8 @@ var LexeraSettings = (function () {
     // --- Navigation ---
     activeWorkspace:      { key: 'lexera-active-workspace',       type: 'string',  default: '' },
 
-    // --- Dashboard ---
-    dashboardQuery:       { key: 'lexera-dashboard-query',        type: 'string',  default: '' },
-    dashboardScope:       { key: 'lexera-dashboard-scope',        type: 'string',  default: '' },
-    dashboardActivePinned:{ key: 'lexera-dashboard-active-pinned',type: 'string',  default: '' },
-    dashboardPinnedQueries:{ key: 'lexera-dashboard-pinned-queries', type: 'json', default: [] },
-    dashboardTags:        { key: 'lexera-dashboard-tags',         type: 'json',    default: [] },
-    dashboardCollapsed:   { key: 'lexera-dashboard-collapsed',    type: 'json',    default: {} },
+    // --- Dashboard (state moved to WINDOW_DEFS — query / scope /
+    //     pinned / tags / collapsed are per-window UX state) ---
 
     // --- Board ordering ---
     boardOrder:           { key: 'lexera-board-order',            type: 'json',    default: [] },
@@ -107,7 +102,17 @@ var LexeraSettings = (function () {
     //     each detached window keeps its own preference) ---
     sidebarSplitRatio: { key: 'lexera-sidebar-split-ratio:{windowScope}', type: 'number',  default: 0.2 },
     sidebarWidth:      { key: 'lexera-sidebar-width:{windowScope}',       type: 'number',  default: 220 },
-    hierarchyLocked:   { key: 'lexera-hierarchy-locked:{windowScope}',    type: 'boolean', default: false }
+    hierarchyLocked:   { key: 'lexera-hierarchy-locked:{windowScope}',    type: 'boolean', default: false },
+
+    // --- Dashboard (per-window: each workspace keeps its own search /
+    //     scope / pinned queries / collapsed state; two windows on
+    //     the same workspace share state, last save wins) ---
+    dashboardQuery:         { key: 'lexera-dashboard-query:{windowScope}',          type: 'string', default: '' },
+    dashboardScope:         { key: 'lexera-dashboard-scope:{windowScope}',          type: 'string', default: '' },
+    dashboardActivePinned:  { key: 'lexera-dashboard-active-pinned:{windowScope}',  type: 'string', default: '' },
+    dashboardPinnedQueries: { key: 'lexera-dashboard-pinned-queries:{windowScope}', type: 'json',   default: [] },
+    dashboardTags:          { key: 'lexera-dashboard-tags:{windowScope}',           type: 'json',   default: [] },
+    dashboardCollapsed:     { key: 'lexera-dashboard-collapsed:{windowScope}',      type: 'json',   default: {} }
   };
 
   function _resolveWindowScope() {

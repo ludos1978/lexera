@@ -176,58 +176,64 @@ var LexeraStateKeyRegistry = {
   //  DASHBOARD
   // ═══════════════════════════════════════════════════════════════════
 
-  'lexera-dashboard-query': {
+  'lexera-dashboard-query:{windowScope}': {
     type: 'string',
     category: 'ephemeral',
     default: '',
-    description: 'Current dashboard search query text',
+    description: 'Current dashboard search query text — per workspace; falls back to per-window for unpinned windows',
     files: ['app.js', 'board/orderHelpers.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
-  'lexera-dashboard-scope': {
+  'lexera-dashboard-scope:{windowScope}': {
     type: 'string',
     category: 'ephemeral',
     default: '',
-    description: 'Dashboard scope filter ("all" or "active")',
+    description: 'Dashboard scope filter ("all" or "active") — per workspace; falls back to per-window',
     files: ['app.js', 'board/orderHelpers.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
-  'lexera-dashboard-active-pinned': {
+  'lexera-dashboard-active-pinned:{windowScope}': {
     type: 'string',
     category: 'ephemeral',
     default: '',
-    description: 'Currently active pinned query name in dashboard',
+    description: 'Currently active pinned query name in dashboard — per workspace; falls back to per-window',
     files: ['app.js', 'board/orderHelpers.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
-  'lexera-dashboard-pinned-queries': {
+  'lexera-dashboard-pinned-queries:{windowScope}': {
     type: 'json',
     category: 'preference',
     default: [],
-    description: 'Array of saved/pinned dashboard search queries',
+    description: 'Array of saved/pinned dashboard search queries — per workspace; falls back to per-window',
     files: ['board/orderHelpers.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
-  'lexera-dashboard-tags': {
+  'lexera-dashboard-tags:{windowScope}': {
     type: 'json',
     category: 'ephemeral',
     default: [],
-    description: 'Dashboard tag filter selections',
+    description: 'Dashboard tag filter selections — per workspace; falls back to per-window',
     files: ['board/orderHelpers.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
-  'lexera-dashboard-collapsed': {
+  'lexera-dashboard-collapsed:{windowScope}': {
     type: 'json',
     category: 'ephemeral',
     default: {},
-    description: 'Dashboard section collapsed/expanded state map',
+    description: 'Dashboard section collapsed/expanded state map — per workspace; falls back to per-window',
     files: ['board/orderHelpers.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
   // ═══════════════════════════════════════════════════════════════════

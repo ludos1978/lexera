@@ -237,8 +237,14 @@ describe('SettingsStore', () => {
       var keys = Settings.allKeys();
       expect(keys).toContain('uiScale');
       expect(keys).toContain('visualTheme');
-      expect(keys).toContain('dashboardQuery');
-      expect(keys.length).toBeGreaterThan(20);
+      expect(keys).toContain('cardEditorMode');
+      expect(keys.length).toBeGreaterThan(15);
+      // Per-window keys live in WINDOW_DEFS, not DEFS — they should NOT
+      // appear in allKeys() because allKeys() returns global setting
+      // names only. dashboardQuery moved to WINDOW_DEFS in the
+      // multi-window cleanup.
+      expect(keys).not.toContain('dashboardQuery');
+      expect(keys).not.toContain('sidebarWidth');
     });
 
     it('defOf returns definition with type and default', () => {

@@ -1151,7 +1151,7 @@ var LexeraOrderHelpers = (function () {
 
   function loadDashboardPinnedQueries() {
     try {
-      var raw = _Settings ? _Settings.get('dashboardPinnedQueries') : JSON.parse(localStorage.getItem('lexera-dashboard-pinned-queries') || '[]');
+      var raw = _Settings.getForWindow('dashboardPinnedQueries');
       if (!Array.isArray(raw)) return [];
       var out = [];
       for (var i = 0; i < raw.length; i++) {
@@ -1168,17 +1168,10 @@ var LexeraOrderHelpers = (function () {
 
   function persistDashboardPrefs() {
     if (!dashboardState) return;
-    if (_Settings) {
-      _Settings.set('dashboardQuery', dashboardState.query || '');
-      _Settings.set('dashboardScope', normalizeDashboardScope(dashboardState.scope));
-      _Settings.set('dashboardActivePinned', dashboardState.activePinnedQuery || '');
-      _Settings.set('dashboardPinnedQueries', dashboardState.pinnedQueries || []);
-    } else {
-      localStorage.setItem('lexera-dashboard-query', dashboardState.query || '');
-      localStorage.setItem('lexera-dashboard-scope', normalizeDashboardScope(dashboardState.scope));
-      localStorage.setItem('lexera-dashboard-active-pinned', dashboardState.activePinnedQuery || '');
-      localStorage.setItem('lexera-dashboard-pinned-queries', JSON.stringify(dashboardState.pinnedQueries || []));
-    }
+    _Settings.setForWindow('dashboardQuery', dashboardState.query || '');
+    _Settings.setForWindow('dashboardScope', normalizeDashboardScope(dashboardState.scope));
+    _Settings.setForWindow('dashboardActivePinned', dashboardState.activePinnedQuery || '');
+    _Settings.setForWindow('dashboardPinnedQueries', dashboardState.pinnedQueries || []);
   }
 
   function setDashboardScope(scope) {
@@ -1564,23 +1557,15 @@ var LexeraOrderHelpers = (function () {
   function getDashboardTags() {
     if (_cachedDashboardTags && Array.isArray(_cachedDashboardTags)) return _cachedDashboardTags;
     try {
-      if (_Settings) {
-        var settingsVal = _Settings.get('dashboardTags');
-        if (Array.isArray(settingsVal)) return settingsVal;
-      } else {
-        var raw = localStorage.getItem('lexera-dashboard-tags');
-        if (raw) {
-          var parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) return parsed;
-        }
-      }
+      var settingsVal = _Settings.getForWindow('dashboardTags');
+      if (Array.isArray(settingsVal) && settingsVal.length > 0) return settingsVal;
     } catch (err) { _callDep('logFrontendIssue', 'warn', 'dashboard.tags', 'Failed to read dashboard tags', err); }
     return ['#important', '#blocked', '#review'];
   }
 
   function setDashboardTags(tags) {
     _cachedDashboardTags = tags;
-    try { if (_Settings) { _Settings.set('dashboardTags', tags); } else { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(tags)); } } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
+    try { _Settings.setForWindow('dashboardTags', tags); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
     var LexeraApi = _dep('LexeraApi');
     var workspaceId = _dep('activeWorkspaceId') || null;
     if (LexeraApi && typeof LexeraApi.request === 'function') {
@@ -1600,7 +1585,7 @@ var LexeraOrderHelpers = (function () {
     LexeraApi.request(url, { timeoutMs: 3000 }).then(function (data) {
       if (data && Array.isArray(data.tags)) {
         _cachedDashboardTags = data.tags;
-        try { if (_Settings) { _Settings.set('dashboardTags', data.tags); } else { localStorage.setItem('lexera-dashboard-tags', JSON.stringify(data.tags)); } } catch (_) { /* intentional */ }
+        try { _Settings.setForWindow('dashboardTags', data.tags); } catch (_) { /* intentional */ }
       }
     }).catch(function () { /* use cached/localStorage fallback */ });
   }
@@ -2740,7 +2725,7 @@ var LexeraOrderHelpers = (function () {
       // 'active' in single-board mode
       var defaultScope = _dep('workspaceShellEnabled') ? 'all' : 'active';
       var storedScope = null;
-      try { storedScope = _Settings ? _Settings.get('dashboardScope') : localStorage.getItem('lexera-dashboard-scope'); } catch (_) {}
+      try { storedScope = _Settings.getForWindow('dashboardScope'); } catch (_) {}
       dashboardState = {
       query: '', scope: normalizeDashboardScope(storedScope || defaultScope), loading: false,
       results: [], overdue: [], today: [], thisWeek: [],
@@ -3095,14 +3080,14 @@ var LexeraOrderHelpers = (function () {
         else if (header) collapsed.push(header.textContent.trim());
       }
     }
-    try { if (_Settings) { _Settings.set('dashboardCollapsed', collapsed); } else { localStorage.setItem('lexera-dashboard-collapsed', JSON.stringify(collapsed)); } } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
+    try { _Settings.setForWindow('dashboardCollapsed', collapsed); } catch (_) { /* intentional: localStorage unavailable in private browsing */ }
   }
 
   function restoreDashboardFoldState() {
     var root = _callDep('getElDashboardRoot');
     if (!root) return;
     var stored;
-    try { stored = _Settings ? _Settings.get('dashboardCollapsed') : JSON.parse(localStorage.getItem('lexera-dashboard-collapsed')); } catch (_) { return; }
+    try { stored = _Settings.getForWindow('dashboardCollapsed'); } catch (_) { return; }
     if (!Array.isArray(stored) || stored.length === 0) return;
     var groups = root.querySelectorAll('.dashboard-group');
     for (var i = 0; i < groups.length; i++) {
