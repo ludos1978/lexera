@@ -154,14 +154,10 @@ var LexeraStateKeyRegistry = {
   //  NAVIGATION
   // ═══════════════════════════════════════════════════════════════════
 
-  'lexera-active-workspace': {
-    type: 'string',
-    category: 'ephemeral',
-    default: '',
-    description: 'Currently selected workspace ID',
-    files: ['app.js', 'board/boardList.js'],
-    settingsStore: true
-  },
+  // 'lexera-active-workspace' removed: active workspace is now
+  // per-window in-memory only (URL `?workspace=` + catalog default).
+  // Persisting it as a global key fired `storage` events into
+  // sibling windows and yanked their views.
 
   'lexera-recent-boards': {
     type: 'json',

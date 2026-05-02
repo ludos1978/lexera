@@ -371,5 +371,14 @@ describe('one workspace per window — wiring contract', () => {
     // The cross-window storage listener for the legacy key must be
     // gone so an old residual write doesn't switch this window.
     expect(appJs).not.toMatch(/event\.key === ['"]lexera-active-workspace['"]/);
+    // The settings DEFS table must NOT declare `activeWorkspace` —
+    // re-adding the def tempts callers to use it. Same lockdown
+    // pattern as `lastBoard`.
+    const settingsStoreJs = readFileSync(resolve(__dirname, '..', 'src', 'core', 'settingsStore.js'), 'utf8');
+    expect(settingsStoreJs).not.toMatch(/activeWorkspace\s*:\s*\{/);
+    expect(settingsStoreJs).not.toMatch(/['"]lexera-active-workspace['"]/);
+    // Mirror guard for the state-key registry.
+    const stateKeyRegistryJs = readFileSync(resolve(__dirname, '..', 'src', 'shared', 'stateKeyRegistry.js'), 'utf8');
+    expect(stateKeyRegistryJs).not.toMatch(/^\s*['"]lexera-active-workspace['"]:\s*\{/m);
   });
 });

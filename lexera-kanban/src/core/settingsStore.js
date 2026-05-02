@@ -42,7 +42,14 @@ var LexeraSettings = (function () {
     headerSearchExpanded: { key: 'lexera-header-search-expanded', type: 'boolean', default: false },
 
     // --- Navigation ---
-    activeWorkspace:      { key: 'lexera-active-workspace',       type: 'string',  default: '' },
+    // activeWorkspace removed: was a global key whose `setItem` fired
+    // a `storage` event in sibling windows and yanked them to the
+    // same workspace. Active workspace is now per-window in-memory
+    // only, sourced from URL `?workspace=<id>` + the catalog's
+    // default-picker (commits 93c81a22 / 83dff022 / 96758e21 /
+    // 82417477 dropped the writes + cold-start read; this entry
+    // removal closes the loop so the def can't be revived without
+    // re-introducing the leak).
 
     // --- Dashboard (state moved to WINDOW_DEFS — query / scope /
     //     pinned / tags / collapsed are per-window UX state) ---
