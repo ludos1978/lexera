@@ -28,27 +28,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::webview_mgr::{get_meta, hit_test, to_local, WebviewRegistry};
-
-/// Emit `event` to every webview that lives in the same top-level
-/// window as `source_label`. Lifecycle events like `drag-began` and
-/// `drag-ended` MUST NOT reach sibling windows — every sub-app
-/// listens via `wv.listen('drag-…')` and would activate its drop
-/// zones / clear its drag UI when window A's drag fires, even
-/// though the drag never left window A. Same window-scoped pattern
-/// as `multiview_broadcast`.
-fn emit_to_source_window<S>(app: &AppHandle, source_label: &str, event: &str, payload: S)
-where
-    S: Serialize + Clone,
-{
-    let source_window = match app.webviews().get(source_label) {
-        Some(wv) => wv.window(),
-        None => return, // source webview no longer exists; drop the emit silently
-    };
-    for wv in source_window.webviews() {
-        let _ = app.emit_to(wv.label(), event, payload.clone());
-    }
-}
+use crate::webview_mgr::{emit_to_window_of_label, get_meta, hit_test, to_local, WebviewRegistry};
 
 /// Singleton drag state. Only one drag can be in progress at a time
 /// (per the OS pointer model — multi-touch would need per-pointer state).
@@ -151,7 +131,7 @@ pub fn drag_start(
             let _ = ghost.emit("ghost-content", html);
         }
     }
-    emit_to_source_window(
+    emit_to_window_of_label(
         &app,
         &payload.source,
         "drag-began",
@@ -290,7 +270,7 @@ pub fn drag_pointer_up(
     if let Some(ghost) = app.get_webview_window("drag-ghost") {
         let _ = ghost.hide();
     }
-    emit_to_source_window(&app, &active.source_label, "drag-ended", ());
+    emit_to_window_of_label(&app, &active.source_label, "drag-ended", ());
     Ok(())
 }
 
@@ -310,7 +290,7 @@ pub fn drag_cancel(app: AppHandle, drag_state: State<DragState>) -> Result<(), S
     if let Some(ghost) = app.get_webview_window("drag-ghost") {
         let _ = ghost.hide();
     }
-    emit_to_source_window(&app, &active.source_label, "drag-ended", ());
+    emit_to_window_of_label(&app, &active.source_label, "drag-ended", ());
     Ok(())
 }
 

@@ -368,11 +368,19 @@ pub fn multiview_destroy(app: AppHandle, label: String) -> Result<(), String> {
     eprintln!("[webview_mgr] multiview_destroy label='{}'", label);
     log::info!("[webview_mgr] multiview_destroy label='{}'", label);
     ensure_child_webview_label(&app, &label, "multiview_destroy")?;
-    let main_window = app.get_window("main").ok_or("main window not found")?;
-    if let Some(webview) = main_window.get_webview(&label) {
-        webview
-            .close()
-            .map_err(|e| format!("close failed for {}: {}", label, e))?;
+    // Resolve the doomed webview's parent window from the registry so
+    // we close it (and notify its siblings) on the right window. The
+    // previous code hardcoded `app.get_window("main")`, which silently
+    // no-op'd whenever the webview belonged to a secondary window —
+    // child webviews in that window would stay alive after their tab
+    // was supposedly closed, presenting as "view stuck floating".
+    let parent_window = app.webviews().get(&label).map(|wv| wv.window());
+    if let Some(window) = &parent_window {
+        if let Some(webview) = window.get_webview(&label) {
+            webview
+                .close()
+                .map_err(|e| format!("close failed for {}: {}", label, e))?;
+        }
     }
     let registry: State<WebviewRegistry> = app.state();
     registry.inner.write().remove(&label);
@@ -384,7 +392,16 @@ pub fn multiview_destroy(app: AppHandle, label: String) -> Result<(), String> {
         let mut w = sub_registry.inner.write();
         for (_, s) in w.iter_mut() { s.remove(&label); }
     }
-    let _ = app.emit("multiview-destroyed", serde_json::json!({ "label": label }));
+    // Notify only the sibling webviews of the destroyed one. Using
+    // `app.emit("multiview-destroyed", …)` would broadcast to every
+    // window — sibling shells would think one of their own tabs had
+    // been destroyed and clean up state for it.
+    if let Some(window) = parent_window {
+        let payload = serde_json::json!({ "label": label });
+        for wv in window.webviews() {
+            let _ = app.emit_to(wv.label(), "multiview-destroyed", payload.clone());
+        }
+    }
     log::info!("[webview_mgr] destroyed '{}'", label);
     Ok(())
 }
@@ -392,15 +409,21 @@ pub fn multiview_destroy(app: AppHandle, label: String) -> Result<(), String> {
 /// Update geometry for one or more webviews in a single batch.
 /// Batching minimizes IPC overhead during dock-divider drag where
 /// multiple webviews resize per frame.
+///
+/// Resolves each webview directly via `app.webviews()` instead of
+/// looking it up under a hardcoded `"main"` parent window — child
+/// webviews hosted in secondary windows would otherwise silently
+/// not receive the geometry update, leaving them painted at their
+/// previous position while the placeholder DIV moves underneath.
 #[tauri::command]
 pub fn multiview_set_geometry(
     app: AppHandle,
     updates: Vec<GeometryUpdate>,
 ) -> Result<(), String> {
     let registry: State<WebviewRegistry> = app.state();
-    let main_window = app.get_window("main").ok_or("main window not found")?;
+    let webviews = app.webviews();
     for update in updates {
-        if let Some(webview) = main_window.get_webview(&update.label) {
+        if let Some(webview) = webviews.get(&update.label) {
             webview
                 .set_position(LogicalPosition::new(update.x, update.y))
                 .map_err(|e| format!("set_position failed for {}: {}", update.label, e))?;
@@ -450,9 +473,13 @@ pub fn multiview_navigate(app: AppHandle, label: String, url: String) -> Result<
         url
     );
     ensure_child_webview_label(&app, &label, "multiview_navigate")?;
-    let main_window = app.get_window("main").ok_or("main window not found")?;
-    let webview = main_window
-        .get_webview(&label)
+    // Look up the webview across all windows — hardcoding the parent
+    // as `app.get_window("main")` would silently fail for child
+    // webviews hosted in secondary windows.
+    let webview = app
+        .webviews()
+        .get(&label)
+        .cloned()
         .ok_or_else(|| format!("no webview with label '{}'", label))?;
 
     // Try parsing as an absolute URL first (caller may pass a fully-
@@ -492,8 +519,12 @@ pub fn multiview_set_visible(
     visible: bool,
 ) -> Result<(), String> {
     ensure_child_webview_label(&app, &label, "multiview_set_visible")?;
-    let main_window = app.get_window("main").ok_or("main window not found")?;
-    if let Some(webview) = main_window.get_webview(&label) {
+    // Resolve via `app.webviews()` so secondary-window child webviews
+    // can also be hidden / shown — hardcoded `"main"` would silently
+    // skip them, leaving stale child webviews visible above the wrong
+    // placeholders.
+    let webviews = app.webviews();
+    if let Some(webview) = webviews.get(&label) {
         if visible {
             // Tauri 2 child webview show/hide via setSize to non-zero/zero
             // is unreliable across platforms. Use the Webview API.
@@ -629,6 +660,31 @@ pub fn log_broadcast(app: AppHandle, entry: LogEvent) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Emit `event` to every webview in the same top-level window as
+/// `source_label`. Used by lifecycle commands (`drag-began`,
+/// `drag-ended`, `focus-changed`, `multiview-destroyed`, …) that
+/// historically called `app.emit(…)` (global broadcast) — Tauri 2's
+/// emit-side has no per-webview filter, so a global emit reaches
+/// every listener regardless of webview target and leaks across
+/// windows. Resolve the source's parent via `app.webviews().get(label)
+/// .window()`, then `emit_to` each webview in that window only.
+///
+/// Silently no-ops when the source webview has been closed by the
+/// time the event fires — the alternative is a stray global broadcast.
+pub fn emit_to_window_of_label<S>(app: &AppHandle, source_label: &str, event: &str, payload: S)
+where
+    S: Serialize + Clone,
+{
+    use tauri::Emitter;
+    let source_window = match app.webviews().get(source_label) {
+        Some(wv) => wv.window(),
+        None => return,
+    };
+    for wv in source_window.webviews() {
+        let _ = app.emit_to(wv.label(), event, payload.clone());
+    }
 }
 
 /// Generic event broadcaster — scoped to the CALLER'S window.
@@ -775,7 +831,6 @@ pub fn multiview_set_focused(
     label: String,
     focused: bool,
 ) -> Result<(), String> {
-    use tauri::Emitter;
     let mut current = tracker.inner.lock();
     let new_label: Option<String> = if focused {
         Some(label.clone())
@@ -788,7 +843,16 @@ pub fn multiview_set_focused(
     if *current != new_label {
         *current = new_label.clone();
         log::info!("[focus] now: {:?}", new_label);
-        let _ = app.emit("focus-changed", FocusChangedEvent { label: new_label });
+        // Scope the emit to webviews in the same window as the
+        // affected label. Use `label` (the parameter — the webview
+        // that just gained or lost focus) as the source for window
+        // resolution, since `new_label` is None on blur.
+        emit_to_window_of_label(
+            &app,
+            &label,
+            "focus-changed",
+            FocusChangedEvent { label: new_label },
+        );
     }
     Ok(())
 }
@@ -825,7 +889,6 @@ pub fn multiview_set_health(
     label: String,
     state: String,
 ) -> Result<(), String> {
-    use tauri::Emitter;
     let valid = matches!(state.as_str(), "green" | "yellow" | "red" | "unknown");
     if !valid {
         return Err(format!("invalid health state '{}'; expected green/yellow/red/unknown", state));
@@ -841,7 +904,12 @@ pub fn multiview_set_health(
         }
     }
     if changed {
-        let _ = app.emit(
+        // Only the windowing the affected webview should re-paint
+        // health dots. A global emit would mean every shell repaints
+        // for unrelated webviews in other windows.
+        emit_to_window_of_label(
+            &app,
+            &label,
             "health-changed",
             HealthChangedEvent { label: label.clone(), state: state.clone() },
         );

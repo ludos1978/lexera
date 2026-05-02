@@ -26,6 +26,10 @@ const dragCoordinatorRs = readFileSync(
   resolve(__dirname, '..', 'src-tauri', 'src', 'drag_coordinator.rs'),
   'utf8'
 );
+const webviewMgrRs = readFileSync(
+  resolve(__dirname, '..', 'src-tauri', 'src', 'webview_mgr.rs'),
+  'utf8'
+);
 
 describe('drag_coordinator.rs — drag lifecycle events are window-scoped', () => {
   it('does NOT use app.emit("drag-began", …) — would broadcast to every window', () => {
@@ -36,37 +40,42 @@ describe('drag_coordinator.rs — drag lifecycle events are window-scoped', () =
     expect(dragCoordinatorRs).not.toMatch(/app\.emit\(\s*"drag-ended"/);
   });
 
-  it('defines emit_to_source_window helper that resolves parent via app.webviews().get(label).window()', () => {
-    expect(dragCoordinatorRs).toMatch(/fn emit_to_source_window/);
+  it('webview_mgr exposes emit_to_window_of_label that resolves parent via app.webviews().get(label).window()', () => {
+    expect(webviewMgrRs).toMatch(/pub fn emit_to_window_of_label/);
     // Helper must look up the source's parent window through the
     // webview registry rather than hardcoding "main" (which would
     // miss secondary windows).
-    expect(dragCoordinatorRs).toMatch(/app\.webviews\(\)\.get\(source_label\)/);
-    expect(dragCoordinatorRs).toMatch(/source_window\.webviews\(\)/);
+    expect(webviewMgrRs).toMatch(/app\.webviews\(\)\.get\(source_label\)/);
+    expect(webviewMgrRs).toMatch(/source_window\.webviews\(\)/);
   });
 
-  it('drag_start uses emit_to_source_window for drag-began', () => {
+  it('drag_coordinator imports emit_to_window_of_label from webview_mgr (no duplicate definition)', () => {
+    expect(dragCoordinatorRs).toMatch(/use crate::webview_mgr::\{[^}]*emit_to_window_of_label/);
+    expect(dragCoordinatorRs).not.toMatch(/fn emit_to_window_of_label/);
+  });
+
+  it('drag_start uses emit_to_window_of_label for drag-began', () => {
     // Slice from the drag_start signature to the next pub fn. The
     // helper call must appear in this slice.
     var start = dragCoordinatorRs.indexOf('pub fn drag_start');
     expect(start).toBeGreaterThan(-1);
     var nextFn = dragCoordinatorRs.indexOf('pub fn ', start + 1);
     var slice = dragCoordinatorRs.substring(start, nextFn === -1 ? dragCoordinatorRs.length : nextFn);
-    expect(slice).toMatch(/emit_to_source_window\(\s*&app,\s*&payload\.source,\s*"drag-began"/);
+    expect(slice).toMatch(/emit_to_window_of_label\(\s*&app,\s*&payload\.source,\s*"drag-began"/);
   });
 
-  it('drag_pointer_up uses emit_to_source_window for drag-ended', () => {
+  it('drag_pointer_up uses emit_to_window_of_label for drag-ended', () => {
     var start = dragCoordinatorRs.indexOf('pub fn drag_pointer_up');
     var nextFn = dragCoordinatorRs.indexOf('pub fn ', start + 1);
     var slice = dragCoordinatorRs.substring(start, nextFn === -1 ? dragCoordinatorRs.length : nextFn);
-    expect(slice).toMatch(/emit_to_source_window\(\s*&app,\s*&active\.source_label,\s*"drag-ended"/);
+    expect(slice).toMatch(/emit_to_window_of_label\(&app, &active\.source_label, "drag-ended"/);
   });
 
-  it('drag_cancel uses emit_to_source_window for drag-ended', () => {
+  it('drag_cancel uses emit_to_window_of_label for drag-ended', () => {
     var start = dragCoordinatorRs.indexOf('pub fn drag_cancel');
     var nextFn = dragCoordinatorRs.indexOf('pub fn ', start + 1);
     var slice = dragCoordinatorRs.substring(start, nextFn === -1 ? dragCoordinatorRs.length : nextFn);
-    expect(slice).toMatch(/emit_to_source_window\(\s*&app,\s*&active\.source_label,\s*"drag-ended"/);
+    expect(slice).toMatch(/emit_to_window_of_label\(&app, &active\.source_label, "drag-ended"/);
   });
 
   it('targeted emits to specific labels (drag-enter / drag-over / drop / drag-leave / drag-cancelled / drag-complete) remain — those carry an explicit target', () => {
