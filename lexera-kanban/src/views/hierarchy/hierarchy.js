@@ -141,8 +141,15 @@
         var li = document.createElement('li');
         li.className = 'board-item';
         li.dataset.boardId = board.id || '';
+        // BoardInfo from /boards uses `title` (camelCase per Rust serde
+        // rename); `name` is a legacy field still accepted as a
+        // fallback. Same fix as workspaces.js (commit ff9cbf03):
+        // prefer `title` first so the canonical field wins, otherwise
+        // every row collapses to '(untitled)' because `name` is
+        // typically absent on real boards.
+        var boardLabel = board.title || board.name || '(untitled)';
         li.innerHTML =
-          '<span class="board-name">' + escapeHtml(board.name || board.title || '(untitled)') + '</span>' +
+          '<span class="board-name">' + escapeHtml(boardLabel) + '</span>' +
           '<span class="board-id">' + escapeHtml(board.id ? board.id.substring(0, 8) : '') + '</span>';
         li.addEventListener('click', function () {
           LexeraSubApp.navigate({ type: 'open-board', boardId: board.id });

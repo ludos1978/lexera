@@ -100,6 +100,47 @@ describe('hierarchy view sub-app', () => {
     expect(window.LexeraSubApp.navigate).toHaveBeenCalledTimes(1);
   });
 
+  it('renders the canonical board.title (not the legacy board.name) so real boards do not collapse to (untitled)', () => {
+    // BoardInfo from /boards uses `title` (camelCase per Rust serde
+    // rename); `name` is a legacy field that's typically absent on
+    // real boards. The wrong fallback order (`name || title`) made
+    // every row show '(untitled)' because `name` was undefined and
+    // `title` could be briefly empty during the initial parse. Same
+    // bug as workspaces.js had before commit ff9cbf03.
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadHierarchyView(window);
+
+    capturedOpts.onCatalog({
+      boards: [
+        // Real board: only `title`, no `name`.
+        { id: 'real', title: 'Roadmap', workspace_id: 'ws-1' },
+        // Legacy-shaped board: only `name`, fallback path.
+        { id: 'legacy', name: 'Legacy Board', workspace_id: 'ws-1' },
+        // Both fields set: `title` must win (canonical wins over legacy).
+        { id: 'both', title: 'Canonical', name: 'Stale', workspace_id: 'ws-1' }
+      ],
+      remoteBoards: [],
+      workspaces: [{ id: 'ws-1', name: 'Default' }],
+      activeWorkspaceId: 'ws-1',
+      activeWorkspace: { id: 'ws-1', name: 'Default' },
+      viewWorkspaceId: 'ws-1',
+      viewWorkspace: { id: 'ws-1', name: 'Default' },
+      workspaceViewMode: 'follow-active-board'
+    });
+
+    const items = window.document.querySelectorAll('#local-boards .board-item');
+    const labels = Array.from(items).map((el) => el.querySelector('.board-name').textContent);
+    expect(labels).toEqual(['Roadmap', 'Legacy Board', 'Canonical']);
+    expect(labels).not.toContain('(untitled)');
+    expect(labels).not.toContain('Stale');
+  });
+
   // ── User-interaction API exercise ────────────────────────────────
   // Drives the hierarchy view ONLY through LexeraHierarchyTestApi.
   // A regression that breaks rendering (board list invisible,
