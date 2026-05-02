@@ -14,6 +14,39 @@ describe('LexeraPanelHost.panelLabelForTab', () => {
     expect(panelHost.panelLabelForTab(42)).toBe('panel-tab-42');
     expect(panelHost.panelLabelForTab(null)).toBe('panel-tab-null');
   });
+
+  it('once setup({ bootId }) is called, embeds the bootId so two windows do NOT collide on Tauri\'s global webview registry', () => {
+    panelHost.setup({ bootId: 'window2-id' });
+    expect(panelHost.panelLabelForTab('logs-1')).toBe('panel-tab-window2-id-logs-1');
+    panelHost.setup({ bootId: '' });
+  });
+});
+
+describe('LexeraPanelHost.tabIdFromPanelLabel', () => {
+  it('strips the legacy unprefixed format', () => {
+    panelHost.setup({ bootId: '' });
+    expect(panelHost.tabIdFromPanelLabel('panel-tab-logs-1')).toBe('logs-1');
+  });
+
+  it('strips the bootId portion when configured', () => {
+    panelHost.setup({ bootId: 'window2-id' });
+    expect(panelHost.tabIdFromPanelLabel('panel-tab-window2-id-logs-1')).toBe('logs-1');
+    panelHost.setup({ bootId: '' });
+  });
+
+  it('returns "" for non-panel labels', () => {
+    panelHost.setup({ bootId: '' });
+    expect(panelHost.tabIdFromPanelLabel('board-tab-foo')).toBe('');
+    expect(panelHost.tabIdFromPanelLabel('')).toBe('');
+    expect(panelHost.tabIdFromPanelLabel(null)).toBe('');
+  });
+
+  it('round-trips: tabIdFromPanelLabel(panelLabelForTab(id)) === id', () => {
+    panelHost.setup({ bootId: 'window2-id' });
+    expect(panelHost.tabIdFromPanelLabel(panelHost.panelLabelForTab('logs-1'))).toBe('logs-1');
+    panelHost.setup({ bootId: '' });
+    expect(panelHost.tabIdFromPanelLabel(panelHost.panelLabelForTab('logs-1'))).toBe('logs-1');
+  });
 });
 
 describe('LexeraPanelHost.isPanelKindOnWebviewAllowlist', () => {

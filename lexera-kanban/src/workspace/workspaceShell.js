@@ -30,9 +30,19 @@
   if (!boardHost) {
     throw new Error('LexeraBoardHost global is required before workspaceShell.js');
   }
+  // Seed the per-shell boot id so every webview label this shell hands
+  // out includes a unique suffix. Tauri webview labels are global
+  // across windows; without this, two shells generating the same
+  // tab id would collide on `Window::add_child`.
+  if (typeof boardHost.setup === 'function') {
+    boardHost.setup({ bootId: WORKSPACE_SHELL_BOOT_ID });
+  }
   var panelHost = (typeof window !== 'undefined' && window.LexeraPanelHost) || null;
   if (!panelHost) {
     throw new Error('LexeraPanelHost global is required before workspaceShell.js');
+  }
+  if (typeof panelHost.setup === 'function') {
+    panelHost.setup({ bootId: WORKSPACE_SHELL_BOOT_ID });
   }
   var multiview = (typeof window !== 'undefined' && window.LexeraMultiviewWebview) || null;
   if (!multiview) {

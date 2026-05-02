@@ -1,6 +1,18 @@
 (function () {
   'use strict';
 
+  // Per-shell boot id, used as a uniqueness suffix in panel-tab webview
+  // labels. See `boardHost.js` for full rationale — Tauri webview
+  // labels are GLOBAL across windows, so two shells handing out the
+  // same tab id would otherwise collide.
+  var _bootId = '';
+
+  function setup(deps) {
+    if (deps && typeof deps.bootId === 'string') {
+      _bootId = deps.bootId;
+    }
+  }
+
   // PANEL_WEBVIEW_KINDS is the allowlist of panel kinds whose dock-hosted
   // tabs should spawn a child webview instead of being rendered in the
   // shell DOM. Each kind is migrated one slice at a time per Workstream P
@@ -52,9 +64,30 @@
    * listener can disambiguate. The shell-side spawn registry is keyed by
    * tabId regardless of prefix; the prefix only matters for the Rust-side
    * webview label and the broadcast filtering done by event listeners.
+   *
+   * Format: `panel-tab-<bootId>-<tabId>` (or `panel-tab-<tabId>` if
+   * the module wasn't initialised — only happens in unit tests).
+   * The bootId guarantees the label is unique across windows.
    */
   function panelLabelForTab(tabId) {
-    return 'panel-tab-' + String(tabId);
+    var safeTabId = String(tabId);
+    if (_bootId) return 'panel-tab-' + _bootId + '-' + safeTabId;
+    return 'panel-tab-' + safeTabId;
+  }
+
+  /**
+   * Inverse of `panelLabelForTab`. Recovers the tabId from a panel
+   * webview label, accounting for the optional bootId suffix.
+   * Returns '' when the label doesn't have the panel-tab prefix.
+   */
+  function tabIdFromPanelLabel(label) {
+    var raw = String(label || '');
+    if (raw.indexOf('panel-tab-') !== 0) return '';
+    var rest = raw.substring('panel-tab-'.length);
+    if (_bootId && rest.indexOf(_bootId + '-') === 0) {
+      return rest.substring(_bootId.length + 1);
+    }
+    return rest;
   }
 
   function applyChildWindowContext(fromUrl, toUrl, childLabel) {
@@ -96,9 +129,11 @@
   }
 
   var api = {
+    setup: setup,
     PANEL_WEBVIEW_KINDS: PANEL_WEBVIEW_KINDS,
     isPanelKindOnWebviewAllowlist: isPanelKindOnWebviewAllowlist,
     panelLabelForTab: panelLabelForTab,
+    tabIdFromPanelLabel: tabIdFromPanelLabel,
     panelUrlForTab: panelUrlForTab,
     viewDirForKind: viewDirForKind
   };

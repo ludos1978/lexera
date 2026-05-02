@@ -9219,10 +9219,19 @@ var LexeraDashboard = (function () {
     if (typeof window !== 'undefined' && window.LexeraMultiview &&
         typeof window.LexeraMultiview.invoke === 'function') {
       try {
-        var label = 'board-tab-' + (
-          typeof ws.getTabIdForBoard === 'function' ? ws.getTabIdForBoard(boardId) : ''
-        );
-        if (label.length > 'board-tab-'.length) {
+        // Use boardHost.multiviewLabelForTab (configured with the
+        // shell boot id) instead of hand-formatting `'board-tab-' +
+        // tabId` — labels include a per-shell bootId suffix in
+        // multi-window builds, and getting it wrong here would emit
+        // to a non-existent webview label.
+        var tabId = (typeof ws.getTabIdForBoard === 'function')
+          ? ws.getTabIdForBoard(boardId)
+          : '';
+        var boardHost = window.LexeraBoardHost || null;
+        var label = (boardHost && typeof boardHost.multiviewLabelForTab === 'function' && tabId)
+          ? boardHost.multiviewLabelForTab(tabId)
+          : '';
+        if (label) {
           window.LexeraMultiview.invoke('multiview_emit_to', {
             target: label,
             event: 'delegate-mutation',

@@ -6,6 +6,27 @@
     throw new Error('LexeraLayoutTree global is required before boardHost.js');
   }
 
+  // Per-shell boot id used as a uniqueness suffix in webview labels.
+  // Tauri webview labels are GLOBAL across windows — `Window::add_child`
+  // refuses a label that's already registered anywhere in the app. Two
+  // windows that hand out the same tab id (the layout-tree id factory
+  // restarts at 1 per shell) would otherwise both try to spawn
+  // `board-tab-tab-3` and the second window's spawn would fail. The
+  // boot id (Date.now() + random, generated once per shell) makes
+  // labels unique across windows.
+  //
+  // Stays empty until `setup({ bootId })` is called by workspaceShell;
+  // unit tests that load this module without setup get the legacy
+  // `board-tab-<tabId>` shape, which is fine in single-window test
+  // scenarios.
+  var _bootId = '';
+
+  function setup(deps) {
+    if (deps && typeof deps.bootId === 'string') {
+      _bootId = deps.bootId;
+    }
+  }
+
   /**
    * Resolve the iframe contentWindow currently rendering boardId, or null
    * when no host iframe owns it. The shell uses this for mutation delegation:
@@ -27,9 +48,32 @@
    * Routing label for a board's child webview, used as the multiview
    * registry key. Single source of truth so callers don't hand-format
    * `'board-tab-' + tabId` strings.
+   *
+   * Format: `board-tab-<bootId>-<tabId>` (or `board-tab-<tabId>` if
+   * the module wasn't initialised with a bootId — only happens in
+   * isolated unit tests). The bootId guarantees the label is unique
+   * across windows so two shells handing out the same tabId don't
+   * collide on Tauri's global webview-label registry.
    */
   function multiviewLabelForTab(tabId) {
-    return 'board-tab-' + String(tabId);
+    var safeTabId = String(tabId);
+    if (_bootId) return 'board-tab-' + _bootId + '-' + safeTabId;
+    return 'board-tab-' + safeTabId;
+  }
+
+  /**
+   * Inverse of `multiviewLabelForTab`. Recovers the tabId from a
+   * webview label, accounting for the optional bootId suffix. Returns
+   * '' when the label doesn't have the board-tab prefix at all.
+   */
+  function tabIdFromBoardLabel(label) {
+    var raw = String(label || '');
+    if (raw.indexOf('board-tab-') !== 0) return '';
+    var rest = raw.substring('board-tab-'.length);
+    if (_bootId && rest.indexOf(_bootId + '-') === 0) {
+      return rest.substring(_bootId.length + 1);
+    }
+    return rest;
   }
 
   function applyChildWindowContext(fromUrl, toUrl, childLabel) {
@@ -222,8 +266,10 @@
   }
 
   var api = {
+    setup: setup,
     getFrameWindowForBoard: getFrameWindowForBoard,
     multiviewLabelForTab: multiviewLabelForTab,
+    tabIdFromBoardLabel: tabIdFromBoardLabel,
     getEmbeddedUrlForTab: getEmbeddedUrlForTab,
     multiviewUrlForTab: multiviewUrlForTab,
     ensureHealthDot: ensureHealthDot,

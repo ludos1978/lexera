@@ -126,15 +126,21 @@
 
   // Reverse lookup: tabId for a given webview label. Handles three
   // cases:
-  //   1. Formula labels with our 'board-tab-' / 'panel-tab-' prefixes
+  //   1. Formula labels with our 'board-tab-<bootId>-' /
+  //      'panel-tab-<bootId>-' prefixes — delegate to the host
+  //      modules so the bootId is stripped correctly.
   //   2. Pool labels ('_pool_<n>') that were repurposed and now own
   //      a tab — we find the tabId by scanning the spawn registry
   //   3. Anything else: returns the original label so callers can
   //      surface it in logs/diagnostics.
   function tabIdFromLabel(label) {
     if (typeof label !== 'string') return '';
-    if (label.indexOf('board-tab-') === 0) return label.substring('board-tab-'.length);
-    if (label.indexOf('panel-tab-') === 0) return label.substring('panel-tab-'.length);
+    if (label.indexOf('board-tab-') === 0) {
+      return boardHost.tabIdFromBoardLabel(label);
+    }
+    if (label.indexOf('panel-tab-') === 0) {
+      return panelHost.tabIdFromPanelLabel(label);
+    }
     var tabIds = Object.keys(multiviewSpawnedTabs);
     for (var i = 0; i < tabIds.length; i++) {
       if (multiviewSpawnedTabs[tabIds[i]].label === label) return tabIds[i];

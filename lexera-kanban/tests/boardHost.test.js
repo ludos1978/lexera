@@ -207,6 +207,40 @@ describe('LexeraBoardHost.multiviewLabelForTab', () => {
     expect(boardHost.multiviewLabelForTab(42)).toBe('board-tab-42');
     expect(boardHost.multiviewLabelForTab(null)).toBe('board-tab-null');
   });
+
+  it('once setup({ bootId }) is called, includes the bootId in the label so two windows do NOT collide on Tauri\'s global webview registry', () => {
+    boardHost.setup({ bootId: 'kfo3p2j-abc12' });
+    expect(boardHost.multiviewLabelForTab('tab-7')).toBe('board-tab-kfo3p2j-abc12-tab-7');
+    // Reset so subsequent describe blocks don't see the bootId.
+    boardHost.setup({ bootId: '' });
+  });
+});
+
+describe('LexeraBoardHost.tabIdFromBoardLabel', () => {
+  it('strips the legacy unprefixed format', () => {
+    boardHost.setup({ bootId: '' });
+    expect(boardHost.tabIdFromBoardLabel('board-tab-tab-3')).toBe('tab-3');
+  });
+
+  it('strips the bootId portion when the module is configured with one', () => {
+    boardHost.setup({ bootId: 'kfo3p2j-abc12' });
+    expect(boardHost.tabIdFromBoardLabel('board-tab-kfo3p2j-abc12-tab-7')).toBe('tab-7');
+    boardHost.setup({ bootId: '' });
+  });
+
+  it('returns "" for labels that lack the board-tab prefix', () => {
+    boardHost.setup({ bootId: '' });
+    expect(boardHost.tabIdFromBoardLabel('panel-tab-foo')).toBe('');
+    expect(boardHost.tabIdFromBoardLabel('')).toBe('');
+    expect(boardHost.tabIdFromBoardLabel(null)).toBe('');
+  });
+
+  it('round-trips: tabIdFromBoardLabel(multiviewLabelForTab(id)) === id', () => {
+    boardHost.setup({ bootId: 'kfo3p2j-abc12' });
+    expect(boardHost.tabIdFromBoardLabel(boardHost.multiviewLabelForTab('tab-99'))).toBe('tab-99');
+    boardHost.setup({ bootId: '' });
+    expect(boardHost.tabIdFromBoardLabel(boardHost.multiviewLabelForTab('tab-99'))).toBe('tab-99');
+  });
 });
 
 describe('LexeraBoardHost.ensureHealthDot', () => {

@@ -1,6 +1,19 @@
 (function () {
   'use strict';
 
+  function getOwnWindowLabel() {
+    try {
+      return new URLSearchParams(window.location.search || '').get('windowLabel') || 'main';
+    } catch (_) { return 'main'; }
+  }
+
+  function isEventForThisWindow(event) {
+    var source = event && event.payload && event.payload._sourceWindow;
+    if (!source) return true;
+    return source === getOwnWindowLabel();
+  }
+  'use strict';
+
   function tauriRuntime() {
     return (typeof window !== 'undefined' && window.__TAURI__) || null;
   }
@@ -161,9 +174,15 @@
     if (mv && mv.lifecycle && typeof mv.lifecycle.touch === 'function') {
       try { mv.lifecycle.touch(label); } catch (_) {}
     }
-    var prefix = 'board-tab-';
-    if (label.indexOf(prefix) !== 0) return;
-    var tabId = label.substring(prefix.length);
+    if (label.indexOf('board-tab-') !== 0) return;
+    // Strip the 'board-tab-' prefix AND the per-shell bootId suffix
+    // via boardHost so this code stays correct regardless of whether
+    // the label format is `board-tab-<tabId>` (legacy / unit tests
+    // without setup) or `board-tab-<bootId>-<tabId>` (production).
+    var boardHost = (typeof window !== 'undefined' && window.LexeraBoardHost) || null;
+    var tabId = boardHost && typeof boardHost.tabIdFromBoardLabel === 'function'
+      ? boardHost.tabIdFromBoardLabel(label)
+      : label.substring('board-tab-'.length);
     try {
       window.dispatchEvent(new MessageEvent('message', {
         data: { type: 'lexera-pane-activated', pane: tabId }
