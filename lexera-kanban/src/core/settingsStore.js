@@ -62,10 +62,8 @@ var LexeraSettings = (function () {
     layoutPresets:        { key: 'lexera-layout-presets',         type: 'json',    default: {} },
     dockPanel:            { key: 'lexera-dock-panel',             type: 'string',  default: '' },
 
-    // --- Logging ---
-    logSource:            { key: 'lexera-log-source',             type: 'string',  default: '' },
-    logCategories:        { key: 'lexera-log-categories',         type: 'string',  default: '' },
-    logLevels:            { key: 'lexera-log-levels',             type: 'string',  default: '' },
+    // --- Logging (filters moved to WINDOW_DEFS — log panel state is
+    //     per-window UX, not a global setting) ---
 
     // --- Custom URLs ---
     mermaidUrl:           { key: 'lexera-mermaid-url',            type: 'string',  default: '' }
@@ -112,7 +110,16 @@ var LexeraSettings = (function () {
     dashboardActivePinned:  { key: 'lexera-dashboard-active-pinned:{windowScope}',  type: 'string', default: '' },
     dashboardPinnedQueries: { key: 'lexera-dashboard-pinned-queries:{windowScope}', type: 'json',   default: [] },
     dashboardTags:          { key: 'lexera-dashboard-tags:{windowScope}',           type: 'json',   default: [] },
-    dashboardCollapsed:     { key: 'lexera-dashboard-collapsed:{windowScope}',      type: 'json',   default: {} }
+    dashboardCollapsed:     { key: 'lexera-dashboard-collapsed:{windowScope}',      type: 'json',   default: {} },
+
+    // --- Logging (per-window: each window keeps its own log panel
+    //     filter state). Categories / levels store comma-separated
+    //     ids; `null` default means "all on" so a missing key
+    //     differs from a stored empty string ("none on"). ---
+    logSource:     { key: 'lexera-log-source:{windowScope}',     type: 'string', default: '' },
+    logCategories: { key: 'lexera-log-categories:{windowScope}', type: 'string', default: null },
+    logLevels:     { key: 'lexera-log-levels:{windowScope}',     type: 'string', default: null },
+    logSearch:     { key: 'lexera-log-search:{windowScope}',     type: 'string', default: '' }
   };
 
   function _resolveWindowScope() {

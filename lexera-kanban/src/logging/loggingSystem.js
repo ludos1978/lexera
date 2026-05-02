@@ -21,13 +21,15 @@ var LOG_LEVELS = [
 ];
 
 var _LogSettings = typeof LexeraSettings !== 'undefined' ? LexeraSettings : null;
-// Default = all-on. Stored '' = none. Stored list = exactly those on. Bypass the settings store
-// on load because it collapses missing vs empty-string into the same default.
-function _loadStoredSet(storageKey, registry) {
-  var raw = null;
-  try { raw = localStorage.getItem(storageKey); } catch (_) { raw = null; }
+// Decode the comma-separated id list a window stored under
+// `logCategories` / `logLevels`. The settings def's default is `null`
+// (sentinel for "all on") so a missing key differs from a stored empty
+// string ("none on"). Anything that isn't in the registry is dropped
+// silently — handles registry rename / removal across versions.
+function _loadStoredFilterSet(settingsKey, registry) {
+  var raw = _LogSettings ? _LogSettings.getForWindow(settingsKey) : null;
   var set = {};
-  if (raw === null) {
+  if (raw === null || raw === undefined) {
     for (var i = 0; i < registry.length; i++) set[registry[i].id] = true;
     return set;
   }
@@ -39,11 +41,9 @@ function _loadStoredSet(storageKey, registry) {
   }
   return set;
 }
-var activeLogCategories = _loadStoredSet('lexera-log-categories', LOG_CATEGORIES);
-var activeLogLevels = _loadStoredSet('lexera-log-levels', LOG_LEVELS);
-var activeLogSearch = (function () {
-  try { return localStorage.getItem('lexera-log-search') || ''; } catch (_) { return ''; }
-})();
+var activeLogCategories = _loadStoredFilterSet('logCategories', LOG_CATEGORIES);
+var activeLogLevels = _loadStoredFilterSet('logLevels', LOG_LEVELS);
+var activeLogSearch = _LogSettings ? (_LogSettings.getForWindow('logSearch') || '') : '';
 var activeLogSource = 'logs'; // 'logs' | 'stats' — controls which body pane is visible (kept for external callers)
 var backendLogLoaded = false;
 var backendLogEventSource = null;
@@ -312,26 +312,6 @@ window.addEventListener('lexera-shared-panel-created', function (event) {
   if (detail.kind === 'logs') syncMirroredLogViews();
 });
 
-window.addEventListener('storage', function (event) {
-  if (!event) return;
-  if (event.key === 'lexera-log-categories') {
-    activeLogCategories = _loadStoredSet('lexera-log-categories', LOG_CATEGORIES);
-    applyLogEntryFilters();
-    syncAllLogFilterClears();
-    syncMirroredLogViews();
-  } else if (event.key === 'lexera-log-levels') {
-    activeLogLevels = _loadStoredSet('lexera-log-levels', LOG_LEVELS);
-    applyLogEntryFilters();
-    syncAllLogFilterClears();
-    syncMirroredLogViews();
-  } else if (event.key === 'lexera-log-search') {
-    activeLogSearch = event.newValue || '';
-    applyLogEntryFilters();
-    syncAllLogFilterClears();
-    syncMirroredLogViews();
-  }
-});
-
 var elBoardList = null;
 var elBoardHeader = null;
 var elColumnsContainer = null;
@@ -508,16 +488,15 @@ function entryAllowed(entry) {
   return !!activeLogCategories[catId] && !!activeLogLevels[lvlId] && entryMatchesSearch(entry);
 }
 
-function persistActiveSet(storageKey, settingsName, registry, activeSet) {
+function persistActiveSet(settingsName, registry, activeSet) {
   var ids = [];
   for (var i = 0; i < registry.length; i++) {
     if (activeSet[registry[i].id]) ids.push(registry[i].id);
   }
   var value = ids.join(',');
   if (_LogSettings) {
-    try { _LogSettings.set(settingsName, value); } catch (_) {}
+    try { _LogSettings.setForWindow(settingsName, value); } catch (_) {}
   }
-  try { localStorage.setItem(storageKey, value); } catch (_) {}
 }
 
 function formatLogTimestamp(entry) {
@@ -725,7 +704,6 @@ function _getFilterConfig(facet) {
     return {
       registry: LOG_LEVELS,
       active: activeLogLevels,
-      storageKey: 'lexera-log-levels',
       settingsKey: 'logLevels',
       attr: 'data-log-level'
     };
@@ -733,7 +711,6 @@ function _getFilterConfig(facet) {
   return {
     registry: LOG_CATEGORIES,
     active: activeLogCategories,
-    storageKey: 'lexera-log-categories',
     settingsKey: 'logCategories',
     attr: 'data-log-category'
   };
@@ -744,7 +721,7 @@ function toggleLogFilterValue(facet, id) {
   if (!cfg.registry.some(function (c) { return c.id === id; })) return;
   if (cfg.active[id]) delete cfg.active[id];
   else cfg.active[id] = true;
-  persistActiveSet(cfg.storageKey, cfg.settingsKey, cfg.registry, cfg.active);
+  persistActiveSet(cfg.settingsKey, cfg.registry, cfg.active);
   applyLogEntryFilters();
   syncLogCount();
   syncAllLogFilterMenus();
@@ -756,7 +733,7 @@ function clearLogFilter(facet) {
   var cfg = _getFilterConfig(facet);
   // Reset to show-all (every registry id active).
   for (var i = 0; i < cfg.registry.length; i++) cfg.active[cfg.registry[i].id] = true;
-  persistActiveSet(cfg.storageKey, cfg.settingsKey, cfg.registry, cfg.active);
+  persistActiveSet(cfg.settingsKey, cfg.registry, cfg.active);
   applyLogEntryFilters();
   syncLogCount();
   syncAllLogFilterMenus();
@@ -788,7 +765,9 @@ function setLogSearchFilter(value) {
   var next = String(value == null ? '' : value);
   if (next === activeLogSearch) return;
   activeLogSearch = next;
-  try { localStorage.setItem('lexera-log-search', activeLogSearch); } catch (_) {}
+  if (_LogSettings) {
+    try { _LogSettings.setForWindow('logSearch', activeLogSearch); } catch (_) {}
+  }
   applyLogEntryFilters();
   syncLogCount();
   syncAllLogFilterClears();

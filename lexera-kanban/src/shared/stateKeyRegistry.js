@@ -319,31 +319,44 @@ var LexeraStateKeyRegistry = {
   //  LOGGING
   // ═══════════════════════════════════════════════════════════════════
 
-  'lexera-log-source': {
+  'lexera-log-source:{windowScope}': {
     type: 'string',
-    category: 'preference',
+    category: 'ephemeral',
     default: '',
-    description: 'Active log source filter for the logging panel (legacy; superseded by lexera-log-categories)',
+    description: 'Active log source filter — per workspace; falls back to per-window for unpinned windows',
     files: ['logging/loggingSystem.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
-  'lexera-log-categories': {
+  'lexera-log-categories:{windowScope}': {
     type: 'string',
-    category: 'preference',
-    default: '',
-    description: 'Comma-separated list of active log-source categories (absent = all, empty = none)',
+    category: 'ephemeral',
+    default: null,
+    description: 'Comma-separated list of active log-source categories (absent = all, empty = none) — per workspace',
     files: ['logging/loggingSystem.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
-  'lexera-log-levels': {
+  'lexera-log-levels:{windowScope}': {
     type: 'string',
-    category: 'preference',
-    default: '',
-    description: 'Comma-separated list of active log levels (absent = all, empty = none)',
+    category: 'ephemeral',
+    default: null,
+    description: 'Comma-separated list of active log levels (absent = all, empty = none) — per workspace',
     files: ['logging/loggingSystem.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
+  },
+
+  'lexera-log-search:{windowScope}': {
+    type: 'string',
+    category: 'ephemeral',
+    default: '',
+    description: 'Free-text log search filter — per workspace',
+    files: ['logging/loggingSystem.js'],
+    settingsStore: true,
+    parameterized: true
   },
 
   // ═══════════════════════════════════════════════════════════════════

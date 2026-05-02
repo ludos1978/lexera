@@ -39,7 +39,6 @@ const ALLOWED_LOCAL_STORAGE_FILES = [
   'core/actionRegistrations.js',
   'core/settingsStore.js',
   'editor/cardEditor.js',
-  'logging/loggingSystem.js',
   'menu/contextMenuBuilders.js',
   'plugins/diagrams/mermaid.js',
   'plugins/pluginConfig.js',
