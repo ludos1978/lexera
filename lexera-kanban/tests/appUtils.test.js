@@ -249,12 +249,21 @@ function loadAppUtils() {
   const factory = new Function('URL', 'atob', 'escapeHtml', 'escapeAttr', wrappedSource);
   const utils = factory(URL, atobShim, escapeHtmlShim, escapeAttrShim);
 
-  // Load SidebarResize module for normalizeRatio (extracted from app.js)
+  // Load SidebarResize module for normalizeRatio (extracted from app.js).
+  // sidebarResize now reads its initial size/ratio from the per-window
+  // settings scope, so a Settings shim is required.
   const sidebarResizeSource = readFileSync(resolve(srcDir, 'sidebar', 'sidebarResize.js'), 'utf-8');
   const localStorageShim = { getItem: () => null, setItem: () => {} };
-  const windowShim = {};
-  const sidebarResizeFactory = new Function('localStorage', 'window', sidebarResizeSource + '\nreturn LexeraSidebarResize;');
-  const sidebarResize = sidebarResizeFactory(localStorageShim, windowShim);
+  const settingsShim = {
+    getForWindow: () => undefined,
+    setForWindow: () => {}
+  };
+  const windowShim = { LexeraSettings: settingsShim };
+  const sidebarResizeFactory = new Function(
+    'localStorage', 'window', 'LexeraSettings',
+    sidebarResizeSource + '\nreturn LexeraSidebarResize;'
+  );
+  const sidebarResize = sidebarResizeFactory(localStorageShim, windowShim, settingsShim);
   utils.normalizeRatio = sidebarResize.normalizeRatio;
 
   return utils;

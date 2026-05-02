@@ -2,13 +2,31 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { loadIIFE } from './load-iife.js';
 
 function createSidebarSync() {
+  // Settings shim: the production sidebarSync reads `sidebarSync` from
+  // global Settings (`Settings.get`) and `hierarchyLocked` from the
+  // per-window scope (`Settings.getForWindow`). The previous tests
+  // simulated only the legacy localStorage fallback paths — which were
+  // dead code in production and have been removed for hierarchyLocked.
+  const LexeraSettings = {
+    get(name) {
+      if (name === 'sidebarSync') return true;
+      return undefined;
+    },
+    getForWindow(name) {
+      if (name === 'hierarchyLocked') return false;
+      return undefined;
+    },
+    set() {},
+    setForWindow() {}
+  };
   return loadIIFE('sidebar/sidebarSync.js', 'LexeraSidebarSync', {
     document: {
       getElementById() {
         return null;
       }
     },
-    localStorage: globalThis.localStorage
+    localStorage: globalThis.localStorage,
+    LexeraSettings: LexeraSettings
   });
 }
 

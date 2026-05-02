@@ -45,7 +45,6 @@ const ALLOWED_LOCAL_STORAGE_FILES = [
   'plugins/pluginConfig.js',
   'settings/controlsSettings.js',
   'shared/stateManager.js',
-  'sidebar/sidebarResize.js',
   'sidebar/sidebarSync.js',
   'tagcolors/tagColors.js',
   'test/autoRunBootstrap.js',

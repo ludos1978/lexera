@@ -13,8 +13,8 @@ var LexeraSidebarResize = (function () {
   // State
   // ═══════════════════════════════════════════════════════════════════════════
 
-  var sidebarSplitRatio = Settings ? Settings.get('sidebarSplitRatio') : parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
-  var sidebarWidth = Settings ? Settings.get('sidebarWidth') : (parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0);
+  var sidebarSplitRatio = Settings.getForWindow('sidebarSplitRatio');
+  var sidebarWidth = Settings.getForWindow('sidebarWidth');
 
   // Injected via init()
   var _isWorkspaceShellEnabled = function () { return false; };
@@ -259,14 +259,12 @@ var LexeraSidebarResize = (function () {
       onEnd: function (ev, ctx) {
         flushSidebarDragLayout(ctx);
         getElSidebar().classList.remove('resizing-sections');
-        if (Settings) Settings.set('sidebarSplitRatio', normalizeSidebarSplitRatio(sidebarSplitRatio));
-        else localStorage.setItem('lexera-sidebar-split-ratio', String(normalizeSidebarSplitRatio(sidebarSplitRatio)));
+        Settings.setForWindow('sidebarSplitRatio', normalizeSidebarSplitRatio(sidebarSplitRatio));
         applySidebarSectionLayout();
       },
       onDoubleClick: function () {
         sidebarSplitRatio = 0.5;
-        if (Settings) Settings.set('sidebarSplitRatio', 0.5);
-        else localStorage.setItem('lexera-sidebar-split-ratio', '0.5');
+        Settings.setForWindow('sidebarSplitRatio', 0.5);
         applySidebarSectionLayout();
       }
     });
@@ -320,15 +318,13 @@ var LexeraSidebarResize = (function () {
       onEnd: function (ev, ctx) {
         flushSidebarDragLayout(ctx);
         getElLayout().classList.remove('resizing-sidebar-width');
-        if (Settings) Settings.set('sidebarWidth', sidebarWidth);
-        else localStorage.setItem('lexera-sidebar-width', String(sidebarWidth));
+        Settings.setForWindow('sidebarWidth', sidebarWidth);
         applySidebarSectionLayout();
       },
       onDoubleClick: function () {
         sidebarWidth = SIDEBAR_DEFAULT;
         document.documentElement.style.setProperty('--sidebar-width', SIDEBAR_DEFAULT + 'px');
-        if (Settings) Settings.set('sidebarWidth', SIDEBAR_DEFAULT);
-        else localStorage.setItem('lexera-sidebar-width', String(SIDEBAR_DEFAULT));
+        Settings.setForWindow('sidebarWidth', SIDEBAR_DEFAULT);
         applySidebarSectionLayout();
       }
     });

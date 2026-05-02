@@ -602,8 +602,8 @@ var LexeraDashboard = (function () {
     _rt.setState('workspaceShellBoardHostEnabled', workspaceShellBoardHostEnabled);
   }
   var SidebarResize = window.LexeraSidebarResize;
-  var sidebarSplitRatio = Settings ? Settings.get('sidebarSplitRatio') : parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
-  var sidebarWidth = Settings ? Settings.get('sidebarWidth') : (parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0);
+  var sidebarSplitRatio = Settings.getForWindow('sidebarSplitRatio');
+  var sidebarWidth = Settings.getForWindow('sidebarWidth');
   var headerSearchExpanded = Settings ? Settings.get('headerSearchExpanded') : localStorage.getItem('lexera-header-search-expanded') === 'true';
   var _headerSavingInProgress = false;
   var suppressHeaderCreationClickUntil = 0;
@@ -1092,7 +1092,7 @@ var LexeraDashboard = (function () {
       return !!SidebarSync.isHierarchyLocked();
     }
     try {
-      return Settings ? Settings.get('hierarchyLocked') : localStorage.getItem('lexera-hierarchy-locked') === 'true';
+      return Settings.getForWindow('hierarchyLocked');
     } catch (err) {
       return false;
     }

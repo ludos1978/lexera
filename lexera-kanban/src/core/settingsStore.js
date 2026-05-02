@@ -31,11 +31,9 @@ var LexeraSettings = (function () {
     overlayEditorEnabled: { key: 'lexera-overlay-editor-enabled', type: 'boolean', default: true },
     specialCharsVisible:  { key: 'lexera-show-special-characters',type: 'boolean', default: false },
 
-    // --- Sidebar ---
-    sidebarSplitRatio:    { key: 'lexera-sidebar-split-ratio',    type: 'number',  default: 0.2 },
-    sidebarWidth:         { key: 'lexera-sidebar-width',          type: 'number',  default: 220 },
+    // --- Sidebar (sidebarSplitRatio, sidebarWidth, hierarchyLocked
+    //     moved to WINDOW_DEFS — they are per-window UX state) ---
     sidebarSync:          { key: 'lexera-sidebar-sync',           type: 'boolean', default: false },
-    hierarchyLocked:      { key: 'lexera-hierarchy-locked',       type: 'boolean', default: false },
     sidebarExpanded:      { key: 'lexera-sidebar-expanded',       type: 'json',    default: [] },
     sidebarTreeState:     { key: 'lexera-sidebar-tree-state',     type: 'json',    default: {} },
     sidebarTreeDisplay:   { key: 'lexera-sidebar-tree-display',   type: 'json',    default: {} },
@@ -104,7 +102,13 @@ var LexeraSettings = (function () {
   // `storage` event in every other open window — Tauri uses one
   // shared cookie/storage origin, so cross-window leaks are silent
   // and surprising.
-  var WINDOW_DEFS = {};
+  var WINDOW_DEFS = {
+    // --- Sidebar (per-window: each workspace remembers its own size,
+    //     each detached window keeps its own preference) ---
+    sidebarSplitRatio: { key: 'lexera-sidebar-split-ratio:{windowScope}', type: 'number',  default: 0.2 },
+    sidebarWidth:      { key: 'lexera-sidebar-width:{windowScope}',       type: 'number',  default: 220 },
+    hierarchyLocked:   { key: 'lexera-hierarchy-locked:{windowScope}',    type: 'boolean', default: false }
+  };
 
   function _resolveWindowScope() {
     try {

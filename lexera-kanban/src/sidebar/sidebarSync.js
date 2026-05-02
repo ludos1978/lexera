@@ -172,8 +172,7 @@
 
   function toggleSidebarLock() {
     hierarchyLocked = !hierarchyLocked;
-    if (Settings) Settings.set('hierarchyLocked', hierarchyLocked);
-    else localStorage.setItem('lexera-hierarchy-locked', hierarchyLocked ? 'true' : 'false');
+    Settings.setForWindow('hierarchyLocked', hierarchyLocked);
     doRenderBoardList();
   }
 
@@ -250,7 +249,7 @@
       _deps = deps || {};
     }
     sidebarSyncEnabled = Settings ? Settings.get('sidebarSync') : localStorage.getItem('lexera-sidebar-sync') === 'true';
-    hierarchyLocked = Settings ? Settings.get('hierarchyLocked') : localStorage.getItem('lexera-hierarchy-locked') === 'true';
+    hierarchyLocked = Settings.getForWindow('hierarchyLocked');
     bindScrollSync();
     bindMenuButton();
   }

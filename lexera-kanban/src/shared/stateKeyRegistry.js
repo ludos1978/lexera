@@ -71,22 +71,24 @@ var LexeraStateKeyRegistry = {
   //  SIDEBAR
   // ═══════════════════════════════════════════════════════════════════
 
-  'lexera-sidebar-split-ratio': {
+  'lexera-sidebar-split-ratio:{windowScope}': {
     type: 'number',
     category: 'ephemeral',
     default: 0.58,
-    description: 'Ratio of sidebar vertical split between tree and detail pane',
+    description: 'Ratio of sidebar vertical split between tree and detail pane (per workspace; falls back to per-window for unpinned windows)',
     files: ['app.js', 'sidebar/sidebarResize.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
-  'lexera-sidebar-width': {
+  'lexera-sidebar-width:{windowScope}': {
     type: 'number',
     category: 'ephemeral',
     default: 220,
-    description: 'Sidebar width in pixels',
+    description: 'Sidebar width in pixels (per workspace; falls back to per-window for unpinned windows)',
     files: ['app.js', 'sidebar/sidebarResize.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
   'lexera-sidebar-sync': {
@@ -98,13 +100,14 @@ var LexeraStateKeyRegistry = {
     settingsStore: true
   },
 
-  'lexera-hierarchy-locked': {
+  'lexera-hierarchy-locked:{windowScope}': {
     type: 'boolean',
     category: 'preference',
     default: false,
-    description: 'Whether hierarchy editing is locked (read-only mode)',
+    description: 'Whether hierarchy editing is locked (read-only mode) — per workspace; falls back to per-window for unpinned windows',
     files: ['app.js', 'sidebar/sidebarSync.js'],
-    settingsStore: true
+    settingsStore: true,
+    parameterized: true
   },
 
   'lexera-sidebar-expanded': {
