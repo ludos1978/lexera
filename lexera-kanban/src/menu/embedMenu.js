@@ -3283,13 +3283,35 @@ var LexeraEmbedMenu = (function () {
   // function (matching Tauri's own API shape). Callers may discard the
   // return value safely: the listener is still tracked and auto-unlistened
   // on page unload so reloads don't accumulate orphan callbacks.
+  // Resolve the current webview's label so listeners can be scoped to
+  // this webview only. `target: { kind: 'Any' }` is a wildcard that
+  // matches every emit regardless of intended target — Tauri 2's
+  // `emit_to(label, …)` does NOT actually restrict delivery against
+  // an `Any` listener, so cross-window events (notably `menu-action`)
+  // would fire in every open webview. Falls back to `Any` if the
+  // webview API isn't available yet (boot timing).
+  function currentWebviewLabel() {
+    try {
+      var wv = window.__TAURI__ && window.__TAURI__.webview && window.__TAURI__.webview.getCurrentWebview;
+      if (typeof wv === 'function') {
+        var resolved = wv();
+        if (resolved && resolved.label) return String(resolved.label);
+      }
+    } catch (_) {}
+    return '';
+  }
+
   function tauriListen(eventName, callback) {
     var ipc = resolveTauriInternals();
     if (ipc && typeof ipc.transformCallback === 'function') {
       var handler = ipc.transformCallback(callback, false);
+      var label = currentWebviewLabel();
+      var listenTarget = label
+        ? { kind: 'WebviewLabel', label: label }
+        : { kind: 'Any' };
       return ipc.invoke('plugin:event|listen', {
         event: eventName,
-        target: { kind: 'Any' },
+        target: listenTarget,
         handler: handler,
       }).then(function (eventId) {
         var entry = { eventName: eventName, eventId: eventId, ipc: ipc };
