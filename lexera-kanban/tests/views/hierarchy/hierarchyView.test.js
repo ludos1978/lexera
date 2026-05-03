@@ -454,6 +454,24 @@ describe('hierarchy view sub-app', () => {
         .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]');
       const boardGrip = boardNode.querySelector('.tree-grip');
       expect(boardGrip.classList.contains('tree-grip-spacer')).toBe(true);
+
+      // Phase 2b-1: every entity inside an expanded board carries
+      // `draggable="true"` plus `data-drag-kind` and `data-drag-board-id`
+      // so a future drop handler can read source identity from the
+      // dragstart event without walking the DOM. Boards themselves are
+      // not draggable (TreeView roots).
+      const draggableNodes = subtreeChildren.querySelectorAll('.tree-node[draggable="true"]');
+      expect(draggableNodes.length).toBeGreaterThanOrEqual(4);
+      const dragKinds = Array.from(draggableNodes)
+        .map((n) => n.getAttribute('data-drag-kind'));
+      expect(dragKinds).toContain('row');
+      expect(dragKinds).toContain('stack');
+      expect(dragKinds).toContain('column');
+      expect(dragKinds).toContain('card');
+      const boardIds = Array.from(draggableNodes)
+        .map((n) => n.getAttribute('data-drag-board-id'));
+      expect(boardIds.every((id) => id === 'b1')).toBe(true);
+      expect(boardNode.getAttribute('draggable')).not.toBe('true');
     });
 
     // Regression 2026-05-03: rows / stacks / columns inside an expanded

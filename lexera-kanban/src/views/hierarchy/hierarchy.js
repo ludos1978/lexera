@@ -79,30 +79,46 @@
   }
   // Phase 2a: row / stack / column / card nodes carry the canonical
   // TreeView drag grip — same SVG affordance the dashboard, files
-  // panel, and main board sidebar use. Actual drop wiring (Phase 2b)
-  // will read source/target ids from this same TreeView markup.
-  function buildCardNode(card) {
+  // panel, and main board sidebar use.
+  // Phase 2b-1: also mark the `.tree-node` `draggable="true"` so the
+  // browser fires native dragstart events. The drop wiring lands in
+  // 2b-2; this slice only enables the source half.
+  function dragAttrs(boardId, kind) {
+    return {
+      draggable: 'true',
+      'data-drag-kind': kind,
+      'data-drag-board-id': boardId
+    };
+  }
+  function buildCardNode(card, ctx) {
     return { id: card.id || null, label: nodeLabel(card), type: 'card',
              children: null, expanded: false, hasToggle: false, grip: true,
-             gripTitle: 'Drag card to reorder' };
+             gripTitle: 'Drag card to reorder',
+             attrs: dragAttrs(ctx.boardId, 'card') };
   }
-  function buildColumnNode(column) {
+  function buildColumnNode(column, ctx) {
     var cards = Array.isArray(column.cards) ? column.cards : [];
     return { id: column.id || null, label: nodeLabel(column), type: 'column',
-             children: cards.map(buildCardNode), expanded: true, grip: true,
-             gripTitle: 'Drag column to reorder' };
+             children: cards.map(function (c) { return buildCardNode(c, ctx); }),
+             expanded: true, grip: true,
+             gripTitle: 'Drag column to reorder',
+             attrs: dragAttrs(ctx.boardId, 'column') };
   }
-  function buildStackNode(stack) {
+  function buildStackNode(stack, ctx) {
     var cols = Array.isArray(stack.columns) ? stack.columns : [];
     return { id: stack.id || null, label: nodeLabel(stack), type: 'stack',
-             children: cols.map(buildColumnNode), expanded: true, grip: true,
-             gripTitle: 'Drag stack to reorder' };
+             children: cols.map(function (c) { return buildColumnNode(c, ctx); }),
+             expanded: true, grip: true,
+             gripTitle: 'Drag stack to reorder',
+             attrs: dragAttrs(ctx.boardId, 'stack') };
   }
-  function buildRowNode(row) {
+  function buildRowNode(row, ctx) {
     var stacks = Array.isArray(row.stacks) ? row.stacks : [];
     return { id: row.id || null, label: nodeLabel(row), type: 'row',
-             children: stacks.map(buildStackNode), expanded: true, grip: true,
-             gripTitle: 'Drag row to reorder' };
+             children: stacks.map(function (s) { return buildStackNode(s, ctx); }),
+             expanded: true, grip: true,
+             gripTitle: 'Drag row to reorder',
+             attrs: dragAttrs(ctx.boardId, 'row') };
   }
   function buildPlaceholderNode(text) {
     return { id: null, label: text, type: 'placeholder',
@@ -114,9 +130,10 @@
     var children = [];
     if (isExpanded) {
       var hierarchy = boardHierarchies[boardId];
+      var ctx = { boardId: boardId };
       if (Array.isArray(hierarchy)) {
         children = hierarchy.length > 0
-          ? hierarchy.map(buildRowNode)
+          ? hierarchy.map(function (r) { return buildRowNode(r, ctx); })
           : [buildPlaceholderNode('(empty board)')];
       } else if (hierarchy === 'error') {
         children = [buildPlaceholderNode('Failed to load board structure')];
