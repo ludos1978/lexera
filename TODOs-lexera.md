@@ -24,6 +24,11 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 - [ ] the log viewer is invisible in the folded state!
 
 - [ ] the kanban boards in the workspace viewer must be unfoldable and show the title of each element. it the elements (row, stack, column, cards) must be re-orderable, can be dragged between boards in the workspace and also into kanban boards, it must also be possible to drag elements from kanban boards into the workspace hierarchy!
+  - [x] (done) Phase 1 — workspaces sub-app: caret per board, lazy `getBoardHierarchy` fetch, nested row/stack/column/card titles. (commit a5c602f2)
+  - [ ] Phase 1b — same caret + nested render in the hierarchy sub-app (still flat-list there).
+  - [ ] Phase 2 — re-order rows / stacks / columns / cards within a single board via drag.
+  - [ ] Phase 3 — drag elements between boards in the workspace tree.
+  - [ ] Phase 4 — drag elements from a kanban board into the workspace tree (and back).
 
 - [x] (done) analyze the whole application structure. detect the used architectural code structures and check if they fit the puprpose. analyze if the code strcture could be improved by restructuring and cleanup. keep the code as simple as needed while making sure it's fulfills all requirements! verify that we apply coding structure rules.
 
