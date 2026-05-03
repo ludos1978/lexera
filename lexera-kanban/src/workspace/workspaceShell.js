@@ -245,23 +245,12 @@
   }
 
   function getBoardMetaLabel(meta) {
-    if (!meta) return 'Untitled';
-    // Prefer the parsed board title (BoardInfo.title — set by
-    // build_board_summary in lexera-core/storage/local.rs from the
-    // markdown's H1 / first heading). Fall back to the filename
-    // without its `.md` extension when no title was parsed, and only
-    // surface the raw board id (hex) as a last resort. The previous
-    // "Title (Filename.md)" composite read as "wrong title" because
-    // the filename half is redundant for the typical case where the
-    // file is named after its title — and visually misleading when
-    // the filename diverges from the parsed title (e.g. when a file
-    // has been renamed but the H1 hasn't, or vice-versa).
-    var title = String(meta.title || '').trim();
-    if (title) return title;
-    var fileName = getDisplayNameFromPath(meta.filePath || '');
-    if (fileName) return fileName.replace(/\.md$/i, '');
-    var id = String(meta.id || '').trim();
-    return id || 'Untitled';
+    // Delegate to the canonical resolver in `titleHelpers.js` so the
+    // workspace shell tab headers, the in-board pane title
+    // (`boardHeader.js`), and the workspaces / hierarchy sub-apps
+    // all share one resolver — the same board ALWAYS shows the
+    // same label across every surface, no priority-chain drift.
+    return window.LexeraTitleHelpers.resolveBoardLabel(meta);
   }
 
   function getEmbeddedUrlForTab(tab) {

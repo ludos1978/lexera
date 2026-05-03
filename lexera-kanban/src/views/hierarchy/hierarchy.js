@@ -14,27 +14,11 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Same priority chain as `app.js` `getBoardDisplayTitle`: parsed
-  // `title` (markdown H1 — `BoardInfo.title` set by lexera-core's
-  // `build_board_summary`) → filename basename without `.md` → the
-  // legacy `name` field → `'(untitled)'`. Without the filename
-  // fallback, boards whose markdown file has no H1 collapse to
-  // `(untitled)` even though their file has a meaningful name.
-  function basenameWithoutMd(filePath) {
-    var raw = String(filePath || '').trim();
-    if (!raw) return '';
-    var stripped = raw.split(/[\\/]/).filter(Boolean).pop() || '';
-    return stripped.replace(/\.md$/i, '');
-  }
+  // Delegate to the canonical resolver in `titleHelpers.js` so the
+  // hierarchy sub-app, workspaces sub-app, in-board pane title, and
+  // workspace shell tabs all show the SAME label for the same board.
   function resolveBoardLabel(board) {
-    if (!board) return '(untitled)';
-    var title = String(board.title || '').trim();
-    if (title) return title;
-    var fileName = basenameWithoutMd(board.filePath || board.file_path || '');
-    if (fileName) return fileName;
-    var name = String(board.name || '').trim();
-    if (name) return name;
-    return '(untitled)';
+    return window.LexeraTitleHelpers.resolveBoardLabel(board);
   }
 
   var statusEl = document.getElementById('status');

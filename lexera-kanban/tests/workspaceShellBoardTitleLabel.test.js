@@ -1,23 +1,16 @@
-// Workspace shell tab-title resolver — board title labelling contract.
+// Workspace shell tab-title resolver — delegation contract.
 //
-// `workspaceShell.js`'s `getBoardMetaLabel(meta)` decides what shows
-// on a board tab header. User report 2026-05-03: "the board title in
-// the workspace window doesnt show the right title!". Two issues:
+// The shell's `getBoardMetaLabel(meta)` no longer holds its own
+// fallback chain — it delegates to `LexeraTitleHelpers.resolveBoardLabel`
+// in `titleHelpers.js` so this surface, the in-board pane title
+// (`boardHeader.js`), and the workspaces / hierarchy sub-apps ALL
+// produce the same label for the same board. (User requirement
+// 2026-05-03: "the title should be everywhere the same!".)
 //
-//   1. The previous shape returned `"Title (Filename.md)"` whenever
-//      both differed — visually noisy when the filename adds nothing
-//      (the typical case where the file is named after its title)
-//      and misleading when the filename diverges (a renamed file
-//      whose H1 hasn't been updated, or vice-versa).
-//   2. The fallback chain ended at `meta.id` — the raw hex board id —
-//      which appears in the UI as a 12-char hex string and reads as
-//      "wrong title" rather than "no title".
-//
-// Fix (this file pins it):
-//   - Prefer `meta.title` alone (parsed by lexera-core's
-//     `build_board_summary` from the board's H1).
-//   - Fall back to `meta.filePath`'s basename, stripping `.md`.
-//   - Only fall back to `meta.id` as the last resort.
+// The actual priority chain is tested at the source-of-truth in
+// `titleHelpersBoardLabel.test.js` — this file just pins the
+// delegation so a future refactor can't reintroduce a divergent
+// inline copy.
 
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -30,7 +23,6 @@ const workspaceShellJs = readFileSync(
   'utf8'
 );
 
-// Strip line comments so the contract regexes match only ACTUAL code.
 function codeOnly(text) {
   return text.split('\n').map(function (line) {
     var idx = line.indexOf('//');
@@ -43,39 +35,27 @@ const code = codeOnly(workspaceShellJs);
 function fnSlice(name) {
   var start = code.indexOf('function ' + name);
   if (start === -1) throw new Error('function not found: ' + name);
-  // Find the next top-level function definition.
   var nextFn = code.indexOf('\n  function ', start + 1);
   return code.substring(start, nextFn === -1 ? code.length : nextFn);
 }
 
-describe('getBoardMetaLabel — title resolution', () => {
+describe('workspaceShell.getBoardMetaLabel — delegates to LexeraTitleHelpers', () => {
   const slice = fnSlice('getBoardMetaLabel');
 
-  it('the previous "Title (Filename)" composite is gone', () => {
-    // Specifically, no concatenation of `title + ' (' + fileName + ')'`.
-    expect(slice).not.toMatch(/title\s*\+\s*['"]\s*\(\s*['"]\s*\+\s*fileName/);
+  it('delegates to window.LexeraTitleHelpers.resolveBoardLabel', () => {
+    expect(slice).toMatch(/window\.LexeraTitleHelpers\.resolveBoardLabel\(meta\)/);
   });
 
-  it('returns meta.title alone when it exists', () => {
-    // `if (title) return title;` — title alone is the primary path.
-    expect(slice).toMatch(/if\s*\(\s*title\s*\)\s*return\s+title/);
+  it('does NOT inline its own fallback chain anymore', () => {
+    // The old inline implementation read meta.title / meta.filePath /
+    // meta.id directly. After delegation, the only reference to
+    // `meta` should be passing it to the helper.
+    expect(slice).not.toMatch(/meta\.title\s*\|\|/);
+    expect(slice).not.toMatch(/meta\.filePath/);
+    expect(slice).not.toMatch(/meta\.id/);
   });
 
-  it('falls back to filePath basename without the .md extension', () => {
-    // The filename branch strips `.md` (case-insensitive).
-    expect(slice).toMatch(/getDisplayNameFromPath\(\s*meta\.filePath\s*\|\|\s*['"]['"]\)/);
-    expect(slice).toMatch(/replace\(\s*\/\\\.md\$\/i\s*,\s*['"]['"]\)/);
-  });
-
-  it('only surfaces the raw board id as a last resort', () => {
-    // The id fallback comes after both title and fileName paths.
-    var titleIdx = slice.search(/if\s*\(\s*title\s*\)\s*return\s+title/);
-    var idIdx = slice.search(/meta\.id/);
-    expect(titleIdx).toBeGreaterThan(-1);
-    expect(idIdx).toBeGreaterThan(titleIdx);
-  });
-
-  it('returns "Untitled" when meta is missing entirely', () => {
-    expect(slice).toMatch(/if\s*\(\s*!meta\s*\)\s*return\s+['"]Untitled['"]/);
+  it('does NOT compose "Title (Filename.md)" — that pattern is fully gone', () => {
+    expect(slice).not.toMatch(/title\s*\+\s*['"]\s*\(\s*['"]\s*\+/);
   });
 });

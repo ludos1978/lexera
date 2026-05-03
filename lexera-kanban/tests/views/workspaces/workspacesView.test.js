@@ -9,8 +9,17 @@ const source = readFileSync(
   resolve(__dirname, '..', '..', '..', 'src', 'views', 'workspaces', 'workspaces.js'),
   'utf8'
 );
+// workspaces.js delegates board-label resolution to the shared
+// `LexeraTitleHelpers` global (registered by `titleHelpers.js`).
+// Load it into the test window before workspaces.js runs.
+const titleHelpersSource = readFileSync(
+  resolve(__dirname, '..', '..', '..', 'src', 'titleHelpers.js'),
+  'utf8'
+);
 
 function loadWorkspacesView(window) {
+  const helpersFactory = new Function('window', 'globalThis', titleHelpersSource);
+  helpersFactory(window, window);
   const factory = new Function('window', 'document', 'LexeraSubApp', source);
   factory(window, window.document, window.LexeraSubApp);
 }
@@ -180,8 +189,8 @@ describe('workspaces view sub-app', () => {
     expect(items.length).toBe(4);
     expect(items[0].textContent).toBe('Has title only');
     expect(items[1].textContent).toBe('Has name only (legacy)');
-    expect(items[2].textContent).toBe('(untitled)');
-    expect(items[3].textContent).toBe('(untitled)');
+    expect(items[2].textContent).toBe('Untitled');
+    expect(items[3].textContent).toBe('Untitled');
   });
 
   // ── User-interaction API exercise ────────────────────────────────

@@ -25,6 +25,13 @@ function makeAttrNode(attrs, rect) {
 describe('board header creation target synthesis', () => {
   it('renders a header slot for the export processes control beside Export', () => {
     document.body.innerHTML = '<div id="board-header" class="board-header"></div>';
+    // boardHeader.renderBoardHeader delegates the file/title label to
+    // window.LexeraTitleHelpers.resolveBoardLabel, so titleHelpers.js
+    // must be loaded into the same window first.
+    loadIIFE('titleHelpers.js', 'LexeraTitleHelpers', {
+      window: window,
+      globalThis: window
+    });
     const BoardHeader = loadIIFE('board/boardHeader.js', 'LexeraBoardHeader', {
       window: window,
       document: document

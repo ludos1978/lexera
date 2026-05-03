@@ -178,7 +178,11 @@ function createShellHarness() {
   window.document = document;
   const mainContent = createElement('main');
   body.appendChild(mainContent);
-  const shell = loadIIFE(['workspace/layoutTree.js', 'workspace/boardHost.js', 'workspace/panelHost.js', 'workspace/multiviewWebview.js', 'workspace/messageBridge.js', 'workspace/panelDefinitions.js', 'workspace/treeRegistry.js', 'workspace/layoutPersistence.js', 'workspace/tabDragController.js', 'workspace/workspaceShell.js'], 'window.LexeraWorkspaceShell', {
+  // workspaceShell.js delegates board-label resolution to the shared
+  // titleHelpers global, so the loader must include it. Loading
+  // titleHelpers FIRST registers `window.LexeraTitleHelpers`; the
+  // workspace shell's `getBoardMetaLabel` reads it at call time.
+  const shell = loadIIFE(['titleHelpers.js', 'workspace/layoutTree.js', 'workspace/boardHost.js', 'workspace/panelHost.js', 'workspace/multiviewWebview.js', 'workspace/messageBridge.js', 'workspace/panelDefinitions.js', 'workspace/treeRegistry.js', 'workspace/layoutPersistence.js', 'workspace/tabDragController.js', 'workspace/workspaceShell.js'], 'window.LexeraWorkspaceShell', {
     window,
     document,
     console: { log() {}, warn() {}, error() {}, info() {} },

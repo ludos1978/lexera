@@ -12,30 +12,13 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Resolve the user-visible label for a board entry from the
-  // catalog. Same priority chain as `app.js` `getBoardDisplayTitle`:
-  // parsed `title` (the markdown H1, set by lexera-core's
-  // `build_board_summary`) → filename basename without `.md` → the
-  // legacy `name` field (still accepted as a fallback for older
-  // payload shapes) → `'(untitled)'`. The filename fallback matters:
-  // many board files have no H1 yet, so without it every such row
-  // collapsed to `(untitled)` even though the file had a meaningful
-  // name.
-  function basenameWithoutMd(filePath) {
-    var raw = String(filePath || '').trim();
-    if (!raw) return '';
-    var stripped = raw.split(/[\\/]/).filter(Boolean).pop() || '';
-    return stripped.replace(/\.md$/i, '');
-  }
+  // Delegate to the canonical resolver in `titleHelpers.js`. This
+  // sub-app, the in-board pane title (`boardHeader.js`), the
+  // workspace shell tab headers (`workspaceShell.js`), and the
+  // hierarchy sub-app all share that one resolver — so the same
+  // board ALWAYS shows the same label across every surface.
   function resolveBoardLabel(b) {
-    if (!b) return '(untitled)';
-    var title = String(b.title || '').trim();
-    if (title) return title;
-    var fileName = basenameWithoutMd(b.filePath || b.file_path || '');
-    if (fileName) return fileName;
-    var name = String(b.name || '').trim();
-    if (name) return name;
-    return '(untitled)';
+    return window.LexeraTitleHelpers.resolveBoardLabel(b);
   }
 
   var statusEl = document.getElementById('status');

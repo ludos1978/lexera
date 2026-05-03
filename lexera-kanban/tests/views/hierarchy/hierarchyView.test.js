@@ -9,8 +9,16 @@ const source = readFileSync(
   resolve(__dirname, '..', '..', '..', 'src', 'views', 'hierarchy', 'hierarchy.js'),
   'utf8'
 );
+// hierarchy.js delegates board-label resolution to the shared
+// `LexeraTitleHelpers` global (registered by `titleHelpers.js`).
+const titleHelpersSource = readFileSync(
+  resolve(__dirname, '..', '..', '..', 'src', 'titleHelpers.js'),
+  'utf8'
+);
 
 function loadHierarchyView(window) {
+  const helpersFactory = new Function('window', 'globalThis', titleHelpersSource);
+  helpersFactory(window, window);
   const factory = new Function('window', 'document', 'LexeraSubApp', source);
   factory(window, window.document, window.LexeraSubApp);
 }
