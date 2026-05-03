@@ -1,6 +1,18 @@
 (function () {
   'use strict';
 
+  function getOwnWindowLabel() {
+    try {
+      return new URLSearchParams(window.location.search || '').get('windowLabel') || 'main';
+    } catch (_) { return 'main'; }
+  }
+
+  function isEventForThisWindow(event) {
+    var source = event && event.payload && event.payload._sourceWindow;
+    if (!source) return true;
+    return source === getOwnWindowLabel();
+  }
+
   function tauriRuntime() {
     return (typeof window !== 'undefined' && window.__TAURI__) || null;
   }
@@ -40,6 +52,7 @@
   }
 
   function handleWorkspacesLoaded(event, handlers) {
+    if (!isEventForThisWindow(event)) return false;
     var payload = normalizeWorkspacesPayload(event);
     if (!handlers || typeof handlers.onWorkspacesLoaded !== 'function') return false;
     handlers.onWorkspacesLoaded(payload.workspaces, payload.defaultWorkspaceId);
@@ -47,8 +60,8 @@
   }
 
   function handleBoardMutation(event, handlers) {
+    if (!isEventForThisWindow(event)) return false;
     var payload = normalizeBoardMutationPayload(event);
-    if (!handlers) return false;
     if (payload.kind === 'added' && typeof handlers.onBoardAdded === 'function') {
       handlers.onBoardAdded();
       return true;
@@ -65,6 +78,7 @@
   }
 
   function handleRenderAppsConfigSaved(event, handlers) {
+    if (!isEventForThisWindow(event)) return false;
     var payload = normalizeRenderAppsConfigPayload(event);
     if (!handlers || typeof handlers.onRenderAppsConfigSaved !== 'function') return false;
     handlers.onRenderAppsConfigSaved(payload.values);

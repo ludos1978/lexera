@@ -678,22 +678,37 @@
   }
 
   function navigate(payload) {
+    var navPayload = Object.assign({}, payload || {});
+    if (!navPayload._sourceWindow) {
+      try {
+        navPayload._sourceWindow = new URLSearchParams(window.location.search || '').get('windowLabel') || 'main';
+      } catch (_) { navPayload._sourceWindow = 'main'; }
+    }
     var target = getHostWindowLabel();
     if (target) {
       return invoke('multiview_emit_to', {
         target: target,
         event: 'multiview-navigate',
-        payload: payload || {}
+        payload: navPayload
       });
     }
     return invoke('multiview_broadcast', {
       event: 'multiview-navigate',
-      payload: payload || {}
+      payload: navPayload
     });
   }
 
   function broadcast(event, payload) {
-    return invoke('multiview_broadcast', { event: event, payload: payload || {} });
+    var enriched = Object.assign({}, payload || {});
+    if (!enriched._sourceWindow) {
+      try {
+        var params = new URLSearchParams(window.location.search || '');
+        enriched._sourceWindow = params.get('windowLabel') || 'main';
+      } catch (_) {
+        enriched._sourceWindow = 'main';
+      }
+    }
+    return invoke('multiview_broadcast', { event: event, payload: enriched });
   }
 
   window.LexeraSubApp = {
