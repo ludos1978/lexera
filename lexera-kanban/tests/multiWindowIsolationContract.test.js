@@ -88,6 +88,16 @@ describe('Pattern 2: lifecycle commands resolve windows dynamically (no hardcode
       expect(slice).not.toMatch(/app\.get_window\("main"\)/);
     });
   });
+
+  it('multiview_list filters to the caller window — prevents the LRU eviction cascade between windows', () => {
+    // The shell `lifecycle.js` LRU evictor consumes this list. If it
+    // returns sibling-window webviews, eviction targets the wrong
+    // window → destroy/respawn ping-pong (fixed in 6ba0deaa).
+    var slice = fnSlice('multiview_list');
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    expect(slice).toMatch(/caller_window\s*\.\s*webviews\(\)/);
+    expect(slice).toMatch(/window_labels\.contains\(&m\.label\)/);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
