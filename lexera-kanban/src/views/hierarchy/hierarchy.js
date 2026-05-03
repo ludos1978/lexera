@@ -1,9 +1,19 @@
-// Hierarchy sub-app — grouped workspace navigation panel (Workstream P).
+// Hierarchy sub-app — workspace navigation panel.
 //
-// This webview replaces the in-shell `.sidebar` board-list rendering.
-// It now groups local boards by workspace with local expand/collapse
-// state, while richer tree internals (stacks/columns/cards, drag/drop,
-// inline rename, context menus) still remain in `src/board/boardList.js`.
+// The whole panel renders as a single TreeView (treeView.js) — same
+// component the dashboard, files panel, and main board sidebar use, so
+// every hierarchical surface in the app shares one visual treatment.
+// Tree shape (boards are the top-level roots — the workspace name lives
+// in the panel header, not inside the tree):
+//
+//   board (root, type='board')          ← lazy-loads its children on expand
+//   └── row (type='row')
+//       └── stack (type='stack')
+//           └── column (type='column')
+//               └── card (type='card')
+//
+// Per-board hierarchy (rows/stacks/columns/cards) is fetched once via
+// `LexeraApi.getBoardHierarchy(id)` and cached for the panel lifetime.
 
 (function () {
   'use strict';
@@ -14,9 +24,6 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Delegate to the canonical resolver in `titleHelpers.js` so the
-  // hierarchy sub-app, workspaces sub-app, in-board pane title, and
-  // workspace shell tabs all show the SAME label for the same board.
   function resolveBoardLabel(board) {
     return window.LexeraTitleHelpers.resolveBoardLabel(board);
   }
@@ -30,16 +37,10 @@
   var activeBoardId = null;
   var REMOTE_WORKSPACE_ID = '__remote_boards__';
   var REMOTE_WORKSPACE_NAME = 'Remote Boards';
-  // Each window owns exactly one workspace, set by the catalog
-  // snapshot. Null only during pre-hydration.
   var selectedWorkspaceId = null;
   var latestCatalog = null;
-  var expandedWorkspaceIds = {};
-
-  // Per-board fold state + hierarchy cache (Phase 1b of "boards must
-  // be unfoldable, show titles", TODOs-lexera.md). Mirrors the
-  // workspaces sub-app implementation. `boardHierarchies[id]` is one
-  // of: undefined | 'loading' | 'error' | KanbanRow[].
+  // Per-board fold state + hierarchy cache. `boardHierarchies[id]` is
+  // one of: undefined | 'loading' | 'error' | KanbanRow[].
   var expandedBoardIds = {};
   var boardHierarchies = {};
 
@@ -70,125 +71,86 @@
     return [];
   }
 
-  function refreshActiveHighlight() {
-    var items = document.querySelectorAll('li.board-item');
-    for (var i = 0; i < items.length; i++) {
-      items[i].classList.toggle('is-active', items[i].dataset.boardId === activeBoardId);
-    }
-    var wsGroups = document.querySelectorAll('button.ws-group-header');
-    for (var j = 0; j < wsGroups.length; j++) {
-      wsGroups[j].classList.toggle('is-active', wsGroups[j].dataset.workspaceId === selectedWorkspaceId);
-    }
-  }
-
-  function buildWorkspaceGroups(boards, remoteBoards, workspaces, workspaceId) {
-    var groups = [];
-    var normalizedWorkspaceId = String(workspaceId || '');
-    if (!normalizedWorkspaceId) return groups;
-    if (normalizedWorkspaceId === REMOTE_WORKSPACE_ID) {
-      groups.push({
-        id: REMOTE_WORKSPACE_ID,
-        name: REMOTE_WORKSPACE_NAME,
-        boards: remoteBoards || []
-      });
-      return groups;
-    }
-    var workspaceById = {};
-    for (var i = 0; i < workspaces.length; i++) {
-      if (workspaces[i] && workspaces[i].id) workspaceById[workspaces[i].id] = workspaces[i];
-    }
-    var selectedWorkspace = workspaceById[normalizedWorkspaceId];
-    if (!selectedWorkspace) return groups;
-    groups.push({
-      id: selectedWorkspace.id,
-      name: selectedWorkspace.name || '(untitled)',
-      boards: boards.filter(function (board) {
-        return getBoardWorkspaceIds(board).indexOf(normalizedWorkspaceId) >= 0;
-      })
-    });
-    return groups;
-  }
-
-  function isWorkspaceExpanded(groupId, workspaceId) {
-    if (Object.prototype.hasOwnProperty.call(expandedWorkspaceIds, groupId)) {
-      return expandedWorkspaceIds[groupId] === true;
-    }
-    return true;
-  }
-
-  // Build TreeView nodes from a kanban hierarchy item — same shape the
-  // dashboard / files panel / main board sidebar feed into TreeView so
-  // every hierarchical surface in the app shares one visual treatment.
+  // ── TreeView node builders ──────────────────────────────────────
   function nodeLabel(item) {
     var label = window.LexeraTitleHelpers.resolveBoardLabel(item);
     if (label === 'Untitled') label = item.title || item.name || '';
     return label || '(no title)';
   }
   function buildCardNode(card) {
-    return {
-      id: card.id || null,
-      label: nodeLabel(card),
-      type: 'card',
-      children: null,
-      expanded: false,
-      hasToggle: false,
-      grip: false
-    };
+    return { id: card.id || null, label: nodeLabel(card), type: 'card',
+             children: null, expanded: false, hasToggle: false, grip: false };
   }
   function buildColumnNode(column) {
     var cards = Array.isArray(column.cards) ? column.cards : [];
-    return {
-      id: column.id || null,
-      label: nodeLabel(column),
-      type: 'column',
-      children: cards.map(buildCardNode),
-      expanded: true,
-      grip: false
-    };
+    return { id: column.id || null, label: nodeLabel(column), type: 'column',
+             children: cards.map(buildCardNode), expanded: true, grip: false };
   }
   function buildStackNode(stack) {
     var cols = Array.isArray(stack.columns) ? stack.columns : [];
-    return {
-      id: stack.id || null,
-      label: nodeLabel(stack),
-      type: 'stack',
-      children: cols.map(buildColumnNode),
-      expanded: true,
-      grip: false
-    };
+    return { id: stack.id || null, label: nodeLabel(stack), type: 'stack',
+             children: cols.map(buildColumnNode), expanded: true, grip: false };
   }
   function buildRowNode(row) {
     var stacks = Array.isArray(row.stacks) ? row.stacks : [];
+    return { id: row.id || null, label: nodeLabel(row), type: 'row',
+             children: stacks.map(buildStackNode), expanded: true, grip: false };
+  }
+  function buildPlaceholderNode(text) {
+    return { id: null, label: text, type: 'placeholder',
+             children: null, expanded: false, hasToggle: false, grip: false };
+  }
+  function buildBoardNode(board) {
+    var boardId = board.id || '';
+    var isExpanded = !!expandedBoardIds[boardId];
+    var children = [];
+    if (isExpanded) {
+      var hierarchy = boardHierarchies[boardId];
+      if (Array.isArray(hierarchy)) {
+        children = hierarchy.length > 0
+          ? hierarchy.map(buildRowNode)
+          : [buildPlaceholderNode('(empty board)')];
+      } else if (hierarchy === 'error') {
+        children = [buildPlaceholderNode('Failed to load board structure')];
+      } else {
+        children = [buildPlaceholderNode('Loading…')];
+      }
+    }
     return {
-      id: row.id || null,
-      label: nodeLabel(row),
-      type: 'row',
-      children: stacks.map(buildStackNode),
-      expanded: true,
-      grip: false
+      id: 'board:' + boardId,
+      label: nodeLabel(board),
+      type: 'board',
+      // Always show a toggle so the user knows the board is expandable
+      // before the first lazy fetch fills children.
+      hasToggle: true,
+      expanded: isExpanded,
+      grip: false,
+      children: children,
+      attrs: {
+        'data-board-id': boardId,
+        'data-tree-target': 'board'
+      }
     };
   }
-  function renderBoardTree(rows) {
-    var container = document.createElement('div');
-    container.className = 'board-tree-container';
-    if (!rows || !rows.length) {
-      var empty = document.createElement('div');
-      empty.className = 'tree-empty hierarchical-empty';
-      empty.textContent = '(empty board)';
-      container.appendChild(empty);
-      return container;
-    }
-    if (window.TreeView && typeof window.TreeView.render === 'function') {
-      window.TreeView.render(container, rows.map(buildRowNode), { escapeHtml: escapeHtml });
-    }
-    return container;
+
+  function selectBoardsForWorkspace(boards, remoteBoards, workspaceId) {
+    var normalized = String(workspaceId || '');
+    if (!normalized) return [];
+    if (normalized === REMOTE_WORKSPACE_ID) return remoteBoards || [];
+    return (boards || []).filter(function (board) {
+      return getBoardWorkspaceIds(board).indexOf(normalized) >= 0;
+    });
   }
-  function renderBoardTreePlaceholder(text) {
-    var div = document.createElement('div');
-    div.className = 'board-tree-container board-tree-placeholder';
-    div.textContent = text;
-    return div;
+
+  function refreshActiveHighlight() {
+    if (!localBoardsEl) return;
+    var nodes = localBoardsEl.querySelectorAll('.tree-node[data-tree-target="board"]');
+    for (var i = 0; i < nodes.length; i++) {
+      var bid = nodes[i].getAttribute('data-board-id') || '';
+      nodes[i].classList.toggle('is-active', bid === activeBoardId);
+    }
   }
+
   function fetchBoardHierarchy(boardId) {
     var api = window.LexeraApi;
     if (!api || typeof api.getBoardHierarchy !== 'function') {
@@ -198,16 +160,10 @@
     boardHierarchies[boardId] = 'loading';
     api.getBoardHierarchy(boardId).then(function (data) {
       boardHierarchies[boardId] = (data && Array.isArray(data.rows)) ? data.rows : [];
-      if (latestCatalog) {
-        renderWorkspaceGroups(latestCatalog.boards || [], latestCatalog.remoteBoards || [], latestCatalog.workspaces || [], selectedWorkspaceId);
-        refreshActiveHighlight();
-      }
+      renderFromCatalog();
     }).catch(function () {
       boardHierarchies[boardId] = 'error';
-      if (latestCatalog) {
-        renderWorkspaceGroups(latestCatalog.boards || [], latestCatalog.remoteBoards || [], latestCatalog.workspaces || [], selectedWorkspaceId);
-        refreshActiveHighlight();
-      }
+      renderFromCatalog();
     });
   }
   function toggleBoardExpand(boardId) {
@@ -216,102 +172,59 @@
     if (nowExpanded && boardHierarchies[boardId] == null) {
       fetchBoardHierarchy(boardId);
     }
-    if (latestCatalog) {
-      renderWorkspaceGroups(latestCatalog.boards || [], latestCatalog.remoteBoards || [], latestCatalog.workspaces || [], selectedWorkspaceId);
-      refreshActiveHighlight();
+    renderFromCatalog();
+  }
+
+  function renderFromCatalog() {
+    var snap = latestCatalog || {};
+    renderTree(snap.boards || [], snap.remoteBoards || [], selectedWorkspaceId);
+    refreshActiveHighlight();
+  }
+
+  function renderTree(boards, remoteBoards, workspaceId) {
+    if (!localBoardsEl) return;
+    var workspaceBoards = selectBoardsForWorkspace(boards, remoteBoards, workspaceId);
+    if (localCountEl) localCountEl.textContent = '(' + workspaceBoards.length + ')';
+    localBoardsEl.innerHTML = '';
+    if (!workspaceBoards.length) {
+      var empty = document.createElement('div');
+      empty.className = 'hierarchical-empty empty';
+      empty.textContent = 'none';
+      localBoardsEl.appendChild(empty);
+      return;
+    }
+    if (window.TreeView && typeof window.TreeView.render === 'function') {
+      window.TreeView.render(
+        localBoardsEl,
+        workspaceBoards.map(buildBoardNode),
+        { escapeHtml: escapeHtml }
+      );
     }
   }
 
-  function renderWorkspaceGroups(boards, remoteBoards, workspaces, workspaceId) {
-    var groups = buildWorkspaceGroups(boards, remoteBoards, workspaces, workspaceId);
-    var visibleCount = groups.length ? groups[0].boards.length : 0;
-    localCountEl.textContent = '(' + visibleCount + ')';
-    if (!groups.length) {
-      localBoardsEl.innerHTML = '<li class="empty">none</li>';
-      return;
-    }
-    localBoardsEl.innerHTML = '';
-    groups.forEach(function (group) {
-      var wrapper = document.createElement('li');
-      var expanded = isWorkspaceExpanded(group.id, workspaceId);
-      wrapper.className = 'ws-group';
-      wrapper.setAttribute('data-workspace-group', group.id);
-
-      var header = document.createElement('button');
-      header.type = 'button';
-      header.className = 'ws-group-header';
-      header.dataset.workspaceId = group.id;
-      header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      header.innerHTML =
-        '<span class="ws-group-caret" aria-hidden="true">' + (expanded ? '▾' : '▸') + '</span>' +
-        '<span class="ws-group-name">' + escapeHtml(group.name) + '</span>' +
-        '<span class="ws-group-meta">' + escapeHtml(String(group.boards.length)) + '</span>';
-      header.addEventListener('click', function () {
-        expandedWorkspaceIds[group.id] = !isWorkspaceExpanded(group.id, workspaceId);
-        if (latestCatalog) {
-          renderWorkspaceGroups(latestCatalog.boards || [], latestCatalog.remoteBoards || [], latestCatalog.workspaces || [], selectedWorkspaceId);
-          refreshActiveHighlight();
+  // Single delegated click listener — keeps wiring simple even though
+  // the tree is rebuilt on every state change.
+  if (localBoardsEl && !localBoardsEl.__hierarchyClickBound) {
+    localBoardsEl.addEventListener('click', function (e) {
+      var toggle = e.target.closest && e.target.closest('.tree-toggle');
+      var node = e.target.closest && e.target.closest('.tree-node');
+      if (!node || !localBoardsEl.contains(node)) return;
+      var target = node.getAttribute('data-tree-target') || '';
+      if (toggle) {
+        // Toggle path — never navigates open the board.
+        if (target === 'board') {
+          var bid = node.getAttribute('data-board-id') || '';
+          if (bid) toggleBoardExpand(bid);
         }
-      });
-      wrapper.appendChild(header);
-
-      var list = document.createElement('ul');
-      list.className = 'board-list nested' + (expanded ? '' : ' collapsed');
-      group.boards.forEach(function (board) {
-        var boardId = board.id || '';
-        var boardExpanded = !!expandedBoardIds[boardId];
-        var li = document.createElement('li');
-        li.className = 'board-item';
-        li.dataset.boardId = boardId;
-        var boardLabel = resolveBoardLabel(board);
-
-        var caret = document.createElement('button');
-        caret.type = 'button';
-        caret.className = 'board-caret';
-        caret.setAttribute('aria-expanded', boardExpanded ? 'true' : 'false');
-        caret.setAttribute('aria-label', boardExpanded ? 'Collapse board' : 'Expand board');
-        caret.textContent = boardExpanded ? '▾' : '▸';
-        caret.addEventListener('click', function (ev) {
-          ev.stopPropagation();
-          toggleBoardExpand(boardId);
-        });
-        li.appendChild(caret);
-
-        var nameSpan = document.createElement('span');
-        nameSpan.className = 'board-name';
-        nameSpan.textContent = boardLabel;
-        li.appendChild(nameSpan);
-
-        var idSpan = document.createElement('span');
-        idSpan.className = 'board-id';
-        idSpan.textContent = board.id ? board.id.substring(0, 8) : '';
-        li.appendChild(idSpan);
-
-        li.addEventListener('click', function () {
-          LexeraSubApp.navigate({ type: 'open-board', boardId: board.id });
-        });
-        list.appendChild(li);
-
-        if (boardExpanded) {
-          var hierarchy = boardHierarchies[boardId];
-          var subtreeHost = document.createElement('li');
-          subtreeHost.className = 'board-subtree';
-          subtreeHost.dataset.forBoardId = boardId;
-          if (hierarchy === 'loading') {
-            subtreeHost.appendChild(renderBoardTreePlaceholder('Loading…'));
-          } else if (hierarchy === 'error') {
-            subtreeHost.appendChild(renderBoardTreePlaceholder('Failed to load board structure'));
-          } else if (Array.isArray(hierarchy)) {
-            subtreeHost.appendChild(renderBoardTree(hierarchy));
-          } else {
-            subtreeHost.appendChild(renderBoardTreePlaceholder('Loading…'));
-          }
-          list.appendChild(subtreeHost);
-        }
-      });
-      wrapper.appendChild(list);
-      localBoardsEl.appendChild(wrapper);
+        return;
+      }
+      // Whole-row click on a board → navigate-open.
+      if (target === 'board') {
+        var rowBid = node.getAttribute('data-board-id') || '';
+        if (rowBid) LexeraSubApp.navigate({ type: 'open-board', boardId: rowBid });
+      }
     });
+    localBoardsEl.__hierarchyClickBound = true;
   }
 
   LexeraSubApp.init({
@@ -326,8 +239,7 @@
         selectedWorkspaceId = null;
       }
       viewModeEl.textContent = snap && snap.workspaceViewMode === 'manual' ? 'manual view' : 'follow active board';
-      renderWorkspaceGroups(snap.boards || [], snap.remoteBoards || [], snap.workspaces || [], selectedWorkspaceId);
-      refreshActiveHighlight();
+      renderFromCatalog();
       statusEl.textContent = 'connected';
     },
     onActiveBoard: function (boardId) {
@@ -341,12 +253,7 @@
 
   // ── Test API ──────────────────────────────────────────────────────
   // User-interaction surface for vitest + autoRun integration tests.
-  // Mirrors LexeraDashboardTestApi / LexeraWorkspacesTestApi: every
-  // operation drives the SAME DOM and event paths a real user does
-  // — no internal-state shortcuts. Tests that read collectState()
-  // see only what the user can see; tests that call clickBoard /
-  // clickWorkspace / clickWorkspaceGroupHeader trigger the same
-  // click events a mouse would.
+  // Drives the SAME DOM events a real user would.
   function dispatchClick(node) {
     if (!node) return false;
     var ev = typeof MouseEvent === 'function'
@@ -358,88 +265,72 @@
     node.dispatchEvent(ev);
     return true;
   }
-  function findBoardItem(rootEl, boardId) {
-    if (!rootEl) return null;
-    var items = rootEl.querySelectorAll('li.board-item');
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].dataset.boardId === String(boardId || '')) return items[i];
-    }
-    return null;
-  }
-  function findWorkspaceGroupHeader(groupId) {
+  function findBoardNode(boardId) {
     if (!localBoardsEl) return null;
-    var headers = localBoardsEl.querySelectorAll('button.ws-group-header');
-    for (var i = 0; i < headers.length; i++) {
-      if (headers[i].dataset.workspaceId === String(groupId || '')) return headers[i];
-    }
-    return null;
+    var sel = '.tree-node[data-tree-target="board"][data-board-id="' + String(boardId || '').replace(/"/g, '\\"') + '"]';
+    return localBoardsEl.querySelector(sel);
   }
-  function collectGroupState() {
+  function collectBoardItems() {
     if (!localBoardsEl) return [];
-    var groups = localBoardsEl.querySelectorAll('li.ws-group');
+    var nodes = localBoardsEl.querySelectorAll('.tree-node[data-tree-target="board"]');
     var out = [];
-    for (var i = 0; i < groups.length; i++) {
-      var header = groups[i].querySelector('button.ws-group-header');
-      var nested = groups[i].querySelector('ul.board-list.nested');
-      var boards = nested ? nested.querySelectorAll('li.board-item') : [];
-      var boardList = [];
-      for (var j = 0; j < boards.length; j++) {
-        var name = boards[j].querySelector('.board-name');
-        boardList.push({
-          id: boards[j].dataset.boardId || '',
-          label: name ? name.textContent : '',
-          active: boards[j].classList.contains('is-active')
-        });
-      }
+    for (var i = 0; i < nodes.length; i++) {
+      var labelEl = nodes[i].querySelector('.tree-label');
       out.push({
-        id: groups[i].getAttribute('data-workspace-group') || '',
-        name: header ? (header.querySelector('.ws-group-name') || {}).textContent || '' : '',
-        expanded: header ? header.getAttribute('aria-expanded') === 'true' : false,
-        active: header ? header.classList.contains('is-active') : false,
-        boards: boardList
-      });
-    }
-    return out;
-  }
-  function collectFlatBoardItems(rootEl) {
-    if (!rootEl) return [];
-    var items = rootEl.querySelectorAll('li.board-item');
-    var out = [];
-    for (var i = 0; i < items.length; i++) {
-      var name = items[i].querySelector('.board-name');
-      out.push({
-        id: items[i].dataset.boardId || '',
-        label: name ? name.textContent : '',
-        active: items[i].classList.contains('is-active')
+        id: nodes[i].getAttribute('data-board-id') || '',
+        label: labelEl ? labelEl.textContent : '',
+        active: nodes[i].classList.contains('is-active'),
+        expanded: nodes[i].getAttribute('aria-expanded') === 'true'
       });
     }
     return out;
   }
   window.LexeraHierarchyTestApi = {
     collectState: function () {
+      // Boards are the top-level tree roots — no workspace node anymore.
+      // The header (#title) shows the workspace name; tests can read
+      // `state.title` for that. `groups` is a single synthetic group
+      // wrapping the current workspace's boards so existing test calls
+      // continue to work.
+      var boards = collectBoardItems();
+      var groups = selectedWorkspaceId
+        ? [{
+            id: selectedWorkspaceId,
+            name: titleEl ? titleEl.textContent : '',
+            expanded: true,
+            active: true,
+            boards: boards
+          }]
+        : [];
       return {
         status: statusEl ? statusEl.textContent : '',
         title: titleEl ? titleEl.textContent : '',
         viewMode: viewModeEl ? viewModeEl.textContent : '',
         activeBoardId: activeBoardId,
         selectedWorkspaceId: selectedWorkspaceId,
-        groups: collectGroupState(),
+        groups: groups,
         remote: [],
         workspaces: []
       };
     },
     clickBoard: function (boardId, scope) {
       void scope;
-      return dispatchClick(findBoardItem(localBoardsEl, boardId));
+      // Click the board's tree-label — same DOM path a real click takes.
+      var node = findBoardNode(boardId);
+      if (!node) return false;
+      var label = node.querySelector('.tree-label') || node;
+      return dispatchClick(label);
     },
     clickWorkspace: function (workspaceId) {
       void workspaceId;
       return false;
     },
     clickWorkspaceGroupHeader: function (groupId) {
-      // Inline group header inside the local-boards tree — toggles
-      // expand/collapse without firing a navigate.
-      return dispatchClick(findWorkspaceGroupHeader(groupId));
+      // The workspace lives in the panel header, not inside the tree —
+      // there's nothing to toggle here. Kept on the API surface so
+      // callers don't need a feature check.
+      void groupId;
+      return false;
     }
   };
 })();

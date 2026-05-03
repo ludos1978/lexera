@@ -49,7 +49,7 @@ function createDom() {
           <main class="hierarchy-body">
             <section class="hierarchy-section">
               <h3 class="hierarchy-section-title">Workspace tree <span class="muted" id="local-count"></span></h3>
-              <ul class="board-list lexera-shared-board-list" id="local-boards"></ul>
+              <div class="board-list lexera-shared-board-list" id="local-boards" role="tree"></div>
             </section>
           </main>
         </div>
@@ -99,16 +99,19 @@ describe('hierarchy view sub-app', () => {
     expect(window.document.getElementById('local-count').textContent).toBe('(1)');
     expect(window.document.querySelector('#remote-boards')).toBeNull();
     expect(window.document.getElementById('local-boards').textContent).not.toContain('Remote Board');
-    // The single visible workspace group is the one this window owns
-    expect(window.document.querySelector('[data-workspace-group="ws-2"]')).toBeTruthy();
-    expect(window.document.querySelector('[data-workspace-group="ws-1"]')).toBeNull();
+    // Boards are TreeView roots — the workspace name lives in the panel
+    // header (#title), NOT as a tree node. Verify there is no workspace
+    // tree node at all.
+    expect(window.document.querySelector('.tree-node[data-tree-target="workspace"]')).toBeNull();
+    expect(window.document.querySelector('.tree-node[data-tree-target="board"][data-board-id="board-1"]')).toBeTruthy();
     // No workspace picker/list at all.
     expect(window.document.querySelector('#workspaces')).toBeNull();
     expect(window.document.querySelector('.ws-list')).toBeNull();
     expect(window.document.querySelector('[data-workspace-id="__all__"]')).toBeNull();
 
-    // Click the local board → open it
-    window.document.querySelector('#local-boards .board-item')
+    // Click the local board's label → open it. Whole-row click on a
+    // board node fires the same navigate path a real click does.
+    window.document.querySelector('#local-boards .tree-node[data-tree-target="board"] .tree-label')
       .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 
     expect(window.LexeraSubApp.navigate).toHaveBeenNthCalledWith(1, {
@@ -144,7 +147,7 @@ describe('hierarchy view sub-app', () => {
       viewWorkspace: { id: 'ws-1', name: 'Default' },
       workspaceViewMode: 'follow-active-board'
     });
-    const items = window.document.querySelectorAll('#local-boards .board-item .board-name');
+    const items = window.document.querySelectorAll('#local-boards .tree-node[data-tree-target="board"] .tree-label');
     const labels = Array.from(items).map((el) => el.textContent);
     expect(labels).toEqual(['Sprint Plan', 'Roadmap']);
     expect(window.document.getElementById('local-boards').textContent).not.toContain('(untitled)');
@@ -185,8 +188,8 @@ describe('hierarchy view sub-app', () => {
       workspaceViewMode: 'follow-active-board'
     });
 
-    const items = window.document.querySelectorAll('#local-boards .board-item');
-    const labels = Array.from(items).map((el) => el.querySelector('.board-name').textContent);
+    const items = window.document.querySelectorAll('#local-boards .tree-node[data-tree-target="board"]');
+    const labels = Array.from(items).map((el) => el.querySelector('.tree-label').textContent);
     expect(labels).toEqual(['Roadmap', 'Legacy Board', 'Canonical']);
     expect(labels).not.toContain('(untitled)');
     expect(labels).not.toContain('Stale');
@@ -301,10 +304,12 @@ describe('hierarchy view sub-app', () => {
       viewWorkspace: { id: 'ws-1', name: 'Default' }
     });
 
+    // Boards are the top-level TreeView roots now; the workspace lives
+    // in the panel header, not inside the tree, so there's no workspace
+    // node to toggle. The clickWorkspaceGroupHeader API is kept for
+    // backwards compat but always returns false.
     expect(window.LexeraHierarchyTestApi.collectState().groups[0].expanded).toBe(true);
-    expect(window.LexeraHierarchyTestApi.clickWorkspaceGroupHeader('ws-1')).toBe(true);
-    expect(window.LexeraHierarchyTestApi.collectState().groups[0].expanded).toBe(false);
-    // Toggling group must not fire a board/workspace navigate.
+    expect(window.LexeraHierarchyTestApi.clickWorkspaceGroupHeader('ws-1')).toBe(false);
     expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
   });
 
@@ -343,12 +348,13 @@ describe('hierarchy view sub-app', () => {
     });
   });
 
-  // ── Unfoldable boards (Phase 1b, TODOs 2026-05-03) ──────────────
-  // Each board row inside a workspace group now exposes a caret.
-  // Clicking the caret toggles a nested tree showing the board's
-  // rows / stacks / columns / cards using their parsed titles.
+  // ── Unfoldable boards (TODOs 2026-05-03) ────────────────────────
+  // The whole panel is one TreeView: workspace → boards → rows →
+  // stacks → columns → cards. Clicking a board's `.tree-toggle` lazily
+  // fetches its hierarchy and re-renders the tree with the new depth
+  // expanded; clicking its `.tree-label` navigates open the board.
   describe('unfoldable boards', () => {
-    it('renders a caret per board that does not navigate when clicked', () => {
+    it('renders a toggle per board that does not navigate when clicked', () => {
       const dom = createDom();
       const { window } = dom;
       let capturedOpts = null;
@@ -365,17 +371,22 @@ describe('hierarchy view sub-app', () => {
         activeWorkspaceId: 'ws-1'
       });
 
-      const caret = window.document.querySelector('#local-boards .board-item .board-caret');
-      expect(caret).toBeTruthy();
-      expect(caret.getAttribute('aria-expanded')).toBe('false');
+      const boardNode = window.document.querySelector(
+        '#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]'
+      );
+      expect(boardNode).toBeTruthy();
+      expect(boardNode.getAttribute('aria-expanded')).toBe('false');
+      const toggle = boardNode.querySelector('.tree-toggle');
+      expect(toggle).toBeTruthy();
 
-      caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
 
+      // Toggle click triggers the lazy fetch but never navigates open.
       expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
       expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledWith('b1');
     });
 
-    it('expanding a board renders rows / stacks / columns / cards as a nested tree', async () => {
+    it('expanding a board renders rows / stacks / columns / cards inside the same TreeView', async () => {
       const dom = createDom();
       const { window } = dom;
       let capturedOpts = null;
@@ -402,16 +413,22 @@ describe('hierarchy view sub-app', () => {
         activeWorkspaceId: 'ws-1'
       });
 
-      const caret = window.document.querySelector('#local-boards .board-item .board-caret');
-      caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      const toggle = window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]')
+        .querySelector('.tree-toggle');
+      toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 0));
 
-      // Subtree uses the shared TreeView (treeView.js) so the rendered
-      // markup matches every other hierarchical surface (dashboard,
-      // files panel, main board sidebar).
-      const tree = window.document.querySelector('#local-boards .board-subtree .tree-view');
-      expect(tree).toBeTruthy();
-      const labels = Array.from(tree.querySelectorAll('.tree-label')).map((n) => n.textContent);
+      // The whole panel is one TreeView. Walk down from the board node
+      // and assert that the row/stack/column/card subtree appears with
+      // canonical titles, in order.
+      const boardEntry = window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]')
+        .parentElement;
+      const subtreeChildren = boardEntry.querySelector('.tree-children');
+      expect(subtreeChildren).toBeTruthy();
+      const labels = Array.from(subtreeChildren.querySelectorAll('.tree-label'))
+        .map((n) => n.textContent);
       expect(labels).toEqual(['Backlog', 'Frontend', 'To do', 'Wire caret']);
     });
   });

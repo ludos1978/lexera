@@ -24,27 +24,17 @@ h3 {
 }
 .muted { color: var(--text-muted, #666); font-weight: 400; }
 
-ul.board-list { list-style: none; margin: 0; padding: 0; }
-li.board-item {
-  padding: 5px 8px;
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  user-select: none;
+/* The board list and every nested level are rendered by the shared
+ * TreeView (treeView.js) — same component the dashboard, files panel,
+ * and main board sidebar use. Layout, indent guides, toggles, and
+ * labels come from app.css's .tree-* rules; we don't restyle them
+ * locally so all surfaces stay visually identical. */
+.board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
-li.board-item {
-  cursor: pointer;
-}
-li.board-item:hover {
-  background: var(--bg-hover, #2a2a32);
-}
-li.board-item.is-active {
-  background: var(--bg-active, #094771);
-  color: var(--accent, #fff);
-}
-.board-name { flex: 1 1 auto; }
-.board-id, .current-workspace-id {
+.current-workspace-id {
   font-family: ui-monospace, monospace;
   font-size: 10px;
   color: var(--text-muted, #666);
@@ -59,45 +49,8 @@ li.board-item.is-active {
   color: var(--accent, #fff);
 }
 .current-workspace-name { flex: 1 1 auto; }
-li.empty {
+.hierarchical-empty.empty {
   padding: 4px 8px;
   color: var(--text-muted, #666);
   font-style: italic;
-}
-
-/* ── Unfoldable boards: caret + nested structure ─────────────────── */
-/* The nested tree itself is rendered by the shared TreeView (treeView.js)
- * — same component the dashboard, files panel, and main board sidebar use,
- * so the layout / indent guides / toggles look identical across surfaces.
- * Only the caret on the board row is local. */
-.board-caret {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 0;
-  color: var(--text-muted, #888);
-  cursor: pointer;
-  font-size: 10px;
-  padding: 0;
-  border-radius: 2px;
-}
-.board-caret:hover {
-  background: var(--bg-hover, #2a2a32);
-  color: var(--text-primary, #e8e8ec);
-}
-
-li.board-subtree {
-  list-style: none;
-  margin: 0 0 4px 12px;
-  padding: 0;
-}
-.board-tree-placeholder {
-  color: var(--text-muted, #888);
-  font-style: italic;
-  font-size: 11px;
-  padding: 4px 8px;
 }

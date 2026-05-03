@@ -49,7 +49,7 @@ function createDom() {
         <main class="body">
           <section>
             <h3>Boards <span class="muted" id="local-count"></span></h3>
-            <ul class="board-list" id="local-boards"></ul>
+            <div class="board-list" id="local-boards" role="tree"></div>
           </section>
           <section>
             <h3>Current workspace</h3>
@@ -97,9 +97,13 @@ describe('workspaces view sub-app', () => {
     expect(window.document.querySelector('#workspaces')).toBeNull();
     expect(window.document.querySelector('#remote-boards')).toBeNull();
     expect(window.document.getElementById('local-boards').textContent).not.toContain('Remote Board');
-    expect(window.document.querySelector('#local-boards .board-item')?.classList.contains('is-active')).toBe(true);
+    // Boards are TreeView roots — the active board's tree-node carries
+    // .is-active so the user sees the highlight.
+    expect(window.document.querySelector('#local-boards .tree-node[data-tree-target="board"]')?.classList.contains('is-active')).toBe(true);
 
-    window.document.querySelector('#local-boards .board-item')
+    // Whole-row click on the board's tree-label fires the same navigate
+    // path a real click does.
+    window.document.querySelector('#local-boards .tree-node[data-tree-target="board"] .tree-label')
       .dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 
     expect(window.LexeraSubApp.navigate).toHaveBeenCalledWith({
@@ -135,7 +139,7 @@ describe('workspaces view sub-app', () => {
       workspaces: []
     });
 
-    const items = window.document.querySelectorAll('#local-boards .board-item .board-name');
+    const items = window.document.querySelectorAll('#local-boards .tree-node[data-tree-target="board"] .tree-label');
     expect(items.length).toBe(2);
     expect(items[0].textContent).toBe('My Roadmap');
     expect(items[1].textContent).toBe('Sprint 42');
@@ -167,7 +171,7 @@ describe('workspaces view sub-app', () => {
       remoteBoards: [],
       workspaces: []
     });
-    const items = window.document.querySelectorAll('#local-boards .board-item .board-name');
+    const items = window.document.querySelectorAll('#local-boards .tree-node[data-tree-target="board"] .tree-label');
     expect(items.length).toBe(3);
     expect(items[0].textContent).toBe('Sprint Plan');
     expect(items[1].textContent).toBe('board-3');
@@ -198,7 +202,7 @@ describe('workspaces view sub-app', () => {
       workspaces: []
     });
 
-    const items = window.document.querySelectorAll('#local-boards .board-item .board-name');
+    const items = window.document.querySelectorAll('#local-boards .tree-node[data-tree-target="board"] .tree-label');
     expect(items.length).toBe(4);
     expect(items[0].textContent).toBe('Has title only');
     expect(items[1].textContent).toBe('Has name only (legacy)');
@@ -334,14 +338,18 @@ describe('workspaces view sub-app', () => {
     expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
   });
 
-  // ── Unfoldable boards (Phase 1, TODOs 2026-05-03) ───────────────
-  // The board list now exposes a caret per row. Clicking the caret
-  // toggles a nested tree showing the board's rows / stacks / columns
-  // / cards using their parsed titles. Drag/drop and re-ordering ride
-  // on this scaffolding in later phases — this test pins ONLY the
-  // structural read-only render.
+  // ── Unfoldable boards (TODOs 2026-05-03) ────────────────────────
+  // Boards are top-level TreeView roots. Clicking a board's
+  // `.tree-toggle` lazily fetches its hierarchy and renders rows /
+  // stacks / columns / cards as nested tree nodes inside the same
+  // tree. Clicking the `.tree-label` navigates open the board.
   describe('unfoldable boards', () => {
-    it('renders a caret per board that does not navigate when clicked', () => {
+    function findBoardNode(window, boardId) {
+      return window.document.querySelector(
+        '#local-boards .tree-node[data-tree-target="board"][data-board-id="' + boardId + '"]'
+      );
+    }
+    it('renders a toggle per board that does not navigate when clicked', () => {
       const dom = createDom();
       const { window } = dom;
       let capturedOpts = null;
@@ -357,18 +365,20 @@ describe('workspaces view sub-app', () => {
         workspaces: []
       });
 
-      const caret = window.document.querySelector('#local-boards .board-item .board-caret');
-      expect(caret).toBeTruthy();
-      expect(caret.getAttribute('aria-expanded')).toBe('false');
+      const boardNode = findBoardNode(window, 'b1');
+      expect(boardNode).toBeTruthy();
+      expect(boardNode.getAttribute('aria-expanded')).toBe('false');
+      const toggle = boardNode.querySelector('.tree-toggle');
+      expect(toggle).toBeTruthy();
 
-      caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
 
-      // Caret click must NOT propagate into the row's open-board click.
+      // Toggle click triggers the lazy fetch but never navigates open.
       expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
       expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledWith('b1');
     });
 
-    it('expanding a board fetches its hierarchy and renders rows / stacks / columns / cards by title', async () => {
+    it('expanding a board fetches its hierarchy and renders rows / stacks / columns / cards inside the same TreeView', async () => {
       const dom = createDom();
       const { window } = dom;
       let capturedOpts = null;
@@ -394,23 +404,22 @@ describe('workspaces view sub-app', () => {
         workspaces: []
       });
 
-      const caret = window.document.querySelector('#local-boards .board-item .board-caret');
-      caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
-      // Wait for the fetch promise to resolve and the re-render to run.
+      const toggle = findBoardNode(window, 'b1').querySelector('.tree-toggle');
+      toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 0));
 
-      // Subtree is rendered through the shared TreeView, so we look at
-      // `.tree-view` / `.tree-label` here — the SAME classes the dashboard,
-      // files panel, and main board sidebar emit. The wrapping `<li>` lives
-      // inside the board list as a sibling of the .board-item row.
-      const tree = window.document.querySelector('#local-boards .board-subtree .tree-view');
-      expect(tree).toBeTruthy();
-      const labels = Array.from(tree.querySelectorAll('.tree-label')).map((n) => n.textContent);
+      // Walk down from the board node — the row/stack/column/card subtree
+      // appears with canonical titles, in order, inside the SAME TreeView.
+      const boardEntry = findBoardNode(window, 'b1').parentElement;
+      const subtreeChildren = boardEntry.querySelector('.tree-children');
+      expect(subtreeChildren).toBeTruthy();
+      const labels = Array.from(subtreeChildren.querySelectorAll('.tree-label'))
+        .map((n) => n.textContent);
       expect(labels).toEqual(['Backlog', 'Frontend', 'To do', 'Wire caret', 'Render tree']);
-      expect(window.document.querySelector('.board-caret').getAttribute('aria-expanded')).toBe('true');
+      expect(findBoardNode(window, 'b1').getAttribute('aria-expanded')).toBe('true');
     });
 
-    it('collapsing a board removes its tree but keeps the cached hierarchy', async () => {
+    it('collapsing a board removes its expanded children but keeps the cached hierarchy', async () => {
       const dom = createDom();
       const { window } = dom;
       let capturedOpts = null;
@@ -429,21 +438,28 @@ describe('workspaces view sub-app', () => {
         workspaces: []
       });
 
-      const caret = window.document.querySelector('#local-boards .board-item .board-caret');
       // Expand
-      caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
-      await new Promise((r) => setTimeout(r, 0));
-      expect(window.document.querySelector('#local-boards .board-subtree')).toBeTruthy();
-      // Collapse — caret is rebuilt on every render so re-query.
-      window.document.querySelector('#local-boards .board-item .board-caret')
+      findBoardNode(window, 'b1').querySelector('.tree-toggle')
         .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
-      expect(window.document.querySelector('#local-boards .board-subtree')).toBeFalsy();
+      await new Promise((r) => setTimeout(r, 0));
+      function rowLabels() {
+        const entry = findBoardNode(window, 'b1').parentElement;
+        const children = entry.querySelector('.tree-children');
+        return children
+          ? Array.from(children.querySelectorAll('.tree-row > .tree-label')).map((n) => n.textContent)
+          : [];
+      }
+      expect(rowLabels()).toEqual(['R']);
+      // Collapse — toggle is rebuilt on every render so re-query.
+      findBoardNode(window, 'b1').querySelector('.tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(rowLabels()).toEqual([]);
       // Re-expand should NOT trigger a second fetch — hierarchy is cached.
-      window.document.querySelector('#local-boards .board-item .board-caret')
+      findBoardNode(window, 'b1').querySelector('.tree-toggle')
         .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 0));
       expect(getHierarchy).toHaveBeenCalledTimes(1);
-      expect(window.document.querySelector('#local-boards .board-subtree')).toBeTruthy();
+      expect(rowLabels()).toEqual(['R']);
     });
   });
 });
