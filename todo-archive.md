@@ -1,5 +1,8 @@
 # Lexera Kanban — Completed Items Archive
 
+## Archived During Folded Log-Panel Bug Fix — 2026-05-04
+- [x] (done) Log viewer invisible in the folded state. Root cause: when a panel dock folds, `display:none` on the panel-content tabset cascaded to the multiview placeholder, making `placeholder.offsetParent === null` and `getBoundingClientRect()` return 0×0; `pushGeometryForLabel` silently bailed on the resulting null update, so the OS-level child webview kept painting at its last expanded position — directly on top of the fold strip the shell tried to render. Fix in `lexera-kanban/src/workspace/multiviewWebview.js:441-468`: when `computeNativeGeometry` returns null but the placeholder still exists, call the existing `parkWebviewOffscreen(label)` helper to move the webview to (-50000, -50000, 1×1). Pinned by two new tests in `multiviewWebview.test.js` ("parks the webview offscreen when the placeholder has no offsetParent (fold case)" + a defensive empty-label guard). (commit 0bc5f26c)
+
 ## Archived During Drop-Target Differentiation — 2026-05-03
 - [x] (done) Drop-target differentiation per element kind. Single gatekeeper `isDropTargetValidForKind(dragKind, mx, my)` in `lexera-kanban/src/dragdrop/dragDropHandlers.js` documents and enforces the four rules (rows above/between/below other rows; stacks before/between/after stacks or in empty rows; columns before/between/after columns or in empty stacks; cards only inside `.column-cards`). Applied in `updatePtrDropTargetByType` (suppresses invalid-hover indicators) and at the top of `applyCardDropByPoint`, `applyRowDropByPoint`, `applyStackDropByPoint`, `executeColumnPtrDrop` (defense-in-depth). Pinned by `dropTargetKindValidation.test.js`. (commit 8efbb3de)
 

@@ -19,9 +19,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 ### Multi-Window Structural Improvements
 
 
-- [ ] (in progress — needs UI repro) the log viewer is invisible in the folded state! Code path inspection shows the bottom-dock fold strip *should* render the connection dot + Connected/N logs/N users/N pending status badges (`renderFoldStrip` in `lexera-kanban/src/workspace/workspaceShell.js:891-1003`, CSS `.ws-fold-status-badges` styled correctly with 6×6 dot in `workspaceShell.css:352-364`). Existing tests in `loggingSystem.test.js` lock the data → badge update path. Without a screenshot of the bottom 22 px strip when folded I can't pinpoint whether the strip itself is missing, whether badges aren't appended, whether a CSS rule overrides their visibility, or whether the dock collapses to 0 px. Need: screenshot or a description of what is/isn't visible.
-
-- [ ] the kanban boards in the workspace viewer must be unfoldable and show the title of each element. it the elements (row, stack, column, cards) must be re-orderable, can be dragged between boards in the workspace and also into kanban boards, it must also be possible to drag elements from kanban boards into the workspace hierarchy!
+- [ ] (in progress) the kanban boards in the workspace viewer must be unfoldable and show the title of each element. it the elements (row, stack, column, cards) must be re-orderable, can be dragged between boards in the workspace and also into kanban boards, it must also be possible to drag elements from kanban boards into the workspace hierarchy!
 
 - [x] (done) analyze the whole application structure. detect the used architectural code structures and check if they fit the puprpose. analyze if the code strcture could be improved by restructuring and cleanup. keep the code as simple as needed while making sure it's fulfills all requirements! verify that we apply coding structure rules.
 
