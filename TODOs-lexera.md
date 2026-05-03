@@ -52,13 +52,13 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 - [ ] Move `lexera-shared/` into `packages/shared-ui` and define it as a proper internal NPM package.
 - [ ] Extract the geometry observation logic from `lexera-kanban/src/workspace/workspaceShell.js` into a dedicated `src/workspace/geometryObserver.js`.
 - [ ] Refactor `lexera-kanban/src/shell/multiviewClient.js` to use the new `lexera-local-ipc` protocol exclusively, removing legacy HTTP fallback logic.
-- [ ] Move the `ThemeBridge` and `CatalogBridge` from `multiviewClient.js` into their own files under `src/shell/bridges/`.
+- [x] (done) Move the bridge modules (theme, catalog, management, navigation, embeddedBoard, request) into `src/shell/bridges/`. (commit 3bb6afae)
 
 ### 4. Cleanup & Technical Debt
 - [ ] Remove `lexera-shared/backendDiscovery.js` once the IPC migration (Phase 7) is fully verified as the default transport.
 - [ ] Replace all direct `window` property assignments in `src/plugins/` with explicit ESM exports.
 - [ ] Standardize the IIFE-to-ESM conversion for all files in `lexera-kanban/src/plugins/formats/`.
-- [ ] Audit and remove unused CSS variables in `lexera-kanban/src/tokens.css` that were deprecated during the multiview migration.
+- [x] (done) Audit `tokens.css` for unused vars. Only `--font-size-l` has zero direct `var(--font-size-l)` consumers, but it is still broadcast via `shell/bridges/themeBridge.js` as part of the documented v2 type scale and kept intentionally. No deprecation residue found.
 
 ## Rust Backend Refactoring
 
