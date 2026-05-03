@@ -19,6 +19,8 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 ### Multi-Window Structural Improvements
 
 
+- [x] (done) board title MUST be the same on every surface (board pane, workspace tabs, workspaces sub-app, hierarchy sub-app). Single canonical resolver in `LexeraTitleHelpers.resolveBoardLabel`; priority: parsed H1 → filename basename sans `.md` → legacy `name` → `Untitled`. (commit fc094e72)
+
 - [ ] the log viewer is invisible in the folded state!
 
 - [ ] the kanban boards in the workspace viewer must be unfoldable and show the title of each element. it the elements (row, stack, column, cards) must be re-orderable, can be dragged between boards in the workspace and also into kanban boards, it must also be possible to drag elements from kanban boards into the workspace hierarchy!
