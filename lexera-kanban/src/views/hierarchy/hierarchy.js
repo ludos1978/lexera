@@ -116,64 +116,78 @@
     return true;
   }
 
-  function nextChildField(kind) {
-    if (kind === 'row') return 'stacks';
-    if (kind === 'stack') return 'columns';
-    if (kind === 'column') return 'cards';
-    return null;
-  }
-  function nextChildKind(kind) {
-    if (kind === 'row') return 'stack';
-    if (kind === 'stack') return 'column';
-    if (kind === 'column') return 'card';
-    return null;
-  }
-  function renderHierarchyNode(item, kind) {
-    var li = document.createElement('li');
-    li.className = 'board-tree-node board-tree-' + kind;
+  // Build TreeView nodes from a kanban hierarchy item — same shape the
+  // dashboard / files panel / main board sidebar feed into TreeView so
+  // every hierarchical surface in the app shares one visual treatment.
+  function nodeLabel(item) {
     var label = window.LexeraTitleHelpers.resolveBoardLabel(item);
     if (label === 'Untitled') label = item.title || item.name || '';
-    li.innerHTML = '<span class="board-tree-label">' + escapeHtml(label || '(no title)') + '</span>';
-    return li;
+    return label || '(no title)';
   }
-  function appendChildren(parentLi, items, kind) {
-    if (!items || !items.length) return;
-    var ul = document.createElement('ul');
-    ul.className = 'board-tree-children board-tree-children-' + kind;
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      var node = renderHierarchyNode(item, kind);
-      var childField = nextChildField(kind);
-      if (childField) appendChildren(node, item[childField], nextChildKind(kind));
-      ul.appendChild(node);
-    }
-    parentLi.appendChild(ul);
+  function buildCardNode(card) {
+    return {
+      id: card.id || null,
+      label: nodeLabel(card),
+      type: 'card',
+      children: null,
+      expanded: false,
+      hasToggle: false,
+      grip: false
+    };
+  }
+  function buildColumnNode(column) {
+    var cards = Array.isArray(column.cards) ? column.cards : [];
+    return {
+      id: column.id || null,
+      label: nodeLabel(column),
+      type: 'column',
+      children: cards.map(buildCardNode),
+      expanded: true,
+      grip: false
+    };
+  }
+  function buildStackNode(stack) {
+    var cols = Array.isArray(stack.columns) ? stack.columns : [];
+    return {
+      id: stack.id || null,
+      label: nodeLabel(stack),
+      type: 'stack',
+      children: cols.map(buildColumnNode),
+      expanded: true,
+      grip: false
+    };
+  }
+  function buildRowNode(row) {
+    var stacks = Array.isArray(row.stacks) ? row.stacks : [];
+    return {
+      id: row.id || null,
+      label: nodeLabel(row),
+      type: 'row',
+      children: stacks.map(buildStackNode),
+      expanded: true,
+      grip: false
+    };
   }
   function renderBoardTree(rows) {
-    var root = document.createElement('li');
-    root.className = 'board-tree';
-    var ul = document.createElement('ul');
-    ul.className = 'board-tree-children board-tree-children-root';
+    var container = document.createElement('div');
+    container.className = 'board-tree-container';
     if (!rows || !rows.length) {
-      var empty = document.createElement('li');
-      empty.className = 'board-tree-empty';
+      var empty = document.createElement('div');
+      empty.className = 'tree-empty hierarchical-empty';
       empty.textContent = '(empty board)';
-      ul.appendChild(empty);
-    } else {
-      for (var i = 0; i < rows.length; i++) {
-        var rowNode = renderHierarchyNode(rows[i], 'row');
-        appendChildren(rowNode, rows[i].stacks, 'stack');
-        ul.appendChild(rowNode);
-      }
+      container.appendChild(empty);
+      return container;
     }
-    root.appendChild(ul);
-    return root;
+    if (window.TreeView && typeof window.TreeView.render === 'function') {
+      window.TreeView.render(container, rows.map(buildRowNode), { escapeHtml: escapeHtml });
+    }
+    return container;
   }
   function renderBoardTreePlaceholder(text) {
-    var li = document.createElement('li');
-    li.className = 'board-tree board-tree-placeholder';
-    li.textContent = text;
-    return li;
+    var div = document.createElement('div');
+    div.className = 'board-tree-container board-tree-placeholder';
+    div.textContent = text;
+    return div;
   }
   function fetchBoardHierarchy(boardId) {
     var api = window.LexeraApi;
@@ -280,15 +294,19 @@
 
         if (boardExpanded) {
           var hierarchy = boardHierarchies[boardId];
+          var subtreeHost = document.createElement('li');
+          subtreeHost.className = 'board-subtree';
+          subtreeHost.dataset.forBoardId = boardId;
           if (hierarchy === 'loading') {
-            list.appendChild(renderBoardTreePlaceholder('Loading…'));
+            subtreeHost.appendChild(renderBoardTreePlaceholder('Loading…'));
           } else if (hierarchy === 'error') {
-            list.appendChild(renderBoardTreePlaceholder('Failed to load board structure'));
+            subtreeHost.appendChild(renderBoardTreePlaceholder('Failed to load board structure'));
           } else if (Array.isArray(hierarchy)) {
-            list.appendChild(renderBoardTree(hierarchy));
+            subtreeHost.appendChild(renderBoardTree(hierarchy));
           } else {
-            list.appendChild(renderBoardTreePlaceholder('Loading…'));
+            subtreeHost.appendChild(renderBoardTreePlaceholder('Loading…'));
           }
+          list.appendChild(subtreeHost);
         }
       });
       wrapper.appendChild(list);

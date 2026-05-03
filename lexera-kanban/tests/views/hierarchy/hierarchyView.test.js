@@ -15,10 +15,20 @@ const titleHelpersSource = readFileSync(
   resolve(__dirname, '..', '..', '..', 'src', 'titleHelpers.js'),
   'utf8'
 );
+// The unfolded board structure is rendered through the shared
+// TreeView component — register it on the test window so hierarchy.js
+// can call `window.TreeView.render(...)` without the production
+// HTML's <script> tag.
+const treeViewSource = readFileSync(
+  resolve(__dirname, '..', '..', '..', 'src', 'treeView.js'),
+  'utf8'
+);
 
 function loadHierarchyView(window) {
   const helpersFactory = new Function('window', 'globalThis', titleHelpersSource);
   helpersFactory(window, window);
+  const treeFactory = new Function('window', 'document', 'getComputedStyle', treeViewSource);
+  treeFactory(window, window.document, window.getComputedStyle.bind(window));
   const factory = new Function('window', 'document', 'LexeraSubApp', source);
   factory(window, window.document, window.LexeraSubApp);
 }
@@ -396,9 +406,12 @@ describe('hierarchy view sub-app', () => {
       caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 0));
 
-      const tree = window.document.querySelector('#local-boards .board-tree');
+      // Subtree uses the shared TreeView (treeView.js) so the rendered
+      // markup matches every other hierarchical surface (dashboard,
+      // files panel, main board sidebar).
+      const tree = window.document.querySelector('#local-boards .board-subtree .tree-view');
       expect(tree).toBeTruthy();
-      const labels = Array.from(tree.querySelectorAll('.board-tree-label')).map((n) => n.textContent);
+      const labels = Array.from(tree.querySelectorAll('.tree-label')).map((n) => n.textContent);
       expect(labels).toEqual(['Backlog', 'Frontend', 'To do', 'Wire caret']);
     });
   });

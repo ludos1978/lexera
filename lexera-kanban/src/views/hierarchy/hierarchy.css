@@ -233,6 +233,10 @@ html, body {
 }
 
 /* ── Unfoldable boards: caret + nested structure (Phase 1b) ──────── */
+/* Nested rows / stacks / columns / cards are rendered through the shared
+ * TreeView (treeView.js) so the indent guides, toggles, and labels match
+ * the dashboard, files panel, and main board sidebar. Only the caret on
+ * the board row is local. */
 .board-caret {
   flex: 0 0 auto;
   width: 14px;
@@ -253,35 +257,14 @@ html, body {
   color: var(--text-primary, #d4d4d4);
 }
 
-li.board-tree {
+li.board-subtree {
   list-style: none;
-  margin: 0 12px 4px 30px;
-  padding: 2px 0 2px 8px;
-  border-left: 1px solid var(--border, #333);
+  margin: 0 12px 4px 18px;
+  padding: 0;
 }
-li.board-tree-placeholder {
+.board-tree-placeholder {
   color: var(--text-muted, #888);
   font-style: italic;
   font-size: 10px;
-}
-ul.board-tree-children {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 12px;
-}
-ul.board-tree-children-root { padding-left: 0; }
-li.board-tree-node {
-  padding: 1px 4px;
-  font-size: 10px;
-  color: var(--text-primary, #d4d4d4);
-}
-li.board-tree-row > .board-tree-label { font-weight: 600; }
-li.board-tree-stack > .board-tree-label { color: var(--text-secondary, #c8c8d0); }
-li.board-tree-column > .board-tree-label { color: var(--text-secondary, #c8c8d0); font-style: italic; }
-li.board-tree-card > .board-tree-label { color: var(--text-muted, #999); }
-li.board-tree-empty {
-  color: var(--text-muted, #888);
-  font-style: italic;
-  font-size: 10px;
-  padding: 1px 4px;
+  padding: 4px 8px;
 }

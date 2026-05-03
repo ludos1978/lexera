@@ -16,10 +16,23 @@ const titleHelpersSource = readFileSync(
   resolve(__dirname, '..', '..', '..', 'src', 'titleHelpers.js'),
   'utf8'
 );
+// The unfolded board structure is rendered through the shared
+// TreeView component (treeView.js) — register it on the test window
+// so workspaces.js can call `window.TreeView.render(...)` without
+// the production HTML's <script> tag.
+const treeViewSource = readFileSync(
+  resolve(__dirname, '..', '..', '..', 'src', 'treeView.js'),
+  'utf8'
+);
 
 function loadWorkspacesView(window) {
   const helpersFactory = new Function('window', 'globalThis', titleHelpersSource);
   helpersFactory(window, window);
+  // treeView.js self-registers `window.TreeView` on its last line when
+  // `window` is in scope, so we just need to run it once with the test
+  // window.
+  const treeFactory = new Function('window', 'document', 'getComputedStyle', treeViewSource);
+  treeFactory(window, window.document, window.getComputedStyle.bind(window));
   const factory = new Function('window', 'document', 'LexeraSubApp', source);
   factory(window, window.document, window.LexeraSubApp);
 }
@@ -386,9 +399,13 @@ describe('workspaces view sub-app', () => {
       // Wait for the fetch promise to resolve and the re-render to run.
       await new Promise((r) => setTimeout(r, 0));
 
-      const tree = window.document.querySelector('#local-boards .board-tree');
+      // Subtree is rendered through the shared TreeView, so we look at
+      // `.tree-view` / `.tree-label` here — the SAME classes the dashboard,
+      // files panel, and main board sidebar emit. The wrapping `<li>` lives
+      // inside the board list as a sibling of the .board-item row.
+      const tree = window.document.querySelector('#local-boards .board-subtree .tree-view');
       expect(tree).toBeTruthy();
-      const labels = Array.from(tree.querySelectorAll('.board-tree-label')).map((n) => n.textContent);
+      const labels = Array.from(tree.querySelectorAll('.tree-label')).map((n) => n.textContent);
       expect(labels).toEqual(['Backlog', 'Frontend', 'To do', 'Wire caret', 'Render tree']);
       expect(window.document.querySelector('.board-caret').getAttribute('aria-expanded')).toBe('true');
     });
@@ -416,17 +433,17 @@ describe('workspaces view sub-app', () => {
       // Expand
       caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 0));
-      expect(window.document.querySelector('#local-boards .board-tree')).toBeTruthy();
+      expect(window.document.querySelector('#local-boards .board-subtree')).toBeTruthy();
       // Collapse — caret is rebuilt on every render so re-query.
       window.document.querySelector('#local-boards .board-item .board-caret')
         .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
-      expect(window.document.querySelector('#local-boards .board-tree')).toBeFalsy();
+      expect(window.document.querySelector('#local-boards .board-subtree')).toBeFalsy();
       // Re-expand should NOT trigger a second fetch — hierarchy is cached.
       window.document.querySelector('#local-boards .board-item .board-caret')
         .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 0));
       expect(getHierarchy).toHaveBeenCalledTimes(1);
-      expect(window.document.querySelector('#local-boards .board-tree')).toBeTruthy();
+      expect(window.document.querySelector('#local-boards .board-subtree')).toBeTruthy();
     });
   });
 });
