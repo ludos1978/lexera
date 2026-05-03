@@ -320,4 +320,113 @@ describe('workspaces view sub-app', () => {
     expect(window.LexeraWorkspacesTestApi.clickOpenWorkspace('ws-1')).toBe(false);
     expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
   });
+
+  // ── Unfoldable boards (Phase 1, TODOs 2026-05-03) ───────────────
+  // The board list now exposes a caret per row. Clicking the caret
+  // toggles a nested tree showing the board's rows / stacks / columns
+  // / cards using their parsed titles. Drag/drop and re-ordering ride
+  // on this scaffolding in later phases — this test pins ONLY the
+  // structural read-only render.
+  describe('unfoldable boards', () => {
+    it('renders a caret per board that does not navigate when clicked', () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn()
+      };
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: [] })) };
+      loadWorkspacesView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap' }],
+        remoteBoards: [],
+        workspaces: []
+      });
+
+      const caret = window.document.querySelector('#local-boards .board-item .board-caret');
+      expect(caret).toBeTruthy();
+      expect(caret.getAttribute('aria-expanded')).toBe('false');
+
+      caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+
+      // Caret click must NOT propagate into the row's open-board click.
+      expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
+      expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledWith('b1');
+    });
+
+    it('expanding a board fetches its hierarchy and renders rows / stacks / columns / cards by title', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn()
+      };
+      const fakeRows = [{
+        id: 'r1', title: 'Backlog',
+        stacks: [{
+          id: 's1', title: 'Frontend',
+          columns: [{
+            id: 'c1', title: 'To do',
+            cards: [{ id: 'card-1', title: 'Wire caret' }, { id: 'card-2', title: 'Render tree' }]
+          }]
+        }]
+      }];
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: fakeRows })) };
+      loadWorkspacesView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap' }],
+        remoteBoards: [],
+        workspaces: []
+      });
+
+      const caret = window.document.querySelector('#local-boards .board-item .board-caret');
+      caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      // Wait for the fetch promise to resolve and the re-render to run.
+      await new Promise((r) => setTimeout(r, 0));
+
+      const tree = window.document.querySelector('#local-boards .board-tree');
+      expect(tree).toBeTruthy();
+      const labels = Array.from(tree.querySelectorAll('.board-tree-label')).map((n) => n.textContent);
+      expect(labels).toEqual(['Backlog', 'Frontend', 'To do', 'Wire caret', 'Render tree']);
+      expect(window.document.querySelector('.board-caret').getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('collapsing a board removes its tree but keeps the cached hierarchy', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn()
+      };
+      const getHierarchy = vi.fn(() => Promise.resolve({
+        rows: [{ id: 'r1', title: 'R', stacks: [] }]
+      }));
+      window.LexeraApi = { getBoardHierarchy: getHierarchy };
+      loadWorkspacesView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap' }],
+        remoteBoards: [],
+        workspaces: []
+      });
+
+      const caret = window.document.querySelector('#local-boards .board-item .board-caret');
+      // Expand
+      caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(window.document.querySelector('#local-boards .board-tree')).toBeTruthy();
+      // Collapse — caret is rebuilt on every render so re-query.
+      window.document.querySelector('#local-boards .board-item .board-caret')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(window.document.querySelector('#local-boards .board-tree')).toBeFalsy();
+      // Re-expand should NOT trigger a second fetch — hierarchy is cached.
+      window.document.querySelector('#local-boards .board-item .board-caret')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(getHierarchy).toHaveBeenCalledTimes(1);
+      expect(window.document.querySelector('#local-boards .board-tree')).toBeTruthy();
+    });
+  });
 });

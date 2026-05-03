@@ -64,3 +64,58 @@ li.empty {
   color: var(--text-muted, #666);
   font-style: italic;
 }
+
+/* ── Unfoldable boards: caret + nested structure ─────────────────── */
+.board-caret {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  border-radius: 2px;
+}
+.board-caret:hover {
+  background: var(--bg-hover, #2a2a32);
+  color: var(--text-primary, #e8e8ec);
+}
+
+li.board-tree {
+  list-style: none;
+  margin: 0 0 4px 22px;
+  padding: 2px 0;
+  border-left: 1px solid var(--border, #333);
+  padding-left: 8px;
+}
+li.board-tree-placeholder {
+  color: var(--text-muted, #888);
+  font-style: italic;
+  font-size: 11px;
+}
+ul.board-tree-children {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+}
+ul.board-tree-children-root { padding-left: 0; }
+li.board-tree-node {
+  padding: 2px 4px;
+  font-size: 11px;
+  color: var(--text-primary, #e8e8ec);
+}
+li.board-tree-row > .board-tree-label { font-weight: 600; }
+li.board-tree-stack > .board-tree-label { color: var(--text-secondary, #c8c8d0); }
+li.board-tree-column > .board-tree-label { color: var(--text-secondary, #c8c8d0); font-style: italic; }
+li.board-tree-card > .board-tree-label { color: var(--text-muted, #999); }
+li.board-tree-empty {
+  color: var(--text-muted, #888);
+  font-style: italic;
+  font-size: 11px;
+  padding: 2px 4px;
+}

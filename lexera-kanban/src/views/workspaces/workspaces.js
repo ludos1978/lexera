@@ -31,6 +31,20 @@
   var REMOTE_WORKSPACE_ID = '__remote_boards__';
   var REMOTE_WORKSPACE_NAME = 'Remote Boards';
 
+  // ── Per-board fold state + hierarchy cache ─────────────────────────
+  // Phase 1 of "boards must be unfoldable, show titles of every element"
+  // (TODOs-lexera.md, 2026-05-03). Only the structural read-only render
+  // ships here — drag/drop and re-ordering land in later phases.
+  //
+  // `boardHierarchies[id]` is one of:
+  //   undefined  → never fetched
+  //   'loading'  → fetch in flight, show spinner-ish placeholder
+  //   'error'    → last fetch failed, show error placeholder
+  //   Array      → KanbanRow[] from `/boards/:id/hierarchy`
+  var expandedBoardIds = {};
+  var boardHierarchies = {};
+  var latestBoardsRendered = [];
+
   function refreshActiveHighlight() {
     var items = document.querySelectorAll('li.board-item');
     for (var i = 0; i < items.length; i++) {
@@ -38,7 +52,103 @@
     }
   }
 
+  function renderHierarchyNode(node, kind) {
+    var li = document.createElement('li');
+    li.className = 'board-tree-node board-tree-' + kind;
+    var label = window.LexeraTitleHelpers.resolveBoardLabel(node);
+    if (label === 'Untitled') label = node.title || node.name || '';
+    li.innerHTML = '<span class="board-tree-label">' + escapeHtml(label || '(no title)') + '</span>';
+    return li;
+  }
+
+  function appendChildren(parentLi, items, kind, childField, childKind) {
+    if (!items || !items.length) return;
+    var ul = document.createElement('ul');
+    ul.className = 'board-tree-children board-tree-children-' + kind;
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var node = renderHierarchyNode(item, kind);
+      if (childField) {
+        appendChildren(node, item[childField], childKind, nextChildField(childKind), nextChildKind(childKind));
+      }
+      ul.appendChild(node);
+    }
+    parentLi.appendChild(ul);
+  }
+
+  function nextChildField(kind) {
+    if (kind === 'row') return 'stacks';
+    if (kind === 'stack') return 'columns';
+    if (kind === 'column') return 'cards';
+    return null;
+  }
+  function nextChildKind(kind) {
+    if (kind === 'row') return 'stack';
+    if (kind === 'stack') return 'column';
+    if (kind === 'column') return 'card';
+    return null;
+  }
+
+  function renderBoardTree(rows) {
+    var rootLi = document.createElement('li');
+    rootLi.className = 'board-tree';
+    var ul = document.createElement('ul');
+    ul.className = 'board-tree-children board-tree-children-root';
+    if (!rows || !rows.length) {
+      var empty = document.createElement('li');
+      empty.className = 'board-tree-empty';
+      empty.textContent = '(empty board)';
+      ul.appendChild(empty);
+    } else {
+      for (var i = 0; i < rows.length; i++) {
+        var rowNode = renderHierarchyNode(rows[i], 'row');
+        appendChildren(rowNode, rows[i].stacks, 'stack', 'columns', 'column');
+        ul.appendChild(rowNode);
+      }
+    }
+    rootLi.appendChild(ul);
+    return rootLi;
+  }
+
+  function renderBoardTreePlaceholder(text) {
+    var li = document.createElement('li');
+    li.className = 'board-tree board-tree-placeholder';
+    li.textContent = text;
+    return li;
+  }
+
+  function fetchBoardHierarchy(boardId) {
+    var api = window.LexeraApi;
+    if (!api || typeof api.getBoardHierarchy !== 'function') {
+      boardHierarchies[boardId] = 'error';
+      return;
+    }
+    boardHierarchies[boardId] = 'loading';
+    api.getBoardHierarchy(boardId).then(function (data) {
+      boardHierarchies[boardId] = (data && Array.isArray(data.rows)) ? data.rows : [];
+      rerenderLocalBoards();
+    }).catch(function () {
+      boardHierarchies[boardId] = 'error';
+      rerenderLocalBoards();
+    });
+  }
+
+  function toggleBoardExpand(boardId) {
+    var nowExpanded = !expandedBoardIds[boardId];
+    expandedBoardIds[boardId] = nowExpanded;
+    if (nowExpanded && boardHierarchies[boardId] == null) {
+      fetchBoardHierarchy(boardId);
+    }
+    rerenderLocalBoards();
+  }
+
+  function rerenderLocalBoards() {
+    renderBoards(localBoardsEl, latestBoardsRendered, localCountEl);
+    refreshActiveHighlight();
+  }
+
   function renderBoards(target, boards, counterEl) {
+    latestBoardsRendered = boards;
     counterEl.textContent = '(' + boards.length + ')';
     if (!boards.length) {
       target.innerHTML = '<li class="empty">none</li>';
@@ -46,17 +156,48 @@
     }
     target.innerHTML = '';
     boards.forEach(function (b) {
+      var boardId = b.id || '';
+      var expanded = !!expandedBoardIds[boardId];
       var li = document.createElement('li');
       li.className = 'board-item';
-      li.dataset.boardId = b.id || '';
+      li.dataset.boardId = boardId;
       var boardLabel = resolveBoardLabel(b);
-      li.innerHTML =
-        '<span class="board-name">' + escapeHtml(boardLabel) + '</span>' +
-        '<span class="board-id">' + escapeHtml(b.id ? b.id.substring(0, 8) : '') + '</span>';
+      var caret = document.createElement('button');
+      caret.type = 'button';
+      caret.className = 'board-caret';
+      caret.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      caret.setAttribute('aria-label', expanded ? 'Collapse board' : 'Expand board');
+      caret.textContent = expanded ? '▾' : '▸';
+      caret.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        toggleBoardExpand(boardId);
+      });
+      li.appendChild(caret);
+      var nameSpan = document.createElement('span');
+      nameSpan.className = 'board-name';
+      nameSpan.textContent = boardLabel;
+      li.appendChild(nameSpan);
+      var idSpan = document.createElement('span');
+      idSpan.className = 'board-id';
+      idSpan.textContent = b.id ? b.id.substring(0, 8) : '';
+      li.appendChild(idSpan);
       li.addEventListener('click', function () {
         LexeraSubApp.navigate({ type: 'open-board', boardId: b.id });
       });
       target.appendChild(li);
+
+      if (expanded) {
+        var hierarchy = boardHierarchies[boardId];
+        if (hierarchy === 'loading') {
+          target.appendChild(renderBoardTreePlaceholder('Loading…'));
+        } else if (hierarchy === 'error') {
+          target.appendChild(renderBoardTreePlaceholder('Failed to load board structure'));
+        } else if (Array.isArray(hierarchy)) {
+          target.appendChild(renderBoardTree(hierarchy));
+        } else {
+          target.appendChild(renderBoardTreePlaceholder('Loading…'));
+        }
+      }
     });
   }
 
