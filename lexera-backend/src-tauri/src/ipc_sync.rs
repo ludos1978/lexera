@@ -15,9 +15,11 @@ use crate::state::AppState;
 use base64::Engine;
 use lexera_core::sync::{ClientMessage, ServerMessage};
 use lexera_core::watcher::types::BoardChangeEvent;
-use lexera_local_ipc::frame::{read_frame, write_frame, ClientFrame, ServerFrame};
+use lexera_local_ipc::frame::{write_frame, ClientFrame, ServerFrame};
 use lexera_local_ipc::transport::Stream;
 use lexera_local_ipc::IpcError;
+use tokio::io::WriteHalf;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 fn b64() -> base64::engine::general_purpose::GeneralPurpose {
@@ -28,14 +30,15 @@ fn b64() -> base64::engine::general_purpose::GeneralPurpose {
 /// registers in the sync hub, then loops `StreamSend` ↔ hub broadcasts
 /// until the client cancels or the connection drops.
 pub async fn forward_sync(
-    stream: &mut Stream,
+    write_half: &mut WriteHalf<Stream>,
+    control_rx: &mut mpsc::Receiver<ClientFrame>,
     state: &AppState,
     correlation_id: Uuid,
     board_id: String,
 ) -> Result<(), IpcError> {
     // 1. Wait for ClientHello, carried inside a StreamSend.
     let hello_payload = loop {
-        match read_frame::<_, ClientFrame>(stream).await? {
+        match control_rx.recv().await {
             Some(ClientFrame::StreamSend {
                 correlation_id: cid,
                 payload,
@@ -44,13 +47,16 @@ pub async fn forward_sync(
                 correlation_id: cid,
             }) if cid == correlation_id => {
                 return write_frame(
-                    stream,
+                    write_half,
                     &ServerFrame::StreamEnd {
                         correlation_id,
                         error: None,
                     },
                 )
                 .await;
+            }
+            Some(ClientFrame::Ping) => {
+                let _ = write_frame(write_half, &ServerFrame::Pong).await;
             }
             Some(_) => continue,
             None => return Ok(()),
@@ -61,7 +67,7 @@ pub async fn forward_sync(
         Ok(m) => m,
         Err(e) => {
             return send_error_end(
-                stream,
+                write_half,
                 correlation_id,
                 format!("Invalid ClientHello JSON: {}", e),
             )
@@ -73,7 +79,7 @@ pub async fn forward_sync(
         ClientMessage::ClientHello { user_id, vv } => (user_id, vv),
         _ => {
             return send_error_end(
-                stream,
+                write_half,
                 correlation_id,
                 "Expected ClientHello as first sync message".into(),
             )
@@ -103,7 +109,7 @@ pub async fn forward_sync(
     };
     if !authorized {
         return send_error_end(
-            stream,
+            write_half,
             correlation_id,
             "Not authorized for this board".into(),
         )
@@ -143,7 +149,7 @@ pub async fn forward_sync(
     };
     let hello_bytes = serde_json::to_vec(&server_hello).unwrap_or_default();
     write_frame(
-        stream,
+        write_half,
         &ServerFrame::StreamMessage {
             correlation_id,
             payload: hello_bytes,
@@ -151,11 +157,15 @@ pub async fn forward_sync(
     )
     .await?;
 
-    // 6. Bidirectional loop. One task owns the stream; `tokio::select!`
-    // interleaves reads from the client with broadcasts from the hub.
+    // 6. Bidirectional loop.
+
+    // Heartbeat every 30s when idle.
+    let mut heartbeat_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+    heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
     let end_err: Option<String> = loop {
         tokio::select! {
-            client = read_frame::<_, ClientFrame>(stream) => match client? {
+            client_msg = control_rx.recv() => match client_msg {
                 Some(ClientFrame::Cancel { correlation_id: cid }) if cid == correlation_id => {
                     break None;
                 }
@@ -171,23 +181,30 @@ pub async fn forward_sync(
                     )
                     .await;
                 }
-                Some(_) => {
-                    // Ignore frames unrelated to this subscription.
+                Some(ClientFrame::Ping) => {
+                    let _ = write_frame(write_half, &ServerFrame::Pong).await;
                 }
+                Some(_) => {}
                 None => break Some("connection closed".into()),
             },
             msg = hub_rx.recv() => match msg {
                 Some(text) => {
-                    write_frame(
-                        stream,
+                    if let Err(e) = write_frame(
+                        write_half,
                         &ServerFrame::StreamMessage {
                             correlation_id,
                             payload: text.into_bytes(),
                         },
-                    )
-                    .await?;
+                    ).await {
+                        break Some(format!("write failed: {}", e));
+                    }
                 }
                 None => break None,
+            },
+            _ = heartbeat_interval.tick() => {
+                if let Err(e) = write_frame(write_half, &ServerFrame::Heartbeat).await {
+                    break Some(format!("heartbeat write failed: {}", e));
+                }
             }
         }
     };
@@ -204,7 +221,7 @@ pub async fn forward_sync(
     }
 
     write_frame(
-        stream,
+        write_half,
         &ServerFrame::StreamEnd {
             correlation_id,
             error: end_err,
@@ -332,7 +349,7 @@ async fn handle_client_message(
 }
 
 async fn send_error_end(
-    stream: &mut Stream,
+    write_half: &mut WriteHalf<Stream>,
     correlation_id: Uuid,
     message: String,
 ) -> Result<(), IpcError> {
@@ -341,7 +358,7 @@ async fn send_error_end(
     };
     if let Ok(payload) = serde_json::to_vec(&err) {
         write_frame(
-            stream,
+            write_half,
             &ServerFrame::StreamMessage {
                 correlation_id,
                 payload,
@@ -350,7 +367,7 @@ async fn send_error_end(
         .await?;
     }
     write_frame(
-        stream,
+        write_half,
         &ServerFrame::StreamEnd {
             correlation_id,
             error: Some(message),

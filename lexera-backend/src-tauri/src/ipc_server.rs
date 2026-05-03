@@ -15,7 +15,7 @@ use axum::Router;
 use lexera_local_ipc::frame::{read_frame, write_frame, ApiRequest, ClientFrame, ServerFrame};
 use lexera_local_ipc::{Descriptor, Server};
 use std::sync::Arc;
-use tokio::sync::watch;
+use tokio::sync::{watch, mpsc};
 use uuid::Uuid;
 
 /// Accumulates an in-flight upload's metadata and body chunks. Phase 7.5
@@ -30,11 +30,6 @@ struct PendingUpload {
 }
 
 /// Spawn the IPC accept loop. Returns immediately.
-///
-/// Builds a Router from `app_state` using the same [`crate::server::build_app`]
-/// that serves HTTP, so route semantics, middleware, and state are identical
-/// across transports. `shutdown_rx` signals graceful shutdown; the descriptor
-/// file is removed when the signal fires.
 pub fn spawn(app_state: AppState, shutdown_rx: watch::Receiver<bool>) {
     let router = crate::server::build_app(app_state.clone());
     tauri::async_runtime::spawn(async move {
@@ -94,174 +89,196 @@ async fn run_accept_loop(
 }
 
 async fn handle_connection(
-    mut stream: lexera_local_ipc::transport::Stream,
+    stream: lexera_local_ipc::transport::Stream,
     router: Router,
     app_state: AppState,
 ) {
     let mut pending_upload: Option<PendingUpload> = None;
+    let (mut read_half, mut write_half) = tokio::io::split(stream);
+
+    // Reader task to handle multiplexing control frames during streaming.
+    let (tx, mut control_rx) = mpsc::channel::<ClientFrame>(8);
+    let reader_handle = tokio::spawn(async move {
+        while let Ok(Some(frame)) = read_frame::<_, ClientFrame>(&mut read_half).await {
+            if tx.send(frame).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Heartbeat every 30s when idle. Skip immediate tick.
+    let heartbeat_duration = std::time::Duration::from_secs(30);
+    let mut heartbeat_interval = tokio::time::interval_at(
+        tokio::time::Instant::now() + heartbeat_duration,
+        heartbeat_duration
+    );
+    heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
     loop {
-        let frame = match read_frame::<_, ClientFrame>(&mut stream).await {
-            Ok(Some(f)) => f,
-            Ok(None) => return,
-            Err(e) => {
-                log::debug!(target: "lexera.ipc", "connection read error: {}", e);
-                return;
-            }
-        };
-        match frame {
-            ClientFrame::Ping => {
-                if let Err(e) = write_frame(&mut stream, &ServerFrame::Pong).await {
-                    log::debug!(target: "lexera.ipc", "pong write failed: {}", e);
-                    return;
-                }
-            }
-            ClientFrame::Cancel { correlation_id } => {
-                // Phase 7.5 gap #8: an in-flight upload is the only
-                // multi-frame client→server operation on this code path
-                // that a top-level `Cancel` can abort. Asset streams and
-                // subscriptions have their own loops that consume Cancel
-                // there. For uploads, drop the buffer and surface no error.
-                if let Some(u) = pending_upload.as_ref() {
-                    if u.correlation_id == correlation_id {
-                        pending_upload = None;
-                    }
-                }
-            }
-            ClientFrame::Handshake { .. } => {
-                let err = ServerFrame::Error {
-                    correlation_id: None,
-                    code: "unexpected_handshake".into(),
-                    message: "handshake already completed".into(),
+        tokio::select! {
+            frame_msg = control_rx.recv() => {
+                let frame = match frame_msg {
+                    Some(f) => f,
+                    None => break, // Connection closed
                 };
-                let _ = write_frame(&mut stream, &err).await;
-                return;
-            }
-            ClientFrame::AssetRequest {
-                correlation_id,
-                request,
-            } => {
-                if let Err(e) = ipc_asset::handle_asset_request(
-                    &mut stream,
-                    &app_state,
-                    correlation_id,
-                    request,
-                )
-                .await
-                {
-                    log::debug!(target: "lexera.ipc", "asset stream IO error: {}", e);
-                    return;
-                }
-            }
-            ClientFrame::StreamSubscribe {
-                correlation_id,
-                topic,
-            } => {
-                if let Err(e) =
-                    ipc_stream::handle_subscribe(&mut stream, &app_state, correlation_id, topic)
+                match frame {
+                    ClientFrame::Ping => {
+                        if let Err(e) = write_frame(&mut write_half, &ServerFrame::Pong).await {
+                            log::debug!(target: "lexera.ipc", "pong write failed: {}", e);
+                            break;
+                        }
+                    }
+                    ClientFrame::Cancel { correlation_id } => {
+                        if let Some(u) = pending_upload.as_ref() {
+                            if u.correlation_id == correlation_id {
+                                pending_upload = None;
+                            }
+                        }
+                    }
+                    ClientFrame::Handshake { .. } => {
+                        let err = ServerFrame::Error {
+                            correlation_id: None,
+                            code: "unexpected_handshake".into(),
+                            message: "handshake already completed".into(),
+                        };
+                        let _ = write_frame(&mut write_half, &err).await;
+                        break;
+                    }
+                    ClientFrame::AssetRequest {
+                        correlation_id,
+                        request,
+                    } => {
+                        if let Err(e) = ipc_asset::handle_asset_request(
+                            &mut write_half,
+                            &mut control_rx,
+                            &app_state,
+                            correlation_id,
+                            request,
+                        )
                         .await
-                {
-                    log::debug!(target: "lexera.ipc", "subscribe IO error: {}", e);
-                    return;
-                }
-            }
-            ClientFrame::StreamSend { correlation_id, .. } => {
-                // Phase 5a has no bidirectional streams open. Respond with an
-                // explicit error so the client fails fast.
-                let err = ServerFrame::Error {
-                    correlation_id: Some(correlation_id),
-                    code: "no_active_stream".into(),
-                    message: "StreamSend outside a bidirectional subscription".into(),
-                };
-                if let Err(e) = write_frame(&mut stream, &err).await {
-                    log::debug!(target: "lexera.ipc", "error write failed: {}", e);
-                    return;
-                }
-            }
-            ClientFrame::ApiRequest {
-                correlation_id,
-                request,
-            } => {
-                let server_frame =
-                    build_api_response(router.clone(), correlation_id, request).await;
-                if let Err(e) = write_frame(&mut stream, &server_frame).await {
-                    log::debug!(target: "lexera.ipc", "ApiResponse write failed: {}", e);
-                    return;
-                }
-            }
-            ClientFrame::UploadStart {
-                correlation_id,
-                method,
-                uri,
-                headers,
-            } => {
-                if pending_upload.is_some() {
-                    let err = ServerFrame::Error {
-                        correlation_id: Some(correlation_id),
-                        code: "upload_in_progress".into(),
-                        message: "another upload is already in flight on this connection".into(),
-                    };
-                    if write_frame(&mut stream, &err).await.is_err() {
-                        return;
+                        {
+                            log::debug!(target: "lexera.ipc", "asset stream IO error: {}", e);
+                            break;
+                        }
                     }
-                    continue;
-                }
-                pending_upload = Some(PendingUpload {
-                    correlation_id,
-                    method,
-                    uri,
-                    headers,
-                    body: Vec::new(),
-                });
-            }
-            ClientFrame::UploadChunk {
-                correlation_id,
-                bytes,
-            } => match pending_upload.as_mut() {
-                Some(u) if u.correlation_id == correlation_id => {
-                    u.body.extend_from_slice(&bytes);
-                }
-                _ => {
-                    let err = ServerFrame::Error {
-                        correlation_id: Some(correlation_id),
-                        code: "upload_not_started".into(),
-                        message: "UploadChunk without matching UploadStart".into(),
-                    };
-                    if write_frame(&mut stream, &err).await.is_err() {
-                        return;
+                    ClientFrame::StreamSubscribe {
+                        correlation_id,
+                        topic,
+                    } => {
+                        if let Err(e) =
+                            ipc_stream::handle_subscribe(&mut write_half, &mut control_rx, &app_state, correlation_id, topic)
+                                .await
+                        {
+                            log::debug!(target: "lexera.ipc", "subscribe IO error: {}", e);
+                            break;
+                        }
                     }
-                }
-            },
-            ClientFrame::UploadEnd { correlation_id } => {
-                let upload = match pending_upload.take() {
-                    Some(u) if u.correlation_id == correlation_id => u,
-                    other => {
-                        pending_upload = other;
+                    ClientFrame::StreamSend { correlation_id, .. } => {
                         let err = ServerFrame::Error {
                             correlation_id: Some(correlation_id),
-                            code: "upload_not_started".into(),
-                            message: "UploadEnd without matching UploadStart".into(),
+                            code: "no_active_stream".into(),
+                            message: "StreamSend outside a bidirectional subscription".into(),
                         };
-                        if write_frame(&mut stream, &err).await.is_err() {
-                            return;
+                        if let Err(e) = write_frame(&mut write_half, &err).await {
+                            log::debug!(target: "lexera.ipc", "error write failed: {}", e);
+                            break;
                         }
-                        continue;
                     }
-                };
-                let request = ApiRequest {
-                    method: upload.method,
-                    uri: upload.uri,
-                    headers: upload.headers,
-                    body: upload.body,
-                };
-                let server_frame =
-                    build_api_response(router.clone(), correlation_id, request).await;
-                if let Err(e) = write_frame(&mut stream, &server_frame).await {
-                    log::debug!(target: "lexera.ipc", "UploadEnd response write failed: {}", e);
-                    return;
+                    ClientFrame::ApiRequest {
+                        correlation_id,
+                        request,
+                    } => {
+                        let server_frame =
+                            build_api_response(router.clone(), correlation_id, request).await;
+                        if let Err(e) = write_frame(&mut write_half, &server_frame).await {
+                            log::debug!(target: "lexera.ipc", "ApiResponse write failed: {}", e);
+                            break;
+                        }
+                    }
+                    ClientFrame::UploadStart {
+                        correlation_id,
+                        method,
+                        uri,
+                        headers,
+                    } => {
+                        if pending_upload.is_some() {
+                            let err = ServerFrame::Error {
+                                correlation_id: Some(correlation_id),
+                                code: "upload_in_progress".into(),
+                                message: "another upload is already in flight on this connection".into(),
+                            };
+                            if write_frame(&mut write_half, &err).await.is_err() {
+                                break;
+                            }
+                            continue;
+                        }
+                        pending_upload = Some(PendingUpload {
+                            correlation_id,
+                            method,
+                            uri,
+                            headers,
+                            body: Vec::new(),
+                        });
+                    }
+                    ClientFrame::UploadChunk {
+                        correlation_id,
+                        bytes,
+                    } => match pending_upload.as_mut() {
+                        Some(u) if u.correlation_id == correlation_id => {
+                            u.body.extend_from_slice(&bytes);
+                        }
+                        _ => {
+                            let err = ServerFrame::Error {
+                                correlation_id: Some(correlation_id),
+                                code: "upload_not_started".into(),
+                                message: "UploadChunk without matching UploadStart".into(),
+                            };
+                            if write_frame(&mut write_half, &err).await.is_err() {
+                                break;
+                            }
+                        }
+                    },
+                    ClientFrame::UploadEnd { correlation_id } => {
+                        let upload = match pending_upload.take() {
+                            Some(u) if u.correlation_id == correlation_id => u,
+                            other => {
+                                pending_upload = other;
+                                let err = ServerFrame::Error {
+                                    correlation_id: Some(correlation_id),
+                                    code: "upload_not_started".into(),
+                                    message: "UploadEnd without matching UploadStart".into(),
+                                };
+                                if write_frame(&mut write_half, &err).await.is_err() {
+                                    break;
+                                }
+                                continue;
+                            }
+                        };
+                        let request = ApiRequest {
+                            method: upload.method,
+                            uri: upload.uri,
+                            headers: upload.headers,
+                            body: upload.body,
+                        };
+                        let server_frame =
+                            build_api_response(router.clone(), correlation_id, request).await;
+                        if let Err(e) = write_frame(&mut write_half, &server_frame).await {
+                            log::debug!(target: "lexera.ipc", "UploadEnd response write failed: {}", e);
+                            break;
+                        }
+                    }
+                }
+            }
+            _ = heartbeat_interval.tick() => {
+                if let Err(e) = write_frame(&mut write_half, &ServerFrame::Heartbeat).await {
+                    log::debug!(target: "lexera.ipc", "heartbeat write failed: {}", e);
+                    break;
                 }
             }
         }
     }
+
+    reader_handle.abort();
 }
 
 /// Shared helper used by both direct `ApiRequest` and `UploadEnd` paths.

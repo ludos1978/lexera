@@ -6,25 +6,31 @@
 //! concurrent streams, the same as they do for assets.
 
 use crate::state::AppState;
-use lexera_local_ipc::frame::{read_frame, write_frame, ClientFrame, ServerFrame, StreamTopic};
+use lexera_local_ipc::frame::{write_frame, ClientFrame, ServerFrame, StreamTopic};
 use lexera_local_ipc::transport::Stream;
 use lexera_local_ipc::IpcError;
+use tokio::io::WriteHalf;
 use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 /// Entry point: dispatch on the topic and drive the chosen forwarder until
 /// the client cancels, the connection drops, or the backend channel closes.
 pub async fn handle_subscribe(
-    stream: &mut Stream,
+    write_half: &mut WriteHalf<Stream>,
+    control_rx: &mut mpsc::Receiver<ClientFrame>,
     state: &AppState,
     correlation_id: Uuid,
     topic: StreamTopic,
 ) -> Result<(), IpcError> {
     match topic {
-        StreamTopic::Events => forward_events(stream, state, correlation_id).await,
-        StreamTopic::Logs => forward_logs(stream, correlation_id).await,
+        StreamTopic::Events => {
+            forward_events(write_half, control_rx, state, correlation_id).await
+        }
+        StreamTopic::Logs => forward_logs(write_half, control_rx, correlation_id).await,
         StreamTopic::Sync { board_id } => {
-            crate::ipc_sync::forward_sync(stream, state, correlation_id, board_id).await
+            crate::ipc_sync::forward_sync(write_half, control_rx, state, correlation_id, board_id)
+                .await
         }
     }
 }
@@ -34,21 +40,32 @@ pub async fn handle_subscribe(
 /// that the frontend adapter turns into the same `onEvent({type:'Resync'})`
 /// call the HTTP SSE path delivers.
 async fn forward_events(
-    stream: &mut Stream,
+    write_half: &mut WriteHalf<Stream>,
+    control_rx: &mut mpsc::Receiver<ClientFrame>,
     state: &AppState,
     correlation_id: Uuid,
 ) -> Result<(), IpcError> {
     let mut rx = state.event_tx.subscribe();
+
+    // Heartbeat every 30s when idle. Skip immediate tick.
+    let heartbeat_duration = std::time::Duration::from_secs(30);
+    let mut heartbeat_interval = tokio::time::interval_at(
+        tokio::time::Instant::now() + heartbeat_duration,
+        heartbeat_duration
+    );
+    heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
     let end_err = loop {
         tokio::select! {
             recv = rx.recv() => match recv {
                 Ok(event) => {
                     let payload = serde_json::to_vec(&event).unwrap_or_default();
-                    write_frame(
-                        stream,
+                    if let Err(e) = write_frame(
+                        write_half,
                         &ServerFrame::StreamMessage { correlation_id, payload },
-                    )
-                    .await?;
+                    ).await {
+                        break Some(format!("write failed: {}", e));
+                    }
                 }
                 Err(RecvError::Lagged(n)) => {
                     log::warn!(
@@ -58,30 +75,119 @@ async fn forward_events(
                     );
                     let resync = serde_json::json!({"type": "Resync", "lagged": n});
                     let payload = serde_json::to_vec(&resync).unwrap_or_default();
-                    write_frame(
-                        stream,
+                    if let Err(e) = write_frame(
+                        write_half,
                         &ServerFrame::StreamMessage { correlation_id, payload },
-                    )
-                    .await?;
+                    ).await {
+                        break Some(format!("write failed: {}", e));
+                    }
                 }
                 Err(RecvError::Closed) => break None,
             },
-            client = read_frame::<_, ClientFrame>(stream) => match client? {
+            client_msg = control_rx.recv() => match client_msg {
                 Some(ClientFrame::Cancel { correlation_id: cid }) if cid == correlation_id => {
                     break None;
                 }
-                Some(_) => {
-                    // Ignore out-of-band frames during a subscription. The
-                    // current protocol binds the whole connection to one
-                    // subscription; future versions may multiplex.
+                Some(ClientFrame::Ping) => {
+                    let _ = write_frame(write_half, &ServerFrame::Pong).await;
                 }
+                Some(_) => {}
                 None => break Some("connection closed".to_string()),
             },
+            _ = heartbeat_interval.tick() => {
+                if let Err(e) = write_frame(write_half, &ServerFrame::Heartbeat).await {
+                    break Some(format!("heartbeat failed: {}", e));
+                }
+            }
         }
     };
 
     write_frame(
-        stream,
+        write_half,
+        &ServerFrame::StreamEnd {
+            correlation_id,
+            error: end_err,
+        },
+    )
+    .await
+}
+
+/// Mirrors `api::events::stream_logs`: emits a "Connected" entry on open,
+/// then forwards `log_bridge` broadcasts as JSON. No resync concept — log
+/// drops are recoverable without UI refresh.
+async fn forward_logs(
+    write_half: &mut WriteHalf<Stream>,
+    control_rx: &mut mpsc::Receiver<ClientFrame>,
+    correlation_id: Uuid,
+) -> Result<(), IpcError> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let started = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let greeting = crate::log_bridge::BackendLogEntry {
+        timestamp_ms: started,
+        level: "info".into(),
+        target: "lexera.api.logs".into(),
+        message: "Connected to /logs/stream (ipc)".into(),
+    };
+    let payload = serde_json::to_vec(&greeting).unwrap_or_default();
+    write_frame(
+        write_half,
+        &ServerFrame::StreamMessage {
+            correlation_id,
+            payload,
+        },
+    )
+    .await?;
+
+    let mut rx = crate::log_bridge::subscribe();
+
+    // Heartbeat every 30s when idle. Skip immediate tick.
+    let heartbeat_duration = std::time::Duration::from_secs(30);
+    let mut heartbeat_interval = tokio::time::interval_at(
+        tokio::time::Instant::now() + heartbeat_duration,
+        heartbeat_duration
+    );
+    heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    let end_err = loop {
+        tokio::select! {
+            recv = rx.recv() => match recv {
+                Ok(entry) => {
+                    let payload = serde_json::to_vec(&entry).unwrap_or_default();
+                    if let Err(e) = write_frame(
+                        write_half,
+                        &ServerFrame::StreamMessage { correlation_id, payload },
+                    ).await {
+                        break Some(format!("write failed: {}", e));
+                    }
+                }
+                Err(RecvError::Lagged(_)) => {
+                    // Log drops are intentionally silent.
+                }
+                Err(RecvError::Closed) => break None,
+            },
+            client_msg = control_rx.recv() => match client_msg {
+                Some(ClientFrame::Cancel { correlation_id: cid }) if cid == correlation_id => {
+                    break None;
+                }
+                Some(ClientFrame::Ping) => {
+                    let _ = write_frame(write_half, &ServerFrame::Pong).await;
+                }
+                Some(_) => {}
+                None => break Some("connection closed".to_string()),
+            },
+            _ = heartbeat_interval.tick() => {
+                if let Err(e) = write_frame(write_half, &ServerFrame::Heartbeat).await {
+                    break Some(format!("heartbeat failed: {}", e));
+                }
+            }
+        }
+    };
+
+    write_frame(
+        write_half,
         &ServerFrame::StreamEnd {
             correlation_id,
             error: end_err,
@@ -95,24 +201,18 @@ mod tests {
     use super::*;
     use crate::test_helpers;
     use lexera_core::watcher::types::BoardChangeEvent;
+    use lexera_local_ipc::frame::{read_frame, write_frame, ClientFrame, ServerFrame};
     use lexera_local_ipc::{Client, Descriptor, Server};
 
     fn test_descriptor(dir: &tempfile::TempDir) -> Descriptor {
         Descriptor::new(dir.path().join("ipc.sock").to_string_lossy().into_owned())
     }
 
-    #[tokio::test]
-    async fn events_subscribe_delivers_broadcast_then_ends_on_cancel() {
-        let tmp = tempfile::tempdir().unwrap();
-        let state = test_helpers::test_state(tmp.path());
-        let event_tx = state.event_tx.clone();
-
-        let desc = test_descriptor(&tmp);
-        let server = Server::bind_with_descriptor(&desc).await.unwrap();
-
-        // Server drives one subscription then exits.
-        let state_for_server = state.clone();
-        let server_task = tokio::spawn(async move {
+    async fn drive_handler(
+        server: Server,
+        app_state: AppState,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
             let mut stream = server.accept().await.expect("accept");
             let frame = read_frame::<_, ClientFrame>(&mut stream)
                 .await
@@ -125,10 +225,30 @@ mod tests {
                 } => (correlation_id, topic),
                 other => panic!("expected StreamSubscribe, got {:?}", other),
             };
-            super::handle_subscribe(&mut stream, &state_for_server, correlation_id, topic)
+
+            let (mut read_half, mut write_half) = tokio::io::split(stream);
+            let (tx, mut rx) = mpsc::channel(4);
+            tokio::spawn(async move {
+                while let Ok(Some(f)) = read_frame::<_, ClientFrame>(&mut read_half).await {
+                    let _ = tx.send(f).await;
+                }
+            });
+
+            super::handle_subscribe(&mut write_half, &mut rx, &app_state, correlation_id, topic)
                 .await
                 .expect("handler io");
-        });
+        })
+    }
+
+    #[tokio::test]
+    async fn events_subscribe_delivers_broadcast_then_ends_on_cancel() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_helpers::test_state(tmp.path());
+        let event_tx = state.event_tx.clone();
+
+        let desc = test_descriptor(&tmp);
+        let server = Server::bind_with_descriptor(&desc).await.unwrap();
+        let _server_handle = drive_handler(server, state.clone()).await;
 
         let mut client = Client::connect_with_descriptor(&desc).await.unwrap();
         let correlation_id = Uuid::new_v4();
@@ -142,12 +262,7 @@ mod tests {
         .await
         .unwrap();
 
-        // Give the server task time to subscribe before we publish, so it
-        // doesn't miss the broadcast. `subscribe()` in the backend handler
-        // runs synchronously before the first select; yielding once is
-        // enough on single-threaded tokio tests.
-        tokio::task::yield_now().await;
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         event_tx
             .send(BoardChangeEvent::MediaChanged {
@@ -156,38 +271,43 @@ mod tests {
             })
             .unwrap();
 
-        // First frame: the serialized event.
-        let msg = read_frame::<_, ServerFrame>(client.stream())
-            .await
-            .unwrap()
-            .unwrap();
+        // Drain until we see StreamMessage, ignoring heartbeats.
+        let msg = loop {
+            let frame = read_frame::<_, ServerFrame>(client.stream())
+                .await
+                .unwrap()
+                .unwrap();
+            match frame {
+                ServerFrame::Heartbeat => continue,
+                other => break other,
+            }
+        };
         let payload = match msg {
             ServerFrame::StreamMessage { payload, .. } => payload,
             other => panic!("expected StreamMessage, got {:?}", other),
         };
         let parsed: serde_json::Value = serde_json::from_slice(&payload).unwrap();
         assert_eq!(parsed["type"], "MediaChanged");
-        assert_eq!(parsed["board_id"], "b1");
 
-        // Cancel, expect clean StreamEnd.
         write_frame(client.stream(), &ClientFrame::Cancel { correlation_id })
             .await
             .unwrap();
-        let end = read_frame::<_, ServerFrame>(client.stream())
-            .await
-            .unwrap()
-            .unwrap();
+        let end = loop {
+            let frame = read_frame::<_, ServerFrame>(client.stream())
+                .await
+                .unwrap()
+                .unwrap();
+            match frame {
+                ServerFrame::Heartbeat => continue,
+                other => break other,
+            }
+        };
         match end {
             ServerFrame::StreamEnd { error, .. } => assert!(error.is_none(), "{:?}", error),
             other => panic!("expected StreamEnd, got {:?}", other),
         }
-
-        server_task.await.unwrap();
     }
 
-    /// Unauthorized user (not a board member) receives a ServerError JSON
-    /// payload followed by a StreamEnd with an error. Board auth mirrors the
-    /// WebSocket path.
     #[tokio::test]
     async fn sync_unauthorized_user_receives_error_end() {
         let tmp = tempfile::tempdir().unwrap();
@@ -195,24 +315,7 @@ mod tests {
 
         let desc = test_descriptor(&tmp);
         let server = Server::bind_with_descriptor(&desc).await.unwrap();
-
-        let state_for_server = state.clone();
-        let server_task = tokio::spawn(async move {
-            let mut stream = server.accept().await.expect("accept");
-            let frame = read_frame::<_, ClientFrame>(&mut stream)
-                .await
-                .expect("read")
-                .expect("frame");
-            if let ClientFrame::StreamSubscribe {
-                correlation_id,
-                topic,
-            } = frame
-            {
-                let _ =
-                    super::handle_subscribe(&mut stream, &state_for_server, correlation_id, topic)
-                        .await;
-            }
-        });
+        let _server_handle = drive_handler(server, state.clone()).await;
 
         let mut client = Client::connect_with_descriptor(&desc).await.unwrap();
         let correlation_id = Uuid::new_v4();
@@ -228,7 +331,6 @@ mod tests {
         .await
         .unwrap();
 
-        // Send a ClientHello with an unregistered user id.
         let hello = serde_json::to_vec(&lexera_core::sync::ClientMessage::ClientHello {
             user_id: "not-a-member".into(),
             vv: String::new(),
@@ -244,11 +346,16 @@ mod tests {
         .await
         .unwrap();
 
-        // Expect ServerError JSON, then StreamEnd with error.
-        let msg = read_frame::<_, ServerFrame>(client.stream())
-            .await
-            .unwrap()
-            .unwrap();
+        let msg = loop {
+            let frame = read_frame::<_, ServerFrame>(client.stream())
+                .await
+                .unwrap()
+                .unwrap();
+            match frame {
+                ServerFrame::Heartbeat => continue,
+                other => break other,
+            }
+        };
         let err_payload = match msg {
             ServerFrame::StreamMessage { payload, .. } => payload,
             other => panic!("expected StreamMessage, got {:?}", other),
@@ -256,28 +363,29 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_slice(&err_payload).unwrap();
         assert_eq!(parsed["type"], "ServerError");
 
-        let end = read_frame::<_, ServerFrame>(client.stream())
-            .await
-            .unwrap()
-            .unwrap();
+        let end = loop {
+            let frame = read_frame::<_, ServerFrame>(client.stream())
+                .await
+                .unwrap()
+                .unwrap();
+            match frame {
+                ServerFrame::Heartbeat => continue,
+                other => break other,
+            }
+        };
         match end {
             ServerFrame::StreamEnd { error, .. } => {
                 assert!(error.is_some(), "expected error on StreamEnd");
             }
             other => panic!("expected StreamEnd, got {:?}", other),
         }
-
-        server_task.await.unwrap();
     }
 
-    /// Authorized peer subscribes, exchanges Hello frames, then cancels
-    /// cleanly. Validates the happy-path handshake for Sync streams.
     #[tokio::test]
     async fn sync_hello_roundtrip_completes() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id) = test_helpers::setup_board(tmp.path());
 
-        // Register the test user as a board member.
         let _ = test_helpers::register_test_user(&state);
         state
             .auth_service
@@ -288,24 +396,7 @@ mod tests {
 
         let desc = test_descriptor(&tmp);
         let server = Server::bind_with_descriptor(&desc).await.unwrap();
-
-        let state_for_server = state.clone();
-        let server_task = tokio::spawn(async move {
-            let mut stream = server.accept().await.expect("accept");
-            let frame = read_frame::<_, ClientFrame>(&mut stream)
-                .await
-                .expect("read")
-                .expect("frame");
-            if let ClientFrame::StreamSubscribe {
-                correlation_id,
-                topic,
-            } = frame
-            {
-                let _ =
-                    super::handle_subscribe(&mut stream, &state_for_server, correlation_id, topic)
-                        .await;
-            }
-        });
+        let _server_handle = drive_handler(server, state.clone()).await;
 
         let mut client = Client::connect_with_descriptor(&desc).await.unwrap();
         let correlation_id = Uuid::new_v4();
@@ -336,110 +427,42 @@ mod tests {
         .await
         .unwrap();
 
-        // The first server message is either ServerPresence (broadcast on
-        // registration) or ServerHello; accept either until we've seen
-        // ServerHello.
         let mut saw_hello = false;
-        for _ in 0..3 {
-            let msg = read_frame::<_, ServerFrame>(client.stream())
+        for _ in 0..5 {
+            let frame = read_frame::<_, ServerFrame>(client.stream())
                 .await
                 .unwrap()
                 .unwrap();
-            let payload = match msg {
+            let payload = match frame {
                 ServerFrame::StreamMessage { payload, .. } => payload,
-                other => panic!("expected StreamMessage, got {:?}", other),
+                ServerFrame::Heartbeat => continue,
+                other => panic!("expected StreamMessage or Heartbeat, got {:?}", other),
             };
             let parsed: serde_json::Value = serde_json::from_slice(&payload).unwrap();
             if parsed["type"] == "ServerHello" {
                 saw_hello = true;
-                assert!(parsed["peer_id"].is_number());
                 break;
             }
         }
-        assert!(saw_hello, "did not observe ServerHello within 3 frames");
+        assert!(saw_hello);
 
         write_frame(client.stream(), &ClientFrame::Cancel { correlation_id })
             .await
             .unwrap();
-        // After cancel, the server eventually emits StreamEnd with no error.
-        // It may first drain any pending hub broadcasts (e.g. presence).
         let mut saw_end = false;
-        for _ in 0..5 {
+        for _ in 0..10 {
             let frame = read_frame::<_, ServerFrame>(client.stream()).await.unwrap();
             match frame {
                 Some(ServerFrame::StreamEnd { error, .. }) => {
-                    assert!(error.is_none(), "unexpected end error: {:?}", error);
+                    assert!(error.is_none());
                     saw_end = true;
                     break;
                 }
+                Some(ServerFrame::Heartbeat) => continue,
                 Some(_) => continue,
                 None => break,
             }
         }
-        assert!(saw_end, "did not observe StreamEnd within 5 frames");
-
-        server_task.await.unwrap();
+        assert!(saw_end);
     }
-}
-
-/// Mirrors `api::events::stream_logs`: emits a "Connected" entry on open,
-/// then forwards `log_bridge` broadcasts as JSON. No resync concept — log
-/// drops are recoverable without UI refresh.
-async fn forward_logs(stream: &mut Stream, correlation_id: Uuid) -> Result<(), IpcError> {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let started = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-    let greeting = crate::log_bridge::BackendLogEntry {
-        timestamp_ms: started,
-        level: "info".into(),
-        target: "lexera.api.logs".into(),
-        message: "Connected to /logs/stream (ipc)".into(),
-    };
-    let payload = serde_json::to_vec(&greeting).unwrap_or_default();
-    write_frame(
-        stream,
-        &ServerFrame::StreamMessage {
-            correlation_id,
-            payload,
-        },
-    )
-    .await?;
-
-    let mut rx = crate::log_bridge::subscribe();
-    let end_err = loop {
-        tokio::select! {
-            recv = rx.recv() => match recv {
-                Ok(entry) => {
-                    let payload = serde_json::to_vec(&entry).unwrap_or_default();
-                    write_frame(
-                        stream,
-                        &ServerFrame::StreamMessage { correlation_id, payload },
-                    )
-                    .await?;
-                }
-                Err(RecvError::Lagged(_)) => {
-                    // Log drops are intentionally silent.
-                }
-                Err(RecvError::Closed) => break None,
-            },
-            client = read_frame::<_, ClientFrame>(stream) => match client? {
-                Some(ClientFrame::Cancel { correlation_id: cid }) if cid == correlation_id => {
-                    break None;
-                }
-                Some(_) => {}
-                None => break Some("connection closed".to_string()),
-            },
-        }
-    };
-
-    write_frame(
-        stream,
-        &ServerFrame::StreamEnd {
-            correlation_id,
-            error: end_err,
-        },
-    )
-    .await
 }

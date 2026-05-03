@@ -132,6 +132,78 @@ var LexeraDragDropHandlers = (function () {
     }
   }
 
+  // --- Drop-Target Kind Validator ----------------------------------------
+  //
+  // Each draggable element kind has a strict set of valid drop targets
+  // (see TODOs-lexera.md):
+  //   row    — above / between / below other rows, or on the empty board
+  //   stack  — before / between / after other stacks, or on an empty row
+  //   column — before / between / after other columns, or on an empty stack
+  //   card   — only inside .column-cards, before / between / after other cards
+  //
+  // Header dock buttons (incoming / parked / archive / trash) are universal
+  // drop tags accepted for every kind except 'board'.
+  //
+  // Returns true if the element under (mx,my) is a valid target for dragKind.
+  // Used as defense-in-depth: dragover skips visual feedback for invalid
+  // hovers, and apply functions reject the drop on their own re-check.
+  // The kind-specific selector queries elsewhere in this module would
+  // already filter most cases — this helper centralises and documents the
+  // rules so they can't drift.
+  function isDropTargetValidForKind(dragKind, mx, my) {
+    if (typeof document === 'undefined' || typeof document.elementFromPoint !== 'function') return true;
+    var targetEl = document.elementFromPoint(mx, my);
+    if (!targetEl || typeof targetEl.closest !== 'function') return false;
+
+    if (dragKind !== 'board' && (
+      targetEl.closest('#btn-incoming') ||
+      targetEl.closest('#btn-parked') ||
+      targetEl.closest('#btn-archived') ||
+      targetEl.closest('#btn-trash')
+    )) return true;
+
+    switch (dragKind) {
+      case 'row':
+      case 'tree-row':
+      case 'board-row':
+        return !!(
+          targetEl.closest('.board-row') ||
+          targetEl.closest('.tree-node[data-tree-drag="tree-row"]') ||
+          targetEl.closest('.columns-container')
+        );
+      case 'stack':
+      case 'tree-stack':
+      case 'board-stack':
+        return !!(
+          targetEl.closest('.board-stack') ||
+          targetEl.closest('.board-row-content') ||
+          targetEl.closest('.board-row') ||
+          targetEl.closest('.tree-node[data-tree-drag="tree-stack"]')
+        );
+      case 'column':
+      case 'tree-column':
+        return !!(
+          targetEl.closest('.column') ||
+          targetEl.closest('.board-stack') ||
+          targetEl.closest('.tree-node[data-tree-drag="tree-column"]') ||
+          targetEl.closest('.tree-node[data-tree-drag="tree-stack"]') ||
+          targetEl.closest('.tree-children.tree-stack-drop-zone')
+        );
+      case 'card':
+      case 'tree-card':
+        return !!(
+          targetEl.closest('.column-cards') ||
+          targetEl.closest('.column') ||
+          targetEl.closest('.tree-node[data-tree-drag="tree-card"]') ||
+          targetEl.closest('.tree-column')
+        );
+      case 'board':
+        return !!targetEl.closest('.board-item');
+      default:
+        return false;
+    }
+  }
+
   // --- Element Finders ---
 
   function getColumnCardsContainers() {
@@ -528,6 +600,7 @@ var LexeraDragDropHandlers = (function () {
   }
 
   function applyCardDropByPoint(source, mx, my, onFailure) {
+    if (!isDropTargetValidForKind('card', mx, my)) return false;
     var target = resolveCardDropTarget(mx, my);
     if (!target) return false;
 
@@ -1015,6 +1088,11 @@ var LexeraDragDropHandlers = (function () {
     _deps.clearDropZoneIndicatorHighlights();
     clearHeaderDropTargetHighlights();
 
+    // Reject hovers over targets that don't match the dragged element's kind
+    // (e.g. dragging a row over a card). No drop indicator is shown so the
+    // user gets clear visual feedback that this drop will be rejected.
+    if (!isDropTargetValidForKind(type, mx, my)) return false;
+
     if (type !== 'board') {
       var headerTag = resolveHeaderDropTag(mx, my);
       if (headerTag) {
@@ -1389,6 +1467,7 @@ var LexeraDragDropHandlers = (function () {
 
   function applyRowDropByPoint(source, mx, my) {
     if (!source) return false;
+    if (!isDropTargetValidForKind('row', mx, my)) return false;
     var activeBoardId = _deps.getActiveBoardId();
     var srcBoardId = source.boardId || activeBoardId;
     var srcRowIdx = getSourceRowIndex(source);
@@ -1434,6 +1513,7 @@ var LexeraDragDropHandlers = (function () {
 
   function applyStackDropByPoint(source, mx, my) {
     if (!source) return false;
+    if (!isDropTargetValidForKind('stack', mx, my)) return false;
     var activeBoardId = _deps.getActiveBoardId();
     var srcBoardId = source.boardId || activeBoardId;
     var srcRowIdx = parseInt(source.rowIndex, 10);
@@ -1755,6 +1835,7 @@ var LexeraDragDropHandlers = (function () {
   }
 
   function executeColumnPtrDrop(mx, my, src) {
+    if (!isDropTargetValidForKind('column', mx, my)) return;
     var activeBoardId = _deps.getActiveBoardId();
 
     function isSameActiveBoardDisplayTarget(target) {
