@@ -446,7 +446,16 @@
       return;
     }
     var update = computeNativeGeometry(label, placeholderEl);
-    if (!update) return;
+    if (!update) {
+      // Placeholder is currently invisible (offsetParent null because an
+      // ancestor has display:none — e.g. dock fold collapses the panel
+      // content tabset). The native webview MUST be moved offscreen, not
+      // left at its previous position; otherwise it keeps painting on top
+      // of whatever now occupies that screen area (e.g. the fold strip).
+      // This is the root cause of "log viewer invisible when folded".
+      if (label && placeholderEl) parkWebviewOffscreen(label);
+      return;
+    }
     updatePlaceholderDebugGeometry(label, placeholderEl, update);
     emitChildDebugGeometry(label, placeholderEl, update);
     if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
@@ -1089,6 +1098,11 @@
     tabIdFromLabel: tabIdFromLabel,
     spawnedLabel: spawnedLabel,
     destroyAll: destroyAll,
-    noteLocalDestroy: noteLocalDestroy
+    noteLocalDestroy: noteLocalDestroy,
+    // Exposed for tests: lets a test verify that an invisible placeholder
+    // causes the native webview to be parked offscreen rather than left at
+    // its previous position (which would cover whatever now occupies the
+    // shell-DOM area, e.g. the fold strip when a dock collapses).
+    _test_pushGeometryForLabel: pushGeometryForLabel
   };
 })();

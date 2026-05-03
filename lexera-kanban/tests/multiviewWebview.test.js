@@ -191,6 +191,88 @@ describe('LexeraMultiviewWebview native geometry mapping', () => {
   });
 });
 
+// Reason: when a panel dock folds, the panel-content tabset gets
+// `display: none`, which cascades to the placeholder element making
+// `placeholder.offsetParent === null`. computeNativeGeometry returns null
+// in that state. Without this fix, pushGeometryForLabel silently bailed
+// and the native child webview kept painting at its last known position
+// — directly on top of the fold strip the shell now wants to render.
+// This is the "log viewer invisible when folded" bug.
+describe('LexeraMultiviewWebview.pushGeometryForLabel — hidden-placeholder handling', () => {
+  it('parks the webview offscreen when the placeholder has no offsetParent (fold case)', async () => {
+    const placeholder = createPlaceholder({ visible: true });
+    const invoke = vi.fn((command) => {
+      if (command === 'multiview_get_host_geometry') {
+        return Promise.resolve({ x: 0, y: 0, width: 1200, height: 800 });
+      }
+      return Promise.resolve(null);
+    });
+    const pushGeomDeferred = vi.fn();
+    const window = {
+      location: { href: 'http://127.0.0.1:1431/', search: '' },
+      localStorage: createStorage(),
+      addEventListener() {},
+      removeEventListener() {},
+      LexeraMultiview: {
+        invoke,
+        pushGeomDeferred,
+        setGeometry: () => Promise.resolve(null)
+      }
+    };
+    const { api } = loadMultiviewWebview({ window });
+    await api.refreshHostGeometryContext(true);
+
+    // Placeholder is currently visible — geometry should be a real rect.
+    api._test_pushGeometryForLabel('panel-tab-tab-a', placeholder);
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(1);
+    expect(pushGeomDeferred).toHaveBeenLastCalledWith(expect.objectContaining({
+      label: 'panel-tab-tab-a',
+      width: 300,
+      height: 160
+    }));
+
+    // Fold the parent dock: placeholder loses offsetParent.
+    placeholder.setVisible(false);
+    api._test_pushGeometryForLabel('panel-tab-tab-a', placeholder);
+
+    // Bug regression: previously this call was a silent no-op, leaving the
+    // webview at its last expanded position. After the fix it must park
+    // the webview offscreen so it doesn't paint on top of the fold strip.
+    expect(pushGeomDeferred).toHaveBeenCalledTimes(2);
+    const lastCall = pushGeomDeferred.mock.calls[1][0];
+    expect(lastCall.label).toBe('panel-tab-tab-a');
+    expect(lastCall.x).toBeLessThan(-1000);
+    expect(lastCall.y).toBeLessThan(-1000);
+  });
+
+  it('does nothing when label is empty (defensive guard)', async () => {
+    const pushGeomDeferred = vi.fn();
+    const invoke = vi.fn((command) => {
+      if (command === 'multiview_get_host_geometry') {
+        return Promise.resolve({ x: 0, y: 0, width: 1200, height: 800 });
+      }
+      return Promise.resolve(null);
+    });
+    const window = {
+      location: { href: 'http://127.0.0.1:1431/', search: '' },
+      localStorage: createStorage(),
+      addEventListener() {},
+      removeEventListener() {},
+      LexeraMultiview: {
+        invoke,
+        pushGeomDeferred,
+        setGeometry: () => Promise.resolve(null)
+      }
+    };
+    const { api } = loadMultiviewWebview({ window });
+    await api.refreshHostGeometryContext(true);
+
+    const placeholder = createPlaceholder({ visible: false });
+    api._test_pushGeometryForLabel('', placeholder);
+    expect(pushGeomDeferred).not.toHaveBeenCalled();
+  });
+});
+
 describe('LexeraMultiviewWebview.setAllVisible suppression refcount', () => {
   it('passes the owning top-level window label as the child webview parent', async () => {
     const placeholder = createPlaceholder();
