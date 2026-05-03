@@ -14,34 +14,36 @@
  *   ManagementUI.unmount('files');   // tear down a mount
  *   ManagementUI.destroy();          // clean up all mounts
  */
+// Board settings field definitions. Hoisted out of the ManagementUI IIFE so
+// the field schema is decomposed from the rendering logic — easy to grep, audit,
+// and (eventually) move into its own module without touching the IIFE body.
+var BOARD_SETTINGS_FIELDS = [
+  { key: 'columnWidth', label: 'Column Width', placeholder: '280px', type: 'text' },
+  { key: 'layoutRows', label: 'Layout Rows', placeholder: '', type: 'number' },
+  { key: 'layoutPreset', label: 'Layout Preset', placeholder: 'compact / spacious / custom', type: 'text' },
+  { key: 'fontSize', label: 'Font Size', placeholder: '13px', type: 'text' },
+  { key: 'fontFamily', label: 'Font Family', placeholder: '', type: 'select', options: [
+    '', 'Poppins', 'Inter', 'Roboto', 'Open Sans', 'Lato', 'Nunito', 'Source Sans Pro',
+    'SF Pro Display', 'Helvetica Neue', 'Arial', 'Segoe UI', 'Verdana',
+    'Georgia', 'Times New Roman', 'Courier New', 'monospace', 'system-ui'
+  ] },
+  { key: 'rowHeight', label: 'Row Height', placeholder: 'auto', type: 'text' },
+  { key: 'maxRowHeight', label: 'Max Row Height (px)', placeholder: '', type: 'number' },
+  { key: 'cardMinHeight', label: 'Card Min Height', placeholder: 'auto', type: 'text' },
+  { key: 'tagVisibility', label: 'Tag Visibility', placeholder: '', type: 'select', options: ['', 'all', 'allexcludinglayout', 'customonly', 'mentionsonly', 'none', 'dim'] },
+  { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
+  { key: 'stickyStackMode', label: 'Sticky Column Header', placeholder: '', type: 'select', options: ['', 'titleonly', 'full', 'bottom'] },
+  { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'text', 'hidden', 'dim'] },
+  { key: 'htmlContentRenderMode', label: 'HTML Content', placeholder: '', type: 'select', options: ['', 'text', 'html'] },
+  { key: 'arrowKeyFocusScroll', label: 'Arrow Key Scroll', placeholder: '', type: 'select', options: ['', 'nearest', 'center', 'disabled'] },
+  { key: 'layoutSpacing', label: 'Layout Spacing', placeholder: '', type: 'select', options: ['', 'compact', 'spacious'] },
+  { key: 'boardColor', label: 'Board Color', placeholder: '#4c7abf', type: 'text' },
+  { key: 'boardColorLight', label: 'Board Color (Light)', placeholder: '#4c7abf', type: 'text' },
+  { key: 'boardColorDark', label: 'Board Color (Dark)', placeholder: '#4c7abf', type: 'text' }
+];
+
 var ManagementUI = (function () {
   'use strict';
-
-  // Board settings field definitions
-  var BOARD_SETTINGS_FIELDS = [
-    { key: 'columnWidth', label: 'Column Width', placeholder: '280px', type: 'text' },
-    { key: 'layoutRows', label: 'Layout Rows', placeholder: '', type: 'number' },
-    { key: 'layoutPreset', label: 'Layout Preset', placeholder: 'compact / spacious / custom', type: 'text' },
-    { key: 'fontSize', label: 'Font Size', placeholder: '13px', type: 'text' },
-    { key: 'fontFamily', label: 'Font Family', placeholder: '', type: 'select', options: [
-      '', 'Poppins', 'Inter', 'Roboto', 'Open Sans', 'Lato', 'Nunito', 'Source Sans Pro',
-      'SF Pro Display', 'Helvetica Neue', 'Arial', 'Segoe UI', 'Verdana',
-      'Georgia', 'Times New Roman', 'Courier New', 'monospace', 'system-ui'
-    ] },
-    { key: 'rowHeight', label: 'Row Height', placeholder: 'auto', type: 'text' },
-    { key: 'maxRowHeight', label: 'Max Row Height (px)', placeholder: '', type: 'number' },
-    { key: 'cardMinHeight', label: 'Card Min Height', placeholder: 'auto', type: 'text' },
-    { key: 'tagVisibility', label: 'Tag Visibility', placeholder: '', type: 'select', options: ['', 'all', 'allexcludinglayout', 'customonly', 'mentionsonly', 'none', 'dim'] },
-    { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
-    { key: 'stickyStackMode', label: 'Sticky Column Header', placeholder: '', type: 'select', options: ['', 'titleonly', 'full', 'bottom'] },
-    { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'text', 'hidden', 'dim'] },
-    { key: 'htmlContentRenderMode', label: 'HTML Content', placeholder: '', type: 'select', options: ['', 'text', 'html'] },
-    { key: 'arrowKeyFocusScroll', label: 'Arrow Key Scroll', placeholder: '', type: 'select', options: ['', 'nearest', 'center', 'disabled'] },
-    { key: 'layoutSpacing', label: 'Layout Spacing', placeholder: '', type: 'select', options: ['', 'compact', 'spacious'] },
-    { key: 'boardColor', label: 'Board Color', placeholder: '#4c7abf', type: 'text' },
-    { key: 'boardColorLight', label: 'Board Color (Light)', placeholder: '#4c7abf', type: 'text' },
-    { key: 'boardColorDark', label: 'Board Color (Dark)', placeholder: '#4c7abf', type: 'text' }
-  ];
 
   // ── Multi-mount infrastructure ──
   // Each mount = { id, container, uiOptions, delegateHandler, delegateChangeHandler, keydownHandler }
