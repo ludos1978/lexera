@@ -167,16 +167,20 @@ describe('one workspace per window — wiring contract', () => {
     expect(appJs).toMatch(/function setWorkspacesState[\s\S]{0,1500}workspaces\.some\(/);
   });
 
-  it('CloseRequested clears LAST_FOCUSED_WINDOW + drops the closing window\'s subscriptions', () => {
+  it('CloseRequested clears LAST_FOCUSED_WINDOW + drops the closing window\'s subscriptions / health entries / focus slot', () => {
     // If a workspace window closes while LAST_FOCUSED_WINDOW points
     // at it, the next menu click does `emit_to(<dead-label>, …)` →
-    // silently no-ops → menu appears broken. And every subscription
-    // the closing window's child webviews registered would otherwise
-    // pile up in the SubscriptionRegistry forever.
+    // silently no-ops → menu appears broken. The Subscription /
+    // Health / Focus registries would otherwise accumulate stale
+    // entries forever over multi-window churn.
     const webviewMgrRs = readFileSync(resolve(__dirname, '..', 'src-tauri', 'src', 'webview_mgr.rs'), 'utf8');
     expect(webviewMgrRs).toMatch(/impl SubscriptionRegistry[\s\S]{0,600}fn drop_labels/);
+    expect(webviewMgrRs).toMatch(/impl HealthTracker[\s\S]{0,300}fn drop_labels/);
+    expect(webviewMgrRs).toMatch(/impl FocusTracker[\s\S]{0,300}fn drop_window/);
     expect(mainRs).toMatch(/CloseRequested[\s\S]{0,1500}LAST_FOCUSED_WINDOW\.lock\(\)[\s\S]{0,400}\*last = None/);
-    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,3000}drop_labels\(&dead_labels\)/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,3500}SubscriptionRegistry[\s\S]{0,200}drop_labels\(&dead_labels\)/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,3500}HealthTracker[\s\S]{0,200}drop_labels\(&dead_labels\)/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,3500}FocusTracker[\s\S]{0,200}drop_window\(&closing_label\)/);
   });
 
   it('the menu handler tracks the last-focused window so macOS menu-clicks (which transiently take focus) still resolve a target', () => {

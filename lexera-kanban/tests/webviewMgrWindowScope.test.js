@@ -105,6 +105,36 @@ describe('webview_mgr.rs — lifecycle events are window-scoped, not global', ()
     expect(slice).toMatch(/emit_to_window_of_label\([\s\S]{0,80}"focus-changed"/);
   });
 
+  it('FocusTracker is per-window (HashMap<window_label, Option<webview_label>>) — not a process-singleton Option', () => {
+    // Earlier shape `Mutex<Option<String>>` returned a label from any
+    // window when `multiview_get_focused` was called. Now keyed by
+    // parent window so each window's shell sees only its own focus.
+    expect(webviewMgrCode).toMatch(/inner:\s*parking_lot::Mutex<std::collections::HashMap<String,\s*Option<String>>>/);
+    expect(webviewMgrCode).not.toMatch(/inner:\s*parking_lot::Mutex<Option<String>>/);
+  });
+
+  it('multiview_set_focused resolves the target webview\'s parent window before updating the slot', () => {
+    var slice = fnCode('multiview_set_focused');
+    expect(slice).toMatch(/app\.webviews\(\)\.get\(&label\)/);
+    expect(slice).toMatch(/window_label/);
+    // Insert into the window's slot, not a global Option.
+    expect(slice).toMatch(/map\.insert\(window_label/);
+  });
+
+  it('multiview_get_focused takes caller and returns ONLY this window\'s focused webview', () => {
+    var slice = fnCode('multiview_get_focused');
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    expect(slice).toMatch(/caller\.window\(\)\.label\(\)/);
+  });
+
+  it('FocusTracker exposes drop_window so window-close cleanup can purge the slot', () => {
+    expect(webviewMgrCode).toMatch(/impl FocusTracker[\s\S]{0,200}fn drop_window/);
+  });
+
+  it('HealthTracker exposes drop_labels so window-close cleanup can purge per-webview state', () => {
+    expect(webviewMgrCode).toMatch(/impl HealthTracker[\s\S]{0,300}fn drop_labels/);
+  });
+
   it('multiview_set_health emits health-changed via emit_to_window_of_label', () => {
     var slice = fnCode('multiview_set_health');
     expect(slice).toMatch(/emit_to_window_of_label\([\s\S]{0,80}"health-changed"/);

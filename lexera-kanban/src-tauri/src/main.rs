@@ -646,8 +646,24 @@ fn main() {
                         if !dead_labels.is_empty() {
                             use tauri::Manager;
                             let app = window.app_handle();
+                            // SubscriptionRegistry: drop dead webview labels
+                            // so multiview_broadcast doesn't emit_to ghosts.
                             let reg = app.state::<webview_mgr::SubscriptionRegistry>();
                             reg.drop_labels(&dead_labels);
+                            // HealthTracker: drop the closing window's
+                            // webview health entries so the HashMap doesn't
+                            // grow unbounded over multi-window churn.
+                            let health = app.state::<webview_mgr::HealthTracker>();
+                            health.drop_labels(&dead_labels);
+                        }
+                        // FocusTracker is keyed by WINDOW label (one slot
+                        // per top-level window), so we drop by the closing
+                        // window's label, not its webview labels.
+                        {
+                            use tauri::Manager;
+                            let app = window.app_handle();
+                            let focus = app.state::<webview_mgr::FocusTracker>();
+                            focus.drop_window(&closing_label);
                         }
                     }
                 }

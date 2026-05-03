@@ -810,13 +810,28 @@ pub fn multiview_close_window(app: AppHandle, label: String) -> Result<(), Strin
 // ── Focus tracking (Stage 9) ───────────────────────────────────
 //
 // Sub-apps report their focused/blurred state. Rust tracks the
-// currently-focused webview so the main shell can route global
-// keyboard shortcuts to the right place, show focus indicators,
-// or query "who has focus" at any time.
+// currently-focused webview PER WINDOW so each window's shell can
+// query "what has focus in MY window" without seeing focus state
+// from sibling windows.
+//
+// Earlier shape (`Mutex<Option<String>>`) was a process-wide
+// singleton: window B's shell calling `multiview_get_focused`
+// could receive a label from window A, breaking shortcut routing
+// and focus indicators in multi-window setups.
 
 #[derive(Default)]
 pub struct FocusTracker {
-    inner: parking_lot::Mutex<Option<String>>,
+    inner: parking_lot::Mutex<std::collections::HashMap<String, Option<String>>>,
+}
+
+impl FocusTracker {
+    /// Drop every label belonging to the closing window from the
+    /// tracker. Called by `main.rs` `CloseRequested` so the registry
+    /// doesn't accumulate stale per-window slots over multi-window
+    /// open/close churn.
+    pub fn drop_window(&self, window_label: &str) {
+        self.inner.lock().remove(window_label);
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -827,26 +842,35 @@ struct FocusChangedEvent {
 #[tauri::command]
 pub fn multiview_set_focused(
     app: AppHandle,
-    tracker: State<FocusTracker>,
     label: String,
     focused: bool,
 ) -> Result<(), String> {
-    let mut current = tracker.inner.lock();
+    // Resolve the affected webview's parent window so we update the
+    // right window's slot. If the webview has already been destroyed
+    // by the time the report arrives (typical end-of-frame race),
+    // silently drop the event.
+    let window_label = match app.webviews().get(&label) {
+        Some(wv) => wv.window().label().to_string(),
+        None => return Ok(()),
+    };
+    let tracker: State<FocusTracker> = app.state();
+    let mut map = tracker.inner.lock();
+    let current = map.get(&window_label).cloned().flatten();
     let new_label: Option<String> = if focused {
         Some(label.clone())
     } else if current.as_deref() == Some(label.as_str()) {
         None
     } else {
-        // Blur from a label that wasn't currently focused — ignore
+        // Blur from a label that wasn't this window's focused webview — ignore
         return Ok(());
     };
-    if *current != new_label {
-        *current = new_label.clone();
-        log::info!("[focus] now: {:?}", new_label);
+    if current != new_label {
+        map.insert(window_label.clone(), new_label.clone());
+        drop(map);
+        log::info!("[focus] window '{}' now: {:?}", window_label, new_label);
         // Scope the emit to webviews in the same window as the
-        // affected label. Use `label` (the parameter — the webview
-        // that just gained or lost focus) as the source for window
-        // resolution, since `new_label` is None on blur.
+        // affected label. `label` is the webview that gained or lost
+        // focus; `new_label` is None on blur.
         emit_to_window_of_label(
             &app,
             &label,
@@ -858,8 +882,11 @@ pub fn multiview_set_focused(
 }
 
 #[tauri::command]
-pub fn multiview_get_focused(tracker: State<FocusTracker>) -> Option<String> {
-    tracker.inner.lock().clone()
+pub fn multiview_get_focused(caller: tauri::Webview, tracker: State<FocusTracker>) -> Option<String> {
+    // Return the focused webview for THIS WINDOW only — not whatever
+    // happens to be globally focused across the app.
+    let window_label = caller.window().label().to_string();
+    tracker.inner.lock().get(&window_label).cloned().flatten()
 }
 
 // ── Health indicator (per-view connection state) ────────────────
@@ -875,6 +902,18 @@ pub fn multiview_get_focused(tracker: State<FocusTracker>) -> Option<String> {
 #[derive(Default)]
 pub struct HealthTracker {
     inner: parking_lot::RwLock<std::collections::HashMap<String, String>>,
+}
+
+impl HealthTracker {
+    /// Drop every label in `dead_labels` from the tracker. Called by
+    /// `main.rs` `CloseRequested` so a window's webview-health entries
+    /// don't linger after its window is gone.
+    pub fn drop_labels(&self, dead_labels: &[String]) {
+        let mut w = self.inner.write();
+        for label in dead_labels {
+            w.remove(label);
+        }
+    }
 }
 
 #[derive(Serialize, Clone)]
