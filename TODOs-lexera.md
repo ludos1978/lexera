@@ -30,6 +30,8 @@ Generally do the most time consuming tasks first. If a task takes very long to c
   - [x] (done) Phase 1d — boards are the TreeView roots; the `.board-item / .board-caret / .board-subtree` shim is gone, the workspace name lives in the panel header, and a single `data-tree-target="board"` node carries the toggle, click, and active highlight. (commit 7bd0e9f8)
   - [x] (done) Phase 1e — polish: drop "Workspace tree" section title, `(N)` count and connecting/connected pill from the panel chrome (commit 27086cea); wire row/stack/column toggles through `TreeView.toggleNode` so they fold in-place (commit ec100017); drop the phantom board-level indent guide on every descendant of a board (commit 2646d014).
   - [ ] Phase 2 — re-order rows / stacks / columns / cards within a single board via drag. — in progress
+    - [x] (done) Phase 2a — visual: row/stack/column/card nodes carry the canonical TreeView drag grip + per-type `gripTitle`. (commit 376826c6)
+    - [ ] Phase 2b — wire dragstart / dragover / drop event handlers to mutate the local hierarchy cache and persist via `LexeraApi.saveBoard`.
   - [ ] Phase 3 — drag elements between boards in the workspace tree.
   - [ ] Phase 4 — drag elements from a kanban board into the workspace tree (and back).
 
