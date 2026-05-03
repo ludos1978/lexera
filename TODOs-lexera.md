@@ -14,7 +14,7 @@ To mark a task with input required add (input required) at the start of the task
 
 Generally do the most time consuming tasks first. If a task takes very long to complete, start it early to finish early, DO NOT DELAY LONG TASKS!
 
-**Test status: full lexera-kanban vitest: 1879 passed, 0 failed (38s); web-clipper test suite: 15 passed, 0 failed; full `./run-lexera-tests.sh`: 160 / 161 passed — 1 pre-existing failure (`dashboard panel: visible result click focuses the matching board card`) lives in dashboard-search code being actively rewritten by a parallel session, untouched by current commits.**
+**Test status: full lexera-kanban vitest: 1981 passed, 0 failed, 2 skipped (157 files, ~20s) — fully green as of 2d6b8044. Cargo check on `lexera-kanban/src-tauri` is clean.**
 
 ## Open Tasks
 
