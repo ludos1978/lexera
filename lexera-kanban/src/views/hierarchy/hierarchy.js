@@ -77,24 +77,32 @@
     if (label === 'Untitled') label = item.title || item.name || '';
     return label || '(no title)';
   }
+  // Phase 2a: row / stack / column / card nodes carry the canonical
+  // TreeView drag grip — same SVG affordance the dashboard, files
+  // panel, and main board sidebar use. Actual drop wiring (Phase 2b)
+  // will read source/target ids from this same TreeView markup.
   function buildCardNode(card) {
     return { id: card.id || null, label: nodeLabel(card), type: 'card',
-             children: null, expanded: false, hasToggle: false, grip: false };
+             children: null, expanded: false, hasToggle: false, grip: true,
+             gripTitle: 'Drag card to reorder' };
   }
   function buildColumnNode(column) {
     var cards = Array.isArray(column.cards) ? column.cards : [];
     return { id: column.id || null, label: nodeLabel(column), type: 'column',
-             children: cards.map(buildCardNode), expanded: true, grip: false };
+             children: cards.map(buildCardNode), expanded: true, grip: true,
+             gripTitle: 'Drag column to reorder' };
   }
   function buildStackNode(stack) {
     var cols = Array.isArray(stack.columns) ? stack.columns : [];
     return { id: stack.id || null, label: nodeLabel(stack), type: 'stack',
-             children: cols.map(buildColumnNode), expanded: true, grip: false };
+             children: cols.map(buildColumnNode), expanded: true, grip: true,
+             gripTitle: 'Drag stack to reorder' };
   }
   function buildRowNode(row) {
     var stacks = Array.isArray(row.stacks) ? row.stacks : [];
     return { id: row.id || null, label: nodeLabel(row), type: 'row',
-             children: stacks.map(buildStackNode), expanded: true, grip: false };
+             children: stacks.map(buildStackNode), expanded: true, grip: true,
+             gripTitle: 'Drag row to reorder' };
   }
   function buildPlaceholderNode(text) {
     return { id: null, label: text, type: 'placeholder',

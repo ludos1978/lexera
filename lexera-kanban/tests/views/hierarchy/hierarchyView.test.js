@@ -433,6 +433,27 @@ describe('hierarchy view sub-app', () => {
       const labels = Array.from(subtreeChildren.querySelectorAll('.tree-label'))
         .map((n) => n.textContent);
       expect(labels).toEqual(['Backlog', 'Frontend', 'To do', 'Wire caret']);
+
+      // Phase 2a: row / stack / column / card nodes carry a TreeView
+      // drag grip (`.tree-grip` SVG icon, NOT the spacer variant) so
+      // the user sees the same drag affordance the dashboard, files
+      // panel, and main board sidebar show. Actual drop wiring is
+      // Phase 2b — this assertion only pins the visual grip contract.
+      const grips = subtreeChildren.querySelectorAll('.tree-grip');
+      const realGrips = Array.from(grips).filter((g) => !g.classList.contains('tree-grip-spacer'));
+      expect(realGrips.length).toBeGreaterThanOrEqual(4); // row + stack + column + card
+      const types = realGrips.map((g) => Array.from(g.classList)
+        .filter((c) => c.startsWith('entity-drag-icon-'))[0]);
+      expect(types).toContain('entity-drag-icon-row');
+      expect(types).toContain('entity-drag-icon-stack');
+      expect(types).toContain('entity-drag-icon-column');
+      expect(types).toContain('entity-drag-icon-card');
+      // The board node itself stays grip-less — it's a TreeView root,
+      // not a draggable child of anything.
+      const boardNode = window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]');
+      const boardGrip = boardNode.querySelector('.tree-grip');
+      expect(boardGrip.classList.contains('tree-grip-spacer')).toBe(true);
     });
 
     // Regression 2026-05-03: rows / stacks / columns inside an expanded
