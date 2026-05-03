@@ -474,6 +474,69 @@ describe('hierarchy view sub-app', () => {
       expect(boardNode.getAttribute('draggable')).not.toBe('true');
     });
 
+    // Phase 2b-2-a: a dragstart on an entity node must broadcast
+    // `hierarchy-entity-drag-start` with the source identity so a
+    // shell-side handler can route the move into storage.
+    it('dragstart on a card broadcasts hierarchy-entity-drag-start with source identity', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      const fakeRows = [{
+        id: 'r1', title: 'Backlog',
+        stacks: [{
+          id: 's1', title: 'Frontend',
+          columns: [{ id: 'c1', title: 'To do',
+            cards: [{ id: 'card-1', title: 'Wire caret' }] }]
+        }]
+      }];
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: fakeRows })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      // Expand the board so the card node is in the DOM.
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const cardNode = window.document.querySelector(
+        '#local-boards .tree-node[draggable="true"][data-drag-kind="card"]'
+      );
+      expect(cardNode).toBeTruthy();
+
+      // JSDOM exposes Event but DragEvent often lacks dataTransfer; use
+      // a plain Event with bubbles and stub dataTransfer manually so
+      // the listener's `setData` path is exercised.
+      const ev = new window.Event('dragstart', { bubbles: true, cancelable: true });
+      const stored = {};
+      ev.dataTransfer = {
+        setData: (k, v) => { stored[k] = v; },
+        getData: (k) => stored[k] || '',
+        effectAllowed: ''
+      };
+      cardNode.dispatchEvent(ev);
+
+      expect(stored['application/x-lexera-entity']).toBeTruthy();
+      const payload = JSON.parse(stored['application/x-lexera-entity']);
+      expect(payload.boardId).toBe('b1');
+      expect(payload.kind).toBe('card');
+      expect(payload.entityId).toBe('card-1');
+
+      const dragBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drag-start');
+      expect(dragBroadcast).toBeTruthy();
+      expect(dragBroadcast.payload).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
+    });
+
     // Regression 2026-05-03: rows / stacks / columns inside an expanded
     // board must be foldable too. They are rendered with TreeView's
     // built-in toggle; clicking it flips the `.tree-children.expanded`

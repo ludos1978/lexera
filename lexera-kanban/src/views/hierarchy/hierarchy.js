@@ -227,6 +227,36 @@
     }
   }
 
+  // Phase 2b-2-a: a single delegated `dragstart` listener picks up
+  // browser-native events fired by any `[draggable="true"]` entity
+  // node, stamps the source identity into the DataTransfer payload
+  // (so a drop handler can read it without walking the DOM), and
+  // broadcasts a `hierarchy-entity-drag-start` event for shell-side
+  // listeners that route the move into the storage layer.
+  if (localBoardsEl && !localBoardsEl.__hierarchyDragBound) {
+    localBoardsEl.addEventListener('dragstart', function (e) {
+      var src = e.target && e.target.closest
+        ? e.target.closest('.tree-node[draggable="true"]')
+        : null;
+      if (!src || !localBoardsEl.contains(src)) return;
+      var payload = {
+        boardId: src.getAttribute('data-drag-board-id') || '',
+        kind: src.getAttribute('data-drag-kind') || '',
+        entityId: src.getAttribute('data-tree-id') || ''
+      };
+      if (e.dataTransfer && typeof e.dataTransfer.setData === 'function') {
+        try {
+          e.dataTransfer.setData('application/x-lexera-entity', JSON.stringify(payload));
+          e.dataTransfer.effectAllowed = 'move';
+        } catch (_) { /* JSDOM may reject unknown MIME — non-fatal */ }
+      }
+      if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+        window.LexeraSubApp.broadcast('hierarchy-entity-drag-start', payload);
+      }
+    });
+    localBoardsEl.__hierarchyDragBound = true;
+  }
+
   // Single delegated click listener — keeps wiring simple even though
   // the tree is rebuilt on every state change.
   if (localBoardsEl && !localBoardsEl.__hierarchyClickBound) {

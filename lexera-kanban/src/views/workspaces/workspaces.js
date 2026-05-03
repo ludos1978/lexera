@@ -172,6 +172,34 @@
     }
   }
 
+  // Phase 2b-2-a: dragstart picks up native events from any
+  // `[draggable="true"]` entity node, stamps source identity into the
+  // DataTransfer payload, and broadcasts a `hierarchy-entity-drag-start`
+  // event for shell-side handlers to route the move.
+  if (localBoardsEl && !localBoardsEl.__workspacesDragBound) {
+    localBoardsEl.addEventListener('dragstart', function (e) {
+      var src = e.target && e.target.closest
+        ? e.target.closest('.tree-node[draggable="true"]')
+        : null;
+      if (!src || !localBoardsEl.contains(src)) return;
+      var payload = {
+        boardId: src.getAttribute('data-drag-board-id') || '',
+        kind: src.getAttribute('data-drag-kind') || '',
+        entityId: src.getAttribute('data-tree-id') || ''
+      };
+      if (e.dataTransfer && typeof e.dataTransfer.setData === 'function') {
+        try {
+          e.dataTransfer.setData('application/x-lexera-entity', JSON.stringify(payload));
+          e.dataTransfer.effectAllowed = 'move';
+        } catch (_) { /* JSDOM may reject unknown MIME — non-fatal */ }
+      }
+      if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+        window.LexeraSubApp.broadcast('hierarchy-entity-drag-start', payload);
+      }
+    });
+    localBoardsEl.__workspacesDragBound = true;
+  }
+
   // Single delegated click listener — keeps wiring simple.
   if (localBoardsEl && !localBoardsEl.__workspacesClickBound) {
     localBoardsEl.addEventListener('click', function (e) {
