@@ -34,6 +34,13 @@ h3 {
   margin: 0;
   padding: 0;
 }
+
+/* Boards are top-level TreeView roots — no leading corner / branch
+ * guide line in front of them. Deeper levels (rows / stacks / columns
+ * / cards) keep their indent guides. */
+#local-boards .tree-node[data-tree-target="board"] > .tree-indent {
+  display: none;
+}
 .current-workspace-id {
   font-family: ui-monospace, monospace;
   font-size: 10px;

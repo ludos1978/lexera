@@ -232,39 +232,13 @@ html, body {
   opacity: 0.9;
 }
 
-/* ── Unfoldable boards: caret + nested structure (Phase 1b) ──────── */
-/* Nested rows / stacks / columns / cards are rendered through the shared
- * TreeView (treeView.js) so the indent guides, toggles, and labels match
- * the dashboard, files panel, and main board sidebar. Only the caret on
- * the board row is local. */
-.board-caret {
-  flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 0;
-  color: var(--text-muted, #888);
-  cursor: pointer;
-  font-size: 10px;
-  padding: 0;
-  border-radius: 2px;
-}
-.board-caret:hover {
-  background: var(--bg-hover, #2c2c2c);
-  color: var(--text-primary, #d4d4d4);
-}
-
-li.board-subtree {
-  list-style: none;
-  margin: 0 12px 4px 18px;
-  padding: 0;
-}
-.board-tree-placeholder {
-  color: var(--text-muted, #888);
-  font-style: italic;
-  font-size: 10px;
-  padding: 4px 8px;
+/* ── Boards as TreeView roots ────────────────────────────────────
+ * Every board row is a top-level TreeView entry. We drop the leading
+ * `.tree-indent` so boards sit flush at the left edge with no corner /
+ * branch guide line in front of their toggle. Deeper levels (rows,
+ * stacks, columns, cards) keep their indent guides — those convey real
+ * structural depth and look identical to the dashboard, files panel,
+ * and main board sidebar. */
+#local-boards .tree-node[data-tree-target="board"] > .tree-indent {
+  display: none;
 }
