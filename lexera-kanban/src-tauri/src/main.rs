@@ -665,6 +665,13 @@ fn main() {
                             // grow unbounded over multi-window churn.
                             let health = app.state::<webview_mgr::HealthTracker>();
                             health.drop_labels(&dead_labels);
+                            // WebviewRegistry: Tauri implicitly destroys
+                            // a window's child webviews on parent close
+                            // without calling `multiview_destroy`, so the
+                            // per-webview geometry rows never get cleaned
+                            // up by that path. Drop them here.
+                            let webviews = app.state::<webview_mgr::WebviewRegistry>();
+                            webviews.drop_labels(&dead_labels);
                         }
                         // FocusTracker is keyed by WINDOW label (one slot
                         // per top-level window), so we drop by the closing

@@ -49,6 +49,22 @@ pub struct WebviewRegistry {
     inner: RwLock<HashMap<String, WebviewMeta>>,
 }
 
+impl WebviewRegistry {
+    /// Drop every entry in `dead_labels`. Called from `main.rs`
+    /// `CloseRequested` because Tauri implicitly destroys a window's
+    /// child webviews when the parent window closes — without going
+    /// through `multiview_destroy`, so per-webview cleanup never
+    /// runs and the registry would otherwise accumulate stale
+    /// geometry for webviews that no longer exist.
+    pub fn drop_labels(&self, dead_labels: &[String]) {
+        if dead_labels.is_empty() { return; }
+        let mut w = self.inner.write();
+        for label in dead_labels {
+            w.remove(label);
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct WebviewMeta {
     pub label: String,
@@ -1215,5 +1231,33 @@ mod tests {
     fn get_meta_returns_none_when_absent() {
         let r = registry_with(vec![]);
         assert!(get_meta(&r, "missing").is_none());
+    }
+
+    #[test]
+    fn drop_labels_removes_only_named_entries() {
+        let r = registry_with(vec![
+            meta("a", 0.0, 0.0, 1.0, 1.0),
+            meta("b", 0.0, 0.0, 1.0, 1.0),
+            meta("c", 0.0, 0.0, 1.0, 1.0),
+        ]);
+        // Drop two of three.
+        r.drop_labels(&["a".to_string(), "c".to_string()]);
+        assert!(get_meta(&r, "a").is_none());
+        assert!(get_meta(&r, "c").is_none());
+        assert!(get_meta(&r, "b").is_some());
+    }
+
+    #[test]
+    fn drop_labels_empty_input_is_noop() {
+        let r = registry_with(vec![meta("a", 0.0, 0.0, 1.0, 1.0)]);
+        r.drop_labels(&[]);
+        assert!(get_meta(&r, "a").is_some());
+    }
+
+    #[test]
+    fn drop_labels_unknown_label_is_silent_noop() {
+        let r = registry_with(vec![meta("a", 0.0, 0.0, 1.0, 1.0)]);
+        r.drop_labels(&["nonexistent".to_string()]);
+        assert!(get_meta(&r, "a").is_some());
     }
 }

@@ -159,6 +159,11 @@ describe('Pattern 5: CloseRequested cleans up every per-window registry', () => 
     expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5500}SubscriptionRegistry[\s\S]{0,200}drop_labels\(&dead_labels\)/);
   });
 
+  it('WebviewRegistry exposes drop_labels and CloseRequested invokes it (Tauri implicitly destroys child webviews on parent close)', () => {
+    expect(webviewMgrRs).toMatch(/impl WebviewRegistry[\s\S]{0,500}fn drop_labels/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5500}WebviewRegistry[\s\S]{0,200}drop_labels\(&dead_labels\)/);
+  });
+
   it('HealthTracker exposes drop_labels and CloseRequested invokes it', () => {
     expect(webviewMgrRs).toMatch(/impl HealthTracker[\s\S]{0,500}fn drop_labels/);
     expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5500}HealthTracker[\s\S]{0,200}drop_labels\(&dead_labels\)/);

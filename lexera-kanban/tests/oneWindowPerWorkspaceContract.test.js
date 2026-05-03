@@ -178,9 +178,9 @@ describe('one workspace per window — wiring contract', () => {
     expect(webviewMgrRs).toMatch(/impl HealthTracker[\s\S]{0,300}fn drop_labels/);
     expect(webviewMgrRs).toMatch(/impl FocusTracker[\s\S]{0,300}fn drop_window/);
     expect(mainRs).toMatch(/CloseRequested[\s\S]{0,1500}LAST_FOCUSED_WINDOW\.lock\(\)[\s\S]{0,400}\*last = None/);
-    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,3500}SubscriptionRegistry[\s\S]{0,200}drop_labels\(&dead_labels\)/);
-    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,3500}HealthTracker[\s\S]{0,200}drop_labels\(&dead_labels\)/);
-    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,3500}FocusTracker[\s\S]{0,200}drop_window\(&closing_label\)/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,6000}SubscriptionRegistry[\s\S]{0,200}drop_labels\(&dead_labels\)/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,6000}HealthTracker[\s\S]{0,200}drop_labels\(&dead_labels\)/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,6000}FocusTracker[\s\S]{0,200}drop_window\(&closing_label\)/);
   });
 
   it('the menu handler tracks the last-focused window so macOS menu-clicks (which transiently take focus) still resolve a target', () => {
