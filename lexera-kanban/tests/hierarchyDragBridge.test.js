@@ -180,6 +180,83 @@ describe('LexeraHierarchyDragBridge.applyEntityReorder', () => {
   });
 });
 
+describe('LexeraHierarchyDragBridge.applyEntityAbsorb', () => {
+  const bridge = loadBridge();
+
+  it('absorbs a card into a column (appends to cards array)', () => {
+    const board = makeBoard();
+    const ok = bridge.applyEntityAbsorb(
+      board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'column', entityId: 'c2' }
+    );
+    expect(ok).toBe(true);
+    // card-1 left c1, joined the END of c2's cards.
+    expect(board.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['card-2', 'card-3']);
+    expect(board.rows[0].stacks[0].columns[1].cards.map((c) => c.id))
+      .toEqual(['card-4', 'card-1']);
+  });
+
+  it('absorbs a column into a stack', () => {
+    const board = makeBoard();
+    const ok = bridge.applyEntityAbsorb(
+      board,
+      { boardId: 'b1', kind: 'column', entityId: 'c1' },
+      { boardId: 'b1', kind: 'stack', entityId: 's2' }
+    );
+    expect(ok).toBe(true);
+    // c1 leaves s1, joins the END of s2's columns.
+    expect(board.rows[0].stacks[0].columns.map((c) => c.id)).toEqual(['c2']);
+    expect(board.rows[0].stacks[1].columns.map((c) => c.id)).toEqual(['c3', 'c1']);
+  });
+
+  it('absorbs a stack into a row', () => {
+    const board = makeBoard();
+    const ok = bridge.applyEntityAbsorb(
+      board,
+      { boardId: 'b1', kind: 'stack', entityId: 's1' },
+      { boardId: 'b1', kind: 'row', entityId: 'r2' }
+    );
+    expect(ok).toBe(true);
+    expect(board.rows[0].stacks.map((s) => s.id)).toEqual(['s2']);
+    expect(board.rows[1].stacks.map((s) => s.id)).toEqual(['s3', 's1']);
+  });
+
+  it('rejects same-kind drops (caller should use applyEntityReorder)', () => {
+    const board = makeBoard();
+    const ok = bridge.applyEntityAbsorb(
+      board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'card', entityId: 'card-2' }
+    );
+    expect(ok).toBe(false);
+  });
+
+  it('rejects non-adjacent cross-kind drops (card → row, card → stack)', () => {
+    const board = makeBoard();
+    expect(bridge.applyEntityAbsorb(
+      board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'row', entityId: 'r1' }
+    )).toBe(false);
+    expect(bridge.applyEntityAbsorb(
+      board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'stack', entityId: 's1' }
+    )).toBe(false);
+  });
+
+  it('rejects when source or target is not found', () => {
+    const board = makeBoard();
+    expect(bridge.applyEntityAbsorb(
+      board,
+      { boardId: 'b1', kind: 'card', entityId: 'missing' },
+      { boardId: 'b1', kind: 'column', entityId: 'c1' }
+    )).toBe(false);
+  });
+});
+
 describe('LexeraHierarchyDragBridge.applyCrossBoardEntityReorder', () => {
   const bridge = loadBridge();
 
@@ -342,6 +419,35 @@ describe('LexeraHierarchyDragBridge.install', () => {
       loadBoard: vi.fn()
       // saveBoard missing
     })).toBe(false);
+  });
+
+  it('routes same-board cross-kind drops through applyEntityAbsorb', async () => {
+    const wv = makeWebview();
+    const board = makeBoard();
+    const saveBoard = vi.fn(() => Promise.resolve());
+    const onApplied = vi.fn();
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: vi.fn(() => Promise.resolve()),
+      loadBoard: () => Promise.resolve(board),
+      saveBoard: saveBoard,
+      onApplied: onApplied
+    });
+
+    // card-1 → column c2 absorb.
+    wv._fire('hierarchy-entity-drop', {
+      source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      target: { boardId: 'b1', kind: 'column', entityId: 'c2' }
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(saveBoard).toHaveBeenCalledTimes(1);
+    const [savedId, savedBoard] = saveBoard.mock.calls[0];
+    expect(savedId).toBe('b1');
+    expect(savedBoard.rows[0].stacks[0].columns[1].cards.map((c) => c.id))
+      .toEqual(['card-4', 'card-1']);
+    expect(onApplied).toHaveBeenCalledWith('b1');
   });
 
   it('cross-board drop loads BOTH boards, applies the move, saves BOTH, and fires onApplied per board', async () => {

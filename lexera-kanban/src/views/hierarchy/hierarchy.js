@@ -239,6 +239,11 @@
   //   `{ source, target }`. Local-cache reorder + `saveBoard` persist
   //   land in the next slice.
   if (localBoardsEl && !localBoardsEl.__hierarchyDragBound) {
+    // Phase 4 absorb relations: drop kind X onto kind Y where Y can
+    // contain X. Mirrors `ABSORB_RULES` in `hierarchyDragBridge.js`
+    // so the sub-app's drop-validity check stays in lockstep with
+    // the bridge's reorder logic.
+    var ABSORB_KINDS = { card: 'column', column: 'stack', stack: 'row' };
     var readSource = function (el) {
       var src = el && el.closest ? el.closest('.tree-node[draggable="true"]') : null;
       if (!src || !localBoardsEl.contains(src)) return null;
@@ -256,15 +261,17 @@
         kind: tgt.getAttribute('data-drag-kind') || '',
         entityId: tgt.getAttribute('data-tree-id') || ''
       };
-      // Same-kind reorder is the only valid drop — cross-kind drops
-      // are deferred to Phase 4 (tree↔board). Cross-board same-kind
-      // drops are accepted (Phase 3): the bridge splices source out
-      // of board A and into board B. The hierarchy sub-app shows a
-      // single workspace, so cross-board only fires when the user
-      // expanded multiple boards inside the same workspace.
+      // Drop validity:
+      //   same-kind         → sibling reorder (Phase 2 / 3)
+      //   one-level absorb  → card→column, column→stack, stack→row
+      //                       (Phase 4: drop a child into its container)
+      //   anything else     → silently rejected
       if (!dragSource) return null;
-      if (info.kind !== dragSource.kind) return null;
       if (info.entityId === dragSource.entityId) return null;
+      if (info.kind !== dragSource.kind) {
+        var absorbInto = ABSORB_KINDS[dragSource.kind];
+        if (absorbInto !== info.kind) return null;
+      }
       return { node: tgt, info: info };
     };
     var activeDragSource = null;

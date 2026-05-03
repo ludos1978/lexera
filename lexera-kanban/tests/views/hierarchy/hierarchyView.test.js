@@ -690,7 +690,69 @@ describe('hierarchy view sub-app', () => {
       expect(dropBroadcast.payload.target.entityId).toBe('card-b2');
     });
 
-    it('cross-kind drop is rejected — no broadcast, no drop-target indicator', async () => {
+    // Phase 4: card → column is now an ACCEPTED absorb drop (the bridge
+    // moves the card into the column's `cards` array). Other cross-kind
+    // pairs that aren't one-level-up containers (e.g. card → row) are
+    // still rejected.
+    it('card → column absorb drop fires broadcast with cross-kind source/target', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      const fakeRows = [{
+        id: 'r1', title: 'Backlog',
+        stacks: [{ id: 's1', title: 'Frontend', columns: [
+          { id: 'c1', title: 'To do', cards: [{ id: 'card-1', title: 'A' }] },
+          { id: 'c2', title: 'Done', cards: [] }
+        ] }]
+      }];
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: fakeRows })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      function fakeDragEvent(name) {
+        const stored = {};
+        const ev = new window.Event(name, { bubbles: true, cancelable: true });
+        ev.dataTransfer = { setData: (k, v) => { stored[k] = v; }, getData: (k) => stored[k] || '', effectAllowed: '', dropEffect: '' };
+        return ev;
+      }
+      const cardNode = window.document.querySelector('.tree-node[data-drag-kind="card"][data-tree-id="card-1"]');
+      // Drop the card onto column c2 (the empty Done column).
+      const columnNode = window.document.querySelector('.tree-node[data-drag-kind="column"][data-tree-id="c2"]');
+      expect(cardNode).toBeTruthy();
+      expect(columnNode).toBeTruthy();
+      cardNode.dispatchEvent(fakeDragEvent('dragstart'));
+      const overEv = fakeDragEvent('dragover');
+      columnNode.dispatchEvent(overEv);
+      // Card → column is a valid one-level absorb — dragover must
+      // preventDefault and mark the target.
+      expect(overEv.defaultPrevented).toBe(true);
+      expect(columnNode.classList.contains('is-drop-target')).toBe(true);
+
+      columnNode.dispatchEvent(fakeDragEvent('drop'));
+      const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
+      expect(dropBroadcast).toBeTruthy();
+      expect(dropBroadcast.payload.source.kind).toBe('card');
+      expect(dropBroadcast.payload.target.kind).toBe('column');
+      expect(dropBroadcast.payload.source.entityId).toBe('card-1');
+      expect(dropBroadcast.payload.target.entityId).toBe('c2');
+    });
+
+    it('non-adjacent cross-kind drop (card → row) stays rejected', async () => {
       const dom = createDom();
       const { window } = dom;
       let capturedOpts = null;
@@ -726,16 +788,15 @@ describe('hierarchy view sub-app', () => {
         return ev;
       }
       const cardNode = window.document.querySelector('.tree-node[data-drag-kind="card"]');
-      const columnNode = window.document.querySelector('.tree-node[data-drag-kind="column"]');
+      const rowNode = window.document.querySelector('.tree-node[data-drag-kind="row"]');
       cardNode.dispatchEvent(fakeDragEvent('dragstart'));
       const overEv = fakeDragEvent('dragover');
-      columnNode.dispatchEvent(overEv);
-      // dragover on a different-kind target must NOT preventDefault
-      // (browser shows "no drop" cursor) and must NOT mark the column.
+      rowNode.dispatchEvent(overEv);
+      // Card → row is two levels up, not a valid absorb — stays rejected.
       expect(overEv.defaultPrevented).toBe(false);
-      expect(columnNode.classList.contains('is-drop-target')).toBe(false);
+      expect(rowNode.classList.contains('is-drop-target')).toBe(false);
 
-      columnNode.dispatchEvent(fakeDragEvent('drop'));
+      rowNode.dispatchEvent(fakeDragEvent('drop'));
       const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
       expect(dropBroadcast).toBeFalsy();
     });

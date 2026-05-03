@@ -94,6 +94,55 @@
     return true;
   }
 
+  // Cross-kind "absorb" rules (Phase 4). When the user drags an
+  // entity onto a CONTAINER one level above its own kind, the entity
+  // joins the end of the container's children array. Defined as a
+  // table so future absorb relations (column → stack, stack → row)
+  // can be added by appending entries.
+  var ABSORB_RULES = {
+    'card->column': function (col) { return col && Array.isArray(col.cards) ? col.cards : null; },
+    'column->stack': function (st) { return st && Array.isArray(st.columns) ? st.columns : null; },
+    'stack->row': function (row) { return row && Array.isArray(row.stacks) ? row.stacks : null; }
+  };
+  function absorbChildren(targetEntity, source) {
+    var key = source.kind + '->' + (targetEntity && targetEntity.kindLabel ? targetEntity.kindLabel : '');
+    var picker = ABSORB_RULES[key];
+    return picker ? picker(targetEntity.entity) : null;
+  }
+  // Locate an entity AND return its full record so absorb has access
+  // to the target's children array.
+  function locateEntityRich(board, kind, entityId) {
+    var found = locateEntity(board, kind, entityId);
+    if (!found) return null;
+    return {
+      parent: found.parent,
+      index: found.index,
+      entity: found.parent[found.index],
+      kindLabel: kind
+    };
+  }
+
+  /**
+   * Same-board cross-kind drop: append `source` to `target`'s children
+   * array. Mutates `board` in place. Returns true when the kinds form
+   * a valid container relation (card→column, column→stack, stack→row),
+   * false otherwise.
+   */
+  function applyEntityAbsorb(board, source, target) {
+    if (!board || !source || !target) return false;
+    if (source.kind === target.kind) return false;
+    var rule = ABSORB_RULES[source.kind + '->' + target.kind];
+    if (!rule) return false;
+    var src = locateEntity(board, source.kind, source.entityId);
+    var tgt = locateEntityRich(board, target.kind, target.entityId);
+    if (!src || !tgt) return false;
+    var children = rule(tgt.entity);
+    if (!children) return false;
+    var moved = src.parent.splice(src.index, 1)[0];
+    children.push(moved);
+    return true;
+  }
+
   /**
    * Move `source` from `srcBoard` into the parent array containing
    * `target` inside `tgtBoard`. Used when the user drags an entity
@@ -161,12 +210,18 @@
       var target = p.target || null;
       if (!source || !target) return;
       if (!source.boardId || !target.boardId) return;
-      // Same-board: load one board, apply sibling reorder, save one.
+      // Same-board: load one board, dispatch by kind match.
+      //   same-kind  → sibling reorder
+      //   cross-kind → absorb into target's children (card → column,
+      //                column → stack, stack → row)
       if (source.boardId === target.boardId) {
         var boardId = source.boardId;
         Promise.resolve(loadBoard(boardId)).then(function (board) {
           if (!board) return;
-          if (!applyEntityReorder(board, source, target)) return;
+          var applied = (source.kind === target.kind)
+            ? applyEntityReorder(board, source, target)
+            : applyEntityAbsorb(board, source, target);
+          if (!applied) return;
           return Promise.resolve(saveBoard(boardId, board)).then(function () {
             if (typeof deps.onApplied === 'function') deps.onApplied(boardId);
           });
@@ -205,6 +260,7 @@
 
   var api = {
     applyEntityReorder: applyEntityReorder,
+    applyEntityAbsorb: applyEntityAbsorb,
     applyCrossBoardEntityReorder: applyCrossBoardEntityReorder,
     install: install
   };

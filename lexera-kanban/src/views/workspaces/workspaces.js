@@ -175,6 +175,9 @@
   // Phase 2b drag-and-drop wiring — see hierarchy.js for the full
   // commentary; keeping the two surfaces in sync.
   if (localBoardsEl && !localBoardsEl.__workspacesDragBound) {
+    // Phase 4 absorb relations: drop kind X onto kind Y where Y can
+    // contain X. Must match `ABSORB_RULES` in `hierarchyDragBridge.js`.
+    var ABSORB_KINDS = { card: 'column', column: 'stack', stack: 'row' };
     var readSource = function (el) {
       var src = el && el.closest ? el.closest('.tree-node[draggable="true"]') : null;
       if (!src || !localBoardsEl.contains(src)) return null;
@@ -192,11 +195,16 @@
         kind: tgt.getAttribute('data-drag-kind') || '',
         entityId: tgt.getAttribute('data-tree-id') || ''
       };
-      // Same-kind drop only (cross-kind is Phase 4). Cross-board
-      // accepted — the bridge splits the move across both boards.
+      // Drop validity:
+      //   same-kind         → sibling reorder
+      //   one-level absorb  → card→column, column→stack, stack→row
+      //   anything else     → silently rejected
       if (!dragSource) return null;
-      if (info.kind !== dragSource.kind) return null;
       if (info.entityId === dragSource.entityId) return null;
+      if (info.kind !== dragSource.kind) {
+        var absorbInto = ABSORB_KINDS[dragSource.kind];
+        if (absorbInto !== info.kind) return null;
+      }
       return { node: tgt, info: info };
     };
     var activeDragSource = null;
