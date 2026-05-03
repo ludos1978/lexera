@@ -60,9 +60,10 @@ describe('main.rs: closing windows does not exit the app', () => {
     );
   });
 
-  it('the run loop intercepts `ExitRequested` and prevents exit unless USER_REQUESTED_QUIT is set', () => {
-    // The flow:
+  it('the run loop intercepts `ExitRequested` and prevents exit unless USER_REQUESTED_QUIT is set (macOS only)', () => {
+    // The flow on macOS:
     //   .build(ctx)?.run(|app, event| {
+    //       #[cfg(target_os = "macos")]
     //       if let RunEvent::ExitRequested { api, .. } = event {
     //           if !USER_REQUESTED_QUIT.load(...) { api.prevent_exit(); }
     //       }
@@ -71,6 +72,18 @@ describe('main.rs: closing windows does not exit the app', () => {
     expect(mainCode).toMatch(/RunEvent::ExitRequested/);
     expect(mainCode).toMatch(/USER_REQUESTED_QUIT\.load/);
     expect(mainCode).toMatch(/api\.prevent_exit\(\)/);
+  });
+
+  it('keep-alive is gated by `cfg(target_os = "macos")` — Windows/Linux exit normally so a no-window app is not silently invisible', () => {
+    // The whole `if let RunEvent::ExitRequested` block must be
+    // wrapped in `#[cfg(target_os = "macos")]`. The match was made
+    // because the macOS menu bar persists without a window
+    // (re-openable via File > New Window); on Windows/Linux there
+    // is currently no system tray, so a no-window app would be
+    // invisible.
+    expect(mainRs).toMatch(
+      /#\[cfg\(target_os\s*=\s*"macos"\)\][\s\S]{0,200}RunEvent::ExitRequested/
+    );
   });
 
   it('does NOT use the legacy `.run(generate_context!())` form (which always exits on last-window close)', () => {

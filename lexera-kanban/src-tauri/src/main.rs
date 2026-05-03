@@ -707,16 +707,25 @@ fn main() {
         .expect("error while building lexera-kanban")
         .run(|_app, event| {
             // Closing the last window normally raises `ExitRequested`
-            // and Tauri exits the process. The user wants the app to
-            // stay alive after the last window closes ("close the
-            // view, but not the application") — re-openable via the
-            // shared macOS menu bar or the system tray. We prevent
-            // the exit unless `quit_app` (Cmd+Q / File > Quit) set
-            // the explicit flag.
+            // and Tauri exits the process. The user contract is "close
+            // the view, but not the application" — re-openable via
+            // the shared macOS menu bar.
+            //
+            // Scoped to macOS because that platform's menu bar
+            // persists when no window is open, so the user can always
+            // get back into the app via File > New Window. On
+            // Windows / Linux the menu is on the window itself; with
+            // no window AND no system tray, a kept-alive app is
+            // invisible to the user — exit normally there to match
+            // platform convention. (Add `cfg(target_os = "linux")`
+            // here once a system tray ships.)
+            #[cfg(target_os = "macos")]
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 if !USER_REQUESTED_QUIT.load(std::sync::atomic::Ordering::Relaxed) {
                     api.prevent_exit();
                 }
             }
+            #[cfg(not(target_os = "macos"))]
+            let _ = event;
         });
 }
