@@ -519,6 +519,57 @@
     }
   }
 
+  /**
+   * Find the native child-webview LABEL at a top-window screen coordinate,
+   * by iterating the spawned-tabs map and hit-testing each placeholder's
+   * top-window rect (placeholder rect + host-window origin offset).
+   *
+   * This is the Tauri-native equivalent of getFrameWindowAtTopPoint in
+   * dragDropHandlers.js: that function walks `<iframe>` elements via
+   * `topWin.document.elementFromPoint`, which doesn't see native Tauri
+   * child webviews — those live in separate OS-level windows. Phase 5 of
+   * the workspace-viewer cross-webview-drag work needs a way to ask
+   * "which native webview is the cursor over?" and this primitive
+   * provides it without an extra IPC round-trip (we already track the
+   * geometry of every spawned webview via setGeometry).
+   *
+   * Returns the spawned-webview label string, or null if no spawned
+   * webview's placeholder is hit (e.g. cursor is over plain shell DOM,
+   * or the placeholder's offsetParent is null because an ancestor is
+   * folded/hidden).
+   *
+   * @param {number} topX - x in TOP-window/host-window screen coordinates
+   * @param {number} topY - y in TOP-window/host-window screen coordinates
+   * @returns {string|null}
+   */
+  function getWebviewLabelAtTopPoint(topX, topY) {
+    if (!deps || typeof deps.getPlaceholder !== 'function') return null;
+    if (typeof topX !== 'number' || typeof topY !== 'number') return null;
+    var config = getNativeGeometryConfig();
+    var hostX = (config && typeof config.hostX === 'number') ? config.hostX : 0;
+    var hostY = (config && typeof config.hostY === 'number') ? config.hostY : 0;
+    var inset = (config && typeof config.inset === 'number') ? config.inset : 0;
+    var tabIds = Object.keys(multiviewSpawnedTabs || {});
+    for (var i = 0; i < tabIds.length; i++) {
+      var tabId = tabIds[i];
+      var entry = multiviewSpawnedTabs[tabId];
+      if (!entry || entry.state !== 'ready' || !entry.label) continue;
+      var ph = deps.getPlaceholder(tabId);
+      if (!ph || ph.offsetParent === null) continue;
+      if (typeof ph.getBoundingClientRect !== 'function') continue;
+      var rect = ph.getBoundingClientRect();
+      if (!(rect.width > 0) || !(rect.height > 0)) continue;
+      var left = hostX + rect.left + inset;
+      var top = hostY + rect.top + inset;
+      var right = left + Math.max(0, rect.width - 2 * inset);
+      var bottom = top + Math.max(0, rect.height - 2 * inset);
+      if (topX >= left && topX <= right && topY >= top && topY <= bottom) {
+        return entry.label;
+      }
+    }
+    return null;
+  }
+
   // Globally suppress (or restore) all spawned multiview webviews.
   // Used during drag and while shell-DOM overlays (dropdowns/menus) are
   // open so native child webviews don't paint over the shell's drop
@@ -1084,6 +1135,7 @@
     destroy: destroy,
     cleanupLocalState: cleanupLocalState,
     refreshAllGeometry: refreshAllGeometry,
+    getWebviewLabelAtTopPoint: getWebviewLabelAtTopPoint,
     setAllVisible: setAllVisible,
     isAllVisibleSuppressed: isAllVisibleSuppressed,
     computeNativeGeometry: computeNativeGeometry,

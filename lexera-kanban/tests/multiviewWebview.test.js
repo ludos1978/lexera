@@ -273,6 +273,119 @@ describe('LexeraMultiviewWebview.pushGeometryForLabel — hidden-placeholder han
   });
 });
 
+// Reason: cross-Tauri-webview drag (Phase 5 of the workspace-viewer task)
+// needs a way to ask "which native child webview is the cursor over?".
+// Native Tauri webviews are NOT iframes — `document.elementFromPoint`
+// returns the top-window element under their footprint, never the
+// webview itself. getWebviewLabelAtTopPoint hit-tests the spawned
+// placeholders' top-window rects (placeholder rect + host-window
+// origin offset) so the cross-view drag bridge can detect a hover into
+// a native webview without an extra IPC round-trip.
+describe('LexeraMultiviewWebview.getWebviewLabelAtTopPoint — cursor-to-webview hit-test', () => {
+  function buildWith(spawnedTabRects) {
+    const placeholders = {};
+    Object.keys(spawnedTabRects).forEach((tabId) => {
+      placeholders[tabId] = createPlaceholder({ visible: true, rect: spawnedTabRects[tabId] });
+    });
+    const invoke = vi.fn((command) => {
+      if (command === 'multiview_get_host_geometry') {
+        return Promise.resolve({ x: 100, y: 50, width: 1200, height: 800 });
+      }
+      return Promise.resolve(null);
+    });
+    const spawn = vi.fn(() => Promise.resolve(null));
+    const window = {
+      location: { href: 'http://127.0.0.1:1431/', search: '' },
+      localStorage: createStorage(),
+      addEventListener() {},
+      removeEventListener() {},
+      LexeraMultiview: {
+        invoke,
+        spawn,
+        pushGeomDeferred: vi.fn(),
+        setGeometry: () => Promise.resolve(null)
+      }
+    };
+    const { api } = loadMultiviewWebview({ window });
+    api.setup({
+      getPlaceholder(tabId) { return placeholders[tabId] || null; },
+      isPanelTab() { return false; }
+    });
+    return { api, placeholders };
+  }
+
+  it('returns null when no webviews are spawned', async () => {
+    const { api } = buildWith({});
+    await api.refreshHostGeometryContext(true);
+    expect(api.getWebviewLabelAtTopPoint(500, 400)).toBeNull();
+  });
+
+  it('returns the label of the webview whose placeholder contains the top-point', async () => {
+    const { api, placeholders } = buildWith({
+      'tab-a': { left: 10, top: 20, width: 300, height: 200 }
+    });
+    await api.refreshHostGeometryContext(true);
+    api.ensure({ id: 'tab-a' }, placeholders['tab-a'], '/board-a.md');
+    await Promise.resolve();
+    await Promise.resolve();
+    // Placeholder local rect: (10..310, 20..220). Host origin: (100, 50).
+    // Top-window rect: (110..410, 70..270). Center is (260, 170).
+    expect(api.getWebviewLabelAtTopPoint(260, 170)).toBe('board-tab-tab-a');
+  });
+
+  it('returns null for a point outside every spawned placeholder', async () => {
+    const { api, placeholders } = buildWith({
+      'tab-a': { left: 10, top: 20, width: 300, height: 200 }
+    });
+    await api.refreshHostGeometryContext(true);
+    api.ensure({ id: 'tab-a' }, placeholders['tab-a'], '/board-a.md');
+    await Promise.resolve();
+    await Promise.resolve();
+    // Far outside the top-window rect (110..410, 70..270)
+    expect(api.getWebviewLabelAtTopPoint(900, 700)).toBeNull();
+  });
+
+  it('skips placeholders with offsetParent=null (folded/hidden ancestor)', async () => {
+    const { api, placeholders } = buildWith({
+      'tab-a': { left: 10, top: 20, width: 300, height: 200 }
+    });
+    await api.refreshHostGeometryContext(true);
+    api.ensure({ id: 'tab-a' }, placeholders['tab-a'], '/board-a.md');
+    await Promise.resolve();
+    await Promise.resolve();
+    // Center is normally (260,170) — but the placeholder is now hidden
+    // because its parent dock folded. The hit-test must NOT report this
+    // webview as the cursor target (it's not visible on screen).
+    placeholders['tab-a'].setVisible(false);
+    expect(api.getWebviewLabelAtTopPoint(260, 170)).toBeNull();
+  });
+
+  it('returns the FIRST matching webview when overlapping rects exist', async () => {
+    // Two placeholders mapped to the same screen area — should not happen
+    // in practice but the function must be deterministic. The first one
+    // discovered (insertion order in the spawned-tabs map) wins.
+    const { api, placeholders } = buildWith({
+      'tab-a': { left: 10, top: 20, width: 300, height: 200 },
+      'tab-b': { left: 10, top: 20, width: 300, height: 200 }
+    });
+    await api.refreshHostGeometryContext(true);
+    api.ensure({ id: 'tab-a' }, placeholders['tab-a'], '/board-a.md');
+    api.ensure({ id: 'tab-b' }, placeholders['tab-b'], '/board-b.md');
+    await Promise.resolve();
+    await Promise.resolve();
+    const label = api.getWebviewLabelAtTopPoint(260, 170);
+    expect(label === 'board-tab-tab-a' || label === 'board-tab-tab-b').toBe(true);
+  });
+
+  it('returns null when arguments are not numbers', async () => {
+    const { api } = buildWith({});
+    await api.refreshHostGeometryContext(true);
+    expect(api.getWebviewLabelAtTopPoint(undefined, 100)).toBeNull();
+    expect(api.getWebviewLabelAtTopPoint(100, null)).toBeNull();
+    expect(api.getWebviewLabelAtTopPoint('foo', 'bar')).toBeNull();
+  });
+});
+
 describe('LexeraMultiviewWebview.setAllVisible suppression refcount', () => {
   it('passes the owning top-level window label as the child webview parent', async () => {
     const placeholder = createPlaceholder();
