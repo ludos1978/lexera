@@ -135,6 +135,20 @@ describe('webview_mgr.rs — lifecycle events are window-scoped, not global', ()
     expect(webviewMgrCode).toMatch(/impl HealthTracker[\s\S]{0,300}fn drop_labels/);
   });
 
+  it('multiview_list_health filters to caller window — does not leak sibling windows\' health', () => {
+    var slice = fnCode('multiview_list_health');
+    // Takes caller and resolves its window's webviews. The chain is
+    // split across lines in the source (`caller_window\n.webviews()`),
+    // so the regex tolerates whitespace.
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    expect(slice).toMatch(/caller_window\s*\.\s*webviews\(\)/);
+    // Filters the inner map by membership in the caller's window.
+    expect(slice).toMatch(/window_labels\s*\.\s*contains\(label\.as_str\(\)\)/);
+    // Must NOT clone the entire HashMap unfiltered (the previous
+    // shape was `tracker.inner.read().clone()`).
+    expect(slice).not.toMatch(/tracker\.inner\.read\(\)\.clone\(\)/);
+  });
+
   it('multiview_set_health emits health-changed via emit_to_window_of_label', () => {
     var slice = fnCode('multiview_set_health');
     expect(slice).toMatch(/emit_to_window_of_label\([\s\S]{0,80}"health-changed"/);
