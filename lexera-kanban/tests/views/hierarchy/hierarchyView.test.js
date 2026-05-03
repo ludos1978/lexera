@@ -332,4 +332,74 @@ describe('hierarchy view sub-app', () => {
       boardId: 'remote-1'
     });
   });
+
+  // ── Unfoldable boards (Phase 1b, TODOs 2026-05-03) ──────────────
+  // Each board row inside a workspace group now exposes a caret.
+  // Clicking the caret toggles a nested tree showing the board's
+  // rows / stacks / columns / cards using their parsed titles.
+  describe('unfoldable boards', () => {
+    it('renders a caret per board that does not navigate when clicked', () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn()
+      };
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: [] })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+
+      const caret = window.document.querySelector('#local-boards .board-item .board-caret');
+      expect(caret).toBeTruthy();
+      expect(caret.getAttribute('aria-expanded')).toBe('false');
+
+      caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+
+      expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
+      expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledWith('b1');
+    });
+
+    it('expanding a board renders rows / stacks / columns / cards as a nested tree', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn()
+      };
+      const fakeRows = [{
+        id: 'r1', title: 'Backlog',
+        stacks: [{
+          id: 's1', title: 'Frontend',
+          columns: [{
+            id: 'c1', title: 'To do',
+            cards: [{ id: 'card-1', title: 'Wire caret' }]
+          }]
+        }]
+      }];
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: fakeRows })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+
+      const caret = window.document.querySelector('#local-boards .board-item .board-caret');
+      caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const tree = window.document.querySelector('#local-boards .board-tree');
+      expect(tree).toBeTruthy();
+      const labels = Array.from(tree.querySelectorAll('.board-tree-label')).map((n) => n.textContent);
+      expect(labels).toEqual(['Backlog', 'Frontend', 'To do', 'Wire caret']);
+    });
+  });
 });
