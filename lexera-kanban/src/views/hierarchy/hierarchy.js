@@ -213,8 +213,20 @@
       if (toggle) {
         // Toggle path — never navigates open the board.
         if (target === 'board') {
+          // Boards lazy-fetch their hierarchy on first expand and the
+          // tree is rebuilt from scratch on every state change, so we
+          // route through `toggleBoardExpand` (which mutates state)
+          // rather than `TreeView.toggleNode` (which only flips DOM).
           var bid = node.getAttribute('data-board-id') || '';
           if (bid) toggleBoardExpand(bid);
+          return;
+        }
+        // Rows / stacks / columns / cards already have their full
+        // children rendered when the board is expanded — toggle them
+        // purely in the DOM via TreeView's helper, same as the
+        // dashboard / files panel / main board sidebar.
+        if (window.TreeView && typeof window.TreeView.toggleNode === 'function') {
+          window.TreeView.toggleNode(node);
         }
         return;
       }

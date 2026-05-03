@@ -156,14 +156,30 @@
       var toggle = e.target.closest && e.target.closest('.tree-toggle');
       var node = e.target.closest && e.target.closest('.tree-node');
       if (!node || !localBoardsEl.contains(node)) return;
-      if ((node.getAttribute('data-tree-target') || '') !== 'board') return;
-      var bid = node.getAttribute('data-board-id') || '';
-      if (!bid) return;
+      var target = node.getAttribute('data-tree-target') || '';
       if (toggle) {
-        toggleBoardExpand(bid);
+        if (target === 'board') {
+          // Boards lazy-fetch their hierarchy and rebuild the tree —
+          // route through state-mutating toggle rather than the
+          // DOM-only TreeView helper.
+          var bid = node.getAttribute('data-board-id') || '';
+          if (bid) toggleBoardExpand(bid);
+          return;
+        }
+        // Rows / stacks / columns already have children in the DOM —
+        // toggle in place via TreeView's helper, same pattern the
+        // dashboard / files panel / main board sidebar use.
+        if (window.TreeView && typeof window.TreeView.toggleNode === 'function') {
+          window.TreeView.toggleNode(node);
+        }
         return;
       }
-      LexeraSubApp.navigate({ type: 'open-board', boardId: bid });
+      // Whole-row click on a board → navigate-open. Other types are
+      // not navigable (no per-card open yet).
+      if (target === 'board') {
+        var rowBid = node.getAttribute('data-board-id') || '';
+        if (rowBid) LexeraSubApp.navigate({ type: 'open-board', boardId: rowBid });
+      }
     });
     localBoardsEl.__workspacesClickBound = true;
   }

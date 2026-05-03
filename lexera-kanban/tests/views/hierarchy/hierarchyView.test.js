@@ -434,5 +434,61 @@ describe('hierarchy view sub-app', () => {
         .map((n) => n.textContent);
       expect(labels).toEqual(['Backlog', 'Frontend', 'To do', 'Wire caret']);
     });
+
+    // Regression 2026-05-03: rows / stacks / columns inside an expanded
+    // board must be foldable too. They are rendered with TreeView's
+    // built-in toggle; clicking it flips the `.tree-children.expanded`
+    // class so the user can collapse a row to focus on others.
+    it('row / stack / column toggles fold and unfold their children in-place', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn()
+      };
+      const fakeRows = [{
+        id: 'r1', title: 'Backlog',
+        stacks: [{
+          id: 's1', title: 'Frontend',
+          columns: [{ id: 'c1', title: 'To do', cards: [{ id: 'card-1', title: 'Wire caret' }] }]
+        }]
+      }];
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: fakeRows })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      // Expand the board so the row/stack/column tree is visible.
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      function rowEntry() {
+        // The row node lives one level under the expanded board.
+        const boardEntry = window.document
+          .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]')
+          .parentElement;
+        return boardEntry.querySelector('.tree-children > .tree-entry');
+      }
+      const rowToggle = rowEntry().querySelector('.tree-toggle');
+      const rowChildren = rowEntry().querySelector('.tree-children');
+      expect(rowChildren.classList.contains('expanded')).toBe(true);
+
+      // Fold the row.
+      rowToggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(rowChildren.classList.contains('expanded')).toBe(false);
+      // Did not navigate.
+      expect(window.LexeraSubApp.navigate).not.toHaveBeenCalled();
+
+      // Unfold again — children re-appear without a refetch.
+      rowToggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(rowChildren.classList.contains('expanded')).toBe(true);
+      expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledTimes(1);
+    });
   });
 });
