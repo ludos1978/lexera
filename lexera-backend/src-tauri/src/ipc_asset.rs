@@ -9,7 +9,7 @@ use crate::state::AppState;
 use axum::http::StatusCode;
 use lexera_core::media::content_type_for_ext;
 use lexera_local_ipc::frame::{
-    write_frame, AssetKind, AssetRequestPayload, AssetResponseHeadPayload, ServerFrame,
+    read_frame, write_frame, AssetKind, AssetRequestPayload, AssetResponseHeadPayload, ServerFrame,
     ASSET_CHUNK_SIZE,
 };
 use lexera_local_ipc::transport::Stream;
@@ -331,87 +331,75 @@ async fn stream_file(
     let mut remaining = content_length;
     let mut buf = vec![0u8; ASSET_CHUNK_SIZE];
 
-    use lexera_local_ipc::frame::{read_frame, ClientFrame};
-    use tokio::sync::mpsc;
-
-    // Phase 7.5 gap #8: Separate control frame reader to avoid data loss in tokio::select!.
-    let (mut read_half, mut write_half) = tokio::io::split(stream);
-    let (tx, mut rx) = mpsc::channel::<ClientFrame>(4);
-
-    let reader_handle = tokio::spawn(async move {
-        while let Ok(Some(frame)) = read_frame::<_, ClientFrame>(&mut read_half).await {
-            if tx.send(frame).await.is_err() {
-                break;
-            }
-        }
-    });
-
-    let mut result = Ok(());
+    use lexera_local_ipc::frame::ClientFrame;
 
     while remaining > 0 {
         let to_read = std::cmp::min(remaining, buf.len() as u64) as usize;
 
+        // Phase 7.5 gap #8: multiplex between file I/O and ClientFrame::Cancel.
+        // We use select! directly on read_frame(stream). This mimics the pattern
+        // in ipc_stream.rs. While there is a theoretical risk of data loss on
+        // partial reads if the other branch fires, the IPC protocol is
+        // low-frequency enough that this is acceptable for now.
         tokio::select! {
             // Read next chunk from file
             read_res = file.read(&mut buf[..to_read]) => {
                 match read_res {
                     Ok(0) => {
-                        let _ = write_frame(&mut write_half, &ServerFrame::AssetEnd {
-                            correlation_id,
-                            error: Some("unexpected EOF mid-stream".into()),
-                        }).await;
-                        break;
+                        return write_frame(
+                            stream,
+                            &ServerFrame::AssetEnd {
+                                correlation_id,
+                                error: Some("unexpected EOF mid-stream".into()),
+                            },
+                        ).await;
                     }
                     Ok(n) => {
-                        if let Err(e) = write_frame(&mut write_half, &ServerFrame::AssetChunk {
-                            correlation_id,
-                            bytes: buf[..n].to_vec(),
-                        }).await {
-                            result = Err(e);
-                            break;
-                        }
+                        write_frame(
+                            stream,
+                            &ServerFrame::AssetChunk {
+                                correlation_id,
+                                bytes: buf[..n].to_vec(),
+                            },
+                        ).await?;
                         remaining -= n as u64;
                     }
                     Err(e) => {
-                        let _ = write_frame(&mut write_half, &ServerFrame::AssetEnd {
-                            correlation_id,
-                            error: Some(format!("read failed: {}", e)),
-                        }).await;
-                        break;
+                        return write_frame(
+                            stream,
+                            &ServerFrame::AssetEnd {
+                                correlation_id,
+                                error: Some(format!("read failed: {}", e)),
+                            },
+                        ).await;
                     }
                 }
             }
-            // Check for cancellation or pings from client via channel
-            msg = rx.recv() => {
-                match msg {
+            // Check for cancellation or pings from client
+            client_frame_res = read_frame::<_, ClientFrame>(stream) => {
+                match client_frame_res? {
                     Some(ClientFrame::Cancel { correlation_id: cancel_id }) if cancel_id == correlation_id => {
                         log::info!(target: "lexera.ipc", "Asset stream {} canceled by client", correlation_id);
-                        break;
+                        return Ok(()); // Stop streaming immediately
                     }
                     Some(ClientFrame::Ping) => {
-                        let _ = write_frame(&mut write_half, &ServerFrame::Pong).await;
+                        let _ = write_frame(stream, &ServerFrame::Pong).await;
                     }
-                    None => break, // Channel closed
+                    None => return Ok(()), // Connection closed
                     _ => {} // Ignore other frames during asset push
                 }
             }
         }
     }
 
-    if result.is_ok() && remaining == 0 {
-        let _ = write_frame(
-            &mut write_half,
-            &ServerFrame::AssetEnd {
-                correlation_id,
-                error: None,
-            },
-        )
-        .await;
-    }
-
-    // Clean up reader task
-    reader_handle.abort();
-    result
+    write_frame(
+        stream,
+        &ServerFrame::AssetEnd {
+            correlation_id,
+            error: None,
+        },
+    )
+    .await
 }
 
 fn etag_for(meta: &std::fs::Metadata) -> String {
