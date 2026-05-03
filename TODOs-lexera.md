@@ -94,14 +94,14 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ### 2. Security & Platform Parity
 - [ ] Run the `lexera-local-ipc` test suite on Windows to verify `SetFileSecurityW` and `GetNamedPipeClientProcessId` behavior.
-- [ ] Implement `SO_PEERCRED` validation on Linux and `getpeereid` on macOS in `lexera-local-ipc` to enforce same-user-only connections.
-- [ ] (in progess) Audit the `ipc.json` descriptor file permissions on all platforms to ensure it is strictly `0600` (user-only).
-- [ ] Implement an OS-native "wait for file" watcher in `lexera-kanban` (using `notify`) to avoid polling for the backend descriptor.
+- [x] (done) Implement `SO_PEERCRED` validation on Linux and `getpeereid` on macOS in `lexera-local-ipc` to enforce same-user-only connections. `transport/unix.rs::Listener::accept` calls `stream.peer_cred()` (tokio wraps SO_PEERCRED / getpeereid) and rejects mismatches as `IpcError::CrossUser`. Test `peer_uid_matches_own_uid_for_local_connection`.
+- [x] (done) Audit the `ipc.json` descriptor file permissions on all platforms to ensure it is strictly `0600` (user-only). Unix already wrote with `mode(0o600)`; added a fail-closed post-rename verifier and tests for rename-over-existing + wide-umask. Windows DACL path remains best-effort (logs+continues) by design. (commit ad222388)
+- [x] (done) Implement an OS-native "wait for file" watcher in `lexera-kanban` (using `notify`) to avoid polling for the backend descriptor. Implemented as Phase 7.5 gap #4 in `lexera-kanban/src-tauri/src/backend_status.rs` — `notify::RecommendedWatcher` on the descriptor parent dir, debounce + `same_status` dedupe, emits the `backend-status` Tauri event.
 
 ### 3. Migration & Integration
 - [ ] Migrate the `/collab/me` endpoint to a sentinel local identity response in IPC mode (no bearer token needed).
 - [ ] Complete the "Gap #7" Tauri capability audit: move from wildcard window permissions to explicit per-window permission lists in `default.json`.
-- [ ] Implement the `backend-status` Tauri event watcher in the frontend to show a native "Connecting to backend..." UI during startup.
+- [ ] (in progess) Implement the `backend-status` Tauri event watcher in the frontend to show a native "Connecting to backend..." UI during startup.
 - [ ] Finalize the "Phase 7" removal of the HTTP fallback path from the desktop production build.
 
 ## Open Tasks
