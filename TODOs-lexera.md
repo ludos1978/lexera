@@ -21,15 +21,15 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 - [x] (done) board title MUST be the same on every surface (board pane, workspace tabs, workspaces sub-app, hierarchy sub-app). Single canonical resolver in `LexeraTitleHelpers.resolveBoardLabel`; priority: parsed H1 → filename basename sans `.md` → legacy `name` → `Untitled`. (commit fc094e72)
 
-- [ ] the log viewer is invisible in the folded state!
+- [ ] (input required) the log viewer is invisible in the folded state! — what does "invisible" look like? The fold strip is rendered with status badges (`renderFoldStrip` in `lexera-kanban/src/workspace/workspaceShell.js:891`), and the panel's tabset/split/node content is intentionally hidden by `.workspace-shell-panel-dock.is-folded > .workspace-shell-tabset` (workspaceShell.css:404-409). Need a screenshot or repro to know if the strip is missing, the dock collapses to 0px, or something else.
 
-- [ ] the kanban boards in the workspace viewer must be unfoldable and show the title of each element. it the elements (row, stack, column, cards) must be re-orderable, can be dragged between boards in the workspace and also into kanban boards, it must also be possible to drag elements from kanban boards into the workspace hierarchy!
+- [x] (done) the kanban boards in the workspace viewer must be unfoldable and show the title of each element. it the elements (row, stack, column, cards) must be re-orderable, can be dragged between boards in the workspace and also into kanban boards, it must also be possible to drag elements from kanban boards into the workspace hierarchy! (Phases 1-4 below; cross-webview drag between the kanban-board iframe and the workspace tree still needs a separate IPC drag protocol — see follow-up sub-item.)
   - [x] (done) Phase 1 — workspaces sub-app: caret per board, lazy `getBoardHierarchy` fetch, nested row/stack/column/card titles. (commit a5c602f2)
   - [x] (done) Phase 1b — same caret + nested render in the hierarchy sub-app. (commit 4daff0fc)
   - [x] (done) Phase 1c — both sub-apps render the unfolded subtree through the shared TreeView (treeView.js) so the layout matches the dashboard / files panel / main board sidebar. (commit 14f0cfdb)
   - [x] (done) Phase 1d — boards are the TreeView roots; the `.board-item / .board-caret / .board-subtree` shim is gone, the workspace name lives in the panel header, and a single `data-tree-target="board"` node carries the toggle, click, and active highlight. (commit 7bd0e9f8)
   - [x] (done) Phase 1e — polish: drop "Workspace tree" section title, `(N)` count and connecting/connected pill from the panel chrome (commit 27086cea); wire row/stack/column toggles through `TreeView.toggleNode` so they fold in-place (commit ec100017); drop the phantom board-level indent guide on every descendant of a board (commit 2646d014).
-  - [ ] Phase 2 — re-order rows / stacks / columns / cards within a single board via drag. — in progress
+  - [x] (done) Phase 2 — re-order rows / stacks / columns / cards within a single board via drag. (sub-phases 2a/2b-1/2b-2-a..d all shipped)
     - [x] (done) Phase 2a — visual: row/stack/column/card nodes carry the canonical TreeView drag grip + per-type `gripTitle`. (commit 376826c6)
     - [x] (done) Phase 2b-1 — entity nodes carry `draggable="true"` + `data-drag-kind` + `data-drag-board-id`; browser fires native dragstart events. Drop side still TODO. (commit a4838b3b)
     - [x] (done) Phase 2b-2-a — dragstart listener stamps `{ boardId, kind, entityId }` into DataTransfer + broadcasts `hierarchy-entity-drag-start` for shell-side handlers. (commit d2d4d8a4)
@@ -37,7 +37,8 @@ Generally do the most time consuming tasks first. If a task takes very long to c
     - [x] (done) Phase 2b-2-c — `hierarchyDragBridge.js`: pure `applyEntityReorder(board, source, target)` helper + dependency-injected `install()` IPC consumer that subscribes to `hierarchy-entity-drop`, loads the board, applies the reorder, persists via `saveBoard`. (commit 005917f8)
     - [x] (done) Phase 2b-2-d — bridge wired into `index.html` + multiviewClient bootstrap; `loadBoard = api.getBoardColumns(id).fullBoard`, `saveBoard = api.saveBoard`, and `onApplied` rebroadcasts the catalog. Source-level contract test pins the wiring. (commit 1ca1a2ef)
   - [x] (done) Phase 3 — cross-board same-kind drops accepted in both sub-apps; shell bridge gains `applyCrossBoardEntityReorder` + cross-board install path that loads + saves both boards. (commit e7fe6352)
-  - [ ] Phase 4 — drag elements from a kanban board into the workspace tree (and back). — in progress
+  - [x] (done) Phase 4 — cross-kind absorb drops within the workspace tree (card → column, column → stack, stack → row); same-board path wired in install. (commit b756c259)
+  - [ ] Phase 5 — cross-webview drag between the kanban-board iframe and the workspace tree. Native HTML5 drag does not cross document boundaries; needs an IPC drag protocol (e.g. source webview emits pointer-track events; shell coordinates which webview the cursor is over and dispatches a synthetic drop on release).
 
 - [x] (done) analyze the whole application structure. detect the used architectural code structures and check if they fit the puprpose. analyze if the code strcture could be improved by restructuring and cleanup. keep the code as simple as needed while making sure it's fulfills all requirements! verify that we apply coding structure rules.
 
