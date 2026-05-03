@@ -458,10 +458,30 @@ pub fn multiview_set_geometry(
 }
 
 #[tauri::command]
-pub fn multiview_list(app: AppHandle) -> Vec<WebviewMeta> {
+pub fn multiview_list(caller: tauri::Webview, app: AppHandle) -> Vec<WebviewMeta> {
+    // Filter to webviews living in the caller's top-level window.
+    // The shell's `lifecycle.js` LRU evictor uses this list to pick
+    // an eviction victim when the soft cap is exceeded; without
+    // window scoping it picks victims from sibling windows and
+    // destroys their webviews — those windows' render loops then
+    // respawn the destroyed tab, which in turn pushes the original
+    // window over its cap and triggers another eviction → infinite
+    // cascade of destroy/respawn ping-pong between windows. Bug
+    // surfaced as opening a board in window A causing tabs in
+    // window B to repeatedly destroy and respawn.
+    let caller_window = caller.window();
+    let window_labels: std::collections::HashSet<String> = caller_window
+        .webviews()
+        .into_iter()
+        .map(|w| w.label().to_string())
+        .collect();
     let registry: State<WebviewRegistry> = app.state();
-    let result: Vec<WebviewMeta> = registry.inner.read().values().cloned().collect();
-    result
+    let guard = registry.inner.read();
+    guard
+        .values()
+        .filter(|m| window_labels.contains(&m.label))
+        .cloned()
+        .collect()
 }
 
 /// Navigate an existing child webview to a new URL without destroying

@@ -135,6 +135,20 @@ describe('webview_mgr.rs — lifecycle events are window-scoped, not global', ()
     expect(webviewMgrCode).toMatch(/impl HealthTracker[\s\S]{0,300}fn drop_labels/);
   });
 
+  it('multiview_list filters to caller window — prevents the LRU eviction cascade between windows', () => {
+    // BUG REPRODUCED 2026-05-03: opening a board in window A caused
+    // tabs in window B to repeatedly destroy and respawn. Cause:
+    // `multiview_list` returned ALL webviews across all windows;
+    // shell `lifecycle.js`'s `evictOldestIfOverCap` then picked an
+    // LRU victim from sibling windows — destroying their webviews,
+    // which their render-loop respawned, which pushed the
+    // originating window over its cap again → infinite ping-pong.
+    var slice = fnCode('multiview_list');
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    expect(slice).toMatch(/caller_window\s*\.\s*webviews\(\)/);
+    expect(slice).toMatch(/window_labels\s*\.\s*contains\(&m\.label\)/);
+  });
+
   it('multiview_get_health refuses queries that cross window boundaries (defensive)', () => {
     var slice = fnCode('multiview_get_health');
     expect(slice).toMatch(/caller:\s*tauri::Webview/);
