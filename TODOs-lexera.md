@@ -100,7 +100,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 - [x] (done) Implement `ClientFrame::Cancel` propagation in `lexera-backend/src-tauri/src/ipc_asset.rs` to stop file streaming when the webview aborts a request. Phase 7.5 gap #8 — `tokio::select!` over file I/O + Cancel; covered by `request_cancellation_stops_stream`.
 - [x] (done) Add `If-None-Match` support to `AssetRequestPayload` and implement ETag-based 304 short-circuiting in `handle_asset_request`. Backend short-circuits matching weak/strong ETags; kanban asset_protocol forwards the header. (commit 83c77122)
 - [ ] Implement multi-range support in `parse_range` to match full HTTP spec parity for media seeking.
-- [ ] Add a `KeepAlive` heartbeat frame to the protocol to detect dead connections in the absence of active traffic.
+- [x] (done) Add a `KeepAlive` heartbeat frame to the protocol to detect dead connections in the absence of active traffic. Audit found `ClientFrame::Ping` / `ServerFrame::Pong` already present (server-side handling in `ipc_server.rs:112` and inside the asset stream multiplex). Added `Client::ping(timeout)` helper so callers can probe liveness with a one-shot timed roundtrip; covers the silent-server case via `IpcError::Timeout`. (commit 13bbed9b)
 
 ### 2. Security & Platform Parity
 - [ ] Run the `lexera-local-ipc` test suite on Windows to verify `SetFileSecurityW` and `GetNamedPipeClientProcessId` behavior.
