@@ -25,7 +25,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 - [ ] the kanban boards in the workspace viewer must be unfoldable and show the title of each element. it the elements (row, stack, column, cards) must be re-orderable, can be dragged between boards in the workspace and also into kanban boards, it must also be possible to drag elements from kanban boards into the workspace hierarchy!
   - [x] (done) Phase 1 — workspaces sub-app: caret per board, lazy `getBoardHierarchy` fetch, nested row/stack/column/card titles. (commit a5c602f2)
-  - [ ] Phase 1b — same caret + nested render in the hierarchy sub-app (still flat-list there).
+  - [x] (done) Phase 1b — same caret + nested render in the hierarchy sub-app. (commit 4daff0fc)
   - [ ] Phase 2 — re-order rows / stacks / columns / cards within a single board via drag.
   - [ ] Phase 3 — drag elements between boards in the workspace tree.
   - [ ] Phase 4 — drag elements from a kanban board into the workspace tree (and back).
