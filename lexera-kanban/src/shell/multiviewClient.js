@@ -686,6 +686,46 @@
     });
   }
 
+  // ── Hierarchy drag-and-drop bridge ─────────────────────────────
+  //
+  // Listens for `hierarchy-entity-drop` events from the workspaces /
+  // hierarchy sub-apps and applies the same-board sibling reorder via
+  // `LexeraHierarchyDragBridge.applyEntityReorder` + `saveBoard`. The
+  // pure helper lives in `src/shell/bridges/hierarchyDragBridge.js`;
+  // this wrapper just supplies the IO callbacks and skips activation
+  // when the helper, the API, or the Tauri webview aren't available.
+  function installHierarchyDragBridge() {
+    var bridge = (typeof window !== 'undefined' && window.LexeraHierarchyDragBridge) || null;
+    if (!bridge || typeof bridge.install !== 'function') return;
+    var api = (typeof window !== 'undefined' && window.LexeraApi) || null;
+    if (!api || typeof api.saveBoard !== 'function' || typeof api.getBoardColumns !== 'function') return;
+    bridge.install({
+      getCurrentWebview: getCurrentWebview,
+      invoke: invoke,
+      // `getBoardColumns` returns `{ fullBoard, columns, ... }`; the
+      // pure helper only mutates rows/stacks/columns/cards on the
+      // KanbanBoard itself, so passing the full board straight through
+      // preserves title / yaml_header / kanban_footer / format_hint.
+      loadBoard: function (boardId) {
+        return Promise.resolve(api.getBoardColumns(boardId)).then(function (response) {
+          return (response && response.fullBoard) ? response.fullBoard : null;
+        });
+      },
+      saveBoard: function (boardId, board) {
+        return api.saveBoard(boardId, board);
+      },
+      onApplied: function (boardId) {
+        // Nudge the catalog bridge to rebroadcast so every sub-app
+        // sees the new card / column / row / stack order.
+        var c = catalogBridge();
+        if (c && typeof c.broadcastCatalog === 'function') {
+          try { c.broadcastCatalog(); } catch (_) { /* non-fatal */ }
+        }
+        void boardId;
+      }
+    });
+  }
+
   // ── Navigation requests ───────────────────────────────────────
   //
   // The shell-side navigation/shortcut/focus listeners live in
@@ -730,6 +770,7 @@
       installNavigationHandler();
       installBackendStatusHandler();
       installEmbeddedBoardBridge();
+      installHierarchyDragBridge();
       // If we're hosting child webviews (default mode in main shell),
       // any embedded board webview will need catalog updates as soon
       // as it loads. Activate the catalog bridge so broadcasts flow.
