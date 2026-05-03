@@ -550,6 +550,21 @@ pub fn multiview_set_visible(
 // Events that have no subscribers fall back to `app.emit()` (global
 // broadcast) so back-compat is preserved for code that hasn't been
 // updated to use the subscription API.
+//
+// MULTI-WINDOW SAFETY. The registry itself is process-global —
+// `event_name → Set<webview_label>`, no window context. That's safe
+// today because:
+//   1. Webview labels include the per-shell bootId (see boardHost.js
+//      / panelHost.js), so labels are globally unique across windows.
+//   2. `multiview_broadcast` filters subscribers post-lookup against
+//      the caller window's `webviews()`, so even if a sibling-window
+//      label somehow ended up in the registry, it would be skipped.
+//   3. `CloseRequested` invokes `drop_labels` for the closing
+//      window's webviews so the registry doesn't accumulate ghosts.
+// If any of those invariants change (e.g. labels stop including
+// bootId, or `multiview_broadcast` drops the post-lookup filter),
+// re-key this registry by `(window_label, webview_label)` to
+// restore the contract.
 
 #[derive(Default)]
 pub struct SubscriptionRegistry {
