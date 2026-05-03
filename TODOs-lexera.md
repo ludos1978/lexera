@@ -51,7 +51,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 - [ ] Remove `lexera-shared/backendDiscovery.js` once the IPC migration (Phase 7) is fully verified as the default transport.
 - [ ] Replace all direct `window` property assignments in `src/plugins/` with explicit ESM exports.
 - [ ] Standardize the IIFE-to-ESM conversion for all files in `lexera-kanban/src/plugins/formats/`.
-- [ ] Audit and remove unused CSS variables in `lexera-kanban/src/tokens.css` that were deprecated during the multiview migration.
+- [x] (done) Audit and remove unused CSS variables in `lexera-kanban/src/tokens.css` that were deprecated during the multiview migration. Audit found zero orphans: 12 of 13 declared tokens have direct `var()` consumers, and `--font-size-l` (zero direct uses) is intentionally broadcast via `shell/bridges/themeBridge.js` for sub-app webviews. No deprecation residue. Pinned by `tokensCssNoOrphansContract.test.js` — generates one assertion per declared token, fails closed on any orphan unless explicitly allowlisted with a reason. (commit 20e39b93)
 
 ## Rust Backend Refactoring
 
