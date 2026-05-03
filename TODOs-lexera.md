@@ -39,13 +39,13 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 - [ ] Split the 12,000-line `lexera-kanban/src/app.js` into focused modules: `src/board/boardController.js`, `src/shell/uiEvents.js`, and `src/core/appState.js`.
 - [x] (done) Extract the `ManagementUI` field definitions from `lexera-shared/management.js`. Hoisted `BOARD_SETTINGS_FIELDS` out of the IIFE to module scope (data separated from the 2800-line rendering body). Pinned by `managementBoardFieldsContract.test.js`. Kept the schema in the same file rather than spinning up a new sync-script asset; if a separate `config/fields.js` is desired later, the hoist makes that move trivial. (commit 80c95d89)
 - [ ] Decompose `lexera-shared/management.js` by moving the log viewer logic into `src/management/logViewer.js`.
-- [ ] Split `lexera-kanban/src/wysiwyg-editor.js` into `src/editor/markdownEngine.js` and `src/editor/uiHandlers.js`.
+- [ ] (input required) Split `lexera-kanban/src/wysiwyg-editor.js` into `src/editor/markdownEngine.js` and `src/editor/uiHandlers.js`. — `wysiwyg-editor.js` is a 432 KB prebuilt minified bundle (one IIFE wrapping multiple esbuild chunks). The original ProseMirror sources are in `_ARCHIVE/src/wysiwyg/*.ts`, marked OBSOLETE in CLAUDE.md. Splitting the bundle isn't possible without re-establishing a build pipeline (esbuild config + restoring or replacing the TS sources). Need decision: (a) revive the build chain and split at source, (b) reauthor a slimmer editor in lexera-kanban directly, or (c) defer until the broader esbuild migration (line 32) lands.
 
 ### 3. Structural & Workspace Improvements
 - [ ] Move `lexera-shared/` into `packages/shared-ui` and define it as a proper internal NPM package.
 - [ ] Extract the geometry observation logic from `lexera-kanban/src/workspace/workspaceShell.js` into a dedicated `src/workspace/geometryObserver.js`.
 - [ ] Refactor `lexera-kanban/src/shell/multiviewClient.js` to use the new `lexera-local-ipc` protocol exclusively, removing legacy HTTP fallback logic.
-- [ ] Move the `ThemeBridge` and `CatalogBridge` from `multiviewClient.js` into their own files under `src/shell/bridges/`.
+- [x] (done) Move the `ThemeBridge` and `CatalogBridge` from `multiviewClient.js` into their own files under `src/shell/bridges/`. Already shipped: `lexera-kanban/src/shell/bridges/themeBridge.js` and `lexera-kanban/src/shell/bridges/catalogBridge.js` exist (alongside backendStatusBridge, embeddedBoardBridge, hierarchyDragBridge, managementBridge, navigationBridge, requestBridge); `multiviewClient.js:591` retains a thin wrapper that delegates to `window.LexeraThemeBridge`. (commit 3bb6afae)
 
 ### 4. Cleanup & Technical Debt
 - [ ] Remove `lexera-shared/backendDiscovery.js` once the IPC migration (Phase 7) is fully verified as the default transport.
@@ -68,9 +68,9 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 - [ ] Replace the manual SSE/WebSocket bridging in `lexera-backend` with the native `lexera-local-ipc` stream adapters.
 
 ### 3. Concurrency & Performance
-- [ ] Audit the usage of `Arc<std::sync::Mutex>` in `lexera-backend/src-tauri/src/lib.rs` and identify candidates for `RwLock` or actor-based state management to reduce lock contention.
+- [x] (done) Audit the usage of `Arc<std::sync::Mutex>` in `lexera-backend/src-tauri/src/lib.rs` and identify candidates for `RwLock` or actor-based state management to reduce lock contention. Audit + both viable conversions shipped: `auth_service` and `config` now `Arc<RwLock<…>>` with `read_arc`/`write_arc` helpers in `collab_api.rs`. discovery/live_port/server_shutdown stay on Mutex (small surface). (commits fbf70fb2 + 1e517342)
 - [ ] Optimize the board loading process in `init_storage_and_boards` to use a more granular batching strategy if the number of boards exceeds 100.
-- [ ] Implement a background task for periodic `loro` CRDT compaction to prevent state growth over time.
+- [x] (done) Implement a background task for periodic `loro` CRDT compaction to prevent state growth over time. `CrdtStore::compact_change_store` exposes the loro 1.10 method; `LocalStorage::compact_loaded_crdts` walks every loaded board and returns the count compacted; backend spawns `spawn_crdt_compaction_task` running every 600s. Two unit tests cover zero-board no-op + 2-board round-trip preserves all column titles. (commit b5d6ab1e)
 
 ### 4. Modularization & Cleanup
 - [ ] Split `lexera-backend/src-tauri/src/sync_client.rs` (48k bytes) into focused modules: `connection_mgr.rs`, `replication.rs`, and `conflict_resolver.rs`.
@@ -86,15 +86,15 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 - [x] (done) Add a `KeepAlive` heartbeat frame to the protocol to detect dead connections in the absence of active traffic. Implemented server-originated `Heartbeat` frame and 30s idle interval.
 
 ### 2. Security & Platform Parity
-- [ ] Run the `lexera-local-ipc` test suite on Windows to verify `SetFileSecurityW` and `GetNamedPipeClientProcessId` behavior.
-- [ ] Implement `SO_PEERCRED` validation on Linux and `getpeereid` on macOS in `lexera-local-ipc` to enforce same-user-only connections.
-- [ ] Audit the `ipc.json` descriptor file permissions on all platforms to ensure it is strictly `0600` (user-only).
-- [ ] Implement an OS-native "wait for file" watcher in `lexera-kanban` (using `notify`) to avoid polling for the backend descriptor.
+- [ ] (input required) Run the `lexera-local-ipc` test suite on Windows to verify `SetFileSecurityW` and `GetNamedPipeClientProcessId` behavior. — requires a Windows host; cannot run from macOS.
+- [x] (done) Implement `SO_PEERCRED` validation on Linux and `getpeereid` on macOS in `lexera-local-ipc` to enforce same-user-only connections. `transport/unix.rs::Listener::accept` calls `stream.peer_cred()` (tokio wraps SO_PEERCRED / getpeereid) and rejects mismatches as `IpcError::CrossUser`. Test `peer_uid_matches_own_uid_for_local_connection`.
+- [x] (done) Audit the `ipc.json` descriptor file permissions on all platforms to ensure it is strictly `0600` (user-only). Unix already wrote with `mode(0o600)`; added a fail-closed post-rename verifier and tests for rename-over-existing + wide-umask. Windows DACL path remains best-effort by design. (commit ad222388)
+- [x] (done) Implement an OS-native "wait for file" watcher in `lexera-kanban` (using `notify`) to avoid polling for the backend descriptor. `lexera-kanban/src-tauri/src/backend_status.rs` uses `notify::RecommendedWatcher` on the descriptor parent dir, debounces and dedupes, and emits the `backend-status` Tauri event.
 
 ### 3. Migration & Integration
-- [ ] Migrate the `/collab/me` endpoint to a sentinel local identity response in IPC mode (no bearer token needed).
-- [ ] Complete the "Gap #7" Tauri capability audit: move from wildcard window permissions to explicit per-window permission lists in `default.json`.
-- [ ] Implement the `backend-status` Tauri event watcher in the frontend to show a native "Connecting to backend..." UI during startup.
+- [ ] (in progress — external) Migrate the `/collab/me` endpoint to a sentinel local identity response in IPC mode (no bearer token needed). User is wiring the `x-lexera-transport: ipc` header in `ipc_dispatch.rs` + `auth_middleware.rs:69` (transport-marker bypass) + `server.rs` (strip-incoming-header middleware). When complete, mark done with the user's commit hash.
+- [x] (done) Complete the "Gap #7" Tauri capability audit: move from wildcard window permissions to explicit per-window permission lists in `default.json`. Replaced `["*"]` with `["main", "kanban-*", "drag-ghost", "board-tab-*", "panel-tab-*"]`. Pinned by `tauriCapabilityWindowAllowlistContract.test.js`. (commit 3fa51695)
+- [x] (done) Implement the `backend-status` Tauri event watcher in the frontend to show a native "Connecting to backend..." UI during startup. Bridge at `lexera-kanban/src/shell/bridges/backendStatusBridge.js` with 12 Vitest assertions. (commit e89c06d0; awaits visual verification per the user's "verify before done" rule.)
 - [ ] Finalize the "Phase 7" removal of the HTTP fallback path from the desktop production build.
 
 ## Open Tasks

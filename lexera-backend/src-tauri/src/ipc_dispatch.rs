@@ -34,7 +34,8 @@ pub async fn dispatch_api_request(
 ) -> Result<ApiResponse, DispatchError> {
     let mut builder = Request::builder()
         .method(req.method.as_str())
-        .uri(req.uri.as_str());
+        .uri(req.uri.as_str())
+        .header("x-lexera-transport", "ipc");
     for (name, value) in &req.headers {
         builder = builder.header(name.as_str(), value.as_slice());
     }

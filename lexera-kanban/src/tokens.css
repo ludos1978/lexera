@@ -107,4 +107,9 @@
 
   /* ── Control Sizes ──────────────────────────────────────────── */
   --control-height-sm: calc(22px * var(--ui-scale));  /* compact buttons, icon buttons */
+
+  /* ── Backend Status Indicator ────────────────────────────────── */
+  --lexera-status-bg:     rgba(40, 40, 40, 0.92);
+  --lexera-status-fg:     #f0f0f0;
+  --lexera-status-border: rgba(255, 255, 255, 0.18);
 }

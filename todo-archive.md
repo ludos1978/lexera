@@ -1,7 +1,7 @@
 # Lexera Kanban — Completed Items Archive
 
 ## Archived During Drop-Target Differentiation — 2026-05-03
-- [x] (done) Drop-target differentiation per element kind. Single gatekeeper `isDropTargetValidForKind(dragKind, mx, my)` in `lexera-kanban/src/dragdrop/dragDropHandlers.js` documents and enforces the four rules (rows above/between/below other rows; stacks before/between/after stacks or in empty rows; columns before/between/after columns or in empty stacks; cards only inside `.column-cards`). Applied in `updatePtrDropTargetByType` (suppresses invalid-hover indicators) and at the top of `applyCardDropByPoint`, `applyRowDropByPoint`, `applyStackDropByPoint`, `executeColumnPtrDrop` (defense-in-depth). 2107 tests pass, zero regressions.
+- [x] (done) Drop-target differentiation per element kind. Single gatekeeper `isDropTargetValidForKind(dragKind, mx, my)` in `lexera-kanban/src/dragdrop/dragDropHandlers.js` documents and enforces the four rules (rows above/between/below other rows; stacks before/between/after stacks or in empty rows; columns before/between/after columns or in empty stacks; cards only inside `.column-cards`). Applied in `updatePtrDropTargetByType` (suppresses invalid-hover indicators) and at the top of `applyCardDropByPoint`, `applyRowDropByPoint`, `applyStackDropByPoint`, `executeColumnPtrDrop` (defense-in-depth). Pinned by `dropTargetKindValidation.test.js`. (commit 8efbb3de)
 
 ## Archived During Dashboard Backend Scope — 2026-04-30
 - [x] Request only scoped dashboard data from backend — dashboard requests now include `boardIds` for active-board and visible-workspace scopes; backend search/todos/tags/calendar aggregation respects that scope, with frontend API/request tests and backend route coverage.

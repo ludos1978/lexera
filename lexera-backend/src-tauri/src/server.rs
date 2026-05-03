@@ -62,7 +62,18 @@ pub(crate) fn build_app(state: AppState) -> Router {
         .merge(sync_router())
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .layer(cors)
+        .layer(axum::middleware::from_fn(strip_transport_header_middleware))
         .with_state(state)
+}
+
+/// Security: strip the internal transport marker from HTTP requests so
+/// external clients cannot spoof the "trusted" IPC path.
+async fn strip_transport_header_middleware(
+    mut req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    req.headers_mut().remove("x-lexera-transport");
+    next.run(req).await
 }
 
 /// Try to bind a TCP listener on the given address:port.

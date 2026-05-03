@@ -63,6 +63,13 @@ pub async fn require_auth_middleware(
     req: Request,
     next: Next,
 ) -> Response {
+    // Phase 7.5: trust IPC transport as proof of identity for the local user.
+    // The `strip_transport_header_middleware` in server.rs ensures this header
+    // can only come from the internal IPC dispatcher.
+    if req.headers().get("x-lexera-transport").and_then(|v| v.to_str().ok()) == Some("ipc") {
+        return next.run(req).await;
+    }
+
     // Try Authorization first, then query-param auth for static asset GET URLs.
     if let Some(token) = extract_bearer_token(&req).or_else(|| extract_query_token(&req)) {
         let valid = state

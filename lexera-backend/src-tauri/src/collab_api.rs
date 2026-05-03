@@ -165,6 +165,11 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
 /// Authenticate a request via bearer token.
 /// Validates the `Authorization: Bearer <token>` header against the AuthService.
 fn require_authenticated_user(headers: &HeaderMap, state: &AppState) -> Result<String> {
+    // Phase 7.5: trust IPC transport as proof of identity for the local user.
+    if headers.get("x-lexera-transport").and_then(|v| v.to_str().ok()) == Some("ipc") {
+        return Ok(state.local_user_id.clone());
+    }
+
     if let Some(token) = extract_bearer_token(headers) {
         let auth = read_arc(&state.auth_service, "auth")?;
         if let Some(user_id) = auth.validate_token(&token) {
@@ -879,7 +884,10 @@ async fn get_user(
 }
 
 /// GET /collab/me - Get the local user identity (includes auth token for frontend)
-async fn get_me(State(state): State<AppState>) -> Result<Json<serde_json::Value>> {
+async fn get_me(headers: HeaderMap, State(state): State<AppState>) -> Result<Json<serde_json::Value>> {
+    // Phase 7.5: /collab/me now supports IPC transport identification.
+    let is_ipc = headers.get("x-lexera-transport").and_then(|v| v.to_str().ok()) == Some("ipc");
+
     let auth = read_arc(&state.auth_service, "auth")?;
     let user = auth.get_user(&state.local_user_id).ok_or_else(|| {
         (
@@ -887,9 +895,17 @@ async fn get_me(State(state): State<AppState>) -> Result<Json<serde_json::Value>
             Json(ErrorResponse::new("Local user not found")),
         )
     })?;
-    let token = auth
-        .get_token_for_user(&state.local_user_id)
-        .map(|t| t.to_string());
+
+    // If on IPC, the token is not required for authentication, but we still
+    // return it if it exists for consistency (or omit if it would trigger
+    // unnecessary work in the frontend).
+    let token = if is_ipc {
+        None
+    } else {
+        auth.get_token_for_user(&state.local_user_id)
+            .map(|t| t.to_string())
+    };
+
     Ok(Json(serde_json::json!({
         "id": user.id,
         "name": user.name,
