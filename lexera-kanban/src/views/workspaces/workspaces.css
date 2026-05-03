@@ -33,6 +33,14 @@ h3 {
   list-style: none;
   margin: 0;
   padding: 0;
+  /* Drag affordance: the tree-node carries `draggable="true"` for
+   * Phase 2+ drag-drop. Without `user-select: none`, mousedown on the
+   * label initiates text selection in WKWebView / WebView2 instead of
+   * the native drag (Chromium prefers selection over drag for text
+   * content), so dragstart never fires. The kanban board's
+   * `.columns-container` does the same trick. */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Boards are top-level TreeView roots — no leading corner / branch

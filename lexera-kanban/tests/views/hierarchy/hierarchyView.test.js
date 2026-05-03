@@ -801,6 +801,62 @@ describe('hierarchy view sub-app', () => {
       expect(dropBroadcast).toBeFalsy();
     });
 
+    // After the shell-side bridge persists a drop it broadcasts
+    // `hierarchy-board-changed` to every webview in the window. The
+    // sub-app must drop the cached hierarchy for that board and, if
+    // the board is currently expanded, refetch immediately so the
+    // user sees the new ordering without having to collapse and
+    // re-expand the board.
+    it('hierarchy-board-changed event invalidates the cached hierarchy and refetches an expanded board', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn()
+      };
+      let fetchCount = 0;
+      const hierarchyVersions = [
+        [{ id: 'r1', title: 'V1', stacks: [] }],
+        [{ id: 'r1', title: 'V2 (after reorder)', stacks: [] }]
+      ];
+      window.LexeraApi = {
+        getBoardHierarchy: vi.fn(() => Promise.resolve({
+          rows: hierarchyVersions[Math.min(fetchCount++, 1)]
+        }))
+      };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      // Expand the board → first fetch.
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      // Confirm V1 is visible.
+      function rowLabels() {
+        const entry = window.document
+          .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]')
+          .parentElement;
+        return Array.from(entry.querySelectorAll('.tree-children .tree-row > .tree-label'))
+          .map((n) => n.textContent);
+      }
+      expect(rowLabels()).toEqual(['V1']);
+      expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledTimes(1);
+
+      // Fire the change event the bridge would broadcast after a save.
+      capturedOpts.onCustom['hierarchy-board-changed']({ boardId: 'b1' });
+      await new Promise((r) => setTimeout(r, 0));
+      // Cache invalidated + immediate refetch (board still expanded).
+      expect(window.LexeraApi.getBoardHierarchy).toHaveBeenCalledTimes(2);
+      expect(rowLabels()).toEqual(['V2 (after reorder)']);
+    });
+
     // Regression 2026-05-03: rows / stacks / columns inside an expanded
     // board must be foldable too. They are rendered with TreeView's
     // built-in toggle; clicking it flips the `.tree-children.expanded`

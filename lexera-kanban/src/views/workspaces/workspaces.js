@@ -330,7 +330,26 @@
       '<span class="current-workspace-id">' + escapeHtml(workspace.id ? String(workspace.id).substring(0, 8) : '') + '</span>';
   }
 
+  // After a drag-drop reorder, the shell-side bridge broadcasts
+  // `hierarchy-board-changed` so sub-apps can drop their cached
+  // hierarchy. Without this, we'd re-render from stale rows and the
+  // user would see no visible change.
+  function invalidateBoardHierarchy(boardId) {
+    if (!boardId) return;
+    delete boardHierarchies[boardId];
+    if (expandedBoardIds[boardId]) {
+      fetchBoardHierarchy(boardId);
+    } else {
+      rerenderLocalBoards();
+    }
+  }
+
   LexeraSubApp.init({
+    onCustom: {
+      'hierarchy-board-changed': function (payload) {
+        invalidateBoardHierarchy((payload && payload.boardId) || '');
+      }
+    },
     onCatalog: function (snap) {
       var workspace = findCurrentWorkspace(snap || {});
       var visibleBoards = workspace && workspace.id === REMOTE_WORKSPACE_ID

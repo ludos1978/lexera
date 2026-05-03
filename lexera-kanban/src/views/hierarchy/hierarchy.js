@@ -376,7 +376,28 @@
     localBoardsEl.__hierarchyClickBound = true;
   }
 
+  // After a drag-drop reorder, the shell-side bridge persists the new
+  // board state and broadcasts `hierarchy-board-changed` so sub-apps
+  // can drop their cached hierarchy. Without this, the user would see
+  // no visible reorder because we'd re-render from stale rows.
+  function invalidateBoardHierarchy(boardId) {
+    if (!boardId) return;
+    delete boardHierarchies[boardId];
+    if (expandedBoardIds[boardId]) {
+      // Re-fetch immediately so the user sees the updated structure
+      // without having to collapse and re-expand the board.
+      fetchBoardHierarchy(boardId);
+    } else {
+      renderFromCatalog();
+    }
+  }
+
   LexeraSubApp.init({
+    onCustom: {
+      'hierarchy-board-changed': function (payload) {
+        invalidateBoardHierarchy((payload && payload.boardId) || '');
+      }
+    },
     onCatalog: function (snap) {
       latestCatalog = snap || null;
       var ws = resolveWorkspaceFromSnapshot(snap);

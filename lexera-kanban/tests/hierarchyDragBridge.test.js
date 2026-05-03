@@ -694,6 +694,70 @@ describe('LexeraHierarchyDragBridge.install', () => {
     expect(onApplied).toHaveBeenCalledWith('B');
   });
 
+  it('after a successful drop, broadcasts hierarchy-board-changed for every affected board', async () => {
+    const wv = makeWebview();
+    // The same `invoke` mock handles both subscribe AND broadcast
+    // calls; we filter by command name in the assertions.
+    const invoke = vi.fn(() => Promise.resolve());
+    const board = makeBoard();
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(board),
+      saveBoard: () => Promise.resolve()
+    });
+
+    // Same-board drop → one broadcast for the affected board.
+    wv._fire('hierarchy-entity-drop', {
+      source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      target: { boardId: 'b1', kind: 'card', entityId: 'card-3' }
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const broadcasts = invoke.mock.calls.filter((c) => c[0] === 'multiview_broadcast');
+    const hierarchyBroadcasts = broadcasts.filter((c) =>
+      c[1] && c[1].event === 'hierarchy-board-changed');
+    expect(hierarchyBroadcasts.length).toBe(1);
+    expect(hierarchyBroadcasts[0][1].payload).toEqual({ boardId: 'b1' });
+  });
+
+  it('cross-board drop broadcasts hierarchy-board-changed for BOTH boards', async () => {
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    function mk(prefix) {
+      return {
+        title: prefix, columns: [],
+        rows: [{ id: prefix + '-r', title: 'R', stacks: [{
+          id: prefix + '-s', title: 'S', columns: [{
+            id: prefix + '-c', title: 'C',
+            cards: [{ id: prefix + '-card', title: 'X' }]
+          }]
+        }] }]
+      };
+    }
+    const a = mk('a'), b = mk('b');
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: (id) => Promise.resolve(id === 'A' ? a : b),
+      saveBoard: () => Promise.resolve()
+    });
+    wv._fire('hierarchy-entity-drop', {
+      source: { boardId: 'A', kind: 'card', entityId: 'a-card' },
+      target: { boardId: 'B', kind: 'card', entityId: 'b-card' }
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    const hierarchyBroadcasts = invoke.mock.calls
+      .filter((c) => c[0] === 'multiview_broadcast' && c[1] && c[1].event === 'hierarchy-board-changed')
+      .map((c) => c[1].payload.boardId)
+      .sort();
+    expect(hierarchyBroadcasts).toEqual(['A', 'B']);
+  });
+
   it('routes errors through onError', async () => {
     const wv = makeWebview();
     const onError = vi.fn();

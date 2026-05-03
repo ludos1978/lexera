@@ -282,6 +282,18 @@
               Promise.resolve(saveBoard(target.boardId, tgtBoard))
             ];
         return Promise.all(saves).then(function () {
+          // Notify every webview in the window that the affected boards
+          // changed so sub-apps can drop their cached hierarchy and
+          // refetch. Without this, the user sees no visible reorder
+          // because the workspaces / hierarchy sub-app re-renders from
+          // its stale `boardHierarchies` cache.
+          var affected = sameBoard ? [source.boardId] : [source.boardId, target.boardId];
+          for (var i = 0; i < affected.length; i++) {
+            invoke('multiview_broadcast', {
+              event: 'hierarchy-board-changed',
+              payload: { boardId: affected[i] }
+            }).catch(function () { /* non-fatal */ });
+          }
           if (typeof deps.onApplied === 'function') {
             deps.onApplied(source.boardId);
             if (!sameBoard) deps.onApplied(target.boardId);

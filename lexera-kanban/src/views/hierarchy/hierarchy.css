@@ -120,6 +120,12 @@ html, body {
   list-style: none;
   margin: 0;
   padding: 0;
+  /* Drag affordance: the tree-node carries `draggable="true"` for
+   * Phase 2+ drag-drop. Without `user-select: none`, mousedown on a
+   * label triggers text selection in WKWebView / WebView2 instead of
+   * the native drag, so dragstart never fires. */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .board-list.nested {
