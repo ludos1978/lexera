@@ -16,6 +16,8 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ## Open Tasks
 
+- [ ] we must differentiate the different drop targets for each element. rows can only be above, between and below other rows or below the kanban directly. stacks can only be before, between or after other stacks or in an empty row. columns can only be before, between or after other columns or added to an empty stack. cards can only be in columns and reordered before, between and after other cards!
+
 ### Multi-Window Structural Improvements
 
 
@@ -89,7 +91,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
   - [x] (done) Convert `Arc<Mutex<AuthService>>` → `Arc<RwLock<AuthService>>`. Reused the `read_arc` / `write_arc` helpers from the SyncConfig conversion. Touched 8 files: `collab_api.rs`, `ipc_stream.rs`, `sync_ws.rs`, `ipc_sync.rs`, `api/auth_middleware.rs`, `lib.rs`, `state.rs`, `test_helpers.rs`. Read/write classified by method called (validate_token / get_user / is_member / save_to_file → read; register_user / update_user / add_to_room / remove_from_room → write). 281 backend tests green. (commit 1e517342)
   - [x] (done) Convert `Arc<Mutex<SyncConfig>>` → `Arc<RwLock<SyncConfig>>` with the same read/write split. Added `read_arc` / `write_arc` helpers in `collab_api.rs` parallel to `lock_arc`; classified all 35 sites by `let cfg` vs `let mut cfg`; touched 11 files. 281 backend tests green. (commit fbf70fb2)
 - [ ] Optimize the board loading process in `init_storage_and_boards` to use a more granular batching strategy if the number of boards exceeds 100.
-- [ ] Implement a background task for periodic `loro` CRDT compaction to prevent state growth over time.
+- [x] (done) Implement a background task for periodic `loro` CRDT compaction to prevent state growth over time. `CrdtStore::compact_change_store` exposes the loro 1.10 method; `LocalStorage::compact_loaded_crdts` walks every loaded board and returns the count compacted. Backend spawns `spawn_crdt_compaction_task` alongside the periodic save loop; runs every 600s, first tick skipped so initial compaction lands one full interval after boot. Two unit tests: zero-board no-op + 2-board round-trip preserves all column titles after compaction (also idempotent). (commit b5d6ab1e)
 
 ### 4. Modularization & Cleanup
 - [ ] Split `lexera-backend/src-tauri/src/sync_client.rs` (48k bytes) into focused modules: `connection_mgr.rs`, `replication.rs`, and `conflict_resolver.rs`.
