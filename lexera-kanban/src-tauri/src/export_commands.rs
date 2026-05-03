@@ -1584,14 +1584,51 @@ fn insert_marp_config_classes(scan_dirs: &[PathBuf], out: &mut BTreeSet<String>)
 // Managed state: track watch mode PIDs
 // ---------------------------------------------------------------------------
 
+/// Per-window registry of Marp watch processes.
+///
+/// Earlier shape (`HashMap<input_path, u32>`) collided across
+/// windows: if window A and window B both started a watch for the
+/// same file, the second `insert()` overwrote the first's PID and
+/// the first process was orphaned forever. The key is now
+/// `(window_label, input_path)` so each window owns its own watches
+/// independently.
 pub struct MarpWatchState {
-    pub pids: Mutex<HashMap<String, u32>>,
+    pub pids: Mutex<HashMap<(String, String), u32>>,
 }
 
 impl MarpWatchState {
     pub fn new() -> Self {
         Self {
             pids: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Stop every watch owned by `window_label` and drop its entries.
+    /// Called by `main.rs` `CloseRequested` so child processes don't
+    /// outlive the window that started them.
+    pub fn stop_window(&self, window_label: &str) {
+        let to_kill: Vec<u32> = match self.pids.lock() {
+            Ok(map) => map
+                .iter()
+                .filter(|((wl, _), _)| wl == window_label)
+                .map(|(_, &pid)| pid)
+                .collect(),
+            Err(_) => return,
+        };
+        for p in &to_kill {
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(-(*p as i32), libc::SIGTERM);
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/PID", &p.to_string(), "/F", "/T"])
+                    .output();
+            }
+        }
+        if let Ok(mut map) = self.pids.lock() {
+            map.retain(|(wl, _), _| wl != window_label);
         }
     }
 }
@@ -2117,9 +2154,11 @@ pub async fn marp_export(opts: MarpExportOptions) -> Result<MarpResult, String> 
 /// Start Marp CLI in watch mode (--watch --preview). Returns PID for later stop.
 #[tauri::command]
 pub async fn marp_watch(
+    caller: tauri::Webview,
     opts: MarpExportOptions,
     watch_state: State<'_, MarpWatchState>,
 ) -> Result<MarpWatchResult, String> {
+    let window_label = caller.window().label().to_string();
     let mut args = Vec::new();
 
     // Determine CLI command
@@ -2178,9 +2217,10 @@ pub async fn marp_watch(
     let pid = child.id();
     log::info!("[export] Marp watch started, PID: {}", pid);
 
-    // Store PID for later cleanup
+    // Store PID keyed by (window_label, input_path) so two windows
+    // watching the same file don't overwrite each other's PID.
     if let Ok(mut pids) = watch_state.pids.lock() {
-        pids.insert(opts.input_path.clone(), pid);
+        pids.insert((window_label, opts.input_path.clone()), pid);
     }
 
     Ok(MarpWatchResult {
@@ -2191,21 +2231,32 @@ pub async fn marp_watch(
     })
 }
 
-/// Stop a Marp watch process by its PID.
+/// Stop a Marp watch process by its PID. Scoped to the calling
+/// window so window B's stop call cannot terminate window A's
+/// watch — each window only sees and acts on its own entries.
 #[tauri::command]
 pub async fn marp_stop_watch(
+    caller: tauri::Webview,
     pid: Option<u32>,
     watch_path: Option<String>,
     watch_state: State<'_, MarpWatchState>,
 ) -> Result<(), String> {
+    let window_label = caller.window().label().to_string();
     let target_pid = if let Some(p) = pid {
-        Some(p)
+        // Verify the PID actually belongs to this window before
+        // killing it. Otherwise a buggy / stale PID would let one
+        // window kill another window's watch process.
+        watch_state.pids.lock().ok().and_then(|pids| {
+            pids.iter()
+                .find(|((wl, _), &v)| wl == &window_label && v == p)
+                .map(|(_, &v)| v)
+        })
     } else if let Some(ref path) = watch_path {
         watch_state
             .pids
             .lock()
             .ok()
-            .and_then(|pids| pids.get(path).copied())
+            .and_then(|pids| pids.get(&(window_label.clone(), path.clone())).copied())
     } else {
         None
     };
@@ -2225,16 +2276,16 @@ pub async fn marp_stop_watch(
                 .output();
         }
 
-        // Remove from tracking
+        // Remove from tracking — match the same scoping the lookup used.
         if let Ok(mut pids) = watch_state.pids.lock() {
             if let Some(ref path) = watch_path {
-                pids.remove(path);
+                pids.remove(&(window_label.clone(), path.clone()));
             } else {
-                pids.retain(|_, &mut v| v != p);
+                pids.retain(|(wl, _), &mut v| !(wl == &window_label && v == p));
             }
         }
 
-        log::info!("[export] Stopped Marp watch PID: {}", p);
+        log::info!("[export] Stopped Marp watch PID: {} (window {})", p, window_label);
     }
 
     Ok(())
@@ -2242,13 +2293,20 @@ pub async fn marp_stop_watch(
 
 /// Stop all running Marp watch processes.
 #[tauri::command]
-pub async fn marp_stop_all_watches(watch_state: State<'_, MarpWatchState>) -> Result<u32, String> {
+pub async fn marp_stop_all_watches(
+    caller: tauri::Webview,
+    watch_state: State<'_, MarpWatchState>,
+) -> Result<u32, String> {
+    // Per-window scope: stop only THIS window's watches. Window B
+    // calling stop-all must not terminate window A's processes.
+    let window_label = caller.window().label().to_string();
     let pids: Vec<u32> = watch_state
         .pids
         .lock()
         .map_err(|e| e.to_string())?
-        .values()
-        .copied()
+        .iter()
+        .filter(|((wl, _), _)| wl == &window_label)
+        .map(|(_, &pid)| pid)
         .collect();
 
     let count = pids.len() as u32;
@@ -2266,10 +2324,10 @@ pub async fn marp_stop_all_watches(watch_state: State<'_, MarpWatchState>) -> Re
     }
 
     if let Ok(mut state) = watch_state.pids.lock() {
-        state.clear();
+        state.retain(|(wl, _), _| wl != &window_label);
     }
 
-    log::info!("[export] Stopped {} Marp watch processes", count);
+    log::info!("[export] Stopped {} Marp watch processes (window {})", count, window_label);
     Ok(count)
 }
 

@@ -665,6 +665,15 @@ fn main() {
                             let focus = app.state::<webview_mgr::FocusTracker>();
                             focus.drop_window(&closing_label);
                         }
+                        // MarpWatchState: kill any Marp --watch processes
+                        // owned by this window. Without this, watch
+                        // processes outlive their parent window forever.
+                        {
+                            use tauri::Manager;
+                            let app = window.app_handle();
+                            let marp = app.state::<export_commands::MarpWatchState>();
+                            marp.stop_window(&closing_label);
+                        }
                     }
                 }
                 tauri::WindowEvent::Moved(_pos) => {
