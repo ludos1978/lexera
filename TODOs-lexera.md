@@ -20,6 +20,14 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ### Multi-Window Structural Improvements
 
+- [x] ~~**DragState + drag-ghost are per-process singletons** — `Mutex<Option<ActiveDrag>>` allows only one drag in the entire app; drag in window B errors out or stomps window A's state. Drag-ghost screen-position math uses hardcoded `app.get_webview_window("main")`, so dragging from window B paints the ghost at window A's offset (off-screen / wrong monitor). Fix: key `DragState` by source webview's parent-window label, resolve ghost position from the caller's window.~~ — a2602fae (DragState now `Mutex<HashMap<String, ActiveDrag>>` keyed by source webview's parent window label. All four drag commands (start / pointer_move / pointer_up / cancel) take injected `caller: tauri::Webview` and look up that window's slot. drag-ghost screen coords resolved from `caller.window().outer_position()` instead of hardcoded "main". 5 contract tests pin the shape + each call site.)
+
+- [ ] **FocusTracker is a process-singleton** — `Mutex<Option<String>>` tracks one globally-focused webview. Window B's shell calling `multiview_get_focused()` can return a label from window A. Fix: `Mutex<HashMap<window_label, Option<webview_label>>>` keyed by parent window; `multiview_get_focused` reads the caller's window's slot.
+
+- [ ] **Window-close cleanup is incomplete** — `main.rs` `CloseRequested` purges only `SubscriptionRegistry` for dead labels. `FocusTracker` and `HealthTracker` keep stale entries indefinitely. Extend the existing block to clean both.
+
+- [ ] **MarpWatchState collisions across windows** — `HashMap<watch_path, pid>` is global, so two windows watching the same file orphan the first window's process. Fix: key by `(window_label, watch_path)` or refuse the second watch.
+
 - [x] ~~Layout settings saved per workspace, not per window~~ — 5a3f0a25 (`layoutPersistence.getPersistenceKey()` now returns `lexera-workspace-shell:ws:<workspaceId>` when `?workspace=` is set, so two windows pinned to the same workspace share one saved layout (last save wins) and reopening a workspace later restores the same dock tree. Falls back to per-window key for the boot main window before catalog hydrate and for detached panel-only windows. Storage rule: workspace-pinned + main → localStorage; transient secondary windows without a workspace → sessionStorage. 8 new tests in `layoutPersistence.test.js` cover keying, hooks override seam, and storage choice.)
 
 - [x] ~~**Fix Event Scoping in `embedMenu.js`:** Update `LexeraEmbedMenu.tauriListen` to use the current webview's scope instead of `{ kind: 'Any' }`. This will prevent events like `menu-action` from leaking across windows.~~ — 849935ce (target now `{ kind: 'WebviewLabel', label: getCurrentWebview().label }`, falls back to `Any` if the webview API isn't yet ready at boot. 3 tests pin the new shape + the fallback path.)
