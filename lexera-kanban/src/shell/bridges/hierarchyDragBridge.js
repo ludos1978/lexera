@@ -196,6 +196,37 @@
   }
 
   /**
+   * Unified dispatch. Picks the right pure helper based on whether
+   * the move is same-board / cross-board, and same-kind / cross-kind:
+   *
+   *   same-board same-kind  → applyEntityReorder
+   *   same-board cross-kind → applyEntityAbsorb
+   *   cross-board same-kind → applyCrossBoardEntityReorder
+   *   cross-board cross-kind→ applyCrossBoardEntityAbsorb
+   *
+   * Returns `true` when a helper applied the move (one or both boards
+   * mutated in place); `false` when nothing matched. The caller is
+   * expected to persist the affected board(s) themselves — this
+   * helper does NOT call `saveBoard`. `install()` wraps this with
+   * the IO dispatch.
+   *
+   * For same-board calls the second board argument is ignored, but
+   * passing the same reference for both keeps the caller branchless.
+   */
+  function applyDrop(srcBoard, tgtBoard, source, target) {
+    if (!source || !target) return false;
+    var sameBoard = source.boardId === target.boardId;
+    if (sameBoard) {
+      return source.kind === target.kind
+        ? applyEntityReorder(srcBoard, source, target)
+        : applyEntityAbsorb(srcBoard, source, target);
+    }
+    return source.kind === target.kind
+      ? applyCrossBoardEntityReorder(srcBoard, tgtBoard, source, target)
+      : applyCrossBoardEntityAbsorb(srcBoard, tgtBoard, source, target);
+  }
+
+  /**
    * Production wiring. Listens for `hierarchy-entity-drop` events
    * from any sub-app webview, looks up the matching board via
    * dependency-injected callbacks, applies the reorder, and persists
@@ -236,48 +267,30 @@
       var target = p.target || null;
       if (!source || !target) return;
       if (!source.boardId || !target.boardId) return;
-      // Same-board: load one board, dispatch by kind match.
-      //   same-kind  → sibling reorder
-      //   cross-kind → absorb into target's children (card → column,
-      //                column → stack, stack → row)
-      if (source.boardId === target.boardId) {
-        var boardId = source.boardId;
-        Promise.resolve(loadBoard(boardId)).then(function (board) {
-          if (!board) return;
-          var applied = (source.kind === target.kind)
-            ? applyEntityReorder(board, source, target)
-            : applyEntityAbsorb(board, source, target);
-          if (!applied) return;
-          return Promise.resolve(saveBoard(boardId, board)).then(function () {
-            if (typeof deps.onApplied === 'function') deps.onApplied(boardId);
-          });
-        }).catch(function (err) {
-          if (typeof deps.onError === 'function') deps.onError(err);
-        });
-        return;
-      }
-      // Cross-board: load BOTH boards, dispatch by kind match.
-      //   same-kind  → sibling reorder across boards
-      //   cross-kind → absorb across boards
-      // Save BOTH; `onApplied` fires once per affected board.
-      Promise.all([
-        Promise.resolve(loadBoard(source.boardId)),
-        Promise.resolve(loadBoard(target.boardId))
-      ]).then(function (boards) {
+      var sameBoard = source.boardId === target.boardId;
+      // Load the affected board(s); for same-board the second slot is
+      // a duplicate so `applyDrop` can stay branchless.
+      var loads = sameBoard
+        ? [Promise.resolve(loadBoard(source.boardId))]
+        : [
+            Promise.resolve(loadBoard(source.boardId)),
+            Promise.resolve(loadBoard(target.boardId))
+          ];
+      Promise.all(loads).then(function (boards) {
         var srcBoard = boards[0];
-        var tgtBoard = boards[1];
+        var tgtBoard = sameBoard ? srcBoard : boards[1];
         if (!srcBoard || !tgtBoard) return;
-        var applied = (source.kind === target.kind)
-          ? applyCrossBoardEntityReorder(srcBoard, tgtBoard, source, target)
-          : applyCrossBoardEntityAbsorb(srcBoard, tgtBoard, source, target);
-        if (!applied) return;
-        return Promise.all([
-          Promise.resolve(saveBoard(source.boardId, srcBoard)),
-          Promise.resolve(saveBoard(target.boardId, tgtBoard))
-        ]).then(function () {
+        if (!applyDrop(srcBoard, tgtBoard, source, target)) return;
+        var saves = sameBoard
+          ? [Promise.resolve(saveBoard(source.boardId, srcBoard))]
+          : [
+              Promise.resolve(saveBoard(source.boardId, srcBoard)),
+              Promise.resolve(saveBoard(target.boardId, tgtBoard))
+            ];
+        return Promise.all(saves).then(function () {
           if (typeof deps.onApplied === 'function') {
             deps.onApplied(source.boardId);
-            deps.onApplied(target.boardId);
+            if (!sameBoard) deps.onApplied(target.boardId);
           }
         });
       }).catch(function (err) {
@@ -293,6 +306,7 @@
     applyEntityAbsorb: applyEntityAbsorb,
     applyCrossBoardEntityReorder: applyCrossBoardEntityReorder,
     applyCrossBoardEntityAbsorb: applyCrossBoardEntityAbsorb,
+    applyDrop: applyDrop,
     install: install
   };
   if (typeof window !== 'undefined') window.LexeraHierarchyDragBridge = api;

@@ -403,6 +403,83 @@ describe('LexeraHierarchyDragBridge.applyCrossBoardEntityAbsorb', () => {
   });
 });
 
+describe('LexeraHierarchyDragBridge.applyDrop (unified dispatch)', () => {
+  const bridge = loadBridge();
+
+  it('routes same-board same-kind to applyEntityReorder', () => {
+    const board = makeBoard();
+    const ok = bridge.applyDrop(board, board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'card', entityId: 'card-3' }
+    );
+    expect(ok).toBe(true);
+    expect(board.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['card-2', 'card-1', 'card-3']);
+  });
+
+  it('routes same-board cross-kind to applyEntityAbsorb', () => {
+    const board = makeBoard();
+    const ok = bridge.applyDrop(board, board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'column', entityId: 'c2' }
+    );
+    expect(ok).toBe(true);
+    expect(board.rows[0].stacks[0].columns[1].cards.map((c) => c.id))
+      .toEqual(['card-4', 'card-1']);
+  });
+
+  it('routes cross-board same-kind to applyCrossBoardEntityReorder', () => {
+    function mk(prefix) {
+      return {
+        title: prefix, columns: [],
+        rows: [{ id: prefix + '-r', title: 'R', stacks: [{
+          id: prefix + '-s', title: 'S', columns: [{
+            id: prefix + '-c', title: 'C',
+            cards: [{ id: prefix + '-card', title: 'X' }]
+          }]
+        }] }]
+      };
+    }
+    const a = mk('a'), b = mk('b');
+    const ok = bridge.applyDrop(a, b,
+      { boardId: 'A', kind: 'card', entityId: 'a-card' },
+      { boardId: 'B', kind: 'card', entityId: 'b-card' }
+    );
+    expect(ok).toBe(true);
+    expect(a.rows[0].stacks[0].columns[0].cards.length).toBe(0);
+    expect(b.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['a-card', 'b-card']);
+  });
+
+  it('routes cross-board cross-kind to applyCrossBoardEntityAbsorb', () => {
+    function mk(prefix) {
+      return {
+        title: prefix, columns: [],
+        rows: [{ id: prefix + '-r', title: 'R', stacks: [{
+          id: prefix + '-s', title: 'S', columns: [
+            { id: prefix + '-c1', title: 'C1', cards: [{ id: prefix + '-card', title: 'X' }] },
+            { id: prefix + '-c2', title: 'C2', cards: [] }
+          ]
+        }] }]
+      };
+    }
+    const a = mk('a'), b = mk('b');
+    const ok = bridge.applyDrop(a, b,
+      { boardId: 'A', kind: 'card', entityId: 'a-card' },
+      { boardId: 'B', kind: 'column', entityId: 'b-c2' }
+    );
+    expect(ok).toBe(true);
+    expect(a.rows[0].stacks[0].columns[0].cards.length).toBe(0);
+    expect(b.rows[0].stacks[0].columns[1].cards.map((c) => c.id))
+      .toEqual(['a-card']);
+  });
+
+  it('returns false on missing source or target', () => {
+    expect(bridge.applyDrop({}, {}, null, {})).toBe(false);
+    expect(bridge.applyDrop({}, {}, {}, null)).toBe(false);
+  });
+});
+
 describe('LexeraHierarchyDragBridge.install', () => {
   const bridge = loadBridge();
 
