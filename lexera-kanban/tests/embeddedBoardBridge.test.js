@@ -10,7 +10,7 @@ function freshBridge(locationSearch = '') {
   const win = {
     location: { search: locationSearch }
   };
-  const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+  const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
     window: win,
     document: { getElementById: () => null, head: { appendChild: () => {} }, createElement: () => ({}) }
   });
@@ -104,7 +104,7 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     });
     const { window } = dom;
     const invoke = vi.fn(() => Promise.resolve());
-    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
       window,
       document: window.document,
       URLSearchParams,
@@ -136,7 +136,7 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
       url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1'
     });
     const { window } = dom;
-    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
       window,
       document: window.document,
       URLSearchParams,
@@ -172,7 +172,7 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     const handlers = {};
     const navigateHierarchyTargetInIframe = vi.fn(() => Promise.resolve(true));
     window.LexeraOrderHelpers = { navigateHierarchyTargetInIframe };
-    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
       window,
       document: window.document,
       URLSearchParams,
@@ -248,7 +248,7 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     const handlers = {};
     const navigateHierarchyTargetInIframe = vi.fn(() => Promise.resolve(false));
     window.LexeraOrderHelpers = { navigateHierarchyTargetInIframe };
-    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
       window,
       document: window.document,
       URLSearchParams,
@@ -318,7 +318,7 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
         }]
       })
     };
-    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
       window,
       document: window.document,
       URLSearchParams,
@@ -392,7 +392,7 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
       getActiveBoardId: () => 'board-alpha',
       getFullBoardData: () => ({ rows: [] })
     };
-    const bridge = loadIIFE('shell/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
       window,
       document: window.document,
       URLSearchParams,

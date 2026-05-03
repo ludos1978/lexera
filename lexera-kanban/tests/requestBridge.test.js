@@ -3,7 +3,7 @@ import { loadIIFE } from './load-iife.js';
 
 function freshFactory() {
   const win = {};
-  const factory = loadIIFE('shell/requestBridge.js', 'window.LexeraRequestBridge', {
+  const factory = loadIIFE('shell/bridges/requestBridge.js', 'window.LexeraRequestBridge', {
     window: win
   });
   return { factory, win };

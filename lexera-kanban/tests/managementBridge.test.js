@@ -3,7 +3,7 @@ import { loadIIFE } from './load-iife.js';
 
 function freshBridge() {
   const win = {};
-  const bridge = loadIIFE('shell/managementBridge.js', 'window.LexeraManagementBridge', {
+  const bridge = loadIIFE('shell/bridges/managementBridge.js', 'window.LexeraManagementBridge', {
     window: win
   });
   return { bridge, win };

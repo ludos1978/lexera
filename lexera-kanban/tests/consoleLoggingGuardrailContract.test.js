@@ -41,7 +41,7 @@ const ALLOWED_CONSOLE_FILES = [
   'shared/stateManager.js',
   'shell/lifecycle.js',
   'shell/multiviewClient.js',
-  'shell/navigationBridge.js',
+  'shell/bridges/navigationBridge.js',
   'shell/panelLaunchers.js',
   'sync/pollingService.js',
   'test/autoRunBootstrap.js',

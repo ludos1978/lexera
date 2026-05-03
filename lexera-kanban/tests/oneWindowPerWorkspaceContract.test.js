@@ -31,7 +31,7 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const workspacesJs = readFileSync(resolve(__dirname, '..', 'src', 'views', 'workspaces', 'workspaces.js'), 'utf8');
-const navigationBridgeJs = readFileSync(resolve(__dirname, '..', 'src', 'shell', 'navigationBridge.js'), 'utf8');
+const navigationBridgeJs = readFileSync(resolve(__dirname, '..', 'src', 'shell', 'bridges', 'navigationBridge.js'), 'utf8');
 const workspaceShellJs = readFileSync(resolve(__dirname, '..', 'src', 'workspace', 'workspaceShell.js'), 'utf8');
 const mainRs = readFileSync(resolve(__dirname, '..', 'src-tauri', 'src', 'main.rs'), 'utf8');
 const appMenuRs = readFileSync(resolve(__dirname, '..', 'src-tauri', 'src', 'app_menu.rs'), 'utf8');

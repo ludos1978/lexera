@@ -283,7 +283,7 @@
 
   // ── Request/response IPC pattern ──────────────────────────────
   //
-  // Lives in `src/shell/requestBridge.js`. Created lazily on first
+  // Lives in `src/shell/bridges/requestBridge.js`. Created lazily on first
   // access so the bridge picks up the current tauri runtime + invoke
   // wrapper from this client. Falls back to a stub that surfaces the
   // missing-bridge condition as a clear rejection.
@@ -588,7 +588,7 @@
   // Broadcast a snapshot whenever the theme might have changed.
   // Sub-apps subscribe via 'theme-snapshot' and apply to their root.
 
-  // Theme bridge moved to shell/themeBridge.js (Workstream 5). Local
+  // Theme bridge moved to shell/bridges/themeBridge.js (Workstream 5). Local
   // bindings here keep the existing call sites working unchanged.
   function themeBridge() {
     if (typeof window !== 'undefined' && window.LexeraThemeBridge) return window.LexeraThemeBridge;
@@ -607,7 +607,7 @@
     if (b) b.applyThemeSnapshot(snapshot);
   }
 
-  // Catalog + active-board bridges moved to shell/catalogBridge.js
+  // Catalog + active-board bridges moved to shell/bridges/catalogBridge.js
   // (Workstream 5). Local bindings here keep existing call sites and
   // the public LexeraMultiview API working unchanged.
   function catalogBridge() {
@@ -665,7 +665,7 @@
   //
   // The embedded-board bridge (catalog/board-action/layout-drag/focus/
   // health/shortcuts/delegate-mutation, plus context-menu request
-  // handler) lives in `src/shell/embeddedBoardBridge.js`. Tauri-runtime
+  // handler) lives in `src/shell/bridges/embeddedBoardBridge.js`. Tauri-runtime
   // dependencies are injected so the bridge file is self-contained.
   function isEmbeddedKanban() {
     var bridge = (typeof window !== 'undefined' && window.LexeraEmbeddedBoardBridge) || null;
@@ -689,7 +689,7 @@
   // ── Navigation requests ───────────────────────────────────────
   //
   // The shell-side navigation/shortcut/focus listeners live in
-  // `src/shell/navigationBridge.js`. This wrapper preserves the prior
+  // `src/shell/bridges/navigationBridge.js`. This wrapper preserves the prior
   // call site (`bootMultiview` invokes `installNavigationHandler()`).
   function installNavigationHandler() {
     var bridge = (typeof window !== 'undefined' && window.LexeraNavigationBridge) || null;

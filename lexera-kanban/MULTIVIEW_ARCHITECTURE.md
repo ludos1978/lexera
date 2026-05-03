@@ -61,9 +61,9 @@ Recommended future split:
 
 - `src/shell/multiviewClient.js` for raw IPC helpers only.
 - `src/shell/panelLaunchers.js` for `openLogView`, `openInspector`, `openWorkspaces`, `openDashboard`.
-- `src/shell/themeBridge.js` for theme snapshot and broadcast.
-- `src/shell/navigationBridge.js` for `multiview-navigate` and shortcut routing.
-- `src/shell/embeddedBoardBridge.js` for the board compatibility bridge.
+- `src/shell/bridges/themeBridge.js` for theme snapshot and broadcast.
+- `src/shell/bridges/navigationBridge.js` for `multiview-navigate` and shortcut routing.
+- `src/shell/bridges/embeddedBoardBridge.js` for the board compatibility bridge.
 - `src/shell/lifecycle.js` for LRU/pool helpers.
 
 ### 3. Workspace composition layer
