@@ -2095,6 +2095,9 @@ var LexeraDragDropHandlers = (function () {
     removeClassFromNodeList: removeClassFromNodeList,
     removeClassesFromNodeList: removeClassesFromNodeList,
 
+    // Kind-aware drop target validator (gatekeeper used by dragover and apply)
+    isDropTargetValidForKind: isDropTargetValidForKind,
+
     // Element finders
     findStackDropZoneAt: findStackDropZoneAt,
     findDraggableColumnAt: findDraggableColumnAt,
