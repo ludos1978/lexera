@@ -60,7 +60,11 @@ impl Descriptor {
     /// Atomically write the descriptor to a specific path.
     ///
     /// Creates the parent directory if missing, writes to a sibling temp file,
-    /// fsyncs, then renames over the target. Sets `0600` on Unix.
+    /// fsyncs, then renames over the target. Sets `0600` on Unix and applies
+    /// an owner-only DACL on Windows. Re-verifies the final file's permissions
+    /// after the rename and fails closed on Unix if the mode is loose; Windows
+    /// is best-effort because the descriptor's `SetFileSecurityW` path is
+    /// already best-effort by design.
     pub fn write_to(&self, path: &Path) -> Result<(), IpcError> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -69,6 +73,7 @@ impl Descriptor {
         let body = serde_json::to_vec_pretty(self)?;
         write_file_restricted(&tmp_path, &body)?;
         std::fs::rename(&tmp_path, path)?;
+        verify_restricted_after_write(path)?;
         Ok(())
     }
 
@@ -128,6 +133,29 @@ fn write_file_restricted(path: &Path, body: &[u8]) -> Result<(), IpcError> {
         .open(path)?;
     file.write_all(body)?;
     file.sync_all()?;
+    Ok(())
+}
+
+/// Post-rename safety net: re-stat the descriptor and confirm it still has
+/// owner-only permissions. On Unix this is a hard check (loose modes fail
+/// the write); on Windows we keep the existing best-effort posture from
+/// `restrict_file_to_current_user` and skip the verification.
+#[cfg(unix)]
+fn verify_restricted_after_write(path: &Path) -> Result<(), IpcError> {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(path)?.permissions().mode() & 0o777;
+    if mode != 0o600 {
+        return Err(IpcError::Descriptor(format!(
+            "descriptor at {} has loose permissions {:o}, expected 0600",
+            path.display(),
+            mode
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn verify_restricted_after_write(_path: &Path) -> Result<(), IpcError> {
     Ok(())
 }
 
@@ -274,5 +302,56 @@ mod tests {
         let meta = std::fs::metadata(&path).unwrap();
         let mode = meta.permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "descriptor must be 0600, got {:o}", mode);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn rename_over_existing_file_yields_0600() {
+        // Pre-existing descriptor at the target path with permissive mode
+        // must end up at 0600 after a fresh write_to (the rename swaps in
+        // the freshly-created tempfile's tighter mode).
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("ipc.json");
+        std::fs::write(&path, b"stale").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        Descriptor::new("/tmp/a").write_to(&path).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "descriptor must be 0600 after rewrite, got {:o}", mode);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn wide_umask_does_not_loosen_descriptor_perms() {
+        // Even with a maximally permissive umask (allow all bits), the
+        // explicit `mode(0o600)` on OpenOptions must yield a 0600 file.
+        use std::os::unix::fs::PermissionsExt;
+        let prev = unsafe { libc::umask(0o000) };
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("ipc.json");
+        let result = Descriptor::new("/tmp/a").write_to(&path);
+        unsafe { libc::umask(prev) };
+        result.unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "descriptor must be 0600 under wide umask, got {:o}", mode);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn write_to_fails_closed_if_perms_loosened_post_rename() {
+        // Simulate a filesystem that returns a non-0600 mode after rename
+        // by chmod'ing the file between write_to and verification — here we
+        // call the verifier directly to prove it rejects loose modes.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("ipc.json");
+        std::fs::write(&path, b"x").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let err = verify_restricted_after_write(&path).unwrap_err();
+        match err {
+            IpcError::Descriptor(msg) => assert!(msg.contains("loose permissions")),
+            other => panic!("expected Descriptor error, got {:?}", other),
+        }
     }
 }
