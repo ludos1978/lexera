@@ -221,6 +221,51 @@ describe('Pattern 5: CloseRequested cleans up every per-window registry', () => 
 });
 
 // ────────────────────────────────────────────────────────────────────
+// PATTERN 7 — Defensive caller-window checks on cross-window-writable IPC
+// ────────────────────────────────────────────────────────────────────
+//
+// Several Tauri commands accept a `label` parameter from JS. With
+// unique bootId-suffixed labels they're hard to guess, but the
+// contract should not depend on label-uniqueness for safety:
+// every command that READS or WRITES per-window state via a label
+// parameter explicitly checks the caller owns that label.
+
+describe('Pattern 7: cross-window-writable commands check caller ownership', () => {
+  const webviewMgrRs = codeOnly(readTauri('webview_mgr.rs'));
+  function fnSlice(name) {
+    var start = webviewMgrRs.indexOf('pub fn ' + name);
+    var end = webviewMgrRs.indexOf('pub fn ', start + 1);
+    return webviewMgrRs.substring(start, end === -1 ? webviewMgrRs.length : end);
+  }
+
+  // Each command must (a) take `caller: tauri::Webview`, (b) compare
+  // the requested label against the caller's window's webview list
+  // (or the caller window's own label, for close_window), and
+  // (c) return Err on mismatch.
+  ['multiview_subscribe', 'multiview_unsubscribe'].forEach(function (fn) {
+    it(fn + ' refuses operations on labels outside the caller window', () => {
+      var slice = fnSlice(fn);
+      expect(slice).toMatch(/caller:\s*tauri::Webview/);
+      expect(slice).toMatch(/\.any\(\|w\|\s*w\.label\(\)\s*==\s*label\)/);
+      expect(slice).toMatch(/return Err\([\s\S]{0,200}refused/);
+    });
+  });
+
+  it('multiview_get_health refuses queries that cross window boundaries', () => {
+    var slice = fnSlice('multiview_get_health');
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    expect(slice).toMatch(/return None/);
+  });
+
+  it('multiview_close_window only closes the caller\'s own window (modal self-close)', () => {
+    var slice = fnSlice('multiview_close_window');
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    expect(slice).toMatch(/caller_window_label\s*!=\s*label/);
+    expect(slice).toMatch(/return Err\([\s\S]{0,200}refused/);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
 // PATTERN 6 — Per-window UX state goes through Settings.WINDOW_DEFS
 // ────────────────────────────────────────────────────────────────────
 
