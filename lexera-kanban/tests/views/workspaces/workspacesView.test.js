@@ -120,7 +120,41 @@ describe('workspaces view sub-app', () => {
     expect(window.document.getElementById('local-boards').textContent).not.toContain('(untitled)');
   });
 
-  it('falls back to (untitled) only when both title and name are absent', () => {
+  // Regression 2026-05-03: a markdown board file without an H1
+  // heading produces `BoardInfo.title === ""`. The frontend's
+  // fallback chain `b.title || b.name || '(untitled)'` then
+  // collapsed every such board to "(untitled)" even though its file
+  // had a meaningful name. Now the chain is title → filename
+  // basename (sans `.md`) → name → '(untitled)'.
+  it('falls back to filename basename without `.md` when title is empty', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadWorkspacesView(window);
+    capturedOpts.onCatalog({
+      boards: [
+        { id: 'b1', title: '', filePath: '/workspace/Sprint Plan.md' },
+        { id: 'b2', title: '', filePath: '/workspace/sub/board-3.md' },
+        // snake_case from a legacy payload shape — still recovered.
+        { id: 'b3', title: '', file_path: '/workspace/Roadmap.md' }
+      ],
+      remoteBoards: [],
+      workspaces: []
+    });
+    const items = window.document.querySelectorAll('#local-boards .board-item .board-name');
+    expect(items.length).toBe(3);
+    expect(items[0].textContent).toBe('Sprint Plan');
+    expect(items[1].textContent).toBe('board-3');
+    expect(items[2].textContent).toBe('Roadmap');
+    expect(window.document.getElementById('local-boards').textContent).not.toContain('(untitled)');
+    expect(window.document.getElementById('local-boards').textContent).not.toContain('.md');
+  });
+
+  it('falls back to (untitled) only when title and name are absent', () => {
     const dom = createDom();
     const { window } = dom;
     let capturedOpts = null;

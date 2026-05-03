@@ -12,6 +12,32 @@
       .replace(/"/g, '&quot;');
   }
 
+  // Resolve the user-visible label for a board entry from the
+  // catalog. Same priority chain as `app.js` `getBoardDisplayTitle`:
+  // parsed `title` (the markdown H1, set by lexera-core's
+  // `build_board_summary`) → filename basename without `.md` → the
+  // legacy `name` field (still accepted as a fallback for older
+  // payload shapes) → `'(untitled)'`. The filename fallback matters:
+  // many board files have no H1 yet, so without it every such row
+  // collapsed to `(untitled)` even though the file had a meaningful
+  // name.
+  function basenameWithoutMd(filePath) {
+    var raw = String(filePath || '').trim();
+    if (!raw) return '';
+    var stripped = raw.split(/[\\/]/).filter(Boolean).pop() || '';
+    return stripped.replace(/\.md$/i, '');
+  }
+  function resolveBoardLabel(b) {
+    if (!b) return '(untitled)';
+    var title = String(b.title || '').trim();
+    if (title) return title;
+    var fileName = basenameWithoutMd(b.filePath || b.file_path || '');
+    if (fileName) return fileName;
+    var name = String(b.name || '').trim();
+    if (name) return name;
+    return '(untitled)';
+  }
+
   var statusEl = document.getElementById('status');
   var localBoardsEl = document.getElementById('local-boards');
   var currentWorkspaceEl = document.getElementById('current-workspace');
@@ -40,16 +66,7 @@
       var li = document.createElement('li');
       li.className = 'board-item';
       li.dataset.boardId = b.id || '';
-      // BoardInfo from /boards uses `title` (camelCase per the Rust
-      // serde rename); `name` is a legacy field still accepted as a
-      // fallback. The previous order `b.name || b.title` evaluated
-      // `undefined || ''` for real boards (since `name` is absent and
-      // `title` may briefly be an empty string before the file parse
-      // completes), short-circuiting to '(untitled)' for every row.
-      // Prefer `title` first so the canonical field wins, with `name`
-      // as the legacy fallback and `(untitled)` only when both are
-      // truly absent.
-      var boardLabel = b.title || b.name || '(untitled)';
+      var boardLabel = resolveBoardLabel(b);
       li.innerHTML =
         '<span class="board-name">' + escapeHtml(boardLabel) + '</span>' +
         '<span class="board-id">' + escapeHtml(b.id ? b.id.substring(0, 8) : '') + '</span>';

@@ -60,12 +60,21 @@ var LexeraBoardHeader = (function () {
     var connected = _callDep('getConnected');
     var embeddedMode = _callDep('getEmbeddedMode');
     var BURGER_MENU_ICON_HTML = _dep('BURGER_MENU_ICON_HTML');
-    var boardFileName = boardFilePath
-      ? _callDep('getDisplayFileNameFromPath', boardFilePath)
-      : ((activeBoardData && activeBoardData.title) ? activeBoardData.title : 'Untitled');
+    // The pane button label: prefer the PARSED board title (the
+    // markdown's H1 — `activeBoardData.title`) over the filename, so
+    // a board called `# Sprint Planning` doesn't read as `board-3.md`.
+    // Fall back to the filename (without `.md` extension) when no H1
+    // was parsed, then `'Untitled'`. Tooltip still uses the full path
+    // so users can see exactly which file backs the board.
     var hasBoardFile = !!(activeBoardId && boardFilePath);
+    var parsedTitle = activeBoardData && activeBoardData.title
+      ? String(activeBoardData.title).trim()
+      : '';
+    var fallbackFileName = boardFilePath
+      ? _callDep('getDisplayFileNameFromPath', boardFilePath).replace(/\.md$/i, '')
+      : '';
+    var fileTitle = parsedTitle || fallbackFileName || 'Untitled';
     var html = '';
-    var fileTitle = boardFileName || 'Untitled';
     // Drawer pill builder: icon (accent-tinted per kind) + label + trailing
     // caret ▾, matching lexera-shell.jsx DrawerBtn verbatim.
     function drawerPill(opts) {

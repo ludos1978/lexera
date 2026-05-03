@@ -14,6 +14,29 @@
       .replace(/"/g, '&quot;');
   }
 
+  // Same priority chain as `app.js` `getBoardDisplayTitle`: parsed
+  // `title` (markdown H1 — `BoardInfo.title` set by lexera-core's
+  // `build_board_summary`) → filename basename without `.md` → the
+  // legacy `name` field → `'(untitled)'`. Without the filename
+  // fallback, boards whose markdown file has no H1 collapse to
+  // `(untitled)` even though their file has a meaningful name.
+  function basenameWithoutMd(filePath) {
+    var raw = String(filePath || '').trim();
+    if (!raw) return '';
+    var stripped = raw.split(/[\\/]/).filter(Boolean).pop() || '';
+    return stripped.replace(/\.md$/i, '');
+  }
+  function resolveBoardLabel(board) {
+    if (!board) return '(untitled)';
+    var title = String(board.title || '').trim();
+    if (title) return title;
+    var fileName = basenameWithoutMd(board.filePath || board.file_path || '');
+    if (fileName) return fileName;
+    var name = String(board.name || '').trim();
+    if (name) return name;
+    return '(untitled)';
+  }
+
   var statusEl = document.getElementById('status');
   var titleEl = document.getElementById('title');
   var viewModeEl = document.getElementById('view-mode');
@@ -141,13 +164,7 @@
         var li = document.createElement('li');
         li.className = 'board-item';
         li.dataset.boardId = board.id || '';
-        // BoardInfo from /boards uses `title` (camelCase per Rust serde
-        // rename); `name` is a legacy field still accepted as a
-        // fallback. Same fix as workspaces.js (commit ff9cbf03):
-        // prefer `title` first so the canonical field wins, otherwise
-        // every row collapses to '(untitled)' because `name` is
-        // typically absent on real boards.
-        var boardLabel = board.title || board.name || '(untitled)';
+        var boardLabel = resolveBoardLabel(board);
         li.innerHTML =
           '<span class="board-name">' + escapeHtml(boardLabel) + '</span>' +
           '<span class="board-id">' + escapeHtml(board.id ? board.id.substring(0, 8) : '') + '</span>';

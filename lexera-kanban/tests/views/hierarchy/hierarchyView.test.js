@@ -100,6 +100,39 @@ describe('hierarchy view sub-app', () => {
     expect(window.LexeraSubApp.navigate).toHaveBeenCalledTimes(1);
   });
 
+  // Regression 2026-05-03: markdown files without an H1 heading
+  // ship with `BoardInfo.title === ""`. Without a filename fallback
+  // every such board displayed as "(untitled)" in the hierarchy
+  // panel, even though its file had a meaningful basename.
+  it('falls back to filename basename (sans `.md`) when title is empty', () => {
+    const dom = createDom();
+    const { window } = dom;
+    let capturedOpts = null;
+    window.LexeraSubApp = {
+      init: vi.fn((opts) => { capturedOpts = opts; }),
+      navigate: vi.fn()
+    };
+    loadHierarchyView(window);
+    capturedOpts.onCatalog({
+      boards: [
+        { id: 'b1', title: '', filePath: '/workspace/Sprint Plan.md', workspace_id: 'ws-1' },
+        { id: 'b2', title: '', file_path: '/workspace/Roadmap.md', workspace_id: 'ws-1' }
+      ],
+      remoteBoards: [],
+      workspaces: [{ id: 'ws-1', name: 'Default' }],
+      activeWorkspaceId: 'ws-1',
+      activeWorkspace: { id: 'ws-1', name: 'Default' },
+      viewWorkspaceId: 'ws-1',
+      viewWorkspace: { id: 'ws-1', name: 'Default' },
+      workspaceViewMode: 'follow-active-board'
+    });
+    const items = window.document.querySelectorAll('#local-boards .board-item .board-name');
+    const labels = Array.from(items).map((el) => el.textContent);
+    expect(labels).toEqual(['Sprint Plan', 'Roadmap']);
+    expect(window.document.getElementById('local-boards').textContent).not.toContain('(untitled)');
+    expect(window.document.getElementById('local-boards').textContent).not.toContain('.md');
+  });
+
   it('renders the canonical board.title (not the legacy board.name) so real boards do not collapse to (untitled)', () => {
     // BoardInfo from /boards uses `title` (camelCase per Rust serde
     // rename); `name` is a legacy field that's typically absent on
