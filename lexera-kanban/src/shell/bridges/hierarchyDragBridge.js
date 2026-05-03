@@ -104,21 +104,15 @@
     'column->stack': function (st) { return st && Array.isArray(st.columns) ? st.columns : null; },
     'stack->row': function (row) { return row && Array.isArray(row.stacks) ? row.stacks : null; }
   };
-  function absorbChildren(targetEntity, source) {
-    var key = source.kind + '->' + (targetEntity && targetEntity.kindLabel ? targetEntity.kindLabel : '');
-    var picker = ABSORB_RULES[key];
-    return picker ? picker(targetEntity.entity) : null;
-  }
-  // Locate an entity AND return its full record so absorb has access
-  // to the target's children array.
+  // Locate an entity AND return its underlying object so the absorb
+  // helpers can hand it to the kind-specific child-array picker.
   function locateEntityRich(board, kind, entityId) {
     var found = locateEntity(board, kind, entityId);
     if (!found) return null;
     return {
       parent: found.parent,
       index: found.index,
-      entity: found.parent[found.index],
-      kindLabel: kind
+      entity: found.parent[found.index]
     };
   }
 
