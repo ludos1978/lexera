@@ -1,7 +1,13 @@
 {
   "identifier": "default",
-  "description": "Default permissions for Lexera Kanban",
-  "windows": ["*"],
+  "description": "Default permissions for Lexera Kanban. Per-window allowlist (Gap #7) — every label that legitimately needs core APIs is enumerated; rogue labels do not silently inherit permissions. Inventory: 'main' (primary OS window), 'kanban-*' (additional workspace OS windows from open_new_window), 'drag-ghost' (transient drag indicator), 'board-tab-*' (board child webviews), 'panel-tab-*' (panel child webviews).",
+  "windows": [
+    "main",
+    "kanban-*",
+    "drag-ghost",
+    "board-tab-*",
+    "panel-tab-*"
+  ],
   "permissions": [
     "core:default",
     "core:event:allow-listen"
