@@ -149,6 +149,22 @@ describe('webview_mgr.rs — lifecycle events are window-scoped, not global', ()
     expect(slice).toMatch(/window_labels\s*\.\s*contains\(&m\.label\)/);
   });
 
+  it('multiview_subscribe refuses to subscribe a label outside the caller window (defensive)', () => {
+    var slice = fnCode('multiview_subscribe');
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    expect(slice).toMatch(/caller_window\s*\.\s*webviews\(\)/);
+    expect(slice).toMatch(/\.any\(\|w\|\s*w\.label\(\)\s*==\s*label\)/);
+    expect(slice).toMatch(/return Err\([\s\S]{0,200}refused/);
+  });
+
+  it('multiview_unsubscribe refuses to unsubscribe a label outside the caller window (defensive)', () => {
+    var slice = fnCode('multiview_unsubscribe');
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    expect(slice).toMatch(/caller_window\s*\.\s*webviews\(\)/);
+    expect(slice).toMatch(/\.any\(\|w\|\s*w\.label\(\)\s*==\s*label\)/);
+    expect(slice).toMatch(/return Err\([\s\S]{0,200}refused/);
+  });
+
   it('multiview_get_health refuses queries that cross window boundaries (defensive)', () => {
     var slice = fnCode('multiview_get_health');
     expect(slice).toMatch(/caller:\s*tauri::Webview/);

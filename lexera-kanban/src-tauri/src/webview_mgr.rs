@@ -626,9 +626,27 @@ impl SubscriptionRegistry {
 #[tauri::command]
 pub fn multiview_subscribe(
     app: AppHandle,
+    caller: tauri::Webview,
     label: String,
     events: Vec<String>,
 ) -> Result<(), String> {
+    // Defensive: only allow subscribing labels that live in the
+    // caller's window. With unique bootId-suffixed labels a sibling
+    // label is hard to guess, but a buggy caller passing the wrong
+    // label would otherwise pollute the registry with subscriptions
+    // for a webview the caller doesn't own.
+    let caller_window = caller.window();
+    let owns = caller_window
+        .webviews()
+        .into_iter()
+        .any(|w| w.label() == label);
+    if !owns {
+        return Err(format!(
+            "multiview_subscribe refused: label '{}' not in caller window '{}'",
+            label,
+            caller_window.label()
+        ));
+    }
     let reg: State<SubscriptionRegistry> = app.state();
     let mut w = reg.inner.write();
     for e in events {
@@ -648,9 +666,25 @@ pub fn ws_debug_log(message: String) {
 #[tauri::command]
 pub fn multiview_unsubscribe(
     app: AppHandle,
+    caller: tauri::Webview,
     label: String,
     events: Option<Vec<String>>,
 ) -> Result<(), String> {
+    // Defensive: a window must only unsubscribe labels it owns.
+    // Otherwise a buggy/malicious caller in window B could pass
+    // window A's webview label and silently unhook A's event flow.
+    let caller_window = caller.window();
+    let owns = caller_window
+        .webviews()
+        .into_iter()
+        .any(|w| w.label() == label);
+    if !owns {
+        return Err(format!(
+            "multiview_unsubscribe refused: label '{}' not in caller window '{}'",
+            label,
+            caller_window.label()
+        ));
+    }
     let reg: State<SubscriptionRegistry> = app.state();
     let mut w = reg.inner.write();
     match events {
