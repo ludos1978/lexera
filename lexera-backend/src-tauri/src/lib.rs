@@ -44,6 +44,10 @@ const EVENT_CHANNEL_CAPACITY: usize = 4096;
 const INVITE_CLEANUP_INTERVAL_SECS: u64 = 3600;
 /// Seconds between periodic saves of collaboration state and config.
 const PERIODIC_SAVE_INTERVAL_SECS: u64 = 60;
+/// Seconds between periodic CRDT change-store compactions. Loro accumulates
+/// parsed-op metadata in memory between snapshots; compaction encodes it back
+/// into the LoroDoc's internal kv store and frees the parsed-op memory.
+const PERIODIC_CRDT_COMPACTION_INTERVAL_SECS: u64 = 600;
 
 // ── Setup helper functions ─────────────────────────────────────────────────
 
@@ -544,6 +548,40 @@ fn spawn_background_tasks(
     });
 }
 
+/// Spawn the periodic CRDT compaction loop. Walks every loaded board's
+/// `LoroDoc` and calls `compact_change_store()` to release parsed-op memory.
+/// Runs every `PERIODIC_CRDT_COMPACTION_INTERVAL_SECS` and exits when the
+/// shutdown channel fires.
+fn spawn_crdt_compaction_task(
+    storage: &Arc<LocalStorage>,
+    shutdown_rx: &tokio::sync::watch::Receiver<bool>,
+) {
+    let storage = storage.clone();
+    let mut shutdown_rx = shutdown_rx.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(
+            PERIODIC_CRDT_COMPACTION_INTERVAL_SECS,
+        ));
+        // First tick fires immediately; skip it so the first real compaction
+        // happens after one full interval (avoids touching state during boot).
+        interval.tick().await;
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    let count = storage.compact_loaded_crdts();
+                    if count > 0 {
+                        log::debug!(
+                            target: "lexera.crdt.compact",
+                            "compacted {} loaded board CRDT(s)", count
+                        );
+                    }
+                }
+                _ = shutdown_rx.changed() => break,
+            }
+        }
+    });
+}
+
 /// Restore persisted remote connections from config.
 fn restore_persisted_connections(
     config: &Arc<std::sync::RwLock<config::SyncConfig>>,
@@ -953,6 +991,7 @@ pub fn run() {
                 &collab_dir,
                 &shutdown_rx,
             );
+            spawn_crdt_compaction_task(&storage, &shutdown_rx);
 
             // ── App state ──────────────────────────────────────────────────
             let sync_hub = Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new()));

@@ -1823,6 +1823,14 @@ impl CrdtStore {
         Self::load(&bytes)
     }
 
+    /// Encode parsed ops + history cache into the LoroDoc's internal kv store
+    /// and free the parsed-op memory. Cheap to call on a quiet doc; safe to
+    /// call concurrently with reads. Used by the periodic compaction loop in
+    /// the backend to keep long-running boards from accumulating memory.
+    pub fn compact_change_store(&self) {
+        self.doc.compact_change_store();
+    }
+
     /// Update the stored board metadata (yaml_header, kanban_footer, board_settings)
     /// by writing it into the CRDT metadata map.
     pub fn set_metadata(

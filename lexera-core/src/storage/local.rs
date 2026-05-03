@@ -3089,6 +3089,26 @@ impl LocalStorage {
             .map(|s| s.file_path.clone())
     }
 
+    /// Compact every loaded board's CRDT change-store. Loro accumulates parsed
+    /// op metadata in memory between snapshots; periodic compaction encodes it
+    /// back into the LoroDoc's internal kv store and frees the parsed-op
+    /// memory. Returns the number of boards compacted. Safe to call alongside
+    /// reads — `compact_change_store` is internally synchronized.
+    pub fn compact_loaded_crdts(&self) -> usize {
+        let boards = match self.boards.read() {
+            Ok(b) => b,
+            Err(_) => return 0,
+        };
+        let mut count = 0;
+        for state in boards.values() {
+            if let Some(ref crdt) = state.crdt {
+                crdt.compact_change_store();
+                count += 1;
+            }
+        }
+        count
+    }
+
     /// Get the version number for a board (for ETag support).
     pub fn get_board_version(&self, board_id: &str) -> Option<u64> {
         self.boards.read().ok()?.get(board_id).map(|s| s.version)
@@ -4437,6 +4457,48 @@ kanban-plugin: board
         assert_eq!(boards.len(), 1);
         assert_eq!(boards[0].id, id);
         assert_eq!(boards[0].columns.len(), 2);
+    }
+
+    #[test]
+    fn compact_loaded_crdts_returns_zero_when_no_boards_loaded() {
+        // Fresh storage has no boards and no CRDTs to compact.
+        let storage = LocalStorage::new();
+        assert_eq!(storage.compact_loaded_crdts(), 0);
+    }
+
+    #[test]
+    fn compact_loaded_crdts_counts_each_loaded_board_and_preserves_content() {
+        let storage = LocalStorage::new();
+
+        // Two distinct board files; both get hydrated by `read_board`.
+        let mut tmp_a = NamedTempFile::new().unwrap();
+        write!(tmp_a, "{}", TEST_BOARD).unwrap();
+        let mut tmp_b = NamedTempFile::new().unwrap();
+        write!(tmp_b, "{}", TEST_BOARD_NESTED).unwrap();
+
+        let id_a = storage.add_board(tmp_a.path()).unwrap();
+        let id_b = storage.add_board(tmp_b.path()).unwrap();
+
+        // Hydrate both CRDTs.
+        let board_a_pre = storage.read_board(&id_a).expect("read board a");
+        let board_b_pre = storage.read_board(&id_b).expect("read board b");
+
+        // Both boards now have a `crdt: Some(_)`, so compaction should report 2.
+        assert_eq!(storage.compact_loaded_crdts(), 2);
+
+        // Compaction must not corrupt the in-memory state — re-read both boards
+        // and confirm column titles are still intact.
+        let board_a_post = storage.read_board(&id_a).expect("re-read a");
+        let board_b_post = storage.read_board(&id_b).expect("re-read b");
+
+        let titles = |b: &KanbanBoard| -> Vec<String> {
+            b.all_columns().iter().map(|c| c.title.clone()).collect()
+        };
+        assert_eq!(titles(&board_a_pre), titles(&board_a_post));
+        assert_eq!(titles(&board_b_pre), titles(&board_b_post));
+
+        // Idempotent: a second compaction still touches both loaded CRDTs.
+        assert_eq!(storage.compact_loaded_crdts(), 2);
     }
 
     #[test]
