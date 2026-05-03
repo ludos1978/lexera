@@ -32,7 +32,8 @@ Generally do the most time consuming tasks first. If a task takes very long to c
   - [ ] Phase 2 — re-order rows / stacks / columns / cards within a single board via drag. — in progress
     - [x] (done) Phase 2a — visual: row/stack/column/card nodes carry the canonical TreeView drag grip + per-type `gripTitle`. (commit 376826c6)
     - [x] (done) Phase 2b-1 — entity nodes carry `draggable="true"` + `data-drag-kind` + `data-drag-board-id`; browser fires native dragstart events. Drop side still TODO. (commit a4838b3b)
-    - [ ] Phase 2b-2 — capture dragstart payload in dataTransfer; show drop targets on dragover; on drop reorder local hierarchy + persist via `LexeraApi.saveBoard`. — in progress
+    - [x] (done) Phase 2b-2-a — dragstart listener stamps `{ boardId, kind, entityId }` into DataTransfer + broadcasts `hierarchy-entity-drag-start` for shell-side handlers. (commit d2d4d8a4)
+    - [ ] Phase 2b-2-b — dragover drop-target indicator + drop reorder of local hierarchy cache + persist via `LexeraApi.saveBoard`. — in progress
   - [ ] Phase 3 — drag elements between boards in the workspace tree.
   - [ ] Phase 4 — drag elements from a kanban board into the workspace tree (and back).
 
