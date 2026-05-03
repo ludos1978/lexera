@@ -110,7 +110,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ### 3. Migration & Integration
 - [ ] Migrate the `/collab/me` endpoint to a sentinel local identity response in IPC mode (no bearer token needed).
-- [ ] Complete the "Gap #7" Tauri capability audit: move from wildcard window permissions to explicit per-window permission lists in `default.json`.
+- [x] (done) Complete the "Gap #7" Tauri capability audit: move from wildcard window permissions to explicit per-window permission lists in `default.json`. Replaced `["*"]` with `["main", "kanban-*", "drag-ghost", "board-tab-*", "panel-tab-*"]`. Pinned by `tauriCapabilityWindowAllowlistContract.test.js`. Backend + capture apps were already explicit; `lexera-ipc-bridge.json` was already scoped to `["main"]`. Smoke-test next launch to confirm board/panel webviews still receive `core:default` after the wildcard removal. (commit 3fa51695)
 - [ ] (in progess) Implement the `backend-status` Tauri event watcher in the frontend to show a native "Connecting to backend..." UI during startup. Bridge implemented at `lexera-kanban/src/shell/bridges/backendStatusBridge.js` (commit e89c06d0); awaits visual verification — kill the backend during kanban startup and confirm the top-right pill shows "Connecting to backend…" → disappears when backend reconnects.
 - [ ] Finalize the "Phase 7" removal of the HTTP fallback path from the desktop production build.
 
