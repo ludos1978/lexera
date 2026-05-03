@@ -403,6 +403,68 @@ describe('LexeraHierarchyDragBridge.applyCrossBoardEntityAbsorb', () => {
   });
 });
 
+describe('LexeraHierarchyDragBridge.applyEntityRename', () => {
+  const bridge = loadBridge();
+
+  it('renames a card by id', () => {
+    const board = makeBoard();
+    const ok = bridge.applyEntityRename(
+      board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      'New title'
+    );
+    expect(ok).toBe(true);
+    expect(board.rows[0].stacks[0].columns[0].cards[0].title).toBe('New title');
+  });
+
+  it('renames a column / stack / row by id', () => {
+    const board = makeBoard();
+    expect(bridge.applyEntityRename(board,
+      { boardId: 'b1', kind: 'column', entityId: 'c1' }, 'Cols!')).toBe(true);
+    expect(board.rows[0].stacks[0].columns[0].title).toBe('Cols!');
+    expect(bridge.applyEntityRename(board,
+      { boardId: 'b1', kind: 'stack', entityId: 's1' }, 'Stk!')).toBe(true);
+    expect(board.rows[0].stacks[0].title).toBe('Stk!');
+    expect(bridge.applyEntityRename(board,
+      { boardId: 'b1', kind: 'row', entityId: 'r1' }, 'Rw!')).toBe(true);
+    expect(board.rows[0].title).toBe('Rw!');
+  });
+
+  it('trims whitespace before applying', () => {
+    const board = makeBoard();
+    bridge.applyEntityRename(board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' }, '   spaces around   ');
+    expect(board.rows[0].stacks[0].columns[0].cards[0].title).toBe('spaces around');
+  });
+
+  it('rejects empty / whitespace-only titles', () => {
+    const board = makeBoard();
+    expect(bridge.applyEntityRename(board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' }, '')).toBe(false);
+    expect(bridge.applyEntityRename(board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' }, '   ')).toBe(false);
+  });
+
+  it('rejects no-op renames (same as existing title)', () => {
+    const board = makeBoard();
+    // Existing title for card-1 is 'A' (see makeBoard()).
+    const ok = bridge.applyEntityRename(board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' }, 'A');
+    expect(ok).toBe(false);
+  });
+
+  it('rejects when source entity is missing', () => {
+    const board = makeBoard();
+    expect(bridge.applyEntityRename(board,
+      { boardId: 'b1', kind: 'card', entityId: 'missing' }, 'Whatever')).toBe(false);
+  });
+
+  it('returns false on missing/invalid input', () => {
+    expect(bridge.applyEntityRename(null, {}, 'X')).toBe(false);
+    expect(bridge.applyEntityRename({}, null, 'X')).toBe(false);
+  });
+});
+
 describe('LexeraHierarchyDragBridge.applyDrop (unified dispatch)', () => {
   const bridge = loadBridge();
 
@@ -510,12 +572,13 @@ describe('LexeraHierarchyDragBridge.install', () => {
     });
     expect(ok).toBe(true);
 
-    // multiview_subscribe was called for the drop event.
+    // multiview_subscribe was called for both drop and rename events.
     expect(invoke).toHaveBeenCalledWith('multiview_subscribe', {
       label: 'main',
-      events: ['hierarchy-entity-drop']
+      events: ['hierarchy-entity-drop', 'hierarchy-entity-rename']
     });
     expect(wv.listen).toHaveBeenCalledWith('hierarchy-entity-drop', expect.any(Function));
+    expect(wv.listen).toHaveBeenCalledWith('hierarchy-entity-rename', expect.any(Function));
 
     // Fire a drop event.
     wv._fire('hierarchy-entity-drop', {
@@ -756,6 +819,57 @@ describe('LexeraHierarchyDragBridge.install', () => {
       .map((c) => c[1].payload.boardId)
       .sort();
     expect(hierarchyBroadcasts).toEqual(['A', 'B']);
+  });
+
+  it('hierarchy-entity-rename loads, mutates, saves, and broadcasts hierarchy-board-changed', async () => {
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    const board = makeBoard();
+    const saveBoard = vi.fn(() => Promise.resolve());
+    const onApplied = vi.fn();
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(board),
+      saveBoard: saveBoard,
+      onApplied: onApplied
+    });
+
+    wv._fire('hierarchy-entity-rename', {
+      source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      newTitle: 'Renamed!'
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(saveBoard).toHaveBeenCalledTimes(1);
+    const [savedId, savedBoard] = saveBoard.mock.calls[0];
+    expect(savedId).toBe('b1');
+    expect(savedBoard.rows[0].stacks[0].columns[0].cards[0].title).toBe('Renamed!');
+    expect(onApplied).toHaveBeenCalledWith('b1');
+    // Bridge fires hierarchy-board-changed so sub-apps invalidate cache.
+    const broadcasts = invoke.mock.calls.filter((c) =>
+      c[0] === 'multiview_broadcast' && c[1] && c[1].event === 'hierarchy-board-changed');
+    expect(broadcasts.length).toBe(1);
+    expect(broadcasts[0][1].payload.boardId).toBe('b1');
+  });
+
+  it('hierarchy-entity-rename with empty title does not save', async () => {
+    const wv = makeWebview();
+    const board = makeBoard();
+    const saveBoard = vi.fn(() => Promise.resolve());
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: vi.fn(() => Promise.resolve()),
+      loadBoard: () => Promise.resolve(board),
+      saveBoard: saveBoard
+    });
+    wv._fire('hierarchy-entity-rename', {
+      source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      newTitle: ''
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(saveBoard).not.toHaveBeenCalled();
   });
 
   it('routes errors through onError', async () => {

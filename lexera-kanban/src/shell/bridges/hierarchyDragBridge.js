@@ -190,6 +190,26 @@
   }
 
   /**
+   * In-place rename of an existing entity. Mutates `board` in place
+   * and returns true when the entity was found and renamed; false
+   * when the kind is unknown, the entity is missing, the new title
+   * is the same as the existing one (no-op), or the new title is
+   * empty (we don't allow blanking a title from this surface).
+   */
+  function applyEntityRename(board, source, newTitle) {
+    if (!board || !source) return false;
+    var trimmed = String(newTitle == null ? '' : newTitle).trim();
+    if (!trimmed) return false;
+    var found = locateEntity(board, source.kind, source.entityId);
+    if (!found) return false;
+    var entity = found.parent[found.index];
+    if (!entity) return false;
+    if (String(entity.title || '') === trimmed) return false;
+    entity.title = trimmed;
+    return true;
+  }
+
+  /**
    * Unified dispatch. Picks the right pure helper based on whether
    * the move is same-board / cross-board, and same-kind / cross-kind:
    *
@@ -252,8 +272,28 @@
 
     invoke('multiview_subscribe', {
       label: wv.label,
-      events: ['hierarchy-entity-drop']
+      events: ['hierarchy-entity-drop', 'hierarchy-entity-rename']
     }).catch(function () { /* non-fatal */ });
+
+    wv.listen('hierarchy-entity-rename', function (event) {
+      var p = (event && event.payload) || {};
+      var source = p.source || null;
+      var newTitle = p.newTitle;
+      if (!source || !source.boardId) return;
+      Promise.resolve(loadBoard(source.boardId)).then(function (board) {
+        if (!board) return;
+        if (!applyEntityRename(board, source, newTitle)) return;
+        return Promise.resolve(saveBoard(source.boardId, board)).then(function () {
+          invoke('multiview_broadcast', {
+            event: 'hierarchy-board-changed',
+            payload: { boardId: source.boardId }
+          }).catch(function () { /* non-fatal */ });
+          if (typeof deps.onApplied === 'function') deps.onApplied(source.boardId);
+        });
+      }).catch(function (err) {
+        if (typeof deps.onError === 'function') deps.onError(err);
+      });
+    });
 
     wv.listen('hierarchy-entity-drop', function (event) {
       var p = (event && event.payload) || {};
@@ -312,6 +352,7 @@
     applyEntityAbsorb: applyEntityAbsorb,
     applyCrossBoardEntityReorder: applyCrossBoardEntityReorder,
     applyCrossBoardEntityAbsorb: applyCrossBoardEntityAbsorb,
+    applyEntityRename: applyEntityRename,
     applyDrop: applyDrop,
     install: install
   };

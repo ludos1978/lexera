@@ -64,6 +64,20 @@ h3 {
   outline-offset: -1px;
   border-radius: 3px;
 }
+
+/* Inline rename editor: dblclick replaces the .tree-label with this
+ * input. Stays inline-flow so the row layout stays put. */
+#local-boards .tree-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg-primary, #16161a);
+  color: var(--text-primary, #e8e8ec);
+  border: 1px solid var(--accent, #4a9eff);
+  border-radius: 2px;
+  padding: 1px 4px;
+  font: inherit;
+  outline: none;
+}
 .current-workspace-id {
   font-family: ui-monospace, monospace;
   font-size: 10px;

@@ -290,6 +290,81 @@
     localBoardsEl.__workspacesDragBound = true;
   }
 
+  // Right-click is intentionally not assigned in this view — suppress
+  // the browser's default context menu so it doesn't pop up over the
+  // tree.
+  if (localBoardsEl && !localBoardsEl.__workspacesContextMenuBound) {
+    localBoardsEl.addEventListener('contextmenu', function (e) {
+      if (e.target && e.target.closest && e.target.closest('.tree-node[data-drag-kind]')) {
+        e.preventDefault();
+      }
+    });
+    localBoardsEl.__workspacesContextMenuBound = true;
+  }
+
+  // Double-click on a row / stack / column / card label opens an
+  // inline editor. Enter / blur commits + broadcasts
+  // `hierarchy-entity-rename`; Escape cancels. Boards (TreeView roots
+  // that don't carry `data-drag-kind`) are intentionally not editable
+  // here — renaming a board changes the file name, which is a heavier
+  // operation that belongs in the in-board surface.
+  function startInlineRename(nodeEl) {
+    if (!nodeEl) return;
+    if (nodeEl.querySelector('.tree-rename-input')) return;
+    var labelEl = nodeEl.querySelector('.tree-label');
+    if (!labelEl) return;
+    var source = {
+      boardId: nodeEl.getAttribute('data-drag-board-id') || '',
+      kind: nodeEl.getAttribute('data-drag-kind') || '',
+      entityId: nodeEl.getAttribute('data-tree-id') || ''
+    };
+    if (!source.boardId || !source.kind || !source.entityId) return;
+    var originalText = labelEl.textContent || '';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'tree-rename-input';
+    input.value = originalText;
+    labelEl.style.display = 'none';
+    labelEl.parentNode.insertBefore(input, labelEl.nextSibling);
+    input.focus();
+    input.select();
+    var done = false;
+    function finish(commit) {
+      if (done) return;
+      done = true;
+      var next = String(input.value || '').trim();
+      if (input.parentNode) input.parentNode.removeChild(input);
+      labelEl.style.display = '';
+      if (commit && next && next !== originalText) {
+        if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+          window.LexeraSubApp.broadcast('hierarchy-entity-rename', {
+            source: source, newTitle: next
+          });
+        }
+      }
+    }
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', function () { finish(true); });
+  }
+  if (localBoardsEl && !localBoardsEl.__workspacesDblClickBound) {
+    localBoardsEl.addEventListener('dblclick', function (e) {
+      var node = e.target && e.target.closest
+        ? e.target.closest('.tree-node[data-drag-kind]')
+        : null;
+      if (!node) return;
+      // Don't hijack a dblclick on the toggle/grip — those have their
+      // own behaviours.
+      if (e.target.closest('.tree-toggle')) return;
+      if (e.target.closest('.tree-grip')) return;
+      e.preventDefault();
+      startInlineRename(node);
+    });
+    localBoardsEl.__workspacesDblClickBound = true;
+  }
+
   // Single delegated click listener — keeps wiring simple.
   if (localBoardsEl && !localBoardsEl.__workspacesClickBound) {
     localBoardsEl.addEventListener('click', function (e) {

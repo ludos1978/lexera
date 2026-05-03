@@ -776,6 +776,129 @@ describe('hierarchy view sub-app', () => {
       expect(dropBroadcast).toBeFalsy();
     });
 
+    // dblclick on a row / stack / column / card label opens an inline
+    // input. Enter commits and broadcasts `hierarchy-entity-rename`;
+    // Escape cancels without firing a broadcast.
+    it('dblclick on a card label opens an inline editor that broadcasts hierarchy-entity-rename on Enter', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({
+        rows: [{ id: 'r1', title: 'R', stacks: [{ id: 's1', title: 'S', columns: [{
+          id: 'c1', title: 'C', cards: [{ id: 'card-1', title: 'A' }]
+        }] }] }]
+      })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const cardNode = window.document.querySelector(
+        '#local-boards .tree-node[data-drag-kind="card"]'
+      );
+      cardNode.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      const input = cardNode.querySelector('.tree-rename-input');
+      expect(input).toBeTruthy();
+      expect(input.value).toBe('A');
+      input.value = 'Renamed!';
+      input.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
+
+      const renameBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-rename');
+      expect(renameBroadcast).toBeTruthy();
+      expect(renameBroadcast.payload.source).toEqual({
+        boardId: 'b1', kind: 'card', entityId: 'card-1'
+      });
+      expect(renameBroadcast.payload.newTitle).toBe('Renamed!');
+      // Editor was removed from the DOM.
+      expect(cardNode.querySelector('.tree-rename-input')).toBeFalsy();
+    });
+
+    it('Escape cancels the inline editor without firing a broadcast', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({
+        rows: [{ id: 'r1', title: 'R', stacks: [{ id: 's1', title: 'S', columns: [{
+          id: 'c1', title: 'C', cards: [{ id: 'card-1', title: 'Original' }]
+        }] }] }]
+      })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const cardNode = window.document.querySelector('#local-boards .tree-node[data-drag-kind="card"]');
+      cardNode.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      const input = cardNode.querySelector('.tree-rename-input');
+      input.value = 'Throwaway change';
+      input.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Escape' }));
+
+      const renameBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-rename');
+      expect(renameBroadcast).toBeFalsy();
+      expect(cardNode.querySelector('.tree-rename-input')).toBeFalsy();
+    });
+
+    // Right-click on an entity row is intentionally not assigned —
+    // the browser's default context menu is suppressed so it doesn't
+    // pop up over the tree.
+    it('contextmenu on an entity row is preventDefault-ed', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn()
+      };
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({
+        rows: [{ id: 'r1', title: 'R', stacks: [{ id: 's1', title: 'S', columns: [{
+          id: 'c1', title: 'C', cards: [{ id: 'card-1', title: 'A' }]
+        }] }] }]
+      })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const cardNode = window.document.querySelector('#local-boards .tree-node[data-drag-kind="card"]');
+      const ctxEv = new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      cardNode.dispatchEvent(ctxEv);
+      expect(ctxEv.defaultPrevented).toBe(true);
+    });
+
     // After the shell-side bridge persists a drop it broadcasts
     // `hierarchy-board-changed` to every webview in the window. The
     // sub-app must drop the cached hierarchy for that board and, if

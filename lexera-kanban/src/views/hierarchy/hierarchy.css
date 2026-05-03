@@ -264,3 +264,17 @@ html, body {
   outline-offset: -1px;
   border-radius: 3px;
 }
+
+/* Inline rename editor: replaces the .tree-label while the user types.
+ * Stays inline-flow so the row layout doesn't reflow around the input. */
+#local-boards .tree-rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg-primary, #1e1e1e);
+  color: var(--text-primary, #d4d4d4);
+  border: 1px solid var(--accent, #4a9eff);
+  border-radius: 2px;
+  padding: 1px 4px;
+  font: inherit;
+  outline: none;
+}
