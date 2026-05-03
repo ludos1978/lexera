@@ -701,6 +701,12 @@
     }
   }
 
+  function installBackendStatusHandler() {
+    var bridge = (typeof window !== 'undefined' && window.LexeraBackendStatusBridge) || null;
+    if (!bridge || typeof bridge.installWith !== 'function') return;
+    bridge.installWith(tauri());
+  }
+
   // Theme + catalog listeners now live in their own bridge modules.
   // This wrapper is kept so existing call sites (`bootMultiview`)
   // continue to work without changes.
@@ -722,6 +728,7 @@
       // subscriber). Without this wrap, the log panel stays empty.
       wrapLexeraLog();
       installNavigationHandler();
+      installBackendStatusHandler();
       installEmbeddedBoardBridge();
       // If we're hosting child webviews (default mode in main shell),
       // any embedded board webview will need catalog updates as soon
