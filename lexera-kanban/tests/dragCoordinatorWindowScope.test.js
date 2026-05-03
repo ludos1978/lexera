@@ -78,6 +78,60 @@ describe('drag_coordinator.rs — drag lifecycle events are window-scoped', () =
     expect(slice).toMatch(/emit_to_window_of_label\(&app, &active\.source_label, "drag-ended"/);
   });
 
+  it('DragState is per-window (HashMap keyed by source webview\'s parent window), not a process-singleton Option', () => {
+    // Earlier shape `Mutex<Option<ActiveDrag>>` allowed only one drag
+    // anywhere in the app. Drag in window B while window A was mid-
+    // drag would error or stomp window A's state. Keying by window
+    // label gives each window its own slot.
+    expect(dragCoordinatorRs).toMatch(/inner:\s*Mutex<HashMap<String,\s*ActiveDrag>>/);
+    expect(dragCoordinatorRs).not.toMatch(/inner:\s*Mutex<Option<ActiveDrag>>/);
+  });
+
+  it('drag_start takes caller: tauri::Webview and keys DragState by caller.window().label()', () => {
+    var slice = dragCoordinatorRs.indexOf('pub fn drag_start');
+    var nextFn = dragCoordinatorRs.indexOf('pub fn ', slice + 1);
+    var body = dragCoordinatorRs.substring(slice, nextFn);
+    expect(body).toMatch(/caller:\s*tauri::Webview/);
+    expect(body).toMatch(/caller\.window\(\)\.label\(\)/);
+    // The duplicate-drag check is now per-window.
+    expect(body).toMatch(/contains_key\(&window_label\)/);
+    expect(body).toMatch(/state\.insert\(window_label/);
+  });
+
+  it('drag_pointer_move resolves ghost screen coords from caller.window() — not hardcoded "main"', () => {
+    var slice = dragCoordinatorRs.indexOf('pub fn drag_pointer_move');
+    var nextFn = dragCoordinatorRs.indexOf('pub fn ', slice + 1);
+    var body = dragCoordinatorRs.substring(slice, nextFn);
+    expect(body).toMatch(/caller:\s*tauri::Webview/);
+    // Look up the active drag in this window's slot.
+    expect(body).toMatch(/state\.get_mut\(&window_label\)/);
+    // Use caller_window for screen-space conversion, NOT "main".
+    expect(body).toMatch(/caller_window\.outer_position\(\)/);
+    expect(body).toMatch(/caller_window\.scale_factor\(\)/);
+    // Strip comments and check no production code path uses "main" here.
+    var codeOnly = body.split('\n').map(function (l) {
+      var i = l.indexOf('//');
+      return i === -1 ? l : l.substring(0, i);
+    }).join('\n');
+    expect(codeOnly).not.toMatch(/get_webview_window\("main"\)/);
+  });
+
+  it('drag_pointer_up takes caller and removes its window\'s entry', () => {
+    var slice = dragCoordinatorRs.indexOf('pub fn drag_pointer_up');
+    var nextFn = dragCoordinatorRs.indexOf('pub fn ', slice + 1);
+    var body = dragCoordinatorRs.substring(slice, nextFn);
+    expect(body).toMatch(/caller:\s*tauri::Webview/);
+    expect(body).toMatch(/state\.remove\(&window_label\)/);
+  });
+
+  it('drag_cancel takes caller and removes its window\'s entry', () => {
+    var slice = dragCoordinatorRs.indexOf('pub fn drag_cancel');
+    var nextFn = dragCoordinatorRs.indexOf('pub fn ', slice + 1);
+    var body = dragCoordinatorRs.substring(slice, nextFn);
+    expect(body).toMatch(/caller:\s*tauri::Webview/);
+    expect(body).toMatch(/state\.remove\(&window_label\)/);
+  });
+
   it('targeted emits to specific labels (drag-enter / drag-over / drop / drag-leave / drag-cancelled / drag-complete) remain — those carry an explicit target', () => {
     // Confirm the legitimate emit_to calls weren't accidentally removed
     // along with the broadcasts. Each event name is just searched for

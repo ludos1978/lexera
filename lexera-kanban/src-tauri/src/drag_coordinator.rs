@@ -26,15 +26,26 @@
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::webview_mgr::{emit_to_window_of_label, get_meta, hit_test, to_local, WebviewRegistry};
 
-/// Singleton drag state. Only one drag can be in progress at a time
-/// (per the OS pointer model — multi-touch would need per-pointer state).
+/// Per-window drag state. Each top-level window can have at most one
+/// drag in progress at a time (single OS pointer per window). Two
+/// windows running concurrent drags must not interfere — keying the
+/// HashMap by the source webview's PARENT WINDOW label gives each
+/// window its own slot.
+///
+/// Earlier shape (`Mutex<Option<ActiveDrag>>`) was a process-level
+/// singleton: window B starting a drag while window A was mid-drag
+/// either errored out ("drag already in progress") or stomped A's
+/// state. The HashMap fixes that without changing the OS-pointer
+/// invariant — within one window, the lock + take/insert pattern
+/// still ensures only one active drag.
 #[derive(Default)]
 pub struct DragState {
-    inner: Mutex<Option<ActiveDrag>>,
+    inner: Mutex<HashMap<String, ActiveDrag>>,
 }
 
 #[derive(Clone, Debug)]
@@ -43,6 +54,7 @@ struct ActiveDrag {
     payload: Value,
     current_target: Option<String>,
 }
+
 
 #[derive(Deserialize)]
 pub struct DragStartPayload {
@@ -84,23 +96,28 @@ struct DragCompleteEvent {
 }
 
 /// Begin a drag. Source webview calls this when its threshold-cross
-/// detection fires. Errors if a drag is already in progress.
+/// detection fires. Errors if THIS WINDOW already has a drag in
+/// progress; concurrent drags in DIFFERENT windows are allowed
+/// (each window is keyed independently in `DragState`).
 #[tauri::command]
 pub fn drag_start(
     app: AppHandle,
+    caller: tauri::Webview,
     drag_state: State<DragState>,
     payload: DragStartPayload,
 ) -> Result<(), String> {
+    let window_label = caller.window().label().to_string();
     let mut state = drag_state.inner.lock();
-    if state.is_some() {
-        return Err("drag already in progress".into());
+    if state.contains_key(&window_label) {
+        return Err("drag already in progress in this window".into());
     }
-    *state = Some(ActiveDrag {
+    state.insert(window_label.clone(), ActiveDrag {
         source_label: payload.source.clone(),
         payload: payload.payload.clone(),
         current_target: None,
     });
-    log::info!("[drag] started by {}", payload.source);
+    drop(state);
+    log::info!("[drag] started by {} in window {}", payload.source, window_label);
     // Auto-ensure the drag ghost window exists (first-drag cost: a
     // Tauri window build, ~50-100ms; subsequent drags reuse it).
     if app.get_webview_window("drag-ghost").is_none() {
@@ -157,28 +174,31 @@ fn html_escape(s: &str) -> String {
 #[tauri::command]
 pub fn drag_pointer_move(
     app: AppHandle,
+    caller: tauri::Webview,
     drag_state: State<DragState>,
     registry: State<WebviewRegistry>,
     pos: PointerPosition,
 ) -> Result<(), String> {
+    let caller_window = caller.window();
+    let window_label = caller_window.label().to_string();
     let mut state = drag_state.inner.lock();
-    let active = match state.as_mut() {
+    let active = match state.get_mut(&window_label) {
         Some(a) => a,
         None => return Ok(()),
     };
 
-    // Position the ghost window if it exists. We need screen-space
-    // coords for set_position on a separate window. Convert from
-    // shell-local by adding the main window's outer position.
+    // Position the ghost window if it exists. The screen-space coords
+    // are relative to the SOURCE WINDOW's outer position — not a
+    // hardcoded "main" window. Multi-window drags would otherwise
+    // paint the ghost at window A's offset while the user drags in
+    // window B (off-screen / on the wrong monitor).
     if let Some(ghost) = app.get_webview_window("drag-ghost") {
-        if let Some(main) = app.get_webview_window("main") {
-            if let Ok(main_pos) = main.outer_position() {
-                let scale = main.scale_factor().unwrap_or(1.0);
-                let screen_x = (main_pos.x as f64) / scale + pos.x + 16.0;
-                let screen_y = (main_pos.y as f64) / scale + pos.y + 16.0;
-                let _ = ghost.set_position(tauri::LogicalPosition::new(screen_x, screen_y));
-                let _ = ghost.show();
-            }
+        if let Ok(window_pos) = caller_window.outer_position() {
+            let scale = caller_window.scale_factor().unwrap_or(1.0);
+            let screen_x = (window_pos.x as f64) / scale + pos.x + 16.0;
+            let screen_y = (window_pos.y as f64) / scale + pos.y + 16.0;
+            let _ = ghost.set_position(tauri::LogicalPosition::new(screen_x, screen_y));
+            let _ = ghost.show();
         }
     }
 
@@ -225,12 +245,14 @@ pub fn drag_pointer_move(
 #[tauri::command]
 pub fn drag_pointer_up(
     app: AppHandle,
+    caller: tauri::Webview,
     drag_state: State<DragState>,
     registry: State<WebviewRegistry>,
     pos: PointerPosition,
 ) -> Result<(), String> {
+    let window_label = caller.window().label().to_string();
     let mut state = drag_state.inner.lock();
-    let active = match state.take() {
+    let active = match state.remove(&window_label) {
         Some(a) => a,
         None => return Ok(()),
     };
@@ -276,13 +298,18 @@ pub fn drag_pointer_up(
 
 /// Cancel an in-progress drag (called from JS on Escape, etc).
 #[tauri::command]
-pub fn drag_cancel(app: AppHandle, drag_state: State<DragState>) -> Result<(), String> {
+pub fn drag_cancel(
+    app: AppHandle,
+    caller: tauri::Webview,
+    drag_state: State<DragState>,
+) -> Result<(), String> {
+    let window_label = caller.window().label().to_string();
     let mut state = drag_state.inner.lock();
-    let active = match state.take() {
+    let active = match state.remove(&window_label) {
         Some(a) => a,
         None => return Ok(()),
     };
-    log::info!("[drag] cancelled by source {}", active.source_label);
+    log::info!("[drag] cancelled by source {} in window {}", active.source_label, window_label);
     if let Some(target) = active.current_target {
         let _ = app.emit_to(target.as_str(), "drag-leave", ());
     }
