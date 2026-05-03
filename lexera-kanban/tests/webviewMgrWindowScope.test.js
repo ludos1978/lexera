@@ -135,6 +135,16 @@ describe('webview_mgr.rs — lifecycle events are window-scoped, not global', ()
     expect(webviewMgrCode).toMatch(/impl HealthTracker[\s\S]{0,300}fn drop_labels/);
   });
 
+  it('multiview_get_health refuses queries that cross window boundaries (defensive)', () => {
+    var slice = fnCode('multiview_get_health');
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    expect(slice).toMatch(/caller_window\s*\.\s*webviews\(\)/);
+    // The check is "the requested label belongs to the caller's window".
+    expect(slice).toMatch(/\.any\(\|w\|\s*w\.label\(\)\s*==\s*label\)/);
+    // Must short-circuit with `None` when the check fails.
+    expect(slice).toMatch(/if !label_belongs[\s\S]{0,80}return None/);
+  });
+
   it('multiview_list_health filters to caller window — does not leak sibling windows\' health', () => {
     var slice = fnCode('multiview_list_health');
     // Takes caller and resolves its window's webviews. The chain is

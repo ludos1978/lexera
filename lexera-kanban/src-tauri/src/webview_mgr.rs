@@ -993,9 +993,25 @@ pub fn multiview_set_health(
 
 #[tauri::command]
 pub fn multiview_get_health(
+    caller: tauri::Webview,
     tracker: State<HealthTracker>,
     label: String,
 ) -> Option<String> {
+    // Refuse queries that cross window boundaries. Window B asking
+    // for `multiview_get_health(<labelInWindowA>)` would otherwise
+    // return window A's state — a defensive scope that matches
+    // multiview_list_health. With unique bootId-suffixed labels
+    // (see boardHost / panelHost) a sibling label is harmless to
+    // see, but tightening at this entry point keeps the contract
+    // consistent regardless of label-uniqueness invariants.
+    let caller_window = caller.window();
+    let label_belongs = caller_window
+        .webviews()
+        .into_iter()
+        .any(|w| w.label() == label);
+    if !label_belongs {
+        return None;
+    }
     tracker.inner.read().get(&label).cloned()
 }
 
