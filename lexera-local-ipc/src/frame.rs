@@ -57,6 +57,8 @@ pub struct AssetRequestPayload {
     /// Optional HTTP Range header value (e.g. `bytes=0-1023`). `None` means
     /// full content.
     pub range: Option<String>,
+    /// Optional HTTP If-None-Match header value (ETag).
+    pub if_none_match: Option<String>,
 }
 
 /// First frame of an `AssetRequest` response. Subsequent frames are

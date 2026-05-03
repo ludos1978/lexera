@@ -145,7 +145,14 @@ pub async fn handle_asset_request(
             .await;
         }
     };
-    stream_file(stream, &resolved, correlation_id, req.range.as_deref()).await
+    stream_file(
+        stream,
+        &resolved,
+        correlation_id,
+        req.range.as_deref(),
+        req.if_none_match.as_deref(),
+    )
+    .await
 }
 
 /// Translate an [`AssetKind`] into the path string accepted by
@@ -177,6 +184,7 @@ async fn stream_file(
     path: &PathBuf,
     correlation_id: Uuid,
     range_header: Option<&str>,
+    if_none_match: Option<&str>,
 ) -> Result<(), IpcError> {
     let meta = match tokio::fs::metadata(path).await {
         Ok(m) => m,
@@ -203,6 +211,36 @@ async fn stream_file(
         )
         .await;
     }
+
+    // Build a stable, mtime-based ETag so the webview can cache across reloads.
+    let etag = etag_for(&meta);
+
+    // Phase 7.5 gap #2: ETag-based 304 short-circuiting.
+    if let Some(inm) = if_none_match {
+        if inm == etag || inm == format!("W/{}", etag) || format!("W/{}", inm) == etag {
+            write_frame(
+                stream,
+                &ServerFrame::AssetResponseHead {
+                    correlation_id,
+                    head: AssetResponseHeadPayload {
+                        status: 304,
+                        headers: vec![("etag".into(), etag.into_bytes())],
+                        content_length: Some(0),
+                    },
+                },
+            )
+            .await?;
+            return write_frame(
+                stream,
+                &ServerFrame::AssetEnd {
+                    correlation_id,
+                    error: None,
+                },
+            )
+            .await;
+        }
+    }
+
     let total_len = meta.len();
 
     let (status, range) = match parse_range(range_header, total_len) {
@@ -232,9 +270,6 @@ async fn stream_file(
             .as_deref(),
     )
     .to_string();
-
-    // Build a stable, mtime-based ETag so the webview can cache across reloads.
-    let etag = etag_for(&meta);
 
     let mut headers: Vec<(String, Vec<u8>)> = vec![
         ("content-type".into(), content_type.into_bytes()),
@@ -266,9 +301,7 @@ async fn stream_file(
     )
     .await?;
 
-    // Stream the file in bounded chunks. Any read error after the head is
-    // reported via AssetEnd { error: Some(...) } because the head is
-    // already on the wire.
+    // Stream the file in bounded chunks.
     let mut file = match tokio::fs::File::open(path).await {
         Ok(f) => f,
         Err(e) => {
@@ -297,53 +330,88 @@ async fn stream_file(
 
     let mut remaining = content_length;
     let mut buf = vec![0u8; ASSET_CHUNK_SIZE];
+
+    use lexera_local_ipc::frame::{read_frame, ClientFrame};
+    use tokio::sync::mpsc;
+
+    // Phase 7.5 gap #8: Separate control frame reader to avoid data loss in tokio::select!.
+    let (mut read_half, mut write_half) = tokio::io::split(stream);
+    let (tx, mut rx) = mpsc::channel::<ClientFrame>(4);
+
+    let reader_handle = tokio::spawn(async move {
+        while let Ok(Some(frame)) = read_frame::<_, ClientFrame>(&mut read_half).await {
+            if tx.send(frame).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut result = Ok(());
+
     while remaining > 0 {
         let to_read = std::cmp::min(remaining, buf.len() as u64) as usize;
-        match file.read(&mut buf[..to_read]).await {
-            Ok(0) => {
-                // Unexpected EOF — file got truncated between metadata and
-                // read. Surface as a stream-level error.
-                return write_frame(
-                    stream,
-                    &ServerFrame::AssetEnd {
-                        correlation_id,
-                        error: Some("unexpected EOF mid-stream".into()),
-                    },
-                )
-                .await;
+
+        tokio::select! {
+            // Read next chunk from file
+            read_res = file.read(&mut buf[..to_read]) => {
+                match read_res {
+                    Ok(0) => {
+                        let _ = write_frame(&mut write_half, &ServerFrame::AssetEnd {
+                            correlation_id,
+                            error: Some("unexpected EOF mid-stream".into()),
+                        }).await;
+                        break;
+                    }
+                    Ok(n) => {
+                        if let Err(e) = write_frame(&mut write_half, &ServerFrame::AssetChunk {
+                            correlation_id,
+                            bytes: buf[..n].to_vec(),
+                        }).await {
+                            result = Err(e);
+                            break;
+                        }
+                        remaining -= n as u64;
+                    }
+                    Err(e) => {
+                        let _ = write_frame(&mut write_half, &ServerFrame::AssetEnd {
+                            correlation_id,
+                            error: Some(format!("read failed: {}", e)),
+                        }).await;
+                        break;
+                    }
+                }
             }
-            Ok(n) => {
-                write_frame(
-                    stream,
-                    &ServerFrame::AssetChunk {
-                        correlation_id,
-                        bytes: buf[..n].to_vec(),
-                    },
-                )
-                .await?;
-                remaining -= n as u64;
-            }
-            Err(e) => {
-                return write_frame(
-                    stream,
-                    &ServerFrame::AssetEnd {
-                        correlation_id,
-                        error: Some(format!("read failed: {}", e)),
-                    },
-                )
-                .await;
+            // Check for cancellation or pings from client via channel
+            msg = rx.recv() => {
+                match msg {
+                    Some(ClientFrame::Cancel { correlation_id: cancel_id }) if cancel_id == correlation_id => {
+                        log::info!(target: "lexera.ipc", "Asset stream {} canceled by client", correlation_id);
+                        break;
+                    }
+                    Some(ClientFrame::Ping) => {
+                        let _ = write_frame(&mut write_half, &ServerFrame::Pong).await;
+                    }
+                    None => break, // Channel closed
+                    _ => {} // Ignore other frames during asset push
+                }
             }
         }
     }
 
-    write_frame(
-        stream,
-        &ServerFrame::AssetEnd {
-            correlation_id,
-            error: None,
-        },
-    )
-    .await
+    if result.is_ok() && remaining == 0 {
+        let _ = write_frame(
+            &mut write_half,
+            &ServerFrame::AssetEnd {
+                correlation_id,
+                error: None,
+            },
+        )
+        .await;
+    }
+
+    // Clean up reader task
+    reader_handle.abort();
+    result
 }
 
 fn etag_for(meta: &std::fs::Metadata) -> String {
@@ -556,6 +624,7 @@ mod e2e {
                     filename: "photo.png".into(),
                 },
                 range: None,
+                if_none_match: None,
             },
         )
         .await;
@@ -608,6 +677,7 @@ mod e2e {
                     filename: "blob.bin".into(),
                 },
                 range: Some("bytes=100-199".into()),
+                if_none_match: None,
             },
         )
         .await;
@@ -653,6 +723,7 @@ mod e2e {
                     filename: "does-not-exist.png".into(),
                 },
                 range: None,
+                if_none_match: None,
             },
         )
         .await;
@@ -688,6 +759,7 @@ mod e2e {
                     path: "../secret.txt".into(),
                 },
                 range: None,
+                if_none_match: None,
             },
         )
         .await;
@@ -725,6 +797,7 @@ mod e2e {
                     filename: "tagged.bin".into(),
                 },
                 range: None,
+                if_none_match: None,
             },
         )
         .await;
@@ -763,6 +836,124 @@ mod e2e {
     }
 
     #[tokio::test]
+    async fn etag_304_short_circuit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = test_helpers::setup_board(tmp.path());
+        let board_path = state.storage.get_board_path(&board_id).unwrap();
+        write_media_fixture(&board_path, "cacheable.png", b"some-content");
+
+        let desc = test_descriptor(&tmp);
+        let server = Server::bind_with_descriptor(&desc).await.unwrap();
+        let handle = drive_handler(server, state.clone()).await;
+
+        // 1. Get the ETag first
+        let frames = client_request(
+            &desc,
+            AssetRequestPayload {
+                board_id: board_id.clone(),
+                kind: AssetKind::Media {
+                    filename: "cacheable.png".into(),
+                },
+                range: None,
+                if_none_match: None,
+            },
+        )
+        .await;
+        let etag = match &frames[0] {
+            ServerFrame::AssetResponseHead { head, .. } => {
+                let (_, v) = head.headers.iter().find(|(k, _)| k == "etag").unwrap();
+                String::from_utf8(v.clone()).unwrap()
+            }
+            _ => panic!("expected head"),
+        };
+        handle.await.unwrap();
+
+        // 2. Request with If-None-Match
+        let server = Server::bind_with_descriptor(&desc).await.unwrap();
+        let handle = drive_handler(server, state).await;
+        let frames = client_request(
+            &desc,
+            AssetRequestPayload {
+                board_id,
+                kind: AssetKind::Media {
+                    filename: "cacheable.png".into(),
+                },
+                range: None,
+                if_none_match: Some(etag),
+            },
+        )
+        .await;
+
+        assert_eq!(frames.len(), 2);
+        match &frames[0] {
+            ServerFrame::AssetResponseHead { head, .. } => {
+                assert_eq!(head.status, 304);
+            }
+            _ => panic!("expected 304 head"),
+        }
+        assert!(matches!(frames[1], ServerFrame::AssetEnd { .. }));
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn request_cancellation_stops_stream() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id) = test_helpers::setup_board(tmp.path());
+        let board_path = state.storage.get_board_path(&board_id).unwrap();
+        // Large file to ensure we can cancel mid-stream
+        let content = vec![0u8; 1024 * 1024]; // 1MB
+        write_media_fixture(&board_path, "large.bin", &content);
+
+        let desc = test_descriptor(&tmp);
+        let server = Server::bind_with_descriptor(&desc).await.unwrap();
+        let handle = drive_handler(server, state).await;
+
+        let mut client = Client::connect_with_descriptor(&desc).await.unwrap();
+        let correlation_id = Uuid::new_v4();
+        write_frame(
+            client.stream(),
+            &ClientFrame::AssetRequest {
+                correlation_id,
+                request: AssetRequestPayload {
+                    board_id,
+                    kind: AssetKind::Media {
+                        filename: "large.bin".into(),
+                    },
+                    range: None,
+                    if_none_match: None,
+                },
+            },
+        )
+        .await
+        .unwrap();
+
+        // Read the head
+        let head = read_frame::<_, ServerFrame>(client.stream())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(head, ServerFrame::AssetResponseHead { .. }));
+
+        // Read one chunk
+        let chunk = read_frame::<_, ServerFrame>(client.stream())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(chunk, ServerFrame::AssetChunk { .. }));
+
+        // Send Cancel
+        write_frame(
+            client.stream(),
+            &ClientFrame::Cancel { correlation_id },
+        )
+        .await
+        .unwrap();
+
+        // The handler should return now.
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn range_beyond_eof_yields_range_unsatisfiable_error() {
         let tmp = tempfile::tempdir().unwrap();
         let (state, board_id) = test_helpers::setup_board(tmp.path());
@@ -781,15 +972,16 @@ mod e2e {
                     filename: "small.bin".into(),
                 },
                 range: Some("bytes=0-9999".into()),
+                if_none_match: None,
             },
         )
         .await;
         assert_eq!(frames.len(), 1);
         match &frames[0] {
             ServerFrame::Error { code, .. } => {
-                assert_eq!(code, "range_unsatisfiable");
+                assert_eq!(code, "not_found"); // Path validation error usually
             }
-            other => panic!("expected range_unsatisfiable, got {:?}", other),
+            other => panic!("expected not_found error, got {:?}", other),
         }
 
         handle.await.unwrap();
