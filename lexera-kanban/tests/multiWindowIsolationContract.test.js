@@ -187,6 +187,27 @@ describe('Pattern 5: CloseRequested cleans up every per-window registry', () => 
   it('LAST_FOCUSED_WINDOW is cleared if it pointed at the closing window', () => {
     expect(mainRs).toMatch(/CloseRequested[\s\S]{0,2000}LAST_FOCUSED_WINDOW\.lock\(\)[\s\S]{0,400}\*last = None/);
   });
+
+  it('every per-window cleanup helper IS invoked in the CloseRequested block', () => {
+    // Single failing assertion lists every required call. If a new
+    // Tauri-managed State<T> is added that holds per-window data,
+    // its close-cleanup helper must also appear here.
+    var requiredCalls = [
+      'SubscriptionRegistry',
+      'HealthTracker',
+      'WebviewRegistry',
+      'FocusTracker',
+      'MarpWatchState',
+      'SharedStreamRegistry'
+    ];
+    var closeBlockStart = mainRs.indexOf('CloseRequested');
+    var closeBlockEnd = mainRs.indexOf('tauri::WindowEvent::', closeBlockStart + 1);
+    var slice = mainRs.substring(closeBlockStart, closeBlockEnd);
+    var missing = requiredCalls.filter(function (name) {
+      return slice.indexOf(name) === -1;
+    });
+    expect(missing).toEqual([]);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
