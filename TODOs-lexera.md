@@ -87,15 +87,15 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 ## IPC Refactoring & Migration
 
 ### 1. Protocol Enhancements
-- [ ] Implement `ClientFrame::Cancel` propagation in `lexera-backend/src-tauri/src/ipc_asset.rs` to stop file streaming when the webview aborts a request.
-- [ ] Add `If-None-Match` support to `AssetRequestPayload` and implement ETag-based 304 short-circuiting in `handle_asset_request`.
+- [x] (done) Implement `ClientFrame::Cancel` propagation in `lexera-backend/src-tauri/src/ipc_asset.rs` to stop file streaming when the webview aborts a request. Phase 7.5 gap #8 — `tokio::select!` over file I/O + Cancel; covered by `request_cancellation_stops_stream`.
+- [x] (done) Add `If-None-Match` support to `AssetRequestPayload` and implement ETag-based 304 short-circuiting in `handle_asset_request`. Backend short-circuits matching weak/strong ETags; kanban asset_protocol forwards the header. (commit 83c77122)
 - [ ] Implement multi-range support in `parse_range` to match full HTTP spec parity for media seeking.
 - [ ] Add a `KeepAlive` heartbeat frame to the protocol to detect dead connections in the absence of active traffic.
 
 ### 2. Security & Platform Parity
 - [ ] Run the `lexera-local-ipc` test suite on Windows to verify `SetFileSecurityW` and `GetNamedPipeClientProcessId` behavior.
 - [ ] Implement `SO_PEERCRED` validation on Linux and `getpeereid` on macOS in `lexera-local-ipc` to enforce same-user-only connections.
-- [ ] Audit the `ipc.json` descriptor file permissions on all platforms to ensure it is strictly `0600` (user-only).
+- [ ] (in progess) Audit the `ipc.json` descriptor file permissions on all platforms to ensure it is strictly `0600` (user-only).
 - [ ] Implement an OS-native "wait for file" watcher in `lexera-kanban` (using `notify`) to avoid polling for the backend descriptor.
 
 ### 3. Migration & Integration
