@@ -34,6 +34,9 @@ pub enum IpcError {
 
     #[error("handshake incomplete")]
     HandshakeIncomplete,
+
+    #[error("operation timed out")]
+    Timeout,
 }
 
 impl From<postcard::Error> for IpcError {

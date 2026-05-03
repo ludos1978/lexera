@@ -170,6 +170,54 @@ async fn protocol_version_is_pinned_to_v1() {
     assert_eq!(PROTOCOL_VERSION, "lexera-local-ipc/v1");
 }
 
+#[tokio::test]
+async fn client_ping_helper_succeeds_against_pong_server() {
+    use std::time::Duration;
+    let dir = tempdir().unwrap();
+    let desc = make_descriptor(&dir);
+
+    let server = Server::bind_with_descriptor(&desc).await.unwrap();
+    let server_task = tokio::spawn(async move {
+        let mut stream = server.accept().await.unwrap();
+        match read_frame::<_, ClientFrame>(&mut stream).await.unwrap() {
+            Some(ClientFrame::Ping) => {
+                write_frame(&mut stream, &ServerFrame::Pong).await.unwrap();
+            }
+            other => panic!("expected Ping, got {:?}", other),
+        }
+    });
+
+    let mut client = Client::connect_with_descriptor(&desc).await.unwrap();
+    client.ping(Duration::from_secs(2)).await.unwrap();
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn client_ping_times_out_when_server_silent() {
+    use std::time::Duration;
+    let dir = tempdir().unwrap();
+    let desc = make_descriptor(&dir);
+
+    let server = Server::bind_with_descriptor(&desc).await.unwrap();
+    let server_task = tokio::spawn(async move {
+        // Accept and then sit silent — never reply to the Ping.
+        let mut stream = server.accept().await.unwrap();
+        let _ = read_frame::<_, ClientFrame>(&mut stream).await;
+        // Hold the stream so the connection stays open until the test
+        // finishes; otherwise the client would observe an EOF instead of
+        // the expected timeout.
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    });
+
+    let mut client = Client::connect_with_descriptor(&desc).await.unwrap();
+    let err = client
+        .ping(Duration::from_millis(150))
+        .await
+        .expect_err("expected timeout");
+    assert!(matches!(err, IpcError::Timeout), "unexpected error: {:?}", err);
+    server_task.await.unwrap();
+}
+
 fn make_descriptor(dir: &tempfile::TempDir) -> Descriptor {
     Descriptor {
         protocol: PROTOCOL_VERSION.to_string(),
