@@ -27,6 +27,15 @@ static WINDOW_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU
 /// route correctly.
 static LAST_FOCUSED_WINDOW: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+/// Tracks whether the user explicitly requested to quit the app
+/// (via Cmd+Q / File > Quit, which routes to `quit_app`). Closing
+/// the last window does NOT set this flag — the `ExitRequested`
+/// handler then prevents the exit so the app stays alive without
+/// any windows. The user can then re-open via the menu bar (macOS)
+/// or the system tray / dock.
+pub static USER_REQUESTED_QUIT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 /// CLI-derived test-runner config, populated once in `main()` and
 /// exposed to the frontend via the `get_test_runner_config` command.
 /// Pull-based delivery sidesteps timing races between Tauri's
@@ -612,14 +621,15 @@ fn main() {
         ])
         .on_window_event(|window, event| {
             match event {
-                tauri::WindowEvent::CloseRequested { api, .. } => {
+                tauri::WindowEvent::CloseRequested { .. } => {
                     let closing_label = window.label().to_string();
-                    if closing_label == "main" {
-                        // Only prevent close on the main window; secondary windows close normally
-                        api.prevent_close();
-                        let _ = window.minimize();
-                    } else {
-                        // A secondary window is closing. Two cleanups:
+                    {
+                        // Every window closes normally on red-X click. The
+                        // OS-level "should the app exit when all windows are
+                        // gone" decision is handled in the `ExitRequested`
+                        // run-event below — closing the last window keeps
+                        // the app alive, only an explicit `quit_app`
+                        // (Cmd+Q / File > Quit) actually exits.
                         //
                         // 1. If LAST_FOCUSED_WINDOW points at this
                         //    closing window, clear it. Otherwise the
@@ -693,6 +703,20 @@ fn main() {
                 _ => {}
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running lexera-kanban");
+        .build(tauri::generate_context!())
+        .expect("error while building lexera-kanban")
+        .run(|_app, event| {
+            // Closing the last window normally raises `ExitRequested`
+            // and Tauri exits the process. The user wants the app to
+            // stay alive after the last window closes ("close the
+            // view, but not the application") — re-openable via the
+            // shared macOS menu bar or the system tray. We prevent
+            // the exit unless `quit_app` (Cmd+Q / File > Quit) set
+            // the explicit flag.
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if !USER_REQUESTED_QUIT.load(std::sync::atomic::Ordering::Relaxed) {
+                    api.prevent_exit();
+                }
+            }
+        });
 }

@@ -700,6 +700,12 @@ pub fn set_workspaces_submenu(
 
 #[tauri::command]
 pub fn quit_app(app: AppHandle) -> Result<(), String> {
+    // Mark the exit as user-requested so the `ExitRequested` handler
+    // in main.rs allows it to proceed. Without this flag, the
+    // handler would prevent the exit (treating it as an
+    // accidental "closed last window" event) and the user's Cmd+Q
+    // would silently no-op.
+    crate::USER_REQUESTED_QUIT.store(true, std::sync::atomic::Ordering::Relaxed);
     app.exit(0);
     Ok(())
 }
