@@ -112,7 +112,7 @@ pub async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Valu
     // Enrich each board with workspace membership and sync overrides from config
     let board_config_map: std::collections::HashMap<String, crate::config::BoardEntry> = state
         .config
-        .lock()
+        .read()
         .ok()
         .map(|cfg| {
             cfg.boards
@@ -654,7 +654,7 @@ pub async fn add_board_endpoint(
     }
 
     // Update config and persist — must succeed for the board to survive restart
-    if let Ok(mut cfg) = state.config.lock() {
+    if let Ok(mut cfg) = state.config.write() {
         let mut cfg_changed = crate::config::normalize_workspace_setup(&mut cfg);
         let file_str = canonical.to_string_lossy().to_string();
         if !cfg.boards.iter().any(|b| b.file == file_str) {
@@ -750,7 +750,7 @@ pub async fn remove_board_endpoint(
         // Collect board file paths from config (release lock before async work)
         let board_files: Vec<String> = state
             .config
-            .lock()
+            .read()
             .ok()
             .map(|cfg| cfg.boards.iter().map(|b| b.file.clone()).collect())
             .unwrap_or_default();
@@ -763,7 +763,7 @@ pub async fn remove_board_endpoint(
             canonical_map.push((file.clone(), canonical));
         }
         // Re-acquire lock and filter
-        if let Ok(mut cfg) = state.config.lock() {
+        if let Ok(mut cfg) = state.config.write() {
             cfg.boards.retain(|b| {
                 let entry_canonical = canonical_map
                     .iter()
@@ -1147,7 +1147,7 @@ kanban-plugin: board
         let token = register_test_user(&state);
         let board_id = state.storage.add_board(&board_path).unwrap();
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.boards.push(crate::config::BoardEntry {
                 file: std::fs::canonicalize(&board_path)
                     .unwrap()

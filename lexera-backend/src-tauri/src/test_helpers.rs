@@ -9,7 +9,7 @@ pub fn test_state(tmp: &std::path::Path) -> AppState {
     let storage = Arc::new(LocalStorage::new());
     let (event_tx, _) = tokio::sync::broadcast::channel(16);
     let (shutdown_tx, _) = tokio::sync::watch::channel(false);
-    let config = Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default()));
+    let config = Arc::new(std::sync::RwLock::new(crate::config::SyncConfig::default()));
     let config_path = tmp.join("config.json");
     let config_service =
         crate::config_service::ConfigService::new(config.clone(), config_path.clone());

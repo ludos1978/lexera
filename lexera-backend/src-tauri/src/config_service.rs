@@ -1,17 +1,17 @@
 use crate::config::{save_config, SyncConfig};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
-/// Service that wraps the raw `Mutex<SyncConfig>` and provides typed
+/// Service that wraps the raw `RwLock<SyncConfig>` and provides typed
 /// read/mutate/save operations so handlers don't deal with lock+save boilerplate.
 #[derive(Clone)]
 pub struct ConfigService {
-    config: Arc<Mutex<SyncConfig>>,
+    config: Arc<RwLock<SyncConfig>>,
     config_path: PathBuf,
 }
 
 impl ConfigService {
-    pub fn new(config: Arc<Mutex<SyncConfig>>, config_path: PathBuf) -> Self {
+    pub fn new(config: Arc<RwLock<SyncConfig>>, config_path: PathBuf) -> Self {
         Self {
             config,
             config_path,
@@ -23,7 +23,7 @@ impl ConfigService {
     where
         F: FnOnce(&SyncConfig) -> R,
     {
-        let cfg = self.config.lock().expect("config lock poisoned");
+        let cfg = self.config.read().expect("config lock poisoned");
         f(&cfg)
     }
 
@@ -33,7 +33,7 @@ impl ConfigService {
     where
         F: FnOnce(&mut SyncConfig) -> R,
     {
-        let mut cfg = self.config.lock().expect("config lock poisoned");
+        let mut cfg = self.config.write().expect("config lock poisoned");
         let result = f(&mut cfg);
         save_config(&self.config_path, &cfg)?;
         Ok(result)

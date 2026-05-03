@@ -14,7 +14,7 @@ use lexera_core::storage::BoardStorage;
 use lexera_core::watcher::types::BoardChangeEvent;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Minimum allowed port number for server configuration (ports below this are privileged).
 const MIN_CONFIGURABLE_PORT: u16 = 1024;
@@ -145,6 +145,18 @@ fn lock_arc<'a, T>(service: &'a Arc<Mutex<T>>, name: &str) -> Result<MutexGuard<
         .map_err(|e| internal_error(format!("{} service unavailable: {}", name, e)))
 }
 
+fn read_arc<'a, T>(service: &'a Arc<RwLock<T>>, name: &str) -> Result<RwLockReadGuard<'a, T>> {
+    service
+        .read()
+        .map_err(|e| internal_error(format!("{} service unavailable: {}", name, e)))
+}
+
+fn write_arc<'a, T>(service: &'a Arc<RwLock<T>>, name: &str) -> Result<RwLockWriteGuard<'a, T>> {
+    service
+        .write()
+        .map_err(|e| internal_error(format!("{} service unavailable: {}", name, e)))
+}
+
 /// Extract a bearer token from the Authorization header ("Bearer <token>").
 fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
     crate::api::auth_middleware::extract_bearer_from_headers(headers)
@@ -203,7 +215,7 @@ fn require_invite_permission_in_state(
 }
 
 fn workspace_board_ids(state: &AppState, workspace_id: &str) -> Result<Vec<String>> {
-    let cfg = lock_arc(&state.config, "config")?;
+    let cfg = read_arc(&state.config, "config")?;
     Ok(cfg
         .boards
         .iter()
@@ -298,7 +310,7 @@ fn persist_remote_connection(
 ) -> std::result::Result<(), String> {
     let mut cfg = state
         .config
-        .lock()
+        .write()
         .map_err(|e| format!("config lock poisoned: {}", e))?;
     let remote_board_id = remote_board_id_from_local(local_board_id);
     cfg.remote_connections
@@ -322,7 +334,7 @@ fn remove_persisted_remote_connection(
 ) -> std::result::Result<bool, String> {
     let mut cfg = state
         .config
-        .lock()
+        .write()
         .map_err(|e| format!("config lock poisoned: {}", e))?;
     let before = cfg.remote_connections.len();
     cfg.remote_connections
@@ -525,7 +537,7 @@ async fn create_workspace_invite(
 
     // Verify workspace exists
     let workspace_name = {
-        let cfg = lock_arc(&state.config, "config")?;
+        let cfg = read_arc(&state.config, "config")?;
         cfg.workspaces
             .iter()
             .find(|w| w.id == workspace_id)
@@ -577,7 +589,7 @@ async fn list_workspace_invites(
 
     // Verify workspace exists
     {
-        let cfg = lock_arc(&state.config, "config")?;
+        let cfg = read_arc(&state.config, "config")?;
         if !cfg.workspaces.iter().any(|w| w.id == workspace_id) {
             return Err((
                 StatusCode::NOT_FOUND,
@@ -929,7 +941,7 @@ async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
         .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let cfg = lock_arc(&state.config, "config").ok();
+    let cfg = read_arc(&state.config, "config").ok();
     let configured_bind = cfg
         .as_ref()
         .map(|c| c.bind_address.clone())
@@ -1132,7 +1144,7 @@ fn push_interface_entry(
 
 /// GET /collab/network-interfaces — list available network interfaces for bind address selection
 async fn list_network_interfaces(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let cfg = lock_arc(&state.config, "config").ok();
+    let cfg = read_arc(&state.config, "config").ok();
     let current_bind = cfg
         .as_ref()
         .map(|c| c.bind_address.clone())
@@ -1246,7 +1258,7 @@ async fn update_server_config(
 
     // All mutex work in a block that drops guards before any await
     let (new_bind, new_port, user_id, user_name) = {
-        let mut cfg = lock_arc(&state.config, "config")?;
+        let mut cfg = write_arc(&state.config, "config")?;
         cfg.bind_address = body.bind_address.clone();
         cfg.port = body.port;
         crate::config::save_config(&state.config_path, &cfg)
@@ -1739,7 +1751,7 @@ mod tests {
         let mut state = test_state(tmp.path());
         state.bind_address = "192.168.1.77".into();
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.bind_address = "192.168.1.77".into();
             cfg.port = 1431;
         }
@@ -1951,7 +1963,7 @@ mod tests {
         let board_path = std::fs::canonicalize(&board_path).unwrap_or(board_path);
 
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.workspaces.push(WorkspaceEntry {
                 id: "ws-1".into(),
                 name: "Workspace".into(),
@@ -2011,7 +2023,7 @@ mod tests {
         let board_path = std::fs::canonicalize(&board_path).unwrap_or(board_path);
 
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.workspaces.push(WorkspaceEntry {
                 id: "ws-accept".into(),
                 name: "Workspace Accept".into(),
@@ -2083,7 +2095,7 @@ mod tests {
         let mut state = test_state(tmp.path());
         state.bind_address = "0.0.0.0".into();
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.bind_address = "127.0.0.1".into();
             cfg.port = 1431;
         }

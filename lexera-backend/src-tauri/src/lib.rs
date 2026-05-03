@@ -51,9 +51,9 @@ const PERIODIC_SAVE_INTERVAL_SECS: u64 = 60;
 /// Returns `(board_id, canonical_path)` pairs.
 fn init_storage_and_boards(
     storage: &LocalStorage,
-    config: &std::sync::Mutex<config::SyncConfig>,
+    config: &std::sync::RwLock<config::SyncConfig>,
 ) -> Vec<(String, PathBuf)> {
-    let board_entries: Vec<PathBuf> = match config.lock() {
+    let board_entries: Vec<PathBuf> = match config.read() {
         Ok(cfg) => cfg.boards.iter().map(|e| PathBuf::from(&e.file)).collect(),
         Err(e) => {
             log::error!(
@@ -155,10 +155,10 @@ pub(crate) fn sync_watcher_include_paths(
 
 /// Resolve the incoming config (map file path to board ID).
 fn resolve_incoming(
-    config: &std::sync::Mutex<config::SyncConfig>,
+    config: &std::sync::RwLock<config::SyncConfig>,
     board_paths: &[(String, PathBuf)],
 ) -> Option<ResolvedIncoming> {
-    config.lock().ok()?.incoming.clone().and_then(|inc| {
+    config.read().ok()?.incoming.clone().and_then(|inc| {
         let inc_path = PathBuf::from(&inc.board);
         board_paths
             .iter()
@@ -452,7 +452,7 @@ fn spawn_background_tasks(
     invite_service: &Arc<std::sync::Mutex<crate::invite::InviteService>>,
     auth_service: &Arc<std::sync::Mutex<crate::auth::AuthService>>,
     public_service: &Arc<std::sync::Mutex<crate::public::PublicRoomService>>,
-    config: &Arc<std::sync::Mutex<config::SyncConfig>>,
+    config: &Arc<std::sync::RwLock<config::SyncConfig>>,
     config_path: &std::path::Path,
     collab_dir: &std::path::Path,
     shutdown_rx: &tokio::sync::watch::Receiver<bool>,
@@ -502,7 +502,7 @@ fn spawn_background_tasks(
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    if let Ok(cfg) = save_config_arc.lock() {
+                    if let Ok(cfg) = save_config_arc.read() {
                         if let Err(e) = crate::config::save_config(&save_config_path, &cfg) {
                             log::error!("[collab.save] Failed to save sync config: {}", e);
                         }
@@ -524,7 +524,7 @@ fn spawn_background_tasks(
                     }
                 }
                 _ = save_shutdown_rx.changed() => {
-                    if let Ok(cfg) = save_config_arc.lock() {
+                    if let Ok(cfg) = save_config_arc.read() {
                         let _ = crate::config::save_config(&save_config_path, &cfg);
                     }
                     if let Ok(auth) = save_auth.lock() {
@@ -546,12 +546,12 @@ fn spawn_background_tasks(
 
 /// Restore persisted remote connections from config.
 fn restore_persisted_connections(
-    config: &Arc<std::sync::Mutex<config::SyncConfig>>,
+    config: &Arc<std::sync::RwLock<config::SyncConfig>>,
     app_state: &AppState,
     local_user_id: &str,
     local_user_name: &str,
 ) {
-    let persisted = match config.lock() {
+    let persisted = match config.read() {
         Ok(cfg) => cfg.remote_connections.clone(),
         Err(e) => {
             log::error!(
@@ -903,7 +903,7 @@ pub fn run() {
             config::ensure_default_workspace(&mut config, &config_path);
             let port = config.port;
             let bind_address = config.bind_address.clone();
-            let config = Arc::new(std::sync::Mutex::new(config));
+            let config = Arc::new(std::sync::RwLock::new(config));
             let local_user = config::load_or_create_identity();
             let identity_path = dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("."))

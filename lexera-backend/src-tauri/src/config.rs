@@ -197,7 +197,7 @@ pub fn resolve_templates_path(config_value: &Option<String>) -> PathBuf {
 #[tauri::command]
 pub fn get_backend_url(app: AppHandle) -> Result<String, String> {
     if let Some(state) = app.try_state::<AppState>() {
-        let cfg = state.config.lock().ok();
+        let cfg = state.config.read().ok();
         let bind_address = cfg
             .as_ref()
             .map(|guard| guard.bind_address.clone())

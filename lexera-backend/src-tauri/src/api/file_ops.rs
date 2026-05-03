@@ -493,7 +493,7 @@ pub async fn search_files(
     let board_dirs: Vec<BoardSearchScope> = {
         let cfg = state
             .config
-            .lock()
+            .read()
             .map_err(|_| err_internal("Failed to lock config"))?;
 
         let boards_in_scope: Vec<&crate::config::BoardEntry> =
@@ -765,7 +765,7 @@ mod tests {
 
         let state = test_state(tmp.path());
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.boards = vec![
                 BoardEntry {
                     file: board_a_file.to_string_lossy().to_string(),

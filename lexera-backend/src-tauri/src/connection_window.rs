@@ -16,7 +16,7 @@ const CONNECTION_WINDOW_HEIGHT: f64 = 640.0;
 
 fn resolve_connection_window_backend_url(app: &AppHandle) -> Option<String> {
     let state = app.try_state::<AppState>()?;
-    let cfg = state.config.lock().ok();
+    let cfg = state.config.read().ok();
     let bind_address = cfg
         .as_ref()
         .map(|guard| guard.bind_address.clone())

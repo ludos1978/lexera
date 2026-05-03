@@ -152,7 +152,7 @@ pub struct UpdateBoardSyncRequest {
 
 /// GET /config/global-sync — return global-level sync defaults.
 pub async fn get_global_sync(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let cfg = state.config.lock().ok();
+    let cfg = state.config.read().ok();
     let (bm, cal, slug, name) = cfg
         .as_ref()
         .map(|c| {
@@ -182,7 +182,7 @@ pub async fn update_global_sync(
     let calendar_name = normalize_optional_text(body.calendar_name);
 
     {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        let mut cfg = state.config.write().map_err(|_| lock_error())?;
         cfg.bookmark_sync = body.bookmark_sync;
         cfg.calendar_sync = body.calendar_sync;
         cfg.calendar_slug = calendar_slug.clone();
@@ -204,7 +204,7 @@ pub async fn update_global_sync(
 
 /// GET /config/workspaces — list all workspaces and the default workspace ID.
 pub async fn list_workspaces(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let cfg = state.config.lock().ok();
+    let cfg = state.config.read().ok();
     let workspaces: Vec<serde_json::Value> = cfg
         .as_ref()
         .map(|c| {
@@ -260,7 +260,7 @@ pub async fn create_workspace(
     let id = uuid::Uuid::new_v4().to_string();
     let config_path = state.config_path.clone();
     {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        let mut cfg = state.config.write().map_err(|_| lock_error())?;
         if cfg
             .workspaces
             .iter()
@@ -305,7 +305,7 @@ pub async fn update_workspace(
 
     let config_path = state.config_path.clone();
     {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        let mut cfg = state.config.write().map_err(|_| lock_error())?;
         if cfg
             .workspaces
             .iter()
@@ -349,7 +349,7 @@ pub async fn update_workspace_sync(
     let calendar_name = normalize_optional_text(body.calendar_name);
 
     {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        let mut cfg = state.config.write().map_err(|_| lock_error())?;
         let ws = cfg.workspaces.iter_mut().find(|w| w.id == workspace_id);
         match ws {
             Some(workspace) => {
@@ -389,7 +389,7 @@ pub async fn delete_workspace(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let config_path = state.config_path.clone();
     {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        let mut cfg = state.config.write().map_err(|_| lock_error())?;
         if cfg.workspaces.len() <= 1 {
             return Err(err_bad_request("At least one workspace is required"));
         }
@@ -438,7 +438,7 @@ pub async fn set_default_workspace(
     let config_path = state.config_path.clone();
     let default_workspace;
     {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        let mut cfg = state.config.write().map_err(|_| lock_error())?;
         if let Some(ref ws_id) = body.workspace_id {
             if !cfg.workspaces.iter().any(|w| w.id == *ws_id) {
                 return Err(err_bad_request("Workspace not found"));
@@ -498,7 +498,7 @@ pub async fn assign_board_workspaces(
     let board_file = canonicalize_path(board_path.to_string_lossy().as_ref());
 
     {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        let mut cfg = state.config.write().map_err(|_| lock_error())?;
 
         // Validate all workspace IDs exist
         for ws_id in &workspace_ids {
@@ -561,7 +561,7 @@ pub async fn update_board_sync(
     let calendar_name = normalize_optional_text(body.calendar_name);
 
     {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        let mut cfg = state.config.write().map_err(|_| lock_error())?;
         let board = cfg
             .boards
             .iter_mut()
@@ -717,7 +717,7 @@ fn mutate_config<F>(state: &AppState, mutate: F) -> Result<(), (StatusCode, Json
 where
     F: FnOnce(&mut crate::config::SyncConfig) -> Result<(), (StatusCode, Json<ErrorResponse>)>,
 {
-    let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+    let mut cfg = state.config.write().map_err(|_| lock_error())?;
     mutate(&mut cfg)?;
     save_config(&state.config_path, &cfg).map_err(|e| err_internal(e.to_string()))?;
     drop(cfg);
@@ -809,7 +809,7 @@ pub async fn get_settings(
     State(state): State<AppState>,
     axum::extract::Query(query): axum::extract::Query<SettingsQuery>,
 ) -> Json<serde_json::Value> {
-    let cfg = state.config.lock().ok();
+    let cfg = state.config.read().ok();
     let mut merged = std::collections::HashMap::<String, String>::new();
 
     // Start with global defaults
@@ -900,7 +900,7 @@ mod tests {
         let state = test_state(tmp.path());
         let token = register_test_user(&state);
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.workspaces.push(WorkspaceEntry {
                 id: "ws-1".to_string(),
                 name: "Main".to_string(),
@@ -931,7 +931,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
-        let cfg = state.config.lock().unwrap().clone();
+        let cfg = state.config.read().unwrap().clone();
         let ws = cfg
             .workspaces
             .iter()
@@ -951,7 +951,7 @@ mod tests {
         let token = register_test_user(&state);
         let board_id = state.storage.add_board(&board_path).unwrap();
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.boards.push(crate::config::BoardEntry {
                 file: std::fs::canonicalize(&board_path)
                     .unwrap()
@@ -986,7 +986,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
-        let cfg = state.config.lock().unwrap().clone();
+        let cfg = state.config.read().unwrap().clone();
         let board = cfg
             .boards
             .iter()

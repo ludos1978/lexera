@@ -38,7 +38,7 @@ const TEXT_EXTENSIONS: &[&str] = &[
 fn get_templates_dir(state: &AppState) -> PathBuf {
     let templates_path = state
         .config
-        .lock()
+        .read()
         .ok()
         .and_then(|cfg| cfg.templates_path.clone());
     crate::config::resolve_templates_path(&templates_path)
@@ -329,7 +329,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let state = test_state(tmp.path());
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.templates_path = Some(tmp.path().join("no-such-dir").to_string_lossy().to_string());
         }
 
@@ -364,7 +364,7 @@ mod tests {
 
         let state = test_state(tmp.path());
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.templates_path = Some(templates_dir.to_string_lossy().to_string());
         }
 
@@ -397,7 +397,7 @@ mod tests {
 
         let state = test_state(tmp.path());
         {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.write().unwrap();
             cfg.templates_path = Some(templates_dir.to_string_lossy().to_string());
         }
 

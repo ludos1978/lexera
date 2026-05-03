@@ -91,7 +91,7 @@ pub struct AppState {
     pub local_user_id: String,
     pub config_path: PathBuf,
     pub identity_path: PathBuf,
-    pub config: Arc<std::sync::Mutex<SyncConfig>>,
+    pub config: Arc<std::sync::RwLock<SyncConfig>>,
     pub config_service: ConfigService,
     pub watcher: Arc<std::sync::Mutex<Option<FileWatcher>>>,
     // Collaboration services wrapped in Arc<Mutex<...>> for thread safety and concurrent access
