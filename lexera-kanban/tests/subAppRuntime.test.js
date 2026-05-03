@@ -210,10 +210,19 @@ describe('LexeraSubApp runtime metadata', () => {
 
     await subApp.navigate({ type: 'open-board', boardId: 'board-alpha' });
 
+    // navigate() enriches the payload with `_sourceWindow` (the
+    // windowLabel from the URL params) so receivers can identify
+    // which window initiated the action — used by the host shell's
+    // navigationBridge to filter events that came from a sibling
+    // window.
     expect(invoke).toHaveBeenCalledWith('multiview_emit_to', {
       target: 'kanban-2',
       event: 'multiview-navigate',
-      payload: { type: 'open-board', boardId: 'board-alpha' }
+      payload: {
+        type: 'open-board',
+        boardId: 'board-alpha',
+        _sourceWindow: 'panel-tab-tab-4'
+      }
     });
     expect(invoke).not.toHaveBeenCalledWith('multiview_broadcast', expect.objectContaining({
       event: 'multiview-navigate'
