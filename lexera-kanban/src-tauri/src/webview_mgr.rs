@@ -965,8 +965,29 @@ pub fn multiview_get_health(
 }
 
 #[tauri::command]
-pub fn multiview_list_health(tracker: State<HealthTracker>) -> std::collections::HashMap<String, String> {
-    tracker.inner.read().clone()
+pub fn multiview_list_health(
+    caller: tauri::Webview,
+    tracker: State<HealthTracker>,
+) -> std::collections::HashMap<String, String> {
+    // Filter to webviews that live in the caller's window. The
+    // HealthTracker map is shared across the whole app; without this
+    // filter a window's "list all" call returned health entries for
+    // sibling-window webviews too — which would either silently confuse
+    // the UI or lead to phantom health dots if the consumer ever
+    // surfaced those labels.
+    let caller_window = caller.window();
+    let window_labels: std::collections::HashSet<String> = caller_window
+        .webviews()
+        .into_iter()
+        .map(|w| w.label().to_string())
+        .collect();
+    tracker
+        .inner
+        .read()
+        .iter()
+        .filter(|(label, _)| window_labels.contains(label.as_str()))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
 }
 
 // ── Drag ghost window (Stage 7) ────────────────────────────────

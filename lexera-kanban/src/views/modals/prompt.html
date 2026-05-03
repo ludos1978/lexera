@@ -48,6 +48,7 @@
     (function () {
       var params = new URLSearchParams(window.location.search);
       var label = params.get('label') || 'prompt';
+      var parentLabel = params.get('parentLabel') || '';
       var title = params.get('title') || 'Input';
       var message = params.get('message') || '';
       var initial = params.get('initial') || '';
@@ -65,7 +66,16 @@
 
       function emitResult(value) {
         var t = window.__TAURI__;
-        if (t && t.event && typeof t.event.emit === 'function') {
+        // Route via multiview_emit_to(parentLabel, …) so the result
+        // reaches only the webview that opened this modal — see
+        // confirm.html for full rationale.
+        if (parentLabel && t && t.core && typeof t.core.invoke === 'function') {
+          t.core.invoke('multiview_emit_to', {
+            target: parentLabel,
+            event: 'modal-result-' + label,
+            payload: { value: value }
+          }).catch(function () {});
+        } else if (t && t.event && typeof t.event.emit === 'function') {
           t.event.emit('modal-result-' + label, { value: value });
         }
         if (t && t.core && typeof t.core.invoke === 'function') {

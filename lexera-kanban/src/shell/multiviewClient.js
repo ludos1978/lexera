@@ -490,9 +490,20 @@
 
   function confirmModal(opts) {
     opts = opts || {};
-    var label = 'confirm-modal-' + (++modalCounter);
+    var wv = getCurrentWebview();
+    var parentLabel = (wv && wv.label) ? wv.label : '';
+    // Embed the parent webview label so the modal label is globally
+    // unique across windows. Without this, two windows opening a
+    // confirm dialog at the same time both generate `confirm-modal-1`
+    // and Tauri's window registry rejects the second.
+    var label = 'confirm-modal-' + parentLabel + '-' + (++modalCounter);
     var params = new URLSearchParams();
     params.set('label', label);
+    // The modal calls `multiview_emit_to(parentLabel, 'modal-result-<label>')`
+    // so its result reaches ONLY the webview that opened it — even if
+    // a sibling window's webview happens to register the same label
+    // listener, it won't fire there.
+    if (parentLabel) params.set('parentLabel', parentLabel);
     if (opts.title) params.set('title', opts.title);
     if (opts.message) params.set('message', opts.message);
     if (opts.okText) params.set('ok', opts.okText);
@@ -504,7 +515,6 @@
         resolve(false);
         return;
       }
-      var wv = getCurrentWebview();
       var unsubPromise = (wv && typeof wv.listen === 'function')
         ? wv.listen('modal-result-' + label, function (event) {
             resolve(!!(event && event.payload && event.payload.accepted));
@@ -528,9 +538,13 @@
   // promptModal: returns Promise<string|null>. null on cancel.
   function promptModal(opts) {
     opts = opts || {};
-    var label = 'prompt-modal-' + (++modalCounter);
+    var wv = getCurrentWebview();
+    var parentLabel = (wv && wv.label) ? wv.label : '';
+    // Globally unique modal label — see confirmModal for rationale.
+    var label = 'prompt-modal-' + parentLabel + '-' + (++modalCounter);
     var params = new URLSearchParams();
     params.set('label', label);
+    if (parentLabel) params.set('parentLabel', parentLabel);
     if (opts.title) params.set('title', opts.title);
     if (opts.message) params.set('message', opts.message);
     if (opts.initial != null) params.set('initial', String(opts.initial));
@@ -543,7 +557,6 @@
         resolve(null);
         return;
       }
-      var wv = getCurrentWebview();
       var unsubPromise = (wv && typeof wv.listen === 'function')
         ? wv.listen('modal-result-' + label, function (event) {
             var p = event && event.payload ? event.payload : {};

@@ -58,6 +58,7 @@
     (function () {
       var params = new URLSearchParams(window.location.search);
       var label = params.get('label') || 'confirm';
+      var parentLabel = params.get('parentLabel') || '';
       var title = params.get('title') || 'Confirm';
       var message = params.get('message') || 'Are you sure?';
       var okText = params.get('ok') || 'OK';
@@ -72,7 +73,17 @@
 
       function emitResult(accepted) {
         var t = window.__TAURI__;
-        if (t && t.event && typeof t.event.emit === 'function') {
+        // Prefer routing the result via `multiview_emit_to(parentLabel, …)`
+        // so the result reaches ONLY the webview that opened this modal —
+        // a global `t.event.emit` would also fire on any sibling-window
+        // listener that happens to register the same modal label.
+        if (parentLabel && t && t.core && typeof t.core.invoke === 'function') {
+          t.core.invoke('multiview_emit_to', {
+            target: parentLabel,
+            event: 'modal-result-' + label,
+            payload: { accepted: accepted }
+          }).catch(function () {});
+        } else if (t && t.event && typeof t.event.emit === 'function') {
           t.event.emit('modal-result-' + label, { accepted: accepted });
         }
         // Self-close
