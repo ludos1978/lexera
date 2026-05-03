@@ -34,7 +34,8 @@ Generally do the most time consuming tasks first. If a task takes very long to c
     - [x] (done) Phase 2b-1 — entity nodes carry `draggable="true"` + `data-drag-kind` + `data-drag-board-id`; browser fires native dragstart events. Drop side still TODO. (commit a4838b3b)
     - [x] (done) Phase 2b-2-a — dragstart listener stamps `{ boardId, kind, entityId }` into DataTransfer + broadcasts `hierarchy-entity-drag-start` for shell-side handlers. (commit d2d4d8a4)
     - [x] (done) Phase 2b-2-b — dragover marks same-board same-kind sibling as `.is-drop-target`; drop fires `hierarchy-entity-drop` broadcast with `{ source, target }`. Cross-kind/cross-board drops silently rejected (deferred to Phases 3 & 4). (commit df879111)
-    - [ ] Phase 2b-2-c — shell-side handler that consumes `hierarchy-entity-drop`, fetches the full BoardData, applies the move, and persists via `LexeraApi.saveBoard`. — in progress
+    - [x] (done) Phase 2b-2-c — `hierarchyDragBridge.js`: pure `applyEntityReorder(board, source, target)` helper + dependency-injected `install()` IPC consumer that subscribes to `hierarchy-entity-drop`, loads the board, applies the reorder, persists via `saveBoard`. (commit 005917f8)
+    - [ ] Phase 2b-2-d — wire the bridge into `index.html` + multiviewClient bootstrap with real `loadBoard` / `saveBoard` callbacks (`window.LexeraApi.getBoardHierarchy` is rows-only — needs a richer "get full board" path or a board-data cache lookup). — in progress
   - [ ] Phase 3 — drag elements between boards in the workspace tree.
   - [ ] Phase 4 — drag elements from a kanban board into the workspace tree (and back).
 
