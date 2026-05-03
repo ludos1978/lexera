@@ -249,3 +249,12 @@ html, body {
 #local-boards .tree-node[data-tree-target="board"] > .tree-children .tree-indent > .indent-guide:first-child {
   display: none;
 }
+
+/* Phase 2b drop target: visual hint that the dragged entity will land
+ * on this sibling. Subtle accent outline rather than a full-row
+ * highlight so the existing hover / active states still read. */
+#local-boards .tree-node.is-drop-target {
+  outline: 1.5px dashed var(--accent, #4a9eff);
+  outline-offset: -1px;
+  border-radius: 3px;
+}

@@ -537,6 +537,132 @@ describe('hierarchy view sub-app', () => {
       expect(dragBroadcast.payload).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
     });
 
+    // Phase 2b-2-b: dragging a card over a sibling card adds
+    // .is-drop-target to the target; dropping fires
+    // `hierarchy-entity-drop` with { source, target }. Cross-kind and
+    // cross-board drops are silently rejected (deferred to Phases 3-4).
+    it('dragover marks same-kind same-board sibling as drop target; drop broadcasts source+target', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      const fakeRows = [{
+        id: 'r1', title: 'Backlog',
+        stacks: [{
+          id: 's1', title: 'Frontend',
+          columns: [{ id: 'c1', title: 'To do', cards: [
+            { id: 'card-1', title: 'A' },
+            { id: 'card-2', title: 'B' }
+          ] }]
+        }]
+      }];
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: fakeRows })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const cards = window.document.querySelectorAll(
+        '#local-boards .tree-node[draggable="true"][data-drag-kind="card"]'
+      );
+      const sourceCard = cards[0];
+      const targetCard = cards[1];
+
+      // Helper: dispatch a fake DragEvent with a stubbed dataTransfer.
+      function fakeDragEvent(name) {
+        const stored = {};
+        const dt = {
+          setData: (k, v) => { stored[k] = v; },
+          getData: (k) => stored[k] || '',
+          effectAllowed: '',
+          dropEffect: ''
+        };
+        const ev = new window.Event(name, { bubbles: true, cancelable: true });
+        ev.dataTransfer = dt;
+        return ev;
+      }
+
+      // 1. dragstart on source card.
+      sourceCard.dispatchEvent(fakeDragEvent('dragstart'));
+      // 2. dragover on target card → should mark .is-drop-target.
+      const overEv = fakeDragEvent('dragover');
+      targetCard.dispatchEvent(overEv);
+      expect(targetCard.classList.contains('is-drop-target')).toBe(true);
+      expect(overEv.defaultPrevented).toBe(true);
+
+      // 3. drop on target card → broadcasts hierarchy-entity-drop with
+      //    source + target identities.
+      const dropEv = fakeDragEvent('drop');
+      targetCard.dispatchEvent(dropEv);
+      expect(targetCard.classList.contains('is-drop-target')).toBe(false);
+      const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
+      expect(dropBroadcast).toBeTruthy();
+      expect(dropBroadcast.payload.source).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
+      expect(dropBroadcast.payload.target).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-2' });
+    });
+
+    it('cross-kind drop is rejected — no broadcast, no drop-target indicator', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      const fakeRows = [{
+        id: 'r1', title: 'Backlog',
+        stacks: [{ id: 's1', title: 'Frontend', columns: [
+          { id: 'c1', title: 'To do', cards: [{ id: 'card-1', title: 'A' }] }
+        ] }]
+      }];
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({ rows: fakeRows })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      function fakeDragEvent(name) {
+        const stored = {};
+        const ev = new window.Event(name, { bubbles: true, cancelable: true });
+        ev.dataTransfer = { setData: (k, v) => { stored[k] = v; }, getData: (k) => stored[k] || '', effectAllowed: '', dropEffect: '' };
+        return ev;
+      }
+      const cardNode = window.document.querySelector('.tree-node[data-drag-kind="card"]');
+      const columnNode = window.document.querySelector('.tree-node[data-drag-kind="column"]');
+      cardNode.dispatchEvent(fakeDragEvent('dragstart'));
+      const overEv = fakeDragEvent('dragover');
+      columnNode.dispatchEvent(overEv);
+      // dragover on a different-kind target must NOT preventDefault
+      // (browser shows "no drop" cursor) and must NOT mark the column.
+      expect(overEv.defaultPrevented).toBe(false);
+      expect(columnNode.classList.contains('is-drop-target')).toBe(false);
+
+      columnNode.dispatchEvent(fakeDragEvent('drop'));
+      const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
+      expect(dropBroadcast).toBeFalsy();
+    });
+
     // Regression 2026-05-03: rows / stacks / columns inside an expanded
     // board must be foldable too. They are rendered with TreeView's
     // built-in toggle; clicking it flips the `.tree-children.expanded`

@@ -172,21 +172,44 @@
     }
   }
 
-  // Phase 2b-2-a: dragstart picks up native events from any
-  // `[draggable="true"]` entity node, stamps source identity into the
-  // DataTransfer payload, and broadcasts a `hierarchy-entity-drag-start`
-  // event for shell-side handlers to route the move.
+  // Phase 2b drag-and-drop wiring — see hierarchy.js for the full
+  // commentary; keeping the two surfaces in sync.
   if (localBoardsEl && !localBoardsEl.__workspacesDragBound) {
-    localBoardsEl.addEventListener('dragstart', function (e) {
-      var src = e.target && e.target.closest
-        ? e.target.closest('.tree-node[draggable="true"]')
-        : null;
-      if (!src || !localBoardsEl.contains(src)) return;
-      var payload = {
+    var readSource = function (el) {
+      var src = el && el.closest ? el.closest('.tree-node[draggable="true"]') : null;
+      if (!src || !localBoardsEl.contains(src)) return null;
+      return {
         boardId: src.getAttribute('data-drag-board-id') || '',
         kind: src.getAttribute('data-drag-kind') || '',
         entityId: src.getAttribute('data-tree-id') || ''
       };
+    };
+    var readDropTarget = function (el, dragSource) {
+      var tgt = el && el.closest ? el.closest('.tree-node[draggable="true"]') : null;
+      if (!tgt || !localBoardsEl.contains(tgt)) return null;
+      var info = {
+        boardId: tgt.getAttribute('data-drag-board-id') || '',
+        kind: tgt.getAttribute('data-drag-kind') || '',
+        entityId: tgt.getAttribute('data-tree-id') || ''
+      };
+      if (!dragSource) return null;
+      if (info.boardId !== dragSource.boardId) return null;
+      if (info.kind !== dragSource.kind) return null;
+      if (info.entityId === dragSource.entityId) return null;
+      return { node: tgt, info: info };
+    };
+    var activeDragSource = null;
+    var activeDropTargetEl = null;
+    var clearDropTargetEl = function () {
+      if (activeDropTargetEl) {
+        activeDropTargetEl.classList.remove('is-drop-target');
+        activeDropTargetEl = null;
+      }
+    };
+    localBoardsEl.addEventListener('dragstart', function (e) {
+      var payload = readSource(e.target);
+      if (!payload) return;
+      activeDragSource = payload;
       if (e.dataTransfer && typeof e.dataTransfer.setData === 'function') {
         try {
           e.dataTransfer.setData('application/x-lexera-entity', JSON.stringify(payload));
@@ -196,6 +219,40 @@
       if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
         window.LexeraSubApp.broadcast('hierarchy-entity-drag-start', payload);
       }
+    });
+    localBoardsEl.addEventListener('dragover', function (e) {
+      var match = readDropTarget(e.target, activeDragSource);
+      if (!match) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      if (activeDropTargetEl !== match.node) {
+        clearDropTargetEl();
+        match.node.classList.add('is-drop-target');
+        activeDropTargetEl = match.node;
+      }
+    });
+    localBoardsEl.addEventListener('dragleave', function (e) {
+      if (e.target === activeDropTargetEl) clearDropTargetEl();
+    });
+    localBoardsEl.addEventListener('drop', function (e) {
+      var match = readDropTarget(e.target, activeDragSource);
+      clearDropTargetEl();
+      if (!match) {
+        activeDragSource = null;
+        return;
+      }
+      e.preventDefault();
+      if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+        window.LexeraSubApp.broadcast('hierarchy-entity-drop', {
+          source: activeDragSource,
+          target: match.info
+        });
+      }
+      activeDragSource = null;
+    });
+    localBoardsEl.addEventListener('dragend', function () {
+      clearDropTargetEl();
+      activeDragSource = null;
     });
     localBoardsEl.__workspacesDragBound = true;
   }

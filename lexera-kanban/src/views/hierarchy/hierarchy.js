@@ -227,23 +227,56 @@
     }
   }
 
-  // Phase 2b-2-a: a single delegated `dragstart` listener picks up
-  // browser-native events fired by any `[draggable="true"]` entity
-  // node, stamps the source identity into the DataTransfer payload
-  // (so a drop handler can read it without walking the DOM), and
-  // broadcasts a `hierarchy-entity-drag-start` event for shell-side
-  // listeners that route the move into the storage layer.
+  // Phase 2b drag-and-drop wiring — three delegated listeners on the
+  // tree container.
+  //
+  // 2b-2-a (dragstart): stamp source identity into DataTransfer +
+  //   broadcast `hierarchy-entity-drag-start`.
+  // 2b-2-b (dragover): preventDefault on a same-kind same-board target
+  //   so the browser shows a copy / move cursor + add `.is-drop-target`
+  //   class for visual feedback.
+  // 2b-2-b (drop): broadcast `hierarchy-entity-drop` with
+  //   `{ source, target }`. Local-cache reorder + `saveBoard` persist
+  //   land in the next slice.
   if (localBoardsEl && !localBoardsEl.__hierarchyDragBound) {
-    localBoardsEl.addEventListener('dragstart', function (e) {
-      var src = e.target && e.target.closest
-        ? e.target.closest('.tree-node[draggable="true"]')
-        : null;
-      if (!src || !localBoardsEl.contains(src)) return;
-      var payload = {
+    var readSource = function (el) {
+      var src = el && el.closest ? el.closest('.tree-node[draggable="true"]') : null;
+      if (!src || !localBoardsEl.contains(src)) return null;
+      return {
         boardId: src.getAttribute('data-drag-board-id') || '',
         kind: src.getAttribute('data-drag-kind') || '',
         entityId: src.getAttribute('data-tree-id') || ''
       };
+    };
+    var readDropTarget = function (el, dragSource) {
+      var tgt = el && el.closest ? el.closest('.tree-node[draggable="true"]') : null;
+      if (!tgt || !localBoardsEl.contains(tgt)) return null;
+      var info = {
+        boardId: tgt.getAttribute('data-drag-board-id') || '',
+        kind: tgt.getAttribute('data-drag-kind') || '',
+        entityId: tgt.getAttribute('data-tree-id') || ''
+      };
+      // Same-board, same-kind sibling reorder is the only valid drop
+      // for this slice. Cross-kind / cross-board drops are deferred
+      // to Phases 3 & 4 — silently rejected here.
+      if (!dragSource) return null;
+      if (info.boardId !== dragSource.boardId) return null;
+      if (info.kind !== dragSource.kind) return null;
+      if (info.entityId === dragSource.entityId) return null;
+      return { node: tgt, info: info };
+    };
+    var activeDragSource = null;
+    var activeDropTargetEl = null;
+    var clearDropTargetEl = function () {
+      if (activeDropTargetEl) {
+        activeDropTargetEl.classList.remove('is-drop-target');
+        activeDropTargetEl = null;
+      }
+    };
+    localBoardsEl.addEventListener('dragstart', function (e) {
+      var payload = readSource(e.target);
+      if (!payload) return;
+      activeDragSource = payload;
       if (e.dataTransfer && typeof e.dataTransfer.setData === 'function') {
         try {
           e.dataTransfer.setData('application/x-lexera-entity', JSON.stringify(payload));
@@ -253,6 +286,46 @@
       if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
         window.LexeraSubApp.broadcast('hierarchy-entity-drag-start', payload);
       }
+    });
+    localBoardsEl.addEventListener('dragover', function (e) {
+      var match = readDropTarget(e.target, activeDragSource);
+      if (!match) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      if (activeDropTargetEl !== match.node) {
+        clearDropTargetEl();
+        match.node.classList.add('is-drop-target');
+        activeDropTargetEl = match.node;
+      }
+    });
+    localBoardsEl.addEventListener('dragleave', function (e) {
+      // Only clear when leaving the container entirely so a transition
+      // between sibling targets doesn't flicker.
+      if (e.target === activeDropTargetEl) {
+        // Browser fires dragleave on the previous target before
+        // dragenter on the next — the next dragover will reapply.
+        clearDropTargetEl();
+      }
+    });
+    localBoardsEl.addEventListener('drop', function (e) {
+      var match = readDropTarget(e.target, activeDragSource);
+      clearDropTargetEl();
+      if (!match) {
+        activeDragSource = null;
+        return;
+      }
+      e.preventDefault();
+      if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+        window.LexeraSubApp.broadcast('hierarchy-entity-drop', {
+          source: activeDragSource,
+          target: match.info
+        });
+      }
+      activeDragSource = null;
+    });
+    localBoardsEl.addEventListener('dragend', function () {
+      clearDropTargetEl();
+      activeDragSource = null;
     });
     localBoardsEl.__hierarchyDragBound = true;
   }

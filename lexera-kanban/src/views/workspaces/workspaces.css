@@ -48,6 +48,14 @@ h3 {
 #local-boards .tree-node[data-tree-target="board"] > .tree-children .tree-indent > .indent-guide:first-child {
   display: none;
 }
+
+/* Phase 2b drop target: dashed accent outline so the user sees where
+ * the dragged sibling will land. */
+#local-boards .tree-node.is-drop-target {
+  outline: 1.5px dashed var(--accent, #4a9eff);
+  outline-offset: -1px;
+  border-radius: 3px;
+}
 .current-workspace-id {
   font-family: ui-monospace, monospace;
   font-size: 10px;
