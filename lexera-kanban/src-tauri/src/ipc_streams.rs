@@ -61,6 +61,11 @@ struct StreamEntry {
     /// Bidirectional streams use this to send payloads back to the backend.
     /// One-way topics (Events, Logs) simply never exercise it.
     send_tx: mpsc::Sender<Vec<u8>>,
+    /// Top-level window label of the webview that opened the stream.
+    /// Used by `stop_window` (called from `main.rs` `CloseRequested`)
+    /// to abort streams owned by a closing window so the registry
+    /// doesn't grow unbounded over multi-window churn.
+    owner_window: String,
 }
 
 #[derive(Default)]
@@ -84,6 +89,29 @@ impl StreamRegistry {
     async fn send_tx(&self, id: &Uuid) -> Option<mpsc::Sender<Vec<u8>>> {
         self.inner.lock().await.get(id).map(|e| e.send_tx.clone())
     }
+
+    /// Abort and drop every stream owned by `window_label`. Synchronous
+    /// best-effort cleanup: tasks are aborted (forwarder drops its IPC
+    /// connection, backend sees EOF and tears down its end) and the
+    /// registry rows are removed. Called from the window-close path
+    /// — no-op if the registry mutex is contended (a closing window
+    /// shouldn't block on an in-flight stream registration).
+    pub fn stop_window_blocking(&self, window_label: &str) {
+        let mut map = match self.inner.try_lock() {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+        let ids: Vec<Uuid> = map
+            .iter()
+            .filter(|(_, e)| e.owner_window == window_label)
+            .map(|(id, _)| *id)
+            .collect();
+        for id in ids {
+            if let Some(entry) = map.remove(&id) {
+                entry.handle.abort();
+            }
+        }
+    }
 }
 
 pub type SharedStreamRegistry = Arc<StreamRegistry>;
@@ -92,10 +120,16 @@ pub type SharedStreamRegistry = Arc<StreamRegistry>;
 /// cancel it later via [`close`] or send payloads via [`send`]. Starts a
 /// background task that forwards server frames into `channel` and
 /// outbound client payloads onto the IPC stream until the stream ends.
+///
+/// `owner_window` is the top-level window label of the requesting
+/// webview (`caller.window().label()` in the Tauri command). It's
+/// stored on the stream entry so window-close cleanup can abort
+/// streams owned by the closing window.
 pub async fn open(
     registry: &SharedStreamRegistry,
     topic: StreamTopicArg,
     channel: Channel<StreamMessageOut>,
+    owner_window: String,
 ) -> Result<Uuid, String> {
     let correlation_id = Uuid::new_v4();
     let topic: StreamTopic = topic.into();
@@ -125,7 +159,7 @@ pub async fn open(
     });
 
     registry
-        .insert(correlation_id, StreamEntry { handle: task, send_tx })
+        .insert(correlation_id, StreamEntry { handle: task, send_tx, owner_window })
         .await;
     Ok(correlation_id)
 }

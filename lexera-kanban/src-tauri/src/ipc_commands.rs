@@ -52,11 +52,13 @@ pub fn backend_asset_url(
 
 #[tauri::command]
 pub async fn backend_ipc_stream_open(
+    caller: tauri::Webview,
     registry: tauri::State<'_, SharedStreamRegistry>,
     topic: StreamTopicArg,
     channel: Channel<StreamMessageOut>,
 ) -> Result<String, String> {
-    let id = ipc_streams::open(&registry, topic, channel).await?;
+    let owner_window = caller.window().label().to_string();
+    let id = ipc_streams::open(&registry, topic, channel, owner_window).await?;
     Ok(id.to_string())
 }
 

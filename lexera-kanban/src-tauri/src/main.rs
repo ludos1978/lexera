@@ -684,6 +684,15 @@ fn main() {
                             let marp = app.state::<export_commands::MarpWatchState>();
                             marp.stop_window(&closing_label);
                         }
+                        // StreamRegistry: abort any IPC streams the
+                        // closing window's webviews opened. Backend
+                        // sees EOF and tears down its end.
+                        {
+                            use tauri::Manager;
+                            let app = window.app_handle();
+                            let streams = app.state::<ipc_streams::SharedStreamRegistry>();
+                            streams.stop_window_blocking(&closing_label);
+                        }
                     }
                 }
                 tauri::WindowEvent::Moved(_pos) => {
