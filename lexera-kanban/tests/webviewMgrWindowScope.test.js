@@ -149,6 +149,14 @@ describe('webview_mgr.rs — lifecycle events are window-scoped, not global', ()
     expect(slice).toMatch(/window_labels\s*\.\s*contains\(&m\.label\)/);
   });
 
+  it('multiview_close_window refuses to close any window other than the caller\'s own (modal self-close only)', () => {
+    var slice = fnCode('multiview_close_window');
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    // Compare caller's window label against the requested target.
+    expect(slice).toMatch(/caller_window_label\s*!=\s*label/);
+    expect(slice).toMatch(/return Err\([\s\S]{0,200}refused/);
+  });
+
   it('multiview_subscribe refuses to subscribe a label outside the caller window (defensive)', () => {
     var slice = fnCode('multiview_subscribe');
     expect(slice).toMatch(/caller:\s*tauri::Webview/);

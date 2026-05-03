@@ -902,7 +902,24 @@ pub fn multiview_open_modal_window(
 }
 
 #[tauri::command]
-pub fn multiview_close_window(app: AppHandle, label: String) -> Result<(), String> {
+pub fn multiview_close_window(
+    app: AppHandle,
+    caller: tauri::Webview,
+    label: String,
+) -> Result<(), String> {
+    // Defensive: a webview can only close ITS OWN window. The single
+    // production caller is a modal closing itself
+    // (`views/modals/confirm.html` / `prompt.html` after the user
+    // clicks OK / Cancel). Without this check, a sub-app webview in
+    // window B could call `multiview_close_window("main")` and
+    // terminate window A — destructive and invisible to the user.
+    let caller_window_label = caller.window().label().to_string();
+    if caller_window_label != label {
+        return Err(format!(
+            "multiview_close_window refused: caller window '{}' cannot close foreign window '{}'",
+            caller_window_label, label
+        ));
+    }
     if let Some(window) = app.get_webview_window(&label) {
         window
             .close()
