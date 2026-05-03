@@ -336,6 +336,73 @@ describe('LexeraHierarchyDragBridge.applyCrossBoardEntityReorder', () => {
   });
 });
 
+describe('LexeraHierarchyDragBridge.applyCrossBoardEntityAbsorb', () => {
+  const bridge = loadBridge();
+
+  function makeBoardWithStructure(prefix) {
+    return {
+      title: prefix, columns: [],
+      rows: [{ id: prefix + '-r1', title: 'Row', stacks: [{
+        id: prefix + '-s1', title: 'Stack', columns: [
+          { id: prefix + '-c1', title: 'Col 1', cards: [{ id: prefix + '-card-1', title: 'A' }] },
+          { id: prefix + '-c2', title: 'Col 2', cards: [] }
+        ]
+      }] }]
+    };
+  }
+
+  it('absorbs a card from board A into a column in board B', () => {
+    const a = makeBoardWithStructure('a');
+    const b = makeBoardWithStructure('b');
+    const ok = bridge.applyCrossBoardEntityAbsorb(a, b,
+      { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      { boardId: 'B', kind: 'column', entityId: 'b-c2' }
+    );
+    expect(ok).toBe(true);
+    // Source board's column lost the card.
+    expect(a.rows[0].stacks[0].columns[0].cards.length).toBe(0);
+    // Target column gained it at the end.
+    expect(b.rows[0].stacks[0].columns[1].cards.map((c) => c.id))
+      .toEqual(['a-card-1']);
+  });
+
+  it('rejects same-board moves (caller should use applyEntityAbsorb)', () => {
+    const a = makeBoardWithStructure('a');
+    const ok = bridge.applyCrossBoardEntityAbsorb(a, a,
+      { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      { boardId: 'A', kind: 'column', entityId: 'a-c2' }
+    );
+    expect(ok).toBe(false);
+  });
+
+  it('rejects same-kind drops (use applyCrossBoardEntityReorder)', () => {
+    const a = makeBoardWithStructure('a');
+    const b = makeBoardWithStructure('b');
+    const ok = bridge.applyCrossBoardEntityAbsorb(a, b,
+      { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      { boardId: 'B', kind: 'card', entityId: 'b-card-1' }
+    );
+    expect(ok).toBe(false);
+  });
+
+  it('rejects non-adjacent cross-kind drops (card → row)', () => {
+    const a = makeBoardWithStructure('a');
+    const b = makeBoardWithStructure('b');
+    const ok = bridge.applyCrossBoardEntityAbsorb(a, b,
+      { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      { boardId: 'B', kind: 'row', entityId: 'b-r1' }
+    );
+    expect(ok).toBe(false);
+  });
+
+  it('returns false on missing/invalid input', () => {
+    expect(bridge.applyCrossBoardEntityAbsorb(null, {}, {}, {})).toBe(false);
+    expect(bridge.applyCrossBoardEntityAbsorb({}, null, {}, {})).toBe(false);
+    expect(bridge.applyCrossBoardEntityAbsorb({}, {}, null, {})).toBe(false);
+    expect(bridge.applyCrossBoardEntityAbsorb({}, {}, {}, null)).toBe(false);
+  });
+});
+
 describe('LexeraHierarchyDragBridge.install', () => {
   const bridge = loadBridge();
 
@@ -501,6 +568,51 @@ describe('LexeraHierarchyDragBridge.install', () => {
     expect(savedB.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
       .toEqual(['b-card-1', 'a-card-1', 'b-card-2']);
     // onApplied fires once per affected board.
+    expect(onApplied).toHaveBeenCalledWith('A');
+    expect(onApplied).toHaveBeenCalledWith('B');
+  });
+
+  it('routes cross-board cross-kind drops through applyCrossBoardEntityAbsorb', async () => {
+    const wv = makeWebview();
+    function makeBoardWithStructure(prefix) {
+      return {
+        title: prefix, columns: [],
+        rows: [{ id: prefix + '-r1', title: 'Row', stacks: [{
+          id: prefix + '-s1', title: 'Stack', columns: [
+            { id: prefix + '-c1', title: 'C1', cards: [{ id: prefix + '-card-1', title: 'A' }] },
+            { id: prefix + '-c2', title: 'C2', cards: [] }
+          ]
+        }] }]
+      };
+    }
+    const a = makeBoardWithStructure('a');
+    const b = makeBoardWithStructure('b');
+    const loadBoard = vi.fn((id) => Promise.resolve(id === 'A' ? a : b));
+    const saveBoard = vi.fn(() => Promise.resolve());
+    const onApplied = vi.fn();
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: vi.fn(() => Promise.resolve()),
+      loadBoard: loadBoard,
+      saveBoard: saveBoard,
+      onApplied: onApplied
+    });
+
+    // a-card-1 → b-c2 absorb (cross-board, cross-kind).
+    wv._fire('hierarchy-entity-drop', {
+      source: { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      target: { boardId: 'B', kind: 'column', entityId: 'b-c2' }
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(saveBoard).toHaveBeenCalledTimes(2);
+    const savedA = saveBoard.mock.calls.find((c) => c[0] === 'A')[1];
+    const savedB = saveBoard.mock.calls.find((c) => c[0] === 'B')[1];
+    expect(savedA.rows[0].stacks[0].columns[0].cards.length).toBe(0);
+    expect(savedB.rows[0].stacks[0].columns[1].cards.map((c) => c.id))
+      .toEqual(['a-card-1']);
     expect(onApplied).toHaveBeenCalledWith('A');
     expect(onApplied).toHaveBeenCalledWith('B');
   });

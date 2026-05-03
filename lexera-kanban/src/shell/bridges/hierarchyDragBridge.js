@@ -170,6 +170,32 @@
   }
 
   /**
+   * Cross-board cross-kind absorb: take `source` out of `srcBoard`
+   * and append to `target`'s children array inside `tgtBoard`.
+   * Mirrors `applyEntityAbsorb` but across boards. Same kind-pair
+   * rules apply (card→column, column→stack, stack→row).
+   *
+   * Returns true on success; false when the kind pair is not a
+   * valid one-level absorb, the boards are the same (caller should
+   * route to `applyEntityAbsorb`), or any required entity is missing.
+   */
+  function applyCrossBoardEntityAbsorb(srcBoard, tgtBoard, source, target) {
+    if (!srcBoard || !tgtBoard || !source || !target) return false;
+    if (source.kind === target.kind) return false;
+    if (source.boardId === target.boardId) return false;
+    var rule = ABSORB_RULES[source.kind + '->' + target.kind];
+    if (!rule) return false;
+    var src = locateEntity(srcBoard, source.kind, source.entityId);
+    var tgt = locateEntityRich(tgtBoard, target.kind, target.entityId);
+    if (!src || !tgt) return false;
+    var children = rule(tgt.entity);
+    if (!children) return false;
+    var moved = src.parent.splice(src.index, 1)[0];
+    children.push(moved);
+    return true;
+  }
+
+  /**
    * Production wiring. Listens for `hierarchy-entity-drop` events
    * from any sub-app webview, looks up the matching board via
    * dependency-injected callbacks, applies the reorder, and persists
@@ -230,9 +256,10 @@
         });
         return;
       }
-      // Cross-board (Phase 3): load BOTH boards, splice source out of
-      // A and into B, save BOTH. `onApplied` fires once per affected
-      // board so listeners can refresh per-board state.
+      // Cross-board: load BOTH boards, dispatch by kind match.
+      //   same-kind  → sibling reorder across boards
+      //   cross-kind → absorb across boards
+      // Save BOTH; `onApplied` fires once per affected board.
       Promise.all([
         Promise.resolve(loadBoard(source.boardId)),
         Promise.resolve(loadBoard(target.boardId))
@@ -240,7 +267,10 @@
         var srcBoard = boards[0];
         var tgtBoard = boards[1];
         if (!srcBoard || !tgtBoard) return;
-        if (!applyCrossBoardEntityReorder(srcBoard, tgtBoard, source, target)) return;
+        var applied = (source.kind === target.kind)
+          ? applyCrossBoardEntityReorder(srcBoard, tgtBoard, source, target)
+          : applyCrossBoardEntityAbsorb(srcBoard, tgtBoard, source, target);
+        if (!applied) return;
         return Promise.all([
           Promise.resolve(saveBoard(source.boardId, srcBoard)),
           Promise.resolve(saveBoard(target.boardId, tgtBoard))
@@ -262,6 +292,7 @@
     applyEntityReorder: applyEntityReorder,
     applyEntityAbsorb: applyEntityAbsorb,
     applyCrossBoardEntityReorder: applyCrossBoardEntityReorder,
+    applyCrossBoardEntityAbsorb: applyCrossBoardEntityAbsorb,
     install: install
   };
   if (typeof window !== 'undefined') window.LexeraHierarchyDragBridge = api;
