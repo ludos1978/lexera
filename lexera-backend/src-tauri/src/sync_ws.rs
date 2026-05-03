@@ -169,7 +169,7 @@ async fn ws_handler(
         .and_then(|token| {
             state
                 .auth_service
-                .lock()
+                .read()
                 .ok()
                 .and_then(|auth| auth.validate_token(token).map(|uid| uid.to_string()))
         })
@@ -264,7 +264,7 @@ async fn handle_sync_session(
     } else if is_remote {
         true
     } else {
-        match state.auth_service.lock() {
+        match state.auth_service.read() {
             Ok(auth) => auth.is_member(&board_id, auth_user),
             Err(_) => false,
         }

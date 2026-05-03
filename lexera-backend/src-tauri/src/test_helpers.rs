@@ -31,7 +31,7 @@ pub fn test_state(tmp: &std::path::Path) -> AppState {
         public_service: Arc::new(std::sync::Mutex::new(
             crate::public::PublicRoomService::new(),
         )),
-        auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
+        auth_service: Arc::new(std::sync::RwLock::new(crate::auth::AuthService::new())),
         sync_hub: Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new())),
         sync_client: Arc::new(tokio::sync::Mutex::new(
             crate::sync_client::SyncClientManager::new(),
@@ -83,7 +83,7 @@ pub fn get_request(uri: &str) -> axum::http::Request<axum::body::Body> {
 
 /// Register a test user in the auth service and return the bearer token.
 pub fn register_test_user(state: &AppState) -> String {
-    let mut auth = state.auth_service.lock().unwrap();
+    let mut auth = state.auth_service.write().unwrap();
     match auth.register_user(crate::auth::User {
         id: "test-user".into(),
         name: "Test User".into(),

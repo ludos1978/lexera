@@ -166,7 +166,7 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
 /// Validates the `Authorization: Bearer <token>` header against the AuthService.
 fn require_authenticated_user(headers: &HeaderMap, state: &AppState) -> Result<String> {
     if let Some(token) = extract_bearer_token(headers) {
-        let auth = lock_arc(&state.auth_service, "auth")?;
+        let auth = read_arc(&state.auth_service, "auth")?;
         if let Some(user_id) = auth.validate_token(&token) {
             return Ok(user_id.to_string());
         }
@@ -210,7 +210,7 @@ fn require_invite_permission_in_state(
     room_id: &str,
     user_id: &str,
 ) -> Result<()> {
-    let auth_service = lock_arc(&state.auth_service, "auth")?;
+    let auth_service = read_arc(&state.auth_service, "auth")?;
     require_invite_permission(&auth_service, room_id, user_id)
 }
 
@@ -237,7 +237,7 @@ fn require_workspace_invite_permission(
 ) -> Result<()> {
     let board_ids = workspace_board_ids(state, workspace_id)?;
 
-    let auth = lock_arc(&state.auth_service, "auth")?;
+    let auth = read_arc(&state.auth_service, "auth")?;
     let is_owner = board_ids
         .iter()
         .any(|board_id| auth.can_invite(board_id, user_id));
@@ -253,7 +253,7 @@ fn require_invite_permission_and_member_count(
     room_id: &str,
     user_id: &str,
 ) -> Result<usize> {
-    let auth_service = lock_arc(&state.auth_service, "auth")?;
+    let auth_service = read_arc(&state.auth_service, "auth")?;
     require_invite_permission(&auth_service, room_id, user_id)?;
     Ok(auth_service.list_room_members(room_id).len())
 }
@@ -269,7 +269,7 @@ fn parse_role_or_bad_request(role: &str) -> Result<RoomRole> {
 
 /// Save auth service state to disk. Logs errors but does not fail the request.
 fn save_auth(state: &AppState) {
-    if let Ok(auth) = state.auth_service.lock() {
+    if let Ok(auth) = state.auth_service.read() {
         if let Err(e) = auth.save_to_file(&state.collab_dir.join("auth.json")) {
             log::error!("[collab.save] Failed to save auth state: {}", e);
         }
@@ -451,7 +451,7 @@ async fn accept_invite(
         // Workspace invite: add user to all boards in this workspace
         let board_ids = workspace_board_ids(&state, &join.room_id)?;
 
-        let mut auth_service = lock_arc(&state.auth_service, "auth")?;
+        let mut auth_service = write_arc(&state.auth_service, "auth")?;
         for board_id in &board_ids {
             let _ = auth_service.add_to_room(board_id, &user_id, role, "workspace-invite");
         }
@@ -463,7 +463,7 @@ async fn accept_invite(
         );
     } else {
         // Board invite: add user to the single board
-        let mut auth_service = lock_arc(&state.auth_service, "auth")?;
+        let mut auth_service = write_arc(&state.auth_service, "auth")?;
         auth_service
             .add_to_room(&join.room_id, &user_id, role, "invite")
             .map_err(|e| {
@@ -477,7 +477,7 @@ async fn accept_invite(
     // Get or generate an auth token for the accepting user so remote clients
     // can authenticate subsequent requests without query-param fallback.
     let auth_token = {
-        let mut auth_service = lock_arc(&state.auth_service, "auth")?;
+        let mut auth_service = write_arc(&state.auth_service, "auth")?;
         match auth_service.get_token_for_user(&user_id) {
             Some(existing) => existing.to_string(),
             None => auth_service
@@ -631,7 +631,7 @@ async fn get_presence(
 ) -> Result<Json<Vec<String>>> {
     let user_id = require_authenticated_user(&headers, &state)?;
     {
-        let auth = lock_arc(&state.auth_service, "auth")?;
+        let auth = read_arc(&state.auth_service, "auth")?;
         require_room_member(&auth, &room_id, &user_id)?;
     }
 
@@ -727,7 +727,7 @@ async fn join_public(
 
     // Lock auth before public (consistent ordering with make_public/make_private/leave_room)
     // Hold both locks to make the max_users check + add atomic
-    let mut auth = lock_arc(&state.auth_service, "auth")?;
+    let mut auth = write_arc(&state.auth_service, "auth")?;
     let mut public = lock_arc(&state.public_service, "public")?;
 
     if !public.is_public(&room_id) {
@@ -777,7 +777,7 @@ async fn leave_room(
 ) -> Result<Json<SuccessResponse>> {
     let user_id = require_authenticated_user(&headers, &state)?;
 
-    let mut auth = lock_arc(&state.auth_service, "auth")?;
+    let mut auth = write_arc(&state.auth_service, "auth")?;
     auth.remove_from_room(&room_id, &user_id);
     drop(auth);
 
@@ -799,7 +799,7 @@ async fn list_room_members(
     let user_id = require_authenticated_user(&headers, &state)?;
 
     // Verify user is member
-    let auth = lock_arc(&state.auth_service, "auth")?;
+    let auth = read_arc(&state.auth_service, "auth")?;
     require_room_member(&auth, &room_id, &user_id)?;
 
     let members = auth.list_room_members(&room_id);
@@ -826,7 +826,7 @@ async fn register_user(
     let id = validate_user_id(&body.id)?;
     let name = validate_user_name(&body.name)?;
 
-    let mut auth = lock_arc(&state.auth_service, "auth")?;
+    let mut auth = write_arc(&state.auth_service, "auth")?;
     let token = auth
         .register_user(crate::auth::User {
             id,
@@ -861,7 +861,7 @@ async fn get_user(
     // Require authentication — caller must identify themselves
     let requester = require_authenticated_user(&headers, &state)?;
 
-    let auth = lock_arc(&state.auth_service, "auth")?;
+    let auth = read_arc(&state.auth_service, "auth")?;
 
     // Verify requester is a registered user
     if auth.get_user(&requester).is_none() {
@@ -880,7 +880,7 @@ async fn get_user(
 
 /// GET /collab/me - Get the local user identity (includes auth token for frontend)
 async fn get_me(State(state): State<AppState>) -> Result<Json<serde_json::Value>> {
-    let auth = lock_arc(&state.auth_service, "auth")?;
+    let auth = read_arc(&state.auth_service, "auth")?;
     let user = auth.get_user(&state.local_user_id).ok_or_else(|| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -911,7 +911,7 @@ async fn update_me(
     let name = validate_user_name(&body.name)?;
 
     let updated_user = {
-        let mut auth = lock_arc(&state.auth_service, "auth")?;
+        let mut auth = write_arc(&state.auth_service, "auth")?;
         let user = auth.get_user(&state.local_user_id).ok_or_else(|| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -936,7 +936,7 @@ async fn update_me(
 
 /// GET /collab/server-info - Get server connection info for sharing
 async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let user_name = lock_arc(&state.auth_service, "auth")
+    let user_name = read_arc(&state.auth_service, "auth")
         .ok()
         .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
         .unwrap_or_else(|| "Unknown".to_string());
@@ -993,7 +993,7 @@ async fn connect_remote(
     State(state): State<AppState>,
     Json(body): Json<ConnectBody>,
 ) -> Result<Json<serde_json::Value>> {
-    let user_name = lock_arc(&state.auth_service, "auth")
+    let user_name = read_arc(&state.auth_service, "auth")
         .ok()
         .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
         .unwrap_or_else(|| "Unknown".to_string());
@@ -1268,7 +1268,7 @@ async fn update_server_config(
         let uid = state.local_user_id.clone();
         let uname = state
             .auth_service
-            .lock()
+            .read()
             .ok()
             .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
             .unwrap_or_else(|| "Unknown".to_string());
@@ -1429,7 +1429,7 @@ mod tests {
 
     /// Register "test-user" as room owner, return their bearer token.
     fn seed_owner(state: &AppState, room_id: &str) -> String {
-        let mut auth = state.auth_service.lock().unwrap();
+        let mut auth = state.auth_service.write().unwrap();
         auth.register_user(crate::auth::User {
             id: "test-user".into(),
             name: "Test User".into(),
@@ -1443,7 +1443,7 @@ mod tests {
 
     /// Register a user and return their bearer token.
     fn seed_user_token(state: &AppState, id: &str, name: &str) -> String {
-        let mut auth = state.auth_service.lock().unwrap();
+        let mut auth = state.auth_service.write().unwrap();
         auth.register_user(crate::auth::User {
             id: id.into(),
             name: name.into(),
@@ -1488,7 +1488,7 @@ mod tests {
         let state = test_state(tmp.path());
 
         {
-            let mut auth = state.auth_service.lock().unwrap();
+            let mut auth = state.auth_service.write().unwrap();
             auth.register_user(crate::auth::User {
                 id: "alice".into(),
                 name: "Alice".into(),
@@ -1662,7 +1662,7 @@ mod tests {
         let state = test_state(tmp.path());
 
         let viewer_token = {
-            let mut auth = state.auth_service.lock().unwrap();
+            let mut auth = state.auth_service.write().unwrap();
             auth.register_user(crate::auth::User {
                 id: "viewer1".into(),
                 name: "Viewer".into(),
@@ -1700,7 +1700,7 @@ mod tests {
         let owner_token = seed_owner(&state, "room1");
 
         let bob_token = {
-            let mut auth = state.auth_service.lock().unwrap();
+            let mut auth = state.auth_service.write().unwrap();
             auth.register_user(crate::auth::User {
                 id: "bob".into(),
                 name: "Bob".into(),
@@ -1820,7 +1820,7 @@ mod tests {
 
         // Register user and get token
         let token = {
-            let mut auth = state.auth_service.lock().unwrap();
+            let mut auth = state.auth_service.write().unwrap();
             let token = auth
                 .register_user(crate::auth::User {
                     id: "alice".into(),
@@ -1881,7 +1881,7 @@ mod tests {
 
         // Register the inviter and accepting user
         let _inviter_token = {
-            let mut auth = state.auth_service.lock().unwrap();
+            let mut auth = state.auth_service.write().unwrap();
             let t = auth
                 .register_user(crate::auth::User {
                     id: "inviter".into(),
@@ -1894,7 +1894,7 @@ mod tests {
             t
         };
         let acceptor_token = {
-            let mut auth = state.auth_service.lock().unwrap();
+            let mut auth = state.auth_service.write().unwrap();
             auth.register_user(crate::auth::User {
                 id: "acceptor".into(),
                 name: "Acceptor".into(),
@@ -1977,7 +1977,7 @@ mod tests {
         }
 
         let owner_token = {
-            let mut auth = state.auth_service.lock().unwrap();
+            let mut auth = state.auth_service.write().unwrap();
             let token = auth
                 .register_user(crate::auth::User {
                     id: "owner".into(),
@@ -2055,7 +2055,7 @@ mod tests {
         };
 
         let acceptor_token = {
-            let mut auth = state.auth_service.lock().unwrap();
+            let mut auth = state.auth_service.write().unwrap();
             auth.register_user(crate::auth::User {
                 id: "acceptor".into(),
                 name: "Acceptor".into(),
@@ -2078,7 +2078,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
-        let auth = state.auth_service.lock().unwrap();
+        let auth = state.auth_service.read().unwrap();
         assert_eq!(
             auth.get_role(&board_id, "acceptor"),
             Some(crate::auth::RoomRole::Viewer)

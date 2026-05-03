@@ -97,7 +97,7 @@ pub struct AppState {
     // Collaboration services wrapped in Arc<Mutex<...>> for thread safety and concurrent access
     pub invite_service: Arc<std::sync::Mutex<InviteService>>,
     pub public_service: Arc<std::sync::Mutex<PublicRoomService>>,
-    pub auth_service: Arc<std::sync::Mutex<AuthService>>,
+    pub auth_service: Arc<std::sync::RwLock<AuthService>>,
     // WebSocket CRDT sync hub (server-side, for incoming connections)
     pub sync_hub: Arc<tokio::sync::Mutex<BoardSyncHub>>,
     // WebSocket CRDT sync client (client-side, for outgoing connections to remote backends)

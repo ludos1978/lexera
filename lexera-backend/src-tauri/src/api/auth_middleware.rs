@@ -67,7 +67,7 @@ pub async fn require_auth_middleware(
     if let Some(token) = extract_bearer_token(&req).or_else(|| extract_query_token(&req)) {
         let valid = state
             .auth_service
-            .lock()
+            .read()
             .ok()
             .and_then(|auth| auth.validate_token(&token).map(|_| ()))
             .is_some();

@@ -281,7 +281,7 @@ mod tests {
         let _ = test_helpers::register_test_user(&state);
         state
             .auth_service
-            .lock()
+            .write()
             .unwrap()
             .add_to_room(&board_id, "test-user", crate::auth::RoomRole::Owner, "test")
             .unwrap();

@@ -333,7 +333,7 @@ fn setup_file_watcher(
 
 /// Collaboration services container returned by `init_collab_services`.
 struct CollabServices {
-    auth_service: Arc<std::sync::Mutex<crate::auth::AuthService>>,
+    auth_service: Arc<std::sync::RwLock<crate::auth::AuthService>>,
     invite_service: Arc<std::sync::Mutex<crate::invite::InviteService>>,
     public_service: Arc<std::sync::Mutex<crate::public::PublicRoomService>>,
 }
@@ -348,7 +348,7 @@ fn init_collab_services(collab_dir: &std::path::Path) -> CollabServices {
         );
     }
 
-    let auth_service = Arc::new(std::sync::Mutex::new(
+    let auth_service = Arc::new(std::sync::RwLock::new(
         crate::auth::AuthService::load_from_file(&collab_dir.join("auth.json")).unwrap_or_else(
             |e| {
                 log::warn!("[collab] Failed to load auth state: {}, starting empty", e);
@@ -386,12 +386,12 @@ fn init_collab_services(collab_dir: &std::path::Path) -> CollabServices {
 
 /// Register the local user as owner of all boards, ensuring they have a token.
 fn bootstrap_local_user(
-    auth_service: &std::sync::Mutex<crate::auth::AuthService>,
+    auth_service: &std::sync::RwLock<crate::auth::AuthService>,
     local_user: &crate::auth::User,
     board_paths: &[(String, PathBuf)],
     collab_dir: &std::path::Path,
 ) {
-    match auth_service.lock() {
+    match auth_service.write() {
         Ok(mut auth) => {
             match auth.register_user(local_user.clone()) {
                 Ok(token) => {
@@ -437,7 +437,7 @@ fn bootstrap_local_user(
         }
     }
     // Persist auth state immediately (token must survive a crash before periodic save)
-    if let Ok(auth) = auth_service.lock() {
+    if let Ok(auth) = auth_service.read() {
         if let Err(e) = auth.save_to_file(&collab_dir.join("auth.json")) {
             log::error!(
                 "[identity] Failed to save auth state after bootstrap: {}",
@@ -450,7 +450,7 @@ fn bootstrap_local_user(
 /// Spawn the invite cleanup and periodic save background tasks.
 fn spawn_background_tasks(
     invite_service: &Arc<std::sync::Mutex<crate::invite::InviteService>>,
-    auth_service: &Arc<std::sync::Mutex<crate::auth::AuthService>>,
+    auth_service: &Arc<std::sync::RwLock<crate::auth::AuthService>>,
     public_service: &Arc<std::sync::Mutex<crate::public::PublicRoomService>>,
     config: &Arc<std::sync::RwLock<config::SyncConfig>>,
     config_path: &std::path::Path,
@@ -507,7 +507,7 @@ fn spawn_background_tasks(
                             log::error!("[collab.save] Failed to save sync config: {}", e);
                         }
                     }
-                    if let Ok(auth) = save_auth.lock() {
+                    if let Ok(auth) = save_auth.read() {
                         if let Err(e) = auth.save_to_file(&save_dir.join("auth.json")) {
                             log::error!("[collab.save] Failed to save auth state: {}", e);
                         }
@@ -527,7 +527,7 @@ fn spawn_background_tasks(
                     if let Ok(cfg) = save_config_arc.read() {
                         let _ = crate::config::save_config(&save_config_path, &cfg);
                     }
-                    if let Ok(auth) = save_auth.lock() {
+                    if let Ok(auth) = save_auth.read() {
                         let _ = auth.save_to_file(&save_dir.join("auth.json"));
                     }
                     if let Ok(invite) = save_invite.lock() {
