@@ -152,25 +152,31 @@ describe('Pattern 5: CloseRequested cleans up every per-window registry', () => 
   const mainRs = codeOnly(readTauri('main.rs'));
   const webviewMgrRs = codeOnly(readTauri('webview_mgr.rs'));
   const exportRs = codeOnly(readTauri('export_commands.rs'));
+  const streamsRs = codeOnly(readTauri('ipc_streams.rs'));
 
   it('SubscriptionRegistry exposes drop_labels and CloseRequested invokes it', () => {
     expect(webviewMgrRs).toMatch(/impl SubscriptionRegistry[\s\S]{0,800}fn drop_labels/);
-    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5000}SubscriptionRegistry[\s\S]{0,200}drop_labels\(&dead_labels\)/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5500}SubscriptionRegistry[\s\S]{0,200}drop_labels\(&dead_labels\)/);
   });
 
   it('HealthTracker exposes drop_labels and CloseRequested invokes it', () => {
     expect(webviewMgrRs).toMatch(/impl HealthTracker[\s\S]{0,500}fn drop_labels/);
-    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5000}HealthTracker[\s\S]{0,200}drop_labels\(&dead_labels\)/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5500}HealthTracker[\s\S]{0,200}drop_labels\(&dead_labels\)/);
   });
 
   it('FocusTracker exposes drop_window and CloseRequested invokes it', () => {
     expect(webviewMgrRs).toMatch(/impl FocusTracker[\s\S]{0,400}fn drop_window/);
-    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5000}FocusTracker[\s\S]{0,200}drop_window\(&closing_label\)/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5500}FocusTracker[\s\S]{0,200}drop_window\(&closing_label\)/);
   });
 
   it('MarpWatchState exposes stop_window and CloseRequested invokes it (kills orphan watch processes)', () => {
     expect(exportRs).toMatch(/impl MarpWatchState[\s\S]{0,1500}fn stop_window/);
-    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5000}MarpWatchState[\s\S]{0,200}stop_window\(&closing_label\)/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5500}MarpWatchState[\s\S]{0,200}stop_window\(&closing_label\)/);
+  });
+
+  it('StreamRegistry exposes stop_window_blocking and CloseRequested invokes it (aborts orphan IPC subscriptions)', () => {
+    expect(streamsRs).toMatch(/impl StreamRegistry[\s\S]{0,1500}fn stop_window_blocking/);
+    expect(mainRs).toMatch(/CloseRequested[\s\S]{0,5500}SharedStreamRegistry[\s\S]{0,200}stop_window_blocking\(&closing_label\)/);
   });
 
   it('LAST_FOCUSED_WINDOW is cleared if it pointed at the closing window', () => {
