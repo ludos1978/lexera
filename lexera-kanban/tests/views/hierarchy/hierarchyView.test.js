@@ -44,11 +44,9 @@ function createDom() {
               <span class="sidebar-header-title hierarchy-title" id="title">All Workspaces</span>
               <span class="hierarchy-mode" id="view-mode">follow active board</span>
             </div>
-            <span class="hierarchy-status" id="status">connecting</span>
           </header>
           <main class="hierarchy-body">
             <section class="hierarchy-section">
-              <h3 class="hierarchy-section-title">Workspace tree <span class="muted" id="local-count"></span></h3>
               <div class="board-list lexera-shared-board-list" id="local-boards" role="tree"></div>
             </section>
           </main>
@@ -92,11 +90,14 @@ describe('hierarchy view sub-app', () => {
     });
     capturedOpts.onActiveBoard('board-1');
 
-    expect(window.document.getElementById('status').textContent).toBe('connected');
-    // Each window owns exactly one workspace — title shows that workspace's name
+    // Status pill, "Workspace tree" title, and `(N)` count are gone
+    // from the panel chrome. The header keeps just the workspace title
+    // and the view-mode pill.
+    expect(window.document.getElementById('status')).toBeNull();
+    expect(window.document.getElementById('local-count')).toBeNull();
+    expect(window.document.querySelector('.hierarchy-section-title')).toBeNull();
     expect(window.document.getElementById('title').textContent).toBe('Workspace Two');
     expect(window.document.getElementById('view-mode').textContent).toBe('manual view');
-    expect(window.document.getElementById('local-count').textContent).toBe('(1)');
     expect(window.document.querySelector('#remote-boards')).toBeNull();
     expect(window.document.getElementById('local-boards').textContent).not.toContain('Remote Board');
     // Boards are TreeView roots — the workspace name lives in the panel
@@ -227,7 +228,9 @@ describe('hierarchy view sub-app', () => {
     capturedOpts.onActiveBoard('board-2');
 
     const state = window.LexeraHierarchyTestApi.collectState();
-    expect(state.status).toBe('connected');
+    // Status pill removed from the panel chrome — the test API still
+    // exposes the property but it's empty when there's no `#status` element.
+    expect(state.status).toBe('');
     // Title is the workspace this window owns — never "All Workspaces"
     expect(state.title).toBe('Default');
     expect(state.activeBoardId).toBe('board-2');

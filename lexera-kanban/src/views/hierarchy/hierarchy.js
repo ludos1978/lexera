@@ -240,14 +240,17 @@
       }
       viewModeEl.textContent = snap && snap.workspaceViewMode === 'manual' ? 'manual view' : 'follow active board';
       renderFromCatalog();
-      statusEl.textContent = 'connected';
+      // Status pill removed from the panel chrome — keep the assignment
+      // null-safe so onCatalog still runs cleanly, and the test API can
+      // still surface the most-recent label when a fixture mounts one.
+      if (statusEl) statusEl.textContent = 'connected';
     },
     onActiveBoard: function (boardId) {
       activeBoardId = boardId;
       refreshActiveHighlight();
     },
     onError: function (err) {
-      statusEl.textContent = String(err);
+      if (statusEl) statusEl.textContent = String(err);
     }
   });
 
