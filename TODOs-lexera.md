@@ -36,9 +36,8 @@ Generally do the most time consuming tasks first. If a task takes very long to c
     - [x] (done) Phase 2b-2-b — dragover marks same-board same-kind sibling as `.is-drop-target`; drop fires `hierarchy-entity-drop` broadcast with `{ source, target }`. Cross-kind/cross-board drops silently rejected (deferred to Phases 3 & 4). (commit df879111)
     - [x] (done) Phase 2b-2-c — `hierarchyDragBridge.js`: pure `applyEntityReorder(board, source, target)` helper + dependency-injected `install()` IPC consumer that subscribes to `hierarchy-entity-drop`, loads the board, applies the reorder, persists via `saveBoard`. (commit 005917f8)
     - [x] (done) Phase 2b-2-d — bridge wired into `index.html` + multiviewClient bootstrap; `loadBoard = api.getBoardColumns(id).fullBoard`, `saveBoard = api.saveBoard`, and `onApplied` rebroadcasts the catalog. Source-level contract test pins the wiring. (commit 1ca1a2ef)
-  - [ ] Phase 3 — drag elements between boards in the workspace tree. — in progress
-  - [ ] Phase 3 — drag elements between boards in the workspace tree.
-  - [ ] Phase 4 — drag elements from a kanban board into the workspace tree (and back).
+  - [x] (done) Phase 3 — cross-board same-kind drops accepted in both sub-apps; shell bridge gains `applyCrossBoardEntityReorder` + cross-board install path that loads + saves both boards. (commit e7fe6352)
+  - [ ] Phase 4 — drag elements from a kanban board into the workspace tree (and back). — in progress
 
 - [x] (done) analyze the whole application structure. detect the used architectural code structures and check if they fit the puprpose. analyze if the code strcture could be improved by restructuring and cleanup. keep the code as simple as needed while making sure it's fulfills all requirements! verify that we apply coding structure rules.
 
