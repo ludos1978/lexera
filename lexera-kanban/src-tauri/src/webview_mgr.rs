@@ -773,11 +773,27 @@ pub struct ModalSpec {
 #[tauri::command]
 pub fn multiview_open_modal_window(
     app: AppHandle,
+    caller: tauri::Webview,
     spec: ModalSpec,
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
     let url_obj = tauri::WebviewUrl::App(spec.url.into());
-    let mut builder = WebviewWindowBuilder::new(&app, &spec.label, url_obj)
+    let mut builder = WebviewWindowBuilder::new(&app, &spec.label, url_obj);
+    // Tie the modal's lifecycle and stacking to the WINDOW that
+    // requested it. Without `parent`, the modal floats above every
+    // open window — opening a confirm dialog from window B would
+    // appear over window A too, which is confusing and (on macOS)
+    // drags focus across windows. With `parent`, the OS keeps the
+    // modal grouped with its opener and auto-closes it when the
+    // parent closes. `parent()` consumes the builder and returns a
+    // Result, so it must run before the other chained config.
+    let caller_window = caller.window();
+    if let Some(parent_window) = app.get_webview_window(caller_window.label()) {
+        builder = builder
+            .parent(&parent_window)
+            .map_err(|e| format!("modal parent attach failed for {}: {}", spec.label, e))?;
+    }
+    builder = builder
         .inner_size(spec.width, spec.height)
         .resizable(false)
         .minimizable(false)
@@ -792,7 +808,11 @@ pub fn multiview_open_modal_window(
     builder
         .build()
         .map_err(|e| format!("modal window build failed for {}: {}", spec.label, e))?;
-    log::info!("[modal] opened '{}'", spec.label);
+    log::info!(
+        "[modal] opened '{}' (parent='{}')",
+        spec.label,
+        caller_window.label()
+    );
     Ok(())
 }
 

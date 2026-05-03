@@ -90,3 +90,35 @@ describe('modal HTML emits via multiview_emit_to(parentLabel, …) when parentLa
     expect(promptEmit).not.toBeNull();
   });
 });
+
+describe('Rust multiview_open_modal_window attaches the modal to the caller window', () => {
+  const webviewMgrRs = readFileSync(
+    resolve(__dirname, '..', 'src-tauri', 'src', 'webview_mgr.rs'),
+    'utf8'
+  );
+  // Strip line comments so the negative assertions don't match
+  // patterns that only appear in documentation.
+  function codeOnly(text) {
+    return text.split('\n').map(function (line) {
+      var i = line.indexOf('//');
+      return i === -1 ? line : line.substring(0, i);
+    }).join('\n');
+  }
+  var code = codeOnly(webviewMgrRs);
+
+  it('takes caller and resolves its top-level window before building the modal', () => {
+    var start = code.indexOf('pub fn multiview_open_modal_window');
+    var nextFn = code.indexOf('pub fn ', start + 1);
+    var slice = code.substring(start, nextFn);
+    expect(slice).toMatch(/caller:\s*tauri::Webview/);
+    expect(slice).toMatch(/caller_window\s*=\s*caller\.window\(\)/);
+    expect(slice).toMatch(/app\.get_webview_window\(caller_window\.label\(\)\)/);
+  });
+
+  it('calls .parent(&parent_window) on the builder so the OS groups the modal with its opener', () => {
+    var start = code.indexOf('pub fn multiview_open_modal_window');
+    var nextFn = code.indexOf('pub fn ', start + 1);
+    var slice = code.substring(start, nextFn);
+    expect(slice).toMatch(/builder\s*=\s*builder\s*\.\s*parent\(&parent_window\)/);
+  });
+});
