@@ -27,6 +27,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
   - [x] (done) Phase 1 — workspaces sub-app: caret per board, lazy `getBoardHierarchy` fetch, nested row/stack/column/card titles. (commit a5c602f2)
   - [x] (done) Phase 1b — same caret + nested render in the hierarchy sub-app. (commit 4daff0fc)
   - [x] (done) Phase 1c — both sub-apps render the unfolded subtree through the shared TreeView (treeView.js) so the layout matches the dashboard / files panel / main board sidebar. (commit 14f0cfdb)
+  - [x] (done) Phase 1d — boards are the TreeView roots; the `.board-item / .board-caret / .board-subtree` shim is gone, the workspace name lives in the panel header, and a single `data-tree-target="board"` node carries the toggle, click, and active highlight. (commit 7bd0e9f8)
   - [ ] Phase 2 — re-order rows / stacks / columns / cards within a single board via drag.
   - [ ] Phase 3 — drag elements between boards in the workspace tree.
   - [ ] Phase 4 — drag elements from a kanban board into the workspace tree (and back).
