@@ -152,8 +152,14 @@ pub async fn handle(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
+    let if_none_match = request
+        .headers()
+        .get("if-none-match")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
     let log_hint = kind_log_hint(&parsed.kind);
-    match fetch_asset(parsed.board_id, parsed.kind, range_header).await {
+    match fetch_asset(parsed.board_id, parsed.kind, range_header, if_none_match).await {
         Ok(resp) => resp,
         Err(e) => {
             log::warn!(target: "lexera.kanban.asset", "fetch failed for {}: {}", log_hint, e);
@@ -173,6 +179,7 @@ async fn fetch_asset(
     board_id: String,
     kind: AssetKind,
     range: Option<String>,
+    if_none_match: Option<String>,
 ) -> Result<Response<Vec<u8>>, String> {
     let mut client = Client::connect()
         .await
@@ -186,6 +193,7 @@ async fn fetch_asset(
             board_id,
             kind,
             range,
+            if_none_match,
         },
     };
     write_frame(stream, &req)

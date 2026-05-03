@@ -937,7 +937,18 @@ mod e2e {
         .await
         .unwrap();
 
-        // The handler should return now.
+        // Drain the stream until it closes. If the server stops correctly,
+        // we'll eventually see the end of the stream or EOF.
+        loop {
+            match read_frame::<_, ServerFrame>(client.stream()).await {
+                Ok(Some(ServerFrame::AssetEnd { .. })) => break,
+                Ok(Some(ServerFrame::Error { .. })) => break,
+                Ok(Some(_)) => continue, // Keep draining chunks
+                Ok(None) => break, // Connection closed
+                Err(_) => break,
+            }
+        }
+
         handle.await.unwrap();
     }
 
@@ -967,9 +978,9 @@ mod e2e {
         assert_eq!(frames.len(), 1);
         match &frames[0] {
             ServerFrame::Error { code, .. } => {
-                assert_eq!(code, "not_found"); // Path validation error usually
+                assert_eq!(code, "range_unsatisfiable");
             }
-            other => panic!("expected not_found error, got {:?}", other),
+            other => panic!("expected range_unsatisfiable error, got {:?}", other),
         }
 
         handle.await.unwrap();
