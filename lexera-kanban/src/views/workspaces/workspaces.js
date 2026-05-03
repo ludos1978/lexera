@@ -55,8 +55,10 @@
   // every entity inside an expanded board so the browser fires
   // dragstart events. Drop wiring is Phase 2b-2.
   function dragAttrs(boardId, kind) {
+    // Pointer-based drag: identify draggable rows by `data-drag-kind`
+    // rather than the HTML5 `draggable` attribute (which doesn't fire
+    // reliably in WKWebView for these element types).
     return {
-      draggable: 'true',
       'data-drag-kind': kind,
       'data-drag-board-id': boardId
     };
@@ -172,14 +174,22 @@
     }
   }
 
-  // Phase 2b drag-and-drop wiring — see hierarchy.js for the full
-  // commentary; keeping the two surfaces in sync.
+  // Pointer-based drag/drop (Phase 2-4). HTML5 native draggable does
+  // not work reliably in WKWebView / WebView2 for this codebase —
+  // every other Lexera drag surface (sidebar tree in `dndListeners.js`,
+  // workspace shell tabs in `tabDragController.js`) uses the same
+  // mousedown → distance-threshold → mousemove → mouseup pattern.
+  // Mirror that here so the broadcast contract (and the bridge that
+  // listens for it) stays unchanged.
   if (localBoardsEl && !localBoardsEl.__workspacesDragBound) {
-    // Phase 4 absorb relations: drop kind X onto kind Y where Y can
-    // contain X. Must match `ABSORB_RULES` in `hierarchyDragBridge.js`.
     var ABSORB_KINDS = { card: 'column', column: 'stack', stack: 'row' };
-    var readSource = function (el) {
-      var src = el && el.closest ? el.closest('.tree-node[draggable="true"]') : null;
+    var DRAG_THRESHOLD_PX = 5;
+    var pendingDrag = null;   // { startX, startY, source }
+    var activeDrag = null;    // { source } — set once threshold is exceeded
+    var activeDropTargetEl = null;
+
+    var readSourceFromNode = function (el) {
+      var src = el && el.closest ? el.closest('.tree-node[data-drag-kind]') : null;
       if (!src || !localBoardsEl.contains(src)) return null;
       return {
         boardId: src.getAttribute('data-drag-board-id') || '',
@@ -187,18 +197,15 @@
         entityId: src.getAttribute('data-tree-id') || ''
       };
     };
-    var readDropTarget = function (el, dragSource) {
-      var tgt = el && el.closest ? el.closest('.tree-node[draggable="true"]') : null;
+    var readDropTargetFromPoint = function (clientX, clientY, dragSource) {
+      var hit = document.elementFromPoint(clientX, clientY);
+      var tgt = hit && hit.closest ? hit.closest('.tree-node[data-drag-kind]') : null;
       if (!tgt || !localBoardsEl.contains(tgt)) return null;
       var info = {
         boardId: tgt.getAttribute('data-drag-board-id') || '',
         kind: tgt.getAttribute('data-drag-kind') || '',
         entityId: tgt.getAttribute('data-tree-id') || ''
       };
-      // Drop validity:
-      //   same-kind         → sibling reorder
-      //   one-level absorb  → card→column, column→stack, stack→row
-      //   anything else     → silently rejected
       if (!dragSource) return null;
       if (info.entityId === dragSource.entityId) return null;
       if (info.kind !== dragSource.kind) {
@@ -207,61 +214,78 @@
       }
       return { node: tgt, info: info };
     };
-    var activeDragSource = null;
-    var activeDropTargetEl = null;
     var clearDropTargetEl = function () {
       if (activeDropTargetEl) {
         activeDropTargetEl.classList.remove('is-drop-target');
         activeDropTargetEl = null;
       }
     };
-    localBoardsEl.addEventListener('dragstart', function (e) {
-      var payload = readSource(e.target);
-      if (!payload) return;
-      activeDragSource = payload;
-      if (e.dataTransfer && typeof e.dataTransfer.setData === 'function') {
-        try {
-          e.dataTransfer.setData('application/x-lexera-entity', JSON.stringify(payload));
-          e.dataTransfer.effectAllowed = 'move';
-        } catch (_) { /* JSDOM may reject unknown MIME — non-fatal */ }
-      }
-      if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
-        window.LexeraSubApp.broadcast('hierarchy-entity-drag-start', payload);
-      }
-    });
-    localBoardsEl.addEventListener('dragover', function (e) {
-      var match = readDropTarget(e.target, activeDragSource);
-      if (!match) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      if (activeDropTargetEl !== match.node) {
-        clearDropTargetEl();
-        match.node.classList.add('is-drop-target');
-        activeDropTargetEl = match.node;
-      }
-    });
-    localBoardsEl.addEventListener('dragleave', function (e) {
-      if (e.target === activeDropTargetEl) clearDropTargetEl();
-    });
-    localBoardsEl.addEventListener('drop', function (e) {
-      var match = readDropTarget(e.target, activeDragSource);
+    var endDrag = function () {
       clearDropTargetEl();
-      if (!match) {
-        activeDragSource = null;
+      pendingDrag = null;
+      activeDrag = null;
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('mouseup', onUp, true);
+    };
+    var onMove = function (e) {
+      if (!pendingDrag) return;
+      if (!activeDrag) {
+        var dx = e.clientX - pendingDrag.startX;
+        var dy = e.clientY - pendingDrag.startY;
+        if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
+        activeDrag = { source: pendingDrag.source };
+        if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+          window.LexeraSubApp.broadcast('hierarchy-entity-drag-start', activeDrag.source);
+        }
+      }
+      var match = readDropTargetFromPoint(e.clientX, e.clientY, activeDrag.source);
+      if (activeDropTargetEl !== (match && match.node)) {
+        clearDropTargetEl();
+        if (match) {
+          match.node.classList.add('is-drop-target');
+          activeDropTargetEl = match.node;
+        }
+      }
+    };
+    var onUp = function (e) {
+      if (!activeDrag) {
+        // Mousedown without crossing the drag threshold — let the click
+        // listener handle navigation/toggle.
+        endDrag();
         return;
       }
-      e.preventDefault();
-      if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
-        window.LexeraSubApp.broadcast('hierarchy-entity-drop', {
-          source: activeDragSource,
-          target: match.info
-        });
-      }
-      activeDragSource = null;
-    });
-    localBoardsEl.addEventListener('dragend', function () {
+      var match = readDropTargetFromPoint(e.clientX, e.clientY, activeDrag.source);
+      var src = activeDrag.source;
+      // Clean up state BEFORE firing the broadcast so onCustom handlers
+      // can re-render synchronously.
       clearDropTargetEl();
-      activeDragSource = null;
+      var hadDrop = !!match;
+      var dropPayload = match ? { source: src, target: match.info } : null;
+      pendingDrag = null;
+      activeDrag = null;
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('mouseup', onUp, true);
+      if (hadDrop && window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+        window.LexeraSubApp.broadcast('hierarchy-entity-drop', dropPayload);
+      }
+    };
+    localBoardsEl.addEventListener('mousedown', function (e) {
+      // Only left mouse button starts a drag. Skip clicks on the
+      // toggle (TreeView fold caret) so toggling stays click-driven.
+      if (e.button !== 0) return;
+      if (e.target && e.target.closest && e.target.closest('.tree-toggle')) return;
+      var source = readSourceFromNode(e.target);
+      if (!source) return;
+      pendingDrag = { startX: e.clientX, startY: e.clientY, source: source };
+      activeDrag = null;
+      document.addEventListener('mousemove', onMove, true);
+      document.addEventListener('mouseup', onUp, true);
+    });
+    // Cancel an in-flight drag if the window loses focus or the page
+    // becomes hidden — common gesture-loss scenarios.
+    window.addEventListener('blur', endDrag);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) endDrag();
     });
     localBoardsEl.__workspacesDragBound = true;
   }

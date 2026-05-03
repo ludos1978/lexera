@@ -201,6 +201,9 @@ pub enum ServerFrame {
         correlation_id: Uuid,
         error: Option<String>,
     },
+    /// Server-originated heartbeat. Used to keep the connection alive and
+    /// detect dead peers in the absence of active traffic.
+    Heartbeat,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

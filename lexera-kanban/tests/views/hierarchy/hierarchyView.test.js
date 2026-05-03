@@ -455,12 +455,13 @@ describe('hierarchy view sub-app', () => {
       const boardGrip = boardNode.querySelector('.tree-grip');
       expect(boardGrip.classList.contains('tree-grip-spacer')).toBe(true);
 
-      // Phase 2b-1: every entity inside an expanded board carries
-      // `draggable="true"` plus `data-drag-kind` and `data-drag-board-id`
-      // so a future drop handler can read source identity from the
-      // dragstart event without walking the DOM. Boards themselves are
-      // not draggable (TreeView roots).
-      const draggableNodes = subtreeChildren.querySelectorAll('.tree-node[draggable="true"]');
+      // Pointer-based drag: every entity inside an expanded board
+      // carries `data-drag-kind` and `data-drag-board-id` so the
+      // mousedown listener can identify its source without walking
+      // the DOM. The pointer-drag wiring uses these attrs (not the
+      // unreliable HTML5 `draggable` attribute) — see workspaces.js
+      // and hierarchy.js for the reasoning.
+      const draggableNodes = subtreeChildren.querySelectorAll('.tree-node[data-drag-kind]');
       expect(draggableNodes.length).toBeGreaterThanOrEqual(4);
       const dragKinds = Array.from(draggableNodes)
         .map((n) => n.getAttribute('data-drag-kind'));
@@ -471,13 +472,55 @@ describe('hierarchy view sub-app', () => {
       const boardIds = Array.from(draggableNodes)
         .map((n) => n.getAttribute('data-drag-board-id'));
       expect(boardIds.every((id) => id === 'b1')).toBe(true);
-      expect(boardNode.getAttribute('draggable')).not.toBe('true');
+      // Board nodes themselves get no drag affordance — they are
+      // TreeView roots, not children of anything reorderable.
+      expect(boardNode.getAttribute('data-drag-kind')).toBeNull();
     });
 
-    // Phase 2b-2-a: a dragstart on an entity node must broadcast
-    // `hierarchy-entity-drag-start` with the source identity so a
-    // shell-side handler can route the move into storage.
-    it('dragstart on a card broadcasts hierarchy-entity-drag-start with source identity', async () => {
+    // Pointer-based drag/drop helpers. JSDOM's `elementFromPoint`
+    // returns null without layout, so we stub it per-test to point at
+    // the desired drop target. Mirrors the production flow:
+    //   mousedown on source → mousemove (cross threshold) → mousemove
+    //   (over target) → mouseup (over target) — no HTML5 drag events.
+    function pointerDragSequence(window, sourceEl, targetEl, opts) {
+      opts = opts || {};
+      var origElementFromPoint = window.document.elementFromPoint;
+      // Initial mousedown — pointer is on the source.
+      sourceEl.dispatchEvent(new window.MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10
+      }));
+      // First mousemove — same coords, below threshold, no drag-start yet.
+      // Stub elementFromPoint to return the source for now (irrelevant
+      // until threshold is crossed).
+      window.document.elementFromPoint = function () { return sourceEl; };
+      window.document.dispatchEvent(new window.MouseEvent('mousemove', {
+        bubbles: true, clientX: 11, clientY: 11
+      }));
+      // Second mousemove — well past threshold, still over source.
+      window.document.dispatchEvent(new window.MouseEvent('mousemove', {
+        bubbles: true, clientX: 50, clientY: 50
+      }));
+      // Third mousemove — over the target (stub elementFromPoint).
+      if (targetEl) {
+        window.document.elementFromPoint = function () { return targetEl; };
+        window.document.dispatchEvent(new window.MouseEvent('mousemove', {
+          bubbles: true, clientX: 100, clientY: 100
+        }));
+      }
+      if (opts.skipMouseup) {
+        window.document.elementFromPoint = origElementFromPoint;
+        return;
+      }
+      // mouseup — over the target if provided, otherwise away.
+      window.document.dispatchEvent(new window.MouseEvent('mouseup', {
+        bubbles: true, clientX: 100, clientY: 100
+      }));
+      window.document.elementFromPoint = origElementFromPoint;
+    }
+
+    // Pointer-based dragstart broadcasts `hierarchy-entity-drag-start`
+    // with the source identity once the threshold is crossed.
+    it('mousedown + threshold-crossing mousemove broadcasts hierarchy-entity-drag-start', async () => {
       const dom = createDom();
       const { window } = dom;
       let capturedOpts = null;
@@ -510,27 +553,14 @@ describe('hierarchy view sub-app', () => {
       await new Promise((r) => setTimeout(r, 0));
 
       const cardNode = window.document.querySelector(
-        '#local-boards .tree-node[draggable="true"][data-drag-kind="card"]'
+        '#local-boards .tree-node[data-drag-kind="card"]'
       );
       expect(cardNode).toBeTruthy();
 
-      // JSDOM exposes Event but DragEvent often lacks dataTransfer; use
-      // a plain Event with bubbles and stub dataTransfer manually so
-      // the listener's `setData` path is exercised.
-      const ev = new window.Event('dragstart', { bubbles: true, cancelable: true });
-      const stored = {};
-      ev.dataTransfer = {
-        setData: (k, v) => { stored[k] = v; },
-        getData: (k) => stored[k] || '',
-        effectAllowed: ''
-      };
-      cardNode.dispatchEvent(ev);
-
-      expect(stored['application/x-lexera-entity']).toBeTruthy();
-      const payload = JSON.parse(stored['application/x-lexera-entity']);
-      expect(payload.boardId).toBe('b1');
-      expect(payload.kind).toBe('card');
-      expect(payload.entityId).toBe('card-1');
+      // Drive the pointer sequence (mousedown → threshold mousemove)
+      // without a target so no drop fires; we only care about the
+      // drag-start broadcast.
+      pointerDragSequence(window, cardNode, null, { skipMouseup: true });
 
       const dragBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drag-start');
       expect(dragBroadcast).toBeTruthy();
@@ -576,37 +606,18 @@ describe('hierarchy view sub-app', () => {
       await new Promise((r) => setTimeout(r, 0));
 
       const cards = window.document.querySelectorAll(
-        '#local-boards .tree-node[draggable="true"][data-drag-kind="card"]'
+        '#local-boards .tree-node[data-drag-kind="card"]'
       );
       const sourceCard = cards[0];
       const targetCard = cards[1];
 
-      // Helper: dispatch a fake DragEvent with a stubbed dataTransfer.
-      function fakeDragEvent(name) {
-        const stored = {};
-        const dt = {
-          setData: (k, v) => { stored[k] = v; },
-          getData: (k) => stored[k] || '',
-          effectAllowed: '',
-          dropEffect: ''
-        };
-        const ev = new window.Event(name, { bubbles: true, cancelable: true });
-        ev.dataTransfer = dt;
-        return ev;
-      }
+      // Drive the full pointer sequence: source mousedown → threshold-
+      // crossing mousemoves → mousemove over target (marks is-drop-
+      // target) → mouseup over target (fires the drop broadcast).
+      pointerDragSequence(window, sourceCard, targetCard);
 
-      // 1. dragstart on source card.
-      sourceCard.dispatchEvent(fakeDragEvent('dragstart'));
-      // 2. dragover on target card → should mark .is-drop-target.
-      const overEv = fakeDragEvent('dragover');
-      targetCard.dispatchEvent(overEv);
-      expect(targetCard.classList.contains('is-drop-target')).toBe(true);
-      expect(overEv.defaultPrevented).toBe(true);
-
-      // 3. drop on target card → broadcasts hierarchy-entity-drop with
-      //    source + target identities.
-      const dropEv = fakeDragEvent('drop');
-      targetCard.dispatchEvent(dropEv);
+      // After mouseup, the drop-target indicator is cleared. Drop
+      // broadcast carries both ends.
       expect(targetCard.classList.contains('is-drop-target')).toBe(false);
       const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
       expect(dropBroadcast).toBeTruthy();
@@ -668,20 +679,7 @@ describe('hierarchy view sub-app', () => {
       expect(sourceCard).toBeTruthy();
       expect(targetCard).toBeTruthy();
 
-      function fakeDragEvent(name) {
-        const stored = {};
-        const ev = new window.Event(name, { bubbles: true, cancelable: true });
-        ev.dataTransfer = { setData: (k, v) => { stored[k] = v; }, getData: (k) => stored[k] || '', effectAllowed: '', dropEffect: '' };
-        return ev;
-      }
-      sourceCard.dispatchEvent(fakeDragEvent('dragstart'));
-      const overEv = fakeDragEvent('dragover');
-      targetCard.dispatchEvent(overEv);
-      // Same-kind cross-board drop is accepted now.
-      expect(overEv.defaultPrevented).toBe(true);
-      expect(targetCard.classList.contains('is-drop-target')).toBe(true);
-
-      targetCard.dispatchEvent(fakeDragEvent('drop'));
+      pointerDragSequence(window, sourceCard, targetCard);
       const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
       expect(dropBroadcast).toBeTruthy();
       expect(dropBroadcast.payload.source.boardId).toBe('b1');
@@ -724,26 +722,12 @@ describe('hierarchy view sub-app', () => {
         .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 0));
 
-      function fakeDragEvent(name) {
-        const stored = {};
-        const ev = new window.Event(name, { bubbles: true, cancelable: true });
-        ev.dataTransfer = { setData: (k, v) => { stored[k] = v; }, getData: (k) => stored[k] || '', effectAllowed: '', dropEffect: '' };
-        return ev;
-      }
       const cardNode = window.document.querySelector('.tree-node[data-drag-kind="card"][data-tree-id="card-1"]');
       // Drop the card onto column c2 (the empty Done column).
       const columnNode = window.document.querySelector('.tree-node[data-drag-kind="column"][data-tree-id="c2"]');
       expect(cardNode).toBeTruthy();
       expect(columnNode).toBeTruthy();
-      cardNode.dispatchEvent(fakeDragEvent('dragstart'));
-      const overEv = fakeDragEvent('dragover');
-      columnNode.dispatchEvent(overEv);
-      // Card → column is a valid one-level absorb — dragover must
-      // preventDefault and mark the target.
-      expect(overEv.defaultPrevented).toBe(true);
-      expect(columnNode.classList.contains('is-drop-target')).toBe(true);
-
-      columnNode.dispatchEvent(fakeDragEvent('drop'));
+      pointerDragSequence(window, cardNode, columnNode);
       const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
       expect(dropBroadcast).toBeTruthy();
       expect(dropBroadcast.payload.source.kind).toBe('card');
@@ -781,22 +765,13 @@ describe('hierarchy view sub-app', () => {
         .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 0));
 
-      function fakeDragEvent(name) {
-        const stored = {};
-        const ev = new window.Event(name, { bubbles: true, cancelable: true });
-        ev.dataTransfer = { setData: (k, v) => { stored[k] = v; }, getData: (k) => stored[k] || '', effectAllowed: '', dropEffect: '' };
-        return ev;
-      }
       const cardNode = window.document.querySelector('.tree-node[data-drag-kind="card"]');
       const rowNode = window.document.querySelector('.tree-node[data-drag-kind="row"]');
-      cardNode.dispatchEvent(fakeDragEvent('dragstart'));
-      const overEv = fakeDragEvent('dragover');
-      rowNode.dispatchEvent(overEv);
-      // Card → row is two levels up, not a valid absorb — stays rejected.
-      expect(overEv.defaultPrevented).toBe(false);
+      // Card → row is two levels up — not a valid absorb. Even though
+      // the pointer drag fires a drag-start broadcast, the drop must
+      // be silently rejected.
+      pointerDragSequence(window, cardNode, rowNode);
       expect(rowNode.classList.contains('is-drop-target')).toBe(false);
-
-      rowNode.dispatchEvent(fakeDragEvent('drop'));
       const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
       expect(dropBroadcast).toBeFalsy();
     });

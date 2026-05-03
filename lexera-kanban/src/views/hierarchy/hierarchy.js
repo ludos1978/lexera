@@ -84,8 +84,10 @@
   // browser fires native dragstart events. The drop wiring lands in
   // 2b-2; this slice only enables the source half.
   function dragAttrs(boardId, kind) {
+    // Pointer-based drag: identify draggable rows by `data-drag-kind`
+    // rather than the HTML5 `draggable` attribute (which doesn't fire
+    // reliably in WKWebView for these element types).
     return {
-      draggable: 'true',
       'data-drag-kind': kind,
       'data-drag-board-id': boardId
     };
@@ -227,25 +229,23 @@
     }
   }
 
-  // Phase 2b drag-and-drop wiring — three delegated listeners on the
-  // tree container.
-  //
-  // 2b-2-a (dragstart): stamp source identity into DataTransfer +
-  //   broadcast `hierarchy-entity-drag-start`.
-  // 2b-2-b (dragover): preventDefault on a same-kind same-board target
-  //   so the browser shows a copy / move cursor + add `.is-drop-target`
-  //   class for visual feedback.
-  // 2b-2-b (drop): broadcast `hierarchy-entity-drop` with
-  //   `{ source, target }`. Local-cache reorder + `saveBoard` persist
-  //   land in the next slice.
+  // Pointer-based drag/drop. HTML5 native `draggable` does not fire
+  // reliably in WKWebView / WebView2 for these element types; every
+  // other Lexera drag surface (sidebar tree in `dndListeners.js`,
+  // workspace shell tabs in `tabDragController.js`) uses the same
+  // mousedown → distance-threshold → mousemove → mouseup pattern,
+  // so we mirror it here. Broadcast contract stays the same:
+  // `hierarchy-entity-drag-start` once the threshold is crossed,
+  // `hierarchy-entity-drop` on a valid mouseup target.
   if (localBoardsEl && !localBoardsEl.__hierarchyDragBound) {
-    // Phase 4 absorb relations: drop kind X onto kind Y where Y can
-    // contain X. Mirrors `ABSORB_RULES` in `hierarchyDragBridge.js`
-    // so the sub-app's drop-validity check stays in lockstep with
-    // the bridge's reorder logic.
     var ABSORB_KINDS = { card: 'column', column: 'stack', stack: 'row' };
-    var readSource = function (el) {
-      var src = el && el.closest ? el.closest('.tree-node[draggable="true"]') : null;
+    var DRAG_THRESHOLD_PX = 5;
+    var pendingDrag = null;
+    var activeDrag = null;
+    var activeDropTargetEl = null;
+
+    var readSourceFromNode = function (el) {
+      var src = el && el.closest ? el.closest('.tree-node[data-drag-kind]') : null;
       if (!src || !localBoardsEl.contains(src)) return null;
       return {
         boardId: src.getAttribute('data-drag-board-id') || '',
@@ -253,19 +253,15 @@
         entityId: src.getAttribute('data-tree-id') || ''
       };
     };
-    var readDropTarget = function (el, dragSource) {
-      var tgt = el && el.closest ? el.closest('.tree-node[draggable="true"]') : null;
+    var readDropTargetFromPoint = function (clientX, clientY, dragSource) {
+      var hit = document.elementFromPoint(clientX, clientY);
+      var tgt = hit && hit.closest ? hit.closest('.tree-node[data-drag-kind]') : null;
       if (!tgt || !localBoardsEl.contains(tgt)) return null;
       var info = {
         boardId: tgt.getAttribute('data-drag-board-id') || '',
         kind: tgt.getAttribute('data-drag-kind') || '',
         entityId: tgt.getAttribute('data-tree-id') || ''
       };
-      // Drop validity:
-      //   same-kind         → sibling reorder (Phase 2 / 3)
-      //   one-level absorb  → card→column, column→stack, stack→row
-      //                       (Phase 4: drop a child into its container)
-      //   anything else     → silently rejected
       if (!dragSource) return null;
       if (info.entityId === dragSource.entityId) return null;
       if (info.kind !== dragSource.kind) {
@@ -274,67 +270,74 @@
       }
       return { node: tgt, info: info };
     };
-    var activeDragSource = null;
-    var activeDropTargetEl = null;
     var clearDropTargetEl = function () {
       if (activeDropTargetEl) {
         activeDropTargetEl.classList.remove('is-drop-target');
         activeDropTargetEl = null;
       }
     };
-    localBoardsEl.addEventListener('dragstart', function (e) {
-      var payload = readSource(e.target);
-      if (!payload) return;
-      activeDragSource = payload;
-      if (e.dataTransfer && typeof e.dataTransfer.setData === 'function') {
-        try {
-          e.dataTransfer.setData('application/x-lexera-entity', JSON.stringify(payload));
-          e.dataTransfer.effectAllowed = 'move';
-        } catch (_) { /* JSDOM may reject unknown MIME — non-fatal */ }
-      }
-      if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
-        window.LexeraSubApp.broadcast('hierarchy-entity-drag-start', payload);
-      }
-    });
-    localBoardsEl.addEventListener('dragover', function (e) {
-      var match = readDropTarget(e.target, activeDragSource);
-      if (!match) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      if (activeDropTargetEl !== match.node) {
-        clearDropTargetEl();
-        match.node.classList.add('is-drop-target');
-        activeDropTargetEl = match.node;
-      }
-    });
-    localBoardsEl.addEventListener('dragleave', function (e) {
-      // Only clear when leaving the container entirely so a transition
-      // between sibling targets doesn't flicker.
-      if (e.target === activeDropTargetEl) {
-        // Browser fires dragleave on the previous target before
-        // dragenter on the next — the next dragover will reapply.
-        clearDropTargetEl();
-      }
-    });
-    localBoardsEl.addEventListener('drop', function (e) {
-      var match = readDropTarget(e.target, activeDragSource);
+    var endDrag = function () {
       clearDropTargetEl();
-      if (!match) {
-        activeDragSource = null;
+      pendingDrag = null;
+      activeDrag = null;
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('mouseup', onUp, true);
+    };
+    var onMove = function (e) {
+      if (!pendingDrag) return;
+      if (!activeDrag) {
+        var dx = e.clientX - pendingDrag.startX;
+        var dy = e.clientY - pendingDrag.startY;
+        if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
+        activeDrag = { source: pendingDrag.source };
+        if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+          window.LexeraSubApp.broadcast('hierarchy-entity-drag-start', activeDrag.source);
+        }
+      }
+      var match = readDropTargetFromPoint(e.clientX, e.clientY, activeDrag.source);
+      if (activeDropTargetEl !== (match && match.node)) {
+        clearDropTargetEl();
+        if (match) {
+          match.node.classList.add('is-drop-target');
+          activeDropTargetEl = match.node;
+        }
+      }
+    };
+    var onUp = function (e) {
+      if (!activeDrag) {
+        // Below threshold — let the click handler take care of the
+        // navigate / toggle path.
+        endDrag();
         return;
       }
-      e.preventDefault();
-      if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
-        window.LexeraSubApp.broadcast('hierarchy-entity-drop', {
-          source: activeDragSource,
-          target: match.info
-        });
-      }
-      activeDragSource = null;
-    });
-    localBoardsEl.addEventListener('dragend', function () {
+      var match = readDropTargetFromPoint(e.clientX, e.clientY, activeDrag.source);
+      var src = activeDrag.source;
       clearDropTargetEl();
-      activeDragSource = null;
+      var hadDrop = !!match;
+      var dropPayload = match ? { source: src, target: match.info } : null;
+      pendingDrag = null;
+      activeDrag = null;
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('mouseup', onUp, true);
+      if (hadDrop && window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+        window.LexeraSubApp.broadcast('hierarchy-entity-drop', dropPayload);
+      }
+    };
+    localBoardsEl.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      // Clicks on the toggle stay click-driven so fold/unfold isn't
+      // hijacked by a tiny drag.
+      if (e.target && e.target.closest && e.target.closest('.tree-toggle')) return;
+      var source = readSourceFromNode(e.target);
+      if (!source) return;
+      pendingDrag = { startX: e.clientX, startY: e.clientY, source: source };
+      activeDrag = null;
+      document.addEventListener('mousemove', onMove, true);
+      document.addEventListener('mouseup', onUp, true);
+    });
+    window.addEventListener('blur', endDrag);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) endDrag();
     });
     localBoardsEl.__hierarchyDragBound = true;
   }
