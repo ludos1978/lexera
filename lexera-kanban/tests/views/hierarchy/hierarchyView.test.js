@@ -537,10 +537,11 @@ describe('hierarchy view sub-app', () => {
       expect(dragBroadcast.payload).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
     });
 
-    // Phase 2b-2-b: dragging a card over a sibling card adds
-    // .is-drop-target to the target; dropping fires
-    // `hierarchy-entity-drop` with { source, target }. Cross-kind and
-    // cross-board drops are silently rejected (deferred to Phases 3-4).
+    // Phase 2b-2-b + Phase 3: dragging a card over a sibling card
+    // adds `.is-drop-target` to the target; dropping fires
+    // `hierarchy-entity-drop` with { source, target }. Cross-board
+    // drops are accepted (Phase 3); cross-kind drops still rejected
+    // (Phase 4 territory).
     it('dragover marks same-kind same-board sibling as drop target; drop broadcasts source+target', async () => {
       const dom = createDom();
       const { window } = dom;
@@ -611,6 +612,82 @@ describe('hierarchy view sub-app', () => {
       expect(dropBroadcast).toBeTruthy();
       expect(dropBroadcast.payload.source).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
       expect(dropBroadcast.payload.target).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-2' });
+    });
+
+    // Phase 3: cross-board drop is accepted. The sub-app shows a
+    // single workspace; the user has two of its boards expanded and
+    // drags a card from one onto a card in the other.
+    it('cross-board same-kind drop fires broadcast with both source and target board ids', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      // Each board's getBoardHierarchy call resolves with a different
+      // single-card column so the source and target cards are
+      // unambiguously in different boards.
+      const hierarchyByBoard = {
+        b1: [{ id: 'r-b1', title: 'R', stacks: [{ id: 's-b1', title: 'S',
+          columns: [{ id: 'c-b1', title: 'C', cards: [{ id: 'card-b1', title: 'A' }] }] }] }],
+        b2: [{ id: 'r-b2', title: 'R', stacks: [{ id: 's-b2', title: 'S',
+          columns: [{ id: 'c-b2', title: 'C', cards: [{ id: 'card-b2', title: 'B' }] }] }] }]
+      };
+      window.LexeraApi = {
+        getBoardHierarchy: vi.fn((id) => Promise.resolve({ rows: hierarchyByBoard[id] || [] }))
+      };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [
+          { id: 'b1', title: 'Board 1', workspace_id: 'ws-1' },
+          { id: 'b2', title: 'Board 2', workspace_id: 'ws-1' }
+        ],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      // Expand both boards so their cards are in the DOM.
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b2"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const sourceCard = window.document.querySelector(
+        '#local-boards .tree-node[data-drag-kind="card"][data-drag-board-id="b1"]'
+      );
+      const targetCard = window.document.querySelector(
+        '#local-boards .tree-node[data-drag-kind="card"][data-drag-board-id="b2"]'
+      );
+      expect(sourceCard).toBeTruthy();
+      expect(targetCard).toBeTruthy();
+
+      function fakeDragEvent(name) {
+        const stored = {};
+        const ev = new window.Event(name, { bubbles: true, cancelable: true });
+        ev.dataTransfer = { setData: (k, v) => { stored[k] = v; }, getData: (k) => stored[k] || '', effectAllowed: '', dropEffect: '' };
+        return ev;
+      }
+      sourceCard.dispatchEvent(fakeDragEvent('dragstart'));
+      const overEv = fakeDragEvent('dragover');
+      targetCard.dispatchEvent(overEv);
+      // Same-kind cross-board drop is accepted now.
+      expect(overEv.defaultPrevented).toBe(true);
+      expect(targetCard.classList.contains('is-drop-target')).toBe(true);
+
+      targetCard.dispatchEvent(fakeDragEvent('drop'));
+      const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
+      expect(dropBroadcast).toBeTruthy();
+      expect(dropBroadcast.payload.source.boardId).toBe('b1');
+      expect(dropBroadcast.payload.target.boardId).toBe('b2');
+      expect(dropBroadcast.payload.source.entityId).toBe('card-b1');
+      expect(dropBroadcast.payload.target.entityId).toBe('card-b2');
     });
 
     it('cross-kind drop is rejected — no broadcast, no drop-target indicator', async () => {

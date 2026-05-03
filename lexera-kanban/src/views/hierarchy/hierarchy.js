@@ -256,11 +256,13 @@
         kind: tgt.getAttribute('data-drag-kind') || '',
         entityId: tgt.getAttribute('data-tree-id') || ''
       };
-      // Same-board, same-kind sibling reorder is the only valid drop
-      // for this slice. Cross-kind / cross-board drops are deferred
-      // to Phases 3 & 4 — silently rejected here.
+      // Same-kind reorder is the only valid drop — cross-kind drops
+      // are deferred to Phase 4 (tree↔board). Cross-board same-kind
+      // drops are accepted (Phase 3): the bridge splices source out
+      // of board A and into board B. The hierarchy sub-app shows a
+      // single workspace, so cross-board only fires when the user
+      // expanded multiple boards inside the same workspace.
       if (!dragSource) return null;
-      if (info.boardId !== dragSource.boardId) return null;
       if (info.kind !== dragSource.kind) return null;
       if (info.entityId === dragSource.entityId) return null;
       return { node: tgt, info: info };

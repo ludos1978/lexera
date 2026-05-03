@@ -192,8 +192,9 @@
         kind: tgt.getAttribute('data-drag-kind') || '',
         entityId: tgt.getAttribute('data-tree-id') || ''
       };
+      // Same-kind drop only (cross-kind is Phase 4). Cross-board
+      // accepted — the bridge splits the move across both boards.
       if (!dragSource) return null;
-      if (info.boardId !== dragSource.boardId) return null;
       if (info.kind !== dragSource.kind) return null;
       if (info.entityId === dragSource.entityId) return null;
       return { node: tgt, info: info };

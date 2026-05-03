@@ -180,6 +180,85 @@ describe('LexeraHierarchyDragBridge.applyEntityReorder', () => {
   });
 });
 
+describe('LexeraHierarchyDragBridge.applyCrossBoardEntityReorder', () => {
+  const bridge = loadBridge();
+
+  function makeBoardWithCards(prefix) {
+    return {
+      title: prefix,
+      columns: [],
+      rows: [{
+        id: prefix + '-r1', title: 'Row',
+        stacks: [{
+          id: prefix + '-s1', title: 'Stack',
+          columns: [{
+            id: prefix + '-c1', title: 'Col',
+            cards: [
+              { id: prefix + '-card-1', title: 'A' },
+              { id: prefix + '-card-2', title: 'B' }
+            ]
+          }]
+        }]
+      }]
+    };
+  }
+
+  it('moves a card from board A into board B at the target index', () => {
+    const a = makeBoardWithCards('a');
+    const b = makeBoardWithCards('b');
+    const ok = bridge.applyCrossBoardEntityReorder(a, b,
+      { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      { boardId: 'B', kind: 'card', entityId: 'b-card-2' }
+    );
+    expect(ok).toBe(true);
+    // Source board lost the card.
+    expect(a.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['a-card-2']);
+    // Target board gained the card right before b-card-2.
+    expect(b.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['b-card-1', 'a-card-1', 'b-card-2']);
+  });
+
+  it('rejects when the boards are the same (caller should use applyEntityReorder)', () => {
+    const a = makeBoardWithCards('a');
+    const ok = bridge.applyCrossBoardEntityReorder(a, a,
+      { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      { boardId: 'A', kind: 'card', entityId: 'a-card-2' }
+    );
+    expect(ok).toBe(false);
+  });
+
+  it('rejects cross-kind moves', () => {
+    const a = makeBoardWithCards('a');
+    const b = makeBoardWithCards('b');
+    const ok = bridge.applyCrossBoardEntityReorder(a, b,
+      { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      { boardId: 'B', kind: 'column', entityId: 'b-c1' }
+    );
+    expect(ok).toBe(false);
+  });
+
+  it('rejects when source or target id is missing', () => {
+    const a = makeBoardWithCards('a');
+    const b = makeBoardWithCards('b');
+    expect(bridge.applyCrossBoardEntityReorder(a, b,
+      { boardId: 'A', kind: 'card', entityId: 'missing' },
+      { boardId: 'B', kind: 'card', entityId: 'b-card-1' }
+    )).toBe(false);
+    expect(bridge.applyCrossBoardEntityReorder(a, b,
+      { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      { boardId: 'B', kind: 'card', entityId: 'missing' }
+    )).toBe(false);
+  });
+
+  it('returns false on missing/invalid input', () => {
+    expect(bridge.applyCrossBoardEntityReorder(null, {}, {}, {})).toBe(false);
+    expect(bridge.applyCrossBoardEntityReorder({}, null, {}, {})).toBe(false);
+    expect(bridge.applyCrossBoardEntityReorder({}, {}, null, {})).toBe(false);
+    expect(bridge.applyCrossBoardEntityReorder({}, {}, {}, null)).toBe(false);
+  });
+});
+
 describe('LexeraHierarchyDragBridge.install', () => {
   const bridge = loadBridge();
 
@@ -263,6 +342,61 @@ describe('LexeraHierarchyDragBridge.install', () => {
       loadBoard: vi.fn()
       // saveBoard missing
     })).toBe(false);
+  });
+
+  it('cross-board drop loads BOTH boards, applies the move, saves BOTH, and fires onApplied per board', async () => {
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    function makeBoardWithCards(prefix) {
+      return {
+        title: prefix,
+        columns: [],
+        rows: [{ id: prefix + '-r1', title: 'Row', stacks: [{
+          id: prefix + '-s1', title: 'Stack', columns: [{
+            id: prefix + '-c1', title: 'Col', cards: [
+              { id: prefix + '-card-1', title: 'A' },
+              { id: prefix + '-card-2', title: 'B' }
+            ]
+          }]
+        }] }]
+      };
+    }
+    const boardA = makeBoardWithCards('a');
+    const boardB = makeBoardWithCards('b');
+    const loadBoard = vi.fn((id) => Promise.resolve(id === 'A' ? boardA : boardB));
+    const saveBoard = vi.fn(() => Promise.resolve());
+    const onApplied = vi.fn();
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: loadBoard,
+      saveBoard: saveBoard,
+      onApplied: onApplied
+    });
+
+    wv._fire('hierarchy-entity-drop', {
+      source: { boardId: 'A', kind: 'card', entityId: 'a-card-1' },
+      target: { boardId: 'B', kind: 'card', entityId: 'b-card-2' }
+    });
+    // Wait for the Promise.all chain to settle.
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(loadBoard).toHaveBeenCalledWith('A');
+    expect(loadBoard).toHaveBeenCalledWith('B');
+    expect(saveBoard).toHaveBeenCalledTimes(2);
+    const savedIds = saveBoard.mock.calls.map((c) => c[0]).sort();
+    expect(savedIds).toEqual(['A', 'B']);
+    // Source lost the card; target gained it before its anchor.
+    const savedA = saveBoard.mock.calls.find((c) => c[0] === 'A')[1];
+    const savedB = saveBoard.mock.calls.find((c) => c[0] === 'B')[1];
+    expect(savedA.rows[0].stacks[0].columns[0].cards.map((c) => c.id)).toEqual(['a-card-2']);
+    expect(savedB.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['b-card-1', 'a-card-1', 'b-card-2']);
+    // onApplied fires once per affected board.
+    expect(onApplied).toHaveBeenCalledWith('A');
+    expect(onApplied).toHaveBeenCalledWith('B');
   });
 
   it('routes errors through onError', async () => {

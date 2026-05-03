@@ -69,11 +69,12 @@
   }
 
   /**
-   * Move `source` to `target.index` inside its parent array.
-   * Returns true on success, false when the move is not a sibling
-   * reorder (different parents, missing entity, mismatched kind).
-   * Mutates `board` in place — the caller is expected to pass the
-   * full `KanbanBoard` it intends to send back to `saveBoard`.
+   * Move `source` to `target.index` inside its parent array within a
+   * SINGLE board. Returns true on success, false when the move is not
+   * a sibling reorder (different parents, missing entity, mismatched
+   * kind, identity equals). Mutates `board` in place — the caller is
+   * expected to pass the full `KanbanBoard` it intends to send back
+   * to `saveBoard`.
    */
   function applyEntityReorder(board, source, target) {
     if (!board || !source || !target) return false;
@@ -83,20 +84,39 @@
     var tgt = locateEntity(board, target.kind, target.entityId);
     if (!src || !tgt) return false;
     // Sibling reorder requires both entities live in the same parent
-    // array. Cross-parent moves (e.g. a card jumping from column A to
-    // column B) are explicitly out-of-scope for this slice — they
-    // belong to Phase 3 (cross-board) / Phase 4 (tree↔board).
+    // array. Cross-parent moves within the same board are not handled
+    // here — Phase 4 (tree↔board) covers that surface.
     if (src.parent !== tgt.parent) return false;
     var moved = src.parent.splice(src.index, 1)[0];
     var insertAt = tgt.index;
-    // Removing the source before computing the target's index would
-    // shift downstream indexes. We splice from the unaltered array
-    // first, then re-derive the target's position in the now-shorter
-    // array: anything to the right of the removed slot shifts left
-    // by one. JS splice has already done the removal so we just
-    // adjust insertAt when source was before target.
     if (src.index < tgt.index) insertAt -= 1;
     src.parent.splice(insertAt, 0, moved);
+    return true;
+  }
+
+  /**
+   * Move `source` from `srcBoard` into the parent array containing
+   * `target` inside `tgtBoard`. Used when the user drags an entity
+   * onto a sibling that lives in a DIFFERENT board (Phase 3). Both
+   * boards are mutated in place; the caller is expected to persist
+   * BOTH via `saveBoard` so the source is removed from board A and
+   * the destination's new ordering is recorded on board B.
+   *
+   * Returns true on success; false when the kinds mismatch, the
+   * source/target IDs are missing, or the boards are the same (the
+   * caller should route to `applyEntityReorder` for same-board
+   * moves).
+   */
+  function applyCrossBoardEntityReorder(srcBoard, tgtBoard, source, target) {
+    if (!srcBoard || !tgtBoard || !source || !target) return false;
+    if (source.kind !== target.kind) return false;
+    if (source.boardId === target.boardId) return false;
+    if (source.entityId === target.entityId) return false;
+    var src = locateEntity(srcBoard, source.kind, source.entityId);
+    var tgt = locateEntity(tgtBoard, target.kind, target.entityId);
+    if (!src || !tgt) return false;
+    var moved = src.parent.splice(src.index, 1)[0];
+    tgt.parent.splice(tgt.index, 0, moved);
     return true;
   }
 
@@ -139,14 +159,41 @@
       var p = (event && event.payload) || {};
       var source = p.source || null;
       var target = p.target || null;
-      if (!source || !target || source.boardId !== target.boardId) return;
-      var boardId = source.boardId;
-      Promise.resolve(loadBoard(boardId)).then(function (board) {
-        if (!board) return;
-        var applied = applyEntityReorder(board, source, target);
-        if (!applied) return;
-        return Promise.resolve(saveBoard(boardId, board)).then(function () {
-          if (typeof deps.onApplied === 'function') deps.onApplied(boardId);
+      if (!source || !target) return;
+      if (!source.boardId || !target.boardId) return;
+      // Same-board: load one board, apply sibling reorder, save one.
+      if (source.boardId === target.boardId) {
+        var boardId = source.boardId;
+        Promise.resolve(loadBoard(boardId)).then(function (board) {
+          if (!board) return;
+          if (!applyEntityReorder(board, source, target)) return;
+          return Promise.resolve(saveBoard(boardId, board)).then(function () {
+            if (typeof deps.onApplied === 'function') deps.onApplied(boardId);
+          });
+        }).catch(function (err) {
+          if (typeof deps.onError === 'function') deps.onError(err);
+        });
+        return;
+      }
+      // Cross-board (Phase 3): load BOTH boards, splice source out of
+      // A and into B, save BOTH. `onApplied` fires once per affected
+      // board so listeners can refresh per-board state.
+      Promise.all([
+        Promise.resolve(loadBoard(source.boardId)),
+        Promise.resolve(loadBoard(target.boardId))
+      ]).then(function (boards) {
+        var srcBoard = boards[0];
+        var tgtBoard = boards[1];
+        if (!srcBoard || !tgtBoard) return;
+        if (!applyCrossBoardEntityReorder(srcBoard, tgtBoard, source, target)) return;
+        return Promise.all([
+          Promise.resolve(saveBoard(source.boardId, srcBoard)),
+          Promise.resolve(saveBoard(target.boardId, tgtBoard))
+        ]).then(function () {
+          if (typeof deps.onApplied === 'function') {
+            deps.onApplied(source.boardId);
+            deps.onApplied(target.boardId);
+          }
         });
       }).catch(function (err) {
         if (typeof deps.onError === 'function') deps.onError(err);
@@ -156,7 +203,11 @@
     return true;
   }
 
-  var api = { applyEntityReorder: applyEntityReorder, install: install };
+  var api = {
+    applyEntityReorder: applyEntityReorder,
+    applyCrossBoardEntityReorder: applyCrossBoardEntityReorder,
+    install: install
+  };
   if (typeof window !== 'undefined') window.LexeraHierarchyDragBridge = api;
   if (typeof globalThis !== 'undefined') globalThis.LexeraHierarchyDragBridge = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
