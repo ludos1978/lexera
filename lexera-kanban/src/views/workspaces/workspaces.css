@@ -36,9 +36,16 @@ h3 {
 }
 
 /* Boards are top-level TreeView roots — no leading corner / branch
- * guide line in front of them. Deeper levels (rows / stacks / columns
- * / cards) keep their indent guides. */
+ * guide line in front of them. */
 #local-boards .tree-node[data-tree-target="board"] > .tree-indent {
+  display: none;
+}
+/* The board's own indent is hidden, so its descendants must NOT keep a
+ * board-level parent-continuation guide — it would render a phantom
+ * vertical line in a column nothing else lives in. The first
+ * `.indent-guide` inside any descendant is exactly that board-level
+ * slot; hide it. */
+#local-boards .tree-node[data-tree-target="board"] > .tree-children .tree-indent > .indent-guide:first-child {
   display: none;
 }
 .current-workspace-id {

@@ -235,10 +235,17 @@ html, body {
 /* ── Boards as TreeView roots ────────────────────────────────────
  * Every board row is a top-level TreeView entry. We drop the leading
  * `.tree-indent` so boards sit flush at the left edge with no corner /
- * branch guide line in front of their toggle. Deeper levels (rows,
- * stacks, columns, cards) keep their indent guides — those convey real
- * structural depth and look identical to the dashboard, files panel,
- * and main board sidebar. */
+ * branch guide line in front of their toggle. */
 #local-boards .tree-node[data-tree-target="board"] > .tree-indent {
+  display: none;
+}
+/* The board's own indent is hidden, so its descendants must NOT keep a
+ * board-level parent-continuation guide — it would render a phantom
+ * vertical line in a column nothing else lives in. The first
+ * `.indent-guide` inside any descendant's `.tree-indent` is exactly that
+ * board-level slot; hide it. Each level's local corner / branch
+ * connector and every deeper-ancestor guide are kept so the
+ * row → stack → column → card hierarchy still reads visually. */
+#local-boards .tree-node[data-tree-target="board"] > .tree-children .tree-indent > .indent-guide:first-child {
   display: none;
 }
