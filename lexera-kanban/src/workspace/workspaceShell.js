@@ -3591,6 +3591,51 @@
     }
     // Re-apply known health dots to freshly-built tab headers.
     multiview.reapplyAllHealthDots();
+    // View-lifecycle audit (Phase 0.2). Off unless the developer toggles
+    // `localStorage.LEXERA_VIEW_LEAK_AUDIT = '1'`. Compares the set of
+    // tab.ids in the layout tree against the set of spawned native
+    // webviews; logs any orphan to the in-app logger so the user can
+    // capture which mutation path leaked which tab.
+    auditViewLifecycle();
+  }
+
+  function auditViewLifecycle() {
+    try {
+      var ls = (typeof window !== 'undefined') ? window.localStorage : null;
+      if (!ls || ls.getItem('LEXERA_VIEW_LEAK_AUDIT') !== '1') return;
+    } catch (_) { return; }
+    if (!multiview || typeof multiview._test_leakReport !== 'function') return;
+    var collect = (typeof window !== 'undefined' &&
+      window.LexeraLayoutTree &&
+      typeof window.LexeraLayoutTree.collectAllTabIds === 'function')
+      ? window.LexeraLayoutTree.collectAllTabIds
+      : null;
+    if (!collect) return;
+    var inTreeMap = {};
+    var trees = [
+      state.dockTree,
+      state.sideDocks && state.sideDocks.left,
+      state.sideDocks && state.sideDocks.right,
+      state.sideDocks && state.sideDocks.bottom
+    ];
+    for (var ti = 0; ti < trees.length; ti++) {
+      var ids = trees[ti] ? collect(trees[ti]) : [];
+      for (var ii = 0; ii < ids.length; ii++) inTreeMap[ids[ii]] = true;
+    }
+    var report = multiview._test_leakReport();
+    var spawnedIds = report.spawnedTabIds || [];
+    var orphans = [];
+    for (var si = 0; si < spawnedIds.length; si++) {
+      if (!inTreeMap[spawnedIds[si]]) orphans.push(spawnedIds[si]);
+    }
+    if (orphans.length && typeof window.lexeraLog === 'function') {
+      window.lexeraLog(
+        'warn',
+        '[view-leak] ' + orphans.length + ' orphan spawned tab(s): ' + orphans.join(', ') +
+        ' (spawned=' + report.spawnedTabs +
+        ', tree=' + Object.keys(inTreeMap).length + ')'
+      );
+    }
   }
 
   function pruneMissingBoards() {

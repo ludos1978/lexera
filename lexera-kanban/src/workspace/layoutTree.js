@@ -82,6 +82,22 @@
     return count;
   }
 
+  // Walk every leaf in a tree (or any of the side-dock trees) and collect
+  // tab.id values. Used by the workspace shell's view-lifecycle audit
+  // (Phase 0.2), the orphan reaper before full DOM rebuild (Phase 1.4),
+  // and the lifecycle reconciler (Phase 2). Order is unspecified;
+  // duplicates only appear if the tree itself contains duplicates.
+  function collectAllTabIds(tree) {
+    var ids = [];
+    visitTree(tree, function (node) {
+      if (node.type !== 'tabs' || !Array.isArray(node.tabs)) return;
+      for (var i = 0; i < node.tabs.length; i++) {
+        if (node.tabs[i] && node.tabs[i].id) ids.push(node.tabs[i].id);
+      }
+    });
+    return ids;
+  }
+
   function createIdFactory() {
     var counter = 1;
     return function (prefix) {
@@ -260,6 +276,7 @@
     findTab: findTab,
     findClosestSplitParent: findClosestSplitParent,
     countTreeTabs: countTreeTabs,
+    collectAllTabIds: collectAllTabIds,
     createIdFactory: createIdFactory,
     createTabsetNode: createTabsetNode,
     createSplitNode: createSplitNode,
