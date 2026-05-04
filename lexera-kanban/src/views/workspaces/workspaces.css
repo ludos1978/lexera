@@ -43,6 +43,21 @@ h3 {
   user-select: none;
 }
 
+/* Suppress the inner scrollbar that the global `.board-list` rule in
+ * app.css (`flex: 1 1 auto; overflow-y: auto`) gives for the sidebar
+ * context. In the workspaces sub-app the outer `<main class="body">`
+ * is already the scroll container — keeping the inner `overflow-y: auto`
+ * produces a "scrollbar within a scrollbar" because the tree fills the
+ * available height and only its own contents scroll while the outer
+ * .body remains scrollable for siblings (current-workspace section).
+ * Single-scrollbar fix: let the tree size to its content and let the
+ * outer .body handle ALL scrolling. */
+.body > section > .board-list {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
 /* Boards are top-level TreeView roots — no leading corner / branch
  * guide line in front of them. */
 #local-boards .tree-node[data-tree-target="board"] > .tree-indent {
