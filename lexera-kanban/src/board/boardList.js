@@ -1215,30 +1215,15 @@ var LexeraBoardList = (function () {
   }
 
   function syncWorkspaceContextForBoard(boardId, options) {
+    // A window owns exactly one workspace for its lifetime — set once at
+    // startup from URL `?workspace=` or pickDefaultWorkspaceId, and never
+    // changed thereafter. Selecting a board MUST NOT mutate the window's
+    // activeWorkspaceId / viewWorkspaceId; doing so would let board taps
+    // hop the window between workspaces, contradicting that invariant.
+    // This function therefore only resolves and returns context; it
+    // intentionally performs no workspace-id state mutations.
     options = options || {};
     var context = resolveWorkspaceContextForBoard(boardId, options);
-    var preserveManualView = options.preserveManualView === true && getWorkspaceViewMode() === 'manual';
-    var nextViewWorkspaceId = context.workspaceId;
-    var nextViewMode = 'follow-active-board';
-    if (preserveManualView) {
-      var manualWorkspaceId = getWorkspaceViewId();
-      if (isWorkspaceViewIdKnown(manualWorkspaceId)) {
-        nextViewWorkspaceId = manualWorkspaceId;
-        nextViewMode = 'manual';
-      }
-    }
-    if (
-      options.syncSelection !== false &&
-      normalizeWorkspaceId(_dep('activeWorkspaceId')) !== context.workspaceId
-    ) {
-      // Per-window state only — see setActiveWorkspaceId for why
-      // persisting via Settings would leak into sibling windows.
-      _callDep('setActiveWorkspaceIdState', context.workspaceId, { syncView: !preserveManualView });
-    }
-    if (typeof _deps.setViewWorkspaceIdState === 'function') {
-      _deps.setViewWorkspaceIdState(nextViewWorkspaceId);
-    }
-    setWorkspaceViewMode(nextViewMode);
     if (options.render === false) return context;
     if (!_rt) {
       refreshWorkspaceMirrors();
@@ -1248,18 +1233,17 @@ var LexeraBoardList = (function () {
   }
 
   function reconcileActiveWorkspaceContext(options) {
+    // Pure observer — see syncWorkspaceContextForBoard for the rationale.
+    // The window's workspace is fixed; reconciling on catalog/board events
+    // resolves and returns the context, but performs no state mutations.
     options = options || {};
     var activeBoardId = _dep('activeBoardId');
     if (!activeBoardId) {
-      var workspaceId = getWorkspaceViewId();
-      if (typeof _deps.setViewWorkspaceIdState === 'function') {
-        _deps.setViewWorkspaceIdState(workspaceId);
-      }
       return {
         boardId: null,
         board: null,
         workspaceIds: [],
-        workspaceId: workspaceId
+        workspaceId: getWorkspaceViewId()
       };
     }
     if (options.preserveManualView !== false) options.preserveManualView = true;
