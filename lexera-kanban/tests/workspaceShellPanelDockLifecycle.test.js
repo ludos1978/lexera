@@ -73,10 +73,16 @@ function createStorage() {
   };
 }
 
-function createShellHarness({ invokeSpy } = {}) {
+function createShellHarness({ invokeSpy, setIntervalSpy, localStorageSeed } = {}) {
+  const localStorage = createStorage();
+  if (localStorageSeed) {
+    for (const [k, v] of Object.entries(localStorageSeed)) {
+      localStorage.setItem(k, v);
+    }
+  }
   const window = {
     location: { href: 'http://127.0.0.1:1431/', search: '' },
-    localStorage: createStorage(),
+    localStorage,
     sessionStorage: createStorage(),
     innerWidth: 1600,
     innerHeight: 1000,
@@ -130,6 +136,14 @@ function createShellHarness({ invokeSpy } = {}) {
       URLSearchParams,
       setTimeout,
       clearTimeout,
+      // Phase 4.2 periodic audit only registers when setInterval is
+      // available. Tests that want to assert the registration pass
+      // `setIntervalSpy: spy`; tests that want to assert the
+      // shell's defensive no-setInterval branch pass
+      // `setIntervalSpy: null` explicitly. Default is the real
+      // setInterval so unrelated harness consumers (multiview spawn
+      // retry, etc.) keep working.
+      setInterval: setIntervalSpy === undefined ? setInterval : setIntervalSpy,
       requestAnimationFrame: (fn) => setTimeout(fn, 0),
       cancelAnimationFrame: clearTimeout
     }
@@ -258,5 +272,60 @@ describe('workspace shell panel-dock lifecycle (Phase 1.1 + 1.2)', () => {
 
     const destroyAfter = window.LexeraMultiview.destroy.mock.calls.length;
     expect(destroyAfter - destroyBefore).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('workspace shell periodic view-leak audit (Phase 4.2)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('registers a 30s interval when LEXERA_VIEW_LEAK_AUDIT is enabled at mount', () => {
+    vi.useFakeTimers();
+    const setIntervalSpy = vi.fn(() => 1);
+    const { shell, mainContent } = createShellHarness({
+      setIntervalSpy,
+      localStorageSeed: { LEXERA_VIEW_LEAK_AUDIT: '1' }
+    });
+    shell.mount({ getMainContent: () => mainContent });
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(setIntervalSpy.mock.calls[0][1]).toBe(30000);
+    expect(typeof setIntervalSpy.mock.calls[0][0]).toBe('function');
+  });
+
+  it('still registers the interval even when the flag is OFF (auditViewLifecycle gates internally)', () => {
+    // Toggling the flag mid-session must take effect without a
+    // remount, so the timer always runs and the audit body itself is
+    // what early-returns when the flag is off. This keeps the cost to
+    // a single localStorage read every 30s — negligible.
+    vi.useFakeTimers();
+    const setIntervalSpy = vi.fn(() => 1);
+    const { shell, mainContent } = createShellHarness({ setIntervalSpy });
+    shell.mount({ getMainContent: () => mainContent });
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not register a timer when setInterval is unavailable in the host', () => {
+    vi.useFakeTimers();
+    // Explicit null disables setInterval so the shell's defensive
+    // `typeof setInterval !== 'function'` guard short-circuits.
+    const { shell, mainContent } = createShellHarness({
+      setIntervalSpy: null,
+      localStorageSeed: { LEXERA_VIEW_LEAK_AUDIT: '1' }
+    });
+    // Reaching mount without throwing IS the assertion.
+    expect(() => shell.mount({ getMainContent: () => mainContent })).not.toThrow();
+  });
+
+  it('is idempotent — calling mount twice does not stack two timers', () => {
+    vi.useFakeTimers();
+    const setIntervalSpy = vi.fn(() => 1);
+    const { shell, mainContent } = createShellHarness({ setIntervalSpy });
+    shell.mount({ getMainContent: () => mainContent });
+    shell.mount({ getMainContent: () => mainContent });
+    // Second mount returns true without re-running setup. The shell's
+    // own mount() short-circuits via `if (state.mounted) return true;`,
+    // which means the timer is not re-registered.
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
   });
 });

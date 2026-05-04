@@ -3764,6 +3764,21 @@
     }
   }
 
+  // Phase 4.2 periodic audit. The end-of-render audit catches leaks
+  // when activity drives a re-render; this catches "slow leaks" that
+  // accrue during idle periods between renders. Same gating as
+  // auditViewLifecycle (`localStorage.LEXERA_VIEW_LEAK_AUDIT === '1'`)
+  // — auditViewLifecycle internally early-returns when the flag is
+  // off, so toggling the flag mid-session takes effect on the next
+  // tick without restarting the timer.
+  var PERIODIC_VIEW_AUDIT_MS = 30000;
+  var periodicAuditTimer = 0;
+  function startPeriodicViewAudit() {
+    if (periodicAuditTimer) return;
+    if (typeof setInterval !== 'function') return;
+    periodicAuditTimer = setInterval(auditViewLifecycle, PERIODIC_VIEW_AUDIT_MS);
+  }
+
   function pruneMissingBoards() {
     var changed = false;
     var boardsAvailable = Object.keys(state.boardsById).length;
@@ -4387,6 +4402,7 @@
     ensurePanelElements();
     applyShellBodyClasses();
     render();
+    startPeriodicViewAudit();
     return true;
   }
 
