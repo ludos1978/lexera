@@ -69,7 +69,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ### 3. Concurrency & Performance
 - [ ] Audit the usage of `Arc<std::sync::Mutex>` in `lexera-backend/src-tauri/src/lib.rs` and identify candidates for `RwLock` or actor-based state management to reduce lock contention.
-- [ ] Optimize the board loading process in `init_storage_and_boards` to use a more granular batching strategy if the number of boards exceeds 100.
+- [x] (done) Optimize the board loading process in `init_storage_and_boards` to use a more granular batching strategy if the number of boards exceeds 100. `LOAD_BATCH_SIZE=100` cap: small workspaces stay on the single-scope parallel path; larger ones process boards in serialized chunks so we never have more than ~100 concurrent file-I/O / CRDT-loading threads. Three new lib.rs unit tests cover under-threshold, chunked >100 with input-set sanity, and partial-failure skip. (commit 7301889d)
 - [ ] Implement a background task for periodic `loro` CRDT compaction to prevent state growth over time.
 
 ### 4. Modularization & Cleanup
