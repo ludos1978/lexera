@@ -620,6 +620,77 @@ describe('LexeraHierarchyDragBridge.applyDrop (unified dispatch)', () => {
   });
 });
 
+describe('LexeraHierarchyDragBridge.routeCrossViewDragPoint', () => {
+  const bridge = loadBridge();
+
+  // Source webview lives at top-window (50, 100), 200x300.
+  // Target webview lives at top-window (300, 100), 200x300.
+  function fixture() {
+    return {
+      sourceWebviewLabel: 'sub-app-1',
+      getWebviewRect: function (label) {
+        if (label === 'sub-app-1') return { left: 50, top: 100, right: 250, bottom: 400 };
+        if (label === 'kanban-board-1') return { left: 300, top: 100, right: 500, bottom: 400 };
+        return null;
+      },
+      getWebviewLabelAtTopPoint: function (topX, topY) {
+        if (topX >= 50 && topX <= 250 && topY >= 100 && topY <= 400) return 'sub-app-1';
+        if (topX >= 300 && topX <= 500 && topY >= 100 && topY <= 400) return 'kanban-board-1';
+        return null;
+      }
+    };
+  }
+
+  it('returns target label + local coords when the cursor is over a different webview', () => {
+    const f = fixture();
+    // Cursor at sourceClientX=300, sourceClientY=50. Source webview
+    // is at top (50, 100), so topX=350, topY=150 — over the kanban
+    // webview (which starts at top.left=300).
+    f.sourceClientX = 300;
+    f.sourceClientY = 50;
+    const out = bridge.routeCrossViewDragPoint(f);
+    expect(out).toBeTruthy();
+    expect(out.targetLabel).toBe('kanban-board-1');
+    expect(out.topX).toBe(350);
+    expect(out.topY).toBe(150);
+    // Target webview starts at top.left=300, so localX = 350 - 300 = 50.
+    expect(out.localX).toBe(50);
+    expect(out.localY).toBe(50);
+  });
+
+  it('returns null when the cursor stays inside the source webview', () => {
+    const f = fixture();
+    f.sourceClientX = 50;
+    f.sourceClientY = 50;
+    // topX = 100, topY = 150 → still over sub-app-1.
+    expect(bridge.routeCrossViewDragPoint(f)).toBeNull();
+  });
+
+  it('returns null when the cursor is outside every known webview', () => {
+    const f = fixture();
+    f.sourceClientX = 1000;
+    f.sourceClientY = 1000;
+    expect(bridge.routeCrossViewDragPoint(f)).toBeNull();
+  });
+
+  it('returns null when source webview rect is unknown', () => {
+    const f = fixture();
+    f.sourceWebviewLabel = 'never-spawned';
+    f.sourceClientX = 10;
+    f.sourceClientY = 10;
+    expect(bridge.routeCrossViewDragPoint(f)).toBeNull();
+  });
+
+  it('returns null on missing / non-numeric coords', () => {
+    const f = fixture();
+    expect(bridge.routeCrossViewDragPoint(null)).toBeNull();
+    expect(bridge.routeCrossViewDragPoint(Object.assign({}, f))).toBeNull(); // no coords
+    expect(bridge.routeCrossViewDragPoint(Object.assign({}, f, {
+      sourceClientX: 'oops', sourceClientY: 50
+    }))).toBeNull();
+  });
+});
+
 describe('LexeraHierarchyDragBridge.install', () => {
   const bridge = loadBridge();
 

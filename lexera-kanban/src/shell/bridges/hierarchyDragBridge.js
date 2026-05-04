@@ -236,6 +236,57 @@
   }
 
   /**
+   * Translate a drag mousemove fired inside ONE webview's document
+   * to the host-window screen coordinates and look up which webview
+   * the cursor is currently over. Returns the target webview's label
+   * + that webview's local x/y so the shell can forward the drag via
+   * `multiview_emit_to(targetLabel, 'external-dnd-hover', { x, y, ... })`.
+   *
+   * Pure function — all geometry is dependency-injected so the helper
+   * can be unit-tested without Tauri / shell DOM. Returns `null` when
+   * the cursor is outside any known webview, or when the lookup
+   * resolves to the SOURCE webview itself (the sub-app handles its
+   * own in-document drops; we only forward when the cursor actually
+   * crosses a webview boundary).
+   *
+   * deps: {
+   *   sourceWebviewLabel,           // label of the webview firing the
+   *                                 // drag mousemove
+   *   sourceClientX, sourceClientY, // in source-document client coords
+   *   getWebviewRect(label) =>      // top-window rect for any webview
+   *     { left, top, right, bottom } | null,
+   *   getWebviewLabelAtTopPoint(    // shell helper from multiviewWebview.js
+   *     topX, topY) => string | null
+   * }
+   */
+  function routeCrossViewDragPoint(deps) {
+    if (!deps) return null;
+    var sourceLabel = deps.sourceWebviewLabel || '';
+    if (!sourceLabel) return null;
+    if (typeof deps.sourceClientX !== 'number' || typeof deps.sourceClientY !== 'number') return null;
+    if (typeof deps.getWebviewRect !== 'function') return null;
+    if (typeof deps.getWebviewLabelAtTopPoint !== 'function') return null;
+    var srcRect = deps.getWebviewRect(sourceLabel);
+    if (!srcRect) return null;
+    var topX = srcRect.left + deps.sourceClientX;
+    var topY = srcRect.top + deps.sourceClientY;
+    var targetLabel = deps.getWebviewLabelAtTopPoint(topX, topY);
+    if (!targetLabel || targetLabel === sourceLabel) return null;
+    var tgtRect = deps.getWebviewRect(targetLabel);
+    if (!tgtRect) return null;
+    return {
+      targetLabel: targetLabel,
+      // Local coords inside the target webview's document. The shell
+      // emits these straight to `__lexeraExternalDnd.hover(payload, x, y)`
+      // running inside the target.
+      localX: topX - tgtRect.left,
+      localY: topY - tgtRect.top,
+      topX: topX,
+      topY: topY
+    };
+  }
+
+  /**
    * Unified dispatch. Picks the right pure helper based on whether
    * the move is same-board / cross-board, and same-kind / cross-kind:
    *
@@ -380,6 +431,7 @@
     applyCrossBoardEntityAbsorb: applyCrossBoardEntityAbsorb,
     applyEntityRename: applyEntityRename,
     applyDrop: applyDrop,
+    routeCrossViewDragPoint: routeCrossViewDragPoint,
     install: install
   };
   if (typeof window !== 'undefined') window.LexeraHierarchyDragBridge = api;
