@@ -876,9 +876,12 @@
     var found = findPanelInAllTrees(sourcePanelId);
     if (found && found.leaf) {
       var newTab = createPanelTab(newPanelId);
+      // Phase 3.2 [3/N]: insert immediately after the source panel via
+      // the wrapper. -1 (not found in tabs array) → fall through to the
+      // wrapper's clamp-to-end, matching the prior `tabs.push` branch.
       var insertAt = found.leaf.tabs.indexOf(found.tab);
-      if (insertAt === -1) found.leaf.tabs.push(newTab);
-      else found.leaf.tabs.splice(insertAt + 1, 0, newTab);
+      var insertIndex = insertAt === -1 ? found.leaf.tabs.length : insertAt + 1;
+      layoutTree.insertTabIntoLeaf(found.leaf, newTab, insertIndex);
       found.leaf.activeTabId = newTab.id;
       if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
       state.activePanelId = newPanelId;
