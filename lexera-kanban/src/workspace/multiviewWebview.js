@@ -570,6 +570,44 @@
     return null;
   }
 
+  /**
+   * Top-window rect for a given spawned webview, or null when the
+   * webview isn't ready or its placeholder isn't laid out. Pairs
+   * with `getWebviewLabelAtTopPoint` for the cross-webview drag
+   * router (`hierarchyDragBridge.routeCrossViewDragPoint`): given a
+   * source webview label + a cursor point in the source's document
+   * coords, the bridge needs the source rect to convert to top-
+   * window coords, and the target rect to convert back to the
+   * target's local coords.
+   *
+   * @param {string} label
+   * @returns {{left:number, top:number, right:number, bottom:number}|null}
+   */
+  function getWebviewRect(label) {
+    if (!label || !deps || typeof deps.getPlaceholder !== 'function') return null;
+    var config = getNativeGeometryConfig();
+    var hostX = (config && typeof config.hostX === 'number') ? config.hostX : 0;
+    var hostY = (config && typeof config.hostY === 'number') ? config.hostY : 0;
+    var inset = (config && typeof config.inset === 'number') ? config.inset : 0;
+    var tabIds = Object.keys(multiviewSpawnedTabs || {});
+    for (var i = 0; i < tabIds.length; i++) {
+      var entry = multiviewSpawnedTabs[tabIds[i]];
+      if (!entry || entry.state !== 'ready' || entry.label !== label) continue;
+      var ph = deps.getPlaceholder(tabIds[i]);
+      if (!ph || ph.offsetParent === null) return null;
+      if (typeof ph.getBoundingClientRect !== 'function') return null;
+      var rect = ph.getBoundingClientRect();
+      if (!(rect.width > 0) || !(rect.height > 0)) return null;
+      return {
+        left: hostX + rect.left + inset,
+        top: hostY + rect.top + inset,
+        right: hostX + rect.left + inset + Math.max(0, rect.width - 2 * inset),
+        bottom: hostY + rect.top + inset + Math.max(0, rect.height - 2 * inset)
+      };
+    }
+    return null;
+  }
+
   // Globally suppress (or restore) all spawned multiview webviews.
   // Used during drag and while shell-DOM overlays (dropdowns/menus) are
   // open so native child webviews don't paint over the shell's drop
@@ -1136,6 +1174,7 @@
     cleanupLocalState: cleanupLocalState,
     refreshAllGeometry: refreshAllGeometry,
     getWebviewLabelAtTopPoint: getWebviewLabelAtTopPoint,
+    getWebviewRect: getWebviewRect,
     setAllVisible: setAllVisible,
     isAllVisibleSuppressed: isAllVisibleSuppressed,
     computeNativeGeometry: computeNativeGeometry,

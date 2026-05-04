@@ -699,6 +699,16 @@
     if (!bridge || typeof bridge.install !== 'function') return;
     var api = (typeof window !== 'undefined' && window.LexeraApi) || null;
     if (!api || typeof api.saveBoard !== 'function' || typeof api.getBoardColumns !== 'function') return;
+    // Cross-view drag forwarding deps: when `LexeraMultiviewWebview`
+    // is available (the shell-side hit-test + per-webview rects), we
+    // pass them through so the bridge's install() activates the
+    // sub-app drag-move/drag-end-external forwarder. Sub-apps don't
+    // have these globals, so the bridge stays a no-op there.
+    var mvw = (typeof window !== 'undefined' && window.LexeraMultiviewWebview) || null;
+    var getWebviewLabelAtTopPoint = (mvw && typeof mvw.getWebviewLabelAtTopPoint === 'function')
+      ? mvw.getWebviewLabelAtTopPoint : null;
+    var getWebviewRect = (mvw && typeof mvw.getWebviewRect === 'function')
+      ? mvw.getWebviewRect : null;
     bridge.install({
       getCurrentWebview: getCurrentWebview,
       invoke: invoke,
@@ -714,6 +724,8 @@
       saveBoard: function (boardId, board) {
         return api.saveBoard(boardId, board);
       },
+      getWebviewLabelAtTopPoint: getWebviewLabelAtTopPoint,
+      getWebviewRect: getWebviewRect,
       onApplied: function (boardId) {
         // Nudge the catalog bridge to rebroadcast so every sub-app
         // sees the new card / column / row / stack order.

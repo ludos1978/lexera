@@ -67,4 +67,14 @@ describe('hierarchy drag bridge — production wiring', () => {
     const bootSlice = code.substring(bootStart, bootStart + 4000);
     expect(bootSlice).toMatch(/installHierarchyDragBridge\(\)/);
   });
+
+  it('the wrapper passes the cross-view geometry deps from LexeraMultiviewWebview', () => {
+    const code = codeOnly(multiviewClientJs);
+    // Reads the multiview-webview API off the window…
+    expect(code).toMatch(/window\.LexeraMultiviewWebview/);
+    // …and forwards both helpers into the bridge install() call so
+    // the cross-view drag forwarder activates on boot.
+    expect(code).toMatch(/getWebviewLabelAtTopPoint:\s*getWebviewLabelAtTopPoint/);
+    expect(code).toMatch(/getWebviewRect:\s*getWebviewRect/);
+  });
 });
