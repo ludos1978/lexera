@@ -42,6 +42,68 @@ var BOARD_SETTINGS_FIELDS = [
   { key: 'boardColorDark', label: 'Board Color (Dark)', placeholder: '#4c7abf', type: 'text' }
 ];
 
+// Log-viewer pure helpers — hoisted out of the ManagementUI IIFE so the
+// transform/format logic is independently testable and easy to extract
+// into its own module later. The IIFE references them via closure; no
+// state is captured here. Stays in this file for now to avoid touching
+// the sync-script asset list; any future move to `src/management/logViewer.js`
+// (TODO line 41) will only need to wrap these helpers + add a `<script>` tag.
+var LEXERA_MGMT_LOG_HELPERS = (function () {
+  'use strict';
+
+  /** Maximum log rows kept in the rendered DOM at once. Older entries are
+   *  trimmed to keep the viewer responsive on long-running boards. */
+  var MAX_RENDERED_LOG_ENTRIES = 500;
+
+  function normalizeLogEntry(entry) {
+    if (!entry) return null;
+    return {
+      timestampMs: Number(entry.timestampMs || entry.timestamp_ms || Date.now()),
+      level: String(entry.level || 'info').toLowerCase(),
+      target: String(entry.target || 'backend'),
+      message: String(entry.message || ''),
+    };
+  }
+
+  function logSourceForEntry() {
+    return 'backend';
+  }
+
+  function formatLogTimestamp(timestampMs) {
+    try {
+      return new Date(timestampMs).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+    } catch (_) { /* intentional: invalid timestamp → empty string fallback */
+      return '';
+    }
+  }
+
+  /** Filter predicate. Takes the active filter mode as an argument so the
+   *  helper stays state-free. `'backend'` keeps backend-sourced entries,
+   *  `'errors'` keeps warn/error level entries, anything else passes through. */
+  function logMatchesFilter(filter, entry) {
+    if (filter === 'backend') return logSourceForEntry(entry) === 'backend';
+    if (filter === 'errors') return entry.level === 'warn' || entry.level === 'error';
+    return true;
+  }
+
+  return {
+    MAX_RENDERED_LOG_ENTRIES: MAX_RENDERED_LOG_ENTRIES,
+    normalizeLogEntry: normalizeLogEntry,
+    logSourceForEntry: logSourceForEntry,
+    formatLogTimestamp: formatLogTimestamp,
+    logMatchesFilter: logMatchesFilter,
+  };
+})();
+
+if (typeof window !== 'undefined') {
+  window.LexeraManagementLogHelpers = LEXERA_MGMT_LOG_HELPERS;
+}
+
 var ManagementUI = (function () {
   'use strict';
 
@@ -67,7 +129,7 @@ var ManagementUI = (function () {
   var logStreamState = 'idle';
   var logViewerPaused = false;
   var logFilter = 'all';
-  var MAX_RENDERED_LOG_ENTRIES = 500;
+  var MAX_RENDERED_LOG_ENTRIES = LEXERA_MGMT_LOG_HELPERS.MAX_RENDERED_LOG_ENTRIES;
   var workspaceSectionExpanded = {};
   var workspaceInviteAccess = {};
   // Config panel state: { type: 'global'|'workspace'|'board', id: string } or null
@@ -1293,38 +1355,21 @@ var ManagementUI = (function () {
   }
 
   // ── Logs ──
+  //
+  // Pure transform/format helpers (normalizeLogEntry, formatLogTimestamp,
+  // logSourceForEntry, logMatchesFilter) are defined at module scope as
+  // `LEXERA_MGMT_LOG_HELPERS` above. The IIFE pulls them into local
+  // bindings here so existing call sites stay byte-identical.
 
-  function normalizeLogEntry(entry) {
-    if (!entry) return null;
-    return {
-      timestampMs: Number(entry.timestampMs || entry.timestamp_ms || Date.now()),
-      level: String(entry.level || 'info').toLowerCase(),
-      target: String(entry.target || 'backend'),
-      message: String(entry.message || ''),
-    };
-  }
+  var normalizeLogEntry = LEXERA_MGMT_LOG_HELPERS.normalizeLogEntry;
+  var logSourceForEntry = LEXERA_MGMT_LOG_HELPERS.logSourceForEntry;
+  var formatLogTimestamp = LEXERA_MGMT_LOG_HELPERS.formatLogTimestamp;
 
-  function logSourceForEntry() {
-    return 'backend';
-  }
-
-  function formatLogTimestamp(timestampMs) {
-    try {
-      return new Date(timestampMs).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      });
-    } catch (_) { /* intentional: invalid timestamp → empty string fallback */
-      return '';
-    }
-  }
-
+  // The hoisted helper takes the filter mode as an argument so it stays
+  // state-free; this thin closure threads the IIFE's `logFilter` state in
+  // for back-compat with the existing single-arg call sites.
   function logMatchesFilter(entry) {
-    if (logFilter === 'backend') return logSourceForEntry(entry) === 'backend';
-    if (logFilter === 'errors') return entry.level === 'warn' || entry.level === 'error';
-    return true;
+    return LEXERA_MGMT_LOG_HELPERS.logMatchesFilter(logFilter, entry);
   }
 
   function renderLogs(shouldStickToBottom) {

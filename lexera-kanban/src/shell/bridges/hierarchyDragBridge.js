@@ -352,6 +352,62 @@
       events: ['hierarchy-entity-drop', 'hierarchy-entity-rename']
     }).catch(function () { /* non-fatal */ });
 
+    // Cross-view drag forwarding (Phase 5).
+    //
+    // Sub-app webviews can emit `hierarchy-entity-drag-move` /
+    // `hierarchy-entity-drag-end-external` broadcasts while the user
+    // is dragging an entity. We translate the cursor's source-doc
+    // coords to top-window coords, look up which webview the cursor
+    // is over, and emit `external-dnd-hover` / `external-dnd-drop`
+    // straight to that target webview. Receivers install
+    // `window.__lexeraExternalDnd.{hover,drop}` to consume.
+    //
+    // `getWebviewLabelAtTopPoint` and `getWebviewRect` come from
+    // `LexeraMultiview` (`multiviewWebview.js`); they're optional
+    // deps on `install()` so the bridge stays unit-testable without
+    // Tauri.
+    var getWebviewLabelAtTopPoint = deps.getWebviewLabelAtTopPoint;
+    var getWebviewRect = deps.getWebviewRect;
+    function forwardCrossViewDrag(eventName, payload) {
+      if (!payload || !payload.source) return;
+      var routed = routeCrossViewDragPoint({
+        sourceWebviewLabel: payload.sourceWebviewLabel || '',
+        sourceClientX: payload.sourceClientX,
+        sourceClientY: payload.sourceClientY,
+        getWebviewRect: getWebviewRect,
+        getWebviewLabelAtTopPoint: getWebviewLabelAtTopPoint
+      });
+      if (!routed) return;
+      // Map our `kind` ('row' | 'stack' | 'column' | 'card') to the
+      // type strings the in-shell `__lexeraExternalDnd` API expects.
+      var kindToType = { row: 'tree-row', stack: 'tree-stack', column: 'tree-column', card: 'tree-card' };
+      var type = kindToType[payload.source.kind] || ('tree-' + payload.source.kind);
+      invoke('multiview_emit_to', {
+        target: routed.targetLabel,
+        event: eventName,
+        payload: {
+          payload: { source: payload.source, type: type },
+          x: routed.localX,
+          y: routed.localY
+        }
+      }).catch(function () { /* non-fatal */ });
+    }
+    if (typeof getWebviewLabelAtTopPoint === 'function' && typeof getWebviewRect === 'function') {
+      // Subscribe to the broadcasts so the shell webview actually
+      // receives them. (The drop-/rename-side subscribe call already
+      // runs above; extend it lazily for the cross-view events.)
+      invoke('multiview_subscribe', {
+        label: wv.label,
+        events: ['hierarchy-entity-drag-move', 'hierarchy-entity-drag-end-external']
+      }).catch(function () {});
+      wv.listen('hierarchy-entity-drag-move', function (event) {
+        forwardCrossViewDrag('external-dnd-hover', (event && event.payload) || null);
+      });
+      wv.listen('hierarchy-entity-drag-end-external', function (event) {
+        forwardCrossViewDrag('external-dnd-drop', (event && event.payload) || null);
+      });
+    }
+
     wv.listen('hierarchy-entity-rename', function (event) {
       var p = (event && event.payload) || {};
       var source = p.source || null;

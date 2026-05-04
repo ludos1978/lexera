@@ -1021,6 +1021,117 @@ describe('LexeraHierarchyDragBridge.install', () => {
     expect(saveBoard).not.toHaveBeenCalled();
   });
 
+  it('forwards hierarchy-entity-drag-move to the target webview as external-dnd-hover', async () => {
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(makeBoard()),
+      saveBoard: () => Promise.resolve(),
+      // Cross-view geometry: sub-app at top (50,100), kanban at (300,100).
+      getWebviewRect: function (label) {
+        if (label === 'sub-app-1') return { left: 50, top: 100, right: 250, bottom: 400 };
+        if (label === 'kanban-board-1') return { left: 300, top: 100, right: 500, bottom: 400 };
+        return null;
+      },
+      getWebviewLabelAtTopPoint: function (topX, topY) {
+        if (topX >= 300 && topX <= 500 && topY >= 100 && topY <= 400) return 'kanban-board-1';
+        return null;
+      }
+    });
+
+    // Sub-app fires drag-move with cursor at sourceClientX=300,
+    // sourceClientY=50 → topX=350, topY=150 → kanban webview.
+    wv._fire('hierarchy-entity-drag-move', {
+      source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      sourceWebviewLabel: 'sub-app-1',
+      sourceClientX: 300,
+      sourceClientY: 50
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const emits = invoke.mock.calls.filter((c) => c[0] === 'multiview_emit_to');
+    expect(emits.length).toBe(1);
+    expect(emits[0][1].target).toBe('kanban-board-1');
+    expect(emits[0][1].event).toBe('external-dnd-hover');
+    expect(emits[0][1].payload.payload).toEqual({
+      source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      type: 'tree-card'
+    });
+    expect(emits[0][1].payload.x).toBe(50);  // 350 - 300 (target.left)
+    expect(emits[0][1].payload.y).toBe(50);  // 150 - 100 (target.top)
+  });
+
+  it('forwards hierarchy-entity-drag-end-external as external-dnd-drop', async () => {
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(makeBoard()),
+      saveBoard: () => Promise.resolve(),
+      getWebviewRect: function (label) {
+        return label === 'sub-app-1' ? { left: 0, top: 0, right: 100, bottom: 100 }
+          : label === 'kanban-board-1' ? { left: 100, top: 0, right: 200, bottom: 100 }
+          : null;
+      },
+      getWebviewLabelAtTopPoint: function (topX, topY) {
+        return topX >= 100 ? 'kanban-board-1' : 'sub-app-1';
+      }
+    });
+
+    // Cursor at sourceClientX=150 → topX=150 (source.left=0) → over kanban.
+    wv._fire('hierarchy-entity-drag-end-external', {
+      source: { boardId: 'b1', kind: 'row', entityId: 'r1' },
+      sourceWebviewLabel: 'sub-app-1',
+      sourceClientX: 150, sourceClientY: 50
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const emits = invoke.mock.calls.filter((c) => c[0] === 'multiview_emit_to');
+    expect(emits.length).toBe(1);
+    expect(emits[0][1].event).toBe('external-dnd-drop');
+    expect(emits[0][1].payload.payload.type).toBe('tree-row');
+  });
+
+  it('does not forward when the cursor stays inside the source webview', async () => {
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(makeBoard()),
+      saveBoard: () => Promise.resolve(),
+      getWebviewRect: () => ({ left: 0, top: 0, right: 100, bottom: 100 }),
+      getWebviewLabelAtTopPoint: () => 'sub-app-1'  // cursor is over source
+    });
+    wv._fire('hierarchy-entity-drag-move', {
+      source: { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      sourceWebviewLabel: 'sub-app-1',
+      sourceClientX: 10, sourceClientY: 10
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke.mock.calls.find((c) => c[0] === 'multiview_emit_to')).toBeFalsy();
+  });
+
+  it('skips cross-view subscribe when geometry deps are missing', async () => {
+    const wv = makeWebview();
+    const invoke = vi.fn(() => Promise.resolve());
+    bridge.install({
+      getCurrentWebview: () => wv,
+      invoke: invoke,
+      loadBoard: () => Promise.resolve(makeBoard()),
+      saveBoard: () => Promise.resolve()
+      // No getWebviewRect / getWebviewLabelAtTopPoint — bridge stays
+      // backward-compatible: drop / rename listeners install, cross-
+      // view forwarding does not.
+    });
+    const subscribes = invoke.mock.calls.filter((c) => c[0] === 'multiview_subscribe');
+    expect(subscribes.length).toBe(1);
+    expect(subscribes[0][1].events).toEqual(['hierarchy-entity-drop', 'hierarchy-entity-rename']);
+  });
+
   it('routes errors through onError', async () => {
     const wv = makeWebview();
     const onError = vi.fn();
