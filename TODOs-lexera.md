@@ -57,7 +57,7 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 
 #### Phase 4 — Defense in depth
 - [ ] **4.1** Single shell-level `MutationObserver` in `multiviewWebview.js` watching for `[data-multiview="1"]` removals on the workspace root. Two-rAF debounce so move/extract reattach is not treated as removal. If still detached, call `destroy(tabId)`.
-- [ ] **4.2** (optional) Periodic 30s audit in dev mode that calls the §0 invariant check; logs slow leaks.
+- [x] (done) ~~**4.2** (optional) Periodic 30s audit in dev mode that calls the §0 invariant check; logs slow leaks.~~ `startPeriodicViewAudit()` in workspaceShell.js called from end of `mount()`, defensive on `typeof setInterval`, idempotent. Audit body itself gates on the LEXERA_VIEW_LEAK_AUDIT flag so toggling mid-session works without remount. 4 new assertions in workspaceShellPanelDockLifecycle.test.js. (commit 4512d340)
 
 #### Phase 5 — OS-level pinning (defer until 1-4 stable)
 - [ ] **5a** Extend Rust `multiview` plugin so each spawn carries `placeholder_dom_id`. Add `multiview_report_live_placeholders(ids)` IPC. Frontend reports live placeholder ids per render; Rust auto-destroys webviews whose placeholder id is missing.
