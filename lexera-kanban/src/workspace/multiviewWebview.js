@@ -1194,6 +1194,32 @@
     // causes the native webview to be parked offscreen rather than left at
     // its previous position (which would cover whatever now occupies the
     // shell-DOM area, e.g. the fold strip when a dock collapses).
-    _test_pushGeometryForLabel: pushGeometryForLabel
+    _test_pushGeometryForLabel: pushGeometryForLabel,
+    // Diagnostic snapshot of webview lifecycle state. Read-only. Used by
+    // the workspace shell's view-lifecycle audit (toggled via
+    // `localStorage.LEXERA_VIEW_LEAK_AUDIT`) and by Vitest contracts.
+    _test_leakReport: function () {
+      var spawnedDetail = {};
+      var keys = Object.keys(multiviewSpawnedTabs);
+      for (var i = 0; i < keys.length; i++) {
+        var entry = multiviewSpawnedTabs[keys[i]];
+        spawnedDetail[keys[i]] = entry ? {
+          state: entry.state,
+          label: entry.label,
+          url: entry.url,
+          attempts: entry.attempts || 0
+        } : null;
+      }
+      return {
+        spawnedTabs: keys.length,
+        spawnedDetail: spawnedDetail,
+        spawnedTabIds: keys.slice(),
+        geometryObservers: Object.keys(multiviewGeometryObservers).length,
+        spawnRetryWatchers: Object.keys(multiviewSpawnRetryWatchers).filter(function (k) {
+          return !!multiviewSpawnRetryWatchers[k];
+        }).length,
+        spawnLocks: Object.keys(multiviewLabelSpawnLocks).length
+      };
+    }
   };
 })();
