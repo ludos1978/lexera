@@ -62,6 +62,64 @@ describe('LexeraSubApp runtime metadata', () => {
     expect(window.document.body.getAttribute('data-shell-pane')).toBe('tab-77');
   });
 
+  it('decorates document.title with the panel kind + pane id so multi-instance devtools windows are distinguishable', () => {
+    // Two instances of the same panel kind would otherwise show
+    // identical titles in the WebKit / WebView2 inspector window
+    // chrome (e.g. two "Lexera Log View" windows). The "Open
+    // DevTools (All Views)" menu item is unusable without per-pane
+    // disambiguation. This pins that init() bakes pane identity into
+    // document.title before any Tauri-driven init can race in.
+    const dom = new JSDOM('<!doctype html><html><head><title>Lexera Log View</title></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/views/log/index.html?panelKind=logs&panel=logs-7&pane=tab-42&windowLabel=panel-tab-tab-42&workspaceShellHostLabel=main'
+    });
+    const { window } = dom;
+    window.__TAURI__ = {
+      core: { invoke: vi.fn(() => Promise.resolve(null)) },
+      webview: {
+        getCurrentWebview() {
+          return { label: 'panel-tab-tab-42', listen: vi.fn() };
+        }
+      }
+    };
+    const subApp = loadSubApp(window, {
+      URLSearchParams,
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+    subApp.init({ requestTheme: false, reportFocus: false, shortcuts: false });
+    expect(window.document.title).toContain('Lexera Log View');
+    expect(window.document.title).toContain('logs');
+    expect(window.document.title).toContain('tab-42');
+  });
+
+  it('does not double-append pane identity to document.title across re-inits', () => {
+    // Defense against the loop-style "[logs · tab-42] [logs · tab-42] …"
+    // bug we'd get if the suffix detection were naive. The runtime
+    // guards against re-appending when the suffix is already in the
+    // title.
+    const dom = new JSDOM('<!doctype html><html><head><title>Lexera Log View</title></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/views/log/index.html?panelKind=logs&panel=logs-7&pane=tab-42&windowLabel=panel-tab-tab-42&workspaceShellHostLabel=main'
+    });
+    const { window } = dom;
+    window.__TAURI__ = {
+      core: { invoke: vi.fn(() => Promise.resolve(null)) },
+      webview: {
+        getCurrentWebview() {
+          return { label: 'panel-tab-tab-42', listen: vi.fn() };
+        }
+      }
+    };
+    const subApp = loadSubApp(window, {
+      URLSearchParams,
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+    subApp.init({ requestTheme: false, reportFocus: false, shortcuts: false });
+    const titleAfterFirst = window.document.title;
+    subApp.init({ requestTheme: false, reportFocus: false, shortcuts: false });
+    expect(window.document.title).toBe(titleAfterFirst);
+  });
+
   it('does not request or render child-view debug geometry overlays during init', () => {
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'http://127.0.0.1:1431/views/hierarchy/index.html?panelKind=hierarchy&panel=hierarchy&pane=tab-77&windowLabel=panel-tab-tab-77&workspaceShellHostLabel=main'

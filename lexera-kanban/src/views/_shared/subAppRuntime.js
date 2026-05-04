@@ -433,6 +433,19 @@
         if (kind) bodyEl.setAttribute('data-shell-panel', kind);
         if (pane) bodyEl.setAttribute('data-shell-pane', pane);
       }
+      // Make the WebKit / WebView2 inspector window title identify
+      // exactly which panel/pane is being inspected. Without this,
+      // "Open DevTools (All Views)" produces a stack of indistinguishable
+      // windows (every dashboard instance shares "Dashboard", every log
+      // instance shares "Lexera Log View", etc.). The page <title> drives
+      // the devtools window title on every platform.
+      if (kind || pane) {
+        var baseTitle = (document.title || '').trim() || (kind || 'View');
+        var suffix = pane ? (kind ? (kind + ' · ' + pane) : pane) : kind;
+        if (suffix && baseTitle.indexOf(suffix) === -1) {
+          document.title = baseTitle + ' [' + suffix + ']';
+        }
+      }
     } catch (_) {}
     var wv = getCurrentWebview();
     var ctx = getContext();

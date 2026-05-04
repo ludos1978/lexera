@@ -676,6 +676,42 @@ pub fn toggle_devtools(window: tauri::WebviewWindow) -> Result<bool, String> {
     }
 }
 
+/// Open the WebKit / WebView2 inspector for every child webview the app
+/// currently hosts (board tabs, panel tabs, modal views, …) plus the
+/// shell windows themselves.
+///
+/// The shell exposes 10+ panels and N board tabs as sibling Tauri child
+/// webviews; the default `toggle_devtools` only opens devtools for the
+/// CALLER's own webview, which is useless when something inside a
+/// sub-app (e.g. the log panel) is broken and you need to inspect THAT
+/// webview's DOM. This command iterates `app.webviews()` and opens
+/// devtools on every one. Each devtools window is titled by the host
+/// page's `<title>` (set per-view in subAppRuntime to include the panel
+/// kind + pane id, so multiple instances are distinguishable).
+///
+/// Returns the number of devtools windows actually opened (skipping any
+/// already-open ones).
+#[tauri::command]
+pub fn open_devtools_all(app: AppHandle) -> Result<usize, String> {
+    use tauri::Manager;
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    {
+        let mut opened = 0usize;
+        for (_label, wv) in app.webviews().iter() {
+            if !wv.is_devtools_open() {
+                wv.open_devtools();
+                opened += 1;
+            }
+        }
+        Ok(opened)
+    }
+    #[cfg(not(any(debug_assertions, target_os = "macos")))]
+    {
+        let _ = app;
+        Ok(0)
+    }
+}
+
 #[tauri::command]
 pub fn set_menu_check_state(app: AppHandle, id: String, checked: bool) -> Result<(), String> {
     crate::app_menu::set_check_menu_state(&app, &id, checked);

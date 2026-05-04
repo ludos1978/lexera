@@ -6547,6 +6547,24 @@ var LexeraDashboard = (function () {
       });
   }
 
+  function openAllInspectors() {
+    if (!hasTauri) {
+      showNotification('Inspector: use browser DevTools (Cmd+Option+I)');
+      return;
+    }
+    tauriInvoke('open_devtools_all', {})
+      .then(function (opened) {
+        var n = (typeof opened === 'number') ? opened : 0;
+        showNotification(n > 0
+          ? ('Opened DevTools for ' + n + ' view' + (n === 1 ? '' : 's'))
+          : 'All DevTools windows already open');
+      })
+      .catch(function (err) {
+        logFrontendIssue('error', 'inspector', 'Failed to open all devtools', err);
+        showNotification('Inspector unavailable in this build');
+      });
+  }
+
   function isInspectorShortcut(e) {
     var code = e.code || '';
     if (e.key === 'F12') return true;
@@ -11404,6 +11422,7 @@ var LexeraDashboard = (function () {
       getHtmlContentRenderMode: getHtmlContentRenderMode,
       toggleSidebarTreeDisplayOption: toggleSidebarTreeDisplayOption,
       toggleInspector: toggleInspector,
+      openAllInspectors: openAllInspectors,
       // Save/export
       isBoardDirty: isBoardDirty,
       getBoardDirtyGeneration: getBoardDirtyGeneration,

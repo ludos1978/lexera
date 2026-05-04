@@ -159,6 +159,7 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .item(&zoom_sub)
         .separator()
         .item(&MenuItemBuilder::with_id("view-inspector", "Developer Tools").accelerator("F12").build(app)?)
+        .item(&MenuItemBuilder::with_id("view-inspector-all", "Developer Tools (All Views)").accelerator("Shift+F12").build(app)?)
         .build()?;
 
     // ── Format menu ──
@@ -405,6 +406,7 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("view-zoom-reset", "zoom-reset"),
     // View – inspector
     ("view-inspector", "toggle-inspector"),
+    ("view-inspector-all", "open-all-inspectors"),
     // Format – visual style
     ("fmt-theme-classic", "set-board-theme:classic"),
     ("fmt-theme-sleek-uniform", "set-board-theme:sleek-uniform"),

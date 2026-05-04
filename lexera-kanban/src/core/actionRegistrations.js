@@ -500,6 +500,7 @@
       d.showNotification('Sidebar burger menus ' + (next.menus ? 'shown' : 'hidden'));
     });
     ActionRegistry.register('board', 'toggle-inspector', function () { d.toggleInspector(); });
+    ActionRegistry.register('board', 'open-all-inspectors', function () { d.openAllInspectors(); });
     // Save/export/settings
     ActionRegistry.register('board', 'save-now', function () {
       if (d.getActiveBoardId() && d.getFullBoardData() && d.isBoardDirty()) {

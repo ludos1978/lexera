@@ -563,6 +563,7 @@ fn main() {
             commands::read_clipboard_text,
             commands::show_context_menu,
             commands::toggle_devtools,
+            commands::open_devtools_all,
             commands::set_menu_check_state,
             commands::set_workspaces_submenu,
             commands::quit_app,

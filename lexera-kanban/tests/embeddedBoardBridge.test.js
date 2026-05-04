@@ -201,7 +201,16 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     expect(installed).toBe(true);
     expect(invoke).toHaveBeenCalledWith('multiview_subscribe', {
       label: 'board-tab-tab-1',
-      events: ['dashboard-navigate', 'dashboard-board-test-request']
+      events: [
+        'dashboard-navigate',
+        'dashboard-board-test-request',
+        // Phase 5 cross-view drag forwarding — the shell-side
+        // hierarchyDragBridge emits these to the webview the cursor
+        // is over, and the kanban-board webview routes them into
+        // window.__lexeraExternalDnd.
+        'external-dnd-hover',
+        'external-dnd-drop'
+      ]
     });
     expect(typeof handlers['dashboard-navigate']).toBe('function');
 
