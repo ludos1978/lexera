@@ -264,6 +264,43 @@ describe('LexeraHierarchyDragBridge.applyEntityAbsorb', () => {
     expect(board.rows[1].stacks.map((s) => s.id)).toEqual(['s3', 's1']);
   });
 
+  it('absorbs a row directly into the kanban (row → board appends to board.rows)', () => {
+    // Drag the second top-level row onto the board itself. The row is
+    // pulled out of board.rows and pushed onto the same board.rows
+    // array — net effect: r2 lands at the end (it was already after
+    // r1, but now it's been re-stamped at the tail in case the user
+    // wanted to "anchor" it there).
+    const board = makeBoard();
+    const ok = bridge.applyEntityAbsorb(
+      board,
+      { boardId: 'b1', kind: 'row', entityId: 'r2' },
+      { boardId: 'b1', kind: 'board', entityId: 'b1' }
+    );
+    expect(ok).toBe(true);
+    expect(board.rows.map((r) => r.id)).toEqual(['r1', 'r2']);
+
+    // Now move r1 to the end.
+    const ok2 = bridge.applyEntityAbsorb(
+      board,
+      { boardId: 'b1', kind: 'row', entityId: 'r1' },
+      { boardId: 'b1', kind: 'board', entityId: 'b1' }
+    );
+    expect(ok2).toBe(true);
+    expect(board.rows.map((r) => r.id)).toEqual(['r2', 'r1']);
+  });
+
+  it('rejects non-row absorb into board (only rows can sit at the top level)', () => {
+    const board = makeBoard();
+    expect(bridge.applyEntityAbsorb(board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'board', entityId: 'b1' }
+    )).toBe(false);
+    expect(bridge.applyEntityAbsorb(board,
+      { boardId: 'b1', kind: 'stack', entityId: 's1' },
+      { boardId: 'b1', kind: 'board', entityId: 'b1' }
+    )).toBe(false);
+  });
+
   it('rejects same-kind drops (caller should use applyEntityReorder)', () => {
     const board = makeBoard();
     const ok = bridge.applyEntityAbsorb(

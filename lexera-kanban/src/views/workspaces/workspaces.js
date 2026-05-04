@@ -182,7 +182,13 @@
   // Mirror that here so the broadcast contract (and the bridge that
   // listens for it) stays unchanged.
   if (localBoardsEl && !localBoardsEl.__workspacesDragBound) {
-    var ABSORB_KINDS = { card: 'column', column: 'stack', stack: 'row' };
+    // Container relations: drop kind X onto kind Y where Y can hold X.
+    //   card   → column  (card joins column.cards)
+    //   column → stack   (column joins stack.columns)
+    //   stack  → row     (stack joins row.stacks)
+    //   row    → board   (row joins board.rows — drop on the kanban
+    //                     directly)
+    var ABSORB_KINDS = { card: 'column', column: 'stack', stack: 'row', row: 'board' };
     var DRAG_THRESHOLD_PX = 5;
     var pendingDrag = null;   // { startX, startY, source }
     var activeDrag = null;    // { source } — set once threshold is exceeded
@@ -199,13 +205,27 @@
     };
     var readDropTargetFromPoint = function (clientX, clientY, dragSource) {
       var hit = document.elementFromPoint(clientX, clientY);
-      var tgt = hit && hit.closest ? hit.closest('.tree-node[data-drag-kind]') : null;
+      // Drag-kind nodes are the canonical drop targets (rows, stacks,
+      // columns, cards). Board nodes (TreeView roots) are also valid
+      // drop targets but ONLY for row-onto-board absorbs — they don't
+      // carry `data-drag-kind`.
+      var tgt = hit && hit.closest
+        ? hit.closest('.tree-node[data-drag-kind], .tree-node[data-tree-target="board"]')
+        : null;
       if (!tgt || !localBoardsEl.contains(tgt)) return null;
-      var info = {
-        boardId: tgt.getAttribute('data-drag-board-id') || '',
-        kind: tgt.getAttribute('data-drag-kind') || '',
-        entityId: tgt.getAttribute('data-tree-id') || ''
-      };
+      var info;
+      if (tgt.getAttribute('data-drag-kind')) {
+        info = {
+          boardId: tgt.getAttribute('data-drag-board-id') || '',
+          kind: tgt.getAttribute('data-drag-kind') || '',
+          entityId: tgt.getAttribute('data-tree-id') || ''
+        };
+      } else if (tgt.getAttribute('data-tree-target') === 'board') {
+        var bid = tgt.getAttribute('data-board-id') || '';
+        info = { boardId: bid, kind: 'board', entityId: bid };
+      } else {
+        return null;
+      }
       if (!dragSource) return null;
       if (info.entityId === dragSource.entityId) return null;
       var sameKind = info.kind === dragSource.kind;
@@ -214,10 +234,8 @@
         if (absorbInto !== info.kind) return null;
       }
       // Same-kind drops carry a position ('before' | 'after') derived
-      // from the cursor's Y vs the target's vertical midpoint, so
-      // dropping above a row inserts it before that row, dropping
-      // below inserts after. Cross-kind absorbs always append, so
-      // position is irrelevant for them.
+      // from the cursor's Y vs the target's vertical midpoint. Cross-
+      // kind absorbs (including row → board) always append.
       if (sameKind) {
         var rect = tgt.getBoundingClientRect();
         info.position = (rect.height > 0 && clientY >= rect.top + rect.height / 2)

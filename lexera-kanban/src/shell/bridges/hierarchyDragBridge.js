@@ -105,7 +105,11 @@
   var ABSORB_RULES = {
     'card->column': function (col) { return col && Array.isArray(col.cards) ? col.cards : null; },
     'column->stack': function (st) { return st && Array.isArray(st.columns) ? st.columns : null; },
-    'stack->row': function (row) { return row && Array.isArray(row.stacks) ? row.stacks : null; }
+    'stack->row': function (row) { return row && Array.isArray(row.stacks) ? row.stacks : null; },
+    // Drop a row directly onto the kanban (board) — row joins
+    // `board.rows`. The "container" passed to this picker is the
+    // KanbanBoard itself, since rows sit at the top level.
+    'row->board': function (b) { return b && Array.isArray(b.rows) ? b.rows : null; }
   };
   // Locate an entity AND return its underlying object so the absorb
   // helpers can hand it to the kind-specific child-array picker.
@@ -131,9 +135,19 @@
     var rule = ABSORB_RULES[source.kind + '->' + target.kind];
     if (!rule) return false;
     var src = locateEntity(board, source.kind, source.entityId);
-    var tgt = locateEntityRich(board, target.kind, target.entityId);
-    if (!src || !tgt) return false;
-    var children = rule(tgt.entity);
+    if (!src) return false;
+    // The board itself is the absorb container for the special
+    // `row -> board` case — there's nothing to "locate" since the
+    // board is the root. Other targets (column / stack / row) live
+    // inside the hierarchy and need a regular lookup.
+    var children;
+    if (target.kind === 'board') {
+      children = rule(board);
+    } else {
+      var tgt = locateEntityRich(board, target.kind, target.entityId);
+      if (!tgt) return false;
+      children = rule(tgt.entity);
+    }
     if (!children) return false;
     var moved = src.parent.splice(src.index, 1)[0];
     children.push(moved);
@@ -186,9 +200,15 @@
     var rule = ABSORB_RULES[source.kind + '->' + target.kind];
     if (!rule) return false;
     var src = locateEntity(srcBoard, source.kind, source.entityId);
-    var tgt = locateEntityRich(tgtBoard, target.kind, target.entityId);
-    if (!src || !tgt) return false;
-    var children = rule(tgt.entity);
+    if (!src) return false;
+    var children;
+    if (target.kind === 'board') {
+      children = rule(tgtBoard);
+    } else {
+      var tgt = locateEntityRich(tgtBoard, target.kind, target.entityId);
+      if (!tgt) return false;
+      children = rule(tgt.entity);
+    }
     if (!children) return false;
     var moved = src.parent.splice(src.index, 1)[0];
     children.push(moved);

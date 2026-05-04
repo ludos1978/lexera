@@ -238,7 +238,9 @@
   // `hierarchy-entity-drag-start` once the threshold is crossed,
   // `hierarchy-entity-drop` on a valid mouseup target.
   if (localBoardsEl && !localBoardsEl.__hierarchyDragBound) {
-    var ABSORB_KINDS = { card: 'column', column: 'stack', stack: 'row' };
+    // Container relations:
+    //   card → column, column → stack, stack → row, row → board
+    var ABSORB_KINDS = { card: 'column', column: 'stack', stack: 'row', row: 'board' };
     var DRAG_THRESHOLD_PX = 5;
     var pendingDrag = null;
     var activeDrag = null;
@@ -255,13 +257,26 @@
     };
     var readDropTargetFromPoint = function (clientX, clientY, dragSource) {
       var hit = document.elementFromPoint(clientX, clientY);
-      var tgt = hit && hit.closest ? hit.closest('.tree-node[data-drag-kind]') : null;
+      // Drag-kind nodes are canonical drop targets; board nodes (the
+      // TreeView root for each kanban) are also valid targets, but
+      // only for row → board absorbs.
+      var tgt = hit && hit.closest
+        ? hit.closest('.tree-node[data-drag-kind], .tree-node[data-tree-target="board"]')
+        : null;
       if (!tgt || !localBoardsEl.contains(tgt)) return null;
-      var info = {
-        boardId: tgt.getAttribute('data-drag-board-id') || '',
-        kind: tgt.getAttribute('data-drag-kind') || '',
-        entityId: tgt.getAttribute('data-tree-id') || ''
-      };
+      var info;
+      if (tgt.getAttribute('data-drag-kind')) {
+        info = {
+          boardId: tgt.getAttribute('data-drag-board-id') || '',
+          kind: tgt.getAttribute('data-drag-kind') || '',
+          entityId: tgt.getAttribute('data-tree-id') || ''
+        };
+      } else if (tgt.getAttribute('data-tree-target') === 'board') {
+        var bid = tgt.getAttribute('data-board-id') || '';
+        info = { boardId: bid, kind: 'board', entityId: bid };
+      } else {
+        return null;
+      }
       if (!dragSource) return null;
       if (info.entityId === dragSource.entityId) return null;
       var sameKind = info.kind === dragSource.kind;
@@ -269,10 +284,6 @@
         var absorbInto = ABSORB_KINDS[dragSource.kind];
         if (absorbInto !== info.kind) return null;
       }
-      // Same-kind drops carry a position ('before' | 'after') derived
-      // from the cursor's Y vs the target's vertical midpoint. Cards
-      // dropped on the top half of another card land before it, on the
-      // bottom half land after. Cross-kind absorbs always append.
       if (sameKind) {
         var rect = tgt.getBoundingClientRect();
         info.position = (rect.height > 0 && clientY >= rect.top + rect.height / 2)

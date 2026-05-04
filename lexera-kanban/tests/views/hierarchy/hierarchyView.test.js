@@ -678,6 +678,87 @@ describe('hierarchy view sub-app', () => {
       expect(dropBroadcast.payload.target.position).toBe('after');
     });
 
+    // Drop a row directly onto the kanban (board node) — row joins
+    // `board.rows`. The board node carries `data-tree-target="board"`
+    // (no `data-drag-kind`) so the readDropTargetFromPoint helper
+    // accepts it ONLY when the source is a row.
+    it('row dropped onto the board node fires hierarchy-entity-drop with target.kind="board"', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({
+        rows: [
+          { id: 'r1', title: 'Row 1', stacks: [] },
+          { id: 'r2', title: 'Row 2', stacks: [] }
+        ]
+      })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const sourceRow = window.document.querySelector('#local-boards .tree-node[data-drag-kind="row"][data-tree-id="r1"]');
+      const boardNode = window.document.querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]');
+      expect(sourceRow).toBeTruthy();
+      expect(boardNode).toBeTruthy();
+
+      pointerDragSequence(window, sourceRow, boardNode);
+      const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
+      expect(dropBroadcast).toBeTruthy();
+      expect(dropBroadcast.payload.source).toEqual({ boardId: 'b1', kind: 'row', entityId: 'r1' });
+      expect(dropBroadcast.payload.target.kind).toBe('board');
+      expect(dropBroadcast.payload.target.boardId).toBe('b1');
+      // Cross-kind absorb → no `position` set (always appended).
+      expect(dropBroadcast.payload.target.position).toBeUndefined();
+    });
+
+    it('non-row sources cannot drop onto the board node', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({
+        rows: [{ id: 'r1', title: 'R', stacks: [{ id: 's1', title: 'S', columns: [{
+          id: 'c1', title: 'C', cards: [{ id: 'card-1', title: 'A' }]
+        }] }] }]
+      })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const cardNode = window.document.querySelector('#local-boards .tree-node[data-drag-kind="card"]');
+      const boardNode = window.document.querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"]');
+      pointerDragSequence(window, cardNode, boardNode);
+      const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
+      expect(dropBroadcast).toBeFalsy();
+    });
+
     // Phase 3: cross-board drop is accepted. The sub-app shows a
     // single workspace; the user has two of its boards expanded and
     // drags a card from one onto a card in the other.
