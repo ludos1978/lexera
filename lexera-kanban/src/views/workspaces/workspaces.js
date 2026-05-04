@@ -208,9 +208,20 @@
       };
       if (!dragSource) return null;
       if (info.entityId === dragSource.entityId) return null;
-      if (info.kind !== dragSource.kind) {
+      var sameKind = info.kind === dragSource.kind;
+      if (!sameKind) {
         var absorbInto = ABSORB_KINDS[dragSource.kind];
         if (absorbInto !== info.kind) return null;
+      }
+      // Same-kind drops carry a position ('before' | 'after') derived
+      // from the cursor's Y vs the target's vertical midpoint, so
+      // dropping above a row inserts it before that row, dropping
+      // below inserts after. Cross-kind absorbs always append, so
+      // position is irrelevant for them.
+      if (sameKind) {
+        var rect = tgt.getBoundingClientRect();
+        info.position = (rect.height > 0 && clientY >= rect.top + rect.height / 2)
+          ? 'after' : 'before';
       }
       return { node: tgt, info: info };
     };

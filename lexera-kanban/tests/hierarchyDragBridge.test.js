@@ -76,6 +76,47 @@ describe('LexeraHierarchyDragBridge.applyEntityReorder', () => {
     expect(cards).toEqual(['card-2', 'card-1', 'card-3']);
   });
 
+  it('drop zone "after" places source past the target sibling', () => {
+    // [card-1, card-2, card-3] → drop card-1 AFTER card-2 →
+    // [card-2, card-1, card-3]. Zone-based reorder lets the user
+    // choose which side of the target the source lands on.
+    const board = makeBoard();
+    const ok = bridge.applyEntityReorder(
+      board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'card', entityId: 'card-2', position: 'after' }
+    );
+    expect(ok).toBe(true);
+    expect(board.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['card-2', 'card-1', 'card-3']);
+  });
+
+  it('drop zone "after" the LAST sibling appends source at the end', () => {
+    const board = makeBoard();
+    const ok = bridge.applyEntityReorder(
+      board,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'card', entityId: 'card-3', position: 'after' }
+    );
+    expect(ok).toBe(true);
+    expect(board.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(['card-2', 'card-3', 'card-1']);
+  });
+
+  it('drop zone "before" matches the legacy default', () => {
+    // Explicit position: 'before' should equal the no-position case.
+    const a = makeBoard();
+    const b = makeBoard();
+    bridge.applyEntityReorder(a,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'card', entityId: 'card-3' });
+    bridge.applyEntityReorder(b,
+      { boardId: 'b1', kind: 'card', entityId: 'card-1' },
+      { boardId: 'b1', kind: 'card', entityId: 'card-3', position: 'before' });
+    expect(a.rows[0].stacks[0].columns[0].cards.map((c) => c.id))
+      .toEqual(b.rows[0].stacks[0].columns[0].cards.map((c) => c.id));
+  });
+
   it('reorders cards backwards within the same column', () => {
     const board = makeBoard();
     const ok = bridge.applyEntityReorder(

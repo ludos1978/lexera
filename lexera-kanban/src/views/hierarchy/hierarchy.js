@@ -264,9 +264,19 @@
       };
       if (!dragSource) return null;
       if (info.entityId === dragSource.entityId) return null;
-      if (info.kind !== dragSource.kind) {
+      var sameKind = info.kind === dragSource.kind;
+      if (!sameKind) {
         var absorbInto = ABSORB_KINDS[dragSource.kind];
         if (absorbInto !== info.kind) return null;
+      }
+      // Same-kind drops carry a position ('before' | 'after') derived
+      // from the cursor's Y vs the target's vertical midpoint. Cards
+      // dropped on the top half of another card land before it, on the
+      // bottom half land after. Cross-kind absorbs always append.
+      if (sameKind) {
+        var rect = tgt.getBoundingClientRect();
+        info.position = (rect.height > 0 && clientY >= rect.top + rect.height / 2)
+          ? 'after' : 'before';
       }
       return { node: tgt, info: info };
     };

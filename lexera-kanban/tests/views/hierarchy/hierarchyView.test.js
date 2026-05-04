@@ -478,44 +478,53 @@ describe('hierarchy view sub-app', () => {
     });
 
     // Pointer-based drag/drop helpers. JSDOM's `elementFromPoint`
-    // returns null without layout, so we stub it per-test to point at
-    // the desired drop target. Mirrors the production flow:
+    // returns null without layout and `getBoundingClientRect()` returns
+    // zeros, so we stub both per-test. Mirrors the production flow:
     //   mousedown on source → mousemove (cross threshold) → mousemove
     //   (over target) → mouseup (over target) — no HTML5 drag events.
+    //
+    // `opts.zone`: 'before' | 'after' — controls which half of the
+    // target's bounding rect the cursor lands on. Defaults to 'before'
+    // (top half).
     function pointerDragSequence(window, sourceEl, targetEl, opts) {
       opts = opts || {};
       var origElementFromPoint = window.document.elementFromPoint;
-      // Initial mousedown — pointer is on the source.
+      // Stub the target's getBoundingClientRect so the zone math has
+      // a known midpoint. Targets are 100px tall starting at y=200, so
+      // top-half y = 220 and bottom-half y = 280.
+      var origGetRect = targetEl ? targetEl.getBoundingClientRect : null;
+      if (targetEl) {
+        targetEl.getBoundingClientRect = function () {
+          return { top: 200, bottom: 300, height: 100, left: 0, right: 200, width: 200 };
+        };
+      }
+      var targetY = opts.zone === 'after' ? 280 : 220;
       sourceEl.dispatchEvent(new window.MouseEvent('mousedown', {
         bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10
       }));
-      // First mousemove — same coords, below threshold, no drag-start yet.
-      // Stub elementFromPoint to return the source for now (irrelevant
-      // until threshold is crossed).
       window.document.elementFromPoint = function () { return sourceEl; };
       window.document.dispatchEvent(new window.MouseEvent('mousemove', {
         bubbles: true, clientX: 11, clientY: 11
       }));
-      // Second mousemove — well past threshold, still over source.
       window.document.dispatchEvent(new window.MouseEvent('mousemove', {
         bubbles: true, clientX: 50, clientY: 50
       }));
-      // Third mousemove — over the target (stub elementFromPoint).
       if (targetEl) {
         window.document.elementFromPoint = function () { return targetEl; };
         window.document.dispatchEvent(new window.MouseEvent('mousemove', {
-          bubbles: true, clientX: 100, clientY: 100
+          bubbles: true, clientX: 100, clientY: targetY
         }));
       }
       if (opts.skipMouseup) {
         window.document.elementFromPoint = origElementFromPoint;
+        if (targetEl && origGetRect) targetEl.getBoundingClientRect = origGetRect;
         return;
       }
-      // mouseup — over the target if provided, otherwise away.
       window.document.dispatchEvent(new window.MouseEvent('mouseup', {
-        bubbles: true, clientX: 100, clientY: 100
+        bubbles: true, clientX: 100, clientY: targetY
       }));
       window.document.elementFromPoint = origElementFromPoint;
+      if (targetEl && origGetRect) targetEl.getBoundingClientRect = origGetRect;
     }
 
     // Pointer-based dragstart broadcasts `hierarchy-entity-drag-start`
@@ -617,12 +626,56 @@ describe('hierarchy view sub-app', () => {
       pointerDragSequence(window, sourceCard, targetCard);
 
       // After mouseup, the drop-target indicator is cleared. Drop
-      // broadcast carries both ends.
+      // broadcast carries source + target with a `position`. Default
+      // helper drives the cursor onto the TOP half → position 'before'.
       expect(targetCard.classList.contains('is-drop-target')).toBe(false);
       const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
       expect(dropBroadcast).toBeTruthy();
       expect(dropBroadcast.payload.source).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
-      expect(dropBroadcast.payload.target).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-2' });
+      expect(dropBroadcast.payload.target.boardId).toBe('b1');
+      expect(dropBroadcast.payload.target.kind).toBe('card');
+      expect(dropBroadcast.payload.target.entityId).toBe('card-2');
+      expect(dropBroadcast.payload.target.position).toBe('before');
+    });
+
+    // Zone-aware drop: cursor on the bottom half of a sibling sets
+    // `target.position = 'after'`; the bridge inserts the source past
+    // the target instead of in front of it.
+    it('drop on the bottom half of a sibling carries position=after', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({
+        rows: [{ id: 'r1', title: 'R', stacks: [{
+          id: 's1', title: 'S', columns: [{
+            id: 'c1', title: 'C',
+            cards: [{ id: 'card-1', title: 'A' }, { id: 'card-2', title: 'B' }]
+          }]
+        }] }]
+      })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const cards = window.document.querySelectorAll('#local-boards .tree-node[data-drag-kind="card"]');
+      pointerDragSequence(window, cards[0], cards[1], { zone: 'after' });
+      const dropBroadcast = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
+      expect(dropBroadcast).toBeTruthy();
+      expect(dropBroadcast.payload.target.position).toBe('after');
     });
 
     // Phase 3: cross-board drop is accepted. The sub-app shows a

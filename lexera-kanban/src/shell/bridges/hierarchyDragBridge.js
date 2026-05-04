@@ -84,12 +84,15 @@
     var tgt = locateEntity(board, target.kind, target.entityId);
     if (!src || !tgt) return false;
     // Sibling reorder requires both entities live in the same parent
-    // array. Cross-parent moves within the same board are not handled
-    // here — Phase 4 (tree↔board) covers that surface.
+    // array.
     if (src.parent !== tgt.parent) return false;
     var moved = src.parent.splice(src.index, 1)[0];
     var insertAt = tgt.index;
     if (src.index < tgt.index) insertAt -= 1;
+    // `target.position` ('before' | 'after') controls which side of
+    // the target the source lands on. Defaults to 'before' so old
+    // call sites (no zone-aware drop) keep their existing behaviour.
+    if (target.position === 'after') insertAt += 1;
     src.parent.splice(insertAt, 0, moved);
     return true;
   }
@@ -159,7 +162,10 @@
     var tgt = locateEntity(tgtBoard, target.kind, target.entityId);
     if (!src || !tgt) return false;
     var moved = src.parent.splice(src.index, 1)[0];
-    tgt.parent.splice(tgt.index, 0, moved);
+    // No `src.index` adjustment needed — source and target live in
+    // different arrays. Honour `target.position` ('before' | 'after').
+    var insertAt = target.position === 'after' ? tgt.index + 1 : tgt.index;
+    tgt.parent.splice(insertAt, 0, moved);
     return true;
   }
 
