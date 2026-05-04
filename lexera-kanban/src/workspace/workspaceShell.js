@@ -906,6 +906,48 @@
     return '\u25a1'; // □
   }
 
+  // Build the rich log-panel status strip ([●] Connected | N logs |
+  // N users | N pending). Used by both renderFoldStrip (dock-level
+  // collapse path — left/right/bottom dockSizes=0) and the side-dock
+  // tabset header injection (pane-level fold path — bottom dock split
+  // ratio=0/1 via the ▾ button on the view header). Without the
+  // header injection, folding the bottom-dock log panel via the ▾
+  // button left no status anywhere visible to the user.
+  //
+  // The badges are kept fresh by `updateFoldedLogStatusBadges` in
+  // logging/loggingSystem.js, which queries every `.ws-fold-status-badges`
+  // node in the DOM — so injecting the same class anywhere is enough
+  // to wire up live updates.
+  function buildLogStatusBadgesEl() {
+    var badgesEl = document.createElement('span');
+    badgesEl.className = 'ws-fold-status-badges';
+    var statusData = typeof window.getLogFoldedStatusData === 'function'
+      ? window.getLogFoldedStatusData()
+      : { connected: state.backendConnected, logCount: 0, userCount: 0, inFlightCount: 0 };
+    var dotSpan = document.createElement('span');
+    dotSpan.className = 'ws-fold-status-dot' + (statusData.connected ? ' is-connected' : ' is-disconnected');
+    badgesEl.appendChild(dotSpan);
+    var connSpan = document.createElement('span');
+    connSpan.className = 'ws-fold-badge ws-fold-badge-conn';
+    connSpan.textContent = statusData.connected ? 'Connected' : 'Disconnected';
+    badgesEl.appendChild(connSpan);
+    var logsSpan = document.createElement('span');
+    logsSpan.className = 'ws-fold-badge ws-fold-badge-logs';
+    logsSpan.textContent = statusData.logCount + ' logs';
+    badgesEl.appendChild(logsSpan);
+    var usersSpan = document.createElement('span');
+    usersSpan.className = 'ws-fold-badge ws-fold-badge-users';
+    usersSpan.textContent = statusData.userCount + (statusData.userCount === 1 ? ' user' : ' users');
+    if (statusData.userCount === 0) usersSpan.style.display = 'none';
+    badgesEl.appendChild(usersSpan);
+    var apiSpan = document.createElement('span');
+    apiSpan.className = 'ws-fold-badge ws-fold-badge-api';
+    apiSpan.textContent = statusData.inFlightCount + ' pending';
+    if (statusData.inFlightCount === 0) apiSpan.style.display = 'none';
+    badgesEl.appendChild(apiSpan);
+    return badgesEl;
+  }
+
   function renderFoldStrip(dockId, dockEl) {
     // Remove old fold strip if any
     var oldStrip = dockEl.querySelector('.ws-fold-strip');
@@ -956,41 +998,7 @@
 
       if (kind === 'logs' && dockId === 'bottom') {
         zone.classList.add('ws-fold-zone-status');
-        // Build rich status badges for the folded log strip
-        var badgesEl = document.createElement('span');
-        badgesEl.className = 'ws-fold-status-badges';
-
-        var statusData = typeof window.getLogFoldedStatusData === 'function'
-          ? window.getLogFoldedStatusData()
-          : { connected: state.backendConnected, logCount: 0, userCount: 0, inFlightCount: 0 };
-
-        var dotSpan = document.createElement('span');
-        dotSpan.className = 'ws-fold-status-dot' + (statusData.connected ? ' is-connected' : ' is-disconnected');
-        badgesEl.appendChild(dotSpan);
-
-        var connSpan = document.createElement('span');
-        connSpan.className = 'ws-fold-badge ws-fold-badge-conn';
-        connSpan.textContent = statusData.connected ? 'Connected' : 'Disconnected';
-        badgesEl.appendChild(connSpan);
-
-        var logsSpan = document.createElement('span');
-        logsSpan.className = 'ws-fold-badge ws-fold-badge-logs';
-        logsSpan.textContent = statusData.logCount + ' logs';
-        badgesEl.appendChild(logsSpan);
-
-        var usersSpan = document.createElement('span');
-        usersSpan.className = 'ws-fold-badge ws-fold-badge-users';
-        usersSpan.textContent = statusData.userCount + (statusData.userCount === 1 ? ' user' : ' users');
-        if (statusData.userCount === 0) usersSpan.style.display = 'none';
-        badgesEl.appendChild(usersSpan);
-
-        var apiSpan = document.createElement('span');
-        apiSpan.className = 'ws-fold-badge ws-fold-badge-api';
-        apiSpan.textContent = statusData.inFlightCount + ' pending';
-        if (statusData.inFlightCount === 0) apiSpan.style.display = 'none';
-        badgesEl.appendChild(apiSpan);
-
-        zone.appendChild(badgesEl);
+        zone.appendChild(buildLogStatusBadgesEl());
       } else {
         var label = document.createElement('span');
         label.className = 'ws-fold-zone-label';
@@ -2721,6 +2729,25 @@
     // shown in an actual tabbed top bar. Single-item groups use the same
     // header component in its title mode (`is-single`).
     var headerEl = buildSideDockHeader(node);
+    // Inject the rich log-status badges into the bottom-dock log
+    // panel's view header. When the user folds the log pane via the
+    // ▾ button (foldPane → state.foldedPanes[node.id] = ratio), the
+    // pane collapses to a 28px-tall strip showing only this header;
+    // without these badges the user sees no connection / log-count
+    // / user-count / in-flight info while folded. The dock-level
+    // collapseDock fold path renders its own strip via
+    // renderFoldStrip, so the injection is gated on the pane-fold
+    // state to avoid double-rendering when both fold mechanisms
+    // happen to apply simultaneously.
+    if (
+      dockId === 'bottom' &&
+      activePanelId &&
+      getPanelKind(activePanelId) === 'logs' &&
+      !!state.foldedPanes[node.id]
+    ) {
+      headerEl.classList.add('ws-view-header-with-fold-status');
+      headerEl.appendChild(buildLogStatusBadgesEl());
+    }
     tabsetEl.appendChild(headerEl);
 
     var contentEl = document.createElement('div');
@@ -4596,6 +4623,27 @@
     getFrameWindowForBoard: getFrameWindowForBoard,
     getTabIdForBoard: getTabIdForBoard,
     _test_resolveCycleTabTarget: resolveCycleTabTarget,
+    _test_buildLogStatusBadgesEl: buildLogStatusBadgesEl,
+    _test_setFoldedPane: function (nodeId, ratio) {
+      if (typeof ratio === 'number') state.foldedPanes[nodeId] = ratio;
+      else delete state.foldedPanes[nodeId];
+    },
+    _test_findHeaderForBottomLogPanel: function () {
+      var bottomTree = state.sideDocks && state.sideDocks.bottom;
+      if (!bottomTree || !state.bottomDockEl) return null;
+      function walk(node, out) {
+        if (!node) return;
+        var cls = node.className || '';
+        if (typeof cls.split === 'function' && cls.split(' ').indexOf('ws-view-header') !== -1) {
+          out.push(node);
+        }
+        var kids = node.children || node.childNodes || [];
+        for (var i = 0; i < kids.length; i++) walk(kids[i], out);
+      }
+      var headers = [];
+      walk(state.bottomDockEl, headers);
+      return headers[0] || null;
+    },
     _test_seedOrphanFrame: function (tabId) {
       if (!tabId || state.frameCache[tabId]) return;
       var fake = document.createElement('div');

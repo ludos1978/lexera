@@ -275,6 +275,68 @@ describe('workspace shell panel-dock lifecycle (Phase 1.1 + 1.2)', () => {
   });
 });
 
+describe('bottom-dock log-panel pane-fold injects status badges into the view header', () => {
+  // The user complaint: "log viewer is invisible in the folded state".
+  // Root cause hypothesis: the rich Connected/N logs/N users/N pending
+  // strip is only rendered by `renderFoldStrip`, which only fires when
+  // a dock-level collapse sets state.dockSizes[dockId] = 0. Folding via
+  // the ▾ button on the bottom-dock log panel goes through a different
+  // path (`foldPane` → state.foldedPanes[nodeId] = ratio), so the strip
+  // never renders and the user sees nothing.
+  //
+  // Fix: in renderSideDockTabset, when active panel is logs AND dockId
+  // is 'bottom' AND state.foldedPanes[node.id] is truthy, append a
+  // `.ws-fold-status-badges` element to the view header. The existing
+  // updateFoldedLogStatusBadges() in loggingSystem.js queries every
+  // such node in the DOM and keeps it live-updated.
+
+  it('builds a status-badges element with all four badges + the connection dot', () => {
+    const { shell } = createShellHarness();
+    const el = shell._test_buildLogStatusBadgesEl();
+    expect(el).toBeTruthy();
+    expect(el.className).toContain('ws-fold-status-badges');
+    // Recursive walker over the stub DOM
+    function findByClass(root, cls) {
+      if (!root) return null;
+      if (root.className && String(root.className).split(' ').indexOf(cls) !== -1) return root;
+      const kids = root.children || root.childNodes || [];
+      for (const k of kids) {
+        const found = findByClass(k, cls);
+        if (found) return found;
+      }
+      return null;
+    }
+    expect(findByClass(el, 'ws-fold-status-dot')).toBeTruthy();
+    expect(findByClass(el, 'ws-fold-badge-conn')).toBeTruthy();
+    expect(findByClass(el, 'ws-fold-badge-logs')).toBeTruthy();
+    expect(findByClass(el, 'ws-fold-badge-users')).toBeTruthy();
+    expect(findByClass(el, 'ws-fold-badge-api')).toBeTruthy();
+  });
+
+  it('does NOT inject the badges into the header when the pane is not folded', () => {
+    vi.useFakeTimers();
+    const { shell, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+    shell.movePanelToDock('logs', 'bottom');
+    vi.advanceTimersByTime(50);
+
+    function findByClass(root, cls) {
+      if (!root) return null;
+      if (root.className && String(root.className).split(' ').indexOf(cls) !== -1) return root;
+      const kids = root.children || root.childNodes || [];
+      for (const k of kids) {
+        const found = findByClass(k, cls);
+        if (found) return found;
+      }
+      return null;
+    }
+    const header = shell._test_findHeaderForBottomLogPanel();
+    expect(header).toBeTruthy();
+    // Pane is not folded → no `.ws-fold-status-badges` in this header.
+    expect(findByClass(header, 'ws-fold-status-badges')).toBe(null);
+  });
+});
+
 describe('workspace shell periodic view-leak audit (Phase 4.2)', () => {
   afterEach(() => {
     vi.useRealTimers();
