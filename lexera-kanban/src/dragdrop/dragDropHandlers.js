@@ -730,6 +730,41 @@ var LexeraDragDropHandlers = (function () {
     return topWin;
   }
 
+  /**
+   * Unified cursor → drag-target resolver for a top-window screen point.
+   *
+   * Three possible outcomes:
+   *   - `{ kind: 'iframe', win: Window }`   — cursor is over a same-document
+   *     iframe; the existing cross-frame `__lexeraExternalDnd` path can call
+   *     `win.__lexeraExternalDnd.hover(...)` directly.
+   *   - `{ kind: 'native-webview', label: string }` — cursor is over a
+   *     Tauri-native child webview (separate OS-level window). The bridge
+   *     can't reach it with cross-frame JS; it must forward hover/drop via
+   *     IPC. The `label` identifies which spawned webview.
+   *   - `null` — cursor is over plain shell DOM (no foreign drop target).
+   *
+   * Iframe hits take precedence: if a same-document iframe footprint
+   * overlaps a native-webview footprint at the same screen coord (rare
+   * — would mean the iframe is in front in z-order), the iframe wins
+   * because the cursor is in fact intercepting it.
+   *
+   * Used by Phase 5 of the workspace-viewer cross-webview-drag work.
+   */
+  function getDragTargetAtTopPoint(topX, topY) {
+    var topWin = getTopWindowSafe();
+    var hit = (topWin && topWin.document && topWin.document.elementFromPoint)
+      ? topWin.document.elementFromPoint(topX, topY) : null;
+    if (hit && hit.tagName === 'IFRAME' && hit.contentWindow) {
+      return { kind: 'iframe', win: hit.contentWindow };
+    }
+    var multiview = (typeof window !== 'undefined') ? window.LexeraMultiviewWebview : null;
+    if (multiview && typeof multiview.getWebviewLabelAtTopPoint === 'function') {
+      var label = multiview.getWebviewLabelAtTopPoint(topX, topY);
+      if (label) return { kind: 'native-webview', label: label };
+    }
+    return null;
+  }
+
   function getFrameRectInTopWindow(targetWin) {
     var topWin = getTopWindowSafe();
     if (!targetWin || targetWin === topWin) return { left: 0, top: 0 };
@@ -2097,6 +2132,9 @@ var LexeraDragDropHandlers = (function () {
 
     // Kind-aware drop target validator (gatekeeper used by dragover and apply)
     isDropTargetValidForKind: isDropTargetValidForKind,
+
+    // Unified cursor->drag-target resolver (iframe Window OR native-webview label)
+    getDragTargetAtTopPoint: getDragTargetAtTopPoint,
 
     // Element finders
     findStackDropZoneAt: findStackDropZoneAt,
