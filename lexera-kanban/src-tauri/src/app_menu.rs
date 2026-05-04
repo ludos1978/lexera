@@ -159,7 +159,7 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .item(&zoom_sub)
         .separator()
         .item(&MenuItemBuilder::with_id("view-inspector", "Developer Tools").accelerator("F12").build(app)?)
-        .item(&MenuItemBuilder::with_id("view-inspector-all", "Developer Tools (All Views)").accelerator("Shift+F12").build(app)?)
+        .item(&MenuItemBuilder::with_id("view-inspector-all", "Developer Tools (All Views)").accelerator("CmdOrCtrl+Alt+Shift+I").build(app)?)
         .build()?;
 
     // ── Format menu ──
