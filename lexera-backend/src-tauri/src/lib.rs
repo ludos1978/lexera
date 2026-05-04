@@ -74,37 +74,63 @@ fn init_storage_and_boards(
 
     let start = std::time::Instant::now();
 
-    // Prepare all boards in parallel: file I/O, parsing, CRDT loading happen
-    // concurrently across threads. The boards RwLock is NOT acquired here.
-    let prepared: Vec<_> = std::thread::scope(|s| {
-        let handles: Vec<_> = board_entries
-            .iter()
-            .map(|path| s.spawn(|| storage.prepare_board_state(path)))
-            .collect();
+    // Prepare boards in parallel chunks. Below LOAD_BATCH_SIZE we spawn one
+    // thread per board (matches the previous behaviour and minimises overhead
+    // for typical workspaces). Above the threshold we process the entries in
+    // chunks of LOAD_BATCH_SIZE so we never have more than ~100 concurrent
+    // file-I/O / CRDT-loading threads at once — guards against FD exhaustion
+    // and disk-queue contention on workspaces with hundreds of boards.
+    const LOAD_BATCH_SIZE: usize = 100;
+    let chunk_size = if board_entries.len() <= LOAD_BATCH_SIZE {
+        board_entries.len()
+    } else {
+        LOAD_BATCH_SIZE
+    };
 
-        handles
-            .into_iter()
-            .enumerate()
-            .filter_map(|(i, h)| match h.join() {
-                Ok(Ok(pair)) => {
-                    log::info!("Loaded board: {} -> {}", board_entries[i].display(), pair.0);
-                    Some(pair)
-                }
-                Ok(Err(e)) => {
-                    log::warn!("Failed to load board {}: {}", board_entries[i].display(), e);
-                    None
-                }
-                Err(payload) => {
-                    log::error!(
-                        "Board loading thread panicked for {}: {}",
-                        board_entries[i].display(),
-                        lexera_core::panic_util::panic_payload_to_string(&*payload)
-                    );
-                    None
-                }
-            })
-            .collect()
-    });
+    let mut prepared: Vec<_> = Vec::with_capacity(board_entries.len());
+    for (chunk_index, chunk) in board_entries.chunks(chunk_size).enumerate() {
+        let chunk_results: Vec<_> = std::thread::scope(|s| {
+            let handles: Vec<_> = chunk
+                .iter()
+                .map(|path| s.spawn(|| storage.prepare_board_state(path)))
+                .collect();
+
+            handles
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, h)| {
+                    let path_idx = chunk_index * chunk_size + i;
+                    match h.join() {
+                        Ok(Ok(pair)) => {
+                            log::info!(
+                                "Loaded board: {} -> {}",
+                                board_entries[path_idx].display(),
+                                pair.0
+                            );
+                            Some(pair)
+                        }
+                        Ok(Err(e)) => {
+                            log::warn!(
+                                "Failed to load board {}: {}",
+                                board_entries[path_idx].display(),
+                                e
+                            );
+                            None
+                        }
+                        Err(payload) => {
+                            log::error!(
+                                "Board loading thread panicked for {}: {}",
+                                board_entries[path_idx].display(),
+                                lexera_core::panic_util::panic_payload_to_string(&*payload)
+                            );
+                            None
+                        }
+                    }
+                })
+                .collect()
+        });
+        prepared.extend(chunk_results);
+    }
 
     // Collect canonical paths before batch insert (need file_path from state)
     let board_paths: Vec<(String, PathBuf)> = prepared
@@ -1100,5 +1126,110 @@ pub fn run() {
         Err(e) => {
             log::error!("error while running lexera-backend: {}", e);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lexera_core::storage::local::LocalStorage;
+    use std::io::Write;
+
+    fn write_minimal_board(path: &std::path::Path, n: usize) {
+        let mut f = std::fs::File::create(path).unwrap();
+        write!(
+            f,
+            "---\nkanban-plugin: board\n---\n\n## Todo {n}\n- [ ] Task {n}\n"
+        )
+        .unwrap();
+    }
+
+    fn cfg_with_boards(paths: &[std::path::PathBuf]) -> std::sync::RwLock<config::SyncConfig> {
+        let cfg = config::SyncConfig {
+            boards: paths
+                .iter()
+                .map(|p| config::BoardEntry {
+                    file: p.to_string_lossy().into_owned(),
+                    name: None,
+                    workspace_ids: Vec::new(),
+                    ..config::BoardEntry::default()
+                })
+                .collect(),
+            ..config::SyncConfig::default()
+        };
+        std::sync::RwLock::new(cfg)
+    }
+
+    #[test]
+    fn init_storage_loads_few_boards_in_one_chunk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = LocalStorage::new();
+        let paths: Vec<_> = (0..5)
+            .map(|i| {
+                let p = tmp.path().join(format!("board-{i}.md"));
+                write_minimal_board(&p, i);
+                p
+            })
+            .collect();
+        let cfg = cfg_with_boards(&paths);
+
+        let loaded = init_storage_and_boards(&storage, &cfg);
+        assert_eq!(loaded.len(), paths.len(), "all 5 boards loaded");
+    }
+
+    #[test]
+    fn init_storage_chunks_when_above_batch_size() {
+        // Cross the LOAD_BATCH_SIZE=100 threshold to exercise the chunked
+        // path. Each chunk must keep its (chunk_index * chunk_size + i)
+        // indexing aligned so the per-board log/error messages still
+        // reference the correct path.
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = LocalStorage::new();
+        let paths: Vec<_> = (0..150)
+            .map(|i| {
+                let p = tmp.path().join(format!("board-{i:03}.md"));
+                write_minimal_board(&p, i);
+                p
+            })
+            .collect();
+        let cfg = cfg_with_boards(&paths);
+
+        let loaded = init_storage_and_boards(&storage, &cfg);
+        assert_eq!(loaded.len(), 150, "all 150 boards loaded across chunks");
+
+        // Sanity: every file path returned canonicalises to one of the
+        // input paths, so the chunk-index math didn't shuffle results.
+        let canonicalised_inputs: std::collections::HashSet<_> = paths
+            .iter()
+            .map(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()))
+            .collect();
+        for (_id, path) in &loaded {
+            assert!(
+                canonicalised_inputs.contains(path),
+                "loaded path not in input set: {}",
+                path.display()
+            );
+        }
+    }
+
+    #[test]
+    fn init_storage_skips_missing_files_without_failing_the_batch() {
+        // Mix of present + missing files exercises the per-board error path;
+        // missing entries should be logged and skipped, not abort the batch.
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = LocalStorage::new();
+        let mut paths = Vec::new();
+        for i in 0..3 {
+            let p = tmp.path().join(format!("present-{i}.md"));
+            write_minimal_board(&p, i);
+            paths.push(p);
+        }
+        // Two paths that don't exist on disk.
+        paths.push(tmp.path().join("missing-a.md"));
+        paths.push(tmp.path().join("missing-b.md"));
+        let cfg = cfg_with_boards(&paths);
+
+        let loaded = init_storage_and_boards(&storage, &cfg);
+        assert_eq!(loaded.len(), 3, "only the present files were loaded");
     }
 }
