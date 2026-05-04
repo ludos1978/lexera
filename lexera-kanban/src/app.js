@@ -6585,6 +6585,24 @@ var LexeraDashboard = (function () {
     return false;
   }
 
+  // Cmd/Ctrl+Alt+Shift+I — open DevTools for EVERY child webview at once.
+  // Distinct from isInspectorShortcut (which opens just THIS window's
+  // devtools). Direct keydown wiring instead of going through the menu
+  // dispatch chain so it works even when the native menu accelerator
+  // doesn't fire (macOS function-key politics, focus loss to menu bar,
+  // stale JS in a webview that hasn't reloaded since the menu wiring
+  // was added, etc.).
+  function isInspectorAllShortcut(e) {
+    var code = e.code || '';
+    var altDown = !!e.altKey;
+    var shiftDown = !!e.shiftKey;
+    var modDown = !!(e.ctrlKey || e.metaKey);
+    if (!modDown || !altDown || !shiftDown) return false;
+    if (code === 'KeyI') return true;
+    if (e.key === 'i' || e.key === 'I') return true;
+    return false;
+  }
+
   if (getElInspectorBtn()) {
     getElInspectorBtn().addEventListener('click', function (e) {
       e.preventDefault();
@@ -6868,6 +6886,16 @@ var LexeraDashboard = (function () {
       return;
     }
 
+    if (isInspectorAllShortcut(e)) {
+      // Match this BEFORE isInspectorShortcut: the all-views combo
+      // (Cmd/Ctrl+Alt+Shift+I) is a strict superset of the single-window
+      // combo (Cmd/Ctrl+Shift+I), so the more-specific test must run
+      // first or the single-window handler eats it.
+      e.preventDefault();
+      e.stopPropagation();
+      openAllInspectors();
+      return;
+    }
     if (isInspectorShortcut(e)) {
       e.preventDefault();
       e.stopPropagation();
