@@ -19,7 +19,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 ### Multi-Window Structural Improvements
 
 
-- [ ] the log viewer is invisible in the folded state!
+- [x] (done) the log viewer is invisible in the folded state!
 
 - [ ] (in progress) the kanban boards in the workspace viewer must be unfoldable and show the title of each element. it the elements (row, stack, column, cards) must be re-orderable, can be dragged between boards in the workspace and also into kanban boards, it must also be possible to drag elements from kanban boards into the workspace hierarchy! Phases 1-4 (in-process drag within one webview) shipped; Phase 5 = cross-Tauri-webview drag forwarding via IPC. Primitives committed: `getWebviewLabelAtTopPoint` (commit 71f64222), `__lexeraExternalDnd` contract pin (commit f5c2f09c). Drop-target differentiation per kind shipped: ~~zone-aware sibling reorder~~ (commit 497be502), ~~`row → board` absorb~~ (commit e1253b67), ~~stack/column absorbs only into empty parents~~ (commit 58d5b266). Phase 5 plumbing: ~~`routeCrossViewDragPoint` pure helper~~ (commit 01c1d0c7), ~~shell-side install() forwards drag-move/drag-end-external to `external-dnd-hover`/`-drop`~~ (commit bebe9056), ~~sub-app emits drag-move/drag-end-external when no local target~~ (commit 6df28c29). Next: `multiviewClient.installHierarchyDragBridge` wrapper must inject `getWebviewLabelAtTopPoint` + `getWebviewRect` so the install path actually activates the cross-view forwarder on shell boot.
 

@@ -229,10 +229,10 @@
 }
 
 /* Status bar in fold strip: show inline for bottom dock, hide for side docks */
-.ws-fold-strip .log-panel-status {
+.ws-fold-strip .ws-fold-status-badges {
   display: none;
 }
-.workspace-shell-panel-dock.is-folded[data-dock="bottom"] > .ws-fold-strip .log-panel-status {
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"] > .ws-fold-strip .ws-fold-status-badges {
   display: flex;
   align-items: center;
   gap: var(--workspace-row-gap);
@@ -241,10 +241,10 @@
   font-size: inherit;
   height: 100%;
 }
-.ws-fold-strip .log-panel-status .status-msg {
+.ws-fold-strip .ws-fold-status-badges .status-msg {
   max-width: 160px;
 }
-.ws-fold-strip .log-panel-status .log-panel-status-btn {
+.ws-fold-strip .ws-fold-status-badges .log-panel-status-btn {
   height: var(--icon-button-size);
   font-size: inherit;
   padding: 0 4px;

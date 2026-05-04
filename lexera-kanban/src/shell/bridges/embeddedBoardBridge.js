@@ -200,8 +200,33 @@
     injectFillStyles();
     invoke('multiview_subscribe', {
       label: wv.label,
-      events: ['dashboard-navigate', 'dashboard-board-test-request']
+      events: [
+        'dashboard-navigate',
+        'dashboard-board-test-request',
+        // Cross-view drag forwarding (Phase 5). The shell-side
+        // `hierarchyDragBridge` install path emits these events to
+        // whichever webview the cursor is over; the kanban-board
+        // webview routes them into `window.__lexeraExternalDnd`,
+        // which already knows how to map a cross-app drag payload
+        // to the right card / column / row / stack drop target.
+        'external-dnd-hover',
+        'external-dnd-drop'
+      ]
     }).catch(function () {});
+
+    // Cross-view drag receiver: relay Tauri events to the
+    // already-installed `__lexeraExternalDnd` API. The bridge is set
+    // up by `dragDropHandlers.registerExternalDndBridge`; subscribe
+    // unconditionally so the handler is in place before that runs
+    // (timing isn't guaranteed) — checked at call time.
+    function relayExternalDnd(method, event) {
+      var p = (event && event.payload) || {};
+      var api = window.__lexeraExternalDnd;
+      if (!api || typeof api[method] !== 'function') return;
+      try { api[method](p.payload, p.x, p.y); } catch (_) { /* non-fatal */ }
+    }
+    wv.listen('external-dnd-hover', function (event) { relayExternalDnd('hover', event); });
+    wv.listen('external-dnd-drop', function (event) { relayExternalDnd('drop', event); });
 
     wv.listen('catalog-snapshot', function (event) {
       var p = (event && event.payload) || {};

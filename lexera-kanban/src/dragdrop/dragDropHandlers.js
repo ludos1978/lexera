@@ -790,13 +790,22 @@ var LexeraDragDropHandlers = (function () {
     return { x: localX + rect.left, y: localY + rect.top };
   }
 
-  function toLocalFramePoint(targetWin, topX, topY) {
+  function toLocalFramePoint(target, topX, topY) {
     var topWin = getTopWindowSafe();
-    if (!targetWin) return null;
-    if (targetWin === topWin) return { x: topX, y: topY };
-    var rect = getFrameRectInTopWindow(targetWin);
-    if (!rect) return null;
-    return { x: topX - rect.left, y: topY - rect.top };
+    if (!target) return null;
+    if (target.kind === 'iframe') {
+      var targetWin = target.win;
+      if (targetWin === topWin) return { x: topX, y: topY };
+      var rect = getFrameRectInTopWindow(targetWin);
+      if (!rect) return null;
+      return { x: topX - rect.left, y: topY - rect.top };
+    }
+    if (target.kind === 'native-webview') {
+      var rect2 = getWebviewRectSafe(target.label);
+      if (!rect2) return null;
+      return { x: topX - rect2.left, y: topY - rect2.top };
+    }
+    return { x: topX, y: topY };
   }
 
   function getDragStartTopPoint(kind) {
@@ -880,7 +889,7 @@ var LexeraDragDropHandlers = (function () {
     if (!targetWin || !payload || !payload.source) return false;
     var api = targetWin.__lexeraExternalDnd;
     if (!api || typeof api.drop !== 'function') return false;
-    var localPoint = toLocalFramePoint(targetWin, topX, topY);
+    var localPoint = toLocalFramePoint({ kind: 'iframe', win: targetWin }, topX, topY);
     if (!localPoint) return false;
     return !!api.drop(payload, localPoint.x, localPoint.y);
   }
@@ -889,7 +898,7 @@ var LexeraDragDropHandlers = (function () {
     if (!targetWin || !payload || !payload.source) return false;
     var api = targetWin.__lexeraExternalDnd;
     if (!api || typeof api.hover !== 'function') return false;
-    var localPoint = toLocalFramePoint(targetWin, topX, topY);
+    var localPoint = toLocalFramePoint({ kind: 'iframe', win: targetWin }, topX, topY);
     if (!localPoint) return false;
     return !!api.hover(payload, localPoint.x, localPoint.y);
   }
@@ -900,6 +909,53 @@ var LexeraDragDropHandlers = (function () {
     if (api && typeof api.clear === 'function') {
       api.clear();
     }
+  }
+
+  function tryExternalNativeHover(label, payload, topX, topY) {
+    var multiview = (typeof window !== 'undefined') ? window.LexeraMultiview : null;
+    if (!multiview || typeof multiview.invoke !== 'function') return false;
+    var localPoint = toLocalFramePoint({ kind: 'native-webview', label: label }, topX, topY);
+    if (!localPoint) return false;
+
+    multiview.invoke('multiview_emit_to', {
+      target: label,
+      event: 'external-dnd-hover',
+      payload: {
+        payload: payload,
+        x: localPoint.x,
+        y: localPoint.y
+      }
+    }).catch(function () { /* non-fatal */ });
+    return true;
+  }
+
+  function tryExternalNativeDrop(label, payload, topX, topY) {
+    var multiview = (typeof window !== 'undefined') ? window.LexeraMultiview : null;
+    if (!multiview || typeof multiview.invoke !== 'function') return false;
+    var localPoint = toLocalFramePoint({ kind: 'native-webview', label: label }, topX, topY);
+    if (!localPoint) return false;
+
+    multiview.invoke('multiview_emit_to', {
+      target: label,
+      event: 'external-dnd-drop',
+      payload: {
+        payload: payload,
+        x: localPoint.x,
+        y: localPoint.y
+      }
+    }).catch(function () { /* non-fatal */ });
+    return true;
+  }
+
+  function tryExternalNativeClear(label) {
+    var multiview = (typeof window !== 'undefined') ? window.LexeraMultiview : null;
+    if (!multiview || typeof multiview.invoke !== 'function') return;
+
+    multiview.invoke('multiview_emit_to', {
+      target: label,
+      event: 'external-dnd-clear',
+      payload: {}
+    }).catch(function () { /* non-fatal */ });
   }
 
   function getCrossViewGhostLabel(kind) {
@@ -937,9 +993,15 @@ var LexeraDragDropHandlers = (function () {
   }
 
   function clearCrossViewHoverTarget() {
-    if (!crossViewBridge || !crossViewBridge.hoverWin) return;
-    tryExternalFrameClear(crossViewBridge.hoverWin);
-    crossViewBridge.hoverWin = null;
+    if (!crossViewBridge) return;
+    if (crossViewBridge.hoverWin) {
+      tryExternalFrameClear(crossViewBridge.hoverWin);
+      crossViewBridge.hoverWin = null;
+    }
+    if (crossViewBridge.hoverLabel) {
+      tryExternalNativeClear(crossViewBridge.hoverLabel);
+      crossViewBridge.hoverLabel = null;
+    }
   }
 
   function hideCrossViewTopGhost() {
