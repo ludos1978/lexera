@@ -271,6 +271,27 @@
       document.removeEventListener('mousemove', onMove, true);
       document.removeEventListener('mouseup', onUp, true);
     };
+    // Sub-app's own webview label — used to tag drag-move broadcasts
+    // so the shell-side router can translate this document's cursor
+    // coords into top-window coords. Looked up lazily so the runtime
+    // is fully initialised by the time we need it.
+    var getOwnWebviewLabel = function () {
+      try {
+        var wv = window.LexeraSubApp && typeof window.LexeraSubApp.getCurrentWebview === 'function'
+          ? window.LexeraSubApp.getCurrentWebview() : null;
+        return (wv && wv.label) || '';
+      } catch (_) { return ''; }
+    };
+    var broadcastCrossViewMove = function (clientX, clientY) {
+      if (!window.LexeraSubApp || typeof window.LexeraSubApp.broadcast !== 'function') return;
+      window.LexeraSubApp.broadcast('hierarchy-entity-drag-move', {
+        source: activeDrag.source,
+        sourceWebviewLabel: getOwnWebviewLabel(),
+        sourceClientX: clientX,
+        sourceClientY: clientY
+      });
+    };
+
     var onMove = function (e) {
       if (!pendingDrag) return;
       if (!activeDrag) {
@@ -290,6 +311,12 @@
           activeDropTargetEl = match.node;
         }
       }
+      // No local target → cursor may be over a different webview.
+      // Broadcast drag-move so the shell-side router can forward to
+      // that webview's `__lexeraExternalDnd.hover`. When there IS a
+      // local target we skip the broadcast to keep the visual
+      // exclusively local.
+      if (!match) broadcastCrossViewMove(e.clientX, e.clientY);
     };
     var onUp = function (e) {
       if (!activeDrag) {
@@ -300,17 +327,29 @@
       }
       var match = readDropTargetFromPoint(e.clientX, e.clientY, activeDrag.source);
       var src = activeDrag.source;
-      // Clean up state BEFORE firing the broadcast so onCustom handlers
-      // can re-render synchronously.
+      var clientX = e.clientX, clientY = e.clientY;
       clearDropTargetEl();
-      var hadDrop = !!match;
+      var hadLocalDrop = !!match;
       var dropPayload = match ? { source: src, target: match.info } : null;
       pendingDrag = null;
       activeDrag = null;
       document.removeEventListener('mousemove', onMove, true);
       document.removeEventListener('mouseup', onUp, true);
-      if (hadDrop && window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
-        window.LexeraSubApp.broadcast('hierarchy-entity-drop', dropPayload);
+      if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+        if (hadLocalDrop) {
+          window.LexeraSubApp.broadcast('hierarchy-entity-drop', dropPayload);
+        } else {
+          // Cursor was outside this webview at release — let the
+          // shell-side router try to dispatch this as an
+          // `external-dnd-drop` to whichever webview the cursor was
+          // over. The shell ignores it if no other webview matches.
+          window.LexeraSubApp.broadcast('hierarchy-entity-drag-end-external', {
+            source: src,
+            sourceWebviewLabel: getOwnWebviewLabel(),
+            sourceClientX: clientX,
+            sourceClientY: clientY
+          });
+        }
       }
     };
     localBoardsEl.addEventListener('mousedown', function (e) {

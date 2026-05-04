@@ -962,6 +962,93 @@ describe('hierarchy view sub-app', () => {
       expect(dropBroadcast).toBeFalsy();
     });
 
+    // Phase 5 sender side: when the cursor leaves every local drop
+    // target during a drag, the sub-app broadcasts
+    // `hierarchy-entity-drag-move` so the shell-side router can
+    // forward to whichever other webview the cursor is over. mouseup
+    // outside any local target broadcasts
+    // `hierarchy-entity-drag-end-external` instead of the local
+    // `hierarchy-entity-drop`.
+    it('cross-view drag-move/drag-end-external broadcasts fire when no local target is hit', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); }),
+        getCurrentWebview: vi.fn(() => ({ label: 'workspaces-sub-app' }))
+      };
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({
+        rows: [{ id: 'r1', title: 'R', stacks: [{ id: 's1', title: 'S', columns: [{
+          id: 'c1', title: 'C', cards: [{ id: 'card-1', title: 'A' }]
+        }] }] }]
+      })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      const cardNode = window.document.querySelector('#local-boards .tree-node[data-drag-kind="card"]');
+      expect(cardNode).toBeTruthy();
+
+      // Drive a pointer drag where the cursor never lands on a valid
+      // local target. Explicitly stub `elementFromPoint` so it never
+      // resolves to a tree-node — exactly the cross-view scenario.
+      const origEFP = window.document.elementFromPoint;
+      window.document.elementFromPoint = function () { return window.document.body; };
+
+      cardNode.dispatchEvent(new window.MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10
+      }));
+      // First move below threshold.
+      window.document.dispatchEvent(new window.MouseEvent('mousemove', {
+        bubbles: true, clientX: 11, clientY: 11
+      }));
+      // Cross threshold — should fire drag-start.
+      window.document.dispatchEvent(new window.MouseEvent('mousemove', {
+        bubbles: true, clientX: 100, clientY: 200
+      }));
+      // No local match → also fires drag-move.
+      window.document.dispatchEvent(new window.MouseEvent('mousemove', {
+        bubbles: true, clientX: 200, clientY: 300
+      }));
+      // Release with no local target → fires drag-end-external, NOT
+      // hierarchy-entity-drop.
+      window.document.dispatchEvent(new window.MouseEvent('mouseup', {
+        bubbles: true, clientX: 200, clientY: 300
+      }));
+
+      const dragStart = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drag-start');
+      expect(dragStart).toBeTruthy();
+
+      const dragMove = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drag-move');
+      expect(dragMove).toBeTruthy();
+      expect(dragMove.payload.sourceWebviewLabel).toBe('workspaces-sub-app');
+      expect(typeof dragMove.payload.sourceClientX).toBe('number');
+      expect(typeof dragMove.payload.sourceClientY).toBe('number');
+      expect(dragMove.payload.source).toEqual({ boardId: 'b1', kind: 'card', entityId: 'card-1' });
+
+      const dragEnd = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drag-end-external');
+      expect(dragEnd).toBeTruthy();
+      expect(dragEnd.payload.sourceWebviewLabel).toBe('workspaces-sub-app');
+      expect(dragEnd.payload.sourceClientX).toBe(200);
+      expect(dragEnd.payload.sourceClientY).toBe(300);
+
+      // Local drop NOT fired (no local target matched).
+      expect(broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop')).toBeFalsy();
+
+      window.document.elementFromPoint = origEFP;
+    });
+
     // dblclick on a row / stack / column / card label opens an inline
     // input. Enter commits and broadcasts `hierarchy-entity-rename`;
     // Escape cancels without firing a broadcast.

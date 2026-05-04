@@ -318,6 +318,23 @@
       document.removeEventListener('mousemove', onMove, true);
       document.removeEventListener('mouseup', onUp, true);
     };
+    var getOwnWebviewLabel = function () {
+      try {
+        var wv = window.LexeraSubApp && typeof window.LexeraSubApp.getCurrentWebview === 'function'
+          ? window.LexeraSubApp.getCurrentWebview() : null;
+        return (wv && wv.label) || '';
+      } catch (_) { return ''; }
+    };
+    var broadcastCrossViewMove = function (clientX, clientY) {
+      if (!window.LexeraSubApp || typeof window.LexeraSubApp.broadcast !== 'function') return;
+      window.LexeraSubApp.broadcast('hierarchy-entity-drag-move', {
+        source: activeDrag.source,
+        sourceWebviewLabel: getOwnWebviewLabel(),
+        sourceClientX: clientX,
+        sourceClientY: clientY
+      });
+    };
+
     var onMove = function (e) {
       if (!pendingDrag) return;
       if (!activeDrag) {
@@ -337,6 +354,10 @@
           activeDropTargetEl = match.node;
         }
       }
+      // No local target → cursor may be over another webview. Forward
+      // the cursor position so the shell can route to that webview's
+      // `__lexeraExternalDnd.hover`.
+      if (!match) broadcastCrossViewMove(e.clientX, e.clientY);
     };
     var onUp = function (e) {
       if (!activeDrag) {
@@ -347,15 +368,28 @@
       }
       var match = readDropTargetFromPoint(e.clientX, e.clientY, activeDrag.source);
       var src = activeDrag.source;
+      var clientX = e.clientX, clientY = e.clientY;
       clearDropTargetEl();
-      var hadDrop = !!match;
+      var hadLocalDrop = !!match;
       var dropPayload = match ? { source: src, target: match.info } : null;
       pendingDrag = null;
       activeDrag = null;
       document.removeEventListener('mousemove', onMove, true);
       document.removeEventListener('mouseup', onUp, true);
-      if (hadDrop && window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
-        window.LexeraSubApp.broadcast('hierarchy-entity-drop', dropPayload);
+      if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
+        if (hadLocalDrop) {
+          window.LexeraSubApp.broadcast('hierarchy-entity-drop', dropPayload);
+        } else {
+          // Cursor was outside this webview — let the shell-side
+          // router try to dispatch this as `external-dnd-drop` to
+          // whichever webview the cursor was over.
+          window.LexeraSubApp.broadcast('hierarchy-entity-drag-end-external', {
+            source: src,
+            sourceWebviewLabel: getOwnWebviewLabel(),
+            sourceClientX: clientX,
+            sourceClientY: clientY
+          });
+        }
       }
     };
     localBoardsEl.addEventListener('mousedown', function (e) {
