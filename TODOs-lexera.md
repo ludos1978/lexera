@@ -19,7 +19,7 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 ### Multi-Window Structural Improvements
 
 
-- [x] (done) the log viewer is invisible in the folded state!
+- [ ] (input required) the log viewer is invisible in the folded state! Code fix landed in commit 0bc5f26c (multiview parks webview offscreen when placeholder is hidden) with two contract tests in `multiviewWebview.test.js`. Per the project's `feedback_verify_before_done.md` rule, tests alone are not sufficient — needs real-app confirmation that folding the log panel now reveals the fold strip with the connection / N logs / N users / N pending badges, and that unfold restores the webview to the expanded position. Marked done prematurely; reverted on user prompt.
 
 - [x] (done) ~~window's workspace must be fixed — board selection was hopping the window between workspaces (selecting a board whose `workspace_ids` didn't match the window's active id mutated `activeWorkspaceId`/`viewWorkspaceId` to the board's workspace).~~ Made `syncWorkspaceContextForBoard` and `reconcileActiveWorkspaceContext` pure resolvers — they compute context but never mutate workspace ids. Window stays on whatever workspace it was opened with (URL `?workspace=` lock or `pickDefaultWorkspaceId`). Tests in `boardHierarchyCache.test.js` rewritten to enforce the new invariant. (commit 29436b8c source + a8d291f9 tests)
 
