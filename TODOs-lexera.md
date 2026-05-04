@@ -27,25 +27,47 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 
 ### Workspace Shell View Lifecycle (ghost views / "views all around" regression)
 
-Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webview state (`state.frameCache` + `multiviewSpawnedTabs`) are dual stores that can drift. Multiple mutation paths splice tabs out of leaves without calling `removeFrame` / `multiview.destroy`, leaving native Tauri webviews painting on screen at their last position. Detailed analysis: see chat history (suspect-list §E and structural-fix §A-§F).
+Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webview state (`state.frameCache` + `multiviewSpawnedTabs`) are dual stores that can drift. Multiple mutation paths splice tabs out of leaves without calling `removeFrame` / `multiview.destroy`, leaving native Tauri webviews painting on screen at their last position. Detailed phased plan in chat history.
 
-#### Immediate leak fixes (patch the bleeding)
-- [ ] Route `removePanelFromDocks` (workspaceShell.js:1392-1417) splices through `removeFrame(tabId)` so the native webview is destroyed when its tab is removed from a side dock. Single change covers ~8 caller paths (openPanelInCenter, ensureInitialPanelTab, splitLeafWithPanel, placePanelInLeaf, destroyDuplicatedPanelInstance, etc.).
-- [ ] Replace `extractTab(found.tab.id)` with `closeTab(found.tab.id)` in the base-panel branch of `closePanelView` (workspaceShell.js:838-840) so closing a base panel destroys its webview instead of orphaning it.
-- [ ] Iterate the OLD tree before `state.dockTree = replacement` in `flattenToActiveLeaf` (workspaceShell.js:1947-1958) and call `removeFrame` for every tab whose id ≠ active. Dropped tabs currently leak.
-- [ ] Reconcile orphans on the full-rebuild path at workspaceShell.js:3567 (`state.dockEl.innerHTML = ''`): before innerHTML wipe, diff `Object.keys(state.frameCache)` against the tab.ids in the next render and call `removeFrame` for any not present.
-- [ ] Decide on transparent-bg commit f76f959f: keep transparent (and accept skeleton text bleed-through during spawn) or revert `.workspace-shell-multiview-placeholder` to opaque (per the original intent comment at workspaceShell.css:1220-1223).
+#### Phase 0 — Instrument & reproduce
+- [ ] **0.1** Expose `LexeraMultiviewWebview._test_leakReport()` in `multiviewWebview.js` returning `{ spawnedTabs, spawnedDetail, geometryObservers, spawnLocks }`. Read-only diagnostic; no behavior change.
+- [ ] **0.2** Add a tree-vs-spawn invariant audit at the bottom of `render()` in `workspaceShell.js:~3593`. Gated by `localStorage.LEXERA_VIEW_LEAK_AUDIT === '1'`. Logs orphans via `lexeraLog('warn', ...)`.
+- [ ] **0.3** Wrap each `node.tabs.splice` site (workspaceShell.js:1405, 1778, 1966, 3609 + the `existingViews[existId].remove()` at 3468) with a guarded `console.trace` so the audit log shows which path leaked which tab.id. Same `LEXERA_VIEW_LEAK_AUDIT` flag.
+- [ ] (input required) **0.4** Run live repro with audit on; capture the orphan log to confirm which paths fire in real use.
 
-#### Structural hardening (make drift unrepresentable)
-- [ ] **§1 Reconciler / single source of truth** — make the layout tree the only authoritative state and `multiviewSpawnedTabs`/`frameCache` derived. Add `reconcile(prevTabIds, nextTree)` that diffs and calls `destroyTab` / `prepareTab`. Every public mutation (`openBoard`, `closeTab`, `placePanelInLeaf`, `splitLeafWithPanel`, …) ends with `reconcile`. Removes the need for bespoke cleanup at each call site.
-- [ ] **§2 Encapsulate tree mutations** — wrap `node.tabs.splice` behind `LexeraLayoutTree.{removeTabById, moveTab, insertTab, ...}` in [layoutTree.js](lexera-kanban/src/workspace/layoutTree.js). Add a contract test (pattern: `tokensCssNoOrphansContract.test.js`) that greps the codebase for `node.tabs.splice` / `leaf.tabs.splice` / `state.dockTree =` outside the allowed modules and fails closed on any new direct mutation site.
-- [ ] **§3 Co-located tab records** — collapse the parallel maps (`state.frameCache`, `multiviewSpawnedTabs`, `multiviewLabelSpawnLocks`, `lastKnownHealth`, `multiviewGeometryObservers`) into a single `tabRecords[id] = { placeholder, label, state, url, observer, healthDot, spawnLock }`. Cleanup becomes one `delete tabRecords[id]` + a single helper that disconnects the observer + destroys the webview + removes the placeholder.
-- [ ] **§4 DOM-anchored safety net** — single shell-level `MutationObserver` on the workspace root watching for `[data-multiview="1"]` removals. If the placeholder is still detached after one rAF (i.e., not a move/extract reattach), destroy the corresponding webview. Backstop for any future code path that mutates DOM directly.
-- [ ] **§5 OS-level pinning** — extend the Rust `multiview` plugin so each spawned webview is either (5a) pinned to a placeholder DOM id with auto-destroy when the id is reported missing, or (5b) clipped to the placeholder rect (zero-rect when missing). Highest blast-radius safety net; biggest engineering cost. Defer until §1-§4 land.
-- [ ] **§6 Property-based reconciler invariant test** — in `lexera-kanban/tests/`, run random sequences of tree ops (openBoard / closeTab / drag / split / flatten / removePanel) and assert `tabIdsInTree === Object.keys(spawnedTabs)` after every operation. Locks in §1's invariant against future regressions.
+#### Phase 1 — Surgical leak fixes
+- [ ] **1.1** Route `removePanelFromDocks` (workspaceShell.js:1392-1417) splice through `removeFrame(removedTab.id)`. Test: new `lexera-kanban/tests/workspaceShellPanelDockLifecycle.test.js`.
+- [ ] **1.2** Replace `extractTab(found.tab.id)` with `closeTab(found.tab.id)` in the base-panel branch of `closePanelView` (workspaceShell.js:838-840). Extend the same test file.
+- [ ] **1.3** Iterate the OLD tree before `state.dockTree = replacement` in `flattenToActiveLeaf` (workspaceShell.js:1947-1958) and call `removeFrame` for each tab.id ≠ active.
+- [ ] **1.4** Add an orphan reaper before `state.dockEl.innerHTML = ''` at workspaceShell.js:3567: diff `Object.keys(state.frameCache)` against tab.ids in next render and `removeFrame` any not present. Skip while `state.dragTabId` is set.
+- [ ] **1.5** Decide on transparent-bg commit f76f959f. Recommendation: revert just `.workspace-shell-multiview-placeholder` to opaque (workspaceShell.css:1220-1223 original intent); leave the other transparent containers.
+
+#### Phase 2 — Structural unification (reconciler)
+- [ ] **2.1** Create [lexera-kanban/src/workspace/lifecycleReconciler.js](lexera-kanban/src/workspace/lifecycleReconciler.js) with `LexeraLifecycleReconciler.create({collectAllTabIds, removeFrame, prepareTab})` exposing `reconcile(state)` that diffs `lastSnapshot` vs all-tab-ids in current state and destroys removed tabs.
+- [ ] **2.2** Wire `reconciler.reconcile(state)` as the first call in `render()` (workspaceShell.js:~3540). Skip while `state.dragTabId` is set. Phase 1 individual fixes stay in place as belt-and-braces.
+- [ ] **2.3** Unit-test the reconciler in isolation: `lexera-kanban/tests/lifecycleReconcilerContract.test.js` — add tab → no destroy; remove 2 of 5 → exactly 2 destroys; add 1 → no extra destroys.
+- [ ] **2.4** Property-based invariant test: `lexera-kanban/tests/viewLifecycleInvariantContract.test.js` — random sequences of tree ops, assert `tabIdsInTree === Object.keys(spawnedTabs)` after each op.
+
+#### Phase 3 — Encapsulated tree mutations
+- [ ] **3.1** Add `LexeraLayoutTree.{removeTabById, moveTab, insertTabIntoLeaf, replaceTreeRoot}` API to [lexera-kanban/src/workspace/layoutTree.js](lexera-kanban/src/workspace/layoutTree.js).
+- [ ] **3.2** Migrate every `node.tabs.splice(` and `state.dockTree =` / `state.sideDocks[…] =` in workspaceShell.js to the new wrapper API (~12-15 sites).
+- [ ] **3.3** Lint contract test: `lexera-kanban/tests/layoutTreeMutationContract.test.js` — greps for direct splice / direct assignment outside an allowlist (layoutTree.js + workspaceShell.js mount/render path).
+
+#### Phase 4 — Defense in depth
+- [ ] **4.1** Single shell-level `MutationObserver` in `multiviewWebview.js` watching for `[data-multiview="1"]` removals on the workspace root. Two-rAF debounce so move/extract reattach is not treated as removal. If still detached, call `destroy(tabId)`.
+- [ ] **4.2** (optional) Periodic 30s audit in dev mode that calls the §0 invariant check; logs slow leaks.
+
+#### Phase 5 — OS-level pinning (defer until 1-4 stable)
+- [ ] **5a** Extend Rust `multiview` plugin so each spawn carries `placeholder_dom_id`. Add `multiview_report_live_placeholders(ids)` IPC. Frontend reports live placeholder ids per render; Rust auto-destroys webviews whose placeholder id is missing.
+- [ ] **5b** Alternative: shell pushes `setGeometry({width:0, height:0})` per render for any spawned label whose placeholder isn't in DOM. Cheaper but webview process stays alive.
+
+#### Phase 6 — Long-term hardening
+- [ ] **6.1** Convert `state` and `tabRecords` to JSDoc-typed objects; run `tsc --noEmit` in CI.
+- [ ] **6.2** Phase out `window.Lexera*` globals once the esbuild migration (Architectural Analysis §1) lands.
+- [ ] **6.3** Encode tab lifecycle as an explicit FSM (`created → spawning → ready → destroying → destroyed`) replacing the cross-map state in `multiviewSpawnedTabs[id].state` + `multiviewLabelSpawnLocks` + `multiviewSpawnRetryWatchers`.
 
 #### Verification
-- [ ] (input required) Real-app verify the ghost-view regression is gone after §1+§2+§3 land: open multiple boards across docks, move panels between left/right/bottom, close panels, switch workspaces — confirm no stale webview is left painting on screen and no skeleton text bleeds through transparent layout containers.
+- [ ] (input required) Real-app verify the ghost-view regression is gone after Phase 1 + 2 land: open multiple boards across docks, move panels, close panels, switch workspaces — confirm no stale webview is left painting on screen and no skeleton text bleeds through.
 
 ## Architectural Analysis and Recommendations
 
