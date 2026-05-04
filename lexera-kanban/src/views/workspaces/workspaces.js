@@ -232,6 +232,21 @@
       if (!sameKind) {
         var absorbInto = ABSORB_KINDS[dragSource.kind];
         if (absorbInto !== info.kind) return null;
+        // User contract: stacks can only land "in an empty row";
+        // columns "added to an empty stack". When the target row /
+        // stack already has same-source-kind children visible, force
+        // the user to drop on a sibling (zone-aware reorder) instead.
+        // Card → column and row → board absorbs stay permissive — the
+        // user explicitly allowed them at any time.
+        if ((dragSource.kind === 'stack' && info.kind === 'row') ||
+            (dragSource.kind === 'column' && info.kind === 'stack')) {
+          var entry = tgt.parentElement;
+          var children = entry ? entry.querySelector('.tree-children') : null;
+          var anyChild = children
+            ? children.querySelector('.tree-node[data-drag-kind="' + dragSource.kind + '"]')
+            : null;
+          if (anyChild) return null;
+        }
       }
       // Same-kind drops carry a position ('before' | 'after') derived
       // from the cursor's Y vs the target's vertical midpoint. Cross-

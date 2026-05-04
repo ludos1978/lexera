@@ -678,6 +678,58 @@ describe('hierarchy view sub-app', () => {
       expect(dropBroadcast.payload.target.position).toBe('after');
     });
 
+    // User contract: stacks can absorb into a row only when the row
+    // has NO stacks yet. With visible stacks the user must drop on a
+    // sibling stack for zone-aware reorder. Same rule for columns
+    // into stacks.
+    it('column → stack absorb is rejected when the stack already has columns', async () => {
+      const dom = createDom();
+      const { window } = dom;
+      let capturedOpts = null;
+      const broadcastCalls = [];
+      window.LexeraSubApp = {
+        init: vi.fn((opts) => { capturedOpts = opts; }),
+        navigate: vi.fn(),
+        broadcast: vi.fn((event, payload) => { broadcastCalls.push({ event, payload }); })
+      };
+      window.LexeraApi = { getBoardHierarchy: vi.fn(() => Promise.resolve({
+        rows: [{ id: 'r1', title: 'R', stacks: [{
+          id: 's1', title: 'Stack with columns',
+          columns: [{ id: 'c1', title: 'Col 1', cards: [] }]
+        }, {
+          id: 's2', title: 'Empty stack', columns: []
+        }] }]
+      })) };
+      loadHierarchyView(window);
+      capturedOpts.onCatalog({
+        boards: [{ id: 'b1', title: 'Roadmap', workspace_id: 'ws-1' }],
+        remoteBoards: [],
+        workspaces: [{ id: 'ws-1', name: 'Default' }],
+        activeWorkspaceId: 'ws-1'
+      });
+      window.document
+        .querySelector('#local-boards .tree-node[data-tree-target="board"][data-board-id="b1"] .tree-toggle')
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      // Drag column c1 onto s1 (stack that already contains c1) —
+      // should be rejected since the stack has columns visible.
+      var sourceCol = window.document.querySelector('.tree-node[data-drag-kind="column"][data-tree-id="c1"]');
+      var nonEmptyStack = window.document.querySelector('.tree-node[data-drag-kind="stack"][data-tree-id="s1"]');
+      pointerDragSequence(window, sourceCol, nonEmptyStack);
+      var dropOnNonEmpty = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
+      expect(dropOnNonEmpty).toBeFalsy();
+
+      // But dropping the same column onto s2 (empty stack) IS allowed.
+      broadcastCalls.length = 0;
+      var emptyStack = window.document.querySelector('.tree-node[data-drag-kind="stack"][data-tree-id="s2"]');
+      pointerDragSequence(window, sourceCol, emptyStack);
+      var dropOnEmpty = broadcastCalls.find((c) => c.event === 'hierarchy-entity-drop');
+      expect(dropOnEmpty).toBeTruthy();
+      expect(dropOnEmpty.payload.target.kind).toBe('stack');
+      expect(dropOnEmpty.payload.target.entityId).toBe('s2');
+    });
+
     // Drop a row directly onto the kanban (board node) — row joins
     // `board.rows`. The board node carries `data-tree-target="board"`
     // (no `data-drag-kind`) so the readDropTargetFromPoint helper
