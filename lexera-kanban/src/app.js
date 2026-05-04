@@ -6576,31 +6576,18 @@ var LexeraDashboard = (function () {
       });
   }
 
+  // Inspector keystroke detectors are pure-logic predicates owned by
+  // shell/inspectorShortcuts.js so they're testable outside this 11k-line
+  // IIFE. We adopt them here behind a tiny delegating wrapper that
+  // gracefully no-ops if the script tag failed to load (defensive: a
+  // missing inspector hotkey shouldn't break the rest of the keymap).
   function isInspectorShortcut(e) {
-    var code = e.code || '';
-    if (e.key === 'F12') return true;
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && code === 'KeyI') return true;
-    if (e.altKey && !e.ctrlKey && !e.metaKey && code === 'KeyI') return true;
-    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'i' || e.key === 'I')) return true;
-    return false;
+    var api = window.LexeraInspectorShortcuts;
+    return !!(api && api.isInspectorShortcut && api.isInspectorShortcut(e));
   }
-
-  // Cmd/Ctrl+Alt+Shift+I — open DevTools for EVERY child webview at once.
-  // Distinct from isInspectorShortcut (which opens just THIS window's
-  // devtools). Direct keydown wiring instead of going through the menu
-  // dispatch chain so it works even when the native menu accelerator
-  // doesn't fire (macOS function-key politics, focus loss to menu bar,
-  // stale JS in a webview that hasn't reloaded since the menu wiring
-  // was added, etc.).
   function isInspectorAllShortcut(e) {
-    var code = e.code || '';
-    var altDown = !!e.altKey;
-    var shiftDown = !!e.shiftKey;
-    var modDown = !!(e.ctrlKey || e.metaKey);
-    if (!modDown || !altDown || !shiftDown) return false;
-    if (code === 'KeyI') return true;
-    if (e.key === 'i' || e.key === 'I') return true;
-    return false;
+    var api = window.LexeraInspectorShortcuts;
+    return !!(api && api.isInspectorAllShortcut && api.isInspectorAllShortcut(e));
   }
 
   if (getElInspectorBtn()) {
