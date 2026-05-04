@@ -567,6 +567,17 @@ var LexeraDashboard = (function () {
   var currentHtmlCommentRenderMode = 'hidden';
   var urlParams = new URLSearchParams(window.location.search || '');
   var windowLabel = String(urlParams.get('windowLabel') || 'main');
+  // Decorate the document title for non-main shell windows so the
+  // WebKit / WebView2 inspector window chrome (driven by the page
+  // <title>) identifies which shell window is being inspected.
+  // Pairs with `subAppRuntime`'s per-pane title decoration so
+  // "Open DevTools (All Views)" produces a stack of uniquely-named
+  // inspector windows instead of half-a-dozen identical ones.
+  try {
+    if (windowLabel && windowLabel !== 'main' && document.title.indexOf(windowLabel) === -1) {
+      document.title = (document.title || 'Lexera Kanban').trim() + ' [' + windowLabel + ']';
+    }
+  } catch (_) { /* document.title may be unavailable in unit-test envs */ }
   var embeddedMode = urlParams.get('embedded') === '1';
   var embeddedPaneId = urlParams.get('pane') || '';
   var embeddedInitialBoardId = urlParams.get('board') || '';
