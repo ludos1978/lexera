@@ -65,7 +65,11 @@ function loadBoardList(options = {}) {
 }
 
 describe('board hierarchy cache refresh', () => {
-  it('syncs workspace context to the active board workspace', () => {
+  it('does not mutate the window workspace when syncing context for a board in another workspace', () => {
+    // A window owns exactly one workspace for its lifetime. Selecting a
+    // board belonging to a different workspace must NOT change the
+    // window's activeWorkspaceId / viewWorkspaceId — only the resolver
+    // returns the board's workspace context for callers to inspect.
     const localStorage = createLocalStorage();
     const BoardList = loadBoardList({ localStorage });
     const state = {
@@ -74,6 +78,8 @@ describe('board hierarchy cache refresh', () => {
       activeWorkspaceId: 'ws-1',
       viewWorkspaceId: 'ws-1',
     };
+    const setActiveWorkspaceIdState = vi.fn();
+    const setViewWorkspaceIdState = vi.fn();
 
     BoardList.init({
       get boards() { return state.boards; },
@@ -81,23 +87,21 @@ describe('board hierarchy cache refresh', () => {
       get activeWorkspaceId() { return state.activeWorkspaceId; },
       get viewWorkspaceId() { return state.viewWorkspaceId; },
       get ALL_WORKSPACES_ID() { return '__all__'; },
-      setActiveWorkspaceIdState(nextWorkspaceId) { state.activeWorkspaceId = nextWorkspaceId; },
-      setViewWorkspaceIdState(nextWorkspaceId) { state.viewWorkspaceId = nextWorkspaceId; },
+      setActiveWorkspaceIdState,
+      setViewWorkspaceIdState,
     });
 
     const context = BoardList.syncWorkspaceContextForBoard('board-a', { render: false });
 
     expect(context.workspaceId).toBe('ws-2');
-    expect(state.activeWorkspaceId).toBe('ws-2');
-    expect(state.viewWorkspaceId).toBe('ws-2');
-    // The active workspace is per-window in-memory state ONLY. It must
-    // NOT be persisted to lexera-active-workspace — doing so would
-    // fire a `storage` event into sibling windows and yank their views
-    // to whatever this window picked.
+    expect(state.activeWorkspaceId).toBe('ws-1');
+    expect(state.viewWorkspaceId).toBe('ws-1');
+    expect(setActiveWorkspaceIdState).not.toHaveBeenCalled();
+    expect(setViewWorkspaceIdState).not.toHaveBeenCalled();
     expect(localStorage.getItem('lexera-active-workspace')).toBeNull();
   });
 
-  it('keeps the current view workspace when the active board belongs to multiple workspaces', () => {
+  it('does not mutate the window workspace when the active board belongs to multiple workspaces', () => {
     const localStorage = createLocalStorage();
     const BoardList = loadBoardList({ localStorage });
     const state = {
@@ -106,6 +110,8 @@ describe('board hierarchy cache refresh', () => {
       activeWorkspaceId: 'ws-2',
       viewWorkspaceId: 'ws-1',
     };
+    const setActiveWorkspaceIdState = vi.fn();
+    const setViewWorkspaceIdState = vi.fn();
 
     BoardList.init({
       get boards() { return state.boards; },
@@ -113,18 +119,20 @@ describe('board hierarchy cache refresh', () => {
       get activeWorkspaceId() { return state.activeWorkspaceId; },
       get viewWorkspaceId() { return state.viewWorkspaceId; },
       get ALL_WORKSPACES_ID() { return '__all__'; },
-      setActiveWorkspaceIdState(nextWorkspaceId) { state.activeWorkspaceId = nextWorkspaceId; },
-      setViewWorkspaceIdState(nextWorkspaceId) { state.viewWorkspaceId = nextWorkspaceId; },
+      setActiveWorkspaceIdState,
+      setViewWorkspaceIdState,
     });
 
     const context = BoardList.syncWorkspaceContextForBoard('board-a', { render: false });
 
     expect(context.workspaceId).toBe('ws-1');
-    expect(state.activeWorkspaceId).toBe('ws-1');
+    expect(state.activeWorkspaceId).toBe('ws-2');
     expect(state.viewWorkspaceId).toBe('ws-1');
+    expect(setActiveWorkspaceIdState).not.toHaveBeenCalled();
+    expect(setViewWorkspaceIdState).not.toHaveBeenCalled();
   });
 
-  it('syncs workspace context without touching storage when localStorage is unavailable', () => {
+  it('does not touch storage or workspace state when localStorage is unavailable', () => {
     const BoardList = loadBoardList({ localStorage: null });
     const state = {
       boards: [{ id: 'board-a', title: 'Board A', workspace_ids: ['ws-2'] }],
@@ -132,6 +140,8 @@ describe('board hierarchy cache refresh', () => {
       activeWorkspaceId: 'ws-1',
       viewWorkspaceId: 'ws-1',
     };
+    const setActiveWorkspaceIdState = vi.fn();
+    const setViewWorkspaceIdState = vi.fn();
 
     BoardList.init({
       get boards() { return state.boards; },
@@ -139,18 +149,20 @@ describe('board hierarchy cache refresh', () => {
       get activeWorkspaceId() { return state.activeWorkspaceId; },
       get viewWorkspaceId() { return state.viewWorkspaceId; },
       get ALL_WORKSPACES_ID() { return '__all__'; },
-      setActiveWorkspaceIdState(nextWorkspaceId) { state.activeWorkspaceId = nextWorkspaceId; },
-      setViewWorkspaceIdState(nextWorkspaceId) { state.viewWorkspaceId = nextWorkspaceId; },
+      setActiveWorkspaceIdState,
+      setViewWorkspaceIdState,
     });
 
     const context = BoardList.syncWorkspaceContextForBoard('board-a', { render: false });
 
     expect(context.workspaceId).toBe('ws-2');
-    expect(state.activeWorkspaceId).toBe('ws-2');
-    expect(state.viewWorkspaceId).toBe('ws-2');
+    expect(state.activeWorkspaceId).toBe('ws-1');
+    expect(state.viewWorkspaceId).toBe('ws-1');
+    expect(setActiveWorkspaceIdState).not.toHaveBeenCalled();
+    expect(setViewWorkspaceIdState).not.toHaveBeenCalled();
   });
 
-  it('reconciles the active board workspace when board metadata arrives later', () => {
+  it('reconciliation never changes the window workspace when later board metadata arrives', () => {
     const localStorage = createLocalStorage();
     const BoardList = loadBoardList({ localStorage });
     const state = {
@@ -160,6 +172,8 @@ describe('board hierarchy cache refresh', () => {
       activeWorkspaceId: 'ws-1',
       viewWorkspaceId: 'ws-1',
     };
+    const setActiveWorkspaceIdState = vi.fn();
+    const setViewWorkspaceIdState = vi.fn();
 
     BoardList.init({
       get activeBoardId() { return state.activeBoardId; },
@@ -168,8 +182,8 @@ describe('board hierarchy cache refresh', () => {
       get activeWorkspaceId() { return state.activeWorkspaceId; },
       get viewWorkspaceId() { return state.viewWorkspaceId; },
       get ALL_WORKSPACES_ID() { return '__all__'; },
-      setActiveWorkspaceIdState(nextWorkspaceId) { state.activeWorkspaceId = nextWorkspaceId; },
-      setViewWorkspaceIdState(nextWorkspaceId) { state.viewWorkspaceId = nextWorkspaceId; },
+      setActiveWorkspaceIdState,
+      setViewWorkspaceIdState,
     });
 
     BoardList.reconcileActiveWorkspaceContext({ render: false });
@@ -181,11 +195,13 @@ describe('board hierarchy cache refresh', () => {
     const context = BoardList.reconcileActiveWorkspaceContext({ render: false });
 
     expect(context.workspaceId).toBe('ws-2');
-    expect(state.activeWorkspaceId).toBe('ws-2');
-    expect(state.viewWorkspaceId).toBe('ws-2');
+    expect(state.activeWorkspaceId).toBe('ws-1');
+    expect(state.viewWorkspaceId).toBe('ws-1');
+    expect(setActiveWorkspaceIdState).not.toHaveBeenCalled();
+    expect(setViewWorkspaceIdState).not.toHaveBeenCalled();
   });
 
-  it('preserves a manually focused workspace view during reconciliation', () => {
+  it('reconciliation leaves a manually focused workspace view untouched', () => {
     const localStorage = createLocalStorage();
     const BoardList = loadBoardList({ localStorage });
     const state = {
@@ -197,6 +213,9 @@ describe('board hierarchy cache refresh', () => {
       viewWorkspaceId: 'ws-1',
       workspaceViewMode: 'manual',
     };
+    const setActiveWorkspaceIdState = vi.fn();
+    const setViewWorkspaceIdState = vi.fn();
+    const setWorkspaceViewModeState = vi.fn();
 
     BoardList.init({
       get activeBoardId() { return state.activeBoardId; },
@@ -207,9 +226,9 @@ describe('board hierarchy cache refresh', () => {
       get viewWorkspaceId() { return state.viewWorkspaceId; },
       get workspaceViewMode() { return state.workspaceViewMode; },
       get ALL_WORKSPACES_ID() { return '__all__'; },
-      setActiveWorkspaceIdState(nextWorkspaceId) { state.activeWorkspaceId = nextWorkspaceId; },
-      setViewWorkspaceIdState(nextWorkspaceId) { state.viewWorkspaceId = nextWorkspaceId; },
-      setWorkspaceViewModeState(nextMode) { state.workspaceViewMode = nextMode; },
+      setActiveWorkspaceIdState,
+      setViewWorkspaceIdState,
+      setWorkspaceViewModeState,
     });
 
     const context = BoardList.reconcileActiveWorkspaceContext({ render: false });
@@ -218,6 +237,9 @@ describe('board hierarchy cache refresh', () => {
     expect(state.activeWorkspaceId).toBe('ws-2');
     expect(state.viewWorkspaceId).toBe('ws-1');
     expect(state.workspaceViewMode).toBe('manual');
+    expect(setActiveWorkspaceIdState).not.toHaveBeenCalled();
+    expect(setViewWorkspaceIdState).not.toHaveBeenCalled();
+    expect(setWorkspaceViewModeState).not.toHaveBeenCalled();
   });
 
   it('reuses cached hierarchy rows instead of reloading every board on each pass', async () => {
