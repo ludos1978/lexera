@@ -97,4 +97,27 @@ Generally do the most time consuming tasks first. If a task takes very long to c
 - [x] (done) Implement the `backend-status` Tauri event watcher in the frontend to show a native "Connecting to backend..." UI during startup. Bridge at `lexera-kanban/src/shell/bridges/backendStatusBridge.js` with 12 Vitest assertions. (commit e89c06d0)
 - [x] (done) Finalize the "Phase 7" removal of the HTTP fallback path from the desktop production build. `api.js` now pins `local-ipc` when Tauri internals are detected; `index.html` has removed the discovery probe script.
 
+## Pending User Verification
+
+These changes have full automated coverage but need a real-app run before
+they can be marked truly done:
+
+- [ ] (input required) Visually verify the backend-status pill (`backendStatusBridge.js`, commit e89c06d0). Kill the backend during kanban startup and confirm the top-right pill shows "Connecting to backend…" → disappears when the backend reconnects.
+- [ ] (input required) Visually verify Gap #7 capability tightening (`default.json`, commit 3fa51695). After the wildcard removal, confirm board/panel webviews still receive `core:default` (open a board, dispatch a panel — nothing should fail with a permission error).
+- [ ] (input required) Smoke-test the `Arc<Mutex>→RwLock` swaps for `auth_service` + `config` (commits fbf70fb2 + 1e517342) under realistic load — request validation + settings PUTs both exercise the read/write paths.
+- [ ] (input required) Smoke-test the periodic loro CRDT compaction loop (commit b5d6ab1e). Run a long-lived board for >10 min and observe memory stays flat after the first compaction tick.
+- [ ] (input required) Provide a screenshot or step-by-step repro for the folded log viewer issue (line 22). Code-path inspection didn't isolate the root cause; need a visual reference.
+- [ ] (input required) Decide path forward for `wysiwyg-editor.js` split (line 42): (a) revive build chain + restore archived TS sources, (b) reauthor a slimmer editor in lexera-kanban, or (c) defer until esbuild migration (line 32) lands.
+
+## Defensive Contract Tests
+
+Locked down by `lexera-kanban/tests/*.test.js` so future drift fails at test time rather than at runtime:
+
+- `tokensCssNoOrphansContract.test.js` (14 assertions) — every `--token` in `tokens.css` has a consumer or explicit allowlist
+- `managementBoardFieldsContract.test.js` (5 assertions) — `BOARD_SETTINGS_FIELDS` schema + load-bearing keys
+- `tauriCapabilityWindowAllowlistContract.test.js` (3 assertions) — capability windows list stays explicit, no wildcard
+- `cargoNoOrphanDepsContract.test.js` (47 assertions) — every Cargo.toml dep has a usage site
+- `backendStatusBridge.test.js` (12 assertions) — backend-status bridge describe/render/install
+- `indexHtmlScriptTagsContract.test.js` (4 assertions) — every `<script src>` resolves, non-empty, non-duplicated
+
 ## Open Tasks
