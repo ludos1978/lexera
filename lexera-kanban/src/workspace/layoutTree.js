@@ -98,6 +98,93 @@
     return ids;
   }
 
+  // ─── Phase 3.1 mutation API ─────────────────────────────────────────
+  // Encapsulated tab-mutation helpers so workspaceShell.js stops
+  // poking `node.tabs.splice(…)` and `state.dockTree = …` directly.
+  // Each helper enforces the activeTabId / fall-through invariants
+  // (pick a new active when the removed tab was active, set active on
+  // a previously empty destination, etc.) and returns metadata the
+  // caller can hand to `removeFrame` if needed.
+  //
+  // None of these functions know about webviews — `removeFrame` and
+  // multiview destruction stay in workspaceShell.js. The lifecycle
+  // reconciler (Phase 2.2) is the safety net; these helpers eliminate
+  // a whole category of "forgot to call removeFrame" bugs at the
+  // mutation site.
+
+  function removeTabById(tree, tabId) {
+    if (!tree || !tabId) return null;
+    var hit = null;
+    visitTree(tree, function (node) {
+      if (hit || !node || node.type !== 'tabs' || !Array.isArray(node.tabs)) return;
+      for (var i = 0; i < node.tabs.length; i++) {
+        var tab = node.tabs[i];
+        if (tab && tab.id === tabId) {
+          node.tabs.splice(i, 1);
+          if (node.activeTabId === tabId) {
+            node.activeTabId = node.tabs.length > 0 ? node.tabs[0].id : '';
+          }
+          hit = { removed: tab, leaf: node, index: i };
+          return;
+        }
+      }
+    });
+    return hit;
+  }
+
+  function insertTabIntoLeaf(leaf, tab, index) {
+    if (!leaf || leaf.type !== 'tabs' || !tab) return -1;
+    if (!Array.isArray(leaf.tabs)) leaf.tabs = [];
+    var clamped = typeof index === 'number' && isFinite(index)
+      ? Math.max(0, Math.min(index | 0, leaf.tabs.length))
+      : leaf.tabs.length;
+    leaf.tabs.splice(clamped, 0, tab);
+    if (!leaf.activeTabId) leaf.activeTabId = tab.id || '';
+    return clamped;
+  }
+
+  function moveTab(sourceLeaf, sourceIndex, destLeaf, destIndex) {
+    if (!sourceLeaf || sourceLeaf.type !== 'tabs') return null;
+    if (!destLeaf || destLeaf.type !== 'tabs') return null;
+    if (!Array.isArray(sourceLeaf.tabs) || sourceLeaf.tabs.length === 0) return null;
+    var srcIdx = typeof sourceIndex === 'number' && isFinite(sourceIndex)
+      ? sourceIndex | 0 : -1;
+    if (srcIdx < 0 || srcIdx >= sourceLeaf.tabs.length) return null;
+    var tab = sourceLeaf.tabs.splice(srcIdx, 1)[0];
+    if (!tab) return null;
+    if (sourceLeaf.activeTabId === tab.id) {
+      sourceLeaf.activeTabId = sourceLeaf.tabs.length > 0 ? sourceLeaf.tabs[0].id : '';
+    }
+    var dstIdx = typeof destIndex === 'number' && isFinite(destIndex)
+      ? destIndex | 0 : destLeaf.tabs.length;
+    // When moving within the same leaf, the splice above shifted later
+    // indices left by one — clamp so dst is still in range.
+    if (sourceLeaf === destLeaf && dstIdx > srcIdx) dstIdx -= 1;
+    var inserted = insertTabIntoLeaf(destLeaf, tab, dstIdx);
+    return { tab: tab, insertedAt: inserted };
+  }
+
+  function replaceTreeRoot(holder, key, nextTree) {
+    if (!holder || !key) return { removed: [], added: [] };
+    var oldTree = holder[key] || null;
+    holder[key] = nextTree || null;
+    var oldIds = oldTree ? collectAllTabIds(oldTree) : [];
+    var newIds = nextTree ? collectAllTabIds(nextTree) : [];
+    var newSet = Object.create(null);
+    for (var ni = 0; ni < newIds.length; ni++) newSet[newIds[ni]] = true;
+    var oldSet = Object.create(null);
+    for (var oi = 0; oi < oldIds.length; oi++) oldSet[oldIds[oi]] = true;
+    var removed = [];
+    for (var ri = 0; ri < oldIds.length; ri++) {
+      if (!newSet[oldIds[ri]]) removed.push(oldIds[ri]);
+    }
+    var added = [];
+    for (var ai = 0; ai < newIds.length; ai++) {
+      if (!oldSet[newIds[ai]]) added.push(newIds[ai]);
+    }
+    return { removed: removed, added: added };
+  }
+
   function createIdFactory() {
     var counter = 1;
     return function (prefix) {
@@ -277,6 +364,10 @@
     findClosestSplitParent: findClosestSplitParent,
     countTreeTabs: countTreeTabs,
     collectAllTabIds: collectAllTabIds,
+    removeTabById: removeTabById,
+    insertTabIntoLeaf: insertTabIntoLeaf,
+    moveTab: moveTab,
+    replaceTreeRoot: replaceTreeRoot,
     createIdFactory: createIdFactory,
     createTabsetNode: createTabsetNode,
     createSplitNode: createSplitNode,

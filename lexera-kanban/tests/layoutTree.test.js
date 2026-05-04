@@ -454,3 +454,167 @@ describe('LexeraLayoutTree.findLeafContainingPanel', () => {
     expect(layoutTree.findLeafContainingPanel(leaf, 'logs', identity)).toBe(null);
   });
 });
+
+// ─── Phase 3.1 mutation API ────────────────────────────────────────────
+
+describe('LexeraLayoutTree.removeTabById', () => {
+  it('returns null when the id is not present', () => {
+    const tree = tabsetNode('A', [{ id: 'a' }, { id: 'b' }]);
+    expect(layoutTree.removeTabById(tree, 'missing')).toBe(null);
+    expect(tree.tabs.map((t) => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('splices the tab out and returns the removed tab + its leaf', () => {
+    const tree = tabsetNode('A', [{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+    const result = layoutTree.removeTabById(tree, 'b');
+    expect(result.removed.id).toBe('b');
+    expect(result.leaf).toBe(tree);
+    expect(result.index).toBe(1);
+    expect(tree.tabs.map((t) => t.id)).toEqual(['a', 'c']);
+  });
+
+  it('reassigns activeTabId when the removed tab was active', () => {
+    const tree = tabsetNode('A', [{ id: 'a' }, { id: 'b' }, { id: 'c' }], 'b');
+    layoutTree.removeTabById(tree, 'b');
+    expect(tree.activeTabId).toBe('a');
+  });
+
+  it('clears activeTabId when the leaf becomes empty', () => {
+    const tree = tabsetNode('A', [{ id: 'only' }], 'only');
+    layoutTree.removeTabById(tree, 'only');
+    expect(tree.activeTabId).toBe('');
+  });
+
+  it('walks split children to find the right leaf', () => {
+    const left = tabsetNode('L', [{ id: 'l1' }, { id: 'l2' }]);
+    const right = tabsetNode('R', [{ id: 'r1' }]);
+    const tree = splitNode('S', 'horizontal', left, right, 0.5);
+    const result = layoutTree.removeTabById(tree, 'r1');
+    expect(result.leaf).toBe(right);
+    expect(right.tabs).toEqual([]);
+    expect(left.tabs.map((t) => t.id)).toEqual(['l1', 'l2']);
+  });
+
+  it('returns null on null tree or missing tabId', () => {
+    expect(layoutTree.removeTabById(null, 'a')).toBe(null);
+    expect(layoutTree.removeTabById(tabsetNode('A', [{ id: 'a' }]), '')).toBe(null);
+  });
+});
+
+describe('LexeraLayoutTree.insertTabIntoLeaf', () => {
+  it('appends to an empty leaf and seeds activeTabId', () => {
+    const leaf = tabsetNode('A', [], '');
+    const idx = layoutTree.insertTabIntoLeaf(leaf, { id: 'first' }, 0);
+    expect(idx).toBe(0);
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['first']);
+    expect(leaf.activeTabId).toBe('first');
+  });
+
+  it('inserts at the requested index without shifting activeTabId', () => {
+    const leaf = tabsetNode('A', [{ id: 'a' }, { id: 'c' }], 'a');
+    layoutTree.insertTabIntoLeaf(leaf, { id: 'b' }, 1);
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['a', 'b', 'c']);
+    expect(leaf.activeTabId).toBe('a');
+  });
+
+  it('clamps an out-of-range index to the end', () => {
+    const leaf = tabsetNode('A', [{ id: 'a' }]);
+    const idx = layoutTree.insertTabIntoLeaf(leaf, { id: 'z' }, 999);
+    expect(idx).toBe(1);
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['a', 'z']);
+  });
+
+  it('clamps a negative index to 0', () => {
+    const leaf = tabsetNode('A', [{ id: 'a' }]);
+    const idx = layoutTree.insertTabIntoLeaf(leaf, { id: 'z' }, -5);
+    expect(idx).toBe(0);
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['z', 'a']);
+  });
+
+  it('rejects non-leaf and missing-tab inputs', () => {
+    expect(layoutTree.insertTabIntoLeaf(splitNode('S', 'h', null, null, 0.5), { id: 'a' }, 0)).toBe(-1);
+    expect(layoutTree.insertTabIntoLeaf(tabsetNode('A', []), null, 0)).toBe(-1);
+  });
+});
+
+describe('LexeraLayoutTree.moveTab', () => {
+  it('moves a tab between two leaves', () => {
+    const src = tabsetNode('A', [{ id: 'a' }, { id: 'b' }], 'a');
+    const dst = tabsetNode('B', [{ id: 'x' }], 'x');
+    const result = layoutTree.moveTab(src, 1, dst, 0);
+    expect(result.tab.id).toBe('b');
+    expect(result.insertedAt).toBe(0);
+    expect(src.tabs.map((t) => t.id)).toEqual(['a']);
+    expect(dst.tabs.map((t) => t.id)).toEqual(['b', 'x']);
+  });
+
+  it('moves the active tab and reassigns the source activeTabId', () => {
+    const src = tabsetNode('A', [{ id: 'a' }, { id: 'b' }], 'a');
+    const dst = tabsetNode('B', [], '');
+    layoutTree.moveTab(src, 0, dst, 0);
+    expect(src.activeTabId).toBe('b');
+    expect(dst.activeTabId).toBe('a');
+  });
+
+  it('handles same-leaf reorder using the established "original-index" convention', () => {
+    // Convention matches workspaceShell.js:1846 reorderTabInLeaf: when
+    // moving forward within the same leaf, the destination index is
+    // interpreted in the *original* array, so it shifts left by one
+    // after the source splice. (Forward 0→2 in [a,b,c] yields
+    // [b,a,c], because dst=2 in the original maps to dst=1 after
+    // 'a' is removed.)
+    const leaf = tabsetNode('A', [{ id: 'a' }, { id: 'b' }, { id: 'c' }], 'a');
+    layoutTree.moveTab(leaf, 0, leaf, 2);
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['b', 'a', 'c']);
+
+    // Backward move (2→0) does NOT shift, so 'c' lands at the head.
+    layoutTree.moveTab(leaf, 2, leaf, 0);
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('returns null on out-of-range indices and unhealthy inputs', () => {
+    const src = tabsetNode('A', [{ id: 'a' }]);
+    const dst = tabsetNode('B', []);
+    expect(layoutTree.moveTab(src, 7, dst, 0)).toBe(null);
+    expect(layoutTree.moveTab(null, 0, dst, 0)).toBe(null);
+    expect(layoutTree.moveTab(src, 0, null, 0)).toBe(null);
+    expect(layoutTree.moveTab(tabsetNode('A', []), 0, dst, 0)).toBe(null);
+  });
+});
+
+describe('LexeraLayoutTree.replaceTreeRoot', () => {
+  it('assigns the new tree to holder[key] and reports added/removed ids', () => {
+    const holder = { dockTree: tabsetNode('A', [{ id: 'a' }, { id: 'b' }, { id: 'c' }]) };
+    const next = tabsetNode('B', [{ id: 'b' }, { id: 'd' }]);
+    const diff = layoutTree.replaceTreeRoot(holder, 'dockTree', next);
+    expect(holder.dockTree).toBe(next);
+    expect(diff.removed.sort()).toEqual(['a', 'c']);
+    expect(diff.added.sort()).toEqual(['d']);
+  });
+
+  it('handles a side-dock holder (state.sideDocks)', () => {
+    const sideDocks = { left: tabsetNode('L', [{ id: 'l1' }]), right: null, bottom: null };
+    const next = tabsetNode('L2', [{ id: 'l1' }, { id: 'l2' }]);
+    const diff = layoutTree.replaceTreeRoot(sideDocks, 'left', next);
+    expect(sideDocks.left).toBe(next);
+    expect(diff.removed).toEqual([]);
+    expect(diff.added).toEqual(['l2']);
+  });
+
+  it('treats null/undefined trees correctly (drop or seed)', () => {
+    const holder = { dockTree: tabsetNode('A', [{ id: 'a' }]) };
+    const drop = layoutTree.replaceTreeRoot(holder, 'dockTree', null);
+    expect(holder.dockTree).toBe(null);
+    expect(drop.removed).toEqual(['a']);
+    expect(drop.added).toEqual([]);
+
+    const seed = layoutTree.replaceTreeRoot(holder, 'dockTree', tabsetNode('B', [{ id: 'b' }]));
+    expect(seed.removed).toEqual([]);
+    expect(seed.added).toEqual(['b']);
+  });
+
+  it('returns empty diffs when holder or key is missing', () => {
+    const diff = layoutTree.replaceTreeRoot(null, 'dockTree', tabsetNode('A', [{ id: 'a' }]));
+    expect(diff).toEqual({ removed: [], added: [] });
+  });
+});
