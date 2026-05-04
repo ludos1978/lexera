@@ -175,4 +175,29 @@ describe('workspace shell panel-dock lifecycle (Phase 1.1 + 1.2)', () => {
     const destroyAfter = window.LexeraMultiview.destroy.mock.calls.length;
     expect(destroyAfter).toBeGreaterThan(destroyBefore);
   });
+
+  it('flattenToActiveLeaf (split-disable action) destroys webviews for non-active tabs (Phase 1.3)', () => {
+    vi.useFakeTimers();
+    const { shell, window, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+    shell.onBoardsUpdated([
+      { id: 'alpha', title: 'Alpha' },
+      { id: 'beta', title: 'Beta' },
+      { id: 'gamma', title: 'Gamma' }
+    ]);
+    shell.openBoard('alpha');
+    shell.openBoard('beta');
+    shell.openBoard('gamma');
+    vi.advanceTimersByTime(100);
+    const destroyBefore = window.LexeraMultiview.destroy.mock.calls.length;
+
+    // Trigger the action that calls flattenToActiveLeaf. Two of the
+    // three center tabs become orphans; both must have their webview
+    // destroyed.
+    expect(shell.handleBoardAction('split-disable')).toBe(true);
+    vi.advanceTimersByTime(50);
+
+    const destroyAfter = window.LexeraMultiview.destroy.mock.calls.length;
+    expect(destroyAfter - destroyBefore).toBeGreaterThanOrEqual(2);
+  });
 });

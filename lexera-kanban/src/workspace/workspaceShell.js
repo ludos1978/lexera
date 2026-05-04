@@ -1970,10 +1970,28 @@
     var replacement = createTabsetNode(activeTab ? [activeTab] : []);
     if (activeTab) replacement.activeTabId = activeTab.id;
     if (activeTab) removeTabFromEverywhereExcept(activeTab.id, replacement);
-    traceLeakSite('flattenToActiveLeaf',
-      'keepTabId=' + (activeTab ? activeTab.id : '(none)'));
+    // Phase 1.3: collect every tab.id about to be discarded by the
+    // wholesale `state.dockTree = replacement` assignment below, then
+    // `removeFrame` each so its native Tauri webview is destroyed.
+    // Pre-fix the discarded tabs were orphaned ("views all around" —
+    // one of the dominant ghost-view sources alongside Phase 1.1).
+    var keepId = activeTab ? activeTab.id : null;
+    var discardedTabIds = [];
+    var collect = (typeof window !== 'undefined' &&
+      window.LexeraLayoutTree &&
+      typeof window.LexeraLayoutTree.collectAllTabIds === 'function')
+      ? window.LexeraLayoutTree.collectAllTabIds : null;
+    if (collect) {
+      var idsInOldCenter = collect(state.dockTree) || [];
+      for (var di = 0; di < idsInOldCenter.length; di++) {
+        if (idsInOldCenter[di] !== keepId) discardedTabIds.push(idsInOldCenter[di]);
+      }
+    }
     state.dockTree = replacement;
     state.activeLeafId = replacement.id;
+    for (var ri = 0; ri < discardedTabIds.length; ri++) {
+      removeFrame(discardedTabIds[ri]);
+    }
     render();
     return true;
   }
