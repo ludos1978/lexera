@@ -2036,27 +2036,16 @@
     var replacement = createTabsetNode(activeTab ? [activeTab] : []);
     if (activeTab) replacement.activeTabId = activeTab.id;
     if (activeTab) removeTabFromEverywhereExcept(activeTab.id, replacement);
-    // Phase 1.3: collect every tab.id about to be discarded by the
-    // wholesale `state.dockTree = replacement` assignment below, then
-    // `removeFrame` each so its native Tauri webview is destroyed.
-    // Pre-fix the discarded tabs were orphaned ("views all around" —
-    // one of the dominant ghost-view sources alongside Phase 1.1).
-    var keepId = activeTab ? activeTab.id : null;
-    var discardedTabIds = [];
-    var collect = (typeof window !== 'undefined' &&
-      window.LexeraLayoutTree &&
-      typeof window.LexeraLayoutTree.collectAllTabIds === 'function')
-      ? window.LexeraLayoutTree.collectAllTabIds : null;
-    if (collect) {
-      var idsInOldCenter = collect(state.dockTree) || [];
-      for (var di = 0; di < idsInOldCenter.length; di++) {
-        if (idsInOldCenter[di] !== keepId) discardedTabIds.push(idsInOldCenter[di]);
-      }
-    }
-    state.dockTree = replacement;
+    // Phase 3.2 [4/N]: layoutTree.replaceTreeRoot encapsulates the
+    // "assign new tree + diff out the dropped tab.ids" pattern. The
+    // returned `diff.removed` array is exactly what Phase 1.3 was
+    // hand-collecting via collectAllTabIds, so the explicit removeFrame
+    // loop stays — `replaceTreeRoot` is intentionally side-effect-free
+    // on webviews so callers retain control over destruction order.
+    var diff = layoutTree.replaceTreeRoot(state, 'dockTree', replacement);
     state.activeLeafId = replacement.id;
-    for (var ri = 0; ri < discardedTabIds.length; ri++) {
-      removeFrame(discardedTabIds[ri]);
+    for (var ri = 0; ri < diff.removed.length; ri++) {
+      removeFrame(diff.removed[ri]);
     }
     render();
     return true;
