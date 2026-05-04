@@ -1842,9 +1842,13 @@
     if (!found || found.leaf.id !== leafId) return false;
     var currentIndex = found.index;
     if (currentIndex === targetIndex || currentIndex + 1 === targetIndex) return false;
-    var tab = found.leaf.tabs.splice(currentIndex, 1)[0];
-    var insertAt = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
-    found.leaf.tabs.splice(insertAt, 0, tab);
+    // Same-leaf reorder via the Phase 3.1 wrapper. moveTab implements
+    // the "original-index" decrement when target > current that this
+    // function used to spell out manually (the `insertAt = targetIndex - 1`
+    // line below was the de-facto reference for the wrapper's same-leaf
+    // semantics).
+    var moved = layoutTree.moveTab(found.leaf, currentIndex, found.leaf, targetIndex);
+    if (!moved) return false;
     render();
     return true;
   }

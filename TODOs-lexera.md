@@ -52,7 +52,7 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 
 #### Phase 3 — Encapsulated tree mutations
 - [x] (done) ~~**3.1** Add `LexeraLayoutTree.{removeTabById, moveTab, insertTabIntoLeaf, replaceTreeRoot}` API to [lexera-kanban/src/workspace/layoutTree.js](lexera-kanban/src/workspace/layoutTree.js).~~ Four wrappers shipped: `removeTabById` (walks tree, fixes activeTabId), `insertTabIntoLeaf` (clamps index, seeds activeTabId), `moveTab` (cross-leaf + same-leaf with the established "original-index" convention from workspaceShell:1846), `replaceTreeRoot(holder, key, next)` (assigns + returns symmetric tab.id diff). 20 new assertions in layoutTree.test.js. (commit 60b893ad)
-- [ ] **3.2** Migrate every `node.tabs.splice(` and `state.dockTree =` / `state.sideDocks[…] =` in workspaceShell.js to the new wrapper API (~12-15 sites).
+- [ ] (in progress) **3.2** Migrate every `node.tabs.splice(` and `state.dockTree =` / `state.sideDocks[…] =` in workspaceShell.js to the new wrapper API (~12-15 sites). One site per slice.
 - [ ] **3.3** Lint contract test: `lexera-kanban/tests/layoutTreeMutationContract.test.js` — greps for direct splice / direct assignment outside an allowlist (layoutTree.js + workspaceShell.js mount/render path).
 
 #### Phase 4 — Defense in depth
