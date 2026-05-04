@@ -26,6 +26,10 @@
   if (!layoutTree) {
     throw new Error('LexeraLayoutTree global is required before workspaceShell.js');
   }
+  var lifecycleReconcilerFactory = (typeof window !== 'undefined' && window.LexeraLifecycleReconciler) || null;
+  if (!lifecycleReconcilerFactory) {
+    throw new Error('LexeraLifecycleReconciler global is required before workspaceShell.js');
+  }
   var boardHost = (typeof window !== 'undefined' && window.LexeraBoardHost) || null;
   if (!boardHost) {
     throw new Error('LexeraBoardHost global is required before workspaceShell.js');
@@ -3580,8 +3584,31 @@
     getBody().classList.toggle('workspace-shell-panel-only', isPanelOnlyWindow());
   }
 
+  // Phase 2.2 lifecycle reconciler. Instantiated lazily on first render
+  // because `removeFrame` is defined later in this IIFE and we want a
+  // stable closure rather than a forward declaration. Belt-and-braces
+  // safety net: the Phase 1 individual leak fixes still pair every known
+  // mutation site with `removeFrame`; this reconciler catches any future
+  // path that forgets, by destroying every tab.id that was present on
+  // the previous render but is absent on the current one.
+  var lifecycleReconciler = null;
+  function ensureLifecycleReconciler() {
+    if (lifecycleReconciler) return lifecycleReconciler;
+    lifecycleReconciler = lifecycleReconcilerFactory.create({
+      collectAllTabIds: layoutTree.collectAllTabIds,
+      removeFrame: removeFrame
+    });
+    return lifecycleReconciler;
+  }
+
   function render() {
     if (!state.mounted || !state.rootEl || !state.dockEl) return;
+    // Reap any frame whose tab.id is no longer in any layout tree
+    // (Phase 2.2). Skipped while a drag is in flight — extractTab and
+    // insertTabIntoLeaf transiently remove the dragged tab from the
+    // tree before re-adding it, and the reconciler must not react to
+    // that intermediate state.
+    if (!state.dragTabId) ensureLifecycleReconciler().reconcile(state);
     ensureActiveLeaf();
     syncIntegratedPanelVisibility();
     ensurePanelDockActives();

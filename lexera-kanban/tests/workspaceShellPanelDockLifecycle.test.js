@@ -110,6 +110,7 @@ function createShellHarness({ invokeSpy } = {}) {
     [
       'titleHelpers.js',
       'workspace/layoutTree.js',
+      'workspace/lifecycleReconciler.js',
       'workspace/boardHost.js',
       'workspace/panelHost.js',
       'workspace/multiviewWebview.js',
