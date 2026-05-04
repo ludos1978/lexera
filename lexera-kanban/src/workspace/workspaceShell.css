@@ -1220,9 +1220,14 @@ body.workspace-shell-tab-dragging .workspace-shell-panel-content > :not(.workspa
 /* Multiview placeholder: a plain div that reserves space for the
    Tauri child webview floating above it. The bg acts as a visible
    backdrop during webview spawn/load/eviction (so the area doesn't
-   look like an empty hole). */
+   look like an empty hole) AND masks the inline `.mv-placeholder-skeleton`
+   "spawning…" text from showing through against any orphan webview that
+   happens to overlap the placeholder before its own webview paints over.
+   Phase 1.5: reverted from `transparent` to `--bg-primary` (the original
+   intent comment above) — the other shell layout containers stay
+   transparent so the host body bg shows through. */
 .workspace-shell-multiview-placeholder {
-  background: transparent;
+  background: var(--bg-primary, #1e1e1e);
 }
 .workspace-shell-multiview-placeholder.is-active::before {
   /* Thin inset ring to indicate the active multiview slot — helps
