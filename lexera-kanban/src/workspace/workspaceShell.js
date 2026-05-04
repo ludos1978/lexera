@@ -1861,8 +1861,13 @@
       insertTabIntoLeaf(extracted.tab, extracted.sourceLeafId);
       return false;
     }
-    var idx = Math.max(0, Math.min(targetIndex, found.leaf.tabs.length));
-    found.leaf.tabs.splice(idx, 0, extracted.tab);
+    // Phase 3.2 [2/N]: layoutTree.insertTabIntoLeaf handles the index
+    // clamp internally. The forced activeTabId assignment stays
+    // explicit — the wrapper only sets activeTabId when the destination
+    // leaf was previously empty, but moveTabToLeafAtIndex deliberately
+    // makes the moved tab active in any destination so the user lands
+    // on the dropped tab.
+    layoutTree.insertTabIntoLeaf(found.leaf, extracted.tab, targetIndex);
     found.leaf.activeTabId = extracted.tab.id;
     if (found.treeId === 'center') state.activeLeafId = found.leaf.id;
     normalizeAllTrees();
