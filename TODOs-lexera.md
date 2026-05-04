@@ -38,7 +38,7 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 #### Phase 1 — Surgical leak fixes
 - [x] (done) ~~**1.1** Route `removePanelFromDocks` (workspaceShell.js:1392-1417) splice through `removeFrame(removedTab.id)`.~~ Pinned by `workspaceShellPanelDockLifecycle.test.js`. (commit 0848030c)
 - [x] (done) ~~**1.2** Replace `extractTab(found.tab.id)` with `closeTab(found.tab.id)` in the base-panel branch of `closePanelView` (workspaceShell.js:838-840).~~ Used `extractTab + removeFrame` instead — `closeTab` re-adds the panel via `handleRemovedPanelTab` which `render()` then forces visible again. (commit 0848030c)
-- [ ] **1.3** Iterate the OLD tree before `state.dockTree = replacement` in `flattenToActiveLeaf` (workspaceShell.js:1947-1958) and call `removeFrame` for each tab.id ≠ active.
+- [x] (done) ~~**1.3** Iterate the OLD tree before `state.dockTree = replacement` in `flattenToActiveLeaf` (workspaceShell.js:1947-1958) and call `removeFrame` for each tab.id ≠ active.~~ Uses `LexeraLayoutTree.collectAllTabIds` to snapshot the OLD center tree, computes `discardedTabIds = ids \ {keepId}`, then calls `removeFrame` per discarded id after the wholesale replacement. Pinned by `workspaceShellPanelDockLifecycle.test.js` (Phase 1.3 case). (commit c64b665a)
 - [ ] **1.4** Add an orphan reaper before `state.dockEl.innerHTML = ''` at workspaceShell.js:3567: diff `Object.keys(state.frameCache)` against tab.ids in next render and `removeFrame` any not present. Skip while `state.dragTabId` is set.
 - [ ] **1.5** Decide on transparent-bg commit f76f959f. Recommendation: revert just `.workspace-shell-multiview-placeholder` to opaque (workspaceShell.css:1220-1223 original intent); leave the other transparent containers.
 
