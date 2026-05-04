@@ -622,6 +622,10 @@
 
   function collapseDock(dockId) {
     if (dockId !== 'left' && dockId !== 'right' && dockId !== 'bottom') return false;
+    if (typeof window.lexeraLog === 'function') {
+      window.lexeraLog('debug', '[fold-trace] collapseDock dock=' + dockId +
+        ' prevSize=' + state.dockSizes[dockId]);
+    }
     if (state.dockSizes[dockId] > 0) {
       state.dockRestoreSizes[dockId] = clampPanelSize(dockId, state.dockSizes[dockId]);
     }
@@ -631,6 +635,10 @@
   }
 
   function toggleFoldPane(nodeId) {
+    if (typeof window.lexeraLog === 'function') {
+      window.lexeraLog('debug', '[fold-trace] toggleFoldPane nodeId=' + nodeId +
+        ' alreadyFolded=' + !!state.foldedPanes[nodeId]);
+    }
     if (state.foldedPanes[nodeId]) return unfoldPane(nodeId);
     // If this node is in a dock-level collapsed dock, restore the dock
     var ids = allTreeIds();
@@ -640,7 +648,13 @@
       var root = getTreeRoot(treeId);
       if (!root) continue;
       if (!findNodeAndParent(root, nodeId) && root.id !== nodeId) continue;
-      if (state.dockSizes[treeId] === 0) return restoreDock(treeId, nodeId);
+      if (state.dockSizes[treeId] === 0) {
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('debug', '[fold-trace] toggleFoldPane → restoreDock dock=' +
+            treeId + ' nodeId=' + nodeId);
+        }
+        return restoreDock(treeId, nodeId);
+      }
     }
     return foldPane(nodeId);
   }
@@ -674,6 +688,11 @@
       if (!root) continue;
       var info = findNodeAndParent(root, nodeId);
       if (!info) continue;
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('debug', '[fold-trace] foldPane found nodeId=' + nodeId +
+          ' tree=' + treeId + ' parent.type=' + (info.parent ? info.parent.type : 'null') +
+          ' side=' + (info.side || ''));
+      }
       // Left/right docks: always collapse the entire dock (vertical bar, 22px)
       if (treeId === 'left' || treeId === 'right') return collapseDock(treeId);
       if (!info.parent || info.parent.type !== 'split') continue;
@@ -684,6 +703,10 @@
       } else {
         info.parent.ratio = 1;
       }
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('debug', '[fold-trace] foldPane → ratio=' + info.parent.ratio +
+          ' (pane-level, no collapseDock; renderFoldStrip will NOT fire for tree=' + treeId + ')');
+      }
       render();
       return true;
     }
@@ -691,7 +714,17 @@
     for (var d = 0; d < ids.length; d++) {
       if (ids[d] === 'center') continue;
       var dRoot = getTreeRoot(ids[d]);
-      if (dRoot && dRoot.id === nodeId) return collapseDock(ids[d]);
+      if (dRoot && dRoot.id === nodeId) {
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('debug', '[fold-trace] foldPane → collapseDock(' +
+            ids[d] + ') (root-fallback, no parent split)');
+        }
+        return collapseDock(ids[d]);
+      }
+    }
+    if (typeof window.lexeraLog === 'function') {
+      window.lexeraLog('warn', '[fold-trace] foldPane FAILED nodeId=' + nodeId +
+        ' (no matching tree, no parent split, not a dock root)');
     }
     return false;
   }
@@ -949,11 +982,20 @@
   }
 
   function renderFoldStrip(dockId, dockEl) {
+    if (typeof window.lexeraLog === 'function') {
+      window.lexeraLog('debug', '[fold-trace] renderFoldStrip dock=' + dockId +
+        ' dockEl.classList=' + (dockEl && dockEl.className ? dockEl.className : 'null'));
+    }
     // Remove old fold strip if any
     var oldStrip = dockEl.querySelector('.ws-fold-strip');
     if (oldStrip) oldStrip.parentNode.removeChild(oldStrip);
 
     var panelIds = getVisiblePanelIdsForDock(dockId);
+    if (typeof window.lexeraLog === 'function') {
+      window.lexeraLog('debug', '[fold-trace] renderFoldStrip dock=' + dockId +
+        ' visiblePanelCount=' + panelIds.length +
+        ' panels=[' + panelIds.join(',') + ']');
+    }
     if (panelIds.length === 0) return;
 
     var strip = document.createElement('div');
