@@ -1402,7 +1402,9 @@
       // Remove the tab from the leaf
       for (var j = found.leaf.tabs.length - 1; j >= 0; j--) {
         if (isPanelTab(found.leaf.tabs[j]) && resolvePanelTarget(found.leaf.tabs[j].panelId) === normalized) {
-          found.leaf.tabs.splice(j, 1);
+          var _removed = found.leaf.tabs.splice(j, 1)[0];
+          traceLeakSite('removePanelFromDocks', 'dock=' + dockIds[i] +
+            ' panelId=' + normalized + ' tabId=' + (_removed && _removed.id));
           changed = true;
         }
       }
@@ -1776,6 +1778,8 @@
       var leaf = found.leaf;
       var sourceLeafId = leaf.id;
       leaf.tabs.splice(found.index, 1);
+      traceLeakSite('extractTab', 'tabId=' + tabId + ' tree=' + ids[t] +
+        ' sourceLeafId=' + sourceLeafId);
       if (leaf.activeTabId === tabId) {
         leaf.activeTabId = leaf.tabs.length > 0
           ? leaf.tabs[Math.max(0, found.index - 1)].id
@@ -1951,6 +1955,8 @@
     var replacement = createTabsetNode(activeTab ? [activeTab] : []);
     if (activeTab) replacement.activeTabId = activeTab.id;
     if (activeTab) removeTabFromEverywhereExcept(activeTab.id, replacement);
+    traceLeakSite('flattenToActiveLeaf',
+      'keepTabId=' + (activeTab ? activeTab.id : '(none)'));
     state.dockTree = replacement;
     state.activeLeafId = replacement.id;
     render();
@@ -1964,6 +1970,8 @@
       for (var i = node.tabs.length - 1; i >= 0; i--) {
         if (node.tabs[i].id === tabId) {
           node.tabs.splice(i, 1);
+          traceLeakSite('removeTabFromEverywhereExcept',
+            'tabId=' + tabId + ' fromLeafId=' + node.id);
         }
       }
       if (node.activeTabId === tabId) {
@@ -3466,6 +3474,8 @@
     for (var existId in existingViews) {
       if (!expectedTabIds[existId]) {
         existingViews[existId].remove();
+        traceLeakSite('syncLeafDom.viewRemove',
+          'tabId=' + existId + ' leafId=' + node.id);
       }
     }
 
@@ -3599,11 +3609,27 @@
     auditViewLifecycle();
   }
 
-  function auditViewLifecycle() {
+  // Phase 0.3 marker: log the call site and tab.id at every place the
+  // layout tree is mutated without going through `removeFrame`. Gated by
+  // the same flag as `auditViewLifecycle`. The end-of-render audit
+  // detects WHICH ids leaked; this trace tells us WHERE the splice
+  // happened. Pair the two logs to attribute orphans to call sites.
+  function isViewLeakAuditOn() {
     try {
       var ls = (typeof window !== 'undefined') ? window.localStorage : null;
-      if (!ls || ls.getItem('LEXERA_VIEW_LEAK_AUDIT') !== '1') return;
-    } catch (_) { return; }
+      return !!(ls && ls.getItem('LEXERA_VIEW_LEAK_AUDIT') === '1');
+    } catch (_) { return false; }
+  }
+  function traceLeakSite(siteLabel, detail) {
+    if (!isViewLeakAuditOn()) return;
+    if (typeof window.lexeraLog === 'function') {
+      window.lexeraLog('debug', '[view-leak][splice] ' + siteLabel +
+        (detail ? ' ' + detail : ''));
+    }
+  }
+
+  function auditViewLifecycle() {
+    if (!isViewLeakAuditOn()) return;
     if (!multiview || typeof multiview._test_leakReport !== 'function') return;
     var collect = (typeof window !== 'undefined' &&
       window.LexeraLayoutTree &&
