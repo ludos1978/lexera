@@ -176,6 +176,64 @@ describe('workspace shell panel-dock lifecycle (Phase 1.1 + 1.2)', () => {
     expect(destroyAfter).toBeGreaterThan(destroyBefore);
   });
 
+  it('full-rebuild orphan reaper does not destroy live tabs (Phase 1.4 no-regression)', () => {
+    vi.useFakeTimers();
+    const { shell, window, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+    shell.onBoardsUpdated([
+      { id: 'alpha', title: 'Alpha' },
+      { id: 'beta', title: 'Beta' }
+    ]);
+    shell.openBoard('alpha');
+    shell.openBoard('beta');
+    vi.advanceTimersByTime(50);
+    const destroyBefore = window.LexeraMultiview.destroy.mock.calls.length;
+
+    // Force a re-render. Both boards stay in the tree; the reaper must
+    // NOT destroy either (only orphans — tab.ids no longer in any tree
+    // — qualify for reaping).
+    shell.render();
+    vi.advanceTimersByTime(50);
+
+    expect(window.LexeraMultiview.destroy.mock.calls.length).toBe(destroyBefore);
+  });
+
+  it('full-rebuild orphan reaper destroys frameCache entries with no tree presence (Phase 1.4)', () => {
+    vi.useFakeTimers();
+    const { shell, window, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+    shell.onBoardsUpdated([
+      { id: 'alpha', title: 'Alpha' },
+      { id: 'beta', title: 'Beta' }
+    ]);
+    shell.openBoard('alpha');
+    vi.advanceTimersByTime(50);
+
+    // Simulate a missed splice path: inject an orphan frame with the
+    // multiview marker so removeFrame routes through multiview.destroy.
+    // This is what the reaper exists to defend against — any future
+    // mutation path that escapes Phase 1.1-1.3 should be caught here.
+    shell._test_seedOrphanFrame('phantom-tab-9999');
+    const destroyBefore = window.LexeraMultiview.destroy.mock.calls.length;
+
+    // Force the full-rebuild branch of render() — that's where the
+    // reaper runs. Adding a tab inside an existing leaf only changes
+    // the structure signature, not leaf topology, so syncDomState
+    // patches incrementally and the reaper is bypassed. Invalidating
+    // both signatures forces the wipe-and-rebuild path.
+    shell._test_forceFullRebuild();
+    shell.render();
+    vi.advanceTimersByTime(50);
+
+    // multiviewWebview.destroy() resolves the webview label from the
+    // tabId via `boardHost.multiviewLabelForTab` (`board-tab-<tabId>`),
+    // so the IPC argument is the full label, not the bare tabId.
+    const destroyArgs = window.LexeraMultiview.destroy.mock.calls
+      .slice(destroyBefore)
+      .map((args) => args[0]);
+    expect(destroyArgs.some((label) => label.indexOf('phantom-tab-9999') !== -1)).toBe(true);
+  });
+
   it('flattenToActiveLeaf (split-disable action) destroys webviews for non-active tabs (Phase 1.3)', () => {
     vi.useFakeTimers();
     const { shell, window, mainContent } = createShellHarness();

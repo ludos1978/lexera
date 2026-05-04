@@ -3607,6 +3607,14 @@
         patched = syncDomState();
       }
       if (!patched) {
+        // Phase 1.4 orphan reaper: any frame currently cached for a
+        // tab.id that is no longer in any tree must have its native
+        // webview destroyed before we wipe the dock DOM. Otherwise the
+        // webview stays painting on screen at its last position even
+        // though no placeholder hosts it. Skip while a drag is in
+        // flight — extractTab+insertTabIntoLeaf transiently removes a
+        // tab from the tree before re-adding it.
+        if (!state.dragTabId) reapOrphanFrames();
         state.dockEl.innerHTML = '';
         renderNode(state.dockTree, state.dockEl);
       }
@@ -3658,6 +3666,38 @@
     if (typeof window.lexeraLog === 'function') {
       window.lexeraLog('debug', '[view-leak][splice] ' + siteLabel +
         (detail ? ' ' + detail : ''));
+    }
+  }
+
+  // Phase 1.4: collect every tab.id present in any layout tree, then
+  // call `removeFrame` for any cached frame whose tab.id is not in that
+  // set. Used by the full-rebuild branch of `render()` before the dock
+  // DOM is wiped via `innerHTML = ''`. The wipe alone leaves the native
+  // webviews painting at their last position (Tauri child webviews float
+  // above the host DOM regardless of host CSS); the visibility observers
+  // CAN park the webviews offscreen async on the next intersection
+  // change, but until then any orphan paints "all around". Reaping
+  // synchronously closes the lifecycle.
+  function reapOrphanFrames() {
+    var collect = (typeof window !== 'undefined' &&
+      window.LexeraLayoutTree &&
+      typeof window.LexeraLayoutTree.collectAllTabIds === 'function')
+      ? window.LexeraLayoutTree.collectAllTabIds : null;
+    if (!collect) return;
+    var keepSet = {};
+    var trees = [
+      state.dockTree,
+      state.sideDocks && state.sideDocks.left,
+      state.sideDocks && state.sideDocks.right,
+      state.sideDocks && state.sideDocks.bottom
+    ];
+    for (var ti = 0; ti < trees.length; ti++) {
+      var ids = trees[ti] ? collect(trees[ti]) : [];
+      for (var ii = 0; ii < ids.length; ii++) keepSet[ids[ii]] = true;
+    }
+    var cachedIds = Object.keys(state.frameCache || {});
+    for (var ci = 0; ci < cachedIds.length; ci++) {
+      if (!keepSet[cachedIds[ci]]) removeFrame(cachedIds[ci]);
     }
   }
 
@@ -4500,6 +4540,17 @@
     getActiveBoardColumnsContainer: getActiveBoardColumnsContainer,
     getFrameWindowForBoard: getFrameWindowForBoard,
     getTabIdForBoard: getTabIdForBoard,
-    _test_resolveCycleTabTarget: resolveCycleTabTarget
+    _test_resolveCycleTabTarget: resolveCycleTabTarget,
+    _test_seedOrphanFrame: function (tabId) {
+      if (!tabId || state.frameCache[tabId]) return;
+      var fake = document.createElement('div');
+      fake.setAttribute('data-multiview', '1');
+      fake.setAttribute('data-tab-id', String(tabId));
+      state.frameCache[tabId] = fake;
+    },
+    _test_forceFullRebuild: function () {
+      state.lastStructureSignature = '';
+      state.lastLeafTopology = '';
+    }
   };
 })();
