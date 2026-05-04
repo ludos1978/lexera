@@ -51,7 +51,7 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 - [x] (done) ~~**2.4** Property-based invariant test: `lexera-kanban/tests/viewLifecycleInvariantContract.test.js` — random sequences of tree ops, assert `tabIdsInTree === Object.keys(spawnedTabs)` after each op.~~ Six deterministic seeds × 50 ops covering add/remove/move/replace-root/drop-side-dock/promote-to-split + a manual worst-case scenario (replace center then drop side dock). Failing seeds annotate the error with seed+step+trace for reproduction. (commit b0bc282f)
 
 #### Phase 3 — Encapsulated tree mutations
-- [ ] **3.1** Add `LexeraLayoutTree.{removeTabById, moveTab, insertTabIntoLeaf, replaceTreeRoot}` API to [lexera-kanban/src/workspace/layoutTree.js](lexera-kanban/src/workspace/layoutTree.js).
+- [x] (done) ~~**3.1** Add `LexeraLayoutTree.{removeTabById, moveTab, insertTabIntoLeaf, replaceTreeRoot}` API to [lexera-kanban/src/workspace/layoutTree.js](lexera-kanban/src/workspace/layoutTree.js).~~ Four wrappers shipped: `removeTabById` (walks tree, fixes activeTabId), `insertTabIntoLeaf` (clamps index, seeds activeTabId), `moveTab` (cross-leaf + same-leaf with the established "original-index" convention from workspaceShell:1846), `replaceTreeRoot(holder, key, next)` (assigns + returns symmetric tab.id diff). 20 new assertions in layoutTree.test.js. (commit 60b893ad)
 - [ ] **3.2** Migrate every `node.tabs.splice(` and `state.dockTree =` / `state.sideDocks[…] =` in workspaceShell.js to the new wrapper API (~12-15 sites).
 - [ ] **3.3** Lint contract test: `lexera-kanban/tests/layoutTreeMutationContract.test.js` — greps for direct splice / direct assignment outside an allowlist (layoutTree.js + workspaceShell.js mount/render path).
 
