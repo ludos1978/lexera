@@ -62,7 +62,7 @@ pub async fn backend_local_api(
     state: tauri::State<'_, AppState>,
     arg: LocalApiRequestArg,
 ) -> Result<LocalApiResponse, String> {
-    let router = crate::server::build_app(state.inner().clone());
+    let router = crate::server::build_app_ipc(state.inner().clone());
     let req = ApiRequest {
         method: arg.method,
         uri: arg.uri,

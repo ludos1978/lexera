@@ -45,7 +45,16 @@ fn is_allowed_app_origin(origin_str: &str) -> bool {
     false
 }
 
+/// Build the router for loopback HTTP transport. Includes security
+/// middleware to strip internal transport markers.
 pub(crate) fn build_app(state: AppState) -> Router {
+    build_app_ipc(state).layer(axum::middleware::from_fn(strip_transport_header_middleware))
+}
+
+/// Build the router for internal IPC transport (local or socket).
+/// Excludes the security stripper so internal dispatchers can inject
+/// trusted transport markers.
+pub(crate) fn build_app_ipc(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _| {
             let origin_str = match std::str::from_utf8(origin.as_bytes()) {
@@ -62,7 +71,6 @@ pub(crate) fn build_app(state: AppState) -> Router {
         .merge(sync_router())
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .layer(cors)
-        .layer(axum::middleware::from_fn(strip_transport_header_middleware))
         .with_state(state)
 }
 

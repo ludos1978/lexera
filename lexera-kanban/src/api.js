@@ -142,6 +142,11 @@ var LexeraApi = (function () {
     for (var i = 0; i < list.length; i++) {
       if (list[i] && String(list[i][0]).toLowerCase() === 'authorization') return list;
     }
+
+    // Phase 7.5: local IPC transport is implicitly authenticated; skip
+    // Authorization header.
+    if (getTransportMode() === 'local-ipc') return list;
+
     if (path !== '/collab/me') {
       await ensureBearerToken();
     }
@@ -248,6 +253,11 @@ var LexeraApi = (function () {
 
   async function ensureBearerToken() {
     if (bearerToken) return bearerToken;
+
+    // Phase 7.5: local IPC transport is implicitly authenticated; the
+    // bearer token bootstrap is only required for loopback HTTP.
+    if (getTransportMode() === 'local-ipc') return null;
+
     if (bearerTokenPromise) return bearerTokenPromise;
     bearerTokenPromise = (async function () {
       try {
@@ -280,6 +290,9 @@ var LexeraApi = (function () {
   }
 
   function authHeaders(existing) {
+    // Phase 7.5: skip Authorization header if on IPC.
+    if (getTransportMode() === 'local-ipc') return existing || {};
+
     if (!bearerToken) return existing || {};
     var h = Object.assign({}, existing || {});
     h['Authorization'] = 'Bearer ' + bearerToken;
@@ -379,7 +392,8 @@ var LexeraApi = (function () {
     }
     // Ensure we have a bearer token for authenticated requests
     // (skip for /collab/me itself to avoid circular dependency)
-    if (path !== '/collab/me') {
+    // Phase 7.5: skip for local IPC transport too.
+    if (path !== '/collab/me' && getTransportMode() !== 'local-ipc') {
       await ensureBearerToken();
     }
     var timeoutMs = options && typeof options.timeoutMs === 'number' ? options.timeoutMs : DEFAULT_TIMEOUT_MS;

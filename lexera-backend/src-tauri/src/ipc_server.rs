@@ -31,7 +31,7 @@ struct PendingUpload {
 
 /// Spawn the IPC accept loop. Returns immediately.
 pub fn spawn(app_state: AppState, shutdown_rx: watch::Receiver<bool>) {
-    let router = crate::server::build_app(app_state.clone());
+    let router = crate::server::build_app_ipc(app_state.clone());
     tauri::async_runtime::spawn(async move {
         match Server::bind_default().await {
             Ok((server, descriptor)) => {
