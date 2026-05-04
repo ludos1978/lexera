@@ -832,11 +832,22 @@
     var kind = getPanelKind(normalized);
     if (!kind) return false;
     if (normalized === kind) {
-      // Base panel: remove tab from tree and hide
+      // Base panel: remove tab from tree and hide.
+      // Phase 1.2: pair `extractTab` with an explicit `removeFrame` so
+      // the native webview is destroyed when the base panel is closed.
+      // We can't use `closeTab` here — it calls `handleRemovedPanelTab`
+      // which re-adds the base panel to its default dock; that re-add
+      // is then picked up by `render()`→`syncIntegratedPanelVisibility`
+      // and forces `state.panelVisibility` back to true, defeating the
+      // hide. The original `extractTab` path orphaned the webview
+      // ("views all around" regression); pairing with `removeFrame`
+      // closes the lifecycle without disturbing the dock state.
       state.panelVisibility[normalized] = false;
       if (state.activePanelId === normalized) state.activePanelId = '';
       if (found && found.tab) {
-        extractTab(found.tab.id);
+        var _closedTabId = found.tab.id;
+        extractTab(_closedTabId);
+        removeFrame(_closedTabId);
       }
       ensurePanelDockActives();
       render();
@@ -1403,8 +1414,12 @@
       for (var j = found.leaf.tabs.length - 1; j >= 0; j--) {
         if (isPanelTab(found.leaf.tabs[j]) && resolvePanelTarget(found.leaf.tabs[j].panelId) === normalized) {
           var _removed = found.leaf.tabs.splice(j, 1)[0];
-          traceLeakSite('removePanelFromDocks', 'dock=' + dockIds[i] +
-            ' panelId=' + normalized + ' tabId=' + (_removed && _removed.id));
+          // Phase 1.1: destroy the native webview when the tab is
+          // removed from a side dock. Pre-fix this splice was a primary
+          // ghost-view source: openPanelInCenter / placePanelInLeaf /
+          // splitLeafWithPanel / destroyDuplicatedPanelInstance all
+          // call this and none used to free the webview.
+          if (_removed && _removed.id) removeFrame(_removed.id);
           changed = true;
         }
       }
