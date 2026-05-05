@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lexera — Debug</title>
+  <link rel="stylesheet" href="../../fonts.css">
+  <link rel="stylesheet" href="../../tokens.css">
+  <link rel="stylesheet" href="debug.css">
+</head>
+<body class="lexera-debug-window">
+  <header class="debug-header">
+    <h1>Lexera — Debug</h1>
+    <span class="debug-header-tag" data-debug-tag>started via --debug</span>
+  </header>
+
+  <section class="debug-section">
+    <h2>Overlay webviews</h2>
+    <p class="debug-section-help">
+      Native child webviews paint above shell DOM at the OS-window layer.
+      Toggle this to hide them and verify whether the shell is being occluded.
+    </p>
+    <button type="button" data-debug-action="toggle-overlays" class="debug-btn debug-btn-primary">
+      Hide all overlay webviews
+    </button>
+    <span class="debug-status" data-debug-status="overlays">visible</span>
+  </section>
+
+  <section class="debug-section">
+    <h2>Dock snapshots</h2>
+    <p class="debug-section-help">
+      Live state of every dock — read on demand from the shell's
+      <code>_test_inspectDock</code> seam.
+    </p>
+    <button type="button" data-debug-action="refresh-snapshots" class="debug-btn">
+      Refresh
+    </button>
+    <pre data-debug-snapshot-output class="debug-snapshot-output">click Refresh to fetch dock snapshots…</pre>
+  </section>
+
+  <section class="debug-section">
+    <h2>Frontend tests</h2>
+    <p class="debug-section-help">
+      The full vitest run lives at <code>./run-lexera-tests.sh --unit</code>.
+      The in-app auto-run harness (used by CI) opens a separate webview
+      hosted by <code>views/frontendTests/index.html</code>.
+    </p>
+    <button type="button" data-debug-action="open-frontend-tests" class="debug-btn">
+      Open Frontend Tests view
+    </button>
+  </section>
+
+  <footer class="debug-footer">
+    Press F12 to open DevTools on this debug window.
+  </footer>
+
+  <script src="../../menu/embedMenu.js"></script>
+  <script src="debug.js"></script>
+</body>
+</html>

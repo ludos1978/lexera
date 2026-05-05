@@ -1,0 +1,134 @@
+/* Lexera debug-window styling.
+ * Standalone — does NOT inherit the workspace shell CSS bundle so the
+ * page renders even if the shell isn't available (the whole point of
+ * a debug window is to work when the rest of the app might be broken).
+ * Uses tokens.css variables for consistency with the rest of the app
+ * but degrades gracefully if a token is missing. */
+
+* { box-sizing: border-box; }
+
+body.lexera-debug-window {
+  margin: 0;
+  padding: 16px 20px 20px;
+  font-family: var(--font-family-system, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary, #1a1a1a);
+  background: var(--bg-primary, #fafafa);
+  min-height: 100vh;
+}
+
+.debug-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, #e0e0e0);
+  margin-bottom: 16px;
+}
+
+.debug-header h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.debug-header-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--bg-tertiary, #ececec);
+  color: var(--text-secondary, #555);
+  border-radius: 4px;
+  border: 1px solid var(--border, #e0e0e0);
+}
+
+.debug-section {
+  margin-bottom: 24px;
+}
+
+.debug-section h2 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.debug-section-help {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  color: var(--text-secondary, #555);
+  max-width: 600px;
+}
+
+.debug-section-help code {
+  font-family: var(--font-family-mono, ui-monospace, 'SF Mono', Menlo, monospace);
+  font-size: 11px;
+  padding: 1px 5px;
+  background: var(--bg-tertiary, #ececec);
+  border-radius: 3px;
+}
+
+.debug-btn {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 14px;
+  background: var(--bg-secondary, #fff);
+  color: var(--text-primary, #1a1a1a);
+  border: 1px solid var(--border, #d0d0d0);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.debug-btn:hover { background: var(--bg-hover, #f0f0f0); }
+.debug-btn:active { background: var(--bg-tertiary, #e6e6e6); }
+
+.debug-btn-primary {
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border-color: var(--accent, #2563eb);
+}
+
+.debug-btn-primary:hover { filter: brightness(1.1); }
+
+.debug-status {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 3px;
+  background: var(--bg-tertiary, #ececec);
+  color: var(--text-secondary, #555);
+}
+
+.debug-status[data-state="hidden"] {
+  background: #fde68a;
+  color: #92400e;
+}
+
+.debug-snapshot-output {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  font-family: var(--font-family-mono, ui-monospace, 'SF Mono', Menlo, monospace);
+  font-size: 11px;
+  line-height: 1.4;
+  background: var(--bg-secondary, #fff);
+  color: var(--text-primary, #1a1a1a);
+  border: 1px solid var(--border, #e0e0e0);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.debug-footer {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #e0e0e0);
+  font-size: 11px;
+  color: var(--text-secondary, #777);
+}

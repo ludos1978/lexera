@@ -324,6 +324,13 @@ fn main() {
     let auto_run_filter: Option<String> = args
         .iter()
         .find_map(|a| a.strip_prefix("--run-tests-filter=").map(|v| v.to_string()));
+    // `--debug` opens a separate top-level webview window after the
+    // main shell finishes booting. The window hosts on-demand
+    // diagnostics (toggle child-webview overlays, dump dock state,
+    // launch the frontend-tests view) — see `lexera-kanban/src/views/debug/`.
+    // Cheap to ignore when not in use; nothing routes to that window
+    // unless the user explicitly clicks one of its buttons.
+    let open_debug_window = args.iter().any(|a| a == "--debug");
     let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
@@ -436,6 +443,30 @@ fn main() {
             // backend starts/stops/restarts without polling. Matches plan
             // gap #4.
             backend_status::spawn(app.handle().clone());
+
+            // `--debug` opens a small standalone diagnostics window in
+            // parallel with the main shell. Hosted at
+            // `lexera-kanban/src/views/debug/index.html`. Doesn't host
+            // any of the kanban content; its buttons emit Tauri events
+            // that the shell webview listens for. Failure to open is
+            // logged but not fatal — the main app still boots normally.
+            if open_debug_window {
+                let url = tauri::WebviewUrl::App("views/debug/index.html".into());
+                match tauri::WebviewWindowBuilder::new(app, "debug", url)
+                    .title("Lexera — Debug")
+                    .inner_size(720.0, 540.0)
+                    .min_inner_size(420.0, 320.0)
+                    .resizable(true)
+                    .build()
+                {
+                    Ok(_) => {
+                        eprintln!("[main] --debug window opened (label='debug')");
+                    }
+                    Err(e) => {
+                        eprintln!("[main] --debug window failed to open: {}", e);
+                    }
+                }
+            }
 
             Ok(())
         })

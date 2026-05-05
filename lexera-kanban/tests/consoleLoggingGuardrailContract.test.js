@@ -51,7 +51,13 @@ const ALLOWED_CONSOLE_FILES = [
   'workspace/layoutPersistence.js',
   'workspace/multiviewWebview.js',
   'workspace/workspaceShell.js',
-  'wysiwyg-editor.js'
+  'wysiwyg-editor.js',
+  // The standalone --debug window has no shell context (it doesn't load
+  // loggingSystem.js / lexeraLog) — its purpose is to be visible when
+  // the rest of the app might be broken. The page literally tells the
+  // user "Press F12 to open DevTools on this debug window", so console
+  // is the intended log destination. Allowed for that reason.
+  'views/debug/debug.js'
 ];
 
 // Build-synced from lexera-shared/scripts/sync-runtime-assets.mjs.
