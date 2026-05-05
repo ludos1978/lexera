@@ -111,16 +111,37 @@
    * batched IPC. Cheaper than calling `setGeometry([...])` per webview
    * during dock-divider drag because all updates collapse into one IPC,
    * and identical-to-last-sent updates are dropped before IPC.
+   *
+   * Pass `opts.immediate = true` to bypass the rAF defer for this one
+   * update — fires the IPC synchronously the same tick the call lands.
+   * Used by `parkWebviewOffscreen` when a placeholder becomes invisible
+   * mid-frame (e.g. `collapseDock` collapses a panel's host) and the
+   * webview MUST hide before next paint, not after one animation tick
+   * during which it would still be painting at its previous coordinates
+   * above the now-folded shell DOM. The immediate path also clears any
+   * pending-but-unsent entry for the same label so a queued rAF flush
+   * doesn't undo the park by sending the older coordinates.
    */
-  function pushGeomDeferred(update) {
+  function pushGeomDeferred(update, opts) {
     if (!update || !update.label) return;
-    pendingGeometry[update.label] = {
+    var entry = {
       label: String(update.label),
       x: Number(update.x) || 0,
       y: Number(update.y) || 0,
       width: Number(update.width) || 0,
       height: Number(update.height) || 0
     };
+    if (opts && opts.immediate) {
+      // Drop any rAF-queued update for this label (it's stale relative
+      // to the immediate park) and skip if the immediate value matches
+      // what's already been sent.
+      delete pendingGeometry[entry.label];
+      if (geomEquals(entry, lastSentGeometry[entry.label])) return;
+      lastSentGeometry[entry.label] = entry;
+      setGeometry([entry]).catch(function () {});
+      return;
+    }
+    pendingGeometry[entry.label] = entry;
     if (geometryFlushScheduled) return;
     geometryFlushScheduled = true;
     if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {

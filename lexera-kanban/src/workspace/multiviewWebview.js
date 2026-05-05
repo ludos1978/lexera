@@ -630,7 +630,13 @@
   function parkWebviewOffscreen(label) {
     var update = { label: label, x: -50000, y: -50000, width: 1, height: 1 };
     if (typeof window.LexeraMultiview.pushGeomDeferred === 'function') {
-      window.LexeraMultiview.pushGeomDeferred(update);
+      // `immediate: true` bypasses the rAF batcher so the webview moves
+      // off-screen the same frame the placeholder becomes invisible.
+      // Without this, a `collapseDock` reflow leaves the webview painting
+      // at its pre-collapse coordinates for one animation tick — long
+      // enough to cover the fold strip the user is supposed to click
+      // to restore the dock. See `pushGeomDeferred` in multiviewClient.js.
+      window.LexeraMultiview.pushGeomDeferred(update, { immediate: true });
     } else {
       window.LexeraMultiview.setGeometry([update]).catch(function () {});
     }

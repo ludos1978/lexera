@@ -483,12 +483,18 @@ describe('LexeraMultiviewWebview.setAllVisible suppression refcount', () => {
       { label: 'board-tab-tab-a', visible: true },
       { label: 'board-tab-tab-b', visible: false }
     ]);
-    expect(pushGeomDeferred).toHaveBeenCalledWith({
-      label: 'board-tab-tab-a', x: -50000, y: -50000, width: 1, height: 1
-    });
-    expect(pushGeomDeferred).toHaveBeenCalledWith({
-      label: 'board-tab-tab-b', x: -50000, y: -50000, width: 1, height: 1
-    });
+    // parkWebviewOffscreen now passes `{ immediate: true }` so the
+    // park IPC fires synchronously the same frame the placeholder
+    // becomes invisible, without waiting for the rAF-deferred batcher.
+    // See multiviewClientPushGeomImmediate.test.js for the rationale.
+    expect(pushGeomDeferred).toHaveBeenCalledWith(
+      { label: 'board-tab-tab-a', x: -50000, y: -50000, width: 1, height: 1 },
+      { immediate: true }
+    );
+    expect(pushGeomDeferred).toHaveBeenCalledWith(
+      { label: 'board-tab-tab-b', x: -50000, y: -50000, width: 1, height: 1 },
+      { immediate: true }
+    );
 
     api.setAllVisible(true);
     api.setAllVisible(true);
@@ -540,8 +546,10 @@ describe('LexeraMultiviewWebview.setAllVisible suppression refcount', () => {
     expect(multiviewSetVisibleCalls(invoke)).toEqual([
       { label: 'board-tab-tab-a', visible: false }
     ]);
-    expect(pushGeomDeferred).toHaveBeenCalledWith({
-      label: 'board-tab-tab-a', x: -50000, y: -50000, width: 1, height: 1
-    });
+    // See sibling test above re: { immediate: true }.
+    expect(pushGeomDeferred).toHaveBeenCalledWith(
+      { label: 'board-tab-tab-a', x: -50000, y: -50000, width: 1, height: 1 },
+      { immediate: true }
+    );
   });
 });
