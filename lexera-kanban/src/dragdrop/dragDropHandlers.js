@@ -1582,10 +1582,20 @@ var LexeraDragDropHandlers = (function () {
   function applyRowDropByPoint(source, mx, my) {
     if (!source) return false;
     if (!isDropTargetValidForKind('row', mx, my)) return false;
+    // Cross-view tree-source: entityId is the row's stable ID. Translate
+    // to rowId so resolveRowForMutation's stable-lookup path can find
+    // the row when no indexed position is available. Same pattern as
+    // commit 966c921f for cards.
+    if (source.entityId && !source.rowId && typeof source.rowIndex !== 'number') {
+      source = Object.assign({}, source, { rowId: source.entityId });
+    }
     var activeBoardId = _deps.getActiveBoardId();
     var srcBoardId = source.boardId || activeBoardId;
     var srcRowIdx = getSourceRowIndex(source);
-    if (!srcBoardId || srcRowIdx < 0) return false;
+    if (!srcBoardId) return false;
+    // Allow tree-source (rowIdx === -1) through when source has rowId —
+    // moveRowAcrossBoards walks the loaded board to find the row by id.
+    if (srcRowIdx < 0 && !source.rowId) return false;
 
     var rowTarget = getRowDropTarget(mx, my);
     if (!rowTarget || !rowTarget.boardId || rowTarget.rowIndex < 0) return false;
@@ -1594,6 +1604,7 @@ var LexeraDragDropHandlers = (function () {
     var targetIndexMode = rowTarget.indexMode || (rowTarget.boardId === activeBoardId ? 'display' : 'full');
 
     if (
+      srcRowIdx >= 0 && // tree-source has no indexed position; skip fast path
       srcBoardId === rowTarget.boardId &&
       srcBoardId === activeBoardId &&
       srcIndexMode === 'display' &&
@@ -1628,11 +1639,23 @@ var LexeraDragDropHandlers = (function () {
   function applyStackDropByPoint(source, mx, my) {
     if (!source) return false;
     if (!isDropTargetValidForKind('stack', mx, my)) return false;
+    // Cross-view tree-source: entityId is the stack's stable ID.
+    // Translate to stackId so resolveStackForMutation's stable-lookup
+    // path can find the stack when no indexed position is available.
+    if (source.entityId && !source.stackId && typeof source.stackIndex !== 'number') {
+      source = Object.assign({}, source, { stackId: source.entityId });
+    }
     var activeBoardId = _deps.getActiveBoardId();
     var srcBoardId = source.boardId || activeBoardId;
     var srcRowIdx = parseInt(source.rowIndex, 10);
     var srcStackIdx = parseInt(source.stackIndex, 10);
-    if (!srcBoardId || isNaN(srcRowIdx) || isNaN(srcStackIdx) || srcRowIdx < 0 || srcStackIdx < 0) return false;
+    var hasIndexed = !isNaN(srcRowIdx) && !isNaN(srcStackIdx) && srcRowIdx >= 0 && srcStackIdx >= 0;
+    if (!srcBoardId) return false;
+    // Tree-source has no indexed position — proceed if we have stackId
+    // for stable lookup. Stack drops always go through
+    // moveStackAcrossBoards (no same-board fast path uses indices for
+    // the cross-view case).
+    if (!hasIndexed && !source.stackId) return false;
 
     var srcIndexMode = source.indexMode || (srcBoardId === activeBoardId ? 'display' : 'full');
     var canvasStackTarget = _deps.getCanvasStackDropApi().resolveCanvasStackDropTarget({
@@ -1669,6 +1692,7 @@ var LexeraDragDropHandlers = (function () {
       var targetIndexMode = stackTarget.indexMode || (stackTarget.boardId === activeBoardId ? 'display' : 'full');
 
       if (
+        hasIndexed && // tree-source has no indexed position; skip fast path
         srcBoardId === stackTarget.boardId &&
         srcBoardId === activeBoardId &&
         srcIndexMode === 'display' &&
