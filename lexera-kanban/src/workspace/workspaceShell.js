@@ -631,6 +631,17 @@
     }
     state.dockSizes[dockId] = 0;
     render();
+    // After render() the placeholder DIVs have been re-laid-out at the
+    // collapsed dock's reduced size, but the native child webviews still
+    // paint at their previous (full-size) coordinates until the next
+    // rAF-deferred geometry push. Without this synchronous push the user
+    // briefly sees the panel's webview overlapping the fold strip,
+    // making the strip non-clickable / invisible. Especially bad on the
+    // bottom dock where the log webview previously covered the entire
+    // 22-px fold strip.
+    if (multiview && typeof multiview.refreshAllGeometry === 'function') {
+      try { multiview.refreshAllGeometry(); } catch (_) {}
+    }
     return true;
   }
 
@@ -1055,6 +1066,21 @@
 
       if (kind === 'logs' && dockId === 'bottom') {
         zone.classList.add('ws-fold-zone-status');
+        // Prominent panel-title button styled like a tab-viewer header tab.
+        // Acts as the unambiguous click target — the user-reported bug was
+        // that with only badges + a transparent zone, the bottom-dock log
+        // webview occluded any obvious "click here to unfold" affordance.
+        // The whole zone already carries data-ws-action="expand-collapsed-dock",
+        // but having a clearly-labelled title makes it discoverable.
+        var titleBtn = document.createElement('span');
+        titleBtn.className = 'ws-fold-zone-title';
+        titleBtn.textContent = getPanelTitle(panelId) || 'Logs';
+        zone.appendChild(titleBtn);
+        var caret = document.createElement('span');
+        caret.className = 'ws-fold-zone-caret';
+        caret.textContent = '▲'; // ▲
+        caret.title = 'Click to unfold';
+        zone.appendChild(caret);
         zone.appendChild(buildLogStatusBadgesEl());
       } else {
         var label = document.createElement('span');
@@ -2795,6 +2821,11 @@
     // shown in an actual tabbed top bar. Single-item groups use the same
     // header component in its title mode (`is-single`).
     var headerEl = buildSideDockHeader(node);
+    // Inject log status badges into the folded bottom-dock log panel header
+    if (dockId === 'bottom' && activePanelId && getPanelKind(activePanelId) === 'logs' && !!state.foldedPanes[node.id]) {
+      headerEl.classList.add('ws-view-header-with-fold-status');
+      headerEl.appendChild(buildLogStatusBadgesEl());
+    }
     tabsetEl.appendChild(headerEl);
 
     var contentEl = document.createElement('div');
@@ -2939,6 +2970,18 @@
       if (dragEl) dragEl.setAttribute('data-ws-panel-drag-handle', activeItemId);
       var closeEl = headerEl.querySelector('.ws-view-close');
       if (closeEl) closeEl.setAttribute('data-ws-panel-id', activeItemId);
+
+      // Inject or update the rich log-status badges in the folded bottom-dock log panel header
+      if (dockId === 'bottom' && activePanelId && getPanelKind(activePanelId) === 'logs' && !!state.foldedPanes[node.id]) {
+        if (!headerEl.classList.contains('ws-view-header-with-fold-status')) {
+          headerEl.classList.add('ws-view-header-with-fold-status');
+          headerEl.appendChild(buildLogStatusBadgesEl());
+        }
+      } else if (headerEl.classList.contains('ws-view-header-with-fold-status')) {
+        headerEl.classList.remove('ws-view-header-with-fold-status');
+        var badges = headerEl.querySelector('.ws-fold-status-badges');
+        if (badges) headerEl.removeChild(badges);
+      }
     }
 
     // ── Content: patch panel elements ──

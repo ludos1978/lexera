@@ -216,6 +216,16 @@
   padding: 0 3px;
   cursor: pointer;
   pointer-events: auto;
+  /* Native child webviews paint at OS-window layer, above all DOM. The
+   * synchronous geometry refresh in collapseDock() shrinks the panel
+   * webview the same frame the dock collapses, so by the time the user
+   * sees the strip there's no overlap. position:relative + a non-default
+   * background here is belt-and-braces against any future rAF-deferred
+   * webview update path that briefly leaves a webview painted at the
+   * old coordinates. */
+  position: relative;
+  z-index: 1;
+  background: var(--bg-secondary);
 }
 
 .workspace-shell-panel-dock.is-folded[data-dock="left"] > .ws-fold-strip {
@@ -286,6 +296,40 @@
 .workspace-shell-panel-dock.is-folded[data-dock="bottom"] .ws-fold-zone.ws-fold-zone-status {
   justify-content: flex-start;
   padding: 0 6px;
+  gap: 8px;
+}
+
+/* Tab-viewer-style title in the bottom-dock fold strip. Acts as the
+ * obvious click target for unfolding the panel; styled so the user
+ * recognises it as a header tab rather than mistaking the strip for a
+ * passive status bar. */
+.ws-fold-zone-title {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 8px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border-radius: var(--workspace-row-radius);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.ws-fold-zone:hover .ws-fold-zone-title {
+  background: var(--bg-hover);
+}
+.ws-fold-zone-caret {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+.ws-fold-zone:hover .ws-fold-zone-caret {
+  color: var(--text-primary);
 }
 
 /* Fold indicator icon inside a zone */
@@ -486,6 +530,7 @@
   bottom: 20px;
   min-height: 120px;
   max-height: 50vh;
+  z-index: 100;
 }
 
 /* ── Unified view header (shared by board tabsets + panel docks) ── */
