@@ -242,6 +242,121 @@ describe('LexeraEmbeddedBoardBridge.install', () => {
     expect(received).toEqual([]);
   });
 
+  it('relays external-dnd-hover to window.__lexeraExternalDnd.hover with payload + coords', async () => {
+    // Stage 5 of the cross-view DnD chain: when the shell's
+    // hierarchyDragBridge emits external-dnd-hover/drop to a board
+    // webview, embeddedBoardBridge MUST translate that into a
+    // window.__lexeraExternalDnd.{hover,drop}(payload, x, y) call.
+    // Without this assertion the relay can silently break (e.g. if
+    // the listener is registered but the handler arg-shape changes)
+    // and "drag from workspace to board" stops working with no
+    // outward sign in JS — exactly the user-reported failure mode.
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1'
+    });
+    const { window } = dom;
+    const handlers = {};
+    const hoverFn = vi.fn();
+    const dropFn = vi.fn();
+    window.__lexeraExternalDnd = { hover: hoverFn, drop: dropFn };
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+    bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn((eventName, handler) => { handlers[eventName] = handler; })
+      }),
+      invoke: vi.fn(() => Promise.resolve()),
+      handleRequest: vi.fn()
+    });
+
+    expect(typeof handlers['external-dnd-hover']).toBe('function');
+    expect(typeof handlers['external-dnd-drop']).toBe('function');
+
+    // Fire a hover event with the payload-shape the shell emits:
+    //   payload: { payload: { source, type }, x, y }
+    handlers['external-dnd-hover']({
+      payload: {
+        payload: { source: { boardId: 'b1', kind: 'card', entityId: 'card-1' }, type: 'tree-card' },
+        x: 50,
+        y: 75
+      }
+    });
+    expect(hoverFn).toHaveBeenCalledTimes(1);
+    expect(hoverFn).toHaveBeenCalledWith(
+      { source: { boardId: 'b1', kind: 'card', entityId: 'card-1' }, type: 'tree-card' },
+      50,
+      75
+    );
+
+    // And a drop:
+    handlers['external-dnd-drop']({
+      payload: {
+        payload: { source: { boardId: 'b1', kind: 'row', entityId: 'r1' }, type: 'tree-row' },
+        x: 100,
+        y: 200
+      }
+    });
+    expect(dropFn).toHaveBeenCalledTimes(1);
+    expect(dropFn).toHaveBeenCalledWith(
+      { source: { boardId: 'b1', kind: 'row', entityId: 'r1' }, type: 'tree-row' },
+      100,
+      200
+    );
+  });
+
+  it('logs receive.no-handler when window.__lexeraExternalDnd is missing at relay time', () => {
+    // Same external-dnd-hover firing path, but the receiver hasn't
+    // installed __lexeraExternalDnd yet. The bridge must NOT throw
+    // and MUST surface a [xview-dnd] log line so the user can see
+    // in the in-app Log panel that the receiver isn't ready.
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'http://127.0.0.1:1431/index.html?embedded=1&board=board-alpha&pane=tab-1'
+    });
+    const { window } = dom;
+    const lexeraLog = vi.fn();
+    window.lexeraLog = lexeraLog;
+    const handlers = {};
+    const bridge = loadIIFE('shell/bridges/embeddedBoardBridge.js', 'window.LexeraEmbeddedBoardBridge', {
+      window,
+      document: window.document,
+      URLSearchParams,
+      MessageEvent: window.MessageEvent,
+      setTimeout: window.setTimeout.bind(window),
+      clearTimeout: window.clearTimeout.bind(window),
+      setInterval: vi.fn(() => 1),
+      clearInterval: vi.fn()
+    });
+    bridge.install({
+      getCurrentWebview: () => ({
+        label: 'board-tab-tab-1',
+        listen: vi.fn((eventName, handler) => { handlers[eventName] = handler; })
+      }),
+      invoke: vi.fn(() => Promise.resolve()),
+      handleRequest: vi.fn()
+    });
+
+    // No throw expected.
+    expect(() => {
+      handlers['external-dnd-drop']({
+        payload: { payload: { source: {}, type: 'tree-card' }, x: 0, y: 0 }
+      });
+    }).not.toThrow();
+
+    // Diagnostic log fired so the user knows stage 5 receiver is missing.
+    const xviewCalls = lexeraLog.mock.calls.filter((c) => /\[xview-dnd\]/.test(String(c[1])));
+    expect(xviewCalls.length).toBeGreaterThan(0);
+    expect(String(xviewCalls[0][1])).toMatch(/receive\.no-handler/);
+  });
+
   it('falls back to focusing a rendered card when dashboard navigation helper returns false', async () => {
     const dom = new JSDOM(
       '<!doctype html><html><head></head><body>' +
