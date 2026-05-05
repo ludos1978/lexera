@@ -593,6 +593,7 @@ fn main() {
             webview_mgr::multiview_spawn,
             webview_mgr::multiview_get_host_geometry,
             webview_mgr::multiview_destroy,
+            webview_mgr::multiview_destroy_all_for_window,
             webview_mgr::multiview_set_geometry,
             webview_mgr::multiview_list,
             webview_mgr::multiview_navigate,

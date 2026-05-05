@@ -422,6 +422,93 @@ pub fn multiview_destroy(app: AppHandle, label: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Destroy every child webview owned by `window_label` in a single
+/// atomic Rust call.
+///
+/// Why this command exists: `beforeunload` on the shell webview used
+/// to call `multiview_destroy(label)` once per spawned tab. Each call
+/// is a separate IPC round-trip; in the few-ms window between the
+/// `beforeunload` event firing and the JS context being torn down for
+/// reload, only the first one or two IPCs land — the rest are
+/// dropped, and the discarded child webviews survive into the next
+/// boot as ghosts painting at the same coordinates as the new shell's
+/// fresh spawns. (Live-captured 2026-05-05: 9 webviews after a
+/// double-boot, three of them ghosts whose destroy IPCs lost the race.)
+///
+/// One IPC dispatch is enough to hand the work to Rust. Even if the
+/// JS context vanishes immediately afterwards, the Rust side runs to
+/// completion and tears down every child. The shell window's primary
+/// webview (label == window_label) is excluded so we don't destroy
+/// the live shell while it's reloading.
+///
+/// Returns the number of child webviews actually destroyed. Errors
+/// individually per child are logged but do not abort the loop.
+#[tauri::command]
+pub fn multiview_destroy_all_for_window(
+    app: AppHandle,
+    window_label: String,
+) -> Result<usize, String> {
+    use tauri::Emitter;
+    // Resolve the parent window to (a) confirm it exists and (b) emit
+    // the completion event onto a real target.
+    if app.get_webview_window(&window_label).is_none() {
+        return Err(format!("window '{}' not found", window_label));
+    }
+    // Walk the global webview map and pick out webviews whose owning
+    // window matches `window_label`. Excludes the primary webview of
+    // that window (label == window_label) — that's the live shell and
+    // closing it from inside its own beforeunload handler is the
+    // tear-down path the OS runs anyway.
+    let labels: Vec<String> = app
+        .webviews()
+        .iter()
+        .filter(|(label, wv)| {
+            label.as_str() != window_label.as_str()
+                && wv.window().label() == window_label.as_str()
+        })
+        .map(|(label, _)| label.clone())
+        .collect();
+    eprintln!(
+        "[webview_mgr] multiview_destroy_all_for_window window='{}' begin children={:?}",
+        window_label, labels
+    );
+    let mut destroyed = 0usize;
+    let registry: State<WebviewRegistry> = app.state();
+    let sub_registry: State<SubscriptionRegistry> = app.state();
+    for label in &labels {
+        let webview = match app.webviews().get(label).cloned() {
+            Some(wv) => wv,
+            None => continue,
+        };
+        if let Err(e) = webview.close() {
+            eprintln!(
+                "[webview_mgr] destroy_all close failed label='{}' err={}",
+                label, e
+            );
+            continue;
+        }
+        registry.inner.write().remove(label);
+        {
+            let mut w = sub_registry.inner.write();
+            for (_, s) in w.iter_mut() {
+                s.remove(label);
+            }
+        }
+        destroyed += 1;
+    }
+    // Notify any siblings of the window that its tabs are gone. With a
+    // reload-driven beforeunload there usually is no listener left to
+    // hear it, but this matches the per-tab `multiview_destroy` contract
+    // and keeps state consistent for any peer windows still alive.
+    let payload_window = serde_json::json!({ "window": window_label });
+    let _ = app.emit_to(window_label.as_str(), "multiview-destroyed-all", payload_window);
+    eprintln!(
+        "[webview_mgr] multiview_destroy_all_for_window window='{}' done destroyed={}",
+        window_label, destroyed
+    );
+    Ok(destroyed)
+}
+
 /// Update geometry for one or more webviews in a single batch.
 /// Batching minimizes IPC overhead during dock-divider drag where
 /// multiple webviews resize per frame.

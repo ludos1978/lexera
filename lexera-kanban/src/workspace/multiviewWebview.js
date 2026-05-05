@@ -1182,7 +1182,36 @@
         deps.traceShell('beforeunload');
       }
       wsDebugForce('BEFOREUNLOAD shell href=' + window.location.href);
-      destroyAll();
+      // One atomic Rust IPC instead of N fire-and-forget per-tab IPCs.
+      // The previous loop racing the reload only landed the first one
+      // or two destroy calls — the rest were dropped and the discarded
+      // child webviews survived as ghosts at the new shell's spawn
+      // coordinates. The Rust side now iterates and tears them down in
+      // its own thread, so JS context teardown can't truncate the work.
+      // Falls back to the per-tab loop if the new IPC isn't registered
+      // (older Rust binary during a partial dev rebuild).
+      var dispatchedAtomic = false;
+      try {
+        if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+          var winLabel = '';
+          try {
+            if (window.__TAURI__.window && typeof window.__TAURI__.window.getCurrent === 'function') {
+              var w = window.__TAURI__.window.getCurrent();
+              if (w && w.label) winLabel = String(w.label);
+            }
+          } catch (_) {}
+          if (!winLabel && window.__TAURI__.webview && typeof window.__TAURI__.webview.getCurrentWebview === 'function') {
+            try {
+              var wv = window.__TAURI__.webview.getCurrentWebview();
+              if (wv && wv.label) winLabel = String(wv.label);
+            } catch (_) {}
+          }
+          if (!winLabel) winLabel = 'main';
+          window.__TAURI__.core.invoke('multiview_destroy_all_for_window', { windowLabel: winLabel });
+          dispatchedAtomic = true;
+        }
+      } catch (_) {}
+      if (!dispatchedAtomic) destroyAll();
       if (window.LexeraMultiview && typeof window.LexeraMultiview.ghostHide === 'function') {
         try { window.LexeraMultiview.ghostHide(); } catch (_) {}
       }
