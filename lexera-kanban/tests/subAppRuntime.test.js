@@ -319,10 +319,15 @@ describe('LexeraSubApp runtime metadata', () => {
 
     await Promise.resolve();
 
+    // commit 3414af30 split the prior single `source` field into a
+    // constant `source: 'frontend'` and a per-call `target: <topic>` so
+    // the log panel can group sub-app messages by webview while still
+    // showing the call site. Update the assertions to match.
     expect(invoke).toHaveBeenCalledWith('log_broadcast', {
       entry: {
         level: 'error',
-        source: 'render-apps.test-run',
+        source: 'frontend',
+        target: 'render-apps.test-run',
         message: expect.stringContaining('Test run failed: Error: boom'),
         timestamp_ms: expect.any(Number)
       }
@@ -330,7 +335,8 @@ describe('LexeraSubApp runtime metadata', () => {
     expect(invoke).toHaveBeenCalledWith('log_broadcast', {
       entry: {
         level: 'warn',
-        source: 'settings.save',
+        source: 'frontend',
+        target: 'settings.save',
         message: expect.stringContaining('Saved settings'),
         timestamp_ms: expect.any(Number)
       }

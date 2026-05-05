@@ -692,7 +692,22 @@
 
       if (typeof opts.onReady === 'function') opts.onReady(wv);
     }).catch(function (err) {
-      console.warn('[sub-app] setup failed:', err);
+      // Route through the in-app logger — console.warn would never reach
+      // the user's log panel (see consoleLoggingGuardrailContract.test).
+      var msg = '[sub-app] setup failed: ' + (err && err.message ? err.message : String(err));
+      if (typeof window.lexeraLog === 'function') {
+        try { window.lexeraLog('warn', msg); } catch (_) {}
+      } else {
+        invoke('log_broadcast', {
+          entry: {
+            level: 'warn',
+            source: 'frontend',
+            target: 'sub-app.setup',
+            message: msg,
+            timestamp_ms: Date.now()
+          }
+        }).catch(function () {});
+      }
       if (typeof opts.onReady === 'function') opts.onReady(wv);
     });
   }
