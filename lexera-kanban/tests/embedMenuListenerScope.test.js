@@ -56,13 +56,24 @@ function loadEmbedMenu({ webviewLabel } = {}) {
   return { EmbedMenu: sandbox.window.LexeraEmbedMenu, internalsInvoke };
 }
 
+// Tauri 2's `EventTarget` enum (tauri/src/event/mod.rs) is serialized
+// with `#[serde(tag = "kind")]`. Any kind string outside this set causes
+// Rust-side serde deserialization of `plugin:event|listen` to fail, the
+// listener is never registered, and every event for this webview is
+// silently dropped. The previous code used 'WebviewLabel' (not a valid
+// kind), which is what broke the entire native dropdown menu — every
+// menu-action emit had no listeners to deliver to.
+const VALID_TAURI_EVENT_TARGET_KINDS = new Set([
+  'Any', 'AnyLabel', 'App', 'Window', 'Webview', 'WebviewWindow'
+]);
+
 describe('LexeraEmbedMenu.tauriListen — per-webview scope', () => {
-  it('subscribes with target { kind: WebviewLabel, label } when the webview API is available', async () => {
+  it('subscribes with target { kind: Webview, label } when the webview API is available', async () => {
     const { EmbedMenu, internalsInvoke } = loadEmbedMenu({ webviewLabel: 'kanban-7' });
     await EmbedMenu.tauriListen('menu-action', () => {});
     expect(internalsInvoke).toHaveBeenCalledWith('plugin:event|listen', expect.objectContaining({
       event: 'menu-action',
-      target: { kind: 'WebviewLabel', label: 'kanban-7' }
+      target: { kind: 'Webview', label: 'kanban-7' }
     }));
   });
 
@@ -79,7 +90,21 @@ describe('LexeraEmbedMenu.tauriListen — per-webview scope', () => {
     const { EmbedMenu, internalsInvoke } = loadEmbedMenu({ webviewLabel: 'main' });
     await EmbedMenu.tauriListen('catalog-snapshot', () => {});
     expect(internalsInvoke).toHaveBeenCalledWith('plugin:event|listen', expect.objectContaining({
-      target: { kind: 'WebviewLabel', label: 'main' }
+      target: { kind: 'Webview', label: 'main' }
     }));
+  });
+
+  it('always uses a kind that is a valid Tauri 2 EventTarget variant', async () => {
+    for (const webviewLabel of ['kanban-7', 'main', null]) {
+      const { EmbedMenu, internalsInvoke } = loadEmbedMenu({ webviewLabel });
+      await EmbedMenu.tauriListen('menu-action', () => {});
+      const call = internalsInvoke.mock.calls.find((c) => c[0] === 'plugin:event|listen');
+      expect(call, `no plugin:event|listen call for webviewLabel=${webviewLabel}`).toBeTruthy();
+      const kind = call[1].target.kind;
+      expect(
+        VALID_TAURI_EVENT_TARGET_KINDS.has(kind),
+        `target.kind="${kind}" is not a valid Tauri 2 EventTarget variant — Rust serde will reject it and the listener will never be registered`
+      ).toBe(true);
+    }
   });
 });

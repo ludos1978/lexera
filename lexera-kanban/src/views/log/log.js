@@ -236,6 +236,17 @@
       rerender();
     });
   }
+
+  // Scroll to bottom when view is resized (e.g. expanded from fold or unparked)
+  if (typeof ResizeObserver === 'function') {
+    var ro = new ResizeObserver(function () {
+      if (entriesEl.scrollHeight > 0) {
+        entriesEl.scrollTop = entriesEl.scrollHeight;
+      }
+    });
+    ro.observe(entriesEl);
+  }
+
   if (searchClear) searchClear.addEventListener('click', function () {
     if (searchInput) searchInput.value = '';
     searchText = '';

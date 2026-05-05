@@ -718,6 +718,7 @@ fn subscribers_for(reg: &SubscriptionRegistry, event: &str) -> Vec<String> {
 pub struct LogEvent {
     pub level: String,
     pub source: String,
+    pub target: String,
     pub message: String,
     pub timestamp_ms: f64,
 }

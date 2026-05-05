@@ -3290,6 +3290,11 @@ var LexeraEmbedMenu = (function () {
   // an `Any` listener, so cross-window events (notably `menu-action`)
   // would fire in every open webview. Falls back to `Any` if the
   // webview API isn't available yet (boot timing).
+  // The kind MUST match a variant of Tauri 2's `EventTarget` enum
+  // (tauri/src/event/mod.rs): Any | AnyLabel | App | Window | Webview |
+  // WebviewWindow. An unknown kind silently fails serde deserialization
+  // on the Rust side, which means the listener is never registered and
+  // every event for this webview is dropped.
   function currentWebviewLabel() {
     try {
       var wv = window.__TAURI__ && window.__TAURI__.webview && window.__TAURI__.webview.getCurrentWebview;
@@ -3307,7 +3312,7 @@ var LexeraEmbedMenu = (function () {
       var handler = ipc.transformCallback(callback, false);
       var label = currentWebviewLabel();
       var listenTarget = label
-        ? { kind: 'WebviewLabel', label: label }
+        ? { kind: 'Webview', label: label }
         : { kind: 'Any' };
       return ipc.invoke('plugin:event|listen', {
         event: eventName,

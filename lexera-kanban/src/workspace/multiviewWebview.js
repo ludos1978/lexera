@@ -1148,6 +1148,14 @@
       window.__TAURI__.event.listen('debug-geometry-request', function (event) {
         handleDebugGeometryRequest(event && event.payload ? event.payload : {});
       });
+
+      // Shell ('main') subscriptions: ensure the shell receives requests from
+      // sub-apps even when other subscribers for these events exist.
+      var shellLabel = (window.__TAURI__.webview && window.__TAURI__.webview.getCurrent && window.__TAURI__.webview.getCurrent().label) || 'main';
+      invoke('multiview_subscribe', {
+        label: shellLabel,
+        events: ['log-snapshot-request', 'log-reload-request', 'log-clear-request', 'log-message']
+      }).catch(function () {});
     }
 
     // Best-effort cleanup on main-window unload — destroys all child

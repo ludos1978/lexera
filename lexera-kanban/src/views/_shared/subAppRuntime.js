@@ -234,11 +234,12 @@
     if (subAppLoggerInstalled || typeof window === 'undefined') return;
     subAppLoggerInstalled = true;
 
-    function emitLog(level, source, message) {
+    function emitLog(level, target, message) {
       invoke('log_broadcast', {
         entry: {
           level: String(level || 'info'),
-          source: String(source || 'frontend'),
+          source: 'frontend',
+          target: String(target || 'frontend'),
           message: String(message == null ? '' : message),
           timestamp_ms: Date.now()
         }
@@ -471,10 +472,11 @@
     if (opts.onCustom && typeof opts.onCustom === 'object') {
       Object.keys(opts.onCustom).forEach(function (e) { declaredEvents.push(e); });
     }
+    var subPromise = Promise.resolve();
     if (declaredEvents.length > 0) {
-      invoke('multiview_subscribe', {
+      subPromise = invoke('multiview_subscribe', {
         label: wv.label, events: declaredEvents
-      }).catch(function () {});
+      });
     }
 
     // Theme: always subscribe (cheap), default true
@@ -677,17 +679,22 @@
       document.head.appendChild(style);
     }
 
-    if (typeof opts.getHealth === 'function') {
-      setInterval(function () {
-        try { reportSubAppHealth(String(opts.getHealth() || 'green')); }
-        catch (_) {}
-      }, 2000);
-      reportSubAppHealth(String(opts.getHealth() || 'green'));
-    } else {
-      reportSubAppHealth('green');
-    }
+    subPromise.then(function () {
+      if (typeof opts.getHealth === 'function') {
+        setInterval(function () {
+          try { reportSubAppHealth(String(opts.getHealth() || 'green')); }
+          catch (_) {}
+        }, 2000);
+        reportSubAppHealth(String(opts.getHealth() || 'green'));
+      } else {
+        reportSubAppHealth('green');
+      }
 
-    if (typeof opts.onReady === 'function') opts.onReady(wv);
+      if (typeof opts.onReady === 'function') opts.onReady(wv);
+    }).catch(function (err) {
+      console.warn('[sub-app] setup failed:', err);
+      if (typeof opts.onReady === 'function') opts.onReady(wv);
+    });
   }
 
   function navigate(payload) {

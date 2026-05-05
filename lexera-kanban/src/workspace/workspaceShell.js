@@ -1195,15 +1195,25 @@
       node.style[prop] = size + 'px';
     }
 
+    var collapseTimer = null;
+    function clearCollapseTimer() {
+      if (collapseTimer) {
+        clearTimeout(collapseTimer);
+        collapseTimer = null;
+      }
+    }
+
     dockEl.addEventListener('mouseenter', function () {
       if (!dockEl.classList.contains('is-folded')) return;
       if (dockEl.classList.contains('is-fold-locked')) return;
+      clearCollapseTimer();
       scheduleShowHover(null, FOLD_HOVER_OPEN_DELAY_MS);
     });
 
     // Per-zone mouseover: switch active panel when moving between zones
     dockEl.addEventListener('mouseover', function (e) {
       if (dockEl.classList.contains('is-fold-locked')) return;
+      clearCollapseTimer();
       var zone = e.target.closest ? e.target.closest('.ws-fold-zone') : null;
       if (!zone) return;
       var panelId = zone.getAttribute('data-ws-panel-id');
@@ -1220,13 +1230,20 @@
 
     dockEl.addEventListener('mouseleave', function () {
       clearHoverTimer();
-      activeHoverPanelId = null;
-      dockTreeBuilt = false;
-      cachedOverlaySize = 0;
-      dockEl.classList.remove('is-fold-hover');
-      // Clean up inline size from measurement
-      var node = dockEl.querySelector(':scope > .workspace-shell-node');
-      if (node) { node.style.width = ''; node.style.height = ''; }
+      clearCollapseTimer();
+      // Use a delay for collapse: when the mouse enters a native child webview,
+      // the shell receives a 'mouseleave' event even though the mouse is
+      // still over the expanded panel area.
+      collapseTimer = setTimeout(function () {
+        collapseTimer = null;
+        activeHoverPanelId = null;
+        dockTreeBuilt = false;
+        cachedOverlaySize = 0;
+        dockEl.classList.remove('is-fold-hover');
+        // Clean up inline size from measurement
+        var node = dockEl.querySelector(':scope > .workspace-shell-node');
+        if (node) { node.style.width = ''; node.style.height = ''; }
+      }, 300);
     });
   }
 
