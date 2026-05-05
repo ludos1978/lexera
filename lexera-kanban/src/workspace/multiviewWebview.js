@@ -1151,11 +1151,21 @@
 
       // Shell ('main') subscriptions: ensure the shell receives requests from
       // sub-apps even when other subscribers for these events exist.
-      var shellLabel = (window.__TAURI__.webview && window.__TAURI__.webview.getCurrent && window.__TAURI__.webview.getCurrent().label) || 'main';
-      invoke('multiview_subscribe', {
-        label: shellLabel,
-        events: ['log-snapshot-request', 'log-reload-request', 'log-clear-request', 'log-message']
-      }).catch(function () {});
+      var shellLabel = 'main';
+      try {
+        if (window.__TAURI__ && window.__TAURI__.webview && typeof window.__TAURI__.webview.getCurrentWebview === 'function') {
+          shellLabel = window.__TAURI__.webview.getCurrentWebview().label || 'main';
+        } else if (window.__TAURI__ && window.__TAURI__.webview && window.__TAURI__.webview.getCurrent) {
+          shellLabel = window.__TAURI__.webview.getCurrent().label || 'main';
+        }
+      } catch (_) {}
+
+      if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+        window.__TAURI__.core.invoke('multiview_subscribe', {
+          label: shellLabel,
+          events: ['log-snapshot-request', 'log-reload-request', 'log-clear-request', 'log-message']
+        }).catch(function () {});
+      }
     }
 
     // Best-effort cleanup on main-window unload — destroys all child
