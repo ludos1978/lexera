@@ -19,9 +19,14 @@
   }
 
   function getCurrentWebview() {
+    // Dual-API resolution; see commit 1d19e940 for the bug class.
     var t = tauriRuntime();
-    if (!t || !t.webview || typeof t.webview.getCurrentWebview !== 'function') return null;
-    try { return t.webview.getCurrentWebview(); } catch (_) { return null; }
+    if (!t || !t.webview) return null;
+    try {
+      if (typeof t.webview.getCurrent === 'function') return t.webview.getCurrent();
+      if (typeof t.webview.getCurrentWebview === 'function') return t.webview.getCurrentWebview();
+    } catch (_) {}
+    return null;
   }
 
   function multiviewApi() {

@@ -29,9 +29,19 @@
   }
 
   function getCurrentWebview() {
+    // Tauri 2 ships both `getCurrent` and `getCurrentWebview`; different
+    // builds expose subtly different shapes. Try the singular form
+    // first to match the codebase-wide pattern (subAppRuntime,
+    // multiviewWebview, multiviewClient). Single-API resolution caused
+    // the silent cross-view-DnD failure (see commit 1d19e940); applied
+    // preemptively here to forestall the same bug class.
     var t = tauri();
-    if (!t || !t.webview || typeof t.webview.getCurrentWebview !== 'function') return null;
-    try { return t.webview.getCurrentWebview(); } catch (_) { return null; }
+    if (!t || !t.webview) return null;
+    try {
+      if (typeof t.webview.getCurrent === 'function') return t.webview.getCurrent();
+      if (typeof t.webview.getCurrentWebview === 'function') return t.webview.getCurrentWebview();
+    } catch (_) {}
+    return null;
   }
 
   // Names of every CSS variable the theme exposes. Listed explicitly so
