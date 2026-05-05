@@ -40,6 +40,89 @@ fn ensure_child_webview_label(app: &AppHandle, label: &str, action: &str) -> Res
     Ok(())
 }
 
+/// Position/size match tolerance for the ghost-sibling detector.
+/// Slot coordinates flow through f64 layout math + native `LogicalPosition`
+/// conversion, so exact equality is too strict; 0.5-px slack catches the
+/// rounding noise without false positives on legitimately-adjacent slots.
+const GHOST_COORD_EPSILON_PX: f64 = 0.5;
+
+/// Pure-logic core of the ghost-sibling detector: which labels in the
+/// registry are sitting at (within epsilon of) the same slot as the
+/// imminent new spawn? Same-label is excluded because Tauri's
+/// `add_child` already errors on label collision.
+fn ghost_sibling_labels_at_slot(
+    registry: &WebviewRegistry,
+    new_label: &str,
+    position: (f64, f64),
+    size: (f64, f64),
+) -> Vec<String> {
+    let r = registry.inner.read();
+    r.iter()
+        .filter(|(l, meta)| {
+            l.as_str() != new_label
+                && (meta.x - position.0).abs() <= GHOST_COORD_EPSILON_PX
+                && (meta.y - position.1).abs() <= GHOST_COORD_EPSILON_PX
+                && (meta.width - size.0).abs() <= GHOST_COORD_EPSILON_PX
+                && (meta.height - size.1).abs() <= GHOST_COORD_EPSILON_PX
+        })
+        .map(|(l, _)| l.clone())
+        .collect()
+}
+
+/// Detect orphan child webviews painting at the same screen slot as the
+/// imminent new spawn, and close them before `add_child` runs.
+///
+/// Why: when the shell webview is reloaded mid-spawn (e.g. the Tauri
+/// frontend watcher fires on a file mtime bump), the OLD shell's
+/// `destroyAll()` IPCs lose the race against the NEW shell's spawn loop.
+/// The discarded child webviews survive and paint at the same placeholder
+/// coordinates as the fresh spawns — the user-reported "ghost views in
+/// the background" regression. Two earlier fixes already eliminate the
+/// known triggers (cecd3aa7 + fb907e38 idempotent sync scripts; e978754c
+/// atomic destroy-all-for-window). This is the third layer: even if some
+/// future change re-introduces a reload trigger, any ghost sitting on
+/// the slot a new spawn is about to occupy gets closed at spawn time.
+///
+/// Match criterion: same parent window, label != new_label, and the
+/// existing webview's tracked geometry matches (x, y, w, h) within
+/// `GHOST_COORD_EPSILON_PX`. Same-label collisions are NOT handled here
+/// — Tauri's `add_child` already errors on label collision, and silently
+/// destroying a same-label peer would mask a real bug.
+fn close_ghost_siblings_at_slot(
+    app: &AppHandle,
+    parent_window_label: &str,
+    new_label: &str,
+    position: (f64, f64),
+    size: (f64, f64),
+) {
+    let registry: State<WebviewRegistry> = app.state();
+    let candidates = ghost_sibling_labels_at_slot(&registry, new_label, position, size);
+    if candidates.is_empty() {
+        return;
+    }
+    let webviews = app.webviews();
+    for ghost_label in &candidates {
+        let wv = match webviews.get(ghost_label) {
+            Some(w) => w,
+            None => continue,
+        };
+        if wv.window().label() != parent_window_label {
+            continue; // siblings only; never reach into another window
+        }
+        eprintln!(
+            "[webview_mgr] ghost-sibling detected at slot ({}, {}, {}, {}) on parent='{}': closing '{}' before spawning '{}'",
+            position.0, position.1, size.0, size.1,
+            parent_window_label, ghost_label, new_label
+        );
+        log::warn!(
+            "[webview_mgr] ghost-sibling closed: parent='{}' ghost='{}' incoming='{}' slot=({}, {}, {}, {})",
+            parent_window_label, ghost_label, new_label, position.0, position.1, size.0, size.1
+        );
+        let _ = wv.close();
+        registry.inner.write().remove(ghost_label);
+    }
+}
+
 /// Registry of all child webviews currently mounted in a window.
 /// Keyed by webview label. Geometry is tracked here so the drag
 /// coordinator can hit-test pointer positions against known slots
@@ -278,6 +361,9 @@ pub fn spawn_internal(
         size.1
     );
     ensure_child_webview_label(app, label, "spawn_internal")?;
+    // Backstop against the ghost-views regression class. See
+    // `close_ghost_siblings_at_slot` for the full reasoning.
+    close_ghost_siblings_at_slot(app, window.label(), label, position, size);
     let builder = WebviewBuilder::new(label, WebviewUrl::App(url.into()));
     window
         .add_child(
@@ -1418,5 +1504,91 @@ mod tests {
         let r = registry_with(vec![meta("a", 0.0, 0.0, 1.0, 1.0)]);
         r.drop_labels(&["nonexistent".to_string()]);
         assert!(get_meta(&r, "a").is_some());
+    }
+
+    // ── Ghost-sibling slot detector (commit feature: TODO line 75) ──
+    //
+    // Pre-condition for the user-reported "ghost views in the
+    // background" regression: an old shell webview was reloaded
+    // mid-spawn, its `destroyAll()` IPCs lost the race, and N orphan
+    // child webviews kept painting at the same slots the new shell's
+    // fresh spawns occupy. The two earlier fixes (idempotent sync
+    // scripts + atomic destroy-all-for-window) close known triggers;
+    // this detector catches any future trigger we haven't anticipated
+    // by closing any sibling already painting at the new spawn's slot.
+
+    #[test]
+    fn ghost_sibling_finds_exact_slot_match_with_different_label() {
+        // The user-visible scenario: old bootId is mosg0xej, new is
+        // mosg22hy. Different labels, identical placeholder slot.
+        let r = registry_with(vec![
+            meta("panel-tab-mosg0xej-3rb6c-tab-x-a", 1.0, 57.0, 221.0, 455.0),
+        ]);
+        let ghosts = ghost_sibling_labels_at_slot(
+            &r, "panel-tab-mosg22hy-g9mfr-tab-x-a", (1.0, 57.0), (221.0, 455.0));
+        assert_eq!(ghosts, vec!["panel-tab-mosg0xej-3rb6c-tab-x-a".to_string()]);
+    }
+
+    #[test]
+    fn ghost_sibling_skips_same_label() {
+        // Same label is Tauri's add_child collision case — handled
+        // separately. The detector must NOT close a same-label peer
+        // (would mask a real bug).
+        let r = registry_with(vec![
+            meta("dup", 0.0, 0.0, 100.0, 100.0),
+        ]);
+        let ghosts = ghost_sibling_labels_at_slot(&r, "dup", (0.0, 0.0), (100.0, 100.0));
+        assert!(ghosts.is_empty());
+    }
+
+    #[test]
+    fn ghost_sibling_ignores_legitimately_distinct_slots() {
+        // Two panels in different docks: same parent window, different
+        // coordinates. Must not be flagged as ghosts of each other.
+        let r = registry_with(vec![
+            meta("panel-left", 1.0, 57.0, 221.0, 455.0),
+            meta("panel-right", 1001.0, 57.0, 198.0, 720.0),
+        ]);
+        let ghosts = ghost_sibling_labels_at_slot(
+            &r, "panel-bottom", (1.0, 689.0), (1198.0, 110.0));
+        assert!(ghosts.is_empty());
+    }
+
+    #[test]
+    fn ghost_sibling_tolerates_subpixel_rounding_noise() {
+        // Slot coordinates round-trip through f64 layout math + native
+        // LogicalPosition conversion. Within 0.5 px must still match.
+        let r = registry_with(vec![
+            meta("ghost", 1.0, 57.0, 221.0, 455.0),
+        ]);
+        let ghosts = ghost_sibling_labels_at_slot(
+            &r, "fresh", (1.4, 56.6), (221.3, 455.4));
+        assert_eq!(ghosts, vec!["ghost".to_string()]);
+    }
+
+    #[test]
+    fn ghost_sibling_rejects_more_than_half_pixel_drift() {
+        // 0.5 px is the threshold; >0.5 px must NOT match (otherwise
+        // adjacent slots would falsely flag each other).
+        let r = registry_with(vec![
+            meta("a", 0.0, 0.0, 100.0, 100.0),
+        ]);
+        let ghosts = ghost_sibling_labels_at_slot(&r, "b", (0.6, 0.0), (100.0, 100.0));
+        assert!(ghosts.is_empty(), "0.6 px drift should not match");
+    }
+
+    #[test]
+    fn ghost_sibling_returns_all_overlapping_siblings_at_the_slot() {
+        // Two ghosts somehow stacked at the same slot — both must be
+        // reported so the spawn can clear them all.
+        let r = registry_with(vec![
+            meta("ghost-1", 1.0, 57.0, 221.0, 455.0),
+            meta("ghost-2", 1.0, 57.0, 221.0, 455.0),
+            meta("not-ghost", 999.0, 999.0, 100.0, 100.0),
+        ]);
+        let mut ghosts = ghost_sibling_labels_at_slot(
+            &r, "fresh", (1.0, 57.0), (221.0, 455.0));
+        ghosts.sort();
+        assert_eq!(ghosts, vec!["ghost-1".to_string(), "ghost-2".to_string()]);
     }
 }
