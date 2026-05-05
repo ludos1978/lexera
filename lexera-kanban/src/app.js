@@ -9754,6 +9754,34 @@ var LexeraDashboard = (function () {
   function findColumnRefByStablePath(boardData, descriptor) {
     if (!boardData || !descriptor) return null;
     var columnId = normalizeStableCardMutationId(descriptor.columnId);
+    var cardIdFallback = normalizeStableCardMutationId(descriptor.cardId);
+    // Cross-view tree-source case: caller has only `cardId` (the stable
+    // card ID, captured from the workspaces/hierarchy panel's
+    // `data-tree-id` attribute). Without `columnId` the original code
+    // returned null at the first guard, dropping the chain silently.
+    // Walk the board for a column that contains a card with this id.
+    if (!columnId && cardIdFallback) {
+      var rowsAlt = Array.isArray(boardData.rows) ? boardData.rows : [];
+      for (var ri = 0; ri < rowsAlt.length; ri++) {
+        var rowAlt = rowsAlt[ri];
+        var stacksAlt = Array.isArray(rowAlt && rowAlt.stacks) ? rowAlt.stacks : [];
+        for (var si = 0; si < stacksAlt.length; si++) {
+          var stackAlt = stacksAlt[si];
+          var colsAlt = Array.isArray(stackAlt && stackAlt.columns) ? stackAlt.columns : [];
+          for (var ci = 0; ci < colsAlt.length; ci++) {
+            var colAlt = colsAlt[ci];
+            var cardsAlt = Array.isArray(colAlt && colAlt.cards) ? colAlt.cards : [];
+            for (var ki = 0; ki < cardsAlt.length; ki++) {
+              var cardAlt = cardsAlt[ki];
+              if (normalizeStableCardMutationId(cardAlt && cardAlt.id) === cardIdFallback ||
+                  normalizeStableCardMutationId(cardAlt && cardAlt.kid) === cardIdFallback) {
+                return { column: colAlt, columnIndex: ci, stack: stackAlt };
+              }
+            }
+          }
+        }
+      }
+    }
     if (!columnId) return null;
     var rowId = normalizeStableCardMutationId(descriptor.rowId);
     var stackId = normalizeStableCardMutationId(descriptor.stackId);

@@ -604,6 +604,23 @@ var LexeraDragDropHandlers = (function () {
     var target = resolveCardDropTarget(mx, my);
     if (!target) return false;
 
+    // Cross-view tree-source translation: when `source` arrives from
+    // the workspaces / hierarchy panel via the cross-view DnD chain,
+    // it carries `{ boardId, kind: 'card', entityId }` (entityId is
+    // the card's stable ID per `data-tree-id` in workspaces.js:203).
+    // moveCard's resolveColumnRefForCardMutation needs `columnId` OR
+    // indexed positions to find the source — none of which a tree
+    // source has. Translate `entityId` → `cardId` so the cardId
+    // fallback in `findColumnRefByStablePath` (app.js) walks the
+    // board to find the column containing this card. This is the
+    // user-reported "drag from workspace to board doesn't work" fix:
+    // every other stage of the chain delivered the drop correctly,
+    // but moveCard bailed at sourceRef === null.
+    if (source && source.entityId && !source.cardId &&
+        typeof source.flatColIndex !== 'number') {
+      source = Object.assign({}, source, { cardId: source.entityId });
+    }
+
     if (target.kind === 'header-incoming' || target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
       var tag = target.kind === 'header-incoming' ? '#hidden-internal-incoming'
         : target.kind === 'header-park' ? '#hidden-internal-parked'
