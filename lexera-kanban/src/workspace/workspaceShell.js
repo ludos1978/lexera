@@ -4681,7 +4681,21 @@
     // round-trips through forwardActionToActiveFrame, which silently
     // drops it when the focused window has no active board tab.
     'open-all-inspectors': function () { shellOpenAllInspectors(); return true; },
-    'toggle-inspector': function () { shellToggleInspector(); return true; }
+    'toggle-inspector': function () { shellToggleInspector(); return true; },
+    // Toggle the LexeraMultiviewWebview suppression refcount so EVERY
+    // child webview hides (or unhides). Used when shell DOM appears
+    // occluded by a webview painting at stale coordinates — flip
+    // the toggle and the user immediately sees the underlying shell.
+    'toggle-debug-hide-overlays': function () {
+      if (window.LexeraDebug && typeof window.LexeraDebug.hideAllOverlays === 'function') {
+        var hidden = !!(window.LexeraDebug.isOverlaysHidden && window.LexeraDebug.isOverlaysHidden());
+        window.LexeraDebug.hideAllOverlays(!hidden);
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('info', '[debug] hideAllOverlays → ' + !hidden);
+        }
+      }
+      return true;
+    }
   };
 
   // Prefix-match action handlers. Each receives the action body
@@ -4775,6 +4789,66 @@
     _test_resolveCycleTabTarget: resolveCycleTabTarget,
     _test_buildLogStatusBadgesEl: buildLogStatusBadgesEl,
     _test_getDockSize: function (dockId) { return state.dockSizes[dockId]; },
+    /**
+     * Live diagnostic for "why doesn't my dock fold strip show?".
+     * Returns a snapshot of every input that gates fold-strip rendering
+     * so callers can disambiguate the four possible failure modes from
+     * one DevTools call:
+     *   { dockSize, hasPanels, isFoldedClass, hasFoldStrip, treeTabIds }
+     *
+     * Mapping result → diagnosis:
+     *   hasPanels=false                             → dock is empty;
+     *                                                   `getDockLayoutState`
+     *                                                   sees no reason to mark
+     *                                                   it folded
+     *   hasPanels && dockSize > 0                   → dock is EXPANDED, strip
+     *                                                   does not render by
+     *                                                   design (fold strip
+     *                                                   only renders when
+     *                                                   dockSize <= 0)
+     *   hasPanels && dockSize <= 0 && !isFoldedClass→ getDockLayoutState
+     *                                                   should classify as
+     *                                                   folded but didn't —
+     *                                                   bug
+     *   isFoldedClass && !hasFoldStrip              → renderFoldStrip was
+     *                                                   called but bailed
+     *                                                   internally
+     *   isFoldedClass && hasFoldStrip               → DOM is correct; either
+     *                                                   webview is painting
+     *                                                   over the strip or CSS
+     *                                                   is hiding it
+     */
+    _test_inspectDock: function (dockId) {
+      var tree = state.sideDocks ? state.sideDocks[dockId] : null;
+      var treeTabIds = [];
+      if (tree && typeof layoutTree.collectAllTabIds === 'function') {
+        try { treeTabIds = layoutTree.collectAllTabIds(tree); } catch (_) {}
+      }
+      var dockEl = dockId === 'left' ? state.leftDockEl
+        : dockId === 'right' ? state.rightDockEl
+        : dockId === 'bottom' ? state.bottomDockEl
+        : null;
+      var classes = (dockEl && dockEl.className) ? String(dockEl.className) : '';
+      var classList = classes.split(/\s+/).filter(Boolean);
+      var foldStrip = dockEl ? dockEl.querySelector('.ws-fold-strip') : null;
+      return {
+        dockId: dockId,
+        dockSize: state.dockSizes[dockId],
+        visiblePanelIds: getVisiblePanelIdsForDock(dockId),
+        hasPanels: getVisiblePanelIdsForDock(dockId).length > 0,
+        treeTabIds: treeTabIds,
+        isFoldedClass: classList.indexOf('is-folded') !== -1,
+        isVisibleClass: classList.indexOf('is-visible') !== -1,
+        classList: classList,
+        hasFoldStrip: !!foldStrip,
+        foldStripChildCount: foldStrip ? (foldStrip.children || []).length : 0,
+        dockChildClassNames: dockEl
+          ? Array.prototype.slice.call(dockEl.children || []).map(function (c) {
+              return String(c.className || '');
+            })
+          : []
+      };
+    },
     _test_getFoldedPaneIds: function () { return Object.keys(state.foldedPanes); },
     _test_foldPane: function (nodeId) { return foldPane(nodeId); },
     _test_unfoldPane: function (nodeId) { return unfoldPane(nodeId); },

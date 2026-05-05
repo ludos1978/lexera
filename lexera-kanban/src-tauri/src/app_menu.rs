@@ -160,6 +160,8 @@ pub fn create_app_menu<R: Runtime, M: Manager<R>>(
         .separator()
         .item(&MenuItemBuilder::with_id("view-inspector", "Developer Tools").accelerator("F12").build(app)?)
         .item(&MenuItemBuilder::with_id("view-inspector-all", "Developer Tools (All Views)").accelerator("CmdOrCtrl+Alt+Shift+I").build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("view-debug-hide-overlays", "Hide All Overlay Webviews (toggle)").accelerator("CmdOrCtrl+Alt+H").build(app)?)
         .build()?;
 
     // ── Format menu ──
@@ -407,6 +409,11 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     // View – inspector
     ("view-inspector", "toggle-inspector"),
     ("view-inspector-all", "open-all-inspectors"),
+    // View – debug (toggle child-webview suppression so the user can
+    // see whether shell DOM is being occluded by a webview painting
+    // at its last-known geometry — common when a panel's host dock
+    // collapses but the webview hasn't yet been re-positioned).
+    ("view-debug-hide-overlays", "toggle-debug-hide-overlays"),
     // Format – visual style
     ("fmt-theme-classic", "set-board-theme:classic"),
     ("fmt-theme-sleek-uniform", "set-board-theme:sleek-uniform"),
