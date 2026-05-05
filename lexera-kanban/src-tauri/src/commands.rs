@@ -696,13 +696,30 @@ pub fn open_devtools_all(app: AppHandle) -> Result<usize, String> {
     use tauri::Manager;
     #[cfg(any(debug_assertions, target_os = "macos"))]
     {
+        let webviews = app.webviews();
+        let total = webviews.len();
         let mut opened = 0usize;
-        for (_label, wv) in app.webviews().iter() {
-            if !wv.is_devtools_open() {
+        let mut already_open = 0usize;
+        eprintln!(
+            "[devtools] open_devtools_all begin total_webviews={} labels={:?}",
+            total,
+            webviews.keys().collect::<Vec<_>>()
+        );
+        for (label, wv) in webviews.iter() {
+            let was_open = wv.is_devtools_open();
+            if !was_open {
                 wv.open_devtools();
                 opened += 1;
+                eprintln!("[devtools] opened label='{}'", label);
+            } else {
+                already_open += 1;
+                eprintln!("[devtools] skip already-open label='{}'", label);
             }
         }
+        eprintln!(
+            "[devtools] open_devtools_all done opened={} already_open={} total={}",
+            opened, already_open, total
+        );
         Ok(opened)
     }
     #[cfg(not(any(debug_assertions, target_os = "macos")))]
