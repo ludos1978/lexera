@@ -50,6 +50,22 @@ describe('cross-view DnD diagnostic-log contract', () => {
     expect(src).toMatch(/install\.same-board-only\(no-multiview-deps\)/);
   });
 
+  it('workspaces.js logs source.broadcast + source.drag-end-external + their failure variants', () => {
+    // Stage 1 of the chain — source emits broadcasts. Without a
+    // source-side log, a misconfigured panel webview where
+    // LexeraSubApp.broadcast silently fails (e.g., __TAURI__ not
+    // ready, IPC error) leaves no trace. The log line lets the user
+    // verify the source IS firing before tracing the rest of the
+    // chain. Same-prefix `[xview-dnd]` so a single Log-panel filter
+    // pulls every stage.
+    const src = read('views/workspaces/workspaces.js');
+    expect(src).toMatch(/\[xview-dnd\]/);
+    expect(src).toMatch(/source\.broadcast\b/);
+    expect(src).toMatch(/source\.broadcast\.failed/);
+    expect(src).toMatch(/source\.drag-end-external\b/);
+    expect(src).toMatch(/source\.drag-end-external\.failed/);
+  });
+
   it('embeddedBoardBridge logs the [xview-dnd] receive stage', () => {
     const src = read('shell/bridges/embeddedBoardBridge.js');
     expect(src).toMatch(/\[xview-dnd\]/);

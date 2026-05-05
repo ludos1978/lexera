@@ -282,14 +282,39 @@
         return (wv && wv.label) || '';
       } catch (_) { return ''; }
     };
+    // First-fire flag: log ONE [xview-dnd] source.broadcast line per
+    // drag session so the user can see in the in-app Log panel that
+    // the source side IS emitting (rules out "stage 1 never fires"
+    // failure mode). drag-move fires ~60Hz; we don't spam.
+    var _xviewSourceLogged = false;
     var broadcastCrossViewMove = function (clientX, clientY) {
       if (!window.LexeraSubApp || typeof window.LexeraSubApp.broadcast !== 'function') return;
-      window.LexeraSubApp.broadcast('hierarchy-entity-drag-move', {
+      var label = getOwnWebviewLabel();
+      if (!_xviewSourceLogged && typeof window.lexeraLog === 'function') {
+        try {
+          window.lexeraLog('debug', '[xview-dnd] source.broadcast { view: "workspaces", sourceLabel: "' +
+            String(label) + '", hasLabel: ' + (!!label) + ' }');
+        } catch (_) {}
+        _xviewSourceLogged = true;
+      }
+      var promise = window.LexeraSubApp.broadcast('hierarchy-entity-drag-move', {
         source: activeDrag.source,
-        sourceWebviewLabel: getOwnWebviewLabel(),
+        sourceWebviewLabel: label,
         sourceClientX: clientX,
         sourceClientY: clientY
       });
+      // Surface IPC failures — silent failure here is the most common
+      // cause of "drag from workspace doesn't fire any event".
+      if (promise && typeof promise.catch === 'function') {
+        promise.catch(function (err) {
+          if (typeof window.lexeraLog === 'function') {
+            try {
+              window.lexeraLog('warn', '[xview-dnd] source.broadcast.failed view=workspaces err=' +
+                ((err && err.message) ? err.message : String(err)));
+            } catch (_) {}
+          }
+        });
+      }
     };
 
     var onMove = function (e) {
@@ -333,6 +358,7 @@
       var dropPayload = match ? { source: src, target: match.info } : null;
       pendingDrag = null;
       activeDrag = null;
+      _xviewSourceLogged = false; // re-log on the next drag session
       document.removeEventListener('mousemove', onMove, true);
       document.removeEventListener('mouseup', onUp, true);
       if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
@@ -343,12 +369,29 @@
           // shell-side router try to dispatch this as an
           // `external-dnd-drop` to whichever webview the cursor was
           // over. The shell ignores it if no other webview matches.
-          window.LexeraSubApp.broadcast('hierarchy-entity-drag-end-external', {
+          var endLabel = getOwnWebviewLabel();
+          if (typeof window.lexeraLog === 'function') {
+            try {
+              window.lexeraLog('debug', '[xview-dnd] source.drag-end-external { view: "workspaces", sourceLabel: "' +
+                String(endLabel) + '", x: ' + clientX + ', y: ' + clientY + ' }');
+            } catch (_) {}
+          }
+          var endPromise = window.LexeraSubApp.broadcast('hierarchy-entity-drag-end-external', {
             source: src,
-            sourceWebviewLabel: getOwnWebviewLabel(),
+            sourceWebviewLabel: endLabel,
             sourceClientX: clientX,
             sourceClientY: clientY
           });
+          if (endPromise && typeof endPromise.catch === 'function') {
+            endPromise.catch(function (err) {
+              if (typeof window.lexeraLog === 'function') {
+                try {
+                  window.lexeraLog('warn', '[xview-dnd] source.drag-end-external.failed view=workspaces err=' +
+                    ((err && err.message) ? err.message : String(err)));
+                } catch (_) {}
+              }
+            });
+          }
         }
       }
     };
