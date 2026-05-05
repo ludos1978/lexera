@@ -73,13 +73,14 @@ function createStorage() {
   };
 }
 
-function createShellHarness({ invokeSpy, setIntervalSpy, localStorageSeed } = {}) {
+function createShellHarness({ invokeSpy, setIntervalSpy, localStorageSeed, tauriInvokeSpy } = {}) {
   const localStorage = createStorage();
   if (localStorageSeed) {
     for (const [k, v] of Object.entries(localStorageSeed)) {
       localStorage.setItem(k, v);
     }
   }
+  const tauriInvoke = tauriInvokeSpy || vi.fn(() => Promise.resolve(null));
   const window = {
     location: { href: 'http://127.0.0.1:1431/', search: '' },
     localStorage,
@@ -90,6 +91,11 @@ function createShellHarness({ invokeSpy, setIntervalSpy, localStorageSeed } = {}
     removeEventListener() {},
     close() {},
     LexeraSharedPanels: null,
+    // Stub the Tauri 2 globals the shell pokes via
+    // `window.__TAURI__.core.invoke(cmd, payload)` (see workspaceShell.js
+    // canUseTauriInvoke / invokeTauri). Default returns null; tests that
+    // care about specific invoke calls pass `tauriInvokeSpy`.
+    __TAURI__: { core: { invoke: tauriInvoke } },
     // The multiview bridge: a stub that tracks which IPCs were called.
     LexeraMultiview: {
       invoke: invokeSpy || vi.fn(() => Promise.resolve(null)),
@@ -404,6 +410,57 @@ describe('bottom-dock log-panel fold uses the unified side-dock collapseDock pat
       expect(shell._test_getFoldedPaneIds()).toEqual([]);
       vi.useRealTimers();
     }
+  });
+});
+
+describe('developer-tools menu actions go directly to Tauri from the shell', () => {
+  // User-reported bug: "View > Developer Tools (All Views) still doesn't
+  // work". Root cause: the shell's handleBoardAction had no entry for
+  // 'open-all-inspectors' / 'toggle-inspector', so the action fell through
+  // to forwardActionToActiveFrame — which silently drops the action when
+  // the focused window has no active board tab (panel-only window,
+  // boards-empty state, etc.).
+  //
+  // Fix: handle inspector actions in EXACT_ACTIONS and invoke
+  // open_devtools_all / toggle_devtools on Tauri directly from the
+  // shell context.
+
+  it('open-all-inspectors triggers open_devtools_all via Tauri invoke', () => {
+    vi.useFakeTimers();
+    const tauriInvokeSpy = vi.fn(() => Promise.resolve(0));
+    const { shell, mainContent } = createShellHarness({ tauriInvokeSpy });
+    shell.mount({ getMainContent: () => mainContent });
+    expect(shell.handleBoardAction('open-all-inspectors')).toBe(true);
+    const calls = tauriInvokeSpy.mock.calls.filter((c) => c[0] === 'open_devtools_all');
+    expect(calls.length).toBe(1);
+  });
+
+  it('toggle-inspector triggers toggle_devtools via Tauri invoke', () => {
+    vi.useFakeTimers();
+    const tauriInvokeSpy = vi.fn(() => Promise.resolve(true));
+    const { shell, mainContent } = createShellHarness({ tauriInvokeSpy });
+    shell.mount({ getMainContent: () => mainContent });
+    expect(shell.handleBoardAction('toggle-inspector')).toBe(true);
+    const calls = tauriInvokeSpy.mock.calls.filter((c) => c[0] === 'toggle_devtools');
+    expect(calls.length).toBe(1);
+  });
+
+  it('does not forward inspector actions to the active board frame', () => {
+    // If the action falls through to forwardActionToActiveFrame, the
+    // shell sends a 'board-action' multiview emit. The harness's
+    // LexeraMultiview.invoke spy captures every IPC. Inspector actions
+    // must NOT show up there.
+    vi.useFakeTimers();
+    const tauriInvokeSpy = vi.fn(() => Promise.resolve(null));
+    const invokeSpy = vi.fn(() => Promise.resolve(null));
+    const { shell, mainContent } = createShellHarness({ tauriInvokeSpy, invokeSpy });
+    shell.mount({ getMainContent: () => mainContent });
+    invokeSpy.mockClear();
+    shell.handleBoardAction('open-all-inspectors');
+    const forwardedToFrame = invokeSpy.mock.calls.some(
+      (c) => c[0] === 'multiview_emit_to' && c[1] && c[1].event === 'board-action'
+    );
+    expect(forwardedToFrame).toBe(false);
   });
 });
 

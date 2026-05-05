@@ -4540,6 +4540,41 @@
     return true;
   }
 
+  // Inspector helpers. Each developer-tools menu action is a global
+  // Tauri IPC and has nothing to do with the active board frame —
+  // handling them at the shell layer skips a forwardActionToActiveFrame
+  // round-trip that fails when the focused window has no active board
+  // tab (panel-only / detached panel layouts).
+  function shellOpenAllInspectors() {
+    if (typeof window.lexeraLog === 'function') {
+      window.lexeraLog('debug', '[ws-shell] open-all-inspectors invoked from shell');
+    }
+    invokeTauri('open_devtools_all', {})
+      .then(function (opened) {
+        var n = (typeof opened === 'number') ? opened : 0;
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('info', '[ws-shell] open_devtools_all → opened ' + n + ' view(s)');
+        }
+      })
+      .catch(function (err) {
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('error', '[ws-shell] open_devtools_all failed: ' +
+            (err && err.message ? err.message : String(err)));
+        }
+      });
+  }
+  function shellToggleInspector() {
+    if (typeof window.lexeraLog === 'function') {
+      window.lexeraLog('debug', '[ws-shell] toggle-inspector invoked from shell');
+    }
+    invokeTauri('toggle_devtools', {}).catch(function (err) {
+      if (typeof window.lexeraLog === 'function') {
+        window.lexeraLog('error', '[ws-shell] toggle_devtools failed: ' +
+          (err && err.message ? err.message : String(err)));
+      }
+    });
+  }
+
   // Exact-match action handlers. Each returns true if it handled the
   // action. Adding a new shell-level action means one entry here.
   var EXACT_ACTIONS = {
@@ -4558,7 +4593,12 @@
     'split-enable': function () { return true; },
     'split-enable-vertical': function () { return true; },
     'split-enable-horizontal': function () { return true; },
-    'split-orientation': function () { return true; }
+    'split-orientation': function () { return true; },
+    // Developer tools — shell handles directly so the action never
+    // round-trips through forwardActionToActiveFrame, which silently
+    // drops it when the focused window has no active board tab.
+    'open-all-inspectors': function () { shellOpenAllInspectors(); return true; },
+    'toggle-inspector': function () { shellToggleInspector(); return true; }
   };
 
   // Prefix-match action handlers. Each receives the action body
