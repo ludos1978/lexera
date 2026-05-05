@@ -219,11 +219,46 @@
     // up by `dragDropHandlers.registerExternalDndBridge`; subscribe
     // unconditionally so the handler is in place before that runs
     // (timing isn't guaranteed) — checked at call time.
+    //
+    // Diagnostic: log every drop arrival + the first hover per drag
+    // session so the user can see in the Log panel whether stage 5
+    // (receiver) actually fires when they expected it to. Same
+    // `[xview-dnd]` prefix as the source-side bridge in
+    // hierarchyDragBridge.js so a single filter pulls the whole chain.
+    var _xviewLoggedHover = false;
+    function xviewLog(stage, info) {
+      if (typeof window === 'undefined' || typeof window.lexeraLog !== 'function') return;
+      try {
+        window.lexeraLog('debug', '[xview-dnd] ' + stage + ' ' + JSON.stringify(info || {}));
+      } catch (_) { /* non-fatal */ }
+    }
     function relayExternalDnd(method, event) {
       var p = (event && event.payload) || {};
       var api = window.__lexeraExternalDnd;
-      if (!api || typeof api[method] !== 'function') return;
-      try { api[method](p.payload, p.x, p.y); } catch (_) { /* non-fatal */ }
+      var isDrop = method === 'drop';
+      if (!api || typeof api[method] !== 'function') {
+        if (isDrop || !_xviewLoggedHover) {
+          xviewLog('receive.no-handler', { method: method, hasApi: !!api });
+          _xviewLoggedHover = !isDrop;
+        }
+        return;
+      }
+      if (isDrop || !_xviewLoggedHover) {
+        xviewLog('receive', {
+          method: method,
+          x: p.x,
+          y: p.y,
+          payloadType: p.payload && p.payload.type
+        });
+        _xviewLoggedHover = !isDrop;
+      }
+      if (isDrop) _xviewLoggedHover = false; // reset for next drag
+      try { api[method](p.payload, p.x, p.y); } catch (err) {
+        xviewLog('receive.handler.threw', {
+          method: method,
+          err: (err && err.message) ? err.message : String(err)
+        });
+      }
     }
     wv.listen('external-dnd-hover', function (event) { relayExternalDnd('hover', event); });
     wv.listen('external-dnd-drop', function (event) { relayExternalDnd('drop', event); });

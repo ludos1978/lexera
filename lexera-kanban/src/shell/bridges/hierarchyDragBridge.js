@@ -368,8 +368,27 @@
     // Tauri.
     var getWebviewLabelAtTopPoint = deps.getWebviewLabelAtTopPoint;
     var getWebviewRect = deps.getWebviewRect;
+    // Diagnostic logger for the cross-view DnD chain. Each handoff
+    // emits one line so the user can open the Log panel filtered to
+    // `debug` level and SEE where the drag falls off (no payload =
+    // stage 1 fail; routed=null = stage 3 fail; emit error = stage 4
+    // fail; etc.). User-reported "cross view drag & drop doesn't work"
+    // is impossible to fix without runtime evidence; this surfaces it.
+    // Drag-move spam is throttled — only the first drag-move per drag
+    // session logs the route info; subsequent moves stay quiet.
+    var _xviewLogged = { dragMove: false };
+    function xviewLog(stage, info) {
+      if (typeof window === 'undefined' || typeof window.lexeraLog !== 'function') return;
+      try {
+        window.lexeraLog('debug', '[xview-dnd] ' + stage + ' ' + JSON.stringify(info || {}));
+      } catch (_) { /* non-fatal */ }
+    }
     function forwardCrossViewDrag(eventName, payload) {
-      if (!payload || !payload.source) return;
+      var isDragEnd = eventName === 'external-dnd-drop';
+      if (!payload || !payload.source) {
+        xviewLog('forward.skip(no-payload-source)', { eventName: eventName });
+        return;
+      }
       var routed = routeCrossViewDragPoint({
         sourceWebviewLabel: payload.sourceWebviewLabel || '',
         sourceClientX: payload.sourceClientX,
@@ -377,11 +396,34 @@
         getWebviewRect: getWebviewRect,
         getWebviewLabelAtTopPoint: getWebviewLabelAtTopPoint
       });
-      if (!routed) return;
+      if (!routed) {
+        // Always log on drop (low frequency); throttle on hover so a
+        // 60Hz drag doesn't flood the log panel.
+        if (isDragEnd || !_xviewLogged.dragMove) {
+          xviewLog('forward.skip(no-target-webview-at-cursor)', {
+            eventName: eventName,
+            sourceWebviewLabel: payload.sourceWebviewLabel,
+            sourceClientX: payload.sourceClientX,
+            sourceClientY: payload.sourceClientY
+          });
+          _xviewLogged.dragMove = !isDragEnd;
+        }
+        return;
+      }
       // Map our `kind` ('row' | 'stack' | 'column' | 'card') to the
       // type strings the in-shell `__lexeraExternalDnd` API expects.
       var kindToType = { row: 'tree-row', stack: 'tree-stack', column: 'tree-column', card: 'tree-card' };
       var type = kindToType[payload.source.kind] || ('tree-' + payload.source.kind);
+      if (isDragEnd || !_xviewLogged.dragMove) {
+        xviewLog('forward.emit', {
+          eventName: eventName,
+          targetLabel: routed.targetLabel,
+          kind: payload.source.kind,
+          type: type
+        });
+        _xviewLogged.dragMove = !isDragEnd;
+      }
+      if (isDragEnd) _xviewLogged.dragMove = false; // reset for next drag
       invoke('multiview_emit_to', {
         target: routed.targetLabel,
         event: eventName,
@@ -390,7 +432,13 @@
           x: routed.localX,
           y: routed.localY
         }
-      }).catch(function () { /* non-fatal */ });
+      }).catch(function (err) {
+        xviewLog('forward.emit.failed', {
+          eventName: eventName,
+          targetLabel: routed.targetLabel,
+          err: (err && err.message) ? err.message : String(err)
+        });
+      });
     }
     if (typeof getWebviewLabelAtTopPoint === 'function' && typeof getWebviewRect === 'function') {
       // Subscribe to the broadcasts so the shell webview actually
