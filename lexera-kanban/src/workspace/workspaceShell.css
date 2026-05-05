@@ -113,6 +113,26 @@
 .workspace-shell-panel-dock.is-visible {
   display: flex;
 }
+
+/* Folded-bottom dock must occupy a fixed 22-px row regardless of how
+ * its parent grid track resolves. Without this rule the dock element
+ * collapses to height 0 when its grid track tries to shrink under
+ * `min-height: 0`, leaving the fold strip painted at 0×N (invisible).
+ * Match the FOLD_SIZE constant in workspaceShell.js (22px). The
+ * left/right docks fold by WIDTH and are constrained by the grid
+ * column track, so this rule is bottom-only.
+ *
+ * Use `height` not `min-height`: the strip's children (`<div class="ws-fold-strip">`,
+ * see renderFoldStrip in workspaceShell.js) include a sibling
+ * `<div class="workspace-shell-tabset">` that is hidden via the
+ * `is-folded > .workspace-shell-tabset { display: none }` rule below;
+ * absent an explicit height, the dock would size to its visible
+ * children — which can also be 0 if the strip's flex layout collapses.
+ */
+.workspace-shell-panel-dock.is-folded[data-dock="bottom"] {
+  height: 22px;
+  flex: 0 0 22px;
+}
 /* Hover-expanding dock must paint above the center dock (also z-index 30) */
 .workspace-shell-panel-dock.is-fold-hover {
   z-index: 60;
