@@ -1153,10 +1153,11 @@
       // sub-apps even when other subscribers for these events exist.
       var shellLabel = 'main';
       try {
-        if (window.__TAURI__ && window.__TAURI__.webview && typeof window.__TAURI__.webview.getCurrentWebview === 'function') {
-          shellLabel = window.__TAURI__.webview.getCurrentWebview().label || 'main';
-        } else if (window.__TAURI__ && window.__TAURI__.webview && window.__TAURI__.webview.getCurrent) {
-          shellLabel = window.__TAURI__.webview.getCurrent().label || 'main';
+        if (window.__TAURI__ && window.__TAURI__.webview) {
+          var _wv = null;
+          if (typeof window.__TAURI__.webview.getCurrent === 'function') _wv = window.__TAURI__.webview.getCurrent();
+          else if (typeof window.__TAURI__.webview.getCurrentWebview === 'function') _wv = window.__TAURI__.webview.getCurrentWebview();
+          if (_wv) shellLabel = _wv.label || 'main';
         }
       } catch (_) {}
 

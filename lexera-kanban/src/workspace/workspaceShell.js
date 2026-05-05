@@ -1007,6 +1007,29 @@
     return badgesEl;
   }
 
+  /**
+   * Renders the dock-level fold strip — the 22-px bar shown when an
+   * entire side dock is collapsed (`state.dockSizes[dockId] === 0`).
+   *
+   * SAME function for ALL three docks (left, right, bottom). The DOM
+   * shape is identical: `<div class="ws-fold-strip">` with one
+   * `.ws-fold-zone[data-ws-action="expand-collapsed-dock"]` per visible
+   * panel + a `.ws-fold-lock-btn`. Orientation is **CSS-only**:
+   *   - Left/right (vertical strip): workspaceShell.css:205-210
+   *     `flex-direction: column; width: 20px; height: 100%`
+   *   - Bottom (horizontal strip): workspaceShell.css:212-229
+   *     `flex-direction: row; height: 22px; width: 100%`
+   *
+   * Called from `syncDockStructure` only when `getDockLayoutState`
+   * classifies the dock as folded — i.e. BOTH `hasPanels === true`
+   * (a panel is currently in `state.sideDocks[dockId]` and visible)
+   * AND `state.dockSizes[dockId] <= 0`. If you don't see a strip on
+   * a particular dock, one of those two conditions is unmet.
+   *
+   * Bottom-dock log panel gets a tab-viewer-style title button + caret
+   * + status badges (Connected / N logs / N users / N pending) so the
+   * folded log strip stays informative AND obvious as a click target.
+   */
   function renderFoldStrip(dockId, dockEl) {
     if (typeof window.lexeraLog === 'function') {
       window.lexeraLog('debug', '[fold-trace] renderFoldStrip dock=' + dockId +

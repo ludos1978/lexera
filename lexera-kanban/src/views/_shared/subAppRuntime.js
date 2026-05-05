@@ -55,8 +55,13 @@
     return t.event.listen(String(eventName || ''), handler);
   }
   function getCurrentWebview() {
-    try { return tauri().webview.getCurrentWebview(); }
-    catch (_) { return null; }
+    var t = tauri();
+    if (!t || !t.webview) return null;
+    try {
+      if (typeof t.webview.getCurrent === 'function') return t.webview.getCurrent();
+      if (typeof t.webview.getCurrentWebview === 'function') return t.webview.getCurrentWebview();
+    } catch (_) {}
+    return null;
   }
 
   function applyThemeSnapshot(snap) {
@@ -695,6 +700,10 @@
       // Route through the in-app logger — console.warn would never reach
       // the user's log panel (see consoleLoggingGuardrailContract.test).
       var msg = '[sub-app] setup failed: ' + (err && err.message ? err.message : String(err));
+      try {
+        var statusEl = document.getElementById('status-msg');
+        if (statusEl) statusEl.textContent = 'Setup Error: ' + (err && err.message ? err.message : String(err));
+      } catch (_) {}
       if (typeof window.lexeraLog === 'function') {
         try { window.lexeraLog('warn', msg); } catch (_) {}
       } else {
