@@ -3152,9 +3152,17 @@ var LexeraOrderHelpers = (function () {
       _dashboardSnapshotListenerRetryTimer = 0;
     }
     _dashboardSnapshotListenerInstalled = true;
+    // Tauri 2 dual-API resolution; see commit 1d19e940 / bbd5e4ce.
+    // Prefer the webview-scoped listener so the dashboard panel only
+    // hears its own snapshot requests, not every other webview's.
     var __tauri = window.__TAURI__;
-    var _wv = __tauri && __tauri.webview && typeof __tauri.webview.getCurrentWebview === 'function'
-      ? __tauri.webview.getCurrentWebview() : null;
+    var _wv = null;
+    if (__tauri && __tauri.webview) {
+      try {
+        if (typeof __tauri.webview.getCurrent === 'function') _wv = __tauri.webview.getCurrent();
+        else if (typeof __tauri.webview.getCurrentWebview === 'function') _wv = __tauri.webview.getCurrentWebview();
+      } catch (_) {}
+    }
     var _listen = (_wv && typeof _wv.listen === 'function')
       ? function (ev, cb) { return _wv.listen(ev, cb); }
       : function (ev, cb) { return __tauri.event.listen(ev, cb); };
@@ -3222,9 +3230,15 @@ var LexeraOrderHelpers = (function () {
       _embeddedDashboardNavigateListenerRetryTimer = 0;
     }
     _embeddedDashboardNavigateListenerInstalled = true;
+    // Tauri 2 dual-API resolution; see commit 1d19e940 / bbd5e4ce.
     var __tauri2 = window.__TAURI__;
-    var _wv2 = __tauri2 && __tauri2.webview && typeof __tauri2.webview.getCurrentWebview === 'function'
-      ? __tauri2.webview.getCurrentWebview() : null;
+    var _wv2 = null;
+    if (__tauri2 && __tauri2.webview) {
+      try {
+        if (typeof __tauri2.webview.getCurrent === 'function') _wv2 = __tauri2.webview.getCurrent();
+        else if (typeof __tauri2.webview.getCurrentWebview === 'function') _wv2 = __tauri2.webview.getCurrentWebview();
+      } catch (_) {}
+    }
     var _listen2 = (_wv2 && typeof _wv2.listen === 'function')
       ? function (ev, cb) { return _wv2.listen(ev, cb); }
       : function (ev, cb) { return __tauri2.event.listen(ev, cb); };

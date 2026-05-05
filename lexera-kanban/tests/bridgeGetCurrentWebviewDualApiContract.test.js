@@ -24,15 +24,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcDir = resolve(__dirname, '..', 'src');
 
 // Files that own a `getCurrentWebview()` helper used by an `install()`
-// path. If the helper returns null the install bails — therefore each
-// MUST try both Tauri 2 API names.
+// path or an event-listener install. If the helper returns null the
+// install bails (or degrades to global event-listening, which leaks
+// across webviews) — therefore each MUST try both Tauri 2 API names.
 const BRIDGE_FILES = [
   'shell/multiviewClient.js',
   'shell/bridges/themeBridge.js',
   'shell/bridges/navigationBridge.js',
   'shell/bridges/catalogBridge.js',
   'shell/bridges/managementBridge.js',
-  'shell/bridges/requestBridge.js'
+  'shell/bridges/requestBridge.js',
+  // Inline call sites in larger functions. Same dual-API requirement
+  // even though there's no shared helper here.
+  'board/orderHelpers.js'
 ];
 
 describe('shell-side bridges — dual `getCurrent` / `getCurrentWebview` resolution', () => {
