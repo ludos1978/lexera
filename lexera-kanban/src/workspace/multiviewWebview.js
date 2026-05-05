@@ -1094,11 +1094,120 @@
     return entry && entry.label ? entry.label : '';
   }
 
+  // ── Phase 4.1: orphan-placeholder MutationObserver ─────────────────
+  //
+  // Defense in depth on top of the lifecycle reconciler (Phase 2.2) and
+  // the orphan reaper (Phase 1.4). Those two paths catch state-tree-
+  // driven removals (`render()` rebuilds, `flattenToActiveLeaf`, etc.).
+  // This observer catches DOM-mutation-driven removals — anything that
+  // pulls a `[data-multiview="1"]` element out of the document without
+  // going through the shell's render path. Examples that have caused
+  // ghost views in the wild: `innerHTML = ''` on a parent container,
+  // a third-party library yanking a node, a future code path that
+  // splices a placeholder DIV directly.
+  //
+  // Two-rAF debounce: a placeholder removal followed by a re-attach
+  // within 2 animation frames (move/extract/reorder) is NOT a real
+  // removal, so the observer doesn't trigger destroy. The reattach
+  // path will populate the element back into the DOM and the
+  // `placeholder.isConnected` check at debounce flush time finds it.
+  //
+  // Lives in module scope so the unit test can drive it without
+  // booting the whole shell.
+  var _phaseFourObserverState = {
+    observer: null,
+    pending: {} // tabId → frames-remaining-before-flush
+  };
+  function _phaseFourCheckPending(rafImpl, getPlaceholderFn, destroyFn) {
+    var ids = Object.keys(_phaseFourObserverState.pending);
+    var stillPending = false;
+    for (var i = 0; i < ids.length; i++) {
+      var tabId = ids[i];
+      _phaseFourObserverState.pending[tabId] -= 1;
+      if (_phaseFourObserverState.pending[tabId] > 0) {
+        stillPending = true;
+        continue;
+      }
+      delete _phaseFourObserverState.pending[tabId];
+      // After the debounce window, ask deps whether the placeholder is
+      // back in DOM. If it is, the removal was a transient extract/
+      // reattach and we leave the webview alone. Otherwise destroy.
+      var ph = null;
+      try { ph = typeof getPlaceholderFn === 'function' ? getPlaceholderFn(tabId) : null; }
+      catch (_) {}
+      var stillConnected = !!(ph && (ph.isConnected !== false));
+      if (!stillConnected) {
+        try { destroyFn(tabId); } catch (_) {}
+      }
+    }
+    if (stillPending && typeof rafImpl === 'function') {
+      rafImpl(function () { _phaseFourCheckPending(rafImpl, getPlaceholderFn, destroyFn); });
+    }
+  }
+  function _phaseFourCollectRemovedTabIds(removedNodes) {
+    var ids = [];
+    if (!removedNodes) return ids;
+    for (var i = 0; i < removedNodes.length; i++) {
+      var n = removedNodes[i];
+      if (!n || n.nodeType !== 1) continue; // elements only
+      if (typeof n.getAttribute === 'function' && n.getAttribute('data-multiview') === '1') {
+        var tabId = n.getAttribute('data-tab-id');
+        if (tabId) ids.push(tabId);
+      }
+      // Also catch placeholders that were descendants of a removed
+      // ancestor (e.g. dock-tabset removed wholesale).
+      if (typeof n.querySelectorAll === 'function') {
+        var nested = n.querySelectorAll('[data-multiview="1"]');
+        for (var j = 0; j < nested.length; j++) {
+          var nestedId = nested[j].getAttribute && nested[j].getAttribute('data-tab-id');
+          if (nestedId) ids.push(nestedId);
+        }
+      }
+    }
+    return ids;
+  }
+  function installPhaseFourPlaceholderObserver(opts) {
+    opts = opts || {};
+    if (_phaseFourObserverState.observer) return _phaseFourObserverState.observer;
+    if (typeof MutationObserver !== 'function') return null;
+    var root = opts.root || (typeof document !== 'undefined' ? document.body : null);
+    if (!root) return null;
+    var rafImpl = opts.requestAnimationFrame
+      || (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+            ? window.requestAnimationFrame
+            : null);
+    var getPlaceholderFn = opts.getPlaceholder
+      || (deps && typeof deps.getPlaceholder === 'function' ? deps.getPlaceholder : null);
+    var destroyFn = opts.destroy || destroy;
+    if (!rafImpl) return null; // can't debounce without rAF
+    var obs = new MutationObserver(function (mutations) {
+      var any = false;
+      for (var m = 0; m < mutations.length; m++) {
+        var ids = _phaseFourCollectRemovedTabIds(mutations[m].removedNodes);
+        for (var i = 0; i < ids.length; i++) {
+          _phaseFourObserverState.pending[ids[i]] = 2;
+          any = true;
+        }
+      }
+      if (any) {
+        rafImpl(function () { _phaseFourCheckPending(rafImpl, getPlaceholderFn, destroyFn); });
+      }
+    });
+    try { obs.observe(root, { childList: true, subtree: true }); }
+    catch (_) { return null; }
+    _phaseFourObserverState.observer = obs;
+    return obs;
+  }
+
   function setup(setupDeps) {
     deps = setupDeps || {};
 
     if (typeof window === 'undefined') return;
     refreshHostGeometryContext();
+    // Install the placeholder-removal observer once. Idempotent — if
+    // already installed (e.g. setup() called twice for shell-reload
+    // recovery) it returns the existing observer.
+    try { installPhaseFourPlaceholderObserver(); } catch (_) {}
 
     if (window.__TAURI__ && window.__TAURI__.event) {
       window.__TAURI__.event.listen('health-changed', function (event) {
@@ -1248,6 +1357,20 @@
     spawnedLabel: spawnedLabel,
     destroyAll: destroyAll,
     noteLocalDestroy: noteLocalDestroy,
+    // Phase 4.1 placeholder MutationObserver — exposed so tests can
+    // drive the install + collect path without mocking the entire
+    // setup() boot sequence.
+    _test_installPhaseFourPlaceholderObserver: installPhaseFourPlaceholderObserver,
+    _test_phaseFourCollectRemovedTabIds: _phaseFourCollectRemovedTabIds,
+    _test_phaseFourCheckPending: _phaseFourCheckPending,
+    _test_phaseFourPendingState: function () { return _phaseFourObserverState.pending; },
+    _test_phaseFourResetState: function () {
+      _phaseFourObserverState.pending = {};
+      if (_phaseFourObserverState.observer && typeof _phaseFourObserverState.observer.disconnect === 'function') {
+        try { _phaseFourObserverState.observer.disconnect(); } catch (_) {}
+      }
+      _phaseFourObserverState.observer = null;
+    },
     // Exposed for tests: lets a test verify that an invisible placeholder
     // causes the native webview to be parked offscreen rather than left at
     // its previous position (which would cover whatever now occupies the
