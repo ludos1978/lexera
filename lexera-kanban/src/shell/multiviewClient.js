@@ -32,9 +32,26 @@
   }
 
   function getCurrentWebview() {
+    // Tauri 2 ships both `getCurrent` (singular, older) and
+    // `getCurrentWebview` (plural, newer) on `__TAURI__.webview`.
+    // Different builds expose different shapes — depending on which
+    // API the Tauri JS plugin was built against. Try `getCurrent`
+    // first because that's the path the rest of the codebase
+    // standardised on (subAppRuntime.js, multiviewWebview.js after
+    // 49eeb73d). Falling back to `getCurrentWebview` on builds where
+    // only that one exists keeps the bridge installable.
+    //
+    // This mismatch was the silent root cause of "cross view drag
+    // & drop doesn't work": `hierarchyDragBridge.install()` reads
+    // `wv = getCurrentWebview()` and bails if it's null — no event
+    // listeners get registered, the drag chain dies before it starts.
     var t = tauri();
-    if (!t || !t.webview || typeof t.webview.getCurrentWebview !== 'function') return null;
-    try { return t.webview.getCurrentWebview(); } catch (_) { return null; }
+    if (!t || !t.webview) return null;
+    try {
+      if (typeof t.webview.getCurrent === 'function') return t.webview.getCurrent();
+      if (typeof t.webview.getCurrentWebview === 'function') return t.webview.getCurrentWebview();
+    } catch (_) {}
+    return null;
   }
 
   // ── Webview lifecycle ──────────────────────────────────────────
