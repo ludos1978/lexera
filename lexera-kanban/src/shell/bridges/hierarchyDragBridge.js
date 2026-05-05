@@ -454,6 +454,22 @@
       wv.listen('hierarchy-entity-drag-end-external', function (event) {
         forwardCrossViewDrag('external-dnd-drop', (event && event.payload) || null);
       });
+      xviewLog('install.cross-view-enabled', { label: wv.label });
+    } else {
+      // Cross-view drag forwarder NOT activated in this webview. Most
+      // common reason: this is a sub-app webview where
+      // LexeraMultiviewWebview (which owns getWebviewLabelAtTopPoint /
+      // getWebviewRect) isn't loaded — that's expected; cross-view
+      // routing is shell-only. But if this fires in the SHELL webview
+      // it's a real problem (probably a load-order regression where
+      // multiviewClient.bootMultiview ran before multiviewWebview.js
+      // was parsed). The log surfaces the case so the user sees it
+      // when opening the in-app Log panel filtered to `debug`.
+      xviewLog('install.same-board-only(no-multiview-deps)', {
+        label: wv.label,
+        hasGetLabelAtTopPoint: typeof getWebviewLabelAtTopPoint === 'function',
+        hasGetWebviewRect: typeof getWebviewRect === 'function'
+      });
     }
 
     wv.listen('hierarchy-entity-rename', function (event) {

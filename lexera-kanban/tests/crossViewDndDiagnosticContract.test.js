@@ -39,6 +39,17 @@ describe('cross-view DnD diagnostic-log contract', () => {
     expect(src).toMatch(/forward\.emit\.failed/);
   });
 
+  it('hierarchyDragBridge logs the install mode (cross-view-enabled vs same-board-only)', () => {
+    // Without an install-mode log, a sub-app or shell webview that
+    // installed the bridge in degraded "same-board-only" state (no
+    // cross-view forwarder) had no way to surface that fact. Both
+    // branches must emit a log line so the user can tell from the
+    // Log panel whether each webview has the cross-view forwarder.
+    const src = read('shell/bridges/hierarchyDragBridge.js');
+    expect(src).toMatch(/install\.cross-view-enabled/);
+    expect(src).toMatch(/install\.same-board-only\(no-multiview-deps\)/);
+  });
+
   it('embeddedBoardBridge logs the [xview-dnd] receive stage', () => {
     const src = read('shell/bridges/embeddedBoardBridge.js');
     expect(src).toMatch(/\[xview-dnd\]/);
