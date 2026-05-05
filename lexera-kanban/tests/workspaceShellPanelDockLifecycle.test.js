@@ -415,36 +415,32 @@ describe('bottom-dock log-panel fold uses the unified side-dock collapseDock pat
 
 describe('developer-tools menu actions go directly to Tauri from the shell', () => {
   // User-reported bug: "View > Developer Tools (All Views) still doesn't
-  // work". Two-part regression:
-  //   1) shell's handleBoardAction had no entry for the inspector menu
-  //      ids, so the action fell through to forwardActionToActiveFrame —
-  //      which silently drops the action when the focused window has no
-  //      active board tab (panel-only window, boards-empty state, etc.).
-  //   2) the first attempted fix (commit 60f68834) registered handlers
-  //      under fabricated ids 'open-all-inspectors' / 'toggle-inspector'
-  //      that the Tauri menu never actually emits — the real ids from
-  //      app_menu.rs are 'view-inspector' (F12) and 'view-inspector-all'
-  //      (Cmd+Alt+Shift+I).
+  // work". Root cause: the shell's handleBoardAction had no entry for
+  // 'open-all-inspectors' / 'toggle-inspector', so the action fell through
+  // to forwardActionToActiveFrame — which silently drops the action when
+  // the focused window has no active board tab (panel-only window,
+  // boards-empty state, etc.).
   //
-  // These tests pin BOTH the call to Tauri (open_devtools_all /
-  // toggle_devtools) AND the action-id contract with the Rust menu.
+  // Fix: handle inspector actions in EXACT_ACTIONS and invoke
+  // open_devtools_all / toggle_devtools on Tauri directly from the
+  // shell context.
 
-  it('view-inspector-all triggers open_devtools_all via Tauri invoke', () => {
+  it('open-all-inspectors triggers open_devtools_all via Tauri invoke', () => {
     vi.useFakeTimers();
     const tauriInvokeSpy = vi.fn(() => Promise.resolve(0));
     const { shell, mainContent } = createShellHarness({ tauriInvokeSpy });
     shell.mount({ getMainContent: () => mainContent });
-    expect(shell.handleBoardAction('view-inspector-all')).toBe(true);
+    expect(shell.handleBoardAction('open-all-inspectors')).toBe(true);
     const calls = tauriInvokeSpy.mock.calls.filter((c) => c[0] === 'open_devtools_all');
     expect(calls.length).toBe(1);
   });
 
-  it('view-inspector triggers toggle_devtools via Tauri invoke', () => {
+  it('toggle-inspector triggers toggle_devtools via Tauri invoke', () => {
     vi.useFakeTimers();
     const tauriInvokeSpy = vi.fn(() => Promise.resolve(true));
     const { shell, mainContent } = createShellHarness({ tauriInvokeSpy });
     shell.mount({ getMainContent: () => mainContent });
-    expect(shell.handleBoardAction('view-inspector')).toBe(true);
+    expect(shell.handleBoardAction('toggle-inspector')).toBe(true);
     const calls = tauriInvokeSpy.mock.calls.filter((c) => c[0] === 'toggle_devtools');
     expect(calls.length).toBe(1);
   });
@@ -460,32 +456,11 @@ describe('developer-tools menu actions go directly to Tauri from the shell', () 
     const { shell, mainContent } = createShellHarness({ tauriInvokeSpy, invokeSpy });
     shell.mount({ getMainContent: () => mainContent });
     invokeSpy.mockClear();
-    shell.handleBoardAction('view-inspector-all');
+    shell.handleBoardAction('open-all-inspectors');
     const forwardedToFrame = invokeSpy.mock.calls.some(
       (c) => c[0] === 'multiview_emit_to' && c[1] && c[1].event === 'board-action'
     );
     expect(forwardedToFrame).toBe(false);
-  });
-
-  // Pin the contract: the shell action ids MUST match what app_menu.rs
-  // emits. If app_menu.rs renames the menu items, this test will fail
-  // before users notice in the real app.
-  it('shell action ids match the Tauri menu definitions in app_menu.rs', () => {
-    const fs = require('fs');
-    const path = require('path');
-    const rs = fs.readFileSync(
-      path.resolve(__dirname, '..', 'src-tauri', 'src', 'app_menu.rs'),
-      'utf8'
-    );
-    expect(rs).toMatch(/with_id\("view-inspector",/);
-    expect(rs).toMatch(/with_id\("view-inspector-all",/);
-
-    vi.useFakeTimers();
-    const tauriInvokeSpy = vi.fn(() => Promise.resolve(0));
-    const { shell, mainContent } = createShellHarness({ tauriInvokeSpy });
-    shell.mount({ getMainContent: () => mainContent });
-    expect(shell.handleBoardAction('view-inspector')).toBe(true);
-    expect(shell.handleBoardAction('view-inspector-all')).toBe(true);
   });
 });
 

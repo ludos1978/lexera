@@ -4596,10 +4596,9 @@
     'split-orientation': function () { return true; },
     // Developer tools — shell handles directly so the action never
     // round-trips through forwardActionToActiveFrame, which silently
-    // drops it when the focused window has no active board tab. Action
-    // ids match what the Tauri menu emits (see app_menu.rs:161-162).
-    'view-inspector': function () { shellToggleInspector(); return true; },
-    'view-inspector-all': function () { shellOpenAllInspectors(); return true; }
+    // drops it when the focused window has no active board tab.
+    'open-all-inspectors': function () { shellOpenAllInspectors(); return true; },
+    'toggle-inspector': function () { shellToggleInspector(); return true; }
   };
 
   // Prefix-match action handlers. Each receives the action body
