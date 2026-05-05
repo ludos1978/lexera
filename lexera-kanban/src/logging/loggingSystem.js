@@ -447,7 +447,7 @@ function mergeLogEntries() {
     return Object.assign({ source: 'frontend' }, entry);
   }));
   merged.sort(function (a, b) {
-    return (a.timestampMs || 0) - (b.timestampMs || 0);
+    return (a.timestamp_ms || 0) - (b.timestamp_ms || 0);
   });
   return merged;
 }
@@ -500,7 +500,7 @@ function persistActiveSet(settingsName, registry, activeSet) {
 }
 
 function formatLogTimestamp(entry) {
-  return new Date(entry.timestampMs || Date.now()).toLocaleTimeString('en-GB', { hour12: false });
+  return new Date(entry.timestamp_ms || Date.now()).toLocaleTimeString('en-GB', { hour12: false });
 }
 
 function logEntryKey(entry) {
@@ -575,7 +575,7 @@ function clearLogPanelLoading() {
   }
 }
 
-function appendLogEntry(source, entry) {
+function appendLogEntry(source, entry, skipBroadcast) {
   var entries = getLogEntries(source);
   var lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
 
@@ -590,6 +590,20 @@ function appendLogEntry(source, entry) {
 
   entries.push(entry);
   if (entries.length > LOG_MAX) entries.shift();
+
+  // Broadcast to other multiview sub-apps if this is a local log.
+  // Use log_broadcast which filters by subscribers so only log sub-apps are woken.
+  if (!skipBroadcast && window.LexeraMultiview && typeof window.LexeraMultiview.invoke === 'function') {
+    window.LexeraMultiview.invoke('log_broadcast', {
+      entry: {
+        level: entry.level || 'info',
+        source: source,
+        target: entry.target || source,
+        message: entry.message || '',
+        timestamp_ms: entry.timestamp_ms || Date.now()
+      }
+    }).catch(function () {});
+  }
 
   setStatusBarEntry(source, entry);
 
@@ -918,7 +932,7 @@ function syncEmbeddedManagementUiState(preferredTab) {
 
 function lexeraLogWithTarget(level, target, message) {
   appendLogEntry('frontend', {
-    timestampMs: Date.now(),
+    timestamp_ms: Date.now(),
     level: level,
     target: target || 'frontend',
     message: normalizeLogMessage(message)
@@ -1068,7 +1082,7 @@ function summarizeBoardHierarchy(boardData) {
 
 function lexeraBackendLog(entry) {
   appendLogEntry('backend', {
-    timestampMs: entry && entry.timestampMs ? entry.timestampMs : Date.now(),
+    timestamp_ms: entry && entry.timestamp_ms ? entry.timestamp_ms : Date.now(),
     level: entry && entry.level ? entry.level : 'info',
     target: entry && entry.target ? entry.target : 'backend',
     message: normalizeLogMessage(entry && entry.message ? entry.message : '')
@@ -1458,6 +1472,45 @@ if (foldedLogRuntime && typeof foldedLogRuntime.onStateChange === 'function') {
 // Listen for events that should trigger fold badge updates
 window.addEventListener('lexera-api-inflight-changed', updateFoldedLogStatusBadges);
 window.addEventListener('lexera-backend-connection-state-changed', updateFoldedLogStatusBadges);
+
+// Multiview broadcast handlers: responds to requests from log sub-apps in other webviews.
+if (typeof window !== 'undefined' && window.__TAURI__ && window.__TAURI__.event) {
+  var _wv = (window.__TAURI__.webview && window.__TAURI__.webview.getCurrent && window.__TAURI__.webview.getCurrent()) || null;
+  var _listen = (_wv && typeof _wv.listen === 'function') ? _wv.listen.bind(_wv) : window.__TAURI__.event.listen;
+
+  _listen('log-snapshot-request', function (event) {
+    if (window.LexeraMultiview && typeof window.LexeraMultiview.invoke === 'function') {
+      window.LexeraMultiview.invoke('multiview_broadcast', {
+        event: 'log-snapshot',
+        payload: {
+          entries: getLogEntriesSnapshot(),
+          activeLogSource: activeLogSource
+        }
+      }).catch(function () {});
+    }
+  });
+
+  _listen('log-reload-request', function () {
+    refreshBackendLogs();
+  });
+
+  _listen('log-message', function (event) {
+    var entry = event && event.payload;
+    if (entry) {
+      appendLogEntry(entry.source === 'backend' ? 'backend' : 'frontend', entry, true);
+    }
+  });
+
+  _listen('log-clear-request', function () {
+    clearActiveLogEntries();
+    if (window.LexeraMultiview && typeof window.LexeraMultiview.invoke === 'function') {
+      window.LexeraMultiview.invoke('multiview_broadcast', {
+        event: 'log-clear',
+        payload: {}
+      }).catch(function () {});
+    }
+  });
+}
 
 function toggleLogPanel() {
   setLogPanelVisibility(!isLogPanelVisible());

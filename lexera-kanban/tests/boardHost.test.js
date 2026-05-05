@@ -330,6 +330,29 @@ describe('LexeraBoardHost.watchPlaceholderVisibility lifecycle', () => {
     expect(ioInstances.length).toBe(1);
   });
 
+  // When a shell re-render replaces the DOM node for a tab, the cached
+  // observer is bound to the *old* (now-detached) element and will never
+  // fire again — the webview gets stuck wherever it last was. The host
+  // must detect that the placeholder identity changed and re-bind.
+  it('rebinds the observer when the placeholder element is replaced for the same tab id', () => {
+    const { isolated, moInstances, ioInstances } = buildEnv();
+    const placeholderA = fakeElement({ classList: ['is-active'] });
+    isolated.watchPlaceholderVisibility('t-rebind', placeholderA);
+    expect(moInstances.length).toBe(1);
+    expect(ioInstances.length).toBe(1);
+    expect(moInstances[0].disconnected).toBe(false);
+
+    const placeholderB = fakeElement({ classList: ['is-active'] });
+    isolated.watchPlaceholderVisibility('t-rebind', placeholderB);
+
+    // Old observers must be disconnected, fresh ones spun up.
+    expect(moInstances[0].disconnected).toBe(true);
+    expect(ioInstances[0].disconnected).toBe(true);
+    expect(moInstances.length).toBe(2);
+    expect(ioInstances.length).toBe(2);
+    expect(moInstances[1].disconnected).toBe(false);
+  });
+
   it('pushes geometry and reports visible on initial visible placeholder', () => {
     const { isolated, setGeometry, invoke } = buildEnv();
     const placeholder = fakeElement({ classList: ['is-active'] });

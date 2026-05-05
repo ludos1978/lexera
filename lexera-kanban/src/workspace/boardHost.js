@@ -175,7 +175,13 @@
    * a local fallback that pushes the placeholder rect is used.
    */
   function watchPlaceholderVisibility(tabId, placeholderEl, pushGeomFn, labelOverride) {
-    if (visibilityObservers[tabId]) return;
+    if (visibilityObservers[tabId]) {
+      // If the placeholder element is the same, this is an idempotent no-op.
+      // If the shell re-rendered and replaced the DOM node for this tab,
+      // we must disconnect the old observer and re-bind to the new one.
+      if (visibilityObservers[tabId].element === placeholderEl) return;
+      cleanupVisibilityObserver(tabId);
+    }
     if (typeof window === 'undefined' || !window.LexeraMultiview) return;
     var multiview = window.LexeraMultiview;
     var label = labelOverride || multiviewLabelForTab(tabId);
@@ -235,6 +241,7 @@
       observers.push({ disconnect: function () { io.disconnect(); } });
     }
     visibilityObservers[tabId] = {
+      element: placeholderEl,
       disconnect: function () {
         for (var i = 0; i < observers.length; i++) {
           try { observers[i].disconnect(); } catch (_) {}

@@ -67,9 +67,17 @@
     el.className = 'entry level-' + lvl;
     el.dataset.level = lvl;
     el.dataset.source = entry.source || 'frontend';
+
+    var source = entry.source || 'frontend';
+    var target = entry.target || '';
+    var sourceTag = source;
+    if (target && target !== source) {
+      sourceTag = source + ' \u2192 ' + target;
+    }
+
     el.innerHTML =
       '<span class="timestamp">' + formatTimestamp(entry.timestamp_ms) + '</span>' +
-      '<span class="source">' + escapeHtml(entry.source || 'frontend') + '</span>' +
+      '<span class="source">' + escapeHtml(sourceTag) + '</span>' +
       '<span class="message">' + escapeHtml(entry.message || '') + '</span>';
     return el;
   }
@@ -238,6 +246,9 @@
   if (clearBtn) clearBtn.addEventListener('click', function () {
     entries.length = 0;
     rerender();
+    if (typeof window.LexeraSubApp.broadcast === 'function') {
+      window.LexeraSubApp.broadcast('log-clear-request', {});
+    }
   });
   if (copyBtn) copyBtn.addEventListener('click', function () {
     var visible = entries.filter(shouldShow);
@@ -291,6 +302,7 @@
         if (main) main.classList.remove('view-loading');
         if (typeof window.LexeraSubApp.broadcast === 'function') {
           window.LexeraSubApp.broadcast('backend-connection-state-request', {});
+          window.LexeraSubApp.broadcast('log-snapshot-request', {});
         }
       },
       onError: function (err) {
@@ -303,6 +315,24 @@
         // connection pill in the log header reflects the live status.
         'backend-connection-state': function (payload) {
           updateConnectionStatus(payload && payload.connected);
+        },
+        'log-snapshot': function (payload) {
+          if (!payload) return;
+          if (Array.isArray(payload.entries)) {
+            entries = payload.entries.slice(-MAX_ENTRIES);
+            // Refresh seen sources from snapshot
+            entries.forEach(function (e) {
+              var s = e.source || 'frontend';
+              seenSources[s] = true;
+              if (activeSources[s] === undefined) activeSources[s] = true;
+            });
+            buildSourceMenu();
+            rerender();
+          }
+        },
+        'log-clear': function () {
+          entries.length = 0;
+          rerender();
         }
       }
     });
