@@ -2687,7 +2687,10 @@
       extraTabAttrs: null,
       showMeta: false,
       foldNodeId: node.id,
-      isFolded: !!state.foldedPanes[node.id]
+      // Side-dock fold is dock-level (dockSizes=0) — the entire tabset
+      // header is hidden by CSS when the dock is folded, so no per-tabset
+      // fold state to surface. state.foldedPanes is center-only.
+      isFolded: false
     });
   }
 
@@ -2822,14 +2825,11 @@
     var tree = state.sideDocks[dockId];
     if (!tree || countTreeTabs(tree) === 0) return '';
     var sig = buildStructureSignature(tree);
-    // Include dock size (affects snapshot logic) and fold state
+    // Side-dock fold is dock-level (state.dockSizes[dockId] = 0) — already
+    // included via the `|ds:` term below. state.foldedPanes is reserved for
+    // center splits only (since 0635f335), so a per-tabset fold suffix
+    // would always be empty here.
     sig += '|ds:' + (state.dockSizes[dockId] || 0);
-    var folds = [];
-    visitTree(tree, function (node) {
-      if (node.type !== 'tabs') return;
-      if (state.foldedPanes[node.id]) folds.push(node.id);
-    });
-    if (folds.length) sig += '|fold:' + folds.join(',');
     // Include panel visibility (adding/removing panels requires rebuild)
     var visBits = [];
     visitTree(tree, function (node) {
@@ -2922,26 +2922,6 @@
       if (dragEl) dragEl.setAttribute('data-ws-panel-drag-handle', activeItemId);
       var closeEl = headerEl.querySelector('.ws-view-close');
       if (closeEl) closeEl.setAttribute('data-ws-panel-id', activeItemId);
-
-      // Inject or update the rich log-status badges in the folded bottom-dock log panel header
-      if (
-        dockId === 'bottom' &&
-        activePanelId &&
-        getPanelKind(activePanelId) === 'logs' &&
-        !!state.foldedPanes[node.id]
-      ) {
-        if (!headerEl.classList.contains('ws-view-header-with-fold-status')) {
-          headerEl.classList.add('ws-view-header-with-fold-status');
-          headerEl.appendChild(buildLogStatusBadgesEl());
-        } else {
-          // Badges already present — loggingSystem.js handles live updates via
-          // updateFoldedLogStatusBadges, so we just ensure the class is set.
-        }
-      } else if (headerEl.classList.contains('ws-view-header-with-fold-status')) {
-        headerEl.classList.remove('ws-view-header-with-fold-status');
-        var badges = headerEl.querySelector('.ws-fold-status-badges');
-        if (badges) headerEl.removeChild(badges);
-      }
     }
 
     // ── Content: patch panel elements ──
