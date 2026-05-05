@@ -573,9 +573,24 @@ var LexeraDashboard = (function () {
   // Pairs with `subAppRuntime`'s per-pane title decoration so
   // "Open DevTools (All Views)" produces a stack of uniquely-named
   // inspector windows instead of half-a-dozen identical ones.
+  //
+  // For embedded board webviews (label = `board-tab-<bootId>-<tabId>`)
+  // the windowLabel itself is dominated by an unreadable bootId
+  // timestamp. Prefer a short human suffix derived from the URL:
+  //   - embedded boards: "Board <board-id-prefix>"
+  //   - workspace-locked windows: "ws:<workspace-id-prefix>"
+  //   - everything else: fall back to the windowLabel
+  // The full label is still visible in the body's data-window-label
+  // attribute for fine-grained debugging via the elements pane.
   try {
-    if (windowLabel && windowLabel !== 'main' && document.title.indexOf(windowLabel) === -1) {
-      document.title = (document.title || 'Lexera Kanban').trim() + ' [' + windowLabel + ']';
+    var titleSuffix = (window.LexeraDevtoolsTitle && typeof window.LexeraDevtoolsTitle.deriveSuffix === 'function')
+      ? window.LexeraDevtoolsTitle.deriveSuffix(urlParams, windowLabel)
+      : '';
+    if (titleSuffix && document.title.indexOf(titleSuffix) === -1) {
+      document.title = (document.title || 'Lexera Kanban').trim() + ' [' + titleSuffix + ']';
+    }
+    if (document && document.body && typeof document.body.setAttribute === 'function') {
+      document.body.setAttribute('data-window-label', windowLabel);
     }
   } catch (_) { /* document.title may be unavailable in unit-test envs */ }
   var embeddedMode = urlParams.get('embedded') === '1';
