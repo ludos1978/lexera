@@ -2775,25 +2775,6 @@
     // shown in an actual tabbed top bar. Single-item groups use the same
     // header component in its title mode (`is-single`).
     var headerEl = buildSideDockHeader(node);
-    // Inject the rich log-status badges into the bottom-dock log
-    // panel's view header. When the user folds the log pane via the
-    // ▾ button (foldPane → state.foldedPanes[node.id] = ratio), the
-    // pane collapses to a 28px-tall strip showing only this header;
-    // without these badges the user sees no connection / log-count
-    // / user-count / in-flight info while folded. The dock-level
-    // collapseDock fold path renders its own strip via
-    // renderFoldStrip, so the injection is gated on the pane-fold
-    // state to avoid double-rendering when both fold mechanisms
-    // happen to apply simultaneously.
-    if (
-      dockId === 'bottom' &&
-      activePanelId &&
-      getPanelKind(activePanelId) === 'logs' &&
-      !!state.foldedPanes[node.id]
-    ) {
-      headerEl.classList.add('ws-view-header-with-fold-status');
-      headerEl.appendChild(buildLogStatusBadgesEl());
-    }
     tabsetEl.appendChild(headerEl);
 
     var contentEl = document.createElement('div');
@@ -4690,10 +4671,6 @@
     getTabIdForBoard: getTabIdForBoard,
     _test_resolveCycleTabTarget: resolveCycleTabTarget,
     _test_buildLogStatusBadgesEl: buildLogStatusBadgesEl,
-    _test_setFoldedPane: function (nodeId, ratio) {
-      if (typeof ratio === 'number') state.foldedPanes[nodeId] = ratio;
-      else delete state.foldedPanes[nodeId];
-    },
     _test_findHeaderForBottomLogPanel: function () {
       var bottomTree = state.sideDocks && state.sideDocks.bottom;
       if (!bottomTree || !state.bottomDockEl) return null;
