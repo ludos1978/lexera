@@ -4831,6 +4831,23 @@
       var classes = (dockEl && dockEl.className) ? String(dockEl.className) : '';
       var classList = classes.split(/\s+/).filter(Boolean);
       var foldStrip = dockEl ? dockEl.querySelector('.ws-fold-strip') : null;
+      // Capture screen-rects so a single inspect call answers "is the
+      // strip visible? does any webview overlap it?". The webview
+      // geometry itself lives in the Rust registry and is reachable
+      // via `LexeraDebug.dockSnapshot('…')` plus a follow-up Tauri
+      // command if needed; here we surface the DOM-side rects which
+      // are enough to compare against the dock element's own rect.
+      function rectOf(el) {
+        if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+        try {
+          var r = el.getBoundingClientRect();
+          if (!r) return null;
+          return {
+            left: r.left, top: r.top, right: r.right, bottom: r.bottom,
+            width: r.width, height: r.height
+          };
+        } catch (_) { return null; }
+      }
       return {
         dockId: dockId,
         dockSize: state.dockSizes[dockId],
@@ -4846,7 +4863,13 @@
           ? Array.prototype.slice.call(dockEl.children || []).map(function (c) {
               return String(c.className || '');
             })
-          : []
+          : [],
+        // Bounding rects in viewport coordinates (px). Useful to verify
+        // visibility AND to compare against the spawned webview's
+        // last-known geometry: if the strip rect is non-zero but the
+        // user can't see it, a webview is painting over the same area.
+        dockRect: rectOf(dockEl),
+        foldStripRect: rectOf(foldStrip)
       };
     },
     _test_getFoldedPaneIds: function () { return Object.keys(state.foldedPanes); },

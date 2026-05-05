@@ -171,6 +171,30 @@ describe('workspaceShell._test_inspectDock diagnostic seam', () => {
       foldStripChildCount: expect.any(Number),
       dockChildClassNames: expect.any(Array)
     }));
+    // dockRect / foldStripRect keys are present (value may be null when
+    // the dock element isn't mounted yet or the strip doesn't exist).
+    expect(snap).toHaveProperty('dockRect');
+    expect(snap).toHaveProperty('foldStripRect');
+  });
+
+  it('dockRect is a {left,top,right,bottom,width,height} object after mount', () => {
+    vi.useFakeTimers();
+    const { shell, mainContent } = createShellHarness();
+    shell.mount({ getMainContent: () => mainContent });
+    const snap = shell._test_inspectDock('bottom');
+    if (snap.dockRect) {
+      expect(snap.dockRect).toEqual(expect.objectContaining({
+        left: expect.any(Number),
+        top: expect.any(Number),
+        right: expect.any(Number),
+        bottom: expect.any(Number),
+        width: expect.any(Number),
+        height: expect.any(Number)
+      }));
+    }
+    // foldStripRect is null when the dock isn't folded — bottom dock
+    // starts visible (workspace profile default), so no strip rendered.
+    expect(snap.foldStripRect).toBe(null);
   });
 
   it('hasPanels reflects reality — flips false → true when a panel is moved in', () => {
