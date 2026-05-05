@@ -395,6 +395,24 @@
   color: var(--accent, var(--text-muted));
 }
 
+.ws-view-header-with-fold-status {
+  padding-right: 2px;
+}
+.ws-view-header-with-fold-status .ws-view-title {
+  margin-right: 8px;
+  flex: 0 0 auto;
+}
+.ws-view-header-with-fold-status .ws-fold-status-badges {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+  margin-right: 4px;
+}
+/* Hide the user count in the narrow 28px strip if it takes too much space */
+@media (max-width: 600px) {
+  .ws-view-header-with-fold-status .ws-fold-badge-users { display: none; }
+}
+
 .ws-fold-indicator.is-drag-handle {
   font-size: var(--icon-glyph-size);
   width: var(--app-icon-box-size);

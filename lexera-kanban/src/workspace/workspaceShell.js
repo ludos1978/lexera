@@ -663,10 +663,14 @@
    * FOLD RULES (keep in sync with CSS comment block in workspaceShell.css):
    *
    * Fold direction:
-   *   - Left/right docks → dock-level collapse (vertical bar, 22px strip).
-   *   - Bottom dock → pane-level fold (horizontal bar, 28px tall).
-   *   - Center tree vertical split → pane-level fold (vertical bar, 28px wide).
-   *   - Center tree horizontal split → pane-level fold (horizontal bar, 28px tall).
+   *   - Left/right/bottom docks → dock-level collapse (22px strip).
+   *     - Left/right collapse to a 22px-wide vertical strip.
+   *     - Bottom collapses to a 22px-tall horizontal strip.
+   *   - Center tree splits (vertical or horizontal) → pane-level fold
+   *     (28px-wide column or 28px-tall row, respectively). Pane-level
+   *     fold only applies inside a center split, never inside a side
+   *     dock — the side-dock dock-level path handles both single and
+   *     multi-panel cases uniformly via `renderFoldStrip`.
    *   - Close button removes the view entirely (separate from fold).
    *
    * Hover-to-preview:
@@ -676,11 +680,24 @@
    *   - Dock-level: fold strip zones + JS (bindFoldHover, per-panel activation).
    *   - Pane-level: CSS :hover on .is-pane-folded → absolute overlay.
    *
-   * CSS classes (renderSplit / renderSideDockSplit):
+   * CSS classes (renderSplit only — center splits):
    *   .is-pane-folded-vertical   — vertical splits (narrow column, hover slides right)
    *   .is-pane-folded-horizontal — horizontal splits (narrow row, hover drops down)
    */
   function foldPane(nodeId) {
+    // Unified side-dock fold: left, right AND bottom all take the
+    // dock-level `collapseDock` path. Previously bottom went through
+    // a pane-level fold via `state.foldedPanes[nodeId] = ratio` +
+    // `parent.ratio = 0|1` which produced a different DOM/CSS shape
+    // than the side-dock fold strip the user already had working for
+    // left/right. The two-shape design caused user-reported "log
+    // viewer is invisible when folded" and "horizontal fold doesn't
+    // work like vertical".
+    //
+    // Pane-level fold via `state.foldedPanes` is now reserved for
+    // CENTER splits only — where the user wants to collapse one half
+    // of a split inside the kanban canvas without collapsing the
+    // entire window region.
     var ids = allTreeIds();
     for (var t = 0; t < ids.length; t++) {
       var treeId = ids[t];
@@ -693,10 +710,17 @@
           ' tree=' + treeId + ' parent.type=' + (info.parent ? info.parent.type : 'null') +
           ' side=' + (info.side || ''));
       }
-      // Left/right docks: always collapse the entire dock (vertical bar, 22px)
-      if (treeId === 'left' || treeId === 'right') return collapseDock(treeId);
+      // ALL side docks (left, right, bottom) collapse the entire dock.
+      if (treeId !== 'center') {
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('debug', '[fold-trace] foldPane → collapseDock(' +
+            treeId + ') (unified side-dock path)');
+        }
+        return collapseDock(treeId);
+      }
+      // Center tree: pane-level fold within a split (folds one side,
+      // keeps the other visible).
       if (!info.parent || info.parent.type !== 'split') continue;
-      // Bottom dock and center tree: pane-level fold within split
       state.foldedPanes[nodeId] = info.parent.ratio;
       if (info.side === 'first') {
         info.parent.ratio = 0;
@@ -704,27 +728,15 @@
         info.parent.ratio = 1;
       }
       if (typeof window.lexeraLog === 'function') {
-        window.lexeraLog('debug', '[fold-trace] foldPane → ratio=' + info.parent.ratio +
-          ' (pane-level, no collapseDock; renderFoldStrip will NOT fire for tree=' + treeId + ')');
+        window.lexeraLog('debug', '[fold-trace] foldPane → center-pane ratio=' +
+          info.parent.ratio + ' (pane-level fold inside center split)');
       }
       render();
       return true;
     }
-    // No parent split found — try collapsing the dock this node is in
-    for (var d = 0; d < ids.length; d++) {
-      if (ids[d] === 'center') continue;
-      var dRoot = getTreeRoot(ids[d]);
-      if (dRoot && dRoot.id === nodeId) {
-        if (typeof window.lexeraLog === 'function') {
-          window.lexeraLog('debug', '[fold-trace] foldPane → collapseDock(' +
-            ids[d] + ') (root-fallback, no parent split)');
-        }
-        return collapseDock(ids[d]);
-      }
-    }
     if (typeof window.lexeraLog === 'function') {
       window.lexeraLog('warn', '[fold-trace] foldPane FAILED nodeId=' + nodeId +
-        ' (no matching tree, no parent split, not a dock root)');
+        ' (no matching tree)');
     }
     return false;
   }
@@ -732,9 +744,12 @@
   function unfoldPane(nodeId) {
     var restoreRatio = state.foldedPanes[nodeId];
     if (restoreRatio == null) return false;
+    // Only center splits ever populate foldedPanes (see foldPane).
     var ids = allTreeIds();
     for (var t = 0; t < ids.length; t++) {
-      var root = getTreeRoot(ids[t]);
+      var treeId = ids[t];
+      if (treeId !== 'center') continue;
+      var root = getTreeRoot(treeId);
       if (!root) continue;
       var info = findNodeAndParent(root, nodeId);
       if (!info || !info.parent || info.parent.type !== 'split') continue;
@@ -2926,6 +2941,26 @@
       if (dragEl) dragEl.setAttribute('data-ws-panel-drag-handle', activeItemId);
       var closeEl = headerEl.querySelector('.ws-view-close');
       if (closeEl) closeEl.setAttribute('data-ws-panel-id', activeItemId);
+
+      // Inject or update the rich log-status badges in the folded bottom-dock log panel header
+      if (
+        dockId === 'bottom' &&
+        activePanelId &&
+        getPanelKind(activePanelId) === 'logs' &&
+        !!state.foldedPanes[node.id]
+      ) {
+        if (!headerEl.classList.contains('ws-view-header-with-fold-status')) {
+          headerEl.classList.add('ws-view-header-with-fold-status');
+          headerEl.appendChild(buildLogStatusBadgesEl());
+        } else {
+          // Badges already present — loggingSystem.js handles live updates via
+          // updateFoldedLogStatusBadges, so we just ensure the class is set.
+        }
+      } else if (headerEl.classList.contains('ws-view-header-with-fold-status')) {
+        headerEl.classList.remove('ws-view-header-with-fold-status');
+        var badges = headerEl.querySelector('.ws-fold-status-badges');
+        if (badges) headerEl.removeChild(badges);
+      }
     }
 
     // ── Content: patch panel elements ──

@@ -993,6 +993,10 @@
     }
     // Already spawned at correct URL — refresh geometry only.
     requestAnimationFrame(pushGeom);
+    // Hard fence (Phase 4.2): even if already ready, the placeholder element
+    // might have been re-created by a shell re-render. Re-attach the visibility
+    // observer to the new element so hover-unparking continues to work.
+    watchPlaceholderVisibility(tab, placeholderEl, pushGeom);
   }
 
   function destroy(tabId) {
