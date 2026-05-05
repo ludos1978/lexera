@@ -4671,6 +4671,10 @@
     getTabIdForBoard: getTabIdForBoard,
     _test_resolveCycleTabTarget: resolveCycleTabTarget,
     _test_buildLogStatusBadgesEl: buildLogStatusBadgesEl,
+    _test_getDockSize: function (dockId) { return state.dockSizes[dockId]; },
+    _test_getFoldedPaneIds: function () { return Object.keys(state.foldedPanes); },
+    _test_foldPane: function (nodeId) { return foldPane(nodeId); },
+    _test_unfoldPane: function (nodeId) { return unfoldPane(nodeId); },
     _test_findHeaderForBottomLogPanel: function () {
       var bottomTree = state.sideDocks && state.sideDocks.bottom;
       if (!bottomTree || !state.bottomDockEl) return null;
