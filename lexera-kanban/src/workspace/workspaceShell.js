@@ -1552,18 +1552,22 @@
       if (!tree) continue;
       var found = findLeafContainingPanel(tree, normalized);
       if (!found) continue;
-      // Remove the tab from the leaf
-      for (var j = found.leaf.tabs.length - 1; j >= 0; j--) {
-        if (isPanelTab(found.leaf.tabs[j]) && resolvePanelTarget(found.leaf.tabs[j].panelId) === normalized) {
-          var _removed = found.leaf.tabs.splice(j, 1)[0];
-          // Phase 1.1: destroy the native webview when the tab is
-          // removed from a side dock. Pre-fix this splice was a primary
-          // ghost-view source: openPanelInCenter / placePanelInLeaf /
-          // splitLeafWithPanel / destroyDuplicatedPanelInstance all
-          // call this and none used to free the webview.
-          if (_removed && _removed.id) removeFrame(_removed.id);
-          changed = true;
+      // Phase 3.2 [7/N]: collect victim tab.ids first (predicate is
+      // "panel-tab whose resolved id matches normalized"), then route
+      // each removal through `layoutTree.removeTabFromLeaf`. Phase 1.1's
+      // `removeFrame` lifecycle call sits between the find and the
+      // tree mutation — splitting find/destroy/remove the same way
+      // pruneMissingBoards does.
+      var victimIds = [];
+      for (var j = 0; j < found.leaf.tabs.length; j++) {
+        var tab = found.leaf.tabs[j];
+        if (isPanelTab(tab) && resolvePanelTarget(tab.panelId) === normalized) {
+          if (tab.id) victimIds.push(tab.id);
         }
+      }
+      for (var k = 0; k < victimIds.length; k++) {
+        removeFrame(victimIds[k]);
+        if (layoutTree.removeTabFromLeaf(found.leaf, victimIds[k]) > 0) changed = true;
       }
       if (found.leaf.tabs.length > 0) {
         if (!findTab(tree, found.leaf.activeTabId)) {
