@@ -103,8 +103,8 @@ describe('cross-view tree-source drop translation (rows / stacks)', () => {
 
   it('applyCardDropByPoint already pins the same translation pattern (regression fence)', () => {
     // 966c921f shipped the card translation. Keep it pinned alongside
-    // the row/stack additions so all three tree-source paths can't
-    // silently regress in the same place.
+    // the row/stack/column additions so all four tree-source paths
+    // can't silently regress in the same place.
     const fs = require('node:fs');
     const path = require('node:path');
     const src = fs.readFileSync(
@@ -116,5 +116,24 @@ describe('cross-view tree-source drop translation (rows / stacks)', () => {
     const cardFnBody = cardFn.slice(0, cardFnEnd > 0 ? cardFnEnd : 4000);
     expect(cardFnBody).toMatch(/source\.entityId\s*&&\s*!source\.cardId/);
     expect(cardFnBody).toMatch(/cardId:\s*source\.entityId/);
+  });
+
+  it('executeColumnPtrDrop translates entityId → columnId for tree-source', () => {
+    // Same systematic fix for the fourth (and last) drop kind. The
+    // column path goes through `moveColumnAcrossBoards` which calls
+    // `resolveColumnLocationForMutation` → `findMutationColumnLocationById`
+    // for stable-id lookup (already exists in dndListeners.js). The
+    // receiver only needs to populate `columnId` from `entityId`.
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '..', 'src', 'dragdrop', 'dragDropHandlers.js'),
+      'utf8'
+    );
+    const colFn = src.slice(src.indexOf('function executeColumnPtrDrop('));
+    const colFnEnd = colFn.indexOf('\n  function ');
+    const colFnBody = colFn.slice(0, colFnEnd > 0 ? colFnEnd : 4000);
+    expect(colFnBody).toMatch(/src\.entityId\s*&&\s*!src\.columnId/);
+    expect(colFnBody).toMatch(/columnId:\s*src\.entityId/);
   });
 });

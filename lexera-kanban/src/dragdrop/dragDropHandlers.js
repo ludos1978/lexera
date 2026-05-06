@@ -1974,6 +1974,17 @@ var LexeraDragDropHandlers = (function () {
 
   function executeColumnPtrDrop(mx, my, src) {
     if (!isDropTargetValidForKind('column', mx, my)) return;
+    // Cross-view tree-source: entityId is the column's stable ID.
+    // Translate to columnId so moveColumnAcrossBoards's stable-lookup
+    // path can find the source column by id when no indexed position
+    // is available. Same pattern as commits 966c921f (card) and
+    // ed770031 (row + stack). The indexMode check below sends
+    // tree-sources through the cross-board path automatically because
+    // tree-source doesn't carry `indexMode === 'display'`.
+    if (src && src.entityId && !src.columnId &&
+        typeof src.colIndex !== 'number') {
+      src = Object.assign({}, src, { columnId: src.entityId });
+    }
     var activeBoardId = _deps.getActiveBoardId();
 
     function isSameActiveBoardDisplayTarget(target) {
