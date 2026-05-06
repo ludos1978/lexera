@@ -530,15 +530,20 @@
     return '';
   }
 
-  function isPanelIntegrated(panelId) {
+  function isPanelInCenterDock(panelId) {
     return !!findLeafContainingPanel(state.dockTree, panelId);
+  }
+
+  function isPanelHeaderIntegrated(panelId) {
+    var kind = getPanelKind(panelId);
+    return !!(PANEL_DEFINITIONS[kind] || {}).integratedHeader;
   }
 
   function isPanelShown(panelId) {
     var normalized = String(panelId || '');
     if (state.panelInstances[normalized]) {
       if (!state.panelVisibility[normalized]) return false;
-      if (isPanelIntegrated(normalized)) return true;
+      if (isPanelInCenterDock(normalized)) return true;
       // Check side docks
       var found = findPanelInAllTrees(normalized);
       if (!found || found.treeId === 'center') return false;
@@ -565,7 +570,7 @@
         var panelId = resolvePanelTarget(node.tabs[i].panelId);
         if (!panelId) continue;
         if (!state.panelVisibility[panelId]) continue;
-        if (isPanelIntegrated(panelId)) continue;
+        if (isPanelInCenterDock(panelId)) continue;
         result.push(panelId);
       }
     });
@@ -2863,7 +2868,7 @@
       var panelId = resolvePanelTarget(panelTab.panelId);
       if (!panelId) continue;
       if (!state.panelVisibility[panelId]) continue;
-      if (isPanelIntegrated(panelId)) continue;
+      if (isPanelInCenterDock(panelId)) continue;
       var panelKind = getPanelKind(panelId);
       if (!panelKind) continue;
       var insertEl = buildMultiviewPanelPlaceholder(panelTab, panelId, panelKind);
@@ -3017,7 +3022,7 @@
       var pt = node.tabs[ci];
       if (!isPanelTab(pt)) continue;
       var pid = resolvePanelTarget(pt.panelId);
-      if (!pid || !state.panelVisibility[pid] || isPanelIntegrated(pid)) continue;
+      if (!pid || !state.panelVisibility[pid] || isPanelInCenterDock(pid)) continue;
       expectedPanels.push({ panelId: pid, isActive: pt.id === node.activeTabId });
     }
 
@@ -3422,11 +3427,44 @@
 
   function renderToolbar() {
     if (!state.toolbarEl) return;
-    // Toolbar is currently always empty — skip clearing if already empty.
-    if (state.toolbarEl.childNodes.length > 0) {
-      state.toolbarEl.innerHTML = '';
+    
+    var integratedPanelIds = [];
+    var panelIds = Object.keys(state.panelInstances);
+    for (var i = 0; i < panelIds.length; i++) {
+      var pid = panelIds[i];
+      if (state.panelVisibility[pid] && isPanelHeaderIntegrated(pid)) {
+        integratedPanelIds.push(pid);
+      }
     }
-    state.toolbarEl.classList.add('is-empty');
+
+    if (integratedPanelIds.length === 0) {
+      state.toolbarEl.innerHTML = '';
+      state.toolbarEl.classList.add('is-empty');
+      return;
+    }
+
+    state.toolbarEl.innerHTML = '';
+    state.toolbarEl.classList.remove('is-empty');
+
+    for (var j = 0; j < integratedPanelIds.length; j++) {
+      var panelId = integratedPanelIds[j];
+      var kind = getPanelKind(panelId);
+      
+      var itemEl = document.createElement('div');
+      itemEl.className = 'workspace-shell-toolbar-item';
+      itemEl.setAttribute('data-ws-panel-id', panelId);
+      
+      var titleSpan = document.createElement('span');
+      titleSpan.className = 'workspace-shell-toolbar-item-title';
+      titleSpan.textContent = getPanelTitle(panelId);
+      itemEl.appendChild(titleSpan);
+
+      if (kind === 'logs') {
+        itemEl.appendChild(buildLogStatusBadgesEl());
+      }
+      
+      state.toolbarEl.appendChild(itemEl);
+    }
   }
 
   function renderTabset(node, parentEl) {

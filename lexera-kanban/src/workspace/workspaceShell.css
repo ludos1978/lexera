@@ -71,6 +71,23 @@
   display: none;
 }
 
+.workspace-shell-toolbar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 100%;
+  border-right: 1px solid var(--border-subtle);
+  font-size: 11px;
+}
+.workspace-shell-toolbar-item:last-child {
+  border-right: 0;
+}
+.workspace-shell-toolbar-item-title {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
 .workspace-shell-toolbar-title {
   min-width: 0;
   margin-right: auto;
