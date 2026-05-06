@@ -402,7 +402,27 @@
       document.removeEventListener('mouseup', onUp, true);
       if (window.LexeraSubApp && typeof window.LexeraSubApp.broadcast === 'function') {
         if (hadLocalDrop) {
-          window.LexeraSubApp.broadcast('hierarchy-entity-drop', dropPayload);
+          // Local within-panel reorder/absorb. Logged so the user can
+          // verify in the Log panel that the drop fired.
+          if (typeof window.lexeraLog === 'function') {
+            try {
+              window.lexeraLog('debug', '[xview-dnd] source.local-drop { view: "hierarchy", srcKind: "' +
+                (src && src.kind || '') + '", tgtKind: "' + (match && match.info && match.info.kind || '') +
+                '", srcBoard: "' + (src && src.boardId || '') +
+                '", tgtBoard: "' + (match && match.info && match.info.boardId || '') + '" }');
+            } catch (_) {}
+          }
+          var localPromise = window.LexeraSubApp.broadcast('hierarchy-entity-drop', dropPayload);
+          if (localPromise && typeof localPromise.catch === 'function') {
+            localPromise.catch(function (err) {
+              if (typeof window.lexeraLog === 'function') {
+                try {
+                  window.lexeraLog('warn', '[xview-dnd] source.local-drop.failed view=hierarchy err=' +
+                    ((err && err.message) ? err.message : String(err)));
+                } catch (_) {}
+              }
+            });
+          }
         } else {
           // Cursor was outside this webview — let the shell-side
           // router try to dispatch this as `external-dnd-drop` to

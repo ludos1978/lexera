@@ -496,8 +496,25 @@
       var p = (event && event.payload) || {};
       var source = p.source || null;
       var target = p.target || null;
-      if (!source || !target) return;
-      if (!source.boardId || !target.boardId) return;
+      // Diagnostic: log every local-drop arrival on the shell so the
+      // user can see in the Log panel that the drop reached the apply
+      // path. Same `[xview-dnd]` prefix as the cross-view chain so a
+      // single Log-panel filter shows local + cross-view together.
+      xviewLog('apply.local-drop.received', {
+        srcKind: source && source.kind,
+        tgtKind: target && target.kind,
+        srcBoard: source && source.boardId,
+        tgtBoard: target && target.boardId,
+        sameBoard: source && target && source.boardId === target.boardId
+      });
+      if (!source || !target) {
+        xviewLog('apply.local-drop.skip(missing-source-or-target)', {});
+        return;
+      }
+      if (!source.boardId || !target.boardId) {
+        xviewLog('apply.local-drop.skip(missing-boardId)', {});
+        return;
+      }
       var sameBoard = source.boardId === target.boardId;
       // Load the affected board(s); for same-board the second slot is
       // a duplicate so `applyDrop` can stay branchless.
@@ -510,8 +527,19 @@
       Promise.all(loads).then(function (boards) {
         var srcBoard = boards[0];
         var tgtBoard = sameBoard ? srcBoard : boards[1];
-        if (!srcBoard || !tgtBoard) return;
-        if (!applyDrop(srcBoard, tgtBoard, source, target)) return;
+        if (!srcBoard || !tgtBoard) {
+          xviewLog('apply.local-drop.skip(loadBoard-returned-null)', {
+            hasSrc: !!srcBoard, hasTgt: !!tgtBoard
+          });
+          return;
+        }
+        var applied = applyDrop(srcBoard, tgtBoard, source, target);
+        if (!applied) {
+          xviewLog('apply.local-drop.skip(applyDrop-returned-false)', {
+            srcKind: source.kind, tgtKind: target.kind
+          });
+          return;
+        }
         var saves = sameBoard
           ? [Promise.resolve(saveBoard(source.boardId, srcBoard))]
           : [
@@ -519,6 +547,7 @@
               Promise.resolve(saveBoard(target.boardId, tgtBoard))
             ];
         return Promise.all(saves).then(function () {
+          xviewLog('apply.local-drop.saved', { affected: sameBoard ? 1 : 2 });
           // Notify every webview in the window that the affected boards
           // changed so sub-apps can drop their cached hierarchy and
           // refetch. Without this, the user sees no visible reorder
@@ -537,6 +566,9 @@
           }
         });
       }).catch(function (err) {
+        xviewLog('apply.local-drop.failed', {
+          err: (err && err.message) ? err.message : String(err)
+        });
         if (typeof deps.onError === 'function') deps.onError(err);
       });
     });

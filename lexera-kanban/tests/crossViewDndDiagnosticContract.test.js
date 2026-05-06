@@ -51,7 +51,7 @@ describe('cross-view DnD diagnostic-log contract', () => {
   });
 
   it.each(['views/workspaces/workspaces.js', 'views/hierarchy/hierarchy.js'])(
-    '%s logs source.broadcast + source.drag-end-external + their failure variants',
+    '%s logs source.broadcast + source.drag-end-external + source.local-drop (and their failure variants)',
     (relPath) => {
       // Stage 1 of the chain — source emits broadcasts. Without a
       // source-side log, a misconfigured panel webview where
@@ -67,8 +67,33 @@ describe('cross-view DnD diagnostic-log contract', () => {
       expect(src).toMatch(/source\.broadcast\.failed/);
       expect(src).toMatch(/source\.drag-end-external\b/);
       expect(src).toMatch(/source\.drag-end-external\.failed/);
+      // Local within-panel drop path — separate from the cross-view
+      // one. The user-reported "i cant even drag/reorder elements
+      // within the workspace" needs this log to verify whether the
+      // local drop broadcast fires at all.
+      expect(src).toMatch(/source\.local-drop\b/);
+      expect(src).toMatch(/source\.local-drop\.failed/);
     }
   );
+
+  it('hierarchyDragBridge logs every apply.local-drop transition (received → saved or skip-with-reason)', () => {
+    // Shell-side counterpart to the source.local-drop log. The chain
+    // for a within-panel reorder is:
+    //   source.local-drop (panel) → broadcast → apply.local-drop.received (shell)
+    //   → applyDrop() → saveBoard() → apply.local-drop.saved
+    // OR skip variants if any guard fails (missing source/target,
+    // missing boardId, loadBoard returned null, applyDrop returned
+    // false). User-reported "drag/reorder doesn't work" can now be
+    // diagnosed by reading which stage's log line is missing.
+    const src = read('shell/bridges/hierarchyDragBridge.js');
+    expect(src).toMatch(/apply\.local-drop\.received/);
+    expect(src).toMatch(/apply\.local-drop\.saved/);
+    expect(src).toMatch(/apply\.local-drop\.failed/);
+    expect(src).toMatch(/apply\.local-drop\.skip\(missing-source-or-target\)/);
+    expect(src).toMatch(/apply\.local-drop\.skip\(missing-boardId\)/);
+    expect(src).toMatch(/apply\.local-drop\.skip\(loadBoard-returned-null\)/);
+    expect(src).toMatch(/apply\.local-drop\.skip\(applyDrop-returned-false\)/);
+  });
 
   it('embeddedBoardBridge logs the [xview-dnd] receive stage', () => {
     const src = read('shell/bridges/embeddedBoardBridge.js');
