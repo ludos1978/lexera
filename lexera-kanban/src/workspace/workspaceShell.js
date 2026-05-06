@@ -4023,28 +4023,36 @@
   }
 
   function pruneMissingBoards() {
-    var changed = false;
     var boardsAvailable = Object.keys(state.boardsById).length;
     // Don't prune when we have no board data — that means the backend
     // hasn't responded yet, not that all boards were deleted.
     if (boardsAvailable === 0) return false;
+    // Phase 3.2 [5/N]: collect victim tab.ids first, then route the actual
+    // removal through `layoutTree.removeTabById`. Splitting find from
+    // destroy lets us call `removeFrame` exactly once per id and avoids
+    // the "splice during iteration" hazard. Same destruction order as
+    // before: removeFrame BEFORE removing from the tree.
+    var idsToPrune = [];
     visitTree(state.dockTree, function (node) {
       if (node.type !== 'tabs') return;
-      for (var i = node.tabs.length - 1; i >= 0; i--) {
-        if (!isBoardTab(node.tabs[i])) continue;
-        if (!state.boardsById[node.tabs[i].boardId]) {
-          console.warn('[ws-shell] pruneMissingBoards: removing tab for board ' + node.tabs[i].boardId + ' (not in ' + boardsAvailable + ' known boards)');
-          removeFrame(node.tabs[i].id);
-          node.tabs.splice(i, 1);
-          changed = true;
-        }
+      for (var i = 0; i < node.tabs.length; i++) {
+        var tab = node.tabs[i];
+        if (!isBoardTab(tab)) continue;
+        if (!state.boardsById[tab.boardId]) idsToPrune.push({ id: tab.id, boardId: tab.boardId });
       }
     });
-    if (changed) {
+    for (var p = 0; p < idsToPrune.length; p++) {
+      console.warn('[ws-shell] pruneMissingBoards: removing tab for board ' +
+        idsToPrune[p].boardId + ' (not in ' + boardsAvailable + ' known boards)');
+      removeFrame(idsToPrune[p].id);
+      layoutTree.removeTabById(state.dockTree, idsToPrune[p].id);
+    }
+    if (idsToPrune.length > 0) {
       state.dockTree = withNormalizedLeaves(state.dockTree, true);
       ensureActiveLeaf();
+      return true;
     }
-    return changed;
+    return false;
   }
 
   function openBoard(boardId, options) {
