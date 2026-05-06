@@ -8,6 +8,17 @@ dialogs.css
 
 # Copied from lexera-kanban by beforeDevCommand/beforeBuildCommand
 loggingSystem.js
+titleHelpers.js
+layoutTree.js
+lifecycleReconciler.js
+boardHost.js
+panelHost.js
+multiviewWebview.js
+messageBridge.js
+panelDefinitions.js
+treeRegistry.js
+layoutPersistence.js
+tabDragController.js
 sharedPanels.js
 workspaceShell.js
 workspaceShell.css

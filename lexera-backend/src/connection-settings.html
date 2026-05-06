@@ -23,6 +23,21 @@
   <script src="dialogs.js"></script>
   <script src="backendDiscovery.js"></script>
   <script src="loggingSystem.js"></script>
+  <!-- workspaceShell.js dependencies — synced from lexera-kanban by
+       sync-frontend-view-assets.mjs. workspaceShell.js throws at parse
+       time if any of these globals are missing, so order matters: the
+       deps must come before workspaceShell.js. -->
+  <script src="titleHelpers.js"></script>
+  <script src="layoutTree.js"></script>
+  <script src="lifecycleReconciler.js"></script>
+  <script src="boardHost.js"></script>
+  <script src="panelHost.js"></script>
+  <script src="multiviewWebview.js"></script>
+  <script src="messageBridge.js"></script>
+  <script src="panelDefinitions.js"></script>
+  <script src="treeRegistry.js"></script>
+  <script src="layoutPersistence.js"></script>
+  <script src="tabDragController.js"></script>
   <script src="sharedPanels.js"></script>
   <script src="workspaceShell.js"></script>
   <script src="connection-settings.js"></script>
