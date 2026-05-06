@@ -107,7 +107,7 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 #### Phase 6 — Long-term hardening
 - [ ] **6.1** Convert `state` and `tabRecords` to JSDoc-typed objects; run `tsc --noEmit` in CI.
 - [ ] **6.2** Phase out `window.Lexera*` globals once the esbuild migration (Architectural Analysis §1) lands.
-- [ ] **6.3** Encode tab lifecycle as an explicit FSM (`created → spawning → ready → destroying → destroyed`) replacing the cross-map state in `multiviewSpawnedTabs[id].state` + `multiviewLabelSpawnLocks` + `multiviewSpawnRetryWatchers`.
+- [ ] (in progress) **6.3** Encode tab lifecycle as an explicit FSM (`created → spawning → ready → destroying → destroyed`) replacing the cross-map state in `multiviewSpawnedTabs[id].state` + `multiviewLabelSpawnLocks` + `multiviewSpawnRetryWatchers`.
 
 #### Verification
 - [ ] (input required) Real-app verify the ghost-view regression is gone after Phase 1 + 2 land: open multiple boards across docks, move panels, close panels, switch workspaces — confirm no stale webview is left painting on screen and no skeleton text bleeds through.
