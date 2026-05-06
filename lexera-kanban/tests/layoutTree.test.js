@@ -501,6 +501,52 @@ describe('LexeraLayoutTree.removeTabById', () => {
   });
 });
 
+describe('LexeraLayoutTree.removeTabFromLeaf', () => {
+  it('removes a single matching tab and returns the count', () => {
+    const leaf = tabsetNode('A', [{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+    expect(layoutTree.removeTabFromLeaf(leaf, 'b')).toBe(1);
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['a', 'c']);
+  });
+
+  it('removes every matching tab when duplicates exist on the same leaf', () => {
+    // Duplicates shouldn't happen under the wrapper API, but the
+    // legacy `removeTabFromEverywhereExcept` treated them as removable
+    // — preserving that semantic protects against any pathological
+    // tree shape leaking through.
+    const leaf = tabsetNode('A', [{ id: 'dup' }, { id: 'b' }, { id: 'dup' }]);
+    expect(layoutTree.removeTabFromLeaf(leaf, 'dup')).toBe(2);
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['b']);
+  });
+
+  it('returns 0 when the id is not present (leaf untouched)', () => {
+    const leaf = tabsetNode('A', [{ id: 'a' }, { id: 'b' }]);
+    expect(layoutTree.removeTabFromLeaf(leaf, 'missing')).toBe(0);
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('reassigns activeTabId only after a successful removal', () => {
+    const leaf = tabsetNode('A', [{ id: 'a' }, { id: 'b' }], 'b');
+    layoutTree.removeTabFromLeaf(leaf, 'b');
+    expect(leaf.activeTabId).toBe('a');
+    // Calling again with no removal must not zero activeTabId.
+    layoutTree.removeTabFromLeaf(leaf, 'b');
+    expect(leaf.activeTabId).toBe('a');
+  });
+
+  it('clears activeTabId when the leaf becomes empty', () => {
+    const leaf = tabsetNode('A', [{ id: 'only' }], 'only');
+    layoutTree.removeTabFromLeaf(leaf, 'only');
+    expect(leaf.tabs).toEqual([]);
+    expect(leaf.activeTabId).toBe('');
+  });
+
+  it('returns 0 for non-leaf nodes and missing inputs', () => {
+    expect(layoutTree.removeTabFromLeaf(null, 'a')).toBe(0);
+    expect(layoutTree.removeTabFromLeaf({ type: 'split' }, 'a')).toBe(0);
+    expect(layoutTree.removeTabFromLeaf(tabsetNode('A', [{ id: 'a' }]), '')).toBe(0);
+  });
+});
+
 describe('LexeraLayoutTree.insertTabIntoLeaf', () => {
   it('appends to an empty leaf and seeds activeTabId', () => {
     const leaf = tabsetNode('A', [], '');

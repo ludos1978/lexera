@@ -132,6 +132,29 @@
     return hit;
   }
 
+  // Remove every tab whose id matches `tabId` from the SINGLE given
+  // leaf node. Companion to `removeTabById` (which is single-match,
+  // tree-wide); use this when a tree walk has already located the
+  // leaf and the activeTabId fix-up still needs to honour the same
+  // "fall through to the first remaining tab" invariant. Returns the
+  // count of tabs removed so a caller can tell whether anything
+  // changed without re-scanning.
+  function removeTabFromLeaf(leaf, tabId) {
+    if (!leaf || leaf.type !== 'tabs' || !Array.isArray(leaf.tabs) || !tabId) return 0;
+    var removed = 0;
+    for (var i = leaf.tabs.length - 1; i >= 0; i--) {
+      var tab = leaf.tabs[i];
+      if (tab && tab.id === tabId) {
+        leaf.tabs.splice(i, 1);
+        removed += 1;
+      }
+    }
+    if (removed > 0 && leaf.activeTabId === tabId) {
+      leaf.activeTabId = leaf.tabs.length > 0 ? leaf.tabs[0].id : '';
+    }
+    return removed;
+  }
+
   function insertTabIntoLeaf(leaf, tab, index) {
     if (!leaf || leaf.type !== 'tabs' || !tab) return -1;
     if (!Array.isArray(leaf.tabs)) leaf.tabs = [];
@@ -365,6 +388,7 @@
     countTreeTabs: countTreeTabs,
     collectAllTabIds: collectAllTabIds,
     removeTabById: removeTabById,
+    removeTabFromLeaf: removeTabFromLeaf,
     insertTabIntoLeaf: insertTabIntoLeaf,
     moveTab: moveTab,
     replaceTreeRoot: replaceTreeRoot,

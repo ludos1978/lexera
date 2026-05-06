@@ -54,7 +54,7 @@ Root cause: the layout tree (`state.dockTree` / `state.sideDocks`) and the webvi
 
 #### Phase 3 — Encapsulated tree mutations
 - [x] (done) ~~**3.1** Add `LexeraLayoutTree.{removeTabById, moveTab, insertTabIntoLeaf, replaceTreeRoot}` API to [lexera-kanban/src/workspace/layoutTree.js](lexera-kanban/src/workspace/layoutTree.js).~~ Four wrappers shipped: `removeTabById` (walks tree, fixes activeTabId), `insertTabIntoLeaf` (clamps index, seeds activeTabId), `moveTab` (cross-leaf + same-leaf with the established "original-index" convention from workspaceShell:1846), `replaceTreeRoot(holder, key, next)` (assigns + returns symmetric tab.id diff). 20 new assertions in layoutTree.test.js. (commit 60b893ad)
-- [ ] (in progress) **3.2** Migrate every `node.tabs.splice(` and `state.dockTree =` / `state.sideDocks[…] =` in workspaceShell.js to the new wrapper API (~12-15 sites). One site per slice.
+- [ ] (in progress) **3.2** Migrate every `node.tabs.splice(` and `state.dockTree =` / `state.sideDocks[…] =` in workspaceShell.js to the new wrapper API (~12-15 sites). One site per slice. Slices landed: ~~[5/N] pruneMissingBoards via removeTabById~~ (commit 04e75e8c). Next slice: ~~[6/N] removeTabFromEverywhereExcept~~ — in progress.
 
 #### Log-stream wire-format fixes (2026-05-06)
 

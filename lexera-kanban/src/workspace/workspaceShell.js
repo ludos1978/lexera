@@ -2136,18 +2136,17 @@
   }
 
   function removeTabFromEverywhereExcept(tabId, replacementLeaf) {
+    // Phase 3.2 [6/N]: route the per-leaf removal through
+    // `layoutTree.removeTabFromLeaf` so the activeTabId fix-up stays
+    // co-located with the splice. The traceLeakSite call still fires
+    // from here so audit-mode keeps the same diagnostic shape.
     visitTree(state.dockTree, function (node) {
       if (node.type !== 'tabs') return;
       if (node === replacementLeaf) return;
-      for (var i = node.tabs.length - 1; i >= 0; i--) {
-        if (node.tabs[i].id === tabId) {
-          node.tabs.splice(i, 1);
-          traceLeakSite('removeTabFromEverywhereExcept',
-            'tabId=' + tabId + ' fromLeafId=' + node.id);
-        }
-      }
-      if (node.activeTabId === tabId) {
-        node.activeTabId = node.tabs.length > 0 ? node.tabs[0].id : '';
+      var removed = layoutTree.removeTabFromLeaf(node, tabId);
+      if (removed > 0) {
+        traceLeakSite('removeTabFromEverywhereExcept',
+          'tabId=' + tabId + ' fromLeafId=' + node.id);
       }
     });
   }
