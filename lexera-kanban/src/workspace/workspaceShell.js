@@ -392,8 +392,14 @@
     return !!(normalizedKind && PANEL_DEFINITIONS[normalizedKind] && PANEL_DEFINITIONS[normalizedKind].duplicable);
   }
 
+  // DISABLED: the legacy in-shell panel-only mode (rendered ONE panel
+  // directly into the shell DOM when the window URL carried
+  // `?panelKind=<kind>`) is permanently off. Every panel kind now boots
+  // as its own child webview via `views/<kind>/index.html`. Keeping the
+  // function as a constant `false` so the surrounding callsites and
+  // tests don't need to be touched in the same change.
   function isPanelOnlyWindow() {
-    return !!state.panelOnlyKind;
+    return false;
   }
 
   function isHierarchyLauncherWindow() {
@@ -3492,58 +3498,15 @@
   // No multiview placeholder here: the placeholder lives in the SHELL
   // webview that spawned this child; we just render the panel content
   // directly into our document.
-  function renderPanelOnly(panelId, hostEl) {
-    if (!hostEl) return;
-    hostEl.classList.add('workspace-shell-panel-only-host');
-
-    // Patch: if the panel window already shows the right panel, only
-    // ensure the panel element is mounted in the content slot.
-    var existingWindow = hostEl.querySelector('.workspace-shell-panel-only-window[data-panel-id="' + panelId + '"]');
-    if (existingWindow) {
-      var existingContent = existingWindow.querySelector('.workspace-shell-panel-content');
-      var panelEl = getPanelElement(panelId);
-      if (existingContent && panelEl && panelEl.parentNode !== existingContent) {
-        panelEl.classList.remove('hidden');
-        panelEl.style.display = '';
-        existingContent.appendChild(panelEl);
-      }
-      return;
-    }
-
-    // Full rebuild — different panel or first render
-    hostEl.innerHTML = '';
-    var panelWindowEl = document.createElement('div');
-    panelWindowEl.className = 'workspace-shell-panel-window workspace-shell-panel-window-integrated is-active workspace-shell-panel-only-window';
-    panelWindowEl.setAttribute('data-panel-id', panelId);
-
-    // Dock-back header for detached panel windows
-    if (canUseTauriInvoke()) {
-      var headerEl = document.createElement('div');
-      headerEl.className = 'workspace-shell-panel-only-header';
-      var titleEl = document.createElement('span');
-      titleEl.className = 'workspace-shell-panel-only-title';
-      titleEl.textContent = getPanelTitle(panelId);
-      var dockBtn = document.createElement('button');
-      dockBtn.className = 'workspace-shell-panel-only-dock-btn';
-      dockBtn.type = 'button';
-      dockBtn.title = 'Dock to main window';
-      dockBtn.textContent = 'Dock';
-      dockBtn.addEventListener('click', function () { dockToMainWindow(); });
-      headerEl.appendChild(titleEl);
-      headerEl.appendChild(dockBtn);
-      panelWindowEl.appendChild(headerEl);
-    }
-
-    var contentEl = document.createElement('div');
-    contentEl.className = 'workspace-shell-panel-content';
-    var panelEl2 = getPanelElement(panelId);
-    if (panelEl2) {
-      panelEl2.classList.remove('hidden');
-      panelEl2.style.display = '';
-      contentEl.appendChild(panelEl2);
-    }
-    panelWindowEl.appendChild(contentEl);
-    hostEl.appendChild(panelWindowEl);
+  // DISABLED: renderPanelOnly used to mount one panel directly into the
+  // shell's host DOM (the legacy `?panelKind=<kind>` window mode). It is
+  // permanently off — all panels now live in their own child webviews.
+  // The function is left as a no-op so any stray callsite or test seam
+  // is harmless. Paired with `isPanelOnlyWindow()` returning false, the
+  // render() entry check on line ~3700 also guarantees we never reach
+  // this body in practice.
+  function renderPanelOnly(_panelId, _hostEl) {
+    return;
   }
 
   /**
