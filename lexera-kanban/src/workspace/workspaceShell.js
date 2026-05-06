@@ -2291,7 +2291,11 @@
     if (sidebarWidthDividerEl && sidebarWidthDividerEl.parentNode) {
       sidebarWidthDividerEl.parentNode.removeChild(sidebarWidthDividerEl);
     }
-    if (dashboardEl && dashboardEl.parentNode === sidebarEl) {
+    // sidebarEl is null when the host page has no `.sidebar` (the backend
+    // management window's connection-settings.html). Without `sidebarEl &&`
+    // the check spuriously matches null === null, then `.removeChild` on
+    // null throws and aborts mount(), leaving the management window empty.
+    if (sidebarEl && dashboardEl && dashboardEl.parentNode === sidebarEl) {
       dashboardEl.parentNode.removeChild(dashboardEl);
     }
     if (boardListEl) {
