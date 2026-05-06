@@ -95,11 +95,56 @@
     }
   }
 
+  // Render-profile capture: subscribe to the longtask PerformanceObserver
+  // for `durationMs`, collect entries (sorted by duration desc), emit
+  // back. Lives in the shell so the long-tasks captured are the SHELL's
+  // own main-thread tasks — i.e. the kanban-board render path, which is
+  // exactly what stutters on a large board.
+  function handleProfileRenderRequest(event) {
+    var p = (event && event.payload) || {};
+    var durationMs = Number(p.durationMs) || 5000;
+    if (typeof PerformanceObserver !== 'function') {
+      emit('debug-profile-render-response', {
+        entries: [],
+        note: 'PerformanceObserver unavailable in this webview runtime.'
+      }).catch(function () {});
+      return;
+    }
+    var collected = [];
+    var po;
+    try {
+      po = new PerformanceObserver(function (list) {
+        var entries = list.getEntries();
+        for (var i = 0; i < entries.length; i++) {
+          collected.push({
+            name: String(entries[i].name || ''),
+            duration: Number(entries[i].duration) || 0,
+            startTime: Number(entries[i].startTime) || 0
+          });
+        }
+      });
+      po.observe({ entryTypes: ['longtask'] });
+    } catch (err) {
+      emit('debug-profile-render-response', {
+        entries: [],
+        note: 'PerformanceObserver(longtask) refused: ' +
+          (err && err.message ? err.message : String(err))
+      }).catch(function () {});
+      return;
+    }
+    setTimeout(function () {
+      try { po.disconnect(); } catch (_) {}
+      collected.sort(function (a, b) { return b.duration - a.duration; });
+      emit('debug-profile-render-response', { entries: collected }).catch(function () {});
+    }, durationMs);
+  }
+
   function install() {
     if (!isShellWebview()) return;
     listen('debug-hide-overlays', handleHideOverlays);
     listen('debug-dock-snapshot-request', handleSnapshotRequest);
     listen('debug-open-frontend-tests', handleOpenFrontendTests);
+    listen('debug-profile-render-request', handleProfileRenderRequest);
   }
 
   // Wait until the shell is enabled before installing — the IIFE in
@@ -113,6 +158,7 @@
     _test_handleHideOverlays: handleHideOverlays,
     _test_handleSnapshotRequest: handleSnapshotRequest,
     _test_handleOpenFrontendTests: handleOpenFrontendTests,
+    _test_handleProfileRenderRequest: handleProfileRenderRequest,
     _test_buildSnapshotResponse: buildSnapshotResponse
   };
 })();

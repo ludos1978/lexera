@@ -97,6 +97,41 @@
     });
   }
 
+  // ── Render-perf profiler ───────────────────────────────────────
+  //
+  // 5-second window of `PerformanceObserver({ entryTypes: ['longtask'] })`
+  // captured in the SHELL webview (where the kanban board's render
+  // happens). Surfaces every Long Task ≥50ms — the threshold the
+  // browser uses for "this blocked the main thread noticeably". Sorted
+  // by duration desc so the worst offenders are at the top.
+  //
+  // Lives in the debug window (this file) for the UI; the actual
+  // capture runs in the shell via Tauri events. The shell-side
+  // listener captures + emits the result back here.
+  var _profileState = { running: false };
+  function setProfileStatusUi(text, isRunning) {
+    var el = document.querySelector('[data-debug-status="profile"]');
+    if (el) {
+      el.textContent = text;
+      el.setAttribute('data-state', isRunning ? 'hidden' : 'visible');
+    }
+    var btn = document.querySelector('[data-debug-action="profile-render"]');
+    if (btn) btn.disabled = !!isRunning;
+  }
+  function startRenderProfile() {
+    if (_profileState.running) return;
+    _profileState.running = true;
+    setProfileStatusUi('recording (5s)…', true);
+    var out = document.querySelector('[data-debug-profile-output]');
+    if (out) out.textContent = 'capturing long tasks for 5 seconds — go interact with the slow board…';
+    emit('debug-profile-render-request', { durationMs: 5000 }).catch(function (err) {
+      _profileState.running = false;
+      setProfileStatusUi('emit failed', false);
+      if (out) out.textContent = 'emit debug-profile-render-request failed: ' +
+        (err && err.message ? err.message : String(err));
+    });
+  }
+
   // Snapshot response handler: pretty-print every dock's snapshot.
   function installListeners() {
     listen('debug-dock-snapshot-response', function (event) {
@@ -118,6 +153,29 @@
         setOverlayStatusUi(payload.hidden);
       }
     });
+    // Render-profile result delivered by the shell-side bridge.
+    listen('debug-profile-render-response', function (event) {
+      var payload = (event && event.payload) || {};
+      _profileState.running = false;
+      var entries = Array.isArray(payload.entries) ? payload.entries : [];
+      setProfileStatusUi(entries.length + ' long tasks', false);
+      var out = document.querySelector('[data-debug-profile-output]');
+      if (!out) return;
+      if (entries.length === 0) {
+        out.textContent = 'No Long Tasks (≥50ms) recorded in the 5-second window.\n' +
+          (payload.note ? payload.note : 'The board may simply not be re-rendering during this sample. ' +
+           'Hold mouse, type in a card, or scroll to provoke renders, then re-record.');
+        return;
+      }
+      try {
+        var lines = entries.slice(0, 30).map(function (e, i) {
+          return (i + 1) + '. ' + Math.round(e.duration) + 'ms @ t=' +
+            Math.round(e.startTime) + 'ms' + (e.name ? '  ' + e.name : '');
+        });
+        out.textContent = 'Top ' + Math.min(30, entries.length) +
+          ' Long Tasks (≥50ms) sorted by duration:\n\n' + lines.join('\n');
+      } catch (_) { out.textContent = JSON.stringify(payload, null, 2); }
+    });
   }
 
   // Click delegation on the body so the layout can be edited in HTML
@@ -131,6 +189,7 @@
       if (action === 'toggle-overlays') return toggleOverlays();
       if (action === 'refresh-snapshots') return refreshSnapshots();
       if (action === 'open-frontend-tests') return openFrontendTests();
+      if (action === 'profile-render') return startRenderProfile();
     });
   }
 
@@ -155,6 +214,8 @@
     _test_toggleOverlays: toggleOverlays,
     _test_refreshSnapshots: refreshSnapshots,
     _test_openFrontendTests: openFrontendTests,
-    _test_setOverlayStatusUi: setOverlayStatusUi
+    _test_setOverlayStatusUi: setOverlayStatusUi,
+    _test_startRenderProfile: startRenderProfile,
+    _test_profileState: _profileState
   };
 })();

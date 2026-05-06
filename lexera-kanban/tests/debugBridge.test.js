@@ -118,4 +118,23 @@ describe('debugBridge — shell-side translator for the --debug window', () => {
     window.LexeraDebugBridge._test_handleOpenFrontendTests();
     expect(handleBoardAction).toHaveBeenCalledWith('reveal-panel:frontendTests');
   });
+
+  it('debug-profile-render-request emits a graceful response when PerformanceObserver is unavailable', async () => {
+    // node test environment doesn't have PerformanceObserver. The
+    // handler must NOT throw — it must emit a `note: …` response so
+    // the debug window can show the user why the profile failed.
+    const emit = vi.fn(() => Promise.resolve());
+    const { window } = loadBridge({
+      shell: { isEnabled: () => true, handleBoardAction: () => {} },
+      emitSpy: emit
+    });
+    // PerformanceObserver MUST NOT be defined in this test scope.
+    delete globalThis.PerformanceObserver;
+    window.LexeraDebugBridge._test_handleProfileRenderRequest({ payload: { durationMs: 100 } });
+    // Synchronous emit happens immediately for the unavailable case.
+    const responseCall = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-response');
+    expect(responseCall).toBeTruthy();
+    expect(responseCall[1].entries).toEqual([]);
+    expect(responseCall[1].note).toMatch(/PerformanceObserver unavailable/);
+  });
 });

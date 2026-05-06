@@ -112,4 +112,13 @@ describe('debug-window controller (views/debug/debug.js)', () => {
     window.LexeraDebugWindow._test_openFrontendTests();
     expect(emit).toHaveBeenCalledWith('debug-open-frontend-tests', {});
   });
+
+  it('startRenderProfile() emits debug-profile-render-request with a durationMs', () => {
+    const { window, emit } = loadController();
+    window.LexeraDebugWindow._test_startRenderProfile();
+    const call = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-request');
+    expect(call).toBeTruthy();
+    expect(typeof call[1].durationMs).toBe('number');
+    expect(call[1].durationMs).toBeGreaterThan(0);
+  });
 });

@@ -38,6 +38,21 @@
   </section>
 
   <section class="debug-section">
+    <h2>Render-perf profiler</h2>
+    <p class="debug-section-help">
+      Capture a 5-second sample of long tasks in the active board /
+      shell webview. Surfaces every Long Task ≥50ms with its duration
+      so a stuttering board can be diagnosed without opening DevTools.
+      Uses <code>PerformanceObserver({ entryTypes: ['longtask'] })</code>.
+    </p>
+    <button type="button" data-debug-action="profile-render" class="debug-btn debug-btn-primary">
+      Record 5s render trace
+    </button>
+    <span class="debug-status" data-debug-status="profile">idle</span>
+    <pre data-debug-profile-output class="debug-snapshot-output">click Record to capture long tasks…</pre>
+  </section>
+
+  <section class="debug-section">
     <h2>Frontend tests</h2>
     <p class="debug-section-help">
       The full vitest run lives at <code>./run-lexera-tests.sh --unit</code>.
