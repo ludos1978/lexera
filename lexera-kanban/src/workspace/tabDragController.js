@@ -40,7 +40,6 @@
  *     // Workspace bounds for detach detection:
  *     isPointOutsideWorkspaceBounds,
  *     // After-pointerdown UI updates (selection):
- *     renderToolbar,
  *     notifyActiveBoardChanged,
  *     // Persistence:
  *     persist
@@ -64,7 +63,7 @@
     'resolvePanelTarget', 'getPanelTitle', 'getTabTitle',
     'clearPanelDropTargets', 'setPanelDropTarget',
     'isPointOutsideWorkspaceBounds',
-    'renderToolbar', 'notifyActiveBoardChanged', 'persist'
+    'notifyActiveBoardChanged', 'persist'
   ];
 
   function setup(setupDeps) {
@@ -416,7 +415,6 @@
       var panelFound = deps.findPanelInAllTrees(handledPanelId);
       var dragTabId = panelFound ? panelFound.tab.id : '';
       startPointerDrag(panelHandleEl, dragTabId, handledPanelId, event);
-      deps.renderToolbar();
       deps.persist();
       return;
     }
@@ -430,7 +428,6 @@
       var panelFound2 = deps.findPanelInAllTrees(panelId);
       var dragTabId2 = panelFound2 ? panelFound2.tab.id : '';
       startPointerDrag(panelTabEl, dragTabId2, panelId, event);
-      deps.renderToolbar();
       deps.persist();
       return;
     }
@@ -439,7 +436,6 @@
       var windowPanelId = deps.resolvePanelTarget(panelWindowEl.getAttribute('data-panel-id'));
       if (windowPanelId) {
         state.activePanelId = windowPanelId;
-        deps.renderToolbar();
         deps.persist();
       }
     }
@@ -452,7 +448,6 @@
       var ownerTabset = tabEl.closest('.workspace-shell-tabset');
       if (ownerTabset) {
         state.activeLeafId = ownerTabset.getAttribute('data-node-id') || state.activeLeafId;
-        deps.renderToolbar();
         deps.persist();
       }
       startPointerDrag(tabEl, tabId, '', event);
@@ -464,7 +459,6 @@
     if (!nodeId) return;
     state.activeLeafId = nodeId;
     deps.notifyActiveBoardChanged();
-    deps.renderToolbar();
     deps.persist();
   }
 

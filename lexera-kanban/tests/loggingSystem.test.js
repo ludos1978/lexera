@@ -236,4 +236,66 @@ describe('logging folded status badges', () => {
     expect(warnEntries[0].message).toContain('Saved settings');
     expect(warnEntries[0].message).toContain('frontend');
   });
+
+  // Pin both timestamp field names for backend log entries.
+  //
+  // The backend `BackendLogEntry` Rust struct is serialized with
+  // `#[serde(rename_all = "camelCase")]`, so a JSON payload arriving from
+  // the IPC bridge looks like `{ timestampMs, level, target, message }`.
+  // Older code paths and frontend-emitted entries still use snake_case
+  // `timestamp_ms`. If `lexeraBackendLog` only reads one form, the other
+  // ends up as `Date(undefined)` → NaN:NaN:NaN.NaN in the rendered prefix.
+  it('lexeraBackendLog accepts both timestampMs (camelCase) and timestamp_ms (snake_case)', () => {
+    const window = {
+      LexeraRuntime: null,
+      LexeraApi: null,
+      LexeraSharedPanels: null,
+      location: { search: '' },
+      addEventListener() {},
+      dispatchEvent() {},
+      document: null
+    };
+    const document = {
+      documentElement: { style: { setProperty() {} } },
+      getElementById() { return null; },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+      createElement(className) { return createNode(className); },
+      addEventListener() {}
+    };
+    window.document = document;
+
+    loadLoggingSystem({
+      window,
+      document,
+      console: { log() {}, warn() {}, error() {}, info() {} },
+      localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
+      location: window.location,
+      CustomEvent: function CustomEvent(type, init) {
+        this.type = type;
+        this.detail = init && init.detail ? init.detail : {};
+      },
+      setTimeout,
+      clearTimeout
+    });
+
+    const camelTs = 1700000001000;
+    const snakeTs = 1700000002000;
+    window.LexeraLoggingSystem._test_appendBackendLog({
+      timestampMs: camelTs, level: 'info', target: 'be', message: 'camel'
+    });
+    window.LexeraLoggingSystem._test_appendBackendLog({
+      timestamp_ms: snakeTs, level: 'info', target: 'be', message: 'snake'
+    });
+
+    const entries = window.LexeraLoggingSystem.getEntriesSnapshot('backend');
+    const camelEntry = entries.find((e) => e.message === 'camel');
+    const snakeEntry = entries.find((e) => e.message === 'snake');
+    expect(camelEntry).toBeTruthy();
+    expect(snakeEntry).toBeTruthy();
+    expect(camelEntry.timestamp_ms).toBe(camelTs);
+    expect(snakeEntry.timestamp_ms).toBe(snakeTs);
+    expect(Number.isFinite(camelEntry.timestamp_ms)).toBe(true);
+    expect(Number.isFinite(snakeEntry.timestamp_ms)).toBe(true);
+  });
 });

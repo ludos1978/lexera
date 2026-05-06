@@ -500,7 +500,12 @@ function persistActiveSet(settingsName, registry, activeSet) {
 }
 
 function formatLogTimestamp(entry) {
-  return new Date(entry.timestamp_ms || Date.now()).toLocaleTimeString('en-GB', { hour12: false });
+  // Backend Rust struct serializes with #[serde(rename_all = "camelCase")] so
+  // `timestamp_ms` arrives as `timestampMs` over the wire. Frontend-emitted
+  // entries still use snake_case. Accept both — falling back to either form
+  // is what previously caused NaN:NaN:NaN.NaN prefixes on backend lines.
+  var ms = (entry && (entry.timestampMs || entry.timestamp_ms)) || Date.now();
+  return new Date(Number(ms)).toLocaleTimeString('en-GB', { hour12: false });
 }
 
 function logEntryKey(entry) {
@@ -575,7 +580,20 @@ function clearLogPanelLoading() {
   }
 }
 
+// Backend `BackendLogEntry` is serialized with `#[serde(rename_all = "camelCase")]`
+// so `timestamp_ms` arrives as `timestampMs`. Normalize at the storage boundary
+// so every downstream consumer (sort, render, broadcast) sees a consistent
+// snake_case key.
+function normalizeLogEntryFields(entry) {
+  if (!entry) return entry;
+  if (entry.timestamp_ms == null && entry.timestampMs != null) {
+    entry.timestamp_ms = Number(entry.timestampMs);
+  }
+  return entry;
+}
+
 function appendLogEntry(source, entry, skipBroadcast) {
+  entry = normalizeLogEntryFields(entry);
   var entries = getLogEntries(source);
   var lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
 
@@ -646,7 +664,7 @@ function updateLastLogEntryRepeat(source, entry) {
 
 function replaceLogEntries(source, entries) {
   clearLogPanelLoading();
-  var nextEntries = (entries || []).slice(-LOG_MAX);
+  var nextEntries = (entries || []).slice(-LOG_MAX).map(normalizeLogEntryFields);
   var target = getLogEntries(source);
   target.length = 0;
   Array.prototype.push.apply(target, nextEntries);
@@ -1081,8 +1099,12 @@ function summarizeBoardHierarchy(boardData) {
 }
 
 function lexeraBackendLog(entry) {
+  // Tauri emits the BackendLogEntry struct as JSON with camelCase keys
+  // (rename_all = "camelCase" in log_bridge.rs). Older callers pass snake_case
+  // — accept both so the timestamp doesn't fall through to NaN.
+  var ms = entry && (entry.timestampMs || entry.timestamp_ms);
   appendLogEntry('backend', {
-    timestamp_ms: entry && entry.timestamp_ms ? entry.timestamp_ms : Date.now(),
+    timestamp_ms: ms ? Number(ms) : Date.now(),
     level: entry && entry.level ? entry.level : 'info',
     target: entry && entry.target ? entry.target : 'backend',
     message: normalizeLogMessage(entry && entry.message ? entry.message : '')
@@ -1460,7 +1482,8 @@ window.LexeraLoggingSystem = {
   getEntriesSnapshot: getLogEntriesSnapshot,
   traceSlowFrontendTask: traceSlowFrontendTask,
   withSlowFrontendTaskWarning: withSlowFrontendTaskWarning,
-  getSlowTaskThresholdMs: function () { return SLOW_FRONTEND_TASK_THRESHOLD_MS; }
+  getSlowTaskThresholdMs: function () { return SLOW_FRONTEND_TASK_THRESHOLD_MS; },
+  _test_appendBackendLog: lexeraBackendLog
 };
 
 var foldedLogRuntime = typeof window !== 'undefined' ? window.LexeraRuntime : null;

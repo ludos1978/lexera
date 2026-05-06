@@ -21,7 +21,6 @@
     '.mgmt-panel-header',
     '.log-panel-header-main',
     '.log-panel-header',
-    '.workspace-shell-toolbar',
     '.ws-view-header',
     'body > header',
     'body > .header',

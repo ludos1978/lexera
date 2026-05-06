@@ -58,54 +58,6 @@
   position: relative;
 }
 
-.workspace-shell-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--workspace-row-gap);
-  min-height: 0;
-  padding: 0;
-  background: var(--surface-header-bg, var(--bg-secondary));
-}
-
-.workspace-shell-toolbar.is-empty {
-  display: none;
-}
-
-.workspace-shell-toolbar-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  height: 100%;
-  border-right: 1px solid var(--border-subtle);
-  font-size: 11px;
-}
-.workspace-shell-toolbar-item:last-child {
-  border-right: 0;
-}
-.workspace-shell-toolbar-item-title {
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.workspace-shell-toolbar-title {
-  min-width: 0;
-  margin-right: auto;
-  font-size: inherit;
-
-  color: inherit;
-}
-
-.workspace-shell-toolbar-badge {
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  background: var(--bg-primary);
-  color: inherit;
-  font-size: inherit;
-
-}
-
 .workspace-shell-dock {
   position: relative;
   z-index: 30;
@@ -1571,17 +1523,6 @@ body.workspace-shell-mode .workspace-shell-panel-content > .shell-settings-panel
 
 body.workspace-shell-mode .workspace-shell-panel-window-integrated > .workspace-shell-panel-content {
   border-top: 0;
-}
-
-@media (max-width: 960px) {
-  .workspace-shell-toolbar {
-    flex-wrap: wrap;
-  }
-
-  .workspace-shell-toolbar-title {
-    width: 100%;
-    margin-right: 0;
-  }
 }
 
 /* ── Compact panel modes ── */

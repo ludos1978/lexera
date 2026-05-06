@@ -293,7 +293,6 @@
     deferredBoardLoadTimer: 0,
     hooks: {},
     rootEl: null,
-    toolbarEl: null,
     bodyEl: null,
     mainRowEl: null,
     leftDockEl: null,
@@ -1590,7 +1589,6 @@
       state.panelVisibility[normalized] = true;
       state.activePanelId = normalized;
       found.leaf.activeTabId = found.tab.id;
-      renderToolbar();
       renderPanelDocks();
       layoutPersistence.persist();
       return true;
@@ -3425,47 +3423,6 @@
     });
   }
 
-  function renderToolbar() {
-    if (!state.toolbarEl) return;
-    
-    var integratedPanelIds = [];
-    var panelIds = Object.keys(state.panelInstances);
-    for (var i = 0; i < panelIds.length; i++) {
-      var pid = panelIds[i];
-      if (state.panelVisibility[pid] && isPanelHeaderIntegrated(pid)) {
-        integratedPanelIds.push(pid);
-      }
-    }
-
-    if (integratedPanelIds.length === 0) {
-      state.toolbarEl.innerHTML = '';
-      state.toolbarEl.classList.add('is-empty');
-      return;
-    }
-
-    state.toolbarEl.innerHTML = '';
-    state.toolbarEl.classList.remove('is-empty');
-
-    for (var j = 0; j < integratedPanelIds.length; j++) {
-      var panelId = integratedPanelIds[j];
-      var kind = getPanelKind(panelId);
-      
-      var itemEl = document.createElement('div');
-      itemEl.className = 'workspace-shell-toolbar-item';
-      itemEl.setAttribute('data-ws-panel-id', panelId);
-      
-      var titleSpan = document.createElement('span');
-      titleSpan.className = 'workspace-shell-toolbar-item-title';
-      titleSpan.textContent = getPanelTitle(panelId);
-      itemEl.appendChild(titleSpan);
-
-      if (kind === 'logs') {
-        itemEl.appendChild(buildLogStatusBadgesEl());
-      }
-      
-      state.toolbarEl.appendChild(itemEl);
-    }
-  }
 
   function renderTabset(node, parentEl) {
     var tabsetEl = document.createElement('div');
@@ -3799,7 +3756,6 @@
     ensureActiveLeaf();
     syncIntegratedPanelVisibility();
     ensurePanelDockActives();
-    renderToolbar();
     if (isPanelOnlyWindow()) {
       renderPanelOnly(state.panelOnlyId || getPrimaryPanelId(state.panelOnlyKind), state.dockEl);
       state.lastStructureSignature = 'panel-only:' + (state.panelOnlyId || state.panelOnlyKind);
@@ -3839,6 +3795,7 @@
       }
     }
     renderPanelDocks();
+    cleanupDuplicatePlaceholders();
     scheduleDeferredBoardFrameLoads();
     // Recalculate tab overflow after DOM updates
     requestAnimationFrame(function () {
@@ -3913,6 +3870,105 @@
     for (var ci = 0; ci < cachedIds.length; ci++) {
       if (!keepSet[cachedIds[ci]]) removeFrame(cachedIds[ci]);
     }
+  }
+
+  // End-of-render DOM sweep: removes any duplicate multiview placeholder
+  // sharing the same tab.id, and any whose tab.id is no longer in any
+  // tree. The lifecycle reconciler + reapOrphanFrames cover the
+  // tab→frame→webview chain by id; this sweep covers the residual
+  // DOM-only case where two elements claim the same tab.id (e.g. a
+  // stale node left attached after a partial render path) before the
+  // user sees them as duplicate webviews painted side-by-side.
+  function cleanupDuplicatePlaceholders() {
+    if (!state.rootEl) return;
+    if (state.dragTabId) return;
+    var collect = (typeof window !== 'undefined' &&
+      window.LexeraLayoutTree &&
+      typeof window.LexeraLayoutTree.collectAllTabIds === 'function')
+      ? window.LexeraLayoutTree.collectAllTabIds : null;
+    var keepSet = null;
+    if (collect) {
+      keepSet = Object.create(null);
+      var trees = [
+        state.dockTree,
+        state.sideDocks && state.sideDocks.left,
+        state.sideDocks && state.sideDocks.right,
+        state.sideDocks && state.sideDocks.bottom
+      ];
+      for (var ti = 0; ti < trees.length; ti++) {
+        var ids = trees[ti] ? collect(trees[ti]) : [];
+        for (var ii = 0; ii < ids.length; ii++) keepSet[ids[ii]] = true;
+      }
+    }
+    var nodes = state.rootEl.querySelectorAll('[data-multiview="1"][data-tab-id]');
+    var seen = Object.create(null);
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var tabId = el.getAttribute('data-tab-id');
+      if (!tabId) continue;
+      if (keepSet && !keepSet[tabId]) {
+        if (state.frameCache[tabId]) removeFrame(tabId);
+        else if (el.parentNode) el.parentNode.removeChild(el);
+        continue;
+      }
+      if (!seen[tabId]) { seen[tabId] = el; continue; }
+      var canonical = state.frameCache[tabId];
+      var prev = seen[tabId];
+      if (canonical === el && canonical !== prev) {
+        if (prev.parentNode) prev.parentNode.removeChild(prev);
+        seen[tabId] = el;
+      } else {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }
+    }
+  }
+
+  // Boot-time orphan reaper. After mount + restore, ask Rust for every
+  // child webview registered against THIS top-level window and destroy
+  // any whose label doesn't correspond to a tab the current trees still
+  // reference. Catches the page-reload case: Tauri keeps child webviews
+  // alive across a JS-context reload, but the new shell starts with a
+  // fresh `multiviewSpawnedTabs` registry and a fresh bootId, so the
+  // old children are invisible to the in-process lifecycle paths.
+  // Ignored if the IPC isn't available (older Rust binary, web preview).
+  function reapWindowMultiviewOrphans() {
+    if (!window.LexeraMultiview ||
+        typeof window.LexeraMultiview.listWebviews !== 'function' ||
+        typeof window.LexeraMultiview.destroy !== 'function') return;
+    var collect = (typeof window !== 'undefined' &&
+      window.LexeraLayoutTree &&
+      typeof window.LexeraLayoutTree.collectAllTabIds === 'function')
+      ? window.LexeraLayoutTree.collectAllTabIds : null;
+    if (!collect) return;
+    var expectedLabels = Object.create(null);
+    var trees = [
+      state.dockTree,
+      state.sideDocks && state.sideDocks.left,
+      state.sideDocks && state.sideDocks.right,
+      state.sideDocks && state.sideDocks.bottom
+    ];
+    for (var ti = 0; ti < trees.length; ti++) {
+      var ids = trees[ti] ? collect(trees[ti]) : [];
+      for (var i = 0; i < ids.length; i++) {
+        var found = findTabInAllTrees(ids[i]);
+        if (found && found.tab) expectedLabels[multiview.labelForTab(found.tab)] = true;
+      }
+    }
+    window.LexeraMultiview.listWebviews().then(function (list) {
+      if (!Array.isArray(list)) return;
+      for (var li = 0; li < list.length; li++) {
+        var meta = list[li];
+        var label = meta && meta.label ? String(meta.label) : '';
+        if (!label) continue;
+        if (label.indexOf('board-tab-') !== 0 &&
+            label.indexOf('panel-tab-') !== 0) continue;
+        if (expectedLabels[label]) continue;
+        try { window.LexeraMultiview.destroy(label); } catch (_) {}
+        if (typeof window.lexeraLog === 'function') {
+          window.lexeraLog('info', '[ws-shell] reaped orphan multiview: ' + label);
+        }
+      }
+    }).catch(function () {});
   }
 
   function auditViewLifecycle() {
@@ -4463,10 +4519,6 @@
     state.rootEl = document.createElement('div');
     state.rootEl.className = 'workspace-shell';
 
-    state.toolbarEl = document.createElement('div');
-    state.toolbarEl.className = 'workspace-shell-toolbar';
-    state.rootEl.appendChild(state.toolbarEl);
-
     state.bodyEl = document.createElement('div');
     state.bodyEl.className = 'workspace-shell-body';
 
@@ -4579,7 +4631,6 @@
       clearPanelDropTargets: clearPanelDropTargets,
       setPanelDropTarget: setPanelDropTarget,
       isPointOutsideWorkspaceBounds: isPointOutsideWorkspaceBounds,
-      renderToolbar: renderToolbar,
       notifyActiveBoardChanged: notifyActiveBoardChanged,
       persist: layoutPersistence.persist
     });
@@ -4589,6 +4640,7 @@
     ensurePanelElements();
     applyShellBodyClasses();
     render();
+    reapWindowMultiviewOrphans();
     startPeriodicViewAudit();
     return true;
   }
