@@ -1928,26 +1928,29 @@
   }
 
   function extractTab(tabId) {
+    // Phase 3.2 [8/N]: route the splice through
+    // `layoutTree.extractTabAtIndex`, which encodes the
+    // "fall through to left neighbour" activeTabId rule that
+    // `removeTabFromLeaf`'s "fall through to first tab" rule does
+    // not satisfy. After this slice, workspaceShell.js has zero
+    // direct `.tabs.splice(` sites — `state.dockTree =` /
+    // `state.sideDocks[…] =` assignments are the remaining 3.2
+    // category.
     var ids = allTreeIds();
     for (var t = 0; t < ids.length; t++) {
       var root = getTreeRoot(ids[t]);
       if (!root) continue;
       var found = findTab(root, tabId);
       if (!found) continue;
-      var tab = found.tab;
       var leaf = found.leaf;
       var sourceLeafId = leaf.id;
-      leaf.tabs.splice(found.index, 1);
+      var removed = layoutTree.extractTabAtIndex(leaf, found.index);
+      if (!removed) continue;
       traceLeakSite('extractTab', 'tabId=' + tabId + ' tree=' + ids[t] +
         ' sourceLeafId=' + sourceLeafId);
-      if (leaf.activeTabId === tabId) {
-        leaf.activeTabId = leaf.tabs.length > 0
-          ? leaf.tabs[Math.max(0, found.index - 1)].id
-          : '';
-      }
       var newRoot = withNormalizedLeaves(root, ids[t] === 'center');
       setTreeRoot(ids[t], newRoot || (ids[t] === 'center' ? createTabsetNode([]) : null));
-      return { tab: tab, sourceLeafId: sourceLeafId, treeId: ids[t] };
+      return { tab: removed, sourceLeafId: sourceLeafId, treeId: ids[t] };
     }
     return null;
   }

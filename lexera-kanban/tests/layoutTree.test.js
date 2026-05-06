@@ -547,6 +547,50 @@ describe('LexeraLayoutTree.removeTabFromLeaf', () => {
   });
 });
 
+describe('LexeraLayoutTree.extractTabAtIndex', () => {
+  it('removes the tab at index and returns it', () => {
+    const leaf = tabsetNode('A', [{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+    const removed = layoutTree.extractTabAtIndex(leaf, 1);
+    expect(removed.id).toBe('b');
+    expect(leaf.tabs.map((t) => t.id)).toEqual(['a', 'c']);
+  });
+
+  it('falls through to LEFT NEIGHBOUR when extracting the active tab', () => {
+    // Distinct from removeTabFromLeaf, which falls through to tabs[0].
+    const leaf = tabsetNode('A', [{ id: 'a' }, { id: 'b' }, { id: 'c' }], 'c');
+    layoutTree.extractTabAtIndex(leaf, 2);
+    expect(leaf.activeTabId).toBe('b');
+  });
+
+  it('falls through to index 0 when extracting the first (active) tab', () => {
+    const leaf = tabsetNode('A', [{ id: 'a' }, { id: 'b' }], 'a');
+    layoutTree.extractTabAtIndex(leaf, 0);
+    // After splicing index 0, tabs[max(0, -1)] = tabs[0] = 'b'.
+    expect(leaf.activeTabId).toBe('b');
+  });
+
+  it('clears activeTabId when the leaf becomes empty', () => {
+    const leaf = tabsetNode('A', [{ id: 'only' }], 'only');
+    layoutTree.extractTabAtIndex(leaf, 0);
+    expect(leaf.tabs).toEqual([]);
+    expect(leaf.activeTabId).toBe('');
+  });
+
+  it('does not touch activeTabId when extracting a non-active tab', () => {
+    const leaf = tabsetNode('A', [{ id: 'a' }, { id: 'b' }, { id: 'c' }], 'a');
+    layoutTree.extractTabAtIndex(leaf, 2);
+    expect(leaf.activeTabId).toBe('a');
+  });
+
+  it('returns null on out-of-range / invalid inputs', () => {
+    expect(layoutTree.extractTabAtIndex(null, 0)).toBe(null);
+    expect(layoutTree.extractTabAtIndex({ type: 'split' }, 0)).toBe(null);
+    expect(layoutTree.extractTabAtIndex(tabsetNode('A', [{ id: 'a' }]), -1)).toBe(null);
+    expect(layoutTree.extractTabAtIndex(tabsetNode('A', [{ id: 'a' }]), 5)).toBe(null);
+    expect(layoutTree.extractTabAtIndex(tabsetNode('A', [{ id: 'a' }]), Number.NaN)).toBe(null);
+  });
+});
+
 describe('LexeraLayoutTree.insertTabIntoLeaf', () => {
   it('appends to an empty leaf and seeds activeTabId', () => {
     const leaf = tabsetNode('A', [], '');

@@ -155,6 +155,32 @@
     return removed;
   }
 
+  // Pull a tab out of a leaf at a known index. Companion to
+  // `removeTabFromLeaf` — same primitive shape but with the
+  // "extract" activeTabId convention: when the extracted tab was
+  // active, fall through to the LEFT NEIGHBOUR (or '' if the leaf
+  // becomes empty). That convention dates back to the legacy
+  // `extractTab` site in workspaceShell.js — pulling a tab out of
+  // a tabset feels like "drag-extract", not "delete and snap to
+  // front", so the user's eye is left looking at the previous tab.
+  // Returns the removed tab object so callers can use its boardId
+  // / panelId / tab id for downstream wiring.
+  function extractTabAtIndex(leaf, index) {
+    if (!leaf || leaf.type !== 'tabs' || !Array.isArray(leaf.tabs)) return null;
+    if (typeof index !== 'number' || !isFinite(index)) return null;
+    var idx = index | 0;
+    if (idx < 0 || idx >= leaf.tabs.length) return null;
+    var removedArr = leaf.tabs.splice(idx, 1);
+    if (removedArr.length === 0) return null;
+    var removed = removedArr[0];
+    if (removed && removed.id && leaf.activeTabId === removed.id) {
+      leaf.activeTabId = leaf.tabs.length > 0
+        ? leaf.tabs[Math.max(0, idx - 1)].id
+        : '';
+    }
+    return removed;
+  }
+
   function insertTabIntoLeaf(leaf, tab, index) {
     if (!leaf || leaf.type !== 'tabs' || !tab) return -1;
     if (!Array.isArray(leaf.tabs)) leaf.tabs = [];
@@ -389,6 +415,7 @@
     collectAllTabIds: collectAllTabIds,
     removeTabById: removeTabById,
     removeTabFromLeaf: removeTabFromLeaf,
+    extractTabAtIndex: extractTabAtIndex,
     insertTabIntoLeaf: insertTabIntoLeaf,
     moveTab: moveTab,
     replaceTreeRoot: replaceTreeRoot,

@@ -75,6 +75,50 @@ describe('workspaceShell pruneMissingBoards — Phase 3.2 wrapper migration', ()
   });
 });
 
+describe('workspaceShell extractTab — Phase 3.2 [8/N] wrapper migration', () => {
+  const src = readFileSync(shellPath, 'utf8');
+  const body = extractFunctionBody(src, 'extractTab');
+
+  it('the function exists', () => {
+    expect(body).toBeTruthy();
+  });
+
+  it('routes the splice through layoutTree.extractTabAtIndex', () => {
+    expect(body).toMatch(/layoutTree\.extractTabAtIndex\(/);
+  });
+
+  it('does not splice tab arrays directly', () => {
+    const stripped = body
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:\\])\/\/[^\n]*/g, '$1');
+    expect(stripped).not.toMatch(/\.tabs\.splice\(/);
+  });
+
+  it('still emits the traceLeakSite diagnostic for audit-mode parity', () => {
+    expect(body).toMatch(/traceLeakSite\(/);
+  });
+});
+
+describe('workspaceShell.js — Phase 3.2 splice-site closure', () => {
+  const src = readFileSync(shellPath, 'utf8');
+
+  it('has zero direct `.tabs.splice(` sites (all migrated to layoutTree wrappers)', () => {
+    // After [5/N]…[8/N], every splice goes through one of:
+    //   - removeTabById (single-match tree-wide)
+    //   - removeTabFromLeaf (per-leaf, all-matches, "first tab" active fix-up)
+    //   - extractTabAtIndex (per-leaf, by index, "left neighbour" active fix-up)
+    // A regression that puts a raw splice back here should fail this
+    // line plus the existing layoutTreeMutationContract.test.js
+    // (which still allowlists workspaceShell.js for the in-flight 3.2
+    // migration; this tightens the bar locally).
+    const stripped = src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:\\])\/\/[^\n]*/g, '$1');
+    const hits = (stripped.match(/\.tabs\.splice\(/g) || []).length;
+    expect(hits).toBe(0);
+  });
+});
+
 describe('workspaceShell removePanelFromDocks — Phase 3.2 [7/N] wrapper migration', () => {
   const src = readFileSync(shellPath, 'utf8');
   const body = extractFunctionBody(src, 'removePanelFromDocks');
