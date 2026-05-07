@@ -59,6 +59,28 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(pdfPluginJs).toMatch(/pdfjsLib\.getDocument/);
   });
 
+  it('pdf.js plugin pre-fetches bytes via fetch() and passes them as `data:` (not `url:`) to pdfjsLib.getDocument', () => {
+    // Background: PDF.js's `getDocument({ url })` path uses HTTP Range
+    // requests against the URL. The custom `lexera-asset://` Tauri
+    // scheme returns status 0 against that probe — user saw
+    // "Failed to load PDF: Unexpected server response (0)".
+    //
+    // The fix routes through plain `fetch()` (which the asset protocol
+    // does handle) → `arrayBuffer()` → `getDocument({ data, disableRange,
+    // disableStream })`. A future regression that resurrects the URL
+    // path would silently break PDF preview against the asset protocol;
+    // this test catches it.
+    expect(pdfPluginJs).toMatch(/fetch\(\s*url\b/);
+    expect(pdfPluginJs).toMatch(/arrayBuffer\(\)/);
+    expect(pdfPluginJs).toMatch(/getDocument\(\s*\{[\s\S]{0,200}\bdata\s*:/);
+    expect(pdfPluginJs).toMatch(/disableRange\s*:\s*true/);
+    expect(pdfPluginJs).toMatch(/disableStream\s*:\s*true/);
+    // Belt and braces: the URL form must NOT come back. Catches a
+    // patch that adds `getDocument({ url: url })` next to (or instead
+    // of) the data form.
+    expect(pdfPluginJs).not.toMatch(/getDocument\(\s*\{\s*url\s*:/);
+  });
+
   it('pdf.js plugin exposes window.LexeraPdfViewer with the three valid modes', () => {
     expect(pdfPluginJs).toMatch(/window\.LexeraPdfViewer/);
     // The mode keys are part of the public API surface used by
