@@ -2989,7 +2989,7 @@
       e.stopPropagation();
 
       // Close button within a menu item
-      var closeEl = e.target.closest('.ws-tab-overflow-menu-item-close');
+      var closeEl = /** @type {Element} */ (e.target).closest('.ws-tab-overflow-menu-item-close');
       if (closeEl) {
         var ca = closeEl.getAttribute('data-ws-action');
         if (ca === 'close-tab') {
@@ -3006,7 +3006,7 @@
       }
 
       // Menu item click (activate tab/panel)
-      var itemEl = e.target.closest('.ws-tab-overflow-menu-item');
+      var itemEl = /** @type {Element} */ (e.target).closest('.ws-tab-overflow-menu-item');
       if (itemEl) {
         var ia = itemEl.getAttribute('data-ws-action');
         var ip = itemEl.getAttribute('data-ws-panel-id');

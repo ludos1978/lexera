@@ -17,9 +17,14 @@
 #                          for ongoing multiview refactor work.
 #    --check               cargo check on lexera-kanban/src-tauri (Rust
 #                          compiles cleanly; no tests executed).
-#    --quick               Shorthand for --check + --unit-multiview.
-#                          The fastest end-to-end "is everything OK after
-#                          a multiview edit?" check.
+#    --typedefs            tsc --noEmit on the JSDoc-annotated workspace
+#                          files (Phase 6.1). Fails closed on typedef
+#                          mismatches without running the full test
+#                          suite.
+#    --quick               Shorthand for --check + --typedefs +
+#                          --unit-multiview. The fastest end-to-end
+#                          "is everything OK after a multiview edit?"
+#                          check.
 #
 #  Integration-mode flags (only applicable in default mode):
 #    --delay=5000          Override boot delay (ms)
@@ -79,6 +84,7 @@ for arg in "$@"; do
     --unit) MODE="unit"; COLLECTING_UNIT_PATTERNS=1 ;;
     --unit-multiview) MODE="unit-multiview" ;;
     --check) MODE="check" ;;
+    --typedefs) MODE="typedefs" ;;
     --quick) MODE="quick" ;;
     --kill) KILL_ONLY=1 ;;
     --no-capture) START_CAPTURE=0 ;;
@@ -133,9 +139,39 @@ run_unit() {
   return ${PIPESTATUS[0]}
 }
 
+# Typedef gate — `tsc --noEmit` against the narrow tsconfig that
+# only checks the JSDoc-annotated workspace files (Phase 6.1).
+# Catches typedef mismatches inside annotated files; whole-codebase
+# type-checking is deferred until ESM migration lands.
+run_typedefs() {
+  local tsc="$SCRIPT_DIR/node_modules/.bin/tsc"
+  local config="$KANBAN_DIR/tsconfig.typedef-check.json"
+  if [[ ! -x "$tsc" ]]; then
+    echo "[typedefs] tsc binary not found at $tsc — run 'npm install' at repo root" >&2
+    return 1
+  fi
+  if [[ ! -f "$config" ]]; then
+    echo "[typedefs] tsconfig not found at $config" >&2
+    return 1
+  fi
+  echo "[typedefs] $tsc -p $config"
+  (cd "$KANBAN_DIR" && "$tsc" -p "$config" 2>&1 | sed 's/^/[typedefs] /')
+  local rc=${PIPESTATUS[0]}
+  if [[ "$rc" != "0" ]]; then
+    echo "[typedefs] FAILED (tsc returned $rc)" >&2
+    return "$rc"
+  fi
+  echo "[typedefs] OK"
+  return 0
+}
+
 case "$MODE" in
   check)
     run_check
+    exit $?
+    ;;
+  typedefs)
+    run_typedefs
     exit $?
     ;;
   unit)
@@ -148,6 +184,7 @@ case "$MODE" in
     ;;
   quick)
     run_check || exit $?
+    run_typedefs || exit $?
     run_unit "${MULTIVIEW_TEST_FILES[@]}"
     exit $?
     ;;
