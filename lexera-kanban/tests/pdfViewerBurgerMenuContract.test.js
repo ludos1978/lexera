@@ -186,6 +186,24 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(pdfPluginJs).toMatch(/VALID_MODES\[\s*perEmbedView\s*\]\s*\?/);
   });
 
+  it('modal preview synthesizes data-pdf-view from the source card so {view=…} carries through', () => {
+    // Modal preview builds a fresh `.embed-container` from
+    // (boardId, filePath) — without explicit propagation it would
+    // lose the source's `{view=…}` and fall back to the global
+    // default. The fix queries the live DOM for the source card
+    // embed (`.embed-container[data-file-path="…"][data-pdf-view]`)
+    // and forwards its attribute. Best-effort: if the source isn't
+    // in the same webview the lookup returns null and the modal
+    // falls through to the default. Pin the lookup wiring so a
+    // future refactor can't quietly drop it.
+    expect(embedMenuJs).toMatch(/\.embed-container\[data-file-path/);
+    expect(embedMenuJs).toMatch(/\[data-pdf-view\]/);
+    expect(embedMenuJs).toMatch(/sourceEmbed\.getAttribute\(\s*['"]data-pdf-view['"]\s*\)/);
+    // The synthesized modal `.embed-container` line must include the
+    // optional `pdfViewAttr` so the propagated value lands in the DOM.
+    expect(embedMenuJs).toMatch(/embed-container-modal[\s\S]{0,400}pdfViewAttr/);
+  });
+
   it('embedMenu.js does NOT wire pdf-view-* into the right-click contextmenu path', () => {
     // The right-click handler builds menuItems literally inline; we
     // catch any future regression that adds pdf-view items there.

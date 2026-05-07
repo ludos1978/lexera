@@ -2743,11 +2743,33 @@ var LexeraEmbedMenu = (function () {
         var previewPageAttr = /^\d+$/.test(String(modalPage || ''))
           ? ' data-preview-page="' + escapeAttr(String(modalPage)) + '"'
           : '';
+        // For PDF previews: copy the source card embed's `data-pdf-view`
+        // (set by inlineRenderer from the markdown's `{view=…}`) onto
+        // the modal's synthesized container so the modal honours the
+        // per-embed mode instead of falling through to the global
+        // LexeraSettings default. Lookup is best-effort: if the source
+        // card lives in another webview the selector returns null and
+        // the modal falls back to the global default — same as before.
+        var pdfViewAttr = '';
+        if (previewKind === 'pdf' && filePath && typeof document !== 'undefined') {
+          try {
+            var sourceEmbed = document.querySelector(
+              '.embed-container[data-file-path="' +
+              String(filePath).replace(/"/g, '\\"') +
+              '"][data-pdf-view]'
+            );
+            if (sourceEmbed) {
+              var srcView = sourceEmbed.getAttribute('data-pdf-view') || '';
+              if (srcView) pdfViewAttr = ' data-pdf-view="' + escapeAttr(srcView) + '"';
+            }
+          } catch (_) { /* selector failure (e.g. quote-edge-case) — fall through */ }
+        }
         body.innerHTML = '<span class="embed-container embed-container-modal"' +
           ' data-file-path="' + escapeAttr(filePath) + '"' +
           ' data-board-id="' + escapeAttr(boardId) + '"' +
           ' data-media-type="' + escapeAttr(mediaCategory || '') + '"' +
           ' data-variant="modal"' +
+          pdfViewAttr +
           previewPageAttr +
           '></span>';
         var embed = body.querySelector('.embed-container');
