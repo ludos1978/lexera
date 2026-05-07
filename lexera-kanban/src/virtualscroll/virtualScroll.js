@@ -28,6 +28,18 @@
   var vsObserver = null;
 
   /**
+   * Queue of placeholder sentinels waiting to be swapped back in. Drained in
+   * rAF batches with a per-frame budget so a fast scroll past N hidden cards
+   * doesn't stall the main thread on N synchronous DOM mounts + markdown
+   * renders. A small cap is fine in practice — users perceive a 1-frame
+   * delay (≈16ms) before content paints, but never see scroll jank.
+   */
+  var vsSwapInQueue = [];
+  var vsSwapInQueued = new Set();
+  var vsSwapInRafId = 0;
+  var VS_SWAP_IN_BUDGET_PER_FRAME = 6;
+
+  /**
    * Generation counter incremented on each full activate() call.
    * Each measured column is stamped with the current generation so that
    * activate() can skip columns that have not changed since the last pass.
@@ -65,7 +77,75 @@
       vsObserver = null;
     }
     vsColumnStates.clear();
+    vsCancelSwapInQueue();
     vsGeneration++;
+  }
+
+  function vsCancelSwapInQueue() {
+    if (vsSwapInRafId) {
+      cancelAnimationFrame(vsSwapInRafId);
+      vsSwapInRafId = 0;
+    }
+    vsSwapInQueue.length = 0;
+    vsSwapInQueued.clear();
+  }
+
+  function vsScheduleSwapIn(sentinel) {
+    if (vsSwapInQueued.has(sentinel)) return;
+    vsSwapInQueued.add(sentinel);
+    vsSwapInQueue.push(sentinel);
+    if (vsSwapInRafId) return;
+    if (typeof requestAnimationFrame !== 'function') {
+      // Fallback for headless environments without rAF — drain
+      // synchronously so behaviour matches the pre-batching path.
+      vsProcessSwapInQueue();
+      return;
+    }
+    vsSwapInRafId = requestAnimationFrame(vsProcessSwapInQueue);
+  }
+
+  function vsProcessSwapInQueue() {
+    vsSwapInRafId = 0;
+    var ptrDrag = deps.getPtrDrag ? deps.getPtrDrag() : null;
+    var cardDrag = deps.getCardDrag ? deps.getCardDrag() : null;
+    if (ptrDrag || cardDrag) {
+      // Drag took over; vsMaterialiseAll handles full hydration. Drop
+      // the queue so a paused-scroll-then-drag transition doesn't fire
+      // stale swap-ins after the materialise pass.
+      vsSwapInQueue.length = 0;
+      vsSwapInQueued.clear();
+      return;
+    }
+    var budget = VS_SWAP_IN_BUDGET_PER_FRAME;
+    while (budget > 0 && vsSwapInQueue.length > 0) {
+      var sentinel = vsSwapInQueue.shift();
+      vsSwapInQueued.delete(sentinel);
+      // Sentinel may have been removed from DOM (column torn down or
+      // remeasureColumn discarded it) between schedule and process.
+      if (!sentinel.parentNode) continue;
+      vsSwapIn(sentinel);
+      budget--;
+    }
+    if (vsSwapInQueue.length > 0 && typeof requestAnimationFrame === 'function') {
+      vsSwapInRafId = requestAnimationFrame(vsProcessSwapInQueue);
+    }
+  }
+
+  /**
+   * Drain every pending swap-in synchronously. Used by vsMaterialiseAll
+   * (drag start) so pointer hit-testing sees every card mounted, with no
+   * partially-flushed batch lingering.
+   */
+  function vsDrainSwapInQueue() {
+    if (vsSwapInRafId) {
+      cancelAnimationFrame(vsSwapInRafId);
+      vsSwapInRafId = 0;
+    }
+    while (vsSwapInQueue.length > 0) {
+      var sentinel = vsSwapInQueue.shift();
+      vsSwapInQueued.delete(sentinel);
+      if (sentinel.parentNode) vsSwapIn(sentinel);
+    }
   }
 
   /**
@@ -82,6 +162,16 @@
         vsObserver.unobserve(info.cardEl);
       });
     }
+    // Drop any queued swap-ins for sentinels owned by this column —
+    // their parent is about to be replaced and the swap would target
+    // a stale DOM node.
+    state.sentinels.forEach(function (_info, sentinel) {
+      if (vsSwapInQueued.has(sentinel)) {
+        vsSwapInQueued.delete(sentinel);
+        var idx = vsSwapInQueue.indexOf(sentinel);
+        if (idx !== -1) vsSwapInQueue.splice(idx, 1);
+      }
+    });
     // Swap all virtualised cards back in so the DOM is clean
     state.sentinels.forEach(function (info, sentinel) {
       if (sentinel.parentNode && state.virtualised.has(info.cardEl)) {
@@ -302,7 +392,15 @@
       sentinelsToDelete.push(sentinel);
     });
     for (var j = 0; j < sentinelsToDelete.length; j++) {
-      state.sentinels.delete(sentinelsToDelete[j]);
+      var deletedSentinel = sentinelsToDelete[j];
+      state.sentinels.delete(deletedSentinel);
+      // Drop queued swap-ins for sentinels we just discarded so the rAF
+      // tick doesn't try to mount them into a stale parent.
+      if (vsSwapInQueued.has(deletedSentinel)) {
+        vsSwapInQueued.delete(deletedSentinel);
+        var qIdx = vsSwapInQueue.indexOf(deletedSentinel);
+        if (qIdx !== -1) vsSwapInQueue.splice(qIdx, 1);
+      }
     }
 
     // Update card count in case cards were added/removed
@@ -362,9 +460,11 @@
       var el = entry.target;
 
       if (el.classList.contains('vs-placeholder')) {
-        // A placeholder just became visible — swap the real card in
+        // A placeholder just became visible — queue a swap-in. Batched
+        // in rAF with a per-frame budget so a fast scroll past N hidden
+        // cards doesn't synchronously mount + render N cards in one tick.
         if (entry.isIntersecting) {
-          vsSwapIn(el);
+          vsScheduleSwapIn(el);
         }
       } else if (el.classList.contains('card')) {
         // A real card just left the viewport — swap it out
@@ -453,6 +553,9 @@
    * hit-testing works on every card.  Called from the drag start path.
    */
   function vsMaterialiseAll() {
+    // Drain any pending swap-ins synchronously so pointer hit-testing
+    // sees a fully consistent DOM — no half-flushed batch lingering.
+    vsDrainSwapInQueue();
     if (vsColumnStates.size === 0) return;
     vsColumnStates.forEach(function (state) {
       state.sentinels.forEach(function (info, sentinel) {
@@ -501,6 +604,13 @@
     teardownColumn: vsTeardownColumn,
     remeasureColumn: vsRemeasureColumn,
     materialiseAll: vsMaterialiseAll,
-    restoreAfterDrag: vsRestoreAfterDrag
+    restoreAfterDrag: vsRestoreAfterDrag,
+    // Test seams: the swap-in batching path needs deterministic
+    // inspection without booting the full board renderer.
+    _test_scheduleSwapIn: vsScheduleSwapIn,
+    _test_processSwapInQueue: vsProcessSwapInQueue,
+    _test_drainSwapInQueue: vsDrainSwapInQueue,
+    _test_swapInQueueLength: function () { return vsSwapInQueue.length; },
+    _test_swapInBudget: function () { return VS_SWAP_IN_BUDGET_PER_FRAME; }
   };
 }));
