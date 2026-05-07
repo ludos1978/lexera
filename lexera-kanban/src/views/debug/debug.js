@@ -108,7 +108,7 @@
   // Lives in the debug window (this file) for the UI; the actual
   // capture runs in the shell via Tauri events. The shell-side
   // listener captures + emits the result back here.
-  var _profileState = { running: false };
+  var _profileState = { running: false, lastPayload: null };
   function setProfileStatusUi(text, isRunning) {
     var el = document.querySelector('[data-debug-status="profile"]');
     if (el) {
@@ -131,6 +131,37 @@
     if (seconds > 60) seconds = 60;
     return Math.round(seconds * 1000);
   }
+  // Copy the most recent profile payload as JSON. Used to share a
+  // trace with someone (paste into a bug or chat) without screenshot
+  // gymnastics. Falls back to writing the JSON into the output pane
+  // when navigator.clipboard is unavailable (older WKWebView, or no
+  // user gesture context). The status badge surfaces the outcome so
+  // the user knows whether to find the payload in their clipboard or
+  // in the pane below.
+  function copyProfileAsJson() {
+    var out = document.querySelector('[data-debug-profile-output]');
+    var payload = _profileState.lastPayload;
+    if (!payload) {
+      setProfileStatusUi('nothing to copy — record first', false);
+      return;
+    }
+    var text;
+    try { text = JSON.stringify(payload, null, 2); }
+    catch (_) { text = String(payload); }
+    var clipboard = (typeof navigator !== 'undefined' && navigator.clipboard) || null;
+    if (clipboard && typeof clipboard.writeText === 'function') {
+      clipboard.writeText(text).then(function () {
+        setProfileStatusUi('copied to clipboard', false);
+      }, function () {
+        if (out) out.textContent = text;
+        setProfileStatusUi('clipboard refused — JSON shown below', false);
+      });
+      return;
+    }
+    if (out) out.textContent = text;
+    setProfileStatusUi('clipboard unavailable — JSON shown below', false);
+  }
+
   function startRenderProfile() {
     if (_profileState.running) return;
     _profileState.running = true;
@@ -176,6 +207,9 @@
     listen('debug-profile-render-response', function (event) {
       var payload = (event && event.payload) || {};
       _profileState.running = false;
+      _profileState.lastPayload = payload;
+      var copyBtn = document.querySelector('[data-debug-profile-copy]');
+      if (copyBtn) copyBtn.disabled = false;
       var entries = Array.isArray(payload.entries) ? payload.entries : [];
       var events = Array.isArray(payload.events) ? payload.events : [];
       var paints = Array.isArray(payload.paints) ? payload.paints : [];
@@ -261,6 +295,7 @@
       if (action === 'refresh-snapshots') return refreshSnapshots();
       if (action === 'open-frontend-tests') return openFrontendTests();
       if (action === 'profile-render') return startRenderProfile();
+      if (action === 'profile-copy-json') return copyProfileAsJson();
     });
   }
 
@@ -288,6 +323,7 @@
     _test_setOverlayStatusUi: setOverlayStatusUi,
     _test_startRenderProfile: startRenderProfile,
     _test_profileState: _profileState,
-    _test_readProfileDurationMs: readProfileDurationMs
+    _test_readProfileDurationMs: readProfileDurationMs,
+    _test_copyProfileAsJson: copyProfileAsJson
   };
 })();
