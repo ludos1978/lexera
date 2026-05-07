@@ -314,6 +314,54 @@
    *   `normalizePanelInstances(raw)`. New duplicates land here via
    *   `createPanelInstance(kind)`.
    */
+
+  /**
+   * Dock-tree node shapes used by `state.dockTree` and `state.sideDocks`.
+   * The tree is recursive: leaves carry an ordered list of tabs; splits
+   * carry exactly two children with a fractional ratio. `layoutTree.js`
+   * is the single owner of factory + mutation helpers; these typedefs
+   * mirror the shapes those helpers produce so consumers (render, drag,
+   * persistence) read the same vocabulary.
+   *
+   * @typedef {Object} DockTreeBoardTab
+   * @property {string} id - Stable tab id (`tab-<seq>-<rand>` from `nextId('tab')`).
+   * @property {'board'} kind - Discriminator.
+   * @property {string} boardId - The board this tab opens. Empty string
+   *   is allowed and indicates "no board pinned" (used briefly during
+   *   creation flows).
+   * @property {('canvas'|'kanban'|'default')} viewKind - Normalised view
+   *   kind from `layoutTree.normalizeViewKind`.
+   *
+   * @typedef {Object} DockTreePanelTab
+   * @property {string} id - Stable tab id (`tab-<seq>-<rand>`).
+   * @property {'panel'} kind - Discriminator.
+   * @property {string} panelId - Matches a key in `state.panelInstances`.
+   *
+   * @typedef {(DockTreeBoardTab|DockTreePanelTab)} DockTreeTab
+   *   The element type of `DockTreeLeaf.tabs`. Discriminated by `kind`.
+   *
+   * @typedef {Object} DockTreeLeaf
+   * @property {'tabs'} type - Discriminator.
+   * @property {string} id - Stable pane id (`pane-<seq>-<rand>`).
+   * @property {Array<DockTreeTab>} tabs - Ordered list of tabs in this pane.
+   * @property {string} activeTabId - Id of the currently rendered tab in
+   *   `tabs`. Empty string when the leaf is empty. Kept consistent by
+   *   `withNormalizedLeaves` and the `layoutTree.*Tab` mutators.
+   *
+   * @typedef {Object} DockTreeSplit
+   * @property {'split'} type - Discriminator.
+   * @property {string} id - Stable split id (`split-<seq>-<rand>`).
+   * @property {('horizontal'|'vertical')} axis - `horizontal` splits
+   *   stack first-above-second; `vertical` puts them side-by-side.
+   * @property {number} ratio - First-child fraction of the split, clamped
+   *   to `[0.18, 0.82]` by `createSplitNode`.
+   * @property {DockTreeNode} first - First child (top / left).
+   * @property {DockTreeNode} second - Second child (bottom / right).
+   *
+   * @typedef {(DockTreeLeaf|DockTreeSplit)} DockTreeNode
+   *   The recursive node type. `state.dockTree` and each
+   *   `state.sideDocks[dockId]` is a `DockTreeNode | null`.
+   */
   var state = {
     enabled: isEnabled(),
     mounted: false,
