@@ -236,8 +236,9 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     // The renderer must:
     //   - validate the value (only scrolled/overview/stacked are emitted)
     //   - serialize as `data-pdf-view="<value>"` on the embed container
-    // A typo or unknown value silently falls back to the global default
-    // — the data-attribute is never emitted in that case.
+    // A typo or unknown value silently falls back to scrolled (the
+    // implicit default) — the data-attribute is never emitted in that
+    // case.
     const inlineJs = readFileSync(
       resolve(__dirname, '..', 'src', 'render', 'inlineRenderer.js'),
       'utf8'
@@ -249,12 +250,12 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(inlineJs).toMatch(/data-pdf-view=/);
   });
 
-  it('pdf.js plugin honours data-pdf-view as the initial-mode override', () => {
+  it('pdf.js plugin honours data-pdf-view as the initial-mode override, falling back to DEFAULT_MODE (scrolled)', () => {
     // The plugin reads `container.getAttribute('data-pdf-view')` and
-    // prefers it over the global LexeraSettings.pdfViewMode default.
-    // Empty / invalid values fall through to readMode().
+    // uses it iff valid; empty / invalid values fall through to
+    // DEFAULT_MODE (scrolled). No LexeraSettings lookup.
     expect(pdfPluginJs).toMatch(/getAttribute\(\s*['"]data-pdf-view['"]\s*\)/);
-    expect(pdfPluginJs).toMatch(/VALID_MODES\[\s*perEmbedView\s*\]\s*\?/);
+    expect(pdfPluginJs).toMatch(/VALID_MODES\[\s*perEmbedView\s*\]\s*\?\s*perEmbedView\s*:\s*DEFAULT_MODE/);
   });
 
   it('modal preview synthesizes data-pdf-view from the source card so {view=…} carries through', () => {

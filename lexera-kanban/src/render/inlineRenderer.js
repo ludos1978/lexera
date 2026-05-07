@@ -281,11 +281,12 @@ var LexeraInlineRenderer = (function () {
         var previewPageAttr = /^\d+$/.test(String(previewPageValue || ''))
           ? ' data-preview-page="' + escapeAttr(String(Math.max(1, parseInt(previewPageValue, 10)))) + '"'
           : '';
-        // PDF view-mode override: `![](sample.pdf){view=stacked}` overrides
-        // the global LexeraSettings.pdfViewMode for this one embed. Only
-        // emit the attribute when the value is in the valid set, so a
-        // typo in the markdown silently falls back to the global default
-        // instead of poisoning the data-attribute pipeline.
+        // PDF view-mode pin: `![](sample.pdf){view=stacked}` opts the
+        // embed into overview / stacked mode. Absence of `view=` (or a
+        // typo) means scrolled — that's the implicit default; there is
+        // no global override. Only emit the data-attribute when the
+        // value is in the valid set, so a typo silently falls back to
+        // scrolled instead of poisoning the pipeline.
         var pdfViewValue = String(imageAttrs.values.view || '').toLowerCase();
         var pdfViewAttr = (pdfViewValue === 'scrolled' || pdfViewValue === 'overview' || pdfViewValue === 'stacked')
           ? ' data-pdf-view="' + escapeAttr(pdfViewValue) + '"'
