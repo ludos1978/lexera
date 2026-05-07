@@ -40,13 +40,17 @@
   <section class="debug-section">
     <h2>Render-perf profiler</h2>
     <p class="debug-section-help">
-      Capture a 5-second sample of long tasks in the active board /
-      shell webview. Surfaces every Long Task ≥50ms with its duration
-      so a stuttering board can be diagnosed without opening DevTools.
-      Uses <code>PerformanceObserver({ entryTypes: ['longtask'] })</code>.
+      Capture a sample of long tasks plus per-event timing, paint
+      events, and layout shifts in the shell webview — diagnoses a
+      stuttering board without opening DevTools. Default sample is
+      5 seconds; raise it for hunting intermittent stutters.
     </p>
+    <label class="debug-inline-field">
+      Duration (s)
+      <input type="number" data-debug-profile-duration min="1" max="60" step="1" value="5" />
+    </label>
     <button type="button" data-debug-action="profile-render" class="debug-btn debug-btn-primary">
-      Record 5s render trace
+      Record render trace
     </button>
     <span class="debug-status" data-debug-status="profile">idle</span>
     <pre data-debug-profile-output class="debug-snapshot-output">click Record to capture long tasks…</pre>

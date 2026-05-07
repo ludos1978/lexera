@@ -118,13 +118,29 @@
     var btn = document.querySelector('[data-debug-action="profile-render"]');
     if (btn) btn.disabled = !!isRunning;
   }
+  // Reads the duration input, clamps to 1..60 seconds, returns ms.
+  // Falls back to 5000 if the input is missing or unparseable so the
+  // button still works when index.html ships without the field
+  // (older debug-window builds).
+  function readProfileDurationMs() {
+    var input = document.querySelector('[data-debug-profile-duration]');
+    if (!input) return 5000;
+    var seconds = parseFloat(input.value);
+    if (!isFinite(seconds) || seconds <= 0) return 5000;
+    if (seconds < 1) seconds = 1;
+    if (seconds > 60) seconds = 60;
+    return Math.round(seconds * 1000);
+  }
   function startRenderProfile() {
     if (_profileState.running) return;
     _profileState.running = true;
-    setProfileStatusUi('recording (5s)…', true);
+    var durationMs = readProfileDurationMs();
+    var seconds = Math.round(durationMs / 1000);
+    setProfileStatusUi('recording (' + seconds + 's)…', true);
     var out = document.querySelector('[data-debug-profile-output]');
-    if (out) out.textContent = 'capturing long tasks for 5 seconds — go interact with the slow board…';
-    emit('debug-profile-render-request', { durationMs: 5000 }).catch(function (err) {
+    if (out) out.textContent = 'capturing for ' + seconds +
+      ' seconds — go interact with the slow board…';
+    emit('debug-profile-render-request', { durationMs: durationMs }).catch(function (err) {
       _profileState.running = false;
       setProfileStatusUi('emit failed', false);
       if (out) out.textContent = 'emit debug-profile-render-request failed: ' +
@@ -271,6 +287,7 @@
     _test_openFrontendTests: openFrontendTests,
     _test_setOverlayStatusUi: setOverlayStatusUi,
     _test_startRenderProfile: startRenderProfile,
-    _test_profileState: _profileState
+    _test_profileState: _profileState,
+    _test_readProfileDurationMs: readProfileDurationMs
   };
 })();

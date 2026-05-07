@@ -30,7 +30,7 @@ function createElement(tag) {
   };
 }
 
-function loadController({ listenSpy, emitSpy, statusEl, btn, snapshotEl } = {}) {
+function loadController({ listenSpy, emitSpy, statusEl, btn, snapshotEl, durationInput } = {}) {
   const listen = listenSpy || vi.fn(() => Promise.resolve(() => {}));
   const emit = emitSpy || vi.fn(() => Promise.resolve());
   const status = statusEl || createElement('span');
@@ -51,6 +51,7 @@ function loadController({ listenSpy, emitSpy, statusEl, btn, snapshotEl } = {}) 
       if (sel === '[data-debug-status="overlays"]') return status;
       if (sel === '[data-debug-action="toggle-overlays"]') return button;
       if (sel === '[data-debug-snapshot-output]') return snapshot;
+      if (sel === '[data-debug-profile-duration]') return durationInput || null;
       return null;
     }
   };
@@ -120,5 +121,41 @@ describe('debug-window controller (views/debug/debug.js)', () => {
     expect(call).toBeTruthy();
     expect(typeof call[1].durationMs).toBe('number');
     expect(call[1].durationMs).toBeGreaterThan(0);
+  });
+
+  it('startRenderProfile() reads the duration input (seconds) and converts to ms', () => {
+    const durationInput = { value: '15' };
+    const { window, emit } = loadController({ durationInput });
+    window.LexeraDebugWindow._test_startRenderProfile();
+    const call = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-request');
+    expect(call[1].durationMs).toBe(15000);
+  });
+
+  it('startRenderProfile() clamps the duration input to 1..60 seconds', () => {
+    const tooSmall = { value: '0.2' };
+    let res = loadController({ durationInput: tooSmall });
+    res.window.LexeraDebugWindow._test_startRenderProfile();
+    let call = res.emit.mock.calls.find((c) => c[0] === 'debug-profile-render-request');
+    expect(call[1].durationMs).toBe(1000);
+
+    const tooLarge = { value: '300' };
+    res = loadController({ durationInput: tooLarge });
+    res.window.LexeraDebugWindow._test_startRenderProfile();
+    call = res.emit.mock.calls.find((c) => c[0] === 'debug-profile-render-request');
+    expect(call[1].durationMs).toBe(60000);
+  });
+
+  it('startRenderProfile() falls back to 5000ms when the input is missing or NaN', () => {
+    // Missing input element (older debug-window build) — defaults to 5s.
+    let res = loadController({ durationInput: null });
+    res.window.LexeraDebugWindow._test_startRenderProfile();
+    let call = res.emit.mock.calls.find((c) => c[0] === 'debug-profile-render-request');
+    expect(call[1].durationMs).toBe(5000);
+
+    // Garbage value — also defaults to 5s rather than emitting NaN.
+    res = loadController({ durationInput: { value: 'abc' } });
+    res.window.LexeraDebugWindow._test_startRenderProfile();
+    call = res.emit.mock.calls.find((c) => c[0] === 'debug-profile-render-request');
+    expect(call[1].durationMs).toBe(5000);
   });
 });
