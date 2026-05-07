@@ -406,6 +406,51 @@
    *   show/hide/toggle sites and via `delete` when a panel instance
    *   is destroyed.
    */
+
+  /**
+   * DOM handle fields on `state`. Each is `HTMLElement | null` —
+   * populated by `mount()` after the shell DOM is built, cleared by
+   * `unmount()`. The render loop bails out when any required handle
+   * is null, so callers that read these fields can assume they are
+   * either fully populated or all-null.
+   *
+   * @typedef {Object} WorkspaceShellDomHandles
+   * @property {HTMLElement|null} rootEl - Top-level shell container
+   *   (the `.workspace-shell` element). Mount target supplied by
+   *   `mount(targetEl)` callers (the Tauri main webview body).
+   * @property {HTMLElement|null} bodyEl - The `.workspace-shell-body`
+   *   wrapper inside `rootEl`; hosts the dock grid + drag overlays.
+   * @property {HTMLElement|null} mainRowEl - The CSS-grid row that
+   *   lays out `[leftDock | dock | rightDock]` horizontally.
+   * @property {HTMLElement|null} leftDockEl - Left side-dock host
+   *   (`.workspace-shell-panel-dock[data-dock="left"]`).
+   * @property {HTMLElement|null} leftDividerEl - Drag handle between
+   *   `leftDockEl` and `dockEl` (resizes `state.dockSizes.left`).
+   * @property {HTMLElement|null} dockEl - Centre dock host
+   *   (`.workspace-shell-center-dock`); renders `state.dockTree`.
+   * @property {HTMLElement|null} rightDividerEl - Drag handle between
+   *   `dockEl` and `rightDockEl` (resizes `state.dockSizes.right`).
+   * @property {HTMLElement|null} rightDockEl - Right side-dock host
+   *   (`.workspace-shell-panel-dock[data-dock="right"]`).
+   * @property {HTMLElement|null} bottomDividerEl - Drag handle between
+   *   `mainRowEl` and `bottomDockEl` (resizes `state.dockSizes.bottom`).
+   * @property {HTMLElement|null} bottomDockEl - Bottom side-dock host
+   *   (`.workspace-shell-panel-dock[data-dock="bottom"]`).
+   * @property {HTMLElement|null} panelDropOverlayEl - Drop-zone
+   *   overlay shown during cross-dock panel drag; absolute-positioned
+   *   over the dock grid, toggled visible by drag enter/leave handlers.
+   *
+   * @typedef {Object<string, HTMLElement|null>} PanelElementMap
+   *   Per-panel-kind DOM host map carried by `state.panelElements`.
+   *   Keyed by normalised panel kind (the same keys as
+   *   `panelDefinitions.PANEL_DEFINITIONS`: `'hierarchy'`, `'dashboard'`,
+   *   `'logs'`, `'backendSettings'`, `'frontendSettings'`, `'renderApps'`,
+   *   `'files'`, `'frontendTests'`, `'weekCalendar'`, `'monthCalendar'`).
+   *   Values are the panel's DOM host element (built once by
+   *   `ensurePanelElements()` and cached on `state.panelElements`); a
+   *   missing kind resolves to `undefined` and `getPanelElement` returns
+   *   null in that case.
+   */
   var state = {
     enabled: isEnabled(),
     mounted: false,
