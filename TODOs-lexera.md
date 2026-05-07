@@ -14,6 +14,10 @@ To mark a task with input required add (input required) at the start of the task
 
 Generally do the most time consuming tasks first. If a task takes very long to complete, start it early to finish early, DO NOT DELAY LONG TASKS!
 
+## Test Status
+
+**Last run (2026-05-07):** ✓ 2554 passed | 2 skipped — `./run-lexera-tests.sh --unit` (207 test files, full vitest suite). Update this line after each `--unit` run.
+
 ## Open Tasks
 
 ### Multi-Window Structural Improvements
