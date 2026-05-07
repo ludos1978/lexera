@@ -592,51 +592,110 @@ function normalizeLogEntryFields(entry) {
   return entry;
 }
 
+// rAF-batched DOM/IPC/sync flush. The in-memory entry stores update
+// synchronously inside appendLogEntry so reads (getEntriesSnapshot,
+// mergeLogEntries) stay consistent; expensive side effects — DOM append +
+// scrollTop reflow, log_broadcast IPC, the three idempotent sync helpers
+// (syncLogCount, syncMirroredLogViews, updateFoldedLogStatusBadges) —
+// coalesce into one rAF callback so a noisy emitter pays the cost once
+// per frame instead of once per call.
+var _logFlushNew = [];
+var _logFlushRepeats = [];
+var _logFlushScheduled = false;
+
+function _scheduleLogFlush() {
+  if (_logFlushScheduled) return;
+  _logFlushScheduled = true;
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(_flushLogQueue);
+  } else if (typeof setTimeout === 'function') {
+    setTimeout(_flushLogQueue, 0);
+  } else {
+    _logFlushScheduled = false;
+    _flushLogQueue();
+  }
+}
+
+function _flushLogQueue() {
+  _logFlushScheduled = false;
+  var newItems = _logFlushNew;
+  var repeats = _logFlushRepeats;
+  _logFlushNew = [];
+  _logFlushRepeats = [];
+  if (!newItems.length && !repeats.length) return;
+
+  for (var r = 0; r < repeats.length; r++) {
+    updateLastLogEntryRepeat(repeats[r].source, repeats[r].lastEntry);
+  }
+
+  if (newItems.length) {
+    clearLogPanelLoading();
+    var panel = getLogContainer();
+    if (panel) {
+      var combinedMax = LOG_MAX * 2;
+      var excess = (panel.childNodes.length + newItems.length) - combinedMax;
+      while (excess > 0 && panel.firstChild) {
+        panel.removeChild(panel.firstChild);
+        excess--;
+      }
+      var frag = (typeof document !== 'undefined' && typeof document.createDocumentFragment === 'function')
+        ? document.createDocumentFragment()
+        : null;
+      if (frag) {
+        for (var i = 0; i < newItems.length; i++) {
+          frag.appendChild(renderLogEntry(newItems[i].source, newItems[i].entry));
+        }
+        panel.appendChild(frag);
+      } else {
+        for (var ii = 0; ii < newItems.length; ii++) {
+          panel.appendChild(renderLogEntry(newItems[ii].source, newItems[ii].entry));
+        }
+      }
+      panel.scrollTop = panel.scrollHeight;
+    }
+
+    var last = newItems[newItems.length - 1];
+    setStatusBarEntry(last.source, last.entry);
+
+    if (window.LexeraMultiview && typeof window.LexeraMultiview.invoke === 'function') {
+      for (var k = 0; k < newItems.length; k++) {
+        var item = newItems[k];
+        if (item.skipBroadcast) continue;
+        window.LexeraMultiview.invoke('log_broadcast', {
+          entry: {
+            level: item.entry.level || 'info',
+            source: item.source,
+            target: item.entry.target || item.source,
+            message: item.entry.message || '',
+            timestamp_ms: item.entry.timestamp_ms || Date.now()
+          }
+        }).catch(function () {});
+      }
+    }
+  }
+
+  syncLogCount();
+  syncMirroredLogViews();
+  updateFoldedLogStatusBadges();
+}
+
 function appendLogEntry(source, entry, skipBroadcast) {
   entry = normalizeLogEntryFields(entry);
   var entries = getLogEntries(source);
   var lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
 
-  // Track repeat count instead of silently dropping duplicates
   if (lastEntry && logEntryKey(lastEntry) === logEntryKey(entry)) {
     lastEntry._repeatCount = (lastEntry._repeatCount || 1) + 1;
-    updateLastLogEntryRepeat(source, lastEntry);
+    _logFlushRepeats.push({ source: source, lastEntry: lastEntry });
+    _scheduleLogFlush();
     return;
   }
-
-  clearLogPanelLoading();
 
   entries.push(entry);
   if (entries.length > LOG_MAX) entries.shift();
 
-  // Broadcast to other multiview sub-apps if this is a local log.
-  // Use log_broadcast which filters by subscribers so only log sub-apps are woken.
-  if (!skipBroadcast && window.LexeraMultiview && typeof window.LexeraMultiview.invoke === 'function') {
-    window.LexeraMultiview.invoke('log_broadcast', {
-      entry: {
-        level: entry.level || 'info',
-        source: source,
-        target: entry.target || source,
-        message: entry.message || '',
-        timestamp_ms: entry.timestamp_ms || Date.now()
-      }
-    }).catch(function () {});
-  }
-
-  setStatusBarEntry(source, entry);
-
-  var panel = getLogContainer();
-  if (panel) {
-    var combinedMax = LOG_MAX * 2;
-    while (panel.childNodes.length >= combinedMax) {
-      panel.removeChild(panel.firstChild);
-    }
-    panel.appendChild(renderLogEntry(source, entry));
-    panel.scrollTop = panel.scrollHeight;
-  }
-  syncLogCount();
-  syncMirroredLogViews();
-  updateFoldedLogStatusBadges();
+  _logFlushNew.push({ source: source, entry: entry, skipBroadcast: !!skipBroadcast });
+  _scheduleLogFlush();
 }
 
 function updateLastLogEntryRepeat(source, entry) {
@@ -664,6 +723,8 @@ function updateLastLogEntryRepeat(source, entry) {
 
 function replaceLogEntries(source, entries) {
   clearLogPanelLoading();
+  _logFlushNew = _logFlushNew.filter(function (item) { return item.source !== source; });
+  _logFlushRepeats = _logFlushRepeats.filter(function (item) { return item.source !== source; });
   var nextEntries = (entries || []).slice(-LOG_MAX).map(normalizeLogEntryFields);
   var target = getLogEntries(source);
   target.length = 0;
@@ -686,6 +747,8 @@ function rerenderUnifiedLogEntries() {
 }
 
 function clearActiveLogEntries() {
+  _logFlushNew = [];
+  _logFlushRepeats = [];
   frontendLogEntries.length = 0;
   backendLogEntries.length = 0;
   var panel = getLogContainer();
@@ -1483,7 +1546,9 @@ window.LexeraLoggingSystem = {
   traceSlowFrontendTask: traceSlowFrontendTask,
   withSlowFrontendTaskWarning: withSlowFrontendTaskWarning,
   getSlowTaskThresholdMs: function () { return SLOW_FRONTEND_TASK_THRESHOLD_MS; },
-  _test_appendBackendLog: lexeraBackendLog
+  _test_appendBackendLog: lexeraBackendLog,
+  _test_flushLogQueue: _flushLogQueue,
+  _test_isLogFlushScheduled: function () { return _logFlushScheduled; }
 };
 
 var foldedLogRuntime = typeof window !== 'undefined' ? window.LexeraRuntime : null;
