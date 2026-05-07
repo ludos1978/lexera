@@ -12,17 +12,28 @@
   // ═══════════════════════════════════════════════════════════════════════════
   // Virtual Scrolling for Large Board Columns
   // ═══════════════════════════════════════════════════════════════════════════
-  // For columns with many cards (>50), only renders cards near the viewport.
+  // For columns with many cards (>30), only renders cards near the viewport.
   // Off-screen cards are replaced with lightweight placeholder elements that
   // preserve the correct scroll height.  During drag-and-drop all cards are
   // materialised so hit-testing works correctly.  Edited cards are always kept
   // rendered regardless of visibility.
   // ═══════════════════════════════════════════════════════════════════════════
 
-  var VIRTUAL_SCROLL_CARD_THRESHOLD = 50;
+  var VIRTUAL_SCROLL_CARD_THRESHOLD = 30;
 
   /** Per-column state, keyed by the column-cards DOM element. */
   var vsColumnStates = new Map();
+
+  /** 
+   * Mapping from card or sentinel element to its owning column state.
+   * Replaces O(N) linear searches during intersection handling.
+   */
+  var vsElementToState = new WeakMap();
+
+  /**
+   * Mapping from card element to its current placeholder sentinel.
+   */
+  var vsCardToSentinel = new WeakMap();
 
   /** Single IntersectionObserver shared by all virtualised columns. */
   var vsObserver = null;
@@ -224,6 +235,11 @@
 
       state.sentinels.set(sentinel, { cardEl: card, height: height });
 
+      // Populate O(1) caches
+      vsElementToState.set(card, state);
+      vsElementToState.set(sentinel, state);
+      vsCardToSentinel.set(card, sentinel);
+
       // Start by observing every card AND its sentinel.  Cards that are
       // currently visible stay rendered; those off-screen will be swapped
       // out in the first intersection callback.
@@ -348,6 +364,11 @@
         var newHeight = card.offsetHeight;
         var newSentinel = vsCreatePlaceholder(card, newHeight);
         state.sentinels.set(newSentinel, { cardEl: card, height: newHeight });
+
+        vsElementToState.set(card, state);
+        vsElementToState.set(newSentinel, state);
+        vsCardToSentinel.set(card, newSentinel);
+
         if (vsObserver) vsObserver.observe(card);
         continue;
       }
@@ -364,6 +385,8 @@
         }
         state.virtualised.delete(oldInfo.cardEl);
         oldInfo.cardEl = card;
+        vsElementToState.set(card, state);
+        vsCardToSentinel.set(card, existingSentinel);
       }
 
       // Update the sentinel height to match the (possibly resized) card
@@ -479,8 +502,7 @@
    * Replace a sentinel/placeholder with its real card element.
    */
   function vsSwapIn(sentinel) {
-    // Find the state that owns this sentinel
-    var state = vsFindStateForSentinel(sentinel);
+    var state = vsFindStateForElement(sentinel);
     if (!state) return;
     var info = state.sentinels.get(sentinel);
     if (!info) return;
@@ -504,8 +526,7 @@
     var currentCardEditor = deps.getCurrentCardEditor ? deps.getCurrentCardEditor() : null;
     if (currentCardEditor && currentCardEditor.cardEl === card) return;
 
-    // Find the state and sentinel for this card
-    var state = vsFindStateForCard(card);
+    var state = vsFindStateForElement(card);
     if (!state) return;
     var sentinel = vsFindSentinelForCard(state, card);
     if (!sentinel) return;
@@ -522,30 +543,12 @@
     }
   }
 
-  function vsFindStateForSentinel(sentinel) {
-    var result = null;
-    vsColumnStates.forEach(function (state) {
-      if (state.sentinels.has(sentinel)) result = state;
-    });
-    return result;
-  }
-
-  function vsFindStateForCard(card) {
-    var result = null;
-    vsColumnStates.forEach(function (state) {
-      state.sentinels.forEach(function (info) {
-        if (info.cardEl === card) result = state;
-      });
-    });
-    return result;
+  function vsFindStateForElement(el) {
+    return vsElementToState.get(el) || null;
   }
 
   function vsFindSentinelForCard(state, card) {
-    var found = null;
-    state.sentinels.forEach(function (info, sentinel) {
-      if (info.cardEl === card) found = sentinel;
-    });
-    return found;
+    return vsCardToSentinel.get(card) || null;
   }
 
   /**

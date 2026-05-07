@@ -31,6 +31,7 @@ const sharedDir = resolve(repoRoot, 'lexera-shared');
 // want to know — otherwise the dev-mode watcher trigger comes back
 // silently for whatever new asset got added without test coverage.
 const SYNCED_ASSETS = [
+  'managementLogViewer.js',
   'management.js',
   'management.css',
   'themes.js',
@@ -102,7 +103,7 @@ describe('lexera-shared/scripts/sync-runtime-assets.mjs idempotency', () => {
     const t0 = Date.now();
     while (Date.now() - t0 < 25) { /* spin */ }
     const out = runSync();
-    expect(out).toMatch(/\(1 written, 5 unchanged\)/);
+    expect(out).toMatch(new RegExp('\\(1 written, ' + (SYNCED_ASSETS.length - 1) + ' unchanged\\)'));
     expect(statSync(targetPath).mtimeMs).not.toBe(before[target]);
     for (const asset of SYNCED_ASSETS.slice(1)) {
       expect(statSync(join(dest, asset)).mtimeMs).toBe(before[asset]);

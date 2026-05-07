@@ -6,6 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const sharedDir = resolve(__dirname, '..');
 const assets = [
+  'managementLogViewer.js',
   'management.js',
   'management.css',
   'themes.js',

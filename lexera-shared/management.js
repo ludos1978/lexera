@@ -42,66 +42,16 @@ var BOARD_SETTINGS_FIELDS = [
   { key: 'boardColorDark', label: 'Board Color (Dark)', placeholder: '#4c7abf', type: 'text' }
 ];
 
-// Log-viewer pure helpers — hoisted out of the ManagementUI IIFE so the
-// transform/format logic is independently testable and easy to extract
-// into its own module later. The IIFE references them via closure; no
-// state is captured here. Stays in this file for now to avoid touching
-// the sync-script asset list; any future move to `src/management/logViewer.js`
-// (TODO line 41) will only need to wrap these helpers + add a `<script>` tag.
-var LEXERA_MGMT_LOG_HELPERS = (function () {
-  'use strict';
-
-  /** Maximum log rows kept in the rendered DOM at once. Older entries are
-   *  trimmed to keep the viewer responsive on long-running boards. */
-  var MAX_RENDERED_LOG_ENTRIES = 500;
-
-  function normalizeLogEntry(entry) {
-    if (!entry) return null;
-    return {
-      timestampMs: Number(entry.timestampMs || entry.timestamp_ms || Date.now()),
-      level: String(entry.level || 'info').toLowerCase(),
-      target: String(entry.target || 'backend'),
-      message: String(entry.message || ''),
-    };
-  }
-
-  function logSourceForEntry() {
-    return 'backend';
-  }
-
-  function formatLogTimestamp(timestampMs) {
-    try {
-      return new Date(timestampMs).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      });
-    } catch (_) { /* intentional: invalid timestamp → empty string fallback */
-      return '';
-    }
-  }
-
-  /** Filter predicate. Takes the active filter mode as an argument so the
-   *  helper stays state-free. `'backend'` keeps backend-sourced entries,
-   *  `'errors'` keeps warn/error level entries, anything else passes through. */
-  function logMatchesFilter(filter, entry) {
-    if (filter === 'backend') return logSourceForEntry(entry) === 'backend';
-    if (filter === 'errors') return entry.level === 'warn' || entry.level === 'error';
-    return true;
-  }
-
-  return {
-    MAX_RENDERED_LOG_ENTRIES: MAX_RENDERED_LOG_ENTRIES,
-    normalizeLogEntry: normalizeLogEntry,
-    logSourceForEntry: logSourceForEntry,
-    formatLogTimestamp: formatLogTimestamp,
-    logMatchesFilter: logMatchesFilter,
-  };
-})();
-
-if (typeof window !== 'undefined') {
-  window.LexeraManagementLogHelpers = LEXERA_MGMT_LOG_HELPERS;
+// Log-viewer pure helpers live in `lexera-shared/managementLogViewer.js`.
+// That script must load BEFORE `management.js` in every host page so the
+// global is present when the IIFE below evaluates. Local rebind keeps
+// the existing call sites byte-identical.
+var LEXERA_MGMT_LOG_HELPERS = (typeof window !== 'undefined' && window.LexeraManagementLogHelpers)
+  || (typeof module !== 'undefined' && module.exports && module.exports.normalizeLogEntry
+        ? module.exports
+        : null);
+if (!LEXERA_MGMT_LOG_HELPERS) {
+  throw new Error('LexeraManagementLogHelpers global is required before management.js');
 }
 
 var ManagementUI = (function () {

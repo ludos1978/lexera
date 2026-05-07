@@ -1,8 +1,9 @@
-// Pins the log-viewer pure-helper surface that lives at module scope in
-// `lexera-shared/management.js` (LEXERA_MGMT_LOG_HELPERS / window.
-// LexeraManagementLogHelpers). Future extraction to a dedicated
-// `src/management/logViewer.js` module (TODO line 41) must preserve
-// these names, signatures, and behaviour or this test fails.
+// Pins the log-viewer pure-helper surface exposed by
+// `lexera-shared/managementLogViewer.js` as `window.LexeraManagementLogHelpers`.
+// `management.js` consumes this global at IIFE evaluation time and rebinds
+// to a local `LEXERA_MGMT_LOG_HELPERS` so future moves stay byte-identical
+// for ManagementUI's call sites. The names, signatures, and behaviour
+// pinned here must not drift.
 
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -10,22 +11,13 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const managementPath = resolve(__dirname, '..', '..', 'lexera-shared', 'management.js');
+const helperPath = resolve(__dirname, '..', '..', 'lexera-shared', 'managementLogViewer.js');
 
 function loadHelpers() {
-  const source = readFileSync(managementPath, 'utf-8');
-  // Cut at the `var ManagementUI = (function ()` boundary so we only
-  // execute the top-of-file prelude; the 2800-line IIFE body stays out
-  // of the sandbox.
-  const cutAt = source.indexOf('var ManagementUI = (function ()');
-  if (cutAt === -1) throw new Error('Could not find ManagementUI IIFE start');
-  const prelude = source.slice(0, cutAt);
+  const source = readFileSync(helperPath, 'utf-8');
   const sandbox = { window: {} };
   // eslint-disable-next-line no-new-func
-  const factory = new Function(
-    'window',
-    `${prelude}\n; return LEXERA_MGMT_LOG_HELPERS;`,
-  );
+  const factory = new Function('window', `${source}\n; return window.LexeraManagementLogHelpers;`);
   const helpers = factory(sandbox.window);
   return { helpers, win: sandbox.window };
 }
