@@ -141,6 +141,27 @@ describe('PDF preview — pdfjs-dist + burger-menu view modes', () => {
     expect(renderFn[0]).not.toMatch(/canvas\.style\.height\s*=/);
   });
 
+  it('overview mode CSS uses a small enough column min that narrow cards still pack 2+ columns', () => {
+    // User reported "one page in half the width — still no gallery"
+    // when the grid track minimum was 140 px: narrow cards (~250 px)
+    // collapsed to a single column with the canvas centred inside,
+    // visually identical to scrolled. Pin the small (100 px) min so a
+    // future tightening can't bring back the collapse.
+    const appCss = readFileSync(
+      resolve(__dirname, '..', 'src', 'app.css'),
+      'utf8'
+    );
+    expect(appCss).toMatch(
+      /\.pdf-viewer\.pdf-mode-overview[^{]*\{[\s\S]*?grid-template-columns:\s*repeat\(\s*auto-fill\s*,\s*minmax\(\s*100px/
+    );
+    // Canvas must fill its grid cell, otherwise a "stretch" cell
+    // with a fixed-width canvas inside reproduces the half-width
+    // appearance even when the grid HAS multiple columns.
+    expect(appCss).toMatch(
+      /\.pdf-viewer\.pdf-mode-overview\s+\.pdf-page-canvas[^{]*\{[\s\S]*?width:\s*100%/
+    );
+  });
+
   it('stacked mode CSS lets the host grow (height: auto) so all pages are visible without inner scroll', () => {
     // The host element is BOTH `.embed-preview-pdf` (fixed height,
     // overflow:auto inherited from the legacy iframe styling) AND
