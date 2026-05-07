@@ -2748,6 +2748,26 @@
       });
       state.frameCache[tab.id] = view;
     }
+    // No-multiview-IPC fallback — used by lexera-backend's management
+    // window, which loads workspaceShell.js for layout/dock UX but has
+    // no Tauri multiview Rust commands. Without this branch the
+    // placeholder would hang at "spawning…" forever. Detection: the
+    // IPC client global must exist AND expose a callable `.spawn`;
+    // a partial client is treated the same as a missing one.
+    var multiviewAvailable = typeof window !== 'undefined' &&
+      window.LexeraMultiview &&
+      typeof window.LexeraMultiview.spawn === 'function';
+    if (!multiviewAvailable) {
+      var panelEl = getPanelElement(panelId);
+      if (panelEl && panelEl.parentNode !== view) {
+        view.innerHTML = '';
+        view.appendChild(panelEl);
+      }
+      if (view.classList && typeof view.classList.add === 'function') {
+        view.classList.add('is-loaded');
+      }
+      return view;
+    }
     requestAnimationFrame(function () {
       if (view.parentNode) {
         multiview.ensure(tab, view, panelSrc);
@@ -4893,6 +4913,9 @@
     _test_forceFullRebuild: function () {
       state.lastStructureSignature = '';
       state.lastLeafTopology = '';
+    },
+    _test_buildMultiviewPanelPlaceholder: function (tab, panelId, panelKind) {
+      return buildMultiviewPanelPlaceholder(tab, panelId, panelKind);
     }
   };
 })();

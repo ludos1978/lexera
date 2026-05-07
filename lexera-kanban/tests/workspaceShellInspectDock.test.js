@@ -128,6 +128,7 @@ function createShellHarness() {
       'workspace/treeRegistry.js',
       'workspace/layoutPersistence.js',
       'workspace/tabDragController.js',
+      'workspace/geometryObserver.js',
       'workspace/workspaceShell.js'
     ],
     'window.LexeraWorkspaceShell',
