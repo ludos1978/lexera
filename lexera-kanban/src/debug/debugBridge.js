@@ -95,47 +95,111 @@
     }
   }
 
-  // Render-profile capture: subscribe to the longtask PerformanceObserver
-  // for `durationMs`, collect entries (sorted by duration desc), emit
-  // back. Lives in the shell so the long-tasks captured are the SHELL's
-  // own main-thread tasks — i.e. the kanban-board render path, which is
-  // exactly what stutters on a large board.
+  // Render-profile capture: subscribe a PerformanceObserver per
+  // entryType for `durationMs`, collect entries from each, emit back
+  // a structured payload. Lives in the shell so the timings captured
+  // are the SHELL's own main-thread activity — i.e. the kanban-board
+  // render path, which is exactly what stutters on a large board.
+  //
+  // Per-type observers (rather than one observer with multiple
+  // entryTypes) so an unsupported type degrades silently instead of
+  // breaking the others. WKWebView's support for `event` and
+  // `layout-shift` is uneven; `longtask` and `paint` are reliable.
+  // The `notes` array surfaces the reasons unsupported types were
+  // skipped, so the debug window can show "no event data because
+  // this WebKit version refused".
   function handleProfileRenderRequest(event) {
     var p = (event && event.payload) || {};
     var durationMs = Number(p.durationMs) || 5000;
     if (typeof PerformanceObserver !== 'function') {
       emit('debug-profile-render-response', {
         entries: [],
+        events: [],
+        paints: [],
+        shifts: [],
+        notes: ['PerformanceObserver unavailable in this webview runtime.'],
         note: 'PerformanceObserver unavailable in this webview runtime.'
       }).catch(function () {});
       return;
     }
-    var collected = [];
-    var po;
-    try {
-      po = new PerformanceObserver(function (list) {
-        var entries = list.getEntries();
-        for (var i = 0; i < entries.length; i++) {
-          collected.push({
-            name: String(entries[i].name || ''),
-            duration: Number(entries[i].duration) || 0,
-            startTime: Number(entries[i].startTime) || 0
-          });
-        }
-      });
-      po.observe({ entryTypes: ['longtask'] });
-    } catch (err) {
+    var longtasks = [];
+    var events = [];
+    var paints = [];
+    var shifts = [];
+    var notes = [];
+    var observers = [];
+
+    function startObserver(entryType, sink, mapper) {
+      try {
+        var po = new PerformanceObserver(function (list) {
+          var batch = list.getEntries();
+          for (var i = 0; i < batch.length; i++) sink.push(mapper(batch[i]));
+        });
+        po.observe({ entryTypes: [entryType] });
+        observers.push(po);
+      } catch (err) {
+        notes.push('PerformanceObserver(' + entryType + ') refused: ' +
+          (err && err.message ? err.message : String(err)));
+      }
+    }
+
+    startObserver('longtask', longtasks, function (e) {
+      return {
+        name: String(e.name || ''),
+        duration: Number(e.duration) || 0,
+        startTime: Number(e.startTime) || 0
+      };
+    });
+    startObserver('event', events, function (e) {
+      return {
+        name: String(e.name || ''),
+        duration: Number(e.duration) || 0,
+        startTime: Number(e.startTime) || 0,
+        processingStart: Number(e.processingStart) || 0,
+        target: e.target && e.target.tagName ? String(e.target.tagName) : ''
+      };
+    });
+    startObserver('paint', paints, function (e) {
+      return {
+        name: String(e.name || ''),
+        startTime: Number(e.startTime) || 0
+      };
+    });
+    startObserver('layout-shift', shifts, function (e) {
+      return {
+        value: Number(e.value) || 0,
+        startTime: Number(e.startTime) || 0
+      };
+    });
+
+    if (observers.length === 0) {
       emit('debug-profile-render-response', {
         entries: [],
-        note: 'PerformanceObserver(longtask) refused: ' +
-          (err && err.message ? err.message : String(err))
+        events: [],
+        paints: [],
+        shifts: [],
+        notes: notes,
+        // Back-compat: callers still using the old single-string
+        // `note` field get the first reason here.
+        note: notes[0] || 'no PerformanceObserver entryType supported'
       }).catch(function () {});
       return;
     }
     setTimeout(function () {
-      try { po.disconnect(); } catch (_) {}
-      collected.sort(function (a, b) { return b.duration - a.duration; });
-      emit('debug-profile-render-response', { entries: collected }).catch(function () {});
+      for (var i = 0; i < observers.length; i++) {
+        try { observers[i].disconnect(); } catch (_) {}
+      }
+      longtasks.sort(function (a, b) { return b.duration - a.duration; });
+      events.sort(function (a, b) { return b.duration - a.duration; });
+      paints.sort(function (a, b) { return a.startTime - b.startTime; });
+      shifts.sort(function (a, b) { return a.startTime - b.startTime; });
+      emit('debug-profile-render-response', {
+        entries: longtasks,
+        events: events,
+        paints: paints,
+        shifts: shifts,
+        notes: notes
+      }).catch(function () {});
     }, durationMs);
   }
 

@@ -154,26 +154,81 @@
       }
     });
     // Render-profile result delivered by the shell-side bridge.
+    // Payload shape is { entries, events, paints, shifts, notes }
+    // — `entries` keeps its original meaning (Long Tasks) for
+    // back-compat with anything reading the old protocol.
     listen('debug-profile-render-response', function (event) {
       var payload = (event && event.payload) || {};
       _profileState.running = false;
       var entries = Array.isArray(payload.entries) ? payload.entries : [];
-      setProfileStatusUi(entries.length + ' long tasks', false);
+      var events = Array.isArray(payload.events) ? payload.events : [];
+      var paints = Array.isArray(payload.paints) ? payload.paints : [];
+      var shifts = Array.isArray(payload.shifts) ? payload.shifts : [];
+      var notes = Array.isArray(payload.notes) ? payload.notes :
+        (payload.note ? [payload.note] : []);
+      setProfileStatusUi(entries.length + ' long tasks, ' +
+        events.length + ' events', false);
       var out = document.querySelector('[data-debug-profile-output]');
       if (!out) return;
-      if (entries.length === 0) {
-        out.textContent = 'No Long Tasks (≥50ms) recorded in the 5-second window.\n' +
-          (payload.note ? payload.note : 'The board may simply not be re-rendering during this sample. ' +
-           'Hold mouse, type in a card, or scroll to provoke renders, then re-record.');
-        return;
-      }
-      try {
-        var lines = entries.slice(0, 30).map(function (e, i) {
-          return (i + 1) + '. ' + Math.round(e.duration) + 'ms @ t=' +
-            Math.round(e.startTime) + 'ms' + (e.name ? '  ' + e.name : '');
+
+      function renderLongTasks() {
+        if (entries.length === 0) {
+          return 'No Long Tasks (≥50ms) recorded.\n  ' +
+            'The board may not be re-rendering during this sample. ' +
+            'Hold mouse, type in a card, or scroll to provoke renders, then re-record.';
+        }
+        var top = entries.slice(0, 30);
+        var lines = top.map(function (e, i) {
+          return '  ' + (i + 1) + '. ' + Math.round(e.duration) +
+            'ms @ t=' + Math.round(e.startTime) + 'ms' +
+            (e.name ? '  ' + e.name : '');
         });
-        out.textContent = 'Top ' + Math.min(30, entries.length) +
-          ' Long Tasks (≥50ms) sorted by duration:\n\n' + lines.join('\n');
+        return 'Top ' + top.length + ' Long Tasks (≥50ms) by duration:\n' +
+          lines.join('\n');
+      }
+      function renderEvents() {
+        if (events.length === 0) return 'No event-timing entries.';
+        var top = events.slice(0, 30);
+        var lines = top.map(function (e, i) {
+          return '  ' + (i + 1) + '. ' + Math.round(e.duration) +
+            'ms  ' + (e.name || '?') +
+            (e.target ? ' on <' + e.target.toLowerCase() + '>' : '') +
+            ' @ t=' + Math.round(e.startTime) + 'ms';
+        });
+        return 'Top ' + top.length + ' event-timing entries by duration:\n' +
+          lines.join('\n');
+      }
+      function renderPaints() {
+        if (paints.length === 0) return 'No paint entries.';
+        var lines = paints.map(function (p) {
+          return '  ' + p.name + ' @ t=' + Math.round(p.startTime) + 'ms';
+        });
+        return 'Paint timeline:\n' + lines.join('\n');
+      }
+      function renderShifts() {
+        if (shifts.length === 0) return 'No layout-shift entries.';
+        var total = shifts.reduce(function (s, e) { return s + e.value; }, 0);
+        var lines = shifts.slice(0, 10).map(function (e) {
+          return '  shift=' + e.value.toFixed(4) +
+            ' @ t=' + Math.round(e.startTime) + 'ms';
+        });
+        return 'Layout shifts (cumulative=' + total.toFixed(4) +
+          ', showing first 10):\n' + lines.join('\n');
+      }
+      function renderNotes() {
+        if (notes.length === 0) return '';
+        return 'Notes:\n  - ' + notes.join('\n  - ');
+      }
+
+      try {
+        var sections = [
+          renderLongTasks(),
+          renderEvents(),
+          renderPaints(),
+          renderShifts(),
+          renderNotes()
+        ].filter(function (s) { return s; });
+        out.textContent = sections.join('\n\n');
       } catch (_) { out.textContent = JSON.stringify(payload, null, 2); }
     });
   }

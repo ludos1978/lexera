@@ -137,4 +137,109 @@ describe('debugBridge — shell-side translator for the --debug window', () => {
     expect(responseCall[1].entries).toEqual([]);
     expect(responseCall[1].note).toMatch(/PerformanceObserver unavailable/);
   });
+
+  it('debug-profile-render-request installs one observer per entryType and surfaces refusal as a note without breaking siblings', async () => {
+    // The profiler captures `longtask`, `event`, `paint`, and
+    // `layout-shift` to let the user correlate Long Tasks with the
+    // scroll/wheel/pointer event that triggered them. WKWebView's
+    // support for `event` and `layout-shift` is uneven, so each
+    // observer installs in its own try/catch — a refusal must NOT
+    // prevent the other types from being captured. The refusal
+    // reason is surfaced in `notes[]`.
+    const emit = vi.fn(() => Promise.resolve());
+    const observed = [];
+    const installedObservers = [];
+    class FakePO {
+      constructor(cb) { this._cb = cb; installedObservers.push(this); }
+      observe(opts) {
+        const t = opts.entryTypes && opts.entryTypes[0];
+        observed.push(t);
+        // Pretend WKWebView refuses `layout-shift` — every other
+        // type installs and synchronously delivers one entry.
+        if (t === 'layout-shift') {
+          throw new Error('Type "layout-shift" not supported.');
+        }
+        if (t === 'longtask') {
+          this._cb({ getEntries: () => [{ name: 'self', duration: 120, startTime: 1000 }] });
+        }
+        if (t === 'event') {
+          this._cb({ getEntries: () => [{
+            name: 'wheel', duration: 80, startTime: 1500, processingStart: 1490,
+            target: { tagName: 'DIV' }
+          }] });
+        }
+        if (t === 'paint') {
+          this._cb({ getEntries: () => [{ name: 'first-paint', startTime: 50 }] });
+        }
+      }
+      disconnect() { this._disconnected = true; }
+    }
+    globalThis.PerformanceObserver = FakePO;
+    const { window } = loadBridge({
+      shell: { isEnabled: () => true, handleBoardAction: () => {} },
+      emitSpy: emit
+    });
+    vi.useFakeTimers();
+    try {
+      window.LexeraDebugBridge._test_handleProfileRenderRequest({ payload: { durationMs: 50 } });
+      // All four types attempted (longtask, event, paint, layout-shift).
+      expect(observed).toEqual(['longtask', 'event', 'paint', 'layout-shift']);
+      // Run the setTimeout that emits the response.
+      vi.advanceTimersByTime(60);
+      const responseCall = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-response');
+      expect(responseCall).toBeTruthy();
+      const payload = responseCall[1];
+      // Long-tasks shape preserved (back-compat with the old single-key payload).
+      expect(payload.entries).toHaveLength(1);
+      expect(payload.entries[0]).toEqual({ name: 'self', duration: 120, startTime: 1000 });
+      // New per-type buckets present.
+      expect(payload.events).toHaveLength(1);
+      expect(payload.events[0]).toEqual(expect.objectContaining({
+        name: 'wheel', duration: 80, target: 'DIV'
+      }));
+      expect(payload.paints).toEqual([{ name: 'first-paint', startTime: 50 }]);
+      // The unsupported type didn't crash siblings — it lands in notes.
+      expect(payload.shifts).toEqual([]);
+      expect(payload.notes).toEqual(expect.arrayContaining([
+        expect.stringMatching(/layout-shift.*Type "layout-shift" not supported/)
+      ]));
+      // Surviving observers were disconnected at the end of the window.
+      const installed = installedObservers.filter((o) => o._disconnected);
+      expect(installed.length).toBe(3); // longtask + event + paint, layout-shift never installed
+    } finally {
+      vi.useRealTimers();
+      delete globalThis.PerformanceObserver;
+    }
+  });
+
+  it('debug-profile-render-request emits a notes-only response when EVERY entryType is refused', async () => {
+    // If the WebKit version is so old that no observer type is
+    // accepted, the handler still needs to emit a response (so the
+    // UI can say so) instead of silently hanging the recording badge.
+    const emit = vi.fn(() => Promise.resolve());
+    class RefusingPO {
+      constructor() {}
+      observe() { throw new Error('refused'); }
+      disconnect() {}
+    }
+    globalThis.PerformanceObserver = RefusingPO;
+    const { window } = loadBridge({
+      shell: { isEnabled: () => true, handleBoardAction: () => {} },
+      emitSpy: emit
+    });
+    try {
+      window.LexeraDebugBridge._test_handleProfileRenderRequest({ payload: { durationMs: 100 } });
+      // Synchronous emit when no observers installed.
+      const responseCall = emit.mock.calls.find((c) => c[0] === 'debug-profile-render-response');
+      expect(responseCall).toBeTruthy();
+      expect(responseCall[1].entries).toEqual([]);
+      expect(responseCall[1].events).toEqual([]);
+      expect(responseCall[1].paints).toEqual([]);
+      expect(responseCall[1].shifts).toEqual([]);
+      expect(responseCall[1].notes.length).toBeGreaterThan(0);
+      expect(responseCall[1].note).toMatch(/refused/);
+    } finally {
+      delete globalThis.PerformanceObserver;
+    }
+  });
 });
